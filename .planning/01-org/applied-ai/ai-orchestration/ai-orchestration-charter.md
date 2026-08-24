@@ -68,12 +68,12 @@ degrades all agents identically, an agent bug degrades one
 | Running it in production — observability, release, resilience | [[reliability-sre-charter|reliability-charter]] | We author the harness; SRE operates the deployment |
 | **NF-A metric methodology and the definition of doneability** | [[research-math-charter|research-and-math-charter]] *(Intelligence)* | They define what a verdict *means*; [[agent-evaluation-gates-charter]] enforces it in CI and prod. **This line is contested — see below.** |
 | The `SKILL.md` contract, registry, lifecycle | [[skills-charter]] | Whether a skill *can* be loaded is harness mechanics; whether it *should exist* is theirs |
-| Findings and alert thresholds of guardian agents | `[[state-integrity-invariants-charter|sre-state-integrity]]` | We own `state_invariant_enforcer` / `drift_agent` / `inequality_detector` **code**; SRE owns their **findings** (fork OD-24) |
+| Findings and alert thresholds of guardian agents | `[[state-integrity-invariants-charter|sre-state-integrity]]` | We own `state_invariant_enforcer` / `drift_agent` / `inequality_detector` **code**; SRE owns their **findings** (fork TECH-F6) |
 | That a message *arrived* once | `[[messaging-delivery-charter|eng-messaging-delivery]]` | We own what it says; they own that it is delivered exactly once (`technology.md:861`) |
 | Grading data rows | `[[substrate-quality-coverage-charter|dat-substrate-quality]]` | Task outcome ≠ row quality (`technology.md:862`) |
 | Finding and classifying security gaps | [[security-charter]] *(Intelligence)* | Security classifies; [[action-safety-the-human-gate-charter]] owns the mutation gate specifically |
 
-### The non-goal that is not settled — OD-21, carried forward unsoftened
+### The non-goal that is not settled — TECH-F3, carried forward unsoftened
 
 [[agent-evaluation-gates-charter]] overlaps **Research & Math** in the Intelligence
 division, which [[README]] §2.2 already assigns NF-A and task-doneability. The line
@@ -87,11 +87,11 @@ That instruction is `technology.md:406` verbatim in intent and is repeated here 
 survives the copy. Duplication is the worse outcome than either answer
 (`technology.md:845`).
 
-> ⚠️ **ID collision, flagged not resolved.** `technology.md:845` numbers this fork
-> **OD-21**, but `.planning/decisions/OPEN-DECISIONS.md:25` already uses **OD-21** for
-> the Obsidian structural workflow (locked in [[OBSIDIAN_VAULT]]). The evaluation-seam
-> fork needs a free ID before it lands in the decision log. Raised in
-> [[ai-orchestration-agenda-full]] §Questions.
+> ✅ **ID collision resolved — this fork is `TECH-F3`.** `technology.md:845` originally
+> numbered it **OD-21**, but `.planning/decisions/OPEN-DECISIONS.md:25` already uses
+> **OD-21** for the Obsidian structural workflow (locked in [[OBSIDIAN_VAULT]]). The
+> Decision Office renamespaced the evaluation-seam fork to **TECH-F3**
+> ([[FORK-REGISTRY]]). Raised in [[ai-orchestration-agenda-full]] §Questions.
 
 ## Metrics it moves
 
@@ -193,9 +193,9 @@ measurement layer above it missing entirely.
   [[ai-orchestration-directive]] §The harness fork.
 - **OD-04 — external model roster**, explicitly downstream of OD-03
   (`OPEN-DECISIONS.md:15`). → [[model-routing-inference-economics-charter]].
-- **The evaluation seam** (numbered OD-21 in `technology.md:845`, ID collision noted
+- **The evaluation seam** (**TECH-F3**; numbered OD-21 in `technology.md:845`, collision noted
   above) — methodology vs. operations, or one team in Intelligence.
-- **OD-24 — guardian-agent co-ownership.** Fleet owns the code, SRE owns the findings
+- **TECH-F6 — guardian-agent co-ownership.** Fleet owns the code, SRE owns the findings
   (`technology.md:848`).
-- **OD-23** — does the team layer get all 7 artifacts, or 3? This vault answers "7";
+- **TECH-F5** — does the team layer get all 7 artifacts, or 3? This vault answers "7";
   the fork is not closed (`technology.md:847`).

@@ -74,13 +74,13 @@ Prompt edits currently merge like any other code change, against no gold set.
 to merge a prompt change that has none — the same gate shape
 `.github/workflows/ci.yml:226-230` already uses for merge policies.
 
-### 6. Guardian canaries — the test of whether OD-24 works
+### 6. Guardian canaries — the test of whether TECH-F6 works
 
 `state_invariant_enforcer`, `drift_agent`, `inequality_detector`: inject a known
 violation on a cadence that must be caught. Without it, a detector whose recall has
 degraded is indistinguishable from a clean system, from both sides of the seam
 ([[agent-fleet-premortem]] #5). **Whether either team will own the canary is the
-concrete test of OD-24.** If neither will, the split has failed and guardians should
+concrete test of TECH-F6.** If neither will, the split has failed and guardians should
 go to one team end to end.
 
 ## Why now
@@ -100,7 +100,7 @@ go to one team end to end.
 | 2 | `stub: true` in `DEFAULT_AGENT_SPECS` | — |
 | 3 | Topic-graph CI check, both directions | — |
 | 4 | Orphan decision × 3 | founder input on `recurring_order_agent` |
-| 5 | Guardian canaries | OD-24 ownership |
+| 5 | Guardian canaries | TECH-F6 ownership |
 | 6 | `nf_a.task_success_rate` per agent | NF-A emission (dept Step 0) |
 | 7 | Prompt versioning + verdict gate | [[agent-evaluation-gates-charter]] verdict definition |
 
@@ -111,7 +111,7 @@ Steps 1–3 are unblocked and are roughly a week of work between them.
 1. **The three orphans — adopt, delete, or document?** `recurring_order_agent` is the
    one that matters: a scheduled purchaser, outside the harness contract, registered
    nowhere, with passing tests.
-2. **OD-24 — who owns a guardian canary?** This is the operational form of "does the
+2. **TECH-F6 — who owns a guardian canary?** This is the operational form of "does the
    code/findings split work". If the honest answer is "neither team wants it", the
    split has already failed and guardians should be owned end to end by one team.
 3. **The five stubs — keep, or delete?** Keeping them is defensible (they are declared,

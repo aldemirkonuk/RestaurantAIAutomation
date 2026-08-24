@@ -8,10 +8,8 @@ metrics: [sre.time_to_revert, sre.days_since_verified_restore, release.env_drift
 updated: 2026-08-24
 links: ["[[release-engineering-charter]]", "[[release-engineering-directive]]", "[[reliability-sre-loops]]", "[[state-integrity-invariants-loops]]", "[[observability-telemetry-plumbing-charter]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["rel-restore-proving", "rel-revert-timing", "rel-red-gate-resolution", "rel-env-drift", "rel-recovery-first-use-review"]
-loop_close_times: ["quarterly", "quarterly (exercised), immediate (real revert)", "weekly", "monthly, immediate on a bypass finding", "within one week of any first use"]
+loop_close_times: ["quarterly", "quarterly", "weekly", "monthly", "per-event"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -57,7 +55,8 @@ measures: [sre.time_to_revert, sre.reverts_exercised_count, sre.rollback_guide_s
 changes: [workflows.deploy_yml, runbook.rollback_guide]
 inputs_from: [observability-telemetry-plumbing, engineering]
 outputs_to: [reliability-sre, engineering]
-close_time: quarterly (exercised), immediate (real revert)
+close_time: quarterly
+close_time_note: "quarterly (exercised), immediate (real revert)"
 status: proposed
 ```
 
@@ -104,7 +103,8 @@ measures: [release.env_drift_count, release.vars_without_owner, release.dev_auth
 changes: [config.env_manifest, workflows.ci_yml_env_assertions, railway.toml, vercel.json]
 inputs_from: [platform-api, security, external-connections]
 outputs_to: [engineering, security, reliability-sre]
-close_time: monthly, immediate on a bypass finding
+close_time: monthly
+close_time_note: "monthly, immediate on a bypass finding"
 status: proposed
 ```
 
@@ -129,7 +129,8 @@ measures: [sre.recovery_paths_used_unverified_count, sre.days_since_kill_switch_
 changes: [runbook.restore, runbook.rollback_guide, runbook.kill_switch]
 inputs_from: [runtime-resilience, observability-telemetry-plumbing]
 outputs_to: [reliability-sre, decision-office]
-close_time: within one week of any first use
+close_time: per-event
+close_time_note: "within one week of any first use"
 status: proposed
 ```
 

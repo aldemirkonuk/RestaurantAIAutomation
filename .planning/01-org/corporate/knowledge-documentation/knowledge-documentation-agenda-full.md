@@ -97,7 +97,7 @@ Ordered, each with an owner and an observable outcome. None is started.
    *"the WineOps AI project"*.
 5. **OD-22 scope and home.** `.planning/library/` is the obvious home. Confirm, and confirm
    the founder still wants a dedicated session for it rather than incremental capture.
-6. **OD-C6 (new, raised here).** Should [[standards-verification-charter]] sit under
+6. **CORP-F6 (new, raised here).** Should [[standards-verification-charter]] sit under
    [[decision-office-charter]] as an advisory function instead of inside this department?
    `corporate.md:512-515` raises it; this department cannot credibly answer it about
    itself. See [[knowledge-documentation-charter]] §Explicit non-goals for both arguments.
@@ -112,6 +112,6 @@ conflict, not a decision log.
 
 | Proposed ID | Fork |
 |---|---|
-| OD-C6 | Does [[standards-verification-charter]] belong to this department or to [[decision-office-charter]]? |
-| OD-C7 | Does `.claude/skills/` get created (and `.agents/skills/` migrated), or do the 99 `schedule.md` assertions get corrected? |
-| OD-C8 | Is the **retire-to-write** rule (this department only) or org-wide? An org-wide version caps 693 documents from growing; a department-only version caps only the auditor. |
+| CORP-F6 | Does [[standards-verification-charter]] belong to this department or to [[decision-office-charter]]? |
+| CORP-F7 | Does `.claude/skills/` get created (and `.agents/skills/` migrated), or do the 99 `schedule.md` assertions get corrected? |
+| CORP-F8 | Is the **retire-to-write** rule (this department only) or org-wide? An org-wide version caps 693 documents from growing; a department-only version caps only the auditor. |

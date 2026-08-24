@@ -135,9 +135,9 @@ before the first leak rather than after it.
 
 ## Cross-cutting
 
-- **OD-24 is load-bearing here** (`technology.md:848`). If [[agent-fleet-charter]] owns the
+- **TECH-F6 is load-bearing here** (`technology.md:848`). If [[agent-fleet-charter]] owns the
   guardian agents' code and this team owns their findings, then M2's stub problem has two
-  owners and, per the department's own rule, therefore none. Closing OD-24 is cheap now —
+  owners and, per the department's own rule, therefore none. Closing TECH-F6 is cheap now —
   two of the four agents are stubs — and expensive later.
 - **[[red-team-charter]] should attack M4**, because a good-looking aggregate is the most
   socially comfortable failure in this document and the least likely to be challenged

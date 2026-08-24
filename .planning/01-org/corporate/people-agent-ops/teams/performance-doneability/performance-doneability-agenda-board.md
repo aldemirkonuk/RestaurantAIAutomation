@@ -92,13 +92,13 @@ the measurement (premortem M2).
       (`…baseline_from_production.sql:2231`)
 - [ ] `nf_a.emission_coverage` — **uncounted** — how many of 26 modules call
       `log_decision()` at all is obtainable today and nobody has looked
-- [ ] `people.blocked_days` — **0**, starts when OD-C5 is filed. **The number that will
+- [ ] `people.blocked_days` — **0**, starts when CORP-F5 is filed. **The number that will
       actually move.**
 - [ ] `doneability.criteria_spec_coverage` — **0 of 3** live task types specified
 
 ## Blocked on — with ages
 
-- [ ] **OD-C5** — `SpendLogger.log()` gains an `agent` parameter; `api_spend` gains the
+- [ ] **CORP-F5** — `SpendLogger.log()` gains an `agent` parameter; `api_spend` gains the
       column. Filed: — · Age: — · Owner: [[research-math-charter]]
 - [ ] **Join key** — what connects `decision_log:2687` to `api_spend:2231`?
       `correlation_id` is the candidate. Filed: — · Age: — · Owner:

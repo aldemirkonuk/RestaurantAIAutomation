@@ -39,7 +39,7 @@ deletion.
 ⚠️ **`.claude/skills/` does not exist in this repo.** The only project skill is
 `.agents/skills/railway-config/SKILL.md`. Ninety-nine `schedule.md` files across the org
 assert a directory that is not there — finding **V-6** on
-[[standards-verification-agenda-board]], staged as **OD-C7**. This team found it, and it
+[[standards-verification-agenda-board]], staged as **CORP-F7**. This team found it, and it
 appears in this team's own document, which is the correct place for it.
 
 | Proposed skill | Trigger | Doneability criterion | Real past instance |

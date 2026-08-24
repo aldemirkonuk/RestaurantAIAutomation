@@ -29,7 +29,7 @@ graph TD
   D -->|yes| E[Review permitted]
 
   C --> F{Blocker older than two close-times?}
-  F -->|yes| G[Auto-escalate to OPEN-DECISIONS: OD-C5 / OD-11]
+  F -->|yes| G[Auto-escalate to OPEN-DECISIONS: CORP-F5 / OD-11]
   F -->|no| H[Carry forward, age incremented. Never dropped]
 
   E --> I{Agent fails its criterion repeatedly?}
@@ -58,7 +58,7 @@ graph TD
 | **[[neural-footprint-instrumentation-charter]]** | The NF-A schema, the emission path, the join key | Whether `correlation_id` is the join. We ask for a field; we do not design the table |
 | **[[ai-orchestration-charter]]** | Fixing an agent that fails | Code changes inside `process_message()` |
 | **[[roster-lifecycle-charter]]** | Registration, levels, retirement | We recommend; they execute the roster change |
-| **Founder / OPEN-DECISIONS** | OD-C5; where the verdict lives; whether health incorporates the verdict | The signature diff; the schema request |
+| **Founder / OPEN-DECISIONS** | CORP-F5; where the verdict lives; whether health incorporates the verdict | The signature diff; the schema request |
 
 ## Standing rules
 
@@ -68,7 +68,7 @@ Today `services/agent-orchestrator/services/spend_logger.py:41-49` has no such f
 `api_spend` (`…baseline_from_production.sql:2231`) has no such column, so the correct
 output is **"not derivable"**, stated without softening, in every artifact. **Being asked
 for the number is itself an escalation trigger** — that is deliberate, so the pressure
-lands on OD-C5 instead of on this team's integrity (premortem M4).
+lands on CORP-F5 instead of on this team's integrity (premortem M4).
 
 **2. Liveness is never reported as success.** `core/base_agent.py:602` sets
 `success=True` when `process_message()` did not raise inside its timeout. In this team's
@@ -113,7 +113,7 @@ on liveness.
 Escalate to `OPEN-DECISIONS.md` when **any** of these holds:
 
 1. A dependency on Research & Math is **older than two close-times** — automatic, on the
-   clock. OD-C5 and the join-key question are both on it from the day they are filed.
+   clock. CORP-F5 and the join-key question are both on it from the day they are filed.
 2. Anyone asks for a per-agent cost figure that rule 1 forbids producing.
 3. `success_rate` appears unqualified in any department artifact. **First instance.**
 4. A verdict is proposed to live somewhere other than the NF-A spine.
@@ -126,5 +126,5 @@ Escalate to `OPEN-DECISIONS.md` when **any** of these holds:
 carry rules 1 and 2 as **standing** findings — they are the two this team would most
 plausibly relax under pressure from someone senior, and both relaxations are locally
 reasonable at the moment they happen, which is what makes them dangerous.
-[[decision-office-charter]] owns whether OD-C5 closes or drifts; premortem M2 and M4 are
+[[decision-office-charter]] owns whether CORP-F5 closes or drifts; premortem M2 and M4 are
 both, underneath, stories about a decision that drifted.

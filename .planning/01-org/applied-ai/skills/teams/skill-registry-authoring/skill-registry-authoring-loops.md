@@ -8,10 +8,8 @@ metrics: [skills.protocol_compliance_rate, skills.description_disambiguation_rat
 updated: 2026-08-24
 links: ["[[skill-registry-authoring-charter]]", "[[skill-registry-authoring-directive]]", "[[skill-registry-authoring-schedule]]", "[[skills-loops]]", "[[skill-lifecycle-anti-sprawl-loops]]", "[[ORG_STRUCTURE]]"]
 loop_count: 3
-loop_count: 3
-loop_count: 3
 loop_ids: ["skill-protocol-gate", "skill-description-collision", "skill-authoring-bypass-pressure"]
-loop_close_times: ["per-merge", "weekly", "monthly"]
+loop_close_times: ["per-pr", "weekly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed"]
 ---
 
@@ -34,7 +32,8 @@ measures: [skills.protocol_compliance_rate]
 changes: [skills.contract, skills.ci_guard]
 inputs_from: [engineering, data, ai-orchestration, security, reliability-sre]
 outputs_to: [skills]
-close_time: per-merge
+close_time: per-pr
+close_time_note: "per merge"
 status: proposed
 ```
 

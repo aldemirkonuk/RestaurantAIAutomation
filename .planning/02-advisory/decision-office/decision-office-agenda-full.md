@@ -141,7 +141,7 @@ Each is a fork this office **cannot** answer, by [[decision-office-directive]]
    a format that is not currently machine-readable. Move the blocks to frontmatter,
    or script LOOP-MAP and drop the Dataview claim? Corpus-wide;
    [[architecture-review-charter]] should see it.
-7. **OD-C6 — [[standards-verification-charter]] under this office?**
+7. **CORP-F6 — [[standards-verification-charter]] under this office?**
    [[decision-office-charter]] **declines** in writing, before the pressure is real.
    Declining is ours; accepting is not. If the independence argument holds, the
    answer is a fourth advisory function or a different parent — not this one

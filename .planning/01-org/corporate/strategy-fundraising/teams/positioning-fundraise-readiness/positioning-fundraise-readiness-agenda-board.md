@@ -137,7 +137,7 @@ department declined to charter arrives anyway.
 ## Open forks
 
 - [ ] **OD-23** — *$20k MRR in 30 days*. **Founder call, unresolved.** Recorded in [[strategy-fundraising-agenda-full]]; what changes here per outcome is in [[positioning-fundraise-readiness-agenda-full]]
-- [ ] **OD-C3** — one team until a term sheet (`corporate.md:496`)
+- [ ] **CORP-F3** — one team until a term sheet (`corporate.md:496`)
 - [ ] **375 vs 573 insight types** — blocks seed claim 2; owner is [[standards-verification-charter]]
 - [ ] Headline: *cost drift caught* or *dollars recovered*? Free until the first artifact
 - [ ] Is a recorded demo acceptable as primary investor evidence?

@@ -83,7 +83,7 @@ it must not cross, is stated in [[decision-office-directive]] §Decision rights.
 
 ### One offer this office must decline
 
-[[standards-verification-charter]] proposes, as **OD-C6**
+[[standards-verification-charter]] proposes, as **CORP-F6**
 (`knowledge-documentation-agenda-full.md:115`), that it should sit *under* the
 Decision Office as an advisory team rather than inside Knowledge & Documentation.
 The argument is reasonable — verification is cross-cutting and an auditor reporting
@@ -94,7 +94,7 @@ into the corpus it audits has an independence problem, which is the same argumen
 because accepting it converts findings-only into line authority over an executing
 team, and does so through the most sympathetic possible door. If the independence
 argument holds, the answer is a fourth advisory function or a different parent —
-not this one quietly growing an org chart. That is a founder call, and OD-C6 is
+not this one quietly growing an org chart. That is a founder call, and CORP-F6 is
 recorded, not answered. Declining it is the first live test of
 [[decision-office-premortem]] M3 and this office intends to pass it in writing
 before the pressure is real.
@@ -258,7 +258,7 @@ anyway, unprompted and independently. **Nothing watches those dates:**
 | 2026-11-24 | [[skill-harvesting-charter]] | Registry <15 **and** no scheduled trigger re-evaluation → paper team | `skill-harvesting-premortem.md:90` |
 | 2026-11-24 | [[sales-charter]] | `DEP-06` unchecked **and** `verified_dollars_recovered == $0` → fold into [[growth-charter]], delete 14 of 21 docs | `sales-schedule.md:25`, `sales-directive.md:112` |
 | 2026-11-24 | [[outbound-engine-charter]] | No landed credit → folds with Sales | `outbound-engine-schedule.md:29` |
-| day 90 (≈2026-11-22) | [[supplier-distributor-network-charter]] | CM-F3 **and** OD-21 both open with `pi.live_counterparties == 0` → its own merge proposal | `supplier-distributor-network-directive.md:117,124` |
+| day 90 (≈2026-11-22) | [[supplier-distributor-network-charter]] | CM-F3 **and** PROD-F2 both open with `pi.live_counterparties == 0` → its own merge proposal | `supplier-distributor-network-directive.md:117,124` |
 | second quarterly review | [[legal-charter]] | Merge trigger, stated as the counter to the ratchet | `legal-premortem.md:38-41` |
 
 Four of six land on the same day. Each was written by a unit proposing its own
@@ -274,7 +274,7 @@ against the live tree this session:
 | Insight-type count | `LLM_INSTRUCTION_PROMPTS.md:166` — **375** | `YC_WEDGE_PLAN.md:324` — **573** | Both live. Owner: [[analytics-bi-charter]]. Filed as a contradiction, **not** resolved here. |
 | Weekly skill-health job owner | `foundation/README.md:269` — **Research & Math** | `foundation/teams/technology.md:497-498` — **Skills** | This is **OD-25**, already registered, still unowned. |
 | Seating Density widget | `UX_PATHS_CATALOG.md:49` — *"does not exist yet"* | `UX_PATHS_CATALOG.md:1013` — ships it | **B is right.** `apps/web/src/components/reports/organisms/SeatingDensityPanel.tsx` exists and is mounted in `Reports.tsx`. Same file contradicts itself. |
-| `.claude/skills/` existence | ~99 `schedule.md` files assert it does not exist (**OD-C7**) | It now exists, tracked, with `README.md` and zero `SKILL.md` | An open item **half-closed by a side effect**, with nobody noticing. This is the failure this office exists to catch. |
+| `.claude/skills/` existence | ~99 `schedule.md` files assert it does not exist (**CORP-F7**) | It now exists, tracked, with `README.md` and zero `SKILL.md` | An open item **half-closed by a side effect**, with nobody noticing. This is the failure this office exists to catch. |
 
 **5. Stale citations drift silently.** `YC_WEDGE_PLAN.md:401` cites
 `ReceivingWorkspace.tsx:233,265` for the manual invoice-qty and unit-price inputs.

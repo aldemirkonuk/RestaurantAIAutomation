@@ -155,7 +155,7 @@ triggering them early is [[strategy-fundraising-premortem]] M3.
 1. **OD-23 — what is the target?** Hold $20k/30d, move to higher-ACV founder-led sales, or
    redefine the number as committed rather than collected? If the third: is *"committed,
    not collected"* acceptable as permanent attached language on every external use?
-2. **OD-C3 — confirm the one-team decision and its trigger?** This charter defers the split
+2. **CORP-F3 — confirm the one-team decision and its trigger?** This charter defers the split
    to the first term sheet (`corporate.md:496`). Confirm, or split now.
 3. **Is the raise position "not yet"?** The department currently assumes so — no raise in
    flight, no deadline, no counterparty. If that assumption is wrong, the ordering in this

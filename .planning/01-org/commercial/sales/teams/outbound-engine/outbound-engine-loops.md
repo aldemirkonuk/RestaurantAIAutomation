@@ -8,10 +8,8 @@ metrics: [sales.sending_identity_isolated, sales.claim_provenance_rate, sales.co
 updated: 2026-08-24
 links: ["[[outbound-engine-charter]]", "[[outbound-engine-premortem]]", "[[outbound-engine-directive]]", "[[outbound-engine-schedule]]", "[[sales-loops]]", "[[design-partner-operations-loops]]", "[[compliance-privacy-charter]]", "[[media-brand-charter]]", "[[reliability-sre-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["oe-identity-isolation-guard", "oe-claim-provenance", "oe-suppression-integrity", "oe-volume-safety", "oe-qualification-calibration"]
-loop_close_times: ["per-commit", "quarterly", "weekly", "daily", "fortnightly"]
+loop_close_times: ["per-pr", "quarterly", "weekly", "daily", "fortnightly"]
 loop_statuses: ["proposed", "proposed", "dormant", "dormant", "dormant"]
 ---
 
@@ -36,7 +34,8 @@ measures: [sales.sending_identity_isolated, oe.gmail_import_violations]
 changes: [oe.send_permission, ci.guard_state]
 inputs_from: [engineering]
 outputs_to: [sales, reliability-sre, engineering]
-close_time: per-commit
+close_time: per-pr
+close_time_note: "per commit (CI)"
 status: proposed
 ```
 

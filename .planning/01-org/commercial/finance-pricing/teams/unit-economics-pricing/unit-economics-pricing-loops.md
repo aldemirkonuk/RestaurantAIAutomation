@@ -8,8 +8,6 @@ metrics: [fin.non_design_partner_restaurant_count, fin.external_price_quotes_log
 updated: 2026-08-24
 links: ["[[unit-economics-pricing-charter]]", "[[unit-economics-pricing-premortem]]", "[[unit-economics-pricing-directive]]", "[[unit-economics-pricing-schedule]]", "[[finance-pricing-loops]]", "[[LOOP-MAP]]", "[[inference-cost-charter]]", "[[design-partner-operations-charter]]", "[[strategy-fundraising-charter]]", "[[decision-office-charter]]"]
 loop_count: 4
-loop_count: 4
-loop_count: 4
 loop_ids: ["uep-entry-trigger-watch", "uep-price-quote-register", "uep-cost-to-serve-publication", "uep-gross-margin"]
 loop_close_times: ["weekly", "weekly", "monthly", "monthly"]
 loop_statuses: ["proposed", "proposed", "gated", "gated"]

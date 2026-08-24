@@ -8,10 +8,8 @@ metrics: [strategy.claim_to_evidence_coverage, strategy.citation_drift_rate, str
 updated: 2026-08-24
 links: ["[[positioning-fundraise-readiness-charter]]", "[[positioning-fundraise-readiness-premortem]]", "[[positioning-fundraise-readiness-directive]]", "[[positioning-fundraise-readiness-schedule]]", "[[strategy-fundraising-loops]]", "[[metric-contract-truth-assurance-charter]]", "[[design-partner-operations-charter]]", "[[narrative-collateral-charter]]", "[[standards-verification-charter]]", "[[instruments-equity-charter]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["pfr-register-entry", "pfr-verb-strength", "pfr-citation-drift", "pfr-wedge-reduction", "pfr-readiness-balance"]
-loop_close_times: ["per_claim", "per_claim", "monthly", "monthly", "quarterly"]
+loop_close_times: ["per-event", "per-event", "monthly", "monthly", "quarterly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -42,7 +40,8 @@ measures: [strategy.claim_to_evidence_coverage, strategy.registered_claim_count,
 changes: [strategy.claim_register]
 inputs_from: [narrative-collateral, editorial-gate, design-partner-operations, growth, sales]
 outputs_to: [positioning-fundraise-readiness, strategy-fundraising]
-close_time: per_claim
+close_time: per-event
+close_time_note: "per claim"
 status: proposed
 ```
 
@@ -73,7 +72,8 @@ owner: positioning-fundraise-readiness
 changes: [strategy.claim_register, strategy.claim_text]
 inputs_from: [metric-contract-truth-assurance, design-partner-operations, analytics-bi]
 outputs_to: [narrative-collateral, editorial-gate, strategy-fundraising]
-close_time: per_claim
+close_time: per-event
+close_time_note: "per claim"
 status: proposed
 ```
 

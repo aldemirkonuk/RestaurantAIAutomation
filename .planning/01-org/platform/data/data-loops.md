@@ -7,8 +7,6 @@ metrics: [corpora.demand_weighted_coverage, annotation.gold_set_freshness_days, 
 updated: 2026-08-24
 links: ["[[data-charter]]", "[[data-premortem]]", "[[data-directive]]", "[[data-schedule]]", "[[corpora-enrichment-loops]]", "[[annotation-ground-truth-loops]]", "[[synthetic-generation-simulation-loops]]", "[[pos-operational-telemetry-ingest-loops]]", "[[substrate-quality-coverage-loops]]", "[[LOOP-MAP]]", "[[README]]"]
 loop_count: 6
-loop_count: 6
-loop_count: 6
 loop_ids: ["data-substrate-daily-report", "demand-reprioritization", "provenance-integrity-audit", "threshold-change-review", "unresolved-queue-drain", "backtest-fidelity"]
 loop_close_times: ["daily", "weekly", "weekly", "monthly", "weekly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]

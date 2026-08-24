@@ -82,7 +82,7 @@ none of them will happen by themselves.
 3. **Restore drill against what?** A scratch Supabase project costs money and a
    `docker-compose` Postgres is not the production engine. Which target makes the drill
    evidence rather than theatre?
-4. **OD-24** — do guardian agents (`ghost_inventory`, `shrinkage_detective`,
+4. **TECH-F6** — do guardian agents (`ghost_inventory`, `shrinkage_detective`,
    `state_invariant_enforcer`, `drift_agent`) belong end-to-end to
    [[agent-fleet-charter]], or does [[state-integrity-invariants-charter]] own the two
    that produce invariant findings? Two of the four are declared stubs today

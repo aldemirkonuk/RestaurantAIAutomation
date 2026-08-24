@@ -63,7 +63,7 @@ SORT updated ASC
 - [ ] No signature gate — an exhibit can be signed today with nobody checking the Annex
 - [ ] Controller/processor posture is implied by a schema comment (`:99-105`) and decided nowhere
 - [ ] Jurisdictions in scope for v0 undecided
-- [ ] OD-C2 open — DPA/BAA instrument vs obligation split
+- [ ] CORP-F2 open — DPA/BAA instrument vs obligation split
 
 ## Live defects (not future risk)
 

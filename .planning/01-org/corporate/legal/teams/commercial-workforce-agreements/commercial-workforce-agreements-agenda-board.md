@@ -132,4 +132,4 @@ visible against eight that did not.
 - [ ] **Workforce Paper split** — first W-2 hire, or first contractor in a second
       jurisdiction (`corporate.md:126`)
 - [ ] **Department merge** — [[legal-loops]] L-LEG-5, second quarterly review
-- [ ] **OD-C2** — DPA/BAA instrument vs obligation; staged, not yet in `OPEN-DECISIONS.md`
+- [ ] **CORP-F2** — DPA/BAA instrument vs obligation; staged, not yet in `OPEN-DECISIONS.md`

@@ -4,7 +4,7 @@ division: applied-ai
 department: skills
 status: open
 updated: 2026-08-24
-open_questions: 0
+open_questions: 1
 links: ["[[skills-charter]]", "[[skills-agenda-full]]", "[[architecture-review-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
 
@@ -18,7 +18,7 @@ links: ["[[skills-charter]]", "[[skills-agenda-full]]", "[[architecture-review-c
 
 | ID | From | Raised | Question or finding | Next action | Age-out |
 |---|---|---|---|---|---|
-| — | — | — | *(none yet)* | — | — |
+| RT-4 | red-team | 2026-08-24 | `.planning/01-org/applied-ai/skills/` holds **32 markdown files** (28 when first counted) while `git ls-files` returns **zero** `SKILL.md` in the repository. The only `SKILL.md` on disk is `.agents/skills/railway-config/SKILL.md`, gitignored wholesale at `.gitignore:100` as CLI-installed vendor tooling — so the department's de-facto template is borrowed from a vendor CLI. The generator's own self-retirement trigger (fewer than 5 committed firing skills by 2026-11-24 → collapse into AI Orchestration) is unadopted. | Founder yes/no on OD-24. Adopting it is the cheapest available test of whether the anti-sprawl rules are real; a reasoned no closes it either way. | 2026-10-05 |
 
 ## Answered
 

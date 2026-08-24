@@ -133,8 +133,8 @@ explicit: this team owns the path's definition, priority, and acceptance criteri
 [[engineering-charter]] owns the build.
 
 **A burn-down team that cannot commission endpoints will report "blocked" for a year.**
-That is the open fork (`product.md:862`, proposed as "OD-24" — but see the ID collision in
-[[design-charter]]). Until it closes, `design.blocked_on_endpoint_count` is published
+That is the open fork **PROD-F5** (`product.md:862`, originally proposed as "OD-24" — see
+the resolved ID collision in [[design-charter]] and [[FORK-REGISTRY]]). Until it closes, `design.blocked_on_endpoint_count` is published
 monthly so the cost of leaving it open is visible rather than absorbed.
 
 ## The state the ledger does not have

@@ -8,10 +8,8 @@ metrics: [nf_a.emission_coverage, obs.decision_log_join_rate, obs.metrics_with_l
 updated: 2026-08-24
 links: ["[[observability-telemetry-plumbing-charter]]", "[[observability-telemetry-plumbing-directive]]", "[[reliability-sre-loops]]", "[[neural-footprint-instrumentation-charter]]", "[[harness-runtime-charter]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["obs-nf-a-emission-coverage", "obs-signal-liveness", "obs-error-capture-fidelity", "obs-triage-displacement", "obs-health-surface-truthfulness"]
-loop_close_times: ["weekly", "hourly detection / weekly review", "monthly", "weekly, escalating after 3 consecutive close-times", "monthly, plus after every incident"]
+loop_close_times: ["weekly", "hourly", "monthly", "weekly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -58,7 +56,8 @@ measures: [obs.metrics_with_liveness_twin_pct, obs.heartbeat_gauge_present, obs.
 changes: [observability.noop_fallback_log_level, health.observability_degraded_flag, agenda.board_admission]
 inputs_from: [release-engineering, runtime-resilience]
 outputs_to: [reliability-sre, engineering, analytics-bi]
-close_time: hourly detection / weekly review
+close_time: hourly
+close_time_note: "hourly detection / weekly review"
 status: proposed
 ```
 
@@ -103,7 +102,8 @@ measures: [obs.triage_volume, obs.triage_share_of_capacity, nf_a.emission_covera
 changes: [team.time_box, department.reallocation, org.incident_command_trigger_status]
 inputs_from: [reliability-sre, runtime-resilience, state-integrity-invariants]
 outputs_to: [reliability-sre, decision-office, people-and-agent-ops]
-close_time: weekly, escalating after 3 consecutive close-times
+close_time: weekly
+close_time_note: "weekly, escalating after 3 consecutive close-times"
 status: proposed
 ```
 
@@ -126,7 +126,8 @@ measures: [obs.health_green_during_confirmed_incident_count, obs.health_check_co
 changes: [health.checks, health.dependency_list]
 inputs_from: [runtime-resilience, release-engineering]
 outputs_to: [reliability-sre, engineering]
-close_time: monthly, plus after every incident
+close_time: monthly
+close_time_note: "monthly, plus after every incident"
 status: proposed
 ```
 

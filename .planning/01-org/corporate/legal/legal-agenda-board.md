@@ -101,6 +101,6 @@ detector that is always red is a detector nobody reads — the same reason
 
 ## Open forks
 
-- [ ] **OD-C2** — DPA/BAA: instrument (Legal) vs obligation (Compliance). Staged, not yet in `OPEN-DECISIONS.md`
-- [ ] **OD-C1 / OD-17** — 7 artifacts per team, or fewer. 21 documents, zero artifacts
+- [ ] **CORP-F2** — DPA/BAA: instrument (Legal) vs obligation (Compliance). Staged, not yet in `OPEN-DECISIONS.md`
+- [ ] **CORP-F1 / OD-17** — 7 artifacts per team, or fewer. 21 documents, zero artifacts
 - [ ] **The trim** — one team or two (`corporate.md:116-121`)

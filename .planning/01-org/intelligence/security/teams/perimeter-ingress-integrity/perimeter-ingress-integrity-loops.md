@@ -8,8 +8,6 @@ metrics: [sec.unverified_public_ingress, sec.fail_open_defaults, sec.distributed
 updated: 2026-08-24
 links: ["[[perimeter-ingress-integrity-charter]]", "[[perimeter-ingress-integrity-premortem]]", "[[perimeter-ingress-integrity-directive]]", "[[perimeter-ingress-integrity-agenda-board]]", "[[security-loops]]", "[[access-control-tenant-isolation-loops]]", "[[integration-engineering-charter]]", "[[platform-api-charter]]", "[[LOOP-MAP]]"]
 loop_count: 4
-loop_count: 4
-loop_count: 4
 loop_ids: ["pii-ingress-verdicts", "pii-fail-mode-audit", "pii-rate-limit-multiplier", "pii-secret-surface"]
 loop_close_times: ["weekly", "weekly", "monthly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]

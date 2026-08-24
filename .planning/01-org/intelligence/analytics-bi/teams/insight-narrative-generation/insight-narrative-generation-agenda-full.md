@@ -106,7 +106,7 @@ Against mechanisms, not rates ([[insight-narrative-generation-directive]] rule 4
 - [ ] Co-own the threshold-naming work with [[analytics-engine-charter]] (9 constants)
 - [ ] Write the first spec for `recommendations.service.ts` — 8 rules, deterministic,
       trivially fixture-testable, and currently untested
-- [ ] Restate OD-20 and F-3 every close-time until closed
+- [ ] Restate OD-20 and INTEL-F3 every close-time until closed
 
 ## Questions for the founder
 
@@ -120,7 +120,7 @@ Against mechanisms, not rates ([[insight-narrative-generation-directive]] rule 4
    feedback to `analytics_insights` is real schema + UI work. The alternative is honest but
    uncomfortable: the engine's value is unproven and will stay that way.
 
-3. **F-3 — where does operator preference live?** `recommendation_actions.created_by`
+3. **INTEL-F3 — where does operator preference live?** `recommendation_actions.created_by`
    already stores who acted. `foundation §4.4` has no `subject_type` for them. Add
    `operator`, or route it outside NF? Until this closes, the strongest human signal the
    product collects is outside the loop graph (foundation §7).

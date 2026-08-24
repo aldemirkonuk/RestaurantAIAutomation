@@ -69,4 +69,4 @@ SORT updated ASC
 - `ci.yml:8` self-documented red tolerance
 - `observability.py:53` `NoopMetric` — zero indistinguishable from silence
 - `drift_findings` status `open` — a number that can only rise
-- OD-24 guardian-agent co-ownership · OD-23 7-vs-3 artifacts · OD-19 team granularity
+- TECH-F6 guardian-agent co-ownership · TECH-F5 7-vs-3 artifacts · TECH-F1 team granularity

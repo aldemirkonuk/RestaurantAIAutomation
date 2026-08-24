@@ -8,10 +8,8 @@ metrics: [sre.dlq_depth_and_oldest_age, resilience.circuit_open_duration, resili
 updated: 2026-08-24
 links: ["[[runtime-resilience-charter]]", "[[runtime-resilience-directive]]", "[[reliability-sre-loops]]", "[[observability-telemetry-plumbing-loops]]", "[[state-integrity-invariants-loops]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["res-dead-letter-drain", "res-circuit-breaker-health", "res-retry-budget", "res-backpressure-eviction", "res-degradation-control-readiness"]
-loop_close_times: ["weekly, immediate when oldest exceeds one close-time", "weekly", "monthly, immediate during a dependency incident", "monthly, immediate on any stock or money eviction", "quarterly, riding the department's L-SRE-3"]
+loop_close_times: ["weekly", "weekly", "monthly", "monthly", "quarterly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -35,7 +33,8 @@ measures: [sre.dlq_depth_and_oldest_age, resilience.dlq_messages_replayed, resil
 changes: [message_bus.dlq_consumer, base_agent.dlq_policy, runbook.dlq_triage]
 inputs_from: [harness-runtime, agent-fleet, messaging-delivery, observability-telemetry-plumbing]
 outputs_to: [state-integrity-invariants, engineering, reliability-sre]
-close_time: weekly, immediate when oldest exceeds one close-time
+close_time: weekly
+close_time_note: "weekly, immediate when oldest exceeds one close-time"
 status: proposed
 ```
 
@@ -77,7 +76,8 @@ measures: [resilience.retry_amplification_factor, resilience.outbound_attempts_p
 changes: [base_agent.retry_policy, rabbitmq_bridge.connect_with_retry, vendor_sdk.retry_config]
 inputs_from: [integration-engineering, messaging-delivery, model-routing-inference-economics]
 outputs_to: [engineering, reliability-sre]
-close_time: monthly, immediate during a dependency incident
+close_time: monthly
+close_time_note: "monthly, immediate during a dependency incident"
 status: proposed
 ```
 
@@ -99,7 +99,8 @@ measures: [resilience.buffer_evictions, resilience.evictions_by_payload_class, r
 changes: [buffer_manager.window_policy, buffer_manager.non_evictable_classes]
 inputs_from: [inventory-ledger, pos-operational-telemetry-ingest, observability-telemetry-plumbing]
 outputs_to: [state-integrity-invariants, engineering, reliability-sre]
-close_time: monthly, immediate on any stock or money eviction
+close_time: monthly
+close_time_note: "monthly, immediate on any stock or money eviction"
 status: proposed
 ```
 
@@ -120,7 +121,8 @@ measures: [sre.days_since_kill_switch_exercised, resilience.kill_switch_runbook_
 changes: [orchestrator.pause_all_writes_runbook, orchestrator.emergency_flush_policy]
 inputs_from: [release-engineering, observability-telemetry-plumbing]
 outputs_to: [reliability-sre, decision-office]
-close_time: quarterly, riding the department's L-SRE-3
+close_time: quarterly
+close_time_note: "quarterly, riding the department's L-SRE-3"
 status: proposed
 ```
 

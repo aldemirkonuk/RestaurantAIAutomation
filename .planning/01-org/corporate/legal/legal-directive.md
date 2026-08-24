@@ -65,7 +65,7 @@ graph TD
 | **Founder** | **Every term.** Valuation cap, discount, vesting, cliff, grant size, liability ceiling, IP ownership posture, walk-away positions | The SAFE's cap. The advisor's grant. The indemnity ceiling in the standard MSA |
 | **Outside counsel** | What the law requires and whether the drafted text achieves the founder's stated intent | Anything in the one-way-door class, without exception |
 | **Compliance & Privacy** | Whether an Annex commitment is satisfiable by the system as built | Every DPA and BAA ([[regulatory-posture-charter]], `corporate.md:99-103`) |
-| **OPEN-DECISIONS** | Department shape, gate exemptions, and the trim question | OD-C2; the one-team-or-two question; any proposal to relax the counsel gate |
+| **OPEN-DECISIONS** | Department shape, gate exemptions, and the trim question | CORP-F2; the one-team-or-two question; any proposal to relax the counsel gate |
 
 ## Standing rules
 

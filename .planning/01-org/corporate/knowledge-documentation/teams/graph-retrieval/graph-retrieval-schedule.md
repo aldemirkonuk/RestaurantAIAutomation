@@ -37,7 +37,7 @@ Skills live in `.claude/skills/`. A skill that has not fired in 30 days is revie
 deletion.
 
 ⚠️ **`.claude/skills/` does not exist** — the repo's only project skill is
-`.agents/skills/railway-config/SKILL.md` ([[README|foundation-README]] §3.1). Staged as **OD-C7**.
+`.agents/skills/railway-config/SKILL.md` ([[README|foundation-README]] §3.1). Staged as **CORP-F7**.
 
 | Proposed skill | Trigger | Doneability criterion | Real past instance |
 |---|---|---|---|

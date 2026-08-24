@@ -5,7 +5,7 @@ department: reliability-sre
 team: runtime-resilience
 status: open
 updated: 2026-08-24
-open_questions: 0
+open_questions: 1
 links: ["[[runtime-resilience-charter]]", "[[runtime-resilience-agenda-full]]", "[[architecture-review-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
 
@@ -19,7 +19,7 @@ links: ["[[runtime-resilience-charter]]", "[[runtime-resilience-agenda-full]]", 
 
 | ID | From | Raised | Question or finding | Next action | Age-out |
 |---|---|---|---|---|---|
-| — | — | — | *(none yet)* | — | — |
+| DO-2 | decision-office | 2026-08-24 | `queue.dead_letters` is declared durable, bound to `dlx.main` and stored in `self.queues` (`services/agent-orchestrator/core/message_bus.py:505-535`), and `metrics.messages_dead_lettered` is incremented at `:771,817,824,830` — but **nothing anywhere consumes it**; the only two references to the queue name in the repo are its own declaration and registration. A queue with a counter and no reader records failure without surfacing it. | Give the DLQ a consumer, and emit depth **and oldest-message age**; decide whether replay is human-gated like money and stock (`drift_agent.py:11-16`). | 2026-10-05 |
 
 ## Answered
 

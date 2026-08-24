@@ -107,7 +107,7 @@ SORT updated ASC
 - [ ] Production store: columns, partial indexes per `subject_type`
 - [ ] **Research store: wide, append-only, never migrated** — ships in the same change
 - [ ] Retention / rollup policy (needs a founder horizon)
-- [ ] **F-3 decided in-session** — `operator` as a fourth `subject_type`, or routed outside NF
+- [ ] **INTEL-F3 decided in-session** — `operator` as a fourth `subject_type`, or routed outside NF
 - [ ] Both owners named: contract (**us**) vs DDL ([[data-charter]])
 - [ ] `internal_state` confirmed **required**, not optional
 

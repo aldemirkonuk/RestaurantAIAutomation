@@ -12,10 +12,8 @@ links:
   - "[[media-brand-loops]]"
   - "[[editorial-gate-loops]]"
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["legacy-name-burndown", "legacy-domain-burndown", "brand-guard-regression", "voice-guide-conformance", "reference-shortlist-verification"]
-loop_close_times: ["weekly", "weekly", "per-PR", "monthly", "quarterly"]
+loop_close_times: ["weekly", "weekly", "per-pr", "monthly", "quarterly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -90,7 +88,7 @@ measures: [ci.brand_guard_failures, ci.brand_guard_bypasses]
 changes: [ci.brand_guard, source.display_strings]
 inputs_from: [engineering]
 outputs_to: [media-brand]
-close_time: per-PR
+close_time: per-pr
 status: proposed
 ```
 

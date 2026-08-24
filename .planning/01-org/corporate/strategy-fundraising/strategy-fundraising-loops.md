@@ -7,10 +7,8 @@ metrics: [strategy.claim_to_evidence_coverage, strategy.citation_drift_rate, str
 updated: 2026-08-24
 links: ["[[strategy-fundraising-charter]]", "[[strategy-fundraising-premortem]]", "[[strategy-fundraising-directive]]", "[[strategy-fundraising-schedule]]", "[[positioning-fundraise-readiness-loops]]", "[[metric-contract-truth-assurance-charter]]", "[[design-partner-operations-charter]]", "[[narrative-collateral-charter]]", "[[editorial-gate-charter]]", "[[standards-verification-charter]]", "[[instruments-equity-charter]]", "[[finance-pricing-charter]]", "[[conversion-funnel-charter]]", "[[decision-office-charter]]", "[[red-team-charter]]", "[[LOOP-MAP]]", "[[OPEN-DECISIONS]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["str-claim-verification", "str-verb-strength", "str-wedge-coherence", "str-open-target-hygiene", "str-team-shape-review"]
-loop_close_times: ["per_send", "per_claim", "monthly", "monthly", "quarterly"]
+loop_close_times: ["per-event", "per-event", "monthly", "monthly", "quarterly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -45,7 +43,8 @@ measures: [strategy.claim_to_evidence_coverage, strategy.citation_drift_rate, st
 changes: [strategy.claim_register, strategy.outward_artifact, growth.published_content, media.collateral]
 inputs_from: [positioning-fundraise-readiness, metric-contract-truth-assurance, design-partner-operations, standards-verification]
 outputs_to: [narrative-collateral, editorial-gate, design-partner-operations, decision-office]
-close_time: per_send
+close_time: per-event
+close_time_note: "per send"
 status: proposed
 ```
 
@@ -79,7 +78,8 @@ measures: [strategy.claim_overstatement_count, strategy.wedge_metric_instrumenta
 changes: [strategy.claim_register, strategy.headline_claim, growth.published_content, sales.pitch]
 inputs_from: [metric-contract-truth-assurance, design-partner-operations, analytics-bi]
 outputs_to: [narrative-collateral, editorial-gate, growth, sales, red-team]
-close_time: per_claim
+close_time: per-event
+close_time_note: "per claim"
 status: proposed
 ```
 
@@ -207,7 +207,7 @@ the decision in **both** directions rather than only waiting for permission to g
 **Split condition.** The trigger is the **first live term-sheet conversation, or the first
 instrument actually issued** (`corporate.md:457-458`). When it fires, Fundraise Readiness
 earns a standing cadence — a data room with real counterparties, a diligence Q&A log, a
-clock — and separates. OD-C3 closes at that moment.
+clock — and separates. CORP-F3 closes at that moment.
 
 **Not-needed condition, decided now rather than argued later.** If **twelve months** pass
 with no term-sheet conversation and no instrument issued, the readiness half is recorded as

@@ -8,10 +8,8 @@ metrics: [surfaces.reachable_route_ratio, surfaces.untraceable_route_components,
 updated: 2026-08-24
 links: ["[[client-surfaces-charter]]", "[[client-surfaces-premortem]]", "[[client-surfaces-directive]]", "[[engineering-loops]]", "[[design-charter]]", "[[PAGE_MAP]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["cs-route-reachability", "cs-burndown-vs-reachability", "cs-comprehension-defects", "cs-surface-health", "cs-mobile-load-watch"]
-loop_close_times: ["per-PR", "fortnightly", "weekly", "weekly", "monthly"]
+loop_close_times: ["per-pr", "fortnightly", "weekly", "weekly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -32,7 +30,7 @@ measures: [surfaces.reachable_route_ratio, surfaces.orphan_routes, surfaces.untr
 changes: [web.navigation_graph, router.config, page_map.doc]
 inputs_from: [design, product-and-vision]
 outputs_to: [engineering, design, decision-office]
-close_time: per-PR
+close_time: per-pr
 status: proposed
 ```
 

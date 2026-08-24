@@ -16,7 +16,7 @@ links: ["[[performance-doneability-charter]]", "[[performance-doneability-loops]
 | Cadence | Job | Emits |
 |---|---|---|
 | Weekly | **Coverage publication** — `nf_a.doneability_verdict_coverage` published whether or not it moved, with the named blocker and its age (L-PD-1) | Coverage %, `people.blocked_days` |
-| Weekly | **Blocker ageing** — every Research & Math dependency ages by one close-time; two without movement auto-escalates | `OPEN-DECISIONS.md` entries; OD-C5 age |
+| Weekly | **Blocker ageing** — every Research & Math dependency ages by one close-time; two without movement auto-escalates | `OPEN-DECISIONS.md` entries; CORP-F5 age |
 | Weekly | **Unqualified-`success_rate` sweep** — any People & Agent Ops artifact using `success_rate` without "liveness, not correctness" | Escalation on the **first** instance |
 | Monthly | **Cost-attribution readiness** — can spend name a worker yet; what share is attributed (L-PD-2) | `nf_a.agent_attributed_spend_pct`; a binary, never an estimate |
 | Monthly | **Criteria specification** — write and hand over the spec for one live task type (L-PD-3) | `doneability.criteria_spec_coverage`; specs to [[evaluation-doneability-charter]] |
@@ -30,7 +30,7 @@ artifact this team could produce and it would be built on `core/base_agent.py:14
 its absence is recorded here rather than left to be noticed.
 
 **Deliberately present while blocked:** three of the eight jobs above move numbers that do
-not depend on OD-C5 — criteria specification, emission floor, and the sweep. "Blocked"
+not depend on CORP-F5 — criteria specification, emission floor, and the sweep. "Blocked"
 must never mean "idle" ([[performance-doneability-directive]] rule 4).
 
 ## Skills owned

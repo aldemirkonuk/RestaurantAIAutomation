@@ -8,10 +8,8 @@ metrics: [nf_b.subject_coverage, nf_b.false_merge_count, nf_b.refusal_count, nf_
 updated: 2026-08-24
 links: ["[[guest-identity-consent-charter]]", "[[guest-identity-consent-directive]]", "[[guest-identity-consent-premortem]]", "[[guest-experience-loops]]", "[[taste-fingerprint-loops]]", "[[compliance-privacy-charter]]", "[[security-charter]]", "[[partnerships-integrations-charter]]", "[[LOOP-MAP]]"]
 loop_count: 4
-loop_count: 4
-loop_count: 4
 loop_ids: ["guest-merge-gate", "guest-pii-guard-integrity", "guest-subject-coverage", "consent-provability"]
-loop_close_times: ["per-commit", "per-commit", "weekly", "quarterly"]
+loop_close_times: ["per-pr", "per-pr", "weekly", "quarterly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -35,7 +33,8 @@ measures: [nf_b.false_merge_count, nf_b.copresence_negative_pairs]
 changes: [ci_gate_status, merge_policy]
 inputs_from: [security, red-team]
 outputs_to: [compliance-privacy, product-vision, taste-fingerprint]
-close_time: per-commit
+close_time: per-pr
+close_time_note: "per commit (CI)"
 status: proposed
 ```
 
@@ -66,7 +65,8 @@ measures: [pii_guards_present, guard_allowlist_entries]
 changes: [ci_gate_status, guard_definitions]
 inputs_from: [security, engineering]
 outputs_to: [compliance-privacy, legal]
-close_time: per-commit
+close_time: per-pr
+close_time_note: "per commit (CI)"
 status: proposed
 ```
 

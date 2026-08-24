@@ -86,7 +86,7 @@ first (`corporate.md:457-458`). At that point Fundraise Readiness earns a standi
 firing is a split, and the trigger *not* firing for twelve months is evidence the second
 half was never a team, which is also a finding worth recording.
 
-Staged as **OD-C3** for the founder: confirm the trigger, or split now (`corporate.md:496`).
+Staged as **CORP-F3** for the founder: confirm the trigger, or split now (`corporate.md:496`).
 
 ## Explicit non-goals
 
@@ -255,9 +255,9 @@ either number until it is resolved.
 - **OD-23** — *$20k MRR in 30 days* against locked $20–50/mo self-serve pricing
   ([[OPEN-DECISIONS]]:27). **The central open question**, recorded and deliberately not
   resolved in [[strategy-fundraising-agenda-full]]. Founder call.
-- **OD-C3** — Strategy stays one team until a term sheet (`corporate.md:496`). Confirm the
+- **CORP-F3** — Strategy stays one team until a term sheet (`corporate.md:496`). Confirm the
   trigger, or split now.
-- **OD-C1 / OD-17** — does a *team* get the full 7-artifact anatomy? This department is the
+- **CORP-F1 / OD-17** — does a *team* get the full 7-artifact anatomy? This department is the
   sharpest instance of that question: **one team, 14 documents, one inherited artifact**
   (`corporate.md:494`).
 - **OD-14** — root `SKILLS.md` still branded WineOps ([[README|foundation-README]] §3.1). A

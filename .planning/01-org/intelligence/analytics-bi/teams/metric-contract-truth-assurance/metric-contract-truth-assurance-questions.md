@@ -5,7 +5,7 @@ department: analytics-bi
 team: metric-contract-truth-assurance
 status: open
 updated: 2026-08-24
-open_questions: 0
+open_questions: 1
 links: ["[[metric-contract-truth-assurance-charter]]", "[[metric-contract-truth-assurance-agenda-full]]", "[[architecture-review-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
 
@@ -19,7 +19,7 @@ links: ["[[metric-contract-truth-assurance-charter]]", "[[metric-contract-truth-
 
 | ID | From | Raised | Question or finding | Next action | Age-out |
 |---|---|---|---|---|---|
-| — | — | — | *(none yet)* | — | — |
+| DO-4 | decision-office | 2026-08-24 | The insight-type count is published three ways and pinned by none. The shipped UI says **375** (`apps/web/src/pages/InsightCatalog.tsx:2`, plus `commands.ts:78,99` and the OpenAPI summary at `analytics.controller.ts:219`); the measured truth is **573** — `INSIGHT_CANDIDATES.length` executed against `apps/api-gateway/src/analytics/insights/insight-catalog.ts` on 2026-08-24; and the only test asserts `toBeGreaterThanOrEqual(200)` (`insight-catalog.spec.ts:10`), a band wide enough for all three numbers to drift without failing a build. | Pin the count in CI to the derived value, and publish `analytics.satisfiable_candidate_share` beside it wherever it appears — both numbers or neither. | 2026-10-05 |
 
 ## Answered
 

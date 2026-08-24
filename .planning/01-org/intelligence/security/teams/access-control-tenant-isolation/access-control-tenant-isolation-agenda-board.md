@@ -89,7 +89,7 @@ reach 0 by moving routes into the second.
   webhook into stock movement. Department-level decision per [[security-directive]].
 - ❓ **RLS posture** — does the service-role key bypass 182 policies on the gateway path?
   Unresolved claim, not yet a finding.
-- ⬦ **F-4** — merged-vs-split team shape. Owner: founder.
+- ⬦ **INTEL-F4** — merged-vs-split team shape. Owner: founder.
 
 ## Known-public set (the M2 tripwire)
 

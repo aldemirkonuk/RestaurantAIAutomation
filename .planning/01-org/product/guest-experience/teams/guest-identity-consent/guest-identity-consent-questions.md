@@ -5,7 +5,7 @@ department: guest-experience
 team: guest-identity-consent
 status: open
 updated: 2026-08-24
-open_questions: 0
+open_questions: 1
 links: ["[[guest-identity-consent-charter]]", "[[guest-identity-consent-agenda-full]]", "[[architecture-review-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
 
@@ -19,7 +19,7 @@ links: ["[[guest-identity-consent-charter]]", "[[guest-identity-consent-agenda-f
 
 | ID | From | Raised | Question or finding | Next action | Age-out |
 |---|---|---|---|---|---|
-| — | — | — | *(none yet)* | — | — |
+| DO-8 | decision-office | 2026-08-24 | The guest consent and erasure slice (`supabase/migrations/20260819000000_guest_identity_minimal_slice.sql`) has **zero application call sites**: `guest_check_links`, `guest_link_identifier`, `guest_consents`, `guest_pepper`, `guest_identifier_pepper` and `guest_copresence_negatives` each return **0 hits** across `apps`, `services` and `packages`. `nf_b.subject_coverage` is therefore a structural zero, and every interaction passing meanwhile could have been an NF-B event and **cannot be backfilled**. | Ship one capture channel end to end (one restaurant, no new UI); report coverage as a structural zero with a named cause, never as a low number. | 2026-10-05 |
 
 ## Answered
 

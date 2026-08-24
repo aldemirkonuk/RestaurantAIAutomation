@@ -86,8 +86,8 @@ graph TD
 |---|---|---|
 | **Movement volumes** — what moved, when, how much | [[inventory-ledger-charter]] | Excise consumes the ledger. Two answers means a regulator picks one. This is a permanent non-goal, not a phase-one simplification. |
 | **Whether to enter a licensed jurisdiction** | Founder + Product | We report on the consequence; we do not choose it. |
-| **The licence application or the MSA clause as documents** | [[commercial-workforce-agreements-charter]] | Legal drafts; we own the obligation and the filing. Same split as OD-C2. |
-| **OD-C4 — is this scope Corporate's or Product's?** | Founder | [[corporate]] §7. If excise becomes a *feature*, the team follows the feature. |
+| **The licence application or the MSA clause as documents** | [[commercial-workforce-agreements-charter]] | Legal drafts; we own the obligation and the filing. Same split as CORP-F2. |
+| **CORP-F4 — is this scope Corporate's or Product's?** | Founder | [[corporate]] §7. If excise becomes a *feature*, the team follows the feature. |
 | **The sunset decision** | Founder + [[decision-office-charter]] | A team must not decide its own continuation. |
 | **Privacy obligations of any kind** | [[regulatory-posture-charter]] / [[privacy-engineering-charter]] | Shares a word, nothing else. |
 | **Agent runtime and fleet mechanics** | [[agent-fleet-charter]] | We own the obligation; they own the process. |

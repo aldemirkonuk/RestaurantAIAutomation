@@ -73,15 +73,15 @@ Order of operations, department level:
 - [ ] Correct CLAUDE.md §1's "Next.js" claim to "Vite SPA + react-router-dom"
       (`apps/web/package.json:8,55,94`) — [[client-surfaces-charter]]
 - [ ] Log every grep-shaped guard that has no outcome-side twin (premortem M4)
-- [ ] Push OD-19, OD-20, OD-23 into `OPEN-DECISIONS.md` — [[decision-office-charter]]
+- [ ] Push TECH-F1, TECH-F2, TECH-F5 into `OPEN-DECISIONS.md` — [[decision-office-charter]]
 
 ## Questions for the founder
 
-1. **OD-20 — is Engineering 8 teams or 6?** [[schema-migrations-charter]] and
+1. **TECH-F2 — is Engineering 8 teams or 6?** [[schema-migrations-charter]] and
    [[messaging-delivery-charter]] each have independent evidence *and* are each a
    plausible function inside [[platform-api-charter]]. This vault is written at 8; the
    fork is open (`technology.md:844`).
-2. **OD-23 — 7 artifacts per team, or 3?** Teams here got all 7. At 8 teams that is 56
+2. **TECH-F5 — 7 artifacts per team, or 3?** Teams here got all 7. At 8 teams that is 56
    documents to keep alive. The 60-day staleness rule is the enforcement; is it accepted?
 3. **The `@Public()` escape hatch.** Premortem M2 says the obvious design fails. Is a
    CI-diffed allowlist an acceptable cost on the ≈51 legitimately-public routes, or is

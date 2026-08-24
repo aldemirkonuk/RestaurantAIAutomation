@@ -5,7 +5,7 @@ department: engineering
 team: schema-migrations
 status: open
 updated: 2026-08-24
-open_questions: 1
+open_questions: 2
 links: ["[[schema-migrations-charter]]", "[[schema-migrations-agenda-full]]", "[[architecture-review-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
 
@@ -20,6 +20,7 @@ links: ["[[schema-migrations-charter]]", "[[schema-migrations-agenda-full]]", "[
 | ID | From | Raised | Question or finding | Next action | Age-out |
 |---|---|---|---|---|---|
 | AR-1 | architecture-review | 2026-08-24 | `generated_reports` has RLS enabled (`baseline:14383`) and zero policies while the browser queries it directly (`useReportQueries.ts:26,37`) — returns `[]` silently. Layer inversion + silent failure (OD-45). | Add RLS policy or route through the gateway. | 2026-10-05 |
+| AR-6 | architecture-review | 2026-08-24 | `scripts/check_schema_parity.sh:6-12` is the **only** mechanism in the repo that closes a layer-boundary loop automatically, and it records what an unpoliced boundary cost last time: 27 tables, 403 columns and 13 functions existed only because DDL had been applied by hand — including `calculate_sales_velocity` and `resolve_sku_to_inventory`, business logic with no source anywhere. Graded Sev-3 because it is fixed; filed as precedent and template. | Adopt its shape — rebuild from source of truth, diff against reality, exit non-zero — for every new boundary check. | 2026-10-05 |
 
 ## Answered
 

@@ -7,10 +7,8 @@ metrics: [skills.registry_size, skills.firing_rate_30d, skills.deletions_per_qua
 updated: 2026-08-24
 links: ["[[skills-charter]]", "[[skills-schedule]]", "[[skills-directive]]", "[[skill-registry-authoring-loops]]", "[[skill-lifecycle-anti-sprawl-loops]]", "[[skill-harvesting-loops]]", "[[ai-orchestration-charter]]", "[[research-math-charter|research-and-math-charter]]", "[[ORG_STRUCTURE]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["skill-firing-telemetry", "skill-staleness-review", "skill-protocol-compliance", "skill-registry-census", "skill-harvest-candidates"]
-loop_close_times: ["weekly", "monthly", "per-merge", "monthly", "quarterly"]
+loop_close_times: ["weekly", "monthly", "per-pr", "monthly", "quarterly"]
 loop_statuses: ["blocked", "blocked", "proposed", "proposed", "dormant"]
 ---
 
@@ -83,7 +81,8 @@ measures: [skills.protocol_compliance_rate]
 changes: [skills.contract, skills.ci_guard]
 inputs_from: [engineering, data, ai-orchestration, security]
 outputs_to: [skills]
-close_time: per-merge
+close_time: per-pr
+close_time_note: "per merge"
 status: proposed
 ```
 

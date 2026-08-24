@@ -107,9 +107,9 @@ Owned outright:
    capture UI arguably owns the consent record. Proposed here: Product builds the
    surface, this department owns the record's contents and its validity rules.
    That is a proposal, not a decision — raised in [[compliance-privacy-agenda-full]].
-2. **DPA/BAA ownership** — already staged as **OD-C2** ([[corporate]] §7):
+2. **DPA/BAA ownership** — already staged as **CORP-F2** ([[corporate]] §7):
    Legal owns the instrument, we own the obligations. Confirm or collapse.
-3. **Is Regulated Operations Corporate's at all** — staged as **OD-C4**. It may
+3. **Is Regulated Operations Corporate's at all** — staged as **CORP-F4**. It may
    belong to Product once a licensing feature exists.
 
 ## Metrics it moves

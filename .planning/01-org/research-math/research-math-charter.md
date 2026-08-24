@@ -144,11 +144,10 @@ token accounting, and the routing policy itself"* with primary metric **"NF-A
 [[harness-model-routing-charter]]'s metric, in a different division. Two teams cannot
 both own the routing policy. See [[research-math-agenda-full]] §Questions.
 
-**ID-collision warning:** `technology.md` numbers the evaluation seam "OD-21", but
-`OPEN-DECISIONS.md:25` already assigns OD-21 to the Obsidian structural workflow. The
-team docs are using a local numbering that collides with the global register. Referenced
-here as *the evaluation seam (`technology.md:845`)* until [[decision-office-charter]]
-reconciles the IDs.
+**ID note (collision resolved):** `technology.md` originally numbered the evaluation
+seam "OD-21", but `OPEN-DECISIONS.md:25` already assigns OD-21 to the Obsidian
+structural workflow. [[decision-office-charter]] reconciled the local numbering; the
+seam is **TECH-F3** ([[FORK-REGISTRY]]) and should be cited by that ID.
 
 ## Metrics it moves
 
@@ -234,7 +233,7 @@ work they inherit is not new; its ownership is.
 | **OD-03** | Orchestration base — must be decided by a bake-off on this repo's own workloads. `OPEN-DECISIONS.md:14` already says *"No pick from repute."* [[harness-model-routing-charter]] owns executing that |
 | **OD-04** | External model roster — blocked on OD-03 |
 | **OD-11** | NF production schema detail — columns, partial indexes, retention. Gates every NF implementation; owner split with [[data-charter]] must be named or it gets built twice |
-| **F-3** (`intelligence.md:519`) | NF has no `subject_type` for the restaurant **operator** — the strongest human-preference signal already collected has no home. Interacts directly with OD-11 |
-| **F-5** (`intelligence.md:521`) | Are the seven raw-HTTP NestJS callsites in scope for OD-03? They are the majority of production model traffic. If not, OD-03 governs a minority of calls |
+| **INTEL-F3** (`intelligence.md:519`) | NF has no `subject_type` for the restaurant **operator** — the strongest human-preference signal already collected has no home. Interacts directly with OD-11 |
+| **INTEL-F5** (`intelligence.md:521`) | Are the seven raw-HTTP NestJS callsites in scope for OD-03? They are the majority of production model traffic. If not, OD-03 governs a minority of calls |
 | *(new)* | **The division-vs-department wording of [[0001-mudavym-single-entity]]'s compensation.** See the fork box above |
 | *(new)* | **The routing seam** — [[harness-model-routing-charter]] and `[[harness-model-routing-charter|aio-model-routing]]` share a mandate and a metric. The published boundary covers evaluation only |

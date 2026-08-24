@@ -172,7 +172,7 @@ by a rate movement.
   ([[ORG_STRUCTURE]] §3).
 - **[[security-charter]] carries OD-20 with a close-time.** Until then, M1 is not fully
   mitigable from inside this team, and the board says so rather than implying otherwise.
-- **F-3 remains open.** Until `subject_type` has a home for the operator, this team's
+- **INTEL-F3 remains open.** Until `subject_type` has a home for the operator, this team's
   primary signal lives outside the neural footprint and cannot feed the loop graph
   (foundation §7).
 - **Anti-sprawl.** 60 days without revisiting makes this fiction (foundation §3.3). Start

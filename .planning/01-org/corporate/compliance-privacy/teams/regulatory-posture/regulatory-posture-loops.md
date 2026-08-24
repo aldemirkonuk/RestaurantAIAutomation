@@ -8,10 +8,8 @@ metrics: [compliance.obligation_coverage, compliance.subprocessor_classification
 updated: 2026-08-24
 links: ["[[regulatory-posture-charter]]", "[[regulatory-posture-schedule]]", "[[regulatory-posture-directive]]", "[[compliance-privacy-loops]]", "[[privacy-engineering-loops]]", "[[commercial-workforce-agreements-charter]]", "[[design-partner-operations-charter]]", "[[standards-verification-charter]]", "[[red-team-charter]]", "[[security-charter]]", "[[ORG_STRUCTURE]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["obligation-register-currency", "subprocessor-classification", "notice-accuracy", "instrument-signoff", "gap-adversarial-review"]
-loop_close_times: ["monthly sweep, plus per-PR for any change touching a cited control", "quarterly, plus on any new outbound host", "per-PR on the four asserted claims; monthly read-through", "per-instrument, before execution — never after", "quarterly"]
+loop_close_times: ["monthly", "quarterly", "per-pr", "per-event", "quarterly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -39,7 +37,8 @@ measures: [compliance.obligation_coverage, compliance.stale_citation_count]
 changes: [compliance.obligation_register, compliance.records_of_processing]
 inputs_from: [privacy-engineering, engineering, data, platform-api, ai-orchestration, partnerships-integrations, security]
 outputs_to: [commercial-workforce-agreements, sales, design-partner-operations]
-close_time: monthly sweep, plus per-PR for any change touching a cited control
+close_time: monthly
+close_time_note: "monthly sweep, plus per-PR for any change touching a cited control"
 status: proposed
 ```
 
@@ -71,7 +70,8 @@ measures: [compliance.subprocessor_classification, compliance.unclassified_host_
 changes: [compliance.subprocessor_register, compliance.dpa_annex_content]
 inputs_from: [partnerships-integrations, engineering, ai-orchestration, platform-api]
 outputs_to: [commercial-workforce-agreements, privacy-engineering, security]
-close_time: quarterly, plus on any new outbound host
+close_time: quarterly
+close_time_note: "quarterly, plus on any new outbound host"
 status: proposed
 ```
 
@@ -106,7 +106,8 @@ measures: [compliance.notice_accuracy, compliance.false_claim_count]
 changes: [web.privacy_notice, compliance.obligation_register]
 inputs_from: [engineering, client-surfaces, security, brand-identity]
 outputs_to: [regulatory-posture, standards-verification]
-close_time: per-PR on the four asserted claims; monthly read-through
+close_time: per-pr
+close_time_note: "per PR on the four asserted claims; monthly read-through"
 status: proposed
 ```
 
@@ -138,7 +139,8 @@ measures: [compliance.unevidenced_clause_count, compliance.written_objection_cou
 changes: [legal.instrument_redlines, compliance.obligation_register, compliance.gap_register]
 inputs_from: [sales, design-partner-operations, commercial-workforce-agreements]
 outputs_to: [commercial-workforce-agreements, red-team, decision-office]
-close_time: per-instrument, before execution — never after
+close_time: per-event
+close_time_note: "per instrument, before execution — never after"
 status: proposed
 ```
 

@@ -4,7 +4,7 @@ division: corporate
 department: people-agent-ops
 status: open
 updated: 2026-08-24
-open_questions: 0
+open_questions: 1
 links: ["[[people-agent-ops-charter]]", "[[people-agent-ops-agenda-full]]", "[[architecture-review-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
 
@@ -18,7 +18,7 @@ links: ["[[people-agent-ops-charter]]", "[[people-agent-ops-agenda-full]]", "[[a
 
 | ID | From | Raised | Question or finding | Next action | Age-out |
 |---|---|---|---|---|---|
-| — | — | — | *(none yet)* | — | — |
+| DO-3 | decision-office | 2026-08-24 | Roster truth is a three-way disagreement between filesystem, orchestrator class map and `DEFAULT_AGENT_SPECS`. **3 agent modules are never registered** — `book_scraper_agent`, `dataset_creator_agent`, `recurring_order_agent` (the first two subclass `BaseAgent`; the third does not, so the metric is *unregistered modules*, not *unregistered `BaseAgent` subclasses*). And **4 registered agents have no `DEFAULT_AGENT_SPECS` entry** — `email_intel_agent`, `email_parsing_agent`, `provider_communication_agent`, `provider_conversation_agent` — so they silently resolve their spec from `{}` at `core/agent_registry.py:337` and inherit `ON_DEMAND` plus a 300 s idle timeout nobody chose. | Make the empty-dict fallback loud (fail the PR check); resolve each unregistered module to *registered* or *declared out of scope*. | 2026-10-05 |
 
 ## Answered
 

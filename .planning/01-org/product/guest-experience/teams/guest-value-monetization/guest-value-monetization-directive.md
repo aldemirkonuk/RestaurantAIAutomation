@@ -84,7 +84,7 @@ graph TD
    `apps/web/src/components/settings/ServicesPermissions.tsx:41,249`.
 4. **Pricing, in any form** — and it is separately **founder-deferred**, so this team
    proposes nothing.
-5. **OD-22** — whether this team sits here or in Commercial.
+5. **PROD-F3** — whether this team sits here or in Commercial.
 
 ## The three rules that do not bend
 

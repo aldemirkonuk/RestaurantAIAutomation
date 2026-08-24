@@ -7,10 +7,8 @@ metrics: [nf_a.event_completeness, nf_a.cost_per_completed_task, nf_a.harness_ov
 updated: 2026-08-24
 links: ["[[research-math-charter]]", "[[research-math-directive]]", "[[research-math-schedule]]", "[[harness-model-routing-loops]]", "[[evaluation-doneability-loops]]", "[[neural-footprint-instrumentation-loops]]", "[[data-charter]]", "[[engineering-charter]]", "[[security-charter]]", "[[analytics-bi-charter]]", "[[agent-evaluation-gates-charter|aio-evaluation-gates]]", "[[harness-model-routing-charter|aio-model-routing]]", "[[decision-office-charter]]"]
 loop_count: 6
-loop_count: 6
-loop_count: 6
 loop_ids: ["nf-a-emission-completeness", "cost-per-completed-task", "doneability-verdict-coverage", "harness-overhead-bakeoff", "nf-schema-contract", "applied-ai-seam-audit"]
-loop_close_times: ["weekly", "monthly", "weekly", "6 weeks to a decision, then quarterly re-run", "fortnightly until OD-11 closes", "monthly"]
+loop_close_times: ["weekly", "monthly", "weekly", "quarterly", "fortnightly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -111,7 +109,8 @@ measures: [nf_a.harness_overhead_ms, nf_a.cost_per_completed_task, share_of_mode
 changes: [harness.choice, harness.wrapper, callsite.deprecation_date]
 inputs_from: [ai-orchestration, engineering]
 outputs_to: [engineering, ai-orchestration, decision-office]
-close_time: "6 weeks to a decision, then quarterly re-run"
+close_time: quarterly
+close_time_note: "6 weeks to first decision, then quarterly re-run"
 status: proposed
 blocks: [OD-03, OD-04]
 precondition: "harness_overhead_ms has a first reading — the bake-off may not be scheduled before it (research-math-directive rule 2)"
@@ -134,11 +133,12 @@ measures: [nf.contract_fields_agreed, nf.private_telemetry_tables]
 changes: [nf.production_columns, nf.research_log_shape, nf.subject_type_vocabulary]
 inputs_from: [data, analytics-bi, security]
 outputs_to: [data, engineering]
-close_time: "fortnightly until OD-11 closes"
+close_time: fortnightly
+close_time_note: "fortnightly until OD-11 closes"
 status: proposed
 blocks: [OD-11]
 contract: "RM owns the schema contract; Data owns the physical table and migration (intelligence.md:486). OD-11 must name both owners or it is implemented twice."
-carries: "fork F-3 — add `operator` as a subject_type, decided inside this session rather than after it"
+carries: "fork INTEL-F3 — add `operator` as a subject_type, decided inside this session rather than after it"
 ```
 
 **Trip condition.** `nf.private_telemetry_tables` > 0 without a dated fold-in line →
@@ -162,7 +162,7 @@ outputs_to: [decision-office, ai-orchestration]
 close_time: monthly
 status: proposed
 rule: "if either unit maintains an artifact the other also maintains, the RM team files the merge proposal itself rather than defending scope (technology.md:406)"
-open: "evaluation seam (technology.md:845 — note the local ID collides with global OD-21); routing seam — RM-1 and aio-model-routing share a mandate and a metric, and no published boundary covers it"
+open: "evaluation seam (technology.md:845 — TECH-F3; the local ID originally collided with global OD-21); routing seam — RM-1 and aio-model-routing share a mandate and a metric, and no published boundary covers it"
 ```
 
 ---
@@ -174,6 +174,6 @@ Recorded here so the dependency is visible from both ends.
 | Consumer | Needs from us | Their metric | Close-time we owe them |
 |---|---|---|---|
 | [[security-charter]] SEC-3 | Cost events on NestJS model calls, tagged with authenticated subject | `nf_a.unauthenticated_inference_spend` — **unmeasurable until L1 emits** | First reading within 4 weeks; `consultants.service.ts` instrumented first for exactly this reason |
-| [[analytics-bi-charter]] AB-2 | A `subject_type` home for operator act/dismiss signal (fork F-3) | `insight_acceptance_rate` | Decided inside the OD-11 session (L5) |
+| [[analytics-bi-charter]] AB-2 | A `subject_type` home for operator act/dismiss signal (fork INTEL-F3) | `insight_acceptance_rate` | Decided inside the OD-11 session (L5) |
 | [[agent-evaluation-gates-charter|aio-evaluation-gates]] | Doneability criteria and pass conditions to enforce | NF-A verdict coverage | Criteria for three task types within 6 weeks (L3) |
 | [[people-agent-ops-charter|people-and-agent-ops-charter]] | NF-A as the primary input to an agent workforce function | — | Whatever L1 publishes; no separate feed |

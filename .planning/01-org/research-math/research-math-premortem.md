@@ -136,7 +136,7 @@ directory of dashboards rather than one object — the exact thing
 [[0006-neural-footprint-architecture]] and [[README]] §4.1 were written to prevent. A
 second tell arrives alongside it: `subject_type` ships with only `agent` and `guest`, and
 the first operator-behaviour question (Analytics & BI's recommendation act/dismiss signal,
-fork F-3) has nowhere to land.
+fork INTEL-F3) has nowhere to land.
 
 **Earliest observable signal.** The **second** table in the repo holding token counts.
 There is currently one (`api_spend`). The moment a third appears the migration will not
@@ -148,7 +148,7 @@ folded into the NF contract. Temporary is allowed; *undated* temporary is not. A
 contract does not wait on the full schema — the **join key** ships first
 (`correlation_id`, already present at `base_agent.py:743-784`), because two tables that
 can be joined are one footprint with a bad shape, while two tables that cannot be joined
-are two footprints. Fold F-3 into the OD-11 session rather than after it: adding a fourth
+are two footprints. Fold INTEL-F3 into the OD-11 session rather than after it: adding a fourth
 `subject_type` is free before launch and a migration afterward.
 
 ---

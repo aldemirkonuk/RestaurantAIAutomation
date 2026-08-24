@@ -129,7 +129,7 @@ unchanged restatements go to the founder.
 - [ ] Countersign [[insight-narrative-generation-charter]]'s impressions↔actions join
       **before** any acceptance rate is published
 - [ ] Escalate §44.7 monthly, dated, to [[decision-office-charter]]
-- [ ] Open **F-6** and **F-7** in `OPEN-DECISIONS.md`
+- [ ] Open **INTEL-F6** and **INTEL-F7** in `OPEN-DECISIONS.md`
 
 ## Questions for the founder
 

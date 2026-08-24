@@ -7,10 +7,8 @@ metrics: [decisions.open_count, decisions.intake_rate, decisions.close_rate_per_
 updated: 2026-08-24
 links: ["[[decision-office-charter]]", "[[decision-office-premortem]]", "[[decision-office-directive]]", "[[decision-office-schedule]]", "[[LOOP-MAP]]", "[[ORG_STRUCTURE]]", "[[OPEN-DECISIONS]]", "[[0002-documentation-first-operating-mode]]", "[[red-team-charter]]", "[[architecture-review-charter]]", "[[standards-verification-charter]]", "[[knowledge-documentation-charter]]", "[[skills-charter]]", "[[sales-charter]]", "[[legal-charter]]", "[[analytics-bi-charter]]", "[[privacy-engineering-charter]]", "[[supplier-distributor-network-charter]]"]
 loop_count: 6
-loop_count: 6
-loop_count: 6
 loop_ids: ["decision-register-health", "dated-trigger-watch", "fork-namespace-integrity", "loop-close-time-audit", "contradiction-register", "decision-office-authority-audit"]
-loop_close_times: ["weekly", "weekly", "per-intake", "monthly", "monthly", "quarterly"]
+loop_close_times: ["weekly", "weekly", "per-event", "monthly", "monthly", "quarterly"]
 loop_statuses: ["running", "proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -129,7 +127,7 @@ frontmatter question in L4.
 | **2026-11-24** | [[skill-harvesting-charter]] | Registry <15 **and** no scheduled trigger re-evaluation | `skill-harvesting-premortem.md:90` |
 | **2026-11-24** | [[sales-charter]] | `DEP-06` unchecked **and** `verified_dollars_recovered == $0` → fold into [[growth-charter]] | `sales-schedule.md:25` |
 | **2026-11-24** | [[outbound-engine-charter]] | No landed credit → folds with Sales | `outbound-engine-schedule.md:29` |
-| **≈2026-11-22** (day 90) | [[supplier-distributor-network-charter]] | CM-F3 **and** OD-21 open with `pi.live_counterparties == 0` | `supplier-distributor-network-directive.md:124` |
+| **≈2026-11-22** (day 90) | [[supplier-distributor-network-charter]] | CM-F3 **and** PROD-F2 open with `pi.live_counterparties == 0` | `supplier-distributor-network-directive.md:124` |
 | **second quarterly review** | [[legal-charter]] | Merge trigger, written as the counter to OD-26's ratchet | `legal-premortem.md:38-41` |
 
 **`days_to_next_trigger` is reported weekly from now**, not from November. A trigger
@@ -159,7 +157,8 @@ measures: [decisions.namespace_collisions, decisions.unfiled_fork_count]
 changes: [decisions.id_allocation, decisions.alias_table]
 inputs_from: [all-units]
 outputs_to: [founder, all-units]
-close_time: per-intake
+close_time: per-event
+close_time_note: "per intake"
 status: proposed
 ```
 
@@ -265,7 +264,7 @@ disagreement and names the owner. It never picks a side** — picking is
 | C1 | **375** insight types (`LLM_INSTRUCTION_PROMPTS.md:166`) vs **573** (`YC_WEDGE_PLAN.md:324`) | [[analytics-bi-charter]] | Unowned before today |
 | C2 | Weekly skill-health job: Research & Math (`foundation/README.md:269`) vs Skills (`technology.md:497-498`) | Founder | **= OD-25**, registered, still unowned |
 | C3 | Seating Density widget absent (`UX_PATHS_CATALOG.md:49`) vs shipped (`:1013`) — **one file contradicting itself.** `SeatingDensityPanel.tsx` exists and is mounted in `Reports.tsx`, so `:49` is stale | [[ux-path-burn-down-charter]] | Verdict evident; **still routed, not ruled** |
-| C4 | `.claude/skills/` asserted absent by ~99 `schedule.md` files (**OD-C7**) vs present, tracked, with `README.md` and zero `SKILL.md` | [[skills-charter]] | **An open item half-closed by a side effect, unnoticed** |
+| C4 | `.claude/skills/` asserted absent by ~99 `schedule.md` files (**CORP-F7**) vs present, tracked, with `README.md` and zero `SKILL.md` | [[skills-charter]] | **An open item half-closed by a side effect, unnoticed** |
 
 **C3 is the loop's own hardest test.** One side is demonstrably right; a file on
 disk settles it. Routing rather than ruling costs an extra cycle and buys the one
@@ -307,7 +306,7 @@ have been the first instance of the thing it audits.
 **Targets, all zero:** `decided_here_count` · `intake_returned_count` ·
 `should_word_count` (findings containing *"should"* — greppable) ·
 `accepted_deliverable_count` (teams, headcount, or deliverables accepted by this
-office; OD-C6 is the live offer and is declined in
+office; CORP-F6 is the live offer and is declined in
 [[decision-office-charter]]).
 
 **Quarterly, and non-negotiably so.** Authority creep is cumulative and slow; a

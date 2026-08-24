@@ -8,8 +8,6 @@ metrics: [surface.unowned_surface_count, surface.untraceable_route_components, s
 updated: 2026-08-24
 links: ["[[surface-portfolio-charter]]", "[[surface-portfolio-directive]]", "[[surface-portfolio-premortem]]", "[[surface-portfolio-schedule]]", "[[product-vision-loops]]", "[[ux-path-burn-down-charter]]", "[[client-surfaces-charter]]", "[[PAGE_MAP]]", "[[ENDPOINTS]]"]
 loop_count: 6
-loop_count: 6
-loop_count: 6
 loop_ids: ["route-portfolio-verdict", "route-duplication-resolution", "route-module-reconciliation", "route-untraceability", "cold-entry-recheck", "mobile-inventory-gap"]
 loop_close_times: ["monthly", "monthly", "monthly", "monthly", "quarterly", "quarterly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]

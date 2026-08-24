@@ -102,4 +102,4 @@ SORT division ASC
       (`spend_logger.py:41-49`)
 - [ ] `nf_a.verified_task_success_rate` — **unmeasurable** — `base_agent.py:602` records
       liveness, not correctness
-- [ ] **Blocker age: OD-C5** — days since filed, reported weekly whether or not it moved
+- [ ] **Blocker age: CORP-F5** — days since filed, reported weekly whether or not it moved

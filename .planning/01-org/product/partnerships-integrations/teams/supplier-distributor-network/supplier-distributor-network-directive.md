@@ -32,7 +32,7 @@ graph TD
   B -->|yes| SALES[Not ours under the proposed seam.<br/>Hand to design-partner-operations.<br/>Record the handoff — do not shadow-work it.]
   B -->|no| C{Is it finding or evaluating<br/>candidate vendors?}
 
-  C -->|yes| DISC[Not ours. supply-discovery.<br/>OD-21 open — record the ambiguity,<br/>do not resolve it by doing the work.]
+  C -->|yes| DISC[Not ours. supply-discovery.<br/>PROD-F2 open — record the ambiguity,<br/>do not resolve it by doing the work.]
   C -->|no| D{Has this counterparty signed<br/>intent to send data?}
 
   D -->|no| PRE[Pre-seam. Ours only to prepare:<br/>state model, freshness, publish-state.<br/>No portal features.]
@@ -88,7 +88,7 @@ converts that pressure into the fork-independent work in
 | Decision | Owner |
 |---|---|
 | **CM-F3 — who owns distributor connectivity** | **founder**, with Sales. We supply the memo and the proposed seam. |
-| **OD-21 — Vendor Finder boundary** | **founder** |
+| **PROD-F2 — Vendor Finder boundary** | **founder** |
 | Persuading a distributor to participate (pre-seam) | [[design-partner-operations-charter]], under the proposal |
 | Vendor discovery and catalogue coverage | [[supply-discovery-charter]] |
 | Route-level auth and verification controls | [[perimeter-ingress-integrity-charter]] |
@@ -114,14 +114,14 @@ converts that pressure into the fork-independent work in
 | A blocker is another unit's action | department | Boundary evidence, feeding the day-90 review |
 | A vendor page exists before its relationship does | [[connector-platform-trust-charter]] + department | Publish-state gap — premortem M4 |
 | A feed goes past cadence | — | Handled in-team; it is the normal operating case, not an escalation |
-| **Day 90: CM-F3 and OD-21 both open, `pi.live_counterparties` still 0** | founder + [[decision-office-charter]] | **This team's own merge proposal** — see below |
+| **Day 90: CM-F3 and PROD-F2 both open, `pi.live_counterparties` still 0** | founder + [[decision-office-charter]] | **This team's own merge proposal** — see below |
 
 ## The day-90 dissolution clause
 
 Written into the founding directive deliberately, because a team is far more able to propose
 its own merge before it has spent a year defending its existence.
 
-**Condition:** at day 90, if CM-F3 and OD-21 are both still open **and**
+**Condition:** at day 90, if CM-F3 and PROD-F2 are both still open **and**
 `pi.live_counterparties` is still 0.
 
 **Action:** this team writes a proposal to merge itself into [[pos-bridge-charter]] — same

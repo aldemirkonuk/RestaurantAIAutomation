@@ -22,7 +22,7 @@ graph TD
   subgraph GATE["Staffing gate — evaluated monthly by the registry census"]
     G1{"registry_size >= 15<br/>OR protocol-compliance green<br/>2 consecutive quarters?"}
     G1 -->|no| G2["DO NOT STAFF.<br/>Harvest stays a quarterly task inside<br/>skill-registry-authoring."]
-    G1 -->|yes| G3{"Is firing measurable?<br/>(proposed clause — OD-22)"}
+    G1 -->|yes| G3{"Is firing measurable?<br/>(proposed clause — TECH-F4)"}
     G3 -->|no| G4["⚠️ Staffing now makes the disband<br/>condition unevaluable. Premortem M4.<br/>Escalate before staffing."]
     G3 -->|yes| G5["STAFF"]
   end
@@ -57,7 +57,7 @@ graph TD
 | **Whether this team staffs** | Founder / [[skills-directive]], on the monthly census | A gated team that self-activates has no gate. This is the single most important line in the file. |
 | Admitting a candidate to the registry | [[skill-registry-authoring-directive]] | Harvest volume must never bypass §3.3 |
 | The admission rate limit | [[skill-lifecycle-anti-sprawl-charter]] | It is set by *review capacity*, so the reviewer sets it |
-| Amending the entry trigger | Founder — **OD-22** | A written trigger is amended by decision, not by judgement ([[technology]] §4.3) |
+| Amending the entry trigger | Founder — **TECH-F4** | A written trigger is amended by decision, not by judgement ([[technology]] §4.3) |
 | Deleting the scripts we harvest from | Engineering / Data / Reliability | The script stays theirs; we extract the procedure |
 
 ## Escalation trigger

@@ -86,9 +86,9 @@ charter accepts that remedy in advance.** If within two close-times either unit 
 maintaining a golden set the other also maintains, RM-2 files the merge proposal itself.
 Defending scope here is a failure mode we are choosing not to have.
 
-*(ID note: `technology.md` numbers this seam "OD-21", colliding with the global OD-21 —
-Obsidian workflow — at `OPEN-DECISIONS.md:25`. Referenced by line, not by ID, until
-[[decision-office-charter]] reconciles them.)*
+*(ID note: `technology.md` originally numbered this seam "OD-21", colliding with the
+global OD-21 — Obsidian workflow — at `OPEN-DECISIONS.md:25`. [[decision-office-charter]]
+reconciled it: the seam is **TECH-F3** ([[FORK-REGISTRY]]).)*
 
 ## Metrics it moves
 

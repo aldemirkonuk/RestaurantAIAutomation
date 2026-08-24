@@ -89,6 +89,6 @@ one unit is grading its own work.
 4. **Tenant isolation — mechanism, RLS, or both?** RLS is DDL, so it is co-owned with
    [[schema-migrations-charter]]. Row-level enforcement is stronger and slower to change.
    Preference?
-5. **OD-20.** Are [[schema-migrations-charter]] and [[messaging-delivery-charter]] separate
+5. **TECH-F2.** Are [[schema-migrations-charter]] and [[messaging-delivery-charter]] separate
    teams, or functions inside this one (`technology.md:844`)? This vault says separate; if
    the answer flips, this team's scope roughly doubles.

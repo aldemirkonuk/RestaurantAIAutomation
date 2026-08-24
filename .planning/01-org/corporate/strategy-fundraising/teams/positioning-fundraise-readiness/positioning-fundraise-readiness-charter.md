@@ -52,7 +52,7 @@ a named end rather than becoming permanent by inertia.
 split; **not firing for twelve months** is evidence the second half was never a team at all,
 which is also a recordable finding rather than a silence.
 
-Staged for the founder as **OD-C3** (`corporate.md:496`).
+Staged for the founder as **CORP-F3** (`corporate.md:496`).
 
 ## Boundaries
 

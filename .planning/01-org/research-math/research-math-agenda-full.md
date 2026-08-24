@@ -75,7 +75,7 @@ skills or the first overlap, not before (`intelligence.md:504`).
   department layer standing on an unemitting metric spine is the sequencing claim in
   [[README]] §8 failing in practice.
 - **Two forks are aging in a way that gets more expensive, not less.** OD-03 governs a
-  minority of production model traffic until fork F-5 is answered
+  minority of production model traffic until fork INTEL-F5 is answered
   (`intelligence.md:521`); OD-11 gates every NF implementation and each week of delay
   adds a private table (premortem M5).
 - **There is live unauthorized spend on the founder's key** (OD-20,
@@ -96,7 +96,7 @@ skills or the first overlap, not before (`intelligence.md:504`).
 - [ ] Build the `harness_overhead_ms` probe; publish a first reading; only then schedule OD-03 — [[harness-model-routing-charter]]
 - [ ] Ship the model wrapper **with a deprecation date for the seven callsites in the same PR**; publish `share_of_model_calls_through_wrapper` weekly — [[harness-model-routing-charter]] + [[engineering-charter]]
 - [ ] Name both owners on OD-11 (schema contract vs. physical table) before any DDL — with [[data-charter]]
-- [ ] Fold fork F-3 (`operator` as a fourth `subject_type`) into the OD-11 session, not after it
+- [ ] Fold fork INTEL-F3 (`operator` as a fourth `subject_type`) into the OD-11 session, not after it
 - [ ] Declare the long-horizon lane non-preemptible in [[research-math-schedule]] and register it with [[decision-office-charter]]
 - [ ] Push the two new forks below into `OPEN-DECISIONS.md` — [[decision-office-charter]]
 
@@ -115,7 +115,7 @@ skills or the first overlap, not before (`intelligence.md:504`).
    task. The published boundary between the divisions covers **evaluation** only
    (`technology.md:845`). Two teams cannot both own routing. Merge, or draw the line
    explicitly?
-3. **Fork F-5 — are the seven NestJS callsites in scope for OD-03?** They are the majority
+3. **Fork INTEL-F5 — are the seven NestJS callsites in scope for OD-03?** They are the majority
    of production model traffic. If they are out of scope, OD-03 is a decision about a
    minority of calls and should say so in its title.
 4. **Is `nf_a.verified_task_success_rate` allowed to block a release?** RM-2 must be able

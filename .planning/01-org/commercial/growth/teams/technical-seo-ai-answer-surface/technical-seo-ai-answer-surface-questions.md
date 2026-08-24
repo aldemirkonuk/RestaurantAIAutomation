@@ -5,7 +5,7 @@ department: growth
 team: technical-seo-ai-answer-surface
 status: open
 updated: 2026-08-24
-open_questions: 0
+open_questions: 1
 links: ["[[technical-seo-ai-answer-surface-charter]]", "[[technical-seo-ai-answer-surface-agenda-full]]", "[[architecture-review-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
 
@@ -19,7 +19,7 @@ links: ["[[technical-seo-ai-answer-surface-charter]]", "[[technical-seo-ai-answe
 
 | ID | From | Raised | Question or finding | Next action | Age-out |
 |---|---|---|---|---|---|
-| — | — | — | *(none yet)* | — | — |
+| DO-9 | decision-office | 2026-08-24 | `vercel.json:12-15` rewrites every path that is not `/api/…` or `/assets/…` to `/index.html`, so the CDN returns **HTTP 200 for every nonexistent URL** — the status is decided *above* the router and the SPA's own 404 at `apps/web/src/App.tsx:302` never gets to set one. `seo.soft_404_rate` baseline is 100%, and it has been live and unreported. | Decide the 404 mechanism above the router (the change is to `vercel.json`, not `apps/web`). Page copy and CTA are [[conversion-funnel-charter]]'s half — neither team can ship it alone. | 2026-10-05 |
 
 ## Answered
 

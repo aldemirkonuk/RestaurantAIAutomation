@@ -35,7 +35,7 @@ Preemption of either is a founder decision recorded in `OPEN-DECISIONS.md`.
 | **Weekly** | **Private-telemetry-table scan** — any new table holding token counts, cost, or a verdict outside the NF contract. **1 today; 2 is a same-day escalation** | — |
 | **Weekly** | Suppressed-emission counter review — telemetry fails soft (`spend_logger.py:83-86`), so silence must be counted through a different path | NF-A |
 | **Weekly** | Callsite instrumentation ledger — **0 of 7** today | NF-A |
-| **Fortnightly** | **OD-11 working session with [[data-charter]]** until it closes. Standing agenda: columns · partial indexes · retention · **F-3** · research-log shape · both owners named | — |
+| **Fortnightly** | **OD-11 working session with [[data-charter]]** until it closes. Standing agenda: columns · partial indexes · retention · **INTEL-F3** · research-log shape · both owners named | — |
 | **Monthly** | **Invoice reconciliation** — provider bill vs. summed NF event cost. Alarm at >5% delta. The only number in this charter this team cannot influence | NF-A |
 | **Monthly** | NF-B contract review with Guest Experience and Compliance: identifier coverage, erasure requests honoured (`erased_at`, `:112`) | NF-B |
 | **Monthly** | Contract-drift check — any `subject_type` value or telemetry field added outside the contract | — |
@@ -59,7 +59,7 @@ Skills live in `.claude/skills/`. Unfired for 30 days → reviewed for deletion.
 | **T3** | `nf-event-audit` | **Proposed — build first** | *Trigger:* any PR touching a model callsite or a telemetry writer. *Done:* reports every model invocation path and which of the eight NF-A fields it emits; fails on a new path emitting none. *Past instance:* seven NestJS callsites emit nothing and were found only by a hand-grep for this charter — **0 hits** for `api_spend`/`cost_usd`/`input_tokens` |
 | **T3** | `telemetry-table-scan` | **Proposed** | *Trigger:* weekly, and on any migration. *Done:* lists tables holding cost/token/verdict data outside the contract, each with its dated fold-in line or a flag. *Past instance:* `decision_log` and `api_spend` already diverged into two unjoined halves with no owner noticing |
 | **T3** | `spend-reconcile` | **Proposed** | *Trigger:* monthly. *Done:* provider invoice vs. summed NF cost, delta and per-callsite attribution. *Past instance:* `SpendLogger` returns early when Supabase is unconfigured (`:66-70`) and never re-raises (`:83-86`) — a whole environment can be silently unlogged |
-| **T2** | `nf-contract-lint` | **Proposed, after OD-11** | *Trigger:* any migration touching an NF table. *Done:* rejects a new `subject_type` value or telemetry field added outside the contract. *Past instance:* fork F-3 exists because `subject_type` was drafted with three values and the product already collects a fourth kind of subject |
+| **T2** | `nf-contract-lint` | **Proposed, after OD-11** | *Trigger:* any migration touching an NF table. *Done:* rejects a new `subject_type` value or telemetry field added outside the contract. *Past instance:* fork INTEL-F3 exists because `subject_type` was drafted with three values and the product already collects a fourth kind of subject |
 
 **Honest note.** None of these exist. `SpendLogger` is the closest thing to a telemetry
 skill in the repo and it is a class, not a skill. Build `nf-event-audit` first: it is the

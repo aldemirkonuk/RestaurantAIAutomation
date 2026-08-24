@@ -126,7 +126,7 @@ reconciliation spreadsheet in `.planning/` that maps models to agents by hand.
 
 **Counter-pressure.** **Attribution by inference is prohibited, in writing, in
 [[people-agent-ops-directive]].** The department's stated position is that per-agent cost
-is *not derivable today* — and it says so in every artifact until OD-C5 closes. The
+is *not derivable today* — and it says so in every artifact until CORP-F5 closes. The
 dependency is filed once, escalated on a clock, and reported as blocked-with-a-date rather
 than worked around. A number we cannot compute is a better artifact than a number we
 guessed.
@@ -170,6 +170,6 @@ output: [[ORG_STRUCTURE]] §4 — an agenda untouched in 60 days is finished or 
   input (`corporate.md:404-406`). A published zero is a working measurement.
 - **Advisory is findings-only** ([[ORG_STRUCTURE]] §3). [[red-team-charter]] attacks M3's
   substitution and M4's inference temptation; [[decision-office-charter]] owns whether
-  OD-C5 closes or drifts — and M4 is entirely a story about a decision that drifted.
+  CORP-F5 closes or drifts — and M4 is entirely a story about a decision that drifted.
 - **This document is subject to its own M5.** If nothing here has been revisited in 60
   days it is fiction.

@@ -148,9 +148,9 @@ coverage milestone and a threshold change land together ([[data-premortem]] M4).
 
 ## Open forks touching this department
 
-- **OD-19** — 25 teams for one division at all; Data is one of the two departments the fork
+- **TECH-F1** — 25 teams for one division at all; Data is one of the two departments the fork
   names as plausibly exceeding one owner (`technology.md:843`).
-- **OD-23** — Does the team layer get all 7 artifacts, or 3 (charter · premortem · loops)?
+- **TECH-F5** — Does the team layer get all 7 artifacts, or 3 (charter · premortem · loops)?
   This vault currently answers "7"; the fork is not closed (`technology.md:847`).
 - **Seam, already drawn** — webhook health vs. data fitness
   ([[integration-engineering-charter]] ↔ [[pos-operational-telemetry-ingest-charter]]) and

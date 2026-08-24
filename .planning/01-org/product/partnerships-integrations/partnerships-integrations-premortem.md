@@ -106,7 +106,7 @@ build passes its next milestone**, so the call is at least answerable when it is
 ## M4 — The distributor team runs a metric it does not control, because two boundaries cross it
 
 **The mechanism.** [[supplier-distributor-network-charter]] is cut by two open forks at once:
-**OD-21** (does supply discovery belong to Product & Vision or here?) and **CM-F3** (is
+**PROD-F2** (does supply discovery belong to Product & Vision or here?) and **CM-F3** (is
 distributor connectivity Sales' or ours? — `commercial.md:631`, citing
 `YC_WEDGE_PLAN.md:41`'s *"the connectivity is a commercial problem, not a technical one"*).
 Neither resolves, because an unowned thing generates no pressure to resolve it. So the team
@@ -118,7 +118,7 @@ a rep and nothing in the product was ever worth changing that for. `procurement_
 stays at **1** (`AGENT_NATIVE_UI_DECISION.md:59`).
 
 **Earliest observable signal.** The first status report where this team's blockers are
-entirely other units' actions. Or, more cheaply: **90 days with OD-21 and CM-F3 both open
+entirely other units' actions. Or, more cheaply: **90 days with PROD-F2 and CM-F3 both open
 and `pi.live_counterparties` still 0.**
 
 **Counter-pressure.** Two, together. First, the charter **states the proposed seam rather

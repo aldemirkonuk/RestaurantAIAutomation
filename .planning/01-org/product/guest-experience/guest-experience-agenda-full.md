@@ -121,7 +121,7 @@ Five. Three are open decisions this sub-layer must not close on its own; two are
    `subject_type`. Adding a value afterwards is a migration against live indexes, not
    a schema edit. If OD-11 closes without answering this, it closes wrong.
 
-3. **OD-22 — does monetization belong here or in Commercial?** ([[product]] §5.2)
+3. **PROD-F3 — does monetization belong here or in Commercial?** ([[product]] §5.2)
    The case for here: the k-anonymity gate and the photo-consent contract are
    guest-data obligations, and keeping them next to the revenue is the whole point.
    The case for Commercial: advertising is a revenue model and Commercial owns

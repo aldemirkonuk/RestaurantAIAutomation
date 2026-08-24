@@ -16,7 +16,7 @@ Division **Intelligence** → Department [[security-charter]] → Team
 
 > ⬦ **Staffing note.** This charter is recommended to be held by the **same team** as
 > [[access-control-tenant-isolation-charter]] until the endpoint campaign ships
-> (F-4, `intelligence.md:190-199`). Written separately because the charters genuinely
+> (INTEL-F4, `intelligence.md:190-199`). Written separately because the charters genuinely
 > diverge once that campaign is over — not because two teams should start today.
 
 ## Mandate

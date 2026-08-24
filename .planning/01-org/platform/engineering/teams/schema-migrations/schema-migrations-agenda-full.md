@@ -89,7 +89,7 @@ the practice stays the path of least resistance (M5).
    two functions carrying business logic with no repo source. Sometimes a database function
    is genuinely the right tool. Is the rule "never", or "yes, but authored as DDL and
    reviewed as code"? The second is this charter's assumption.
-4. **OD-20 — team, or a function inside [[platform-api-charter]]?**
+4. **TECH-F2 — team, or a function inside [[platform-api-charter]]?**
    (`technology.md:844`). Chartered here at team level; the fork is open, and it matters
    because this team's authority rests on being a *named* owner.
 5. **Has the 2026-08-05 drift been fully absorbed?** The baseline migration exists. Whether

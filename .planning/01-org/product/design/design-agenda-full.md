@@ -118,9 +118,9 @@ per [[AGENT_NATIVE_UI_DECISION]]:87-95. A section is never completed as a unit.
       re-exploring it. The question is resolved; the code is not
 - [ ] Correct the "760-path" figure wherever it appears ([[engineering-premortem]] M5,
       founder notes) to **910** — [[ux-path-burn-down-charter]] owns the count
-- [ ] Push both Design forks into `OPEN-DECISIONS.md` **with fresh IDs** — the numbers
-      proposed in `product.md:858-862` collide with OD-20…OD-23 already issued —
-      [[decision-office-charter]]
+- [ ] Push both Design forks (**PROD-F1**, **PROD-F5**) into `OPEN-DECISIONS.md` — the
+      numbers originally proposed in `product.md:858-862` collided with OD-20…OD-23 and
+      were renamespaced ([[FORK-REGISTRY]]) — [[decision-office-charter]]
 
 ## Questions for the founder
 

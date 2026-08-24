@@ -8,10 +8,8 @@ metrics: [skills.firing_rate_30d, skills.deletions_per_quarter, skills.registry_
 updated: 2026-08-24
 links: ["[[skill-lifecycle-anti-sprawl-charter]]", "[[skill-lifecycle-anti-sprawl-directive]]", "[[skill-lifecycle-anti-sprawl-schedule]]", "[[skills-loops]]", "[[skill-registry-authoring-loops]]", "[[ai-orchestration-charter]]", "[[ORG_STRUCTURE]]"]
 loop_count: 3
-loop_count: 3
-loop_count: 3
 loop_ids: ["skill-firing-telemetry", "skill-staleness-review", "skill-ceiling-paired-deletion"]
-loop_close_times: ["weekly", "monthly", "per-merge"]
+loop_close_times: ["weekly", "monthly", "per-pr"]
 loop_statuses: ["blocked", "blocked", "proposed"]
 ---
 
@@ -93,7 +91,8 @@ measures: [skills.registry_size, skills.deletions_per_quarter]
 changes: [skills.admission_policy]
 inputs_from: [skills]
 outputs_to: [skills, decision-office]
-close_time: per-merge
+close_time: per-pr
+close_time_note: "per merge"
 status: proposed
 ```
 

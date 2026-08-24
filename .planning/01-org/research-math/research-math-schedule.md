@@ -46,7 +46,7 @@ Two further protections from the same grant, recorded so they are auditable:
 | **Weekly** | `share_of_model_calls_through_wrapper` + count of callsites still on raw `fetch` (**7 today**) | NF-A | [[harness-model-routing-charter]] |
 | **Weekly** | Private-telemetry-table scan — any *new* table holding token counts, cost, or a verdict outside the NF contract | — | [[neural-footprint-instrumentation-charter]] |
 | **Weekly** | CI eval run with a **cost cap**, per `v3.0-TECH-DEBT.md:326-330`; the cap is a founder number and overrunning it escalates rather than switching the suite off | NF-A | [[evaluation-doneability-charter]] |
-| **Fortnightly** | OD-11 schema-contract working session with [[data-charter]] until it closes; fork F-3 decided inside it | — | [[neural-footprint-instrumentation-charter]] |
+| **Fortnightly** | OD-11 schema-contract working session with [[data-charter]] until it closes; fork INTEL-F3 decided inside it | — | [[neural-footprint-instrumentation-charter]] |
 | **Monthly** | Cost-per-completed-task review; routing changes only against a verdict, never against price alone | NF-A | [[harness-model-routing-charter]] |
 | **Monthly** | **Applied AI seam audit** — duplicated golden sets, duplicated routing policy, unowned seams. Output is a merge proposal or "clean" | — | Department |
 | **Monthly** | Department agenda sync — full vs board drifted? ([[README]] §6) | — | Department |

@@ -99,7 +99,7 @@ the realistic critical path.
    per CLAUDE.md §0.1 this is not decided until it is written down. **Needs an
    `OPEN-DECISIONS.md` entry; this session did not have write access outside the
    department directory to add it.**
-2. **OD-22 — three teams or two?** [[technology]] §4.3 says of
+2. **TECH-F4 — three teams or two?** [[technology]] §4.3 says of
    [[skill-harvesting-charter]]: *"If the team count must be cut, cut this one
    first."* Chartered-now-with-a-trigger (what this directory does) or
    not-chartered-until-it-fires?

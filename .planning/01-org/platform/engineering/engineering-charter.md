@@ -113,9 +113,9 @@ states — [[client-surfaces-charter]] owns fixing that claim.
 
 ## Open forks touching this department
 
-- **OD-20** — Are [[schema-migrations-charter]] and [[messaging-delivery-charter]] teams,
+- **TECH-F2** — Are [[schema-migrations-charter]] and [[messaging-delivery-charter]] teams,
   or functions inside [[platform-api-charter]]? Each has independent evidence; each is
   also a plausible merge (`technology.md:844`).
-- **OD-23** — Does the team layer get all 7 artifacts, or 3 (charter · premortem · loops)?
+- **TECH-F5** — Does the team layer get all 7 artifacts, or 3 (charter · premortem · loops)?
   This vault currently answers "7"; the fork is not closed (`technology.md:847`).
-- **OD-19** — 25 teams for one division at all (`technology.md:843`).
+- **TECH-F1** — 25 teams for one division at all (`technology.md:843`).

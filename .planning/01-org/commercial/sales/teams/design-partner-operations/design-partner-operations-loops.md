@@ -8,8 +8,6 @@ metrics: [sales.time_to_first_connection, sales.design_partner_touch_streak, sal
 updated: 2026-08-24
 links: ["[[design-partner-operations-charter]]", "[[design-partner-operations-premortem]]", "[[design-partner-operations-directive]]", "[[design-partner-operations-schedule]]", "[[sales-loops]]", "[[analytics-bi-charter]]", "[[pos-bridge-charter]]", "[[product-vision-charter]]", "[[media-brand-charter]]", "[[guest-experience-charter]]", "[[research-math-charter]]", "[[LOOP-MAP]]"]
 loop_count: 6
-loop_count: 6
-loop_count: 6
 loop_ids: ["dpo-connection-countdown", "dpo-touch-and-blockers", "dpo-politeness-detector", "dpo-credit-landing", "dpo-receiving-discipline", "dpo-patience-budget"]
 loop_close_times: ["weekly", "weekly", "weekly", "monthly", "weekly", "weekly"]
 loop_statuses: ["proposed", "proposed", "blocked", "blocked", "proposed", "proposed"]

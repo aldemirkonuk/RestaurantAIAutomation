@@ -8,10 +8,8 @@ metrics: [nf_b.ops_conversion, nf_b.k_anonymity_pass_rate, nf_b.sub_k_render_att
 updated: 2026-08-24
 links: ["[[guest-value-monetization-charter]]", "[[guest-value-monetization-directive]]", "[[guest-value-monetization-premortem]]", "[[guest-experience-loops]]", "[[taste-fingerprint-loops]]", "[[consumer-app-points-economy-loops]]", "[[compliance-privacy-charter]]", "[[legal-charter]]", "[[product-vision-charter]]", "[[LOOP-MAP]]"]
 loop_count: 4
-loop_count: 4
-loop_count: 4
 loop_ids: ["nf-b-k-anonymity-gate", "photo-consent-integrity", "nf-b-ops-conversion", "advertising-boundary-integrity"]
-loop_close_times: ["per-render", "per-use", "quarterly", "per-placement"]
+loop_close_times: ["per-event", "per-event", "quarterly", "per-event"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -36,7 +34,8 @@ measures: [nf_b.k_anonymity_pass_rate, nf_b.sub_k_render_attempts]
 changes: [render_gate, empty_state_copy]
 inputs_from: [compliance-privacy]
 outputs_to: [compliance-privacy, legal]
-close_time: per-render
+close_time: per-event
+close_time_note: "per render"
 status: proposed
 ```
 
@@ -68,7 +67,8 @@ measures: [nf_b.photo_consent_rate, photos_used_without_purpose_consent, revocat
 changes: [consent_contract, enrichment_pipeline_gate]
 inputs_from: [consumer-app-points-economy, legal, compliance-privacy]
 outputs_to: [legal, compliance-privacy, data]
-close_time: per-use
+close_time: per-event
+close_time_note: "per use"
 status: proposed
 ```
 
@@ -135,7 +135,8 @@ measures: [surfaces_carrying_ads, boundary_statement_current, promise_copy_consi
 changes: [placement_rules, product_copy]
 inputs_from: [compliance-privacy, legal, product-vision]
 outputs_to: [product-vision, growth, legal]
-close_time: per-placement
+close_time: per-event
+close_time_note: "per placement"
 status: proposed
 ```
 

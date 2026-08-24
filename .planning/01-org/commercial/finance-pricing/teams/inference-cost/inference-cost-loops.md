@@ -8,8 +8,6 @@ metrics: [fin.spend_reconciliation_variance_pct, fin.hours_since_last_spend_row,
 updated: 2026-08-24
 links: ["[[inference-cost-charter]]", "[[inference-cost-premortem]]", "[[inference-cost-directive]]", "[[inference-cost-schedule]]", "[[finance-pricing-loops]]", "[[LOOP-MAP]]", "[[harness-model-routing-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[agent-evaluation-gates-charter]]", "[[unit-economics-pricing-charter]]", "[[decision-office-charter]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["ic-ledger-invoice-reconciliation", "ic-meter-liveness", "ic-callsite-coverage", "ic-cost-efficiency-review", "ic-cap-adequacy"]
 loop_close_times: ["monthly", "daily", "quarterly", "weekly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "blocked", "proposed"]

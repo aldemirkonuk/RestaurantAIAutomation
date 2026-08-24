@@ -87,7 +87,7 @@ Would own outright:
 |---|---|---|
 | **Privacy law — GDPR, CCPA, DPAs, subprocessors** | [[regulatory-posture-charter]] | The reason this team exists as a separate track. Shares a word, nothing else. |
 | **Privacy controls, consent, erasure, PII** | [[privacy-engineering-charter]] | Different subject entirely. |
-| **Drafting the licence application or the MSA clause** | [[commercial-workforce-agreements-charter]] / [[legal-charter]] | Legal drafts instruments; we own the obligation and the filing. Same split as OD-C2. |
+| **Drafting the licence application or the MSA clause** | [[commercial-workforce-agreements-charter]] / [[legal-charter]] | Legal drafts instruments; we own the obligation and the filing. Same split as CORP-F2. |
 | **Inventory truth — what moved, how much, when** | [[inventory-ledger-charter]] | Excise reporting *consumes* the ledger. If we compute our own movement numbers there will be two answers and the tax authority will pick one. |
 | **Supplier and distributor relationships** | [[supplier-distributor-network-charter]] | They manage the relationship; we own what the three-tier rules forbid saying and doing. |
 | **Agent implementation and the fleet** | [[agent-fleet-charter]] | If `compliance_agent` is ever implemented, they own the runtime; we own its obligations. |
@@ -152,7 +152,7 @@ nothing produces or consumes them.
 
 ## Open forks touching this team
 
-- **OD-C4** ([[corporate]] §7) — **Is Regulated Operations Corporate's at all**, or
+- **CORP-F4** ([[corporate]] §7) — **Is Regulated Operations Corporate's at all**, or
   does it belong to Product once a licensing feature exists? Answering it now costs
   nothing; answering it after the trigger fires means a re-org during a deadline. This
   charter takes no position beyond noting that the argument for Product is real: if

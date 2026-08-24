@@ -89,7 +89,7 @@ graph TD
 - **A consultant claim is found to contradict its evidence pack** → immediate escalation to
   [[metric-contract-truth-assurance-charter]] as a claim retraction, and the layer reverts
   to OFF for that restaurant pending review. Not a bug ticket.
-- **F-3** — the operator has no `subject_type` in the neural footprint
+- **INTEL-F3** — the operator has no `subject_type` in the neural footprint
   (`intelligence.md:519`), so this team's primary signal has nowhere to live. Not
   resolvable in-team; interacts with OD-11.
 - **OD-20** — escalated every close-time until closed, with the consultant demo refusal

@@ -108,7 +108,7 @@ Three reasons, in descending order of how much they hurt if ignored:
 | 2 | One routed model client; `api_spend` from the gateway | [[model-routing-inference-economics-charter]] | — |
 | 3 | Unify the action schema; instrument time-to-confirm | [[action-safety-the-human-gate-charter]] | — |
 | 4 | OD-03 bake-off | [[harness-runtime-charter]] | Step 0 |
-| 5 | Vendor-reply rubric + weekly AI eval workflow (D-25) | [[agent-evaluation-gates-charter]] | Step 0; the OD-21 seam |
+| 5 | Vendor-reply rubric + weekly AI eval workflow (D-25) | [[agent-evaluation-gates-charter]] | Step 0; the TECH-F3 seam |
 
 Step 1, 2 and 3 have **no blockers**. If this agenda produces nothing else in its
 first month, it should produce those three.
@@ -121,9 +121,10 @@ first month, it should produce those three.
    position is *methodology vs. operations*, and its own stated fallback is: **if that
    line fails, merge rather than duplicate** (`technology.md:406`). We would rather
    have a merge now than a duplicate discovered in six months.
-2. **⚠️ The fork numbered OD-21 in `technology.md:845` collides with the real OD-21**
-   (Obsidian structural workflow, `OPEN-DECISIONS.md:25`, already locked). It needs a
-   free ID before it enters the decision log. → [[decision-office-charter]].
+2. **✅ The fork numbered OD-21 in `technology.md:845` is now `TECH-F3`.** It collided
+   with the real OD-21 (Obsidian structural workflow, `OPEN-DECISIONS.md:25`, already
+   locked); the Decision Office renamespaced it ([[FORK-REGISTRY]]).
+   → [[decision-office-charter]].
 3. **OD-03: what closes it, and by when?** The decision log names the method (a scoped
    bake-off, no pick from repute). It does not name a date. A fork with a method and
    no date is the thing [[ai-orchestration-premortem]] #1 is about.
@@ -136,4 +137,4 @@ first month, it should produce those three.
    owns scheduled *purchasing* with no harness guarantees and no human gate.
 6. **Does one of these five teams not need to exist?** Our honest answer is no — the
    five questions are genuinely different — but the count is the founder's to
-   challenge, and OD-19 is open on exactly that.
+   challenge, and TECH-F1 is open on exactly that.

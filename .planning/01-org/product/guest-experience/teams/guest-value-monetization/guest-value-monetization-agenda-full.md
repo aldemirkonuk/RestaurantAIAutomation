@@ -13,7 +13,7 @@ links: ["[[guest-value-monetization-charter]]", "[[guest-value-monetization-prem
 
 > **PROVISIONAL — no work done yet.** This is forecast, not fact.
 >
-> ⬦ **Unstaffed.** Three entry conditions, none satisfied — including **OD-22**, which
+> ⬦ **Unstaffed.** Three entry conditions, none satisfied — including **PROD-F3**, which
 > decides whether this team reports here or into Commercial. Two acts, however, are
 > available now and are the two that only work if they happen first.
 
@@ -73,7 +73,7 @@ gate it operates is reviewed by it. That is structural, not courtesy
 **Mostly not now** — and precisely which parts are which:
 
 - **Not now:** segments (nothing to aggregate — `nf_b.subject_coverage` is
-  structurally 0% and no NF-B event has been emitted), advertising (OD-22 unresolved,
+  structurally 0% and no NF-B event has been emitted), advertising (PROD-F3 unresolved,
   zero groundwork), photo reuse at scale (no consumer app producing photos).
 - **Now, and only now:** the k-threshold constant, its CI guard, the sub-k empty
   state, and the advertising boundary statement. Every one of them is a counter-pressure
@@ -90,7 +90,7 @@ Steps 1–3 are **available now and gated on nothing**. Everything from 4 waits.
 | 3 | **Write the advertising boundary statement** against `ServicesPermissions.tsx:41,249` | Founder + [[compliance-privacy-charter]] | Which surfaces may carry advertising, which may never, and what the operator promise covers |
 | 4 | **Purpose-scoped photo consent contract**, modelled on `consent_purpose` / `consent_notice_version` | [[legal-charter]] + [[compliance-privacy-charter]] | Catalog enrichment ≠ restaurant promotion ≠ paid placement, and revocation propagates |
 | 5 | Enforce photo consent **at the pipeline**, not the surface | 4, [[consumer-app-points-economy-charter]] | No photo enters enrichment without a live consent record for that purpose |
-| 6 | Resolve **OD-22** | Founder | This team knows which division it reports into before building an ad product |
+| 6 | Resolve **PROD-F3** | Founder | This team knows which division it reports into before building an ad product |
 | 7 | First segment surface — `NEW-659` / `NEW-660` — **with segment-id traceability from day one** | Non-zero subject coverage; a segment that clears k **without lowering it** | `nf_b.ops_conversion` is computable, not merely hoped for |
 | 8 | Weekly digest → menu experiment (`NEW-664`), write-back on action | 7 | `nf_b.segment_to_decision_latency` is a real number |
 | 9 | Advertising product shape — **on its own data model**, not `provider_promotions` | 3, 6 | The subject of an ad row is a guest context, not a vendor |
@@ -111,7 +111,7 @@ photo reuse under a boolean consent.
    advertising"* is indistinguishable from a retraction, and this costs a paragraph
    today.
 
-2. **OD-22 — this team here, or in Commercial?** ([[product]] §5.2) This team takes
+2. **PROD-F3 — this team here, or in Commercial?** ([[product]] §5.2) This team takes
    **no position and is not neutral**: staying here maximises this sub-layer's scope.
    What it does assert is that wherever the team goes, the **k-threshold and the
    photo-consent contract must not move with it** — they belong wherever

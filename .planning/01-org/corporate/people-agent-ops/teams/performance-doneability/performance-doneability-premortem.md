@@ -69,7 +69,7 @@ The dependency is real: `SpendLogger.log()` has no `agent` parameter
 column (`…baseline_from_production.sql:2231`), and nothing joins `decision_log` to
 `api_spend`. None of that is this team's to fix.
 
-So the first weekly agenda says "blocked on OD-C5". The second says the same. By the
+So the first weekly agenda says "blocked on CORP-F5". The second says the same. By the
 sixth, the line is copied forward without being read; by the tenth it is dropped for
 tidiness. The team stops appearing in the department's agenda, and
 [[roster-lifecycle-charter]] — whose work closes weekly — becomes the department. That is
@@ -94,7 +94,7 @@ remembering ([[people-agent-ops-directive]] rule 1). The team also has unblocked
 
 ### M3 — The team waited for the schema instead of writing the criteria
 
-OD-C5 closes in month nine. The `agent` column lands, the join key lands, NF-A can finally
+CORP-F5 closes in month nine. The `agent` column lands, the join key lands, NF-A can finally
 name a worker — and the team has **no doneability criteria to apply**, because writing
 them was never scheduled: it looked like it belonged to
 [[evaluation-doneability-charter]], whose methodology it is. Six more months go by
@@ -138,7 +138,7 @@ model→agent mapping file appearing anywhere in the repo or `.planning/`.
 ([[performance-doneability-directive]] rule 1). Per-agent cost may only be reported from a
 field that names an agent. Today the correct output is *not derivable*, stated without
 softening, in every artifact — and rule 5 of the department directive means being asked
-for the forbidden number is itself an escalation trigger, so the pressure lands on OD-C5
+for the forbidden number is itself an escalation trigger, so the pressure lands on CORP-F5
 instead of on the team's integrity.
 
 ---
@@ -182,7 +182,7 @@ move the metric.
   is a valid output.
 - **[[red-team-charter]] carries M1 and M4 as standing findings.** Findings-only
   ([[ORG_STRUCTURE]] §3) — they land in `questions.md`, not as a veto.
-- **[[decision-office-charter]] owns whether OD-C5 closes or drifts.** M2 and M4 are both,
+- **[[decision-office-charter]] owns whether CORP-F5 closes or drifts.** M2 and M4 are both,
   underneath, stories about a decision that drifted — which is the exact failure the
   Decision Office exists to prevent.
 - **Anti-sprawl applies here too.** If this premortem has not been revisited in 60 days it

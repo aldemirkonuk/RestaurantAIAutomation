@@ -4,7 +4,7 @@ division: advisory
 department: decision-office
 status: open
 updated: 2026-08-24
-open_questions: 2
+open_questions: 3
 links: ["[[decision-office-charter]]", "[[decision-office-agenda-full]]", "[[architecture-review-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
 
@@ -20,6 +20,7 @@ links: ["[[decision-office-charter]]", "[[decision-office-agenda-full]]", "[[arc
 |---|---|---|---|---|---|
 | RT-1 | red-team | 2026-08-24 | Fork IDs collide across 7 namespaces; OD-20..24 carry three meanings each; 177 of 581 docs cite a colliding ID. | Reconcile into one authoritative numbering (OD-30/42). | 2026-10-05 |
 | DO-1 | decision-office | 2026-08-24 | Register grew 23→35 during one session at a 7:1 fill-to-drain ratio; all rows unowned and undated. | Add owner + date columns; triage. | 2026-10-05 |
+| RT-3 | red-team | 2026-08-24 | ADR `0007-org-structure.md` is currently **unfalsifiable**: it names no observation that could disconfirm *optimize for quality and ambition, not for one person's capacity* — grepping the ADR for any trim, falsification or disconfirmation criterion returns nothing. The anti-sprawl rule the newest units rely on is a 60-day staleness sweep that a date-only edit defeats. | Get one number from the founder: at what count of units stale across two consecutive sweeps does the structure get trimmed. Refusing to name one is also a recordable answer. | 2026-10-05 |
 
 ## Answered
 

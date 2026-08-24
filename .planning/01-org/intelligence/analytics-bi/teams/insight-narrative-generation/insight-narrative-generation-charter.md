@@ -104,7 +104,7 @@ The restaurant manager acting on a recommendation is **neither an agent nor a gu
 `foundation §4.4` defines `subject_type` as `agent | guest | bio`, so the strongest
 human-preference signal the product already collects has **no home in the neural
 footprint**. `recommendation_actions.created_by` (baseline `:4922`) already stores the
-operator's identity; NF has nowhere to put it. Raised as **F-3**
+operator's identity; NF has nowhere to put it. Raised as **INTEL-F3**
 (`intelligence.md:519`); interacts with OD-11.
 
 ## Evidence today

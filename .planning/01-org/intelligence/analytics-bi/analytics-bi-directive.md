@@ -102,7 +102,7 @@ An item leaves this department and enters `OPEN-DECISIONS.md` when **any** of th
   breaks ties on *definition*; it does not break ties on *priority* — that is the founder's.
 - A published claim is found to be false. That is not a bug ticket; it is a decision
   record, because the question "how did it get published" is more important than the fix.
-- The `subject_type` gap (**F-3**) blocks `analytics.insight_acceptance_rate` from having a
+- The `subject_type` gap (**INTEL-F3**) blocks `analytics.insight_acceptance_rate` from having a
   home in the neural footprint. Interacts with OD-11; cannot be resolved inside this
   department.
 

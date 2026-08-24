@@ -88,7 +88,7 @@ this team owns whether the message survived it.
 2. **Where does "acknowledged" come from for email?** Open tracking is a privacy and
    deliverability decision, not just a technical one. Without it, email drop rate is
    measurable only as far as the provider's accept. Acceptable, or do we want tracking?
-3. **OD-20 — is this a team or a function inside [[platform-api-charter]]?**
+3. **TECH-F2 — is this a team or a function inside [[platform-api-charter]]?**
    (`technology.md:844`). Chartered here at team level; the fork is open.
 4. **How long may a batch hold a message?** The LIFO window is 30 minutes. That is a
    product decision with a transport implementation, and it currently lives only in code.

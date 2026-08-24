@@ -24,7 +24,7 @@ links:
 | **Per page creation** | Publish-state check — does this vendor page have a relationship behind it, and is its slug non-enumerable? | L3 |
 | **Weekly** | Counterparty liveness — live / stale / lapsed, and portal logins | L1, `pi.live_counterparties` |
 | **Weekly** | Declined-work log review — pre-seam work handed to Sales, recorded rather than shadow-worked | L4 |
-| **Monthly** | Boundary pressure — CM-F3 and OD-21 days-since-touched, plus the share of blockers owned elsewhere | L4 |
+| **Monthly** | Boundary pressure — CM-F3 and PROD-F2 days-since-touched, plus the share of blockers owned elsewhere | L4 |
 | **Quarterly** | Intake-channel audit — do all four channels (email, photo, upload, SFTP drop) still land in one document model, with downstream blind to the channel? | — |
 | **Day 90 (one-off, dated)** | Dissolution review — if both forks open and metric still 0, write the merge proposal | L4 |
 
@@ -48,7 +48,7 @@ doneability criteria, and a real past instance.
 | `feed-freshness-check` | Daily, per counterparty feed | Every feed's last refresh is compared to its cadence; *dormant*, *empty* and *stale* are reported as three distinct states | **Yes** — `provider-intelligence.service.ts` makes **6** reads against a dormant `provider_promotions` (`:135, :159, :179, :197, :222, :414`), all returning nothing gracefully. The inability to distinguish those states is live in the code today | T3 |
 | `publish-state-audit` | A vendor page is created or its relationship state changes | Page renders only in a published relationship state; slug confirmed non-enumerable | **Yes** — Security's SEC-2 found `ENDPOINTS.md` had prescribed **signature verification** for `vendor-portal`, the wrong control entirely; the real risks are slug enumeration and unpublished-page leakage. The correction landed (`ENDPOINTS.md:656`); the control it implies did not | T2 |
 | `counterparty-state-sync` | Weekly, and on any feed or login event | Every distributor carries a current state with a date; decayed relationships transition rather than persist as "live" | **Yes, negatively** — there is no state model today, and `procurement_orders` = 1 with 0 live counterparties means every record in the system is in an unstated state | T2 |
-| `boundary-blocker-log` | Any blocker owned by another unit | The blocker is recorded with its true owner and the work is handed off, not shadow-worked | **Yes** — CM-F3 (`commercial.md:631`) and OD-21 both cross this team today and neither has an owner. This session is the first time the overlap has been written down from this side | T2 |
+| `boundary-blocker-log` | Any blocker owned by another unit | The blocker is recorded with its true owner and the work is handed off, not shadow-worked | **Yes** — CM-F3 (`commercial.md:631`) and PROD-F2 both cross this team today and neither has an owner. This session is the first time the overlap has been written down from this side | T2 |
 
 **Honest note.** All four are grounded in real, current defects rather than hypotheticals —
 which is a fair reflection of this team's position: the surfaces exist, nothing has flowed

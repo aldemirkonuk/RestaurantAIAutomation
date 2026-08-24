@@ -105,8 +105,8 @@ graph TD
   that is a department-level escalation, and it is the argument the team exists to have.
 - **An external claim is published without a register entry** → `OPEN-DECISIONS.md`, not a
   correction email. The process failed, and the process is the deliverable.
-- **F-6 (new)** — which insight-type count is canonical, and what assertion pins it? The
-  answer must be a test. **F-7 (new)** — is `ANALYTICS_FEATURE_CATALOG.md` a plan or a
+- **INTEL-F6 (new)** — which insight-type count is canonical, and what assertion pins it? The
+  answer must be a test. **INTEL-F7 (new)** — is `ANALYTICS_FEATURE_CATALOG.md` a plan or a
   contract? `metric-registry.ts:53` binds metrics to its `catalogIds` while the file itself
   carries an untiered 100-feature batch and a `"status": "planned"` export. It cannot be
   both.

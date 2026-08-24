@@ -7,8 +7,6 @@ metrics: [demand.uncovered_keyword_count, demand.wedge_share_of_corpus, content.
 updated: 2026-08-24
 links: ["[[growth-charter]]", "[[growth-premortem]]", "[[growth-directive]]", "[[growth-schedule]]", "[[search-demand-research-loops]]", "[[content-production-loops]]", "[[editorial-gate-loops]]", "[[technical-seo-ai-answer-surface-loops]]", "[[conversion-funnel-loops]]", "[[LOOP-MAP]]", "[[decision-office-charter]]"]
 loop_count: 6
-loop_count: 6
-loop_count: 6
 loop_ids: ["growth-search-console-refeed", "growth-editorial-gate-health", "growth-publish-index-cite", "growth-visit-to-activation", "growth-claim-provenance-audit", "growth-checklist-outcome-reconciliation"]
 loop_close_times: ["monthly", "weekly", "monthly", "monthly", "quarterly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]

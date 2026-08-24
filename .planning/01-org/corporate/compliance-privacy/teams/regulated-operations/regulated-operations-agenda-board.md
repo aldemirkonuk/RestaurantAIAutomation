@@ -79,7 +79,7 @@ SORT updated ASC
 - [ ] Excise/licensing question not yet in the instrument sign-off checklist
 - [ ] C-19 not recorded in the obligation register as an unowned operating control
 - [ ] Sunset trigger not confirmed by the founder
-- [ ] **OD-C4 open** — is this scope Corporate's, or Product's once licensing is a feature?
+- [ ] **CORP-F4 open** — is this scope Corporate's, or Product's once licensing is a feature?
 - [ ] No anti-sprawl rule exists for a permanently-dormant stub agent
 
 ## On activation — pre-decided, so an emergency cannot decide differently

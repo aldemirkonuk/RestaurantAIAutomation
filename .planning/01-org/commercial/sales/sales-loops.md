@@ -7,8 +7,6 @@ metrics: [sales.time_to_first_connection, sales.unprompted_sessions_7d, sales.ve
 updated: 2026-08-24
 links: ["[[sales-charter]]", "[[sales-premortem]]", "[[sales-directive]]", "[[sales-schedule]]", "[[design-partner-operations-loops]]", "[[outbound-engine-loops]]", "[[analytics-bi-charter]]", "[[pos-bridge-charter]]", "[[media-brand-charter]]", "[[product-vision-charter]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["sales-connection-countdown", "sales-design-partner-cadence", "sales-politeness-detector", "sales-recovery-verification", "sales-outbound-calibration"]
 loop_close_times: ["weekly", "weekly", "weekly", "monthly", "fortnightly"]
 loop_statuses: ["proposed", "proposed", "blocked", "blocked", "dormant"]

@@ -82,5 +82,5 @@ it is not.
 | V-3 | **Register contradiction** — OD-21 marked LOCKED in a doc, Open in the register | [[OBSIDIAN_VAULT]]:3 vs `OPEN-DECISIONS.md` Open table | [[decision-office-charter]] |
 | V-4 | **Stale index** — every category count wrong | `md/DOCUMENTATION_INDEX.md` (2026-01-29): claims `04-updates-builds` = 6; actual **48** | [[corpus-archive-charter]] |
 | V-5 | **Root `SKILLS.md`** — prose protocol named like a registry, stale brand | `SKILLS.md:3` *"the WineOps AI project"*, mtime 2026-02-15. **OD-14** | Founder |
-| V-6 | **`.claude/skills/` does not exist** — asserted by 99 `schedule.md` files | Only skill is `.agents/skills/railway-config/`. Staged **OD-C7** | [[skills-charter]] + founder |
+| V-6 | **`.claude/skills/` does not exist** — asserted by 99 `schedule.md` files | Only skill is `.agents/skills/railway-config/`. Staged **CORP-F7** | [[skills-charter]] + founder |
 | V-7 | **Rule with no mechanism** | `CLAUDE.md:147` — *"'Should work' is not a report"*; nothing checks it | This team — it is the mandate |

@@ -122,7 +122,7 @@ the one that makes the rest durable.
 
 ## Questions for the founder
 
-1. **OD-23.** This charter asserts: Partnerships owns the trust contract, Engineering the
+1. **PROD-F4.** This charter asserts: Partnerships owns the trust contract, Engineering the
    runtime, Security the control. Right? It is the boundary that most needs to be *decided*
    rather than assumed, because both plausible answers are workable and only ambiguity is not.
 2. **The deletion rule.** We have committed that if our metric duplicates Security's, **ours**

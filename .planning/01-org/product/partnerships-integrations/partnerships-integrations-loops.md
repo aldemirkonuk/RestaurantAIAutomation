@@ -15,10 +15,8 @@ links:
   - "[[perimeter-ingress-integrity-charter]]"
   - "[[LOOP-MAP]]"
 loop_count: 6
-loop_count: 6
-loop_count: 6
 loop_ids: ["pi-merchant-pull", "pi-ingress-verification", "pi-counterparty-unblocking", "pi-open-fork-staleness", "pi-canonical-shape-neutrality", "pi-doc-drift-repair"]
-loop_close_times: ["weekly", "weekly", "monthly", "monthly", "per-change", "weekly"]
+loop_close_times: ["weekly", "weekly", "monthly", "monthly", "per-pr", "weekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -140,7 +138,7 @@ status: proposed
 **What it actually does.** Two hard actions, not a report:
 - OD-07 untouched 60 days **while** guest-experience commits continue → *decision-by-drift*
   finding filed with [[decision-office-charter]], naming the commits.
-- CM-F3 and OD-21 both open at day 90 with `pi.live_counterparties` = 0 → dissolution
+- CM-F3 and PROD-F2 both open at day 90 with `pi.live_counterparties` = 0 → dissolution
   proposal for [[supplier-distributor-network-charter]].
 
 A staleness loop with no consequence is the thing it is supposed to prevent.
@@ -157,7 +155,8 @@ measures: [pi.canonical_shape_drift]
 changes: [pos_types.canonical_check, pos_provider_registry.capabilities]
 inputs_from: [engineering, analytics-bi]
 outputs_to: [engineering, analytics-bi, architecture-review]
-close_time: per-change
+close_time: per-pr
+close_time_note: "per change to the canonical shape"
 status: proposed
 ```
 
@@ -196,6 +195,6 @@ repairing produces private knowledge.
 | Loop | Owner | Why not here |
 |---|---|---|
 | Webhook signature control effectiveness | [[perimeter-ingress-integrity-charter]] | We measure the contract; Security measures the control. Two loops on one number is how a secret ends up unset in one environment with both units assuming the other checked. |
-| Vendor catalogue coverage | [[supply-discovery-charter]] | Coverage is discovery's metric; live feeds are ours (OD-21). |
+| Vendor catalogue coverage | [[supply-discovery-charter]] | Coverage is discovery's metric; live feeds are ours (PROD-F2). |
 | Guest-app build progress | [[consumer-app-points-economy-charter]] | We own only the Beli conversation (OD-07). |
 | Inference cost of catalogue matching | [[inference-cost-charter]] | We supply `nf_a.*` events from the match agent; Finance owns the cost loop. |

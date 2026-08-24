@@ -72,7 +72,7 @@ Owns outright:
 | Running the CI workflows | [[release-engineering-charter]] | They run `schema-parity.yml`; we own its verdict |
 | Emitting the metrics we depend on | [[observability-telemetry-plumbing-charter]] | A finding is a signal we produce; the pipe is theirs |
 | Loud failures — retries, breakers, DLQ | [[runtime-resilience-charter]] | Quiet vs. loud is the entire seam |
-| The code of the guardian agents | [[agent-fleet-charter]] | **Open — fork OD-24** (`technology.md:848`). Fleet owns the code, we own the findings |
+| The code of the guardian agents | [[agent-fleet-charter]] | **Open — fork TECH-F6** (`technology.md:848`). Fleet owns the code, we own the findings |
 | Classifying which endpoints must be guarded | [[access-control-tenant-isolation-charter]] *(Security)* | They classify; we can gate recurrence in CI |
 | Whether a data row is *fit to use* | [[substrate-quality-coverage-charter]] *(Data)* | Unfit ≠ corrupted. A thin corpus is Data's problem; a wrong number is ours |
 

@@ -132,7 +132,7 @@ dependency into a visible number and makes the escalation dated rather than hope
 - [ ] Stand up the consultant-enablement expiry list; no enabled row without a named owner
 - [ ] Escalate §44.7 (SimPOS) and OD-20 into `OPEN-DECISIONS.md` with close-times —
       [[decision-office-charter]]
-- [ ] Open **F-6** (which count is canonical, and what test pins it) and **F-7** (is
+- [ ] Open **INTEL-F6** (which count is canonical, and what test pins it) and **INTEL-F7** (is
       `ANALYTICS_FEATURE_CATALOG.md` a plan or a contract?)
 
 ## Questions for the founder
@@ -164,7 +164,7 @@ dependency into a visible number and makes the escalation dated rather than hope
    `max_tokens: 4096`) are unguarded. The department's position is: no. Confirm, or accept
    the spend exposure explicitly.
 
-6. **F-3 — where does operator preference live?** A manager acting on a recommendation is
+6. **INTEL-F3 — where does operator preference live?** A manager acting on a recommendation is
    neither `agent`, `guest`, nor `bio` (foundation §4.4). This is the strongest human
    signal the product collects and it currently has no home in the neural footprint.
    Add `operator` to `subject_type`, or route it outside NF?

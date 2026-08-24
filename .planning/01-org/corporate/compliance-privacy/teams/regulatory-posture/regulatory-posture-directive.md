@@ -72,7 +72,7 @@ graph TD
 | **Jurisdictions in scope for v0** | Founder | Determines the register's row count and the notice's content. Guessing wide produces a register nobody maintains. |
 | **Controller vs processor posture** | Founder + [[legal-charter]] | Currently implied only by a schema comment (`20260819000000_guest_identity_minimal_slice.sql:99-105`). It determines who owes the guest a notice and who answers a subject-access request. |
 | **Disclosure posture on gaps** | Founder | An honest gap column is an asset in a security review and a liability in discovery. Decide once, rather than implicitly per row. |
-| **OD-C2** — DPA/BAA instrument vs obligation split | `OPEN-DECISIONS.md` | Named open decision, cross-department with [[commercial-workforce-agreements-charter]]. |
+| **CORP-F2** — DPA/BAA instrument vs obligation split | `OPEN-DECISIONS.md` | Named open decision, cross-department with [[commercial-workforce-agreements-charter]]. |
 | **Building or changing a control** | [[privacy-engineering-charter]] | We request; they build. A register row is not a work order we may execute. |
 | **Retention periods that trade against product value** | [[compliance-privacy-directive]] → founder | We state the obligation floor; the ceiling is a product call. |
 

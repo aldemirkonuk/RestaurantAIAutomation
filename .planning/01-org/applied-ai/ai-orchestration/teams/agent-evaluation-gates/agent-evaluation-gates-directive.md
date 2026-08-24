@@ -77,10 +77,11 @@ the fix it names is a **merge**:
 required to advocate for its own dissolution when the trigger fires. That is an odd
 thing to write into a charter and it is the most important sentence in this directive.
 
-> ⚠️ **Prerequisite: the fork needs a usable ID.** `technology.md:845` numbers it
-> OD-21; `OPEN-DECISIONS.md:25` already spends OD-21 on the Obsidian structural
-> workflow. **A fork that cannot be cited cannot be closed**, and an uncloseable fork
-> is exactly how duplication becomes permanent. → [[decision-office-charter]].
+> ✅ **Prerequisite met: the fork's ID is `TECH-F3`.** `technology.md:845` originally
+> numbered it OD-21; `OPEN-DECISIONS.md:25` already spends OD-21 on the Obsidian
+> structural workflow, so the Decision Office renamespaced it ([[FORK-REGISTRY]]).
+> **A fork that cannot be cited cannot be closed**, and an uncloseable fork is exactly
+> how duplication becomes permanent. → [[decision-office-charter]].
 
 ## Decision rights
 

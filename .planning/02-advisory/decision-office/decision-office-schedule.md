@@ -88,7 +88,7 @@ reviewed for deletion ([[README|foundation-README]] §3.3).
 
 **Count today: 0.** The directory now **does** exist and is tracked
 (`.claude/skills/README.md`), holding zero `SKILL.md` files — which quietly
-half-closes **OD-C7**, an open item that ~99 `schedule.md` files still describe as
+half-closes **CORP-F7**, an open item that ~99 `schedule.md` files still describe as
 unresolved. That is [[decision-office-loops]] L5's contradiction **C4**, and this
 office found it in its own first hour rather than in a sweep three months from now.
 

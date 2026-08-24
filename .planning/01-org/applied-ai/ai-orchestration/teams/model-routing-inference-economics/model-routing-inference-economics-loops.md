@@ -8,10 +8,8 @@ metrics: [nf_a.cost_per_task, routing.routed_client_share]
 updated: 2026-08-24
 links: ["[[model-routing-inference-economics-charter]]", "[[model-routing-inference-economics-premortem]]", "[[model-routing-inference-economics-directive]]", "[[model-routing-inference-economics-schedule]]", "[[ai-orchestration-loops]]", "[[agent-evaluation-gates-loops]]", "[[security-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["loop-metering-coverage", "loop-cost-per-task", "loop-model-substitution-gate", "loop-model-pin-drift", "loop-spend-anomaly"]
-loop_close_times: ["weekly during the migration, then monthly", "weekly", "per-PR", "monthly", "daily"]
+loop_close_times: ["weekly", "weekly", "per-pr", "monthly", "daily"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -36,7 +34,8 @@ measures: [routing.metered_call_share, routing.routed_client_share_by_spend, rou
 changes: [call_site.spend_logging, call_site.client]
 inputs_from: [engineering]
 outputs_to: [model-routing-inference-economics, finance-pricing, security]
-close_time: weekly during the migration, then monthly
+close_time: weekly
+close_time_note: "weekly during the migration, then monthly"
 status: proposed
 blocked_by: nothing
 today: "metered_call_share = 0/7 in the gateway. SpendLogger is Python-only; the seven TypeScript call sites each declare their own https://api.anthropic.com/v1/messages constant and none writes to api_spend."
@@ -73,7 +72,7 @@ measures: [routing.substitutions_without_benchmark, benchmark.quality_delta]
 changes: [routing.model_selection]
 inputs_from: [agent-evaluation-gates]
 outputs_to: [model-routing-inference-economics, agent-fleet]
-close_time: per-PR
+close_time: per-pr
 status: proposed
 blocked_by: "pass criteria from agent-evaluation-gates"
 existing_asset: "scripts/benchmark_haiku_vs_sonnet.py — written to prevent exactly this, run essentially once."

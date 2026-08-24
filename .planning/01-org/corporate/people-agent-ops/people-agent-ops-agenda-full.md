@@ -56,7 +56,7 @@ precondition for the next and because the last one is blocked on somebody else.
 
 **What the blocked team does while blocked.** Not nothing, and not a substitute metric:
 
-- **File the dependency precisely.** OD-C5 (`corporate.md:496`) plus the join-key question
+- **File the dependency precisely.** CORP-F5 (`corporate.md:496`) plus the join-key question
   — `decision_log` and `api_spend` share no key today. One escalation, with the exact
   signature change and the exact column.
 - **Write the doneability criteria for the three task types we already run** — invoice
@@ -96,7 +96,7 @@ precondition for the next and because the last one is blocked on somebody else.
       that survives
 - [ ] Draft the maturity ladder as **predicates over the repo**, and stop at the number of
       levels the evidence supports — [[roster-lifecycle-charter]]
-- [ ] File **OD-C5** into `OPEN-DECISIONS.md` with the exact signature diff for
+- [ ] File **CORP-F5** into `OPEN-DECISIONS.md` with the exact signature diff for
       `SpendLogger.log()` — [[decision-office-charter]]
 - [ ] File the join-key question: what connects `decision_log:2687` to `api_spend:2231`? —
       [[neural-footprint-instrumentation-charter]]
@@ -108,7 +108,7 @@ precondition for the next and because the last one is blocked on somebody else.
 
 ## Questions for the founder
 
-1. **OD-C5 — does `SpendLogger.log()` gain an `agent` parameter?** Everything this
+1. **CORP-F5 — does `SpendLogger.log()` gain an `agent` parameter?** Everything this
    department's second team does is downstream of that one argument. If the answer is no,
    [[performance-doneability-charter]] should be told plainly that per-agent cost is out
    of scope, rather than left to be permanently blocked.

@@ -97,4 +97,4 @@ reasoning, and that is the whole distinction.
 | Per-instrument sign-off | [[regulatory-posture-schedule]] | The gate's primary sensor |
 | Deal pipeline review | [[design-partner-operations-charter]] | Advance sight of a licensed jurisdiction |
 | Stub-agent boot refusal | [[agent-fleet-charter]] | `compliance_agent.py` stays declared and refused (`orchestrator.py:245-250`) |
-| Open-decision queue | [[decision-office-charter]] | OD-C4 and the sunset trigger kept open rather than drifting |
+| Open-decision queue | [[decision-office-charter]] | CORP-F4 and the sunset trigger kept open rather than drifting |

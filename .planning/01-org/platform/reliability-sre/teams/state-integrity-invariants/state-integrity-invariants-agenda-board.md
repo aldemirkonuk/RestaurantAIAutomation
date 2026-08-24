@@ -69,7 +69,7 @@ Unmeasured rows stay visible.
 - [ ] Outcome-side twin for `check_no_direct_stock_writes.sh` (divergence sampling)
 - [ ] Cross-tenant row probe as a data-side check
 - [ ] CI: no commit may touch both `supabase/migrations/` and a gate script
-- [ ] Close **OD-24**, then build or formally disown the two stub agents
+- [ ] Close **TECH-F6**, then build or formally disown the two stub agents
 
 ## Watch
 

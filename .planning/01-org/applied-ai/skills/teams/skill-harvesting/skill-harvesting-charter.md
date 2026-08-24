@@ -28,7 +28,7 @@ Alias in [[technology]] §4.3: `[[skill-harvesting-charter|skl-harvesting]]`.
 > because the team is about to begin. Nobody works here. The recurring harvest sweep
 > lives in [[skill-registry-authoring-schedule]] until the trigger fires.
 >
-> This is **OD-22** in [[technology]] §7: *chartered now with the trigger, or not
+> This is **TECH-F4** in [[technology]] §7: *chartered now with the trigger, or not
 > chartered until it fires?* This directory is one answer; it is not the decision.
 
 ## Mandate

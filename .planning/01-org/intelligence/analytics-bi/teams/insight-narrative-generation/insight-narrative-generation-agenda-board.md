@@ -85,4 +85,4 @@ SORT updated ASC
 - [ ] Nine threshold constants unnamed and untested
 - [ ] No empty-state screen for `insufficient_data`
 - [ ] `recommendation_impressions` written on every request, read by nothing
-- [ ] **F-3** — operator has no `subject_type`; this team's primary signal is outside NF
+- [ ] **INTEL-F3** — operator has no `subject_type`; this team's primary signal is outside NF

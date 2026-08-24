@@ -64,7 +64,7 @@ SORT file.name ASC
 ## Blocked
 
 - [ ] Orphan decision × 3 *(founder input on `recurring_order_agent`)*
-- [ ] Guardian canaries *(OD-24 ownership)*
+- [ ] Guardian canaries *(TECH-F6 ownership)*
 - [ ] `nf_a.task_success_rate` per agent *(NF-A emission)*
 - [ ] Prompt versioning + verdict gate *(verdict definition — [[agent-evaluation-gates-charter]])*
 
@@ -78,6 +78,6 @@ SORT file.name ASC
 
 ## Open forks
 
-- [ ] **OD-24** — guardian co-ownership: Fleet owns code, SRE owns findings. Workable?
+- [ ] **TECH-F6** — guardian co-ownership: Fleet owns code, SRE owns findings. Workable?
 - [ ] The three orphans: adopt · delete · document the exemption
 - [ ] The five stubs: keep with a `stub: true` flag, or delete the ones with no near-term plan

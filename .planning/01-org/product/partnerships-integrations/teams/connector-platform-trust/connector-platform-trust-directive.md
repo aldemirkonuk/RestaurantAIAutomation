@@ -103,7 +103,7 @@ both units believe they might be the one to concede is not a boundary — it is 
 | Runtime code and CI infrastructure | [[engineering-charter]] |
 | Canonical shape and normalizers | [[pos-bridge-charter]] |
 | Publish-state of vendor pages | [[supplier-distributor-network-charter]] — relationship property |
-| **OD-23 itself** | **founder** |
+| **PROD-F4 itself** | **founder** |
 
 ## The four standing rules
 

@@ -91,7 +91,7 @@ graph TD
 - **The per-caller budget number**, and whether the wrapper fails open or closed when it
   is exceeded. Failing closed stops a runaway and also removes a feature mid-service from
   a paying restaurant — a product call.
-- **Fork F-5** — whether the seven callsites are in OD-03's scope at all.
+- **Fork INTEL-F5** — whether the seven callsites are in OD-03's scope at all.
 
 ## Escalation trigger
 

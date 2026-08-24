@@ -49,7 +49,7 @@ reads it ([[state-integrity-invariants-premortem]] M1).
 | Auto-applying any remediation to money or stock | **Nobody.** Human gate, always | `drift_agent.py:11-16` already sets this rule; it is inherited, not invented |
 | Tenant-leakage response policy | **Founder**, decided in advance | Stop writes vs. alert-and-continue. Deciding this during the first detection is the failure |
 | Whether a stub agent counts as coverage | **This team** | It does not. Stubs are listed as *declared, not owned* |
-| Who builds the guardian agents | **Open — OD-24** | [[agent-fleet-charter]] vs. this team (`technology.md:848`) |
+| Who builds the guardian agents | **Open — TECH-F6** | [[agent-fleet-charter]] vs. this team (`technology.md:848`) |
 
 ## Escalation trigger
 

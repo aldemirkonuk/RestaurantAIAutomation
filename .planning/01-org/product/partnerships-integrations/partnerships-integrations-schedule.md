@@ -26,7 +26,7 @@ links:
 | **Weekly** | Doc-drift sweep — verified corrections carried back to source in the same week | department | `pi.doc_corrections_carried`, L6 |
 | **Bi-weekly** | Security coordination with [[perimeter-ingress-integrity-charter]] — standing item, not an escalation | joint | — |
 | **Monthly** | Counterparty review — outreach attempts, response times, agreements. **Zero is a valid reading; "we did not check" is not** | [[partner-alliance-development-charter]] | `pi.unblocking_agreements`, L3 |
-| **Monthly** | Open-fork staleness — OD-07, OD-21, OD-23, CM-F3 days-since-touched, with the two hard escalations | department | L4 |
+| **Monthly** | Open-fork staleness — OD-07, PROD-F2, PROD-F4, CM-F3 days-since-touched, with the two hard escalations | department | L4 |
 | **Monthly** | Registry audit — statuses vs reality; demote any provider whose `scaffolded` claim no longer builds | [[pos-bridge-charter]] | registry diff |
 | **Quarterly** | Connector deprecation review — dead credentials, unused connections, stale env vars against `EXTERNAL_CONNECTIONS.md`'s 80 variables | [[connector-platform-trust-charter]] | — |
 

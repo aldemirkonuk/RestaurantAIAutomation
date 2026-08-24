@@ -11,10 +11,8 @@ links:
   - "[[narrative-collateral-directive]]"
   - "[[media-brand-loops]]"
 loop_count: 4
-loop_count: 4
-loop_count: 4
 loop_ids: ["headline-claim-consistency-m2", "claim-substantiation", "narrative-freshness", "collateral-blocked-inputs"]
-loop_close_times: ["monthly", "per-artifact", "quarterly", "weekly"]
+loop_close_times: ["monthly", "per-event", "quarterly", "weekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -58,7 +56,8 @@ measures: [collateral.numbers_with_source_line, collateral.numbers_total]
 changes: [collateral.claims, collateral.artifact_set]
 inputs_from: [editorial-gate, design-partner-operations]
 outputs_to: [editorial-gate, strategy-and-fundraising]
-close_time: per-artifact
+close_time: per-event
+close_time_note: "per artifact"
 status: proposed
 ```
 

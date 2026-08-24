@@ -98,7 +98,7 @@ Owns outright:
 [[standards-verification-charter]] reviews documents it does not write, which is the same
 independence argument [[ORG_STRUCTURE]] §3 makes for the advisory layer — and asks whether
 2.3 should sit under [[decision-office-charter]] instead. This charter does **not** resolve
-that; it is raised as **OD-C6** in [[knowledge-documentation-agenda-full]]. The argument
+that; it is raised as **CORP-F6** in [[knowledge-documentation-agenda-full]]. The argument
 against moving it: standards work is 90% mechanical checks over a corpus this department
 already owns, and splitting the mechanism from the corpus makes both weaker. The argument
 for: a team inside the department cannot credibly grade its own department's 28 documents.

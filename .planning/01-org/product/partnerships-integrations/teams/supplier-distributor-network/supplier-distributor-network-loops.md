@@ -15,10 +15,8 @@ links:
   - "[[decision-office-charter]]"
   - "[[LOOP-MAP]]"
 loop_count: 4
-loop_count: 4
-loop_count: 4
 loop_ids: ["sdn-counterparty-liveness", "sdn-feed-freshness", "sdn-publish-state", "sdn-boundary-pressure"]
-loop_close_times: ["weekly", "daily", "per-page-creation", "monthly"]
+loop_close_times: ["weekly", "daily", "per-event", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -103,7 +101,8 @@ measures: [vendor_pages.published_without_relationship, slug.enumerability]
 changes: [vendor_portal.render_gate, vendor.slug_policy]
 inputs_from: [connector-platform-trust, security]
 outputs_to: [security, connector-platform-trust]
-close_time: per-page-creation
+close_time: per-event
+close_time_note: "per page creation"
 status: proposed
 ```
 
@@ -141,7 +140,7 @@ this team's blockers that are other units' actions — is the direct instrumenta
 [[supplier-distributor-network-premortem]] M1. A team whose blockers are all external is not
 blocked; it is misdrawn.
 
-**What it changes — a dated action, not a report.** At **day 90**, if CM-F3 and OD-21 are both
+**What it changes — a dated action, not a report.** At **day 90**, if CM-F3 and PROD-F2 are both
 still open and `pi.live_counterparties` is still 0, this loop triggers the dissolution clause
 in [[supplier-distributor-network-directive]]: a written proposal to merge into
 [[pos-bridge-charter]] and hand the relationship half to
@@ -157,7 +156,7 @@ work that may need to be handed over anyway.
 
 | Loop | Owner | Why |
 |---|---|---|
-| Vendor catalogue coverage | [[supply-discovery-charter]] | Coverage is a discovery metric; liveness is ours (OD-21 open) |
+| Vendor catalogue coverage | [[supply-discovery-charter]] | Coverage is a discovery metric; liveness is ours (PROD-F2 open) |
 | The commercial ask that produces a willing distributor | [[design-partner-operations-charter]] | Pre-seam under the CM-F3 proposal |
 | Route auth and verification controls | [[perimeter-ingress-integrity-charter]] | We own publish-state, they own the control |
 | Procurement ordering and invoice understanding | Product & Vision modules | We own who is on the other end |

@@ -8,10 +8,8 @@ metrics: [roster.truth_pct, roster.unregistered_module_count, roster.silent_defa
 updated: 2026-08-24
 links: ["[[roster-lifecycle-charter]]", "[[roster-lifecycle-premortem]]", "[[roster-lifecycle-directive]]", "[[people-agent-ops-loops]]", "[[performance-doneability-loops]]", "[[LOOP-MAP]]", "[[ai-orchestration-charter]]", "[[agent-fleet-charter]]", "[[harness-runtime-charter]]", "[[reliability-sre-charter]]", "[[decision-office-charter]]", "[[positioning-fundraise-readiness-charter]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["rl-three-way-census", "rl-onboarding-gate", "rl-silent-default-audit", "rl-headcount-reconciliation", "rl-fleet-lifecycle-review"]
-loop_close_times: ["daily", "per PR", "weekly", "monthly", "quarterly"]
+loop_close_times: ["daily", "per-pr", "weekly", "monthly", "quarterly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -58,7 +56,7 @@ measures: [roster.new_module_gate_pass_rate, roster.unregistered_module_count]
 changes: [ci.agent_registration_check, roster.onboarding_checklist, roster.exclusion_register]
 inputs_from: [engineering, ai-orchestration, agent-fleet]
 outputs_to: [ai-orchestration, reliability-sre, decision-office]
-close_time: per PR
+close_time: per-pr
 status: proposed
 ```
 

@@ -66,9 +66,9 @@ SORT team ASC
 ## Open
 
 - [ ] **OD-07** — Beli: build independently vs collaborate. **Open; not ours to close.**
-- [ ] **OD-23** — connector trust boundary. Asserted in charter, not decided.
+- [ ] **PROD-F4** — connector trust boundary. Asserted in charter, not decided.
 - [ ] **CM-F3** — distributor connectivity: Sales or here? Seam proposed, not claimed.
-- [ ] **OD-21** — Vendor Finder boundary vs [[supply-discovery-charter]].
+- [ ] **PROD-F2** — Vendor Finder boundary vs [[supply-discovery-charter]].
 - [ ] **OD-19** — endpoint classification; co-owned with [[perimeter-ingress-integrity-charter]].
 
 ## Next

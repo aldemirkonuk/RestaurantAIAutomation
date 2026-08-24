@@ -5,7 +5,7 @@ department: research-math
 team: neural-footprint-instrumentation
 status: open
 updated: 2026-08-24
-open_questions: 0
+open_questions: 1
 links: ["[[neural-footprint-instrumentation-charter]]", "[[neural-footprint-instrumentation-agenda-full]]", "[[architecture-review-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
 
@@ -19,7 +19,7 @@ links: ["[[neural-footprint-instrumentation-charter]]", "[[neural-footprint-inst
 
 | ID | From | Raised | Question or finding | Next action | Age-out |
 |---|---|---|---|---|---|
-| — | — | — | *(none yet)* | — | — |
+| AR-4 | architecture-review | 2026-08-24 | L4 emits nothing on the NestJS side and cannot be joined on the Python side. `SpendLogger.log()` takes `provider, model, input_tokens, output_tokens, cost_usd, restaurant_id` and **no `agent` parameter** (`services/agent-orchestrator/services/spend_logger.py:41-49`); `api_spend` has no `correlation_id`. `decision_log` (written at `core/base_agent.py:752-784`) carries `agent_name`, `reasoning`, `correlation_id` but no cost. No column connects reasoning to spend, so NF-A's founding question cannot be answered by a query. | Define the NF-A join key (blocked on OD-11). The cost-attribution half is [[inference-cost-charter]]'s — one finding, cross-linked. | 2026-10-05 |
 
 ## Answered
 

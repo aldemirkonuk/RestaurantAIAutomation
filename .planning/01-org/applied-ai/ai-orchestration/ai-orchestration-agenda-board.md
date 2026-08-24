@@ -72,10 +72,10 @@ SORT close_time ASC
 
 - [ ] **OD-03** — harness: hermes-agent · deepseek-harness · in-house `base_agent.py`. **Open. No pick.**
 - [ ] **The evaluation seam** — methodology (R&M) vs operations (here); **merge, never duplicate**
-- [ ] ⚠️ **ID collision** — `technology.md:845` calls the seam OD-21; `OPEN-DECISIONS.md:25` already uses OD-21
+- [x] ✅ **ID collision resolved** — the seam is **TECH-F3** ([[FORK-REGISTRY]]); `technology.md:845` originally called it OD-21, already spent at `OPEN-DECISIONS.md:25`
 - [ ] **OD-04** — external model roster; downstream of OD-03
-- [ ] **OD-24** — guardian-agent co-ownership: Fleet owns code, SRE owns findings
-- [ ] **OD-19 / OD-23** — team-layer granularity and 7-vs-3 artifacts
+- [ ] **TECH-F6** — guardian-agent co-ownership: Fleet owns code, SRE owns findings
+- [ ] **TECH-F1 / TECH-F5** — team-layer granularity and 7-vs-3 artifacts
 
 ## Watch signals — from [[ai-orchestration-premortem]]
 

@@ -55,8 +55,8 @@ SORT updated ASC
 - [ ] No policy, no DPA, no BAA, no subprocessor register anywhere in the repo
 - [ ] Consent gate not built — [[customer-relationship-research-charter]] is blocked on us
 - [ ] NF-B erasability vs append-only research store — no `OPEN-DECISIONS.md` entry yet
-- [ ] OD-C2 open — DPA/BAA instrument vs obligation split
-- [ ] OD-C4 open — is [[regulated-operations-charter]] Corporate's at all?
+- [ ] CORP-F2 open — DPA/BAA instrument vs obligation split
+- [ ] CORP-F4 open — is [[regulated-operations-charter]] Corporate's at all?
 - [ ] Ethics scope sits in the line → this department reviews itself (premortem M5)
 
 ## Not blocking, but wrong

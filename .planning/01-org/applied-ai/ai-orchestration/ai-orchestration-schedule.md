@@ -79,5 +79,5 @@ closes, and should then be deleted rather than left as decoration.
 | [[research-math-charter|research-and-math-charter]] | Continuous | NF-A events — we are the largest producer; they own the methodology |
 | [[skills-charter]] | Continuous | `skill_id` on the NF-A event, the cheapest firing signal available |
 | `[[inference-cost-charter|fin-inference-cost]]` | Weekly | `nf_a.cost_per_task` by task type |
-| [[reliability-sre-charter|reliability-charter]] | Daily | DLQ depth and guardian-agent findings (OD-24 splits code from findings) |
+| [[reliability-sre-charter|reliability-charter]] | Daily | DLQ depth and guardian-agent findings (TECH-F6 splits code from findings) |
 | [[decision-office-charter]] | On the bake-off date | OD-03, closed — or an explicit statement of why it did not close |

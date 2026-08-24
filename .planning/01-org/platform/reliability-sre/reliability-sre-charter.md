@@ -88,7 +88,7 @@ should be re-argued at the trigger, not before.
 | Defining the NF-A event schema and doneability | [[neural-footprint-instrumentation-charter]], [[evaluation-doneability-charter]] *(Research & Math)* | They define the event; [[observability-telemetry-plumbing-charter]] owns the pipe it rides on. Method vs. plumbing. |
 | What a metric *means* to a customer | [[metric-contract-truth-assurance-charter]] *(Analytics & BI)* | We own whether the number exists; they own whether the number's definition is honest. |
 | Classifying the 137 unguarded endpoints | [[access-control-tenant-isolation-charter]] *(Security)* | Security finds the class; [[platform-api-charter]] builds the mechanism; we own only the CI gate that stops recurrence. |
-| Agent code — including the guardian agents whose findings we consume | [[agent-fleet-charter]] | **Open seam, fork OD-24** (`technology.md:848`). Fleet owns the code, we own the findings. |
+| Agent code — including the guardian agents whose findings we consume | [[agent-fleet-charter]] | **Open seam, fork TECH-F6** (`technology.md:848`). Fleet owns the code, we own the findings. |
 
 ## Named gap — backup and restore is not a team, and is not solved
 
@@ -166,7 +166,7 @@ in [[reliability-sre-directive]] rather than left to be discovered in an argumen
 
 ## Open forks touching this department
 
-- **OD-24** — guardian-agent co-ownership: [[agent-fleet-charter]] owns their code,
+- **TECH-F6** — guardian-agent co-ownership: [[agent-fleet-charter]] owns their code,
   [[state-integrity-invariants-charter]] owns their findings (`technology.md:848`).
-- **OD-23** — 7 artifacts per team vs 3. This vault answers "7"; the fork is not closed.
-- **OD-19** — 25 teams for one division at all (`technology.md:843`).
+- **TECH-F5** — 7 artifacts per team vs 3. This vault answers "7"; the fork is not closed.
+- **TECH-F1** — 25 teams for one division at all (`technology.md:843`).

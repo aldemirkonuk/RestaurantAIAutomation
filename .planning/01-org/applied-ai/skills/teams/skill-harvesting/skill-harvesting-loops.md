@@ -8,8 +8,6 @@ metrics: [skills.harvested_firing_rate_30d, skills.registry_size, skills.script_
 updated: 2026-08-24
 links: ["[[skill-harvesting-charter]]", "[[skill-harvesting-directive]]", "[[skill-harvesting-schedule]]", "[[skills-loops]]", "[[skill-registry-authoring-loops]]", "[[skill-lifecycle-anti-sprawl-loops]]", "[[ORG_STRUCTURE]]"]
 loop_count: 2
-loop_count: 2
-loop_count: 2
 loop_ids: ["skill-harvest-staffing-gate", "skill-harvest-candidates"]
 loop_close_times: ["monthly", "quarterly"]
 loop_statuses: ["proposed", "dormant"]
@@ -51,7 +49,7 @@ judgement:**
 |---|---|---|
 | `registry_size` | ≥ 15 | staffing gate opens ([[technology]] §4.3) |
 | protocol-compliance green | 2 consecutive quarters | alternate opening condition |
-| `firing_rate_30d` defined | proposed clause (OD-22) | without it, the disband metric is unevaluable |
+| `firing_rate_30d` defined | proposed clause (TECH-F4) | without it, the disband metric is unevaluable |
 | Date | **2027-08-24**, untriggered | proposed sunset — delete the team and its 7 docs |
 
 **This loop closes monthly and closes today: 0/15, do not staff.** A gate evaluated

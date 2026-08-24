@@ -8,10 +8,8 @@ metrics: [identity.false_merge_count, identity.false_split_count, identity.produ
 updated: 2026-08-24
 links: ["[[catalogue-identity-charter]]", "[[catalogue-identity-premortem]]", "[[catalogue-identity-directive]]", "[[engineering-loops]]", "[[annotation-ground-truth-charter|dat-annotation-ground-truth]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["ci-merge-policy-scoring", "ci-labelled-set-coverage", "ci-producer-collapse-watch", "ci-unmerge-attribution-audit", "ci-guest-identity-boundary"]
-loop_close_times: ["per-PR", "weekly", "weekly", "per-event", "weekly"]
+loop_close_times: ["per-pr", "weekly", "weekly", "per-event", "weekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -32,7 +30,7 @@ measures: [identity.false_merge_count, identity.false_split_count]
 changes: [matcher.thresholds, merge.policy, ci.merge_gate]
 inputs_from: [dat-annotation-ground-truth, dat-corpora-enrichment]
 outputs_to: [engineering, dat-substrate-quality, decision-office]
-close_time: per-PR
+close_time: per-pr
 status: proposed
 ```
 

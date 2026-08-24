@@ -137,11 +137,11 @@ parallel with all of it.
    this is not decided until it is written in `.planning/decisions/`. **Needs an
    `OPEN-DECISIONS.md` entry; this session had no write access outside the department
    directory.**
-2. **OD-C2 — DPA/BAA split.** Legal §1.2 owns the instrument, this department owns
+2. **CORP-F2 — DPA/BAA split.** Legal §1.2 owns the instrument, this department owns
    the obligations ([[corporate]] §7). Confirm, or give one unit both? The split is
    what makes an unevidenceable Annex catchable before signature; collapsing it saves
    one handoff and loses that check.
-3. **OD-C4 — is [[regulated-operations-charter]] Corporate's at all?** Alcohol
+3. **CORP-F4 — is [[regulated-operations-charter]] Corporate's at all?** Alcohol
    excise may belong to Product once a licensing feature exists. Answering it now
    costs nothing; answering it after the trigger fires costs a re-org during a
    deadline.

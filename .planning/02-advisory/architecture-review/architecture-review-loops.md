@@ -7,10 +7,8 @@ metrics: [arch.layer_violations_open, arch.finding_age_days_max, arch.findings_c
 updated: 2026-08-24
 links: ["[[architecture-review-charter]]", "[[architecture-review-directive]]", "[[architecture-review-premortem]]", "[[architecture-review-schedule]]", "[[architecture-review-agenda-board]]", "[[decision-office-charter]]", "[[red-team-charter]]", "[[security-charter]]", "[[engineering-charter]]", "[[schema-migrations-charter]]", "[[client-surfaces-charter]]", "[[platform-api-charter]]", "[[messaging-delivery-charter]]", "[[research-math-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[model-routing-inference-economics-charter]]", "[[LOOP-MAP]]", "[[ORG_STRUCTURE]]", "[[README]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["loop-layer-sweep", "loop-finding-age", "loop-invariant-census", "loop-callsite-convergence", "loop-layer-stack-review"]
-loop_close_times: ["fortnightly — sweep on the 1st and the 15th; a signal seen in a sweep becomes a written finding inside that same sweep or is dropped", "fortnightly to re-report; 42 days (three sweeps) to force a binary", "fortnightly for the census itself (one invariant per sweep); per-commit for any invariant that earns a CI check", "monthly", "quarterly — on the calendar whether or not anything has gone wrong"]
+loop_close_times: ["fortnightly", "fortnightly", "fortnightly", "monthly", "quarterly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -41,7 +39,8 @@ measures: [arch.layer_violations_open, arch.layer_bypass_callsites, arch.duplica
 changes: [findings.log, open_decisions.queue]
 inputs_from: [engineering, data, reliability-sre, ai-orchestration, skills, product-vision, design, partnerships-integrations]
 outputs_to: [engineering, ai-orchestration, product-vision, decision-office]
-close_time: fortnightly — sweep on the 1st and the 15th; a signal seen in a sweep becomes a written finding inside that same sweep or is dropped
+close_time: fortnightly
+close_time_note: "sweep on the 1st and the 15th; a signal seen in a sweep becomes a written finding inside that same sweep or is dropped"
 status: proposed
 blocked_by: "AR-0 — a finding has no defined destination (ORG_STRUCTURE §3 names questions.md; no such file exists in any of the 99 units)"
 rotation: "Sweep N reviews one division on a published rotation — Platform, Applied AI, Product — plus any cross-cutting finding. A skipped rotation is reported as skipped, never absorbed (premortem #5)."
@@ -59,7 +58,8 @@ measures: [arch.finding_age_days_max, arch.findings_closed_by_decision_ratio, ar
 changes: [findings.escalation_state, open_decisions.queue]
 inputs_from: [architecture-review, decision-office]
 outputs_to: [decision-office, founder]
-close_time: fortnightly to re-report; 42 days (three sweeps) to force a binary
+close_time: fortnightly
+close_time_note: "fortnightly to re-report; 42 days (three sweeps) to force a binary"
 status: proposed
 rule: >
   Age escalates; severity does not. A Sev-1 and a Sev-3 raised the same day escalate the
@@ -85,7 +85,8 @@ measures: [arch.duplicated_invariants, arch.diverged_invariant_count]
 changes: [findings.log, ci.checks]
 inputs_from: [engineering, ai-orchestration, security, legal]
 outputs_to: [messaging-delivery, platform-api, agent-fleet, security, legal]
-close_time: fortnightly for the census itself (one invariant per sweep); per-commit for any invariant that earns a CI check
+close_time: fortnightly
+close_time_note: "fortnightly for the census itself (one invariant per sweep); per-commit for any invariant that earns a CI check"
 status: proposed
 seed_case: >
   AR-2. COMMITMENT_PATTERNS — the "never auto-send a binding purchase commitment"
@@ -136,7 +137,8 @@ measures: [arch.findings_argued_down_per_seam, arch.rebuttals_by_kind]
 changes: [readme.layer_stack, architecture-review.severity_ladder]
 inputs_from: [engineering, ai-orchestration, product-vision, red-team]
 outputs_to: [decision-office, founder]
-close_time: quarterly — on the calendar whether or not anything has gone wrong
+close_time: quarterly
+close_time_note: "on the calendar whether or not anything has gone wrong"
 status: proposed
 trigger: >
   Also fires early on: three findings against the same seam, all argued down on DESIGN

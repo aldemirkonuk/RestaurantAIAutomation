@@ -35,7 +35,7 @@ Four deliverables:
 2. **`correlation_id` propagated into `api_spend`.** The join key, shipped **before** the
    schema.
 3. **The OD-11 contract** — production columns, partial indexes per `subject_type`,
-   retention/rollup for the research log — **with fork F-3 decided inside the session**,
+   retention/rollup for the research log — **with fork INTEL-F3 decided inside the session**,
    and with [[data-charter]] named as co-owner.
 4. **Both stores, in the same change.** Narrow polymorphic production **and** wide
    append-only research ([[0006-neural-footprint-architecture]]).
@@ -49,7 +49,7 @@ Four deliverables:
 | **1** | Add `agent` to `SpendLogger.log()` + column | "cost per agent" becomes true for the Python side immediately |
 | **2** | Propagate `correlation_id` into `api_spend`; publish the first joined row | Two footprints become one footprint with a bad shape — recoverable rather than fatal ([[neural-footprint-instrumentation-premortem]] M1) |
 | **3** | Instrument **one** NestJS callsite end to end: `analytics/consultants.service.ts` | Hands [[security-charter]] SEC-3 its first-ever reading of `nf_a.unauthenticated_inference_spend` — today unmeasurable *because of us* |
-| **4** | OD-11 session with [[data-charter]]: columns, indexes, retention, **F-3**, both stores | The contract exists; private tables stop being the only option |
+| **4** | OD-11 session with [[data-charter]]: columns, indexes, retention, **INTEL-F3**, both stores | The contract exists; private tables stop being the only option |
 | **5** | Remaining six callsites, behind [[harness-model-routing-charter]]'s wrapper | Completeness stops being a per-file negotiation |
 | **6** | Reconciliation against the provider invoice, monthly | The only external check on a self-referential metric (premortem M5) |
 
@@ -76,13 +76,13 @@ what [[0006-neural-footprint-architecture]] §4.3 argued for.
 
 - **Two other departments are blocked on us.** SEC-3's primary metric
   (`nf_a.unauthenticated_inference_spend`) is a **hard dependency, not a nice-to-have**
-  (`intelligence.md:488`), and AB-2's operator signal has no home until F-3 is answered.
+  (`intelligence.md:488`), and AB-2's operator signal has no home until INTEL-F3 is answered.
   Our slippage is someone else's blindness.
 - **There is live unauthorized spend and nobody can size it.** OD-20
   (`OPEN-DECISIONS.md:24`) is open and urgent; the exposed callsite emits nothing.
 - **Every week OD-11 stays open adds a private table.** The alarm threshold is **2** and
   the count is **1**.
-- **The window on F-3 is closing.** A fourth `subject_type` is a line in an enum before
+- **The window on INTEL-F3 is closing.** A fourth `subject_type` is a line in an enum before
   launch and a migration plus backfill afterward.
 - **The research store is the founder's compensation made physical.** Declining the
   separate research company was paid for partly in this schema
@@ -95,7 +95,7 @@ what [[0006-neural-footprint-architecture]] §4.3 argued for.
 - [ ] Propagate `correlation_id` into `api_spend`; publish the first joined row
 - [ ] Draft the eight-field NF-A event contract; circulate to both siblings before the OD-11 session
 - [ ] Instrument `analytics/consultants.service.ts`; hand SEC-3 its first reading
-- [ ] Book the OD-11 session with [[data-charter]]; **F-3 is an agenda item, not a follow-up**
+- [ ] Book the OD-11 session with [[data-charter]]; **INTEL-F3 is an agenda item, not a follow-up**
 - [ ] Name both owners on OD-11 (contract vs. DDL) before any migration is written
 - [ ] Ship the research store in the same change as the production store, even if month one it duplicates
 - [ ] Stand up the private-telemetry-table scan; **1 today, 2 is the alarm**
@@ -105,7 +105,7 @@ what [[0006-neural-footprint-architecture]] §4.3 argued for.
 
 ## Questions for the founder
 
-1. **F-3 — is `operator` a fourth `subject_type`, or does operator signal live outside
+1. **INTEL-F3 — is `operator` a fourth `subject_type`, or does operator signal live outside
    NF?** The product already collects act / dismiss / snooze / done / pin via
    `recommendation_actions`. Either answer works; **not deciding** produces a migration.
 2. **What is the NF-C entry trigger in your words?**

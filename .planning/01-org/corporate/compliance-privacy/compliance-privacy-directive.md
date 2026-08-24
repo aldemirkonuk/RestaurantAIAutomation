@@ -67,8 +67,8 @@ decided until it is written in `.planning/decisions/`):
 | **NF-B erasability vs the append-only research store** | It trades a legal right against ML value across three departments. A privacy function that quietly picks the ML-cheapest option has failed; one that picks the ML-most-expensive option has overreached. Founder call, paired to OD-11. |
 | **Any widening of `consent_purpose`** | Ethics scope sits in this line, so we are not independent here ([[compliance-privacy-premortem]] M5). Founder decides; [[red-team-charter]] attacks the decision first. |
 | **What the recommender may condition on** | Inherited Ethics scope, same independence defect. We frame the question and the fairness failure mode; we do not adjudicate our own division's product. |
-| **OD-C2** — DPA/BAA instrument vs obligation split | Named open decision, cross-department with [[legal-charter]]. |
-| **OD-C4** — is Regulated Operations Corporate's? | Named open decision. |
+| **CORP-F2** — DPA/BAA instrument vs obligation split | Named open decision, cross-department with [[legal-charter]]. |
+| **CORP-F4** — is Regulated Operations Corporate's? | Named open decision. |
 | **Whether a signature may proceed over our refusal** | A veto over a revenue event belongs to the founder, not to the department holding it. What we own is making the gap explicit *before* the signature. |
 | **Schema columns on NF-A/NF-B** | Owned by [[neural-footprint-instrumentation-charter]] / OD-11. We are a requesting consumer. |
 | **Retention periods** that trade against product value | We state the obligation floor; the ceiling is a product decision. |

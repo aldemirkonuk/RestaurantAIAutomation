@@ -15,10 +15,8 @@ links:
   - "[[consumer-app-points-economy-charter]]"
   - "[[LOOP-MAP]]"
 loop_count: 4
-loop_count: 4
-loop_count: 4
 loop_ids: ["pad-counterparty-ledger", "pad-od07-decay", "pad-reachability-triage", "pad-guest-firewall"]
-loop_close_times: ["monthly", "monthly", "per-candidate", "per-artifact"]
+loop_close_times: ["monthly", "monthly", "per-event", "per-event"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -107,7 +105,8 @@ measures: [triage.partnership_vs_bridge_split]
 changes: [partnerships.outreach_ledger, pos_bridge.backlog]
 inputs_from: [pos-bridge]
 outputs_to: [pos-bridge]
-close_time: per-candidate
+close_time: per-event
+close_time_note: "per candidate"
 status: proposed
 ```
 
@@ -133,7 +132,8 @@ measures: [firewall.breach_count]
 changes: [guest_experience.scope_assumptions]
 inputs_from: [guest-experience]
 outputs_to: [guest-experience, partnerships-integrations]
-close_time: per-artifact
+close_time: per-event
+close_time_note: "per artifact"
 status: proposed
 ```
 

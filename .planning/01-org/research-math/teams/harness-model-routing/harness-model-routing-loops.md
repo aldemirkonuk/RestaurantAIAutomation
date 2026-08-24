@@ -8,10 +8,8 @@ metrics: [nf_a.harness_overhead_ms, nf_a.cost_per_completed_task, share_of_model
 updated: 2026-08-24
 links: ["[[harness-model-routing-charter]]", "[[harness-model-routing-directive]]", "[[harness-model-routing-schedule]]", "[[research-math-loops]]", "[[evaluation-doneability-loops]]", "[[neural-footprint-instrumentation-loops]]", "[[engineering-charter]]", "[[security-charter]]", "[[harness-model-routing-charter|aio-model-routing]]", "[[decision-office-charter]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["wrapper-adoption", "harness-overhead-bakeoff", "routing-policy-vs-verdict", "callsite-migration-order", "routing-seam-audit"]
-loop_close_times: ["weekly", "6 weeks to an ADR, then quarterly re-run", "monthly", "per-callsite, reviewed fortnightly", "monthly, terminating in a founder ruling"]
+loop_close_times: ["weekly", "quarterly", "monthly", "per-event", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -59,7 +57,8 @@ measures: [nf_a.harness_overhead_ms, nf_a.cost_per_completed_task]
 changes: [harness.choice, model.roster]
 inputs_from: [evaluation-doneability, ai-orchestration, engineering]
 outputs_to: [decision-office, engineering, ai-orchestration]
-close_time: "6 weeks to an ADR, then quarterly re-run"
+close_time: quarterly
+close_time_note: "6 weeks to first ADR, then quarterly re-run"
 status: proposed
 blocks: [OD-03, OD-04]
 precondition: "harness_overhead_ms has a published first reading — the session may not be scheduled before it"
@@ -108,7 +107,8 @@ measures: [callsites_emitting_cost_events, callsites_with_retry, unguarded_calls
 changes: [callsite.wrapper_adoption, callsite.retry_policy, callsite.budget_check]
 inputs_from: [security, neural-footprint-instrumentation]
 outputs_to: [engineering, security]
-close_time: per-callsite, reviewed fortnightly
+close_time: per-event
+close_time_note: "per callsite, reviewed fortnightly"
 status: proposed
 invariant: "unguarded_callsites_with_retry stays 0 until those callsites emit cost events"
 first_migration: "apps/api-gateway/src/analytics/consultants.service.ts — most exposed (OD-20, Opus, unguarded route), therefore first, not last"
@@ -131,7 +131,8 @@ measures: [duplicated_routing_policies, client_construction_modules]
 changes: [team.boundaries, wrapper.shared_ownership]
 inputs_from: [ai-orchestration]
 outputs_to: [decision-office]
-close_time: monthly, terminating in a founder ruling
+close_time: monthly
+close_time_note: "monthly, terminating in a founder ruling"
 status: proposed
 open: "aio-model-routing (technology.md:363-388) holds the same mandate and the same primary metric. The published boundary covers evaluation only (technology.md:845)."
 interim: "one wrapper both units use — shared code settles a boundary faster than a boundary document"

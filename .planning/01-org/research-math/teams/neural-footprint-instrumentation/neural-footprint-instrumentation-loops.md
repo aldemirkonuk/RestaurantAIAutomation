@@ -8,10 +8,8 @@ metrics: [nf_a.event_completeness, nf.private_telemetry_tables, nf_b.identifier_
 updated: 2026-08-24
 links: ["[[neural-footprint-instrumentation-charter]]", "[[neural-footprint-instrumentation-directive]]", "[[neural-footprint-instrumentation-schedule]]", "[[research-math-loops]]", "[[harness-model-routing-loops]]", "[[evaluation-doneability-loops]]", "[[data-charter]]", "[[security-charter]]", "[[analytics-bi-charter]]", "[[guest-experience-charter]]", "[[decision-office-charter]]"]
 loop_count: 7
-loop_count: 7
-loop_count: 7
 loop_ids: ["nf-a-event-completeness", "nf-join-key", "private-telemetry-containment", "nf-schema-contract-od11", "spend-reconciliation", "unauthenticated-inference-spend-feed", "nf-b-contract-and-nf-c-gate"]
-loop_close_times: ["weekly", "2 weeks, one-shot, then verified weekly", "weekly", "fortnightly until OD-11 closes", "monthly", "first reading within 4 weeks, then weekly", "monthly for NF-B; quarterly trigger check for NF-C"]
+loop_close_times: ["weekly", "weekly", "weekly", "fortnightly", "monthly", "weekly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -58,7 +56,8 @@ measures: [joinable_row_pairs, tables_carrying_correlation_id]
 changes: [api_spend.correlation_id, decision_log.linkage]
 inputs_from: [ai-orchestration, data]
 outputs_to: [evaluation-doneability, harness-model-routing, security]
-close_time: "2 weeks, one-shot, then verified weekly"
+close_time: weekly
+close_time_note: "2 weeks one-shot, then verified weekly"
 status: proposed
 rationale: "correlation_id already exists at base_agent.py:743-784. Two tables that can be joined are one footprint with a bad shape; two that cannot are two footprints."
 ```
@@ -96,12 +95,13 @@ measures: [contract_fields_agreed, both_owners_named, research_store_shipped]
 changes: [nf.production_columns, nf.partial_indexes, nf.retention_policy, nf.subject_type_vocabulary]
 inputs_from: [data, analytics-bi, security, guest-experience]
 outputs_to: [data, engineering, decision-office]
-close_time: "fortnightly until OD-11 closes"
+close_time: fortnightly
+close_time_note: "fortnightly until OD-11 closes"
 status: proposed
 blocks: [OD-11]
 contract: "RM-3 owns the schema contract; Data owns the physical table and migration (intelligence.md:486). OD-11 must name both owners or it is implemented twice."
 must_produce_two: "narrow polymorphic production store AND wide append-only research store — same change, even if month one they duplicate (0006-neural-footprint-architecture)"
-carries: "fork F-3 — decided IN this session, not after it"
+carries: "fork INTEL-F3 — decided IN this session, not after it"
 needs_from_founder: [retention_horizon, internal_state_required, f3_ruling]
 ```
 
@@ -140,7 +140,8 @@ measures: [nf_a.unauthenticated_inference_spend, callsites_recording_subject]
 changes: [nf.subject_attribution, callsite.instrumentation]
 inputs_from: [security]
 outputs_to: [security]
-close_time: "first reading within 4 weeks, then weekly"
+close_time: weekly
+close_time_note: "first reading within 4 weeks, then weekly"
 status: proposed
 dependency: "SEC-3's primary metric is unmeasurable until NestJS model calls emit cost events — hard dependency, not a nice-to-have (intelligence.md:488)"
 first_callsite: "apps/api-gateway/src/analytics/consultants.service.ts:28 — unguarded route (OD-20), Opus call"
@@ -159,7 +160,8 @@ measures: [nf_b.identifier_coverage, nf_b.erasure_requests_honoured, nf_c.trigge
 changes: [nf.subject_vocabulary, nf_b.event_contract]
 inputs_from: [guest-experience, compliance-and-privacy, data]
 outputs_to: [guest-experience, analytics-bi, compliance-and-privacy]
-close_time: "monthly for NF-B; quarterly trigger check for NF-C"
+close_time: monthly
+close_time_note: "monthly for NF-B; quarterly trigger check for NF-C"
 status: proposed
 nf_b_substrate: "20260819000000_guest_identity_minimal_slice.sql — guests (:40), guest_identifiers with peppered channel_hash (:122,:195,:369), guest_check_links (:206), erased_at (:112), guest_copresence_negatives (:532)"
 nf_c_trigger: "a funded study partner, or a consumer-grade biosignal device with an API — wording to be confirmed by the founder"

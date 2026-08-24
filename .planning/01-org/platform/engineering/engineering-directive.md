@@ -54,7 +54,7 @@ graph TD
 |---|---|---|
 | **Team** | Anything reversible and inside one team's boundary | Endpoint refactor, component rewrite, service extraction, adding a test |
 | **Department** | Anything crossing a seam between two Engineering teams; any change to a primary metric's *definition* | A global guard that affects public routes; a schema change that alters a projection |
-| **Founder / OPEN-DECISIONS** | Team-layer shape (OD-19, OD-20, OD-23); trading an asymmetric error against an aggregate; anything that makes an irreversible class routine | Merging two teams; permitting hand-applied DDL as a standing practice |
+| **Founder / OPEN-DECISIONS** | Team-layer shape (TECH-F1, TECH-F2, TECH-F5); trading an asymmetric error against an aggregate; anything that makes an irreversible class routine | Merging two teams; permitting hand-applied DDL as a standing practice |
 
 **Seam rule.** When a change crosses a seam, the team on the **left** of the seam table
 (`technology.md:857-865`) is accountable for the decision and the right-hand team is

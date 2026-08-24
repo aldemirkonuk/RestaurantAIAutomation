@@ -8,10 +8,8 @@ metrics: [platform.endpoints_protected_by_default_pct, platform.unguarded_reacha
 updated: 2026-08-24
 links: ["[[platform-api-charter]]", "[[platform-api-premortem]]", "[[platform-api-directive]]", "[[engineering-loops]]", "[[security-charter]]", "[[integration-engineering-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["pa-route-census", "pa-escape-hatch-erosion", "pa-tenant-isolation", "pa-cross-cutting-default-drift", "pa-find-versus-fix-seam"]
-loop_close_times: ["per-PR", "weekly", "weekly", "monthly", "fortnightly"]
+loop_close_times: ["per-pr", "weekly", "weekly", "monthly", "fortnightly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -32,7 +30,7 @@ measures: [platform.total_routes, platform.guarded_routes, platform.intentionall
 changes: [ci.route_census_job, platform.guard_rollout_order]
 inputs_from: [security, integration-engineering]
 outputs_to: [engineering, security, red-team, decision-office]
-close_time: per-PR
+close_time: per-pr
 status: proposed
 ```
 

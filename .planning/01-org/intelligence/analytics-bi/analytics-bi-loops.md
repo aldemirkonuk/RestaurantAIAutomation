@@ -7,10 +7,8 @@ metrics: [analytics.satisfiable_candidate_share, analytics.insight_acceptance_ra
 updated: 2026-08-24
 links: ["[[analytics-bi-charter]]", "[[analytics-bi-premortem]]", "[[analytics-bi-directive]]", "[[analytics-bi-schedule]]", "[[analytics-engine-loops]]", "[[insight-narrative-generation-loops]]", "[[metric-contract-truth-assurance-loops]]", "[[data-charter]]", "[[security-charter]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
 loop_count: 7
-loop_count: 7
-loop_count: 7
 loop_ids: ["analytics-candidate-reach", "analytics-insight-acceptance", "analytics-metric-contract-integrity", "analytics-ground-truth-agreement", "analytics-test-coverage-inversion", "analytics-consultant-enablement-expiry", "analytics-published-claim-provenance"]
-loop_close_times: ["weekly", "biweekly", "weekly", "monthly", "monthly", "weekly", "per-publication, audited monthly"]
+loop_close_times: ["weekly", "fortnightly", "weekly", "monthly", "monthly", "weekly", "per-event"]
 loop_statuses: ["proposed", "proposed", "proposed", "blocked", "proposed", "proposed", "proposed"]
 ---
 
@@ -64,7 +62,7 @@ measures: [analytics.insight_acceptance_rate, analytics.top_rank_ignore_rate]
 changes: [insight-generator.scoring, recommendations.rule_set, insight-catalog.comparators]
 inputs_from: [engineering, guest-experience]
 outputs_to: [product-and-vision, research-and-math, design]
-close_time: biweekly
+close_time: fortnightly
 baseline: "unmeasured — recommendation_impressions (denominator) and recommendation_actions (numerator) both exist; no query joins them"
 status: proposed
 ```
@@ -196,7 +194,8 @@ measures: [analytics.claims_without_provenance, analytics.overclaimed_verb_count
 changes: [external.deck_claims, web.marketing_copy, api.openapi_descriptions]
 inputs_from: [media-and-brand, strategy-and-fundraising, sales]
 outputs_to: [media-and-brand, strategy-and-fundraising, red-team]
-close_time: per-publication, audited monthly
+close_time: per-event
+close_time_note: "per publication, audited monthly"
 baseline: "unmeasured. Known live instance: 'Browse all 375 insight types' shipped in apps/web/src/components/command/commands.ts:99 and apps/web/src/pages/InsightCatalog.tsx:2 against a true count of 573"
 status: proposed
 ```
@@ -215,4 +214,4 @@ before publication, and the register records the weaker phrasing as canonical.
 | Endpoint classification & guards | [[security-charter]] + [[platform-api-charter]] | OD-20 — 39 unguarded analytics routes, including the consultant toggle and consult call |
 | L0 substrate arrival (POS `checks`, `tables`) | [[data-charter]] | Directly sets the ceiling on L1: 25.1% → 100% is a data outcome, not a math outcome |
 | SimPOS ground-truth ledger (§44.7) | [[engineering-charter]] | L4 reads 0% until it ships |
-| NF `subject_type` for operators (F-3) | [[decision-office-charter]] / OD-11 | L2's metric has no home in the footprint until this closes |
+| NF `subject_type` for operators (INTEL-F3) | [[decision-office-charter]] / OD-11 | L2's metric has no home in the footprint until this closes |

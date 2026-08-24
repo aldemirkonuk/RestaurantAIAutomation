@@ -8,10 +8,8 @@ metrics: [analytics.satisfiable_candidate_share, analytics.candidate_type_count,
 updated: 2026-08-24
 links: ["[[analytics-engine-charter]]", "[[analytics-engine-premortem]]", "[[analytics-engine-directive]]", "[[analytics-engine-schedule]]", "[[analytics-bi-loops]]", "[[data-charter]]", "[[insight-narrative-generation-loops]]", "[[metric-contract-truth-assurance-loops]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["engine-candidate-reach", "engine-requirement-integrity", "engine-false-discovery-estimate", "engine-pipeline-coverage", "engine-purity-guard"]
-loop_close_times: ["weekly", "on every PR touching insight-catalog.ts, audited monthly", "monthly", "monthly", "per PR (CI), verified weekly by the headless script"]
+loop_close_times: ["weekly", "per-pr", "monthly", "monthly", "per-pr"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -64,7 +62,8 @@ measures: [analytics.unclaimed_data_requirements, analytics.misdeclared_candidat
 changes: [insight-catalog.requires_arrays, insight-catalog.spec_cases]
 inputs_from: [metric-contract-truth-assurance]
 outputs_to: [metric-contract-truth-assurance, data]
-close_time: on every PR touching insight-catalog.ts, audited monthly
+close_time: per-pr
+close_time_note: "on every PR touching insight-catalog.ts, audited monthly"
 baseline: "1 unclaimed requirement — `goals` (insight-catalog.ts:38) is claimed by zero of 573 candidates, so 22 goal_pace types report satisfiable for restaurants with no goals"
 status: proposed
 ```
@@ -139,7 +138,8 @@ measures: [analytics.engine_foreign_imports, analytics.headless_count_script_sta
 changes: [ci.import_guard, engine.module_boundaries]
 inputs_from: [engineering, reliability]
 outputs_to: [metric-contract-truth-assurance]
-close_time: per PR (CI), verified weekly by the headless script
+close_time: per-pr
+close_time_note: "per PR (CI), verified weekly by the headless script"
 baseline: "clean today — engine/ imports only ./-relative siblings; the headless count script runs (573 computed by bare ts-node, 2026-08-24)"
 status: proposed
 ```

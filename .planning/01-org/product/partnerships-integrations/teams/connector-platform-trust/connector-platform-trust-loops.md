@@ -15,10 +15,8 @@ links:
   - "[[engineering-charter]]"
   - "[[LOOP-MAP]]"
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["cpt-ingress-classification", "cpt-credential-lifecycle", "cpt-consent-truth", "cpt-external-surface", "cpt-boundary-nonduplication"]
-loop_close_times: ["per-PR", "monthly", "per-scope-change", "quarterly", "bi-weekly"]
+loop_close_times: ["per-pr", "monthly", "per-event", "quarterly", "fortnightly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -43,7 +41,7 @@ measures: [pi.verified_ingress_ratio, routes.unclassified_count]
 changes: [connector.trust_contracts, ci.ingress_guard, endpoints.classification]
 inputs_from: [engineering, security, pos-bridge, supplier-distributor-network]
 outputs_to: [security, engineering, partnerships-integrations]
-close_time: per-PR
+close_time: per-pr
 status: proposed
 ```
 
@@ -108,7 +106,8 @@ measures: [consent.scope_drift_count, consent.surface_reachable]
 changes: [integrations_oauth.constants, web.authorize_route]
 inputs_from: [design, engineering, compliance-privacy]
 outputs_to: [compliance-privacy, design]
-close_time: per-scope-change
+close_time: per-event
+close_time_note: "per scope change"
 status: proposed
 ```
 
@@ -168,7 +167,7 @@ measures: [metrics.overlap_with_sec2, contracts.co_signed_ratio]
 changes: [connector_platform_trust.metric_set, partnerships.od23_position]
 inputs_from: [perimeter-ingress-integrity]
 outputs_to: [perimeter-ingress-integrity, decision-office]
-close_time: bi-weekly
+close_time: fortnightly
 status: proposed
 ```
 

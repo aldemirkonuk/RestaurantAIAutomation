@@ -320,12 +320,12 @@ rebuild from the source of truth, diff against reality, exit non-zero.
 - **The evaluation seam** — [[agent-evaluation-gates-charter]] (AI Orchestration,
   operations) vs [[evaluation-doneability-charter]] / [[research-math-charter]]
   (Research & Math, methodology). Numbered **OD-21** at `teams/technology.md:845`, which
-  **collides** with the real OD-21 (Obsidian structural workflow,
-  `OPEN-DECISIONS.md:25`, already locked). This function's position: the seam is a
+  **collided** with the real OD-21 (Obsidian structural workflow,
+  `OPEN-DECISIONS.md:25`, already locked); now **TECH-F3** ([[FORK-REGISTRY]]). This function's position: the seam is a
   **layer-ownership question about L4**, it is exactly the kind of overlap that resolves
   into duplication if left alone, and the instruction already on record is the right one —
   **if the line fails, merge; never duplicate.** We do not pick which side absorbs the
-  other. → [[decision-office-charter]] for the free ID, founder for the seam.
+  other. → [[decision-office-charter]] issued the ID (**TECH-F3**); founder for the seam.
 - **OD-26 — do structures only ratchet upward?** Raised by the Legal generator: 11 units
   carry split triggers, 3 carry merge triggers. This function carries a **merge trigger**
   ([[architecture-review-premortem]] #1) and believes the symmetric rule should be

@@ -44,7 +44,7 @@ therefore **do not build a POS**, and we do not let the product become Toast-loc
 | The Beli exploration (**not** the guest-app build) | OD-07 |
 | Supplier and distributor relationships, and the vendor portal as their surface | `apps/api-gateway/src/vendor-portal/`, `vendor-catalogue/`, `distributor-discovery/` |
 | Connector catalogue, OAuth/credential lifecycle, connection health, deprecation | `apps/api-gateway/src/integrations/` |
-| The **per-connector trust contract**: what data flows, under what auth, with what verification | this department, asserted — see OD-23 |
+| The **per-connector trust contract**: what data flows, under what auth, with what verification | this department, asserted — see PROD-F4 |
 
 ## Explicit non-goals
 
@@ -62,7 +62,7 @@ therefore **do not build a POS**, and we do not let the product become Toast-loc
    failure SEC-2's own premortem names: two teams each assuming the other set the secret.
 3. **We do not own vendor *discovery* software.** [[supply-discovery-charter]] (Product &
    Vision §1.3) ships the software that finds vendors; we sign and maintain them. This is
-   the division's highest-duplication boundary and is open as **OD-21**.
+   the division's highest-duplication boundary and is open as **PROD-F2**.
 4. **We do not build the guest consumer app.** [[consumer-app-points-economy-charter]]
    does. We own only the Beli *conversation* (OD-07). Both are gated on the same founder
    call and neither should move without it.
@@ -194,10 +194,10 @@ may conclude:
 - **OD-07 (Beli — build independently vs collaborate).** **Open. This charter does not
   decide it.** [[partner-alliance-development-charter]] owns the exploration that makes the
   call answerable; it does not own the answer.
-- **OD-23 (connector trust boundary).** This charter *asserts* that Partnerships owns the
+- **PROD-F4 (connector trust boundary).** This charter *asserts* that Partnerships owns the
   per-connector trust contract while Engineering owns runtime and Security owns the
   control. Asserted, not decided.
-- **OD-21 (Vendor Finder boundary)** and **CM-F3 (distributor connectivity)** both cut
+- **PROD-F2 (Vendor Finder boundary)** and **CM-F3 (distributor connectivity)** both cut
   through [[supplier-distributor-network-charter]]. Two open boundaries through one team is
   a finding, not a detail — see [[partnerships-integrations-premortem]] M4.
 

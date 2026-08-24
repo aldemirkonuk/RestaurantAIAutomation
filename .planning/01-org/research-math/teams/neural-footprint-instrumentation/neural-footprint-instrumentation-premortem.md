@@ -51,14 +51,14 @@ The schema went live with `agent` and `guest`. Then Analytics & BI asked the fir
 operator-behaviour question — *which recommendations do managers act on?* — and the answer
 was already being collected (`recommendation_actions`: act / dismiss / snooze / done /
 pin) with nowhere to put it. The restaurant manager is **neither an agent nor a guest**
-(fork F-3, `intelligence.md:519`). Adding a fourth `subject_type` after launch is a
+(fork INTEL-F3, `intelligence.md:519`). Adding a fourth `subject_type` after launch is a
 migration plus a backfill plus an index strategy; before launch it is a line in an enum.
 
 **Earliest observable signal.** The first analytics query that joins
 `recommendation_actions` to anything NF-shaped through a hand-written mapping. Earlier
-still: F-3 still open on the day the OD-11 session is scheduled.
+still: INTEL-F3 still open on the day the OD-11 session is scheduled.
 
-**Counter-pressure.** **F-3 is decided inside the OD-11 session, not after it** — an
+**Counter-pressure.** **INTEL-F3 is decided inside the OD-11 session, not after it** — an
 agenda item, not a follow-up. And the argument is already made in
 [[0006-neural-footprint-architecture]]: the `bio` slot was reserved for a subject that
 emits nothing today precisely so NF-C would need no migration later. The same reasoning

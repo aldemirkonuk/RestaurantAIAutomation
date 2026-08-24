@@ -8,10 +8,8 @@ metrics: [nf_a.task_success_rate, fleet.live_agent_ratio]
 updated: 2026-08-24
 links: ["[[agent-fleet-charter]]", "[[agent-fleet-premortem]]", "[[agent-fleet-directive]]", "[[agent-fleet-schedule]]", "[[ai-orchestration-loops]]", "[[harness-runtime-loops]]", "[[agent-evaluation-gates-charter]]", "[[reliability-sre-charter|reliability-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["loop-fleet-liveness", "loop-subscription-coverage", "loop-agent-doneability", "loop-prompt-verdict", "loop-guardian-canary"]
-loop_close_times: ["monthly", "per-commit (CI gate)", "weekly", "per-PR", "weekly"]
+loop_close_times: ["monthly", "per-pr", "weekly", "per-pr", "weekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -54,7 +52,8 @@ measures: [fleet.subscription_coverage, fleet.topics_without_publisher, fleet.to
 changes: [agent.subscriptions, publisher.wiring]
 inputs_from: [harness-runtime, engineering]
 outputs_to: [agent-fleet, engineering]
-close_time: per-commit (CI gate)
+close_time: per-pr
+close_time_note: "per commit (CI gate)"
 status: proposed
 blocked_by: nothing — static analysis, no NF-A required
 evidence: "core/orchestrator.py:198-206 — EmailIntelAgent subscribed to email.inbound.raw, which had zero publishers. 'Three defects, each of which alone would have made the pipeline dead, and the missing registration hid the other two.'"
@@ -89,14 +88,14 @@ measures: [prompt_changes_with_verdict_pct, nf_a.task_success_rate]
 changes: [agent.prompt, agent.few_shot_examples]
 inputs_from: [agent-evaluation-gates]
 outputs_to: [agent-fleet, agent-evaluation-gates]
-close_time: per-PR
+close_time: per-pr
 status: proposed
 blocked_by: "verdict definition — agent-evaluation-gates; gold sets exist only for extraction-shaped tasks"
 model: ".github/workflows/ci.yml:226-230 already does exactly this for merge policies — rebuild the labelled set, run the eval, exit non-zero on regression. Build in that shape rather than inventing one."
 premortem_link: "#3 — a year of individually-sensible prompt edits with no attributable quality signal, ending in a git bisect against a gold set built after the fact."
 ```
 
-## 5. Guardian canaries — the OD-24 test
+## 5. Guardian canaries — the TECH-F6 test
 
 ```yaml
 type: loop
@@ -110,9 +109,9 @@ inputs_from: [sre-state-integrity]
 outputs_to: [sre-state-integrity, reliability-sre]
 close_time: weekly
 status: proposed
-depends_on_decision: "OD-24 — technology.md:848. We own the code, SRE owns the findings."
+depends_on_decision: "TECH-F6 — technology.md:848. We own the code, SRE owns the findings."
 mechanism: "Inject a known violation on a cadence that must be caught. Without it, a detector whose recall has degraded is indistinguishable from a clean system — from BOTH sides of the seam."
-note: "Whether either team will own this canary is the concrete test of whether OD-24's split works. If neither will, the split has failed and guardians should go to one team end to end. That is a finding, not a scheduling problem."
+note: "Whether either team will own this canary is the concrete test of whether TECH-F6's split works. If neither will, the split has failed and guardians should go to one team end to end. That is a finding, not a scheduling problem."
 ```
 
 ---

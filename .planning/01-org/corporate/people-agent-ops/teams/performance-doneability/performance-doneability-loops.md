@@ -8,8 +8,6 @@ metrics: [nf_a.doneability_verdict_coverage, nf_a.cost_per_task, nf_a.cost_per_c
 updated: 2026-08-24
 links: ["[[performance-doneability-charter]]", "[[performance-doneability-premortem]]", "[[performance-doneability-directive]]", "[[people-agent-ops-loops]]", "[[roster-lifecycle-loops]]", "[[LOOP-MAP]]", "[[evaluation-doneability-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[research-math-charter]]", "[[ai-orchestration-charter]]", "[[agent-evaluation-gates-charter]]", "[[model-routing-inference-economics-charter]]", "[[inference-cost-charter]]", "[[decision-office-charter]]", "[[red-team-charter]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["pd-coverage-publication", "pd-cost-attribution-readiness", "pd-criteria-specification", "pd-fleet-performance-review", "pd-emission-floor-audit"]
 loop_close_times: ["weekly", "monthly", "monthly", "quarterly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
@@ -68,7 +66,7 @@ Tracks one binary and one number: *can spend name a worker yet* — today **no**
 of logged spend is agent-attributed*, today **0%**.
 
 **The reported value while blocked is `not derivable`, never an estimate**
-([[performance-doneability-directive]] rule 1). Monthly, because it moves only when OD-C5
+([[performance-doneability-directive]] rule 1). Monthly, because it moves only when CORP-F5
 moves. Counters premortem M4.
 
 ---
@@ -142,7 +140,7 @@ status: proposed
 Counts how many of the 26 modules call `log_decision()` (`core/base_agent.py:743`) at all,
 and how many emit nothing because they are not registered. **This number is obtainable
 today and nobody has looked** — it is the one real measurement available to this team
-before OD-C5 closes.
+before CORP-F5 closes.
 
 It is also where the two teams meet: an unregistered agent emits nothing, so
 `roster.unregistered_module_count` (**3** today) is a hard floor under

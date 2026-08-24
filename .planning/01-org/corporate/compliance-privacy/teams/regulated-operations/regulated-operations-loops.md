@@ -8,11 +8,9 @@ metrics: [regops.trigger_check_freshness, regops.jurisdiction_count, regops.dead
 updated: 2026-08-24
 links: ["[[regulated-operations-charter]]", "[[regulated-operations-schedule]]", "[[regulated-operations-directive]]", "[[compliance-privacy-loops]]", "[[compliance-privacy-schedule]]", "[[regulatory-posture-loops]]", "[[inventory-ledger-charter]]", "[[agent-fleet-charter]]", "[[decision-office-charter]]", "[[red-team-charter]]", "[[ORG_STRUCTURE]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["regops-entry-gate", "regulatory-deadline-cycle", "excise-reconciliation", "three-tier-constraint", "licence-jurisdiction-scope"]
-loop_close_times: ["quarterly (backstop) + per-instrument (primary)", "per statutory deadline — set by the jurisdiction, not by us", "per reporting period, reconciled before filing — never after", "per-draft (enforcement) · quarterly (pattern review)", "per new customer jurisdiction; swept quarterly"]
-loop_statuses: ["proposed", "dormant", "dormant", "running, unowned, unmeasured", "dormant"]
+loop_close_times: ["per-event", "per-event", "per-event", "per-event", "per-event"]
+loop_statuses: ["proposed", "dormant", "dormant", "proposed", "dormant"]
 ---
 
 # Regulated Operations — Loops
@@ -40,7 +38,8 @@ measures: [regops.trigger_check_freshness, regops.jurisdiction_count]
 changes: [regops.staffing_state, org.team_roster]
 inputs_from: [design-partner-operations, sales, regulatory-posture, commercial-workforce-agreements]
 outputs_to: [compliance-privacy, decision-office, red-team]
-close_time: quarterly (backstop) + per-instrument (primary)
+close_time: per-event
+close_time_note: "per instrument (primary) + quarterly (backstop)"
 status: proposed
 ```
 
@@ -71,7 +70,8 @@ measures: [regops.deadline_miss_count, regops.filing_evidence_completeness]
 changes: [regops.filing_calendar, regops.runbook]
 inputs_from: [inventory-ledger, regulatory-posture, legal]
 outputs_to: [legal, finance-pricing, founder]
-close_time: per statutory deadline — set by the jurisdiction, not by us
+close_time: per-event
+close_time_note: "per statutory deadline — set by the jurisdiction, not by us"
 status: dormant
 ```
 
@@ -99,7 +99,8 @@ measures: [regops.excise_reconciliation_variance]
 changes: [regops.excise_records, inventory.published_aggregate]
 inputs_from: [inventory-ledger]
 outputs_to: [regulated-operations, finance-pricing, legal]
-close_time: per reporting period, reconciled before filing — never after
+close_time: per-event
+close_time_note: "per reporting period, reconciled before filing — never after"
 status: dormant
 ```
 
@@ -127,8 +128,9 @@ measures: [regops.c19_trigger_count, regops.c19_fixture_pass_rate]
 changes: [constraint_engine.three_tier_patterns, ci.three_tier_fixture]
 inputs_from: [ai-orchestration, supplier-distributor-network]
 outputs_to: [regulated-operations, regulatory-posture]
-close_time: per-draft (enforcement) · quarterly (pattern review)
-status: running, unowned, unmeasured
+close_time: per-event
+close_time_note: "per draft (enforcement) · quarterly (pattern review) · the enforcement half (constraint_engine C-19) executes on production traffic today; the loop itself is unowned and unmeasured, so it is not running"
+status: proposed
 ```
 
 **This is the uncomfortable one.**
@@ -161,7 +163,8 @@ measures: [regops.jurisdiction_count, regops.unmapped_obligation_count]
 changes: [regops.licence_inventory, regops.filing_calendar]
 inputs_from: [sales, design-partner-operations, legal]
 outputs_to: [regulated-operations, regulatory-posture, product-vision]
-close_time: per new customer jurisdiction; swept quarterly
+close_time: per-event
+close_time_note: "per new customer jurisdiction; swept quarterly"
 status: dormant
 ```
 

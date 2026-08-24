@@ -102,6 +102,6 @@ Steps 2, 3, 5, 6, 8, 9 are unblocked today. Step 1 is the flagship and needs a p
    external-facing narrative, so the correction is theirs to make with our evidence.
 4. **Is this team's exemption from the 60-day rule ever acceptable?** We propose: never
    without a written founder decision ([[standards-verification-premortem]] M4).
-5. **OD-C6** — should this team sit under [[decision-office-charter]] as an advisory
+5. **CORP-F6** — should this team sit under [[decision-office-charter]] as an advisory
    function instead of inside the department it audits? We cannot answer this about
    ourselves; both arguments are in [[knowledge-documentation-charter]].

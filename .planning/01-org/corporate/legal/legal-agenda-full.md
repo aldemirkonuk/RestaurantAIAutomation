@@ -90,7 +90,7 @@ by somebody else, at diligence, when it is least fixable.
 - [ ] Name the clause-library sections and the fallback-ladder shape (positions blank) —
       [[commercial-workforce-agreements-charter]]
 - [ ] Record the merge condition in L-LEG-5 as a dated commitment, not a sentence
-- [ ] Stage **OD-C2** (DPA/BAA instrument-vs-obligation split) into `OPEN-DECISIONS.md` via
+- [ ] Stage **CORP-F2** (DPA/BAA instrument-vs-obligation split) into `OPEN-DECISIONS.md` via
       [[decision-office-charter]] — deliberately not written directly, four sibling
       division sessions are appending to that table concurrently (`corporate.md:486-490`)
 - [ ] Correct the stale brand in `apps/web/src/pages/Privacy.tsx:23` — **not ours**;
@@ -110,7 +110,7 @@ by somebody else, at diligence, when it is least fixable.
 3. **What is the actual first instrument?** This agenda argues for founder agreement + IP
    assignment ahead of anything else, on sequencing grounds. If the real first paper is a
    SAFE or a customer MSA, the whole ordering above changes.
-4. **OD-C2 — DPA/BAA ownership.** Legal owns the instrument, Compliance owns the
+4. **CORP-F2 — DPA/BAA ownership.** Legal owns the instrument, Compliance owns the
    obligations inside it (`corporate.md:495`). Two signatures, or one team holding both?
    Two signatures is slower and catches M4; one team is faster and cannot.
 5. **May an agent draft legal paper at all?** This vault answers: retrieval-shaped

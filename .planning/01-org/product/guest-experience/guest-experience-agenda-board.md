@@ -63,7 +63,7 @@ SORT department ASC
 
 - [ ] **OD-07** Beli — build independently vs collaborate · this sub-layer takes no position
 - [ ] **OD-11** NF column contract — ⚠️ must answer the `recommendation_actions` subject-type question *before* it closes
-- [ ] **OD-22** Monetization here or in Commercial
+- [ ] **PROD-F3** Monetization here or in Commercial
 - [ ] Advertising boundary vs `ServicesPermissions.tsx:41,249`
 - [ ] Is `nf_b.ops_conversion` = 0 for two quarters a scope-review trigger
 

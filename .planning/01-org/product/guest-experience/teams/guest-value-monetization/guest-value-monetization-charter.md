@@ -17,7 +17,7 @@ links: ["[[guest-value-monetization-premortem]]", "[[guest-value-monetization-ag
 > groundwork of any kind** — grepped this session across all three apps and every
 > migration.
 >
-> ⬦ **OD-22 is open** — does this team belong in Guest Experience or in Commercial?
+> ⬦ **PROD-F3 is open** — does this team belong in Guest Experience or in Commercial?
 > Reflected here as open, not pre-empted.
 >
 > **Pricing is founder-deferred. No pricing model is proposed anywhere in this
@@ -153,7 +153,7 @@ are quoted side by side. Escalated in [[guest-value-monetization-agenda-full]].
 the condition under which the k-threshold comes under pressure — and why the gate must
 be built before the first segment exists, not when the first card is empty.
 
-## OD-22 — reflected as open
+## PROD-F3 — reflected as open
 
 *Does guest monetization sit in Guest Experience, or in Commercial?* ([[product]] §5.2)
 
@@ -179,7 +179,7 @@ revenue.
    the founding threshold, the team is not ready — it is the pressure.
 2. NF-B events being emitted with completeness above a floor
    ([[taste-fingerprint-charter]]).
-3. **OD-22 resolved**, so the team knows which division it reports into before it
+3. **PROD-F3 resolved**, so the team knows which division it reports into before it
    builds an ad product.
 
 **Two acts are available now and should not wait for the trigger**, because both are

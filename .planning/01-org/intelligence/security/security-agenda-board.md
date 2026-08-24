@@ -88,7 +88,7 @@ number here is the failure described in [[security-premortem]] M2.
 
 - 🔴 **OD-20** — `fix/analytics-endpoint-auth` (`99da5eb`) is **unmerged**. Owner: founder. One file, +7 lines.
 - ⛔ **`nf_a.unauthenticated_inference_spend`** — blocked on RM-3 emitting cost events from NestJS callsites. Owner: [[neural-footprint-instrumentation-charter]]. Escalation loop: L-SEC-5, monthly.
-- ⬦ **F-4** — merged-vs-split team shape. Owner: founder. Recommendation on record in [[security-charter]].
+- ⬦ **INTEL-F4** — merged-vs-split team shape. Owner: founder. Recommendation on record in [[security-charter]].
 
 ## Severity queue — live, ordered
 

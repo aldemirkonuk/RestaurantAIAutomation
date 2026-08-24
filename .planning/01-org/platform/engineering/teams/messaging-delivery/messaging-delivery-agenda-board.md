@@ -62,6 +62,6 @@ GROUP BY type
 
 ## Open
 
-- [ ] OD-20 — team, or a function inside [[platform-api-charter]]?
+- [ ] TECH-F2 — team, or a function inside [[platform-api-charter]]?
 - [ ] At-least-once vs at-most-once, per notification class
 - [ ] Email "acknowledged" signal — tracking decision

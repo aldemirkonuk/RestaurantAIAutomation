@@ -129,7 +129,7 @@ any request into [[instruments-equity-charter]]. All five are triggered work.
 
 ## Questions for the founder
 
-Department-level questions — OD-23, OD-C3, the raise position, the upward rule — are in
+Department-level questions — OD-23, CORP-F3, the raise position, the upward rule — are in
 [[strategy-fundraising-agenda-full]]. Two are specific to the work:
 
 1. **Which is the headline: *cost drift caught* or *dollars recovered*?**

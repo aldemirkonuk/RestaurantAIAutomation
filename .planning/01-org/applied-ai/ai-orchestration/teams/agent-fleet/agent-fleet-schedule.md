@@ -20,7 +20,7 @@ links: ["[[agent-fleet-charter]]", "[[agent-fleet-loops]]", "[[agent-fleet-direc
 | Daily | Consume DLQ entries classified *agent defect* from [[harness-runtime-charter]] | agent defect queue | proposed |
 | Weekly | **Fleet doneability report — stubs listed separately** | `nf_a.task_success_rate` | proposed · needs NF-A |
 | Weekly | Idle scan — enabled agents with zero messages processed in 7 days | `agent.messages_processed_7d` | proposed |
-| Weekly | Guardian canary run — inject a known violation, confirm it is caught | `guardian.canary_catch_rate` | proposed · needs OD-24 |
+| Weekly | Guardian canary run — inject a known violation, confirm it is caught | `guardian.canary_catch_rate` | proposed · needs TECH-F6 |
 | Monthly | **Registration audit** — on disk vs `BaseAgent` vs registered vs enabled vs subscribed | `fleet.live_agent_ratio`, `fleet.orphan_modules` | proposed · **unblocked** |
 
 **Anti-sprawl ([[README]] §6):** a job producing no action for 3 consecutive runs is

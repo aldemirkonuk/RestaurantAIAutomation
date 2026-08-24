@@ -8,10 +8,8 @@ metrics: [analytics.insight_acceptance_rate, analytics.top_rank_ignore_rate, ana
 updated: 2026-08-24
 links: ["[[insight-narrative-generation-charter]]", "[[insight-narrative-generation-premortem]]", "[[insight-narrative-generation-directive]]", "[[insight-narrative-generation-schedule]]", "[[analytics-bi-loops]]", "[[analytics-engine-loops]]", "[[metric-contract-truth-assurance-loops]]", "[[guest-experience-charter]]", "[[security-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["narrative-insight-acceptance", "narrative-feedback-coverage", "narrative-served-distribution", "narrative-support-floor-integrity", "narrative-consultant-expiry"]
-loop_close_times: ["biweekly", "monthly", "biweekly, alongside N1", "per PR (CI), reviewed monthly", "weekly"]
+loop_close_times: ["fortnightly", "monthly", "fortnightly", "per-pr", "weekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -35,7 +33,7 @@ measures: [analytics.insight_acceptance_rate, analytics.top_rank_ignore_rate]
 changes: [insight-generator.ranking, recommendations.rule_set, insight-verbalizer.templates]
 inputs_from: [analytics-engine, engineering]
 outputs_to: [analytics-engine, product-and-vision, design, research-and-math]
-close_time: biweekly
+close_time: fortnightly
 baseline: "unmeasured. recommendation_impressions (per-render, with position and request_id) and recommendation_actions (per rule_key) both populated; no query joins them"
 status: proposed
 ```
@@ -90,7 +88,8 @@ measures: [analytics.served_rule_concentration, analytics.distinct_rules_acted, 
 changes: [insight-generator.ranking, recommendations.rule_set]
 inputs_from: [analytics-engine]
 outputs_to: [analytics-engine, red-team]
-close_time: biweekly, alongside N1
+close_time: fortnightly
+close_time_note: "fortnightly, alongside N1"
 baseline: "unmeasured. 8 rules exist; impressions carry 1-indexed position and a request_id grouping one getRecommendations() call, so the served list is exactly reconstructable"
 status: proposed
 ```
@@ -113,7 +112,8 @@ measures: [analytics.unnamed_threshold_count, analytics.insufficient_data_render
 changes: [insight-generator.thresholds, web.empty_state]
 inputs_from: [analytics-engine]
 outputs_to: [analytics-engine, design, metric-contract-truth-assurance]
-close_time: per PR (CI), reviewed monthly
+close_time: per-pr
+close_time_note: "per PR (CI), reviewed monthly"
 baseline: "5 unnamed threshold literals (insight-generator.service.ts :200, :550, :867, :1017, :1107) plus 4 magic constants in scoreOf (:192-203). Zero spec files cover any of them"
 status: proposed
 ```
@@ -153,6 +153,6 @@ the code's own default. The third measure —
 | Candidate reach | [[analytics-engine-loops]] | We can only narrate what is computable — 25.1% today |
 | False-discovery estimate | [[analytics-engine-loops]] | If the underlying findings are noise, ranking them better is worse, not better |
 | Endpoint guards (OD-20) | [[security-charter]] / [[platform-api-charter]] | N5 is not fully mitigable from inside this team until it closes |
-| NF `subject_type` for operators (F-3) | [[decision-office-charter]] / OD-11 | N1's signal has no home in the footprint |
+| NF `subject_type` for operators (INTEL-F3) | [[decision-office-charter]] / OD-11 | N1's signal has no home in the footprint |
 | Cost telemetry on NestJS model calls | [[neural-footprint-instrumentation-charter]] *(RM-3)* | Consultant spend is invisible today; the NestJS surface emits none (`intelligence.md:165-167`) |
 | Guest personalization | [[guest-experience-charter]] *(Product)* | We consume NF-B in aggregate; the guest-facing narrative is theirs |

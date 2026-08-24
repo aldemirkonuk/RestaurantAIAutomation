@@ -26,7 +26,7 @@ SORT default(team, "") ASC, type ASC
 ```
 
 Expected row count: **14** — 7 department + 7 team. One team, fourteen documents, one
-inherited artifact. That ratio is the live argument in **OD-C1 / OD-17**, and this table is
+inherited artifact. That ratio is the live argument in **CORP-F1 / OD-17**, and this table is
 where it is visible rather than asserted.
 
 ## Charters by evidence grade
@@ -129,7 +129,7 @@ Carried here rather than buried in the charter, because these are the first work
 ## Open forks
 
 - [ ] **OD-23** — *$20k MRR in 30 days* vs locked $20–50/mo. **Central open question, unresolved. Founder call** ([[OPEN-DECISIONS]]:27). Status reported monthly, by name, including when nothing changed
-- [ ] **OD-C3** — one team until a term sheet; confirm the trigger or split now (`corporate.md:496`)
-- [ ] **OD-C1 / OD-17** — 7 artifacts per team. See the first query on this page
+- [ ] **CORP-F3** — one team until a term sheet; confirm the trigger or split now (`corporate.md:496`)
+- [ ] **CORP-F1 / OD-17** — 7 artifacts per team. See the first query on this page
 - [ ] **OD-14** — root `SKILLS.md` still branded WineOps; a diligence-surface item
 - [ ] **375 vs 573 insight types** — not yet staged as an OD

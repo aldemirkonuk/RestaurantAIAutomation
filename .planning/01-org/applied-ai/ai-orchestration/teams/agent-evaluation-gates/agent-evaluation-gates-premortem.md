@@ -69,10 +69,11 @@ Once is a coordination miss. **Twice is the line failing.**
 **What would have prevented it.** A named escalation with a threshold, in
 [[agent-evaluation-gates-directive]]: on the second occurrence, escalate — and the
 escalation is *"merge this team into Research & Math"*, per `technology.md:406`,
-**never** *"build it in both places"*. Plus the prerequisite nobody can skip: the fork
-needs a **usable ID**. `technology.md:845` calls it OD-21, which
-`OPEN-DECISIONS.md:25` already spends on the Obsidian workflow. A fork that cannot be
-cited cannot be closed, and an uncloseable fork is how duplication becomes permanent.
+**never** *"build it in both places"*. The prerequisite nobody could skip — a **usable
+ID** — is now met. `technology.md:845` originally called it OD-21, which
+`OPEN-DECISIONS.md:25` already spends on the Obsidian workflow, so the Decision Office
+renamespaced it to **TECH-F3** ([[FORK-REGISTRY]]). A fork that cannot be cited cannot
+be closed, and an uncloseable fork is how duplication becomes permanent.
 → [[decision-office-charter]].
 
 ---

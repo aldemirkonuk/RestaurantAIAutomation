@@ -8,10 +8,8 @@ metrics: [integration.verified_signature_coverage, integration.webhook_silence_d
 updated: 2026-08-24
 links: ["[[integration-engineering-charter]]", "[[integration-engineering-premortem]]", "[[integration-engineering-directive]]", "[[engineering-loops]]", "[[platform-api-charter]]", "[[pos-operational-telemetry-ingest-charter|dat-pos-telemetry-ingest]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["ie-webhook-silence-watch", "ie-signature-coverage", "ie-placeholder-host-resolution", "ie-arrival-vs-fitness-triage", "ie-third-party-contract-drift"]
-loop_close_times: ["hourly", "weekly", "one-shot, then per-PR", "weekly", "daily"]
+loop_close_times: ["hourly", "weekly", "per-pr", "weekly", "daily"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -77,7 +75,8 @@ measures: [integration.placeholder_hosts_unresolved, integration.placeholder_hos
 changes: [source.callback_urls, ci.placeholder_host_gate]
 inputs_from: [security, sre-observability]
 outputs_to: [security, engineering, decision-office]
-close_time: one-shot, then per-PR
+close_time: per-pr
+close_time_note: "one-shot, then per PR"
 status: proposed
 ```
 

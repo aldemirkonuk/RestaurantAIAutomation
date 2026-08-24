@@ -106,6 +106,6 @@ metric names its measurement basis and no artifact implements it. Batching state
 between an in-memory buffer and a persist funnel, which is the premortem — see
 [[messaging-delivery-premortem]].
 
-**Open fork:** OD-20 asks whether this team is a team at all, or a function inside
+**Open fork:** TECH-F2 asks whether this team is a team at all, or a function inside
 [[platform-api-charter]] (`technology.md:844`). It is chartered here at team level; the
 fork is not closed.

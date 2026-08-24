@@ -851,15 +851,20 @@ logic as foundation §8:
 
 ## 6. Forks this document raises
 
-To be added to [`OPEN-DECISIONS.md`](../../decisions/OPEN-DECISIONS.md):
+To be added to [`OPEN-DECISIONS.md`](../../decisions/OPEN-DECISIONS.md).
+
+> **Renumbered 2026-08-24.** These were first minted as `OD-20`…`OD-24`, colliding with
+> the canonical register. The Decision Office reissued them in the `PROD-Fn` namespace —
+> see [FORK-REGISTRY](../../02-advisory/decision-office/FORK-REGISTRY.md). Old → new: OD-20→PROD-F1 ·
+> OD-21→PROD-F2 · OD-22→PROD-F3 · OD-23→PROD-F4 · OD-24→PROD-F5.
 
 | ID | Fork |
 |---|---|
-| OD-20 | **Product division team layer** — 17 teams as proposed, or the reduced set in §5.3? |
-| OD-21 | **Vendor Finder boundary** — does supply discovery sit in Product (§1.3) or merge into Partnerships (§4.3)? (§5.2) |
-| OD-22 | **Guest monetization ownership** — advertising + photo-as-promotion in Guest Experience (§2.4) or in Commercial? (§5.2) |
-| OD-23 | **Connector trust boundary** — does Partnerships own the per-connector trust contract while Engineering owns runtime, or is verification wholly Security's? (§4.4) |
-| OD-24 | **Design's commissioning authority** — can §3.1 commission the endpoints its deferred paths are blocked on, or only report blocked? (§3.1) |
+| PROD-F1 | **Product division team layer** — 17 teams as proposed, or the reduced set in §5.3? |
+| PROD-F2 | **Vendor Finder boundary** — does supply discovery sit in Product (§1.3) or merge into Partnerships (§4.3)? (§5.2) |
+| PROD-F3 | **Guest monetization ownership** — advertising + photo-as-promotion in Guest Experience (§2.4) or in Commercial? (§5.2) |
+| PROD-F4 | **Connector trust boundary** — does Partnerships own the per-connector trust contract while Engineering owns runtime, or is verification wholly Security's? (§4.4) |
+| PROD-F5 | **Design's commissioning authority** — can §3.1 commission the endpoints its deferred paths are blocked on, or only report blocked? (§3.1) |
 
 ---
 

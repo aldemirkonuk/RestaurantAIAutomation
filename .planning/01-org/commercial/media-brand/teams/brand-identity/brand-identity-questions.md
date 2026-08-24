@@ -5,7 +5,7 @@ department: media-brand
 team: brand-identity
 status: open
 updated: 2026-08-24
-open_questions: 0
+open_questions: 1
 links: ["[[brand-identity-charter]]", "[[brand-identity-agenda-full]]", "[[architecture-review-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
 
@@ -19,7 +19,7 @@ links: ["[[brand-identity-charter]]", "[[brand-identity-agenda-full]]", "[[archi
 
 | ID | From | Raised | Question or finding | Next action | Age-out |
 |---|---|---|---|---|---|
-| — | — | — | *(none yet)* | — | — |
+| DO-6 | decision-office | 2026-08-24 | The legacy `WineOps` name still ships at **OS level**, where no domain scan can see it: the installed mobile app name (`apps/mobile/app.json:3`), the Face ID system prompt (`apps/mobile/app/lock.tsx:31` and `app.json:20`), the Android notification channel (`apps/mobile/src/lib/push.ts:32`), the web push title (`apps/web/public/sw.js:67`), and the iCal `PRODID` transmitted into every subscribed calendar client (`apps/api-gateway/src/calendar/calendar.service.ts:1204`). Re-measured on this branch: **336 lines across 178 tracked files** under `apps packages services supabase scripts` (975 lines / 508 files repo-wide). Baseline of 351/193 was taken on `feat/beverage-catalogue-wine-identity`. | Tier-1 OS surfaces to zero, then a CI guard — a cleanup without a guard re-grows, which is why the count has only ever gone up. | 2026-10-05 |
 
 ## Answered
 

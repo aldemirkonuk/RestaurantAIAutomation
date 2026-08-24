@@ -7,10 +7,8 @@ metrics: [rt.finding_return_hours, rt.locked_decision_challenge_rate, rt.reaffir
 updated: 2026-08-24
 links: ["[[red-team-charter]]", "[[red-team-premortem]]", "[[red-team-directive]]", "[[red-team-schedule]]", "[[red-team-agenda-board]]", "[[decision-office-charter]]", "[[architecture-review-charter]]", "[[security-charter]]", "[[LOOP-MAP]]", "[[ORG_STRUCTURE]]"]
 loop_count: 6
-loop_count: 6
-loop_count: 6
 loop_ids: ["rt-new-lock-attack", "rt-finding-return", "rt-undeclared-decision-sweep", "rt-premortem-reality-check", "rt-self-audit", "rt-aged-finding-escalation"]
-loop_close_times: ["7d_from_lock", "72h", "monthly", "quarterly", "quarterly", "30d_hard"]
+loop_close_times: ["per-event", "per-event", "monthly", "quarterly", "quarterly", "per-event"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -43,7 +41,8 @@ measures: [rt.locked_decision_challenge_rate, rt.reaffirmation_rate]
 changes: [decisions.review_trail, decisions.status, red_team.attack_queue]
 inputs_from: [decision-office, platform, applied-ai, intelligence, product, commercial, corporate]
 outputs_to: [decision-office, red-team]
-close_time: 7d_from_lock
+close_time: per-event
+close_time_note: "7 days from each new lock — the cheap window"
 status: proposed
 ```
 
@@ -72,7 +71,8 @@ measures: [rt.finding_return_hours, rt.finding_actionability]
 changes: [unit.questions_md, red_team.finding_register]
 inputs_from: [red-team]
 outputs_to: [platform, applied-ai, intelligence, product, commercial, corporate, architecture-review, decision-office]
-close_time: 72h
+close_time: per-event
+close_time_note: "72h from finding to the decision owner"
 status: proposed
 ```
 
@@ -212,7 +212,8 @@ measures: [rt.open_finding_age_days]
 changes: [decisions.open_register, red_team.finding_register]
 inputs_from: [red-team, platform, applied-ai, intelligence, product, commercial, corporate]
 outputs_to: [decision-office, founder]
-close_time: 30d_hard
+close_time: per-event
+close_time_note: "30 days hard: a finding open at 30 days converts to an OPEN-DECISIONS row"
 status: proposed
 ```
 

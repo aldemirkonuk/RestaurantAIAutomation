@@ -52,7 +52,7 @@ do we have?" as a question with four answers and one honest one.
 | **Guardian-agent findings and alert thresholds** | `[[state-integrity-invariants-charter|sre-state-integrity]]` | **Co-ownership, stated deliberately** — see below |
 | That a message arrived exactly once | `[[messaging-delivery-charter|eng-messaging-delivery]]` | Draft vs. deliver (`technology.md:861`) |
 
-### Guardian-agent co-ownership — OD-24, open
+### Guardian-agent co-ownership — TECH-F6, open
 
 `state_invariant_enforcer.py`, `drift_agent.py`, `inequality_detector.py`, and the
 `ghost_inventory_agent` / `shrinkage_detective_agent` stubs are **guardian** agents.
@@ -61,7 +61,7 @@ alert thresholds (`technology.md:356-359`). That is a real seam, not a formality
 guardian whose findings nobody reads is `[[state-integrity-invariants-charter|sre-state-integrity]]`'s premortem
 (`technology.md:829-832`), and a guardian that does not detect is ours.
 
-`technology.md:848` opens **OD-24** on whether this split is workable or whether one
+`technology.md:848` opens **TECH-F6** on whether this split is workable or whether one
 team should own guardians end to end. This charter carries it forward as open.
 
 ## Metrics it moves

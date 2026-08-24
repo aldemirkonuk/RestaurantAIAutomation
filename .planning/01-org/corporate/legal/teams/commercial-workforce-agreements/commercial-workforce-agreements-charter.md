@@ -89,7 +89,7 @@ live relevance is not theoretical: erasure is graded **untested end-to-end**
 (`corporate.md:31`) — so the first firing of this gate will fail, which is the correct
 outcome and the reason to wire it before a DPA arrives rather than after.
 
-Staged as **OD-C2** (`corporate.md:495`): confirm the two-signature split, or give one team
+Staged as **CORP-F2** (`corporate.md:495`): confirm the two-signature split, or give one team
 both halves.
 
 ## Metrics it moves

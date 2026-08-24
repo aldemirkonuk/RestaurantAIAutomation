@@ -8,10 +8,8 @@ metrics: [floor.providers_emitting_table_and_server, floor.providers_emitting_ki
 updated: 2026-08-24
 links: ["[[service-floor-charter]]", "[[service-floor-directive]]", "[[service-floor-premortem]]", "[[service-floor-schedule]]", "[[product-vision-loops]]", "[[pos-bridge-charter]]", "[[partner-alliance-development-charter]]", "[[design-charter]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["floor-input-availability", "floor-routing-correctness", "floor-latency-segments", "floor-engagement-integrity", "floor-blocker-commissioning"]
-loop_close_times: ["monthly", "per-service", "per-service", "monthly", "monthly"]
+loop_close_times: ["monthly", "per-event", "per-event", "monthly", "monthly"]
 loop_statuses: ["proposed", "blocked", "blocked", "blocked", "proposed"]
 ---
 
@@ -61,7 +59,8 @@ measures: [floor.misroute_rate, floor.ambiguous_routing_fallback_rate, floor.ale
 changes: [routing.join_freshness_rule, routing.ambiguity_fallback, routing.device_staleness_rule]
 inputs_from: [pos-bridge, engineering]
 outputs_to: [engineering, design]
-close_time: per-service
+close_time: per-event
+close_time_note: "per service (a floor service, not a software service)"
 status: blocked
 blocked_on: "table_id and server_name are 0 of 47 rows; no table→server join is populated"
 unblocked_by: "one non-simulator provider emitting table_id + server_name (Stage 1 trigger)"
@@ -87,7 +86,8 @@ measures: [floor.kitchen_ready_to_waiter_p95_seconds, floor.seg_pos_to_ingest_ms
 changes: [routing.transport_choice, floor.latency_budget]
 inputs_from: [engineering, reliability-sre]
 outputs_to: [engineering, design, product-vision]
-close_time: per-service
+close_time: per-event
+close_time_note: "per service (a floor service, not a software service)"
 status: blocked
 blocked_on: "no kitchen-ready event exists to start the clock"
 unblocked_by: "kitchen-ready modelled in CanonicalCheck and emitted by a non-simulator provider (Stage 2 trigger)"

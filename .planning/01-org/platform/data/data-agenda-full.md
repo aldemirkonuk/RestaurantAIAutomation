@@ -97,5 +97,5 @@ Ordered. Nothing here is scheduled; these are the first moves the department wou
    advisory? If advisory, the charter says it should be merged.
 5. **Annotation is your time.** The gold set is the one asset no agent can produce
    ([[annotation-ground-truth-premortem]] M1). How many hours per month is real?
-6. **OD-23** — 7 artifacts per team, or 3? This department alone is 35 documents under the
+6. **TECH-F5** — 7 artifacts per team, or 3? This department alone is 35 documents under the
    current answer.

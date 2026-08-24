@@ -624,6 +624,9 @@ Numbered `CM-Fn` to avoid colliding with parallel division sessions; the Decisio
 should assign OD IDs when these land in
 [OPEN-DECISIONS.md](../../decisions/OPEN-DECISIONS.md).
 
+> **Kept as-is 2026-08-24.** `CM-Fn` was the only division namespace that never collided;
+> the Decision Office adopted its shape org-wide. See [FORK-REGISTRY](../../02-advisory/decision-office/FORK-REGISTRY.md).
+
 | ID | Fork | The argument on both sides |
 |---|---|---|
 | **CM-F1** | Growth at 5 teams, or 4 — merge Content Production and Editorial Gate? | **For 5:** the gate is the only mandatory human step, and a gate inside the team it gates is not a gate. **For 4:** one founder is currently both writer and editor, so the split is organizational fiction until there is a second person. |

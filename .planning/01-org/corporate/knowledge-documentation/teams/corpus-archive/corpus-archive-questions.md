@@ -5,7 +5,7 @@ department: knowledge-documentation
 team: corpus-archive
 status: open
 updated: 2026-08-24
-open_questions: 0
+open_questions: 1
 links: ["[[corpus-archive-charter]]", "[[corpus-archive-agenda-full]]", "[[architecture-review-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
 
@@ -19,7 +19,7 @@ links: ["[[corpus-archive-charter]]", "[[corpus-archive-agenda-full]]", "[[archi
 
 | ID | From | Raised | Question or finding | Next action | Age-out |
 |---|---|---|---|---|---|
-| — | — | — | *(none yet)* | — | — |
+| DO-5 | decision-office | 2026-08-24 | `md/DOCUMENTATION_INDEX.md:14` claims `04-updates-builds` holds **6 files**; the directory holds **48** (counted 2026-08-24). The index was last modified 2026-01-29, still carries the legacy *WineOps AI* title, and is still quoted as current — an index that is wrong about the tree it indexes is worse than no index. Raised as V-4 by [[standards-verification-charter]]. | Regenerate the index from the tree, or retire it and name the replacement (retire-to-write, CLAUDE.md §4). | 2026-10-05 |
 
 ## Answered
 

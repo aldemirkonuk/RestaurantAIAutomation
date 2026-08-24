@@ -54,7 +54,7 @@ Owned outright:
   control with a citation or a gap with an owner.
 - **DPA and BAA *content*** — what the Annex of technical and organisational
   measures may claim. [[commercial-workforce-agreements-charter]] drafts the
-  instrument; we say what it is allowed to say (OD-C2, [[corporate]] §7).
+  instrument; we say what it is allowed to say (CORP-F2, [[corporate]] §7).
 - **The subprocessor register** — which third parties receive personal data, under
   what instrument, in what jurisdiction.
 - **Privacy-notice accuracy** — the claims in `apps/web/src/pages/Privacy.tsx` are
@@ -73,7 +73,7 @@ Owned outright:
 | Not ours | Whose | The line |
 |---|---|---|
 | **Building the control** — migrations, guards, tests, the erasure path | [[privacy-engineering-charter]] | We say which duty a control discharges and refuse to claim one that does not exist. We do not write it. |
-| **Drafting the instrument** — the DPA, BAA, MSA as executable documents | [[commercial-workforce-agreements-charter]] (Legal) | Legal drafts; we supply and constrain the Annex. **OD-C2 open**: confirm the split or collapse it. |
+| **Drafting the instrument** — the DPA, BAA, MSA as executable documents | [[commercial-workforce-agreements-charter]] (Legal) | Legal drafts; we supply and constrain the Annex. **CORP-F2 open**: confirm the split or collapse it. |
 | **Equity and corporate instruments** | [[instruments-equity-charter]] | Different counterparty, different reversibility. |
 | **Access control, authn, authz, RLS, secrets** | [[security-charter]] | Security's controls appear *in* our register as cited evidence; we do not own or grade them. |
 | **Alcohol licensing, excise, operational deadlines** | [[regulated-operations-charter]] ⏸ gated | GDPR and excise tax share a word and nothing else. Folding them together would make this mandate incoherent — that is why the third team exists. |

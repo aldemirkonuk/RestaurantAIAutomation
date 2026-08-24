@@ -50,11 +50,11 @@ occurrence is a coordination miss. Two is the line failing, and the escalation i
 *"merge"*, never *"build it in both places"*
 ([[agent-evaluation-gates-directive]] §Escalation).
 
-> ⚠️ **ID collision, flagged not resolved.** `technology.md:845` numbers this fork
-> **OD-21**. `.planning/decisions/OPEN-DECISIONS.md:25` already uses **OD-21** for the
-> Obsidian structural workflow, which is locked ([[OBSIDIAN_VAULT]]). The evaluation
-> seam needs a free ID before it can enter the decision log at all — a fork that
-> cannot be cited cannot be closed. → [[decision-office-charter]].
+> ✅ **ID resolved — this fork is `TECH-F3`.** `technology.md:845` originally numbered
+> it **OD-21**; `.planning/decisions/OPEN-DECISIONS.md:25` already uses **OD-21** for
+> the Obsidian structural workflow, which is locked ([[OBSIDIAN_VAULT]]). The Decision
+> Office renamespaced the evaluation seam to **TECH-F3** ([[FORK-REGISTRY]]) — it is
+> now citable, and therefore closeable. → [[decision-office-charter]].
 
 ## Boundaries
 

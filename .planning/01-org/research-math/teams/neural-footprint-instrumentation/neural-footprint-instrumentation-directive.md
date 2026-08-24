@@ -36,7 +36,7 @@ still describe why a decision was made, and can it be joined to everything else?
 ```mermaid
 graph TD
   A[A new signal wants to be recorded] --> B{Is the subject one of the declared subject_types?}
-  B -->|no| C[Escalate — fork F-3 class. Do NOT invent a fourth value locally]
+  B -->|no| C[Escalate — fork INTEL-F3 class. Do NOT invent a fourth value locally]
   B -->|yes| D{Does the event carry all eight NF-A fields?}
   D -->|no| E{Which are missing?}
   E -->|internal_state| F[Block. Escalate to founder — this changes the definition, not the schema]
@@ -78,12 +78,12 @@ graph TD
 | Emission points and wrapper hooks | [[harness-model-routing-charter]] | They emit into our contract at the call boundary |
 | Verdict field semantics | [[evaluation-doneability-charter]] | They define what a verdict means; we carry it |
 | Subject attribution for unauthenticated calls | [[security-charter]] SEC-3 | We record "no authenticated subject" as a value, not as a null |
-| Operator signal (`recommendation_actions`) | [[analytics-bi-charter]] AB-2 | Fork F-3 — decided in the OD-11 session |
+| Operator signal (`recommendation_actions`) | [[analytics-bi-charter]] AB-2 | Fork INTEL-F3 — decided in the OD-11 session |
 
 **Cannot decide — escalates to the founder:**
 
 - **OD-11** — production columns, index strategy, retention/rollup.
-- **F-3** — `operator` as a fourth `subject_type`, or routed outside NF.
+- **INTEL-F3** — `operator` as a fourth `subject_type`, or routed outside NF.
 - **Making `internal_state` optional.** This changes the meaning of "neural footprint"
   ([[0006-neural-footprint-architecture]]), so it is not a schema decision.
 - **Retention horizon on the research log.** Append-only forever is a storage cost and a
@@ -100,7 +100,7 @@ Same day:
 3. **An OD-11 output contains a production column list and no research-log shape.**
 4. **The provider invoice diverges from the summed NF events for a period.**
 5. **An analytics query joins `recommendation_actions` to NF through a hand-written
-   mapping** — F-3 answering itself badly.
+   mapping** — INTEL-F3 answering itself badly.
 6. **A `subject_type` value is added anywhere but in the contract.**
 
 ## The standard this team holds

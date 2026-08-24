@@ -53,7 +53,7 @@ saving, and a quality measurement of an action nobody approved is not a defence.
 | What "passes" means, operationally | [[agent-evaluation-gates-charter]] | Methodology belongs to [[research-math-charter|research-and-math-charter]] |
 | What a doneability verdict *means*; NF-A definitions | [[research-math-charter|research-and-math-charter]] *(Intelligence)* | Not ours. Consumed, not authored |
 | Whether an action may execute without a human tap | **Nobody in this department.** | The answer is no. It is not a tunable |
-| Guardian-agent alert thresholds and findings | `[[state-integrity-invariants-charter|sre-state-integrity]]` | We own the code, they own the findings — OD-24 |
+| Guardian-agent alert thresholds and findings | `[[state-integrity-invariants-charter|sre-state-integrity]]` | We own the code, they own the findings — TECH-F6 |
 
 **One decision right this department explicitly does not have.** The
 `ask → propose → confirm → execute` guarantee (`.planning/FUTURES.md` §8.1) is not a

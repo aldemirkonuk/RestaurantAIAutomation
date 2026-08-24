@@ -426,7 +426,7 @@ this team's actual job.
 recommendation is **neither an agent nor a guest**. `foundation §4.4` defines
 `subject_type` as `agent | guest | bio`, so the single strongest human-preference
 signal the product already collects **has no home in the neural footprint**. Raised
-as a fork in §6 (F-3).
+as a fork in §6 (INTEL-F3).
 
 **Premortem.** The consultant layer is switched on by default "because it demos
 well", its claims stop being checked against the evidence pack, and one confidently
@@ -512,10 +512,14 @@ following the pattern `foundation §4.3` used for NF-C.
 
 To be added to [`OPEN-DECISIONS.md`](../../decisions/OPEN-DECISIONS.md).
 
+> **Renamespaced 2026-08-24.** First minted as bare `F-1`…`F-5` (ambiguous against
+> Commercial's `CM-Fn`); reissued as `INTEL-Fn` — see [FORK-REGISTRY](../../02-advisory/decision-office/FORK-REGISTRY.md).
+> `INTEL-F6`/`INTEL-F7` were minted later by Analytics & BI and are recorded there too.
+
 | ID | Fork | Why it matters |
 |---|---|---|
-| **F-1** | **OD-19's denominator is wrong.** README:36 and OD-19 say "~86" non-webhook unguarded endpoints; summing `ENDPOINTS.md`'s own per-module counts gives **103** (webhook-labelled: 34, not ≈51). Correct OD-19, or explain the 17. | A classification task cannot report completion against a wrong denominator. |
-| **F-2** | **`vendor-portal` is misclassified** as a webhook module needing signature verification (`ENDPOINTS.md:656`); it is two public `GET`-by-slug content routes (`vendor-portal.controller.ts:16-43`). Does OD-19 classify **per route** rather than per module? | The per-module labels prescribed the wrong control once already. |
-| **F-3** | **NF has no `subject_type` for the restaurant operator.** `foundation §4.4` allows `agent \| guest \| bio`, but the strongest human-preference signal already collected — recommendation act/dismiss/snooze — is neither. Add `operator`, or route it outside NF? | Blocks AB-2's primary metric from having a home; interacts directly with OD-11. |
-| **F-4** | **Do SEC-1 and SEC-2 start merged?** This document recommends one team with two charters until the endpoint campaign ships. Founder call. | Determines whether the org's largest live security campaign has one owner or a handoff. |
-| **F-5** | **Are the seven raw-HTTP NestJS callsites in scope for OD-03?** They are the majority of production model traffic, and OD-03 is currently framed around the Python harness. If they are out of scope, the harness decision governs a minority of calls. | Decides whether OD-03 is a real decision or a partial one. |
+| **INTEL-F1** | **OD-19's denominator is wrong.** README:36 and OD-19 say "~86" non-webhook unguarded endpoints; summing `ENDPOINTS.md`'s own per-module counts gives **103** (webhook-labelled: 34, not ≈51). Correct OD-19, or explain the 17. | A classification task cannot report completion against a wrong denominator. |
+| **INTEL-F2** | **`vendor-portal` is misclassified** as a webhook module needing signature verification (`ENDPOINTS.md:656`); it is two public `GET`-by-slug content routes (`vendor-portal.controller.ts:16-43`). Does OD-19 classify **per route** rather than per module? | The per-module labels prescribed the wrong control once already. |
+| **INTEL-F3** | **NF has no `subject_type` for the restaurant operator.** `foundation §4.4` allows `agent \| guest \| bio`, but the strongest human-preference signal already collected — recommendation act/dismiss/snooze — is neither. Add `operator`, or route it outside NF? | Blocks AB-2's primary metric from having a home; interacts directly with OD-11. |
+| **INTEL-F4** | **Do SEC-1 and SEC-2 start merged?** This document recommends one team with two charters until the endpoint campaign ships. Founder call. | Determines whether the org's largest live security campaign has one owner or a handoff. |
+| **INTEL-F5** | **Are the seven raw-HTTP NestJS callsites in scope for OD-03?** They are the majority of production model traffic, and OD-03 is currently framed around the Python harness. If they are out of scope, the harness decision governs a minority of calls. | Decides whether OD-03 is a real decision or a partial one. |

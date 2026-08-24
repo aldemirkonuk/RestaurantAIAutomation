@@ -113,7 +113,7 @@ shape foundation §2.3 prescribes. Steps 6–7 produce decidability, not decisio
 2. **CM-F3 (distributor connectivity).** The charter proposes *signed intent to send data*
    as the seam: Sales before it, us after it. Ratify, overrule, or assign both halves to one
    unit? If one unit, we would rather lose the team than run a shared metric.
-3. **OD-23 (connector trust boundary).** The charter asserts Partnerships owns the contract,
+3. **PROD-F4 (connector trust boundary).** The charter asserts Partnerships owns the contract,
    Engineering the runtime, Security the control. Asserted, not decided — is it right?
 4. **The no-new-adapters-until-one-merchant rule.** It is deliberately restrictive and it is
    the main defence against M1. Endorse it, or is there a reason to keep building the ladder?

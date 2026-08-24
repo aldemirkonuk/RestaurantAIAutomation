@@ -7,10 +7,8 @@ metrics: [nf_a.retries, nf_a.dlq_depth, nf_a.task_success_rate, nf_a.cost_per_ta
 updated: 2026-08-24
 links: ["[[ai-orchestration-charter]]", "[[ai-orchestration-directive]]", "[[ai-orchestration-schedule]]", "[[harness-runtime-loops]]", "[[agent-fleet-loops]]", "[[model-routing-inference-economics-loops]]", "[[agent-evaluation-gates-loops]]", "[[action-safety-the-human-gate-loops]]", "[[research-math-charter|research-and-math-charter]]", "[[reliability-sre-charter|reliability-charter]]", "[[skills-charter]]", "[[LOOP-MAP]]"]
 loop_count: 7
-loop_count: 7
-loop_count: 7
 loop_ids: ["loop-eval-gate-ci", "loop-harness-health", "loop-fleet-doneability", "loop-routing-economics", "loop-eval-coverage", "loop-human-gate-integrity", "loop-od03-harness-fork"]
-loop_close_times: ["per-commit", "daily", "weekly", "weekly", "weekly", "daily for unconfirmed-mutation count, monthly for the behavioural signals", "one-shot — a dated bake-off, not a cadence"]
+loop_close_times: ["per-pr", "daily", "weekly", "weekly", "weekly", "daily", "one-shot"]
 loop_statuses: ["active", "proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -37,7 +35,8 @@ measures: [identity.false_merge_count]
 changes: [merge_policy, ci.gate_result]
 inputs_from: [engineering, data]
 outputs_to: [engineering, research-and-math]
-close_time: per-commit
+close_time: per-pr
+close_time_note: "per commit (CI)"
 status: active
 evidence: ".github/workflows/ci.yml:226-230 rebuilds the labelled set then runs scripts/eval_merge_policies.py; exits 1 iff the proposed policy has any false merge (eval_merge_policies.py:9-16). schema-parity.yml:149 runs the guest variant."
 note: "This is the template every other loop here should be built in the shape of — measurement, a hard verdict, and a close-time short enough to change behaviour."
@@ -125,7 +124,8 @@ measures: [safety.unconfirmed_mutation_count, safety.median_time_to_confirm, saf
 changes: [action.autonomy_tier, action.allowlist, action.friction_floor]
 inputs_from: [product-and-vision, compliance-and-privacy]
 outputs_to: [ai-orchestration, compliance-and-privacy, red-team]
-close_time: daily for unconfirmed-mutation count, monthly for the behavioural signals
+close_time: daily
+close_time_note: "daily for unconfirmed-mutation count, monthly for the behavioural signals"
 status: proposed
 evidence: "one-tap-actions.service.ts:230 executeAction, :245-246 executed_at/executed_by, :267 action_executed event — the timestamps needed for time-to-confirm already exist."
 rule: "safety.unconfirmed_mutation_count is a reportable incident at any non-zero value, not a trend line. The two behavioural measures are trend lines and are the actual subject of this loop: a gate with a 100% confirmation rate and a two-second median is architecturally present and behaviourally absent (premortem #3)."
@@ -142,7 +142,8 @@ measures: [days_open, core_lines_added_since_fork_opened]
 changes: [harness.base_choice]
 inputs_from: [research-and-math, decision-office]
 outputs_to: [decision-office, engineering, reliability-sre]
-close_time: one-shot — a dated bake-off, not a cadence
+close_time: one-shot
+close_time_note: "a dated bake-off, not a cadence"
 status: proposed
 note: "A decision is not a feedback loop, and this entry is deliberately the odd one out. It is here because the thing being measured is the DECISION'S AGE, and because premortem #1 is a fork that stayed open by ordinary gravity rather than by anyone's choice. core_lines_added_since_fork_opened is the sunk-cost meter: it is the size of the write-off if the fork resolves away from in-house."
 ```
@@ -155,7 +156,7 @@ note: "A decision is not a feedback loop, and this entry is deliberately the odd
 |---|---|---|
 | NF-A → harness/skill improvement ([[README]] §7) | [[research-math-charter|research-and-math-charter]] | The NF-A events themselves. We are the largest producer; they own the methodology |
 | Skill firing / staleness | [[skills-charter]] | `skill_id` on the NF-A event — the cheapest firing signal available |
-| Guardian findings → alerts | `[[state-integrity-invariants-charter|sre-state-integrity]]` | The code of `state_invariant_enforcer`, `drift_agent`, `inequality_detector`. They own the findings queue — OD-24 |
+| Guardian findings → alerts | `[[state-integrity-invariants-charter|sre-state-integrity]]` | The code of `state_invariant_enforcer`, `drift_agent`, `inequality_detector`. They own the findings queue — TECH-F6 |
 | Inference cost → unit economics | `[[inference-cost-charter|fin-inference-cost]]` | `nf_a.cost_per_task` by task type |
 
 **The dependency stated plainly:** four of these six proposed loops close on numbers

@@ -90,7 +90,7 @@ whether the flag ever fires.
 |---|---|---|
 | **Team** | A route's classification verdict; which control implements it; corpus contents; anything reversible inside one charter | `GET /dashboard/health` → `public`; add an HMAC to a webhook; add 30 injection cases |
 | **Department** | Any verdict that changes *which team's* control applies; the definition of any `sec.*` metric; anything crossing the SEC-1/SEC-2 charter line while they share a team | `simpos`; `vendor-portal`'s enumeration control; whether `@Public()` on a new module is legitimate |
-| **Founder / OPEN-DECISIONS** | Deleting a shipped route; accepting a known exposure; the merged-vs-split team shape; anything that trades a security default for velocity | The nine `communications/test/e2e/*` routes; tokens in `localStorage`; F-4; OD-20 |
+| **Founder / OPEN-DECISIONS** | Deleting a shipped route; accepting a known exposure; the merged-vs-split team shape; anything that trades a security default for velocity | The nine `communications/test/e2e/*` routes; tokens in `localStorage`; INTEL-F4; OD-20 |
 
 **The first-instance rule.** For any exception class, the **first** request escalates, not
 the tenth. The first `@Public()` outside the known set, the first control that fails open

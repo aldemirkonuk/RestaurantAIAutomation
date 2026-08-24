@@ -8,8 +8,6 @@ metrics: [fin.spend_reconciliation_variance_pct, fin.hours_since_last_spend_row,
 updated: 2026-08-24
 links: ["[[finance-pricing-charter]]", "[[finance-pricing-premortem]]", "[[finance-pricing-directive]]", "[[finance-pricing-schedule]]", "[[inference-cost-loops]]", "[[unit-economics-pricing-loops]]", "[[LOOP-MAP]]", "[[harness-model-routing-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[strategy-fundraising-charter]]", "[[decision-office-charter]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["fin-ledger-invoice-reconciliation", "fin-meter-liveness", "fin-cost-efficiency-review", "fin-pricing-trigger-watch", "fin-cap-adequacy"]
 loop_close_times: ["monthly", "daily", "weekly", "weekly", "monthly"]
 loop_statuses: ["proposed", "proposed", "blocked", "proposed", "proposed"]

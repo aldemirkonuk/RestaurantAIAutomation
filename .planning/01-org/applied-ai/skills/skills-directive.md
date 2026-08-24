@@ -54,7 +54,7 @@ decided until it is written in `.planning/decisions/`):
 | The registry ceiling **N** | It is the brake's setting; a department that sets its own brake has no brake. Founder call. |
 | Who runs the weekly skill-health job | [[README]] §6 says Research & Math, [[technology]] §4.2 says us. Cross-department; see [[skills-agenda-full]] §Questions. |
 | **OD-14** root `SKILLS.md` retire-vs-rewrite | Named open decision. |
-| **OD-22** three teams or two | Named open decision. |
+| **TECH-F4** three teams or two | Named open decision. |
 | Adding `skill_id` to the NF-A event | Schema is [[research-math-charter|research-and-math-charter]] / OD-11's; we are a consumer requesting a field. |
 | Staffing [[skill-harvesting-charter]] early | Its trigger is written; overriding a written trigger is a decision, not a judgement. |
 

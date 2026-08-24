@@ -147,10 +147,10 @@ firing cadence. Folded into [[commercial-workforce-agreements-charter]].
 
 ## Open forks touching this department
 
-- **OD-C2** — DPA/BAA ownership: Legal owns the instrument, Compliance owns the
+- **CORP-F2** — DPA/BAA ownership: Legal owns the instrument, Compliance owns the
   obligations (proposed `corporate.md:495`). Confirm the two-signature rule, or give one
   team both.
-- **OD-C1 / OD-17** — does a *team* get the full 7-artifact anatomy, or only a department?
+- **CORP-F1 / OD-17** — does a *team* get the full 7-artifact anatomy, or only a department?
   This vault answers "7" — 21 documents for a department with zero artifacts is exactly
   the cost that fork is about (`corporate.md:494`).
 - **The trim itself** — one team or two (`corporate.md:116-121`). Not yet staged as an OD;

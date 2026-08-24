@@ -8,8 +8,6 @@ metrics: [inventory.projection_divergence_rows, inventory.direct_write_paths, in
 updated: 2026-08-24
 links: ["[[inventory-ledger-charter]]", "[[inventory-ledger-premortem]]", "[[inventory-ledger-directive]]", "[[engineering-loops]]", "[[state-integrity-invariants-charter|sre-state-integrity]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["il-projection-divergence", "il-guard-outcome-reconciliation", "il-ledger-v1-caller-census", "il-cross-hop-duplication", "il-count-adjustment-provenance"]
 loop_close_times: ["daily", "weekly", "fortnightly", "weekly", "weekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]

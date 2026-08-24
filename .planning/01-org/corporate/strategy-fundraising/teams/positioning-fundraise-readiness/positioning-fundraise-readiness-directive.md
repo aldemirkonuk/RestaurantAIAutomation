@@ -141,7 +141,7 @@ Escalate to the department, and from there to `OPEN-DECISIONS.md`, when:
 4. **Any request to send without the checklist**, including from the founder. The **first**
    such request escalates, not the tenth.
 5. **The split trigger fires** — a term-sheet conversation or an issued instrument. R4's
-   deferral ends and OD-C3 closes.
+   deferral ends and CORP-F3 closes.
 6. **Two consecutive quarters** in which `strategy.diligence_pack_completeness` rose while
    `strategy.claim_to_evidence_coverage` did not — P4, readable as a chart.
 

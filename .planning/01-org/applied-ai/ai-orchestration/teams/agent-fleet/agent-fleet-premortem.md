@@ -121,7 +121,7 @@ precisely because CI will never complain.
 ### 5. The guardian seam went slack in the middle
 
 `state_invariant_enforcer`, `drift_agent` and `inequality_detector` are owned by this
-team as **code**, and by `[[state-integrity-invariants-charter|sre-state-integrity]]` as **findings** (OD-24, open,
+team as **code**, and by `[[state-integrity-invariants-charter|sre-state-integrity]]` as **findings** (TECH-F6, open,
 `technology.md:848`). The seam held for a quarter. Then a detector's recall degraded —
 it stopped catching a class of POS/inventory mismatch — and neither side owned
 noticing. SRE watched the findings queue, which stayed quiet, and quiet looked like
@@ -134,6 +134,6 @@ nothing in either team's current view distinguishes them.
 
 **What would have prevented it.** Guardians get **synthetic canaries** — a known
 violation injected on a cadence that must be caught. Then zero findings means
-something. Ownership of the canary is the concrete test of whether OD-24's split
+something. Ownership of the canary is the concrete test of whether TECH-F6's split
 works: if neither team will own it, the split has failed and the answer is to give
 guardians to one team end to end.

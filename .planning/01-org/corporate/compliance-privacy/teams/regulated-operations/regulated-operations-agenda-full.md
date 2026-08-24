@@ -83,7 +83,7 @@ Three reasons the design is worth writing while the team is unstaffed:
 2. **Two failure modes are live today for a team that does not exist.**
    `regops.trigger_check_freshness` is unbounded, and C-19 is executing on production
    traffic with no owner and no measurement. Neither waits for activation.
-3. **OD-C4 is cheaper to answer now.** Whether this scope is Corporate's or Product's
+3. **CORP-F4 is cheaper to answer now.** Whether this scope is Corporate's or Product's
    ([[corporate]] §7) costs nothing to decide today and costs a re-org during a
    deadline if left.
 
@@ -101,7 +101,7 @@ future self, which will be tempted to prepare.
 | 3 | C-19 recorded in the obligation register as *"operating control, no owner"* | [[regulatory-posture-charter]] | now |
 | 4 | C-19 hit-rate measured — zero hits with non-zero draft volume is a dead control | [[regulatory-posture-charter]] → here on activation | now |
 | 5 | Sunset trigger recorded: unfired by **2027-08-24** → retire the track | [[decision-office-charter]] | now |
-| 6 | OD-C4 answered — Corporate or Product? | founder | now |
+| 6 | CORP-F4 answered — Corporate or Product? | founder | now |
 | — | *— activation line —* | | |
 | 7 | 30-day design gate: runbook + data-source decision before any filing | this team | on trigger |
 | 8 | Licence and jurisdiction inventory | this team | on trigger |
@@ -114,7 +114,7 @@ forgotten one.
 
 ## Questions for the founder
 
-1. **OD-C4 — is this scope Corporate's at all?** Alcohol excise may belong to Product
+1. **CORP-F4 — is this scope Corporate's at all?** Alcohol excise may belong to Product
    once licensing is a *feature* rather than an *obligation*. This charter takes no
    position beyond noting the argument for Product is real: a team follows the
    feature. Answering costs nothing now.
@@ -144,4 +144,4 @@ forgotten one.
 | [[design-partner-operations-charter]] | — | Notice of any deal in a licensed jurisdiction |
 | [[agent-fleet-charter]] | A verdict on `compliance_agent.py`, eventually | The stub kept declared and refused at boot |
 | [[inventory-ledger-charter]] | Advance notice that excise will need a published movement aggregate | — |
-| [[decision-office-charter]] | OD-C4 and the sunset trigger, as dated entries | Both kept open rather than drifting |
+| [[decision-office-charter]] | CORP-F4 and the sunset trigger, as dated entries | Both kept open rather than drifting |

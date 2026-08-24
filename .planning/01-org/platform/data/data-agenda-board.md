@@ -67,4 +67,4 @@ SORT updated ASC
 - [ ] Dish-identity deferral has no date ([[data-premortem]] M3)
 - [ ] Threshold-change protocol not written ([[data-premortem]] M4)
 - [ ] Department owns **zero** skills; `.claude/skills/` does not exist ([[data-schedule]])
-- [ ] OD-19 · OD-23 open against this department
+- [ ] TECH-F1 · TECH-F5 open against this department

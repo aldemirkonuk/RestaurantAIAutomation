@@ -29,7 +29,7 @@ worker.
 | `nf_a.cost_per_task` | **Not derivable** | `spend_logger.py:41-49` has no `agent` param |
 | `nf_a.cost_per_completed_task` | **Not derivable** | Needs both halves |
 | `nf_a.agent_attributed_spend_pct` | **0%** | `api_spend` (`…sql:2231`) has no agent column |
-| `people.blocked_days` | **0** — starts the day OD-C5 is filed | The number that will actually move |
+| `people.blocked_days` | **0** — starts the day CORP-F5 is filed | The number that will actually move |
 
 The structural fact underneath all of it: **the Python telemetry is two unjoined halves.**
 `decision_log` (`…sql:2687`) has `agent_name`, `reasoning`, `confidence` and **no cost**.
@@ -47,7 +47,7 @@ them is what stops "blocked" from becoming "gone" (premortem M2, M3).
 Two asks on Research & Math, in order, and **only** these two:
 
 1. **`SpendLogger.log()` gains an `agent` parameter, and `api_spend` gains the column.**
-   Already staged as **OD-C5** (`corporate.md:496`) and flagged as belonging with OD-11.
+   Already staged as **CORP-F5** (`corporate.md:496`) and flagged as belonging with OD-11.
    The ask is a signature diff, not a discussion.
 2. **A join key between reasoning and cost.** `correlation_id` already exists on
    `decision_log` (written at `core/base_agent.py:743`) and on nothing in `api_spend`. It
@@ -87,7 +87,7 @@ number that moves while everything else is blocked.
 Every week: `nf_a.doneability_verdict_coverage = 0%`, `people.blocked_days = N`, and the
 named blocker. No substitution. When someone asks for per-agent cost, the answer is **not
 derivable** — and per department directive rule 5, being asked is itself an escalation
-trigger, so the pressure lands on OD-C5 rather than on this team's integrity.
+trigger, so the pressure lands on CORP-F5 rather than on this team's integrity.
 
 ### The design constraint that governs all three
 
@@ -114,7 +114,7 @@ spine**, never over *tasks reviewed*, so a rubric with no emission cannot move i
 
 ## Next steps
 
-- [ ] File **OD-C5** into `OPEN-DECISIONS.md` with the exact signature diff for
+- [ ] File **CORP-F5** into `OPEN-DECISIONS.md` with the exact signature diff for
       `SpendLogger.log()` and the `api_spend` column — [[decision-office-charter]]
 - [ ] File the join-key question: what connects `decision_log:2687` to `api_spend:2231`?
       — [[neural-footprint-instrumentation-charter]]
@@ -132,7 +132,7 @@ spine**, never over *tasks reviewed*, so a rubric with no emission cannot move i
 
 ## Questions for the founder
 
-1. **OD-C5 — does `SpendLogger.log()` gain an `agent` parameter?** Everything this team
+1. **CORP-F5 — does `SpendLogger.log()` gain an `agent` parameter?** Everything this team
    does downstream of measurement depends on that one argument. If the answer is no, say
    so plainly and scope per-agent cost out — a team permanently blocked on a decision
    nobody intends to make is worse than a team told the truth.
@@ -147,6 +147,6 @@ spine**, never over *tasks reviewed*, so a rubric with no emission cannot move i
    as an availability signal** once a doneability verdict exists — or should health
    incorporate the verdict? Two green lights that mean different things is exactly how M1
    happens.
-5. **How much history is worth backfilling?** If OD-C5 closes in month nine, do we care
+5. **How much history is worth backfilling?** If CORP-F5 closes in month nine, do we care
    about months one to eight? The team's view: no — and that is the argument for closing
    it in month one.

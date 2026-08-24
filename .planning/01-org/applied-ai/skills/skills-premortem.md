@@ -130,7 +130,7 @@ envelope; it may not *own* a domain skill's body.
 
 Twenty-eight unit documents were generated for a department whose committed
 registry was zero, and stayed zero. Twelve months on, the charters are more
-substantial than the thing they charter. OD-22 (*Skills at 3 vs 2*) never resolved
+substantial than the thing they charter. TECH-F4 (*Skills at 3 vs 2*) never resolved
 because an open question with no forcing function stays open, and
 [[skill-harvesting-charter]]'s entry trigger — ≥15 skills — was never approached, so
 the team existed on paper for a year and was never honestly retired. The department

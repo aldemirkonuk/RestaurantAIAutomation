@@ -65,7 +65,7 @@ The split trigger is written down and testable: **`sec.unguarded_authenticated_s
 reaches 0 with a CI assertion holding it there.** At that point access control becomes
 steady-state (review new controllers) and perimeter work becomes its own campaign
 (distributed rate limiting, secret rotation, signature coverage), and the two charters
-stop sharing a file set. Founder call is open as **F-4** (`intelligence.md:520`).
+stop sharing a file set. Founder call is open as **INTEL-F4** (`intelligence.md:520`).
 
 [[ai-surface-security-charter]] is different in kind and exists from day one regardless.
 Its tools are neither guards nor HMACs, and it has a hard cross-department dependency
@@ -271,15 +271,15 @@ no lid. That single sentence is why this department exists.
 ## Open forks touching this department
 
 - **OD-19** — classify the 94. This department's first assignment. `intelligence.md`'s
-  F-1 (denominator) is **resolved at 94**; its F-2 (`vendor-portal` misclassified) is
+  INTEL-F1 (denominator) is **resolved at 94**; its INTEL-F2 (`vendor-portal` misclassified) is
   **resolved in the regenerated census** — the routes now carry `@Public()` with a written
   rationale (`vendor-portal.controller.ts:6-13,20,40`) and `ENDPOINTS.md:656` labels them
-  correctly. The underlying question F-2 raised — *classify per route, not per module* —
+  correctly. The underlying question INTEL-F2 raised — *classify per route, not per module* —
   is **not** resolved, and `simpos` is the live proof.
 - **OD-20** — 🔴 the analytics spend hole. Fixed on a branch, unmerged. Whether it merges
   standalone or folds into the sweep is a founder call; **this charter recommends merging
   it standalone today** and treating it as sweep instance #1.
-- **F-4** (`intelligence.md:520`) — do SEC-1 and SEC-2 start merged? This charter
+- **INTEL-F4** (`intelligence.md:520`) — do SEC-1 and SEC-2 start merged? This charter
   recommends yes, with a written split trigger.
 - **OD-11** — the NF column contract gates
   [[ai-surface-security-charter]]'s primary metric entirely.

@@ -109,7 +109,7 @@ in `.planning/decisions/`. That rule binds this office first.
 | Which of two contradicting numbers is right — 375 vs 573 insight types | [[analytics-bi-charter]] owns the answer. We own the fact that both are published. |
 | **OD-25** — Research & Math or Skills runs the weekly skill-health job | Two documents, two owners. Breaking the tie is deciding, however obvious it looks. |
 | **OD-26** — should every unit carry a merge trigger symmetric with its split trigger | Named in the register as *"likely a Decision Office standing rule."* **A standing rule this office writes for itself is a rule with no author but the enforcer.** Founder call; we supply the 11-vs-3 count. |
-| **OD-C6** — reparenting [[standards-verification-charter]] under this office | Declining is ours. *Accepting* is not, and the charter declines in writing. |
+| **CORP-F6** — reparenting [[standards-verification-charter]] under this office | Declining is ours. *Accepting* is not, and the charter declines in writing. |
 | Whether a dated trigger's condition is *met* vs whether the unit should therefore **fold** | We report the reading. The fold is the unit's and the founder's. |
 | Whether the loop YAML block moves into frontmatter so Dataview can query it | A corpus-wide format change across 396 blocks in 82 files. Architecture-shaped; [[architecture-review-charter]] and the founder. |
 | Any finding that implies an L0–L6 layer violation | [[architecture-review-charter]] ([[ORG_STRUCTURE]] §3). |
@@ -154,7 +154,7 @@ Escalate immediately, without waiting for the weekly cycle, when any of these fi
    recommendation crossed into a ruling. Greppable, and checked in the quarterly
    self-audit.
 6. **This office is offered an executing team, a headcount, or a deliverable that
-   is not a finding.** OD-C6 is the live instance and is already declined; a
+   is not a finding.** CORP-F6 is the live instance and is already declined; a
    *second* instance means the boundary is being tested rather than misunderstood,
    and that is a founder conversation.
 7. **A month passes in which this office ships registry mechanics and closes zero

@@ -49,7 +49,7 @@ failure the repo has hit or is one commit away from hitting — `S4` is
 | Which model an agent uses | **No** | → [[model-routing-inference-economics-charter]] |
 | Whether an agent may execute a mutation unconfirmed | **No** | → [[action-safety-the-human-gate-charter]]. Not tunable |
 | Guardian agent **code** | **Yes** | `state_invariant_enforcer`, `drift_agent`, `inequality_detector` + 2 stubs |
-| Guardian **findings** and alert thresholds | **No** | → `[[state-integrity-invariants-charter|sre-state-integrity]]` — OD-24, open |
+| Guardian **findings** and alert thresholds | **No** | → `[[state-integrity-invariants-charter|sre-state-integrity]]` — TECH-F6, open |
 | Deleting an agent module | **Yes**, with an ADR | Deletion is cheap; a silently rotting orphan is not |
 
 ## Three standing rules
@@ -82,7 +82,7 @@ Escalate to [[ai-orchestration-directive]], and onward to
    Product, not only to Engineering.
 3. **A guardian agent's finding rate is zero for a full review period.** Either
    excellent news or a broken detector, and neither team can currently tell. This is
-   the operational form of OD-24.
+   the operational form of TECH-F6.
 4. **`fleet.orphan_modules` rises above 3**, or an orphan decision is deferred twice.
 5. **A prompt change is proposed with no eval verdict available for its task family.**
    The escalation is not about the prompt — it is that

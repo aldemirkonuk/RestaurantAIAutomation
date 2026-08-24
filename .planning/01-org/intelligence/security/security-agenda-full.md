@@ -137,7 +137,7 @@ Ordered. Nothing here is started.
 
 ## Questions for the founder
 
-1. **F-4 — do SEC-1 and SEC-2 start merged?** This department recommends **yes**, one
+1. **INTEL-F4 — do SEC-1 and SEC-2 start merged?** This department recommends **yes**, one
    team with two charters, splitting when `sec.unguarded_authenticated_surface` hits 0
    with CI holding it. The `simpos` case is new evidence the division doc did not have.
 2. **OD-20 — merge the analytics fix standalone, or fold it into the sweep?** Recommend

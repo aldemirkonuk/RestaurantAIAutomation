@@ -403,7 +403,7 @@ team defines what passing means in operation.
 Research & Math (**Intelligence** division) owns the *methodology and the NF-A metric
 definition* ([[README]] §2.2). This team owns *running the gates in CI and production*.
 Methodology vs. operations. If that line proves unworkable, the fix is to merge this
-team into Research & Math — not to duplicate it. **Fork OD-21 (§7).**
+team into Research & Math — not to duplicate it. **Fork TECH-F3 (§7).**
 
 **Evidence — EXISTS, scattered across `scripts/` with no owner.**
 - `scripts/eval_merge_policies.py`, `scripts/eval_guest_merge_policies.py`, `scripts/build_merge_eval_set.py` — with a CI gate already declared (`eval_merge_policies.py:9-13`)
@@ -836,16 +836,21 @@ perfectly and changes nothing.
 ## 7. Forks this document opens
 
 To be added to `.planning/decisions/OPEN-DECISIONS.md` (CLAUDE.md §0.1 — none of these
-are decided here):
+are decided here).
+
+> **Renumbered 2026-08-24.** These were first minted as `OD-19`…`OD-24`, colliding with
+> the canonical register. The Decision Office reissued them in the `TECH-Fn` namespace —
+> see [FORK-REGISTRY](../../02-advisory/decision-office/FORK-REGISTRY.md). Old → new: OD-19→TECH-F1 ·
+> OD-20→TECH-F2 · OD-21→TECH-F3 · OD-22→TECH-F4 · OD-23→TECH-F5 · OD-24→TECH-F6.
 
 | ID | Fork |
 |---|---|
-| OD-19 | **25 teams for one division.** Is the team layer chartered at this granularity, or only for departments whose scope demonstrably exceeds one owner (Engineering, Data)? |
-| OD-20 | **Engineering at 8.** Are Schema & Migrations (§2.8) and Messaging & Delivery (§2.4) teams, or functions inside Platform & API? Each has independent evidence; each is also a plausible merge. |
-| OD-21 | **The evaluation seam.** Does `[[agent-evaluation-gates-charter|aio-evaluation-gates]]` (§3.4, operations) coexist with Research & Math (methodology, [[README]] §2.2), or is it one team in the Intelligence division? Duplication here is worse than either answer. |
-| OD-22 | **Skills at 3 vs 2.** `[[skill-harvesting-charter|skl-harvesting]]` carries an explicit entry trigger (§4.3). Chartered now with the trigger, or not chartered until it fires? |
-| OD-23 | **Does the team layer get the 7-artifact anatomy?** [[ORG_STRUCTURE]] §4 costs ≈168 documents for 24 units. Applying it to 25 teams adds ≈175 more. Proposal: teams get **3** artifacts (charter · premortem · loops), not 7. This is the single largest upkeep decision in the chapter. |
-| OD-24 | **Guardian-agent co-ownership.** §3.2 gives Agent Fleet the code and §6.4 the findings. Workable, or does one team own guardian agents end to end? |
+| TECH-F1 | **25 teams for one division.** Is the team layer chartered at this granularity, or only for departments whose scope demonstrably exceeds one owner (Engineering, Data)? |
+| TECH-F2 | **Engineering at 8.** Are Schema & Migrations (§2.8) and Messaging & Delivery (§2.4) teams, or functions inside Platform & API? Each has independent evidence; each is also a plausible merge. |
+| TECH-F3 | **The evaluation seam.** Does `[[agent-evaluation-gates-charter|aio-evaluation-gates]]` (§3.4, operations) coexist with Research & Math (methodology, [[README]] §2.2), or is it one team in the Intelligence division? Duplication here is worse than either answer. |
+| TECH-F4 | **Skills at 3 vs 2.** `[[skill-harvesting-charter|skl-harvesting]]` carries an explicit entry trigger (§4.3). Chartered now with the trigger, or not chartered until it fires? |
+| TECH-F5 | **Does the team layer get the 7-artifact anatomy?** [[ORG_STRUCTURE]] §4 costs ≈168 documents for 24 units. Applying it to 25 teams adds ≈175 more. Proposal: teams get **3** artifacts (charter · premortem · loops), not 7. This is the single largest upkeep decision in the chapter. |
+| TECH-F6 | **Guardian-agent co-ownership.** §3.2 gives Agent Fleet the code and §6.4 the findings. Workable, or does one team own guardian agents end to end? |
 
 ---
 
@@ -860,6 +865,6 @@ plausibly claim the same work; naming them now is cheaper than arbitrating later
 | DDL authorship vs. drift gate | `[[schema-migrations-charter|eng-schema-migrations]]` | `[[state-integrity-invariants-charter|sre-state-integrity]]` | Author ≠ auditor (§0 test 3) |
 | Draft vs. deliver | AI Orchestration | `[[messaging-delivery-charter|eng-messaging-delivery]]` | What it says vs. that it arrives once |
 | Grading agents vs. grading rows | `[[agent-evaluation-gates-charter|aio-evaluation-gates]]` | `[[substrate-quality-coverage-charter|dat-substrate-quality]]` | Task outcome vs. data row |
-| Method vs. operations | Research & Math *(Intelligence)* | `[[agent-evaluation-gates-charter|aio-evaluation-gates]]` | Defines doneability vs. enforces it — **fork OD-21** |
+| Method vs. operations | Research & Math *(Intelligence)* | `[[agent-evaluation-gates-charter|aio-evaluation-gates]]` | Defines doneability vs. enforces it — **fork TECH-F3** |
 | Find vs. fix the class | Security *(Intelligence)* | `[[platform-api-charter|eng-platform-api]]` | Classifies the 137 unguarded routes vs. builds the mechanism |
 | Intent vs. implementation | Design *(Product)* | `[[client-surfaces-charter|eng-client-surfaces]]` | What the screen should be vs. what shipped |

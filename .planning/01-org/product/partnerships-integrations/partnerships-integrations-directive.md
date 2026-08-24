@@ -99,7 +99,7 @@ Escalate to `OPEN-DECISIONS.md`, and to [[decision-office-charter]] where noted:
 | A canonical-shape change is needed that only one provider populates **and** cannot be capability-gated | Shape fork — this is M5 arriving |
 | A connector needs a posture weaker than fail-closed | **Never decided here.** Straight to Security + founder |
 | **OD-07 untouched for 60 days while guest-experience commits continue** | *Decision-by-drift* finding → [[decision-office-charter]], naming the commits |
-| **CM-F3 and OD-21 both open at day 90 with `pi.live_counterparties` = 0** | Team-dissolution proposal for [[supplier-distributor-network-charter]] — see premortem M4 |
+| **CM-F3 and PROD-F2 both open at day 90 with `pi.live_counterparties` = 0** | Team-dissolution proposal for [[supplier-distributor-network-charter]] — see premortem M4 |
 | An upstream doc contradicts verified code | Correction, carried back to the source doc in the same week |
 
 ## How this department handles being wrong

@@ -8,10 +8,8 @@ metrics: [design.resolved_question_rate, design.open_null_winner_count, design.s
 updated: 2026-08-24
 links: ["[[exploration-studio-charter]]", "[[exploration-studio-premortem]]", "[[exploration-studio-directive]]", "[[design-loops]]", "[[LOOP-MAP]]", "[[ux-path-burn-down-charter]]", "[[design-system-motion-substrate-charter]]", "[[decision-office-charter]]"]
 loop_count: 4
-loop_count: 4
-loop_count: 4
 loop_ids: ["exp-convergence", "exp-index-integrity", "exp-handoff", "exp-motion-corpus-drain"]
-loop_close_times: ["biweekly", "biweekly", "biweekly", "biweekly"]
+loop_close_times: ["fortnightly", "fortnightly", "fortnightly", "fortnightly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -36,7 +34,7 @@ measures: [design.resolved_question_rate, design.open_null_winner_count, design.
 changes: [sketches.manifest, exploration-studio.wip_limit, exploration-studio.queue]
 inputs_from: [ux-path-burn-down, design-system-motion-substrate, activation-in-product-guidance, surface-portfolio]
 outputs_to: [design, ux-path-burn-down, design-system-motion-substrate, decision-office]
-close_time: biweekly
+close_time: fortnightly
 status: proposed
 ```
 
@@ -70,7 +68,7 @@ measures: [design.sketch_index_completeness, design.orphan_sketch_dirs, design.p
 changes: [sketches.manifest, sketches.id_allocation]
 inputs_from: [exploration-studio]
 outputs_to: [design, knowledge-documentation]
-close_time: biweekly
+close_time: fortnightly
 status: proposed
 ```
 
@@ -98,7 +96,7 @@ measures: [design.winners_unqueued, design.winner_shipped_conversion, design.han
 changes: [sketches.manifest, ux-path-burn-down.queue, design-system-motion-substrate.queue]
 inputs_from: [ux-path-burn-down, design-system-motion-substrate, activation-in-product-guidance]
 outputs_to: [ux-path-burn-down, design-system-motion-substrate, design, decision-office]
-close_time: biweekly
+close_time: fortnightly
 status: proposed
 ```
 
@@ -128,7 +126,7 @@ measures: [design.motion_specs_with_winner, design.motion_spec_age_days]
 changes: [sketches.manifest, design-system-motion-substrate.queue]
 inputs_from: [design-system-motion-substrate, engineering]
 outputs_to: [design-system-motion-substrate, decision-office]
-close_time: biweekly
+close_time: fortnightly
 status: proposed
 ```
 

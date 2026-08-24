@@ -8,11 +8,9 @@ metrics: [funnel.visit_to_activated_rate, funnel.measurable_steps, funnel.step_d
 updated: 2026-08-24
 links: ["[[conversion-funnel-charter]]", "[[conversion-funnel-premortem]]", "[[conversion-funnel-directive]]", "[[conversion-funnel-schedule]]", "[[growth-loops]]", "[[technical-seo-ai-answer-surface-loops]]", "[[editorial-gate-loops]]", "[[design-partner-operations-charter]]", "[[compliance-privacy-charter]]", "[[LOOP-MAP]]"]
 loop_count: 4
-loop_count: 4
-loop_count: 4
 loop_ids: ["g5-visit-to-activation", "g5-privacy-coupling", "g5-social-proof-provenance", "g5-checklist-outcome"]
-loop_close_times: ["monthly", "per commit (CI), reviewed weekly", "quarterly", "monthly"]
-loop_statuses: ["proposed", "weekly", "proposed", "proposed"]
+loop_close_times: ["monthly", "per-pr", "quarterly", "monthly"]
+loop_statuses: ["proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Conversion & Funnel — Loops
@@ -63,8 +61,9 @@ measures: [conversion.privacy_coupling_violations, funnel.measurable_steps, conv
 changes: [conversion.instrumentation, privacy.notice_text]
 inputs_from: [compliance-privacy, privacy-engineering, client-surfaces]
 outputs_to: [compliance-privacy, growth, decision-office]
-close_time: per commit (CI), reviewed weekly
-status: weekly
+close_time: per-pr
+close_time_note: "per commit (CI), reviewed weekly"
+status: proposed
 ```
 
 The mechanism that stops [[conversion-funnel-premortem]] M2, and the one loop in Growth that

@@ -104,8 +104,8 @@ That is the counter-pressure to premortem M1, and it is enforced in
       `apps/web/src/components/reports/organisms/AICommandPalette.tsx`, not
       `apps/web/src/components/command/` (which is the deterministic §A palette) ·
       [[ask-ai-charter]]
-- [ ] File the department's forks with **new IDs** — `teams/product.md` §6 collides with
-      live OD-20…OD-23 · [[decision-office-charter]]
+- [x] File the department's forks with **new IDs** — `teams/product.md` §6 collided with
+      live OD-20…OD-23; now **PROD-F1…PROD-F5** ([[FORK-REGISTRY]]) · [[decision-office-charter]]
 - [ ] Stand up the daily open-decision digest as a scheduled job, not a team ·
       [[product-vision-schedule]]
 

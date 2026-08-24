@@ -8,8 +8,6 @@ metrics: [demand.uncovered_keyword_count, demand.wedge_share_of_corpus, demand.q
 updated: 2026-08-24
 links: ["[[search-demand-research-charter]]", "[[search-demand-research-premortem]]", "[[search-demand-research-directive]]", "[[search-demand-research-schedule]]", "[[growth-loops]]", "[[content-production-loops]]", "[[technical-seo-ai-answer-surface-loops]]", "[[LOOP-MAP]]"]
 loop_count: 3
-loop_count: 3
-loop_count: 3
 loop_ids: ["g1-harvest-to-brief", "g1-search-console-gap-requeue", "g1-wedge-drift"]
 loop_close_times: ["weekly", "monthly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed"]

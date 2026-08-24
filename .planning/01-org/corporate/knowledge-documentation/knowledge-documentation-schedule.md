@@ -83,7 +83,7 @@ deletion.
 `.agents/skills/railway-config/SKILL.md` ([[README|foundation-README]] §3.1). Ninety-nine
 `schedule.md` files across the org — including this one — assert a directory that is not
 there. This department found it, this department is implicated by it, and it is staged as
-**OD-C7**: create `.claude/skills/` and migrate, or correct 99 assertions. Reporting it here
+**CORP-F7**: create `.claude/skills/` and migrate, or correct 99 assertions. Reporting it here
 rather than silently repeating the sentence is the whole point of
 [[standards-verification-charter]].
 

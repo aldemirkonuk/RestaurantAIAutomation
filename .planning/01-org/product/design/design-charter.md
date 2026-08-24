@@ -178,15 +178,15 @@ someone grepped for it.
 
 ## Open forks touching this department
 
-- **Design's commissioning authority** (product.md §6, proposed as "OD-24"). Most deferred
+- **Design's commissioning authority** (**PROD-F5**; product.md §6, proposed as "OD-24"). Most deferred
   paths are blocked on **endpoints**, not on design. Can [[ux-path-burn-down-charter]]
   commission the endpoints it is blocked on, or only report *blocked*? A burn-down team
   that cannot commission will report "blocked" for a year. **This is the fork that
   determines whether the department's largest team can function.**
-- **Product division team layer** (product.md §6, proposed as "OD-20") — 17 teams as
+- **Product division team layer** (**PROD-F1**; product.md §6, proposed as "OD-20") — 17 teams as
   proposed, or the reduced set in §5.3? Design is 4 of the 17.
-- ⚠️ **ID collision, flagged for [[decision-office-charter]].** `product.md:858-862`
-  proposes IDs OD-20 through OD-24, but `decisions/OPEN-DECISIONS.md:24-27` already
+- ✅ **ID collision resolved by [[decision-office-charter]].** `product.md:858-862`
+  proposed IDs OD-20 through OD-24, but `decisions/OPEN-DECISIONS.md:24-27` already
   assigns OD-20 (analytics spend), OD-21 (Obsidian workflow), OD-22 (tooling library),
-  OD-23 (\$20k MRR). Four of the five proposed IDs are taken. The forks above are
-  therefore referenced **by name**, not by number, until the Decision Office issues them.
+  OD-23 (\$20k MRR) — four of the five were taken. The forks above now carry
+  **PROD-F1…PROD-F5** ([[FORK-REGISTRY]]) and should be cited by ID.

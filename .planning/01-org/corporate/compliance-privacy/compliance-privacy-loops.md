@@ -7,10 +7,8 @@ metrics: [privacy.erasure_completeness, privacy.pii_definition_count, privacy.co
 updated: 2026-08-24
 links: ["[[compliance-privacy-charter]]", "[[compliance-privacy-schedule]]", "[[compliance-privacy-directive]]", "[[privacy-engineering-loops]]", "[[regulatory-posture-loops]]", "[[regulated-operations-loops]]", "[[customer-relationship-research-charter]]", "[[taste-fingerprint-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[legal-charter]]", "[[security-charter]]", "[[decision-office-charter]]", "[[ORG_STRUCTURE]]"]
 loop_count: 6
-loop_count: 6
-loop_count: 6
 loop_ids: ["erasure-completeness", "pii-definition-convergence", "consent-propagation", "obligation-register-currency", "purpose-widening-review", "guest-identity-ci-guards"]
-loop_close_times: ["per-request, reviewed monthly", "per-merge", "real-time on the gate, weekly on the audit", "monthly, plus per-PR for changes touching a registered control", "per-proposal, audited quarterly", "per-push and per-PR, plus daily cron"]
+loop_close_times: ["per-event", "per-pr", "per-event", "monthly", "per-event", "per-pr"]
 loop_statuses: ["blocked", "proposed", "blocked", "proposed", "proposed", "running"]
 ---
 
@@ -39,7 +37,8 @@ measures: [privacy.erasure_completeness, privacy.erasure_receipt_count]
 changes: [privacy.erasure_runbook, privacy.store_inventory, schema.erasure_receipts]
 inputs_from: [privacy-engineering, guest-identity-consent, data, reliability-sre]
 outputs_to: [regulatory-posture, legal, customer-relationship-research]
-close_time: per-request, reviewed monthly
+close_time: per-event
+close_time_note: "per request, reviewed monthly"
 status: blocked
 ```
 
@@ -67,7 +66,8 @@ measures: [privacy.pii_definition_count, privacy.guard_divergence_events]
 changes: [privacy.pii_module, ci.guard_scripts]
 inputs_from: [privacy-engineering, security, ai-orchestration]
 outputs_to: [security, ai-orchestration, data]
-close_time: per-merge
+close_time: per-pr
+close_time_note: "per merge"
 status: proposed
 ```
 
@@ -93,7 +93,8 @@ measures: [privacy.consent_call_sites, privacy.consent_gate_denials, privacy.wit
 changes: [privacy.consent_gate, media.research_cohort, product.personalisation_scope]
 inputs_from: [guest-identity-consent, privacy-engineering]
 outputs_to: [customer-relationship-research, taste-fingerprint, guest-experience]
-close_time: real-time on the gate, weekly on the audit
+close_time: per-event
+close_time_note: "real-time on the gate, weekly on the audit"
 status: blocked
 ```
 
@@ -126,7 +127,8 @@ measures: [compliance.obligation_coverage, compliance.notice_accuracy, complianc
 changes: [compliance.obligation_register, web.privacy_notice, compliance.subprocessor_register]
 inputs_from: [engineering, data, platform-api, partnerships-integrations, ai-orchestration]
 outputs_to: [legal, sales, regulatory-posture]
-close_time: monthly, plus per-PR for changes touching a registered control
+close_time: monthly
+close_time_note: "monthly, plus per-PR for changes touching a registered control"
 status: proposed
 ```
 
@@ -156,7 +158,8 @@ measures: [privacy.purpose_widenings, privacy.recorded_dissent_rate, privacy.not
 changes: [privacy.consent_notice_version, product.personalisation_scope, privacy.obligation_register]
 inputs_from: [taste-fingerprint, guest-experience, customer-relationship-research, analytics-bi]
 outputs_to: [red-team, decision-office, legal]
-close_time: per-proposal, audited quarterly
+close_time: per-event
+close_time_note: "per proposal, audited quarterly"
 status: proposed
 ```
 
@@ -184,7 +187,8 @@ measures: [privacy.guard_pass_rate, privacy.guard_allowlist_size]
 changes: [ci.guard_scripts, privacy.pii_module]
 inputs_from: [engineering, guest-identity-consent]
 outputs_to: [privacy-engineering, security]
-close_time: per-push and per-PR, plus daily cron
+close_time: per-pr
+close_time_note: "per push and per PR, plus daily cron"
 status: running
 ```
 

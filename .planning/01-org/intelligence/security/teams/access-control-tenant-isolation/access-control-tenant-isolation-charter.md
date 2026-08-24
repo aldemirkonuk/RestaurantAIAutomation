@@ -16,7 +16,7 @@ Division **Intelligence** → Department [[security-charter]] → Team
 
 > ⬦ **Staffing note.** This charter and
 > [[perimeter-ingress-integrity-charter]] are recommended to be held by **one team**
-> until the endpoint campaign ships (F-4, `intelligence.md:190-199`). Two charters, one
+> until the endpoint campaign ships (INTEL-F4, `intelligence.md:190-199`). Two charters, one
 > team, one written split trigger. See [[security-charter]] for the argument and the
 > trigger.
 

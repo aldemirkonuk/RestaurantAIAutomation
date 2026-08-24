@@ -35,6 +35,11 @@ Nothing below can move without a decision or an action only Aldemir can take.
 
 ## 🟢 Next actions (no approval needed)
 
+0. **Rebrand planning** — assigned to Media & Brand `brand-identity` (founder 2026-08-24):
+   write the full plan (name map, mobile-slug install hazard, email/OAuth/domain sequencing)
+   against the measured 336-line / 178-file surface. **Execution holds** until brand direction exists.
+
+
 1. ~~P1 instrumentation~~ — **spec written** ([[P1-NF-A-INSTRUMENTATION]]). Now blocked on OD-11 above.
 2. **OD-30/OD-42** — reconcile fork numbering. 7 namespaces; 30% of docs cite an
    ambiguous ID. Decision Office's first assignment, mechanical.

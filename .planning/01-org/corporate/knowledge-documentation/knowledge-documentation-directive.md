@@ -71,7 +71,7 @@ shrink a corpus is the department best positioned to grow it while feeling produ
 28 documents this department was founded with are the opening debt, and
 `kd.docs_added_vs_retired_ratio` is currently **∞**.
 
-Whether this rule should be org-wide rather than department-only is staged as **OD-C8**.
+Whether this rule should be org-wide rather than department-only is staged as **CORP-F8**.
 The department's own recommendation is *department-only for now* — an org-wide version
 would be enforcing a constraint on 18 other departments before this one has demonstrated
 it can hold it itself.

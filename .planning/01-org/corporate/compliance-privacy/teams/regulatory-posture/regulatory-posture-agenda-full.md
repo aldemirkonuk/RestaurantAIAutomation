@@ -127,7 +127,7 @@ teeth or produces an audit trail against its own employer.
    hatch and it puts the acceptance on the record. Without the gate,
    [[regulatory-posture-premortem]] M5 is unpreventable: the team documents gaps
    nobody is obliged to read.
-2. **OD-C2 — DPA/BAA split.** Legal §1.2 owns the instrument, this team owns the
+2. **CORP-F2 — DPA/BAA split.** Legal §1.2 owns the instrument, this team owns the
    obligations ([[corporate]] §7). Confirm, or give one unit both? The split is
    exactly what makes an unevidenceable Annex catchable before signature; collapsing
    it saves one handoff and removes the check.

@@ -8,10 +8,8 @@ metrics: [design.system_composition_pct, design.token_source_count, design.primi
 updated: 2026-08-24
 links: ["[[design-system-motion-substrate-charter]]", "[[design-system-motion-substrate-premortem]]", "[[design-system-motion-substrate-directive]]", "[[design-loops]]", "[[LOOP-MAP]]", "[[ux-path-burn-down-charter]]", "[[exploration-studio-charter]]", "[[client-surfaces-charter]]", "[[decision-office-charter]]"]
 loop_count: 4
-loop_count: 4
-loop_count: 4
 loop_ids: ["dss-composition-vs-documentation", "dss-token-divergence", "dss-a11y-enforcement", "dss-motion-convergence"]
-loop_close_times: ["monthly", "monthly", "weekly", "biweekly"]
+loop_close_times: ["monthly", "monthly", "weekly", "fortnightly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -113,7 +111,7 @@ measures: [design.motion_specs_with_winner, design.motions_shipped_untraceable, 
 changes: [sketches.manifest, mobile.motion_implementation, design-system-motion-substrate.queue]
 inputs_from: [exploration-studio, engineering, activation-in-product-guidance]
 outputs_to: [design, exploration-studio, decision-office]
-close_time: biweekly
+close_time: fortnightly
 status: proposed
 ```
 

@@ -8,10 +8,8 @@ metrics: [legal.clause_library_hit_rate, legal.request_to_executable_draft_days,
 updated: 2026-08-24
 links: ["[[commercial-workforce-agreements-charter]]", "[[commercial-workforce-agreements-premortem]]", "[[commercial-workforce-agreements-directive]]", "[[commercial-workforce-agreements-schedule]]", "[[legal-loops]]", "[[regulatory-posture-loops]]", "[[privacy-engineering-charter]]", "[[performance-doneability-charter]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["cw-library-health", "cw-annex-satisfiability", "cw-redline-ladder", "cw-draft-doneability", "cw-turnaround-ageing"]
-loop_close_times: ["monthly", "per_instrument", "per_agreement", "monthly", "weekly"]
+loop_close_times: ["monthly", "per-event", "per-event", "monthly", "weekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -77,7 +75,8 @@ measures: [legal.annex_satisfiability_signoff, compliance.obligation_coverage, p
 changes: [legal.execution_gate, compliance.obligation_register, engineering.erasure_path]
 inputs_from: [regulatory-posture, privacy-engineering]
 outputs_to: [regulatory-posture, privacy-engineering, decision-office, red-team]
-close_time: per_instrument
+close_time: per-event
+close_time_note: "per instrument"
 status: proposed
 ```
 
@@ -107,7 +106,8 @@ measures: [legal.redlines_outside_ladder, legal.ladder_rung_count, legal.concess
 changes: [legal.fallback_ladder, legal.clause_library]
 inputs_from: [legal]
 outputs_to: [legal, decision-office]
-close_time: per_agreement
+close_time: per-event
+close_time_note: "per agreement"
 status: proposed
 ```
 

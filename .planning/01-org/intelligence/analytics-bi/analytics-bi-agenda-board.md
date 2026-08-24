@@ -99,6 +99,6 @@ SORT department ASC, status ASC
       (`:531`). Owner: [[security-charter]] / [[platform-api-charter]]
 - [ ] **§44.7 SimPOS** — blocks `analytics.kpi_ground_truth_agreement`. Owner:
       [[engineering-charter]]
-- [ ] **F-3** — no `subject_type` for the restaurant operator; blocks
+- [ ] **INTEL-F3** — no `subject_type` for the restaurant operator; blocks
       `analytics.insight_acceptance_rate` from the neural footprint. Owner:
       [[decision-office-charter]] / OD-11

@@ -72,7 +72,7 @@ faster than a boundary document.
 - **Three of seven callsites turn an API 429 into a user-visible failure today.** That is
   a live reliability defect with an owner for the first time.
 - **The majority of production model traffic is outside the harness OD-03 is about.**
-  Fork F-5 (`intelligence.md:521`) asks whether those seven callsites are even in scope.
+  Fork INTEL-F5 (`intelligence.md:521`) asks whether those seven callsites are even in scope.
   If they are not, OD-03 governs a minority of calls and its title should say so.
 - **OD-20 is open and urgent** (`OPEN-DECISIONS.md:24`): an unguarded route drives paid
   Opus calls. Security can close the route; only this team plus
@@ -94,7 +94,7 @@ faster than a boundary document.
 
 ## Questions for the founder
 
-1. **Fork F-5 — are the seven NestJS callsites in scope for OD-03?** They are the majority
+1. **Fork INTEL-F5 — are the seven NestJS callsites in scope for OD-03?** They are the majority
    of production model traffic. A harness decision that excludes them is a decision about
    the minority and should be titled that way.
 2. **Who owns routing — this team or `[[harness-model-routing-charter|aio-model-routing]]`?** Same mandate, same primary

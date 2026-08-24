@@ -8,10 +8,8 @@ metrics: [legal.instrument_chain_integrity, legal.counsel_gate_compliance, legal
 updated: 2026-08-24
 links: ["[[instruments-equity-charter]]", "[[instruments-equity-premortem]]", "[[instruments-equity-directive]]", "[[instruments-equity-schedule]]", "[[legal-loops]]", "[[positioning-fundraise-readiness-loops]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["ie-chain-completion", "ie-cap-table-tie-out", "ie-consent-ordering", "ie-verbal-commitment-reconciliation", "ie-activation-check"]
-loop_close_times: ["per_instrument", "quarterly", "per_board_action", "monthly", "quarterly"]
+loop_close_times: ["per-event", "quarterly", "per-event", "monthly", "quarterly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -41,7 +39,8 @@ measures: [legal.instrument_chain_integrity, legal.counsel_gate_compliance]
 changes: [legal.instrument_register, legal.cap_table]
 inputs_from: [positioning-fundraise-readiness, legal]
 outputs_to: [legal, positioning-fundraise-readiness, decision-office]
-close_time: per_instrument
+close_time: per-event
+close_time_note: "per instrument"
 status: proposed
 ```
 
@@ -100,7 +99,8 @@ measures: [legal.consent_record_completeness, legal.retroactive_consent_count]
 changes: [legal.consent_record, legal.instrument_register]
 inputs_from: [legal]
 outputs_to: [decision-office, red-team]
-close_time: per_board_action
+close_time: per-event
+close_time_note: "per board action"
 status: proposed
 ```
 

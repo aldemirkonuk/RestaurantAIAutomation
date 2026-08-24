@@ -24,7 +24,7 @@ links: ["[[engineering-charter]]", "[[engineering-loops]]", "[[engineering-agend
 | Monthly | Guard/outcome reconciliation — L-ENG-3 | List of grep-guards with no outcome twin |
 | Monthly | Irreversible-class review — L-ENG-4 | Every merge, migration, and mass-send reviewed |
 | Quarterly | Charter staleness sweep — anything untouched 60+ days is finished or fiction (foundation §3.3, §6) | Archive or revision |
-| Quarterly | Team-shape review against OD-19 / OD-20 / OD-23 | Recommendation to [[decision-office-charter]] |
+| Quarterly | Team-shape review against TECH-F1 / TECH-F2 / TECH-F5 | Recommendation to [[decision-office-charter]] |
 
 ## Skills owned
 

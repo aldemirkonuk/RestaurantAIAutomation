@@ -147,7 +147,8 @@ gate shape, that is evidence the shape-grouping was wrong and it goes to
 - **Advisory is findings-only** ([[ORG_STRUCTURE]] §3). [[red-team-charter]] attacks the
   *decisions* above — especially M2's allowlist design and M5's shape-grouping bet — and its
   findings land in `questions.md` and `OPEN-DECISIONS.md`, not in a veto.
-- **[[decision-office-charter]] owns close-times**, and owes this department a renumbering:
-  `teams/product.md` §6's fork IDs collide with live OD-20…OD-23.
+- **[[decision-office-charter]] owns close-times**, and delivered this department's
+  renumbering: `teams/product.md` §6's fork IDs collided with live OD-20…OD-23 and are now
+  **PROD-F1…PROD-F5** ([[FORK-REGISTRY]]).
 - **Anti-sprawl applies to this document.** If nothing here has been revisited in 60 days,
   it is fiction (foundation §3.3, §6).

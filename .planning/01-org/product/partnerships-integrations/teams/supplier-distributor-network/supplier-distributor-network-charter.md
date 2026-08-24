@@ -36,7 +36,7 @@ team's is live, willing counterparties. The gap between "distributors in the dat
 "distributors sending us data" is this team's entire job.
 
 **⚠️ This is openly flagged as the highest duplication risk in the Product division**
-(`foundation/teams/product.md:828`), and it is open as **OD-21**.
+(`foundation/teams/product.md:828`), and it is open as **PROD-F2**.
 
 ### The second, sharper conflict — CM-F3, stated rather than claimed
 
@@ -85,13 +85,13 @@ distributor-connectivity fork is **CM-F3**, `commercial.md:631`.)*
   with what delivery constraints.
 - **Portal login lifecycle** — provisioning, activity, deprovisioning.
 - `apps/api-gateway/src/vendor-catalogue/` and `apps/api-gateway/src/distributor-discovery/`
-  are **shared** with [[supply-discovery-charter]] pending OD-21 — cited by both, owned
+  are **shared** with [[supply-discovery-charter]] pending PROD-F2 — cited by both, owned
   cleanly by neither. That is itself a finding.
 
 ## Explicit non-goals
 
 1. **We do not do vendor discovery.** [[supply-discovery-charter]] ships the software that
-   finds vendors. Open as OD-21.
+   finds vendors. Open as PROD-F2.
 2. **We do not own the commercial ask.** Under the proposed CM-F3 line, persuading a
    distributor to send data at all is [[design-partner-operations-charter]]'s. **We do not
    claim this half, and we do not silently work it either.**
@@ -126,7 +126,7 @@ A real supply-side surface exists. Nothing has ever flowed through it.
 - **`apps/api-gateway/src/vendor-catalogue/`** — controller, service, module, DTOs.
 - **`apps/api-gateway/src/distributor-discovery/`** — controller, service, `distributor-query`,
   DTOs, and **four spec files**. The best-tested surface this team touches, and it is the one
-  OD-21 may hand to another team.
+  PROD-F2 may hand to another team.
 - **`provider-intelligence.service.ts`** — **six** distinct reads against `provider_promotions`
   at `:135, :159, :179, :197, :222, :414`. **The table is dormant; the code is not.**
   *(Correction: `foundation/teams/product.md:739` says five reads at `:135-222`. There are six;
@@ -160,7 +160,7 @@ the route.
 
 ## Entry conditions
 
-Not trigger-gated. But this team carries **two open boundary forks simultaneously** (OD-21 and
+Not trigger-gated. But this team carries **two open boundary forks simultaneously** (PROD-F2 and
 CM-F3), which is unusual and is itself the risk. See
 [[supplier-distributor-network-premortem]] M1 and the 90-day dissolution clause in
 [[supplier-distributor-network-directive]].

@@ -84,7 +84,7 @@ existing. The registry never reaches 15. The protocol-compliance metric is never
 green for two quarters because it is never *measurable* — the denominator stays near
 zero. The trigger is therefore never evaluated, the team is never staffed, and it is
 never honestly retired either. Seven charter documents describe a team that has
-never had a member, and OD-22 stays open for a year because an open question with no
+never had a member, and TECH-F4 stays open for a year because an open question with no
 forcing function stays open. This is [[skills-premortem]] M5 at team scale.
 
 **Earliest observable signal.** **2026-11-24**: registry below 15 and no scheduled
@@ -121,7 +121,7 @@ retire the team is the metric nobody built.
 should read: *≥15 skills **and** firing is measurable*. Without the second clause,
 the team can be staffed into a state where it cannot be evaluated — and the first
 clause alone is satisfiable by a team that simply creates 15 skills. This is a
-proposed amendment to [[technology]] §4.3, not a decision; it belongs in OD-22.
+proposed amendment to [[technology]] §4.3, not a decision; it belongs in TECH-F4.
 
 ---
 

@@ -54,7 +54,7 @@ only thing. `integrity.invariants_with_outcome_side_check_pct` tracks the gap ho
 stock divergence **unmeasured**. The unmeasured classes are displayed, not omitted.
 
 **The stubs.** `ghost_inventory_agent.py` and `shrinkage_detective_agent.py` only log
-(`technology.md:40-43`). They are listed as **declared, not owned** until OD-24 says who
+(`technology.md:40-43`). They are listed as **declared, not owned** until TECH-F6 says who
 builds them. Counting a stub as coverage is how M2 becomes invisible.
 
 ## Why now
@@ -64,7 +64,7 @@ builds them. Counting a stub as coverage is how M2 becomes invisible.
 - **Tenant leakage is the failure that ends the company.** At 11 restaurants, one restaurant
   seeing another's data is not a bug report, it is the end of the reference customer list.
   The detector already exists; only the routing is missing.
-- **OD-24 is cheap to close now** — two of the four guardian agents are still stubs, so
+- **TECH-F6 is cheap to close now** — two of the four guardian agents are still stubs, so
   ownership can be assigned before anyone has built anything to defend.
 - **The grep gates are quietly ageing.** Every new Postgres function and every dynamically
   built table name widens the hole they cannot see, and nothing announces it.
@@ -79,11 +79,11 @@ builds them. Counting a stub as coverage is how M2 becomes invisible.
 | 4 | Outcome-side twin for `check_no_direct_stock_writes.sh` — divergence sampling | First real coverage number | monthly |
 | 5 | Cross-tenant row probe as a data-side check | Tenant leakage stops being unmeasured | monthly |
 | 6 | CI check: **no commit touches both a migration and a gate script** | The M3 tripwire, automated | on every push |
-| 7 | Close OD-24, then either build or formally disown the two stub agents | Mandate matches capability | one close-time |
+| 7 | Close TECH-F6, then either build or formally disown the two stub agents | Mandate matches capability | one close-time |
 
 ## Questions for the founder
 
-1. **OD-24** — do the guardian agents belong end-to-end to [[agent-fleet-charter]], or does
+1. **TECH-F6** — do the guardian agents belong end-to-end to [[agent-fleet-charter]], or does
    this team own the two that produce invariant findings? Two of four are stubs today, so
    this is decidable cheaply now (`technology.md:848`).
 2. **Is "accepted-with-reason" acceptable?** It is the mechanism that keeps the queue

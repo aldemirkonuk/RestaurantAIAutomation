@@ -7,10 +7,8 @@ metrics: [legal.instrument_chain_integrity, legal.request_to_executable_draft_da
 updated: 2026-08-24
 links: ["[[legal-charter]]", "[[legal-premortem]]", "[[legal-directive]]", "[[legal-schedule]]", "[[instruments-equity-loops]]", "[[commercial-workforce-agreements-loops]]", "[[regulatory-posture-loops]]", "[[positioning-fundraise-readiness-loops]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["leg-chain-integrity", "leg-annex-satisfiability", "leg-clause-library-health", "leg-draft-doneability", "leg-team-shape-review"]
-loop_close_times: ["per_instrument", "per_instrument", "monthly", "monthly", "quarterly"]
+loop_close_times: ["per-event", "per-event", "monthly", "monthly", "quarterly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -39,7 +37,8 @@ measures: [legal.instrument_chain_integrity, legal.counsel_gate_compliance]
 changes: [legal.instrument_register, legal.execution_gate]
 inputs_from: [instruments-equity, commercial-workforce-agreements]
 outputs_to: [positioning-fundraise-readiness, decision-office]
-close_time: per_instrument
+close_time: per-event
+close_time_note: "per instrument"
 status: proposed
 ```
 
@@ -64,7 +63,8 @@ measures: [legal.annex_satisfiability_signoff, compliance.obligation_coverage, p
 changes: [legal.execution_gate, compliance.obligation_register, engineering.erasure_path]
 inputs_from: [commercial-workforce-agreements, regulatory-posture, privacy-engineering]
 outputs_to: [regulatory-posture, decision-office, red-team]
-close_time: per_instrument
+close_time: per-event
+close_time_note: "per instrument"
 status: proposed
 ```
 

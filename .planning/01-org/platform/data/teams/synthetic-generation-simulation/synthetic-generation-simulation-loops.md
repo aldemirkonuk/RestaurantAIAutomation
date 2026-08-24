@@ -8,8 +8,6 @@ metrics: [synthetic.backtest_fidelity_gap, synthetic.degrade_profile_coverage, s
 updated: 2026-08-24
 links: ["[[synthetic-generation-simulation-charter]]", "[[synthetic-generation-simulation-premortem]]", "[[synthetic-generation-simulation-directive]]", "[[synthetic-generation-simulation-schedule]]", "[[data-loops]]", "[[annotation-ground-truth-loops]]", "[[state-integrity-invariants-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["backtest-fidelity", "degrade-profile-catalogue", "sim-namespace-integrity", "archetype-refit", "truth-change-audit"]
 loop_close_times: ["monthly", "weekly", "daily", "quarterly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]

@@ -116,7 +116,7 @@ Good culture, missing registrar.
 - [ ] **2026-11-24** — [[skill-harvesting-charter]]: registry <15, no trigger re-evaluation
 - [ ] **2026-11-24** — [[sales-charter]]: `DEP-06` unchecked + `$0` recovered → fold into Growth, delete 14 of 21 docs
 - [ ] **2026-11-24** — [[outbound-engine-charter]]: no landed credit → folds with Sales
-- [ ] **≈2026-11-22** — [[supplier-distributor-network-charter]]: day-90, CM-F3 + OD-21 open, 0 counterparties
+- [ ] **≈2026-11-22** — [[supplier-distributor-network-charter]]: day-90, CM-F3 + PROD-F2 open, 0 counterparties
 - [ ] **second quarterly review** — [[legal-charter]]: merge trigger, the written counter to OD-26
 
 **Two org-wide cliffs, one month apart:** ~2026-10-23 (60-day agenda staleness,
@@ -136,7 +136,7 @@ Good culture, missing registrar.
 - [ ] **C1** — insight types: **375** (`LLM_INSTRUCTION_PROMPTS.md:166`) vs **573** (`YC_WEDGE_PLAN.md:324`) → [[analytics-bi-charter]]
 - [ ] **C2** — skill-health owner: `foundation/README.md:269` vs `technology.md:497` → **OD-25**, registered, unowned
 - [ ] **C3** — Seating Density widget: `UX_PATHS_CATALOG.md:49` says absent, `:1013` ships it. **`SeatingDensityPanel.tsx` exists.** One file contradicting itself — **routed, not ruled**
-- [ ] **C4** — `.claude/skills/`: ~99 `schedule.md` files say absent (**OD-C7**); it now exists, tracked, 0 `SKILL.md`. **An open item half-closed by a side effect**
+- [ ] **C4** — `.claude/skills/`: ~99 `schedule.md` files say absent (**CORP-F7**); it now exists, tracked, 0 `SKILL.md`. **An open item half-closed by a side effect**
 
 ## Stale citations open — 1, and it inverted
 
@@ -155,7 +155,7 @@ Good culture, missing registrar.
 - [ ] **≥19 staged forks unfiled** — OD-C1…C8, CM-F1…F6, F-1…F-5
 - [ ] **OD-26** — merge triggers org-wide? **This office declines to author its own standing rule**
 - [ ] **OD-25** and the `README.md:269` daily-digest owner — two foundation documents, two owners, same shape
-- [ ] **OD-C6** — [[standards-verification-charter]] reparenting: **declined in writing**
+- [ ] **CORP-F6** — [[standards-verification-charter]] reparenting: **declined in writing**
 - [ ] **Loop blocks → frontmatter?** 396 blocks; [[architecture-review-charter]] should see it
 - [ ] **OD-11 (65 documents) and OD-03 (39)** — the two most-cited *non-colliding* open items, both blocked on *a session being scheduled*
 - [ ] **L6 authority audit must be owned by [[red-team-charter]]**, not by this office

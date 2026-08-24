@@ -5,7 +5,7 @@ department: engineering
 team: platform-api
 status: open
 updated: 2026-08-24
-open_questions: 0
+open_questions: 1
 links: ["[[platform-api-charter]]", "[[platform-api-agenda-full]]", "[[architecture-review-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
 
@@ -19,7 +19,7 @@ links: ["[[platform-api-charter]]", "[[platform-api-agenda-full]]", "[[architect
 
 | ID | From | Raised | Question or finding | Next action | Age-out |
 |---|---|---|---|---|---|
-| — | — | — | *(none yet)* | — | — |
+| AR-5 | architecture-review | 2026-08-24 | The tenant invariant is per-controller convention, not architecture: `apps/api-gateway/src/common/tenant/tenant.guard.ts:38-46` returns `true` when there is no authenticated user (deliberately, with a logged warning), so isolation holds only where a second, independent decorator was remembered. [[ENDPOINTS]] measures the result: 137 of 448 endpoints carry no `JwtAuthGuard`; minus 32 webhook routes and 11 explicit `@Public()`, **94 are unguarded by omission**. Endpoint 449 will be unguarded by default. | Make the invariant structural (deny-by-default at the boundary). Exploitability and endpoint triage are [[security-charter]]'s under OD-19/OD-20. | 2026-10-05 |
 
 ## Answered
 

@@ -118,3 +118,4 @@ substantive case for C:
 | 2026-08-24 | Claude | Wrote three paths; recommended **A**, arguing C repeats the design-before-evidence mistake ADR 0006 avoided with NF-C |
 | 2026-08-24 | Aldemir | **Chose C.** Recommendation overruled; consistent with optimising for the goal over the smallest safe step |
 | 2026-08-24 | Claude | Recorded the three accepted risks with mitigations so they are not rediscovered later |
+| 2026-08-24 | Aldemir | **Tracking decision:** all metrics ride one spine — product analytics per page, agent telemetry, and work tracking. This adds **`operator`** as a fourth `subject_type` (staff/owner actions in the product), closing the gap flagged earlier that operator preference signal had no schema home |

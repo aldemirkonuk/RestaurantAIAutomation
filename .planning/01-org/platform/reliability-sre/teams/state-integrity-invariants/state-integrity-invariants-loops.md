@@ -8,10 +8,8 @@ metrics: [sre.mttd_silent_corruption, integrity.open_findings_count, integrity.o
 updated: 2026-08-24
 links: ["[[state-integrity-invariants-charter]]", "[[state-integrity-invariants-directive]]", "[[reliability-sre-loops]]", "[[schema-migrations-charter]]", "[[inventory-ledger-charter]]", "[[access-control-tenant-isolation-charter]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["int-tenant-leakage-response", "int-findings-disposition", "int-gate-integrity", "int-outcome-side-coverage", "int-detection-coverage-honesty"]
-loop_close_times: ["minutes — immediate, out of band, never queued", "weekly", "daily (cron already exists), weekly review", "monthly, immediate on a green-CI-plus-divergence event", "weekly"]
+loop_close_times: ["per-event", "weekly", "daily", "monthly", "weekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -36,7 +34,8 @@ measures: [integrity.tenant_leakage_detections, integrity.tenant_leakage_time_to
 changes: [orchestrator.write_pause_decision, access_control.policy, alerting.out_of_band_path]
 inputs_from: [access-control-tenant-isolation, platform-api, observability-telemetry-plumbing]
 outputs_to: [security, compliance, legal, decision-office, reliability-sre]
-close_time: minutes — immediate, out of band, never queued
+close_time: per-event
+close_time_note: "minutes — immediate, out of band, never queued"
 status: proposed
 ```
 
@@ -85,7 +84,8 @@ measures: [schema.days_since_hand_applied_ddl, integrity.commits_touching_migrat
 changes: [scripts.check_schema_parity_sh, workflows.schema_parity_yml, gate.severity]
 inputs_from: [schema-migrations, release-engineering]
 outputs_to: [engineering, decision-office, reliability-sre]
-close_time: daily (cron already exists), weekly review
+close_time: daily
+close_time_note: "daily (cron already exists), weekly review"
 status: proposed
 ```
 
@@ -110,7 +110,8 @@ measures: [integrity.invariants_with_outcome_side_check_pct, integrity.divergenc
 changes: [gates.outcome_side_twins, sampling.frequency, detector.coverage]
 inputs_from: [inventory-ledger, catalogue-identity, substrate-quality-coverage]
 outputs_to: [engineering, reliability-sre]
-close_time: monthly, immediate on a green-CI-plus-divergence event
+close_time: monthly
+close_time_note: "monthly, immediate on a green-CI-plus-divergence event"
 status: proposed
 ```
 

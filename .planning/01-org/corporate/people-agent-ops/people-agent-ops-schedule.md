@@ -19,7 +19,7 @@ links: ["[[people-agent-ops-charter]]", "[[people-agent-ops-loops]]", "[[people-
 | Daily | **Roster census** — three-way diff: filesystem · orchestrator class map · `DEFAULT_AGENT_SPECS` (L-PAO-1) | `roster.unregistered_module_count`, `roster.truth_pct`, one defect row per diff |
 | Daily | **Stub-flag audit** — every `IS_STUB = True` module still refused at boot (`core/orchestrator.py:245`), and every non-stub still implements `process_message()` | `roster.declared_stub_count`, stub-drift alerts |
 | Weekly | **Doneability coverage publication** — the number and the blocker age, whether or not either moved (L-PAO-3) | `nf_a.doneability_verdict_coverage`, `people.blocked_days` |
-| Weekly | **Dependency escalation sweep** — any Research & Math dependency older than two close-times goes to `OPEN-DECISIONS.md` automatically | `OPEN-DECISIONS.md` entries; OD-C5 age |
+| Weekly | **Dependency escalation sweep** — any Research & Math dependency older than two close-times goes to `OPEN-DECISIONS.md` automatically | `OPEN-DECISIONS.md` entries; CORP-F5 age |
 | Monthly | **Cost-attribution readiness** — is spend attributable to a worker yet (L-PAO-4) | `nf_a.agent_attributed_spend_pct`; a binary, not an estimate |
 | Monthly | **Headcount reconciliation** — 19 / 23 / 24 / 26 against every external artifact that quotes a number, `.planning/PROJECT.md:33,121` included | Corrections, or a recorded disagreement |
 | Quarterly | **Fleet review** — maturity levels re-evidenced, retirements proposed (L-PAO-5) | Level changes; retirement decisions; criteria findings to [[evaluation-doneability-charter]] |

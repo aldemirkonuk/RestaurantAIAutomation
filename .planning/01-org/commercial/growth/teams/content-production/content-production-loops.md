@@ -8,11 +8,9 @@ metrics: [content.published_units_per_week, content.first_pass_clear_rate, conte
 updated: 2026-08-24
 links: ["[[content-production-charter]]", "[[content-production-premortem]]", "[[content-production-directive]]", "[[content-production-schedule]]", "[[growth-loops]]", "[[editorial-gate-loops]]", "[[search-demand-research-loops]]", "[[technical-seo-ai-answer-surface-loops]]", "[[inference-cost-charter]]", "[[LOOP-MAP]]"]
 loop_count: 3
-loop_count: 3
-loop_count: 3
 loop_ids: ["g2-draft-to-verdict", "g2-link-graph-integrity", "g2-originality-citation-feedback"]
-loop_close_times: ["weekly", "per publication, and monthly as a sweep", "monthly"]
-loop_statuses: ["proposed", "monthly", "proposed"]
+loop_close_times: ["weekly", "per-event", "monthly"]
+loop_statuses: ["proposed", "proposed", "proposed"]
 ---
 
 # Content Production — Loops
@@ -60,8 +58,9 @@ measures: [content.faq_orphan_pages, content.duplicate_intent_pairs, content.bac
 changes: [content.published_corpus, content.answer_page_set]
 inputs_from: [technical-seo-ai-answer-surface, search-demand-research]
 outputs_to: [technical-seo-ai-answer-surface, growth, decision-office]
-close_time: per publication, and monthly as a sweep
-status: monthly
+close_time: per-event
+close_time_note: "per publication, and monthly as a sweep"
+status: proposed
 ```
 
 Runs **twice**: at every publication and revision, and as a monthly sweep over the whole

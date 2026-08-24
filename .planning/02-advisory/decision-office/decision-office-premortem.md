@@ -130,10 +130,10 @@ Non-negotiable #1 was hollowed out from inside by the office built to defend it.
 The pressure is not ego. It is **helpfulness under a backlog**, and the corpus is
 already applying it: 222 documents reference this function, 329 wikilinks point at
 it, 168 loop blocks route their escalations here, and several units have written
-sentences like *"[[decision-office-charter]] owns whether OD-C5 closes or drifts"*
+sentences like *"[[decision-office-charter]] owns whether CORP-F5 closes or drifts"*
 (`people-agent-ops-directive.md:120`, `performance-doneability-premortem.md:185`).
 Owning *whether it closes* is one preposition away from owning *how it closes*.
-[[standards-verification-charter]]'s OD-C6 proposal — that it be reparented under
+[[standards-verification-charter]]'s CORP-F6 proposal — that it be reparented under
 this office — is the same pressure wearing a reasonable argument.
 
 **Earliest observable signal.** The literal one: **`decisions.decided_here_count`
@@ -147,7 +147,7 @@ open N days."* The moment it says *"B should win"*, authority has moved. That is
 greppable and it is checked in the quarterly self-audit.
 
 Earliest of all: **the office accepting an execution team, a headcount, or a
-deliverable that is not a finding.** OD-C6 is the live instance and
+deliverable that is not a finding.** CORP-F6 is the live instance and
 [[decision-office-charter]] declines it in writing *before* the pressure is real,
 on purpose.
 
@@ -255,7 +255,7 @@ to the person who is not responding is not reporting.
 |---|---|---|---|---|
 | M1 | Tollbooth | `intake_rate` falls while corpus grows; any intake returned for reformatting | Intake never rejected; `intake_returned_count` target **0**; report intake beside queue length | No — risk begins at first triage |
 | M2 | Passive list | `unowned_count` = 35/35; `median_age_days` undefined; two consecutive zero-close triages | Owner + filed date on every row; age reported weekly regardless of movement; digest leads with oldest | **Yes — already true** |
-| M3 | Authority creep | `decided_here_count` > 0; the word *"should"* in a finding; accepting a team (OD-C6) | May mint unused IDs, may never reassign a cited one; OD-C6 declined in writing; quarterly Red Team audit | **Yes — OD-C6 and OD-30 are live pressure** |
+| M3 | Authority creep | `decided_here_count` > 0; the word *"should"* in a finding; accepting a team (CORP-F6) | May mint unused IDs, may never reassign a cited one; CORP-F6 declined in writing; quarterly Red Team audit | **Yes — CORP-F6 and OD-30 are live pressure** |
 | M4 | Reconciliation theatre | A month with metadata shipped and zero rows closed; OD-03/OD-11 past 90 days | Reconciliation is a one-off, time-boxed to two close-times; digest leads with oldest, never with mechanics | Latent — begins with assignment #1 |
 | M5 | Escalating ≠ closing | `fired_but_unactioned_count` > 0 for two close-times | Escalation carries its own close-time; terminal state required; third re-raise goes to Red Team too | Latent — first test 2026-11-24 |
 

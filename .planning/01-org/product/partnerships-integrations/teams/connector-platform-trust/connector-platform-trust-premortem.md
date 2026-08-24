@@ -60,7 +60,7 @@ absent signature is a rejection rather than a bypass.
 ## M2 — We build a parallel security function and both units assume the other set the secret
 
 **The mechanism.** The mandate contains the phrase "webhook signature verification," and
-[[perimeter-ingress-integrity-charter]] contains the same phrase. Nobody resolves OD-23, so
+[[perimeter-ingress-integrity-charter]] contains the same phrase. Nobody resolves PROD-F4, so
 both teams act. This team builds a verification helper for connectors; Security builds one for
 ingress. They are 90% the same and diverge in the 10% that matters — where the secret comes
 from, and what happens when it is missing. Each team's code fails closed *within its own

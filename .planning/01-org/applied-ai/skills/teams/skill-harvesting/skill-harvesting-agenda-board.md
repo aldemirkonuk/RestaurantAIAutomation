@@ -62,7 +62,7 @@ here ([[technology]] §4.3).
 - [ ] Gate not met — registry 0/15
 - [ ] Nothing to harvest *into* — `.claude/skills/` absent
 - [ ] Disband metric unmeasurable — no firing telemetry
-- [ ] OD-22 open — 3 teams or 2
+- [ ] TECH-F4 open — 3 teams or 2
 - [ ] Admission rate limit unset
 - [ ] 2027-08-24 sunset not agreed
 

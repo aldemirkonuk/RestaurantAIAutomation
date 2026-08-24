@@ -8,10 +8,8 @@ metrics: [schema.days_since_hand_applied_ddl, schema.parity_job_green_streak, sc
 updated: 2026-08-24
 links: ["[[schema-migrations-charter]]", "[[schema-migrations-premortem]]", "[[schema-migrations-directive]]", "[[engineering-loops]]", "[[state-integrity-invariants-charter|sre-state-integrity]]", "[[inventory-ledger-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["sm-parity-streak", "sm-emergency-ddl-reconciliation", "sm-function-body-parity", "sm-generated-type-fidelity", "sm-irreversible-operation-review"]
-loop_close_times: ["per-PR and daily", "per-event, resolved within 24h", "daily", "per-PR", "per-PR"]
+loop_close_times: ["per-pr", "per-event", "daily", "per-pr", "per-pr"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -32,7 +30,8 @@ measures: [schema.days_since_hand_applied_ddl, schema.parity_job_green_streak, s
 changes: [supabase.migrations, schema.reconciliation_backlog]
 inputs_from: [sre-state-integrity]
 outputs_to: [engineering, sre-state-integrity, decision-office]
-close_time: per-PR and daily
+close_time: per-pr
+close_time_note: "per PR and daily"
 status: proposed
 ```
 
@@ -55,7 +54,8 @@ measures: [schema.hand_applied_statements, schema.reconciliation_lag_hours, sche
 changes: [supabase.migrations, schema.emergency_runbook]
 inputs_from: [sre-runtime-resilience, sre-state-integrity]
 outputs_to: [engineering, sre-state-integrity, decision-office]
-close_time: per-event, resolved within 24h
+close_time: per-event
+close_time_note: "resolved within 24h"
 status: proposed
 ```
 
@@ -102,7 +102,7 @@ measures: [schema.generated_type_diff_on_regen, schema.type_files_edited_without
 changes: [packages.database_types, ci.type_regeneration_gate]
 inputs_from: [client-surfaces, platform-api]
 outputs_to: [engineering, client-surfaces, platform-api]
-close_time: per-PR
+close_time: per-pr
 status: proposed
 ```
 
@@ -124,7 +124,7 @@ measures: [schema.irreversible_ops_merged, schema.irreversible_ops_reviewed_by_o
 changes: [schema.review_policy, schema.irreversible_ops_list]
 inputs_from: [inventory-ledger, catalogue-identity, procurement-vendor-network, messaging-delivery]
 outputs_to: [engineering, architecture-review, decision-office]
-close_time: per-PR
+close_time: per-pr
 status: proposed
 ```
 

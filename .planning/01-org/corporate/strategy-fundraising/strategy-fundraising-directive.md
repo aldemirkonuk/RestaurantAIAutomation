@@ -56,7 +56,7 @@ graph TD
   Q -->|yes| R[Not ours. Route to instruments-equity]
   Q -->|no| S{Has the split trigger fired?\nfirst term sheet / first instrument}
   S -->|no| T[Readiness beyond a one-page index\nis deferred. R4]
-  S -->|yes| U[Split the department. OD-C3 closes]
+  S -->|yes| U[Split the department. CORP-F3 closes]
 
   G --> V[OPEN-DECISIONS]
   P --> V
@@ -74,7 +74,7 @@ graph TD
 | **[[metric-contract-truth-assurance-charter]]** | What a metric **means** | `dollars_recovered` — its definition and its contract. Strategy consumes it and may only weaken it, never strengthen it |
 | **[[design-partner-operations-charter]]** | The recovery **number itself** | Credits watched landing. Strategy publishes nothing stronger than S1 produces |
 | **[[standards-verification-charter]]** | Whether an internal document is still true | The 375-vs-573 contradiction. Strategy owns not shipping either until it closes |
-| **OPEN-DECISIONS** | Department shape, gate exemptions, and any target that drives another department's plan | OD-23; OD-C3; any proposal to relax R1 |
+| **OPEN-DECISIONS** | Department shape, gate exemptions, and any target that drives another department's plan | OD-23; CORP-F3; any proposal to relax R1 |
 
 ## Standing rules
 
@@ -143,7 +143,7 @@ Escalate to `OPEN-DECISIONS.md` when **any** of these holds:
 3. **A target that drives another department's plan is unresolved for two consecutive
    months.** OD-23 is the live instance ([[OPEN-DECISIONS]]:27). Silence is not resolution.
 4. **The split trigger fires** — a live term-sheet conversation or an issued instrument.
-   OD-C3 closes at that moment, one way or the other.
+   CORP-F3 closes at that moment, one way or the other.
 5. **The split trigger has not fired in twelve months.** The mirror case, and it is a
    finding too: a deferred team that was never needed is different from a deferred team
    that is waiting, and the org should know which it had.

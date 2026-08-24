@@ -230,8 +230,8 @@ Raised in [[guest-value-monetization-premortem]] and [[guest-experience-agenda-f
 |---|---|---|
 | **OD-07** | **Beli** — build the consumer experience independently, or explore collaboration ([[OPEN-DECISIONS]]:18). Founder call after guest MVP scope exists. | [[consumer-app-points-economy-charter]]'s existence is downstream of it. **This charter takes no position.** |
 | **OD-11** | NF production columns, partial-index strategy per `subject_type`, research-log retention. | Every NF-B event write. See the flag below. |
-| **OD-22** | Guest monetization in Guest Experience or in Commercial? ([[product]] §5.2) | [[guest-value-monetization-charter]]. Reflected as open there. |
-| **OD-20** | The 17-team Product layer as proposed, or the reduced set. | This sub-layer's headcount — see §Team count below. |
+| **PROD-F3** | Guest monetization in Guest Experience or in Commercial? ([[product]] §5.2) | [[guest-value-monetization-charter]]. Reflected as open there. |
+| **PROD-F1** | The 17-team Product layer as proposed, or the reduced set. | This sub-layer's headcount — see §Team count below. |
 
 ### ⚠️ Flag — the strongest human-preference signal we already collect has no `subject_type` home
 

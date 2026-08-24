@@ -7,10 +7,8 @@ metrics: [roster.truth_pct, roster.unregistered_module_count, roster.silent_defa
 updated: 2026-08-24
 links: ["[[people-agent-ops-charter]]", "[[people-agent-ops-premortem]]", "[[people-agent-ops-directive]]", "[[roster-lifecycle-loops]]", "[[performance-doneability-loops]]", "[[LOOP-MAP]]", "[[research-math-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[evaluation-doneability-charter]]", "[[ai-orchestration-charter]]", "[[decision-office-charter]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["pao-roster-census", "pao-onboarding-gate", "pao-doneability-coverage", "pao-cost-attribution-readiness", "pao-fleet-review"]
-loop_close_times: ["daily", "per PR", "weekly", "monthly", "quarterly"]
+loop_close_times: ["daily", "per-pr", "weekly", "monthly", "quarterly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -60,7 +58,7 @@ measures: [roster.new_module_gate_pass_rate, roster.unregistered_module_count]
 changes: [ci.agent_registration_check, roster.exclusion_register, roster.onboarding_checklist]
 inputs_from: [roster-lifecycle, engineering, ai-orchestration]
 outputs_to: [ai-orchestration, reliability-sre, decision-office]
-close_time: per PR
+close_time: per-pr
 status: proposed
 ```
 
@@ -112,7 +110,7 @@ Tracks one binary and one number: *can spend be attributed to a worker yet* (tod
 `services/agent-orchestrator/services/spend_logger.py:41-49`, and `api_spend` at
 `supabase/migrations/20260805000000_baseline_from_production.sql:2231` has no agent
 column), and *what share of spend is agent-attributed* (today: **0%**). Monthly because
-it moves only when OD-C5 moves. **The reported value while blocked is `not derivable`,
+it moves only when CORP-F5 moves. **The reported value while blocked is `not derivable`,
 never an estimate** — directive rule 1, countering premortem M4.
 
 ---

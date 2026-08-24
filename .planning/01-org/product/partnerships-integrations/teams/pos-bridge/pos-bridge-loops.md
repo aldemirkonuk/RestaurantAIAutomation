@@ -15,10 +15,8 @@ links:
   - "[[architecture-review-charter]]"
   - "[[LOOP-MAP]]"
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["pos-registry-truth", "pos-canonical-neutrality", "pos-catalog-match-gate", "pos-hub-route-posture", "pos-real-throughput"]
-loop_close_times: ["monthly", "per-change", "weekly", "per-PR", "weekly"]
+loop_close_times: ["monthly", "per-pr", "weekly", "per-pr", "weekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -71,7 +69,8 @@ measures: [pi.canonical_shape_drift]
 changes: [pos_types.canonical_check, pos_provider_registry.capabilities]
 inputs_from: [engineering, analytics-bi]
 outputs_to: [architecture-review, analytics-bi, engineering]
-close_time: per-change
+close_time: per-pr
+close_time_note: "per change to the canonical shape"
 status: proposed
 ```
 
@@ -128,7 +127,7 @@ measures: [pi.verified_ingress_ratio]
 changes: [pos_hub.route_guards, connector.trust_contracts]
 inputs_from: [connector-platform-trust, security, engineering]
 outputs_to: [connector-platform-trust, security]
-close_time: per-PR
+close_time: per-pr
 status: proposed
 ```
 

@@ -90,7 +90,7 @@ recurring and reasonable-sounding every time.
 - [ ] Define the fallback-ladder structure and identify which sections are contentious
 - [ ] Define what the redline log records, per agreement — L-CW-3
 - [ ] Stand up the register states for these nine types with the department
-- [ ] Stage **OD-C2** into `OPEN-DECISIONS.md` via [[decision-office-charter]] —
+- [ ] Stage **CORP-F2** into `OPEN-DECISIONS.md` via [[decision-office-charter]] —
       deliberately not written directly; sibling division sessions are appending to that
       table concurrently (`corporate.md:486-490`)
 - [ ] Route the stale brand in `apps/web/src/pages/Privacy.tsx:23` to Compliance §3.2 —
@@ -104,7 +104,7 @@ recurring and reasonable-sounding every time.
    CW-2 says founder + counsel, once per section. That is a real time commitment before any
    deal exists. The alternative — deciding each rung during the first negotiation that
    needs it — is how [[commercial-workforce-agreements-premortem]] M1 starts.
-2. **OD-C2 — two signatures on DPA/BAA, or one team holding both?** Two is slower and
+2. **CORP-F2 — two signatures on DPA/BAA, or one team holding both?** Two is slower and
    catches M3. One is faster and cannot. The relevant fact for deciding: erasure is
    currently untested end-to-end, so the gate will fail on its first firing either way —
    the question is whether it fails in front of us or in front of a customer.

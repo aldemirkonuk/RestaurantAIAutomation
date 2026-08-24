@@ -41,7 +41,7 @@ SORT status ASC
 
 - [ ] `nf_b.subject_coverage` non-zero, and a segment clears the k-threshold **without lowering it**
 - [ ] NF-B events emitting above a completeness floor
-- [ ] **OD-22 resolved** — this team here, or in Commercial
+- [ ] **PROD-F3 resolved** — this team here, or in Commercial
 
 ## Available now, gated on nothing — the counter-pressures that only work first
 

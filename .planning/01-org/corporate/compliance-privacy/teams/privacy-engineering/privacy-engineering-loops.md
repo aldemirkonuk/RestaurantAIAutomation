@@ -8,11 +8,9 @@ metrics: [privacy.erasure_completeness, privacy.pii_definition_count, privacy.co
 updated: 2026-08-24
 links: ["[[privacy-engineering-charter]]", "[[privacy-engineering-schedule]]", "[[privacy-engineering-directive]]", "[[compliance-privacy-loops]]", "[[regulatory-posture-loops]]", "[[customer-relationship-research-charter]]", "[[taste-fingerprint-charter]]", "[[schema-migrations-charter]]", "[[security-charter]]", "[[ORG_STRUCTURE]]"]
 loop_count: 6
-loop_count: 6
-loop_count: 6
 loop_ids: ["pii-definition-convergence", "store-inventory-currency", "erasure-proof", "consent-gate", "guest-identity-ci-guards", "nfb-research-store-erasability"]
-loop_close_times: ["per-merge", "per-migration, swept daily", "per-request; drill monthly", "real-time in the request path; weekly audit sweep", "per-push and per-PR, plus daily cron", "UNDEFINED — must be set by the decision that creates this loop"]
-loop_statuses: ["proposed", "proposed", "blocked", "blocked", "running", "escalated"]
+loop_close_times: ["per-pr", "per-event", "per-event", "per-event", "per-pr", "one-shot"]
+loop_statuses: ["proposed", "proposed", "blocked", "blocked", "running", "blocked"]
 ---
 
 # Privacy Engineering — Loops
@@ -37,7 +35,8 @@ measures: [privacy.pii_definition_count, privacy.guard_divergence_events, privac
 changes: [privacy.pii_module, ci.guard_scripts, agents.constraint_engine, agents.provider_communication, jobs.research_tasks]
 inputs_from: [security, ai-orchestration, data]
 outputs_to: [security, ai-orchestration, regulatory-posture]
-close_time: per-merge
+close_time: per-pr
+close_time_note: "per merge"
 status: proposed
 ```
 
@@ -67,7 +66,8 @@ measures: [privacy.store_inventory_coverage, privacy.unclassified_table_count]
 changes: [privacy.store_inventory, privacy.erasure_runbook, ci.inventory_job]
 inputs_from: [schema-migrations, data, reliability-sre, partnerships-integrations]
 outputs_to: [privacy-engineering, regulatory-posture]
-close_time: per-migration, swept daily
+close_time: per-event
+close_time_note: "per migration, swept daily"
 status: proposed
 ```
 
@@ -93,7 +93,8 @@ measures: [privacy.erasure_completeness, privacy.erasure_receipt_count, privacy.
 changes: [schema.guest_erasure_receipts, privacy.erasure_runbook, privacy.store_inventory]
 inputs_from: [guest-identity-consent, privacy-engineering, data]
 outputs_to: [regulatory-posture, legal, customer-relationship-research]
-close_time: per-request; drill monthly
+close_time: per-event
+close_time_note: "per request; drill monthly"
 status: blocked
 ```
 
@@ -125,7 +126,8 @@ measures: [privacy.consent_gate_denials, privacy.consent_call_sites, privacy.wit
 changes: [media.research_cohort, product.personalisation_scope, privacy.consent_gate]
 inputs_from: [guest-identity-consent]
 outputs_to: [customer-relationship-research, taste-fingerprint, guest-experience]
-close_time: real-time in the request path; weekly audit sweep
+close_time: per-event
+close_time_note: "real-time in the request path; weekly audit sweep"
 status: blocked
 ```
 
@@ -158,7 +160,8 @@ measures: [privacy.guard_pass_rate, privacy.guard_allowlist_size, privacy.allowl
 changes: [ci.guard_scripts, privacy.pii_module, privacy.allowlist_policy]
 inputs_from: [engineering, guest-identity-consent]
 outputs_to: [privacy-engineering, security, regulatory-posture]
-close_time: per-push and per-PR, plus daily cron
+close_time: per-pr
+close_time_note: "per push and per PR, plus daily cron"
 status: running
 ```
 
@@ -191,8 +194,9 @@ measures: [nf_b.research_store_erasability, nf_b.row_count]
 changes: [nf_b.schema, nf_b.retention_policy, privacy.erasure_runbook]
 inputs_from: [taste-fingerprint, neural-footprint-instrumentation, privacy-engineering]
 outputs_to: [decision-office]
-close_time: UNDEFINED — must be set by the decision that creates this loop
-status: escalated
+close_time: one-shot
+close_time_note: "UNDEFINED — ownership unresolved, deliberately visible; must be set by the decision that creates this loop · escalated — blocked on ownership, not started"
+status: blocked
 ```
 
 Recorded here **because a loop with no owner and no close-time is exactly the thing

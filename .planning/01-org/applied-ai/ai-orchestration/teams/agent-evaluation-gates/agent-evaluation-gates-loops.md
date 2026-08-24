@@ -8,10 +8,8 @@ metrics: [nf_a.doneability_verdict_coverage]
 updated: 2026-08-24
 links: ["[[agent-evaluation-gates-charter]]", "[[agent-evaluation-gates-premortem]]", "[[agent-evaluation-gates-directive]]", "[[agent-evaluation-gates-schedule]]", "[[ai-orchestration-loops]]", "[[agent-fleet-loops]]", "[[model-routing-inference-economics-loops]]", "[[research-math-charter|research-and-math-charter]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
 loop_count: 6
-loop_count: 6
-loop_count: 6
 loop_ids: ["loop-merge-policy-gate", "loop-eval-coverage", "loop-judgment-rubric", "loop-gold-set-freshness", "loop-confidence-calibration", "loop-evaluation-seam"]
-loop_close_times: ["per-commit", "weekly", "monthly", "monthly", "quarterly", "on second occurrence — not a cadence"]
+loop_close_times: ["per-pr", "weekly", "monthly", "monthly", "quarterly", "per-event"]
 loop_statuses: ["active", "proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -37,7 +35,8 @@ measures: [identity.false_merge_count]
 changes: [merge_policy, ci.gate_result]
 inputs_from: [engineering, data]
 outputs_to: [engineering, research-and-math]
-close_time: per-commit
+close_time: per-pr
+close_time_note: "per commit (CI)"
 status: active
 evidence: ".github/workflows/ci.yml:226-230 rebuilds the labelled set (scripts/build_merge_eval_set.py) then runs scripts/eval_merge_policies.py. schema-parity.yml:149 runs the guest variant."
 verdict: "eval_merge_policies.py:9-16 — 'the false-merge count of the PROPOSED policy alone is the pass/fail signal… Exits 1 iff the proposed policy has any false merge.'"
@@ -130,11 +129,12 @@ measures: [seam.occurrences_of_this_team_defining, seam.duplicate_definitions]
 changes: [org.team_existence]
 inputs_from: [research-and-math]
 outputs_to: [decision-office]
-close_time: on second occurrence — not a cadence
+close_time: per-event
+close_time_note: "on second occurrence — not a cadence"
 status: proposed
 threshold: "1 = coordination miss. 2 = the methodology/operations line has failed."
 resolution: "Merge this team into research-and-math. NEVER build it in both places. technology.md:406, technology.md:845."
-blocker: "⚠️ The fork has no usable ID. technology.md:845 numbers it OD-21; OPEN-DECISIONS.md:25 already spends OD-21 on the Obsidian structural workflow. A fork that cannot be cited cannot be closed."
+blocker: "Resolved — the fork is TECH-F3 (02-advisory/decision-office/FORK-REGISTRY.md). technology.md:845 originally numbered it OD-21, which OPEN-DECISIONS.md:25 already spends on the Obsidian structural workflow. A fork that cannot be cited cannot be closed."
 ```
 
 ---

@@ -7,10 +7,8 @@ metrics: [design.ledger_drift_days, design.paths_closed_per_month, design.resolv
 updated: 2026-08-24
 links: ["[[design-charter]]", "[[design-premortem]]", "[[design-directive]]", "[[ux-path-burn-down-loops]]", "[[design-system-motion-substrate-loops]]", "[[exploration-studio-loops]]", "[[activation-in-product-guidance-loops]]", "[[LOOP-MAP]]", "[[decision-office-charter]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["dsn-ledger-reconciliation", "dsn-convergence-pressure", "dsn-substrate-leakage", "dsn-activation-by-role", "dsn-service-surface-allocation"]
-loop_close_times: ["weekly", "biweekly", "monthly", "monthly", "monthly"]
+loop_close_times: ["weekly", "fortnightly", "monthly", "monthly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -62,7 +60,7 @@ measures: [design.resolved_question_rate, design.open_null_winner_count, design.
 changes: [exploration_studio.wip_limit, sketches.manifest, design.agenda_board]
 inputs_from: [exploration-studio, ux-path-burn-down, activation-in-product-guidance]
 outputs_to: [ux-path-burn-down, design-system-motion-substrate, decision-office]
-close_time: biweekly
+close_time: fortnightly
 status: proposed
 ```
 

@@ -117,10 +117,11 @@ possible in a month or in six.
    in Intelligence? The team's own stated fallback is **merge, never duplicate**
    (`technology.md:406`). We would rather merge now than discover duplication in six
    months, and the backlog above survives either answer.
-2. **⚠️ The fork has no usable ID.** `technology.md:845` calls it OD-21;
-   `OPEN-DECISIONS.md:25` already spends OD-21 on the Obsidian workflow. It needs a
-   free number before it can enter the decision log — a fork that cannot be cited
-   cannot be closed. → [[decision-office-charter]].
+2. **✅ The fork now has a usable ID: `TECH-F3`.** `technology.md:845` originally
+   called it OD-21; `OPEN-DECISIONS.md:25` already spends OD-21 on the Obsidian
+   workflow, so the Decision Office renamespaced it ([[FORK-REGISTRY]]). It can now
+   enter the decision log — a fork that cannot be cited cannot be closed.
+   → [[decision-office-charter]].
 3. **Which judgment task matters most commercially?** We propose vendor-reply quality
    because the label source already exists. If negotiation stance or recommendation
    usefulness matters more, that changes step 2.

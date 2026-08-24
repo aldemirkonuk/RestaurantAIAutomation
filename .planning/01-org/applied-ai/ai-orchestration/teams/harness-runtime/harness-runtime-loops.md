@@ -8,10 +8,8 @@ metrics: [nf_a.retries, nf_a.dlq_depth]
 updated: 2026-08-24
 links: ["[[harness-runtime-charter]]", "[[harness-runtime-premortem]]", "[[harness-runtime-directive]]", "[[harness-runtime-schedule]]", "[[ai-orchestration-loops]]", "[[agent-fleet-loops]]", "[[reliability-sre-charter|reliability-charter]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
 loop_count: 4
-loop_count: 4
-loop_count: 4
 loop_ids: ["loop-harness-health", "loop-dlq-triage", "loop-harness-coverage-census", "loop-od03-bakeoff"]
-loop_close_times: ["daily", "daily", "monthly", "one-shot — a dated bake-off"]
+loop_close_times: ["daily", "daily", "monthly", "one-shot"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -91,7 +89,8 @@ measures: [od03.days_open, harness.core_lines_added_since_od03_opened]
 changes: [harness.base_choice]
 inputs_from: [research-and-math, model-routing-inference-economics, agent-evaluation-gates]
 outputs_to: [decision-office, engineering, reliability-sre]
-close_time: one-shot — a dated bake-off
+close_time: one-shot
+close_time_note: "a dated bake-off"
 status: proposed
 method: "OPEN-DECISIONS.md:14 — a scoped bake-off on this repo's actual workloads. No pick from repute."
 inputs_required: "cost instrumentation (model-routing) + doneability verdicts (agent-evaluation-gates). Running earlier produces a preference, not evidence."

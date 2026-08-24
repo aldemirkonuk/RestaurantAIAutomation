@@ -17,6 +17,19 @@ links: ["[[SCENARIO-CONTRACT]]", "[[SCENARIO-MAP]]", "[[analytics-bi-charter]]",
 > Retire-to-write: this supersedes the OD-48 bullet in [[SCENARIO-MAP]] §Open, which is
 > now resolved and points here.
 
+## Tier axis — LOCKED 2026-08-24 (founder)
+
+- **Core = operate**, and it includes the **POS connector, free and frictionless** (OD-50):
+  connection moves a restaurant from 25.1% → 100% of the catalogue, so the connector is
+  the acquisition lever, never the gate.
+- **Plus = fewer, curated insights** — a deliberately small, high-signal feed.
+- **Pro = depth + count + alphas** — the full catalogue, deeper horizons and granularity,
+  and **ML-backed "insight alphas" unique to Mudavym**, built by [[research-math-charter|Research & Math]].
+  Pro is where the ML research program becomes customer-visible.
+- Axis is **depth + count**, not method alone; prices remain open (OD-23).
+- Constraint that stands (OD-51): zero Pro tiers ship complete today — the alphas are a
+  build mandate for Research & Math, not a current promise.
+
 ## Legend
 
 | Mark | Means |

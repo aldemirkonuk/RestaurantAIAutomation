@@ -8,10 +8,8 @@ metrics: [safety.unconfirmed_mutation_count, safety.median_time_to_confirm, safe
 updated: 2026-08-24
 links: ["[[action-safety-the-human-gate-charter]]", "[[action-safety-the-human-gate-premortem]]", "[[action-safety-the-human-gate-directive]]", "[[action-safety-the-human-gate-schedule]]", "[[ai-orchestration-loops]]", "[[design-charter]]", "[[compliance-privacy-charter|compliance-and-privacy-charter]]", "[[red-team-charter]]", "[[LOOP-MAP]]"]
 loop_count: 6
-loop_count: 6
-loop_count: 6
 loop_ids: ["loop-unconfirmed-mutation", "loop-gate-integrity", "loop-attention-budget", "loop-action-schema-coverage", "loop-allowlist-drift", "loop-audit-reconstructability"]
-loop_close_times: ["daily", "monthly", "monthly", "per-commit (CI gate), reviewed monthly", "quarterly", "monthly"]
+loop_close_times: ["daily", "monthly", "monthly", "per-pr", "quarterly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -91,7 +89,8 @@ measures: [safety.schema_coverage, safety.mutation_paths_outside_schema]
 changes: [action.schema, ci.gates]
 inputs_from: [engineering, agent-fleet]
 outputs_to: [engineering, ai-orchestration]
-close_time: per-commit (CI gate), reviewed monthly
+close_time: per-pr
+close_time_note: "per commit (CI gate), reviewed monthly"
 status: proposed
 today: "Partial by construction — FOUR independent conventions, not one mechanism (technology.md:441): drift_agent.py:8-12, one-tap-actions/, vendor-reply never-auto-send, ux-optimizer never-auto-apply."
 mechanism: "scripts/check_no_direct_stock_writes.sh:1-13 proves the CI-guard pattern works in this repo and is already wired into ci.yml. The new check asks a DIFFERENT question about the same code: not 'did this write go through apply_stock_movement' but 'is there a confirmation record upstream of this mutation'."

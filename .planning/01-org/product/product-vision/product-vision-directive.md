@@ -116,6 +116,6 @@ Escalate to `OPEN-DECISIONS.md` when **any** of these holds:
 **Advisory is findings-only** ([[ORG_STRUCTURE]] §3). [[red-team-charter]] and
 [[architecture-review-charter]] do not approve or block; they produce written findings
 against a named team, and [[decision-office-charter]] is what makes the resulting decision
-close rather than drift. [[decision-office-charter]] also owes this department a
-renumbering: `teams/product.md` §6 filed its forks as OD-20…OD-24, and those IDs are
-already in use.
+close rather than drift. [[decision-office-charter]] also delivered this department's
+renumbering: `teams/product.md` §6 filed its forks as OD-20…OD-24, IDs already in use;
+they are now **PROD-F1…PROD-F5** ([[FORK-REGISTRY]]).

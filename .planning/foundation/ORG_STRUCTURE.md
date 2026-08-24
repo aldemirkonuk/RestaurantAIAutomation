@@ -128,6 +128,7 @@ changes: [harness.routing_policy, skills.registry]
 inputs_from: [ai-orchestration, skills]
 outputs_to: [engineering, people-and-agent-ops]
 close_time: weekly
+close_time_note: "first reading within 4 weeks, then weekly"   # optional
 status: proposed
 ---
 ```
@@ -138,6 +139,54 @@ Rules:
 - **Every unit doc carries `type`, `division`, and `links`** so Graphify and Obsidian's
   graph view cluster correctly.
 - Cross-links use `[[slug]]`. An unresolved `[[link]]` marks a doc worth writing.
+
+### 5.1 `close_time` and `status` are closed vocabularies — LOCKED (OD-47)
+
+The original contract said *name a close-time* but never *from what set*, so 99
+independent generators produced **102 distinct values across 482 loops**, 67 of them
+multi-word free text. Cadence could not be aggregated or scheduled against. Both fields
+are now closed sets. A value outside them is a defect, not a variant.
+
+| Field | Permitted values |
+|---|---|
+| `close_time` | `per-pr` · `hourly` · `daily` · `weekly` · `fortnightly` · `monthly` · `quarterly` · `per-event` · `one-shot` |
+| `status` | `proposed` · `blocked` · `dormant` · `gated` · `active` · `running` |
+
+**`close_time` is the loop's primary cadence — the one that governs it in the phase it
+is in today.** Three tie-breaks, in order:
+
+1. A loop that names a **gate** and a **review** at different rates takes the gate —
+   the gate is what actually closes it. `per PR (CI), reviewed monthly` → `per-pr`.
+2. A loop that names a **temporary phase** and a **steady state** takes the phase that
+   governs today. `6 weeks to a decision, then quarterly re-run` → `quarterly`, because
+   the six weeks is a one-off, not a cadence.
+3. A **deadline or trigger is not a cadence.** `72h`, `30d_hard`, `per statutory
+   deadline`, `on second occurrence` → `per-event`.
+
+**`close_time_note:` is an optional free-text field carrying everything the closed value
+drops.** It is the release valve that makes the closed set survivable: nuance moves
+there, it is never deleted. If normalising a loop loses information, the note is
+missing, not the vocabulary.
+
+**`status` meanings, and the rule against inflating them:**
+
+| Value | Means |
+|---|---|
+| `proposed` | Written down. Has not started. The default, and where a loop stays until proven otherwise. |
+| `blocked` | Cannot start; a named dependency is unmet. Name it in the body. |
+| `dormant` | Was constituted and has stopped cycling. |
+| `gated` | Mechanism is ready but held behind a gate — a decision, a threshold, a launch. |
+| `active` | The mechanism executes today, with cited evidence, but a full measure→change cycle has not been observed. |
+| `running` | The full cycle closes on its stated cadence today, with a named owner and live measurement. |
+
+`active` and `running` require **evidence in the block** (a `file:line`, a workflow
+path, a query). A loop with no owner or no measurement is `proposed` regardless of
+whether some code path underneath it happens to execute — the code running is not the
+loop closing. As of 2026-08-24 exactly **6 of 482** loops qualify; that number moves by
+building the loop, never by relabelling it.
+
+`scripts/build_loop_index.py` regenerates the frontmatter arrays and
+`00-index/LOOP-MAP.md` from these blocks. Rerun it after editing loops.
 
 ---
 

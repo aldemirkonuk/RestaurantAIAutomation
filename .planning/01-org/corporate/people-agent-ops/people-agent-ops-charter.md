@@ -208,7 +208,7 @@ Recorded rather than quietly fixed, per [`CLAUDE.md`](../../../../CLAUDE.md) §0
 in order:
 
 1. **`SpendLogger.log()` gains an `agent` parameter**, and `api_spend` gains the column —
-   staged as **OD-C5** (`corporate.md:496`), which the corporate division session flagged
+   staged as **CORP-F5** (`corporate.md:496`), which the corporate division session flagged
    as belonging with OD-11. Without it, `nf_a.cost_per_task` is a named field in
    [[README]] §4.2 that no query can return.
 2. **A join key between reasoning and cost.** `decision_log` and `api_spend` currently
@@ -221,10 +221,10 @@ publishes 0% honestly, rather than substituting `success_rate` because it is ava
 
 ## Open forks touching this department
 
-- **OD-C5** — does `SpendLogger.log()` gain an `agent` parameter? Schema + call-site
+- **CORP-F5** — does `SpendLogger.log()` gain an `agent` parameter? Schema + call-site
   change (`corporate.md:496`). **Blocking for this department.**
 - **OD-11** — NF-A production column set and retention. Our two asks above are inputs to
   it, not separate decisions.
-- **OD-C1 / OD-17 / OD-23** — does a *team* get all 7 artifacts? This vault answers "7";
+- **CORP-F1 / OD-17 / TECH-F5** — does a *team* get all 7 artifacts? This vault answers "7";
   the fork is not closed.
 - **Human Ops split trigger** — second human on the payroll (`corporate.md:418`).

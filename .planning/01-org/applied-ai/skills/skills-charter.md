@@ -68,7 +68,7 @@ Owned outright:
    position: **Research & Math owns the T4 meta-skill methodology; Skills runs the
    job.** That is a proposal, not a decision — it belongs in `OPEN-DECISIONS.md`
    and is raised in [[skills-agenda-full]] §Questions.
-2. **OD-22 — three teams or two.** [[technology]] §4.3 charters
+2. **TECH-F4 — three teams or two.** [[technology]] §4.3 charters
    [[skill-harvesting-charter]] with an explicit entry trigger and states plainly:
    *"If the team count must be cut, cut this one first."* That instruction is
    carried forward here rather than softened.

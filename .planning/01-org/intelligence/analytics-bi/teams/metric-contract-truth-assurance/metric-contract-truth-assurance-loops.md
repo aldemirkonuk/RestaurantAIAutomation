@@ -8,10 +8,8 @@ metrics: [analytics.metric_claim_divergence_count, analytics.kpi_ground_truth_ag
 updated: 2026-08-24
 links: ["[[metric-contract-truth-assurance-charter]]", "[[metric-contract-truth-assurance-premortem]]", "[[metric-contract-truth-assurance-directive]]", "[[metric-contract-truth-assurance-schedule]]", "[[analytics-bi-loops]]", "[[analytics-engine-loops]]", "[[insight-narrative-generation-loops]]", "[[engineering-charter]]", "[[decision-office-charter]]", "[[media-brand-charter|media-and-brand-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["truth-claim-divergence-census", "truth-ground-truth-agreement", "truth-registry-binding", "truth-silent-zero-elimination", "truth-published-claim-provenance"]
-loop_close_times: ["weekly, plus before every external publication", "monthly", "monthly", "weekly sweep; structural fix tracked monthly", "per publication (gate), audited monthly"]
+loop_close_times: ["weekly", "monthly", "monthly", "weekly", "per-event"]
 loop_statuses: ["proposed", "blocked", "proposed", "proposed", "proposed"]
 ---
 
@@ -39,7 +37,8 @@ measures: [analytics.metric_claim_divergence_count, analytics.divergences_closed
 changes: [ci.count_assertions, web.runtime_derived_counts, metric-registry.definitions]
 inputs_from: [analytics-engine, insight-narrative-generation, media-and-brand, strategy-and-fundraising]
 outputs_to: [engineering, media-and-brand, decision-office]
-close_time: weekly, plus before every external publication
+close_time: weekly
+close_time_note: "weekly, plus before every external publication"
 baseline: "≥2 — (a) insight-type count published as 375 at InsightCatalog.tsx:2, commands.ts:78,99 and analytics.controller.ts:219, as 348 at LLM_INSTRUCTION_PROMPTS.md:167, and as 573 (true) at AGENT_NATIVE_UI_DECISION.md:64,100,105 and YC_WEDGE_PLAN.md:280,324; (b) feature count 460 at ANALYTICS_FEATURE_CATALOG.md:5 vs 360 at metric-registry.ts:8 and in the catalog's own tier table at :931-936"
 status: proposed
 ```
@@ -115,7 +114,8 @@ measures: [analytics.silent_zero_paths, analytics.all_zero_restaurant_sweeps]
 changes: [analytics.metric_result_type, web.insufficient_data_state]
 inputs_from: [engineering, analytics-engine]
 outputs_to: [insight-narrative-generation, design, reliability]
-close_time: weekly sweep; structural fix tracked monthly
+close_time: weekly
+close_time_note: "weekly sweep; structural fix tracked monthly"
 baseline: "8 Promise.allSettled sites across 5 files, each collapsing a failed query into an empty result via an ok() helper — analytics.service.ts, advanced-analytics.service.ts:501, recommendations.service.ts:87, consultants.service.ts:113, insights/insight-generator.service.ts:265"
 status: proposed
 ```
@@ -147,7 +147,8 @@ measures: [analytics.claims_without_provenance, analytics.overclaimed_verb_count
 changes: [external.deck_claims, web.marketing_copy, api.openapi_descriptions]
 inputs_from: [media-and-brand, strategy-and-fundraising, sales, growth]
 outputs_to: [media-and-brand, strategy-and-fundraising, red-team, decision-office]
-close_time: per publication (gate), audited monthly
+close_time: per-event
+close_time_note: "per publication (gate), audited monthly"
 baseline: "register does not exist. Known live instance: 'Browse all 375 insight types' shipped at apps/web/src/components/command/commands.ts:99 and apps/web/src/pages/InsightCatalog.tsx:2 against a true count of 573"
 status: proposed
 ```

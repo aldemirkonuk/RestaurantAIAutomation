@@ -148,5 +148,5 @@ registry. Agents and contributors will mistake it for one, which is the actual h
 This team audits documents produced by the department it belongs to, including its own
 seven artifacts. `corporate.md:512-515` raises whether it should instead sit under
 [[decision-office-charter]] as an advisory function — the same independence argument
-[[ORG_STRUCTURE]] §3 makes for the advisory layer. That is staged as **OD-C6** in
+[[ORG_STRUCTURE]] §3 makes for the advisory layer. That is staged as **CORP-F6** in
 [[knowledge-documentation-agenda-full]] and this charter does not pretend to settle it.

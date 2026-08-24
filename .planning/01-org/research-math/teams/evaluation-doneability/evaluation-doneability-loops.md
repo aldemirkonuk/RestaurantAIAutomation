@@ -8,11 +8,9 @@ metrics: [nf_a.verified_task_success_rate, nf_a.verdict_coverage, identity.false
 updated: 2026-08-24
 links: ["[[evaluation-doneability-charter]]", "[[evaluation-doneability-directive]]", "[[evaluation-doneability-schedule]]", "[[research-math-loops]]", "[[harness-model-routing-loops]]", "[[neural-footprint-instrumentation-loops]]", "[[agent-evaluation-gates-charter|aio-evaluation-gates]]", "[[security-charter]]", "[[skills-charter]]", "[[decision-office-charter]]"]
 loop_count: 7
-loop_count: 7
-loop_count: 7
 loop_ids: ["verified-vs-self-reported-gap", "golden-set-provenance", "weekly-ci-eval", "identity-false-merge-gate", "bakeoff-pass-conditions", "skill-health-antisprawl", "evaluation-seam-audit"]
-loop_close_times: ["weekly", "per-set at creation, reviewed monthly", "weekly", "per-PR (CI), reviewed weekly", "before each bake-off; audited quarterly", "weekly", "monthly, terminating in a ruling"]
-loop_statuses: ["proposed", "proposed", "proposed", "live", "proposed", "proposed", "proposed"]
+loop_close_times: ["weekly", "per-event", "weekly", "per-pr", "per-event", "weekly", "monthly"]
+loop_statuses: ["proposed", "proposed", "proposed", "active", "proposed", "proposed", "proposed"]
 ---
 
 # Evaluation & Doneability (RM-2) — Loops
@@ -59,7 +57,8 @@ measures: [golden_sets_with_free_negatives, golden_sets_imagination_only, share_
 changes: [eval.manifest_schema, eval.gate_authority]
 inputs_from: [security, engineering, data]
 outputs_to: [ai-orchestration, decision-office]
-close_time: per-set at creation, reviewed monthly
+close_time: per-event
+close_time_note: "per set at creation, reviewed monthly"
 status: proposed
 rule: "provenance: free-negatives | imagination-only. Only free-negatives may block a merge."
 exemplars:
@@ -110,8 +109,9 @@ measures: [identity.false_merge_count, guest.false_merge_count]
 changes: [identity.merge_policy, guest.merge_policy]
 inputs_from: [engineering, data, guest-experience]
 outputs_to: [engineering, security, compliance-and-privacy]
-close_time: per-PR (CI), reviewed weekly
-status: live
+close_time: per-pr
+close_time_note: "per PR (CI), reviewed weekly"
+status: active
 pass_condition: "exactly zero — never a threshold, never summed with false splits (eval_merge_policies.py:5-13)"
 rationale: "a false bottle merge is a bounded data-quality error; a false guest merge is a DISCLOSURE and no un-merge reverses it (eval_guest_merge_policies.py:28-32)"
 note: "the guest gate reports 0 pairs today because guest capture has not started — that is the gate working, not idle"
@@ -131,7 +131,8 @@ measures: [pass_conditions_committed_before_results, pass_condition_edits_near_r
 changes: [eval.pass_conditions, bakeoff.admissibility]
 inputs_from: [harness-model-routing]
 outputs_to: [harness-model-routing, decision-office]
-close_time: "before each bake-off; audited quarterly"
+close_time: per-event
+close_time_note: "before each bake-off; audited quarterly"
 status: proposed
 invariant: "pass_conditions_committed_before_results = always true; a violation invalidates the bake-off"
 watch: "any pass-condition edit whose commit message names a date, a launch, or a release — escalate on the FIRST"
@@ -169,7 +170,8 @@ measures: [duplicated_golden_sets, duplicated_thresholds]
 changes: [team.boundaries, team.merge_proposals]
 inputs_from: [ai-orchestration]
 outputs_to: [decision-office, ai-orchestration]
-close_time: monthly, terminating in a ruling
+close_time: monthly
+close_time_note: "monthly, terminating in a ruling"
 status: proposed
 rule: "if either unit maintains an artifact the other also maintains, RM-2 files the merge proposal itself (technology.md:406)"
 tell: "a threshold that exists in two places with two values"

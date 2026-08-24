@@ -30,7 +30,7 @@ single digits. Here is how, most likely first.
 **The mechanism.** This is the most likely failure and it is structural, not behavioural. Two
 open forks pass through this team at once:
 
-- **OD-21** — does supply discovery sit in Product & Vision or here?
+- **PROD-F2** — does supply discovery sit in Product & Vision or here?
 - **CM-F3** — is distributor connectivity Sales' or ours? (`commercial.md:631`, citing
   `YC_WEDGE_PLAN.md:41`: *"the connectivity is a commercial problem, not a technical one"*)
 
@@ -43,7 +43,7 @@ were blocked," which is true and useless, and the team has produced portal featu
 requested because building was the only thing fully inside its control.
 
 **Earliest observable signal.** The first status report whose blockers are **entirely other
-units' actions**. Cheaper still: **90 days with OD-21 and CM-F3 both open and
+units' actions**. Cheaper still: **90 days with PROD-F2 and CM-F3 both open and
 `pi.live_counterparties` still 0.**
 
 **Counter-pressure.** Two, and the second is the real one:

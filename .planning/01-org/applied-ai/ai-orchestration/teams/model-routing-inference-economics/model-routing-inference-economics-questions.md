@@ -5,7 +5,7 @@ department: ai-orchestration
 team: model-routing-inference-economics
 status: open
 updated: 2026-08-24
-open_questions: 0
+open_questions: 1
 links: ["[[model-routing-inference-economics-charter]]", "[[model-routing-inference-economics-agenda-full]]", "[[architecture-review-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
 
@@ -19,7 +19,7 @@ links: ["[[model-routing-inference-economics-charter]]", "[[model-routing-infere
 
 | ID | From | Raised | Question or finding | Next action | Age-out |
 |---|---|---|---|---|---|
-| — | — | — | *(none yet)* | — | — |
+| AR-3 | architecture-review | 2026-08-24 | Seven callsites each hand-roll the Anthropic client over raw HTTP (`analytics/consultants.service.ts:28`, `common/orchestrator/inbound-responder.service.ts:16`, `inventory/photo-count.service.ts:9`, `menus/parsers/scan-parser.service.ts:10`, `procurement/documents/document-extractor.service.ts:27`, `ux-optimizer/ux-optimizer.service.ts:44`, `vendor-intel/vendor-page-extractor.service.ts:13`). **3 of 7 have no timeout** (consultants, document-extractor, ux-optimizer); the 4 that do disagree — 8/20/120 s (`vendor-page-extractor.service.ts:86,144,192`), 30 s (`photo-count.service.ts:88`), 60 s (`inbound-responder.service.ts:768`), 180 s (`scan-parser.service.ts:301`). **Exactly one retries** (`scan-parser.service.ts:135-142`). Verified 2026-08-24. | Converge on one L3 client owning retry, timeout and metering; the API-boundary half is [[platform-api-charter]]'s. | 2026-10-05 |
 
 ## Answered
 

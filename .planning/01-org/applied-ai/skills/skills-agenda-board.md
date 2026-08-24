@@ -48,7 +48,7 @@ SORT updated ASC
 - [ ] `.claude/skills/` does not exist — blocks everything
 - [ ] No `skill_id` on the NF-A event — blocks the 30-day rule
 - [ ] OD-14 open — root `SKILLS.md` still says "WineOps AI" (`SKILLS.md:3,53`)
-- [ ] OD-22 open — Skills at 3 teams or 2
+- [ ] TECH-F4 open — Skills at 3 teams or 2
 - [ ] Weekly skill-health job unowned — [[README]] §6 and [[technology]] §4.2 conflict
 
 ## Teams

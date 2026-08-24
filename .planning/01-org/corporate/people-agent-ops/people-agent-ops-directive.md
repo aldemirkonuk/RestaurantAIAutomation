@@ -38,7 +38,7 @@ graph TD
   I -->|no| J
 
   J --> L{Blocker older than two close-times?}
-  L -->|yes| M[Escalate to OPEN-DECISIONS: OD-C5 / OD-11]
+  L -->|yes| M[Escalate to OPEN-DECISIONS: CORP-F5 / OD-11]
   L -->|no| N[Carry forward with the age incremented]
 
   K --> O{Verdict fails repeatedly for one agent?}
@@ -60,7 +60,7 @@ graph TD
 | **Department** | Anything that changes what the roster *means*, or that spans both teams | The maturity ladder's level definitions; the onboarding gate's contents; retiring an agent; whether a repeated failure is a criterion problem or a worker problem |
 | **Research & Math** | The **definition** of a doneability criterion and how NF-A is computed | Not ours. We specify what we need graded and apply the result ([[evaluation-doneability-charter]]) |
 | **AI Orchestration** | The **runtime** — harness, routing, retry, DLQ, gates | Not ours. We require an agent to use it; they build it ([[ai-orchestration-charter]]) |
-| **Founder / OPEN-DECISIONS** | OD-C5; the number of ladder levels; the Human Ops split trigger; any correction to a headcount that appears in external material | Adding `agent` to `SpendLogger.log()`; blessing `recurring_order_agent` as a non-agent |
+| **Founder / OPEN-DECISIONS** | CORP-F5; the number of ladder levels; the Human Ops split trigger; any correction to a headcount that appears in external material | Adding `agent` to `SpendLogger.log()`; blessing `recurring_order_agent` as a non-agent |
 
 ## Standing rules
 
@@ -105,7 +105,7 @@ An HR function that can rewrite the exam to fail a worker is not one.
 Escalate to `OPEN-DECISIONS.md` when **any** of these holds:
 
 1. A dependency on Research & Math is **older than two close-times** — automatically, on
-   the clock, not when someone remembers. OD-C5 is already on this clock.
+   the clock, not when someone remembers. CORP-F5 is already on this clock.
 2. A roster defect cannot be fixed without a schema or harness change owned elsewhere.
 3. A headcount that appears in external material (`PROJECT.md:33`, a deck, an investor
    note) disagrees with the census. The first one, not the tenth.
@@ -117,5 +117,5 @@ Escalate to `OPEN-DECISIONS.md` when **any** of these holds:
 
 **Advisory is findings-only** ([[ORG_STRUCTURE]] §3). [[red-team-charter]] is explicitly
 invited to attack rules 1 and 2 as standing findings — they are the two the department
-would most like to relax under pressure. [[decision-office-charter]] owns whether OD-C5
+would most like to relax under pressure. [[decision-office-charter]] owns whether CORP-F5
 closes or drifts, and premortem M4 is entirely a story about a decision that drifted.

@@ -8,8 +8,6 @@ metrics: [annotation.gold_set_freshness_days, annotation.gold_set_size, annotati
 updated: 2026-08-24
 links: ["[[annotation-ground-truth-charter]]", "[[annotation-ground-truth-premortem]]", "[[annotation-ground-truth-directive]]", "[[annotation-ground-truth-schedule]]", "[[data-loops]]", "[[corpora-enrichment-loops]]", "[[synthetic-generation-simulation-loops]]", "[[research-math-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["gold-set-freshness", "active-learning-correction", "blind-subset-agreement", "annotator-agreement", "canary-set-supply"]
 loop_close_times: ["weekly", "weekly", "monthly", "monthly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]

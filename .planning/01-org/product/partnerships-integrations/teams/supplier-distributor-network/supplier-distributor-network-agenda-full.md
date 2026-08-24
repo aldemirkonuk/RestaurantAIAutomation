@@ -37,7 +37,7 @@ by two open forks at once and cannot honestly plan around either.
 | Fork | Question | State |
 |---|---|---|
 | **CM-F3** | Distributor connectivity — Sales or here? | Open. `commercial.md:631` cites `YC_WEDGE_PLAN.md:41`: *"the connectivity is a commercial problem, not a technical one."* The org gave this department a team anyway. |
-| **OD-21** | Vendor Finder boundary — discovery in Product & Vision or here? | Open. Flagged as *"the most likely duplication in the division"* (`product.md:729`). |
+| **PROD-F2** | Vendor Finder boundary — discovery in Product & Vision or here? | Open. Flagged as *"the most likely duplication in the division"* (`product.md:729`). |
 
 The charter proposes a seam for CM-F3 — **signed intent to send data; Sales before it, us
 after it** — and explicitly does not claim the whole territory. The memo puts that in front of
@@ -109,7 +109,7 @@ about the route ([[supplier-distributor-network-premortem]] M4).
 | 4 | Define the **counterparty state model** — prospective / agreed / live / stale / lapsed — as the substrate for `pi.live_counterparties` | — | Every distributor record carries a state |
 | 5 | **One live feed**, in whatever format the distributor already sends | Step 1 resolving, or a founder-named distributor | `pi.live_counterparties` = 1 |
 | 6 | Carry corrections upstream: vendor-portal already classified; six `provider_promotions` reads, not five | — | `foundation/teams/product.md` updated |
-| 7 | **Day-90 review** — if CM-F3 and OD-21 are both still open with the metric at 0, propose this team's own merge | [[supplier-distributor-network-directive]] | The proposal is written, either way |
+| 7 | **Day-90 review** — if CM-F3 and PROD-F2 are both still open with the metric at 0, propose this team's own merge | [[supplier-distributor-network-directive]] | The proposal is written, either way |
 
 Steps 2–4 and 6 are inside this team's control regardless of how the forks resolve. That is
 deliberate: **the plan is built so that fork-independent work fills the waiting period**, so
@@ -121,7 +121,7 @@ the team is not idle and does not drift into portal features
 1. **CM-F3.** Ratify the signed-intent seam, overrule it, or give both halves to one unit?
    **If one unit, we would rather this team be merged than run a shared metric.** That is a
    real preference, not a rhetorical one.
-2. **OD-21.** Does `distributor-discovery/` — the best-tested surface this team touches, with
+2. **PROD-F2.** Does `distributor-discovery/` — the best-tested surface this team touches, with
    four spec files — belong here or to [[supply-discovery-charter]]? It is currently cited by
    both and owned cleanly by neither.
 3. **Day-90 clause.** Endorsed? It commits this team to proposing its own dissolution under a

@@ -8,8 +8,6 @@ metrics: [supply.sku_dual_price_coverage_pct, supply.price_freshness_p50_days, s
 updated: 2026-08-24
 links: ["[[supply-discovery-charter]]", "[[supply-discovery-directive]]", "[[supply-discovery-premortem]]", "[[supply-discovery-schedule]]", "[[product-vision-loops]]", "[[supplier-distributor-network-charter]]", "[[legal-charter]]", "[[surface-portfolio-charter]]"]
 loop_count: 6
-loop_count: 6
-loop_count: 6
 loop_ids: ["supply-coverage", "supply-price-freshness", "supply-match-confidence", "supply-crawl-permission", "supply-distributor-stage-ownership", "supply-surface-reachability"]
 loop_close_times: ["monthly", "weekly", "monthly", "monthly", "monthly", "monthly"]
 loop_statuses: ["blocked", "blocked", "proposed", "proposed", "proposed", "proposed"]

@@ -489,13 +489,17 @@ division sessions are appending to that same table concurrently, and five parall
 to one table is a merge conflict, not a decision log. These are staged here for one
 batching session to add.
 
+> **Renamespaced 2026-08-24.** First minted as `OD-C1`…`OD-C5` (`OD-` prefix reads as the
+> canonical register); reissued as `CORP-Fn` — see [FORK-REGISTRY](../../02-advisory/decision-office/FORK-REGISTRY.md).
+> `CORP-F6`…`CORP-F8` were minted later in Knowledge & Documentation and are recorded there too.
+
 | Proposed ID | Fork |
 |---|---|
-| OD-C1 | **Does a *team* get the 7-artifact anatomy, or only a department?** [[ORG_STRUCTURE]] §4 costs 168 docs at 24 units; at team granularity it is far more. Interacts with OD-17. |
-| OD-C2 | **DPA/BAA ownership split** — Legal §1.2 owns the instrument, Compliance §3.2 owns the obligations (proposed here). Confirm, or give one team both? |
-| OD-C3 | **Strategy stays one team until a term sheet** (proposed §5). Confirm the trigger, or split now? |
-| OD-C4 | **Is Regulated Operations (alcohol/excise, §3.3) Corporate's at all**, or does it belong to Product once a licensing feature exists? |
-| OD-C5 | **Does `SpendLogger.log()` gain an `agent` parameter?** Without it, NF-A's named "cost per task" field is not derivable (§4.2). Schema + call-site change; belongs with OD-11. |
+| CORP-F1 | **Does a *team* get the 7-artifact anatomy, or only a department?** [[ORG_STRUCTURE]] §4 costs 168 docs at 24 units; at team granularity it is far more. Interacts with OD-17. |
+| CORP-F2 | **DPA/BAA ownership split** — Legal §1.2 owns the instrument, Compliance §3.2 owns the obligations (proposed here). Confirm, or give one team both? |
+| CORP-F3 | **Strategy stays one team until a term sheet** (proposed §5). Confirm the trigger, or split now? |
+| CORP-F4 | **Is Regulated Operations (alcohol/excise, §3.3) Corporate's at all**, or does it belong to Product once a licensing feature exists? |
+| CORP-F5 | **Does `SpendLogger.log()` gain an `agent` parameter?** Without it, NF-A's named "cost per task" field is not derivable (§4.2). Schema + call-site change; belongs with OD-11. |
 
 ---
 

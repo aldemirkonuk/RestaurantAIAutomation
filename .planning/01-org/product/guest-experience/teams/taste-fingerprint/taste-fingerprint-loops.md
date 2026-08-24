@@ -8,10 +8,8 @@ metrics: [nf_b.event_completeness, nf_b.divergence_within_cohort, nf_b.tourist_d
 updated: 2026-08-24
 links: ["[[taste-fingerprint-charter]]", "[[taste-fingerprint-directive]]", "[[taste-fingerprint-premortem]]", "[[guest-experience-loops]]", "[[guest-identity-consent-loops]]", "[[research-math-charter]]", "[[data-charter]]", "[[LOOP-MAP]]"]
 loop_count: 4
-loop_count: 4
-loop_count: 4
 loop_ids: ["nf-b-event-completeness", "nf-b-cohort-divergence", "nf-b-novel-stimulus", "nf-b-tourist-baseline"]
-loop_close_times: ["weekly", "per-model-version", "monthly", "monthly"]
+loop_close_times: ["weekly", "per-event", "monthly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -64,7 +62,8 @@ measures: [nf_b.divergence_within_cohort, nf_b.regional_variance_share]
 changes: [preference_model_priors, regularization_strategy, release_gate]
 inputs_from: [research-math]
 outputs_to: [consumer-app-points-economy, guest-value-monetization, product-vision]
-close_time: per-model-version
+close_time: per-event
+close_time_note: "per model version"
 status: proposed
 ```
 

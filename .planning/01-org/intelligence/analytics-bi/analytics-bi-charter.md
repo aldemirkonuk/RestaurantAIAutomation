@@ -91,7 +91,7 @@ Neural-footprint tie:
   because the NestJS side emits no cost events (`intelligence.md:165-167`).
 - **NF has no home for our strongest signal.** The manager who dismisses a
   recommendation is neither `agent` nor `guest` nor `bio` (foundation §4.4). Raised as
-  **F-3**; owned by [[insight-narrative-generation-charter]].
+  **INTEL-F3**; owned by [[insight-narrative-generation-charter]].
 
 ## Evidence today
 
@@ -212,13 +212,13 @@ The honest caveat: **AB-3 has the least code and the most work.** Its primary me
 
 ## Open forks touching this department
 
-- **F-3** (`intelligence.md:519`) — NF has no `subject_type` for the restaurant operator.
+- **INTEL-F3** (`intelligence.md:519`) — NF has no `subject_type` for the restaurant operator.
   Blocks `analytics.insight_acceptance_rate` from having a home in the footprint.
 - **OD-20** — analytics spend exposure. Open and urgent (foundation README:341).
-- **New, raised here (F-6):** which number is canonical for the insight-type count, and
+- **New, raised here (INTEL-F6):** which number is canonical for the insight-type count, and
   what CI assertion pins it? Answer must be a test, not a decision. See
   [[metric-contract-truth-assurance-charter]].
-- **New, raised here (F-7):** does `ANALYTICS_FEATURE_CATALOG.md` remain a planning
+- **New, raised here (INTEL-F7):** does `ANALYTICS_FEATURE_CATALOG.md` remain a planning
   document, or become a contract? Today it is cited as authority
   (`metric-registry.ts:53` binds metrics to `catalogIds`) while carrying an untiered
   100-feature batch and a `"status": "planned"` export.

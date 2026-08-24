@@ -75,12 +75,12 @@ Nothing here is assigned to this team; every row is held elsewhere until the gat
 | 1 | Monthly registry census against the ≥15 trigger | [[skills-schedule]] | not scheduled |
 | 2 | Quarterly harvest sweep, rate-limited | [[skill-registry-authoring-schedule]] | inherited, dormant |
 | 3 | Pick harvest candidate #1 on evidence of recurrence | [[skill-registry-authoring-charter]] | not started |
-| 4 | Propose the telemetry clause be added to the entry trigger (OD-22) | [[skills-directive]] | not raised |
+| 4 | Propose the telemetry clause be added to the entry trigger (TECH-F4) | [[skills-directive]] | not raised |
 | 5 | Set the sunset: delete this team if untriggered by 2027-08-24 | founder | not decided |
 
 ## Questions for the founder
 
-1. **OD-22 — chartered now with a trigger, or not chartered until it fires?** This
+1. **TECH-F4 — chartered now with a trigger, or not chartered until it fires?** This
    directory is one answer; [[technology]] §7 records the question as open. Seven
    documents for an unstaffed team is a real cost, and [[technology]] §4.3 says
    plainly: *"If the team count must be cut, cut this one first."*

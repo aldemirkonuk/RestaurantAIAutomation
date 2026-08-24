@@ -40,7 +40,7 @@ answer *"is this verified?"* about the system as a whole — which is not a hypo
 
 ## The Security boundary — coordination, explicitly not duplication
 
-This is the most important boundary in this charter, and it is open as **OD-23**.
+This is the most important boundary in this charter, and it is open as **PROD-F4**.
 
 [[perimeter-ingress-integrity-charter]] (Security SEC-2) owns *"every unauthenticated request
 that is supposed to be unauthenticated: webhook signature verification, public-content routes,
@@ -62,7 +62,7 @@ them to Security as the thing to measure. Security's `unverified_public_ingress`
 our `pi.verified_ingress_ratio` should be **the same number computed once**. If they diverge,
 one of them is deleted — and it should be ours.
 
-**⬦ OD-23 is asserted here, not decided:** *"does Partnerships own the per-connector trust
+**⬦ PROD-F4 is asserted here, not decided:** *"does Partnerships own the per-connector trust
 contract while Engineering owns runtime, or is verification wholly Security's?"*
 (`product.md:861`). This charter takes the first branch and flags it.
 

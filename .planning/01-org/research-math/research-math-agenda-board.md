@@ -105,11 +105,11 @@ SORT department ASC
 
 - [ ] **OD-11 column contract** — needs a named owner split with [[data-charter]] before any DDL
 - [ ] **Seven callsite migrations** — [[engineering-charter]] owns adoption; needs a deprecation date
-- [ ] **Fork F-3** (`operator` as a fourth `subject_type`) — folds into the OD-11 session
+- [ ] **Fork INTEL-F3** (`operator` as a fourth `subject_type`) — folds into the OD-11 session
 
 ## Open forks on this board
 
 - [ ] Division-vs-department wording of the compensation clause ([[0001-mudavym-single-entity]] vs [[ORG_STRUCTURE]] §2)
 - [ ] The routing seam — [[harness-model-routing-charter]] vs `[[harness-model-routing-charter|aio-model-routing]]`
-- [ ] The evaluation seam — [[evaluation-doneability-charter]] vs [[agent-evaluation-gates-charter|aio-evaluation-gates]] (`technology.md:845`; note the local ID collides with global OD-21)
-- [ ] **F-5** — are the seven NestJS callsites in scope for OD-03?
+- [ ] The evaluation seam — [[evaluation-doneability-charter]] vs [[agent-evaluation-gates-charter|aio-evaluation-gates]] (`technology.md:845`; **TECH-F3** — the local ID originally collided with global OD-21)
+- [ ] **INTEL-F5** — are the seven NestJS callsites in scope for OD-03?

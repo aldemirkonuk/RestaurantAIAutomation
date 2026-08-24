@@ -7,8 +7,6 @@ metrics: [kd.docs_added_vs_retired_ratio, corpus.duplicate_basename_count, graph
 updated: 2026-08-24
 links: ["[[knowledge-documentation-charter]]", "[[knowledge-documentation-premortem]]", "[[knowledge-documentation-directive]]", "[[knowledge-documentation-schedule]]", "[[corpus-archive-loops]]", "[[graph-retrieval-loops]]", "[[standards-verification-loops]]", "[[LOOP-MAP]]", "[[decision-office-charter]]"]
 loop_count: 4
-loop_count: 4
-loop_count: 4
 loop_ids: ["kd-retire-to-write", "kd-three-number-board", "kd-convention-violated-at-birth", "kd-cross-division-correction"]
 loop_close_times: ["monthly", "weekly", "monthly", "weekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]

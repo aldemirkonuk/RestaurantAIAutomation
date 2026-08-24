@@ -55,13 +55,13 @@ SORT updated ASC
 | Portal logins, ever | **0** |
 | `provider_promotions` reads in code | **6** (`:135, :159, :179, :197, :222, :414`) |
 | `provider_promotions` rows | **dormant** — the table is empty, the code is not |
-| Open boundary forks crossing this team | **2** — CM-F3, OD-21 |
+| Open boundary forks crossing this team | **2** — CM-F3, PROD-F2 |
 
 ## Contested — stated, not claimed
 
 - [ ] **CM-F3** — distributor connectivity: Sales or here? `commercial.md:631` ← `YC_WEDGE_PLAN.md:41`
   - Proposed seam: **signed intent to send data.** Before it Sales, after it us.
-- [ ] **OD-21** — Vendor Finder boundary vs [[supply-discovery-charter]]
+- [ ] **PROD-F2** — Vendor Finder boundary vs [[supply-discovery-charter]]
   - `distributor-discovery/` is cited by both, owned cleanly by neither
 
 ## Next

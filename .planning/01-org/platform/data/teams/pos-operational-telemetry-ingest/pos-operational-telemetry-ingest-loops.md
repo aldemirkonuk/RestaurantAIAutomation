@@ -8,10 +8,8 @@ metrics: [pos.line_resolution_rate, pos.worst_restaurant_resolution_rate, pos.un
 updated: 2026-08-24
 links: ["[[pos-operational-telemetry-ingest-charter]]", "[[pos-operational-telemetry-ingest-premortem]]", "[[pos-operational-telemetry-ingest-directive]]", "[[pos-operational-telemetry-ingest-schedule]]", "[[data-loops]]", "[[corpora-enrichment-loops]]", "[[integration-engineering-charter]]", "[[catalogue-identity-charter]]", "[[analytics-bi-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
-loop_count: 5
-loop_count: 5
 loop_ids: ["unresolved-queue-drain", "onboarding-resolution-gate", "provider-shape-monitoring", "sales-density-reporting", "ingest-incident-triage"]
-loop_close_times: ["weekly", "per onboarding, within 7 days", "daily", "weekly", "per incident, ownership within 1 hour"]
+loop_close_times: ["weekly", "per-event", "daily", "weekly", "per-event"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
@@ -60,7 +58,8 @@ measures: [pos.first_week_resolution_rate]
 changes: [pos.onboarding_mapping, pos.onboarding_completion_status]
 inputs_from: [sales, partnerships-integrations]
 outputs_to: [data, sales, catalogue-identity]
-close_time: per onboarding, within 7 days
+close_time: per-event
+close_time_note: "per onboarding, within 7 days"
 status: proposed
 ```
 
@@ -131,7 +130,8 @@ measures: [ingest.time_to_ownership, ingest.disputed_incident_count]
 changes: [pos.triage_rule]
 inputs_from: [pos-operational-telemetry-ingest]
 outputs_to: [pos-operational-telemetry-ingest, engineering, data]
-close_time: per incident, ownership within 1 hour
+close_time: per-event
+close_time_note: "per incident, ownership within 1 hour"
 status: proposed
 ```
 

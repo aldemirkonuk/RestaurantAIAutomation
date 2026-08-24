@@ -130,15 +130,15 @@ action composer is a contract with no server behind it.
 
 ## Open forks touching this department
 
-`teams/product.md` §6 proposes five forks and numbers them **OD-20 … OD-24**. ⚠️ **Those IDs
-are already taken** in `.planning/decisions/OPEN-DECISIONS.md`: OD-20 is the urgent
+`teams/product.md` §6 proposed five forks and numbered them **OD-20 … OD-24**. ⚠️ **Those
+IDs were already taken** in `.planning/decisions/OPEN-DECISIONS.md`: OD-20 is the urgent
 analytics-spend exposure (:24), OD-21 Obsidian workflow (:25), OD-22 tooling library (:26),
-OD-23 the $20k-MRR target (:27). The forks below need renumbering before they are filed —
-that is [[decision-office-charter]]'s call, and it is this department's first escalation.
+OD-23 the $20k-MRR target (:27). ✅ [[decision-office-charter]] renumbered them into the
+`PROD-Fn` namespace ([[FORK-REGISTRY]]); cite the new IDs.
 
-| Fork (as proposed) | Question |
+| Fork | Question |
 |---|---|
-| `product.md` §6 "OD-20" | Product division team layer — 17 teams as proposed, or the reduced set at `teams/product.md:840-848`? |
-| `product.md` §6 "OD-21" | **Vendor Finder boundary** — does supply discovery sit here ([[supply-discovery-charter]]) or merge into [[supplier-distributor-network-charter]]? Named the highest duplication risk in the division (`:828`) |
-| `product.md` §6 "OD-24" | **Design's commissioning authority** — can [[ux-path-burn-down-charter]] commission the endpoints its deferred paths are blocked on, or only report blocked? Affects [[surface-portfolio-charter]]'s throughput directly |
-| New, raised here | The OD-number collision above |
+| **PROD-F1** | Product division team layer — 17 teams as proposed, or the reduced set at `teams/product.md:840-848`? |
+| **PROD-F2** | **Vendor Finder boundary** — does supply discovery sit here ([[supply-discovery-charter]]) or merge into [[supplier-distributor-network-charter]]? Named the highest duplication risk in the division (`:828`) |
+| **PROD-F5** | **Design's commissioning authority** — can [[ux-path-burn-down-charter]] commission the endpoints its deferred paths are blocked on, or only report blocked? Affects [[surface-portfolio-charter]]'s throughput directly |
+| — | The OD-number collision above: **resolved** by [[FORK-REGISTRY]] |

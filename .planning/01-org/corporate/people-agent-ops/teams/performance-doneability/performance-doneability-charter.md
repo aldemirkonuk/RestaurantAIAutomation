@@ -91,7 +91,7 @@ carrying **both** a doneability verdict and an agent-attributed cost. **Baseline
 | `nf_a.cost_per_completed_task` | USD per task with a *passing* verdict — a retried failure is cost with no task | **Not derivable** |
 | `nf_a.agent_attributed_spend_pct` | Share of logged spend naming a worker | **0%** |
 | `nf_a.emission_coverage` | Agents emitting NF-A at all | Partial, and floored by roster truth |
-| `people.blocked_days` | Age of the dependency blocking the above | Starts at 0 on the day OD-C5 is filed |
+| `people.blocked_days` | Age of the dependency blocking the above | Starts at 0 on the day CORP-F5 is filed |
 
 **`nf_a.task_success_rate` is not on this list as a success metric.** It exists, it is
 measurable today, and in this team's artifacts it is named `nf_a.liveness_rate` — see
@@ -164,7 +164,7 @@ possible from what is logged.** Not "hard" — not possible.
 **Two asks on Research & Math, in order:**
 
 1. **`SpendLogger.log()` gains an `agent` parameter and `api_spend` gains the column.**
-   Staged as **OD-C5** (`corporate.md:496`), flagged as belonging with OD-11.
+   Staged as **CORP-F5** (`corporate.md:496`), flagged as belonging with OD-11.
 2. **A join key between reasoning and cost.** `correlation_id` is the obvious candidate;
    the decision is [[neural-footprint-instrumentation-charter]]'s to make, not ours to
    invent.
@@ -176,7 +176,7 @@ Until both land, this team publishes **0% and a blocker age**. It does not subst
 
 [[README]] §0 item 5 — Anthropic and Gemini are called over **raw HTTP, not their SDKs** —
 so retry, timeout and cost accounting are hand-rolled at every call site. That multiplies
-the number of places an `agent` argument has to be threaded once OD-C5 closes, and it is
+the number of places an `agent` argument has to be threaded once CORP-F5 closes, and it is
 the reason the ask should be made now rather than after another year of call sites.
 
 ### Correction to the evidence source

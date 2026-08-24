@@ -86,6 +86,6 @@ SORT file.name ASC
 ## Open forks
 
 - [ ] **The seam** — methodology (R&M) vs operations (here), or one team in Intelligence
-- [ ] ⚠️ **ID collision** — `technology.md:845` says OD-21; `OPEN-DECISIONS.md:25` already uses it. → [[decision-office-charter]]
+- [x] ✅ **ID collision resolved** — `technology.md:845` said OD-21, already spent at `OPEN-DECISIONS.md:25`; renamespaced to **TECH-F3** ([[FORK-REGISTRY]])
 - [ ] Which judgment task matters most commercially — vendor reply, negotiation, or recommendation?
 - [ ] Are `governance.py:20` confidence tiers already gating what a human sees?

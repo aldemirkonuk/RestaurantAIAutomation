@@ -92,5 +92,5 @@ SORT updated ASC
 
 ## Open
 
-- [ ] **OD-23** — connector trust boundary. Asserted in charter, not decided.
+- [ ] **PROD-F4** — connector trust boundary. Asserted in charter, not decided.
 - [ ] **OD-19** — endpoint classification. Co-owned; our subset is *"public but verified"* only; the ~94-unguarded-by-omission set is [[access-control-tenant-isolation-charter]]'s.
