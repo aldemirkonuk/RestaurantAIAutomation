@@ -335,8 +335,8 @@ class ProviderConversationAgent(BaseAgent):
             ("conversation.events", "conversation.inbound.voice_transcript"),
             # Intent requests from other agents
             ("procurement.events", "procurement.conversation_request"),
-            # Direct order-created events from NestJS api-gateway
-            ("procurement.events", "procurement.order.created"),
+            # NOT procurement.order.created. That key belongs to
+            # ProviderCommunicationAgent — see the note on _handle_procurement_intent.
             ("provider.events", "provider.promo_check_requested"),
             ("provider.events", "provider.profile_refresh_requested"),
             ("provider.events", "provider.outreach_scheduled"),
@@ -377,13 +377,6 @@ class ProviderConversationAgent(BaseAgent):
 
             # --- Intent requests from other agents ---
             elif routing_key == "procurement.conversation_request":
-                await self._handle_procurement_intent(payload)
-
-            # --- Direct order creation from NestJS api-gateway ---
-            elif routing_key == "procurement.order.created":
-                # Map the NestJS draftPayload fields to the intent payload shape
-                if "intent_type" not in payload:
-                    payload["intent_type"] = "negotiate_price"
                 await self._handle_procurement_intent(payload)
             elif routing_key == "provider.promo_check_requested":
                 await self._handle_promo_check(payload)
@@ -551,7 +544,21 @@ class ProviderConversationAgent(BaseAgent):
             )
 
     async def _handle_procurement_intent(self, payload: Dict[str, Any]) -> None:
-        """Handle intent from ProcurementAgent to communicate with a provider."""
+        """Handle intent from ProcurementAgent to communicate with a provider.
+
+        Reached via `procurement.conversation_request` only. This agent must NOT
+        subscribe to `procurement.order.created`: Phase 32 D-32-01 splits the loop
+        so that ProviderCommunicationAgent owns the order-created draft (step 1)
+        and this agent owns the reply draft after a provider responds (step 3).
+        Both handlers stage a PENDING_APPROVAL row in procurement_conversations and
+        notify the manager, so a shared subscription is two drafts and two
+        notifications for one order — identical output, no dedup between them.
+
+        The overlap is easy to reintroduce because ProcurementAgent publishes
+        `procurement.conversation_request` AND `procurement.order.created` for the
+        same auto-reorder; subscribing to both would double this agent against
+        itself as well. tests/test_event_topology.py pins the single owner.
+        """
         provider_id = payload.get("provider_id")
         restaurant_id = payload.get("restaurant_id")
         intent_type = payload.get("intent_type", "negotiate_price")
