@@ -48,7 +48,8 @@ rather than hand-edited (CLAUDE.md §2):
    per-instance rate limiter. **Unauthorized spend on the founder's key,
    reachable now.**
 
-2. **Square and Lightspeed already appear in source** (`developer.squareup.com`,
+2. **POS-agnostic is the locked positioning (OD-38), and the code already supports it.**
+   Square and Lightspeed already appear in source (`developer.squareup.com`,
    `developers.lightspeedhq.com`), alongside Yelp and Apify. The POS-bridge
    ambition (vision §6) has more groundwork than the docs admit — worth auditing
    before treating multi-POS as greenfield. → **Product & Vision** + **Engineering**.
