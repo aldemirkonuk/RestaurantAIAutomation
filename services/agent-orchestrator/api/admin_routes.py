@@ -83,13 +83,12 @@ async def get_pending_wines(
     Get wines pending human review.
     By default returns Tier 3 and Tier 4 wines.
     """
-    try:
-        from core.database import get_supabase_client
+    from core.database import get_supabase_client
 
-        supabase = get_supabase_client()
-    except Exception as e:
-        logger.error(f"Database connection failed: {e}")
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    # A None client means no database is configured -> 503 below. An import
+    # fault is a wiring bug and propagates as a 500 rather than masquerading
+    # as a transient outage.
+    supabase = get_supabase_client()
 
     if supabase is None:
         raise HTTPException(status_code=503, detail="Database not configured")
@@ -124,12 +123,12 @@ async def update_wine_tier(wine_id: str, request: TierUpdateRequest):
     Update a wine's governance tier.
     Used by reviewers to promote/demote wines after verification.
     """
-    try:
-        from core.database import get_supabase_client
+    from core.database import get_supabase_client
 
-        supabase = get_supabase_client()
-    except Exception:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    # A None client means no database is configured -> 503 below. An import
+    # fault is a wiring bug and propagates as a 500 rather than masquerading
+    # as a transient outage.
+    supabase = get_supabase_client()
 
     if supabase is None:
         raise HTTPException(status_code=503, detail="Database not configured")
@@ -185,12 +184,12 @@ async def add_wine_alias(wine_id: str, request: AliasAddRequest):
     Used for deduplication — maps variant spellings, OCR corruptions,
     and regional names back to the canonical wine entry.
     """
-    try:
-        from core.database import get_supabase_client
+    from core.database import get_supabase_client
 
-        supabase = get_supabase_client()
-    except Exception:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    # A None client means no database is configured -> 503 below. An import
+    # fault is a wiring bug and propagates as a 500 rather than masquerading
+    # as a transient outage.
+    supabase = get_supabase_client()
 
     if supabase is None:
         raise HTTPException(status_code=503, detail="Database not configured")
@@ -244,12 +243,12 @@ async def edit_wine_fields(wine_id: str, request: WineEditRequest):
     Edit wine fields during review.
     Updates field values, sets source to 'documented', recalculates confidence.
     """
-    try:
-        from core.database import get_supabase_client
+    from core.database import get_supabase_client
 
-        supabase = get_supabase_client()
-    except Exception:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    # A None client means no database is configured -> 503 below. An import
+    # fault is a wiring bug and propagates as a 500 rather than masquerading
+    # as a transient outage.
+    supabase = get_supabase_client()
 
     if supabase is None:
         raise HTTPException(status_code=503, detail="Database not configured")
@@ -316,12 +315,12 @@ async def get_governance_stats():
     """
     Get governance statistics: counts by tier, review velocity, enrichment rates.
     """
-    try:
-        from core.database import get_supabase_client
+    from core.database import get_supabase_client
 
-        supabase = get_supabase_client()
-    except Exception:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    # A None client means no database is configured -> 503 below. An import
+    # fault is a wiring bug and propagates as a 500 rather than masquerading
+    # as a transient outage.
+    supabase = get_supabase_client()
 
     if supabase is None:
         # Return mock stats for dev mode
@@ -380,12 +379,12 @@ async def get_pending_submissions(
     """
     Get pending master_wine_library_submissions (from scans, crawlers, onboarding).
     """
-    try:
-        from core.database import get_supabase_client
+    from core.database import get_supabase_client
 
-        supabase = get_supabase_client()
-    except Exception:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    # A None client means no database is configured -> 503 below. An import
+    # fault is a wiring bug and propagates as a 500 rather than masquerading
+    # as a transient outage.
+    supabase = get_supabase_client()
 
     if supabase is None:
         raise HTTPException(status_code=503, detail="Database not configured")
@@ -415,12 +414,12 @@ async def approve_submission(submission_id: str):
     """
     Approve a library submission — move it into master_wine_library with assigned tier.
     """
-    try:
-        from core.database import get_supabase_client
+    from core.database import get_supabase_client
 
-        supabase = get_supabase_client()
-    except Exception:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    # A None client means no database is configured -> 503 below. An import
+    # fault is a wiring bug and propagates as a 500 rather than masquerading
+    # as a transient outage.
+    supabase = get_supabase_client()
 
     if supabase is None:
         raise HTTPException(status_code=503, detail="Database not configured")
@@ -468,12 +467,12 @@ async def approve_submission(submission_id: str):
 @router.post("/submissions/{submission_id}/reject")
 async def reject_submission(submission_id: str, reason: Optional[str] = None):
     """Reject a library submission."""
-    try:
-        from core.database import get_supabase_client
+    from core.database import get_supabase_client
 
-        supabase = get_supabase_client()
-    except Exception:
-        raise HTTPException(status_code=503, detail="Database unavailable")
+    # A None client means no database is configured -> 503 below. An import
+    # fault is a wiring bug and propagates as a 500 rather than masquerading
+    # as a transient outage.
+    supabase = get_supabase_client()
 
     if supabase is None:
         raise HTTPException(status_code=503, detail="Database not configured")

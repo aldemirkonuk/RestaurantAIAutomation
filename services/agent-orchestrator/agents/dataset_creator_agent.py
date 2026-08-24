@@ -45,13 +45,11 @@ class DatasetCreatorAgent(BaseAgent):
 
         from services.training_data_store import get_training_data_store
 
-        supabase = None
-        try:
-            from core.database import get_supabase_client
+        from core.database import get_supabase_client
 
-            supabase = get_supabase_client()
-        except Exception:
-            pass
+        # None is legitimate (no database configured); the store buffers in
+        # memory. An import fault is a wiring bug and must surface.
+        supabase = get_supabase_client()
 
         self.store = get_training_data_store(
             supabase_client=supabase,

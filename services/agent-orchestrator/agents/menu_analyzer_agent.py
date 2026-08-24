@@ -115,13 +115,12 @@ class MenuAnalyzerAgent(BaseAgent):
         if self._wine_matcher is None:
             from services.wine_matcher import get_wine_matcher
 
-            supabase = None
-            try:
-                from core.database import get_supabase_client
+            from core.database import get_supabase_client
 
-                supabase = get_supabase_client()
-            except Exception:
-                pass
+            # None is legitimate (no database configured); the matcher falls
+            # back to mock mode. An import fault is a wiring bug and must surface.
+            supabase = get_supabase_client()
+
             self._wine_matcher = get_wine_matcher(
                 supabase_client=supabase,
                 google_api_key=self.google_api_key,

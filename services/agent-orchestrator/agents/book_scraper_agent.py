@@ -38,13 +38,11 @@ class BookScraperAgent(BaseAgent):
 
         from services.wine_book_scraper import get_wine_book_scraper
 
-        supabase = None
-        try:
-            from core.database import get_supabase_client
+        from core.database import get_supabase_client
 
-            supabase = get_supabase_client()
-        except Exception:
-            pass
+        # None is legitimate (no database configured); the scraper falls back
+        # to mock mode. An import fault is a wiring bug and must surface.
+        supabase = get_supabase_client()
 
         self.scraper = get_wine_book_scraper(
             google_api_key=self.google_api_key,
