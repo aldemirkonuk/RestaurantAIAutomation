@@ -515,3 +515,104 @@ Declared per CLAUDE.md §0.5:
 - **RLS policies** on the four `pos_*` tables were not audited — that is OD-19/OD-45 work.
 - The `services/agent-orchestrator` Python POS path was checked only for its write targets
   (§2.8), not audited end to end.
+
+---
+
+# Appendix A — the pipeline, proven (2026-08-24)
+
+The audit above was a code and schema read. This appendix is the runtime half: 66 signed
+canonical checks driven through the live webhook into production, then every downstream
+stage measured. It exists because §1.7's reality check — *`pos_checks` holds 0 rows* — is
+the reason none of the analytics had ever been exercised.
+
+## A.1 What P3 actually buys
+
+Satisfiable insight types, of 573 total:
+
+| | Before | After 66 checks |
+|---|---|---|
+| **Total** | **8 (1.4%)** | **386 (67.4%)** |
+| `efficiency` | 0 | **108 / 108** |
+| `tables` | 0 | 147 / 174 |
+| `staff` | 0 | 45 / 50 |
+| `sales` | 0 | 33 / 82 |
+| `risk` | 0 | 15 / 40 |
+| `forecast` | 1 | 16 |
+| `goals` | 1 | 16 |
+
+Generated insights went 0 → 11. Table-performance moved from
+`dataStatus: "awaiting POS check feed"` to `live` with 32 geometry correlations
+(ridge R² = 0.93); waiter effects 0 → 4 (R² = 0.38); basket 0 → 51 transactions / 29 pairs.
+
+[[PLAN]] estimated 25.1% satisfiable without POS data. **The real figure was 1.4%**, and
+the estimate was optimistic by an order of magnitude in the direction that matters.
+
+## A.2 The floor plan is an unstated prerequisite
+
+`restaurant_tables` was **globally empty — 0 rows** before this run. Seeding tables without
+checks changed satisfiability not at all (still 8), but POS checks without a floor plan
+would have left the `tables` category dark. **P3 is two connections, not one**, and only
+one of them is a POS.
+
+## A.3 Verified, not assumed
+
+- **Idempotency holds.** Replaying 8 checks plus a bare-object variant left 66 rows / 66
+  distinct ids, same `id`, same `imported_at`.
+- **The signature gate holds.** Five negative cases — bad hex, missing header, empty,
+  truncated, and a valid signature computed over a *different* body — all `401`, 0 rows
+  written. A webhook that accepted unsigned input would have been a worse finding than
+  anything else in this document.
+- **Real inventory was not touched** by the 66 checks: the restaurant has no
+  `pos_item_mappings`, so all 39 wine lines queued in `pos_unresolved_lines`.
+
+## A.4 §2.6d confirmed at runtime, and one new defect
+
+**The bottle fallback is real.** An isolated probe — item literally named
+`"Chardonnay Probe (glass)"` at a $18 glass price, mapping with `sale_unit = null` — made
+the hub call `apply_stock_movement` for `sale −1 whole bottle` and write
+`wine_consumption_log.consumption_type = 'bottle'`, `volume_ml = 750`. Not
+`record_glass_pour`, not 150 ml. **Five times the volume booked.** The probe was fully
+reversed; that inventory row is back to 0 stock / 0 lots / 0 transactions.
+
+**NEW — `recordConsumption` is not idempotent, unlike the stock write it follows.**
+`pos-hub.service.ts:415-423` treats "no rpcError" as "this depleted just now" and calls
+`recordConsumption`, which does a bare `insert` with no dedupe. `apply_stock_movement`
+correctly returns the existing transaction for a known key — so a replay leaves **stock
+correct and the consumption log wrong**. Replaying one probe check twice produced **3
+`wine_consumption_log` rows for one check line**.
+
+That asymmetry is what makes it dangerous. Every replay or re-import inflates the demand
+series behind velocity, XYZ classification, reorder points, Holt-Winters forecasting and
+goal progress — while the stock count, the number a human would check, stays right.
+
+## A.5 Also found, not fixed
+
+| | |
+|---|---|
+| `pos_checks.correlation_id` is never set by the hub | POS rows cannot join the correlation-id timeline in `logs-timeline.service.ts` |
+| `efficiency` reaches 108/108 *satisfiable* but the generator emits **zero** | `computeChecksFamily` has no executor for `avg_check` / `wine_attach_rate` / `revenue_per_seat` / `tip_pct`. A catalog-vs-generator gap, and a design call |
+| `computeGoalsFamily` reads denormalized `analytics_goals.current_value` | Refreshed only as a side effect of `getGoalProgress`, so the hourly sweep said *"You're 0% of the way"* while progress computed 128% / 84% / 79% on-track |
+
+## A.6 Test data, and how to remove it
+
+66 `pos_checks` (`P3PROOF-0001…0066`), 39 `pos_unresolved_lines`, 8 `restaurant_tables`
+(`P3T-01…08`), 3 `analytics_goals` — all against Meyhouse Palo Alto,
+`550e8400-…440000`. **Left in place deliberately**, because deleting it would return every
+number above to zero and make this appendix unverifiable.
+
+```sql
+delete from pos_unresolved_lines where external_check_id like 'P3PROOF-%';
+delete from pos_checks            where external_check_id like 'P3PROOF-%';
+delete from analytics_goals       where name             like 'P3PROOF%';
+delete from restaurant_tables     where label            like 'P3T-%';
+```
+
+## A.7 Shortcuts, stated
+
+The webhook ingest ran over real HTTP, but a working JWT could not be minted (the
+gateway's `JWT_SECRET` resolution matched neither `.env`), so the analytics reads
+instantiated the services directly against the live database rather than going through the
+guarded controller. **Controller-level auth on the analytics routes is therefore
+unverified by this run** — PRs #31/#32 guarded them and the gateway-boot guard proves
+`JwtAuthGuard` resolves, but that is not the same as an end-to-end 401. `restaurant_tables`
+and `analytics_goals` were seeded by direct SQL, not through their endpoints.
