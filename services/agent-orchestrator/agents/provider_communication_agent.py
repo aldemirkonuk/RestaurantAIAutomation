@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from config.settings import Settings
@@ -517,9 +518,13 @@ class ProviderCommunicationAgent(BaseAgent):
         input_tokens = 0
         output_tokens = 0
         draft_generated = False  # P1: call-level outcome for the spend row
+        # P1: started here so the fallback path still reports a duration; re-taken
+        # below the semaphore so queue wait is not billed to the model call.
+        _t0 = time.perf_counter()
         try:
             haiku = get_haiku_client()
             async with self.haiku_semaphore:
+                _t0 = time.perf_counter()
                 response = await haiku.messages.create(
                     model=self.settings.haiku_model,
                     max_tokens=256,
@@ -583,6 +588,7 @@ class ProviderCommunicationAgent(BaseAgent):
                 task_type="email_draft",
                 choice="draft:parsed" if draft_generated else "draft:fallback",
                 outcome="success" if draft_generated else "failure",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
                 correlation_id=getattr(self, "_current_correlation_id", None),
                 context={"order_id": str(order_id)},
             )
@@ -997,11 +1003,15 @@ class ProviderCommunicationAgent(BaseAgent):
         try:
             haiku = get_haiku_client()
             async with self.haiku_semaphore:
+                _t0 = time.perf_counter()
                 response = await haiku.messages.create(
                     model=self.settings.haiku_model,
                     max_tokens=256,
                     messages=[{"role": "user", "content": prompt}],
                 )
+            # Captured here, not at the log call below — a Supabase round-trip
+            # sits in between and must not be billed to the model call (P1).
+            _dur_ms = int((time.perf_counter() - _t0) * 1000)
             raw = response.content[0].text if response.content else "{}"
             raw = raw.strip()
             if raw.startswith("```"):
@@ -1058,6 +1068,7 @@ class ProviderCommunicationAgent(BaseAgent):
                     task_type="profile_extraction",
                     choice=f"fields:{len(new_fields)}",
                     outcome="success",  # log runs only after a successful parse
+                    duration_ms=_dur_ms,
                     correlation_id=getattr(self, "_current_correlation_id", None),
                     context={"provider_id": str(provider_id)},
                 )
@@ -1114,11 +1125,15 @@ class ProviderCommunicationAgent(BaseAgent):
         try:
             haiku = get_haiku_client()
             async with self.haiku_semaphore:
+                _t0 = time.perf_counter()
                 response = await haiku.messages.create(
                     model=self.settings.haiku_model,
                     max_tokens=512,
                     messages=[{"role": "user", "content": prompt}],
                 )
+            # Captured here, not at the log call below — the rolling_summary
+            # UPDATE and negotiation_facts INSERTs sit in between (P1).
+            _dur_ms = int((time.perf_counter() - _t0) * 1000)
             raw = response.content[0].text if response.content else "{}"
             raw = raw.strip()
             if raw.startswith("```"):
@@ -1191,6 +1206,7 @@ class ProviderCommunicationAgent(BaseAgent):
                 task_type="summarization",
                 choice=f"facts:{len(facts)}",
                 outcome="success",  # parse succeeded or we returned at :1061
+                duration_ms=_dur_ms,
                 correlation_id=getattr(self, "_current_correlation_id", None),
                 context={"conversation_id": str(conversation_id)},
             )

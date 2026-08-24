@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
@@ -465,7 +466,9 @@ class ProviderConversationAgent(BaseAgent):
             )
 
             # --- Intelligence Extraction Pipeline ---
-            extraction = await self._extract_intelligence(message_text, provider_id)
+            extraction = await self._extract_intelligence(
+                message_text, provider_id, restaurant_id=restaurant_id
+            )
 
             # --- Embed and store in conversational memory ---
             await self._store_conversation_embedding(
@@ -908,8 +911,18 @@ class ProviderConversationAgent(BaseAgent):
     # 3. INTELLIGENCE EXTRACTOR
     # =========================================================================
 
-    def _log_gemini_spend(self, response, task_type: str) -> None:
-        """P1: emit one spend/NF row for a legacy-SDK Gemini call (never raises)."""
+    def _log_gemini_spend(
+        self,
+        response,
+        task_type: str,
+        duration_ms: Optional[int] = None,
+        restaurant_id: Optional[str] = None,
+    ) -> None:
+        """P1: emit one spend/NF row for a legacy-SDK Gemini call (never raises).
+
+        `duration_ms` is measured by the caller around its own model call —
+        timing it here would only measure this helper.
+        """
         try:
             _usage = getattr(response, "usage_metadata", None)
             _in = getattr(_usage, "prompt_token_count", 0) or 0
@@ -920,16 +933,21 @@ class ProviderConversationAgent(BaseAgent):
                 input_tokens=_in,
                 output_tokens=_out,
                 cost_usd=estimate_llm_cost(self.extraction_model, _in, _out),
+                restaurant_id=restaurant_id or None,
                 agent=self.agent_name,
                 task_type=task_type,
                 outcome="success",  # call-level: response returned
+                duration_ms=duration_ms,
                 correlation_id=getattr(self, "_current_correlation_id", None),
             )
         except Exception:
             pass
 
     async def _extract_intelligence(
-        self, message_text: str, provider_id: str
+        self,
+        message_text: str,
+        provider_id: str,
+        restaurant_id: Optional[str] = None,
     ) -> ExtractionResult:
         """Extract structured intelligence from a message using LLM."""
         if self.mock_mode:
@@ -943,6 +961,7 @@ class ProviderConversationAgent(BaseAgent):
                 f"EXTRACTED JSON:"
             )
 
+            _t0 = time.perf_counter()
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: self.llm_client.generate_content(
@@ -950,7 +969,12 @@ class ProviderConversationAgent(BaseAgent):
                     generation_config={"temperature": 0.1, "max_output_tokens": 2000},
                 ),
             )
-            self._log_gemini_spend(response, "intelligence_extraction")  # P1
+            self._log_gemini_spend(  # P1
+                response,
+                "intelligence_extraction",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                restaurant_id=restaurant_id,
+            )
 
             raw_text = response.text.strip()
             # Strip markdown code fences if present
@@ -1180,6 +1204,7 @@ class ProviderConversationAgent(BaseAgent):
         try:
             import google.generativeai as genai
 
+            _t0 = time.perf_counter()
             result = genai.embed_content(
                 model=f"models/{self.embedding_model}",
                 content=text,
@@ -1197,6 +1222,7 @@ class ProviderConversationAgent(BaseAgent):
                 agent=self.agent_name,
                 task_type="embedding",
                 outcome="success",  # call-level: embedding returned
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
                 correlation_id=getattr(self, "_current_correlation_id", None),
                 context={"call_kind": "embedding", "pricing": "unpriced"},
             )
@@ -1904,6 +1930,7 @@ class ProviderConversationAgent(BaseAgent):
                 credit_terms=db_ctx["credit_terms"],
             )
 
+            _t0 = time.perf_counter()
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: self.llm_client.generate_content(
@@ -1914,7 +1941,12 @@ class ProviderConversationAgent(BaseAgent):
                     },
                 ),
             )
-            self._log_gemini_spend(response, "draft_response")  # P1
+            self._log_gemini_spend(  # P1
+                response,
+                "draft_response",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                restaurant_id=restaurant_id,
+            )
 
             draft_text = response.text.strip()
 
@@ -2031,6 +2063,7 @@ class ProviderConversationAgent(BaseAgent):
         try:
             haiku = get_haiku_client()
             settings = Settings()
+            _t0 = time.perf_counter()
             response = await haiku.messages.create(
                 model=settings.haiku_model,
                 max_tokens=100,
@@ -2049,9 +2082,7 @@ class ProviderConversationAgent(BaseAgent):
             # P1: previously an unlogged Haiku call (dark site)
             try:
                 _in = response.usage.input_tokens if hasattr(response, "usage") else 0
-                _out = (
-                    response.usage.output_tokens if hasattr(response, "usage") else 0
-                )
+                _out = response.usage.output_tokens if hasattr(response, "usage") else 0
                 get_spend_logger().log(
                     provider="anthropic",
                     model=settings.haiku_model,
@@ -2062,6 +2093,7 @@ class ProviderConversationAgent(BaseAgent):
                     agent=self.agent_name,
                     task_type="correction_preference",
                     outcome="success",  # call-level: completion returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                     correlation_id=getattr(self, "_current_correlation_id", None),
                     context={"provider_id": str(provider_id)},
                 )
@@ -2108,6 +2140,7 @@ class ProviderConversationAgent(BaseAgent):
 
             prompt = SUMMARY_PROMPT.format(conversation_transcript=transcript[:3000])
 
+            _t0 = time.perf_counter()
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: self.llm_client.generate_content(
@@ -2115,7 +2148,12 @@ class ProviderConversationAgent(BaseAgent):
                     generation_config={"temperature": 0.3, "max_output_tokens": 200},
                 ),
             )
-            self._log_gemini_spend(response, "session_summary")  # P1
+            self._log_gemini_spend(  # P1
+                response,
+                "session_summary",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                restaurant_id=getattr(session, "restaurant_id", None),
+            )
 
             return response.text.strip()
         except Exception as e:

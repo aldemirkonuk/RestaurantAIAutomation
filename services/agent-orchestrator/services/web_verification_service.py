@@ -16,6 +16,7 @@ It is NOT a separate column. merge_field_confidence() propagates it correctly.
 """
 
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -213,6 +214,7 @@ async def parse_search_results(
 
     try:
         client = genai.Client(api_key=settings.google_api_key)
+        _t0 = time.perf_counter()
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
@@ -242,6 +244,7 @@ async def parse_search_results(
                 agent_fallback="web_verification_service",
                 task_type="snippet_parse",
                 outcome="success",  # call-level: response returned
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
                 context={"wine_name": str(wine_name)[:120]},
             )
     except Exception:

@@ -11,6 +11,7 @@ AI-powered polite bidding system with:
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 import json
+import time
 
 from core.base_agent import BaseAgent
 from core.database import RFQRequest, Provider
@@ -447,6 +448,7 @@ Extract JSON:
 
 Respond with valid JSON only."""
 
+            _t0 = time.perf_counter()
             response = self.llm_client.generate_content(
                 prompt, generation_config={"temperature": 0.1}
             )
@@ -467,6 +469,7 @@ Respond with valid JSON only."""
                     agent=self.agent_name,
                     task_type="rfq_response_parse",
                     outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                     correlation_id=getattr(self, "_current_correlation_id", None),
                 )
             except Exception:

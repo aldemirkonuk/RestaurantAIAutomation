@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -171,7 +172,9 @@ class EmailIntelAgent(BaseAgent):
             if is_unknown:
                 await self._notify_unknown_sender(restaurant_id, sender_email, payload)
 
-        classification = await self._classify_email(email_subject, email_body)
+        classification = await self._classify_email(
+            email_subject, email_body, restaurant_id=restaurant_id or None
+        )
 
         await self.log_decision(
             decision_type="email_classification",
@@ -238,7 +241,9 @@ class EmailIntelAgent(BaseAgent):
     # GEMINI FLASH CLASSIFICATION
     # =========================================================================
 
-    async def _classify_email(self, subject: str, body: str) -> EmailClassification:
+    async def _classify_email(
+        self, subject: str, body: str, restaurant_id: Optional[str] = None
+    ) -> EmailClassification:
         from google.genai import types as genai_types
 
         gemini = get_gemini_client()
@@ -252,6 +257,7 @@ class EmailIntelAgent(BaseAgent):
             'Respond ONLY with valid JSON: {"category": "...", "confidence": 0.0-1.0, '
             '"reasoning": "...", "provider_name": "...", "urgency": "low|medium|high"}'
         )
+        _t0 = time.perf_counter()
         response = gemini.models.generate_content(  # spend logged below (P1)
             model=self.settings.gemini_model,
             contents=prompt,
@@ -290,9 +296,11 @@ class EmailIntelAgent(BaseAgent):
                 input_tokens=_in,
                 output_tokens=_out,
                 cost_usd=estimate_llm_cost(self.settings.gemini_model, _in, _out),
+                restaurant_id=restaurant_id or None,
                 agent=self.agent_name,
                 task_type="email_classification",
                 outcome="success",  # call-level: response returned
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
                 correlation_id=getattr(self, "_current_correlation_id", None),
             )
         except Exception:
@@ -320,7 +328,9 @@ class EmailIntelAgent(BaseAgent):
 
         # Haiku extraction gated by semaphore (AI-SPEC §3, T-24-04-03)
         async with self.haiku_semaphore:
-            details = await self._extract_promo(email_subject, email_body)
+            details = await self._extract_promo(
+                email_subject, email_body, restaurant_id=restaurant_id or None
+            )
 
         # Dedup check: SHA256(vendor_email + product_name + today)
         today_str = date.today().isoformat()
@@ -430,7 +440,9 @@ class EmailIntelAgent(BaseAgent):
     # HAIKU EXTRACTION
     # =========================================================================
 
-    async def _extract_promo(self, subject: str, body: str) -> PromoDetails:
+    async def _extract_promo(
+        self, subject: str, body: str, restaurant_id: Optional[str] = None
+    ) -> PromoDetails:
         haiku = get_haiku_client()
         prompt = (
             "Extract structured deal information from this promotional wine vendor email.\n"
@@ -440,6 +452,7 @@ class EmailIntelAgent(BaseAgent):
             "conditions, confidence (0.0-1.0)\n\n"
             f"Subject: {subject}\n\nBody:\n{body}"
         )
+        _t0 = time.perf_counter()
         response = await haiku.messages.create(
             model=self.settings.haiku_model,
             max_tokens=512,
@@ -458,9 +471,11 @@ class EmailIntelAgent(BaseAgent):
                 input_tokens=_in,
                 output_tokens=_out,
                 cost_usd=estimate_llm_cost(self.settings.haiku_model, _in, _out),
+                restaurant_id=restaurant_id or None,
                 agent=self.agent_name,
                 task_type="promo_extraction",
                 outcome="success",  # call-level: completion returned
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
                 correlation_id=getattr(self, "_current_correlation_id", None),
             )
         except Exception:

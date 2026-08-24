@@ -19,6 +19,7 @@ import base64
 import json
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -293,6 +294,7 @@ class VLMExtractionService:
         try:
             image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
+            _t0 = time.perf_counter()
             response = self._client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=[
@@ -328,6 +330,7 @@ class VLMExtractionService:
                     task_type="vision_extraction",
                     choice=f"wines:{result.total_wines}",
                     outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                     context={
                         "document_type": document_type,
                         "wines_found": result.total_wines,
@@ -387,6 +390,7 @@ class VLMExtractionService:
             prompt += f"\n\nRestaurant: {restaurant_name}"
 
         try:
+            _t0 = time.perf_counter()
             response = self._client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt,
@@ -410,6 +414,7 @@ class VLMExtractionService:
                     task_type="text_extraction",
                     choice=f"wines:{result.total_wines}",
                     outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                     context={
                         "document_type": document_type,
                         "wines_found": result.total_wines,
@@ -609,6 +614,7 @@ class GeminiFlashCrawlerExtractor:
     ) -> VLMExtractionResult:
         try:
             client = self._get_client()
+            _t0 = time.perf_counter()
             response = await client.aio.models.generate_content(
                 model=self.MODEL_ID,
                 contents=CRAWL_TEXT_PROMPT.format(
@@ -633,6 +639,7 @@ class GeminiFlashCrawlerExtractor:
                     task_type="crawl_extraction",
                     choice=f"wines:{result.total_wines}",
                     outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                     context={"wines_found": result.total_wines},
                 )
             except Exception:

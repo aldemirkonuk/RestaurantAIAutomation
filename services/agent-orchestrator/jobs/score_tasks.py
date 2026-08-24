@@ -33,6 +33,7 @@ Requirements: CRIT-01, CRIT-04, CRIT-05, CRIT-06
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional
 
@@ -165,6 +166,7 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
             )
             break
 
+        _t0 = time.perf_counter()
         snippets = await serper_search(query, num_results=5)
 
         # Log Serper spend.
@@ -181,6 +183,7 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
                 task_type="score_search",
                 choice=f"search:{len(snippets)}_results",
                 outcome="success",  # call-level: search completed
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
                 context={
                     "wine_id": wine_id,
                     "source": source_key,
@@ -218,6 +221,7 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
     retail_price_avg: Optional[float] = wine.get("retail_price_avg")
     if check_and_reserve_search_budget():
         price_query = queries["wine_searcher"]
+        _t0 = time.perf_counter()
         price_snippets = await serper_search(price_query, num_results=5)
         # P1 fix: wine_id is NOT a restaurant_id — it now rides in context.
         try:
@@ -232,6 +236,7 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
                 task_type="price_search",
                 choice=f"search:{len(price_snippets)}_results",
                 outcome="success",  # call-level: search completed
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
                 context={"wine_id": wine_id, "results_count": len(price_snippets)},
             )
         except Exception:
