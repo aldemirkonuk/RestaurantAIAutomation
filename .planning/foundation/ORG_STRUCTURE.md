@@ -1,6 +1,6 @@
 # Organization Structure — Mudavym
 
-- **Status:** Divisions + departments **LOCKED** 2026-08-24. Advisory layer **PROPOSED**.
+- **Status:** **LOCKED** 2026-08-24 — see [ADR 0007](../decisions/0007-org-structure.md). Team layer in progress; division count (5 vs 6) pending team-layer evidence.
 - **Keywords:** divisions, departments, advisory, matrix, premortem, loops, obsidian, graphify
 - **Links:** [foundation README](README.md), [decisions](../decisions/README.md)
 
@@ -42,7 +42,7 @@ Fundraising** owns the YC path and the SAFE/board/stock documents Legal's list i
 
 ---
 
-## 3. Advisory layer — PROPOSED ⬦ FORK
+## 3. Advisory layer — LOCKED (3 of 4 adopted)
 
 Independent functions that own a department-equivalent charter but deliberately
 **cut across every division** rather than sitting inside one. They exist to make the
@@ -52,17 +52,17 @@ advisory function that reports inside the line it reviews is not independent.
 | Advisory | Reviews | Why it must sit outside the line |
 |---|---|---|
 | **Architecture Review** | All of Technology + Product | Owns the L0–L6 layer-dependency rule (foundation §1). A layer violation is invisible to the department committing it. |
-| **Red Team** | Everything | Adversarial review and premortems. Distinct from Security: Security *builds* defenses, Red Team *attacks* them. Same team doing both grades its own work. |
+| **Red Team** | Decisions, everywhere | **Scoped by founder:** detects and attacks *decisions*, and does premortem thinking — not general security testing (Security builds defenses in the line). Output must make "what's next" easy to navigate. |
 | **Decision Office** | Everything | Owns the ADR log, the open-decision queue, and loop close-times. Ensures decisions actually close rather than drifting — the failure mode this whole chapter exists to prevent. |
-| **Ethics & Responsible AI** | Product, Intelligence, Commercial | Agent autonomy limits, guest-data use, personalization fairness. Independent because the department that benefits from a personalization feature cannot neutrally assess it. |
+| ~~Ethics & Responsible AI~~ | — | **Considered, not adopted** (2026-08-24). Agent-autonomy limits and guest-data use fall to Compliance & Privacy in the line. |
 
-**Engagement model:** advisory functions do not approve or block by default. They
+**Engagement model — LOCKED findings-only.** Advisory functions do not approve or block. They
 produce written findings against a named unit, and the finding lands in that unit's
 `questions.md` and — if it implies a decision — in `OPEN-DECISIONS.md`.
 
 ---
 
-## 4. Unit anatomy — PROPOSED ⬦ FORK
+## 4. Unit anatomy — LOCKED
 
 Every department and advisory function gets the same seven artifacts, so a unit built
 in one session is the same shape as one built in another.
@@ -71,8 +71,8 @@ in one session is the same shape as one built in another.
 |---|---|---|
 | 1 | `charter.md` | Mandate, boundaries, explicit non-goals, parent division |
 | 2 | `premortem.md` | **How this unit fails.** Written at founding, before success is assumed |
-| 3 | `agenda-full.md` | The working document: what/how/why, next steps, reasoning |
-| 4 | `agenda-board.md` | Glanceable status. Bullets only, no prose (vision §12F) |
+| 3 | `agenda-full.md` | The working document: what/how/why, next steps, reasoning. **Must open with a `> PROVISIONAL — no work done yet` banner until the unit does real work.** |
+| 4 | `agenda-board.md` | Glanceable status. Bullets only, no prose (vision §12F). **Same provisional banner rule.** |
 | 5 | `directive.md` | How *this* unit decides — an explicit decision graph, shape differs per unit (vision §12G/§12L) |
 | 6 | `loops.md` | Feedback loops owned: what it measures → what it changes → close-time |
 | 7 | `schedule.md` | Recurring work + index of skills owned (`.claude/skills/`) |
@@ -119,7 +119,4 @@ Rules:
 
 | ID | Fork |
 |---|---|
-| OD-15 | Advisory layer: the 4 proposed, more, fewer, or none? (§3) |
-| OD-16 | Advisory engagement: findings-only (proposed), or blocking authority on some classes? (§3) |
-| OD-17 | Unit anatomy: 7 artifacts as proposed, or adjusted? (§4) |
-| OD-18 | Are 5 divisions right, or does the org need a 6th (e.g. splitting Technology)? (§2) |
+| OD-18 | Division count: 5, or split Technology into Platform + Applied AI? **Deferred pending team-layer evidence.** (§2) |

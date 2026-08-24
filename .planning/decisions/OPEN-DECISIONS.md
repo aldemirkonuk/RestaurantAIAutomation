@@ -19,10 +19,7 @@
 | OD-08 | **Obsidian vault mechanics** — vault root (`.planning/` as-is vs dedicated vault dir), Graphify plugin, sync strategy. Adoption is locked ([0004](0004-obsidian-as-backlink-layer.md)); mechanics are not. | Wrong vault root now = mass link rewrites later; interacts with OD-01. | Decide together with OD-01. |
 | OD-11 | **Neural-footprint production schema detail** — exact columns, partial-index strategy per `subject_type`, retention/rollup policy for the research log. | The split is locked (see Resolved); the column-level contract is not, and it gates any NF implementation. | Dedicated schema session with Postgres best-practices loaded. |
 | OD-14 | **Root `SKILLS.md`** — retire, or rewrite? It is a prose reasoning protocol (not a skill) and still says "WineOps AI". | Stale brand + misleading filename; agents and contributors will mistake it for the skill registry. | Founder call; low stakes, next docs pass. |
-| OD-15 | **Advisory layer** — the 4 proposed (Architecture Review, Red Team, Decision Office, Ethics & Responsible AI), more, fewer, or none? | Independent review is the mechanism behind the "review after review" mandate; an advisor inside the line it reviews is not independent. | Founder call ([ORG_STRUCTURE §3](../foundation/ORG_STRUCTURE.md)). |
-| OD-16 | **Advisory authority** — findings-only (proposed), or blocking authority on some classes (security, layer violations)? | Determines whether advisory is a real gate or advice ignorable under deadline. | Founder call. |
-| OD-17 | **Unit anatomy** — 7 artifacts per unit as proposed (~168 docs across 24 units)? | Sets the total documentation surface and its ongoing upkeep cost. | Founder call ([ORG_STRUCTURE §4](../foundation/ORG_STRUCTURE.md)). |
-| OD-18 | **Division count** — are 5 right, or does Technology need splitting (e.g. Platform vs Applied AI)? | Five departments under Technology is the widest span in the org. | Founder call. |
+| OD-18 | **Division count** — 5, or split Technology into Platform + Applied AI? | Five departments under Technology is the widest span in the org. | **Deferred by founder pending team-layer evidence** from the division analysis agents. |
 | OD-19 | **Security classification** — of the ~86 non-webhook endpoints lacking `JwtAuthGuard`, which are real gaps vs intentional? | Unguarded + `TenantGuard` passthrough = internet-reachable ([ENDPOINTS.md](../foundation/ENDPOINTS.md)). | Security department's first assignment, once it exists. |
 
 ## Resolved
@@ -36,3 +33,7 @@
 | OD-12 | **Loop graph = documentation now, executable later** — machine-readable frontmatter so loops can drive routing without a rewrite ([ORG_STRUCTURE §5](../foundation/ORG_STRUCTURE.md)) | 2026-08-24 |
 | OD-13 | **Wave 0 first** (lock contracts), then wide parallel Wave 1 | 2026-08-24 |
 | — | **Skills live in `.claude/skills/`** — auto-discovered, committed, PR-reviewable | 2026-08-24 |
+| OD-15 | **3 advisory functions adopted** — Architecture Review, Red Team (scoped to decisions + premortems), Decision Office. Ethics & Responsible AI considered and not adopted ([0007](0007-org-structure.md)) | 2026-08-24 |
+| OD-16 | **Advisory authority = findings-only**, escalating to the founder | 2026-08-24 |
+| OD-17 | **7-artifact unit anatomy**, agendas banner-marked provisional until real work exists | 2026-08-24 |
+| — | **One entity reaffirmed** — two-company (research lab + app) proposal argued and declined; separation lives in the data model ([0001](0001-mudavym-single-entity.md) review trail, [0006](0006-neural-footprint-architecture.md)) | 2026-08-24 |
