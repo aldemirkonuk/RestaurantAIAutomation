@@ -15,9 +15,14 @@
 # real AppModule graph — which is what this does.
 #
 # It is a *boot* check, not a smoke test: it builds the application context and
-# closes it immediately. No port is bound, no request is served, no secret is used.
-# Dummy env is deliberate — if this ever needs a real credential, the dependency
-# graph has acquired a boot-time side effect and that is itself the finding.
+# closes it immediately. No port is bound and no request is served.
+#
+# The env below is placeholder, never real. Some providers read config at
+# construction time — DatabaseService throws "Supabase configuration missing" in
+# onModuleInit — so the graph needs values *present*, not values that work. The
+# Supabase URL points at `.invalid`, a reserved TLD that cannot resolve: if a
+# module ever tries to reach it during boot, the check fails, and a boot-time
+# network call is exactly the kind of thing this should refuse to let through.
 #
 # NEVER VACUOUS: every way of not-actually-checking exits non-zero. A guard that
 # passes because it could not run is worse than no guard.
@@ -75,6 +80,9 @@ echo "== Resolving the AppModule dependency graph"
 OUT="$(
   env NODE_ENV=test \
       JWT_SECRET="boot-check-only-not-a-real-secret-0123456789" \
+      SUPABASE_URL="https://boot-check.invalid" \
+      SUPABASE_SERVICE_ROLE_KEY="boot-check-only-not-a-real-key" \
+      SUPABASE_ANON_KEY="boot-check-only-not-a-real-key" \
       node "$RUNNER" "$PWD/$ENTRY" 2>&1
 )"
 STATUS=$?
