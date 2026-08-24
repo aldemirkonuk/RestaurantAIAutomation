@@ -173,8 +173,6 @@ Row count must cover every `agents/*.py` file (including package `__init__.py`).
 | Agent file | Primary group | also_touches |
 |------------|---------------|--------------|
 | `__init__.py` | 11 Platform & Agent Infrastructure | package init — not a scored agent surface |
-| `book_scraper_agent.py` | 2 Catalog & Extraction | — |
-| `dataset_creator_agent.py` | 2 Catalog & Extraction | — |
 | `menu_analyzer_agent.py` | 2 Catalog & Extraction | — |
 | `visual_verification_agent.py` | 2 Catalog & Extraction | — |
 | `inventory_engine.py` | 3 Inventory Operations | — |
@@ -184,6 +182,7 @@ Row count must cover every `agents/*.py` file (including package `__init__.py`).
 | `inequality_detector.py` | 3 Inventory Operations | — |
 | `state_invariant_enforcer.py` | 3 Inventory Operations | — |
 | `pos_integration_agent.py` | 4 POS & Sales Ingestion | — |
+| `drift_agent.py` | 4 POS & Sales Ingestion | also_touches: 3 |
 | `procurement_agent.py` | 5 Procurement & Vendors | — |
 | `rfq_agent.py` | 5 Procurement & Vendors | — |
 | `recurring_order_agent.py` | 5 Procurement & Vendors | — |
@@ -199,7 +198,15 @@ Row count must cover every `agents/*.py` file (including package `__init__.py`).
 | `sommelier_agent.py` | 10 AI Assistants & Recommendations | — |
 | `compliance_agent.py` | 11 Platform & Agent Infrastructure | also_touches: 5 |
 
-**Agent `.py` files on disk:** 26 (25 agents + `__init__.py`). Table C rows: 26.
+**Agent `.py` files on disk:** 25 (24 agents + `__init__.py`). Table C rows: 25.
+
+`book_scraper_agent.py` and `dataset_creator_agent.py` were removed: neither was in
+the orchestrator's class map, and the exchanges they subscribed to
+(`enrichment.events`, `scan.events`, `training.events`) had no publishers anywhere in
+the repo. Both capabilities remain live through `api/scan_routes.py` — `POST
+/book-scrape` and the `/training-data/*` endpoints — which is where their surfaces are
+scored (Table B), not here. `drift_agent.py` was missing from this table and is now
+covered.
 
 ---
 
@@ -263,7 +270,7 @@ Flag for Gaps / Phase 43 checklists — **not** product fixes. Cite [.planning/U
 - [x] Nest dir count == Table A data rows (34, excl. header)
 - [x] Every `App.tsx` `path=` appears in Table B routed rows (39 `path=` entries including catch-all `*`)
 - [x] Table B routed rows exclude reserved Phase 38 `/sim` and orphan `RecurringOrders` from the App.tsx equality count (those are documented adjacently)
-- [x] Every `agents/*.py` file (26) has exactly one primary in Table C
+- [x] Every `agents/*.py` file (25) has exactly one primary in Table C
 - [x] Every DB domain bucket (11) has exactly one primary in Table D
 - [x] No row assigns two primary groups (primary column is a single group id/name; secondaries use `also_touches` only)
 - [x] Cross-link to [RUBRIC.md](./RUBRIC.md) for “how tested is X?” maturity scoring

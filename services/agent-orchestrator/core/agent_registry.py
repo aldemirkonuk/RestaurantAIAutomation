@@ -95,6 +95,50 @@ DEFAULT_AGENT_SPECS: Dict[str, dict] = {
         "dependencies": [],
         "description": "POS data ingestion",
     },
+    # Communication agents (Phase 24 inbound email, Phase 32 outbound drafts).
+    #
+    # These four are CORE for one reason: ON_DEMAND does not start anything.
+    # start_all_agents() walks get_startup_order(), which filters to CORE, and
+    # nothing in the repo calls registry.get_or_create() or start_agent() — so a
+    # bus-driven agent left at the ON_DEMAND default is proxied, never
+    # instantiated, and never subscribes. All four sat there: absent from
+    # DEFAULT_AGENT_SPECS, silently defaulted to ON_DEMAND (see
+    # register_from_defaults), and dead despite live upstream publishers —
+    # email.inbound.received has three NestJS producers, procurement.order.created
+    # has three, conversation.approved has two. Phase 32's plan asked only for the
+    # orchestrator class-map entry and its verification passed on that alone,
+    # which is how a second cohort of agents reached "registered" and stopped.
+    #
+    # idle_timeout_seconds is deliberately unset: the auto-suspend monitor skips
+    # CORE, so any value here would be decoration.
+    "provider_conversation_agent": {
+        "tier": AgentTier.CORE,
+        "dependencies": ["procurement_agent", "notification_agent", "calendar_agent"],
+        "description": "Provider communication gateway — sessions, intelligence extraction, approvals",
+    },
+    "email_parsing_agent": {
+        "tier": AgentTier.CORE,
+        "dependencies": ["procurement_agent"],
+        "description": "Inbound vendor email threading and conversation storage",
+    },
+    "email_intel_agent": {
+        # Ordered after email_parsing_agent because it re-publishes OPERATIONAL
+        # mail onto email.inbound.received: a topic exchange drops messages with
+        # no bound queue, so the consumer has to be up first.
+        "tier": AgentTier.CORE,
+        "dependencies": ["email_parsing_agent", "notification_agent"],
+        "description": "Inbox triage — OPERATIONAL/PROMO/NOISE classification and promo extraction",
+    },
+    "provider_communication_agent": {
+        # NOTE: this agent and provider_conversation_agent both subscribe to
+        # procurement.order.created and both generate a draft plus a manager
+        # notification. That produced nothing while neither ran; now that both
+        # boot, one order yields two drafts. Deciding which agent owns that key is
+        # a business-logic change and is deliberately not made here.
+        "tier": AgentTier.CORE,
+        "dependencies": ["procurement_agent", "notification_agent"],
+        "description": "Outbound AI draft engine with constraint enforcement",
+    },
     # Phase 2 agents (on-demand)
     "visual_verification_agent": {
         "tier": AgentTier.ON_DEMAND,
@@ -332,13 +376,58 @@ class AgentRegistry:
         logger.debug(f"Registered agent: {name} (tier={tier.value})")
 
     def register_from_defaults(self, agent_classes: Dict[str, Type]) -> None:
-        """Register agents using DEFAULT_AGENT_SPECS configuration."""
+        """
+        Register agents using DEFAULT_AGENT_SPECS configuration.
+
+        Raises if any agent class has no spec, or has one that omits `tier`. This
+        used to be a `DEFAULT_AGENT_SPECS.get(name, {})`, which handed the agent
+        the dataclass defaults — ON_DEMAND, no dependencies, no feature flag — and
+        said nothing. An undeclared agent was therefore indistinguishable from one
+        deliberately declared ON_DEMAND, and since ON_DEMAND agents are never
+        started, four of them were quietly inert with live publishers upstream.
+
+        `tier` is checked separately because defaulting it reproduces the same
+        defect one level down: a spec that exists but omits the key would still
+        silently become the tier that never runs. The other fields may be omitted
+        — an absent `dependencies` means no ordering edge and an absent
+        `feature_flag` means no gate, both of which are honest readings.
+
+        A warning is the wrong instrument here: this repo has already learned that
+        an agent which looks registered and consumes nothing reads as healthy on
+        every dashboard. The condition is also a pure authoring mistake, fully
+        determined at import time by the class map — so it belongs at boot, in
+        dev and CI, not in a log line someone greps for after an outage. Every
+        offending name is reported at once so the whole roster is fixed in one pass.
+        """
+        missing = [name for name in agent_classes if name not in DEFAULT_AGENT_SPECS]
+        if missing:
+            raise ValueError(
+                f"Agent(s) registered with no DEFAULT_AGENT_SPECS entry: "
+                f"{', '.join(sorted(missing))}. Without a spec an agent silently "
+                f"defaults to tier=ON_DEMAND, which start_all_agents() never "
+                f"starts — it would be registered, proxied, and never subscribe. "
+                f"Add an entry to DEFAULT_AGENT_SPECS in core/agent_registry.py "
+                f"declaring at minimum its tier and dependencies."
+            )
+
+        untiered = [
+            name for name in agent_classes if "tier" not in DEFAULT_AGENT_SPECS[name]
+        ]
+        if untiered:
+            raise ValueError(
+                f"Agent(s) whose DEFAULT_AGENT_SPECS entry declares no tier: "
+                f"{', '.join(sorted(untiered))}. Declare one explicitly — CORE to "
+                f"start on boot (required for anything driven by the message bus), "
+                f"ON_DEMAND only for agents invoked directly by a route or job, "
+                f"OPTIONAL for flag-gated agents."
+            )
+
         for name, agent_class in agent_classes.items():
-            defaults = DEFAULT_AGENT_SPECS.get(name, {})
+            defaults = DEFAULT_AGENT_SPECS[name]
             self.register(
                 name=name,
                 agent_class=agent_class,
-                tier=defaults.get("tier", AgentTier.ON_DEMAND),
+                tier=defaults["tier"],
                 dependencies=defaults.get("dependencies", []),
                 feature_flag=defaults.get("feature_flag"),
                 idle_timeout_seconds=defaults.get("idle_timeout_seconds", 300),
