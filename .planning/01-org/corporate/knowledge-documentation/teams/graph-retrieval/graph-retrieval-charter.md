@@ -63,7 +63,7 @@ Owns outright:
 | Whether the document's content is true | [[standards-verification-charter]] | A resolvable link to a stale doc is our success and their failure |
 | The content of the frontmatter *values* | The authoring unit | We enforce that `status` exists and parses; we do not judge whether `exists` was the honest grade |
 | Graph *semantics* — what a loop means | [[decision-office-charter]] *(advisory)* | We make loops queryable; they own whether loops close |
-| Vector search / RAG over the corpus | [[research-and-math-charter]] *(Intelligence)* | Retrieval here means links and queries, not embeddings. If that changes it is an ADR, not a scope creep |
+| Vector search / RAG over the corpus | [[research-math-charter]] *(Intelligence)* | Retrieval here means links and queries, not embeddings. If that changes it is an ADR, not a scope creep |
 
 ## Metrics it moves
 

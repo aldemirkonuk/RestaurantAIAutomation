@@ -118,7 +118,7 @@ severity, because the failure being prevented is silence, not disagreement.
 
 Two standing routes are pre-declared so the first instance does not have to be argued:
 external-facing numbers → [[positioning-fundraise-readiness-charter]]; stale brand in
-product surfaces (not documents) → [[media-and-brand-charter]].
+product surfaces (not documents) → [[media-brand-charter]].
 
 ---
 

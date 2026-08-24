@@ -6,7 +6,7 @@ team: standards-verification
 status: provisional
 metrics: [standards.stale_claim_rate, standards.unpinned_claim_count, standards.docs_past_60_day_rule, standards.stale_brand_doc_count]
 updated: 2026-08-24
-links: ["[[standards-verification-charter]]", "[[standards-verification-premortem]]", "[[standards-verification-agenda-board]]", "[[standards-verification-loops]]", "[[standards-verification-schedule]]", "[[knowledge-documentation-agenda-full]]", "[[decision-office-charter]]", "[[positioning-fundraise-readiness-charter]]", "[[media-and-brand-charter]]"]
+links: ["[[standards-verification-charter]]", "[[standards-verification-premortem]]", "[[standards-verification-agenda-board]]", "[[standards-verification-loops]]", "[[standards-verification-schedule]]", "[[knowledge-documentation-agenda-full]]", "[[decision-office-charter]]", "[[positioning-fundraise-readiness-charter]]", "[[media-brand-charter]]"]
 ---
 
 # Standards & Verification — Full Agenda
@@ -80,7 +80,7 @@ audits, so the board carries the scope inline.
 | 3 | Unpinned-claim inventory — every number appearing in ≥ 2 spine docs, with its source's assertability | — | `standards.unpinned_claim_count` has a real value |
 | 4 | 60-day sweep, org-wide, **no exclusions** | [[graph-retrieval-charter]] ships Dataview *or* the script fallback | List per unit; this department's own docs appear first |
 | 5 | Companion-doc regenerate-and-compare in CI — `ENDPOINTS.md`, `PAGE_MAP.md`, `EXTERNAL_CONNECTIONS.md` | — | A hand edit to any of the three fails |
-| 6 | Brand-drift report, scoped: spine vs `.planning/` tree vs `md/` | — | Three numbers with denominators; handoff to [[media-and-brand-charter]] for surfaces |
+| 6 | Brand-drift report, scoped: spine vs `.planning/` tree vs `md/` | — | Three numbers with denominators; handoff to [[media-brand-charter]] for surfaces |
 | 7 | **OD-14** — retire or rewrite root `SKILLS.md` | Founder | File retired, or rewritten and re-branded |
 | 8 | Report the OD-21 register contradiction to [[decision-office-charter]] | — | Entry raised; not resolved by us |
 | 9 | Frontmatter on `ORG_STRUCTURE.md` and `OBSIDIAN_VAULT.md` — jointly with [[graph-retrieval-charter]] | — | `standards.contract_self_compliance_pct` 0/2 → 2/2 |

@@ -89,10 +89,10 @@ Owns outright:
 |---|---|---|
 | Whether a decision is *right* | [[decision-office-charter]] *(advisory)* | Decision Office owns the ADR log and whether decisions close; we own whether the written record of them is accurate and findable |
 | Fixing the code a stale doc describes | The owning department | We raise the discrepancy against a named unit; we do not patch their source to match our doc |
-| Brand migration in code (`wineops.ai` × 10 in source) | [[media-and-brand-charter]] *(Commercial)* | We own stale brand in **documents**; they own it in **product surfaces** |
+| Brand migration in code (`wineops.ai` × 10 in source) | [[media-brand-charter]] *(Commercial)* | We own stale brand in **documents**; they own it in **product surfaces** |
 | The skill registry itself | [[skills-charter]] *(Applied AI)* | We index and audit documentation about skills; Applied AI governs what a skill is |
 | Writing the docs | Every department | We set the bar, run the checks, and place the output — we are not the authors of the corpus |
-| Agent-readable *runtime* memory | [[research-and-math-charter]] *(Intelligence)* | NF-A is a metric spine, not a document corpus |
+| Agent-readable *runtime* memory | [[research-math-charter]] *(Intelligence)* | NF-A is a metric spine, not a document corpus |
 
 **The independence question, raised honestly.** `corporate.md:512-515` notes that
 [[standards-verification-charter]] reviews documents it does not write, which is the same

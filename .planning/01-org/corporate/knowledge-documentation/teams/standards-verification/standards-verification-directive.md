@@ -6,7 +6,7 @@ team: standards-verification
 status: provisional
 metrics: [standards.stale_claim_rate, standards.unpinned_claim_count, standards.correction_age_days]
 updated: 2026-08-24
-links: ["[[standards-verification-charter]]", "[[standards-verification-premortem]]", "[[standards-verification-loops]]", "[[knowledge-documentation-directive]]", "[[decision-office-charter]]", "[[positioning-fundraise-readiness-charter]]", "[[media-and-brand-charter]]", "[[red-team-charter]]"]
+links: ["[[standards-verification-charter]]", "[[standards-verification-premortem]]", "[[standards-verification-loops]]", "[[knowledge-documentation-directive]]", "[[decision-office-charter]]", "[[positioning-fundraise-readiness-charter]]", "[[media-brand-charter]]", "[[red-team-charter]]"]
 ---
 
 # Standards & Verification — Directive
@@ -54,7 +54,7 @@ graph TD
 - **Changes to external-facing narrative.** 573 sits in `YC_WEDGE_PLAN.md:324`; the
   correction is [[positioning-fundraise-readiness-charter]]'s to make with our evidence.
 - **Brand in code and product surfaces.** Ours stops at prose;
-  [[media-and-brand-charter]] owns `wineops.ai` in source.
+  [[media-brand-charter]] owns `wineops.ai` in source.
 - **Style.** Deliberately unowned. A style guide is what this team must not become.
 
 ## The five hard rules

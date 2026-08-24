@@ -61,7 +61,7 @@ Owns outright:
 | Deciding what the true value is | The owning department | We prove two documents disagree and that the source is unassertable. We do not decide the insight count — that would make us an authority on analytics |
 | Fixing the code so a document becomes true | The owning department | We change the document, or raise the discrepancy. We never patch someone's source to match our prose |
 | Whether a decision is open or closed | [[decision-office-charter]] | We report the [[OBSIDIAN_VAULT]] OD-21 contradiction; we do not resolve it |
-| Brand in code and product surfaces (`wineops.ai` × 10 in source) | [[media-and-brand-charter]] *(Commercial)* | Documents are ours; surfaces are theirs |
+| Brand in code and product surfaces (`wineops.ai` × 10 in source) | [[media-brand-charter]] *(Commercial)* | Documents are ours; surfaces are theirs |
 | Prose style, tone, formatting | Nobody, deliberately | A style guide is the thing this team must not become |
 | Correcting external-facing numbers unilaterally | [[positioning-fundraise-readiness-charter]] | 573 sits in the YC narrative; changing it is a Strategy decision with a documentation input |
 
