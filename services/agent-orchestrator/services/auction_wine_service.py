@@ -9,6 +9,7 @@ import os
 import time
 from typing import Dict, Optional
 import asyncio
+from config.settings import get_settings
 
 try:
     import google.generativeai as genai
@@ -54,7 +55,7 @@ class AuctionWineService:
         if self.gemini_api_key and GEMINI_AVAILABLE:
             try:
                 genai.configure(api_key=self.gemini_api_key)
-                self.gemini_model = genai.GenerativeModel("gemini-2.5-flash")
+                self.gemini_model = genai.GenerativeModel(get_settings().gemini_model)
                 self.gemini_available = True
                 logger.info("Gemini API initialized successfully")
             except Exception as e:
@@ -128,15 +129,20 @@ class AuctionWineService:
             try:
                 from services.spend_logger import estimate_llm_cost, get_spend_logger
 
+                # label the model actually configured, not a literal (OD-57)
+                _model_id = get_settings().gemini_model
                 _usage = getattr(response, "usage_metadata", None)
                 _in = getattr(_usage, "prompt_token_count", 0) or 0
-                _out = getattr(_usage, "candidates_token_count", 0) or 0
+                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+                _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                    getattr(_usage, "thoughts_token_count", 0) or 0
+                )
                 get_spend_logger().log(
                     provider="google",
-                    model="gemini-2.5-flash",
+                    model=_model_id,
                     input_tokens=_in,
                     output_tokens=_out,
-                    cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
+                    cost_usd=estimate_llm_cost(_model_id, _in, _out),
                     agent_fallback="auction_wine_service",
                     task_type="auction_wine_research",
                     outcome="success",  # call-level: response returned

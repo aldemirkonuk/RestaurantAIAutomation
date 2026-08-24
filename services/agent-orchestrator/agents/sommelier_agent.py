@@ -16,6 +16,7 @@ import time
 from core.base_agent import BaseAgent
 from core.database import MasterWineLibrary
 from services.spend_logger import estimate_llm_cost, get_spend_logger
+from config.settings import get_settings
 
 
 class SommelierAgent(BaseAgent):
@@ -40,7 +41,9 @@ class SommelierAgent(BaseAgent):
         super().__init__(agent_name, message_bus, database, config)
 
         # LLM configuration
-        self.llm_model = config.get("llm_model", "gemini-2.5-flash")
+        # gemini-pro is retired (404). Enrichment is extraction-shaped and this
+        # agent uses the Gemini SDK, so it falls back to the Gemini default.
+        self.llm_model = config.get("llm_model", get_settings().gemini_model)
         self.google_api_key = config.get("google_api_key")
         self.mock_mode = config.get("mock_mode", True)
 
@@ -92,7 +95,7 @@ class SommelierAgent(BaseAgent):
 
                 self.genai_client = genai.Client(api_key=self.google_api_key)
                 self.logger.info(
-                    "✓ Gemini client initialized (google-genai SDK, model: gemini-2.0-flash)"
+                    f"✓ Gemini client initialized (google-genai SDK, model: {self.llm_model})"
                 )
             except ImportError:
                 # Fallback to legacy SDK
@@ -423,7 +426,10 @@ class SommelierAgent(BaseAgent):
         try:
             _usage = getattr(response, "usage_metadata", None)
             _in = getattr(_usage, "prompt_token_count", 0) or 0
-            _out = getattr(_usage, "candidates_token_count", 0) or 0
+            # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+            _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                getattr(_usage, "thoughts_token_count", 0) or 0
+            )
             get_spend_logger().log(
                 provider="google",
                 model=model,
@@ -659,15 +665,17 @@ Respond with valid JSON only."""
                     tools=[grounding_tool],
                     temperature=0.1,
                 )
+                # one binding for the call and its spend label (OD-57)
+                model_id = get_settings().gemini_model
                 _t0 = time.perf_counter()
                 response = self.genai_client.models.generate_content(
-                    model="gemini-2.5-flash",
+                    model=model_id,
                     contents=prompt,
                     config=config,
                 )
                 self._log_llm_spend(  # P1
                     response,
-                    "gemini-2.5-flash",
+                    model_id,
                     "wine_enrichment_grounded",
                     duration_ms=int((time.perf_counter() - _t0) * 1000),
                 )

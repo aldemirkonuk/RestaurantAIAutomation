@@ -22,6 +22,7 @@ import base64
 import time
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -290,9 +291,11 @@ class WineBookScraper:
 
             image_b64 = base64.b64encode(image_bytes).decode()
 
+            # one binding for the call and its spend label (OD-57)
+            model_id = get_settings().gemini_model
             _t0 = time.perf_counter()
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model=model_id,
                 contents=[
                     types.Content(
                         parts=[
@@ -322,13 +325,16 @@ class WineBookScraper:
 
                 _usage = getattr(response, "usage_metadata", None)
                 _in = getattr(_usage, "prompt_token_count", 0) or 0
-                _out = getattr(_usage, "candidates_token_count", 0) or 0
+                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+                _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                    getattr(_usage, "thoughts_token_count", 0) or 0
+                )
                 get_spend_logger().log(
                     provider="google",
-                    model="gemini-2.5-flash",
+                    model=model_id,
                     input_tokens=_in,
                     output_tokens=_out,
-                    cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
+                    cost_usd=estimate_llm_cost(model_id, _in, _out),
                     restaurant_id=restaurant_id or None,
                     agent_fallback="wine_book_scraper",
                     task_type="book_vision_extraction",
@@ -420,9 +426,10 @@ Text to process:
 
 Return ONLY a valid JSON array. If no wines found, return []."""
 
+                model_id = get_settings().gemini_model
                 _t0 = time.perf_counter()
                 response = client.models.generate_content(
-                    model="gemini-2.5-flash",
+                    model=model_id,
                     contents=prompt,
                     config=config,
                 )
@@ -436,13 +443,16 @@ Return ONLY a valid JSON array. If no wines found, return []."""
 
                     _usage = getattr(response, "usage_metadata", None)
                     _in = getattr(_usage, "prompt_token_count", 0) or 0
-                    _out = getattr(_usage, "candidates_token_count", 0) or 0
+                    # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+                    _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                        getattr(_usage, "thoughts_token_count", 0) or 0
+                    )
                     get_spend_logger().log(
                         provider="google",
-                        model="gemini-2.5-flash",
+                        model=model_id,
                         input_tokens=_in,
                         output_tokens=_out,
-                        cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
+                        cost_usd=estimate_llm_cost(model_id, _in, _out),
                         restaurant_id=restaurant_id or None,
                         agent_fallback="wine_book_scraper",
                         task_type="book_text_extraction",

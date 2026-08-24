@@ -41,7 +41,7 @@ from core.base_agent import BaseAgent
 from utils.logger import setup_logger
 from services.email_composer_service import EmailComposerService
 from services.spend_logger import estimate_llm_cost, get_spend_logger
-from config.settings import Settings
+from config.settings import Settings, get_settings
 from services.model_clients import get_haiku_client
 
 logger = setup_logger("agent.provider_conversation")
@@ -263,8 +263,11 @@ class ProviderConversationAgent(BaseAgent):
         super().__init__(agent_name, message_bus, database, config)
 
         # LLM configuration
-        self.extraction_model = config.get("extraction_model", "gemini-2.5-flash")
-        self.response_model = config.get("response_model", "gemini-2.5-flash")
+        # gemini-2.0-flash was shut down 2026-06-01 (OD-57); fall back to the
+        # configured Gemini default so one id changes at the next retirement.
+        _gemini_default = get_settings().gemini_model
+        self.extraction_model = config.get("extraction_model", _gemini_default)
+        self.response_model = config.get("response_model", _gemini_default)
         self.embedding_model = config.get("embedding_model", "text-embedding-004")
         self.llm_temperature = config.get("llm_temperature", 0.7)
         self.google_api_key = config.get("google_api_key")
@@ -926,7 +929,10 @@ class ProviderConversationAgent(BaseAgent):
         try:
             _usage = getattr(response, "usage_metadata", None)
             _in = getattr(_usage, "prompt_token_count", 0) or 0
-            _out = getattr(_usage, "candidates_token_count", 0) or 0
+            # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+            _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                getattr(_usage, "thoughts_token_count", 0) or 0
+            )
             get_spend_logger().log(
                 provider="google",
                 model=self.extraction_model,

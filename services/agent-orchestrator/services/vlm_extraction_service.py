@@ -319,7 +319,10 @@ class VLMExtractionService:
             try:
                 _usage = getattr(response, "usage_metadata", None)
                 _in = getattr(_usage, "prompt_token_count", 0) or 0
-                _out = getattr(_usage, "candidates_token_count", 0) or 0
+                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+                _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                    getattr(_usage, "thoughts_token_count", 0) or 0
+                )
                 get_spend_logger().log(
                     provider="google",
                     model="gemini-2.5-flash",
@@ -403,7 +406,10 @@ class VLMExtractionService:
             try:
                 _usage = getattr(response, "usage_metadata", None)
                 _in = getattr(_usage, "prompt_token_count", 0) or 0
-                _out = getattr(_usage, "candidates_token_count", 0) or 0
+                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+                _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                    getattr(_usage, "thoughts_token_count", 0) or 0
+                )
                 get_spend_logger().log(
                     provider="google",
                     model="gemini-2.5-flash",
@@ -590,8 +596,15 @@ Return ONLY valid JSON (no markdown fences):
 class GeminiFlashCrawlerExtractor:
     """
     Async Gemini Flash extractor for the background crawl pipeline.
-    Uses AsyncClient + gemini-2.0-flash (not gemini-2.5-flash).
-    Do NOT use for onboarding (that is ClaudeVisionExtractor).
+    Uses AsyncClient + `MODEL_ID` below. Do NOT use for onboarding (that is
+    ClaudeVisionExtractor).
+
+    This docstring used to read "gemini-2.0-flash (not gemini-2.5-flash)" while
+    MODEL_ID on the very next line said gemini-2.5-flash — it had been wrong, and
+    emphatically so, since the model was changed under it. gemini-2.0-flash is
+    now retired (404) as well, so the sentence named a dead model AND contradicted
+    the code one line away. Naming the constant instead of restating its value is
+    what stops that drifting again.
     """
 
     MODEL_ID = "gemini-2.5-flash"
@@ -628,7 +641,10 @@ class GeminiFlashCrawlerExtractor:
             try:
                 usage = getattr(response, "usage_metadata", None)
                 input_tokens = getattr(usage, "prompt_token_count", 0) or 0
-                output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+                output_tokens = (getattr(usage, "candidates_token_count", 0) or 0) + (
+                    getattr(usage, "thoughts_token_count", 0) or 0
+                )
                 get_spend_logger().log(
                     provider="google",
                     model=self.MODEL_ID,

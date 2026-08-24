@@ -340,11 +340,159 @@ def test_get_spend_logger_returns_singleton():
 def test_estimate_llm_cost_known_and_unknown_models():
     from services.spend_logger import estimate_llm_cost
 
+    # 1.00/5.00 per 1M — verified 2026-08-24 against Anthropic's pricing page.
+    # This previously asserted 0.80 + 4.00, which is Claude Haiku *3.5*'s retired
+    # rate; the repo calls claude-haiku-4-5-20251001, so spend read 20% low.
     haiku = estimate_llm_cost("claude-haiku-4-5-20251001", 1_000_000, 1_000_000)
-    assert haiku == pytest.approx(0.80 + 4.00)
+    assert haiku == pytest.approx(1.00 + 5.00)
+    # 0.30/1M in — verified 2026-08-24 against ai.google.dev pricing. This
+    # previously asserted 0.075, which encoded the retired 2.0-flash rate and
+    # understated real 2.5-flash spend 4x on input, 8.3x on output.
     flash = estimate_llm_cost("gemini-2.5-flash", 1_000_000, 0)
-    assert flash == pytest.approx(0.075)
+    assert flash == pytest.approx(0.30)
     assert estimate_llm_cost("mystery-model-9000", 1000, 1000) == 0.0
+
+
+def test_lite_models_are_not_priced_as_full_flash():
+    """Longest match wins: 'gemini-2.5-flash' is a substring of the -lite id, so
+    insertion-order lookup billed every lite call at full-flash rates."""
+    from services.spend_logger import estimate_llm_cost
+
+    assert estimate_llm_cost("gemini-2.5-flash-lite", 1_000_000, 0) == pytest.approx(
+        0.10
+    )
+    assert estimate_llm_cost("gemini-2.5-flash-lite", 0, 1_000_000) == pytest.approx(
+        0.40
+    )
+    assert estimate_llm_cost("gemini-3.5-flash-lite", 0, 1_000_000) == pytest.approx(
+        2.50
+    )
+    # ...and the non-lite id must still resolve to the full-flash rate.
+    assert estimate_llm_cost("gemini-3.5-flash", 0, 1_000_000) == pytest.approx(9.00)
+
+
+def test_is_priced_model_separates_unknown_from_free():
+    from services.spend_logger import is_priced_model
+
+    assert is_priced_model("gemini-3.5-flash-lite") is True
+    assert is_priced_model("claude-haiku-4-5-20251001") is True
+    assert is_priced_model("gemini-9.9-unreleased") is False
+    assert is_priced_model("") is False
+
+
+def test_usage_tokens_counts_thinking_as_output():
+    """Google bills thoughts_token_count at the output rate but reports it
+    separately; reading candidates alone undercounted output up to 9x."""
+    from services.spend_logger import usage_tokens
+
+    class _Usage:
+        prompt_token_count = 317
+        candidates_token_count = 76
+        thoughts_token_count = 606
+
+    class _Resp:
+        usage_metadata = _Usage()
+
+    assert usage_tokens(_Resp()) == (317, 682)
+
+    class _NoThoughts:
+        prompt_token_count = 10
+        candidates_token_count = 5
+        thoughts_token_count = None
+
+    class _Resp2:
+        usage_metadata = _NoThoughts()
+
+    assert usage_tokens(_Resp2()) == (10, 5)
+
+    class _Bare:
+        usage_metadata = None
+
+    assert usage_tokens(_Bare()) == (0, 0)
+
+
+def test_unpriced_model_books_null_cost_not_false_zero():
+    """An unpriced model must not book $0.00 as if the call were free — NF
+    records NULL plus context.cost_basis so the gap stays visible."""
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(
+            provider="google",
+            model="gemini-9.9-unreleased",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.0,
+            agent="test_agent",
+        )
+    finally:
+        p.stop()
+
+    nf = rows["neural_footprint_event"][0]
+    assert nf["cost_usd"] is None
+    assert nf["context"]["cost_basis"] == "unpriced_model"
+    # api_spend.cost_usd is NOT NULL in the schema, so it still takes the 0.0.
+    # That remaining false zero is filed as tech debt, not fixed here.
+    assert rows["api_spend"][0]["cost_usd"] == 0.0
+
+
+def test_serper_flat_fee_is_never_nulled_as_unpriced():
+    """Serper bills a flat configured per-query fee, not per token. Judging it
+    against the LLM rate table would delete real, exactly-known spend from NF and
+    label it unknown — the same defect the unpriced guard exists to prevent."""
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(
+            provider="serper",
+            model="serper-search",
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.001,
+            agent="score_agent",
+        )
+    finally:
+        p.stop()
+
+    nf = rows["neural_footprint_event"][0]
+    assert nf["cost_usd"] == pytest.approx(0.001)
+    assert "cost_basis" not in nf["context"]
+
+
+def test_is_priced_model_is_about_the_token_table_not_the_provider():
+    """Guards the predicate itself: serper ids are legitimately absent from the
+    per-token table, which is why the log() guard must gate on provider."""
+    from services.spend_logger import is_priced_model
+
+    assert is_priced_model("serper-search") is False
+    assert is_priced_model("search") is False
+    assert is_priced_model(None) is False
+
+
+def test_priced_model_keeps_cost_and_carries_no_basis_marker():
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(
+            provider="google",
+            model="gemini-3.5-flash-lite",
+            input_tokens=1_000_000,
+            output_tokens=0,
+            cost_usd=0.30,
+            agent="test_agent",
+        )
+    finally:
+        p.stop()
+
+    nf = rows["neural_footprint_event"][0]
+    assert nf["cost_usd"] == pytest.approx(0.30)
+    assert "cost_basis" not in nf["context"]
 
 
 def test_log_context_is_async_task_isolated():
@@ -407,9 +555,13 @@ def test_is_priced_model_knows_what_the_rate_table_covers():
 
     assert is_priced_model("claude-haiku-4-5-20251001") is True
     assert is_priced_model("gemini-2.5-flash") is True
-    # Google retired gemini-2.0-flash (the settings default) on 2026-08-24; its
-    # successors have no rate here, and estimate_llm_cost() returns 0.0 for them.
-    assert is_priced_model("gemini-3.6-flash") is False
+    # This assertion used to read `is_priced_model("gemini-3.6-flash") is False`,
+    # written when the table stopped at 2.5 and every 3.x successor was unpriced.
+    # ADR 0010 verified and added the 3.x rows, so 3.6-flash is now priced and the
+    # id no longer stands for "unpriced" — assert the new truth, and use an id that
+    # cannot ever be in the table for the negative case.
+    assert is_priced_model("gemini-3.6-flash") is True
+    assert is_priced_model("gemini-9.9-unreleased") is False
     assert is_priced_model("") is False
 
 
@@ -421,7 +573,10 @@ def test_unpriced_model_writes_null_nf_cost_not_a_false_zero():
     try:
         from services.spend_logger import SpendLogger, estimate_llm_cost
 
-        model = "gemini-3.6-flash"
+        # Was "gemini-3.6-flash", which ADR 0010 has since given a verified rate;
+        # the test needs an id the table genuinely cannot price, so it exercises
+        # the guard rather than the table's coverage on a given day.
+        model = "gemini-9.9-unreleased"
         SpendLogger().log(
             provider="google",
             model=model,

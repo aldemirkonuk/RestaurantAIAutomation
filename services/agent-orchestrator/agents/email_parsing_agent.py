@@ -22,6 +22,7 @@ from core.base_agent import BaseAgent
 from core.message_bus import EventPriority
 from core.database import DatabaseClient
 from utils.logger import setup_logger
+from config.settings import get_settings
 
 logger = setup_logger("email_parsing_agent")
 
@@ -72,7 +73,7 @@ class EmailParsingAgent(BaseAgent):
             api_key = self.raw_config.get("google_api_key") or ""
             if api_key:
                 genai.configure(api_key=api_key)
-                self.gemini_model = genai.GenerativeModel("gemini-2.5-flash")
+                self.gemini_model = genai.GenerativeModel(get_settings().gemini_model)
                 self.logger.info("Gemini Pro initialized for email parsing")
             else:
                 self.logger.warning("GEMINI_API_KEY not set — LLM features disabled")
@@ -373,15 +374,20 @@ class EmailParsingAgent(BaseAgent):
         try:
             from services.spend_logger import estimate_llm_cost, get_spend_logger
 
+            # label the model actually configured, not a literal (OD-57)
+            _model_id = get_settings().gemini_model
             _usage = getattr(response, "usage_metadata", None)
             _in = getattr(_usage, "prompt_token_count", 0) or 0
-            _out = getattr(_usage, "candidates_token_count", 0) or 0
+            # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+            _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                getattr(_usage, "thoughts_token_count", 0) or 0
+            )
             get_spend_logger().log(
                 provider="google",
-                model="gemini-2.5-flash",
+                model=_model_id,
                 input_tokens=_in,
                 output_tokens=_out,
-                cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
+                cost_usd=estimate_llm_cost(_model_id, _in, _out),
                 restaurant_id=restaurant_id or None,
                 agent=self.agent_name,
                 task_type=task_type,
