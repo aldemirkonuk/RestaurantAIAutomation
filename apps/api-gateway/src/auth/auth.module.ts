@@ -14,6 +14,7 @@ import { TokenBlacklistService } from "./services/token-blacklist.service";
 import { GoogleStrategy } from "./strategies/google.strategy";
 import { MicrosoftStrategy } from "./strategies/microsoft.strategy";
 import { CommunicationsModule } from "../communications/communications.module";
+import { resolveJwtSecret } from "./jwt-secret";
 
 @Module({
   imports: [
@@ -25,9 +26,7 @@ import { CommunicationsModule } from "../communications/communications.module";
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
-        secret:
-          configService.get("JWT_SECRET") ||
-          "your-secret-key-change-in-production",
+        secret: resolveJwtSecret(configService.get("JWT_SECRET")),
         signOptions: { expiresIn: "15m" },
       }),
       inject: [ConfigService],
