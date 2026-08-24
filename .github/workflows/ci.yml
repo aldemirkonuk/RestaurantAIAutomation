@@ -325,7 +325,7 @@ jobs:
           pytest tests/ -v --cov=. --cov-report=xml
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v6
         with:
           file: ./services/agent-orchestrator/coverage.xml
           flags: python
