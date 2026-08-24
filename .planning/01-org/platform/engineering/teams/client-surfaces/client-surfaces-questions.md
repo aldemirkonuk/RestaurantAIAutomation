@@ -5,7 +5,7 @@ department: engineering
 team: client-surfaces
 status: open
 updated: 2026-08-24
-open_questions: 0
+open_questions: 2
 links: ["[[client-surfaces-charter]]", "[[client-surfaces-agenda-full]]", "[[architecture-review-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
 
@@ -19,7 +19,8 @@ links: ["[[client-surfaces-charter]]", "[[client-surfaces-agenda-full]]", "[[arc
 
 | ID | From | Raised | Question or finding | Next action | Age-out |
 |---|---|---|---|---|---|
-| — | — | — | *(none yet)* | — | — |
+| DO-10 | page-docs | 2026-08-24 | `/admin`, `/admin/health`, `/dev-sandbox` have **no role gate on the route** (`App.tsx:288` renders `AdminPanel` inside plain auth, vs the studio routes at `:170-187` which do use `ProtectedRoute` roles). The sidebar link is owner-only; the URL is not. Any logged-in staff member can open the admin UI. | Add `ProtectedRoute` role gating to the three routes, mirroring the studio pattern. Coordinate with Security's OD-19 sweep for the backend half. | 2026-10-05 |
+| DO-11 | page-docs | 2026-08-24 | **SimPOS pages are a zombie UI in production**: `SimposModule` vanishes (NODE_ENV gate, PR #32) but the pages neither 404 nor error — the seed failure is swallowed (`SimposTerminalPage.tsx:59-62`), query errors never render (`throwOnError:false`), so a functional-looking empty terminal **polls the dead endpoint every 5s forever** (`:74`) while the Receipts tab shows real data, deepening the illusion. | Gate the routes to non-production like the module, or render an explicit "dev-only" state. | 2026-10-05 |
 
 ## Answered
 
