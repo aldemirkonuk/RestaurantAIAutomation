@@ -18,47 +18,30 @@ machine-readable, which broke the promise in ORG_STRUCTURE §5.
 
 | Status | Loops |
 |---|---|
-| `proposed` | 432 |
-| `blocked` | 29 |
+| `proposed` | 435 |
+| `blocked` | 30 |
 | `dormant` | 9 |
+| `active` | 3 |
 | `running` | 3 |
-| `active` | 2 |
 | `gated` | 2 |
-| `monthly` | 1 |
-| `weekly` | 1 |
-| `escalated` | 1 |
-| `running, unowned, unmeasured` | 1 |
-| `live` | 1 |
 
-> Only the `exists`/`running` rows describe something that actually runs today.
+> Only the `active`/`running` rows describe something that actually runs today — **6 of 482**. The other statuses are written down, not cycling.
 
 ## Close-time distribution
 
 | close_time | Loops |
 |---|---|
-| `weekly` | 139 |
-| `monthly` | 138 |
-| `quarterly` | 40 |
-| `daily` | 24 |
-| `per-PR` | 10 |
-| `biweekly` | 8 |
-| `per-commit` | 7 |
-| `per-merge` | 5 |
-| `fortnightly` | 5 |
-| `per_instrument` | 4 |
-| `per_claim` | 3 |
-| `per-artifact` | 2 |
-| `per-push and per-PR, plus daily cron` | 2 |
-| `per PR` | 2 |
-| `per-event` | 2 |
-| `per-render` | 2 |
-| `per-change` | 2 |
-| `per-service` | 2 |
-| `fortnightly until OD-11 closes` | 2 |
-| `daily for unconfirmed-mutation count, monthly for the behavioural signals` | 1 |
-| *(+82 more distinct values)* | |
+| `monthly` | 148 |
+| `weekly` | 147 |
+| `per-event` | 52 |
+| `quarterly` | 46 |
+| `per-pr` | 38 |
+| `daily` | 26 |
+| `fortnightly` | 20 |
+| `one-shot` | 3 |
+| `hourly` | 2 |
 
-**102 distinct `close_time` values** — a vocabulary problem worth normalising.
+**9 of the 9 permitted `close_time` values are in use.** Both `close_time` and `status` are closed vocabularies, locked by OD-47 in ORG_STRUCTURE §5.1 and enforced by this script — a value outside either set fails the build rather than landing here.
 
 ## By division
 

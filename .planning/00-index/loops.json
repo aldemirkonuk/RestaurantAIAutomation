@@ -2,7 +2,7 @@
  {
   "id": "loop-eval-gate-ci",
   "owner": "ai-orchestration",
-  "close_time": "per-commit",
+  "close_time": "per-pr",
   "status": "active",
   "measures": [
    "identity.false_merge_count"
@@ -136,7 +136,7 @@
  {
   "id": "loop-human-gate-integrity",
   "owner": "ai-orchestration",
-  "close_time": "daily for unconfirmed-mutation count, monthly for the behavioural signals",
+  "close_time": "daily",
   "status": "proposed",
   "measures": [
    "safety.unconfirmed_mutation_count",
@@ -165,7 +165,7 @@
  {
   "id": "loop-od03-harness-fork",
   "owner": "ai-orchestration",
-  "close_time": "one-shot \u2014 a dated bake-off, not a cadence",
+  "close_time": "one-shot",
   "status": "proposed",
   "measures": [
    "days_open",
@@ -274,7 +274,7 @@
  {
   "id": "loop-action-schema-coverage",
   "owner": "ai-orchestration",
-  "close_time": "per-commit (CI gate), reviewed monthly",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "safety.schema_coverage",
@@ -353,7 +353,7 @@
  {
   "id": "loop-merge-policy-gate",
   "owner": "ai-orchestration",
-  "close_time": "per-commit",
+  "close_time": "per-pr",
   "status": "active",
   "measures": [
    "identity.false_merge_count"
@@ -483,7 +483,7 @@
  {
   "id": "loop-evaluation-seam",
   "owner": "ai-orchestration",
-  "close_time": "on second occurrence \u2014 not a cadence",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "seam.occurrences_of_this_team_defining",
@@ -534,7 +534,7 @@
  {
   "id": "loop-subscription-coverage",
   "owner": "ai-orchestration",
-  "close_time": "per-commit (CI gate)",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "fleet.subscription_coverage",
@@ -589,7 +589,7 @@
  {
   "id": "loop-prompt-verdict",
   "owner": "ai-orchestration",
-  "close_time": "per-PR",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "prompt_changes_with_verdict_pct",
@@ -719,7 +719,7 @@
  {
   "id": "loop-od03-bakeoff",
   "owner": "ai-orchestration",
-  "close_time": "one-shot \u2014 a dated bake-off",
+  "close_time": "one-shot",
   "status": "proposed",
   "measures": [
    "od03.days_open",
@@ -746,7 +746,7 @@
  {
   "id": "loop-metering-coverage",
   "owner": "ai-orchestration",
-  "close_time": "weekly during the migration, then monthly",
+  "close_time": "weekly",
   "status": "proposed",
   "measures": [
    "routing.metered_call_share",
@@ -801,7 +801,7 @@
  {
   "id": "loop-model-substitution-gate",
   "owner": "ai-orchestration",
-  "close_time": "per-PR",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "routing.substitutions_without_benchmark",
@@ -926,7 +926,7 @@
  {
   "id": "skill-protocol-compliance",
   "owner": "skills",
-  "close_time": "per-merge",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "skills.protocol_compliance_rate"
@@ -1107,7 +1107,7 @@
  {
   "id": "skill-ceiling-paired-deletion",
   "owner": "skills",
-  "close_time": "per-merge",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "skills.registry_size",
@@ -1131,7 +1131,7 @@
  {
   "id": "skill-protocol-gate",
   "owner": "skills",
-  "close_time": "per-merge",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "skills.protocol_compliance_rate"
@@ -1830,8 +1830,8 @@
  {
   "id": "g2-link-graph-integrity",
   "owner": "content-production",
-  "close_time": "per publication, and monthly as a sweep",
-  "status": "monthly",
+  "close_time": "per-event",
+  "status": "proposed",
   "measures": [
    "content.faq_orphan_pages",
    "content.duplicate_intent_pairs",
@@ -1918,8 +1918,8 @@
  {
   "id": "g5-privacy-coupling",
   "owner": "conversion-funnel",
-  "close_time": "per commit (CI), reviewed weekly",
-  "status": "weekly",
+  "close_time": "per-pr",
+  "status": "proposed",
   "measures": [
    "conversion.privacy_coupling_violations",
    "funnel.measurable_steps",
@@ -2180,7 +2180,7 @@
  {
   "id": "g4-crawl-surface-census",
   "owner": "technical-seo-ai-answer-surface",
-  "close_time": "weekly, and per deploy",
+  "close_time": "weekly",
   "status": "proposed",
   "measures": [
    "seo.soft_404_rate",
@@ -2454,7 +2454,7 @@
  {
   "id": "brand-guard-regression",
   "owner": "brand-identity",
-  "close_time": "per-PR",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "ci.brand_guard_failures",
@@ -2653,7 +2653,7 @@
  {
   "id": "claim-substantiation",
   "owner": "narrative-collateral",
-  "close_time": "per-artifact",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "collateral.numbers_with_source_line",
@@ -3134,7 +3134,7 @@
  {
   "id": "oe-identity-isolation-guard",
   "owner": "outbound-engine",
-  "close_time": "per-commit",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "sales.sending_identity_isolated",
@@ -3269,7 +3269,7 @@
  {
   "id": "erasure-completeness",
   "owner": "compliance-privacy",
-  "close_time": "per-request, reviewed monthly",
+  "close_time": "per-event",
   "status": "blocked",
   "measures": [
    "privacy.erasure_completeness",
@@ -3299,7 +3299,7 @@
  {
   "id": "pii-definition-convergence",
   "owner": "compliance-privacy",
-  "close_time": "per-merge",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "privacy.pii_definition_count",
@@ -3327,7 +3327,7 @@
  {
   "id": "consent-propagation",
   "owner": "compliance-privacy",
-  "close_time": "real-time on the gate, weekly on the audit",
+  "close_time": "per-event",
   "status": "blocked",
   "measures": [
    "privacy.consent_call_sites",
@@ -3356,7 +3356,7 @@
  {
   "id": "obligation-register-currency",
   "owner": "compliance-privacy",
-  "close_time": "monthly, plus per-PR for changes touching a registered control",
+  "close_time": "monthly",
   "status": "proposed",
   "measures": [
    "compliance.obligation_coverage",
@@ -3388,7 +3388,7 @@
  {
   "id": "purpose-widening-review",
   "owner": "compliance-privacy",
-  "close_time": "per-proposal, audited quarterly",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "privacy.purpose_widenings",
@@ -3419,7 +3419,7 @@
  {
   "id": "guest-identity-ci-guards",
   "owner": "compliance-privacy",
-  "close_time": "per-push and per-PR, plus daily cron",
+  "close_time": "per-pr",
   "status": "running",
   "measures": [
    "privacy.guard_pass_rate",
@@ -3445,7 +3445,7 @@
  {
   "id": "pii-definition-convergence",
   "owner": "privacy-engineering",
-  "close_time": "per-merge",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "privacy.pii_definition_count",
@@ -3477,7 +3477,7 @@
  {
   "id": "store-inventory-currency",
   "owner": "privacy-engineering",
-  "close_time": "per-migration, swept daily",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "privacy.store_inventory_coverage",
@@ -3506,7 +3506,7 @@
  {
   "id": "erasure-proof",
   "owner": "privacy-engineering",
-  "close_time": "per-request; drill monthly",
+  "close_time": "per-event",
   "status": "blocked",
   "measures": [
    "privacy.erasure_completeness",
@@ -3536,7 +3536,7 @@
  {
   "id": "consent-gate",
   "owner": "privacy-engineering",
-  "close_time": "real-time in the request path; weekly audit sweep",
+  "close_time": "per-event",
   "status": "blocked",
   "measures": [
    "privacy.consent_gate_denials",
@@ -3564,7 +3564,7 @@
  {
   "id": "guest-identity-ci-guards",
   "owner": "privacy-engineering",
-  "close_time": "per-push and per-PR, plus daily cron",
+  "close_time": "per-pr",
   "status": "running",
   "measures": [
    "privacy.guard_pass_rate",
@@ -3593,8 +3593,8 @@
  {
   "id": "nfb-research-store-erasability",
   "owner": "UNASSIGNED \u2014 escalated",
-  "close_time": "UNDEFINED \u2014 must be set by the decision that creates this loop",
-  "status": "escalated",
+  "close_time": "one-shot",
+  "status": "blocked",
   "measures": [
    "nf_b.research_store_erasability",
    "nf_b.row_count"
@@ -3620,7 +3620,7 @@
  {
   "id": "regops-entry-gate",
   "owner": "compliance-privacy",
-  "close_time": "quarterly (backstop) + per-instrument (primary)",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "regops.trigger_check_freshness",
@@ -3649,7 +3649,7 @@
  {
   "id": "regulatory-deadline-cycle",
   "owner": "regulated-operations",
-  "close_time": "per statutory deadline \u2014 set by the jurisdiction, not by us",
+  "close_time": "per-event",
   "status": "dormant",
   "measures": [
    "regops.deadline_miss_count",
@@ -3677,7 +3677,7 @@
  {
   "id": "excise-reconciliation",
   "owner": "regulated-operations",
-  "close_time": "per reporting period, reconciled before filing \u2014 never after",
+  "close_time": "per-event",
   "status": "dormant",
   "measures": [
    "regops.excise_reconciliation_variance"
@@ -3702,8 +3702,8 @@
  {
   "id": "three-tier-constraint",
   "owner": "UNOWNED \u2014 transfers here on activation",
-  "close_time": "per-draft (enforcement) \u00b7 quarterly (pattern review)",
-  "status": "running, unowned, unmeasured",
+  "close_time": "per-event",
+  "status": "proposed",
   "measures": [
    "regops.c19_trigger_count",
    "regops.c19_fixture_pass_rate"
@@ -3728,7 +3728,7 @@
  {
   "id": "licence-jurisdiction-scope",
   "owner": "regulated-operations",
-  "close_time": "per new customer jurisdiction; swept quarterly",
+  "close_time": "per-event",
   "status": "dormant",
   "measures": [
    "regops.jurisdiction_count",
@@ -3756,7 +3756,7 @@
  {
   "id": "obligation-register-currency",
   "owner": "regulatory-posture",
-  "close_time": "monthly sweep, plus per-PR for any change touching a cited control",
+  "close_time": "monthly",
   "status": "proposed",
   "measures": [
    "compliance.obligation_coverage",
@@ -3788,7 +3788,7 @@
  {
   "id": "subprocessor-classification",
   "owner": "regulatory-posture",
-  "close_time": "quarterly, plus on any new outbound host",
+  "close_time": "quarterly",
   "status": "proposed",
   "measures": [
    "compliance.subprocessor_classification",
@@ -3817,7 +3817,7 @@
  {
   "id": "notice-accuracy",
   "owner": "regulatory-posture",
-  "close_time": "per-PR on the four asserted claims; monthly read-through",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "compliance.notice_accuracy",
@@ -3845,7 +3845,7 @@
  {
   "id": "instrument-signoff",
   "owner": "regulatory-posture",
-  "close_time": "per-instrument, before execution \u2014 never after",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "compliance.unevidenced_clause_count",
@@ -4305,7 +4305,7 @@
  {
   "id": "leg-chain-integrity",
   "owner": "legal",
-  "close_time": "per_instrument",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "legal.instrument_chain_integrity",
@@ -4331,7 +4331,7 @@
  {
   "id": "leg-annex-satisfiability",
   "owner": "legal",
-  "close_time": "per_instrument",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "legal.annex_satisfiability_signoff",
@@ -4473,7 +4473,7 @@
  {
   "id": "cw-annex-satisfiability",
   "owner": "commercial-workforce-agreements",
-  "close_time": "per_instrument",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "legal.annex_satisfiability_signoff",
@@ -4503,7 +4503,7 @@
  {
   "id": "cw-redline-ladder",
   "owner": "commercial-workforce-agreements",
-  "close_time": "per_agreement",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "legal.redlines_outside_ladder",
@@ -4584,7 +4584,7 @@
  {
   "id": "ie-chain-completion",
   "owner": "instruments-equity",
-  "close_time": "per_instrument",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "legal.instrument_chain_integrity",
@@ -4636,7 +4636,7 @@
  {
   "id": "ie-consent-ordering",
   "owner": "instruments-equity",
-  "close_time": "per_board_action",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "legal.consent_record_completeness",
@@ -4744,7 +4744,7 @@
  {
   "id": "pao-onboarding-gate",
   "owner": "people-agent-ops",
-  "close_time": "per PR",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "roster.new_module_gate_pass_rate",
@@ -5048,7 +5048,7 @@
  {
   "id": "rl-onboarding-gate",
   "owner": "roster-lifecycle",
-  "close_time": "per PR",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "roster.new_module_gate_pass_rate",
@@ -5163,7 +5163,7 @@
  {
   "id": "str-claim-verification",
   "owner": "strategy-fundraising",
-  "close_time": "per_send",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "strategy.claim_to_evidence_coverage",
@@ -5196,7 +5196,7 @@
  {
   "id": "str-verb-strength",
   "owner": "strategy-fundraising",
-  "close_time": "per_claim",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "strategy.claim_overstatement_count",
@@ -5319,7 +5319,7 @@
  {
   "id": "pfr-register-entry",
   "owner": "positioning-fundraise-readiness",
-  "close_time": "per_claim",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "strategy.claim_to_evidence_coverage",
@@ -5348,7 +5348,7 @@
  {
   "id": "pfr-verb-strength",
   "owner": "positioning-fundraise-readiness",
-  "close_time": "per_claim",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "strategy.claim_overstatement_count",
@@ -5486,7 +5486,7 @@
  {
   "id": "analytics-insight-acceptance",
   "owner": "analytics-bi",
-  "close_time": "biweekly",
+  "close_time": "fortnightly",
   "status": "proposed",
   "measures": [
    "analytics.insight_acceptance_rate",
@@ -5620,7 +5620,7 @@
  {
   "id": "analytics-published-claim-provenance",
   "owner": "analytics-bi",
-  "close_time": "per-publication, audited monthly",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "analytics.claims_without_provenance",
@@ -5676,7 +5676,7 @@
  {
   "id": "engine-requirement-integrity",
   "owner": "analytics-bi",
-  "close_time": "on every PR touching insight-catalog.ts, audited monthly",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "analytics.unclaimed_data_requirements",
@@ -5753,7 +5753,7 @@
  {
   "id": "engine-purity-guard",
   "owner": "analytics-bi",
-  "close_time": "per PR (CI), verified weekly by the headless script",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "analytics.engine_foreign_imports",
@@ -5778,7 +5778,7 @@
  {
   "id": "narrative-insight-acceptance",
   "owner": "analytics-bi",
-  "close_time": "biweekly",
+  "close_time": "fortnightly",
   "status": "proposed",
   "measures": [
    "analytics.insight_acceptance_rate",
@@ -5834,7 +5834,7 @@
  {
   "id": "narrative-served-distribution",
   "owner": "analytics-bi",
-  "close_time": "biweekly, alongside N1",
+  "close_time": "fortnightly",
   "status": "proposed",
   "measures": [
    "analytics.served_rule_concentration",
@@ -5860,7 +5860,7 @@
  {
   "id": "narrative-support-floor-integrity",
   "owner": "analytics-bi",
-  "close_time": "per PR (CI), reviewed monthly",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "analytics.unnamed_threshold_count",
@@ -5914,7 +5914,7 @@
  {
   "id": "truth-claim-divergence-census",
   "owner": "analytics-bi",
-  "close_time": "weekly, plus before every external publication",
+  "close_time": "weekly",
   "status": "proposed",
   "measures": [
    "analytics.metric_claim_divergence_count",
@@ -5995,7 +5995,7 @@
  {
   "id": "truth-silent-zero-elimination",
   "owner": "analytics-bi",
-  "close_time": "weekly sweep; structural fix tracked monthly",
+  "close_time": "weekly",
   "status": "proposed",
   "measures": [
    "analytics.silent_zero_paths",
@@ -6022,7 +6022,7 @@
  {
   "id": "truth-published-claim-provenance",
   "owner": "analytics-bi",
-  "close_time": "per publication (gate), audited monthly",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "analytics.claims_without_provenance",
@@ -6981,7 +6981,7 @@
  {
   "id": "onboarding-resolution-gate",
   "owner": "pos-operational-telemetry-ingest",
-  "close_time": "per onboarding, within 7 days",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "pos.first_week_resolution_rate"
@@ -7063,7 +7063,7 @@
  {
   "id": "ingest-incident-triage",
   "owner": "integration-engineering",
-  "close_time": "per incident, ownership within 1 hour",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "ingest.time_to_ownership",
@@ -7552,7 +7552,7 @@
  {
   "id": "ci-merge-policy-scoring",
   "owner": "catalogue-identity",
-  "close_time": "per-PR",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "identity.false_merge_count",
@@ -7689,7 +7689,7 @@
  {
   "id": "cs-route-reachability",
   "owner": "client-surfaces",
-  "close_time": "per-PR",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "surfaces.reachable_route_ratio",
@@ -7891,7 +7891,7 @@
  {
   "id": "ie-placeholder-host-resolution",
   "owner": "integration-engineering",
-  "close_time": "one-shot, then per-PR",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "integration.placeholder_hosts_unresolved",
@@ -8259,7 +8259,7 @@
  {
   "id": "pa-route-census",
   "owner": "platform-api",
-  "close_time": "per-PR",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "platform.total_routes",
@@ -8555,7 +8555,7 @@
  {
   "id": "sm-parity-streak",
   "owner": "schema-migrations",
-  "close_time": "per-PR and daily",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "schema.days_since_hand_applied_ddl",
@@ -8582,7 +8582,7 @@
  {
   "id": "sm-emergency-ddl-reconciliation",
   "owner": "schema-migrations",
-  "close_time": "per-event, resolved within 24h",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "schema.hand_applied_statements",
@@ -8641,7 +8641,7 @@
  {
   "id": "sm-generated-type-fidelity",
   "owner": "schema-migrations",
-  "close_time": "per-PR",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "schema.generated_type_diff_on_regen",
@@ -8668,7 +8668,7 @@
  {
   "id": "sm-irreversible-operation-review",
   "owner": "schema-migrations",
-  "close_time": "per-PR",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "schema.irreversible_ops_merged",
@@ -8876,7 +8876,7 @@
  {
   "id": "obs-signal-liveness",
   "owner": "observability-telemetry-plumbing",
-  "close_time": "hourly detection / weekly review",
+  "close_time": "hourly",
   "status": "proposed",
   "measures": [
    "obs.metrics_with_liveness_twin_pct",
@@ -8934,7 +8934,7 @@
  {
   "id": "obs-triage-displacement",
   "owner": "observability-telemetry-plumbing",
-  "close_time": "weekly, escalating after 3 consecutive close-times",
+  "close_time": "weekly",
   "status": "proposed",
   "measures": [
    "obs.triage_volume",
@@ -8964,7 +8964,7 @@
  {
   "id": "obs-health-surface-truthfulness",
   "owner": "observability-telemetry-plumbing",
-  "close_time": "monthly, plus after every incident",
+  "close_time": "monthly",
   "status": "proposed",
   "measures": [
    "obs.health_green_during_confirmed_incident_count",
@@ -9020,7 +9020,7 @@
  {
   "id": "rel-revert-timing",
   "owner": "release-engineering",
-  "close_time": "quarterly (exercised), immediate (real revert)",
+  "close_time": "quarterly",
   "status": "proposed",
   "measures": [
    "sre.time_to_revert",
@@ -9076,7 +9076,7 @@
  {
   "id": "rel-env-drift",
   "owner": "release-engineering",
-  "close_time": "monthly, immediate on a bypass finding",
+  "close_time": "monthly",
   "status": "proposed",
   "measures": [
    "release.env_drift_count",
@@ -9107,7 +9107,7 @@
  {
   "id": "rel-recovery-first-use-review",
   "owner": "release-engineering",
-  "close_time": "within one week of any first use",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "sre.recovery_paths_used_unverified_count",
@@ -9134,7 +9134,7 @@
  {
   "id": "res-dead-letter-drain",
   "owner": "runtime-resilience",
-  "close_time": "weekly, immediate when oldest exceeds one close-time",
+  "close_time": "weekly",
   "status": "proposed",
   "measures": [
    "sre.dlq_depth_and_oldest_age",
@@ -9195,7 +9195,7 @@
  {
   "id": "res-retry-budget",
   "owner": "runtime-resilience",
-  "close_time": "monthly, immediate during a dependency incident",
+  "close_time": "monthly",
   "status": "proposed",
   "measures": [
    "resilience.retry_amplification_factor",
@@ -9224,7 +9224,7 @@
  {
   "id": "res-backpressure-eviction",
   "owner": "runtime-resilience",
-  "close_time": "monthly, immediate on any stock or money eviction",
+  "close_time": "monthly",
   "status": "proposed",
   "measures": [
    "resilience.buffer_evictions",
@@ -9253,7 +9253,7 @@
  {
   "id": "res-degradation-control-readiness",
   "owner": "runtime-resilience",
-  "close_time": "quarterly, riding the department's L-SRE-3",
+  "close_time": "quarterly",
   "status": "proposed",
   "measures": [
    "sre.days_since_kill_switch_exercised",
@@ -9279,7 +9279,7 @@
  {
   "id": "int-tenant-leakage-response",
   "owner": "state-integrity-invariants",
-  "close_time": "minutes \u2014 immediate, out of band, never queued",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "integrity.tenant_leakage_detections",
@@ -9343,7 +9343,7 @@
  {
   "id": "int-gate-integrity",
   "owner": "state-integrity-invariants",
-  "close_time": "daily (cron already exists), weekly review",
+  "close_time": "daily",
   "status": "proposed",
   "measures": [
    "schema.days_since_hand_applied_ddl",
@@ -9373,7 +9373,7 @@
  {
   "id": "int-outcome-side-coverage",
   "owner": "state-integrity-invariants",
-  "close_time": "monthly, immediate on a green-CI-plus-divergence event",
+  "close_time": "monthly",
   "status": "proposed",
   "measures": [
    "integrity.invariants_with_outcome_side_check_pct",
@@ -9460,7 +9460,7 @@
  {
   "id": "dsn-convergence-pressure",
   "owner": "design",
-  "close_time": "biweekly",
+  "close_time": "fortnightly",
   "status": "proposed",
   "measures": [
    "design.resolved_question_rate",
@@ -9797,7 +9797,7 @@
  {
   "id": "dss-motion-convergence",
   "owner": "design-system-motion-substrate",
-  "close_time": "biweekly",
+  "close_time": "fortnightly",
   "status": "proposed",
   "measures": [
    "design.motion_specs_with_winner",
@@ -9827,7 +9827,7 @@
  {
   "id": "exp-convergence",
   "owner": "exploration-studio",
-  "close_time": "biweekly",
+  "close_time": "fortnightly",
   "status": "proposed",
   "measures": [
    "design.resolved_question_rate",
@@ -9860,7 +9860,7 @@
  {
   "id": "exp-index-integrity",
   "owner": "exploration-studio",
-  "close_time": "biweekly",
+  "close_time": "fortnightly",
   "status": "proposed",
   "measures": [
    "design.sketch_index_completeness",
@@ -9887,7 +9887,7 @@
  {
   "id": "exp-handoff",
   "owner": "exploration-studio",
-  "close_time": "biweekly",
+  "close_time": "fortnightly",
   "status": "proposed",
   "measures": [
    "design.winners_unqueued",
@@ -9918,7 +9918,7 @@
  {
   "id": "exp-motion-corpus-drain",
   "owner": "exploration-studio",
-  "close_time": "biweekly",
+  "close_time": "fortnightly",
   "status": "proposed",
   "measures": [
    "design.motion_specs_with_winner",
@@ -10091,7 +10091,7 @@
  {
   "id": "nf-b-false-merge-gate",
   "owner": "guest-experience",
-  "close_time": "per-commit",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "nf_b.false_merge_count",
@@ -10224,7 +10224,7 @@
  {
   "id": "nf-b-k-anonymity-gate",
   "owner": "guest-experience",
-  "close_time": "per-render",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "nf_b.k_anonymity_pass_rate",
@@ -10304,7 +10304,7 @@
  {
   "id": "ledger-integrity",
   "owner": "guest-experience",
-  "close_time": "per-commit",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "direct_balance_writes",
@@ -10355,7 +10355,7 @@
  {
   "id": "guest-merge-gate",
   "owner": "guest-experience",
-  "close_time": "per-commit",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "nf_b.false_merge_count",
@@ -10382,7 +10382,7 @@
  {
   "id": "guest-pii-guard-integrity",
   "owner": "guest-experience",
-  "close_time": "per-commit",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "pii_guards_present",
@@ -10464,7 +10464,7 @@
  {
   "id": "nf-b-k-anonymity-gate",
   "owner": "guest-experience",
-  "close_time": "per-render",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "nf_b.k_anonymity_pass_rate",
@@ -10489,7 +10489,7 @@
  {
   "id": "photo-consent-integrity",
   "owner": "guest-experience",
-  "close_time": "per-use",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "nf_b.photo_consent_rate",
@@ -10546,7 +10546,7 @@
  {
   "id": "advertising-boundary-integrity",
   "owner": "guest-experience",
-  "close_time": "per-placement",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "surfaces_carrying_ads",
@@ -10604,7 +10604,7 @@
  {
   "id": "nf-b-cohort-divergence",
   "owner": "guest-experience",
-  "close_time": "per-model-version",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "nf_b.divergence_within_cohort",
@@ -10793,7 +10793,7 @@
  {
   "id": "pi-canonical-shape-neutrality",
   "owner": "pos-bridge",
-  "close_time": "per-change",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "pi.canonical_shape_drift"
@@ -10846,7 +10846,7 @@
  {
   "id": "cpt-ingress-classification",
   "owner": "connector-platform-trust",
-  "close_time": "per-PR",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "pi.verified_ingress_ratio",
@@ -10906,7 +10906,7 @@
  {
   "id": "cpt-consent-truth",
   "owner": "connector-platform-trust",
-  "close_time": "per-scope-change",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "consent.scope_drift_count",
@@ -10962,7 +10962,7 @@
  {
   "id": "cpt-boundary-nonduplication",
   "owner": "connector-platform-trust",
-  "close_time": "bi-weekly",
+  "close_time": "fortnightly",
   "status": "proposed",
   "measures": [
    "metrics.overlap_with_sec2",
@@ -11043,7 +11043,7 @@
  {
   "id": "pad-reachability-triage",
   "owner": "partner-alliance-development",
-  "close_time": "per-candidate",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "triage.partnership_vs_bridge_split"
@@ -11066,7 +11066,7 @@
  {
   "id": "pad-guest-firewall",
   "owner": "partner-alliance-development",
-  "close_time": "per-artifact",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "firewall.breach_count"
@@ -11117,7 +11117,7 @@
  {
   "id": "pos-canonical-neutrality",
   "owner": "pos-bridge",
-  "close_time": "per-change",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "pi.canonical_shape_drift"
@@ -11172,7 +11172,7 @@
  {
   "id": "pos-hub-route-posture",
   "owner": "pos-bridge",
-  "close_time": "per-PR",
+  "close_time": "per-pr",
   "status": "proposed",
   "measures": [
    "pi.verified_ingress_ratio"
@@ -11282,7 +11282,7 @@
  {
   "id": "sdn-publish-state",
   "owner": "supplier-distributor-network",
-  "close_time": "per-page-creation",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "vendor_pages.published_without_relationship",
@@ -11925,7 +11925,7 @@
  {
   "id": "floor-routing-correctness",
   "owner": "product-vision",
-  "close_time": "per-service",
+  "close_time": "per-event",
   "status": "blocked",
   "measures": [
    "floor.misroute_rate",
@@ -11953,7 +11953,7 @@
  {
   "id": "floor-latency-segments",
   "owner": "product-vision",
-  "close_time": "per-service",
+  "close_time": "per-event",
   "status": "blocked",
   "measures": [
    "floor.kitchen_ready_to_waiter_p95_seconds",
@@ -12449,7 +12449,7 @@
  {
   "id": "harness-overhead-bakeoff",
   "owner": "research-math",
-  "close_time": "6 weeks to a decision, then quarterly re-run",
+  "close_time": "quarterly",
   "status": "proposed",
   "measures": [
    "nf_a.harness_overhead_ms",
@@ -12478,7 +12478,7 @@
  {
   "id": "nf-schema-contract",
   "owner": "research-math",
-  "close_time": "fortnightly until OD-11 closes",
+  "close_time": "fortnightly",
   "status": "proposed",
   "measures": [
    "nf.contract_fields_agreed",
@@ -12563,7 +12563,7 @@
  {
   "id": "golden-set-provenance",
   "owner": "research-math/evaluation-doneability",
-  "close_time": "per-set at creation, reviewed monthly",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "golden_sets_with_free_negatives",
@@ -12619,8 +12619,8 @@
  {
   "id": "identity-false-merge-gate",
   "owner": "research-math/evaluation-doneability",
-  "close_time": "per-PR (CI), reviewed weekly",
-  "status": "live",
+  "close_time": "per-pr",
+  "status": "active",
   "measures": [
    "identity.false_merge_count",
    "guest.false_merge_count"
@@ -12647,7 +12647,7 @@
  {
   "id": "bakeoff-pass-conditions",
   "owner": "research-math/evaluation-doneability",
-  "close_time": "before each bake-off; audited quarterly",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "pass_conditions_committed_before_results",
@@ -12699,7 +12699,7 @@
  {
   "id": "evaluation-seam-audit",
   "owner": "research-math/evaluation-doneability",
-  "close_time": "monthly, terminating in a ruling",
+  "close_time": "monthly",
   "status": "proposed",
   "measures": [
    "duplicated_golden_sets",
@@ -12752,7 +12752,7 @@
  {
   "id": "harness-overhead-bakeoff",
   "owner": "research-math/harness-model-routing",
-  "close_time": "6 weeks to an ADR, then quarterly re-run",
+  "close_time": "quarterly",
   "status": "proposed",
   "measures": [
    "nf_a.harness_overhead_ms",
@@ -12808,7 +12808,7 @@
  {
   "id": "callsite-migration-order",
   "owner": "research-math/harness-model-routing",
-  "close_time": "per-callsite, reviewed fortnightly",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "callsites_emitting_cost_events",
@@ -12836,7 +12836,7 @@
  {
   "id": "routing-seam-audit",
   "owner": "research-math/harness-model-routing",
-  "close_time": "monthly, terminating in a founder ruling",
+  "close_time": "monthly",
   "status": "proposed",
   "measures": [
    "duplicated_routing_policies",
@@ -12891,7 +12891,7 @@
  {
   "id": "nf-join-key",
   "owner": "research-math/neural-footprint-instrumentation",
-  "close_time": "2 weeks, one-shot, then verified weekly",
+  "close_time": "weekly",
   "status": "proposed",
   "measures": [
    "joinable_row_pairs",
@@ -12946,7 +12946,7 @@
  {
   "id": "nf-schema-contract-od11",
   "owner": "research-math/neural-footprint-instrumentation",
-  "close_time": "fortnightly until OD-11 closes",
+  "close_time": "fortnightly",
   "status": "proposed",
   "measures": [
    "contract_fields_agreed",
@@ -13006,7 +13006,7 @@
  {
   "id": "unauthenticated-inference-spend-feed",
   "owner": "research-math/neural-footprint-instrumentation",
-  "close_time": "first reading within 4 weeks, then weekly",
+  "close_time": "weekly",
   "status": "proposed",
   "measures": [
    "nf_a.unauthenticated_inference_spend",
@@ -13030,7 +13030,7 @@
  {
   "id": "nf-b-contract-and-nf-c-gate",
   "owner": "research-math/neural-footprint-instrumentation",
-  "close_time": "monthly for NF-B; quarterly trigger check for NF-C",
+  "close_time": "monthly",
   "status": "proposed",
   "measures": [
    "nf_b.identifier_coverage",
@@ -13059,7 +13059,7 @@
  {
   "id": "loop-layer-sweep",
   "owner": "architecture-review",
-  "close_time": "fortnightly \u2014 sweep on the 1st and the 15th; a signal seen in a sweep becomes a written finding inside that same sweep or is dropped",
+  "close_time": "fortnightly",
   "status": "proposed",
   "measures": [
    "arch.layer_violations_open",
@@ -13094,7 +13094,7 @@
  {
   "id": "loop-finding-age",
   "owner": "architecture-review",
-  "close_time": "fortnightly to re-report; 42 days (three sweeps) to force a binary",
+  "close_time": "fortnightly",
   "status": "proposed",
   "measures": [
    "arch.finding_age_days_max",
@@ -13121,7 +13121,7 @@
  {
   "id": "loop-invariant-census",
   "owner": "architecture-review",
-  "close_time": "fortnightly for the census itself (one invariant per sweep); per-commit for any invariant that earns a CI check",
+  "close_time": "fortnightly",
   "status": "proposed",
   "measures": [
    "arch.duplicated_invariants",
@@ -13180,7 +13180,7 @@
  {
   "id": "loop-layer-stack-review",
   "owner": "architecture-review",
-  "close_time": "quarterly \u2014 on the calendar whether or not anything has gone wrong",
+  "close_time": "quarterly",
   "status": "proposed",
   "measures": [
    "arch.findings_argued_down_per_seam",
@@ -13271,7 +13271,7 @@
  {
   "id": "fork-namespace-integrity",
   "owner": "decision-office",
-  "close_time": "per-intake",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "decisions.namespace_collisions",
@@ -13379,7 +13379,7 @@
  {
   "id": "rt-new-lock-attack",
   "owner": "red-team",
-  "close_time": "7d_from_lock",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "rt.locked_decision_challenge_rate",
@@ -13411,7 +13411,7 @@
  {
   "id": "rt-finding-return",
   "owner": "red-team",
-  "close_time": "72h",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "rt.finding_return_hours",
@@ -13538,7 +13538,7 @@
  {
   "id": "rt-aged-finding-escalation",
   "owner": "red-team",
-  "close_time": "30d_hard",
+  "close_time": "per-event",
   "status": "proposed",
   "measures": [
    "rt.open_finding_age_days"

@@ -8,6 +8,12 @@ files = sorted(list((R/"01-org").rglob("*-loops.md")) + list((R/"02-advisory").r
 SCALAR = ("id", "owner", "close_time", "status")
 LIST = ("measures", "changes", "inputs_from", "outputs_to")
 
+# Closed vocabularies, LOCKED by OD-47 in foundation/ORG_STRUCTURE.md §5.1.
+# A value outside these sets is a defect, not a variant — see the check below.
+CLOSE_TIMES = ("per-pr", "hourly", "daily", "weekly", "fortnightly",
+               "monthly", "quarterly", "per-event", "one-shot")
+STATUSES = ("proposed", "blocked", "dormant", "gated", "active", "running")
+
 def parse_blocks(body):
     loops = []
     for m in re.finditer(r"```ya?ml\s*\n(.*?)```", body, re.S):
@@ -27,7 +33,7 @@ def parse_blocks(body):
             loops.append(d)
     return loops
 
-all_loops, changed = [], 0
+all_loops, pending, changed = [], [], 0
 for f in files:
     txt = f.read_text()
     if not txt.startswith("---"):
@@ -45,7 +51,26 @@ for f in files:
         L["department"] = tm.group(1).strip() if tm else ""
         L["file"] = str(f.relative_to(R))
     all_loops += loops
+    pending.append((f, fm, body, loops))
 
+# ORG_STRUCTURE §5.1 is a contract, not a convention: refuse to index a vocabulary
+# violation. Checked across every file before any file is written, so a failure leaves
+# the vault untouched rather than half-rewritten.
+violations = []
+for L in all_loops:
+    for field, allowed in (("close_time", CLOSE_TIMES), ("status", STATUSES)):
+        if L.get(field) not in allowed:
+            violations.append(f"  {L['file']} :: {L['id']} :: {field}={L.get(field)!r}")
+if violations:
+    raise SystemExit(
+        f"ORG_STRUCTURE §5.1 (OD-47) vocabulary violation — {len(violations)} loop(s):\n"
+        + "\n".join(violations)
+        + "\n\nPermitted close_time: " + " · ".join(CLOSE_TIMES)
+        + "\nPermitted status:     " + " · ".join(STATUSES)
+        + "\nNothing was written. Fix the loop blocks, or amend §5.1 first if the"
+          " vocabulary itself is wrong.")
+
+for f, fm, body, loops in pending:
     # inject queryable arrays (idempotent)
     fm = re.sub(r"^loop_(count|ids|close_times|owners|statuses):.*\n", "", fm, flags=re.M)
     def arr(key):
@@ -78,12 +103,14 @@ out = ["---", "type: moc", "title: Loop Map", "updated: 2026-08-24", "---", "",
  "machine-readable, which broke the promise in ORG_STRUCTURE §5.", "",
  "## Status", "", "| Status | Loops |", "|---|---|"]
 out += [f"| `{k}` | {v} |" for k, v in st.most_common()]
-out += ["", "> Only the `exists`/`running` rows describe something that actually runs today.", "",
+out += ["", f"> Only the `active`/`running` rows describe something that actually runs today —"
+ f" **{st['active'] + st['running']} of {len(all_loops)}**. The other statuses are written down, not cycling.", "",
  "## Close-time distribution", "", "| close_time | Loops |", "|---|---|"]
-out += [f"| `{k}` | {v} |" for k, v in ct.most_common(20)]
-if len(ct) > 20:
-    out.append(f"| *(+{len(ct)-20} more distinct values)* | |")
-out += ["", f"**{len(ct)} distinct `close_time` values** — a vocabulary problem worth normalising.", "",
+out += [f"| `{k}` | {v} |" for k, v in ct.most_common()]
+out += ["", f"**{len(ct)} of the {len(CLOSE_TIMES)} permitted `close_time` values are in use.**"
+ " Both `close_time` and `status` are closed vocabularies, locked by OD-47 in"
+ " ORG_STRUCTURE §5.1 and enforced by this script — a value outside either set fails the"
+ " build rather than landing here.", "",
  "## By division", "", "| Division | Units | Loops |", "|---|---|---|"]
 for d in sorted(by_div):
     out.append(f"| {d} | {len({L['unit'] for L in by_div[d]})} | {len(by_div[d])} |")
