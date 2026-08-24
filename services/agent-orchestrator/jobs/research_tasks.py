@@ -1606,11 +1606,14 @@ def research_dispatch_batch_task(batch_size: Optional[int] = None) -> dict:
             .execute()
         )
         if (running.count or 0) > 0:
-            logger.info("research.dispatch_batch: a run is already in progress — skipping")
+            logger.info(
+                "research.dispatch_batch: a run is already in progress — skipping"
+            )
             return {"queued": 0, "skipped": "run_in_progress"}
     except Exception as exc:
         logger.warning(
-            "research.dispatch_batch: could not check running status (non-fatal): %s", exc
+            "research.dispatch_batch: could not check running status (non-fatal): %s",
+            exc,
         )
 
     limit = batch_size or settings.research_dispatch_batch_size
@@ -1642,10 +1645,14 @@ def research_dispatch_batch_task(batch_size: Optional[int] = None) -> dict:
     if errors:
         logger.error(
             "research.dispatch_batch: %d/%d dispatch(es) failed — first: %s",
-            len(errors), len(eligible), errors[0],
+            len(errors),
+            len(eligible),
+            errors[0],
         )
     logger.info(
-        "research.dispatch_batch: queued %d of %d eligible record(s)", queued, len(eligible)
+        "research.dispatch_batch: queued %d of %d eligible record(s)",
+        queued,
+        len(eligible),
     )
     return {"queued": queued, "eligible": len(eligible), "errors": len(errors)}
 

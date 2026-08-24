@@ -2049,9 +2049,7 @@ class ProviderConversationAgent(BaseAgent):
             # P1: previously an unlogged Haiku call (dark site)
             try:
                 _in = response.usage.input_tokens if hasattr(response, "usage") else 0
-                _out = (
-                    response.usage.output_tokens if hasattr(response, "usage") else 0
-                )
+                _out = response.usage.output_tokens if hasattr(response, "usage") else 0
                 get_spend_logger().log(
                     provider="anthropic",
                     model=settings.haiku_model,
