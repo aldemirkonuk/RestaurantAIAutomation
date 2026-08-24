@@ -14,8 +14,8 @@ links: ["[[PLAN]]", "[[AGENDA]]", "[[research-math-charter]]", "[[neural-footpri
 
 > **The bottleneck spec.** 476 of 482 loops cannot run because the system does not
 > measure itself. This is the smallest change that unblocks the most.
-> Docs first per [ADR 0002](../decisions/0002-documentation-first-operating-mode.md);
-> the schema half is a **founder decision** (OD-11) and is presented as options, not a pick.
+> Docs first per [ADR 0002](../decisions/0002-documentation-first-operating-mode.md).
+> The column contract was OD-11 and is now **resolved to Path C** — [ADR 0008](../decisions/0008-nf-column-contract.md). This spec is ready to build.
 
 ## 1. What is actually broken
 
@@ -37,12 +37,20 @@ consultants path — is invisible to the ledger.
 across **both runtimes**. Concretely:
 
 ```sql
--- impossible today, the point of P1
-select d.agent_name, s.task_type,
-       count(*) tasks, sum(s.cost_usd) cost, avg(s.cost_usd) avg_cost
-from api_spend s join decision_log d using (correlation_id)
+-- impossible today; the point of P1
+select subject_id                        as agent,
+       context->>'task_type'             as task_type,
+       count(*)                          as tasks,
+       sum(cost_usd)                     as cost,
+       avg(cost_usd)                     as avg_cost,
+       count(*) filter (where outcome is null) as outcome_unknown
+from neural_footprint_event
+where subject_type = 'agent'
 group by 1,2 order by cost desc;
 ```
+
+`outcome_unknown` is deliberately in the headline query: until doneability is defined,
+the honest report includes how much of it we cannot yet grade.
 
 ## 3. Scope
 
@@ -99,7 +107,7 @@ is written alongside. Migrating off them is a later decision, after the new tabl
 **NF-B columns ship inert.** Guest Experience has no caller yet ([[guest-identity-consent-charter]]).
 The columns are unused, not wrong — that was the accepted trade in choosing C.
 
-## 5. Implementation order (after the path is chosen)
+## 5. Implementation order
 
 1. **Migration** — create `neural_footprint_event` + the three partial indexes. Purely
    additive: nothing existing is altered or dropped, so there is no backfill and no
