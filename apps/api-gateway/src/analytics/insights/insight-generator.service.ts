@@ -11,7 +11,11 @@ import {
   DataRequirement,
   InsightCategory,
 } from "./insight-catalog";
-import { verbalize, InsightEvidence } from "./insight-verbalizer";
+import {
+  verbalize,
+  tableAttributeReading,
+  InsightEvidence,
+} from "./insight-verbalizer";
 
 /**
  * InsightGeneratorService — executes the insight candidate space.
@@ -733,8 +737,7 @@ export class InsightGeneratorService {
               best = { name: a.name, r };
           }
           if (best && Math.abs(best.r) >= 0.35) {
-            const dir = best.r < 0 ? "closer" : "farther";
-            attributeReading = `Across your floor, ${dir}-to-${best.name.replace("distance to ", "")} tables average ${best.r < 0 ? "higher" : "lower"} checks (r=${best.r.toFixed(2)}).`;
+            attributeReading = tableAttributeReading(best.name, best.r);
             const evc: InsightEvidence = {
               entity: "tables",
               measureLabel: "average check",

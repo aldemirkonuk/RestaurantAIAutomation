@@ -1,7 +1,21 @@
 # ✅ Toast POS Integration - COMPLETE
 
+> ## ⛔ SUPERSEDED 2026-08-24 — historical record only
+>
+> Retired by [`.planning/04-specs/POS-BRIDGE-AUDIT.md`](../../.planning/04-specs/POS-BRIDGE-AUDIT.md)
+> under the retire-to-write rule (CLAUDE.md §4). This document describes a **single-vendor**
+> Toast webhook path as finished; the multi-provider POS Hub
+> (`apps/api-gateway/src/pos-hub/`) replaced it, and its "COMPLETE" status no longer holds:
+>
+> - `pos_webhook_logs` — one of the two tables this path writes — **does not exist in the
+>   production database** (verified 2026-08-24), so this path fails on every webhook.
+> - The Toast path does not write `pos_checks`, the canonical table analytics reads.
+> - `pos_checks` holds **0 rows** in production; no real restaurant check has ever been ingested.
+>
+> Do not extend or cite this file. Read the audit instead.
+
 **Component:** Real-Time Toast POS Integration  
-**Status:** ✅ COMPLETE  
+**Status:** ⛔ SUPERSEDED (was: ✅ COMPLETE)  
 **Date Completed:** January 10, 2026  
 **Priority:** P0 (Critical Blocker)
 
