@@ -91,7 +91,7 @@ activity instead of outcome.
 
 ## Diagnostics that stop a checklist reading green on an empty site
 
-- [ ] `seo.soft_404_rate` — **100%** baseline. `vercel.json:11-13` returns 200 for every
+- [ ] `seo.soft_404_rate` — **100%** baseline. `vercel.json:12-15` returns 200 for every
       unmatched URL; `apps/web/src/App.tsx:302` then redirects client-side
 - [ ] `funnel.measurable_steps` — **0** pre-login. `apps/web/src/lib/uxSignals.ts:15` is dark
       and post-authentication

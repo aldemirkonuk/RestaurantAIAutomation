@@ -87,7 +87,7 @@ is accountable for the objection.
 
 | Seam | Left — decides | Right — objects | The line |
 |---|---|---|---|
-| The 404 | [[technical-seo-ai-answer-surface-charter]] | [[conversion-funnel-charter]] | G4 owns the **status code** (currently 200 for every unmatched URL: `vercel.json:11-13`, then `apps/web/src/App.tsx:302`). G5 owns **what the page says and where its CTA goes**. Neither can ship the item alone |
+| The 404 | [[technical-seo-ai-answer-surface-charter]] | [[conversion-funnel-charter]] | G4 owns the **status code** (currently 200 for every unmatched URL: `vercel.json:12-15`, then `apps/web/src/App.tsx:302`). G5 owns **what the page says and where its CTA goes**. Neither can ship the item alone |
 | The FAQ link graph | [[content-production-charter]] | [[technical-seo-ai-answer-surface-charter]] | G2 authors the pages and the back-links; G4 objects on thin-content and duplicate-intent grounds before publication, not after |
 | Funnel instrumentation | [[conversion-funnel-charter]] | [[compliance-privacy-charter]] *(Corporate)* | G5 states what must be measured; Compliance holds the pen on every word of the notice. Growth never drafts privacy copy |
 

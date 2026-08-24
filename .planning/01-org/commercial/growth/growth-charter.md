@@ -174,7 +174,7 @@ another purpose; three are `NEW`. Verified 2026-08-24 against the working tree.
 
 1. **The soft 404 is a two-layer defect, not one line.** `apps/web/src/App.tsx:302`
    redirects every unmatched path to `/` client-side. *Above* it,
-   `vercel.json:11-13` rewrites `/((?!api/|assets/).*)` to `/index.html`, so the CDN
+   `vercel.json:12-15` rewrites `/((?!api/|assets/).*)` to `/index.html`, so the CDN
    returns **HTTP 200** for every nonexistent URL before React ever loads. A crawler asking
    for a URL that does not exist receives 200 plus a shell titled
    `WineOps AI - Restaurant Wine Management` (`apps/web/index.html:7`). `seo.soft_404_rate`
@@ -192,7 +192,7 @@ another purpose; three are `NEW`. Verified 2026-08-24 against the working tree.
 **What does exist and transfers:**
 
 - **schema.org JSON-LD is genuinely emitted**, server-side, at
-  `apps/api-gateway/src/vendor-portal/vendor-portal.service.ts:123-141`, exposed on a
+  `apps/api-gateway/src/vendor-portal/vendor-portal.service.ts:122-180`, exposed on a
   `@Public()` route at `apps/api-gateway/src/vendor-portal/vendor-portal.controller.ts:39-41`,
   and mirrored client-side at `apps/web/src/pages/VendorPortal.tsx:118-137`. The service
   comment at `:119-120` states a principle Growth should adopt wholesale: *a zero-price

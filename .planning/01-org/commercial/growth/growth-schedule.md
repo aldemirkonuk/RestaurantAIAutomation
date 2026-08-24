@@ -58,8 +58,8 @@ art Growth has.
 | `seo-article-pipeline` | T2 | Commissioned article — brief in, draft out, provenance record attached | [[content-production-charter]] | Named at [[README]] §3.2. The vendor-reply draft path is the shipped precedent for Claude drafting outward-facing prose under a human gate |
 | `banned-construction-check` | T2 | Every draft, before the human pass | [[editorial-gate-charter]] | None. **It is a pre-filter, never the gate** — the human pass is mandatory and this skill cannot satisfy it |
 | `claim-provenance-audit` | T2 | Per publication and quarterly | [[editorial-gate-charter]] | The recovery-number distinction at [[YC_WEDGE_PLAN]]:31-33 is exactly the claim this exists to catch |
-| `answer-surface-audit` | T2 | Monthly L-GRO-3 | [[technical-seo-ai-answer-surface-charter]] | `apps/api-gateway/src/vendor-portal/vendor-portal.service.ts:123-141` already emits JSON-LD nobody has ever validated against a consumer |
-| `crawl-surface-census` | T3 | Weekly, and per deploy | [[technical-seo-ai-answer-surface-charter]] | The soft 404 at `vercel.json:11-13` + `apps/web/src/App.tsx:302` has been live and unreported |
+| `answer-surface-audit` | T2 | Monthly L-GRO-3 | [[technical-seo-ai-answer-surface-charter]] | `apps/api-gateway/src/vendor-portal/vendor-portal.service.ts:122-180` already emits JSON-LD nobody has ever validated against a consumer |
+| `crawl-surface-census` | T3 | Weekly, and per deploy | [[technical-seo-ai-answer-surface-charter]] | The soft 404 at `vercel.json:12-15` + `apps/web/src/App.tsx:302` has been live and unreported |
 | `funnel-step-census` | T3 | Monthly L-GRO-4 | [[conversion-funnel-charter]] | `funnel.measurable_steps` = 0 was recorded in this vault before anyone measured it |
 | `privacy-coupling-check` | T3 | CI, on any diff touching tracking config or `index.html` | [[conversion-funnel-charter]] + [[compliance-privacy-charter]] | `apps/web/src/pages/Privacy.tsx:8-11` states the coupling contract in a code comment, where CI cannot read it |
 

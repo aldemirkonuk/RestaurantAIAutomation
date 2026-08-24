@@ -21,7 +21,7 @@ Three bodies of work, in dependency order:
 
 1. **A publishing surface that exists.** One reachable, server-rendered content route with
    a real title, plus `robots.txt`, a sitemap, canonical tags, and `llms.txt`. Today none of
-   these exist and every unmatched URL returns HTTP 200 (`vercel.json:11-13` →
+   these exist and every unmatched URL returns HTTP 200 (`vercel.json:12-15` →
    `apps/web/src/App.tsx:302`). Until this lands, everything downstream is inventory.
 2. **The pipeline, at gate speed.** Corpus → draft → mandatory human pass → publish → FAQ
    layer → Search Console refeed. Throughput is set by the editor, never by the drafter.
@@ -67,7 +67,7 @@ duplicate-intent pairs.
 - **The soft 404 is live.** Every URL a crawler guesses today returns 200 and a page titled
   WineOps AI. This is not a future problem; it is the current behaviour of the deployed app.
 - **The answer-surface bet has a real precedent in this repo.**
-  `apps/api-gateway/src/vendor-portal/vendor-portal.service.ts:123-141` already emits
+  `apps/api-gateway/src/vendor-portal/vendor-portal.service.ts:122-180` already emits
   server-side schema.org JSON-LD on a public route, with a stated discipline at `:119-120`
   worth copying verbatim: emit no claim rather than a false one. Growth is extending a
   pattern, not inventing one.

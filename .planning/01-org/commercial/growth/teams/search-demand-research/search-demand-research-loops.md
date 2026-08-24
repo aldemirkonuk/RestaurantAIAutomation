@@ -69,7 +69,7 @@ success.
 
 **Explicit precondition, and it is not a formality.** This loop does not run until
 `seo.soft_404_rate` is zero and a sitemap is being read. Today every unmatched URL returns
-HTTP 200 (`vercel.json:11-13`, then `apps/web/src/App.tsx:302`), so a query report from this
+HTTP 200 (`vercel.json:12-15`, then `apps/web/src/App.tsx:302`), so a query report from this
 property would describe a defect rather than a market. While the precondition is unmet the
 loop's monthly verdict is **blocked**, recorded, and reported — which is a real output, and
 after three consecutive blocked verdicts it escalates

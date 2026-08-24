@@ -174,7 +174,7 @@ between a backlog item and a mystery.
 ### PARTIAL — the taste side, and honestly blocked
 
 - NF-B's event shape is defined ([[README]] §4.4) and named a priority track
-  (`README.md:206`). Storage architecture is **resolved** — OD-11a, narrow polymorphic
+  (`README.md:194`). Storage architecture is **resolved** — OD-11a, narrow polymorphic
   production table + wide append-only research log ([[0006-neural-footprint-architecture]]).
   The **column contract is not** — OD-11 open.
 - ⛔ **Dish identity is DEFERRED** by explicit product-owner call, register A15,
@@ -185,8 +185,13 @@ between a backlog item and a mystery.
   1 restaurant, one day (2026-08-11 → 2026-08-11), 82 line items, **37 distinct
   item strings**, and no food/dish/recipe table in the schema at all.
 - The **wine side is the exception and the opening**: `master_wine_library` plus
-  beverage identity is the strongest data layer in the repo (`README.md:64`), and
-  enrichment is in flight (commits `f7e0ea1`, `ef19b81` — 144/1,448).
+  deterministic beverage identity is the strongest data layer in the repo — a match
+  key measured at **0 false merges over 732,874 pairs**, cited as settled fact in both
+  `scripts/check_no_guest_name_matching.sh:6-7` and the guest migration's own reasoning
+  (`:246-252`). Enrichment is in flight (commits `f7e0ea1`, `ef19b81` — 144/1,448).
+  ⚠️ [[product]] §2.2 attributes this claim to `README.md:64`; that line is about
+  unlinked pages and does not support it. The claim is true and the citation was
+  wrong — corrected here rather than propagated.
 
 ### NEW — the consumer app, as code
 

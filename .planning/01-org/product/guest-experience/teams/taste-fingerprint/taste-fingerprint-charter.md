@@ -154,7 +154,7 @@ force.
 ### Defined, not built
 
 - Event shape defined ([[README]] §4.4) and NF-B named a **priority** track
-  (`README.md:206`).
+  (`README.md:194`).
 - Storage architecture **resolved** — OD-11a: narrow polymorphic production table
   (`subject_type` ∈ `agent | guest | bio`) + wide append-only research log
   ([[0006-neural-footprint-architecture]]). The research store is *deliberately wide
@@ -183,11 +183,18 @@ force.
 ### EXISTS — the wine exception, and it is the whole opening
 
 `master_wine_library` plus deterministic beverage identity is the strongest data
-layer in the repo (`README.md:64`), and enrichment is in flight — commits `f7e0ea1`
-(producer reputation at 100% menu-corpus coverage) and `ef19b81` (144/1,448 wines).
+layer in the repo, and enrichment is in flight — commits `f7e0ea1` (producer
+reputation at 100% menu-corpus coverage) and `ef19b81` (144/1,448 wines).
 Wine is the one domain where `stimulus` has a **real, deterministic referent**: a
 bottle is identified by producer + name + residual tokens, and that key was measured
-at **0 false merges over 732,874 pairs**.
+at **0 false merges over 732,874 pairs** — cited as settled fact in both
+`scripts/check_no_guest_name_matching.sh:6-7` and the guest migration's reasoning
+(`20260819000000_guest_identity_minimal_slice.sql:246-252`).
+
+> ⚠️ [[product]] §2.2 attributes the "strongest layer" claim to `README.md:64`. That
+> line is about unlinked pages and does not support it. The claim holds on the
+> evidence above; the citation was wrong, and is corrected here rather than carried
+> forward.
 
 Wine is also unusually well-suited to the mechanism model rather than merely
 available: grape, region, vintage, and producer style are **compositional** in the

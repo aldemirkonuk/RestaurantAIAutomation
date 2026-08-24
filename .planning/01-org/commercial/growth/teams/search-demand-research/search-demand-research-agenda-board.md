@@ -64,7 +64,7 @@ SORT updated ASC
 - [ ] **Wedge definition not fixed** — needed from [[narrative-collateral-charter]] before
       tagging can mean anything
 - [ ] **L-GRO-1 precondition unmet** — `seo.soft_404_rate` is **100%**
-      (`vercel.json:11-13` → `apps/web/src/App.tsx:302`); a query report from this site is an
+      (`vercel.json:12-15` → `apps/web/src/App.tsx:302`); a query report from this site is an
       artefact, not demand
 - [ ] **No credentials of any kind** — `env.example` (187 lines) has no key for any of the three sources
 

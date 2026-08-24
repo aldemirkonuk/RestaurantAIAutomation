@@ -92,7 +92,7 @@ decision.
 
 L-GRO-1 reads Search Console. Search Console reports impressions. A site with no sitemap, no
 `robots.txt`, and a host that returns HTTP 200 for every nonexistent URL
-(`vercel.json:11-13` → `apps/web/src/App.tsx:302`) produces a query report that is mostly
+(`vercel.json:12-15` → `apps/web/src/App.tsx:302`) produces a query report that is mostly
 brand terms and noise. G1 dutifully treats that report as demand, requeues around it, and
 the corpus drifts toward whatever the broken crawl surface happened to expose. The loop
 closes on time, monthly, and has been amplifying an artefact of a technical defect.

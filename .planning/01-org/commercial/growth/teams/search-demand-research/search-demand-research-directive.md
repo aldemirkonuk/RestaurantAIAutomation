@@ -72,7 +72,7 @@ shipped.
 
 **Blocked-signal rule.** The Search Console loop does not run while the crawl surface is
 broken. A demand report from a site returning HTTP 200 for every unmatched URL is an
-artefact of `vercel.json:11-13`, and acting on it is worse than recording the loop as
+artefact of `vercel.json:12-15`, and acting on it is worse than recording the loop as
 blocked ([[search-demand-research-loops]] L-G1-2).
 
 **Capacity-honesty rule.** If the harvest is manual, its rate is published as a number.

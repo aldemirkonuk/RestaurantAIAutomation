@@ -98,7 +98,7 @@ class of error as a green checklist on an empty site.
 **PARTIAL, and thinner than it looks.** Verified 2026-08-24 against the working tree.
 
 **The one genuine asset.** schema.org JSON-LD is emitted **server-side** at
-`apps/api-gateway/src/vendor-portal/vendor-portal.service.ts:123-141`, on a `@Public()`
+`apps/api-gateway/src/vendor-portal/vendor-portal.service.ts:122-180`, on a `@Public()`
 endpoint at `apps/api-gateway/src/vendor-portal/vendor-portal.controller.ts:39-41`, with the
 controller comment at `:35-38` stating that it is split from the page payload precisely
 because *crawlers and our own ingester* read it. A client-side mirror exists at
@@ -112,7 +112,7 @@ G4 adopts.
 - **No `robots.txt`, no sitemap, no `llms.txt`.** `apps/web/public/` contains exactly seven
   files: `badge.png`, `empty.map`, `icon-192.png`, `icon-512.png`, `logo.png`,
   `manifest.json`, `sw.js`.
-- **The soft 404 is a two-layer defect.** `vercel.json:11-13` rewrites
+- **The soft 404 is a two-layer defect.** `vercel.json:12-15` rewrites
   `/((?!api/|assets/).*)` to `/index.html`, so the host returns **HTTP 200** for every
   nonexistent URL before React loads. Then `apps/web/src/App.tsx:302` redirects unmatched
   paths to `/` client-side. A crawler asking for a URL that does not exist gets 200 and a
