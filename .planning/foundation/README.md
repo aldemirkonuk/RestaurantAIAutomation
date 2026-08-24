@@ -15,6 +15,42 @@ written in session A and one written in session F are the same shape.
 
 Read order: §1 (stack) → §4 (metric spine) → §2 (departments) → §3 (skills) → §8 (waves).
 
+### Companion documents — the system as it actually is today
+
+Generated 2026-08-24 by scanning the source. These are **grep targets**, regenerated
+rather than hand-edited (CLAUDE.md §2):
+
+| Doc | Contents |
+|---|---|
+| [`ENDPOINTS.md`](ENDPOINTS.md) | All **448 API endpoints** across 44 modules, with auth status per route |
+| [`PAGE_MAP.md`](PAGE_MAP.md) | **51 web routes**, the navigation graph (mermaid), and cold-entry pages |
+| [`EXTERNAL_CONNECTIONS.md`](EXTERNAL_CONNECTIONS.md) | Every third-party host, SDK, and the 80 environment variables |
+
+**What the scan surfaced** (each needs an owner — see §2.2):
+
+1. **137 of 448 endpoints have no `JwtAuthGuard`.** Combined with `TenantGuard`
+   passing unauthenticated requests through, unguarded = internet-reachable.
+   Webhook modules (`toast`, `simpos`, `inbound-email`, `vendor-portal`, `pos-hub`,
+   ≈51 routes) are legitimately public but need **signature verification** instead.
+   That leaves ~86 in `analytics` (39), `notifications` (24), `communications` (18),
+   `contacts` (8), `dashboard` (8), `procurement` (6) requiring classification.
+   → **Security**, expanded from §2.3.
+2. **Square and Lightspeed already appear in source** (`developer.squareup.com`,
+   `developers.lightspeedhq.com`), alongside Yelp and Apify. The POS-bridge
+   ambition (vision §6) has more groundwork than the docs admit — worth auditing
+   before treating multi-POS as greenfield. → **Product & Vision** + **Engineering**.
+3. **Legacy brand still live in code:** `wineops.ai` / `app.wineops.ai` / `api.wineops.ai`
+   referenced 10×. Brand migration is incomplete below the doc layer. → **Media & Brand**.
+4. **`abc123.ngrok.io` and placeholder domains** (`your-domain.com`, `a.com`, `b.com`,
+   `via.placeholder.com`) appear in source paths — fixtures or stale config, but they
+   should never be reachable from a production code path. → **Security** / **Engineering**.
+5. **Anthropic and Gemini are called over raw HTTP, not via their SDKs.** Retry,
+   timeout, and cost accounting are therefore hand-rolled — which is exactly the
+   surface NF-A (§4.2) needs to measure. → **Research & Math**.
+6. **24 routes have no inbound in-app link** and 13 route components could not be
+   traced. Some are intentional (deep links, `/v/:slug`), but a page nobody can
+   navigate to is either dead or undiscoverable. → **Product & Vision**.
+
 ---
 
 ## 1. The foundation stack
