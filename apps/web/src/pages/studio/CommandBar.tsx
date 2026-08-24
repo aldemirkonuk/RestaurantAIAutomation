@@ -28,13 +28,19 @@ export function CommandBar() {
 
   // All studio/onboarding API calls go through Vite proxy → FastAPI (port 8000)
   // Using relative URLs avoids the VITE_API_GATEWAY_URL=4000 (NestJS) misdirection
+  // Studio's endpoints live in the PYTHON orchestrator (services/agent-orchestrator/
+  // main.py, with tests), not in the NestJS gateway. A relative path here goes through
+  // the Vite/Vercel proxy to the gateway, which has no /studio or /onboarding module —
+  // so every studio call 404'd in dev and prod despite a working backend existing.
+  // Same env var CameraCapture already uses.
   const studioFetch = async (path: string, body: object) => {
     const token = localStorage.getItem('accessToken')
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     }
-    const resp = await fetch(path, { method: 'POST', headers, body: JSON.stringify(body) })
+    const base = import.meta.env?.VITE_AGENT_ORCHESTRATOR_URL || ''
+    const resp = await fetch(`${base}${path}`, { method: 'POST', headers, body: JSON.stringify(body) })
     if (!resp.ok) {
       const errData = await resp.json().catch(() => ({}))
       throw new Error(errData.detail || `HTTP ${resp.status}`)
