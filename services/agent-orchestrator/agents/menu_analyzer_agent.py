@@ -17,6 +17,7 @@ import io
 import logging
 
 from core.base_agent import BaseAgent
+from config.settings import get_settings
 
 # Lazy imports to avoid loading heavy dependencies at startup
 PIL_AVAILABLE = False
@@ -356,7 +357,7 @@ class MenuAnalyzerAgent(BaseAgent):
                     import google.generativeai as genai
 
                     genai.configure(api_key=self.google_api_key)
-                    self.llm_client = genai.GenerativeModel("gemini-pro")
+                    self.llm_client = genai.GenerativeModel(get_settings().gemini_model)
                     self.logger.info("Gemini Pro client initialized")
                 except Exception as e:
                     self.logger.error(f"Failed to initialize LLM client: {e}")

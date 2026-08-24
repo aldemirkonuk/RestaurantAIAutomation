@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 import aiohttp
 
 from utils.logger import setup_logger
+from config.settings import get_settings
 
 logger = setup_logger("email_composer_service")
 
@@ -178,7 +179,8 @@ class EmailComposerService:
         self.database = database
         self.api_gateway_url = config.get("api_gateway_url", "http://localhost:3001")
         self.google_api_key = config.get("google_api_key")
-        self.llm_model_name = config.get("llm_model", "gemini-2.0-flash")
+        # gemini-2.0-flash was shut down 2026-06-01 (OD-57).
+        self.llm_model_name = config.get("llm_model", get_settings().gemini_model)
         self.mock_mode = config.get("mock_mode", True)
         self.default_restaurant_name = config.get(
             "default_restaurant_name", "WineOps Restaurant"

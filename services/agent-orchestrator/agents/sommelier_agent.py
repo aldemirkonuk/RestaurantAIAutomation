@@ -15,6 +15,7 @@ import json
 from core.base_agent import BaseAgent
 from core.database import MasterWineLibrary
 from services.spend_logger import estimate_llm_cost, get_spend_logger
+from config.settings import get_settings
 
 
 class SommelierAgent(BaseAgent):
@@ -39,7 +40,9 @@ class SommelierAgent(BaseAgent):
         super().__init__(agent_name, message_bus, database, config)
 
         # LLM configuration
-        self.llm_model = config.get("llm_model", "gemini-pro")
+        # gemini-pro is retired (404). Enrichment is extraction-shaped and this
+        # agent uses the Gemini SDK, so it falls back to the Gemini default.
+        self.llm_model = config.get("llm_model", get_settings().gemini_model)
         self.google_api_key = config.get("google_api_key")
         self.mock_mode = config.get("mock_mode", True)
 
@@ -91,7 +94,7 @@ class SommelierAgent(BaseAgent):
 
                 self.genai_client = genai.Client(api_key=self.google_api_key)
                 self.logger.info(
-                    "✓ Gemini client initialized (google-genai SDK, model: gemini-2.0-flash)"
+                    f"✓ Gemini client initialized (google-genai SDK, model: {self.llm_model})"
                 )
             except ImportError:
                 # Fallback to legacy SDK
@@ -628,14 +631,14 @@ Respond with valid JSON only."""
                     tools=[grounding_tool],
                     temperature=0.1,
                 )
+                # one binding for the call and its spend label (OD-57)
+                model_id = get_settings().gemini_model
                 response = self.genai_client.models.generate_content(
-                    model="gemini-2.0-flash",
+                    model=model_id,
                     contents=prompt,
                     config=config,
                 )
-                self._log_llm_spend(  # P1
-                    response, "gemini-2.0-flash", "wine_enrichment_grounded"
-                )
+                self._log_llm_spend(response, model_id, "wine_enrichment_grounded")  # P1
                 result_text = response.text.strip()
                 if "```json" in result_text:
                     result_text = (

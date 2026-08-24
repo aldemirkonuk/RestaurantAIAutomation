@@ -21,6 +21,7 @@ import logging
 import base64
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -283,8 +284,10 @@ class WineBookScraper:
 
             image_b64 = base64.b64encode(image_bytes).decode()
 
+            # one binding for the call and its spend label (OD-57)
+            model_id = get_settings().gemini_model
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model=model_id,
                 contents=[
                     types.Content(
                         parts=[
@@ -320,10 +323,10 @@ class WineBookScraper:
                 )
                 get_spend_logger().log(
                     provider="google",
-                    model="gemini-2.0-flash",
+                    model=model_id,
                     input_tokens=_in,
                     output_tokens=_out,
-                    cost_usd=estimate_llm_cost("gemini-2.0-flash", _in, _out),
+                    cost_usd=estimate_llm_cost(model_id, _in, _out),
                     agent_fallback="wine_book_scraper",
                     task_type="book_vision_extraction",
                     outcome="success",  # call-level: response returned
@@ -412,8 +415,9 @@ Text to process:
 
 Return ONLY a valid JSON array. If no wines found, return []."""
 
+                model_id = get_settings().gemini_model
                 response = client.models.generate_content(
-                    model="gemini-2.0-flash",
+                    model=model_id,
                     contents=prompt,
                     config=config,
                 )
@@ -433,10 +437,10 @@ Return ONLY a valid JSON array. If no wines found, return []."""
                     )
                     get_spend_logger().log(
                         provider="google",
-                        model="gemini-2.0-flash",
+                        model=model_id,
                         input_tokens=_in,
                         output_tokens=_out,
-                        cost_usd=estimate_llm_cost("gemini-2.0-flash", _in, _out),
+                        cost_usd=estimate_llm_cost(model_id, _in, _out),
                         agent_fallback="wine_book_scraper",
                         task_type="book_text_extraction",
                         outcome="success",  # call-level: response returned

@@ -26,6 +26,20 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
+def _default_model_version() -> str:
+    """
+    Model id stamped onto stored training rows.
+
+    Was hardcoded to "gemini-2.0-flash" in three signatures, so every row named a
+    model shut down 2026-06-01 as its own provenance (OD-57). Resolved at call
+    time so the label follows the model in use; callers that know better should
+    pass model_version explicitly.
+    """
+    from config.settings import get_settings
+
+    return get_settings().gemini_model
+
+
 class TrainingDataStore:
     """
     Manages training dataset storage for future LLM fine-tuning.
@@ -42,7 +56,7 @@ class TrainingDataStore:
         dataset_type: str,
         input_data: Dict[str, Any],
         output_data: Dict[str, Any],
-        model_version: str = "gemini-2.0-flash",
+        model_version: Optional[str] = None,
         confidence: float = 0.0,
         human_verified: bool = False,
         restaurant_id: Optional[str] = None,
@@ -66,7 +80,7 @@ class TrainingDataStore:
             "dataset_type": dataset_type,
             "input_data": input_data,
             "output_data": output_data,
-            "model_version": model_version,
+            "model_version": model_version or _default_model_version(),
             "confidence": round(confidence, 3),
             "human_verified": human_verified,
             "restaurant_id": restaurant_id,
@@ -99,7 +113,7 @@ class TrainingDataStore:
         image_base64: str,
         detected_wines: List[Dict[str, Any]],
         user_corrections: Optional[List[Dict[str, Any]]] = None,
-        model_version: str = "gemini-2.0-flash",
+        model_version: Optional[str] = None,
         restaurant_id: Optional[str] = None,
     ) -> Optional[str]:
         """
@@ -144,7 +158,7 @@ class TrainingDataStore:
         wine_name: str,
         enrichment_input: Dict[str, Any],
         enrichment_output: Dict[str, Any],
-        model_version: str = "gemini-2.0-flash",
+        model_version: Optional[str] = None,
         human_corrections: Optional[Dict[str, Any]] = None,
         restaurant_id: Optional[str] = None,
     ) -> Optional[str]:

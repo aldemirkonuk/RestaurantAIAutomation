@@ -45,7 +45,11 @@ class ProcurementAgent(BaseAgent):
         super().__init__(agent_name, message_bus, database, config)
 
         # LLM configuration
-        self.llm_model = config.get("llm_model", "gemini-pro")
+        # Kept because the orchestrator still passes llm_model and callers may
+        # read it, but nothing in this agent uses it any more — the client it fed
+        # was removed in initialize() (OD-57). Default is None rather than a
+        # retired id so it cannot quietly become a live model name again.
+        self.llm_model = config.get("llm_model")
         self.llm_temperature = config.get("llm_temperature", 0.7)
         self.google_api_key = config.get("google_api_key")
         self.mock_mode = config.get("mock_mode", True)
@@ -71,17 +75,12 @@ class ProcurementAgent(BaseAgent):
 
         if self.mock_mode:
             self.logger.warning("⚠️ Running in MOCK mode (no real LLM calls)")
-        else:
-            # Initialize Gemini Pro client
-            try:
-                import google.generativeai as genai
-
-                genai.configure(api_key=self.google_api_key)
-                self.llm_client = genai.GenerativeModel(self.llm_model)
-                self.logger.info("✓ Gemini Pro client initialized")
-            except Exception as e:
-                self.logger.error(f"Failed to initialize LLM client: {e}")
-                self.mock_mode = True
+        # The Gemini client built here was REMOVED rather than repointed (OD-57).
+        # It was constructed on every non-mock boot and never called — llm_client
+        # had three references in this file: None, this assignment, None again in
+        # cleanup. It was also handed llm_model, which the orchestrator fills from
+        # llm_primary_model — a CLAUDE id going into the Gemini SDK. Repointing it
+        # would make procurement look like it does LLM work it does not do.
 
         # Initialize Plivo Voice client
         if self.plivo_auth_id and self.plivo_auth_token:

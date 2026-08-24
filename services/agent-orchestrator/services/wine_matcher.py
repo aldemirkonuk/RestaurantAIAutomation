@@ -20,6 +20,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from services.text_normalizer import get_normalizer
+from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -573,6 +574,8 @@ Use web search to find accurate, real-world data. Return ONLY valid JSON with AL
             try:
                 from services.spend_logger import estimate_llm_cost, get_spend_logger
 
+                # label the model actually configured, not a literal (OD-57)
+                _model_id = get_settings().gemini_model
                 _usage = getattr(response, "usage_metadata", None)
                 _in = getattr(_usage, "prompt_token_count", 0) or 0
                 # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
@@ -635,7 +638,7 @@ Use web search to find accurate, real-world data. Return ONLY valid JSON with AL
             import google.generativeai as genai
 
             genai.configure(api_key=self.google_api_key)
-            model = genai.GenerativeModel("gemini-pro")
+            model = genai.GenerativeModel(get_settings().gemini_model)
 
             wine_desc = wine_name
             if producer:
@@ -654,6 +657,8 @@ Return ONLY valid JSON with: name, producer, vintage, wine_type, country, region
             try:
                 from services.spend_logger import estimate_llm_cost, get_spend_logger
 
+                # label the model actually configured, not a literal (OD-57)
+                _model_id = get_settings().gemini_model
                 _usage = getattr(response, "usage_metadata", None)
                 _in = getattr(_usage, "prompt_token_count", 0) or 0
                 # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
@@ -662,10 +667,10 @@ Return ONLY valid JSON with: name, producer, vintage, wine_type, country, region
                 )
                 get_spend_logger().log(
                     provider="google",
-                    model="gemini-pro",
+                    model=_model_id,
                     input_tokens=_in,
                     output_tokens=_out,
-                    cost_usd=estimate_llm_cost("gemini-pro", _in, _out),
+                    cost_usd=estimate_llm_cost(_model_id, _in, _out),
                     agent_fallback="wine_matcher",
                     task_type="wine_enrichment_fallback",
                     outcome="success",  # call-level: response returned
