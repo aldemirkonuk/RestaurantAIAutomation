@@ -12,7 +12,10 @@ Autonomous restaurant operations platform. One entity; many small softwares insi
 
 | Map | What it answers |
 |---|---|
+| **[[AGENDA]]** | **What is happening now** — blocked on you, in flight, next actions |
+| **[[PLAN]]** | **What gates what** — the critical path |
 | [[ORG-MAP]] | Who exists — divisions → departments → teams → advisory |
+| [[SCENARIO-MAP]] | What happens in a restaurant — the 17 rituals |
 | [[LOOP-MAP]] | What feeds back into what, and how fast it closes |
 | [[OPEN-DECISIONS]] | What is still undecided, and what unblocks it |
 | [[README]] *(foundation)* | The 7-layer stack, skills, neural footprint |
