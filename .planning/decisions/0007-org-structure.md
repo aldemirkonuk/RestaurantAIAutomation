@@ -26,13 +26,14 @@ optimize for **quality and ambition, not for one person's capacity** — and
 
 **Option 3.**
 
-**6 divisions · 19 departments · 2 sub-layers · 75 teams:**
+**7 divisions · 19 departments · 2 sub-layers · 75 teams:**
 
 | Division | Departments |
 |---|---|
 | Platform | Engineering · Data · Reliability/SRE |
 | Applied AI | AI Orchestration · Skills |
-| Intelligence | Research & Math · Security · Analytics & BI |
+| Research & Math | *(division of one — insulation, not span)* |
+| Intelligence | Security · Analytics & BI |
 | Product | Product & Vision *(⊃ Guest Experience)* · Design · Partnerships & Integrations |
 | Commercial | Growth *(⊃ Finance & Pricing)* · Sales · Media & Brand |
 | Corporate | Legal · Knowledge & Documentation · Compliance & Privacy · People & Agent Ops · Strategy & Fundraising |
@@ -86,3 +87,5 @@ was always 19 (5+3+3+3+5); only the arithmetic was wrong.
 | 2026-08-24 | Claude | Proposed division layer + 4 new departments + 4 advisory functions |
 | 2026-08-24 | Aldemir | Accepted divisions, all 4 new departments, 3 of 4 advisory (dropped Ethics); scoped Red Team to decisions + premortems |
 | 2026-08-24 | Aldemir | Locked findings-only authority and 7-artifact anatomy with provisional agenda banners |
+| 2026-08-24 | R&M generator | **Caught a contradiction:** ADR 0001 promised Research & Math "holds its own division" as the compensation for declining the two-company split, while this ADR filed it under Intelligence — the term the argument was won on. |
+| 2026-08-24 | Aldemir | **Promoted Research & Math to its own division** (6 → 7). A division of one department, deliberately: the purpose is insulation from shipping priorities, not span of control. |

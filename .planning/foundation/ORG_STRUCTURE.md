@@ -27,12 +27,20 @@ one point, and so the loop graph (§4) has readable clusters instead of a dense 
 |---|---|---|
 | **Platform** | Engineering · Data · Reliability/SRE | — |
 | **Applied AI** | AI Orchestration · Skills | — |
-| **Intelligence** | Research & Math · Security · Analytics & BI | — |
+| **Research & Math** | *(division of one — see note)* | — |
+| **Intelligence** | Security · Analytics & BI | — |
 | **Product** | Product & Vision · Design · Partnerships & Integrations | Guest Experience *(under Product & Vision)* |
 | **Commercial** | Growth · Sales · Media & Brand | Finance & Pricing *(under Growth)* |
 | **Corporate** | Legal · Knowledge & Documentation · Compliance & Privacy · People & Agent Ops · Strategy & Fundraising | — |
 
-**6 divisions · 19 departments · 2 sub-layers · 3 advisory · 75 teams.**
+**7 divisions · 19 departments · 2 sub-layers · 3 advisory · 75 teams.**
+
+> **Research & Math is a division, not a department** (promoted 2026-08-24). When the
+> founder's two-company proposal was declined ([ADR 0001](../decisions/0001-mudavym-single-entity.md)),
+> the compensation offered was that research "holds its own division". An earlier draft
+> of this document contradicted that by filing it under Intelligence. The promise is now
+> honoured: it is a division of one department, deliberately — the point is insulation
+> from shipping priorities, not span of control.
 
 > Correction 2026-08-24: earlier drafts said "20 departments". The list has always
 > been 19 (5+3+3+3+5); the count was wrong, not the roster. Technology was split into
