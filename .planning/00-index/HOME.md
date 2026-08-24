@@ -17,7 +17,10 @@ Autonomous restaurant operations platform. One entity; many small softwares insi
 | [[ORG-MAP]] | Who exists — divisions → departments → teams → advisory |
 | [[SCENARIO-MAP]] | What happens in a restaurant — the 17 rituals |
 | [[LOOP-MAP]] | What feeds back into what, and how fast it closes |
+| [[METRICS]] | Every metric the org names — and whether it has a number today |
+| [[DECISION-INDEX]] | What is locked, how a decision moves, where the ADRs are |
 | [[OPEN-DECISIONS]] | What is still undecided, and what unblocks it |
+| [[GLOSSARY]] | What the coined terms mean — read this before the unit docs |
 | [[README]] *(foundation)* | The 7-layer stack, skills, neural footprint |
 
 ## Reading order for a new session

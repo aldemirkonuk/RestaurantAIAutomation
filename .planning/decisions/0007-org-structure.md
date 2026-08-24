@@ -1,3 +1,12 @@
+---
+type: adr
+id: 0007
+title: Org structure
+status: locked
+updated: 2026-08-24
+links: []
+---
+
 # 0007 — Organization: divisions, departments, and an advisory layer
 
 - **Status:** Locked (divisions, departments, advisory composition, unit anatomy)

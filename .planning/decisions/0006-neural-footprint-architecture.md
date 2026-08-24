@@ -1,6 +1,15 @@
+---
+type: adr
+id: 0006
+title: Neural Footprint architecture
+status: locked
+updated: 2026-08-24
+links: []
+---
+
 # 0006 — Neural Footprint: split production and research stores
 
-- **Status:** Locked (architecture); column-level schema open under OD-11
+- **Status:** Locked. Column contract also now locked — [ADR 0008](0008-nf-column-contract.md) (Path C, + `operator` subject_type)
 - **Date:** 2026-08-24
 - **Decider:** Aldemir (founder)
 - **Keywords:** neural-footprint, metrics, telemetry, NF-A, NF-B, NF-C, schema, OLTP, OLAP

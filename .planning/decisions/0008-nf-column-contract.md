@@ -1,3 +1,12 @@
+---
+type: adr
+id: 0008
+title: NF column contract (Path C)
+status: locked
+updated: 2026-08-24
+links: []
+---
+
 # 0008 — Neural Footprint column contract: full ADR 0006 shape now (Path C)
 
 - **Status:** Locked

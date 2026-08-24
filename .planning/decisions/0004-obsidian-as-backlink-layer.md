@@ -1,6 +1,15 @@
+---
+type: adr
+id: 0004
+title: Obsidian as the backlink layer
+status: locked
+updated: 2026-08-24
+links: []
+---
+
 # 0004 — Obsidian adopted as the documentation backlink layer
 
-- **Status:** Locked (adoption); mechanics open under OD-08
+- **Status:** Locked (adoption); mechanics were resolved with OD-21 (2026-08-24): `.planning/` is the vault; see [OBSIDIAN_VAULT](../foundation/OBSIDIAN_VAULT.md).
 - **Date:** 2026-08-24
 - **Decider:** Aldemir (founder)
 - **Keywords:** obsidian, backlinks, knowledge graph, graphify, vault, second brain

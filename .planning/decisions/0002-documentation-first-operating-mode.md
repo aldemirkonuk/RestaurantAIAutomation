@@ -1,3 +1,12 @@
+---
+type: adr
+id: 0002
+title: Documentation-first operating mode
+status: locked
+updated: 2026-08-24
+links: []
+---
+
 # 0002 — Documentation-first operating mode + ADR discipline
 
 - **Status:** Locked

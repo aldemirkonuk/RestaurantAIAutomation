@@ -1,3 +1,12 @@
+---
+type: adr
+id: 0001
+title: Mudavym is one entity
+status: locked
+updated: 2026-08-24
+links: []
+---
+
 # 0001 — Mudavym is one entity; modules are internal softwares
 
 - **Status:** Locked

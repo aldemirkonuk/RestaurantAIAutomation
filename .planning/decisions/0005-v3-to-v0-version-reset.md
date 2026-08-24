@@ -1,3 +1,12 @@
+---
+type: adr
+id: 0005
+title: v3-to-v0 version reset mechanics
+status: locked
+updated: 2026-08-24
+links: []
+---
+
 # 0005 — v3 internal build → deliberate v0 production reset
 
 - **Status:** Locked

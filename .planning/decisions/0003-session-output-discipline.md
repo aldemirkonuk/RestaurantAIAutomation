@@ -1,3 +1,12 @@
+---
+type: adr
+id: 0003
+title: v3 internal build, v0 production reset
+status: locked
+updated: 2026-08-24
+links: []
+---
+
 # 0003 — Low per-session output footprint; branch-per-operation
 
 - **Status:** Locked
