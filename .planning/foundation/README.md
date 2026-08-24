@@ -131,8 +131,11 @@ A skill is a **reusable, agent-executable procedure** with a `SKILL.md` (frontma
 `name` + `description`, then instructions). The description is what makes it
 discoverable, so it must say *when to use this*, not just what it is.
 
-**State today:** the repo has exactly **one** project skill
-(`.agents/skills/railway-config/SKILL.md`). Root `SKILLS.md` is a prose reasoning
+**State today: the repo has ZERO committed skills.** The only `SKILL.md` on disk
+(`.agents/skills/railway-config/SKILL.md`) is **gitignored** — `.gitignore:100` excludes
+`.agents/` wholesale as CLI-installed vendor tooling, and `git ls-files` returns no
+`SKILL.md` at all. Earlier drafts of this section said "exactly one project skill";
+that was wrong. The department's de-facto template is borrowed from a vendor CLI. Root `SKILLS.md` is a prose reasoning
 protocol, not a skill, and still says "WineOps AI" — stale brand, worth retiring
 or rewriting. Everything else available is user-level GSD tooling, not
 project-specific. **Building the project skill layer is close to greenfield.**
