@@ -17,8 +17,9 @@ Nothing below can move without a decision or an action only Aldemir can take.
 
 | # | Item | Why it is blocked on you | Cost of waiting |
 |---|---|---|---|
-| OD-49 | Add repo secret `SUPABASE_POOLER_CONNECTION_STRING` | Claude cannot set secrets, and will not handle the credential | The drift guard is **off**; schema parity has never compared anything |
-| PR [#33](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/33) | Review + merge the CI connectivity fix | Merge is yours | Failure stays a traceback instead of an instruction |
+| **OD-54** | 🔴 **SSRF** — `vendor-page-extractor.service.ts:142` fetches a user-controlled URL server-side (CodeQL critical). Pre-existing on main, not introduced by P1. | Needs an egress allowlist decision | Gateway can be pointed at internal addresses |
+| **OD-56** | **22 Dependabot PRs open**, 9 CVEs flagged (node-tar, PostCSS, js-yaml, image-size) | Merging dependency bumps is yours | Known-vulnerable deps before customer data |
+| OD-23 | Revenue target + pricing — the tier ceilings ($5 credit / $5 / $10) are placeholders I chose | No ADR records a price | Commercial stays provisional |
 | OD-23 | Revenue target + pricing | Price is unrecorded in any ADR; the source doc is not in this repo; `PROJECT.md:135` contradicts a revenue sprint | All of Commercial stays provisional |
 | OD-05 | Voice-agent audience (guest / staff / owner) | One sentence unblocks scoping | Cannot be scoped at all |
 | OD-07 | Beli — build independently or partner | Strategic | Guest-app work cannot be classified |
@@ -29,13 +30,14 @@ Nothing below can move without a decision or an action only Aldemir can take.
 
 | Item | State |
 |---|---|
-| Branch `docs/foundation-memory-instructions-decisions` | Open — the whole corporate structure + scenarios. Not yet PR'd |
-| PR #33 — CI connectivity | Open, awaiting review |
+| PR #35 — P1 instrumentation + docs corpus | ✅ **Merged** 2026-08-24 |
+| PR #33 — CI connectivity | ✅ **Merged** |
 | PRs #31, #32 — security | ✅ **Merged.** All five holes verified closed on `main` |
+| Everything is on `main` | 848 corpus docs · migration applied · guard green |
 
 ## 🟢 Next actions (no approval needed)
 
-0. **P1 build** — spec ready, Path C locked (ADR 0008 + operator). The docs phase is complete; this is the first code move.
+0. **First traffic** — everything emits; `nf_a.cost_per_completed_task` needs one real model call to produce its first number. That is the P1 done-gate.
 0b. **Rebrand planning** — assigned to Media & Brand `brand-identity` (founder 2026-08-24):
    write the full plan (name map, mobile-slug install hazard, email/OAuth/domain sequencing)
    against the measured 336-line / 178-file surface. **Execution holds** until brand direction exists.

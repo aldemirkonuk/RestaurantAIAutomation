@@ -20,7 +20,7 @@ links: ["[[AGENDA]]", "[[HOME]]", "[[ORG-MAP]]", "[[LOOP-MAP]]", "[[SCENARIO-MAP
 | **Structure** — divisions, departments, teams, advisory | ✅ Built. 7 divisions · 19 departments · 2 sub-layers · 3 advisory · 75 teams = 99 units × 8 artifacts = **792 docs** |
 | **Operational** — scenario rituals | ✅ Built. 17 scenarios, all `status: proposed` |
 | **Decisions** | 🟡 **49 open**, several 🔴. Fill-to-drain ratio measured at 7:1 |
-| **Instrumentation (L4)** | ❌ Emits nothing. This is the bottleneck for everything below |
+| **Instrumentation (L4)** | 🟡 **Built and merged.** Table live, 25 call sites emit across both runtimes. Awaiting first traffic |
 | **Loops** | 🟡 **6 of 482 running** (was 5). The watcher is the first loop this chapter produced |
 | **Security** | 🟢 Five holes closed and merged (PRs #31, #32) |
 | **CI** | 🔴 Schema parity has never compared anything (PR #33 / OD-49) |
@@ -92,4 +92,5 @@ From here, a change that cannot be observed should not ship.
 | Wave 1b | Scenario ritual layer | ✅ 17 scenarios |
 | Wave 1c | Vault integration + watcher loop | ✅ Obsidian config on `.planning/`, graph clustered by division, `watch_loops.py` scheduled weekly — **6th running loop** |
 | Wave 1d | Ecosystem docs: scenarios tiered, 50 pages, library, index layer, fork registry, advisory routing | ✅ **Documentation complete** — 931 files in the new structure, 0 broken links, all 99 units at 8/8 artifacts |
-| **Wave 2** | **Instrumentation (P1, Path C)** | ⬅ next — the docs now argue for it themselves: 325 metrics, zero instruments |
+| Wave 2 | Instrumentation (P1, Path C) | ✅ **Merged to main** 2026-08-24 — table live, both runtimes emit, guard green, 832 py + 780 ts tests pass |
+| **Wave 3** | **First traffic → first number** | ⬅ next. P1 is emission-complete, not done: the metric exists when nobody had to assemble it by hand |
