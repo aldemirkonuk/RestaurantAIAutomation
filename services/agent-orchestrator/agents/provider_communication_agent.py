@@ -67,16 +67,40 @@ class ProviderCommunicationAgent(BaseAgent):
     Generates AI email drafts via Haiku, enforces 20 constraints, notifies manager.
     """
 
-    def __init__(self, message_bus, database, redis_client=None):
+    def __init__(
+        self,
+        message_bus,
+        database,
+        config: Optional[Dict[str, Any]] = None,
+        redis_client=None,
+        agent_name: str = "provider_communication_agent",
+    ):
+        # agent_name and config exist to satisfy the orchestrator's factory, which
+        # builds EVERY agent as (agent_name, message_bus, database, config) —
+        # see AgentOrchestrator._create_lazy_proxies. Without them this class
+        # raised TypeError on instantiation and could never be lazy-loaded at all,
+        # so its RabbitMQ subscriptions were never established.
         super().__init__(
-            agent_name="provider_communication_agent",
+            agent_name=agent_name,
             message_bus=message_bus,
             database=database,
-            config={},
+            config=config or {},
         )
-        self.redis = redis_client
+        self._redis_client = redis_client
         self.haiku_semaphore: Optional[Any] = None
         self._settings: Optional[Settings] = None
+
+    @property
+    def redis(self):
+        """Explicit client if injected (tests), else the one DatabaseClient owns.
+
+        Resolved on read rather than captured in __init__: DatabaseClient.connect()
+        is what populates .redis, and an agent constructed before that would have
+        cached None forever. A None here is not inert — _acquire_draft_lock and
+        _check_and_increment_rate_limit both fail OPEN, so losing Redis silently
+        turns the draft lock and the daily cap into no-ops.
+        """
+        return self._redis_client or getattr(self.database, "redis", None)
 
     @property
     def settings(self) -> Settings:
@@ -102,9 +126,20 @@ class ProviderCommunicationAgent(BaseAgent):
 
     async def process_message(self, message: Dict[str, Any]) -> None:
         """Main entry point. Routes by routing_key after idempotency check."""
-        payload = message
+        # MessageBus injects the AMQP routing key as `routing_key` (message_bus.py
+        # setdefaults it onto the body). This read was `_routing_key`, which nothing
+        # sets, so every message fell through to "Unhandled routing key" and was
+        # acked and dropped. `_routing_key` stays as a fallback for direct callers.
+        routing_key = message.get("routing_key") or message.get("_routing_key", "")
+
+        # Two envelope conventions share procurement.events: NestJS publishes the
+        # draft payload flat, while ProcurementAgent wraps it as
+        # {"event_type": ..., "payload": {...}}. Unwrap so both shapes reach the
+        # handlers with the fields where the handlers expect them.
+        inner = message.get("payload")
+        payload = inner if isinstance(inner, dict) else message
+
         order_id = payload.get("order_id", "")
-        routing_key = payload.get("_routing_key", "")
         # Use a payload-specific identifier so invoice events (which carry no order_id)
         # don't all collapse to the same key and get silently deduplicated after the first.
         if "invoice.received" in routing_key:
@@ -323,18 +358,18 @@ class ProviderCommunicationAgent(BaseAgent):
         """
         D-32-01: Main order trigger handler.
         Steps:
+          0. Per-order draft lock — the only guard both entry paths share
           1. Rate limit check (D-32-04)
           2. Email type selection (D-32-02)
           3. Build context window (D-32-03)
           4. Token hard cap (TOKENBDGT-01)
           5. Pre-draft constraint check + duplicate order block (C-10)
-          6. Draft lock — prevent duplicates for same order
-          7. Haiku draft generation
-          8. SpendLogger call (TOKENBDGT-03)
-          9. Post-draft constraint check + disclaimer append (D-32-08)
-         10. Auto-send gate (D-32-07) → determine final_status
-         11. INSERT procurement_conversations
-         12. Notify (AUTO_SENT publishes event; PENDING_APPROVAL notifies manager)
+          6. Haiku draft generation
+          7. SpendLogger call (TOKENBDGT-03)
+          8. Post-draft constraint check + disclaimer append (D-32-08)
+          9. Auto-send gate (D-32-07) → determine final_status
+         10. INSERT procurement_conversations
+         11. Notify (AUTO_SENT publishes event; PENDING_APPROVAL notifies manager)
         """
         order_id = payload.get("order_id", "")
         restaurant_id = payload.get("restaurant_id", "")
@@ -345,6 +380,34 @@ class ProviderCommunicationAgent(BaseAgent):
                 f"Missing required fields in order.created payload: {payload}"
             )
             return
+
+        # Step 0: Per-order lock (T-32-03-03).
+        #
+        # This has to be the FIRST thing, and it has to be here rather than in
+        # process_message, because two entry paths reach this method for a single
+        # order: procurement.service.ts createOrder calls triggerDraftHttp (which
+        # lands on procurement_routes.py → straight into this method, past
+        # process_message's guard entirely) AND publishes procurement.order.created
+        # to RabbitMQ. It sat at step 6 instead, so a double-fire would run the
+        # rate-limit increment, the context build and the constraint checks twice
+        # and could notify the manager twice before either call reached the lock.
+        #
+        # SET NX PX is the race-safe half; _check_idempotency is the durable half
+        # that still holds when Redis is down and the lock fails open.
+        lock_key = f"draft_lock:{order_id}"
+        if not await self._acquire_draft_lock(lock_key):
+            self.logger.info(
+                f"Draft lock held for order {order_id} — skipping duplicate"
+            )
+            return
+
+        order_idem_key = f"prov_comm:order_created:{order_id}"
+        if await self._check_idempotency(order_idem_key):
+            self.logger.info(
+                f"Draft already generated for order {order_id} — skipping duplicate"
+            )
+            return
+        await self._mark_processed(order_idem_key, {"status": "drafting"})
 
         # Step 1: Daily rate limit (D-32-04)
         rate_key = f"negotiation_draft:{restaurant_id}:day"
@@ -449,15 +512,7 @@ class ProviderCommunicationAgent(BaseAgent):
             )
             return
 
-        # Step 6: Draft lock — prevent duplicates for same order (T-32-03-03)
-        lock_key = f"draft_lock:{order_id}"
-        if not await self._acquire_draft_lock(lock_key):
-            self.logger.info(
-                f"Draft lock held for order {order_id} — skipping duplicate"
-            )
-            return
-
-        # Step 7: Haiku draft generation
+        # Step 6: Haiku draft generation
         draft_json: Dict[str, Any] = {}
         input_tokens = 0
         output_tokens = 0
@@ -513,7 +568,7 @@ class ProviderCommunicationAgent(BaseAgent):
                 ),
             }
 
-        # Step 8: SpendLogger (TOKENBDGT-03) — dual-writes NF (P1)
+        # Step 7: SpendLogger (TOKENBDGT-03) — dual-writes NF (P1)
         try:
             spend_logger = get_spend_logger()
             cost_usd = (input_tokens * 0.00000025) + (output_tokens * 0.00000125)
@@ -534,7 +589,7 @@ class ProviderCommunicationAgent(BaseAgent):
         except Exception as exc:
             self.logger.warning(f"SpendLogger failed (non-critical): {exc}")
 
-        # Step 9a: Post-draft constraint checks
+        # Step 8a: Post-draft constraint checks
         draft_body = draft_json.get("body", "")
         post_check = ce.check_hard_constraints(draft_body)
         annotating = ce.check_annotating_constraints(draft_text=draft_body)
@@ -567,18 +622,18 @@ class ProviderCommunicationAgent(BaseAgent):
             )
             return
 
-        # Step 9b: Disclaimer append (D-32-08 — non-removable)
+        # Step 8b: Disclaimer append (D-32-08 — non-removable)
         restaurant_name = payload.get("restaurant_name", "the restaurant")
         disclaimer = self.settings.wineops_disclaimer.format(
             restaurant_name=restaurant_name
         )
         full_draft = f"{draft_body}\n\n{disclaimer}"
 
-        # Step 10: Auto-send gate (D-32-07 — 3-gate check)
+        # Step 9: Auto-send gate (D-32-07 — 3-gate check)
         auto_send = await self._check_auto_send_gate(restaurant_id, provider_id)
         final_status = "AUTO_SENT" if auto_send else "PENDING_APPROVAL"
 
-        # Step 11: INSERT procurement_conversations
+        # Step 10: INSERT procurement_conversations
         conversation_id = None
         try:
             conv_result = (
@@ -613,7 +668,7 @@ class ProviderCommunicationAgent(BaseAgent):
             )
             raise
 
-        # Step 12: Post-insert action
+        # Step 11: Post-insert action
         provider_name = payload.get("provider_name") or "Provider"
         order_number = payload.get("order_number") or f"#{order_id[:8]}"
         order_display = (

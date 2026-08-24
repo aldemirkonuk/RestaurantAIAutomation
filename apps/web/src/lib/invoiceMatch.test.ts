@@ -49,6 +49,24 @@ describe('invoiceMatch (web mirror)', () => {
     expect(damaged.backorderQty).toBe(short.backorderQty)
   })
 
+  it('does not read an agreed free bottle as one lost in transit', () => {
+    // Slip 11, invoice 10, 11 bottles on the pallet, all of them here. The slip is a physical
+    // count and includes the free bottle; comparing it against the billing count flagged a
+    // clean delivery as `short_shipped` the instant a slip was attached.
+    const r = computeMatch({
+      orderedQty: 10,
+      poUnitPrice: 22,
+      shippedQty: 11,
+      invoiceQty: 10,
+      invoiceUnitPrice: 22,
+      acceptedQty: 11,
+      freeGoodsQty: 1,
+    })
+
+    expect(r.verdict).toBe('matched')
+    expect(r.creditDue).toBe(false)
+  })
+
   it('holds a backorder open on a partial delivery', () => {
     const r = computeMatch({ ...base, invoiceQty: 20, acceptedQty: 20 })
 
@@ -104,6 +122,15 @@ describe('invoiceMatch parity with the API engine', () => {
     ['slip agrees with everything', { ...base, shippedQty: 24 }],
     ['slip present, no invoice', { ...base, shippedQty: 24, invoiceQty: null, invoiceUnitPrice: null }],
     ['allocated freight', { ...base, allocatedCharges: 48 }],
+    // Free goods x packing slip. The slip counts physical bottles (free ones included), the
+    // invoice counts billable ones — comparing across the two axes turned an agreed 11-for-10
+    // into "1 lost in transit". Both engines have to net these the same way or the receiving
+    // screen shows one verdict while the backend persists another.
+    ['free goods, slip counts the free bottle', { orderedQty: 10, poUnitPrice: 22, shippedQty: 11, invoiceQty: 10, invoiceUnitPrice: 22, acceptedQty: 11, freeGoodsQty: 1 }],
+    ['free goods, slip counts only the billable', { orderedQty: 10, poUnitPrice: 22, shippedQty: 10, invoiceQty: 10, invoiceUnitPrice: 22, acceptedQty: 11, freeGoodsQty: 1 }],
+    ['free goods, real transit loss', { orderedQty: 10, poUnitPrice: 22, shippedQty: 11, invoiceQty: 10, invoiceUnitPrice: 22, acceptedQty: 10, freeGoodsQty: 1 }],
+    ['free goods and damage under a slip', { orderedQty: 10, poUnitPrice: 22, shippedQty: 11, invoiceQty: 10, invoiceUnitPrice: 22, acceptedQty: 10, rejectedQty: 1, freeGoodsQty: 1 }],
+    ['free goods and a real short ship', { orderedQty: 24, poUnitPrice: 22, shippedQty: 24, invoiceQty: 21, invoiceUnitPrice: 22, acceptedQty: 22, freeGoodsQty: 1 }],
   ]
 
   it.each(cases)('agrees with the backend: %s', (_label, input) => {

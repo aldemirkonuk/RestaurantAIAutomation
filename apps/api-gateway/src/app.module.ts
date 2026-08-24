@@ -83,7 +83,10 @@ import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
     VendorIntelModule, // Vendor price scraping + multi-source comparison
     UxOptimizerModule, // Self-learning UX agent (observe → propose → gated ship → learn)
     PosHubModule, // MultiPOS ingestion hub (canonical checks → pos_checks)
-    SimposModule, // Fake POS terminal — signed-webhook-only into PosHubModule
+    // Fake POS terminal. Its close() makes THIS server HMAC-sign a webhook into
+    // PosHubModule, which trusts the signature and depletes stock — so an unguarded
+    // simpos route is a confused deputy over real inventory. Dev/demo only.
+    ...(process.env.NODE_ENV !== "production" ? [SimposModule] : []),
     LogsModule, // Correlated read-only timeline across POS / stock / docs / agents
     OneTapActionsModule, // One-tap actions with backend persistence
     ToastModule, // Toast POS API integration

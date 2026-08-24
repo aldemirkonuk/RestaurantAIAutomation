@@ -10,7 +10,10 @@ import {
   Query,
   Req,
   RawBodyRequest,
+  UseGuards,
 } from "@nestjs/common";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { Public } from "../auth/decorators/public.decorator";
 import { ApiHeader, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { Request } from "express";
 import { CatalogMatcherService } from "./catalog-matcher.service";
@@ -26,6 +29,11 @@ import { PosHubService } from "./pos-hub.service";
  *   GET/POST /pos-hub/mappings/:restaurantId     pos_item_mappings CRUD
  */
 @ApiTags("pos-hub")
+// Guarded at class level. Only the provider webhook is @Public() — it authenticates
+// by HMAC signature instead (pos-hub.service.ts:96-121, fails closed).
+// Before this, catalog-match approve/reject were reachable unauthenticated, so the
+// human approval gate could be operated by anyone for any restaurant.
+@UseGuards(JwtAuthGuard)
 @Controller("pos-hub")
 export class PosHubController {
   constructor(
@@ -50,6 +58,7 @@ export class PosHubController {
     return this.posHub.getStatus(restaurantId);
   }
 
+  @Public() // authenticated by HMAC signature, not JWT
   @Post("webhook/:provider/:restaurantId")
   @ApiOperation({
     summary: "Ingest a POS webhook payload",

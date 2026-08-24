@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { WebsocketGateway } from "./websocket.gateway";
+import { resolveJwtSecret } from "../auth/jwt-secret";
 
 @Module({
   imports: [
@@ -9,9 +10,7 @@ import { WebsocketGateway } from "./websocket.gateway";
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
-        secret:
-          configService.get("JWT_SECRET") ||
-          "your-secret-key-change-in-production",
+        secret: resolveJwtSecret(configService.get("JWT_SECRET")),
         signOptions: { expiresIn: "15m" },
       }),
       inject: [ConfigService],

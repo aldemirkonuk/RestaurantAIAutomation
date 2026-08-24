@@ -15,6 +15,14 @@ name: Schema parity
 # ALTER fails a pull request instead of going unnoticed for a year.
 #
 # Read-only against remote. It never writes to either database.
+#
+# Connectivity (2026-08-24): `db.<ref>.supabase.co` publishes only an AAAA record
+# and GitHub-hosted runners have no IPv6 route, so every job here failed with
+# "Network is unreachable" — a connectivity failure that looked like drift.
+# Jobs now prefer SUPABASE_POOLER_CONNECTION_STRING (Supavisor, IPv4-reachable)
+# and run scripts/check_db_reachable.sh first, which names the fix instead of
+# emitting a raw psql traceback. Unreachable still fails: a vacuously green
+# parity check is worse than no check.
 
 on:
   push:
@@ -55,18 +63,17 @@ jobs:
 
       - name: Compare against remote
         env:
-          SUPABASE_DIRECT_CONNECTION_STRING: ${{ secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
+          # Pooler first: db.<ref>.supabase.co is IPv6-only and runners are IPv4-only.
+          SUPABASE_DIRECT_CONNECTION_STRING: ${{ secrets.SUPABASE_POOLER_URL || secrets.SUPABASE_POOLER_CONNECTION_STRING || secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
         run: |
-          if [ -z "$SUPABASE_DIRECT_CONNECTION_STRING" ]; then
-            echo "::error::SUPABASE_DIRECT_CONNECTION_STRING secret is not set."
-            echo "::error::Without it this check cannot compare anything and would pass for the wrong reason."
-            exit 1
-          fi
+          ./scripts/check_db_reachable.sh
           ./scripts/check_schema_parity.sh
 
       - name: Explain a failure
         if: failure()
         run: |
+          echo "::notice::If the log says 'Network is unreachable', this is CONNECTIVITY, not drift —"
+          echo "::notice::see scripts/check_db_reachable.sh. Otherwise:"
           echo "::notice::Local and remote schemas disagree."
           echo "::notice::Columns/functions only in REMOTE were applied by hand — capture them"
           echo "::notice::as a migration, then: supabase migration repair --status applied <version>"
@@ -101,13 +108,9 @@ jobs:
 
       - name: Compare SQL beverage_identity_key() against the validated Python reference
         env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_POOLER_URL || secrets.SUPABASE_POOLER_CONNECTION_STRING || secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
         run: |
-          if [ -z "$SUPABASE_DB_URL" ]; then
-            echo "::error::SUPABASE_DIRECT_CONNECTION_STRING secret is not set."
-            echo "::error::Without it this check cannot compare anything and would pass for the wrong reason."
-            exit 1
-          fi
+          ./scripts/check_db_reachable.sh
           python3 scripts/check_beverage_identity_parity.py
 
   # Register A14. Guests are the one entity where a false merge is a
@@ -139,13 +142,9 @@ jobs:
 
       - name: No known-different guests may be merged
         env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_POOLER_URL || secrets.SUPABASE_POOLER_CONNECTION_STRING || secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
         run: |
-          if [ -z "$SUPABASE_DB_URL" ]; then
-            echo "::error::SUPABASE_DIRECT_CONNECTION_STRING secret is not set."
-            echo "::error::Without it this check cannot compare anything and would pass for the wrong reason."
-            exit 1
-          fi
+          ./scripts/check_db_reachable.sh
           python3 scripts/eval_guest_merge_policies.py
 
       - name: Guest identity guards

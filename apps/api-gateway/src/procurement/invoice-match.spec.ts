@@ -206,6 +206,109 @@ describe("computeMatch", () => {
     });
   });
 
+  /**
+   * Free goods x packing slip. The slip is a PHYSICAL count of bottles on the
+   * truck and includes the free ones; the invoice is a BILLING count and does
+   * not. Netting free goods out of the physical side made the two axes share a
+   * number, and the deal that `qty_over` had already been taught to accept came
+   * back as `short_shipped` the moment a slip was attached — the same false
+   * alarm on a new axis. These cases pin both axes down separately.
+   */
+  describe("free goods with a packing slip", () => {
+    const deal: MatchInput = {
+      orderedQty: 10,
+      poUnitPrice: 22,
+      invoiceQty: 10,
+      invoiceUnitPrice: 22,
+      acceptedQty: 11,
+      freeGoodsQty: 1,
+    };
+
+    it("stays matched when the slip counts the free bottle it put on the truck", () => {
+      // The regression: slip 11, invoice 10, 11 bottles on the pallet. Every one
+      // of them arrived. Comparing the billing count (10) to the slip (11)
+      // reported "1 lost between the warehouse and the door" on a delivery where
+      // nothing was lost.
+      const r = computeMatch({ ...deal, shippedQty: 11 });
+
+      expect(r.verdict).toBe("matched");
+      expect(isDiscrepancy(r.verdict)).toBe(false);
+      expect(check(r, "physical_vs_ship").ok).toBe(true);
+      expect(check(r, "physical_vs_ship").detail).toBe("Both 11");
+      // Billing axis still nets the free bottle out, and still agrees.
+      expect(check(r, "physical_vs_bill").ok).toBe(true);
+      expect(r.creditDue).toBe(false);
+    });
+
+    it("stays matched when no slip came with the deal", () => {
+      const r = computeMatch(deal);
+
+      expect(r.verdict).toBe("matched");
+      // Unknown, not agreement — there was no slip to compare against.
+      expect(check(r, "physical_vs_ship").ok).toBeNull();
+    });
+
+    it("does not raise an alarm when the slip counted only the billable bottles", () => {
+      // Vendor listed 10 and quietly put 11 on the truck. The extra is declared
+      // free, so it is good news: the check records the difference, the headline
+      // stays clean. Alarming here is how a manager learns to ignore alarms.
+      const r = computeMatch({ ...deal, shippedQty: 10 });
+
+      expect(r.verdict).toBe("matched");
+      expect(check(r, "physical_vs_ship").ok).toBe(false);
+      expect(check(r, "physical_vs_ship").detail).toBe("Slip says 10, 11 arrived");
+    });
+
+    it("still catches a real transit loss on a delivery that carried free goods", () => {
+      // Slip 11, only 10 on the dock. A bottle genuinely went missing, and the
+      // deal must not launder it.
+      const r = computeMatch({ ...deal, shippedQty: 11, acceptedQty: 10 });
+
+      expect(check(r, "physical_vs_ship").ok).toBe(false);
+      expect(check(r, "physical_vs_ship").detail).toBe("Slip says 11, 10 arrived");
+      expect(r.creditDue).toBe(true);
+    });
+
+    it("reports the true shortfall in the summary, not the free-goods-inflated one", () => {
+      // Ordered 24, slip 24, 22 on the dock of which 1 was free, billed 21.
+      // Billing agrees (21 === 21); 2 bottles are genuinely missing. Reading the
+      // shortfall off the billing count claimed 3 were lost.
+      const r = computeMatch({
+        orderedQty: 24,
+        poUnitPrice: 22,
+        shippedQty: 24,
+        invoiceQty: 21,
+        invoiceUnitPrice: 22,
+        acceptedQty: 22,
+        freeGoodsQty: 1,
+      });
+
+      expect(r.verdict).toBe("short_shipped");
+      expect(r.summary).toBe(
+        "Packing slip says 24, only 22 arrived — 2 lost between the warehouse and the door.",
+      );
+      expect(check(r, "physical_vs_bill").ok).toBe(true);
+    });
+
+    it("surfaces damage rather than hiding it behind a phantom short ship", () => {
+      // Slip 11, all 11 arrived, 1 broken, 1 free. The old comparison made the
+      // free bottle look lost and `short_shipped` outranked the real problem, so
+      // the manager was told to chase the carrier instead of claiming the break.
+      const r = computeMatch({
+        ...deal,
+        shippedQty: 11,
+        acceptedQty: 10,
+        rejectedQty: 1,
+      });
+
+      expect(r.verdict).toBe("rejected");
+      expect(check(r, "physical_vs_ship").ok).toBe(true);
+      // "1 of 11", not "1 of 10": the denominator is what the manager counted.
+      expect(r.summary).toBe("1 of 11 rejected on arrival — credit due.");
+      expect(r.creditAmount).toBe(22);
+    });
+  });
+
   describe("packing slip — the vendor's own two documents disagreeing", () => {
     it("reports overbilled_vs_ship and marks it self-evidenced", () => {
       // Their slip says 22 left the warehouse; their invoice bills 24.

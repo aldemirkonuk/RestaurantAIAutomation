@@ -17,6 +17,7 @@ import axios from "axios";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
 import { InviteDto } from "./dto/invite.dto";
+import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
 
 export interface JwtPayload {
   sub: string; // user_id
@@ -61,14 +62,14 @@ export class AuthService {
     private readonly tokenBlacklistService: TokenBlacklistService,
     private readonly gmailService: GmailService,
   ) {
-    this.jwtSecret =
-      this.configService.get<string>("JWT_SECRET") ||
-      "your-secret-key-change-in-production";
+    this.jwtSecret = resolveJwtSecret(
+      this.configService.get<string>("JWT_SECRET"),
+    );
     this.jwtRefreshSecret =
       this.configService.get<string>("JWT_REFRESH_SECRET") ||
       this.jwtSecret + "-refresh";
 
-    if (this.jwtSecret === "your-secret-key-change-in-production") {
+    if (this.jwtSecret === INSECURE_DEFAULT_JWT_SECRET) {
       this.logger.warn(
         "Using default JWT_SECRET — set a proper secret in production!",
       );
