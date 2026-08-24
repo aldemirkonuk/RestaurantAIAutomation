@@ -105,6 +105,49 @@ jobs:
           echo "::notice::Exit 2 means the guard could not check what it claims to (missing wrapper, or a rotted pattern). That is a failure, not a skip: see the NEVER VACUOUS section in scripts/check_model_calls_logged.sh."
           echo "::notice::The pre-P1 debt list in that script is shrink-only. A new unlogged call site does not belong on it."
 
+  # Does the gateway's dependency graph actually resolve?
+  #
+  # Added 2026-08-24 after the api-gateway crash-looped in production on the P1
+  # merge commit: PosHubModule and AnalyticsModule guard their controllers with
+  # JwtAuthGuard but did not import AuthModule, which provides the
+  # TokenBlacklistService the guard injects. `tsc --noEmit` was clean and 780 jest
+  # tests passed — neither models Nest's runtime injector, and jest builds small
+  # testing modules that carry their own providers. Only constructing the real
+  # AppModule catches it, and nothing did until production did.
+  #
+  # Blocks, like loop-contract and model-call-ledger. Uses dummy env and binds no
+  # port: if this job ever needs a real secret, a boot-time side effect has crept
+  # into the graph and that is the finding.
+  gateway-boot:
+    name: Gateway dependency graph resolves
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Boot the AppModule injector
+        run: ./scripts/check_gateway_boots.sh
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::The gateway cannot boot. Merging this crash-loops production — every route, not just the one that changed."
+          echo "::notice::Most common cause: a controller uses @UseGuards(JwtAuthGuard) but its module does not import AuthModule."
+          echo "::notice::AuthModule is not @Global(); a guard resolves in the context of the module declaring the controller."
+          echo "::notice::Fix: add AuthModule to that module's imports — see conversations.module.ts for the house pattern."
+
   # Lint and type-check TypeScript/React code
   lint-typescript:
     name: Lint TypeScript
@@ -146,7 +189,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
@@ -263,7 +306,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
@@ -282,7 +325,7 @@ jobs:
           pytest tests/ -v --cov=. --cov-report=xml
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v6
         with:
           file: ./services/agent-orchestrator/coverage.xml
           flags: python
@@ -305,7 +348,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -346,6 +389,7 @@ jobs:
     needs:
       [
         build,
+        gateway-boot,
         test-typescript,
         test-e2e,
         test-python,

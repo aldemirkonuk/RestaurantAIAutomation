@@ -85,7 +85,7 @@ logger = logging.getLogger(__name__)
 # this repo actually passes: claude-haiku-4-5-20251001 and claude-sonnet-4-20250514.
 #
 # NOT VERIFIED: gpt-4-turbo. Only one live call site and no source was checked
-# for it in this pass; treat it as suspect (OD-59).
+# for it in this pass; treat it as suspect (OD-62).
 _RATES_PER_M: Dict[str, tuple] = {
     # claude-haiku was (0.80, 4.00) — Claude Haiku *3.5*'s retired rate, applied
     # to the 4.5 model this repo actually calls. Same failure as the Gemini
@@ -99,6 +99,12 @@ _RATES_PER_M: Dict[str, tuple] = {
     "claude-sonnet-5": (3.00, 15.00),
     "claude-sonnet": (3.00, 15.00),
     "gpt-4-turbo": (10.00, 30.00),  # UNVERIFIED
+    # `gpt-4o` is deliberately ABSENT. auction_wine_service's OpenAI fallback now
+    # names it, but OPENAI_API_KEY is empty, so the path cannot fire and its
+    # pricing could not be checked against the API the way the Gemini names were.
+    # Absent means is_priced_model() is False, so NF books cost NULL with
+    # cost_basis='unpriced_model' — an unknown cost, not an invented one. Add the
+    # rate when a key exists and the number can be verified.
     # --- Gemini, verified 2026-08-24 ---
     "gemini-3.7-flash": (0.75, 3.75),  # 1.50/7.50 from 2027-01-01
     "gemini-3.6-flash": (0.75, 3.75),  # 1.50/7.50 from 2027-01-01
@@ -108,6 +114,13 @@ _RATES_PER_M: Dict[str, tuple] = {
     "gemini-2.5-flash-lite": (0.10, 0.40),
     "gemini-2.5-flash": (0.30, 2.50),
     "gemini-2.5-pro": (1.25, 10.00),
+    # RETIRED MODELS, KEPT ON PURPOSE. No call site names these any more
+    # (2026-08-24), but historical api_spend rows do, and this table is how such
+    # a row is ever re-costed. Deleting a rate does not delete the spend it
+    # priced — it just makes the past unreadable. _rate_for()'s longest-match
+    # ordering keeps them from shadowing any live id.
+    "gemini-2.0-flash": (0.075, 0.30),
+    "gemini-pro": (0.50, 1.50),
 }
 
 
@@ -248,7 +261,9 @@ class SpendLogger:
             settings = get_settings()
             supabase = settings.supabase_client
             if supabase is None:
-                logger.debug("SpendLogger: Supabase not configured — skipping spend log")
+                logger.debug(
+                    "SpendLogger: Supabase not configured — skipping spend log"
+                )
                 return
 
             ambient_agent, ambient_correlation = get_log_context()
@@ -290,19 +305,34 @@ class SpendLogger:
                     nf_context.update(context)
 
                 # An unpriced model has no rate in _RATES_PER_M, so estimate_llm_cost
-                # returned 0.0 meaning "unknown" — not "free". NF's cost_usd is
-                # nullable, so record the honest NULL and say why. (api_spend.cost_usd
-                # is NOT NULL and still takes the 0.0; correcting that needs a
-                # migration and is filed as tech debt, not silently fixed here.)
+                # returned 0.0 meaning "unknown" — not "free". The §2 headline query
+                # sums cost_usd, so booking a false 0.0 makes the readout silently
+                # under-report. NF's cost_usd is nullable, so record the honest NULL
+                # and say why. (api_spend.cost_usd is NOT NULL and still takes the
+                # 0.0; correcting that needs a migration and is filed as tech debt,
+                # not silently fixed here.)
                 #
-                # Gated on provider: only token-priced providers get their cost FROM
-                # this table. Serper bills a flat configured per-query rate
-                # (Settings.serper_cost_per_query) that is exactly known and has no
-                # business being in a per-token table — nulling it would delete real
-                # spend and mislabel it unknown, which is the very defect this guard
-                # exists to prevent.
+                # Three conditions, each closing a different way to be wrong:
+                #
+                #   provider gate  only token-priced providers get their cost FROM
+                #                  this table. Serper bills a flat configured
+                #                  per-query rate (Settings.serper_cost_per_query)
+                #                  that is exactly known and has no business being
+                #                  judged against a per-token table — nulling it
+                #                  would delete real spend and mislabel it unknown,
+                #                  which is the very defect this guard prevents.
+                #   token gate     a call that consumed no tokens was never priced
+                #                  from this table in the first place.
+                #   cost gate      a caller that supplied a real non-zero cost knows
+                #                  something the table does not; that is a measured
+                #                  figure, not an unknown, so it survives.
                 nf_cost = cost_usd
-                if provider in _TOKEN_PRICED_PROVIDERS and not is_priced_model(model):
+                if (
+                    provider in _TOKEN_PRICED_PROVIDERS
+                    and (input_tokens or output_tokens)
+                    and not cost_usd
+                    and not is_priced_model(model)
+                ):
                     nf_cost = None
                     nf_context["cost_basis"] = "unpriced_model"
 
@@ -323,7 +353,8 @@ class SpendLogger:
             except Exception as exc:
                 total = record_drop("neural_footprint_event")
                 logger.warning(
-                    "SpendLogger: NF row build failed (non-fatal, drop #%d " "this process): %s",
+                    "SpendLogger: NF row build failed (non-fatal, drop #%d "
+                    "this process): %s",
                     total,
                     exc,
                 )

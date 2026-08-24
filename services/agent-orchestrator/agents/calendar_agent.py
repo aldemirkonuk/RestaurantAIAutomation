@@ -13,7 +13,8 @@ Tracks:
 
 import json
 import re
-from typing import Dict, List, Any
+import time
+from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 
 from core.base_agent import BaseAgent
@@ -117,7 +118,9 @@ class CalendarAgent(BaseAgent):
             )
 
             # Call Gemini Pro via the database's LLM helper (or direct API)
-            extracted_dates = await self._call_llm_for_dates(prompt)
+            extracted_dates = await self._call_llm_for_dates(
+                prompt, restaurant_id=restaurant_id
+            )
 
             if not extracted_dates:
                 self.logger.debug(
@@ -185,7 +188,9 @@ class CalendarAgent(BaseAgent):
                 f"Error extracting dates from conversation: {e}", exc_info=True
             )
 
-    async def _call_llm_for_dates(self, prompt: str) -> List[Dict[str, Any]]:
+    async def _call_llm_for_dates(
+        self, prompt: str, restaurant_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """Call Gemini to extract dates, with regex fallback"""
         try:
             # Was the legacy google.generativeai SDK pinned to "gemini-pro" — a
@@ -198,6 +203,7 @@ class CalendarAgent(BaseAgent):
 
             model_id = get_settings().gemini_model
             client = get_gemini_client()
+            _t0 = time.perf_counter()
             response = await client.aio.models.generate_content(
                 model=model_id,
                 contents=prompt,
@@ -218,9 +224,11 @@ class CalendarAgent(BaseAgent):
                     input_tokens=_in,
                     output_tokens=_out,
                     cost_usd=estimate_llm_cost(model_id, _in, _out),
+                    restaurant_id=restaurant_id or None,
                     agent=self.agent_name,
                     task_type="date_extraction",
                     outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                     correlation_id=getattr(self, "_current_correlation_id", None),
                 )
             except Exception:

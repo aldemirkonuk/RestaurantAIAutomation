@@ -132,7 +132,11 @@ def score(results: list[dict], cases: list[dict]) -> dict:
     bound = [r for r in results if by_id[r["id"]]["difficulty"] == "boundary"]
 
     def acc(rs):
-        return sum(1 for r in rs if r["pred"] == by_id[r["id"]]["label"]) / len(rs) if rs else 0.0
+        return (
+            sum(1 for r in rs if r["pred"] == by_id[r["id"]]["label"]) / len(rs)
+            if rs
+            else 0.0
+        )
 
     return {
         "clear": acc(clear),
@@ -175,7 +179,9 @@ def main() -> None:
     )
 
     if args.report_only and CACHE.exists():
-        runs = {tuple(k.split("|")): v for k, v in json.loads(CACHE.read_text()).items()}
+        runs = {
+            tuple(k.split("|")): v for k, v in json.loads(CACHE.read_text()).items()
+        }
     else:
         from google import genai
         from google.genai import types as gt
@@ -188,10 +194,14 @@ def main() -> None:
         for model, thinking in CONFIGS:
             runs[(model, thinking)] = run_config(client, gt, model, thinking, cases)
             print(f"  ran {model} (thinking={thinking})")
-        CACHE.write_text(json.dumps({f"{m}|{t}": v for (m, t), v in runs.items()}, indent=1))
+        CACHE.write_text(
+            json.dumps({f"{m}|{t}": v for (m, t), v in runs.items()}, indent=1)
+        )
         print()
 
-    print(f"{'model':24s} {'think':6s} {'clear':>7s} {'bound':>7s} {'all':>7s} {'$/1k':>9s}")
+    print(
+        f"{'model':24s} {'think':6s} {'clear':>7s} {'bound':>7s} {'all':>7s} {'$/1k':>9s}"
+    )
     print("-" * 66)
     singles = {}
     for (model, thinking), res in runs.items():
@@ -203,7 +213,9 @@ def main() -> None:
             f"{s['overall']*100:6.1f}% {c:9.4f}"
         )
 
-    print(f"\n{'cascade (tier1 -> tier2)':44s} {'thr':>5s} {'esc':>6s} {'all':>7s} {'$/1k':>9s}")
+    print(
+        f"\n{'cascade (tier1 -> tier2)':44s} {'thr':>5s} {'esc':>6s} {'all':>7s} {'$/1k':>9s}"
+    )
     print("-" * 76)
     best = None
     for t1 in [("gemini-2.5-flash-lite", "off"), ("gemini-3.5-flash-lite", "off")]:
@@ -223,12 +235,17 @@ def main() -> None:
                     f"{label:44s} {thr:5.2f} {s['escalation_rate']*100:5.0f}% "
                     f"{s['overall']*100:6.1f}% {cost:9.4f}"
                 )
-                if best is None or (s["overall"], -cost) > (best[0]["overall"], -best[1]):
+                if best is None or (s["overall"], -cost) > (
+                    best[0]["overall"],
+                    -best[1],
+                ):
                     best = (s, cost, label, thr)
 
     if best:
         s, cost, label, thr = best
-        print(f"\nbest cascade: {label} @ conf<{thr} -> {s['overall']*100:.1f}% at ${cost:.4f}/1k")
+        print(
+            f"\nbest cascade: {label} @ conf<{thr} -> {s['overall']*100:.1f}% at ${cost:.4f}/1k"
+        )
 
 
 if __name__ == "__main__":

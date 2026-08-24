@@ -19,10 +19,10 @@ machine-readable, which broke the promise in ORG_STRUCTURE §5.
 | Status | Loops |
 |---|---|
 | `proposed` | 438 |
-| `blocked` | 31 |
+| `blocked` | 29 |
 | `dormant` | 9 |
+| `gated` | 4 |
 | `active` | 3 |
-| `gated` | 2 |
 | `running` | 2 |
 
 > Only the `active`/`running` rows describe something that actually runs today — **5 of 485**, each citing the mechanism that closes it. The other statuses are written down, not cycling.

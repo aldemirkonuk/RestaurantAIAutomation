@@ -358,9 +358,15 @@ def test_lite_models_are_not_priced_as_full_flash():
     insertion-order lookup billed every lite call at full-flash rates."""
     from services.spend_logger import estimate_llm_cost
 
-    assert estimate_llm_cost("gemini-2.5-flash-lite", 1_000_000, 0) == pytest.approx(0.10)
-    assert estimate_llm_cost("gemini-2.5-flash-lite", 0, 1_000_000) == pytest.approx(0.40)
-    assert estimate_llm_cost("gemini-3.5-flash-lite", 0, 1_000_000) == pytest.approx(2.50)
+    assert estimate_llm_cost("gemini-2.5-flash-lite", 1_000_000, 0) == pytest.approx(
+        0.10
+    )
+    assert estimate_llm_cost("gemini-2.5-flash-lite", 0, 1_000_000) == pytest.approx(
+        0.40
+    )
+    assert estimate_llm_cost("gemini-3.5-flash-lite", 0, 1_000_000) == pytest.approx(
+        2.50
+    )
     # ...and the non-lite id must still resolve to the full-flash rate.
     assert estimate_llm_cost("gemini-3.5-flash", 0, 1_000_000) == pytest.approx(9.00)
 
@@ -537,3 +543,103 @@ def test_settings_has_manager_email_attribute():
     assert s.manager_email == "manager@test.com"
     assert s.gmail_user == "sender@test.com"
     assert s.gmail_password == "secret"
+
+
+# ---------------------------------------------------------------------------
+# Unpriced models (P1 readout): a false 0.0 must never reach the NF ledger.
+# ---------------------------------------------------------------------------
+
+
+def test_is_priced_model_knows_what_the_rate_table_covers():
+    from services.spend_logger import is_priced_model
+
+    assert is_priced_model("claude-haiku-4-5-20251001") is True
+    assert is_priced_model("gemini-2.5-flash") is True
+    # This assertion used to read `is_priced_model("gemini-3.6-flash") is False`,
+    # written when the table stopped at 2.5 and every 3.x successor was unpriced.
+    # ADR 0010 verified and added the 3.x rows, so 3.6-flash is now priced and the
+    # id no longer stands for "unpriced" — assert the new truth, and use an id that
+    # cannot ever be in the table for the negative case.
+    assert is_priced_model("gemini-3.6-flash") is True
+    assert is_priced_model("gemini-9.9-unreleased") is False
+    assert is_priced_model("") is False
+
+
+def test_unpriced_model_writes_null_nf_cost_not_a_false_zero():
+    """§2 sums cost_usd. An unpriced model must land NULL + a cost_basis reason,
+    while api_spend (cost_usd NOT NULL) still gets its 0.0 row."""
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger, estimate_llm_cost
+
+        # Was "gemini-3.6-flash", which ADR 0010 has since given a verified rate;
+        # the test needs an id the table genuinely cannot price, so it exercises
+        # the guard rather than the table's coverage on a given day.
+        model = "gemini-9.9-unreleased"
+        SpendLogger().log(
+            provider="google",
+            model=model,
+            input_tokens=146,
+            output_tokens=53,
+            cost_usd=estimate_llm_cost(model, 146, 53),
+            agent="email_intel_agent",
+            task_type="email_classification",
+            outcome="success",
+        )
+    finally:
+        p.stop()
+
+    nf = rows["neural_footprint_event"][0]
+    assert nf["cost_usd"] is None
+    assert nf["context"]["cost_basis"] == "unpriced_model"
+    assert nf["input_tokens"] == 146  # tokens are still real, cost is not
+    assert rows["api_spend"][0]["cost_usd"] == 0.0
+
+
+def test_priced_model_keeps_its_cost_and_carries_no_cost_basis_flag():
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(
+            provider="google",
+            model="gemini-2.5-flash",
+            input_tokens=146,
+            output_tokens=84,
+            cost_usd=0.000036,
+            agent="email_intel_agent",
+            task_type="email_classification",
+            outcome="success",
+        )
+    finally:
+        p.stop()
+
+    nf = rows["neural_footprint_event"][0]
+    assert nf["cost_usd"] == 0.000036
+    assert "cost_basis" not in nf["context"]
+
+
+def test_zero_token_zero_cost_call_is_not_flagged_unpriced():
+    """Search APIs log 0 tokens with a real cost; they must not be touched."""
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(
+            provider="serper",
+            model="serper-search",
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.001,
+            agent_fallback="web_verification_service",
+            task_type="web_verify",
+        )
+    finally:
+        p.stop()
+
+    nf = rows["neural_footprint_event"][0]
+    assert nf["cost_usd"] == 0.001
+    assert "cost_basis" not in nf["context"]

@@ -17,6 +17,7 @@ Thresholds:
 import asyncio
 import json
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 from services.text_normalizer import get_normalizer
@@ -564,6 +565,7 @@ Use web search to find accurate, real-world data. Return ONLY valid JSON with AL
                 temperature=0.1,
             )
 
+            _t0 = time.perf_counter()
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt,
@@ -591,6 +593,7 @@ Use web search to find accurate, real-world data. Return ONLY valid JSON with AL
                     agent_fallback="wine_matcher",
                     task_type="wine_enrichment_grounded",
                     outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                     context={"wine_name": str(wine_name)[:120]},
                 )
             except Exception:
@@ -649,6 +652,7 @@ Use web search to find accurate, real-world data. Return ONLY valid JSON with AL
             prompt = f"""You are a master sommelier. Research this wine: "{wine_desc}"
 Return ONLY valid JSON with: name, producer, vintage, wine_type, country, region, grape_variety, tasting_notes, food_pairings, confidence."""
 
+            _t0 = time.perf_counter()
             response = model.generate_content(
                 prompt, generation_config={"temperature": 0.1}
             )
@@ -674,6 +678,7 @@ Return ONLY valid JSON with: name, producer, vintage, wine_type, country, region
                     agent_fallback="wine_matcher",
                     task_type="wine_enrichment_fallback",
                     outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                     context={"wine_name": str(wine_name)[:120]},
                 )
             except Exception:

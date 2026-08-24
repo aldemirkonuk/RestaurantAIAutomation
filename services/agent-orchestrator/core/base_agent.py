@@ -757,8 +757,7 @@ class BaseAgent(ABC):
         """
         try:
             result = (
-                self.database.supabase.table("decision_log")
-                .insert(
+                self.database.supabase.table("decision_log").insert(
                     {
                         "agent_name": self.agent_name,
                         "decision_type": decision_type,
@@ -774,7 +773,13 @@ class BaseAgent(ABC):
                         "restaurant_id": restaurant_id,
                     }
                 )
-                .select("id")
+                # NO .select() here. supabase-py >= 2.x returns the inserted
+                # representation from .execute() already; chaining .select()
+                # onto the insert builder raises AttributeError
+                # ("'SyncQueryRequestBuilder' object has no attribute 'select'"),
+                # which this method's except-block swallowed. Result: decision_log
+                # took ZERO writes and every neural_footprint_event.correlation_id
+                # joined to nothing. Verified against supabase-py 2.28.0.
                 .execute()
             )
             if result.data and len(result.data) > 0:

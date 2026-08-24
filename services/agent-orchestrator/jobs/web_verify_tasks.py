@@ -20,6 +20,7 @@ Retry policy: max_retries=3, countdown 60→120→240s (matching haiku_tasks.py 
 
 import asyncio
 import logging
+import time
 from datetime import date, datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -300,6 +301,7 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
         logger.info("_verify_async: searching wine_id=%s query=%r", wine_id, query)
 
         # Execute Serper search
+        _t0 = time.perf_counter()
         snippets = await serper_search(query, num_results=5)
 
         # Log Serper spend (fixed $0.001/query per Starter plan).
@@ -316,6 +318,7 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
                 task_type="web_verify_search",
                 choice=f"search:{len(snippets)}_results",
                 outcome="success",  # call-level: search completed
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
                 context={"wine_id": wine_id, "results_count": len(snippets)},
             )
         except Exception:

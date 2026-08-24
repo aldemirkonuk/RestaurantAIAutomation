@@ -19,6 +19,7 @@ import hashlib
 import json
 import logging
 import re
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -71,7 +72,9 @@ CLASSIFICATION_PROMPT = (
     'Respond ONLY with valid JSON: {{"category": "...", "confidence": 0.0-1.0, '
     '"reasoning": "...", "provider_name": "...", "urgency": "low|medium|high"}}'
 )
-STALE_EMAIL_HOURS = 18  # per premortem R-06: skip digest accumulation for emails older than this
+STALE_EMAIL_HOURS = (
+    18  # per premortem R-06: skip digest accumulation for emails older than this
+)
 
 
 class EmailIntelAgent(BaseAgent):
@@ -136,7 +139,9 @@ class EmailIntelAgent(BaseAgent):
     async def initialize(self) -> None:
         # Create haiku_semaphore inside running event loop (AI-SPEC §3 pitfall 4)
         self.haiku_semaphore = get_haiku_semaphore()
-        self.logger.info("EmailIntelAgent initialized — listening on email.inbound.received")
+        self.logger.info(
+            "EmailIntelAgent initialized — listening on email.inbound.received"
+        )
 
     # =========================================================================
     # MESSAGE ENTRY POINT
@@ -204,7 +209,9 @@ class EmailIntelAgent(BaseAgent):
             if is_unknown:
                 await self._notify_unknown_sender(restaurant_id, sender_email, payload)
 
-        classification = await self._classify_email(email_subject, email_body)
+        classification = await self._classify_email(
+            email_subject, email_body, restaurant_id=restaurant_id or None
+        )
 
         await self.log_decision(
             decision_type="email_classification",
@@ -271,11 +278,14 @@ class EmailIntelAgent(BaseAgent):
     # GEMINI FLASH CLASSIFICATION
     # =========================================================================
 
-    async def _classify_email(self, subject: str, body: str) -> EmailClassification:
+    async def _classify_email(
+        self, subject: str, body: str, restaurant_id: Optional[str] = None
+    ) -> EmailClassification:
         from google.genai import types as genai_types
 
         gemini = get_gemini_client()
         prompt = CLASSIFICATION_PROMPT.format(subject=subject, body=body)
+        _t0 = time.perf_counter()
         response = gemini.models.generate_content(  # spend logged below (P1)
             model=self.settings.gemini_model,
             contents=prompt,
@@ -301,6 +311,7 @@ class EmailIntelAgent(BaseAgent):
                 ],
             ),
         )
+        _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
         # P1: previously an unlogged model call (dark site)
         try:
             from services.spend_logger import (
@@ -316,9 +327,11 @@ class EmailIntelAgent(BaseAgent):
                 input_tokens=_in,
                 output_tokens=_out,
                 cost_usd=estimate_llm_cost(self.settings.gemini_model, _in, _out),
+                restaurant_id=restaurant_id or None,
                 agent=self.agent_name,
                 task_type="email_classification",
                 outcome="success",  # call-level: response returned
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
                 correlation_id=getattr(self, "_current_correlation_id", None),
             )
         except Exception:
@@ -336,11 +349,17 @@ class EmailIntelAgent(BaseAgent):
         if primary.confidence >= self.settings.email_intel_escalation_threshold:
             return primary
 
-        escalated = await self._escalate_classification(subject, body, primary)
+        escalated = await self._escalate_classification(
+            subject, body, primary, restaurant_id=restaurant_id or None
+        )
         return escalated or primary
 
     async def _escalate_classification(
-        self, subject: str, body: str, primary: EmailClassification
+        self,
+        subject: str,
+        body: str,
+        primary: EmailClassification,
+        restaurant_id: Optional[str] = None,
     ) -> Optional[EmailClassification]:
         """
         Re-classify a low-confidence email on the escalation model.
@@ -352,13 +371,16 @@ class EmailIntelAgent(BaseAgent):
         model_id = self.settings.email_intel_escalation_model
         try:
             client = get_anthropic_client()
+            _t0 = time.perf_counter()
             response = await client.messages.create(
                 model=model_id,
                 max_tokens=512,
                 messages=[
                     {
                         "role": "user",
-                        "content": CLASSIFICATION_PROMPT.format(subject=subject, body=body),
+                        "content": CLASSIFICATION_PROMPT.format(
+                            subject=subject, body=body
+                        ),
                     }
                 ],
             )
@@ -374,9 +396,11 @@ class EmailIntelAgent(BaseAgent):
                     input_tokens=_in,
                     output_tokens=_out,
                     cost_usd=estimate_llm_cost(model_id, _in, _out),
+                    restaurant_id=restaurant_id or None,
                     agent=self.agent_name,
                     task_type="email_classification_escalation",
                     outcome="success",
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                     correlation_id=getattr(self, "_current_correlation_id", None),
                     context={"primary_confidence": primary.confidence},
                 )
@@ -427,7 +451,9 @@ class EmailIntelAgent(BaseAgent):
 
         # Haiku extraction gated by semaphore (AI-SPEC §3, T-24-04-03)
         async with self.haiku_semaphore:
-            details = await self._extract_promo(email_subject, email_body)
+            details = await self._extract_promo(
+                email_subject, email_body, restaurant_id=restaurant_id or None
+            )
 
         # Dedup check: SHA256(vendor_email + product_name + today)
         today_str = date.today().isoformat()
@@ -458,7 +484,9 @@ class EmailIntelAgent(BaseAgent):
         )
 
         # Cross-vendor price (D-18 — restaurant_inventory, NOT order_items.wine_id)
-        last_price = await self._get_last_purchase_price(restaurant_id, details.grape_variety)
+        last_price = await self._get_last_purchase_price(
+            restaurant_id, details.grape_variety
+        )
 
         # Insert to vendor_promotions
         insert_data: Dict[str, Any] = {
@@ -482,7 +510,11 @@ class EmailIntelAgent(BaseAgent):
         }
         promo_id: Optional[str] = None
         try:
-            result = self.database.supabase.table("vendor_promotions").insert(insert_data).execute()
+            result = (
+                self.database.supabase.table("vendor_promotions")
+                .insert(insert_data)
+                .execute()
+            )
             promo_id = result.data[0]["id"] if result.data else None
         except Exception as e:
             self.logger.error(f"vendor_promotions insert failed: {e}")
@@ -506,7 +538,9 @@ class EmailIntelAgent(BaseAgent):
                 pipe.expire(digest_key, 36 * 3600)  # 36h TTL per D-09
                 await pipe.execute()
             except Exception as e:
-                self.logger.warning(f"Redis digest accumulation failed (non-critical): {e}")
+                self.logger.warning(
+                    f"Redis digest accumulation failed (non-critical): {e}"
+                )
 
         # In-app notification (D-03 — direct Supabase INSERT, NOT HTTP to NestJS)
         title = f"🏷️ Deal: {details.product_name}"
@@ -529,7 +563,9 @@ class EmailIntelAgent(BaseAgent):
     # HAIKU EXTRACTION
     # =========================================================================
 
-    async def _extract_promo(self, subject: str, body: str) -> PromoDetails:
+    async def _extract_promo(
+        self, subject: str, body: str, restaurant_id: Optional[str] = None
+    ) -> PromoDetails:
         haiku = get_haiku_client()
         prompt = (
             "Extract structured deal information from this promotional wine vendor email.\n"
@@ -539,6 +575,7 @@ class EmailIntelAgent(BaseAgent):
             "conditions, confidence (0.0-1.0)\n\n"
             f"Subject: {subject}\n\nBody:\n{body}"
         )
+        _t0 = time.perf_counter()
         response = await haiku.messages.create(
             model=self.settings.haiku_model,
             max_tokens=512,
@@ -557,9 +594,11 @@ class EmailIntelAgent(BaseAgent):
                 input_tokens=_in,
                 output_tokens=_out,
                 cost_usd=estimate_llm_cost(self.settings.haiku_model, _in, _out),
+                restaurant_id=restaurant_id or None,
                 agent=self.agent_name,
                 task_type="promo_extraction",
                 outcome="success",  # call-level: completion returned
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
                 correlation_id=getattr(self, "_current_correlation_id", None),
             )
         except Exception:
@@ -591,7 +630,9 @@ class EmailIntelAgent(BaseAgent):
                 epoch_ms = int(received_at_str)
                 received_dt = datetime.fromtimestamp(epoch_ms / 1000, tz=timezone.utc)
             else:
-                received_dt = datetime.fromisoformat(str(received_at_str).replace("Z", "+00:00"))
+                received_dt = datetime.fromisoformat(
+                    str(received_at_str).replace("Z", "+00:00")
+                )
                 if received_dt.tzinfo is None:
                     received_dt = received_dt.replace(tzinfo=timezone.utc)
             cutoff = datetime.now(tz=timezone.utc) - timedelta(hours=STALE_EMAIL_HOURS)
@@ -621,7 +662,9 @@ class EmailIntelAgent(BaseAgent):
         try:
             inv_result = (
                 self.database.supabase.table("restaurant_inventory")
-                .select("stock_live, threshold_min, master_wine_library!inner(grape_variety)")
+                .select(
+                    "stock_live, threshold_min, master_wine_library!inner(grape_variety)"
+                )
                 .eq("restaurant_id", restaurant_id)
                 .not_.is_("stock_live", "null")
                 .limit(1)
@@ -631,7 +674,8 @@ class EmailIntelAgent(BaseAgent):
                 for row in inv_result.data:
                     mwl = row.get("master_wine_library") or {}
                     if isinstance(mwl, dict) and (
-                        grape_variety.lower() in (mwl.get("grape_variety") or "").lower()
+                        grape_variety.lower()
+                        in (mwl.get("grape_variety") or "").lower()
                     ):
                         stock_live = row.get("stock_live", 0) or 0
                         threshold_min = max(1, row.get("threshold_min", 1) or 1)
@@ -754,7 +798,10 @@ class EmailIntelAgent(BaseAgent):
                 mwl = row.get("master_wine_library") or {}
                 if isinstance(mwl, dict):
                     variety = (mwl.get("grape_variety") or "").lower()
-                    if grape_variety.lower() in variety or variety in grape_variety.lower():
+                    if (
+                        grape_variety.lower() in variety
+                        or variety in grape_variety.lower()
+                    ):
                         price = row.get("last_purchase_price")
                         if price is not None:
                             return float(price)
@@ -802,7 +849,9 @@ class EmailIntelAgent(BaseAgent):
             }
             if metadata:
                 insert_payload["metadata"] = metadata
-            self.database.supabase.table("notifications").insert(insert_payload).execute()
+            self.database.supabase.table("notifications").insert(
+                insert_payload
+            ).execute()
         except Exception as e:
             self.logger.warning(f"Notification insert failed (non-critical): {e}")
 

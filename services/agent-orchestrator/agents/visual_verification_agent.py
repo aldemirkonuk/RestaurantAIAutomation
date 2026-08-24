@@ -16,6 +16,7 @@ import asyncio
 import base64
 import io
 import json
+import time
 
 from core.base_agent import BaseAgent
 from core.database import OrderInteraction
@@ -588,6 +589,7 @@ class VisualVerificationAgent(BaseAgent):
 
         try:
             haiku = _get_haiku()
+            _t0 = time.perf_counter()
             response = await haiku.messages.create(
                 model=_HAIKU_MODEL,
                 max_tokens=512,
@@ -646,6 +648,7 @@ class VisualVerificationAgent(BaseAgent):
                 task_type="invoice_extraction",
                 choice="invoice:parse_failed" if parse_failed else "invoice:parsed",
                 outcome="partial" if parse_failed else "success",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
                 correlation_id=getattr(self, "_current_correlation_id", None),
             )
         except Exception:

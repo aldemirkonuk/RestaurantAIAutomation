@@ -6,6 +6,7 @@ Provides fallback mechanisms and confidence scoring
 
 import logging
 import os
+import time
 from typing import Dict, Optional
 import asyncio
 from config.settings import get_settings
@@ -119,6 +120,7 @@ class AuctionWineService:
         prompt = self._build_research_prompt(wine_name)
 
         try:
+            _t0 = time.perf_counter()
             response = await asyncio.to_thread(
                 self.gemini_model.generate_content, prompt
             )
@@ -144,6 +146,7 @@ class AuctionWineService:
                     agent_fallback="auction_wine_service",
                     task_type="auction_wine_research",
                     outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                     context={"wine_name": str(wine_name)[:120]},
                 )
             except Exception:
@@ -162,9 +165,10 @@ class AuctionWineService:
         prompt = self._build_research_prompt(wine_name)
 
         try:
+            _t0 = time.perf_counter()
             response = await asyncio.to_thread(
                 self.openai_client.chat.completions.create,
-                model="gpt-4-turbo-preview",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "system",
@@ -184,13 +188,14 @@ class AuctionWineService:
                 _out = getattr(_usage, "completion_tokens", 0) or 0
                 get_spend_logger().log(
                     provider="openai",
-                    model="gpt-4-turbo-preview",
+                    model="gpt-4o",
                     input_tokens=_in,
                     output_tokens=_out,
-                    cost_usd=estimate_llm_cost("gpt-4-turbo-preview", _in, _out),
+                    cost_usd=estimate_llm_cost("gpt-4o", _in, _out),
                     agent_fallback="auction_wine_service",
                     task_type="auction_wine_research",
                     outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                     context={"wine_name": str(wine_name)[:120]},
                 )
             except Exception:

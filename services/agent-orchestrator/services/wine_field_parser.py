@@ -12,6 +12,7 @@ Pipeline:
 import json
 import logging
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -571,6 +572,7 @@ class WineFieldParser:
         client, config = llm
 
         try:
+            _t0 = time.perf_counter()
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt["user"],
@@ -596,6 +598,7 @@ class WineFieldParser:
                     agent_fallback="wine_field_parser",
                     task_type="wine_field_parse",
                     outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                 )
             except Exception:
                 pass

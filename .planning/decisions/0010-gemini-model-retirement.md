@@ -157,7 +157,8 @@ logged "Haiku calls will fail" while the SDK quietly fell back to its own env va
   containing no dates yields 3 fabricated `provider_important_dates` rows at
   confidence 0.6 labelled `source="llm_extraction"`. Pre-existing and below the
   0.7 gate for `calendar_events`, but restoring the LLM path makes the fallback
-  rarer without making it correct. Filed as OD-60.
+  rarer without making it correct. Filed as OD-63 (filed as OD-60; renumbered
+  on the merge with `main`, which had independently allocated 58/59/60).
 - Spend figures will **jump** — not because spend rose, but because it was being
   under-recorded. Expect roughly an order of magnitude on thinking-enabled models.
   Do not read this as a regression.
@@ -175,7 +176,8 @@ logged "Haiku calls will fail" while the SDK quietly fell back to its own env va
   both models 404 — but it is a behaviour change, recorded here rather than left
   for someone to discover.
 - **The Anthropic rows turned out to carry the same bug** (checked after the fact
-  at the founder's request, closing most of OD-59). `claude-haiku` was priced
+  at the founder's request, closing most of OD-62 — filed as OD-59, renumbered
+  on the merge with `main`). `claude-haiku` was priced
   `(0.80, 4.00)` — Claude Haiku **3.5**'s retired rate — against the
   `claude-haiku-4-5-20251001` this repo actually calls, whose published rate is
   `1.00 / 5.00`. That under-recorded 20% across **11 call sites**, the

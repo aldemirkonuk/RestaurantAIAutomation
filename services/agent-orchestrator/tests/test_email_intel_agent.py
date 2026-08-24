@@ -45,7 +45,9 @@ def _make_db_mock(existing_promo_data=None, insert_data=None):
     chain.not_ = chain
     chain.is_.return_value = chain
     # Default: empty rows, successful insert
-    chain.execute.return_value.data = existing_promo_data if existing_promo_data is not None else []
+    chain.execute.return_value.data = (
+        existing_promo_data if existing_promo_data is not None else []
+    )
     db.supabase.table.return_value = chain
     return db, chain
 
@@ -145,7 +147,9 @@ async def test_noise_email_silent_discard():
 
     with patch.object(agent, "_check_idempotency", return_value=False), patch.object(
         agent, "_classify_email", return_value=_mock_classification("NOISE")
-    ), patch.object(agent, "_mark_processed", new_callable=AsyncMock) as mock_mark, patch.object(
+    ), patch.object(
+        agent, "_mark_processed", new_callable=AsyncMock
+    ) as mock_mark, patch.object(
         agent, "_notify", new_callable=AsyncMock
     ) as mock_notify:
         await agent.process_message(payload)
@@ -170,7 +174,9 @@ async def test_operational_email_republishes_to_received():
         agent, "_classify_email", return_value=_mock_classification("OPERATIONAL")
     ), patch.object(agent, "_mark_processed", new_callable=AsyncMock), patch.object(
         agent, "_notify", new_callable=AsyncMock
-    ), patch.object(agent, "publish", new_callable=AsyncMock) as mock_publish:
+    ), patch.object(
+        agent, "publish", new_callable=AsyncMock
+    ) as mock_publish:
         await agent.process_message(payload)
 
     mock_publish.assert_called_once()
@@ -200,11 +206,17 @@ async def test_promo_email_inserts_to_vendor_promotions():
 
     with patch.object(agent, "_check_idempotency", return_value=False), patch.object(
         agent, "_classify_email", return_value=_mock_classification("PROMO")
-    ), patch.object(agent, "_extract_promo", return_value=_mock_promo_details()), patch.object(
+    ), patch.object(
+        agent, "_extract_promo", return_value=_mock_promo_details()
+    ), patch.object(
         agent, "_compute_urgency_score", return_value=7.5
-    ), patch.object(agent, "_find_linked_events", return_value=["evt-001"]), patch.object(
+    ), patch.object(
+        agent, "_find_linked_events", return_value=["evt-001"]
+    ), patch.object(
         agent, "_get_last_purchase_price", return_value=45.0
-    ), patch.object(agent, "_mark_processed", new_callable=AsyncMock), patch.object(
+    ), patch.object(
+        agent, "_mark_processed", new_callable=AsyncMock
+    ), patch.object(
         agent, "_notify", new_callable=AsyncMock
     ):
         await agent.process_message(payload)
@@ -240,9 +252,13 @@ async def test_promo_dedup_prevents_duplicate_insert():
 
     with patch.object(agent, "_check_idempotency", return_value=False), patch.object(
         agent, "_classify_email", return_value=_mock_classification("PROMO")
-    ), patch.object(agent, "_extract_promo", return_value=_mock_promo_details()), patch.object(
+    ), patch.object(
+        agent, "_extract_promo", return_value=_mock_promo_details()
+    ), patch.object(
         agent, "_mark_processed", new_callable=AsyncMock
-    ), patch.object(agent, "_notify", new_callable=AsyncMock):
+    ), patch.object(
+        agent, "_notify", new_callable=AsyncMock
+    ):
         # Patch the dedup check to return existing data
         with patch.object(agent, "_handle_promo") as mock_handle_promo:
             # We need to test _handle_promo directly with mocked dedup
@@ -257,9 +273,9 @@ async def test_promo_dedup_prevents_duplicate_insert():
     promo_details = _mock_promo_details()
     classification = _mock_classification("PROMO")
 
-    with patch.object(agent2, "_extract_promo", return_value=promo_details), patch.object(
-        agent2, "_notify", new_callable=AsyncMock
-    ):
+    with patch.object(
+        agent2, "_extract_promo", return_value=promo_details
+    ), patch.object(agent2, "_notify", new_callable=AsyncMock):
         await agent2._handle_promo(
             payload=_promo_payload(gmail_message_id="dup-msg"),
             classification=classification,
@@ -298,11 +314,17 @@ async def test_stale_email_skips_redis_digest():
 
     with patch.object(agent, "_check_idempotency", return_value=False), patch.object(
         agent, "_classify_email", return_value=_mock_classification("PROMO")
-    ), patch.object(agent, "_extract_promo", return_value=_mock_promo_details()), patch.object(
+    ), patch.object(
+        agent, "_extract_promo", return_value=_mock_promo_details()
+    ), patch.object(
         agent, "_compute_urgency_score", return_value=3.0
-    ), patch.object(agent, "_find_linked_events", return_value=[]), patch.object(
+    ), patch.object(
+        agent, "_find_linked_events", return_value=[]
+    ), patch.object(
         agent, "_get_last_purchase_price", return_value=None
-    ), patch.object(agent, "_mark_processed", new_callable=AsyncMock), patch.object(
+    ), patch.object(
+        agent, "_mark_processed", new_callable=AsyncMock
+    ), patch.object(
         agent, "_notify", new_callable=AsyncMock
     ):
         await agent.process_message(payload)
@@ -375,11 +397,15 @@ async def test_haiku_semaphore_acquired_during_extraction():
 
     agent.haiku_semaphore = TrackingSemaphore()
 
-    with patch.object(agent, "_extract_promo", return_value=_mock_promo_details()), patch.object(
-        agent, "_compute_urgency_score", return_value=5.0
-    ), patch.object(agent, "_find_linked_events", return_value=[]), patch.object(
+    with patch.object(
+        agent, "_extract_promo", return_value=_mock_promo_details()
+    ), patch.object(agent, "_compute_urgency_score", return_value=5.0), patch.object(
+        agent, "_find_linked_events", return_value=[]
+    ), patch.object(
         agent, "_get_last_purchase_price", return_value=None
-    ), patch.object(agent, "_notify", new_callable=AsyncMock):
+    ), patch.object(
+        agent, "_notify", new_callable=AsyncMock
+    ):
         await agent._handle_promo(
             payload=_promo_payload(),
             classification=_mock_classification("PROMO"),
@@ -387,7 +413,9 @@ async def test_haiku_semaphore_acquired_during_extraction():
             is_stale=False,
         )
 
-    assert len(acquired) == 1, "Semaphore must be acquired exactly once per PROMO extraction"
+    assert (
+        len(acquired) == 1
+    ), "Semaphore must be acquired exactly once per PROMO extraction"
 
 
 # ---------------------------------------------------------------------------
@@ -406,9 +434,13 @@ async def test_idempotency_skips_duplicate_message():
         "received_at": datetime.now(tz=timezone.utc).isoformat(),
     }
 
-    with patch.object(agent, "_check_idempotency", return_value=True) as mock_check, patch.object(
+    with patch.object(
+        agent, "_check_idempotency", return_value=True
+    ) as mock_check, patch.object(
         agent, "_triage_inbound", new_callable=AsyncMock
-    ) as mock_triage, patch.object(agent, "_mark_processed", new_callable=AsyncMock) as mock_mark:
+    ) as mock_triage, patch.object(
+        agent, "_mark_processed", new_callable=AsyncMock
+    ) as mock_mark:
         await agent.process_message(payload)
 
     mock_check.assert_called_once_with("email_intel:already-processed-msg")
@@ -507,7 +539,9 @@ async def test_escalation_parses_json_embedded_in_prose():
     agent = _agent()
     client = _anthropic_returning(f"Looking at this:\n```json\n{ESCALATION_JSON}\n```")
     with patch("agents.email_intel_agent.get_anthropic_client", return_value=client):
-        result = await agent._escalate_classification("s", "b", MagicMock(confidence=0.2))
+        result = await agent._escalate_classification(
+            "s", "b", MagicMock(confidence=0.2)
+        )
 
     assert result is not None and result.category == "PROMO"
     assert client.messages.create.await_args.kwargs["model"] == "claude-sonnet-5"
@@ -517,4 +551,7 @@ async def test_escalation_returns_none_when_no_json_present():
     agent = _agent()
     client = _anthropic_returning("I am unable to classify this.")
     with patch("agents.email_intel_agent.get_anthropic_client", return_value=client):
-        assert await agent._escalate_classification("s", "b", MagicMock(confidence=0.2)) is None
+        assert (
+            await agent._escalate_classification("s", "b", MagicMock(confidence=0.2))
+            is None
+        )

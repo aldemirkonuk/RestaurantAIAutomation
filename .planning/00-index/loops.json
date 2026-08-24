@@ -1271,7 +1271,8 @@
   "id": "fin-cost-efficiency-review",
   "owner": "finance-pricing",
   "close_time": "weekly",
-  "status": "blocked",
+  "status": "gated",
+  "evidence": "P1 shipped the bridge this loop was blocked on. neural_footprint_event carries subject_id + context.task_type; `python3 scripts/nf_readout.py` returns cost per agent per task type with no hand-written SQL. nf_a.retry_rate reads context.attempts, emitted by the gateway wrapper (model-client.service.ts:223).",
   "measures": [
    "nf_a.cost_per_completed_task",
    "nf_a.cost_per_api_call",
@@ -1449,7 +1450,8 @@
   "id": "ic-cost-efficiency-review",
   "owner": "inference-cost",
   "close_time": "weekly",
-  "status": "blocked",
+  "status": "gated",
+  "evidence": "P1 shipped the bridge. neural_footprint_event carries subject_id + context.task_type; `python3 scripts/nf_readout.py` returns cost per agent per task type with no hand-written SQL. The doneability half of the old blocker is unresolved and is why this is gated, not active.",
   "measures": [
    "nf_a.cost_per_completed_task",
    "nf_a.cost_per_api_call",
