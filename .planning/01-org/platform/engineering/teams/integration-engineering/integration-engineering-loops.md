@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[integration-engineering-charter]]", "[[integration-engineering-premortem]]", "[[integration-engineering-directive]]", "[[engineering-loops]]", "[[platform-api-charter]]", "[[dat-pos-telemetry-ingest]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_count: 5
+loop_count: 5
 loop_ids: ["ie-webhook-silence-watch", "ie-signature-coverage", "ie-placeholder-host-resolution", "ie-arrival-vs-fitness-triage", "ie-third-party-contract-drift"]
 loop_close_times: ["hourly", "weekly", "one-shot, then per-PR", "weekly", "daily"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]

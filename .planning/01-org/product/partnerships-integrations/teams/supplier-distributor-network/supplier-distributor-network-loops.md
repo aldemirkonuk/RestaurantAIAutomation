@@ -16,6 +16,7 @@ links:
   - "[[LOOP-MAP]]"
 loop_count: 4
 loop_count: 4
+loop_count: 4
 loop_ids: ["sdn-counterparty-liveness", "sdn-feed-freshness", "sdn-publish-state", "sdn-boundary-pressure"]
 loop_close_times: ["weekly", "daily", "per-page-creation", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]

@@ -8,6 +8,7 @@ updated: 2026-08-24
 links: ["[[red-team-charter]]", "[[red-team-premortem]]", "[[red-team-directive]]", "[[red-team-schedule]]", "[[red-team-agenda-board]]", "[[decision-office-charter]]", "[[architecture-review-charter]]", "[[security-charter]]", "[[LOOP-MAP]]", "[[ORG_STRUCTURE]]"]
 loop_count: 6
 loop_count: 6
+loop_count: 6
 loop_ids: ["rt-new-lock-attack", "rt-finding-return", "rt-undeclared-decision-sweep", "rt-premortem-reality-check", "rt-self-audit", "rt-aged-finding-escalation"]
 loop_close_times: ["7d_from_lock", "72h", "monthly", "quarterly", "quarterly", "30d_hard"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]

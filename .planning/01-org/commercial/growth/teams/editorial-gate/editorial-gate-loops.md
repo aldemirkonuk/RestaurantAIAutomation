@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[editorial-gate-charter]]", "[[editorial-gate-premortem]]", "[[editorial-gate-directive]]", "[[editorial-gate-schedule]]", "[[growth-loops]]", "[[content-production-loops]]", "[[brand-identity-charter]]", "[[design-partner-operations-charter]]", "[[LOOP-MAP]]"]
 loop_count: 3
 loop_count: 3
+loop_count: 3
 loop_ids: ["g3-verdict-health", "g3-rule-amendment", "g3-published-claim-reaudit"]
 loop_close_times: ["weekly", "monthly", "quarterly"]
 loop_statuses: ["proposed", "proposed", "proposed"]

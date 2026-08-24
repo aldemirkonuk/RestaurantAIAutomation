@@ -8,6 +8,7 @@ updated: 2026-08-24
 links: ["[[analytics-bi-charter]]", "[[analytics-bi-premortem]]", "[[analytics-bi-directive]]", "[[analytics-bi-schedule]]", "[[analytics-engine-loops]]", "[[insight-narrative-generation-loops]]", "[[metric-contract-truth-assurance-loops]]", "[[data-charter]]", "[[security-charter]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
 loop_count: 7
 loop_count: 7
+loop_count: 7
 loop_ids: ["analytics-candidate-reach", "analytics-insight-acceptance", "analytics-metric-contract-integrity", "analytics-ground-truth-agreement", "analytics-test-coverage-inversion", "analytics-consultant-enablement-expiry", "analytics-published-claim-provenance"]
 loop_close_times: ["weekly", "biweekly", "weekly", "monthly", "monthly", "weekly", "per-publication, audited monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "blocked", "proposed", "proposed", "proposed"]

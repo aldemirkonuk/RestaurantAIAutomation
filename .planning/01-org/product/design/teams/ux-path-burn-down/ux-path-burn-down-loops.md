@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[ux-path-burn-down-charter]]", "[[ux-path-burn-down-premortem]]", "[[ux-path-burn-down-directive]]", "[[design-loops]]", "[[LOOP-MAP]]", "[[engineering-charter]]", "[[data-charter]]", "[[decision-office-charter]]", "[[UX_PATHS_CATALOG]]"]
 loop_count: 4
 loop_count: 4
+loop_count: 4
 loop_ids: ["uxb-blocker-reconciliation", "uxb-close-rate-vs-service", "uxb-endpoint-blocked-escalation", "uxb-inflow-from-reality"]
 loop_close_times: ["weekly", "monthly", "monthly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]

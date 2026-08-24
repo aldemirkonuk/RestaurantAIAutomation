@@ -16,6 +16,7 @@ links:
   - "[[LOOP-MAP]]"
 loop_count: 4
 loop_count: 4
+loop_count: 4
 loop_ids: ["pad-counterparty-ledger", "pad-od07-decay", "pad-reachability-triage", "pad-guest-firewall"]
 loop_close_times: ["monthly", "monthly", "per-candidate", "per-artifact"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]

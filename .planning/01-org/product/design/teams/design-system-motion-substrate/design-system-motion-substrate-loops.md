@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[design-system-motion-substrate-charter]]", "[[design-system-motion-substrate-premortem]]", "[[design-system-motion-substrate-directive]]", "[[design-loops]]", "[[LOOP-MAP]]", "[[ux-path-burn-down-charter]]", "[[exploration-studio-charter]]", "[[client-surfaces-charter]]", "[[decision-office-charter]]"]
 loop_count: 4
 loop_count: 4
+loop_count: 4
 loop_ids: ["dss-composition-vs-documentation", "dss-token-divergence", "dss-a11y-enforcement", "dss-motion-convergence"]
 loop_close_times: ["monthly", "monthly", "weekly", "biweekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]

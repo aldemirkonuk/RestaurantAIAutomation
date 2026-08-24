@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[corpora-enrichment-charter]]", "[[corpora-enrichment-premortem]]", "[[corpora-enrichment-directive]]", "[[corpora-enrichment-schedule]]", "[[data-loops]]", "[[annotation-ground-truth-loops]]", "[[substrate-quality-coverage-loops]]", "[[LOOP-MAP]]"]
 loop_count: 4
 loop_count: 4
+loop_count: 4
 loop_ids: ["enrichment-demand-reprioritization", "enrichment-depth-cost", "external-source-canary", "enrichment-repair"]
 loop_close_times: ["weekly", "weekly", "daily", "weekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]

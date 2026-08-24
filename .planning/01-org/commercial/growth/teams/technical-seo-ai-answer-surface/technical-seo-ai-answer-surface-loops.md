@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[technical-seo-ai-answer-surface-charter]]", "[[technical-seo-ai-answer-surface-premortem]]", "[[technical-seo-ai-answer-surface-directive]]", "[[technical-seo-ai-answer-surface-schedule]]", "[[growth-loops]]", "[[content-production-loops]]", "[[search-demand-research-loops]]", "[[conversion-funnel-loops]]", "[[client-surfaces-charter]]", "[[security-charter]]", "[[LOOP-MAP]]"]
 loop_count: 4
 loop_count: 4
+loop_count: 4
 loop_ids: ["g4-crawl-surface-census", "g4-extraction-citation", "g4-requirement-ownership", "g4-exposure-review"]
 loop_close_times: ["weekly, and per deploy", "monthly", "weekly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]

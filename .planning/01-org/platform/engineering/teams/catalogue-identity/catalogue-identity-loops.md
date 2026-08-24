@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[catalogue-identity-charter]]", "[[catalogue-identity-premortem]]", "[[catalogue-identity-directive]]", "[[engineering-loops]]", "[[dat-annotation-ground-truth]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_count: 5
+loop_count: 5
 loop_ids: ["ci-merge-policy-scoring", "ci-labelled-set-coverage", "ci-producer-collapse-watch", "ci-unmerge-attribution-audit", "ci-guest-identity-boundary"]
 loop_close_times: ["per-PR", "weekly", "weekly", "per-event", "weekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]

@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[runtime-resilience-charter]]", "[[runtime-resilience-directive]]", "[[reliability-sre-loops]]", "[[observability-telemetry-plumbing-loops]]", "[[state-integrity-invariants-loops]]"]
 loop_count: 5
 loop_count: 5
+loop_count: 5
 loop_ids: ["res-dead-letter-drain", "res-circuit-breaker-health", "res-retry-budget", "res-backpressure-eviction", "res-degradation-control-readiness"]
 loop_close_times: ["weekly, immediate when oldest exceeds one close-time", "weekly", "monthly, immediate during a dependency incident", "monthly, immediate on any stock or money eviction", "quarterly, riding the department's L-SRE-3"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]

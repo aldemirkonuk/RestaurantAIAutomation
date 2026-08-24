@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[consumer-app-points-economy-charter]]", "[[consumer-app-points-economy-directive]]", "[[consumer-app-points-economy-premortem]]", "[[guest-experience-loops]]", "[[taste-fingerprint-loops]]", "[[guest-identity-consent-loops]]", "[[security-charter]]", "[[design-charter]]", "[[LOOP-MAP]]"]
 loop_count: 4
 loop_count: 4
+loop_count: 4
 loop_ids: ["nf-b-signal-volume", "points-abuse-posture", "ledger-integrity", "consumer-surface-retention"]
 loop_close_times: ["weekly", "weekly", "per-commit", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]

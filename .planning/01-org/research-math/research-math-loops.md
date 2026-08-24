@@ -8,6 +8,7 @@ updated: 2026-08-24
 links: ["[[research-math-charter]]", "[[research-math-directive]]", "[[research-math-schedule]]", "[[harness-model-routing-loops]]", "[[evaluation-doneability-loops]]", "[[neural-footprint-instrumentation-loops]]", "[[data-charter]]", "[[engineering-charter]]", "[[security-charter]]", "[[analytics-bi-charter]]", "[[aio-evaluation-gates]]", "[[aio-model-routing]]", "[[decision-office-charter]]"]
 loop_count: 6
 loop_count: 6
+loop_count: 6
 loop_ids: ["nf-a-emission-completeness", "cost-per-completed-task", "doneability-verdict-coverage", "harness-overhead-bakeoff", "nf-schema-contract", "applied-ai-seam-audit"]
 loop_close_times: ["weekly", "monthly", "weekly", "6 weeks to a decision, then quarterly re-run", "fortnightly until OD-11 closes", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]

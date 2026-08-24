@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[exploration-studio-charter]]", "[[exploration-studio-premortem]]", "[[exploration-studio-directive]]", "[[design-loops]]", "[[LOOP-MAP]]", "[[ux-path-burn-down-charter]]", "[[design-system-motion-substrate-charter]]", "[[decision-office-charter]]"]
 loop_count: 4
 loop_count: 4
+loop_count: 4
 loop_ids: ["exp-convergence", "exp-index-integrity", "exp-handoff", "exp-motion-corpus-drain"]
 loop_close_times: ["biweekly", "biweekly", "biweekly", "biweekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]

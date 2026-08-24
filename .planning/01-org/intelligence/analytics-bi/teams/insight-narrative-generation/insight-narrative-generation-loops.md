@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[insight-narrative-generation-charter]]", "[[insight-narrative-generation-premortem]]", "[[insight-narrative-generation-directive]]", "[[insight-narrative-generation-schedule]]", "[[analytics-bi-loops]]", "[[analytics-engine-loops]]", "[[metric-contract-truth-assurance-loops]]", "[[guest-experience-charter]]", "[[security-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_count: 5
+loop_count: 5
 loop_ids: ["narrative-insight-acceptance", "narrative-feedback-coverage", "narrative-served-distribution", "narrative-support-floor-integrity", "narrative-consultant-expiry"]
 loop_close_times: ["biweekly", "monthly", "biweekly, alongside N1", "per PR (CI), reviewed monthly", "weekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]

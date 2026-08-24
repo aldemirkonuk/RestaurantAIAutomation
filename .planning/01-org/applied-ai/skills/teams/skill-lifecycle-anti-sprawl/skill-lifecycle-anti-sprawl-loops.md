@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[skill-lifecycle-anti-sprawl-charter]]", "[[skill-lifecycle-anti-sprawl-directive]]", "[[skill-lifecycle-anti-sprawl-schedule]]", "[[skills-loops]]", "[[skill-registry-authoring-loops]]", "[[ai-orchestration-charter]]", "[[ORG_STRUCTURE]]"]
 loop_count: 3
 loop_count: 3
+loop_count: 3
 loop_ids: ["skill-firing-telemetry", "skill-staleness-review", "skill-ceiling-paired-deletion"]
 loop_close_times: ["weekly", "monthly", "per-merge"]
 loop_statuses: ["blocked", "blocked", "proposed"]

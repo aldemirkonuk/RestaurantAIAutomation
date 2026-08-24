@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[neural-footprint-instrumentation-charter]]", "[[neural-footprint-instrumentation-directive]]", "[[neural-footprint-instrumentation-schedule]]", "[[research-math-loops]]", "[[harness-model-routing-loops]]", "[[evaluation-doneability-loops]]", "[[data-charter]]", "[[security-charter]]", "[[analytics-bi-charter]]", "[[guest-experience-charter]]", "[[decision-office-charter]]"]
 loop_count: 7
 loop_count: 7
+loop_count: 7
 loop_ids: ["nf-a-event-completeness", "nf-join-key", "private-telemetry-containment", "nf-schema-contract-od11", "spend-reconciliation", "unauthenticated-inference-spend-feed", "nf-b-contract-and-nf-c-gate"]
 loop_close_times: ["weekly", "2 weeks, one-shot, then verified weekly", "weekly", "fortnightly until OD-11 closes", "monthly", "first reading within 4 weeks, then weekly", "monthly for NF-B; quarterly trigger check for NF-C"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]

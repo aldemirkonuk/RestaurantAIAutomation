@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[corpus-archive-charter]]", "[[corpus-archive-premortem]]", "[[corpus-archive-directive]]", "[[corpus-archive-schedule]]", "[[knowledge-documentation-loops]]", "[[graph-retrieval-loops]]", "[[LOOP-MAP]]"]
 loop_count: 3
 loop_count: 3
+loop_count: 3
 loop_ids: ["ca-duplicate-burndown", "ca-placement-drift", "ca-archive-integrity"]
 loop_close_times: ["weekly", "weekly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed"]

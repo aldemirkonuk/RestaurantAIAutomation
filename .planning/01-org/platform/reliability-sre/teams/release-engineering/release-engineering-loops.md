@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[release-engineering-charter]]", "[[release-engineering-directive]]", "[[reliability-sre-loops]]", "[[state-integrity-invariants-loops]]", "[[observability-telemetry-plumbing-charter]]"]
 loop_count: 5
 loop_count: 5
+loop_count: 5
 loop_ids: ["rel-restore-proving", "rel-revert-timing", "rel-red-gate-resolution", "rel-env-drift", "rel-recovery-first-use-review"]
 loop_close_times: ["quarterly", "quarterly (exercised), immediate (real revert)", "weekly", "monthly, immediate on a bypass finding", "within one week of any first use"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]

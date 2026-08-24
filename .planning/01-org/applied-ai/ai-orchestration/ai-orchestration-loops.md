@@ -8,6 +8,7 @@ updated: 2026-08-24
 links: ["[[ai-orchestration-charter]]", "[[ai-orchestration-directive]]", "[[ai-orchestration-schedule]]", "[[harness-runtime-loops]]", "[[agent-fleet-loops]]", "[[model-routing-inference-economics-loops]]", "[[agent-evaluation-gates-loops]]", "[[action-safety-the-human-gate-loops]]", "[[research-and-math-charter]]", "[[reliability-charter]]", "[[skills-charter]]", "[[LOOP-MAP]]"]
 loop_count: 7
 loop_count: 7
+loop_count: 7
 loop_ids: ["loop-eval-gate-ci", "loop-harness-health", "loop-fleet-doneability", "loop-routing-economics", "loop-eval-coverage", "loop-human-gate-integrity", "loop-od03-harness-fork"]
 loop_close_times: ["per-commit", "daily", "weekly", "weekly", "weekly", "daily for unconfirmed-mutation count, monthly for the behavioural signals", "one-shot — a dated bake-off, not a cadence"]
 loop_statuses: ["active", "proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]

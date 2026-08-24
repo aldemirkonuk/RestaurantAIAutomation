@@ -21,7 +21,7 @@ links: ["[[AGENDA]]", "[[HOME]]", "[[ORG-MAP]]", "[[LOOP-MAP]]", "[[SCENARIO-MAP
 | **Operational** — scenario rituals | ✅ Built. 17 scenarios, all `status: proposed` |
 | **Decisions** | 🟡 **49 open**, several 🔴. Fill-to-drain ratio measured at 7:1 |
 | **Instrumentation (L4)** | ❌ Emits nothing. This is the bottleneck for everything below |
-| **Loops** | ❌ **4 of 482 running.** The org is designed, not operating |
+| **Loops** | 🟡 **6 of 482 running** (was 5). The watcher is the first loop this chapter produced |
 | **Security** | 🟢 Five holes closed and merged (PRs #31, #32) |
 | **CI** | 🔴 Schema parity has never compared anything (PR #33 / OD-49) |
 

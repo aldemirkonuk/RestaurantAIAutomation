@@ -8,12 +8,17 @@ updated: 2026-08-24
 links: ["[[decision-office-charter]]", "[[decision-office-premortem]]", "[[decision-office-directive]]", "[[decision-office-schedule]]", "[[LOOP-MAP]]", "[[ORG_STRUCTURE]]", "[[OPEN-DECISIONS]]", "[[0002-documentation-first-operating-mode]]", "[[red-team-charter]]", "[[architecture-review-charter]]", "[[standards-verification-charter]]", "[[knowledge-documentation-charter]]", "[[skills-charter]]", "[[sales-charter]]", "[[legal-charter]]", "[[analytics-bi-charter]]", "[[privacy-engineering-charter]]", "[[supplier-distributor-network-charter]]"]
 loop_count: 6
 loop_count: 6
+loop_count: 6
 loop_ids: ["decision-register-health", "dated-trigger-watch", "fork-namespace-integrity", "loop-close-time-audit", "contradiction-register", "decision-office-authority-audit"]
 loop_close_times: ["weekly", "weekly", "per-intake", "monthly", "monthly", "quarterly"]
-loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed", "proposed"]
+loop_statuses: ["running", "proposed", "proposed", "proposed", "proposed", "proposed"]
 ---
 
 # Decision Office — Loops
+
+> **One of these now runs.** `scripts/watch_loops.py` + `.github/workflows/loop-watcher.yml`
+> watch the dated rules weekly and report to the job summary. It reports only — a finding
+> belongs in a unit's `questions.md`, written by a person, not by a cron job.
 
 Every loop names its close-time. A loop that cannot state how fast it closes is a
 diagram, not a loop ([[ORG_STRUCTURE]] §5).
@@ -45,7 +50,7 @@ changes: [decisions.register_triage, decisions.owner_assignment, decisions.diges
 inputs_from: [all-units, founder]
 outputs_to: [founder, red-team, architecture-review]
 close_time: weekly
-status: proposed
+status: running
 ```
 
 **Close-time is weekly and unconditional** — the digest ships in weeks where

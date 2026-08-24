@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[state-integrity-invariants-charter]]", "[[state-integrity-invariants-directive]]", "[[reliability-sre-loops]]", "[[schema-migrations-charter]]", "[[inventory-ledger-charter]]", "[[access-control-tenant-isolation-charter]]"]
 loop_count: 5
 loop_count: 5
+loop_count: 5
 loop_ids: ["int-tenant-leakage-response", "int-findings-disposition", "int-gate-integrity", "int-outcome-side-coverage", "int-detection-coverage-honesty"]
 loop_close_times: ["minutes — immediate, out of band, never queued", "weekly", "daily (cron already exists), weekly review", "monthly, immediate on a green-CI-plus-divergence event", "weekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]

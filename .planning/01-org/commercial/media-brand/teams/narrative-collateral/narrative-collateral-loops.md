@@ -12,6 +12,7 @@ links:
   - "[[media-brand-loops]]"
 loop_count: 4
 loop_count: 4
+loop_count: 4
 loop_ids: ["headline-claim-consistency-m2", "claim-substantiation", "narrative-freshness", "collateral-blocked-inputs"]
 loop_close_times: ["monthly", "per-artifact", "quarterly", "weekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]

@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[agent-fleet-charter]]", "[[agent-fleet-premortem]]", "[[agent-fleet-directive]]", "[[agent-fleet-schedule]]", "[[ai-orchestration-loops]]", "[[harness-runtime-loops]]", "[[agent-evaluation-gates-charter]]", "[[reliability-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_count: 5
+loop_count: 5
 loop_ids: ["loop-fleet-liveness", "loop-subscription-coverage", "loop-agent-doneability", "loop-prompt-verdict", "loop-guardian-canary"]
 loop_close_times: ["monthly", "per-commit (CI gate)", "weekly", "per-PR", "weekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]

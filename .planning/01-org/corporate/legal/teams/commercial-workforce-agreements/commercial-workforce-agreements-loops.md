@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[commercial-workforce-agreements-charter]]", "[[commercial-workforce-agreements-premortem]]", "[[commercial-workforce-agreements-directive]]", "[[commercial-workforce-agreements-schedule]]", "[[legal-loops]]", "[[regulatory-posture-loops]]", "[[privacy-engineering-charter]]", "[[performance-doneability-charter]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_count: 5
+loop_count: 5
 loop_ids: ["cw-library-health", "cw-annex-satisfiability", "cw-redline-ladder", "cw-draft-doneability", "cw-turnaround-ageing"]
 loop_close_times: ["monthly", "per_instrument", "per_agreement", "monthly", "weekly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]

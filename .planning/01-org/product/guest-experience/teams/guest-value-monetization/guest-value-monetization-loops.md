@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[guest-value-monetization-charter]]", "[[guest-value-monetization-directive]]", "[[guest-value-monetization-premortem]]", "[[guest-experience-loops]]", "[[taste-fingerprint-loops]]", "[[consumer-app-points-economy-loops]]", "[[compliance-privacy-charter]]", "[[legal-charter]]", "[[product-vision-charter]]", "[[LOOP-MAP]]"]
 loop_count: 4
 loop_count: 4
+loop_count: 4
 loop_ids: ["nf-b-k-anonymity-gate", "photo-consent-integrity", "nf-b-ops-conversion", "advertising-boundary-integrity"]
 loop_close_times: ["per-render", "per-use", "quarterly", "per-placement"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]

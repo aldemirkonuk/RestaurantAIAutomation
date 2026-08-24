@@ -13,6 +13,7 @@ links:
   - "[[compliance-charter]]"
 loop_count: 4
 loop_count: 4
+loop_count: 4
 loop_ids: ["research-consent-reconciliation", "research-withdrawal-propagation", "research-purpose-drift", "research-register-build"]
 loop_close_times: ["weekly", "weekly", "monthly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]

@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[access-control-tenant-isolation-charter]]", "[[access-control-tenant-isolation-premortem]]", "[[access-control-tenant-isolation-directive]]", "[[access-control-tenant-isolation-agenda-board]]", "[[security-loops]]", "[[perimeter-ingress-integrity-loops]]", "[[platform-api-charter]]", "[[red-team-charter]]", "[[LOOP-MAP]]"]
 loop_count: 4
 loop_count: 4
+loop_count: 4
 loop_ids: ["act-allowlist-burndown", "act-exposure-vs-coverage", "act-tenant-derivation", "act-verdict-review"]
 loop_close_times: ["weekly", "weekly", "weekly", "quarterly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]

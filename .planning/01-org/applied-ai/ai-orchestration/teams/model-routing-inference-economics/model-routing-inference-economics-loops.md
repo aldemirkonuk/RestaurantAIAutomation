@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[model-routing-inference-economics-charter]]", "[[model-routing-inference-economics-premortem]]", "[[model-routing-inference-economics-directive]]", "[[model-routing-inference-economics-schedule]]", "[[ai-orchestration-loops]]", "[[agent-evaluation-gates-loops]]", "[[security-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_count: 5
+loop_count: 5
 loop_ids: ["loop-metering-coverage", "loop-cost-per-task", "loop-model-substitution-gate", "loop-model-pin-drift", "loop-spend-anomaly"]
 loop_close_times: ["weekly during the migration, then monthly", "weekly", "per-PR", "monthly", "daily"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]

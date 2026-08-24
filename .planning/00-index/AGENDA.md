@@ -48,10 +48,14 @@ Nothing below can move without a decision or an action only Aldemir can take.
 
 | Date | What fires | Watcher |
 |---|---|---|
-| **2026-10-23** | All 194 agendas hit the 60-day staleness rule **together** — they share one `updated` date | ❌ none |
-| **2026-11-24** | Four dated retirement/merge triggers land at once (Skills, Sales, Legal, advisory) | ❌ none |
+| **2026-10-23** | All **198** agendas hit the 60-day staleness rule **together** — they share one `updated` date | ✅ `watch_loops.py` |
+| **2026-11-24** | **7 units** must judge whether they should still exist (Skills, Sales, Architecture Review, Red Team + 2 teams) | ✅ `watch_loops.py` |
 
-Both are Decision Office loops on paper. Neither runs. This is [[PLAN]] §0's point in miniature.
+**Now watched** (2026-08-24): `scripts/watch_loops.py` runs weekly via `.github/workflows/loop-watcher.yml`,
+reports to the job summary, and never edits the corpus — a finding belongs in a unit's `questions.md`,
+written by a person. This is the **6th running loop of 482**, and the first this chapter produced.
+Earlier counts of "194 agendas" and "four triggers" came from an agent summary and were wrong;
+the measured figures are 198 and 7.
 
 ## Live queries
 

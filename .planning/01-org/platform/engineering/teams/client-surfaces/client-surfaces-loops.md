@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[client-surfaces-charter]]", "[[client-surfaces-premortem]]", "[[client-surfaces-directive]]", "[[engineering-loops]]", "[[design-charter]]", "[[PAGE_MAP]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_count: 5
+loop_count: 5
 loop_ids: ["cs-route-reachability", "cs-burndown-vs-reachability", "cs-comprehension-defects", "cs-surface-health", "cs-mobile-load-watch"]
 loop_close_times: ["per-PR", "fortnightly", "weekly", "weekly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]

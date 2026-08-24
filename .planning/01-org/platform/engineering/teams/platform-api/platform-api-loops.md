@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[platform-api-charter]]", "[[platform-api-premortem]]", "[[platform-api-directive]]", "[[engineering-loops]]", "[[security-charter]]", "[[integration-engineering-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_count: 5
+loop_count: 5
 loop_ids: ["pa-route-census", "pa-escape-hatch-erosion", "pa-tenant-isolation", "pa-cross-cutting-default-drift", "pa-find-versus-fix-seam"]
 loop_close_times: ["per-PR", "weekly", "weekly", "monthly", "fortnightly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]

@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[regulatory-posture-charter]]", "[[regulatory-posture-schedule]]", "[[regulatory-posture-directive]]", "[[compliance-privacy-loops]]", "[[privacy-engineering-loops]]", "[[commercial-workforce-agreements-charter]]", "[[design-partner-operations-charter]]", "[[standards-verification-charter]]", "[[red-team-charter]]", "[[security-charter]]", "[[ORG_STRUCTURE]]"]
 loop_count: 5
 loop_count: 5
+loop_count: 5
 loop_ids: ["obligation-register-currency", "subprocessor-classification", "notice-accuracy", "instrument-signoff", "gap-adversarial-review"]
 loop_close_times: ["monthly sweep, plus per-PR for any change touching a cited control", "quarterly, plus on any new outbound host", "per-PR on the four asserted claims; monthly read-through", "per-instrument, before execution — never after", "quarterly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]

@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[regulated-operations-charter]]", "[[regulated-operations-schedule]]", "[[regulated-operations-directive]]", "[[compliance-privacy-loops]]", "[[compliance-privacy-schedule]]", "[[regulatory-posture-loops]]", "[[inventory-ledger-charter]]", "[[agent-fleet-charter]]", "[[decision-office-charter]]", "[[red-team-charter]]", "[[ORG_STRUCTURE]]"]
 loop_count: 5
 loop_count: 5
+loop_count: 5
 loop_ids: ["regops-entry-gate", "regulatory-deadline-cycle", "excise-reconciliation", "three-tier-constraint", "licence-jurisdiction-scope"]
 loop_close_times: ["quarterly (backstop) + per-instrument (primary)", "per statutory deadline — set by the jurisdiction, not by us", "per reporting period, reconciled before filing — never after", "per-draft (enforcement) · quarterly (pattern review)", "per new customer jurisdiction; swept quarterly"]
 loop_statuses: ["proposed", "dormant", "dormant", "running, unowned, unmeasured", "dormant"]

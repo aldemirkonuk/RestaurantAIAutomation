@@ -13,6 +13,7 @@ links:
   - "[[conversion-funnel-loops]]"
 loop_count: 4
 loop_count: 4
+loop_count: 4
 loop_ids: ["social-entry-trigger-watch", "social-referred-activation", "social-reply-routing", "social-name-availability"]
 loop_close_times: ["weekly", "monthly", "weekly", "quarterly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed"]

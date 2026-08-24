@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[outbound-engine-charter]]", "[[outbound-engine-premortem]]", "[[outbound-engine-directive]]", "[[outbound-engine-schedule]]", "[[sales-loops]]", "[[design-partner-operations-loops]]", "[[compliance-privacy-charter]]", "[[media-brand-charter]]", "[[reliability-sre-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_count: 5
+loop_count: 5
 loop_ids: ["oe-identity-isolation-guard", "oe-claim-provenance", "oe-suppression-integrity", "oe-volume-safety", "oe-qualification-calibration"]
 loop_close_times: ["per-commit", "quarterly", "weekly", "daily", "fortnightly"]
 loop_statuses: ["proposed", "proposed", "dormant", "dormant", "dormant"]

@@ -8,6 +8,7 @@ updated: 2026-08-24
 links: ["[[legal-charter]]", "[[legal-premortem]]", "[[legal-directive]]", "[[legal-schedule]]", "[[instruments-equity-loops]]", "[[commercial-workforce-agreements-loops]]", "[[regulatory-posture-loops]]", "[[positioning-fundraise-readiness-loops]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_count: 5
+loop_count: 5
 loop_ids: ["leg-chain-integrity", "leg-annex-satisfiability", "leg-clause-library-health", "leg-draft-doneability", "leg-team-shape-review"]
 loop_close_times: ["per_instrument", "per_instrument", "monthly", "monthly", "quarterly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]

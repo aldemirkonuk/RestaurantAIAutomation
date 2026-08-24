@@ -13209,7 +13209,7 @@
   "id": "decision-register-health",
   "owner": "decision-office",
   "close_time": "weekly",
-  "status": "proposed",
+  "status": "running",
   "measures": [
    "decisions.open_count",
    "decisions.intake_rate",

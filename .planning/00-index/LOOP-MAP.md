@@ -18,12 +18,12 @@ machine-readable, which broke the promise in ORG_STRUCTURE §5.
 
 | Status | Loops |
 |---|---|
-| `proposed` | 433 |
+| `proposed` | 432 |
 | `blocked` | 29 |
 | `dormant` | 9 |
+| `running` | 3 |
 | `active` | 2 |
 | `gated` | 2 |
-| `running` | 2 |
 | `monthly` | 1 |
 | `weekly` | 1 |
 | `escalated` | 1 |

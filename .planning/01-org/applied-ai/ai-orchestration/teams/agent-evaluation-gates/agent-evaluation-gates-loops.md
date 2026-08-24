@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[agent-evaluation-gates-charter]]", "[[agent-evaluation-gates-premortem]]", "[[agent-evaluation-gates-directive]]", "[[agent-evaluation-gates-schedule]]", "[[ai-orchestration-loops]]", "[[agent-fleet-loops]]", "[[model-routing-inference-economics-loops]]", "[[research-and-math-charter]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
 loop_count: 6
 loop_count: 6
+loop_count: 6
 loop_ids: ["loop-merge-policy-gate", "loop-eval-coverage", "loop-judgment-rubric", "loop-gold-set-freshness", "loop-confidence-calibration", "loop-evaluation-seam"]
 loop_close_times: ["per-commit", "weekly", "monthly", "monthly", "quarterly", "on second occurrence — not a cadence"]
 loop_statuses: ["active", "proposed", "proposed", "proposed", "proposed", "proposed"]

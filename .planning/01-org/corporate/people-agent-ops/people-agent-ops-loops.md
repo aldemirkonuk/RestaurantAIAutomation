@@ -8,6 +8,7 @@ updated: 2026-08-24
 links: ["[[people-agent-ops-charter]]", "[[people-agent-ops-premortem]]", "[[people-agent-ops-directive]]", "[[roster-lifecycle-loops]]", "[[performance-doneability-loops]]", "[[LOOP-MAP]]", "[[research-math-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[evaluation-doneability-charter]]", "[[ai-orchestration-charter]]", "[[decision-office-charter]]"]
 loop_count: 5
 loop_count: 5
+loop_count: 5
 loop_ids: ["pao-roster-census", "pao-onboarding-gate", "pao-doneability-coverage", "pao-cost-attribution-readiness", "pao-fleet-review"]
 loop_close_times: ["daily", "per PR", "weekly", "monthly", "quarterly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "proposed"]

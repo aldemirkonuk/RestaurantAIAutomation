@@ -9,6 +9,7 @@ updated: 2026-08-24
 links: ["[[graph-retrieval-charter]]", "[[graph-retrieval-premortem]]", "[[graph-retrieval-directive]]", "[[graph-retrieval-schedule]]", "[[knowledge-documentation-loops]]", "[[corpus-archive-loops]]", "[[LOOP-MAP]]"]
 loop_count: 3
 loop_count: 3
+loop_count: 3
 loop_ids: ["gr-frontmatter-coverage", "gr-link-ambiguity", "gr-retrieval-usefulness"]
 loop_close_times: ["weekly", "weekly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed"]

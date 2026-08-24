@@ -8,6 +8,7 @@ updated: 2026-08-24
 links: ["[[security-charter]]", "[[security-premortem]]", "[[security-directive]]", "[[security-agenda-board]]", "[[access-control-tenant-isolation-loops]]", "[[perimeter-ingress-integrity-loops]]", "[[ai-surface-security-loops]]", "[[neural-footprint-instrumentation-charter]]", "[[platform-api-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_count: 5
+loop_count: 5
 loop_ids: ["sec-exposure-burndown", "sec-exposure-vs-coverage", "sec-build-vs-comment", "sec-injection-corpus", "sec-inference-spend-attribution"]
 loop_close_times: ["weekly", "weekly", "quarterly", "monthly", "monthly"]
 loop_statuses: ["proposed", "proposed", "proposed", "proposed", "blocked"]
