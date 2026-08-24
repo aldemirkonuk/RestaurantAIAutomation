@@ -1,6 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
-import crypto from "crypto";
 import { DatabaseService } from "../database/database.service";
+import {
+  hashWineSignature,
+  normalizeSignatureText,
+  wineSignatureInputFromPayload,
+} from "./wine-signature";
 import {
   GetWinesQueryDto,
   WineMetaQueryDto,
@@ -75,82 +79,30 @@ export class WinesService {
     };
   }
 
-  private normalizeText(value?: string | null) {
-    if (!value) return "";
-    return value
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  private buildSignature(input: {
-    name?: string | null;
-    producer?: string | null;
-    vintage?: number | null;
-    primary_type?: string | null;
-    grape_variety?: string | null;
-    country?: string | null;
-    region?: string | null;
-    appellation?: string | null;
-  }) {
-    const parts = [
-      this.normalizeText(input.producer),
-      this.normalizeText(input.name),
-      input.vintage ? String(input.vintage) : "nv",
-      this.normalizeText(input.primary_type),
-      this.normalizeText(input.grape_variety),
-      this.normalizeText(input.country),
-      this.normalizeText(input.region),
-      this.normalizeText(input.appellation),
-    ];
-    return parts.filter(Boolean).join("|");
-  }
-
-  private hashSignature(signature: string) {
-    return crypto.createHash("sha256").update(signature).digest("hex");
-  }
-
+  /**
+   * The denormalised columns the near-match fallback queries on. Derived from
+   * the same reading of the payload as the signature, so a wine cannot match on
+   * one and miss on the other.
+   */
   private buildNormalizedFields(payload: any) {
+    const input = wineSignatureInputFromPayload(payload);
     return {
-      normalized_name: this.normalizeText(payload?.name),
-      normalized_producer: this.normalizeText(payload?.producer),
-      normalized_primary_type: this.normalizeText(
-        payload?.primary_type || payload?.classification?.primary_type,
-      ),
-      normalized_grape_variety: this.normalizeText(
-        payload?.grape_variety || payload?.classification?.grape_variety,
-      ),
-      normalized_country: this.normalizeText(
-        payload?.country || payload?.classification?.country,
-      ),
-      normalized_region: this.normalizeText(
-        payload?.region || payload?.classification?.region,
-      ),
-      normalized_appellation: this.normalizeText(
-        payload?.appellation || payload?.classification?.appellation,
-      ),
+      normalized_name: normalizeSignatureText(input.name),
+      normalized_producer: normalizeSignatureText(input.producer),
+      normalized_primary_type: normalizeSignatureText(input.primaryType),
+      normalized_grape_variety: normalizeSignatureText(input.grapeVariety),
+      normalized_country: normalizeSignatureText(input.country),
+      normalized_region: normalizeSignatureText(input.region),
+      normalized_appellation: normalizeSignatureText(input.appellation),
     };
   }
 
   async submitWine(payload: any, restaurantId?: string, submittedBy?: string) {
     const client = this.dbService.getClient();
     const normalizedFields = this.buildNormalizedFields(payload);
-    const signature = this.buildSignature({
-      name: payload?.name,
-      producer: payload?.producer,
-      vintage: payload?.vintage ?? null,
-      primary_type:
-        payload?.primary_type || payload?.classification?.primary_type,
-      grape_variety:
-        payload?.grape_variety || payload?.classification?.grape_variety,
-      country: payload?.country || payload?.classification?.country,
-      region: payload?.region || payload?.classification?.region,
-      appellation: payload?.appellation || payload?.classification?.appellation,
-    });
-    const signatureHash = signature ? this.hashSignature(signature) : null;
+    const signatureHash = hashWineSignature(
+      wineSignatureInputFromPayload(payload),
+    );
 
     const { data, error } = await client
       .from("master_wine_library_submissions")
@@ -192,20 +144,13 @@ export class WinesService {
 
     for (const submission of submissions) {
       const payload = submission.payload || {};
-      const signature = this.buildSignature({
-        name: payload?.name,
-        producer: payload?.producer,
-        vintage: payload?.vintage ?? null,
-        primary_type:
-          payload?.primary_type || payload?.classification?.primary_type,
-        grape_variety:
-          payload?.grape_variety || payload?.classification?.grape_variety,
-        country: payload?.country || payload?.classification?.country,
-        region: payload?.region || payload?.classification?.region,
-        appellation:
-          payload?.appellation || payload?.classification?.appellation,
-      });
-      const signatureHash = signature ? this.hashSignature(signature) : null;
+      // Always recomputed from the payload, never read off
+      // submission.signature_hash: rows written by the Python menu-scan
+      // pipeline carry a hash from a different algorithm, and trusting a stored
+      // value would copy that foreign key format into master_wine_library.
+      const signatureHash = hashWineSignature(
+        wineSignatureInputFromPayload(payload),
+      );
 
       if (signatureHash) {
         const { data: existing } = await client

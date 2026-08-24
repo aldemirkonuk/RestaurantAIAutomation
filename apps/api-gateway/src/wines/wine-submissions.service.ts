@@ -1,7 +1,12 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { createHash } from "crypto";
 import { DatabaseService } from "../database/database.service";
 import { CreateWineSubmissionDto } from "./dto/wine-submissions.dto";
+import {
+  hashWineSignature,
+  normalizeSignatureText,
+  wineSignatureInputFromPayload,
+  WineSignatureInput,
+} from "./wine-signature";
 
 type SubmissionRow = {
   id: string;
@@ -11,17 +16,6 @@ type SubmissionRow = {
   status: string;
   matched_master_id?: string | null;
 };
-
-/** Structural subset shared by CreateWineSubmissionDto and menu-import items. */
-interface SignatureInput {
-  name: string;
-  producer?: string | null;
-  vintage?: string | number | null;
-  country?: string | null;
-  region?: string | null;
-  primaryType?: string | null;
-  grapeVariety?: string | null;
-}
 
 export interface LibraryResolutionInput {
   name: string;
@@ -44,39 +38,6 @@ export class WineSubmissionsService {
 
   constructor(private readonly dbService: DatabaseService) {}
 
-  private normalizeText(value?: string | null): string {
-    if (!value) return "";
-    return value
-      .normalize("NFD")
-      .replace(/\p{Diacritic}/gu, "")
-      .replace(/[^a-zA-Z0-9]+/g, " ")
-      .trim()
-      .toLowerCase();
-  }
-
-  private buildSignature(payload: SignatureInput): string {
-    const producer = this.normalizeText(payload.producer);
-    const name = this.normalizeText(payload.name);
-    const vintage = payload.vintage ?? "NV";
-    const country = this.normalizeText(payload.country);
-    const region = this.normalizeText(payload.region);
-    const primaryType = this.normalizeText(payload.primaryType);
-    const grapeVariety = this.normalizeText(payload.grapeVariety);
-    return [
-      producer,
-      name,
-      vintage,
-      country,
-      region,
-      primaryType,
-      grapeVariety,
-    ].join("|");
-  }
-
-  private hashSignature(signature: string): string {
-    return createHash("sha256").update(signature).digest("hex");
-  }
-
   private generateWineId(): string {
     const suffix = Math.random().toString(36).slice(2, 8);
     const timestamp = Date.now().toString(36).slice(-8);
@@ -88,16 +49,15 @@ export class WineSubmissionsService {
     userId: string,
     payload: CreateWineSubmissionDto,
   ) {
-    const signature = this.buildSignature(payload);
-    const signatureHash = this.hashSignature(signature);
+    const signatureHash = hashWineSignature(payload);
     const normalizedFields = {
-      normalized_name: this.normalizeText(payload.name),
-      normalized_producer: this.normalizeText(payload.producer),
+      normalized_name: normalizeSignatureText(payload.name),
+      normalized_producer: normalizeSignatureText(payload.producer),
       vintage: payload.vintage ?? null,
-      country: this.normalizeText(payload.country),
-      region: this.normalizeText(payload.region),
-      primary_type: this.normalizeText(payload.primaryType),
-      grape_variety: this.normalizeText(payload.grapeVariety),
+      country: normalizeSignatureText(payload.country),
+      region: normalizeSignatureText(payload.region),
+      primary_type: normalizeSignatureText(payload.primaryType),
+      grape_variety: normalizeSignatureText(payload.grapeVariety),
     };
 
     const { data, error } = await this.dbService.supabase
@@ -156,9 +116,35 @@ export class WineSubmissionsService {
 
     for (const submission of submissions) {
       const payload = submission.payload as CreateWineSubmissionDto;
-      const signature = this.buildSignature(payload);
-      const signatureHash =
-        submission.signature_hash || this.hashSignature(signature);
+      // Read through the tolerant payload reader: this table is written by the
+      // NestJS DTO (camelCase), the menu importer, and the Python menu-scan
+      // pipeline (snake_case, name under `wine_name`), and only the first of
+      // those matches the DTO type this row is cast to.
+      const signatureInput = wineSignatureInputFromPayload(payload);
+      // Deliberately NOT `submission.signature_hash || …`. The stored value on
+      // scan-pipeline rows comes from a different algorithm; preferring it
+      // guarantees the lookup below misses and then writes that foreign key
+      // format into master_wine_library.signature_hash, which is UNIQUE and
+      // canonical. Recomputing is what makes the two paths agree.
+      const signatureHash = hashWineSignature(signatureInput);
+      const normalizedName = normalizeSignatureText(signatureInput.name);
+      const normalizedProducer = normalizeSignatureText(
+        signatureInput.producer,
+      );
+
+      // No name means no identity — matching on an empty normalized_name would
+      // pair this row with every other nameless row in the library.
+      if (!signatureHash) {
+        await this.dbService.supabase
+          .from("master_wine_library_submissions")
+          .update({
+            status: "pending_review",
+            decision_reason: "unidentifiable_payload_no_name",
+          })
+          .eq("id", submission.id);
+        results.push({ id: submission.id, status: "pending_review" });
+        continue;
+      }
 
       // Exact signature match
       const { data: existingMaster } = await this.dbService.supabase
@@ -186,8 +172,6 @@ export class WineSubmissionsService {
       }
 
       // Conservative review: same name+producer, different vintage
-      const normalizedName = this.normalizeText(payload.name);
-      const normalizedProducer = this.normalizeText(payload.producer);
       const { data: nameProducerMatch } = await this.dbService.supabase
         .from("master_wine_library")
         .select("id, vintage")
@@ -209,17 +193,20 @@ export class WineSubmissionsService {
       }
 
       const wineId = payload["wineId"] || this.generateWineId();
+      // Signature-bearing columns come from signatureInput, not from the raw
+      // payload: the row must describe the same wine its signature_hash keys
+      // it by, and a snake_case payload has nothing under `payload.name`.
       const insertPayload = {
         wine_id: wineId,
-        name: payload.name,
-        producer: payload.producer,
-        vintage: payload.vintage ?? null,
+        name: signatureInput.name,
+        producer: signatureInput.producer,
+        vintage: signatureInput.vintage ?? null,
         price_reference: payload.priceReference ?? null,
-        primary_type: payload.primaryType ?? "unknown",
-        grape_variety: payload.grapeVariety ?? null,
-        country: payload.country ?? "Unknown",
-        region: payload.region ?? "Unknown",
-        appellation: payload.appellation ?? null,
+        primary_type: signatureInput.primaryType ?? "unknown",
+        grape_variety: signatureInput.grapeVariety ?? null,
+        country: signatureInput.country ?? "Unknown",
+        region: signatureInput.region ?? "Unknown",
+        appellation: signatureInput.appellation ?? null,
         sub_region: payload.subRegion ?? null,
         wine_structure: payload.wineStructure ?? null,
         sensory_profile: payload.sensoryProfile ?? null,
@@ -291,7 +278,7 @@ export class WineSubmissionsService {
   async resolveOrCreateLibraryWine(
     item: LibraryResolutionInput,
   ): Promise<LibraryResolutionResult> {
-    const signatureInput: SignatureInput = {
+    const signatureInput: WineSignatureInput = {
       name: item.name,
       producer: item.producer ?? null,
       vintage: item.vintage ?? null,
@@ -299,23 +286,27 @@ export class WineSubmissionsService {
       region: item.region ?? null,
       grapeVariety: item.grapeVariety ?? null,
     };
-    const signature = this.buildSignature(signatureInput);
-    const signatureHash = this.hashSignature(signature);
-    const normalizedName = this.normalizeText(item.name);
-    const normalizedProducer = this.normalizeText(item.producer);
+    const signatureHash = hashWineSignature(signatureInput);
+    const normalizedName = normalizeSignatureText(item.name);
+    const normalizedProducer = normalizeSignatureText(item.producer);
 
-    const { data: exactMatch } = await this.dbService.supabase
-      .from("master_wine_library")
-      .select("id, library_tier")
-      .eq("signature_hash", signatureHash)
-      .maybeSingle();
+    // A null hash means the item has no usable name. Skipping the lookup rather
+    // than passing null to .eq() keeps this from matching an arbitrary
+    // nameless library row; the provisional-create path below still runs.
+    if (signatureHash) {
+      const { data: exactMatch } = await this.dbService.supabase
+        .from("master_wine_library")
+        .select("id, library_tier")
+        .eq("signature_hash", signatureHash)
+        .maybeSingle();
 
-    if (exactMatch?.id) {
-      return {
-        masterWineId: exactMatch.id,
-        matched: true,
-        libraryTier: exactMatch.library_tier ?? null,
-      };
+      if (exactMatch?.id) {
+        return {
+          masterWineId: exactMatch.id,
+          matched: true,
+          libraryTier: exactMatch.library_tier ?? null,
+        };
+      }
     }
 
     if (normalizedProducer) {
