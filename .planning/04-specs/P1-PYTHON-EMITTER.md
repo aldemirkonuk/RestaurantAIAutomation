@@ -2,7 +2,7 @@
 type: spec
 id: P1-PY
 title: P1 Python emitter — architecture proposal
-status: proposed
+status: implemented
 updated: 2026-08-24
 links: ["[[P1-NF-A-INSTRUMENTATION]]", "[[0008-nf-column-contract]]", "[[0006-neural-footprint-architecture]]"]
 ---
@@ -11,8 +11,24 @@ links: ["[[P1-NF-A-INSTRUMENTATION]]", "[[0008-nf-column-contract]]", "[[0006-ne
 
 > Answers the six architecture questions for the Python side of P1
 > ([P1 spec §5.2](P1-NF-A-INSTRUMENTATION.md)). Column contract is locked
-> ([ADR 0008](../decisions/0008-nf-column-contract.md)). Everything below is
-> **proposed**, with evidence; no implementation exists yet.
+> ([ADR 0008](../decisions/0008-nf-column-contract.md)).
+>
+> **IMPLEMENTED 2026-08-24** on `feat/p1-nf-instrumentation`: Q1 option C
+> (`SpendLogger.log()` dual-writes via `services/neural_footprint.py`), Q2
+> keyword-only params at all 16 sites, Q3 option b (contextvars + Celery
+> `task_prerun` hook), Q4 overridden by founder to **call-level** grading
+> (`context.outcome_basis = "call_level_v0"`), Q5 singleton client, Q6 dark
+> sites routed through the funnel. **Census correction:** the "12 dark files"
+> estimate below was partly unverified — the verified count is **26 dark call
+> sites across 13 files** (11 fully dark files: calendar, provider_conversation
+> (4 LLM + 1 embedding), rfq, sommelier (4), email_parsing (2), email_intel (2),
+> auction_wine (2, incl. one OpenAI), email_composer (2), wine_book_scraper (2),
+> wine_matcher (2), wine_field_parser; plus 2 dark sites inside lit files:
+> `vlm_extraction_service.py` extract_from_text and the Layer-3 Serper call in
+> `research_tasks.py`). `menu_analyzer_agent.py` and `services/model_clients.py`
+> contain **no** model calls — they were miscounted in the earlier estimate.
+> All 26 now emit. `services/plivo_client.py`'s `messages.create` is Plivo SMS,
+> not an LLM, and is excluded.
 
 ## The 16 call sites (verified inventory)
 

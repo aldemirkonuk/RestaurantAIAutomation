@@ -1028,7 +1028,7 @@ async def _process_record(
                 search_ok = False
 
             # P1: this Layer-3 Serper call was previously entirely unlogged —
-            # money left the building with no api_spend row (dark site #25).
+            # money left the building with no api_spend row (dark site).
             try:
                 spend_logger.log(
                     provider="serper",
