@@ -22,9 +22,16 @@
 | OD-12 | **Graph of loops** — documentation artifact (Obsidian + Graphify) or executable routing structure (agents dispatch along it)? | Changes L3 (agent harness) substantially; interacts with OD-03. | Founder call after harness bake-off (OD-03). |
 | OD-13 | **Wave 0 vs immediate wide parallelism** — lock the department/skill/metric contract first (~1 round), or fan out now? | Parallelism without a fixed interface produces incompatible structures that get rebuilt. Claude argues Wave 0 ([foundation §8](../foundation/README.md)). | Founder call. |
 | OD-14 | **Root `SKILLS.md`** — retire, or rewrite? It is a prose reasoning protocol (not a skill) and still says "WineOps AI". | Stale brand + misleading filename; new contributors and agents will mistake it for the skill registry. | Founder call; low stakes, do it with the next docs pass. |
+| OD-15 | **Advisory layer** — the 4 proposed (Architecture Review, Red Team, Decision Office, Ethics & Responsible AI), more, fewer, or none? | Independent review is the mechanism behind the "review after review" mandate; an advisor inside the line it reviews is not independent. | Founder call ([ORG_STRUCTURE §3](../foundation/ORG_STRUCTURE.md)). |
+| OD-16 | **Advisory authority** — findings-only (proposed), or blocking authority on some classes (e.g. security, layer violations)? | Determines whether advisory is a real gate or advice that can be ignored under deadline. | Founder call. |
+| OD-17 | **Unit anatomy** — 7 artifacts per unit as proposed (~168 docs across 24 units)? | Sets the total documentation surface and its ongoing upkeep cost. | Founder call ([ORG_STRUCTURE §4](../foundation/ORG_STRUCTURE.md)). |
+| OD-18 | **Division count** — are 5 right, or does Technology need splitting (e.g. Platform vs Applied AI)? | Five departments under Technology is the widest span in the org. | Founder call. |
 
 ## Resolved (moved to ADRs)
 
 | ID | Resolved as | Date |
 |---|---|---|
-| — | *(none yet)* | — |
+| OD-05 | Deferred — voice-agent audience still unchosen | — |
+| OD-10 | NF-C = **gated research track** ([foundation §4.3](../foundation/README.md)) | 2026-08-24 |
+| OD-12 | Loop graph = **documentation now, executable later** via machine-readable frontmatter ([ORG_STRUCTURE §5](../foundation/ORG_STRUCTURE.md)) | 2026-08-24 |
+| OD-13 | **Wave 0 first** (contracts), then wide parallel Wave 1 | 2026-08-24 |
