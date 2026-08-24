@@ -6,7 +6,7 @@ team: access-control-tenant-isolation
 status: partial
 metrics: [sec.unguarded_authenticated_surface, sec.recurrence_guard_present, sec.public_decorator_count, sec.cross_tenant_write_paths]
 updated: 2026-08-24
-links: ["[[security-charter]]", "[[access-control-tenant-isolation-premortem]]", "[[access-control-tenant-isolation-agenda-full]]", "[[access-control-tenant-isolation-agenda-board]]", "[[access-control-tenant-isolation-directive]]", "[[access-control-tenant-isolation-loops]]", "[[access-control-tenant-isolation-schedule]]", "[[perimeter-ingress-integrity-charter]]", "[[ai-surface-security-charter]]", "[[platform-api-charter]]", "[[engineering-charter]]", "[[red-team-charter]]", "[[compliance-charter]]", "[[ENDPOINTS]]", "[[OPEN-DECISIONS]]"]
+links: ["[[security-charter]]", "[[access-control-tenant-isolation-premortem]]", "[[access-control-tenant-isolation-agenda-full]]", "[[access-control-tenant-isolation-agenda-board]]", "[[access-control-tenant-isolation-directive]]", "[[access-control-tenant-isolation-loops]]", "[[access-control-tenant-isolation-schedule]]", "[[perimeter-ingress-integrity-charter]]", "[[ai-surface-security-charter]]", "[[platform-api-charter]]", "[[engineering-charter]]", "[[red-team-charter]]", "[[compliance-privacy-charter|compliance-charter]]", "[[ENDPOINTS]]", "[[OPEN-DECISIONS]]"]
 ---
 
 # Access Control & Tenant Isolation — Charter
@@ -62,7 +62,7 @@ prompt injection.
 | Requests that legitimately carry no identity — webhooks, published content, CORS, rate limiting, secrets | [[perimeter-ingress-integrity-charter]] |
 | Hostile *content* inside an authorised request | [[ai-surface-security-charter]] |
 | Writing the guard code into the framework | [[platform-api-charter]] *(Engineering)* — we classify and specify; they author |
-| Whether a user *should* have access to a data category at all (consent, lawful basis, retention) | [[compliance-charter]] *(Corporate)* |
+| Whether a user *should* have access to a data category at all (consent, lawful basis, retention) | [[compliance-privacy-charter|compliance-charter]] *(Corporate)* |
 | Attacking our own verdicts | [[red-team-charter]] *(advisory)* — we hand them the list and ask which verdict is wrong |
 | Role/permission *design* (what a "manager" may do) | [[platform-api-charter]] — we enforce the boundary that exists; we do not invent the role model |
 

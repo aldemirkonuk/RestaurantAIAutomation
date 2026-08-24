@@ -6,7 +6,7 @@ team: evaluation-doneability
 status: provisional
 metrics: [nf_a.verified_task_success_rate, nf_a.verdict_coverage, identity.false_merge_count]
 updated: 2026-08-24
-links: ["[[evaluation-doneability-charter]]", "[[evaluation-doneability-premortem]]", "[[evaluation-doneability-agenda-board]]", "[[evaluation-doneability-directive]]", "[[evaluation-doneability-loops]]", "[[evaluation-doneability-schedule]]", "[[research-math-agenda-full]]", "[[harness-model-routing-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[aio-evaluation-gates]]", "[[analytics-bi-charter]]", "[[security-charter]]"]
+links: ["[[evaluation-doneability-charter]]", "[[evaluation-doneability-premortem]]", "[[evaluation-doneability-agenda-board]]", "[[evaluation-doneability-directive]]", "[[evaluation-doneability-loops]]", "[[evaluation-doneability-schedule]]", "[[research-math-agenda-full]]", "[[harness-model-routing-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[agent-evaluation-gates-charter|aio-evaluation-gates]]", "[[analytics-bi-charter]]", "[[security-charter]]"]
 ---
 
 # Evaluation & Doneability (RM-2) — Full Agenda
@@ -91,7 +91,7 @@ capture has not started — that is the gate working, not the gate idle.
 - [ ] Get the founder's cost cap **before** the weekly suite ships; design tiering so cost pressure degrades coverage instead of switching the gate off
 - [ ] Start the catch log — every regression blocked, with the cost of what it prevented
 - [ ] Ask SEC-3 for prompt-injection probes for the vendor-reply set — [[security-charter]]
-- [ ] Run the monthly duplication audit against [[aio-evaluation-gates]]; file the merge proposal ourselves if it trips
+- [ ] Run the monthly duplication audit against [[agent-evaluation-gates-charter|aio-evaluation-gates]]; file the merge proposal ourselves if it trips
 - [ ] Start the skill-health report at **1 skill**, and keep it cheap until ~15
 
 ## Questions for the founder
@@ -109,6 +109,6 @@ capture has not started — that is the gate working, not the gate idle.
 4. **Do we grade the five stub agents?** `technology.md` records five agents whose
    `process_message()` only logs. Grading them produces a perfect score on nothing. We
    propose reporting them **separately and never averaged in**; confirm.
-5. **Is the merge with [[aio-evaluation-gates]] pre-authorized?** `technology.md:406`
+5. **Is the merge with [[agent-evaluation-gates-charter|aio-evaluation-gates]] pre-authorized?** `technology.md:406`
    prescribes merge over duplication. If it is pre-authorized, we can act on the monthly
    audit without a decision cycle.

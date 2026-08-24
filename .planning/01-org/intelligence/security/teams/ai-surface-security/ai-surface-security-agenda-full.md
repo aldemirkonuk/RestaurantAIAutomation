@@ -6,7 +6,7 @@ team: ai-surface-security
 status: provisional
 metrics: [nf_a.unauthenticated_inference_spend, sec.injection_corpus_size, sec.corpus_detection_rate, sec.autonomous_send_rate, sec.tenants_with_inference_budget, sec.model_callsites_emitting_cost]
 updated: 2026-08-24
-links: ["[[ai-surface-security-charter]]", "[[ai-surface-security-premortem]]", "[[ai-surface-security-agenda-board]]", "[[ai-surface-security-directive]]", "[[ai-surface-security-loops]]", "[[ai-surface-security-schedule]]", "[[security-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[evaluation-doneability-charter]]", "[[access-control-tenant-isolation-charter]]", "[[compliance-charter]]", "[[red-team-charter]]", "[[OPEN-DECISIONS]]"]
+links: ["[[ai-surface-security-charter]]", "[[ai-surface-security-premortem]]", "[[ai-surface-security-agenda-board]]", "[[ai-surface-security-directive]]", "[[ai-surface-security-loops]]", "[[ai-surface-security-schedule]]", "[[security-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[evaluation-doneability-charter]]", "[[access-control-tenant-isolation-charter]]", "[[compliance-privacy-charter|compliance-charter]]", "[[red-team-charter]]", "[[OPEN-DECISIONS]]"]
 ---
 
 # AI Surface Security — Full Agenda
@@ -124,6 +124,6 @@ Ordered. Nothing started.
 3. **What is an acceptable per-tenant daily inference spend?** Any number lets us ship the
    ceiling. No number means we pick one, and we would rather you did.
 4. **Does the analytics evidence pack contain guest-level data today?** Determines whether
-   step 7 is a hygiene audit or a disclosure question for [[compliance-charter]].
+   step 7 is a hygiene audit or a disclosure question for [[compliance-privacy-charter|compliance-charter]].
 5. **Is `vendor-page-extractor` pointed at arbitrary URLs or an allowlist of vendor
    domains?** Changes the indirect-injection surface by an order of magnitude.

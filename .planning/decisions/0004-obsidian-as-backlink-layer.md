@@ -17,7 +17,7 @@ Graphify named for visualizing department decision graphs (§12G).
 
 ## Options considered
 
-1. **Obsidian** — local Markdown, wiki-links `[[…]]`, graph view, plugin
+1. **Obsidian** — local Markdown, wiki-links `[[charter|…]]`, graph view, plugin
    ecosystem (Graphify); works directly on the repo's existing `.md` corpus with
    zero migration or lock-in.
 2. **Notion / hosted wiki** — better multiplayer, but content leaves the repo,

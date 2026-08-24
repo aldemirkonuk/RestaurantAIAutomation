@@ -113,7 +113,7 @@ telemetry: it counts files.
 graph LR
   NFA["NF-A event + skill_id<br/>+ doneability verdict<br/>(does not exist)"] -.->|blocked| L1
   FB["fallback:<br/>harness invocation log"] -.->|"if NF-A slips twice"| L1
-  RA[["skill-registry-authoring"]] ==>|"30-day clock starts"| L1
+  RA[[skill-registry-authoring-charter|"skill-registry-authoring"]] ==>|"30-day clock starts"| L1
   L1["L1 firing telemetry<br/>weekly · BLOCKED"] --> L2["L2 staleness review<br/>monthly · BLOCKED"]
   L2 --> DEL["deletions"]
   L2 -->|"why they went stale"| RA

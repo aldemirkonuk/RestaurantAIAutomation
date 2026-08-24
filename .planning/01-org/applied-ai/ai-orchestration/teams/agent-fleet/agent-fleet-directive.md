@@ -6,7 +6,7 @@ team: agent-fleet
 status: partial
 metrics: [nf_a.task_success_rate, fleet.live_agent_ratio]
 updated: 2026-08-24
-links: ["[[agent-fleet-charter]]", "[[agent-fleet-premortem]]", "[[agent-fleet-loops]]", "[[ai-orchestration-directive]]", "[[harness-runtime-charter]]", "[[agent-evaluation-gates-charter]]", "[[action-safety-the-human-gate-charter]]", "[[reliability-charter]]", "[[decision-office-charter]]"]
+links: ["[[agent-fleet-charter]]", "[[agent-fleet-premortem]]", "[[agent-fleet-loops]]", "[[ai-orchestration-directive]]", "[[harness-runtime-charter]]", "[[agent-evaluation-gates-charter]]", "[[action-safety-the-human-gate-charter]]", "[[reliability-sre-charter|reliability-charter]]", "[[decision-office-charter]]"]
 ---
 
 # Agent Fleet — Directive
@@ -49,7 +49,7 @@ failure the repo has hit or is one commit away from hitting — `S4` is
 | Which model an agent uses | **No** | → [[model-routing-inference-economics-charter]] |
 | Whether an agent may execute a mutation unconfirmed | **No** | → [[action-safety-the-human-gate-charter]]. Not tunable |
 | Guardian agent **code** | **Yes** | `state_invariant_enforcer`, `drift_agent`, `inequality_detector` + 2 stubs |
-| Guardian **findings** and alert thresholds | **No** | → `[[sre-state-integrity]]` — OD-24, open |
+| Guardian **findings** and alert thresholds | **No** | → `[[state-integrity-invariants-charter|sre-state-integrity]]` — OD-24, open |
 | Deleting an agent module | **Yes**, with an ADR | Deletion is cheap; a silently rotting orphan is not |
 
 ## Three standing rules

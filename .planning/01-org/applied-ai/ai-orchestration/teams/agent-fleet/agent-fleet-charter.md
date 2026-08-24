@@ -6,13 +6,13 @@ team: agent-fleet
 status: partial
 metrics: [nf_a.task_success_rate, fleet.live_agent_ratio]
 updated: 2026-08-24
-links: ["[[agent-fleet-premortem]]", "[[agent-fleet-agenda-full]]", "[[agent-fleet-agenda-board]]", "[[agent-fleet-directive]]", "[[agent-fleet-loops]]", "[[agent-fleet-schedule]]", "[[ai-orchestration-charter]]", "[[harness-runtime-charter]]", "[[agent-evaluation-gates-charter]]", "[[action-safety-the-human-gate-charter]]", "[[reliability-charter]]", "[[technology]]", "[[README]]"]
+links: ["[[agent-fleet-premortem]]", "[[agent-fleet-agenda-full]]", "[[agent-fleet-agenda-board]]", "[[agent-fleet-directive]]", "[[agent-fleet-loops]]", "[[agent-fleet-schedule]]", "[[ai-orchestration-charter]]", "[[harness-runtime-charter]]", "[[agent-evaluation-gates-charter]]", "[[action-safety-the-human-gate-charter]]", "[[reliability-sre-charter|reliability-charter]]", "[[technology]]", "[[README]]"]
 ---
 
 # Agent Fleet — Charter
 
 Team of [[ai-orchestration-charter]] · Division: **Applied AI** · Alias in the team
-corpus: `[[aio-agent-fleet]]` (`technology.md:336`).
+corpus: `[[agent-fleet-charter|aio-agent-fleet]]` (`technology.md:336`).
 
 ## Mandate
 
@@ -49,16 +49,16 @@ do we have?" as a question with four answers and one honest one.
 | Which model an agent uses, and its cost | [[model-routing-inference-economics-charter]] | No individual agent owns the routing decision (`technology.md:368-369`) |
 | Whether an agent's output was *good enough* | [[agent-evaluation-gates-charter]] | An agent team that grades its own agents is the arrangement [[ORG_STRUCTURE]] §3 rejects for Red Team |
 | Whether an action was permitted to execute | [[action-safety-the-human-gate-charter]] | We own what the agent proposes; they own whether it may run |
-| **Guardian-agent findings and alert thresholds** | `[[sre-state-integrity]]` | **Co-ownership, stated deliberately** — see below |
-| That a message arrived exactly once | `[[eng-messaging-delivery]]` | Draft vs. deliver (`technology.md:861`) |
+| **Guardian-agent findings and alert thresholds** | `[[state-integrity-invariants-charter|sre-state-integrity]]` | **Co-ownership, stated deliberately** — see below |
+| That a message arrived exactly once | `[[messaging-delivery-charter|eng-messaging-delivery]]` | Draft vs. deliver (`technology.md:861`) |
 
 ### Guardian-agent co-ownership — OD-24, open
 
 `state_invariant_enforcer.py`, `drift_agent.py`, `inequality_detector.py`, and the
 `ghost_inventory_agent` / `shrinkage_detective_agent` stubs are **guardian** agents.
-This team owns their **code**; `[[sre-state-integrity]]` owns their **findings** and
+This team owns their **code**; `[[state-integrity-invariants-charter|sre-state-integrity]]` owns their **findings** and
 alert thresholds (`technology.md:356-359`). That is a real seam, not a formality: a
-guardian whose findings nobody reads is `[[sre-state-integrity]]`'s premortem
+guardian whose findings nobody reads is `[[state-integrity-invariants-charter|sre-state-integrity]]`'s premortem
 (`technology.md:829-832`), and a guardian that does not detect is ours.
 
 `technology.md:848` opens **OD-24** on whether this split is workable or whether one

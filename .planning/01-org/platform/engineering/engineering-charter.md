@@ -57,10 +57,10 @@ Structured as **eight teams, which are eight distinct ways the product can be wr
 |---|---|---|
 | L3 agent harness, routing, evaluation | [[ai-orchestration-charter]] | We build what the agent acts on; they build the agent |
 | L0 substrate, corpora, enrichment, telemetry ingest | [[data-charter]] | Data makes rows fit to use; we consume them |
-| Running it — observability, release, resilience, drift gates | [[reliability-charter]] | We author; they operate and audit |
+| Running it — observability, release, resilience, drift gates | [[reliability-sre-charter|reliability-charter]] | We author; they operate and audit |
 | Finding and classifying security gaps | [[security-charter]] *(Intelligence)* | Security finds the class; [[platform-api-charter]] builds the mechanism |
 | What a screen *should* be | [[design-charter]] *(Product)* | Design decides intent; [[client-surfaces-charter]] owns what shipped |
-| The decision to integrate with a partner | [[partnerships-charter]] *(Product)* | Partnerships owns the relationship; [[integration-engineering-charter]] owns the wire |
+| The decision to integrate with a partner | [[partnerships-integrations-charter|partnerships-charter]] *(Product)* | Partnerships owns the relationship; [[integration-engineering-charter]] owns the wire |
 | Grading agent task outcomes | [[agent-evaluation-gates-charter]] | Task outcome ≠ product correctness |
 
 Seven of these seams are enumerated at `.planning/foundation/teams/technology.md:857-865`

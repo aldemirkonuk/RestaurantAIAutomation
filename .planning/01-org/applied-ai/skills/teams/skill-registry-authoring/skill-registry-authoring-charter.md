@@ -12,7 +12,7 @@ links: ["[[skills-charter]]", "[[skill-registry-authoring-premortem]]", "[[skill
 # Skill Registry & Authoring — Charter
 
 Team `skill-registry-authoring` · department [[skills-charter]] · division `applied-ai`.
-Alias used in [[technology]] §4.1: `[[skl-registry-authoring]]`.
+Alias used in [[technology]] §4.1: `[[skill-registry-authoring-charter|skl-registry-authoring]]`.
 
 ## Mandate
 
@@ -45,7 +45,7 @@ artifact with a measurable failure mode.
 | Firing telemetry, the 30-day review | [[skill-lifecycle-anti-sprawl-charter]] |
 | Skill **content** for T1/T2 tiers | Engineering / Data / the owning department ([[README]] §3.2) |
 | Systematic mining of past work at volume | [[skill-harvesting-charter]], once gated in |
-| Whether the harness can load a skill | `[[aio-harness-runtime]]` |
+| Whether the harness can load a skill | `[[harness-runtime-charter|aio-harness-runtime]]` |
 
 **Distinct from [[skill-lifecycle-anti-sprawl-charter]] because** this team is
 scored on skills *created and firing*; that team is scored on skills *deleted*.

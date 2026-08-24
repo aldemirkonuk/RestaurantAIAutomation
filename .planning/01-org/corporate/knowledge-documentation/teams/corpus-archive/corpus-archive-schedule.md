@@ -48,5 +48,5 @@ the exact defect [[standards-verification-charter]] audits.
 | `library-entry` | Adding an OD-22 resource | Entry carries `category`, `url`, `status`, `verified`, and a decision link if adoption is a real fork | AnyDoc is already **OD-06**; a library entry that silently reads as "adopted" would contradict an open decision |
 
 Each names a trigger, a doneability criterion, and a past instance where it would have
-helped — the protocol at [[foundation-README]] §3.3. **None is built.** Registry governance
+helped — the protocol at [[README|foundation-README]] §3.3. **None is built.** Registry governance
 belongs to [[skills-charter]] (Applied AI); this team authors, it does not govern.

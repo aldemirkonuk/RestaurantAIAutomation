@@ -5,7 +5,7 @@ department: strategy-fundraising
 status: new
 metrics: [strategy.claim_to_evidence_coverage, strategy.citation_drift_rate, strategy.claim_overstatement_count, strategy.wedge_metric_instrumentation, strategy.diligence_pack_completeness]
 updated: 2026-08-24
-links: ["[[strategy-fundraising-premortem]]", "[[strategy-fundraising-agenda-full]]", "[[strategy-fundraising-agenda-board]]", "[[strategy-fundraising-directive]]", "[[strategy-fundraising-loops]]", "[[strategy-fundraising-schedule]]", "[[positioning-fundraise-readiness-charter]]", "[[ORG_STRUCTURE]]", "[[corporate]]", "[[foundation-README]]", "[[OPEN-DECISIONS]]", "[[legal-charter]]", "[[instruments-equity-charter]]", "[[media-brand-charter]]", "[[narrative-collateral-charter]]", "[[analytics-bi-charter]]", "[[metric-contract-truth-assurance-charter]]", "[[sales-charter]]", "[[design-partner-operations-charter]]", "[[growth-charter]]", "[[editorial-gate-charter]]", "[[finance-pricing-charter]]", "[[standards-verification-charter]]", "[[decision-office-charter]]", "[[red-team-charter]]"]
+links: ["[[strategy-fundraising-premortem]]", "[[strategy-fundraising-agenda-full]]", "[[strategy-fundraising-agenda-board]]", "[[strategy-fundraising-directive]]", "[[strategy-fundraising-loops]]", "[[strategy-fundraising-schedule]]", "[[positioning-fundraise-readiness-charter]]", "[[ORG_STRUCTURE]]", "[[corporate]]", "[[README|foundation-README]]", "[[OPEN-DECISIONS]]", "[[legal-charter]]", "[[instruments-equity-charter]]", "[[media-brand-charter]]", "[[narrative-collateral-charter]]", "[[analytics-bi-charter]]", "[[metric-contract-truth-assurance-charter]]", "[[sales-charter]]", "[[design-partner-operations-charter]]", "[[growth-charter]]", "[[editorial-gate-charter]]", "[[finance-pricing-charter]]", "[[standards-verification-charter]]", "[[decision-office-charter]]", "[[red-team-charter]]"]
 ---
 
 # Strategy & Fundraising — Charter
@@ -227,7 +227,7 @@ Two further drift instances in the same seven-source section:
    `apps/api-gateway/src/ux-optimizer/` has **0 `@UseGuards`**, *"all re-confirmed
    2026-07-27."* It now carries `@UseGuards(JwtAuthGuard)` at
    `apps/api-gateway/src/ux-optimizer/ux-optimizer.controller.ts:55`, which
-   [[foundation-README]] §2.3 records as resolved. The document **contradicts itself**:
+   [[README|foundation-README]] §2.3 records as resolved. The document **contradicts itself**:
    `:339` marks Track A ✅ *"secured"* while `:404` still reports it unguarded.
 2. **A stale header.** `YC_WEDGE_PLAN.md:5` reads *"Status: REVISION 2 — in progress. Track
    A complete"* while the document's own §*"REVISION 3 — the document flow"* opens at `:9`.
@@ -260,6 +260,6 @@ either number until it is resolved.
 - **OD-C1 / OD-17** — does a *team* get the full 7-artifact anatomy? This department is the
   sharpest instance of that question: **one team, 14 documents, one inherited artifact**
   (`corporate.md:494`).
-- **OD-14** — root `SKILLS.md` still branded WineOps ([[foundation-README]] §3.1). A
+- **OD-14** — root `SKILLS.md` still branded WineOps ([[README|foundation-README]] §3.1). A
   stale-brand file at repo root is a diligence-surface item as much as a docs item.
 - **The 375-vs-573 contradiction** — not yet staged as an OD; blocks publishing either.

@@ -6,7 +6,7 @@ team: harness-model-routing
 status: provisional
 metrics: [nf_a.harness_overhead_ms, nf_a.cost_per_completed_task, share_of_model_calls_through_wrapper]
 updated: 2026-08-24
-links: ["[[harness-model-routing-charter]]", "[[harness-model-routing-directive]]", "[[harness-model-routing-schedule]]", "[[research-math-loops]]", "[[evaluation-doneability-loops]]", "[[neural-footprint-instrumentation-loops]]", "[[engineering-charter]]", "[[security-charter]]", "[[aio-model-routing]]", "[[decision-office-charter]]"]
+links: ["[[harness-model-routing-charter]]", "[[harness-model-routing-directive]]", "[[harness-model-routing-schedule]]", "[[research-math-loops]]", "[[evaluation-doneability-loops]]", "[[neural-footprint-instrumentation-loops]]", "[[engineering-charter]]", "[[security-charter]]", "[[harness-model-routing-charter|aio-model-routing]]", "[[decision-office-charter]]"]
 loop_count: 5
 loop_count: 5
 loop_count: 5

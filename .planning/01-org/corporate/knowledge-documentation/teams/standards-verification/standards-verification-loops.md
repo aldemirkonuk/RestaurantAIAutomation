@@ -97,7 +97,7 @@ status: proposed
 
 Counters [[standards-verification-premortem]] M5. `ENDPOINTS.md`, `PAGE_MAP.md`, and
 `EXTERNAL_CONNECTIONS.md` are declared *"regenerated rather than hand-edited"*
-([[foundation-README]] §0). The loop re-runs each generator and compares against the
+([[README|foundation-README]] §0). The loop re-runs each generator and compares against the
 committed file. A non-zero diff means either the world moved (regenerate) or someone hand
 -edited (revert and fix the source) — and the two are distinguishable only by doing this.
 

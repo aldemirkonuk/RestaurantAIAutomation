@@ -124,8 +124,8 @@ escalation: "A threshold crossing goes to security the same day, not to a weekly
 
 | To | Signal | Close-time |
 |---|---|---|
-| `[[fin-inference-cost]]` | `nf_a.cost_per_task` by task type | weekly |
-| `[[fin-unit-economics-pricing]]` | `cost_per_restaurant_per_day` vs the $20–50/mo price point | monthly |
+| `[[inference-cost-charter|fin-inference-cost]]` | `nf_a.cost_per_task` by task type | weekly |
+| `[[unit-economics-pricing-charter|fin-unit-economics-pricing]]` | `cost_per_restaurant_per_day` vs the $20–50/mo price point | monthly |
 | [[security-charter]] | Spend anomalies attributable to unauthenticated paths | daily, on trigger |
 | [[agent-evaluation-gates-loops]] | Task families where a cheaper model is wanted but no verdict exists | weekly — this is a coverage request, not a complaint |
 | [[ai-orchestration-loops]] | `routed_client_share`, both weightings | weekly |

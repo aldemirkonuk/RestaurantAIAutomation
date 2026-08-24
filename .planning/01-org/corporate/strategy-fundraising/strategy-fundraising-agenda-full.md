@@ -5,7 +5,7 @@ department: strategy-fundraising
 status: provisional
 metrics: [strategy.claim_to_evidence_coverage, strategy.citation_drift_rate, strategy.claim_overstatement_count, strategy.wedge_metric_instrumentation, strategy.diligence_pack_completeness]
 updated: 2026-08-24
-links: ["[[strategy-fundraising-charter]]", "[[strategy-fundraising-premortem]]", "[[strategy-fundraising-agenda-board]]", "[[strategy-fundraising-directive]]", "[[strategy-fundraising-loops]]", "[[strategy-fundraising-schedule]]", "[[positioning-fundraise-readiness-agenda-full]]", "[[OPEN-DECISIONS]]", "[[finance-pricing-charter]]", "[[sales-charter]]", "[[design-partner-operations-charter]]", "[[growth-charter]]", "[[conversion-funnel-charter]]", "[[metric-contract-truth-assurance-charter]]", "[[narrative-collateral-charter]]", "[[instruments-equity-charter]]", "[[standards-verification-charter]]", "[[decision-office-charter]]", "[[foundation-README]]"]
+links: ["[[strategy-fundraising-charter]]", "[[strategy-fundraising-premortem]]", "[[strategy-fundraising-agenda-board]]", "[[strategy-fundraising-directive]]", "[[strategy-fundraising-loops]]", "[[strategy-fundraising-schedule]]", "[[positioning-fundraise-readiness-agenda-full]]", "[[OPEN-DECISIONS]]", "[[finance-pricing-charter]]", "[[sales-charter]]", "[[design-partner-operations-charter]]", "[[growth-charter]]", "[[conversion-funnel-charter]]", "[[metric-contract-truth-assurance-charter]]", "[[narrative-collateral-charter]]", "[[instruments-equity-charter]]", "[[standards-verification-charter]]", "[[decision-office-charter]]", "[[README|foundation-README]]"]
 ---
 
 # Strategy & Fundraising — Full Agenda
@@ -47,7 +47,7 @@ Seeded from what already exists, in this order:
 | Four-way match, credit ledger, X12 parsers, two-stage receiving | `YC_WEDGE_PLAN.md:339-348` ✅ rows | Strongest available claims. Need a **demo**, not a line number — see M2 |
 | Competitive position vs MarginEdge | `YC_WEDGE_PLAN.md:328` | Sound and honest; re-verify before use, competitor facts age fastest |
 | 573 insight types / 860-path UX catalogue | `YC_WEDGE_PLAN.md:324` | 🔴 **Blocked.** The corpus says both 375 and 573 (`corporate.md:206-213`). Neither ships until [[standards-verification-charter]] resolves it |
-| Track A "Security" ✅ | `YC_WEDGE_PLAN.md:339` | ⚠️ **Label overstatement.** The row body is accurate (ux-optimizer specifically); the track *label* reads as the security work being done, while [[foundation-README]] §0 records 94 endpoints unguarded by omission and OD-20 open and urgent (`:344`). Publishable only with the scope restored |
+| Track A "Security" ✅ | `YC_WEDGE_PLAN.md:339` | ⚠️ **Label overstatement.** The row body is accurate (ux-optimizer specifically); the track *label* reads as the security work being done, while [[README|foundation-README]] §0 records 94 endpoints unguarded by omission and OD-20 open and urgent (`:344`). Publishable only with the scope restored |
 
 **Then the verification mechanism, built as a gate rather than a review.** The distinction
 is the entire lesson of `YC_WEDGE_PLAN.md:404` — a claim marked *"re-confirmed 2026-07-27"*

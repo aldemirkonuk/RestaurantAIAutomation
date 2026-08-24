@@ -6,7 +6,7 @@ team: inventory-ledger
 status: provisional
 metrics: [inventory.projection_divergence_rows]
 updated: 2026-08-24
-links: ["[[inventory-ledger-charter]]", "[[inventory-ledger-premortem]]", "[[inventory-ledger-loops]]", "[[engineering-directive]]", "[[schema-migrations-charter]]", "[[sre-state-integrity]]"]
+links: ["[[inventory-ledger-charter]]", "[[inventory-ledger-premortem]]", "[[inventory-ledger-loops]]", "[[engineering-directive]]", "[[schema-migrations-charter]]", "[[state-integrity-invariants-charter|sre-state-integrity]]"]
 ---
 
 # Inventory & Ledger — Directive
@@ -49,7 +49,7 @@ graph TD
 | Movement semantics, lot model, projection shape | Team |
 | Whether a given path counts as a stock write | **Team, and the team's answer is broad by default** — ambiguity resolves toward "yes, it is a write" |
 | DDL for ledger tables and `apply_stock_movement` | [[schema-migrations-charter]] authors; this team specifies |
-| Running the CI guard and drift gates | [[sre-state-integrity]] — author ≠ auditor |
+| Running the CI guard and drift gates | [[state-integrity-invariants-charter|sre-state-integrity]] — author ≠ auditor |
 | Idempotency key derivation across hops | Department-level seam decision; this team is accountable (left of seam) |
 | Ledger v1 removal date | Team proposes, department confirms — it breaks callers outside this team |
 | Any exception to the movement-only rule | Founder, via `OPEN-DECISIONS.md`. Not the team, not the department |
@@ -85,5 +85,5 @@ sampler failed and the incident is two failures, not one.
 It does not decide what was ordered or at what price
 ([[procurement-vendor-network-charter]]), whether a POS event was delivered correctly
 ([[integration-engineering-charter]]), or whether the resulting rows are fit as L0
-substrate ([[dat-pos-telemetry-ingest]]). It decides only whether the number is right —
+substrate ([[pos-operational-telemetry-ingest-charter|dat-pos-telemetry-ingest]]). It decides only whether the number is right —
 which is narrow, and is the whole job.

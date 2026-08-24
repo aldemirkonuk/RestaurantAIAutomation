@@ -121,7 +121,7 @@ raw email, phone, or guest name. Greppable at the boundary, and cheaper to preve
 retract from a vendor.
 
 **What would have prevented it.** A **redaction allowlist at the emission boundary** —
-attributes are opt-in, not opt-out — reviewed with [[compliance-charter]] before the first
+attributes are opt-in, not opt-out — reviewed with [[compliance-privacy-charter|compliance-charter]] before the first
 trace leaves the process, so the choice is never "leak or blind". The existing guest-channel
 guard scripts are the precedent: the invariant is enforced at the wire, not by intention.
 

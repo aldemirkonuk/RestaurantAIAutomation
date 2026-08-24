@@ -6,7 +6,7 @@ team: agent-evaluation-gates
 status: partial
 metrics: [nf_a.doneability_verdict_coverage]
 updated: 2026-08-24
-links: ["[[agent-evaluation-gates-charter]]", "[[agent-evaluation-gates-premortem]]", "[[agent-evaluation-gates-loops]]", "[[ai-orchestration-directive]]", "[[research-and-math-charter]]", "[[agent-fleet-charter]]", "[[model-routing-inference-economics-charter]]", "[[decision-office-charter]]", "[[red-team-charter]]"]
+links: ["[[agent-evaluation-gates-charter]]", "[[agent-evaluation-gates-premortem]]", "[[agent-evaluation-gates-loops]]", "[[ai-orchestration-directive]]", "[[research-math-charter|research-and-math-charter]]", "[[agent-fleet-charter]]", "[[model-routing-inference-economics-charter]]", "[[decision-office-charter]]", "[[red-team-charter]]"]
 ---
 
 # Agent Evaluation & Gates — Directive
@@ -88,10 +88,10 @@ thing to write into a charter and it is the most important sentence in this dire
 |---|---|---|
 | Whether a gate blocks CI | **Yes** | And it blocks, or it is deleted |
 | What the pass threshold is for a task family | **Yes**, operationally | The *methodology* is R&M's |
-| **What a doneability verdict means; NF-A definitions** | **No** | → [[research-and-math-charter]]. Enforcing ≠ defining |
+| **What a doneability verdict means; NF-A definitions** | **No** | → [[research-math-charter|research-and-math-charter]]. Enforcing ≠ defining |
 | Whether a model substitution passes | **Yes** | The second key in [[model-routing-inference-economics-directive]]'s two-key gate |
 | Fixing an agent that fails a gate | **No** | → [[agent-fleet-charter]]. We report the regression; they fix the agent |
-| Grading a data row | **No** | → `[[dat-substrate-quality]]` |
+| Grading a data row | **No** | → `[[substrate-quality-coverage-charter|dat-substrate-quality]]` |
 | Whether this team should exist | **We escalate it**, we do not decide it | Shape 2 |
 
 ## Escalation trigger

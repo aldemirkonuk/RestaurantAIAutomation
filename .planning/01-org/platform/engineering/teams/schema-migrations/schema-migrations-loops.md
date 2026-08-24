@@ -6,7 +6,7 @@ team: schema-migrations
 status: provisional
 metrics: [schema.days_since_hand_applied_ddl, schema.parity_job_green_streak, schema.function_body_mismatches]
 updated: 2026-08-24
-links: ["[[schema-migrations-charter]]", "[[schema-migrations-premortem]]", "[[schema-migrations-directive]]", "[[engineering-loops]]", "[[sre-state-integrity]]", "[[inventory-ledger-charter]]", "[[LOOP-MAP]]"]
+links: ["[[schema-migrations-charter]]", "[[schema-migrations-premortem]]", "[[schema-migrations-directive]]", "[[engineering-loops]]", "[[state-integrity-invariants-charter|sre-state-integrity]]", "[[inventory-ledger-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_count: 5
 loop_count: 5
@@ -37,7 +37,7 @@ status: proposed
 ```
 
 The team's spine and the department's **only primary metric readable today**. Run by
-[[sre-state-integrity]] via `.github/workflows/schema-parity.yml` — **author ≠ auditor**
+[[state-integrity-invariants-charter|sre-state-integrity]] via `.github/workflows/schema-parity.yml` — **author ≠ auditor**
 (`technology.md:296-298`). The metric is a **streak** deliberately: it resets to zero on
 any hand-applied DDL reaching production and rebuilds from nothing, so a bad month cannot
 be averaged away. Red closes with a **file**, within one close-time, or the streak stays at

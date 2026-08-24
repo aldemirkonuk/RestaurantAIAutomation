@@ -6,7 +6,7 @@ team: insight-narrative-generation
 status: exists
 metrics: [analytics.insight_acceptance_rate, analytics.top_rank_ignore_rate, analytics.insight_feedback_coverage, analytics.consultant_enabled_restaurants, nf_b.aggregate_guest_signal_consumed]
 updated: 2026-08-24
-links: ["[[insight-narrative-generation-premortem]]", "[[insight-narrative-generation-agenda-full]]", "[[insight-narrative-generation-agenda-board]]", "[[insight-narrative-generation-directive]]", "[[insight-narrative-generation-loops]]", "[[insight-narrative-generation-schedule]]", "[[analytics-bi-charter]]", "[[analytics-engine-charter]]", "[[metric-contract-truth-assurance-charter]]", "[[guest-experience-charter]]", "[[harness-and-model-routing-charter]]", "[[security-charter]]", "[[intelligence]]"]
+links: ["[[insight-narrative-generation-premortem]]", "[[insight-narrative-generation-agenda-full]]", "[[insight-narrative-generation-agenda-board]]", "[[insight-narrative-generation-directive]]", "[[insight-narrative-generation-loops]]", "[[insight-narrative-generation-schedule]]", "[[analytics-bi-charter]]", "[[analytics-engine-charter]]", "[[metric-contract-truth-assurance-charter]]", "[[guest-experience-charter]]", "[[harness-model-routing-charter|harness-and-model-routing-charter]]", "[[security-charter]]", "[[intelligence]]"]
 ---
 
 # Insight & Narrative Generation — Charter
@@ -55,7 +55,7 @@ Owns outright:
 | Whether a number matches its published definition | [[metric-contract-truth-assurance-charter]] | AB-3 audits our sentences too, and must be able to say one is false |
 | Guest taste fingerprints, personalization, the guest-facing surface | [[guest-experience-charter]] *(Product)* | We own the **operator-facing** narrative and consume NF-B in aggregate only (`intelligence.md:490`) |
 | How the insight card looks | [[design-charter]] / [[client-surfaces-charter]] | We own the sentence and the empty state; they own the pixels |
-| The model call itself — retry, routing, cost, timeout | [[harness-and-model-routing-charter]] *(RM-1)* | `consultants.service.ts:159` is one of RM-1's seven raw-`fetch` callsites, with **no retry/backoff at all** (`intelligence.md:81-83`) |
+| The model call itself — retry, routing, cost, timeout | [[harness-model-routing-charter|harness-and-model-routing-charter]] *(RM-1)* | `consultants.service.ts:159` is one of RM-1's seven raw-`fetch` callsites, with **no retry/backoff at all** (`intelligence.md:81-83`) |
 | Guarding `/analytics/consult` and the consultant toggle | [[security-charter]] / [[platform-api-charter]] | OD-20 is theirs to fix; ours to refuse to demo behind |
 
 ## Metrics it moves

@@ -6,7 +6,7 @@ team: perimeter-ingress-integrity
 status: provisional
 metrics: []
 updated: 2026-08-24
-links: ["[[perimeter-ingress-integrity-charter]]", "[[perimeter-ingress-integrity-premortem]]", "[[perimeter-ingress-integrity-loops]]", "[[security-directive]]", "[[access-control-tenant-isolation-charter]]", "[[ai-surface-security-charter]]", "[[integration-engineering-charter]]", "[[platform-api-charter]]", "[[compliance-charter]]", "[[OPEN-DECISIONS]]"]
+links: ["[[perimeter-ingress-integrity-charter]]", "[[perimeter-ingress-integrity-premortem]]", "[[perimeter-ingress-integrity-loops]]", "[[security-directive]]", "[[access-control-tenant-isolation-charter]]", "[[ai-surface-security-charter]]", "[[integration-engineering-charter]]", "[[platform-api-charter]]", "[[compliance-privacy-charter|compliance-charter]]", "[[OPEN-DECISIONS]]"]
 ---
 
 # Perimeter & Ingress Integrity — Directive
@@ -128,5 +128,5 @@ Escalate when:
 - **To [[ai-surface-security-charter]]:** every verified ingress route whose payload reaches
   a model. A perfect signature over hostile content is still hostile content —
   `inbound-email` is exactly that route.
-- **To [[compliance-charter]]:** whether an unpublished vendor page leaking is a
+- **To [[compliance-privacy-charter|compliance-charter]]:** whether an unpublished vendor page leaking is a
   contractual matter as well as a security one.

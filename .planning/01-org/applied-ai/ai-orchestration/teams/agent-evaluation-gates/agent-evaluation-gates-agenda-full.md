@@ -6,7 +6,7 @@ team: agent-evaluation-gates
 status: provisional
 metrics: [nf_a.doneability_verdict_coverage]
 updated: 2026-08-24
-links: ["[[agent-evaluation-gates-charter]]", "[[agent-evaluation-gates-premortem]]", "[[agent-evaluation-gates-agenda-board]]", "[[agent-evaluation-gates-directive]]", "[[agent-evaluation-gates-loops]]", "[[agent-evaluation-gates-schedule]]", "[[ai-orchestration-agenda-full]]", "[[research-and-math-charter]]", "[[agent-fleet-charter]]", "[[model-routing-inference-economics-charter]]", "[[decision-office-charter]]"]
+links: ["[[agent-evaluation-gates-charter]]", "[[agent-evaluation-gates-premortem]]", "[[agent-evaluation-gates-agenda-board]]", "[[agent-evaluation-gates-directive]]", "[[agent-evaluation-gates-loops]]", "[[agent-evaluation-gates-schedule]]", "[[ai-orchestration-agenda-full]]", "[[research-math-charter|research-and-math-charter]]", "[[agent-fleet-charter]]", "[[model-routing-inference-economics-charter]]", "[[decision-office-charter]]"]
 ---
 
 # Agent Evaluation & Gates — Full Agenda
@@ -49,7 +49,7 @@ discard. That is a free label source, and it is being thrown away.
 
 Start with 30 samples, a written rubric, two raters, and a measured inter-rater
 agreement. A rubric with n=30 and a known disagreement rate beats a 10,000-row metric
-of the wrong thing. **Methodology here is [[research-and-math-charter]]'s** — this
+of the wrong thing. **Methodology here is [[research-math-charter|research-and-math-charter]]'s** — this
 team's job is to run it, and to ask for it rather than write it
 ([[agent-evaluation-gates-premortem]] #2).
 
@@ -103,7 +103,7 @@ something ([[agent-evaluation-gates-premortem]] #5).
 | 1 | Coverage table per task family, zeros named | — |
 | 2 | Capture approve/edit/discard decisions on vendor-reply drafts as labels | — |
 | 3 | Required "how does this set grow" field on every gate | — |
-| 4 | Vendor-reply rubric, n≈30, two raters, measured agreement | methodology from [[research-and-math-charter]] |
+| 4 | Vendor-reply rubric, n≈30, two raters, measured agreement | methodology from [[research-math-charter|research-and-math-charter]] |
 | 5 | Weekly AI eval workflow (D-25) | NF-A emission for production families |
 | 6 | Confidence calibration curves | NF-A paired outcome data |
 

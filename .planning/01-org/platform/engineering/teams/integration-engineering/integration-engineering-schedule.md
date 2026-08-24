@@ -6,7 +6,7 @@ team: integration-engineering
 status: provisional
 metrics: []
 updated: 2026-08-24
-links: ["[[integration-engineering-charter]]", "[[integration-engineering-loops]]", "[[engineering-schedule]]", "[[partnerships-charter]]", "[[skills-charter]]", "[[EXTERNAL_CONNECTIONS]]"]
+links: ["[[integration-engineering-charter]]", "[[integration-engineering-loops]]", "[[engineering-schedule]]", "[[partnerships-integrations-charter|partnerships-charter]]", "[[skills-charter]]", "[[EXTERNAL_CONNECTIONS]]"]
 ---
 
 # Integration Engineering — Schedule & Skills
@@ -21,7 +21,7 @@ links: ["[[integration-engineering-charter]]", "[[integration-engineering-loops]
 | Per PR | Placeholder-host gate — after L-IE-3's one-shot resolution | Blocks `*.ngrok.io`, `your-domain.com` and kin in shipped config |
 | Per PR | Public-route rejection tests — unsigned request must be rejected | Verification proof per route |
 | Weekly | Signature coverage — L-IE-2 | `integration.verified_signature_coverage`; routes lacking a rejection test |
-| Weekly | Arrival-vs-fitness triage — L-IE-4 with [[dat-pos-telemetry-ingest]] | Unclaimed data-quality reports and their age |
+| Weekly | Arrival-vs-fitness triage — L-IE-4 with [[pos-operational-telemetry-ingest-charter|dat-pos-telemetry-ingest]] | Unclaimed data-quality reports and their age |
 | Monthly | Adapter contract test refresh — `toast_adapter.py`, `core/pos_provider.py`, `toast_api_client.py` | Fixtures re-recorded against live provider payloads |
 | Monthly | Scraper health — `serper_client.py`, Apify/Yelp paths | Selector and quota breakage |
 | Quarterly | External connection inventory refresh against [[EXTERNAL_CONNECTIONS]] | New hosts; Square/Lightspeed status (**groundwork only** today, `:11`) |

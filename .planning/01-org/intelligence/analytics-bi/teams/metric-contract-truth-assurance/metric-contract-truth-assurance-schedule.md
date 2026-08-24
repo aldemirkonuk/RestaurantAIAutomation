@@ -6,7 +6,7 @@ team: metric-contract-truth-assurance
 status: provisional
 metrics: [analytics.metric_claim_divergence_count, analytics.registry_binding_share, analytics.silent_zero_paths, analytics.claims_without_provenance, analytics.kpi_ground_truth_agreement]
 updated: 2026-08-24
-links: ["[[metric-contract-truth-assurance-charter]]", "[[metric-contract-truth-assurance-loops]]", "[[metric-contract-truth-assurance-directive]]", "[[analytics-bi-schedule]]", "[[decision-office-charter]]", "[[media-and-brand-charter]]", "[[engineering-charter]]"]
+links: ["[[metric-contract-truth-assurance-charter]]", "[[metric-contract-truth-assurance-loops]]", "[[metric-contract-truth-assurance-directive]]", "[[analytics-bi-schedule]]", "[[decision-office-charter]]", "[[media-brand-charter|media-and-brand-charter]]", "[[engineering-charter]]"]
 ---
 
 # Metric Contract & Truth Assurance — Schedule & Skills

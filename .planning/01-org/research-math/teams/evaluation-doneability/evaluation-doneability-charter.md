@@ -6,7 +6,7 @@ team: evaluation-doneability
 status: partial
 metrics: [nf_a.verified_task_success_rate, identity.false_merge_count, nf_a.verdict_coverage]
 updated: 2026-08-24
-links: ["[[evaluation-doneability-premortem]]", "[[evaluation-doneability-agenda-full]]", "[[evaluation-doneability-agenda-board]]", "[[evaluation-doneability-directive]]", "[[evaluation-doneability-loops]]", "[[evaluation-doneability-schedule]]", "[[research-math-charter]]", "[[harness-model-routing-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[aio-evaluation-gates]]", "[[analytics-bi-charter]]", "[[skills-charter]]", "[[intelligence]]", "[[OPEN-DECISIONS]]"]
+links: ["[[evaluation-doneability-premortem]]", "[[evaluation-doneability-agenda-full]]", "[[evaluation-doneability-agenda-board]]", "[[evaluation-doneability-directive]]", "[[evaluation-doneability-loops]]", "[[evaluation-doneability-schedule]]", "[[research-math-charter]]", "[[harness-model-routing-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[agent-evaluation-gates-charter|aio-evaluation-gates]]", "[[analytics-bi-charter]]", "[[skills-charter]]", "[[intelligence]]", "[[OPEN-DECISIONS]]"]
 ---
 
 # Evaluation & Doneability (RM-2) — Charter
@@ -72,14 +72,14 @@ Owns outright:
 |---|---|---|
 | How the output was produced, and what it cost | [[harness-model-routing-charter]] | We grade; we do not tune. A team that both spends and scores optimises the scorecard by spending |
 | The NF-A schema and join keys | [[neural-footprint-instrumentation-charter]] | We consume verdict-carrying events; we do not define the contract |
-| **Running** the gates in CI and production | [[aio-evaluation-gates]] *(Applied AI)* | **Methodology here, operations there** — and if the line fails, **merge, do not duplicate** (`technology.md:406`) |
+| **Running** the gates in CI and production | [[agent-evaluation-gates-charter|aio-evaluation-gates]] *(Applied AI)* | **Methodology here, operations there** — and if the line fails, **merge, do not duplicate** (`technology.md:406`) |
 | Exact-equality checks of deterministic arithmetic against a ledger | [[analytics-bi-charter]] AB-3 | We grade **nondeterministic** model output with judges and thresholds; AB-3 grades exact equality. Shared vocabulary, different work (`intelligence.md:460-464`) |
 | Authoring or maintaining skills | [[skills-charter]] *(Applied AI)* | They own the registry; we own whether a skill earns its place |
 | Whether an insight was *worth saying* | [[analytics-bi-charter]] AB-2 | Correctness is ours; usefulness is theirs |
 
 ### The evaluation seam, and this charter's position on it
 
-`technology.md:392-406` charters `[[aio-evaluation-gates]]` to **run and enforce**
+`technology.md:392-406` charters `[[agent-evaluation-gates-charter|aio-evaluation-gates]]` to **run and enforce**
 doneability and states the same boundary in the same words. It also prescribes the remedy
 if the line fails: *merge this team into Research & Math — not duplicate it.* **This
 charter accepts that remedy in advance.** If within two close-times either unit is

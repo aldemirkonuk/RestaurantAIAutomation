@@ -58,7 +58,7 @@ system that quietly treats *unknown* as *fine*.
 | Registry ceiling **N** | A team scored on deletions must not set the trigger that produces them |
 | Ownership of the weekly skill-health job | [[README]] §6 vs [[technology]] §4.2 — cross-department |
 | Deletion authority over **founder-authored** skills | Say it out loud now, or discover it as M3 later |
-| `skill_id` on the NF-A event | Schema is [[research-and-math-charter]] / OD-11's; we are a requesting consumer |
+| `skill_id` on the NF-A event | Schema is [[research-math-charter|research-and-math-charter]] / OD-11's; we are a requesting consumer |
 | Any permanent exemption from the 30-day clock | A permanent exemption is a policy change, not a review outcome |
 
 ## Escalation trigger

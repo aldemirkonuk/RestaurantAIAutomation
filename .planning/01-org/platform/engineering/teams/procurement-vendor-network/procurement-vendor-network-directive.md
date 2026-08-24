@@ -6,7 +6,7 @@ team: procurement-vendor-network
 status: provisional
 metrics: [procurement.no_touch_reconciliation_rate]
 updated: 2026-08-24
-links: ["[[procurement-vendor-network-charter]]", "[[procurement-vendor-network-premortem]]", "[[procurement-vendor-network-loops]]", "[[engineering-directive]]", "[[action-safety-the-human-gate]]", "[[platform-api-charter]]", "[[legal-charter]]"]
+links: ["[[procurement-vendor-network-charter]]", "[[procurement-vendor-network-premortem]]", "[[procurement-vendor-network-loops]]", "[[engineering-directive]]", "[[action-safety-the-human-gate-charter|action-safety-the-human-gate]]", "[[platform-api-charter]]", "[[legal-charter]]"]
 ---
 
 # Procurement & Vendor Network — Directive
@@ -49,7 +49,7 @@ graph TD
 | Order, RFQ, receiving, credit mechanics | Team |
 | Vendor catalogue matching, price observation capture | Team |
 | Distributor graph and discovery | Team |
-| **Whether a path may commit spend without a human** | **Not the team.** [[action-safety-the-human-gate]] *(Applied AI)* |
+| **Whether a path may commit spend without a human** | **Not the team.** [[action-safety-the-human-gate-charter|action-safety-the-human-gate]] *(Applied AI)* |
 | Any spend threshold, and any change to one | Founder, recorded in `OPEN-DECISIONS.md` with the value |
 | The guard mechanism protecting these routes | [[platform-api-charter]] builds; this team sets the priority order by consequence |
 | Contract terms in a purchase agreement | [[legal-charter]] *(Corporate)* |

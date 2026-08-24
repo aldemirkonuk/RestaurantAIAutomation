@@ -5,7 +5,7 @@ department: red-team
 status: new
 metrics: [rt.finding_return_hours, rt.locked_decision_challenge_rate, rt.reaffirmation_rate, rt.finding_actionability, rt.open_finding_age_days, rt.undeclared_decision_count, rt.self_selected_target_share, nf_a.doneability_verdict]
 updated: 2026-08-24
-links: ["[[red-team-premortem]]", "[[red-team-agenda-full]]", "[[red-team-agenda-board]]", "[[red-team-directive]]", "[[red-team-loops]]", "[[red-team-schedule]]", "[[decision-office-charter]]", "[[architecture-review-charter]]", "[[security-charter]]", "[[ORG_STRUCTURE]]", "[[0007-org-structure]]", "[[0006-neural-footprint-architecture]]", "[[0001-mudavym-single-entity]]", "[[foundation-README]]", "[[compliance-privacy-charter]]", "[[research-math-charter]]", "[[skills-charter]]"]
+links: ["[[red-team-premortem]]", "[[red-team-agenda-full]]", "[[red-team-agenda-board]]", "[[red-team-directive]]", "[[red-team-loops]]", "[[red-team-schedule]]", "[[decision-office-charter]]", "[[architecture-review-charter]]", "[[security-charter]]", "[[ORG_STRUCTURE]]", "[[0007-org-structure]]", "[[0006-neural-footprint-architecture]]", "[[0001-mudavym-single-entity]]", "[[README|foundation-README]]", "[[compliance-privacy-charter]]", "[[research-math-charter]]", "[[skills-charter]]"]
 ---
 
 # Red Team — Charter

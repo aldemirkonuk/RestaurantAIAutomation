@@ -6,7 +6,7 @@ team: schema-migrations
 status: provisional
 metrics: [schema.days_since_hand_applied_ddl]
 updated: 2026-08-24
-links: ["[[schema-migrations-charter]]", "[[schema-migrations-agenda-full]]", "[[schema-migrations-loops]]", "[[engineering-agenda-board]]", "[[sre-state-integrity]]"]
+links: ["[[schema-migrations-charter]]", "[[schema-migrations-agenda-full]]", "[[schema-migrations-loops]]", "[[engineering-agenda-board]]", "[[state-integrity-invariants-charter|sre-state-integrity]]"]
 ---
 
 # Schema & Migrations — Board
@@ -54,7 +54,7 @@ GROUP BY type
       primary metric that is. Publish it.
 - [ ] It is a **streak**, not a percentage. It resets to zero and rebuilds from nothing.
 - [ ] Rule: a red gate is closed by a **file**, not a sentence.
-- [ ] The **auditor** declares red — [[sre-state-integrity]], not this team.
+- [ ] The **auditor** declares red — [[state-integrity-invariants-charter|sre-state-integrity]], not this team.
 
 ## Counters
 

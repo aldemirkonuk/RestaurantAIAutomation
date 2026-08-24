@@ -85,7 +85,7 @@ Counters premortem M4 — the quieter half of the mandate. `tenant.guard.ts` is 
 tenancy and passes requests through by design, so isolation currently rests on each domain
 team remembering a predicate. Multi-tenant fixture coverage is tracked because single-
 restaurant fixtures make cross-tenant reads untestable by construction. A cross-tenant read
-in any environment escalates jointly to [[security-charter]] and [[compliance-charter]].
+in any environment escalates jointly to [[security-charter]] and [[compliance-privacy-charter|compliance-charter]].
 
 ---
 

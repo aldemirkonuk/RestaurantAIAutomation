@@ -126,7 +126,7 @@ reason nobody had predicted.
 
 **Earliest observable signal.** The first `[[bare-name]]` link written in a vault doc that
 matches more than one file. It exists already: `engineering-charter.md:106` writes
-`[[README]] §0` intending [[foundation-README]], with 45 candidates in scope.
+`[[README]] §0` intending [[README|foundation-README]], with 45 candidates in scope.
 
 **What would have prevented it.** An **ambiguity check before a backfill**:
 `graph.ambiguous_basename_count` measured and driven down, and a link-lint that rejects any

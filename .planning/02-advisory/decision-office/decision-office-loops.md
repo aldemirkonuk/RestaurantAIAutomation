@@ -204,7 +204,7 @@ status: proposed
 
 **Monthly, not weekly** — a loop's close-time changes when a unit rewrites its
 loops, which is a monthly-scale event. Weekly would produce three identical reports
-and hit [[foundation-README]] §6's own three-runs-no-action downgrade rule.
+and hit [[README|foundation-README]] §6's own three-runs-no-action downgrade rule.
 
 **Baseline: 396 loop blocks in 82 `*-loops.md` files.**
 
@@ -312,7 +312,7 @@ office; OD-C6 is the live offer and is declined in
 
 **Quarterly, and non-negotiably so.** Authority creep is cumulative and slow; a
 weekly check would produce zeroes and be downgraded under
-[[foundation-README]] §6's three-runs rule — deleting the audit through the
+[[README|foundation-README]] §6's three-runs rule — deleting the audit through the
 anti-sprawl rule would be an elegant way to lose the only external check on this
 function.
 

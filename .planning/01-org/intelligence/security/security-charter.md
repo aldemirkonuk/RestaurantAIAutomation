@@ -5,7 +5,7 @@ department: security
 status: partial
 metrics: [sec.unguarded_authenticated_surface, sec.unverified_public_ingress, nf_a.unauthenticated_inference_spend, sec.recurrence_guard_present, sec.fail_open_defaults, sec.checklist_12c_items_with_a_reading]
 updated: 2026-08-24
-links: ["[[security-premortem]]", "[[security-agenda-full]]", "[[security-agenda-board]]", "[[security-directive]]", "[[security-loops]]", "[[security-schedule]]", "[[ORG_STRUCTURE]]", "[[intelligence]]", "[[ENDPOINTS]]", "[[OPEN-DECISIONS]]", "[[access-control-tenant-isolation-charter]]", "[[perimeter-ingress-integrity-charter]]", "[[ai-surface-security-charter]]", "[[research-math-charter]]", "[[analytics-bi-charter]]", "[[engineering-charter]]", "[[platform-api-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]", "[[compliance-charter]]"]
+links: ["[[security-premortem]]", "[[security-agenda-full]]", "[[security-agenda-board]]", "[[security-directive]]", "[[security-loops]]", "[[security-schedule]]", "[[ORG_STRUCTURE]]", "[[intelligence]]", "[[ENDPOINTS]]", "[[OPEN-DECISIONS]]", "[[access-control-tenant-isolation-charter]]", "[[perimeter-ingress-integrity-charter]]", "[[ai-surface-security-charter]]", "[[research-math-charter]]", "[[analytics-bi-charter]]", "[[engineering-charter]]", "[[platform-api-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]", "[[compliance-privacy-charter|compliance-charter]]"]
 ---
 
 # Security — Charter
@@ -187,8 +187,8 @@ classification OD-19 asks for and nobody has done it yet.
 |---|---|---|
 | Attacking *decisions*; premortem facilitation | [[red-team-charter]] *(advisory)* | We build defenses in the line; they attack what we build. Same unit doing both is forbidden ([[ORG_STRUCTURE]] §3) |
 | Building the guard mechanism into the framework | [[platform-api-charter]] *(Engineering)* | We classify and specify the control; Engineering authors and owns the code |
-| Lawful basis, DPAs, consent, retention, GDPR/CCPA | [[compliance-charter]] *(Corporate)* | They own whether we *may*; we own whether an attacker *can* |
-| Whether the product *should* do a thing at all | [[compliance-charter]] | Ethics & Responsible AI was considered and not adopted ([[ORG_STRUCTURE]] §3) |
+| Lawful basis, DPAs, consent, retention, GDPR/CCPA | [[compliance-privacy-charter|compliance-charter]] *(Corporate)* | They own whether we *may*; we own whether an attacker *can* |
+| Whether the product *should* do a thing at all | [[compliance-privacy-charter|compliance-charter]] | Ethics & Responsible AI was considered and not adopted ([[ORG_STRUCTURE]] §3) |
 | Cost telemetry on model calls | [[neural-footprint-instrumentation-charter]] *(R&M)* | Hard dependency, not a request — see below |
 | Grading nondeterministic model output quality | [[evaluation-doneability-charter]] *(R&M)* | They grade whether it was *good*; we grade whether it was *attacker-steered* |
 | Incident response, SIEM, on-call | Nobody, deliberately | Rejected at `intelligence.md:505` with an entry trigger: first real incident, or first breach-notification SLA |

@@ -28,7 +28,7 @@ decision recorded in `OPEN-DECISIONS.md`.
 | **Weekly** | Retry-vs-instrumentation invariant check: `unguarded_callsites_with_retry` must read 0 | — |
 | **Fortnightly** | Callsite migration review with [[engineering-charter]] — which of the 7 moved, which slipped, why | — |
 | **Monthly** | Cost-per-completed-task review with [[evaluation-doneability-charter]]. Cost is never read alone; the verdict is on the same page | NF-A |
-| **Monthly** | Routing-seam audit — any second client-construction module or duplicate policy vs `[[aio-model-routing]]`. Terminates in a founder ruling rather than recurring forever | — |
+| **Monthly** | Routing-seam audit — any second client-construction module or duplicate policy vs `[[harness-model-routing-charter|aio-model-routing]]`. Terminates in a founder ruling rather than recurring forever | — |
 | **Quarterly** | **Bake-off re-run** — `scripts/benchmark_haiku_vs_sonnet.py` plus whatever the current roster is. The precedent for this cadence is that the script exists and was run once (`technology.md:387-390`) | NF-A |
 | **Quarterly** | Model-roster review (OD-04) against RM-2 quality results and current provider pricing | — |
 | **Quarterly** | First-party-training trigger check: has any model in `services/agent-orchestrator/training/` beaten the API baseline on an RM-2 golden set? | — |

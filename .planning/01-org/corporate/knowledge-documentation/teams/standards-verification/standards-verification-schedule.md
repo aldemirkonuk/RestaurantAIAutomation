@@ -47,11 +47,11 @@ appears in this team's own document, which is the correct place for it.
 | `claim-verify` | Weekly sample; also on demand against one document | Each sampled claim gets `verified`/`stale`/`unpinnable` with a `path:line`; refuses to emit a rate if any sample could not be resolved | `md/DOCUMENTATION_INDEX.md` has been wrong in every category count since 2026-01-29 and nothing surfaced it |
 | `claim-pin` | A number appears in ≥ 2 spine docs | Produces the assertion that would make the source fail loudly when the value changes, and identifies the owning unit | The insight count is quoted as 375, 573, and 348; the only test asserts `>= 200`, so all three pass |
 | `staleness-sweep` | Monthly, org-wide | Lists every `agenda-*` past 60 days with no exclusions; this department's own docs included | The 60-day rule has existed since 2026-08-24 with no mechanism |
-| `companion-regen` | Monthly, and per PR touching the three generated docs | Re-runs each generator and diffs; a hand edit is distinguishable from a world change | [[foundation-README]] §0 declares them regenerated-not-hand-edited; nothing enforces it |
+| `companion-regen` | Monthly, and per PR touching the three generated docs | Re-runs each generator and diffs; a hand edit is distinguishable from a world change | [[README|foundation-README]] §0 declares them regenerated-not-hand-edited; nothing enforces it |
 | `brand-drift-scan` | Monthly | Reports per scope with denominators; refuses to emit a bare count | The same fact is 28, 216, or 75 depending on scope — a bare number here would be self-refuting |
 
 Each names a trigger, a doneability criterion, and a real past instance, per
-[[foundation-README]] §3.3. **None is built.**
+[[README|foundation-README]] §3.3. **None is built.**
 
 Two of these skills — `claim-verify` and `claim-pin` — are the team's actual product. If
 twelve months pass and the only artifacts are documents rather than these two,

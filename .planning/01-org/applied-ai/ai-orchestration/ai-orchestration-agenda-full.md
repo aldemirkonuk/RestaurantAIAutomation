@@ -5,7 +5,7 @@ department: ai-orchestration
 status: provisional
 metrics: [nf_a.task_success_rate, nf_a.cost_per_task, nf_a.doneability_verdict_coverage, safety.unconfirmed_mutation_count, routing.routed_client_share, fleet.live_agent_ratio]
 updated: 2026-08-24
-links: ["[[ai-orchestration-charter]]", "[[ai-orchestration-premortem]]", "[[ai-orchestration-agenda-board]]", "[[ai-orchestration-directive]]", "[[ai-orchestration-loops]]", "[[ai-orchestration-schedule]]", "[[harness-runtime-charter]]", "[[agent-fleet-charter]]", "[[model-routing-inference-economics-charter]]", "[[agent-evaluation-gates-charter]]", "[[action-safety-the-human-gate-charter]]", "[[research-and-math-charter]]", "[[decision-office-charter]]", "[[technology]]", "[[README]]"]
+links: ["[[ai-orchestration-charter]]", "[[ai-orchestration-premortem]]", "[[ai-orchestration-agenda-board]]", "[[ai-orchestration-directive]]", "[[ai-orchestration-loops]]", "[[ai-orchestration-schedule]]", "[[harness-runtime-charter]]", "[[agent-fleet-charter]]", "[[model-routing-inference-economics-charter]]", "[[agent-evaluation-gates-charter]]", "[[action-safety-the-human-gate-charter]]", "[[research-math-charter|research-and-math-charter]]", "[[decision-office-charter]]", "[[technology]]", "[[README]]"]
 ---
 
 # AI Orchestration — Full Agenda
@@ -75,7 +75,7 @@ before the bake-off.** Steps 0–3 all produce inputs to it — you cannot compa
 overhead without cost instrumentation, and you cannot compare task outcomes without
 doneability verdicts. That sequencing is the argument for running it *after* Step 0,
 not first.
-Owner: [[harness-runtime-charter]], with [[research-and-math-charter]] on methodology.
+Owner: [[harness-runtime-charter]], with [[research-math-charter|research-and-math-charter]] on methodology.
 
 ### Step 5 — evals for the judgment tasks, not just the scoreable ones
 
@@ -83,7 +83,7 @@ Extraction is already gated (`.github/workflows/ci.yml:226-230`). Vendor-reply q
 is not, and it is the commercially load-bearing one. Build the rubric before building
 the dashboard.
 Owner: [[agent-evaluation-gates-charter]], methodology from
-[[research-and-math-charter]] — **contingent on the seam below**.
+[[research-math-charter|research-and-math-charter]] — **contingent on the seam below**.
 
 ## Why now
 
@@ -103,7 +103,7 @@ Three reasons, in descending order of how much they hurt if ignored:
 
 | # | Step | Owner | Blocked by |
 |---|---|---|---|
-| 0 | One NF-A event, end to end, from `document-extractor` | [[harness-runtime-charter]] + [[research-and-math-charter]] | schema fork in [[README]] §4.4 (table-per-track vs polymorphic) |
+| 0 | One NF-A event, end to end, from `document-extractor` | [[harness-runtime-charter]] + [[research-math-charter|research-and-math-charter]] | schema fork in [[README]] §4.4 (table-per-track vs polymorphic) |
 | 1 | Publish `fleet.live_agent_ratio`; triage the 3 orphan modules | [[agent-fleet-charter]] | — |
 | 2 | One routed model client; `api_spend` from the gateway | [[model-routing-inference-economics-charter]] | — |
 | 3 | Unify the action schema; instrument time-to-confirm | [[action-safety-the-human-gate-charter]] | — |

@@ -6,7 +6,7 @@ team: integration-engineering
 status: provisional
 metrics: [integration.verified_signature_coverage, integration.webhook_silence_duration]
 updated: 2026-08-24
-links: ["[[integration-engineering-charter]]", "[[integration-engineering-premortem]]", "[[integration-engineering-agenda-board]]", "[[integration-engineering-loops]]", "[[engineering-agenda-full]]", "[[platform-api-charter]]", "[[dat-pos-telemetry-ingest]]", "[[EXTERNAL_CONNECTIONS]]"]
+links: ["[[integration-engineering-charter]]", "[[integration-engineering-premortem]]", "[[integration-engineering-agenda-board]]", "[[integration-engineering-loops]]", "[[engineering-agenda-full]]", "[[platform-api-charter]]", "[[pos-operational-telemetry-ingest-charter|dat-pos-telemetry-ingest]]", "[[EXTERNAL_CONNECTIONS]]"]
 ---
 
 # Integration Engineering — Full Agenda
@@ -26,7 +26,7 @@ Four deliverables, and the first two are investigations rather than features:
    that proves an unsigned request is rejected**.
 3. **Silence detection per integration.** Time since last inbound event, alerted against
    each integration's own rhythm — the only mechanism that can see the premortem.
-4. **Per-event delivery records**, which the seam with [[dat-pos-telemetry-ingest]]
+4. **Per-event delivery records**, which the seam with [[pos-operational-telemetry-ingest-charter|dat-pos-telemetry-ingest]]
    requires: this team must be able to answer *did the event arrive, intact and on time?*
 
 ## How
@@ -92,5 +92,5 @@ default is what keeps [[engineering-premortem]] M1 from happening here.
    If they are on the roadmap, the verification/silence/delivery standard should be a
    precondition for the first one rather than retrofitted to three.
 5. **Who talks to Toast when they break something?** This team owns the wire;
-   [[partnerships-charter]] owns the relationship. On a Friday breakage, who sends the
+   [[partnerships-integrations-charter|partnerships-charter]] owns the relationship. On a Friday breakage, who sends the
    email — and does that answer change at 20:00?

@@ -15,7 +15,7 @@ links: ["[[engineering-charter]]", "[[engineering-loops]]", "[[engineering-agend
 | Cadence | Job | Emits |
 |---|---|---|
 | Per PR | CI guard set — `scripts/check_no_direct_stock_writes.sh`, `scripts/check_no_guest_name_matching.sh`, `scripts/check_beverage_identity_parity.py`, `scripts/check_display_name_parity.py` (wired in `.github/workflows/ci.yml`) | Pass/fail per invariant |
-| Per PR | Schema parity — `scripts/check_schema_parity.sh` via `.github/workflows/schema-parity.yml` (run by `[[sre-state-integrity]]`, authored against [[schema-migrations-charter]]) | Drift diff; resets `schema.days_since_hand_applied_ddl` on red |
+| Per PR | Schema parity — `scripts/check_schema_parity.sh` via `.github/workflows/schema-parity.yml` (run by `[[state-integrity-invariants-charter|sre-state-integrity]]`, authored against [[schema-migrations-charter]]) | Drift diff; resets `schema.days_since_hand_applied_ddl` on red |
 | Daily | Projection divergence sample — rows where `stock_live` ≠ sum of lots | `inventory.projection_divergence_rows` |
 | Daily | Public-route census — reachable routes with no guard, and `@Public()` count | `platform.unguarded_reachable_routes`, `platform.public_decorator_count` |
 | Weekly | The eight-wrongness board — L-ENG-1 | [[engineering-agenda-board]] refresh |

@@ -72,4 +72,4 @@ SORT file.name ASC
 - [ ] **OD-03** — hermes-agent · deepseek-harness · in-house `base_agent.py`. **No pick.**
 - [ ] `recurring_order_agent`: adopt · delete · document the exemption
 - [ ] Does `database.py` (2,046 lines) belong in the harness contract?
-- [ ] Who consumes the DLQ — this team, [[agent-fleet-charter]], or `[[sre-resilience]]`?
+- [ ] Who consumes the DLQ — this team, [[agent-fleet-charter]], or `[[runtime-resilience-charter|sre-resilience]]`?

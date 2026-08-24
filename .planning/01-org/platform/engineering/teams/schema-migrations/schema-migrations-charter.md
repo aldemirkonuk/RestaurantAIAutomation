@@ -6,7 +6,7 @@ team: schema-migrations
 status: exists
 metrics: [schema.days_since_hand_applied_ddl, schema.parity_job_green_streak]
 updated: 2026-08-24
-links: ["[[engineering-charter]]", "[[schema-migrations-premortem]]", "[[schema-migrations-agenda-full]]", "[[schema-migrations-agenda-board]]", "[[schema-migrations-directive]]", "[[schema-migrations-loops]]", "[[schema-migrations-schedule]]", "[[eng-schema-migrations]]", "[[sre-state-integrity]]", "[[inventory-ledger-charter]]", "[[catalogue-identity-charter]]", "[[platform-api-charter]]"]
+links: ["[[engineering-charter]]", "[[schema-migrations-premortem]]", "[[schema-migrations-agenda-full]]", "[[schema-migrations-agenda-board]]", "[[schema-migrations-directive]]", "[[schema-migrations-loops]]", "[[schema-migrations-schedule]]", "[[schema-migrations-charter|eng-schema-migrations]]", "[[state-integrity-invariants-charter|sre-state-integrity]]", "[[inventory-ledger-charter]]", "[[catalogue-identity-charter]]", "[[platform-api-charter]]"]
 ---
 
 # Schema & Migrations — Charter
@@ -44,13 +44,13 @@ possible argument for a named owner** (`technology.md:280-281`).
 
 | Not ours | Whose it is |
 |---|---|
-| **Running and owning the drift gate** | [[sre-state-integrity]] — `.github/workflows/schema-parity.yml`. **Author ≠ auditor**, deliberately (`technology.md:296-298`, §0 test 3) |
+| **Running and owning the drift gate** | [[state-integrity-invariants-charter|sre-state-integrity]] — `.github/workflows/schema-parity.yml`. **Author ≠ auditor**, deliberately (`technology.md:296-298`, §0 test 3) |
 | What the domain data *means* | The owning domain team — [[inventory-ledger-charter]], [[catalogue-identity-charter]], [[procurement-vendor-network-charter]] |
 | Which invariants a domain needs | Domain teams specify; this team authors the DDL that enforces them |
 | Query performance tuning in application code | The owning domain team |
-| Backup, restore, and failover | [[sre-runtime-resilience]] |
+| Backup, restore, and failover | [[runtime-resilience-charter|sre-runtime-resilience]] |
 | Tenant guard behaviour at the request layer | [[platform-api-charter]] — RLS is co-owned, request-layer tenancy is not |
-| Whether data is fit for use as L0 | [[dat-substrate-quality]] |
+| Whether data is fit for use as L0 | [[substrate-quality-coverage-charter|dat-substrate-quality]] |
 
 ## Metrics it moves
 
@@ -85,7 +85,7 @@ gate exists.
 
 ## The ownership seam, stated
 
-> This team *authors* DDL; `[[sre-state-integrity]]` (§6.4) *runs and owns the gate*
+> This team *authors* DDL; `[[state-integrity-invariants-charter|sre-state-integrity]]` (§6.4) *runs and owns the gate*
 > (`.github/workflows/schema-parity.yml`). Author and auditor are deliberately not the same
 > team (§0 test 3).
 > — `.planning/foundation/teams/technology.md:296-298`

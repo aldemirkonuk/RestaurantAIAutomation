@@ -73,9 +73,9 @@ to be violated by drift, so it is stated first and concretely.
 - **The metrics narrative** belongs to [[analytics-bi-charter|Intelligence → Analytics & BI]].
   M2 uses the numbers; it does not produce them.
 - **The YC path and the decision to apply** belong to
-  [[strategy-charter|Corporate → Strategy & Fundraising]]. M2 owns the artifact craft only.
+  [[strategy-fundraising-charter|Corporate → Strategy & Fundraising]]. M2 owns the artifact craft only.
 - **The legal basis for consent, DPAs, and the consent mechanism's legal shape** belong to
-  [[compliance-charter|Corporate → Compliance & Privacy]]. M4 must coordinate with them and
+  [[compliance-privacy-charter|Corporate → Compliance & Privacy]]. M4 must coordinate with them and
   must not claim their scope. See [[customer-relationship-research-charter]].
 - **The guest-facing product** belongs to [[guest-experience-charter|Product → Guest Experience]].
   M4 asks questions about guests; it does not build for them.

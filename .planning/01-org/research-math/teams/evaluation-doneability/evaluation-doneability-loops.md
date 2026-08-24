@@ -6,7 +6,7 @@ team: evaluation-doneability
 status: provisional
 metrics: [nf_a.verified_task_success_rate, nf_a.verdict_coverage, identity.false_merge_count]
 updated: 2026-08-24
-links: ["[[evaluation-doneability-charter]]", "[[evaluation-doneability-directive]]", "[[evaluation-doneability-schedule]]", "[[research-math-loops]]", "[[harness-model-routing-loops]]", "[[neural-footprint-instrumentation-loops]]", "[[aio-evaluation-gates]]", "[[security-charter]]", "[[skills-charter]]", "[[decision-office-charter]]"]
+links: ["[[evaluation-doneability-charter]]", "[[evaluation-doneability-directive]]", "[[evaluation-doneability-schedule]]", "[[research-math-loops]]", "[[harness-model-routing-loops]]", "[[neural-footprint-instrumentation-loops]]", "[[agent-evaluation-gates-charter|aio-evaluation-gates]]", "[[security-charter]]", "[[skills-charter]]", "[[decision-office-charter]]"]
 loop_count: 7
 loop_count: 7
 loop_count: 7
@@ -159,7 +159,7 @@ note: "runs weekly at near-zero cost before it is needed — same reasoning that
 
 ---
 
-## ED-7 — Duplication audit vs [[aio-evaluation-gates]]
+## ED-7 — Duplication audit vs [[agent-evaluation-gates-charter|aio-evaluation-gates]]
 
 ```yaml
 type: loop

@@ -6,7 +6,7 @@ team: catalogue-identity
 status: provisional
 metrics: [identity.false_merge_count]
 updated: 2026-08-24
-links: ["[[catalogue-identity-charter]]", "[[catalogue-identity-premortem]]", "[[catalogue-identity-loops]]", "[[engineering-directive]]", "[[decision-office-charter]]", "[[compliance-charter]]"]
+links: ["[[catalogue-identity-charter]]", "[[catalogue-identity-premortem]]", "[[catalogue-identity-loops]]", "[[engineering-directive]]", "[[decision-office-charter]]", "[[compliance-privacy-charter|compliance-charter]]"]
 ---
 
 # Catalogue & Identity — Directive
@@ -53,7 +53,7 @@ graph TD
 | Whether two specific entities are the same thing | **The adjudicator**, not the team (see [[catalogue-identity-agenda-full]] Q1) |
 | Producer collapse rules | Team, under merge governance |
 | Un-merge execution | Team; the attribution report is not optional |
-| Guest identity scope changes | **Not the team's** — [[compliance-charter]] first, then `OPEN-DECISIONS.md` |
+| Guest identity scope changes | **Not the team's** — [[compliance-privacy-charter|compliance-charter]] first, then `OPEN-DECISIONS.md` |
 | Un-deferring dish identity | Founder — trigger proposed, not set |
 | Overriding the asymmetry rule | Founder only, via `OPEN-DECISIONS.md`. Nobody else, ever |
 

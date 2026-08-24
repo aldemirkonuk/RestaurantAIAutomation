@@ -6,7 +6,7 @@ team: ai-surface-security
 status: provisional
 metrics: [sec.injection_corpus_size, sec.corpus_detection_rate, sec.autonomous_send_rate, sec.tenants_with_inference_budget, nf_a.unauthenticated_inference_spend, sec.model_callsites_emitting_cost]
 updated: 2026-08-24
-links: ["[[ai-surface-security-charter]]", "[[ai-surface-security-premortem]]", "[[ai-surface-security-directive]]", "[[ai-surface-security-agenda-board]]", "[[security-loops]]", "[[neural-footprint-instrumentation-charter]]", "[[evaluation-doneability-charter]]", "[[access-control-tenant-isolation-loops]]", "[[compliance-charter]]", "[[red-team-charter]]", "[[LOOP-MAP]]"]
+links: ["[[ai-surface-security-charter]]", "[[ai-surface-security-premortem]]", "[[ai-surface-security-directive]]", "[[ai-surface-security-agenda-board]]", "[[security-loops]]", "[[neural-footprint-instrumentation-charter]]", "[[evaluation-doneability-charter]]", "[[access-control-tenant-isolation-loops]]", "[[compliance-privacy-charter|compliance-charter]]", "[[red-team-charter]]", "[[LOOP-MAP]]"]
 loop_count: 4
 loop_count: 4
 loop_count: 4
@@ -144,7 +144,7 @@ layer (peppered channel hashes, an erasure column in
 `20260819000000_guest_identity_minimal_slice.sql`). **None of that care currently extends
 to what goes into a prompt.**
 
-Outputs to [[compliance-charter]] because lawful basis is theirs; the leak path stays ours.
+Outputs to [[compliance-privacy-charter|compliance-charter]] because lawful basis is theirs; the leak path stays ours.
 
 ---
 

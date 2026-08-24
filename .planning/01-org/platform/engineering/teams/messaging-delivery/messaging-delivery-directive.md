@@ -6,7 +6,7 @@ team: messaging-delivery
 status: provisional
 metrics: [messaging.drop_rate]
 updated: 2026-08-24
-links: ["[[messaging-delivery-charter]]", "[[messaging-delivery-premortem]]", "[[messaging-delivery-loops]]", "[[engineering-directive]]", "[[ai-orchestration-charter]]", "[[sre-runtime-resilience]]", "[[compliance-charter]]"]
+links: ["[[messaging-delivery-charter]]", "[[messaging-delivery-premortem]]", "[[messaging-delivery-loops]]", "[[engineering-directive]]", "[[ai-orchestration-charter]]", "[[runtime-resilience-charter|sre-runtime-resilience]]", "[[compliance-privacy-charter|compliance-charter]]"]
 ---
 
 # Messaging & Delivery — Directive
@@ -50,11 +50,11 @@ graph TD
 | Threading rules, routing, batching windows (implementation) | Team |
 | Delivery state model, ledger schema, idempotency keys for delivery | Team |
 | **What a message says** | **Not the team** — [[ai-orchestration-charter]] |
-| Whether an action in a message may be executed | [[action-safety-the-human-gate]] |
+| Whether an action in a message may be executed | [[action-safety-the-human-gate-charter|action-safety-the-human-gate]] |
 | At-least-once vs at-most-once **per notification class** | Founder — it is a product trade, not a transport one |
 | Batch window length as a product promise | Founder; team owns the implementation |
-| Restart behaviour of the process | [[sre-runtime-resilience]]; team owns message survival across it |
-| Open-tracking on email | [[compliance-charter]] first — it is a privacy decision |
+| Restart behaviour of the process | [[runtime-resilience-charter|sre-runtime-resilience]]; team owns message survival across it |
+| Open-tracking on email | [[compliance-privacy-charter|compliance-charter]] first — it is a privacy decision |
 | Guard mechanism for the ~84 routes | [[platform-api-charter]] builds; team sets priority by consequence |
 
 ## Two standing rules
@@ -72,7 +72,7 @@ provider-accept data is worse than no metric, because it stops the search.
 ## Escalation trigger
 
 1. **A restart with no reconciliation record** — buffered, flushed, redelivered, dropped.
-   Escalates to [[sre-runtime-resilience]] as a joint finding, not as this team's bug.
+   Escalates to [[runtime-resilience-charter|sre-runtime-resilience]] as a joint finding, not as this team's bug.
 2. **Any drop-rate reading that cannot be produced.** Two close-times of "unmeasurable"
    escalates as a resourcing question (premortem M2).
 3. **An unauthenticated write observed on a send or contacts route** — immediate, to
@@ -81,6 +81,6 @@ provider-accept data is worse than no metric, because it stops the search.
    [[ai-orchestration-charter]], because the visible damage was a bad draft and the cause
    was transport (premortem M4).
 5. **A request to send to an address the system has not verified consent for** —
-   [[compliance-charter]], before sending.
+   [[compliance-privacy-charter|compliance-charter]], before sending.
 6. **Any mass-send** (a digest to every contact, a migration announcement) — reviewed as an
    irreversible-class event under [[engineering-loops]] L-ENG-4, every instance, no sampling.

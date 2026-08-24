@@ -158,7 +158,7 @@ store.
 | Hostile content inside a validly-signed payload | [[ai-surface-security-charter]] |
 | The code that speaks a third party's protocol | [[integration-engineering-charter]] *(Engineering)* |
 | Authoring the rate-limit store, the CORS config, the guard | [[platform-api-charter]] *(Engineering)* — we specify, they build |
-| Whether a vendor's catalogue *may* be published (consent, contract) | [[compliance-charter]] *(Corporate)* — we own whether an unpublished one leaks |
+| Whether a vendor's catalogue *may* be published (consent, contract) | [[compliance-privacy-charter|compliance-charter]] *(Corporate)* — we own whether an unpublished one leaks |
 | Attacking our own perimeter design | [[red-team-charter]] *(advisory)* |
 
 ## Split trigger

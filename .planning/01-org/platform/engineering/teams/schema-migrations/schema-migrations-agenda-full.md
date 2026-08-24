@@ -6,7 +6,7 @@ team: schema-migrations
 status: provisional
 metrics: [schema.days_since_hand_applied_ddl, schema.parity_job_green_streak]
 updated: 2026-08-24
-links: ["[[schema-migrations-charter]]", "[[schema-migrations-premortem]]", "[[schema-migrations-agenda-board]]", "[[schema-migrations-loops]]", "[[engineering-agenda-full]]", "[[sre-state-integrity]]", "[[inventory-ledger-charter]]", "[[SCHEMA_DRIFT_INVENTORY]]"]
+links: ["[[schema-migrations-charter]]", "[[schema-migrations-premortem]]", "[[schema-migrations-agenda-board]]", "[[schema-migrations-loops]]", "[[engineering-agenda-full]]", "[[state-integrity-invariants-charter|sre-state-integrity]]", "[[inventory-ledger-charter]]", "[[SCHEMA_DRIFT_INVENTORY]]"]
 ---
 
 # Schema & Migrations — Full Agenda
@@ -42,7 +42,7 @@ stays at zero. A streak cannot be averaged, which is exactly why it is the metri
 The failure is not the `ALTER`, it is the improvisation around it — one incident followed
 by a 9am reconciliation costs the streak one day and nothing else (M2).
 
-**Author, never audit.** [[sre-state-integrity]] runs
+**Author, never audit.** [[state-integrity-invariants-charter|sre-state-integrity]] runs
 `.github/workflows/schema-parity.yml` and declares red (`technology.md:296-298`). This team
 must never acquire the ability to mark its own drift as expected — that is the single
 change that would make M1 unstoppable.
@@ -73,7 +73,7 @@ the practice stays the path of least resistance (M5).
 - [ ] Extend parity to compare **function bodies** (M3)
 - [ ] CI regenerates `packages/database` types and fails on any diff (M4)
 - [ ] Publish the irreversible-operations list requiring this team's review (M5)
-- [ ] Confirm with [[sre-state-integrity]] that only the auditor may declare a red expected
+- [ ] Confirm with [[state-integrity-invariants-charter|sre-state-integrity]] that only the auditor may declare a red expected
 - [ ] Support [[inventory-ledger-charter]]'s guard extension into
       `supabase/migrations/**` function bodies
 - [ ] Reconcile `.planning/SCHEMA_DRIFT_INVENTORY.txt` against current production; confirm

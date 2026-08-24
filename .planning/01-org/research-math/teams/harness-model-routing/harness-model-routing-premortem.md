@@ -6,7 +6,7 @@ team: harness-model-routing
 status: provisional
 metrics: [nf_a.cost_per_completed_task, nf_a.harness_overhead_ms, share_of_model_calls_through_wrapper]
 updated: 2026-08-24
-links: ["[[harness-model-routing-charter]]", "[[harness-model-routing-loops]]", "[[harness-model-routing-directive]]", "[[research-math-premortem]]", "[[evaluation-doneability-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[engineering-charter]]", "[[aio-model-routing]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
+links: ["[[harness-model-routing-charter]]", "[[harness-model-routing-loops]]", "[[harness-model-routing-directive]]", "[[research-math-premortem]]", "[[evaluation-doneability-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[engineering-charter]]", "[[harness-model-routing-charter|aio-model-routing]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
 
 # Harness & Model Routing (RM-1) — Premortem
@@ -117,7 +117,7 @@ metric (`nf_a.unauthenticated_inference_spend`) is downstream of exactly this co
 ### M5 — The routing seam was never resolved, and two units built two policies
 
 The Intelligence/Applied-AI boundary was published for **evaluation** and never for
-routing. `[[aio-model-routing]]` holds the same mandate and the same primary metric as
+routing. `[[harness-model-routing-charter|aio-model-routing]]` holds the same mandate and the same primary metric as
 this team. Neither unit escalated, because each read the other's charter as adjacent
 rather than overlapping. Two wrappers, two policies, two dashboards, and the first
 production incident is a model routed one way by one path and another way by the other.

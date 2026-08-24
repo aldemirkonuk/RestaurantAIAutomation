@@ -98,7 +98,7 @@ first reading is deliberately sequenced **before** any remediation
 before-picture is gone.
 
 Reference implementation for the target state:
-`one-tap-actions.controller.ts:64,80,92`. Outputs to [[compliance-charter]] because a
+`one-tap-actions.controller.ts:64,80,92`. Outputs to [[compliance-privacy-charter|compliance-charter]] because a
 cross-tenant read of `contacts` is a personal-data event, not only a bug.
 
 ---

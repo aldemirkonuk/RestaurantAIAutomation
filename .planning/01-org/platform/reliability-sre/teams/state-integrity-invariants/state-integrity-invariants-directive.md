@@ -6,7 +6,7 @@ team: state-integrity-invariants
 status: provisional
 metrics: [sre.mttd_silent_corruption, integrity.open_findings_oldest_age]
 updated: 2026-08-24
-links: ["[[state-integrity-invariants-charter]]", "[[state-integrity-invariants-premortem]]", "[[state-integrity-invariants-loops]]", "[[reliability-sre-directive]]", "[[schema-migrations-charter]]", "[[agent-fleet-charter]]", "[[compliance-charter]]"]
+links: ["[[state-integrity-invariants-charter]]", "[[state-integrity-invariants-premortem]]", "[[state-integrity-invariants-loops]]", "[[reliability-sre-directive]]", "[[schema-migrations-charter]]", "[[agent-fleet-charter]]", "[[compliance-privacy-charter|compliance-charter]]"]
 ---
 
 # State Integrity & Invariants — Directive

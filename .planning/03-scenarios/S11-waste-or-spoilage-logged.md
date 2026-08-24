@@ -50,7 +50,7 @@ No guest, no vendor.
 - "How much did we waste this period — units and dollars — and by what reason?"
 - "Which SKUs waste most, and is it rising?"
 - "What is waste as a share of what we sell?" — needs POS sales, so **partially** answerable.
-- "Does today's waste change tonight's stockout risk?" — hands off to [[S10]].
+- "Does today's waste change tonight's stockout risk?" — hands off to [[S10-stockout-risk-before-a-busy-night|S10]].
 
 ## 5. Outputs (in the moment)
 - One-tap waste log: SKU + quantity + reason picker (breakage / corked / expired / over-pour),

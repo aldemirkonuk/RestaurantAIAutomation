@@ -5,7 +5,7 @@ department: red-team
 status: provisional
 metrics: [rt.finding_return_hours, rt.locked_decision_challenge_rate, rt.reaffirmation_rate, rt.finding_actionability, rt.undeclared_decision_count, rt.self_selected_target_share]
 updated: 2026-08-24
-links: ["[[red-team-charter]]", "[[red-team-premortem]]", "[[red-team-directive]]", "[[red-team-loops]]", "[[red-team-agenda-board]]", "[[red-team-agenda-full]]", "[[decision-office-charter]]", "[[architecture-review-charter]]", "[[security-charter]]", "[[skills-charter]]", "[[foundation-README]]", "[[ORG_STRUCTURE]]"]
+links: ["[[red-team-charter]]", "[[red-team-premortem]]", "[[red-team-directive]]", "[[red-team-loops]]", "[[red-team-agenda-board]]", "[[red-team-agenda-full]]", "[[decision-office-charter]]", "[[architecture-review-charter]]", "[[security-charter]]", "[[skills-charter]]", "[[README|foundation-README]]", "[[ORG_STRUCTURE]]"]
 ---
 
 # Red Team — Schedule & Skills

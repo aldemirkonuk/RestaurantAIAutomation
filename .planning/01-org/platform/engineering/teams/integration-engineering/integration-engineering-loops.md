@@ -6,7 +6,7 @@ team: integration-engineering
 status: provisional
 metrics: [integration.verified_signature_coverage, integration.webhook_silence_duration, integration.placeholder_hosts_unresolved]
 updated: 2026-08-24
-links: ["[[integration-engineering-charter]]", "[[integration-engineering-premortem]]", "[[integration-engineering-directive]]", "[[engineering-loops]]", "[[platform-api-charter]]", "[[dat-pos-telemetry-ingest]]", "[[LOOP-MAP]]"]
+links: ["[[integration-engineering-charter]]", "[[integration-engineering-premortem]]", "[[integration-engineering-directive]]", "[[engineering-loops]]", "[[platform-api-charter]]", "[[pos-operational-telemetry-ingest-charter|dat-pos-telemetry-ingest]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_count: 5
 loop_count: 5
@@ -131,7 +131,7 @@ The contract is owned by someone else and can change without notice
 (`technology.md:247-248`). This loop watches for the change *as a change* — schema
 mismatches and rejection rate — rather than waiting for the downstream symptom
 ("inventory looks stale"). A **rising rejection rate is good news relative to silence**: it
-means the adapter noticed. Breakages escalate jointly with [[partnerships-charter]], who
+means the adapter noticed. Breakages escalate jointly with [[partnerships-integrations-charter|partnerships-charter]], who
 own the conversation with the provider.
 
 ---

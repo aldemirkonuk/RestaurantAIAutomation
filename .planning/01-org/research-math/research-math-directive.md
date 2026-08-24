@@ -5,7 +5,7 @@ department: research-math
 status: provisional
 metrics: [nf_a.harness_overhead_ms, nf_a.verified_task_success_rate, nf_a.event_completeness]
 updated: 2026-08-24
-links: ["[[research-math-charter]]", "[[research-math-premortem]]", "[[research-math-loops]]", "[[research-math-agenda-full]]", "[[harness-model-routing-directive]]", "[[evaluation-doneability-directive]]", "[[neural-footprint-instrumentation-directive]]", "[[decision-office-charter]]", "[[red-team-charter]]", "[[aio-evaluation-gates]]", "[[OPEN-DECISIONS]]"]
+links: ["[[research-math-charter]]", "[[research-math-premortem]]", "[[research-math-loops]]", "[[research-math-agenda-full]]", "[[harness-model-routing-directive]]", "[[evaluation-doneability-directive]]", "[[neural-footprint-instrumentation-directive]]", "[[decision-office-charter]]", "[[red-team-charter]]", "[[agent-evaluation-gates-charter|aio-evaluation-gates]]", "[[OPEN-DECISIONS]]"]
 ---
 
 # Research & Math — Directive
@@ -71,8 +71,8 @@ graph TD
 |---|---|---|
 | NF physical table + migration | [[data-charter]] | OD-11 names **both** owners or the schema gets implemented twice |
 | Model wrapper adoption in the 7 NestJS callsites | [[engineering-charter]] | A deprecation date in the same PR as the wrapper |
-| Running eval gates in CI/production | [[aio-evaluation-gates]] | Methodology here, operations there — **or a merge**, per `technology.md:406` |
-| Routing policy | `[[aio-model-routing]]` | Currently **unresolved**; see the routing seam fork |
+| Running eval gates in CI/production | [[agent-evaluation-gates-charter|aio-evaluation-gates]] | Methodology here, operations there — **or a merge**, per `technology.md:406` |
+| Routing policy | `[[harness-model-routing-charter|aio-model-routing]]` | Currently **unresolved**; see the routing seam fork |
 | Cost telemetry for unauthenticated inference | [[security-charter]] SEC-3 | We emit; they interpret. Hard dependency (`intelligence.md:488`) |
 
 **Cannot decide (escalates to the founder via [[decision-office-charter]]):**

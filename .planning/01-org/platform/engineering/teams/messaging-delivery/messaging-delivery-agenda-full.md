@@ -6,7 +6,7 @@ team: messaging-delivery
 status: provisional
 metrics: [messaging.duplicate_delivery_rate, messaging.drop_rate]
 updated: 2026-08-24
-links: ["[[messaging-delivery-charter]]", "[[messaging-delivery-premortem]]", "[[messaging-delivery-agenda-board]]", "[[messaging-delivery-loops]]", "[[engineering-agenda-full]]", "[[sre-runtime-resilience]]", "[[ai-orchestration-charter]]", "[[INBOUND_EMAIL_INTELLIGENCE_PLAN]]"]
+links: ["[[messaging-delivery-charter]]", "[[messaging-delivery-premortem]]", "[[messaging-delivery-agenda-board]]", "[[messaging-delivery-loops]]", "[[engineering-agenda-full]]", "[[runtime-resilience-charter|sre-runtime-resilience]]", "[[ai-orchestration-charter]]", "[[INBOUND_EMAIL_INTELLIGENCE_PLAN]]"]
 ---
 
 # Messaging & Delivery — Full Agenda
@@ -50,7 +50,7 @@ that seam for stock movements — accountable for the objection — and on the *
 notification delivery.
 
 **Restart is a first-class event.** Every restart emits a reconciliation record: buffered,
-flushed, redelivered, dropped. [[sre-runtime-resilience]] owns *why* the process restarted;
+flushed, redelivered, dropped. [[runtime-resilience-charter|sre-runtime-resilience]] owns *why* the process restarted;
 this team owns whether the message survived it.
 
 ## Why now
@@ -93,5 +93,5 @@ this team owns whether the message survived it.
 4. **How long may a batch hold a message?** The LIFO window is 30 minutes. That is a
    product decision with a transport implementation, and it currently lives only in code.
 5. **Contacts exfiltration — what is the disclosure posture?** If the unguarded `contacts`
-   endpoints were read, would we know, and would we tell? [[compliance-charter]] should
+   endpoints were read, would we know, and would we tell? [[compliance-privacy-charter|compliance-charter]] should
    answer before, not after.

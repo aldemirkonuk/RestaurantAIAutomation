@@ -5,7 +5,7 @@ department: red-team
 status: provisional
 metrics: [rt.finding_return_hours, rt.locked_decision_challenge_rate, rt.reaffirmation_rate, rt.finding_actionability, rt.open_finding_age_days, rt.undeclared_decision_count, rt.self_selected_target_share]
 updated: 2026-08-24
-links: ["[[red-team-charter]]", "[[red-team-premortem]]", "[[red-team-directive]]", "[[red-team-loops]]", "[[red-team-schedule]]", "[[red-team-agenda-board]]", "[[decision-office-charter]]", "[[architecture-review-charter]]", "[[security-charter]]", "[[compliance-privacy-charter]]", "[[regulatory-posture-charter]]", "[[research-math-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[skills-charter]]", "[[growth-charter]]", "[[sales-charter]]", "[[finance-pricing-charter]]", "[[0001-mudavym-single-entity]]", "[[0006-neural-footprint-architecture]]", "[[0007-org-structure]]", "[[ORG_STRUCTURE]]", "[[foundation-README]]"]
+links: ["[[red-team-charter]]", "[[red-team-premortem]]", "[[red-team-directive]]", "[[red-team-loops]]", "[[red-team-schedule]]", "[[red-team-agenda-board]]", "[[decision-office-charter]]", "[[architecture-review-charter]]", "[[security-charter]]", "[[compliance-privacy-charter]]", "[[regulatory-posture-charter]]", "[[research-math-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[skills-charter]]", "[[growth-charter]]", "[[sales-charter]]", "[[finance-pricing-charter]]", "[[0001-mudavym-single-entity]]", "[[0006-neural-footprint-architecture]]", "[[0007-org-structure]]", "[[ORG_STRUCTURE]]", "[[README|foundation-README]]"]
 ---
 
 # Red Team — Full Agenda

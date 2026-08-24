@@ -86,7 +86,7 @@ graph TD
 **Cannot decide — escalates:**
 
 - **OD-03 and OD-04.** Founder forks. This team supplies the table, not the verdict.
-- **The routing seam** with `[[aio-model-routing]]`. Not ours to settle; the interim
+- **The routing seam** with `[[harness-model-routing-charter|aio-model-routing]]`. Not ours to settle; the interim
   answer is one shared wrapper.
 - **The per-caller budget number**, and whether the wrapper fails open or closed when it
   is exceeded. Failing closed stops a runaway and also removes a feature mid-service from

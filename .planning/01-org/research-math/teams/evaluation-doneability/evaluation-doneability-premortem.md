@@ -6,7 +6,7 @@ team: evaluation-doneability
 status: provisional
 metrics: [nf_a.verified_task_success_rate, nf_a.verdict_coverage, identity.false_merge_count]
 updated: 2026-08-24
-links: ["[[evaluation-doneability-charter]]", "[[evaluation-doneability-loops]]", "[[evaluation-doneability-directive]]", "[[research-math-premortem]]", "[[harness-model-routing-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[aio-evaluation-gates]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
+links: ["[[evaluation-doneability-charter]]", "[[evaluation-doneability-loops]]", "[[evaluation-doneability-directive]]", "[[research-math-premortem]]", "[[harness-model-routing-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[agent-evaluation-gates-charter|aio-evaluation-gates]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
 
 # Evaluation & Doneability (RM-2) — Premortem
@@ -118,7 +118,7 @@ three more extraction evals does not move the number.
 
 ---
 
-### M5 — Duplicated `[[aio-evaluation-gates]]`, and the seam was defended instead of merged
+### M5 — Duplicated `[[agent-evaluation-gates-charter|aio-evaluation-gates]]`, and the seam was defended instead of merged
 
 Both units built golden sets. Both maintained a corpus. The boundary — methodology here,
 operations there — was quoted in two charters and honoured in neither, because in practice

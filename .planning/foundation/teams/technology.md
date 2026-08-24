@@ -70,7 +70,7 @@ enumeration — not a grid — is where the count came from.
 
 ---
 
-### 2.1 Catalogue & Identity `[[eng-catalogue-identity]]`
+### 2.1 Catalogue & Identity `[[catalogue-identity-charter|eng-catalogue-identity]]`
 
 **Mandate.** Own what a beverage/dish *is*: match keys, duplicate detection, merge and
 un-merge, producer normalization, and the guest identity slice.
@@ -99,7 +99,7 @@ sommelier notices, months of NF-B guest signal is attributed to the wrong wine.
 
 ---
 
-### 2.2 Inventory & Ledger `[[eng-inventory-ledger]]`
+### 2.2 Inventory & Ledger `[[inventory-ledger-charter|eng-inventory-ledger]]`
 
 **Mandate.** Lots as the single source of truth for stock; every mutation flows
 through `apply_stock_movement`, and `stock_live`/`shadow_stock` remain projections.
@@ -126,7 +126,7 @@ receiving-service bug did.
 
 ---
 
-### 2.3 Procurement & Vendor Network `[[eng-procurement-vendor-network]]`
+### 2.3 Procurement & Vendor Network `[[procurement-vendor-network-charter|eng-procurement-vendor-network]]`
 
 **Mandate.** Orders, RFQs, receiving, credits, recurring orders, vendor catalogues,
 price observations, and the distributor graph.
@@ -151,7 +151,7 @@ places real orders against a real vendor.
 
 ---
 
-### 2.4 Messaging & Delivery `[[eng-messaging-delivery]]`
+### 2.4 Messaging & Delivery `[[messaging-delivery-charter|eng-messaging-delivery]]`
 
 **Mandate.** The transport half of every conversation: threading, inbound routing,
 notification batching and deduplication, push, websocket, calendar invites, contacts.
@@ -180,7 +180,7 @@ a restaurant, not a metric.
 
 ---
 
-### 2.5 Client Surfaces `[[eng-client-surfaces]]`
+### 2.5 Client Surfaces `[[client-surfaces-charter|eng-client-surfaces]]`
 
 **Mandate.** `apps/web` (Vite SPA, 51 routes), `apps/mobile` (Expo Router), and the
 shared `packages/ui` component layer. Implementation quality, route reachability,
@@ -210,7 +210,7 @@ year later because burning down a list feels like progress.
 
 ---
 
-### 2.6 Platform & API `[[eng-platform-api]]`
+### 2.6 Platform & API `[[platform-api-charter|eng-platform-api]]`
 
 **Mandate.** The request path itself: authn/authz, tenancy, idempotency, caching,
 rate limiting, crypto, OpenAPI surface, and NestJS module wiring.
@@ -238,7 +238,7 @@ reachable-unauthenticated routes is unchanged.
 
 ---
 
-### 2.7 Integration Engineering — the wire `[[eng-integration-wire]]`
+### 2.7 Integration Engineering — the wire `[[integration-engineering-charter|eng-integration-wire]]`
 
 **Mandate.** Every code path that speaks someone else's protocol: Toast, SimPOS,
 POS Hub, vendor portal webhooks, Gmail/Calendar/Microsoft OAuth, Square and
@@ -271,7 +271,7 @@ week because a webhook that stops arriving produces no signal at all.
 
 ---
 
-### 2.8 Schema & Migrations `[[eng-schema-migrations]]`
+### 2.8 Schema & Migrations `[[schema-migrations-charter|eng-schema-migrations]]`
 
 **Mandate.** The DDL: 62 migrations, generated types in `packages/database`, RLS
 policies, Postgres functions, and the rule that production shape comes only from the repo.
@@ -293,7 +293,7 @@ schema-parity job's green streak.
 because the alternative was downtime — the parity job goes red, red becomes normal,
 and the team is back to 2026-08-05 with a red badge instead of no badge.
 
-> **Ownership seam.** This team *authors* DDL; `[[sre-state-integrity]]` (§6.4) *runs
+> **Ownership seam.** This team *authors* DDL; `[[state-integrity-invariants-charter|sre-state-integrity]]` (§6.4) *runs
 > and owns the gate* (`.github/workflows/schema-parity.yml`). Author and auditor are
 > deliberately not the same team (§0 test 3).
 
@@ -308,7 +308,7 @@ model directly.
 
 ---
 
-### 3.1 Harness & Runtime `[[aio-harness-runtime]]`
+### 3.1 Harness & Runtime `[[harness-runtime-charter|aio-harness-runtime]]`
 
 **Mandate.** The substrate every agent runs on: `BaseAgent` lifecycle, the registry
 and lazy-proxy tiers, message bus, connection pooling, saga/compensation, feature flags.
@@ -333,7 +333,7 @@ away — a year of work spent on the layer most likely to be replaced.
 
 ---
 
-### 3.2 Agent Fleet `[[aio-agent-fleet]]`
+### 3.2 Agent Fleet `[[agent-fleet-charter|aio-agent-fleet]]`
 
 **Mandate.** The agents themselves — behavior, prompts, subscriptions, per-agent
 doneability. Owns whether `email_parsing_agent` actually parses email.
@@ -355,12 +355,12 @@ they are registered and "healthy"; a customer commitment is made against
 
 > **Co-ownership, stated deliberately.** `state_invariant_enforcer`, `drift_agent`,
 > `inequality_detector` (+ the `ghost_inventory` / `shrinkage_detective` stubs) are
-> *guardian* agents. Fleet owns their code; `[[sre-state-integrity]]` (§6.4) owns
+> *guardian* agents. Fleet owns their code; `[[state-integrity-invariants-charter|sre-state-integrity]]` (§6.4) owns
 > their findings and their alert thresholds.
 
 ---
 
-### 3.3 Model Routing & Inference Economics `[[aio-model-routing]]`
+### 3.3 Model Routing & Inference Economics `[[harness-model-routing-charter|aio-model-routing]]`
 
 **Mandate.** Which model runs which task at what cost: client construction, concurrency
 limits, retry/timeout policy, token accounting, and the routing policy itself.
@@ -389,14 +389,14 @@ measuring, and the savings are wiped out by the repair work — the exact scenar
 
 ---
 
-### 3.4 Agent Evaluation & Gates `[[aio-evaluation-gates]]`
+### 3.4 Agent Evaluation & Gates `[[agent-evaluation-gates-charter|aio-evaluation-gates]]`
 
 **Mandate.** **Run and enforce** doneability: gold sets, regression benchmarks, CI eval
 gates, confidence scoring, and the shadow-vs-live comparison discipline.
 
 **Distinct from siblings because** an agent team that grades its own agents is exactly
 the arrangement [[ORG_STRUCTURE]] §3 rejects for Red Team. It is distinct from
-`[[aio-model-routing]]` because routing picks the cheapest model that *passes*; this
+`[[harness-model-routing-charter|aio-model-routing]]` because routing picks the cheapest model that *passes*; this
 team defines what passing means in operation.
 
 **Boundary — stated because it is the sharpest seam in the whole division.**
@@ -422,7 +422,7 @@ a gold set) and never for the ones that matter commercially (was this vendor rep
 
 ---
 
-### 3.5 Action Safety & the Human Gate `[[aio-action-safety]]`
+### 3.5 Action Safety & the Human Gate `[[action-safety-the-human-gate-charter|aio-action-safety]]`
 
 **Mandate.** The boundary between propose and execute: the `ask → propose → confirm →
 execute` action schema, the typed allowlist, per-action autonomy tiers, and the
@@ -468,7 +468,7 @@ and that is a two-team job with a conditional third.
 
 ---
 
-### 4.1 Skill Registry & Authoring `[[skl-registry-authoring]]`
+### 4.1 Skill Registry & Authoring `[[skill-registry-authoring-charter|skl-registry-authoring]]`
 
 **Mandate.** The `SKILL.md` contract, the §3.3 creation protocol (trigger · doneability ·
 real past instance · owning department), description quality, and the registry index.
@@ -492,7 +492,7 @@ plausible-sounding skills that have never fired.
 
 ---
 
-### 4.2 Skill Lifecycle & Anti-Sprawl `[[skl-lifecycle]]`
+### 4.2 Skill Lifecycle & Anti-Sprawl `[[roster-lifecycle-charter|skl-lifecycle]]`
 
 **Mandate.** The 30-day staleness review, deprecation, deletion, and the weekly
 skill-health job ([[README]] §6).
@@ -515,7 +515,7 @@ in a README — the precise fate of most anti-sprawl rules.
 
 ---
 
-### 4.3 Skill Harvesting `[[skl-harvesting]]` — **GATED / NEW**
+### 4.3 Skill Harvesting `[[skill-harvesting-charter|skl-harvesting]]` — **GATED / NEW**
 
 **Mandate.** Mine work that already happened for procedures that *should be* skills —
 the opposite direction from authoring-on-demand.
@@ -534,7 +534,7 @@ codified procedure with a trigger and a success criterion — i.e. a skill missi
 
 **Entry trigger — do not staff before this fires.** *The registry holds ≥ 15 skills, or
 §4.1's protocol-compliance metric has been green for two consecutive quarters.* Until
-then, harvesting is a recurring task inside `[[skl-registry-authoring]]`. If the team
+then, harvesting is a recurring task inside `[[skill-registry-authoring-charter|skl-registry-authoring]]`. If the team
 count must be cut, **cut this one first.**
 
 **Primary metric.** **Harvested-skill firing rate** — harvested skills that fire within
@@ -542,7 +542,7 @@ count must be cut, **cut this one first.**
 on this metric; if it does not, the team has no reason to exist.
 
 **Premortem.** It is staffed early, "harvests" all 60 scripts into `SKILL.md` wrappers
-in a single sprint, and hands `[[skl-lifecycle]]` 60 stale skills on day one — sprawl
+in a single sprint, and hands `[[roster-lifecycle-charter|skl-lifecycle]]` 60 stale skills on day one — sprawl
 delivered by the team meant to prevent it.
 
 ---
@@ -560,7 +560,7 @@ unowned and unrepeatable). Confusing any two of them corrupts every downstream e
 
 ---
 
-### 5.1 Corpora & Enrichment `[[dat-corpora-enrichment]]`
+### 5.1 Corpora & Enrichment `[[corpora-enrichment-charter|dat-corpora-enrichment]]`
 
 **Mandate.** Coverage and depth of the wine, beverage, food and producer corpora, and
 the machine enrichment pipeline that fills them.
@@ -588,7 +588,7 @@ the wines on real menus are still thin.
 
 ---
 
-### 5.2 Annotation & Ground Truth `[[dat-annotation-ground-truth]]`
+### 5.2 Annotation & Ground Truth `[[annotation-ground-truth-charter|dat-annotation-ground-truth]]`
 
 **Mandate.** Human-verified truth: labelling operations, inter-annotator agreement, the
 gold sets, and the assembly of training sets from them.
@@ -618,7 +618,7 @@ time gets pulled elsewhere, and every accuracy claim for the next year rests on
 
 ---
 
-### 5.3 Synthetic Generation & Simulation `[[dat-synthetic-simulation]]`
+### 5.3 Synthetic Generation & Simulation `[[synthetic-generation-simulation-charter|dat-synthetic-simulation]]`
 
 **Mandate.** Data that is **true by construction**: synthetic restaurants, invoices,
 menus, personas, and simulated POS traffic — each generated alongside its own ground truth.
@@ -646,7 +646,7 @@ lamp, half-covered by a thumb); scanners score 95% on synthetic and 60% in the f
 
 ---
 
-### 5.4 POS & Operational Telemetry Ingest `[[dat-pos-telemetry-ingest]]`
+### 5.4 POS & Operational Telemetry Ingest `[[pos-operational-telemetry-ingest-charter|dat-pos-telemetry-ingest]]`
 
 **Mandate.** Real operational traffic as an L0 asset: POS checks, tables, sales velocity,
 line-item resolution, and the review queues for what does not resolve.
@@ -654,7 +654,7 @@ line-item resolution, and the review queues for what does not resolve.
 **Distinct from siblings because** it is **the only data source whose schema the company
 does not own and cannot re-run.** A missed webhook is a permanently missing Tuesday.
 
-**Distinct from `[[eng-integration-wire]]`** (§2.7) on a crisp line: Integration owns
+**Distinct from `[[integration-engineering-charter|eng-integration-wire]]`** (§2.7) on a crisp line: Integration owns
 *"the webhook verified, returned 200, and nothing was dropped."* This team owns *"the
 check lines resolved to real catalogue items and velocity is computable."* Delivery vs.
 fitness. A payload can be perfectly delivered and useless.
@@ -676,14 +676,14 @@ catalogue, and the analytics engine's baselines were fitted on the resolvable ha
 
 ---
 
-### 5.5 Substrate Quality & Coverage `[[dat-substrate-quality]]`
+### 5.5 Substrate Quality & Coverage `[[substrate-quality-coverage-charter|dat-substrate-quality]]`
 
 **Mandate.** Measure the substrate rather than produce it: confidence scoring, governance
 tiers, quarantine of under-identified rows, and the daily data-substrate progress report
 ([[README]] §6).
 
 **Distinct from siblings because** §§5.1–5.4 are **producers**, and a producer that grades
-its own output is §0 test 3's failure. Distinct from `[[aio-evaluation-gates]]` (§3.4) on
+its own output is §0 test 3's failure. Distinct from `[[agent-evaluation-gates-charter|aio-evaluation-gates]]` (§3.4) on
 subject: that team grades **agent tasks**, this one grades **data rows**.
 
 **Evidence — EXISTS.**
@@ -711,19 +711,19 @@ Two candidates were rejected outright, and saying so is part of the design:
 
 - **Incident Response / On-Call — rejected.** A dedicated incident team for a solo
   founder plus an agent fleet is org cosplay. Incident command folds into
-  `[[sre-observability]]`, whose metrics are what would page anyone in the first place.
-- **Infrastructure Cost — rejected.** Inference cost belongs to `[[aio-model-routing]]`
+  `[[observability-telemetry-plumbing-charter|sre-observability]]`, whose metrics are what would page anyone in the first place.
+- **Infrastructure Cost — rejected.** Inference cost belongs to `[[harness-model-routing-charter|aio-model-routing]]`
   (§3.3); platform cost is three vendors (Railway, Vercel, Supabase) on flat plans. Not
   a team until there is a bill worth a headcount.
 
 **Named gap, not a team.** Backup/restore is `scripts/backup_db.sh` and
 `scripts/restore_db.sh` — two shell scripts with **no evidence of a tested restore**.
-Assigned to `[[sre-release-engineering]]` (restore is the terminal rollback), and its
+Assigned to `[[release-engineering-charter|sre-release-engineering]]` (restore is the terminal rollback), and its
 first task is to prove a restore works. It is flagged here so it cannot be lost.
 
 ---
 
-### 6.1 Observability & Telemetry Plumbing `[[sre-observability]]`
+### 6.1 Observability & Telemetry Plumbing `[[observability-telemetry-plumbing-charter|sre-observability]]`
 
 **Mandate.** Whether a signal exists at all: metrics, traces, error capture, log
 timelines, health surfaces — and the emission path NF-A will ride on.
@@ -752,7 +752,7 @@ zero, and zero looks like calm.
 
 ---
 
-### 6.2 Release Engineering `[[sre-release-engineering]]`
+### 6.2 Release Engineering `[[release-engineering-charter|sre-release-engineering]]`
 
 **Mandate.** The path from commit to production and back: the five CI/CD workflows,
 deploy audit, rollback, environment/secret hygiene across 80 env vars, and — per §6.0 —
@@ -778,7 +778,7 @@ this workflow already documents its own tolerance.
 
 ---
 
-### 6.3 Runtime Resilience `[[sre-runtime-resilience]]`
+### 6.3 Runtime Resilience `[[runtime-resilience-charter|sre-runtime-resilience]]`
 
 **Mandate.** Behavior under partial failure: circuit breakers, dead-letter queues, retry
 and backoff policy, idempotency, rate limiting, connection pooling, saga compensation,
@@ -806,7 +806,7 @@ resilience machinery is working.
 
 ---
 
-### 6.4 State Integrity & Invariants `[[sre-state-integrity]]`
+### 6.4 State Integrity & Invariants `[[state-integrity-invariants-charter|sre-state-integrity]]`
 
 **Mandate.** Detect silent corruption: distributed-state invariants, schema drift,
 tenant leakage, POS↔inventory divergence — and own the gates that enforce them.
@@ -842,8 +842,8 @@ are decided here):
 |---|---|
 | OD-19 | **25 teams for one division.** Is the team layer chartered at this granularity, or only for departments whose scope demonstrably exceeds one owner (Engineering, Data)? |
 | OD-20 | **Engineering at 8.** Are Schema & Migrations (§2.8) and Messaging & Delivery (§2.4) teams, or functions inside Platform & API? Each has independent evidence; each is also a plausible merge. |
-| OD-21 | **The evaluation seam.** Does `[[aio-evaluation-gates]]` (§3.4, operations) coexist with Research & Math (methodology, [[README]] §2.2), or is it one team in the Intelligence division? Duplication here is worse than either answer. |
-| OD-22 | **Skills at 3 vs 2.** `[[skl-harvesting]]` carries an explicit entry trigger (§4.3). Chartered now with the trigger, or not chartered until it fires? |
+| OD-21 | **The evaluation seam.** Does `[[agent-evaluation-gates-charter|aio-evaluation-gates]]` (§3.4, operations) coexist with Research & Math (methodology, [[README]] §2.2), or is it one team in the Intelligence division? Duplication here is worse than either answer. |
+| OD-22 | **Skills at 3 vs 2.** `[[skill-harvesting-charter|skl-harvesting]]` carries an explicit entry trigger (§4.3). Chartered now with the trigger, or not chartered until it fires? |
 | OD-23 | **Does the team layer get the 7-artifact anatomy?** [[ORG_STRUCTURE]] §4 costs ≈168 documents for 24 units. Applying it to 25 teams adds ≈175 more. Proposal: teams get **3** artifacts (charter · premortem · loops), not 7. This is the single largest upkeep decision in the chapter. |
 | OD-24 | **Guardian-agent co-ownership.** §3.2 gives Agent Fleet the code and §6.4 the findings. Workable, or does one team own guardian agents end to end? |
 
@@ -856,10 +856,10 @@ plausibly claim the same work; naming them now is cheaper than arbitrating later
 
 | Seam | Left | Right | The line |
 |---|---|---|---|
-| Webhook health vs. data fitness | `[[eng-integration-wire]]` | `[[dat-pos-telemetry-ingest]]` | Delivered correctly vs. usable as L0 |
-| DDL authorship vs. drift gate | `[[eng-schema-migrations]]` | `[[sre-state-integrity]]` | Author ≠ auditor (§0 test 3) |
-| Draft vs. deliver | AI Orchestration | `[[eng-messaging-delivery]]` | What it says vs. that it arrives once |
-| Grading agents vs. grading rows | `[[aio-evaluation-gates]]` | `[[dat-substrate-quality]]` | Task outcome vs. data row |
-| Method vs. operations | Research & Math *(Intelligence)* | `[[aio-evaluation-gates]]` | Defines doneability vs. enforces it — **fork OD-21** |
-| Find vs. fix the class | Security *(Intelligence)* | `[[eng-platform-api]]` | Classifies the 137 unguarded routes vs. builds the mechanism |
-| Intent vs. implementation | Design *(Product)* | `[[eng-client-surfaces]]` | What the screen should be vs. what shipped |
+| Webhook health vs. data fitness | `[[integration-engineering-charter|eng-integration-wire]]` | `[[pos-operational-telemetry-ingest-charter|dat-pos-telemetry-ingest]]` | Delivered correctly vs. usable as L0 |
+| DDL authorship vs. drift gate | `[[schema-migrations-charter|eng-schema-migrations]]` | `[[state-integrity-invariants-charter|sre-state-integrity]]` | Author ≠ auditor (§0 test 3) |
+| Draft vs. deliver | AI Orchestration | `[[messaging-delivery-charter|eng-messaging-delivery]]` | What it says vs. that it arrives once |
+| Grading agents vs. grading rows | `[[agent-evaluation-gates-charter|aio-evaluation-gates]]` | `[[substrate-quality-coverage-charter|dat-substrate-quality]]` | Task outcome vs. data row |
+| Method vs. operations | Research & Math *(Intelligence)* | `[[agent-evaluation-gates-charter|aio-evaluation-gates]]` | Defines doneability vs. enforces it — **fork OD-21** |
+| Find vs. fix the class | Security *(Intelligence)* | `[[platform-api-charter|eng-platform-api]]` | Classifies the 137 unguarded routes vs. builds the mechanism |
+| Intent vs. implementation | Design *(Product)* | `[[client-surfaces-charter|eng-client-surfaces]]` | What the screen should be vs. what shipped |

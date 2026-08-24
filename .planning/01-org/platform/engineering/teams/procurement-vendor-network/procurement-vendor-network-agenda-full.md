@@ -6,7 +6,7 @@ team: procurement-vendor-network
 status: provisional
 metrics: [procurement.order_to_delivery_reconciliation_rate, procurement.no_touch_reconciliation_rate, procurement.unguarded_money_moving_routes]
 updated: 2026-08-24
-links: ["[[procurement-vendor-network-charter]]", "[[procurement-vendor-network-premortem]]", "[[procurement-vendor-network-agenda-board]]", "[[procurement-vendor-network-loops]]", "[[engineering-agenda-full]]", "[[platform-api-charter]]", "[[action-safety-the-human-gate]]"]
+links: ["[[procurement-vendor-network-charter]]", "[[procurement-vendor-network-premortem]]", "[[procurement-vendor-network-agenda-board]]", "[[procurement-vendor-network-loops]]", "[[engineering-agenda-full]]", "[[platform-api-charter]]", "[[action-safety-the-human-gate-charter|action-safety-the-human-gate]]"]
 ---
 
 # Procurement & Vendor Network — Full Agenda
@@ -48,7 +48,7 @@ exists to catch (premortem M2).
 about the world; the order line is what was agreed. Any reconciliation query joining
 `vendor_catalogue` for price is a review rejection (premortem M3).
 
-**Committing spend is not this team's call.** [[action-safety-the-human-gate]] owns the
+**Committing spend is not this team's call.** [[action-safety-the-human-gate-charter|action-safety-the-human-gate]] owns the
 gate. This team owns the mechanics. That separation is the counter to M4 and it is worth
 more than any threshold policy.
 
@@ -75,7 +75,7 @@ more than any threshold policy.
 - [ ] Add immutable price-at-order to order lines; forbid catalogue joins in
       reconciliation (M3)
 - [ ] Enumerate every code path that can cause spend, including agent paths; hand the gate
-      to [[action-safety-the-human-gate]] (M4)
+      to [[action-safety-the-human-gate-charter|action-safety-the-human-gate]] (M4)
 - [ ] Re-classify `vendor-portal` under an integration-surface correctness criterion (M5)
 - [ ] Publish the first `procurement.order_to_delivery_reconciliation_rate` reading
 

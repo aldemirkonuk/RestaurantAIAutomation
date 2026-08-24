@@ -6,7 +6,7 @@ team: commercial-workforce-agreements
 status: provisional
 metrics: [legal.clause_library_hit_rate, legal.request_to_executable_draft_days, legal.named_reviewer_coverage]
 updated: 2026-08-24
-links: ["[[commercial-workforce-agreements-charter]]", "[[commercial-workforce-agreements-loops]]", "[[commercial-workforce-agreements-agenda-board]]", "[[commercial-workforce-agreements-directive]]", "[[legal-schedule]]", "[[skills-charter]]", "[[regulatory-posture-charter]]", "[[foundation-README]]"]
+links: ["[[commercial-workforce-agreements-charter]]", "[[commercial-workforce-agreements-loops]]", "[[commercial-workforce-agreements-agenda-board]]", "[[commercial-workforce-agreements-directive]]", "[[legal-schedule]]", "[[skills-charter]]", "[[regulatory-posture-charter]]", "[[README|foundation-README]]"]
 ---
 
 # Commercial & Workforce Agreements — Schedule & Skills
@@ -41,7 +41,7 @@ runs gets deleted by the org's own anti-sprawl rule (GENERATION_BRIEF §3.8).
 Skills live in `.claude/skills/`. A skill that has not fired in 30 days is reviewed for
 deletion.
 
-**`.claude/skills/` does not exist in this repo.** [[foundation-README]] §3.2 names
+**`.claude/skills/` does not exist in this repo.** [[README|foundation-README]] §3.2 names
 `legal-doc-draft` as a T2 department skill (line 145) — that name is currently the entire
 skill surface, and this team owns it.
 

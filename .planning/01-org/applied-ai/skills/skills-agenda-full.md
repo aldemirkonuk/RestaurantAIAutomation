@@ -41,7 +41,7 @@ the least satisfying thing first.
   checklist).
 - **Signal.** Add `skill_id` to the NF-A event context ([[README]] §4.2, §4.4) and
   a firing log. This is a request into [[ai-orchestration-charter]] and
-  `[[sre-observability]]`, not work this department can do alone — which makes it
+  `[[observability-telemetry-plumbing-charter|sre-observability]]`, not work this department can do alone — which makes it
   the first real dependency to negotiate rather than assume.
 - **Brake.** Build the weekly skill-health job in the shape of
   `.github/workflows/schema-parity.yml:26-27` (daily cron, fails loudly). Copy the

@@ -5,7 +5,7 @@ department: ai-orchestration
 status: exists
 metrics: [nf_a.task_success_rate, nf_a.cost_per_task, nf_a.doneability_verdict_coverage, safety.unconfirmed_mutation_count, fleet.live_agent_ratio]
 updated: 2026-08-24
-links: ["[[ai-orchestration-charter]]", "[[ai-orchestration-loops]]", "[[ai-orchestration-directive]]", "[[harness-runtime-premortem]]", "[[agent-fleet-premortem]]", "[[model-routing-inference-economics-premortem]]", "[[agent-evaluation-gates-premortem]]", "[[action-safety-the-human-gate-premortem]]", "[[research-and-math-charter]]", "[[red-team-charter]]", "[[technology]]", "[[README]]"]
+links: ["[[ai-orchestration-charter]]", "[[ai-orchestration-loops]]", "[[ai-orchestration-directive]]", "[[harness-runtime-premortem]]", "[[agent-fleet-premortem]]", "[[model-routing-inference-economics-premortem]]", "[[agent-evaluation-gates-premortem]]", "[[action-safety-the-human-gate-premortem]]", "[[research-math-charter|research-and-math-charter]]", "[[red-team-charter]]", "[[technology]]", "[[README]]"]
 ---
 
 # AI Orchestration — Premortem
@@ -140,7 +140,7 @@ and the families with no verdict are named on the board rather than omitted from
 the same anti-averaging rule [[ai-orchestration-charter]] applies to the department
 metric set. Judgment tasks get a **human-rated rubric with inter-rater agreement**
 rather than nothing; a low-n rubric that exists beats a high-n metric of the wrong
-thing. Methodology here is [[research-and-math-charter]]'s (the seam in
+thing. Methodology here is [[research-math-charter|research-and-math-charter]]'s (the seam in
 [[ai-orchestration-charter]] §Non-goals); running it is
 [[agent-evaluation-gates-charter]]'s.
 

@@ -23,7 +23,7 @@ links: ["[[knowledge-documentation-charter]]", "[[knowledge-documentation-loops]
 | Weekly | **Claim-sample verification** — N sampled spine-doc claims re-checked against source | `standards.stale_claim_rate` |
 | Monthly | **Retire-to-write ledger** — L-KD-1 | `kd.docs_added_vs_retired_ratio` |
 | Monthly | **Convention-violated-at-birth review** — L-KD-3 | Contract amendments, not doc fixes |
-| Monthly | **Companion-doc regeneration** — `ENDPOINTS.md`, `PAGE_MAP.md`, `EXTERNAL_CONNECTIONS.md` re-scanned, never hand-edited ([[foundation-README]] §0) | Diff vs committed; `standards.regenerated_companion_age_days` |
+| Monthly | **Companion-doc regeneration** — `ENDPOINTS.md`, `PAGE_MAP.md`, `EXTERNAL_CONNECTIONS.md` re-scanned, never hand-edited ([[README|foundation-README]] §0) | Diff vs committed; `standards.regenerated_companion_age_days` |
 | Quarterly | **Org-wide staleness sweep** — every `agenda-*.md` in `01-org/` and `02-advisory/` past 60 days ([[ORG_STRUCTURE]] §4) | Archive-or-revise list per unit |
 | **One-off, founder-requested** | **OD-22 tooling & reference library session** — see below | `.planning/library/` + a Dataview index |
 
@@ -80,7 +80,7 @@ Skills live in `.claude/skills/`. A skill that has not fired in 30 days is revie
 deletion.
 
 ⚠️ **`.claude/skills/` does not exist in this repo.** The only project skill is
-`.agents/skills/railway-config/SKILL.md` ([[foundation-README]] §3.1). Ninety-nine
+`.agents/skills/railway-config/SKILL.md` ([[README|foundation-README]] §3.1). Ninety-nine
 `schedule.md` files across the org — including this one — assert a directory that is not
 there. This department found it, this department is implicated by it, and it is staged as
 **OD-C7**: create `.claude/skills/` and migrate, or correct 99 assertions. Reporting it here

@@ -5,7 +5,7 @@ department: research-math
 status: provisional
 metrics: [nf_a.event_completeness, nf_a.cost_per_completed_task, nf_a.harness_overhead_ms, nf_a.verified_task_success_rate]
 updated: 2026-08-24
-links: ["[[research-math-charter]]", "[[research-math-directive]]", "[[research-math-schedule]]", "[[harness-model-routing-loops]]", "[[evaluation-doneability-loops]]", "[[neural-footprint-instrumentation-loops]]", "[[data-charter]]", "[[engineering-charter]]", "[[security-charter]]", "[[analytics-bi-charter]]", "[[aio-evaluation-gates]]", "[[aio-model-routing]]", "[[decision-office-charter]]"]
+links: ["[[research-math-charter]]", "[[research-math-directive]]", "[[research-math-schedule]]", "[[harness-model-routing-loops]]", "[[evaluation-doneability-loops]]", "[[neural-footprint-instrumentation-loops]]", "[[data-charter]]", "[[engineering-charter]]", "[[security-charter]]", "[[analytics-bi-charter]]", "[[agent-evaluation-gates-charter|aio-evaluation-gates]]", "[[harness-model-routing-charter|aio-model-routing]]", "[[decision-office-charter]]"]
 loop_count: 6
 loop_count: 6
 loop_count: 6
@@ -175,5 +175,5 @@ Recorded here so the dependency is visible from both ends.
 |---|---|---|---|
 | [[security-charter]] SEC-3 | Cost events on NestJS model calls, tagged with authenticated subject | `nf_a.unauthenticated_inference_spend` — **unmeasurable until L1 emits** | First reading within 4 weeks; `consultants.service.ts` instrumented first for exactly this reason |
 | [[analytics-bi-charter]] AB-2 | A `subject_type` home for operator act/dismiss signal (fork F-3) | `insight_acceptance_rate` | Decided inside the OD-11 session (L5) |
-| [[aio-evaluation-gates]] | Doneability criteria and pass conditions to enforce | NF-A verdict coverage | Criteria for three task types within 6 weeks (L3) |
-| [[people-and-agent-ops-charter]] | NF-A as the primary input to an agent workforce function | — | Whatever L1 publishes; no separate feed |
+| [[agent-evaluation-gates-charter|aio-evaluation-gates]] | Doneability criteria and pass conditions to enforce | NF-A verdict coverage | Criteria for three task types within 6 weeks (L3) |
+| [[people-agent-ops-charter|people-and-agent-ops-charter]] | NF-A as the primary input to an agent workforce function | — | Whatever L1 publishes; no separate feed |

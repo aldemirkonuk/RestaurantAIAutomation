@@ -6,7 +6,7 @@ team: commercial-workforce-agreements
 status: new
 metrics: [legal.request_to_executable_draft_days, legal.clause_library_hit_rate, legal.annex_satisfiability_signoff, legal.named_reviewer_coverage, nf_a.doneability_verdict]
 updated: 2026-08-24
-links: ["[[legal-charter]]", "[[commercial-workforce-agreements-premortem]]", "[[commercial-workforce-agreements-agenda-full]]", "[[commercial-workforce-agreements-agenda-board]]", "[[commercial-workforce-agreements-directive]]", "[[commercial-workforce-agreements-loops]]", "[[commercial-workforce-agreements-schedule]]", "[[instruments-equity-charter]]", "[[regulatory-posture-charter]]", "[[privacy-engineering-charter]]", "[[roster-lifecycle-charter]]", "[[foundation-README]]", "[[corporate]]"]
+links: ["[[legal-charter]]", "[[commercial-workforce-agreements-premortem]]", "[[commercial-workforce-agreements-agenda-full]]", "[[commercial-workforce-agreements-agenda-board]]", "[[commercial-workforce-agreements-directive]]", "[[commercial-workforce-agreements-loops]]", "[[commercial-workforce-agreements-schedule]]", "[[instruments-equity-charter]]", "[[regulatory-posture-charter]]", "[[privacy-engineering-charter]]", "[[roster-lifecycle-charter]]", "[[README|foundation-README]]", "[[corporate]]"]
 ---
 
 # Commercial & Workforce Agreements — Charter
@@ -24,7 +24,7 @@ Division **Corporate** → Department [[legal-charter]] → Team
 Own the **nine repeatable instruments** — NDA, MSA, statement of work, professional
 services agreement, letter of intent, employment agreement, contractor agreement, data
 processing agreement, business associate agreement — together with the **clause library**
-and the `legal-doc-draft` skill named in [[foundation-README]] §3.2 (line 145)
+and the `legal-doc-draft` skill named in [[README|foundation-README]] §3.2 (line 145)
 (`corporate.md:91-94`).
 
 The unifying property is that each of these will be drafted **many times**, against many
@@ -133,7 +133,7 @@ ownership line carefully — that parser belongs to Engineering/procurement, and
 would be overreaching to claim it.
 
 **The one skill this team is meant to own does not exist as a file.**
-[[foundation-README]] §3.2 names `legal-doc-draft` (line 145); `.claude/skills/` is not
+[[README|foundation-README]] §3.2 names `legal-doc-draft` (line 145); `.claude/skills/` is not
 present in the repo at all.
 
 ## Split trigger — Workforce Paper

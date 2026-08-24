@@ -6,7 +6,7 @@ team: inventory-ledger
 status: provisional
 metrics: []
 updated: 2026-08-24
-links: ["[[inventory-ledger-charter]]", "[[inventory-ledger-loops]]", "[[engineering-schedule]]", "[[sre-state-integrity]]", "[[skills-charter]]"]
+links: ["[[inventory-ledger-charter]]", "[[inventory-ledger-loops]]", "[[engineering-schedule]]", "[[state-integrity-invariants-charter|sre-state-integrity]]", "[[skills-charter]]"]
 ---
 
 # Inventory & Ledger — Schedule & Skills
@@ -15,7 +15,7 @@ links: ["[[inventory-ledger-charter]]", "[[inventory-ledger-loops]]", "[[enginee
 
 | Cadence | Job | Emits |
 |---|---|---|
-| Per PR | `scripts/check_no_direct_stock_writes.sh` via `.github/workflows/ci.yml` — run by [[sre-state-integrity]] | Direct-write guard pass/fail (**syntax only**; `:10` says so) |
+| Per PR | `scripts/check_no_direct_stock_writes.sh` via `.github/workflows/ci.yml` — run by [[state-integrity-invariants-charter|sre-state-integrity]] | Direct-write guard pass/fail (**syntax only**; `:10` says so) |
 | **Daily** | Projection divergence sample — L-IL-1 | `inventory.projection_divergence_rows`; non-zero opens a P1 |
 | Daily | Alarm-state check: green CI ∧ non-zero divergence | Immediate escalation to [[engineering-loops]] L-ENG-3 |
 | Weekly | Guard/outcome reconciliation — L-IL-2 | Guard coverage gaps, notably `supabase/migrations/**` function bodies |

@@ -6,7 +6,7 @@ team: harness-runtime
 status: exists
 metrics: [nf_a.retries, nf_a.dlq_depth]
 updated: 2026-08-24
-links: ["[[harness-runtime-charter]]", "[[harness-runtime-loops]]", "[[harness-runtime-directive]]", "[[ai-orchestration-premortem]]", "[[agent-fleet-charter]]", "[[action-safety-the-human-gate-charter]]", "[[reliability-charter]]", "[[decision-office-charter]]", "[[technology]]"]
+links: ["[[harness-runtime-charter]]", "[[harness-runtime-loops]]", "[[harness-runtime-directive]]", "[[ai-orchestration-premortem]]", "[[agent-fleet-charter]]", "[[action-safety-the-human-gate-charter]]", "[[reliability-sre-charter|reliability-charter]]", "[[decision-office-charter]]", "[[technology]]"]
 ---
 
 # Harness & Runtime — Premortem
@@ -47,7 +47,7 @@ lacks is a date, and a method without a date is how forks age.
 
 ### 2. The DLQ became a well-engineered place where problems go to be forgotten
 
-`technology.md:802-805` says this about `[[sre-resilience]]` and it is at least as
+`technology.md:802-805` says this about `[[runtime-resilience-charter|sre-resilience]]` and it is at least as
 true here, because **this team builds the DLQ and does not read it**:
 retries work, circuit breakers work, failures land in `queue.dead_letters` exactly as
 designed — and nothing consumes it. The system reports healthy *because* the
@@ -62,7 +62,7 @@ visible on the first week of `nf_a.dlq_depth` data, long before the depth is ala
 `loop-harness-health` ([[harness-runtime-loops]]) — a DLQ read once a day cannot
 become a place things are forgotten. And a named owner for the *reading*: the DLQ
 sweep classifies each entry and assigns it to [[agent-fleet-charter]] (agent bug),
-this team (harness bug), or [[reliability-charter]] (infrastructure). A queue whose
+this team (harness bug), or [[reliability-sre-charter|reliability-charter]] (infrastructure). A queue whose
 entries are unassignable is the failure mode; a triage rule is the counter-pressure.
 
 ---

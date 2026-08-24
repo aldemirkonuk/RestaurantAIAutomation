@@ -53,7 +53,7 @@ two.
 | Token accounting and the `api_spend` schema | **Yes** | `spend_logger.py`; table at baseline migration `:2231` |
 | Prompt content | **No** | → [[agent-fleet-charter]] |
 | Whether an endpoint is guarded | **No** | → [[security-charter]] + Engineering. **We own noticing the spend** |
-| Turning cost-per-task into a customer price | **No** | → `[[fin-unit-economics-pricing]]` |
+| Turning cost-per-task into a customer price | **No** | → `[[unit-economics-pricing-charter|fin-unit-economics-pricing]]` |
 | Adopting a non-Anthropic provider | **No, not yet** | OD-04 is downstream of OD-03 (`OPEN-DECISIONS.md:15`) |
 
 ## Two standing rules

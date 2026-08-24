@@ -6,7 +6,7 @@ team: harness-runtime
 status: exists
 metrics: [nf_a.retries, nf_a.dlq_depth]
 updated: 2026-08-24
-links: ["[[harness-runtime-charter]]", "[[harness-runtime-premortem]]", "[[harness-runtime-directive]]", "[[harness-runtime-schedule]]", "[[ai-orchestration-loops]]", "[[agent-fleet-loops]]", "[[reliability-charter]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
+links: ["[[harness-runtime-charter]]", "[[harness-runtime-premortem]]", "[[harness-runtime-directive]]", "[[harness-runtime-schedule]]", "[[ai-orchestration-loops]]", "[[agent-fleet-loops]]", "[[reliability-sre-charter|reliability-charter]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
 loop_count: 4
 loop_count: 4
 loop_count: 4
@@ -106,6 +106,6 @@ escalation: "The date passing without the bake-off running is an escalation to d
 | To | Signal | Why they need it |
 |---|---|---|
 | [[agent-fleet-loops]] | Per-agent retry rate; DLQ entries classified *agent defect* | A retry that succeeds is still a defect signal ([[harness-runtime-directive]] §The retry/defect boundary) |
-| `[[sre-resilience]]` | DLQ entries classified *infrastructure* | They operate; we author |
+| `[[runtime-resilience-charter|sre-resilience]]` | DLQ entries classified *infrastructure* | They operate; we author |
 | [[ai-orchestration-loops]] | `nf_a.retries`, `nf_a.dlq_depth` | The department's harness-health metric pair |
 | [[decision-office-charter]] | `od03.days_open` | A fork's age is the thing the Decision Office exists to watch |

@@ -6,7 +6,7 @@ team: access-control-tenant-isolation
 status: provisional
 metrics: []
 updated: 2026-08-24
-links: ["[[access-control-tenant-isolation-charter]]", "[[access-control-tenant-isolation-premortem]]", "[[access-control-tenant-isolation-loops]]", "[[security-directive]]", "[[perimeter-ingress-integrity-charter]]", "[[ai-surface-security-charter]]", "[[platform-api-charter]]", "[[compliance-charter]]", "[[red-team-charter]]", "[[OPEN-DECISIONS]]"]
+links: ["[[access-control-tenant-isolation-charter]]", "[[access-control-tenant-isolation-premortem]]", "[[access-control-tenant-isolation-loops]]", "[[security-directive]]", "[[perimeter-ingress-integrity-charter]]", "[[ai-surface-security-charter]]", "[[platform-api-charter]]", "[[compliance-privacy-charter|compliance-charter]]", "[[red-team-charter]]", "[[OPEN-DECISIONS]]"]
 ---
 
 # Access Control & Tenant Isolation — Directive
@@ -99,7 +99,7 @@ Escalate to [[security-charter]], and onward to `OPEN-DECISIONS.md` where it say
    `sec.recurrence_guard_present` is still `false`.** The metric improved and the process
    failed; that is an escalation, not a win (premortem M1).
 6. **A finding is about personal data rather than reachability** — hand to
-   [[compliance-charter]] rather than ruling on it. `contacts`' 8 routes are the likely
+   [[compliance-privacy-charter|compliance-charter]] rather than ruling on it. `contacts`' 8 routes are the likely
    first instance.
 7. **A verdict is challenged by [[red-team-charter]]** and we disagree. Advisory is
    findings-only; a disagreement we cannot close ourselves is a decision, and decisions go

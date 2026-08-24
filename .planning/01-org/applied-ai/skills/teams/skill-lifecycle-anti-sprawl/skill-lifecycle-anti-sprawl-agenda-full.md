@@ -32,7 +32,7 @@ of this team that skips it.
 ## How
 
 - **Negotiate the field early and once.** The ask into
-  [[ai-orchestration-charter]] / `[[sre-observability]]` is two fields on one event:
+  [[ai-orchestration-charter]] / `[[observability-telemetry-plumbing-charter|sre-observability]]` is two fields on one event:
   `skill_id` and the existing doneability verdict ([[README]] §4.2). Asking for both
   together costs one negotiation instead of two, and #4 in the premortem needs the
   second field.

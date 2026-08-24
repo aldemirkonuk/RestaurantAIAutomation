@@ -5,7 +5,7 @@ department: research-math
 status: provisional
 metrics: [nf_a.event_completeness, nf_a.cost_per_completed_task, nf_a.verified_task_success_rate, nf_a.harness_overhead_ms]
 updated: 2026-08-24
-links: ["[[research-math-charter]]", "[[research-math-loops]]", "[[research-math-directive]]", "[[research-math-schedule]]", "[[harness-model-routing-premortem]]", "[[evaluation-doneability-premortem]]", "[[neural-footprint-instrumentation-premortem]]", "[[red-team-charter]]", "[[decision-office-charter]]", "[[0001-mudavym-single-entity]]", "[[aio-evaluation-gates]]", "[[aio-model-routing]]"]
+links: ["[[research-math-charter]]", "[[research-math-loops]]", "[[research-math-directive]]", "[[research-math-schedule]]", "[[harness-model-routing-premortem]]", "[[evaluation-doneability-premortem]]", "[[neural-footprint-instrumentation-premortem]]", "[[red-team-charter]]", "[[decision-office-charter]]", "[[0001-mudavym-single-entity]]", "[[agent-evaluation-gates-charter|aio-evaluation-gates]]", "[[harness-model-routing-charter|aio-model-routing]]"]
 ---
 
 # Research & Math — Premortem
@@ -166,7 +166,7 @@ are two footprints. Fold F-3 into the OD-11 session rather than after it: adding
   in [[research-math-loops]]. A premortem whose counter-pressures have no close-time is
   M2 one level up.
 - **The evaluation seam is a live merge candidate, not a border to defend.** If
-  [[aio-evaluation-gates]] and [[evaluation-doneability-charter]] duplicate work,
+  [[agent-evaluation-gates-charter|aio-evaluation-gates]] and [[evaluation-doneability-charter]] duplicate work,
   `technology.md:406` already prescribes the merge. Defending scope there is a sixth
   failure mechanism we are choosing not to have.
 - **Anti-sprawl applies to this document.** Nothing revisited in 60 days is fiction

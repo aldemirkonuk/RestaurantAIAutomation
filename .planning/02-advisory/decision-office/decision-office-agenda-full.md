@@ -5,7 +5,7 @@ department: decision-office
 status: provisional
 metrics: [decisions.open_count, decisions.unowned_count, decisions.median_age_days, decisions.namespace_collisions, decisions.unfiled_fork_count, triggers.dated_unwatched_count, loops.undefined_close_time_count, corpus.contradiction_count]
 updated: 2026-08-24
-links: ["[[decision-office-charter]]", "[[decision-office-premortem]]", "[[decision-office-agenda-board]]", "[[decision-office-directive]]", "[[decision-office-loops]]", "[[decision-office-schedule]]", "[[ORG_STRUCTURE]]", "[[OPEN-DECISIONS]]", "[[OBSIDIAN_VAULT]]", "[[0002-documentation-first-operating-mode]]", "[[0007-org-structure]]", "[[foundation-README]]", "[[red-team-charter]]", "[[architecture-review-charter]]", "[[standards-verification-charter]]", "[[knowledge-documentation-charter]]", "[[analytics-bi-charter]]", "[[skills-charter]]", "[[sales-charter]]", "[[legal-charter]]", "[[LOOP-MAP]]"]
+links: ["[[decision-office-charter]]", "[[decision-office-premortem]]", "[[decision-office-agenda-board]]", "[[decision-office-directive]]", "[[decision-office-loops]]", "[[decision-office-schedule]]", "[[ORG_STRUCTURE]]", "[[OPEN-DECISIONS]]", "[[OBSIDIAN_VAULT]]", "[[0002-documentation-first-operating-mode]]", "[[0007-org-structure]]", "[[README|foundation-README]]", "[[red-team-charter]]", "[[architecture-review-charter]]", "[[standards-verification-charter]]", "[[knowledge-documentation-charter]]", "[[analytics-bi-charter]]", "[[skills-charter]]", "[[sales-charter]]", "[[legal-charter]]", "[[LOOP-MAP]]"]
 ---
 
 # Decision Office — Full Agenda
@@ -37,7 +37,7 @@ the failure that would end this function is not slowness, it is helpfulness.
 one sentence is most of the operating model, and each clause answers a specific
 failure:
 
-- *Weekly*, not daily — [[foundation-README]] §6 proposes a daily queue digest, and
+- *Weekly*, not daily — [[README|foundation-README]] §6 proposes a daily queue digest, and
   a 35-row register whose items unblock on scheduled sessions cannot change daily.
   A digest identical five days running gets deleted by §6's own three-runs rule.
 - *Oldest item first*, not most tractable — otherwise metadata work occupies the

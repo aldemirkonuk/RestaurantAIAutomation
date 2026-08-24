@@ -12,7 +12,7 @@ links: [org-structure, foundation-readme, open-decisions, claude-md]
 # Corporate — team layer
 
 - **Status:** PROPOSED. Departments are LOCKED ([[ORG_STRUCTURE]] §2); this layer is not.
-- **Parent:** [[ORG_STRUCTURE]] §1 (Division → Department → Team) · [[foundation-README]]
+- **Parent:** [[ORG_STRUCTURE]] §1 (Division → Department → Team) · [[README|foundation-README]]
 - **Contract:** every team below is one `Team` under a locked department. Team ≠ unit —
   the 7-artifact anatomy in [[ORG_STRUCTURE]] §4 attaches to **departments**, not teams,
   pending OD-17. Teams are the internal split of a department's mandate.
@@ -91,7 +91,7 @@ founder ends up with a SAFE that has a term nobody modelled.
 - **Mandate.** The nine repeatable instruments: **NDA, MSA, statement of work,
   professional services agreement, letter of intent, employment agreement, contractor
   agreement, data processing agreement, business associate agreement.** Owns the clause
-  library and the `legal-doc-draft` skill named in [[foundation-README]] §3.2 (T2).
+  library and the `legal-doc-draft` skill named in [[README|foundation-README]] §3.2 (T2).
 - **Why distinct from 1.1.** This team's product is a *template system* — reusable clauses,
   a fallback ladder, and an agent-executable drafting path. 1.1 has six documents that will
   each be drafted once and never templated. Optimising for reuse is the whole job here and
@@ -185,7 +185,7 @@ corpus today, and fixing one does not fix the others.
   `type`/`division`/`links` frontmatter and (b) `[[link]]` resolution rate. Baseline:
   ≈10% frontmatter, ≈1% of files linked.
 - **Premortem.** *We pick a vault root before OD-01 settles the tree, every link is written
-  against a path that then moves, and the graph becomes a field of unresolved `[[…]]` —
+  against a path that then moves, and the graph becomes a field of unresolved `[[charter|…]]` —
   at which point the convention gets quietly abandoned and Obsidian is a decision nobody
   uses.*
 
@@ -194,7 +194,7 @@ corpus today, and fixing one does not fix the others.
 - **Mandate.** Whether a document is *true*. Owns the doc quality bar, the
   [[ORG_STRUCTURE]] §4 anti-sprawl rule (*"an agenda that has not changed in 60 days is
   either finished or fiction"*), brand-drift detection, and the regeneration discipline for
-  companion docs that [[foundation-README]] declares **"regenerated rather than
+  companion docs that [[README|foundation-README]] declares **"regenerated rather than
   hand-edited"** (`ENDPOINTS.md`, `PAGE_MAP.md`, `EXTERNAL_CONNECTIONS.md`).
 - **Why distinct from 2.1 and 2.3's siblings.** 2.1 answers *where*, 2.2 answers *findable*,
   2.3 answers *still true*. The stale `DOCUMENTATION_INDEX.md` is not misplaced and not
@@ -302,7 +302,7 @@ better at, which is exactly how that gap opened.
   work. But folding it into 3.2 would make that team's mandate incoherent — GDPR and excise
   tax share only a word. So it is preserved as a named track with an explicit entry
   trigger, exactly the pattern the founder already accepted for NF-C in
-  [[foundation-README]] §4.3 (*"preserved as ambition, not carried as dead weight"*).
+  [[README|foundation-README]] §4.3 (*"preserved as ambition, not carried as dead weight"*).
 - **Evidence.** `services/agent-orchestrator/agents/compliance_agent.py` — declares
   `IS_STUB = True` (line 16), subscribes to `compliance.deadline.created` and
   `compliance.report.requested`, and carries `# TODO: Insert compliance_deadlines` /
@@ -360,8 +360,8 @@ evidence shows both are already failing, in different directions.
 ### 4.2 Performance & Doneability
 
 - **Mandate.** Is the work any good, and what did it cost. Owns **task-doneability
-  criteria** ([[foundation-README]] L3), agent performance review, and is the **primary
-  consumer of NF-A** ([[foundation-README]] §4.2).
+  criteria** ([[README|foundation-README]] L3), agent performance review, and is the **primary
+  consumer of NF-A** ([[README|foundation-README]] §4.2).
 - **Why distinct from 4.1.** 4.1 asks *does this worker exist and is it wired in*; 4.2 asks
   *did the task actually get done, and at what cost*. Today the first question has partial
   answers and the second has none — which is precisely the split.
@@ -379,11 +379,11 @@ evidence shows both are already failing, in different directions.
     1. **`SpendLogger.log()` has no `agent` parameter** (signature at
        `services/spend_logger.py:41-48`). Cost is attributed to a *restaurant* and a
        *model*, never to a **worker**. So "cost per task per agent" — a named NF-A field in
-       [[foundation-README]] §4.2 — is **not derivable from what is logged today**.
+       [[README|foundation-README]] §4.2 — is **not derivable from what is logged today**.
     2. **No doneability verdict exists anywhere.** `AgentMetrics` records `success` meaning
        *"process_message() did not raise"* (`base_agent.py:602`) — which is liveness, not
        correctness. An agent that returns confidently wrong output scores 100%.
-  - Compounding: [[foundation-README]] §0 item 5 — Anthropic and Gemini are called over
+  - Compounding: [[README|foundation-README]] §0 item 5 — Anthropic and Gemini are called over
     **raw HTTP, not their SDKs**, so retry/timeout/cost accounting are hand-rolled.
 - **Primary metric.** **NF-A doneability coverage** — % of agent task completions carrying
   both a doneability verdict and an agent-attributed cost. **Baseline: 0%**, and that zero

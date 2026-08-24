@@ -6,7 +6,7 @@ team: evaluation-doneability
 status: provisional
 metrics: [nf_a.verified_task_success_rate, nf_a.verdict_coverage, identity.false_merge_count]
 updated: 2026-08-24
-links: ["[[evaluation-doneability-charter]]", "[[evaluation-doneability-premortem]]", "[[evaluation-doneability-loops]]", "[[research-math-directive]]", "[[harness-model-routing-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[aio-evaluation-gates]]", "[[security-charter]]", "[[decision-office-charter]]", "[[red-team-charter]]"]
+links: ["[[evaluation-doneability-charter]]", "[[evaluation-doneability-premortem]]", "[[evaluation-doneability-loops]]", "[[research-math-directive]]", "[[harness-model-routing-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[agent-evaluation-gates-charter|aio-evaluation-gates]]", "[[security-charter]]", "[[decision-office-charter]]", "[[red-team-charter]]"]
 ---
 
 # Evaluation & Doneability (RM-2) — Directive
@@ -68,7 +68,7 @@ graph TD
 | Decision | Counterpart | Form |
 |---|---|---|
 | The verdict field in the NF-A event | [[neural-footprint-instrumentation-charter]] | We specify the semantics; they own the column |
-| Where gates run in CI/production | [[aio-evaluation-gates]] | Methodology here, operations there — or **merge** (`technology.md:406`) |
+| Where gates run in CI/production | [[agent-evaluation-gates-charter|aio-evaluation-gates]] | Methodology here, operations there — or **merge** (`technology.md:406`) |
 | Injection probes for the vendor-reply set | [[security-charter]] SEC-3 | They supply the adversarial corpus; we own scoring |
 | Exact-equality checks on KPIs | [[analytics-bi-charter]] AB-3 | Different technique, different pass condition; we do not overlap |
 
@@ -97,7 +97,7 @@ Same day:
 4. **The verified/self-reported gap narrows for two close-times with no change to harness
    or criteria.** The auditor is drifting toward the author.
 5. **A corpus or threshold appears in both this team's docs and
-   [[aio-evaluation-gates]]'.** We file the merge proposal ourselves.
+   [[agent-evaluation-gates-charter|aio-evaluation-gates]]'.** We file the merge proposal ourselves.
 6. **The weekly suite's spend is questioned without a cap existing.**
 
 ## What this team does when it is wrong

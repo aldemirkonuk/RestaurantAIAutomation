@@ -6,7 +6,7 @@ team: messaging-delivery
 status: provisional
 metrics: [messaging.duplicate_delivery_rate, messaging.drop_rate]
 updated: 2026-08-24
-links: ["[[messaging-delivery-charter]]", "[[messaging-delivery-loops]]", "[[messaging-delivery-directive]]", "[[engineering-premortem]]", "[[sre-runtime-resilience]]", "[[ai-orchestration-charter]]", "[[red-team-charter]]"]
+links: ["[[messaging-delivery-charter]]", "[[messaging-delivery-loops]]", "[[messaging-delivery-directive]]", "[[engineering-premortem]]", "[[runtime-resilience-charter|sre-runtime-resilience]]", "[[ai-orchestration-charter]]", "[[red-team-charter]]"]
 ---
 
 # Messaging & Delivery — Premortem
@@ -36,7 +36,7 @@ items, M redelivered", the failure is already possible.
 **Counter-pressure.** Buffer state becomes **durable and idempotent-on-replay**: the
 in-memory window is a performance optimisation over a persisted queue, never the only
 copy. Every restart emits a reconciliation record — buffered, flushed, redelivered,
-dropped — into the same ledger the metrics read. [[sre-runtime-resilience]] owns restart
+dropped — into the same ledger the metrics read. [[runtime-resilience-charter|sre-runtime-resilience]] owns restart
 behaviour as infrastructure; this team owns that a restart is *survivable by the message*,
 and the seam is stated so neither assumes the other did it.
 

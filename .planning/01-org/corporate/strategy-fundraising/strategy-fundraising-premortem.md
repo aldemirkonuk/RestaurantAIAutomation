@@ -5,7 +5,7 @@ department: strategy-fundraising
 status: provisional
 metrics: [strategy.claim_to_evidence_coverage, strategy.citation_drift_rate, strategy.claim_overstatement_count, strategy.wedge_metric_instrumentation, strategy.diligence_pack_completeness]
 updated: 2026-08-24
-links: ["[[strategy-fundraising-charter]]", "[[strategy-fundraising-directive]]", "[[strategy-fundraising-loops]]", "[[strategy-fundraising-schedule]]", "[[strategy-fundraising-agenda-full]]", "[[positioning-fundraise-readiness-premortem]]", "[[metric-contract-truth-assurance-charter]]", "[[design-partner-operations-charter]]", "[[narrative-collateral-charter]]", "[[standards-verification-charter]]", "[[instruments-equity-charter]]", "[[decision-office-charter]]", "[[red-team-charter]]", "[[OPEN-DECISIONS]]", "[[foundation-README]]"]
+links: ["[[strategy-fundraising-charter]]", "[[strategy-fundraising-directive]]", "[[strategy-fundraising-loops]]", "[[strategy-fundraising-schedule]]", "[[strategy-fundraising-agenda-full]]", "[[positioning-fundraise-readiness-premortem]]", "[[metric-contract-truth-assurance-charter]]", "[[design-partner-operations-charter]]", "[[narrative-collateral-charter]]", "[[standards-verification-charter]]", "[[instruments-equity-charter]]", "[[decision-office-charter]]", "[[red-team-charter]]", "[[OPEN-DECISIONS]]", "[[README|foundation-README]]"]
 ---
 
 # Strategy & Fundraising — Premortem

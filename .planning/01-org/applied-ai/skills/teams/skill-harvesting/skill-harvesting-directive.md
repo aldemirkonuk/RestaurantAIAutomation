@@ -37,7 +37,7 @@ graph TD
     F4 -->|yes| F5["Submit as a normal candidate to<br/>skill-registry-authoring's §3.3 gate.<br/>No bulk path."]
     Q --> F4
   end
-  F5 --> RA[["skill-registry-authoring"]]
+  F5 --> RA[[skill-registry-authoring-charter|"skill-registry-authoring"]]
 ```
 
 ## Decision rights

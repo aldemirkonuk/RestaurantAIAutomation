@@ -6,7 +6,7 @@ team: metric-contract-truth-assurance
 status: provisional
 metrics: [analytics.metric_claim_divergence_count, analytics.kpi_ground_truth_agreement, analytics.registry_binding_share, analytics.claims_without_provenance]
 updated: 2026-08-24
-links: ["[[metric-contract-truth-assurance-charter]]", "[[metric-contract-truth-assurance-premortem]]", "[[metric-contract-truth-assurance-loops]]", "[[analytics-bi-directive]]", "[[analytics-engine-directive]]", "[[insight-narrative-generation-directive]]", "[[agent-evaluation-gates-charter]]", "[[decision-office-charter]]", "[[media-and-brand-charter]]"]
+links: ["[[metric-contract-truth-assurance-charter]]", "[[metric-contract-truth-assurance-premortem]]", "[[metric-contract-truth-assurance-loops]]", "[[analytics-bi-directive]]", "[[analytics-engine-directive]]", "[[insight-narrative-generation-directive]]", "[[agent-evaluation-gates-charter]]", "[[decision-office-charter]]", "[[media-brand-charter|media-and-brand-charter]]"]
 ---
 
 # Metric Contract & Truth Assurance — Directive

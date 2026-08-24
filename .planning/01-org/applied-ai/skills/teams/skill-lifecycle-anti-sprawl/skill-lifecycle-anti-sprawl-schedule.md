@@ -6,7 +6,7 @@ team: skill-lifecycle-anti-sprawl
 status: new
 metrics: [skills.deletions_per_quarter, skills.firing_rate_30d]
 updated: 2026-08-24
-links: ["[[skill-lifecycle-anti-sprawl-charter]]", "[[skill-lifecycle-anti-sprawl-loops]]", "[[skill-lifecycle-anti-sprawl-directive]]", "[[skills-schedule]]", "[[research-and-math-charter]]", "[[README]]"]
+links: ["[[skill-lifecycle-anti-sprawl-charter]]", "[[skill-lifecycle-anti-sprawl-loops]]", "[[skill-lifecycle-anti-sprawl-directive]]", "[[skills-schedule]]", "[[research-math-charter|research-and-math-charter]]", "[[README]]"]
 ---
 
 # Skill Lifecycle & Anti-Sprawl — Schedule & Skills

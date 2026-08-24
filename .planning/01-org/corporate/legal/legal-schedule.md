@@ -5,7 +5,7 @@ department: legal
 status: provisional
 metrics: [legal.instrument_chain_integrity, legal.clause_library_hit_rate, legal.counsel_gate_compliance]
 updated: 2026-08-24
-links: ["[[legal-charter]]", "[[legal-loops]]", "[[legal-agenda-board]]", "[[legal-directive]]", "[[instruments-equity-schedule]]", "[[commercial-workforce-agreements-schedule]]", "[[skills-charter]]", "[[foundation-README]]", "[[standards-verification-charter]]", "[[regulatory-posture-charter]]"]
+links: ["[[legal-charter]]", "[[legal-loops]]", "[[legal-agenda-board]]", "[[legal-directive]]", "[[instruments-equity-schedule]]", "[[commercial-workforce-agreements-schedule]]", "[[skills-charter]]", "[[README|foundation-README]]", "[[standards-verification-charter]]", "[[regulatory-posture-charter]]"]
 ---
 
 # Legal — Schedule & Skills
@@ -39,7 +39,7 @@ deletion — the anti-sprawl rule applies here exactly as it does to agendas.
 
 **Two honest statements before the table.**
 
-1. **`.claude/skills/` does not exist in this repo.** [[foundation-README]] §3.2 names
+1. **`.claude/skills/` does not exist in this repo.** [[README|foundation-README]] §3.2 names
    `legal-doc-draft` as a T2 department-level skill (line 145), and that name is currently
    the department's entire skill surface. It is a name, not an asset.
 2. **The one-way-door team owns no generative drafting skill, by design.** Every skill

@@ -5,7 +5,7 @@ department: decision-office
 status: new
 metrics: [decisions.open_count, decisions.median_age_days, decisions.unowned_count, decisions.close_rate_per_week, triggers.dated_unwatched_count, loops.undefined_close_time_count, corpus.stale_citation_count]
 updated: 2026-08-24
-links: ["[[decision-office-charter]]", "[[decision-office-loops]]", "[[decision-office-directive]]", "[[decision-office-premortem]]", "[[decision-office-agenda-board]]", "[[ORG_STRUCTURE]]", "[[OPEN-DECISIONS]]", "[[foundation-README]]", "[[OBSIDIAN_VAULT]]", "[[red-team-charter]]", "[[standards-verification-charter]]", "[[knowledge-documentation-charter]]", "[[skills-charter]]", "[[skill-lifecycle-anti-sprawl-charter]]", "[[sales-charter]]", "[[legal-charter]]", "[[LOOP-MAP]]"]
+links: ["[[decision-office-charter]]", "[[decision-office-loops]]", "[[decision-office-directive]]", "[[decision-office-premortem]]", "[[decision-office-agenda-board]]", "[[ORG_STRUCTURE]]", "[[OPEN-DECISIONS]]", "[[README|foundation-README]]", "[[OBSIDIAN_VAULT]]", "[[red-team-charter]]", "[[standards-verification-charter]]", "[[knowledge-documentation-charter]]", "[[skills-charter]]", "[[skill-lifecycle-anti-sprawl-charter]]", "[[sales-charter]]", "[[legal-charter]]", "[[LOOP-MAP]]"]
 ---
 
 # Decision Office — Schedule & Skills
@@ -30,7 +30,7 @@ running jobs today and did not exist as a document before this session.
 | **Dated — 2026-11-24** | **Four triggers land on one day.** [[skills-charter]], [[skill-harvesting-charter]], [[sales-charter]], [[outbound-engine-charter]]. Not a cadence — a calendar entry that must survive three months of unrelated work | Escalations | L2 | NEW |
 | **Dated — ≈2026-11-22** | Day-90 review for [[supplier-distributor-network-charter]] | Escalation | L2 | NEW |
 
-**Why weekly for triage.** [[foundation-README]] §6 already proposes a **daily**
+**Why weekly for triage.** [[README|foundation-README]] §6 already proposes a **daily**
 *"Open-decision queue digest — what is blocking whom"*, assigned to Product &
 Vision. That cadence and that owner are both wrong now, and this office says so
 rather than quietly running a second one:
@@ -59,8 +59,8 @@ office runs the *detection*; the owning unit does the deleting.
 | Rule | Source | Trigger | What this office does | What it does **not** do |
 |---|---|---|---|---|
 | **Agenda unchanged in 60 days = finished or fiction** | [[ORG_STRUCTURE]] §4 | `updated` older than 60 days on any `agenda-full` / `agenda-board` | Lists it, with age, to the owning unit and the digest. **A date-only diff counts as untouched** — [[legal-charter]]'s sweep already caught that dodge (`legal-schedule.md:27`) and it is adopted here | Decide whether it is finished or fiction. The unit answers |
-| **Skill unfired in 30 days = reviewed for deletion** | [[foundation-README]] §3.3 | Registered skill with no firing evidence in 30 days | Reports the count and the ages | Run the review — that is [[skill-lifecycle-anti-sprawl-charter]]'s. **Today the number is 0 of 0**: `.claude/skills/` exists with `README.md` and **zero `SKILL.md` files**, so the rule is live and vacuous |
-| **Scheduled job with no action in 3 runs = downgrade or delete** | [[foundation-README]] §6 | Any row in any `schedule.md` producing no output for 3 consecutive runs | Reports it, **including rows in this table** | Downgrade another unit's job |
+| **Skill unfired in 30 days = reviewed for deletion** | [[README|foundation-README]] §3.3 | Registered skill with no firing evidence in 30 days | Reports the count and the ages | Run the review — that is [[skill-lifecycle-anti-sprawl-charter]]'s. **Today the number is 0 of 0**: `.claude/skills/` exists with `README.md` and **zero `SKILL.md` files**, so the rule is live and vacuous |
+| **Scheduled job with no action in 3 runs = downgrade or delete** | [[README|foundation-README]] §6 | Any row in any `schedule.md` producing no output for 3 consecutive runs | Reports it, **including rows in this table** | Downgrade another unit's job |
 
 **First sweep will be large, and that is the point.** 581 unit documents were
 written in two sessions and all carry `updated: 2026-08-24` — among them **194
@@ -84,7 +84,7 @@ office).
 
 Skills live in **`.claude/skills/`** — auto-discovered, committed, PR-reviewable
 (`OPEN-DECISIONS.md`, Resolved table). A skill that has not fired in 30 days is
-reviewed for deletion ([[foundation-README]] §3.3).
+reviewed for deletion ([[README|foundation-README]] §3.3).
 
 **Count today: 0.** The directory now **does** exist and is tracked
 (`.claude/skills/README.md`), holding zero `SKILL.md` files — which quietly
@@ -96,7 +96,7 @@ office found it in its own first hour rather than in a sweep three months from n
 |---|---|---|---|
 | — | — | — | registry empty |
 
-### Candidates, held to [[foundation-README]] §3.3's four fields
+### Candidates, held to [[README|foundation-README]] §3.3's four fields
 
 The protocol is not relaxed for the office that reports on everyone else's
 compliance with it.

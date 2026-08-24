@@ -6,7 +6,7 @@ team: catalogue-identity
 status: provisional
 metrics: [identity.false_merge_count, identity.false_split_count]
 updated: 2026-08-24
-links: ["[[catalogue-identity-charter]]", "[[catalogue-identity-premortem]]", "[[catalogue-identity-agenda-board]]", "[[catalogue-identity-loops]]", "[[engineering-agenda-full]]", "[[dat-annotation-ground-truth]]", "[[DISH_IDENTITY_DESIGN]]"]
+links: ["[[catalogue-identity-charter]]", "[[catalogue-identity-premortem]]", "[[catalogue-identity-agenda-board]]", "[[catalogue-identity-loops]]", "[[engineering-agenda-full]]", "[[annotation-ground-truth-charter|dat-annotation-ground-truth]]", "[[DISH_IDENTITY_DESIGN]]"]
 ---
 
 # Catalogue & Identity — Full Agenda
@@ -43,7 +43,7 @@ false splits must never be summed.
   display one number, it displays false merges.
 - **Un-merge is not undo.** Every un-merge ships with a downstream attribution report
   (premortem M3). The migration is literally named `merge_undo_honesty` — honour that.
-- **Guest identity stays minimal.** Expansion is a [[compliance-charter]] conversation
+- **Guest identity stays minimal.** Expansion is a [[compliance-privacy-charter|compliance-charter]] conversation
   before it is an engineering one, because the merge and the disclosure are both
   irreversible.
 
@@ -62,7 +62,7 @@ false splits must never be summed.
 ## Next steps
 
 - [ ] Define the labelled identity set: scope, size, sampling, and who adjudicates a
-      disputed pair — with [[dat-annotation-ground-truth]] on methodology
+      disputed pair — with [[annotation-ground-truth-charter|dat-annotation-ground-truth]] on methodology
 - [ ] Land `eval_merge_policies` as a CI gate that fails on any false-merge increase
 - [ ] Publish the first `identity.false_merge_count` / `identity.false_split_count` reading
 - [ ] Add producer collapses to the labelled set as their own class (premortem M4)

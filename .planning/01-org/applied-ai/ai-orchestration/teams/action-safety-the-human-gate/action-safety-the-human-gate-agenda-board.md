@@ -6,7 +6,7 @@ team: action-safety-the-human-gate
 status: provisional
 metrics: [safety.unconfirmed_mutation_count, safety.median_time_to_confirm, safety.rejection_rate]
 updated: 2026-08-24
-links: ["[[action-safety-the-human-gate-charter]]", "[[action-safety-the-human-gate-agenda-full]]", "[[action-safety-the-human-gate-premortem]]", "[[action-safety-the-human-gate-loops]]", "[[ai-orchestration-agenda-board]]", "[[design-charter]]", "[[compliance-and-privacy-charter]]"]
+links: ["[[action-safety-the-human-gate-charter]]", "[[action-safety-the-human-gate-agenda-full]]", "[[action-safety-the-human-gate-premortem]]", "[[action-safety-the-human-gate-loops]]", "[[ai-orchestration-agenda-board]]", "[[design-charter]]", "[[compliance-privacy-charter|compliance-and-privacy-charter]]"]
 ---
 
 # Action Safety & the Human Gate — Board
@@ -84,5 +84,5 @@ SORT file.name ASC
 - [ ] Is a standing pre-approval a confirmation, or an autonomy tier?
 - [ ] Design seam — surface (Design) vs friction floor on money/stock (here)
 - [ ] How many confirmations per day is acceptable? *(a real attention budget)*
-- [ ] Guest PII exports — [[compliance-and-privacy-charter]] owns the entry, we enforce?
+- [ ] Guest PII exports — [[compliance-privacy-charter|compliance-and-privacy-charter]] owns the entry, we enforce?
 - [ ] Who may change an autonomy tier? *(proposal: toward more autonomy = ADR; toward less = PR)*

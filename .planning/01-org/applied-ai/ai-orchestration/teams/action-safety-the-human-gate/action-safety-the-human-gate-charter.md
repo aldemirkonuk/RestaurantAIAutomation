@@ -6,13 +6,13 @@ team: action-safety-the-human-gate
 status: partial
 metrics: [safety.unconfirmed_mutation_count, safety.median_time_to_confirm, safety.rejection_rate]
 updated: 2026-08-24
-links: ["[[action-safety-the-human-gate-premortem]]", "[[action-safety-the-human-gate-agenda-full]]", "[[action-safety-the-human-gate-agenda-board]]", "[[action-safety-the-human-gate-directive]]", "[[action-safety-the-human-gate-loops]]", "[[action-safety-the-human-gate-schedule]]", "[[ai-orchestration-charter]]", "[[harness-runtime-charter]]", "[[agent-fleet-charter]]", "[[agent-evaluation-gates-charter]]", "[[compliance-and-privacy-charter]]", "[[product-and-vision-charter]]", "[[technology]]", "[[README]]"]
+links: ["[[action-safety-the-human-gate-premortem]]", "[[action-safety-the-human-gate-agenda-full]]", "[[action-safety-the-human-gate-agenda-board]]", "[[action-safety-the-human-gate-directive]]", "[[action-safety-the-human-gate-loops]]", "[[action-safety-the-human-gate-schedule]]", "[[ai-orchestration-charter]]", "[[harness-runtime-charter]]", "[[agent-fleet-charter]]", "[[agent-evaluation-gates-charter]]", "[[compliance-privacy-charter|compliance-and-privacy-charter]]", "[[product-vision-charter|product-and-vision-charter]]", "[[technology]]", "[[README]]"]
 ---
 
 # Action Safety & the Human Gate — Charter
 
 Team of [[ai-orchestration-charter]] · Division: **Applied AI** · Alias in the team
-corpus: `[[aio-action-safety]]` (`technology.md:425`).
+corpus: `[[action-safety-the-human-gate-charter|aio-action-safety]]` (`technology.md:425`).
 
 ## Mandate
 
@@ -57,9 +57,9 @@ Owns outright:
 | Lifecycle, retry, DLQ | [[harness-runtime-charter]] | Deliberately separate — see mandate |
 | What an agent proposes | [[agent-fleet-charter]] | We own whether it may run, not what it says |
 | Whether the proposal was *good* | [[agent-evaluation-gates-charter]] | Permitted ≠ correct. A bad proposal that is correctly gated is their finding, not ours |
-| Endpoint authentication | [[security-charter]] + `[[eng-platform-api]]` | Who you are vs. what you may mutate. Both matter; they are different gates |
+| Endpoint authentication | [[security-charter]] + `[[platform-api-charter|eng-platform-api]]` | Who you are vs. what you may mutate. Both matter; they are different gates |
 | The UX of the confirmation surface | [[design-charter]] *(Product)* | **Contested — see below** |
-| Data-protection law on guest PII | [[compliance-and-privacy-charter]] | We enforce the allowlist; they say what belongs on it |
+| Data-protection law on guest PII | [[compliance-privacy-charter|compliance-and-privacy-charter]] | We enforce the allowlist; they say what belongs on it |
 
 ### The seam with Design, named rather than assumed
 

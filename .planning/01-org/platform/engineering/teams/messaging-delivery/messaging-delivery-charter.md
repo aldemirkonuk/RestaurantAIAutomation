@@ -6,7 +6,7 @@ team: messaging-delivery
 status: exists
 metrics: [messaging.duplicate_delivery_rate, messaging.drop_rate]
 updated: 2026-08-24
-links: ["[[engineering-charter]]", "[[messaging-delivery-premortem]]", "[[messaging-delivery-agenda-full]]", "[[messaging-delivery-agenda-board]]", "[[messaging-delivery-directive]]", "[[messaging-delivery-loops]]", "[[messaging-delivery-schedule]]", "[[eng-messaging-delivery]]", "[[ai-orchestration-charter]]", "[[platform-api-charter]]", "[[sre-runtime-resilience]]", "[[CONVERSATION_THREADING_PLAN]]", "[[INBOUND_EMAIL_INTELLIGENCE_PLAN]]"]
+links: ["[[engineering-charter]]", "[[messaging-delivery-premortem]]", "[[messaging-delivery-agenda-full]]", "[[messaging-delivery-agenda-board]]", "[[messaging-delivery-directive]]", "[[messaging-delivery-loops]]", "[[messaging-delivery-schedule]]", "[[messaging-delivery-charter|eng-messaging-delivery]]", "[[ai-orchestration-charter]]", "[[platform-api-charter]]", "[[runtime-resilience-charter|sre-runtime-resilience]]", "[[CONVERSATION_THREADING_PLAN]]", "[[INBOUND_EMAIL_INTELLIGENCE_PLAN]]"]
 ---
 
 # Messaging & Delivery — Charter
@@ -60,12 +60,12 @@ process restarts, which is where tests do not look.
 | Not ours | Whose it is |
 |---|---|
 | What the message **says** — drafting, tone, negotiation language | [[ai-orchestration-charter]] |
-| Whether an action described in a message may be taken | [[action-safety-the-human-gate]] |
+| Whether an action described in a message may be taken | [[action-safety-the-human-gate-charter|action-safety-the-human-gate]] |
 | The auth mechanism for these ~84 routes | [[platform-api-charter]] |
 | Third-party transport protocol wire details (OAuth to Gmail, Plivo) | [[integration-engineering-charter]] |
-| Process restarts, uptime, queue health as infrastructure | [[sre-runtime-resilience]] |
+| Process restarts, uptime, queue health as infrastructure | [[runtime-resilience-charter|sre-runtime-resilience]] |
 | Whether a notification is *useful* to the operator | [[design-charter]] *(Product)* |
-| Consent and lawful basis for contacting someone | [[compliance-charter]] *(Corporate)* |
+| Consent and lawful basis for contacting someone | [[compliance-privacy-charter|compliance-charter]] *(Corporate)* |
 
 **The seam, stated in one line** (`technology.md:861`): *AI Orchestration drafts;
 messaging-delivery delivers. What it says vs. that it arrives once.*

@@ -6,7 +6,7 @@ team: schema-migrations
 status: provisional
 metrics: []
 updated: 2026-08-24
-links: ["[[schema-migrations-charter]]", "[[schema-migrations-loops]]", "[[engineering-schedule]]", "[[sre-state-integrity]]", "[[skills-charter]]", "[[SCHEMA_DRIFT_INVENTORY]]"]
+links: ["[[schema-migrations-charter]]", "[[schema-migrations-loops]]", "[[engineering-schedule]]", "[[state-integrity-invariants-charter|sre-state-integrity]]", "[[skills-charter]]", "[[SCHEMA_DRIFT_INVENTORY]]"]
 ---
 
 # Schema & Migrations — Schedule & Skills
@@ -15,7 +15,7 @@ links: ["[[schema-migrations-charter]]", "[[schema-migrations-loops]]", "[[engin
 
 | Cadence | Job | Emits |
 |---|---|---|
-| **Per PR** | `scripts/check_schema_parity.sh` via `.github/workflows/schema-parity.yml` — **run by [[sre-state-integrity]]**, not by this team | Drift diff; red declared by the auditor |
+| **Per PR** | `scripts/check_schema_parity.sh` via `.github/workflows/schema-parity.yml` — **run by [[state-integrity-invariants-charter|sre-state-integrity]]**, not by this team | Drift diff; red declared by the auditor |
 | Per PR | Generated-type regeneration gate — L-SM-4 | Fails on any diff in `packages/database/src/types/database.types.ts` and siblings |
 | Per PR | Irreversible-operation review — L-SM-5, on the published list only | Review requirement, backfill and rollback plan |
 | **Daily** | Function-body parity — L-SM-3 | Body-level mismatches; functions with no repo source |
@@ -43,7 +43,7 @@ deletion.
 never **apply** DDL to production — `scripts/run_migration.sh` stays a human-invoked path,
 because automated application is how 27 tables and 403 columns appeared with no migration.
 And no skill may mark a parity red as expected: that authority belongs to
-[[sre-state-integrity]] as the auditor (`technology.md:296-298`), and an automated
+[[state-integrity-invariants-charter|sre-state-integrity]] as the auditor (`technology.md:296-298`), and an automated
 "expected drift" classifier would be premortem M1 shipped as a feature.
 
 Registry governance sits with [[skills-charter]] (Applied AI); this team authors and

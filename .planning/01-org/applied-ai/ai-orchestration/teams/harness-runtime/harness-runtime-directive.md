@@ -6,7 +6,7 @@ team: harness-runtime
 status: exists
 metrics: [nf_a.retries, nf_a.dlq_depth]
 updated: 2026-08-24
-links: ["[[harness-runtime-charter]]", "[[harness-runtime-premortem]]", "[[harness-runtime-loops]]", "[[ai-orchestration-directive]]", "[[agent-fleet-charter]]", "[[action-safety-the-human-gate-charter]]", "[[reliability-charter]]", "[[decision-office-charter]]"]
+links: ["[[harness-runtime-charter]]", "[[harness-runtime-premortem]]", "[[harness-runtime-loops]]", "[[ai-orchestration-directive]]", "[[agent-fleet-charter]]", "[[action-safety-the-human-gate-charter]]", "[[reliability-sre-charter|reliability-charter]]", "[[decision-office-charter]]"]
 ---
 
 # Harness & Runtime — Directive
@@ -59,7 +59,7 @@ can express what the fleet already depends on ([[harness-runtime-premortem]] #4)
 | Triage verdict on a DLQ entry | **Shared** | We classify; the assignee owns the fix |
 | Saga/compensation mechanics | **Yes** | `base_agent.py:823-905` |
 | Whether an action may execute without a human tap | **No** | → [[action-safety-the-human-gate-charter]]. Deliberately not ours: the team that executes actions must not decide whether execution is permitted (`technology.md:432-433`) |
-| Deploys, paging, uptime | **No** | → [[reliability-charter]] |
+| Deploys, paging, uptime | **No** | → [[reliability-sre-charter|reliability-charter]] |
 | **The OD-03 answer** | **No** | We run the bake-off. We do not pick |
 
 ## The retry/defect boundary — stated because it will be argued

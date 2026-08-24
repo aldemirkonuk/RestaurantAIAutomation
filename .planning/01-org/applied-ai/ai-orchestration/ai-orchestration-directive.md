@@ -5,7 +5,7 @@ department: ai-orchestration
 status: exists
 metrics: [nf_a.doneability_verdict_coverage, nf_a.cost_per_task, safety.unconfirmed_mutation_count]
 updated: 2026-08-24
-links: ["[[ai-orchestration-charter]]", "[[ai-orchestration-premortem]]", "[[ai-orchestration-agenda-full]]", "[[ai-orchestration-loops]]", "[[harness-runtime-directive]]", "[[agent-fleet-directive]]", "[[model-routing-inference-economics-directive]]", "[[agent-evaluation-gates-directive]]", "[[action-safety-the-human-gate-directive]]", "[[decision-office-charter]]", "[[research-and-math-charter]]", "[[red-team-charter]]"]
+links: ["[[ai-orchestration-charter]]", "[[ai-orchestration-premortem]]", "[[ai-orchestration-agenda-full]]", "[[ai-orchestration-loops]]", "[[harness-runtime-directive]]", "[[agent-fleet-directive]]", "[[model-routing-inference-economics-directive]]", "[[agent-evaluation-gates-directive]]", "[[action-safety-the-human-gate-directive]]", "[[decision-office-charter]]", "[[research-math-charter|research-and-math-charter]]", "[[red-team-charter]]"]
 ---
 
 # AI Orchestration — Directive
@@ -20,7 +20,7 @@ single approval.
 ```mermaid
 graph TD
   A[Proposed change to an agent, harness, model, or prompt] --> B{Does it mutate stock, money,<br/>or an outbound channel?}
-  B -->|yes| C[[action-safety gate]]
+  B -->|yes| C[[action-safety-the-human-gate-charter|action-safety gate]]
   B -->|no| D{Does it change which model<br/>runs a task?}
   C -->|no recorded human confirmation<br/>in the execution path| STOP1[BLOCK — reportable, not a bug]
   C -->|gate intact| D
@@ -50,10 +50,10 @@ saving, and a quality measurement of an action nobody approved is not a defence.
 | Agent behavior, prompts, subscriptions | [[agent-fleet-charter]] | Stubs never counted as live; stub metrics never averaged in |
 | Harness mechanics — lifecycle, retry, DLQ, sagas, registry | [[harness-runtime-charter]] | **The OD-03 diet, below** |
 | Which model runs which task | [[model-routing-inference-economics-charter]] | Cheapest model that **passes**, never cheapest model |
-| What "passes" means, operationally | [[agent-evaluation-gates-charter]] | Methodology belongs to [[research-and-math-charter]] |
-| What a doneability verdict *means*; NF-A definitions | [[research-and-math-charter]] *(Intelligence)* | Not ours. Consumed, not authored |
+| What "passes" means, operationally | [[agent-evaluation-gates-charter]] | Methodology belongs to [[research-math-charter|research-and-math-charter]] |
+| What a doneability verdict *means*; NF-A definitions | [[research-math-charter|research-and-math-charter]] *(Intelligence)* | Not ours. Consumed, not authored |
 | Whether an action may execute without a human tap | **Nobody in this department.** | The answer is no. It is not a tunable |
-| Guardian-agent alert thresholds and findings | `[[sre-state-integrity]]` | We own the code, they own the findings — OD-24 |
+| Guardian-agent alert thresholds and findings | `[[state-integrity-invariants-charter|sre-state-integrity]]` | We own the code, they own the findings — OD-24 |
 
 **One decision right this department explicitly does not have.** The
 `ask → propose → confirm → execute` guarantee (`.planning/FUTURES.md` §8.1) is not a

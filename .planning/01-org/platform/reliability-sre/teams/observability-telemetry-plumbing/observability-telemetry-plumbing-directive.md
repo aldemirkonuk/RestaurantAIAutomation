@@ -43,7 +43,7 @@ graph TD
 | Admitting a metric to a board | **Yes** — liveness twin is a hard precondition | — |
 | Declaring an incident over | — | The owning team, or the department if multi-team |
 | Creating a second NF-A writer | — | **Nobody, unilaterally.** Fork → `OPEN-DECISIONS.md` |
-| Attributes allowed on traces / Sentry events | Jointly with [[compliance-charter]] | — |
+| Attributes allowed on traces / Sentry events | Jointly with [[compliance-privacy-charter|compliance-charter]] | — |
 
 **The team's one refusal:** it will not report a number it cannot show is alive. A metric
 whose liveness twin is missing is reported as **"unknown"**, never as its face value. In
@@ -66,4 +66,4 @@ Escalate to the department, and to `OPEN-DECISIONS.md`:
    occurrence asks the founder whether the Incident Command rejection still holds
    ([[reliability-sre-charter]]).
 5. **Guest data is found in a trace or error payload.** Stop emission on that path the same
-   day; the remediation design goes to [[compliance-charter]], not to a quick strip.
+   day; the remediation design goes to [[compliance-privacy-charter|compliance-charter]], not to a quick strip.

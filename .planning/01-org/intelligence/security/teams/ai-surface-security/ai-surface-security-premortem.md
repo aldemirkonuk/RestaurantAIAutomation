@@ -6,7 +6,7 @@ team: ai-surface-security
 status: provisional
 metrics: [nf_a.unauthenticated_inference_spend, sec.injection_corpus_size, sec.corpus_detection_rate, sec.autonomous_send_rate, sec.tenants_with_inference_budget]
 updated: 2026-08-24
-links: ["[[ai-surface-security-charter]]", "[[ai-surface-security-loops]]", "[[ai-surface-security-directive]]", "[[security-premortem]]", "[[neural-footprint-instrumentation-charter]]", "[[evaluation-doneability-charter]]", "[[access-control-tenant-isolation-charter]]", "[[red-team-charter]]", "[[compliance-charter]]"]
+links: ["[[ai-surface-security-charter]]", "[[ai-surface-security-loops]]", "[[ai-surface-security-directive]]", "[[security-premortem]]", "[[neural-footprint-instrumentation-charter]]", "[[evaluation-doneability-charter]]", "[[access-control-tenant-isolation-charter]]", "[[red-team-charter]]", "[[compliance-privacy-charter|compliance-charter]]"]
 ---
 
 # AI Surface Security — Premortem
@@ -154,7 +154,7 @@ request-body log line in any of the seven callsites — §12C item 10 is current
 **Counter-pressure.** A prompt-content audit is deliverable, not a stance: for each of the
 seven callsites, one page naming what enters the prompt and what is logged. Do
 `consultants.service.ts` and `inbound-responder.service.ts` first — the two with the widest
-input. Findings about *lawful basis* hand to [[compliance-charter]]; findings about *what
+input. Findings about *lawful basis* hand to [[compliance-privacy-charter|compliance-charter]]; findings about *what
 leaks where* stay here.
 
 ---

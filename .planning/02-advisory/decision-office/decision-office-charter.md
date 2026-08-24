@@ -5,7 +5,7 @@ department: decision-office
 status: new
 metrics: [decisions.open_count, decisions.median_age_days, decisions.unowned_count, decisions.close_rate_per_week, decisions.namespace_collisions, loops.undefined_close_time_count, triggers.dated_unwatched_count]
 updated: 2026-08-24
-links: ["[[decision-office-premortem]]", "[[decision-office-directive]]", "[[decision-office-loops]]", "[[decision-office-schedule]]", "[[decision-office-agenda-full]]", "[[decision-office-agenda-board]]", "[[ORG_STRUCTURE]]", "[[OPEN-DECISIONS]]", "[[0002-documentation-first-operating-mode]]", "[[0007-org-structure]]", "[[foundation-README]]", "[[OBSIDIAN_VAULT]]", "[[red-team-charter]]", "[[architecture-review-charter]]", "[[knowledge-documentation-charter]]", "[[standards-verification-charter]]", "[[skills-charter]]", "[[sales-charter]]", "[[legal-charter]]", "[[analytics-bi-charter]]", "[[people-agent-ops-charter]]", "[[supplier-distributor-network-charter]]", "[[LOOP-MAP]]"]
+links: ["[[decision-office-premortem]]", "[[decision-office-directive]]", "[[decision-office-loops]]", "[[decision-office-schedule]]", "[[decision-office-agenda-full]]", "[[decision-office-agenda-board]]", "[[ORG_STRUCTURE]]", "[[OPEN-DECISIONS]]", "[[0002-documentation-first-operating-mode]]", "[[0007-org-structure]]", "[[README|foundation-README]]", "[[OBSIDIAN_VAULT]]", "[[red-team-charter]]", "[[architecture-review-charter]]", "[[knowledge-documentation-charter]]", "[[standards-verification-charter]]", "[[skills-charter]]", "[[sales-charter]]", "[[legal-charter]]", "[[analytics-bi-charter]]", "[[people-agent-ops-charter]]", "[[supplier-distributor-network-charter]]", "[[LOOP-MAP]]"]
 ---
 
 # Decision Office — Charter
@@ -115,7 +115,7 @@ before the pressure is real.
 | `corpus.contradiction_count` | Recorded live contradictions between documents | **4** (§Evidence today) |
 
 No `nf_a.*` / `nf_b.*` metric belongs here. The neural footprint measures agent and
-guest behaviour ([[foundation-README]] §4); this office measures the corpus's own
+guest behaviour ([[README|foundation-README]] §4); this office measures the corpus's own
 decision hygiene. Claiming an NF metric would be borrowing credibility from a
 system that emits nothing yet.
 
@@ -145,8 +145,8 @@ already has 35 items, already collided its own identifiers, and is already cited
   **`exists` ×4 / `running` ×2**.
 - **The anti-sprawl rules themselves**, already written and already unenforced:
   60-day agenda staleness ([[ORG_STRUCTURE]] §4), 30-day skill staleness
-  ([[foundation-README]] §3.3), 3-run scheduled-job downgrade
-  ([[foundation-README]] §6).
+  ([[README|foundation-README]] §3.3), 3-run scheduled-job downgrade
+  ([[README|foundation-README]] §6).
 
 ### PARTIAL — the register, as an instrument
 

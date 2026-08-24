@@ -110,6 +110,6 @@ SORT department ASC
 ## Open forks on this board
 
 - [ ] Division-vs-department wording of the compensation clause ([[0001-mudavym-single-entity]] vs [[ORG_STRUCTURE]] §2)
-- [ ] The routing seam — [[harness-model-routing-charter]] vs `[[aio-model-routing]]`
-- [ ] The evaluation seam — [[evaluation-doneability-charter]] vs [[aio-evaluation-gates]] (`technology.md:845`; note the local ID collides with global OD-21)
+- [ ] The routing seam — [[harness-model-routing-charter]] vs `[[harness-model-routing-charter|aio-model-routing]]`
+- [ ] The evaluation seam — [[evaluation-doneability-charter]] vs [[agent-evaluation-gates-charter|aio-evaluation-gates]] (`technology.md:845`; note the local ID collides with global OD-21)
 - [ ] **F-5** — are the seven NestJS callsites in scope for OD-03?

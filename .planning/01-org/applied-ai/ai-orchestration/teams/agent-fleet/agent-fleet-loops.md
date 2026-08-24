@@ -6,7 +6,7 @@ team: agent-fleet
 status: partial
 metrics: [nf_a.task_success_rate, fleet.live_agent_ratio]
 updated: 2026-08-24
-links: ["[[agent-fleet-charter]]", "[[agent-fleet-premortem]]", "[[agent-fleet-directive]]", "[[agent-fleet-schedule]]", "[[ai-orchestration-loops]]", "[[harness-runtime-loops]]", "[[agent-evaluation-gates-charter]]", "[[reliability-charter]]", "[[LOOP-MAP]]"]
+links: ["[[agent-fleet-charter]]", "[[agent-fleet-premortem]]", "[[agent-fleet-directive]]", "[[agent-fleet-schedule]]", "[[ai-orchestration-loops]]", "[[harness-runtime-loops]]", "[[agent-evaluation-gates-charter]]", "[[reliability-sre-charter|reliability-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_count: 5
 loop_count: 5
@@ -124,4 +124,4 @@ note: "Whether either team will own this canary is the concrete test of whether 
 | [[harness-runtime-loops]] | DLQ entries classified *agent defect* | Enter the agent's defect queue |
 | [[harness-runtime-loops]] | Sustained elevated per-agent retry | A retry that succeeds is still a defect signal |
 | [[agent-evaluation-gates-charter]] | Doneability verdict per task family | Gate prompt changes; drive `loop-agent-doneability` |
-| `[[sre-state-integrity]]` | Guardian finding quality and false-positive rate | Change detection logic — the code is ours |
+| `[[state-integrity-invariants-charter|sre-state-integrity]]` | Guardian finding quality and false-positive rate | Change detection logic — the code is ours |

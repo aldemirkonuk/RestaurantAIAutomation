@@ -92,7 +92,7 @@ Steps 2, 3, 5, 6, 8, 9 are unblocked today. Step 1 is the flagship and needs a p
 
 1. **OD-14 — retire or rewrite root `SKILLS.md`?** It is a prose reasoning protocol named
    like a registry, last touched 2026-02-15, still saying *"the WineOps AI project"*. The
-   team recommends **retire**: [[foundation-README]] §3.1 already establishes that skills
+   team recommends **retire**: [[README|foundation-README]] §3.1 already establishes that skills
    are `SKILL.md` files in a skills directory, so a root file with this name will keep being
    mistaken for the registry no matter how well it is rewritten.
 2. **Who owns `insight-catalog.ts`'s count?** We can prove it is unpinned and propose the

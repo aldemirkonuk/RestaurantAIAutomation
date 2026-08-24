@@ -6,7 +6,7 @@ team: ai-surface-security
 status: provisional
 metrics: []
 updated: 2026-08-24
-links: ["[[ai-surface-security-charter]]", "[[ai-surface-security-premortem]]", "[[ai-surface-security-loops]]", "[[security-directive]]", "[[access-control-tenant-isolation-charter]]", "[[perimeter-ingress-integrity-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[evaluation-doneability-charter]]", "[[compliance-charter]]", "[[red-team-charter]]", "[[OPEN-DECISIONS]]"]
+links: ["[[ai-surface-security-charter]]", "[[ai-surface-security-premortem]]", "[[ai-surface-security-loops]]", "[[security-directive]]", "[[access-control-tenant-isolation-charter]]", "[[perimeter-ingress-integrity-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[evaluation-doneability-charter]]", "[[compliance-privacy-charter|compliance-charter]]", "[[red-team-charter]]", "[[OPEN-DECISIONS]]"]
 ---
 
 # AI Surface Security — Directive
@@ -121,7 +121,7 @@ Escalate when:
 4. **The docstring and the code disagree** about a human-in-the-loop guarantee. Record which
    is wrong; both remedies have owners.
 5. **Guest or personal data is found in a prompt or a log.** Hand the lawful-basis question
-   to [[compliance-charter]]; keep the leak-path question here. A false guest merge is
+   to [[compliance-privacy-charter|compliance-charter]]; keep the leak-path question here. A false guest merge is
    already priced as *"a DISCLOSURE"* (`eval_guest_merge_policies.py:28-30`), so the
    severity precedent exists.
 6. **`sec.corpus_detection_rate` rises while `sec.injection_corpus_size` is flat.** The

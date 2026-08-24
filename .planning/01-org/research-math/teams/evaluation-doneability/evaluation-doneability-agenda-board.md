@@ -108,7 +108,7 @@ SORT updated ASC
 
 - [ ] Any pass-condition edit whose commit message names a date, a launch, or a release — **M3, escalate on the first**
 - [ ] A third golden set that is also extraction — **M4**
-- [ ] A corpus or threshold referenced by both this team and [[aio-evaluation-gates]] — **M5, we file the merge proposal**
+- [ ] A corpus or threshold referenced by both this team and [[agent-evaluation-gates-charter|aio-evaluation-gates]] — **M5, we file the merge proposal**
 - [ ] The verified/self-reported gap narrowing two close-times with no cause — **M1**
 
 ## Skill layer

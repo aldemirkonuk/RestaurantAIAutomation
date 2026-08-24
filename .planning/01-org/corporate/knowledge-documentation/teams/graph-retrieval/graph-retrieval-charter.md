@@ -103,7 +103,7 @@ built 99 unit directories, 7 templates, and `00-index/UNIT-MANIFEST.json`.
    §3 calls unique filenames *"the single most important convention here."* The vault root
    contains **45 files named `README.md`**. A `[[README]]` link is therefore already
    ambiguous — and already written: `engineering-charter.md:106` uses `[[README]] §0`,
-   intending [[foundation-README]], with 45 candidates in scope. The
+   intending [[README|foundation-README]], with 45 candidates in scope. The
    `md/09-communication/README.md` ↔ `md_files/01-getting-started/README.md` pair
    [[corpus-archive-charter]] found is the same defect surfacing in the legacy trees.
 

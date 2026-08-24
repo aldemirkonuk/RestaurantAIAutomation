@@ -5,7 +5,7 @@ department: research-math
 status: partial
 metrics: [nf_a.cost_per_completed_task, nf_a.harness_overhead_ms, nf_a.verified_task_success_rate, nf_a.event_completeness]
 updated: 2026-08-24
-links: ["[[research-math-premortem]]", "[[research-math-agenda-full]]", "[[research-math-agenda-board]]", "[[research-math-directive]]", "[[research-math-loops]]", "[[research-math-schedule]]", "[[harness-model-routing-charter]]", "[[evaluation-doneability-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[ORG_STRUCTURE]]", "[[intelligence]]", "[[0001-mudavym-single-entity]]", "[[0006-neural-footprint-architecture]]", "[[security-charter]]", "[[analytics-bi-charter]]", "[[data-charter]]", "[[engineering-charter]]", "[[ai-orchestration-charter]]", "[[aio-evaluation-gates]]", "[[aio-model-routing]]", "[[aio-harness-runtime]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
+links: ["[[research-math-premortem]]", "[[research-math-agenda-full]]", "[[research-math-agenda-board]]", "[[research-math-directive]]", "[[research-math-loops]]", "[[research-math-schedule]]", "[[harness-model-routing-charter]]", "[[evaluation-doneability-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[ORG_STRUCTURE]]", "[[intelligence]]", "[[0001-mudavym-single-entity]]", "[[0006-neural-footprint-architecture]]", "[[security-charter]]", "[[analytics-bi-charter]]", "[[data-charter]]", "[[engineering-charter]]", "[[ai-orchestration-charter]]", "[[agent-evaluation-gates-charter|aio-evaluation-gates]]", "[[harness-model-routing-charter|aio-model-routing]]", "[[harness-runtime-charter|aio-harness-runtime]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
 
 # Research & Math — Charter
@@ -116,9 +116,9 @@ been revoked in practice whatever the org chart says. That is the tell in
 
 | Not ours | Whose it is | The line |
 |---|---|---|
-| Running the eval gates in CI and production | [[aio-evaluation-gates]] *(Applied AI)* | **We define what passing means; they enforce it.** Methodology vs. operations — the sharpest seam in the org, and it is an open fork (see below) |
-| `BaseAgent` lifecycle, registry, message bus, sagas | [[aio-harness-runtime]] *(Applied AI)* | They own the Python agent substrate as running code; we own the decision about what substrate we should be on (OD-03) and what it costs |
-| Agent behavior and prompts | `[[aio-agent-fleet]]` *(Applied AI)* | We measure the fleet; we do not staff it |
+| Running the eval gates in CI and production | [[agent-evaluation-gates-charter|aio-evaluation-gates]] *(Applied AI)* | **We define what passing means; they enforce it.** Methodology vs. operations — the sharpest seam in the org, and it is an open fork (see below) |
+| `BaseAgent` lifecycle, registry, message bus, sagas | [[harness-runtime-charter|aio-harness-runtime]] *(Applied AI)* | They own the Python agent substrate as running code; we own the decision about what substrate we should be on (OD-03) and what it costs |
+| Agent behavior and prompts | `[[agent-fleet-charter|aio-agent-fleet]]` *(Applied AI)* | We measure the fleet; we do not staff it |
 | Adopting the model wrapper in the seven NestJS callsites | [[engineering-charter]] *(Platform)* | We own the wrapper and the deprecation date; Engineering owns the migration |
 | The physical NF tables and migrations | [[data-charter]] *(Platform)* | We own the **schema contract**; Data owns the DDL and the pipeline (`intelligence.md:486`) |
 | Grading deterministic arithmetic against a ledger | [[analytics-bi-charter]] AB-3 | RM-2 grades **nondeterministic** model output with judges and thresholds; AB-3 grades exact equality. Shared vocabulary, different work (`intelligence.md:460-464`) |
@@ -127,7 +127,7 @@ been revoked in practice whatever the org chart says. That is the tell in
 
 ### ⚠️ The evaluation seam, stated plainly
 
-`.planning/foundation/teams/technology.md:392-406` charters `[[aio-evaluation-gates]]`
+`.planning/foundation/teams/technology.md:392-406` charters `[[agent-evaluation-gates-charter|aio-evaluation-gates]]`
 to **run and enforce** doneability, and states the boundary in the same words this
 charter does: *methodology here, operations there*. It also states the remedy if the line
 fails: **"the fix is to merge this team into Research & Math — not to duplicate it."**
@@ -137,7 +137,7 @@ files the merge proposal itself rather than defending its scope.
 
 **A second, unnamed seam exists and this charter raises it.** The published boundary
 covers *evaluation* only. It does not cover harness or routing — and
-`[[aio-model-routing]]` (`technology.md:363-388`) carries the mandate *"which model runs
+`[[harness-model-routing-charter|aio-model-routing]]` (`technology.md:363-388`) carries the mandate *"which model runs
 which task at what cost: client construction, concurrency limits, retry/timeout policy,
 token accounting, and the routing policy itself"* with primary metric **"NF-A
 `cost_per_task` by task type"**. That is [[harness-model-routing-charter]]'s mandate and
@@ -237,4 +237,4 @@ work they inherit is not new; its ownership is.
 | **F-3** (`intelligence.md:519`) | NF has no `subject_type` for the restaurant **operator** — the strongest human-preference signal already collected has no home. Interacts directly with OD-11 |
 | **F-5** (`intelligence.md:521`) | Are the seven raw-HTTP NestJS callsites in scope for OD-03? They are the majority of production model traffic. If not, OD-03 governs a minority of calls |
 | *(new)* | **The division-vs-department wording of [[0001-mudavym-single-entity]]'s compensation.** See the fork box above |
-| *(new)* | **The routing seam** — [[harness-model-routing-charter]] and `[[aio-model-routing]]` share a mandate and a metric. The published boundary covers evaluation only |
+| *(new)* | **The routing seam** — [[harness-model-routing-charter]] and `[[harness-model-routing-charter|aio-model-routing]]` share a mandate and a metric. The published boundary covers evaluation only |

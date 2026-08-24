@@ -5,7 +5,7 @@ department: strategy-fundraising
 status: provisional
 metrics: [strategy.claim_to_evidence_coverage, strategy.citation_drift_rate, strategy.claim_overstatement_count, strategy.wedge_metric_instrumentation, strategy.diligence_pack_completeness]
 updated: 2026-08-24
-links: ["[[strategy-fundraising-charter]]", "[[strategy-fundraising-loops]]", "[[strategy-fundraising-directive]]", "[[strategy-fundraising-agenda-board]]", "[[strategy-fundraising-premortem]]", "[[positioning-fundraise-readiness-schedule]]", "[[skills-charter]]", "[[foundation-README]]", "[[standards-verification-charter]]", "[[metric-contract-truth-assurance-charter]]", "[[narrative-collateral-charter]]", "[[editorial-gate-charter]]", "[[design-partner-operations-charter]]", "[[decision-office-charter]]", "[[OPEN-DECISIONS]]"]
+links: ["[[strategy-fundraising-charter]]", "[[strategy-fundraising-loops]]", "[[strategy-fundraising-directive]]", "[[strategy-fundraising-agenda-board]]", "[[strategy-fundraising-premortem]]", "[[positioning-fundraise-readiness-schedule]]", "[[skills-charter]]", "[[README|foundation-README]]", "[[standards-verification-charter]]", "[[metric-contract-truth-assurance-charter]]", "[[narrative-collateral-charter]]", "[[editorial-gate-charter]]", "[[design-partner-operations-charter]]", "[[decision-office-charter]]", "[[OPEN-DECISIONS]]"]
 ---
 
 # Strategy & Fundraising — Schedule & Skills
@@ -31,7 +31,7 @@ table.**
 
 1. **No weekly anything.** No register, no artifact in flight, no counterparty. A weekly
    review of zero produces no action for three consecutive runs and gets deleted by the
-   org's own anti-sprawl rule ([[foundation-README]] §6, GENERATION_BRIEF §3.8). Better not
+   org's own anti-sprawl rule ([[README|foundation-README]] §6, GENERATION_BRIEF §3.8). Better not
    to create it.
 2. **No data-room or diligence cadence** until the split trigger fires
    (`corporate.md:457-458`). [[strategy-fundraising-directive]] R4 makes this a rule rather
@@ -55,7 +55,7 @@ deletion — the anti-sprawl rule applies here exactly as it does to agendas.
 
 1. **`.claude/skills/` does not exist in this repo.** Verified: the directory is absent;
    `.claude/` contains `launch.json`, `settings.local.json` and `worktrees/` only.
-   [[foundation-README]] §3.1 states the repo has **zero committed skills**. Everything
+   [[README|foundation-README]] §3.1 states the repo has **zero committed skills**. Everything
    below is a name, not an asset.
 2. **This department owns no generative skill, by design.** Every skill listed is a
    **checker or a recorder**. A department whose job is to prevent claims from outrunning
@@ -73,7 +73,7 @@ deletion — the anti-sprawl rule applies here exactly as it does to agendas.
 | `open-target-attribution` | T2 | **Checker** — finds revenue figures quoted without their open-decision id | Monthly sweep across `.planning/` | Every occurrence of a target figure is listed with fork id present/absent |
 | `diligence-index-check` | T2 | **Checker** — does each named diligence slot have an owner and a location? | Quarterly, **after** the split trigger only | Dormant until triggered. Listing it dormant is deliberate — see below |
 
-**Each skill above cites a real past instance**, per [[foundation-README]] §3.3's rule that
+**Each skill above cites a real past instance**, per [[README|foundation-README]] §3.3's rule that
 there are no speculative skills:
 
 - `citation-reverify` would have caught `YC_WEDGE_PLAN.md:401` (`ReceivingWorkspace.tsx:233,265`

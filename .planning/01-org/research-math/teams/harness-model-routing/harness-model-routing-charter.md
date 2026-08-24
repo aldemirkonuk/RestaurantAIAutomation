@@ -6,7 +6,7 @@ team: harness-model-routing
 status: partial
 metrics: [nf_a.cost_per_completed_task, nf_a.harness_overhead_ms, share_of_model_calls_through_wrapper]
 updated: 2026-08-24
-links: ["[[harness-model-routing-premortem]]", "[[harness-model-routing-agenda-full]]", "[[harness-model-routing-agenda-board]]", "[[harness-model-routing-directive]]", "[[harness-model-routing-loops]]", "[[harness-model-routing-schedule]]", "[[research-math-charter]]", "[[evaluation-doneability-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[engineering-charter]]", "[[aio-harness-runtime]]", "[[aio-model-routing]]", "[[intelligence]]", "[[OPEN-DECISIONS]]"]
+links: ["[[harness-model-routing-premortem]]", "[[harness-model-routing-agenda-full]]", "[[harness-model-routing-agenda-board]]", "[[harness-model-routing-directive]]", "[[harness-model-routing-loops]]", "[[harness-model-routing-schedule]]", "[[research-math-charter]]", "[[evaluation-doneability-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[engineering-charter]]", "[[harness-runtime-charter|aio-harness-runtime]]", "[[harness-model-routing-charter|aio-model-routing]]", "[[intelligence]]", "[[OPEN-DECISIONS]]"]
 ---
 
 # Harness & Model Routing (RM-1) — Charter
@@ -58,12 +58,12 @@ Owns outright:
 | Whether the output was correct | [[evaluation-doneability-charter]] | We produce; they grade. We may dispute a verdict, never edit one |
 | The NF-A field list and join keys | [[neural-footprint-instrumentation-charter]] | We emit into their contract; we do not define it |
 | Migrating the 7 NestJS callsites onto the wrapper | [[engineering-charter]] | We own the wrapper and the deprecation date; they own adoption (`intelligence.md:487`) |
-| `BaseAgent` lifecycle, registry, message bus, sagas as running code | [[aio-harness-runtime]] | They operate the Python substrate; we decide what substrate we should be on and what it costs |
+| `BaseAgent` lifecycle, registry, message bus, sagas as running code | [[harness-runtime-charter|aio-harness-runtime]] | They operate the Python substrate; we decide what substrate we should be on and what it costs |
 | Cost & efficiency as a separate function | — | Rejected as a team: routing *is* cost. Splitting them creates a unit that files tickets against this one (`intelligence.md:503`) |
 
 ### ⚠️ Unresolved boundary — the routing seam
 
-`[[aio-model-routing]]` (Applied AI, `technology.md:363-388`) carries the mandate *"which
+`[[harness-model-routing-charter|aio-model-routing]]` (Applied AI, `technology.md:363-388`) carries the mandate *"which
 model runs which task at what cost: client construction, concurrency limits, retry/timeout
 policy, token accounting, and the routing policy itself"*, with primary metric **"NF-A
 `cost_per_task` by task type"**. That is this charter's mandate and this charter's metric.

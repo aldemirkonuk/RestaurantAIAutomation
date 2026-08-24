@@ -89,7 +89,7 @@ Ordered. Nothing started.
 4. **Classify `procurement/recurring-orders` (6) first.** Smallest module, and it writes —
    a full pass through the template on a real module before committing to it for 94.
 5. **Classify `contacts` (8).** CRUD on people; highest data-sensitivity per route in the
-   backlog and the one most likely to interest [[compliance-charter]].
+   backlog and the one most likely to interest [[compliance-privacy-charter|compliance-charter]].
 6. **Classify `dashboard` (8), `communications` (9), `notifications` (24).**
 7. **Resolve `simpos` (11) jointly with the sibling charter.** Classified today as a
    webhook module; it is an unguarded simulator control surface whose `close` route has

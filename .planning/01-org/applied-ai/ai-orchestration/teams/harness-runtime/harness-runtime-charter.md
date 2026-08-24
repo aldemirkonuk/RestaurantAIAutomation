@@ -6,13 +6,13 @@ team: harness-runtime
 status: exists
 metrics: [nf_a.retries, nf_a.dlq_depth]
 updated: 2026-08-24
-links: ["[[harness-runtime-premortem]]", "[[harness-runtime-agenda-full]]", "[[harness-runtime-agenda-board]]", "[[harness-runtime-directive]]", "[[harness-runtime-loops]]", "[[harness-runtime-schedule]]", "[[ai-orchestration-charter]]", "[[agent-fleet-charter]]", "[[model-routing-inference-economics-charter]]", "[[action-safety-the-human-gate-charter]]", "[[reliability-charter]]", "[[technology]]", "[[README]]"]
+links: ["[[harness-runtime-premortem]]", "[[harness-runtime-agenda-full]]", "[[harness-runtime-agenda-board]]", "[[harness-runtime-directive]]", "[[harness-runtime-loops]]", "[[harness-runtime-schedule]]", "[[ai-orchestration-charter]]", "[[agent-fleet-charter]]", "[[model-routing-inference-economics-charter]]", "[[action-safety-the-human-gate-charter]]", "[[reliability-sre-charter|reliability-charter]]", "[[technology]]", "[[README]]"]
 ---
 
 # Harness & Runtime — Charter
 
 Team of [[ai-orchestration-charter]] · Division: **Applied AI** · Alias in the team
-corpus: `[[aio-harness-runtime]]` (`technology.md:311`).
+corpus: `[[harness-runtime-charter|aio-harness-runtime]]` (`technology.md:311`).
 
 ## Mandate
 
@@ -48,9 +48,9 @@ Plus the 80 pytest files that hold the contract in place.
 | What an agent *does* — prompts, subscriptions, per-agent doneability | [[agent-fleet-charter]] | We care that a retry happened; they care that it was needed (`technology.md:342`) |
 | Which model runs a task, and what it cost | [[model-routing-inference-economics-charter]] | We own delivery mechanics; they own economics |
 | Whether an action was permitted to execute | [[action-safety-the-human-gate-charter]] | Folding the gate into the harness would put one team in charge of executing actions **and** of deciding whether execution is permitted (`technology.md:432-433`) |
-| Running it in production — deploys, paging, uptime | [[reliability-charter]] | We author the substrate; SRE operates the deployment |
-| **Consuming** the DLQ | `[[sre-resilience]]` + [[agent-fleet-charter]] | We declare and fill the DLQ. Who reads it is a live gap — see premortem |
-| NF-A metric definitions | [[research-and-math-charter]] | We emit; they define |
+| Running it in production — deploys, paging, uptime | [[reliability-sre-charter|reliability-charter]] | We author the substrate; SRE operates the deployment |
+| **Consuming** the DLQ | `[[runtime-resilience-charter|sre-resilience]]` + [[agent-fleet-charter]] | We declare and fill the DLQ. Who reads it is a live gap — see premortem |
+| NF-A metric definitions | [[research-math-charter|research-and-math-charter]] | We emit; they define |
 
 ## Metrics it moves
 

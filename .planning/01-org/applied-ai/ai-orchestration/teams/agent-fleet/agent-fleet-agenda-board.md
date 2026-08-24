@@ -48,7 +48,7 @@ SORT file.name ASC
 
 - [ ] `auto_pilot_agent.py`
 - [ ] `compliance_agent.py`
-- [ ] `ghost_inventory_agent.py` · guardian, co-owned with `[[sre-state-integrity]]`
+- [ ] `ghost_inventory_agent.py` · guardian, co-owned with `[[state-integrity-invariants-charter|sre-state-integrity]]`
 - [ ] `negotiation_playbook_agent.py`
 - [ ] `shrinkage_detective_agent.py` · guardian, co-owned
 

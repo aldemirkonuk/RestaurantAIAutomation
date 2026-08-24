@@ -50,7 +50,7 @@ ledger (an accepted item may seed a stock row). No guest, no vendor.
 - "Is this item already in the catalogue, or is it new?" — library match vs provisional.
 - "Did the extractor read the menu correctly?" — coverage ratio (extracted / priced
   lines), the honest verifier (`MENU_EXTRACTION_SCALE_PLAN.md:135-143`).
-- "Did we just create a duplicate of a wine we already carry?" — feeds [[S17]].
+- "Did we just create a duplicate of a wine we already carry?" — feeds [[S17-same-product-two-identities-merge|S17]].
 - For a dish: **none of the above are answerable** — the string is the identity.
 
 ## 5. Outputs (in the moment)
@@ -82,7 +82,7 @@ design.
 - Extraction mis-reads a line → wrong identity seeded → every downstream count wrong
   (silent). The verifier gates on coverage precisely to catch this.
 - Same wine imported twice phrased differently → two provisionals → a duplicate that
-  [[S17]] must later merge (`MENU_EXTRACTION_SCALE_PLAN.md:397-399`).
+  [[S17-same-product-two-identities-merge|S17]] must later merge (`MENU_EXTRACTION_SCALE_PLAN.md:397-399`).
 - Someone builds a `master_dish_library` on the 37 eyeballable POS strings — fitted to
   noise, passing human review *because* n is small (`DISH_IDENTITY_DESIGN.md:208`).
 - The deferral is forgotten and re-derived a year later (`DISH_IDENTITY_DESIGN.md:218`).

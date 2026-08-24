@@ -6,7 +6,7 @@ team: action-safety-the-human-gate
 status: partial
 metrics: [safety.unconfirmed_mutation_count, safety.median_time_to_confirm, safety.rejection_rate]
 updated: 2026-08-24
-links: ["[[action-safety-the-human-gate-charter]]", "[[action-safety-the-human-gate-premortem]]", "[[action-safety-the-human-gate-loops]]", "[[ai-orchestration-directive]]", "[[harness-runtime-charter]]", "[[design-charter]]", "[[compliance-and-privacy-charter]]", "[[decision-office-charter]]", "[[red-team-charter]]"]
+links: ["[[action-safety-the-human-gate-charter]]", "[[action-safety-the-human-gate-premortem]]", "[[action-safety-the-human-gate-loops]]", "[[ai-orchestration-directive]]", "[[harness-runtime-charter]]", "[[design-charter]]", "[[compliance-privacy-charter|compliance-and-privacy-charter]]", "[[decision-office-charter]]", "[[red-team-charter]]"]
 ---
 
 # Action Safety & the Human Gate — Directive
@@ -51,7 +51,7 @@ The audit trail's value is entirely in that distinction.
 |---|---|---|
 | Whether an action family requires a human tap | **Yes** | The core mandate |
 | Whether the guarantee itself may be relaxed | **No — and nobody's** | `FUTURES.md` §8.1 is not a tunable. Changing it is a supersede-ADR, the way [[README]] §5 treats the agent-native-UI verdict |
-| The allowlist contents | **Yes**, with named co-owners | Guest PII → [[compliance-and-privacy-charter]]; billing → Finance |
+| The allowlist contents | **Yes**, with named co-owners | Guest PII → [[compliance-privacy-charter|compliance-and-privacy-charter]]; billing → Finance |
 | The confirmation **surface** | **No** | → [[design-charter]] |
 | The **friction floor** on money/stock families | **Yes** | Contested; see [[action-safety-the-human-gate-charter]] §Seam |
 | Executing the action | **No** | *"Existing services are the executors"* — `FUTURES.md` §8.1 |

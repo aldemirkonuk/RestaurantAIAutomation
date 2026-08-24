@@ -5,7 +5,7 @@ department: skills
 status: new
 metrics: [skills.registry_size, skills.firing_rate_30d, skills.deletions_per_quarter]
 updated: 2026-08-24
-links: ["[[skills-charter]]", "[[skills-loops]]", "[[skills-directive]]", "[[skill-registry-authoring-schedule]]", "[[skill-lifecycle-anti-sprawl-schedule]]", "[[skill-harvesting-schedule]]", "[[research-and-math-charter]]", "[[README]]"]
+links: ["[[skills-charter]]", "[[skills-loops]]", "[[skills-directive]]", "[[skill-registry-authoring-schedule]]", "[[skill-lifecycle-anti-sprawl-schedule]]", "[[skill-harvesting-schedule]]", "[[research-math-charter|research-and-math-charter]]", "[[README]]"]
 ---
 
 # Skills — Schedule & Skills

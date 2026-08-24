@@ -6,7 +6,7 @@ team: action-safety-the-human-gate
 status: partial
 metrics: [safety.unconfirmed_mutation_count, safety.median_time_to_confirm, safety.rejection_rate]
 updated: 2026-08-24
-links: ["[[action-safety-the-human-gate-charter]]", "[[action-safety-the-human-gate-premortem]]", "[[action-safety-the-human-gate-directive]]", "[[action-safety-the-human-gate-schedule]]", "[[ai-orchestration-loops]]", "[[design-charter]]", "[[compliance-and-privacy-charter]]", "[[red-team-charter]]", "[[LOOP-MAP]]"]
+links: ["[[action-safety-the-human-gate-charter]]", "[[action-safety-the-human-gate-premortem]]", "[[action-safety-the-human-gate-directive]]", "[[action-safety-the-human-gate-schedule]]", "[[ai-orchestration-loops]]", "[[design-charter]]", "[[compliance-privacy-charter|compliance-and-privacy-charter]]", "[[red-team-charter]]", "[[LOOP-MAP]]"]
 loop_count: 6
 loop_count: 6
 loop_count: 6
@@ -142,6 +142,6 @@ nf_link: "README §4.1 defines a neural footprint as 'enough signal to model WHY
 | To | Signal | Close-time |
 |---|---|---|
 | [[design-charter]] | `time_to_confirm` distribution; confirmations per user per day | monthly — the surface and the friction floor are different decisions with different owners |
-| [[compliance-and-privacy-charter]] | Allowlist state; guest-PII family status; audit reconstructability | quarterly |
+| [[compliance-privacy-charter|compliance-and-privacy-charter]] | Allowlist state; guest-PII family status; audit reconstructability | quarterly |
 | [[red-team-charter]] | Everything in loops 2 and 6 — **the attack surface is the reflex, not the bypass** | on request |
 | [[ai-orchestration-loops]] | `unconfirmed_mutation_count` for the department board | daily |

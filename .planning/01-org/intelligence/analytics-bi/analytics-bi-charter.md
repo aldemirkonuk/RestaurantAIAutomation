@@ -65,7 +65,7 @@ Three teams, which are three different questions asked of the same number:
 | Guest taste fingerprints, personalization, NF-B applied | [[guest-experience-charter]] *(Product)* | We consume NF-B **in aggregate**; we do not own the guest (`intelligence.md:490`) |
 | Grading **nondeterministic** model output — golden sets, judges, threshold pass conditions | [[agent-evaluation-gates-charter]] *(RM-2)* | RM-2 grades judgement; [[metric-contract-truth-assurance-charter]] grades arithmetic against a ledger with no judgement involved (`intelligence.md:460-464`) |
 | Closing the 39 unguarded routes on `analytics.controller.ts` | [[security-charter]] + [[platform-api-charter]] | We are the **victim** of OD-20, not its owner. We own escalating it and refusing to demo behind it |
-| Harness choice, retry policy, model routing for the consultant call | [[harness-and-model-routing-charter]] *(RM-1)* | `consultants.service.ts:159` is one of RM-1's seven raw-`fetch` callsites. We own the prompt and the evidence pack; RM-1 owns the wire |
+| Harness choice, retry policy, model routing for the consultant call | [[harness-model-routing-charter|harness-and-model-routing-charter]] *(RM-1)* | `consultants.service.ts:159` is one of RM-1's seven raw-`fetch` callsites. We own the prompt and the evidence pack; RM-1 owns the wire |
 
 ## Metrics it moves
 

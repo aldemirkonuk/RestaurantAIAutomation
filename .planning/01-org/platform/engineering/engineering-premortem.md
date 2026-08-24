@@ -77,7 +77,7 @@ description contains "already applied in prod".
 reconciliation migration lands within one close-time or the streak counter
 (`schema.days_since_hand_applied_ddl`) resets to zero publicly. Author and auditor are
 deliberately different units — [[schema-migrations-charter]] authors DDL,
-`[[sre-state-integrity]]` runs the gate (`technology.md:296-298`) — and the auditor is
+`[[state-integrity-invariants-charter|sre-state-integrity]]` runs the gate (`technology.md:296-298`) — and the auditor is
 the one who declares red, so the author cannot normalize it.
 
 ---

@@ -6,7 +6,7 @@ team: evaluation-doneability
 status: provisional
 metrics: [nf_a.verified_task_success_rate, nf_a.verdict_coverage, identity.false_merge_count]
 updated: 2026-08-24
-links: ["[[evaluation-doneability-charter]]", "[[evaluation-doneability-loops]]", "[[evaluation-doneability-directive]]", "[[evaluation-doneability-agenda-board]]", "[[research-math-schedule]]", "[[harness-model-routing-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[aio-evaluation-gates]]", "[[skills-charter]]", "[[security-charter]]"]
+links: ["[[evaluation-doneability-charter]]", "[[evaluation-doneability-loops]]", "[[evaluation-doneability-directive]]", "[[evaluation-doneability-agenda-board]]", "[[research-math-schedule]]", "[[harness-model-routing-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[agent-evaluation-gates-charter|aio-evaluation-gates]]", "[[skills-charter]]", "[[security-charter]]"]
 ---
 
 # Evaluation & Doneability (RM-2) — Schedule & Skills
@@ -37,7 +37,7 @@ reassigned"*, in those words. Making the revocation visible is what stops it bei
 | **Weekly** | **Skill health** — registered / unfired-30d / overlapping ([[README]] §6, §3.3). **1 skill today**; stays cheap until ~15 | NF-A |
 | **Weekly** | Pass-condition diff watch: any edit whose commit message names a date, a launch, or a release → escalate on the **first** | — |
 | **Monthly** | Provenance review of every set: `free-negatives` vs `imagination-only`; coverage recomputed as **share of model spend under verdict** | — |
-| **Monthly** | Duplication audit vs [[aio-evaluation-gates]] — a threshold existing twice with two values is the tell. We file the merge proposal ourselves | — |
+| **Monthly** | Duplication audit vs [[agent-evaluation-gates-charter|aio-evaluation-gates]] — a threshold existing twice with two values is the tell. We file the merge proposal ourselves | — |
 | **Quarterly** | Re-adjudicate a sample of past verdicts. An auditor that never re-checks itself is asserting, not measuring | — |
 | **Quarterly** | Premortem review against what actually happened | — |
 

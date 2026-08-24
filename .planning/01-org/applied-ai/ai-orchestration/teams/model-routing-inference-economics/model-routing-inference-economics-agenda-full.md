@@ -6,7 +6,7 @@ team: model-routing-inference-economics
 status: provisional
 metrics: [nf_a.cost_per_task, routing.routed_client_share]
 updated: 2026-08-24
-links: ["[[model-routing-inference-economics-charter]]", "[[model-routing-inference-economics-premortem]]", "[[model-routing-inference-economics-agenda-board]]", "[[model-routing-inference-economics-directive]]", "[[model-routing-inference-economics-loops]]", "[[model-routing-inference-economics-schedule]]", "[[ai-orchestration-agenda-full]]", "[[agent-evaluation-gates-charter]]", "[[security-charter]]", "[[research-and-math-charter]]"]
+links: ["[[model-routing-inference-economics-charter]]", "[[model-routing-inference-economics-premortem]]", "[[model-routing-inference-economics-agenda-board]]", "[[model-routing-inference-economics-directive]]", "[[model-routing-inference-economics-loops]]", "[[model-routing-inference-economics-schedule]]", "[[ai-orchestration-agenda-full]]", "[[agent-evaluation-gates-charter]]", "[[security-charter]]", "[[research-math-charter|research-and-math-charter]]"]
 ---
 
 # Model Routing & Inference Economics — Full Agenda
@@ -101,7 +101,7 @@ why."* Built together, because a policy that cannot explain itself produces a
 | # | Step | Blocked by |
 |---|---|---|
 | 1 | Meter `consultants.service.ts` → `api_spend` | — |
-| 2 | Task correlation ID on every spend row | NF-A task identity ([[research-and-math-charter]]) |
+| 2 | Task correlation ID on every spend row | NF-A task identity ([[research-math-charter|research-and-math-charter]]) |
 | 3 | Report `routing.routed_client_share` **weighted by spend** | step 1 |
 | 4 | Consolidate the 7, spend-descending | — |
 | 5 | Substitution gate in CI | pass criteria from [[agent-evaluation-gates-charter]] |
@@ -115,7 +115,7 @@ Step 1 is a day of work and closes the largest blind spot in the department.
    eye", then the exposure in [[README]] §0 finding 1 has no detection at all and step
    1 is urgent rather than merely first.
 2. **What is the cost ceiling per restaurant per month?** Cost-per-task is only
-   actionable against a target, and `[[fin-unit-economics-pricing]]` needs the same
+   actionable against a target, and `[[unit-economics-pricing-charter|fin-unit-economics-pricing]]` needs the same
    number from the other direction. Locked pricing is $20–50/mo
    (`OPEN-DECISIONS.md:25`, OD-23 context) — what share of that may be inference?
 3. **OD-04 — the external model roster** (Kimi/Moonshot, DeepSeek, etc.) is explicitly

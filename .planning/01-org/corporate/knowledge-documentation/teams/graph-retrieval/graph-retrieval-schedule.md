@@ -37,7 +37,7 @@ Skills live in `.claude/skills/`. A skill that has not fired in 30 days is revie
 deletion.
 
 ⚠️ **`.claude/skills/` does not exist** — the repo's only project skill is
-`.agents/skills/railway-config/SKILL.md` ([[foundation-README]] §3.1). Staged as **OD-C7**.
+`.agents/skills/railway-config/SKILL.md` ([[README|foundation-README]] §3.1). Staged as **OD-C7**.
 
 | Proposed skill | Trigger | Doneability criterion | Real past instance |
 |---|---|---|---|
@@ -48,7 +48,7 @@ deletion.
 | `graph-metrics` | Daily | Emits all `graph.*` from the CLI, no Obsidian required | Every number on the board is currently hand-entered from a one-off pass |
 
 Each names a trigger, a doneability criterion, and a real past instance — the protocol at
-[[foundation-README]] §3.3. **None is built.** Note that `moc-rebuild`'s past instance is a
+[[README|foundation-README]] §3.3. **None is built.** Note that `moc-rebuild`'s past instance is a
 document this department already owns: the failure it prevents has already happened once
 here.
 

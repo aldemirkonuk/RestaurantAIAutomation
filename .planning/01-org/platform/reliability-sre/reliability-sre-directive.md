@@ -19,13 +19,13 @@ the number".
 graph TD
   A[Signal arrives: alert, gate, finding, or report] --> B{Is the signal itself alive?}
   B -->|"Liveness twin absent or flat"| Z[Treat as observability incident<br/>NOT as 'all clear']
-  Z --> OBS[[observability-telemetry-plumbing]]
+  Z --> OBS[[observability-telemetry-plumbing-charter|observability-telemetry-plumbing]]
   B -->|Signal trusted| C{Loud or quiet failure?}
   C -->|"Loud - breaks, throws, pages"| D{Reversible by revert?}
-  C -->|"Quiet - wrong but running"| E[[state-integrity-invariants]]
-  D -->|Yes| REL[[release-engineering]]
+  C -->|"Quiet - wrong but running"| E[[state-integrity-invariants-charter|state-integrity-invariants]]
+  D -->|Yes| REL[[release-engineering-charter|release-engineering]]
   D -->|"No - state already diverged"| E
-  C -->|"Degraded but absorbed"| RES[[runtime-resilience]]
+  C -->|"Degraded but absorbed"| RES[[runtime-resilience-charter|runtime-resilience]]
   D --> F{Touches more than one team?}
   E --> F
   RES --> F

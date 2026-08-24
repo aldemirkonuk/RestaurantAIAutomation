@@ -5,7 +5,7 @@ department: skills
 status: partial
 metrics: [skills.registry_size, skills.protocol_compliance_rate, skills.deletions_per_quarter, skills.firing_rate_30d]
 updated: 2026-08-24
-links: ["[[skills-premortem]]", "[[skills-directive]]", "[[skills-loops]]", "[[skills-schedule]]", "[[skills-agenda-full]]", "[[skills-agenda-board]]", "[[skill-registry-authoring-charter]]", "[[skill-lifecycle-anti-sprawl-charter]]", "[[skill-harvesting-charter]]", "[[ai-orchestration-charter]]", "[[research-and-math-charter]]", "[[ORG_STRUCTURE]]", "[[technology]]", "[[README]]"]
+links: ["[[skills-premortem]]", "[[skills-directive]]", "[[skills-loops]]", "[[skills-schedule]]", "[[skills-agenda-full]]", "[[skills-agenda-board]]", "[[skill-registry-authoring-charter]]", "[[skill-lifecycle-anti-sprawl-charter]]", "[[skill-harvesting-charter]]", "[[ai-orchestration-charter]]", "[[research-math-charter|research-and-math-charter]]", "[[ORG_STRUCTURE]]", "[[technology]]", "[[README]]"]
 ---
 
 # Skills — Charter
@@ -53,11 +53,11 @@ Owned outright:
 |---|---|---|
 | **Skill content** — what `wine-enrichment` or `menu-extraction` actually does | Engineering / Data ([[README]] §3.2, T1) | We own the envelope; the owning department owns the knowledge inside it. A skills team writing domain procedures becomes a bottleneck on knowledge it does not have. |
 | **T2 department skills** (`legal-doc-draft`, `security-audit-pass`) | Each department | Same rule one tier up. |
-| **The agent harness that invokes a skill** | [[ai-orchestration-charter]] → `[[aio-harness-runtime]]` | Whether a skill *can* be loaded and run is harness mechanics. Whether it *should exist* is ours. |
-| **Grading agent task outcomes** | `[[aio-evaluation-gates]]` | They score whether the task was done. We score whether the skill fired at all and whether it earned its slot. |
-| **NF-A metric methodology** | [[research-and-math-charter]] | They define what a doneability verdict means; we consume it as the firing signal. |
+| **The agent harness that invokes a skill** | [[ai-orchestration-charter]] → `[[harness-runtime-charter|aio-harness-runtime]]` | Whether a skill *can* be loaded and run is harness mechanics. Whether it *should exist* is ours. |
+| **Grading agent task outcomes** | `[[agent-evaluation-gates-charter|aio-evaluation-gates]]` | They score whether the task was done. We score whether the skill fired at all and whether it earned its slot. |
+| **NF-A metric methodology** | [[research-math-charter|research-and-math-charter]] | They define what a doneability verdict means; we consume it as the firing signal. |
 | **T4 meta-skill research** (`skill-create`, `skill-review`) | Research & Math per [[README]] §3.2 — **contested, see below** | Naming the seam rather than quietly claiming it. |
-| **Model routing / cost of a skill invocation** | `[[aio-model-routing]]` | A skill is a procedure, not a spend decision. |
+| **Model routing / cost of a skill invocation** | `[[harness-model-routing-charter|aio-model-routing]]` | A skill is a procedure, not a spend decision. |
 
 ### Two seams that are not yet resolved
 

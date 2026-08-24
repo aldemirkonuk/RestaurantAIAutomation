@@ -75,7 +75,7 @@ Owns outright:
 - **The Obsidian vault layer** — [ADR 0004](../../decisions/0004-obsidian-as-backlink-layer.md),
   [[OBSIDIAN_VAULT]], the frontmatter contract, and the Dataview queries every
   `agenda-board.md` in the org depends on.
-- **The regeneration discipline** for companion docs [[foundation-README]] declares
+- **The regeneration discipline** for companion docs [[README|foundation-README]] declares
   *"regenerated rather than hand-edited"* — `ENDPOINTS.md`, `PAGE_MAP.md`,
   `EXTERNAL_CONNECTIONS.md`.
 - **OD-22's tooling & reference library** — the founder asked for a dedicated session; it

@@ -5,7 +5,7 @@ department: ai-orchestration
 status: exists
 metrics: [nf_a.retries, nf_a.dlq_depth, nf_a.task_success_rate, nf_a.cost_per_task, nf_a.doneability_verdict_coverage, safety.unconfirmed_mutation_count]
 updated: 2026-08-24
-links: ["[[ai-orchestration-charter]]", "[[ai-orchestration-directive]]", "[[ai-orchestration-schedule]]", "[[harness-runtime-loops]]", "[[agent-fleet-loops]]", "[[model-routing-inference-economics-loops]]", "[[agent-evaluation-gates-loops]]", "[[action-safety-the-human-gate-loops]]", "[[research-and-math-charter]]", "[[reliability-charter]]", "[[skills-charter]]", "[[LOOP-MAP]]"]
+links: ["[[ai-orchestration-charter]]", "[[ai-orchestration-directive]]", "[[ai-orchestration-schedule]]", "[[harness-runtime-loops]]", "[[agent-fleet-loops]]", "[[model-routing-inference-economics-loops]]", "[[agent-evaluation-gates-loops]]", "[[action-safety-the-human-gate-loops]]", "[[research-math-charter|research-and-math-charter]]", "[[reliability-sre-charter|reliability-charter]]", "[[skills-charter]]", "[[LOOP-MAP]]"]
 loop_count: 7
 loop_count: 7
 loop_count: 7
@@ -153,10 +153,10 @@ note: "A decision is not a feedback loop, and this entry is deliberately the odd
 
 | Loop | Owner | What we hand over |
 |---|---|---|
-| NF-A → harness/skill improvement ([[README]] §7) | [[research-and-math-charter]] | The NF-A events themselves. We are the largest producer; they own the methodology |
+| NF-A → harness/skill improvement ([[README]] §7) | [[research-math-charter|research-and-math-charter]] | The NF-A events themselves. We are the largest producer; they own the methodology |
 | Skill firing / staleness | [[skills-charter]] | `skill_id` on the NF-A event — the cheapest firing signal available |
-| Guardian findings → alerts | `[[sre-state-integrity]]` | The code of `state_invariant_enforcer`, `drift_agent`, `inequality_detector`. They own the findings queue — OD-24 |
-| Inference cost → unit economics | `[[fin-inference-cost]]` | `nf_a.cost_per_task` by task type |
+| Guardian findings → alerts | `[[state-integrity-invariants-charter|sre-state-integrity]]` | The code of `state_invariant_enforcer`, `drift_agent`, `inequality_detector`. They own the findings queue — OD-24 |
+| Inference cost → unit economics | `[[inference-cost-charter|fin-inference-cost]]` | `nf_a.cost_per_task` by task type |
 
 **The dependency stated plainly:** four of these six proposed loops close on numbers
 this department must first cause to exist. Step 0 of [[ai-orchestration-agenda-full]]

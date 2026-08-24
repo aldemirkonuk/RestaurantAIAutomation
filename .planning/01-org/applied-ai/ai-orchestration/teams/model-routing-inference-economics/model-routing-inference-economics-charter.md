@@ -6,13 +6,13 @@ team: model-routing-inference-economics
 status: partial
 metrics: [nf_a.cost_per_task, routing.routed_client_share]
 updated: 2026-08-24
-links: ["[[model-routing-inference-economics-premortem]]", "[[model-routing-inference-economics-agenda-full]]", "[[model-routing-inference-economics-agenda-board]]", "[[model-routing-inference-economics-directive]]", "[[model-routing-inference-economics-loops]]", "[[model-routing-inference-economics-schedule]]", "[[ai-orchestration-charter]]", "[[harness-runtime-charter]]", "[[agent-fleet-charter]]", "[[agent-evaluation-gates-charter]]", "[[research-and-math-charter]]", "[[technology]]", "[[README]]"]
+links: ["[[model-routing-inference-economics-premortem]]", "[[model-routing-inference-economics-agenda-full]]", "[[model-routing-inference-economics-agenda-board]]", "[[model-routing-inference-economics-directive]]", "[[model-routing-inference-economics-loops]]", "[[model-routing-inference-economics-schedule]]", "[[ai-orchestration-charter]]", "[[harness-runtime-charter]]", "[[agent-fleet-charter]]", "[[agent-evaluation-gates-charter]]", "[[research-math-charter|research-and-math-charter]]", "[[technology]]", "[[README]]"]
 ---
 
 # Model Routing & Inference Economics — Charter
 
 Team of [[ai-orchestration-charter]] · Division: **Applied AI** · Alias in the team
-corpus: `[[aio-model-routing]]` (`technology.md:363`).
+corpus: `[[harness-model-routing-charter|aio-model-routing]]` (`technology.md:363`).
 
 ## Mandate
 
@@ -50,8 +50,8 @@ Owns outright:
 | **What "passes" means** — the quality bar a model must clear | [[agent-evaluation-gates-charter]] | Routing picks the cheapest model that **passes**; this team does not define passing (`technology.md:399-400`). This is the most important non-goal on the page |
 | Agent behavior and prompts | [[agent-fleet-charter]] | A prompt is behavior; a model is a routing decision |
 | Harness retry/DLQ/lifecycle | [[harness-runtime-charter]] | We own retry at the **model boundary**; they own it at the message boundary |
-| NF-A metric definitions | [[research-and-math-charter]] | We emit `cost_per_task`; they define what a task is |
-| Pricing the product to customers | `[[fin-unit-economics-pricing]]` | We produce cost-per-task; they turn it into a price |
+| NF-A metric definitions | [[research-math-charter|research-and-math-charter]] | We emit `cost_per_task`; they define what a task is |
+| Pricing the product to customers | `[[unit-economics-pricing-charter|fin-unit-economics-pricing]]` | We produce cost-per-task; they turn it into a price |
 | Whether a mutation may execute | [[action-safety-the-human-gate-charter]] | A cheap model is not a licence to skip a gate |
 
 **The separation from [[agent-evaluation-gates-charter]] is load-bearing.** The team

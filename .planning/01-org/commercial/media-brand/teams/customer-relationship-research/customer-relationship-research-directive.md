@@ -10,7 +10,7 @@ links:
   - "[[customer-relationship-research-charter]]"
   - "[[customer-relationship-research-premortem]]"
   - "[[media-brand-directive]]"
-  - "[[compliance-charter]]"
+  - "[[compliance-privacy-charter|compliance-charter]]"
 ---
 
 # Customer Relationship Research (M4) — Directive

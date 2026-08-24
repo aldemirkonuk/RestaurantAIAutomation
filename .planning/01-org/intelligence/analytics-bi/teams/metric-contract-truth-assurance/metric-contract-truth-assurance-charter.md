@@ -6,7 +6,7 @@ team: metric-contract-truth-assurance
 status: partial
 metrics: [analytics.kpi_ground_truth_agreement, analytics.metric_claim_divergence_count, analytics.registry_binding_share, analytics.silent_zero_paths, analytics.claims_without_provenance]
 updated: 2026-08-24
-links: ["[[metric-contract-truth-assurance-premortem]]", "[[metric-contract-truth-assurance-agenda-full]]", "[[metric-contract-truth-assurance-agenda-board]]", "[[metric-contract-truth-assurance-directive]]", "[[metric-contract-truth-assurance-loops]]", "[[metric-contract-truth-assurance-schedule]]", "[[analytics-bi-charter]]", "[[analytics-engine-charter]]", "[[insight-narrative-generation-charter]]", "[[agent-evaluation-gates-charter]]", "[[engineering-charter]]", "[[media-and-brand-charter]]", "[[strategy-and-fundraising-charter]]", "[[decision-office-charter]]", "[[intelligence]]"]
+links: ["[[metric-contract-truth-assurance-premortem]]", "[[metric-contract-truth-assurance-agenda-full]]", "[[metric-contract-truth-assurance-agenda-board]]", "[[metric-contract-truth-assurance-directive]]", "[[metric-contract-truth-assurance-loops]]", "[[metric-contract-truth-assurance-schedule]]", "[[analytics-bi-charter]]", "[[analytics-engine-charter]]", "[[insight-narrative-generation-charter]]", "[[agent-evaluation-gates-charter]]", "[[engineering-charter]]", "[[media-brand-charter|media-and-brand-charter]]", "[[strategy-fundraising-charter|strategy-and-fundraising-charter]]", "[[decision-office-charter]]", "[[intelligence]]"]
 ---
 
 # Metric Contract & Truth Assurance — Charter
@@ -55,7 +55,7 @@ Owns outright:
 | Grading **nondeterministic** model output — golden sets, LLM judges, threshold pass conditions | [[agent-evaluation-gates-charter]] *(RM-2)* | **Stated explicitly** (`intelligence.md:460-464`): RM-2 grades judgement, we grade arithmetic. Exact equality against a ledger, no judgement involved. *"They share vocabulary, not work."* |
 | Building SimPOS (§44.7) | [[engineering-charter]] | Our baseline is 0% until they ship it. We own the dated escalation, not the build |
 | Whether a metric is *useful* | [[insight-narrative-generation-charter]] | A metric can be perfectly defined and worthless |
-| Writing the marketing copy | [[media-and-brand-charter]] / [[strategy-and-fundraising-charter]] | They write it; we can say a figure in it is false |
+| Writing the marketing copy | [[media-brand-charter|media-and-brand-charter]] / [[strategy-fundraising-charter|strategy-and-fundraising-charter]] | They write it; we can say a figure in it is false |
 
 ## Metrics it moves
 

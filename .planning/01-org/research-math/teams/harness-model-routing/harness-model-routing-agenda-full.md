@@ -6,7 +6,7 @@ team: harness-model-routing
 status: provisional
 metrics: [nf_a.harness_overhead_ms, nf_a.cost_per_completed_task, share_of_model_calls_through_wrapper]
 updated: 2026-08-24
-links: ["[[harness-model-routing-charter]]", "[[harness-model-routing-premortem]]", "[[harness-model-routing-agenda-board]]", "[[harness-model-routing-directive]]", "[[harness-model-routing-loops]]", "[[harness-model-routing-schedule]]", "[[research-math-agenda-full]]", "[[evaluation-doneability-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[engineering-charter]]", "[[security-charter]]", "[[aio-model-routing]]", "[[aio-harness-runtime]]"]
+links: ["[[harness-model-routing-charter]]", "[[harness-model-routing-premortem]]", "[[harness-model-routing-agenda-board]]", "[[harness-model-routing-directive]]", "[[harness-model-routing-loops]]", "[[harness-model-routing-schedule]]", "[[research-math-agenda-full]]", "[[evaluation-doneability-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[engineering-charter]]", "[[security-charter]]", "[[harness-model-routing-charter|aio-model-routing]]", "[[harness-runtime-charter|aio-harness-runtime]]"]
 ---
 
 # Harness & Model Routing (RM-1) — Full Agenda
@@ -63,7 +63,7 @@ document extraction, analytic answer), the pass conditions come from
 idempotency (`:704`), DLQ (`:791`) and sagas (`:823-905`) across 27 agent modules is a
 real option, and dismissing the incumbent by default is a pick from repute inverted.
 
-**On the seam:** until the founder rules on RM-1 vs `[[aio-model-routing]]`, the wrapper
+**On the seam:** until the founder rules on RM-1 vs `[[harness-model-routing-charter|aio-model-routing]]`, the wrapper
 is built as **one artifact both units use**. Shared code resolves a boundary dispute
 faster than a boundary document.
 
@@ -97,7 +97,7 @@ faster than a boundary document.
 1. **Fork F-5 — are the seven NestJS callsites in scope for OD-03?** They are the majority
    of production model traffic. A harness decision that excludes them is a decision about
    the minority and should be titled that way.
-2. **Who owns routing — this team or `[[aio-model-routing]]`?** Same mandate, same primary
+2. **Who owns routing — this team or `[[harness-model-routing-charter|aio-model-routing]]`?** Same mandate, same primary
    metric, different divisions. We are not claiming it; we are asking for a ruling.
 3. **Is there a per-tenant or per-caller inference budget, and what is it?** The wrapper
    can enforce a number; it cannot invent one. Without it, "denial of wallet" has a

@@ -5,7 +5,7 @@ department: legal
 status: new
 metrics: [legal.instrument_chain_integrity, legal.request_to_executable_draft_days, legal.clause_library_hit_rate, legal.counsel_gate_compliance, legal.annex_satisfiability_signoff, nf_a.doneability_verdict]
 updated: 2026-08-24
-links: ["[[legal-premortem]]", "[[legal-agenda-full]]", "[[legal-agenda-board]]", "[[legal-directive]]", "[[legal-loops]]", "[[legal-schedule]]", "[[instruments-equity-charter]]", "[[commercial-workforce-agreements-charter]]", "[[ORG_STRUCTURE]]", "[[corporate]]", "[[foundation-README]]", "[[regulatory-posture-charter]]", "[[privacy-engineering-charter]]", "[[positioning-fundraise-readiness-charter]]", "[[regulated-operations-charter]]", "[[roster-lifecycle-charter]]", "[[decision-office-charter]]"]
+links: ["[[legal-premortem]]", "[[legal-agenda-full]]", "[[legal-agenda-board]]", "[[legal-directive]]", "[[legal-loops]]", "[[legal-schedule]]", "[[instruments-equity-charter]]", "[[commercial-workforce-agreements-charter]]", "[[ORG_STRUCTURE]]", "[[corporate]]", "[[README|foundation-README]]", "[[regulatory-posture-charter]]", "[[privacy-engineering-charter]]", "[[positioning-fundraise-readiness-charter]]", "[[regulated-operations-charter]]", "[[roster-lifecycle-charter]]", "[[decision-office-charter]]"]
 ---
 
 # Legal — Charter
@@ -121,7 +121,7 @@ this charter:
   enforceable does not exist. That asymmetry is the clearest single argument for this
   department existing.
 - **The one skill this department is supposed to own does not exist as a file.**
-  [[foundation-README]] §3.2 names `legal-doc-draft` as a T2 department skill (line 145).
+  [[README|foundation-README]] §3.2 names `legal-doc-draft` as a T2 department skill (line 145).
   `.claude/skills/` is not present in the repo at all. The skill is a name, not an asset.
 
 ### The trim flag, repeated rather than buried

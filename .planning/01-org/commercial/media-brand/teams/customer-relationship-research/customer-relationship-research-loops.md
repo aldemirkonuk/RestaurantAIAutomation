@@ -10,7 +10,7 @@ links:
   - "[[customer-relationship-research-charter]]"
   - "[[customer-relationship-research-directive]]"
   - "[[media-brand-loops]]"
-  - "[[compliance-charter]]"
+  - "[[compliance-privacy-charter|compliance-charter]]"
 loop_count: 4
 loop_count: 4
 loop_count: 4

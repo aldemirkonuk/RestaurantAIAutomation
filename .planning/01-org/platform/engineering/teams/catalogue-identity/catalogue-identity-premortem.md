@@ -6,7 +6,7 @@ team: catalogue-identity
 status: provisional
 metrics: [identity.false_merge_count, identity.false_split_count]
 updated: 2026-08-24
-links: ["[[catalogue-identity-charter]]", "[[catalogue-identity-loops]]", "[[catalogue-identity-directive]]", "[[engineering-premortem]]", "[[red-team-charter]]", "[[dat-annotation-ground-truth]]"]
+links: ["[[catalogue-identity-charter]]", "[[catalogue-identity-loops]]", "[[catalogue-identity-directive]]", "[[engineering-premortem]]", "[[red-team-charter]]", "[[annotation-ground-truth-charter|dat-annotation-ground-truth]]"]
 ---
 
 # Catalogue & Identity — Premortem
@@ -56,7 +56,7 @@ a start-up cost; two is a decision to not build it.
 
 **Counter-pressure.** Building the labelled set is the team's **first** deliverable, ahead
 of any matcher improvement — a matcher change with no ground truth is unfalsifiable.
-[[dat-annotation-ground-truth]] owns annotation methodology; this team owns the identity
+[[annotation-ground-truth-charter|dat-annotation-ground-truth]] owns annotation methodology; this team owns the identity
 set's contents and its asymmetric scoring rule. The loop records *unreadable* explicitly
 rather than omitting the metric, because an omitted metric reads as green
 ([[engineering-loops]] L-ENG-1).
@@ -123,7 +123,7 @@ touches guest tables; that combination, not the guard's failure, is the tell.
 **Counter-pressure.** Pair the grep with an **outcome-side** check: sample guest identity
 clusters and assert none were formed on name similarity. Route it through
 [[engineering-loops]] L-ENG-3, which exists to catch exactly "green guard, wrong data".
-Escalate any expansion of the guest identity slice to [[compliance-charter]] before
+Escalate any expansion of the guest identity slice to [[compliance-privacy-charter|compliance-charter]] before
 implementation, not after — the merge is unrecoverable and so is the disclosure.
 
 ---

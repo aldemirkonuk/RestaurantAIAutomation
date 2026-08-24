@@ -6,7 +6,7 @@ team: catalogue-identity
 status: provisional
 metrics: [identity.false_merge_count, identity.false_split_count, identity.producer_collapse_ratio]
 updated: 2026-08-24
-links: ["[[catalogue-identity-charter]]", "[[catalogue-identity-premortem]]", "[[catalogue-identity-directive]]", "[[engineering-loops]]", "[[dat-annotation-ground-truth]]", "[[LOOP-MAP]]"]
+links: ["[[catalogue-identity-charter]]", "[[catalogue-identity-premortem]]", "[[catalogue-identity-directive]]", "[[engineering-loops]]", "[[annotation-ground-truth-charter|dat-annotation-ground-truth]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_count: 5
 loop_count: 5

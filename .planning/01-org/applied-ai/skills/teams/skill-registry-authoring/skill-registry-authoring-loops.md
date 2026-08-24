@@ -103,7 +103,7 @@ graph LR
   L1 -->|reject| CAND["harvest candidate queue"]
   REG --> L2["L2 collision scan<br/>weekly"]
   L2 --> REG
-  REG ==>|"30-day clock starts"| LC[["skill-lifecycle-anti-sprawl"]]
+  REG ==>|"30-day clock starts"| LC[[skill-lifecycle-anti-sprawl-charter|"skill-lifecycle-anti-sprawl"]]
   SCR["scripts/ (59)"] --> L3["L3 bypass pressure<br/>monthly"]
   REG --> L3
   L3 --> TOOL["skill-create tooling"]

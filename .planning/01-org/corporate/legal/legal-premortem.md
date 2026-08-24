@@ -115,7 +115,7 @@ caught it.
 
 ### M5 — The AI drafted it, it read like a contract, and nobody was named as having read it
 
-[[foundation-README]] §3.2 names a `legal-doc-draft` skill. It got built. It produced
+[[README|foundation-README]] §3.2 names a `legal-doc-draft` skill. It got built. It produced
 documents that *looked* correct — correct headings, confident recitals, familiar cadence —
 because looking correct is exactly what a language model is good at. Turnaround collapsed,
 `legal.request_to_executable_draft_days` looked excellent, and a document went out with no

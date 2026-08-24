@@ -6,13 +6,13 @@ team: skill-lifecycle-anti-sprawl
 status: new
 metrics: [skills.deletions_per_quarter, skills.firing_rate_30d, skills.registry_size]
 updated: 2026-08-24
-links: ["[[skills-charter]]", "[[skill-lifecycle-anti-sprawl-premortem]]", "[[skill-lifecycle-anti-sprawl-directive]]", "[[skill-lifecycle-anti-sprawl-loops]]", "[[skill-lifecycle-anti-sprawl-schedule]]", "[[skill-lifecycle-anti-sprawl-agenda-full]]", "[[skill-lifecycle-anti-sprawl-agenda-board]]", "[[skill-registry-authoring-charter]]", "[[skill-harvesting-charter]]", "[[ai-orchestration-charter]]", "[[research-and-math-charter]]", "[[README]]", "[[technology]]"]
+links: ["[[skills-charter]]", "[[skill-lifecycle-anti-sprawl-premortem]]", "[[skill-lifecycle-anti-sprawl-directive]]", "[[skill-lifecycle-anti-sprawl-loops]]", "[[skill-lifecycle-anti-sprawl-schedule]]", "[[skill-lifecycle-anti-sprawl-agenda-full]]", "[[skill-lifecycle-anti-sprawl-agenda-board]]", "[[skill-registry-authoring-charter]]", "[[skill-harvesting-charter]]", "[[ai-orchestration-charter]]", "[[research-math-charter|research-and-math-charter]]", "[[README]]", "[[technology]]"]
 ---
 
 # Skill Lifecycle & Anti-Sprawl — Charter
 
 Team `skill-lifecycle-anti-sprawl` · department [[skills-charter]] · division `applied-ai`.
-Alias in [[technology]] §4.2: `[[skl-lifecycle]]`.
+Alias in [[technology]] §4.2: `[[roster-lifecycle-charter|skl-lifecycle]]`.
 
 > **This team is the department's reason to exist.** The founder mandate is *create
 > skills constantly*. [[README]] §3.3 names sprawl as **the** failure mode of that
@@ -48,11 +48,11 @@ on the basis of an unknown.
 |---|---|
 | Creating skills, the `SKILL.md` contract, description quality | [[skill-registry-authoring-charter]] |
 | Mining past work for candidates | [[skill-harvesting-charter]] (gated) |
-| The NF-A schema itself — we request a field, we do not design the table | [[research-and-math-charter]] / OD-11 |
-| Emitting the event | `[[sre-observability]]` + [[ai-orchestration-charter]] |
-| Whether an agent task *succeeded* | `[[aio-evaluation-gates]]` — they grade outcomes, we count invocations |
+| The NF-A schema itself — we request a field, we do not design the table | [[research-math-charter|research-and-math-charter]] / OD-11 |
+| Emitting the event | `[[observability-telemetry-plumbing-charter|sre-observability]]` + [[ai-orchestration-charter]] |
+| Whether an agent task *succeeded* | `[[agent-evaluation-gates-charter|aio-evaluation-gates]]` — they grade outcomes, we count invocations |
 | Setting N | Founder ([[skills-directive]]) |
-| **T4 meta-skill methodology** (`skill-create`, `skill-review`) | [[research-and-math-charter]] per [[README]] §3.2 |
+| **T4 meta-skill methodology** (`skill-create`, `skill-review`) | [[research-math-charter|research-and-math-charter]] per [[README]] §3.2 |
 
 ### The contested job — stated, not resolved
 

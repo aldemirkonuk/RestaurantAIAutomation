@@ -6,7 +6,7 @@ team: action-safety-the-human-gate
 status: partial
 metrics: [safety.unconfirmed_mutation_count, safety.median_time_to_confirm, safety.rejection_rate]
 updated: 2026-08-24
-links: ["[[action-safety-the-human-gate-charter]]", "[[action-safety-the-human-gate-loops]]", "[[action-safety-the-human-gate-directive]]", "[[ai-orchestration-premortem]]", "[[harness-runtime-charter]]", "[[design-charter]]", "[[compliance-and-privacy-charter]]", "[[red-team-charter]]", "[[technology]]"]
+links: ["[[action-safety-the-human-gate-charter]]", "[[action-safety-the-human-gate-loops]]", "[[action-safety-the-human-gate-directive]]", "[[ai-orchestration-premortem]]", "[[harness-runtime-charter]]", "[[design-charter]]", "[[compliance-privacy-charter|compliance-and-privacy-charter]]", "[[red-team-charter]]", "[[technology]]"]
 ---
 
 # Action Safety & the Human Gate — Premortem

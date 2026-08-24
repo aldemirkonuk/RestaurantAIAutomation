@@ -10,7 +10,7 @@ links:
   - "[[customer-relationship-research-charter]]"
   - "[[customer-relationship-research-loops]]"
   - "[[media-brand-schedule]]"
-  - "[[compliance-charter]]"
+  - "[[compliance-privacy-charter|compliance-charter]]"
 ---
 
 # Customer Relationship Research (M4) — Schedule & Skills
@@ -54,7 +54,7 @@ happens; the rest are deliberately deferred.
   [[customer-relationship-research-premortem]] names as its most likely failure.
   **The past instance the rule asks for is this document.**
 - **Owner.** M4. The mechanism it reads is reviewed by
-  [[compliance-charter|Compliance & Privacy]].
+  [[compliance-privacy-charter|Compliance & Privacy]].
 - **Note.** It must check `approval_purpose` / `consent_purpose`, not merely presence.
   Checking `consent_captured_at is not null` and stopping there is purpose drift implemented
   as a skill.

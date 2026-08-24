@@ -6,7 +6,7 @@ team: schema-migrations
 status: provisional
 metrics: [schema.days_since_hand_applied_ddl]
 updated: 2026-08-24
-links: ["[[schema-migrations-charter]]", "[[schema-migrations-premortem]]", "[[schema-migrations-loops]]", "[[engineering-directive]]", "[[sre-state-integrity]]", "[[inventory-ledger-charter]]", "[[decision-office-charter]]"]
+links: ["[[schema-migrations-charter]]", "[[schema-migrations-premortem]]", "[[schema-migrations-loops]]", "[[engineering-directive]]", "[[state-integrity-invariants-charter|sre-state-integrity]]", "[[inventory-ledger-charter]]", "[[decision-office-charter]]"]
 ---
 
 # Schema & Migrations — Directive
@@ -51,7 +51,7 @@ graph TD
 | Migration authorship, ordering, naming | Team, with domain teams |
 | RLS policies, Postgres functions as DDL | Team; co-owned with [[platform-api-charter]] for request-layer tenancy |
 | Generated type regeneration | Team — **never hand-edited by anyone** |
-| **Running the parity gate and declaring red** | **[[sre-state-integrity]]** — author ≠ auditor (`technology.md:296-298`) |
+| **Running the parity gate and declaring red** | **[[state-integrity-invariants-charter|sre-state-integrity]]** — author ≠ auditor (`technology.md:296-298`) |
 | Whether a red is "expected" | **The auditor, never this team.** This is the load-bearing separation |
 | What a domain invariant should be | The domain team; this team authors the DDL |
 | Irreversible operations (`DROP COLUMN`, `ALTER TYPE`, unbackfilled `NOT NULL`) | Requires this team's review |
@@ -70,7 +70,7 @@ whole counter-pressure to premortem M1, and it works only because the metric is 
 zero or it does not.
 
 The corollary matters as much: **this team does not get to declare its own drift
-expected.** That authority sits with [[sre-state-integrity]] by design. If it ever moves
+expected.** That authority sits with [[state-integrity-invariants-charter|sre-state-integrity]] by design. If it ever moves
 here, the author is auditing itself and M1 becomes unstoppable — the same structural error
 that [[ORG_STRUCTURE]] §3 builds the whole advisory layer to avoid.
 

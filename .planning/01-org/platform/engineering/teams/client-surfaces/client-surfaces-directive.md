@@ -6,7 +6,7 @@ team: client-surfaces
 status: provisional
 metrics: [surfaces.reachable_route_ratio]
 updated: 2026-08-24
-links: ["[[client-surfaces-charter]]", "[[client-surfaces-premortem]]", "[[client-surfaces-loops]]", "[[engineering-directive]]", "[[design-charter]]", "[[sre-release-engineering]]"]
+links: ["[[client-surfaces-charter]]", "[[client-surfaces-premortem]]", "[[client-surfaces-loops]]", "[[engineering-directive]]", "[[design-charter]]", "[[release-engineering-charter|sre-release-engineering]]"]
 ---
 
 # Client Surfaces — Directive
@@ -53,12 +53,12 @@ graph TD
 | Whether an orphan route is deliberate or accidental | [[design-charter]] or founder — the team cannot know |
 | What counts as a legitimate inbound link | Founder — it defines the primary metric |
 | Mobile/web split | Department, on a written trigger (premortem M4) |
-| Deploy pipeline, hosting, CDN | [[sre-release-engineering]] |
+| Deploy pipeline, hosting, CDN | [[release-engineering-charter|sre-release-engineering]] |
 | Data shown on a screen being correct | The owning domain team, not this one |
 
 ## The seam with Design, in practice
 
-> Intent vs. implementation — Design *(Product)* | `[[eng-client-surfaces]]` |
+> Intent vs. implementation — Design *(Product)* | `[[client-surfaces-charter|eng-client-surfaces]]` |
 > What the screen should be vs. what shipped.
 > — `.planning/foundation/teams/technology.md:865`
 

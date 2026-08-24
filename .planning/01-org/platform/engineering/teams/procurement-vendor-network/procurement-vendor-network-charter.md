@@ -6,7 +6,7 @@ team: procurement-vendor-network
 status: exists
 metrics: [procurement.order_to_delivery_reconciliation_rate, procurement.unguarded_money_moving_routes]
 updated: 2026-08-24
-links: ["[[engineering-charter]]", "[[procurement-vendor-network-premortem]]", "[[procurement-vendor-network-agenda-full]]", "[[procurement-vendor-network-agenda-board]]", "[[procurement-vendor-network-directive]]", "[[procurement-vendor-network-loops]]", "[[procurement-vendor-network-schedule]]", "[[eng-procurement-vendor-network]]", "[[inventory-ledger-charter]]", "[[platform-api-charter]]", "[[integration-engineering-charter]]", "[[ENDPOINTS]]"]
+links: ["[[engineering-charter]]", "[[procurement-vendor-network-premortem]]", "[[procurement-vendor-network-agenda-full]]", "[[procurement-vendor-network-agenda-board]]", "[[procurement-vendor-network-directive]]", "[[procurement-vendor-network-loops]]", "[[procurement-vendor-network-schedule]]", "[[procurement-vendor-network-charter|eng-procurement-vendor-network]]", "[[inventory-ledger-charter]]", "[[platform-api-charter]]", "[[integration-engineering-charter]]", "[[ENDPOINTS]]"]
 ---
 
 # Procurement & Vendor Network — Charter
@@ -58,8 +58,8 @@ user the rest of Engineering does not have.
 | Stock arithmetic once a lot exists | [[inventory-ledger-charter]] — we own the order, they own the lot it becomes |
 | The auth mechanism that should protect these routes | [[platform-api-charter]] — we are the loudest *consumer* of that mechanism, not its builder |
 | Vendor webhook wire protocol and signature verification | [[integration-engineering-charter]] |
-| The commercial relationship with a distributor | [[partnerships-charter]] *(Product)* and [[sales-charter]] *(Commercial)* |
-| What a good price *is* — margin, unit economics | [[unit-economics-pricing]] *(Commercial)* |
+| The commercial relationship with a distributor | [[partnerships-integrations-charter|partnerships-charter]] *(Product)* and [[sales-charter]] *(Commercial)* |
+| What a good price *is* — margin, unit economics | [[unit-economics-pricing-charter|unit-economics-pricing]] *(Commercial)* |
 | Drafting vendor emails and negotiation language | [[ai-orchestration-charter]] — they draft, [[messaging-delivery-charter]] delivers |
 | Legal terms of a purchase agreement | [[legal-charter]] *(Corporate)* |
 

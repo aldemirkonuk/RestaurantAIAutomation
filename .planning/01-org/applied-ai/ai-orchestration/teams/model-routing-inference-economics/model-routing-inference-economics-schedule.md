@@ -55,8 +55,8 @@ review time.
 
 | To | When | What |
 |---|---|---|
-| `[[fin-inference-cost]]` | Weekly | `nf_a.cost_per_task` by task type |
-| `[[fin-unit-economics-pricing]]` | Monthly | `cost_per_restaurant_per_day` against the $20–50/mo price point |
+| `[[inference-cost-charter|fin-inference-cost]]` | Weekly | `nf_a.cost_per_task` by task type |
+| `[[unit-economics-pricing-charter|fin-unit-economics-pricing]]` | Monthly | `cost_per_restaurant_per_day` against the $20–50/mo price point |
 | [[security-charter]] | On trigger, same day | Spend anomalies attributable to unauthenticated paths — [[README]] §0 finding 1 |
 | [[agent-evaluation-gates-charter]] | Weekly | Task families where a cheaper model is wanted and **no verdict exists** — a coverage request, not a complaint |
 | [[ai-orchestration-schedule]] | Weekly | Both routed-client-share weightings for the department board |

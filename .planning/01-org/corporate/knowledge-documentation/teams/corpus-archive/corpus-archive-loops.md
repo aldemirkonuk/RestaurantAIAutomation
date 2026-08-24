@@ -107,7 +107,7 @@ Two checks:
    has noticed yet.
 
 Monthly because archiving is episodic; a weekly loop here would report "no change" most
-weeks and be downgraded under the three-empty-runs rule ([[foundation-README]] §6).
+weeks and be downgraded under the three-empty-runs rule ([[README|foundation-README]] §6).
 
 ---
 

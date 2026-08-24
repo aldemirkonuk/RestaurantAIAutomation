@@ -9,7 +9,7 @@ team_count: 13
 keywords: [teams, growth, seo, aeo, editorial, sales, brand, consent, unit-economics, premortem]
 links:
   - "[[ORG_STRUCTURE]]"
-  - "[[foundation-README]]"
+  - "[[README|foundation-README]]"
   - "[[EXTERNAL_CONNECTIONS]]"
   - "[[PAGE_MAP]]"
   - "[[YC_WEDGE_PLAN]]"

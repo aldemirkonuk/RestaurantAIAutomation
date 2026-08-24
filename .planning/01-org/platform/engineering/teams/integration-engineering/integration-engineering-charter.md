@@ -6,7 +6,7 @@ team: integration-engineering
 status: partial
 metrics: [integration.verified_signature_coverage, integration.webhook_silence_duration]
 updated: 2026-08-24
-links: ["[[engineering-charter]]", "[[integration-engineering-premortem]]", "[[integration-engineering-agenda-full]]", "[[integration-engineering-agenda-board]]", "[[integration-engineering-directive]]", "[[integration-engineering-loops]]", "[[integration-engineering-schedule]]", "[[eng-integration-wire]]", "[[platform-api-charter]]", "[[partnerships-charter]]", "[[dat-pos-telemetry-ingest]]", "[[EXTERNAL_CONNECTIONS]]", "[[ENDPOINTS]]"]
+links: ["[[engineering-charter]]", "[[integration-engineering-premortem]]", "[[integration-engineering-agenda-full]]", "[[integration-engineering-agenda-board]]", "[[integration-engineering-directive]]", "[[integration-engineering-loops]]", "[[integration-engineering-schedule]]", "[[integration-engineering-charter|eng-integration-wire]]", "[[platform-api-charter]]", "[[partnerships-integrations-charter|partnerships-charter]]", "[[pos-operational-telemetry-ingest-charter|dat-pos-telemetry-ingest]]", "[[EXTERNAL_CONNECTIONS]]", "[[ENDPOINTS]]"]
 ---
 
 # Integration Engineering — the wire — Charter
@@ -51,7 +51,7 @@ It is also where the legitimately-public routes live, so its correctness criteri
 different security model, not a weaker one — and confusing the two is how ~51 routes end up
 described as "unguarded" without distinguishing the ones that are supposed to be.
 
-**Distinct from [[partnerships-charter]] (Product division)**: Partnerships owns the
+**Distinct from [[partnerships-integrations-charter|partnerships-charter]] (Product division)**: Partnerships owns the
 relationship and the decision to integrate; this team owns the wire and the breakage
 (`technology.md:252-254`).
 
@@ -59,12 +59,12 @@ relationship and the decision to integrate; this team owns the wire and the brea
 
 | Not ours | Whose it is |
 |---|---|
-| The decision to integrate with a partner, and the relationship | [[partnerships-charter]] *(Product)* |
-| Whether delivered data is **fit for use** as L0 substrate | [[dat-pos-telemetry-ingest]] — seam at `technology.md:859`: delivered correctly vs usable |
+| The decision to integrate with a partner, and the relationship | [[partnerships-integrations-charter|partnerships-charter]] *(Product)* |
+| Whether delivered data is **fit for use** as L0 substrate | [[pos-operational-telemetry-ingest-charter|dat-pos-telemetry-ingest]] — seam at `technology.md:859`: delivered correctly vs usable |
 | The global guard mechanism and the allowlist file's existence | [[platform-api-charter]] — we own the *entries* and the signatures on them |
 | Stock arithmetic once a POS event lands | [[inventory-ledger-charter]] |
 | Vendor commercial terms | [[procurement-vendor-network-charter]] |
-| Uptime and queue health of the ingestion path | [[sre-runtime-resilience]] |
+| Uptime and queue health of the ingestion path | [[runtime-resilience-charter|sre-runtime-resilience]] |
 | What an agent does with integration data | [[ai-orchestration-charter]] |
 
 ## Metrics it moves

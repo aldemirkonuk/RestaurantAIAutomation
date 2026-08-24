@@ -101,7 +101,7 @@ the shipped consent columns at
 and for `service_personalisation`, not for customers and not for research.
 
 **What would have prevented it.** No research runs before the register exists and
-[[compliance-charter|Compliance & Privacy]] has signed off the mechanism. The gate is the
+[[compliance-privacy-charter|Compliance & Privacy]] has signed off the mechanism. The gate is the
 register, not the publicness of the data — the founder's instruction is quoted verbatim in
 [[customer-relationship-research-charter]] precisely so it cannot be paraphrased into
 something weaker.

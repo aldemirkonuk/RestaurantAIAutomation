@@ -6,7 +6,7 @@ team: schema-migrations
 status: provisional
 metrics: [schema.days_since_hand_applied_ddl, schema.parity_job_green_streak]
 updated: 2026-08-24
-links: ["[[schema-migrations-charter]]", "[[schema-migrations-loops]]", "[[schema-migrations-directive]]", "[[engineering-premortem]]", "[[sre-state-integrity]]", "[[inventory-ledger-premortem]]", "[[red-team-charter]]"]
+links: ["[[schema-migrations-charter]]", "[[schema-migrations-loops]]", "[[schema-migrations-directive]]", "[[engineering-premortem]]", "[[state-integrity-invariants-charter|sre-state-integrity]]", "[[inventory-ledger-premortem]]", "[[red-team-charter]]"]
 ---
 
 # Schema & Migrations — Premortem
@@ -41,7 +41,7 @@ description containing "already applied in prod".
 reconciliation migration lands within one close-time or `schema.days_since_hand_applied_ddl`
 publicly resets to zero and stays there. Because it is a **streak**, it cannot be averaged
 away — the number is either rebuilding from zero or it is not. And the auditor declares red,
-not the author ([[sre-state-integrity]], `technology.md:296-298`), so the team that did the
+not the author ([[state-integrity-invariants-charter|sre-state-integrity]], `technology.md:296-298`), so the team that did the
 2am `ALTER` is not the team deciding whether it still counts.
 
 ---

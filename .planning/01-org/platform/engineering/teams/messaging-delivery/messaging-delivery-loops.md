@@ -6,7 +6,7 @@ team: messaging-delivery
 status: provisional
 metrics: [messaging.duplicate_delivery_rate, messaging.drop_rate, messaging.restart_reconciliation_gap]
 updated: 2026-08-24
-links: ["[[messaging-delivery-charter]]", "[[messaging-delivery-premortem]]", "[[messaging-delivery-directive]]", "[[engineering-loops]]", "[[sre-runtime-resilience]]", "[[ai-orchestration-charter]]", "[[LOOP-MAP]]"]
+links: ["[[messaging-delivery-charter]]", "[[messaging-delivery-premortem]]", "[[messaging-delivery-directive]]", "[[engineering-loops]]", "[[runtime-resilience-charter|sre-runtime-resilience]]", "[[ai-orchestration-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_count: 5
 loop_count: 5
@@ -60,7 +60,7 @@ status: proposed
 Counters premortem M1. Fires on **every** process restart, not a sample — the population
 is small and each one can silently drop a service-hours alert. Emits: buffered, flushed,
 redelivered, dropped. A restart with no record is itself the finding, and escalates as a
-joint item with [[sre-runtime-resilience]].
+joint item with [[runtime-resilience-charter|sre-runtime-resilience]].
 
 ---
 

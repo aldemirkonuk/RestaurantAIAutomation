@@ -107,7 +107,7 @@ this team's exemption requires a written founder decision — never a team judge
 ## M5 — The companion docs were hand-edited, and nobody could tell
 
 **What happened.** `ENDPOINTS.md`, `PAGE_MAP.md`, and `EXTERNAL_CONNECTIONS.md` are
-declared *"regenerated rather than hand-edited"* ([[foundation-README]] §0). Someone fixed a
+declared *"regenerated rather than hand-edited"* ([[README|foundation-README]] §0). Someone fixed a
 typo in `ENDPOINTS.md`. Someone else corrected a route by hand. Then the generator was run
 and silently reverted both — or worse, was never run again because its output no longer
 matched and re-running it looked like a regression. The three documents drifted from the

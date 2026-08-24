@@ -6,7 +6,7 @@ team: integration-engineering
 status: provisional
 metrics: [integration.verified_signature_coverage]
 updated: 2026-08-24
-links: ["[[integration-engineering-charter]]", "[[integration-engineering-premortem]]", "[[integration-engineering-loops]]", "[[engineering-directive]]", "[[platform-api-charter]]", "[[partnerships-charter]]", "[[dat-pos-telemetry-ingest]]", "[[security-charter]]"]
+links: ["[[integration-engineering-charter]]", "[[integration-engineering-premortem]]", "[[integration-engineering-loops]]", "[[engineering-directive]]", "[[platform-api-charter]]", "[[partnerships-integrations-charter|partnerships-charter]]", "[[pos-operational-telemetry-ingest-charter|dat-pos-telemetry-ingest]]", "[[security-charter]]"]
 ---
 
 # Integration Engineering — Directive
@@ -47,10 +47,10 @@ graph TD
 | Adapter design, retry policy, payload mapping, client implementation | Team |
 | Signature verification mechanism per provider | Team |
 | Silence thresholds — implementation | Team; the **acceptable window** is a product call |
-| **Whether to integrate with a partner at all** | [[partnerships-charter]] *(Product)* |
+| **Whether to integrate with a partner at all** | [[partnerships-integrations-charter|partnerships-charter]] *(Product)* |
 | Allowlist **entries** for public routes | Team proposes; [[platform-api-charter]] co-signs; neither alone |
 | The allowlist file's existence and CI enforcement | [[platform-api-charter]] |
-| Whether delivered data is fit as L0 | [[dat-pos-telemetry-ingest]] — after we answer the arrival question |
+| Whether delivered data is fit as L0 | [[pos-operational-telemetry-ingest-charter|dat-pos-telemetry-ingest]] — after we answer the arrival question |
 | Placeholder-host findings | Routed to [[security-charter]] as findings, not filed as cleanup |
 | Shipping an integration with no signature capability | Founder, via `OPEN-DECISIONS.md` |
 
@@ -79,11 +79,11 @@ an unowned report ages, and that is [[engineering-premortem]] M1.
 2. **Silence past an integration's threshold.** Treated as an incident, not as quiet. The
    escalation is to the restaurant-facing side too: stale data has already reached users.
 3. **A provider ships a breaking change.** Escalates jointly with
-   [[partnerships-charter]] — we fix the wire, they own the conversation.
+   [[partnerships-integrations-charter|partnerships-charter]] — we fix the wire, they own the conversation.
 4. **An allowlist request from a team that does not speak a third-party protocol**
    (premortem M5). The first one, and the phrasing will be plausible.
 5. **A data-quality report unclaimed for one close-time** by both this team and
-   [[dat-pos-telemetry-ingest]] — the seam is not holding.
+   [[pos-operational-telemetry-ingest-charter|dat-pos-telemetry-ingest]] — the seam is not holding.
 6. **A new integration proposed without signature capability** — founder decision, because
    it permanently widens the unverifiable surface.
 

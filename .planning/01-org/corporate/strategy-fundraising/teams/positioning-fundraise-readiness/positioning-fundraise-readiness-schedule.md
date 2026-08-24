@@ -6,7 +6,7 @@ team: positioning-fundraise-readiness
 status: provisional
 metrics: [strategy.claim_to_evidence_coverage, strategy.citation_drift_rate, strategy.claim_overstatement_count, strategy.diligence_pack_completeness]
 updated: 2026-08-24
-links: ["[[positioning-fundraise-readiness-charter]]", "[[positioning-fundraise-readiness-loops]]", "[[positioning-fundraise-readiness-directive]]", "[[positioning-fundraise-readiness-agenda-board]]", "[[positioning-fundraise-readiness-premortem]]", "[[strategy-fundraising-schedule]]", "[[skills-charter]]", "[[foundation-README]]", "[[narrative-collateral-charter]]", "[[metric-contract-truth-assurance-charter]]", "[[design-partner-operations-charter]]", "[[standards-verification-charter]]", "[[instruments-equity-charter]]"]
+links: ["[[positioning-fundraise-readiness-charter]]", "[[positioning-fundraise-readiness-loops]]", "[[positioning-fundraise-readiness-directive]]", "[[positioning-fundraise-readiness-agenda-board]]", "[[positioning-fundraise-readiness-premortem]]", "[[strategy-fundraising-schedule]]", "[[skills-charter]]", "[[README|foundation-README]]", "[[narrative-collateral-charter]]", "[[metric-contract-truth-assurance-charter]]", "[[design-partner-operations-charter]]", "[[standards-verification-charter]]", "[[instruments-equity-charter]]"]
 ---
 
 # Positioning & Fundraise Readiness — Schedule & Skills
@@ -39,7 +39,7 @@ send. This table holds the desk work.
    [[positioning-fundraise-readiness-premortem]] P1, wearing a green dashboard.
 2. **There is no weekly anything.** No register, no artifact in flight, no counterparty. A
    weekly reading of zero produces no action for three consecutive runs and is deleted by
-   the org's own anti-sprawl rule ([[foundation-README]] §6).
+   the org's own anti-sprawl rule ([[README|foundation-README]] §6).
 3. **There is no data-room, cap-table, or diligence-artifact cadence** until the split
    trigger fires (`corporate.md:457-458`). A standing readiness cadence **is** the second
    team this department declined to charter, arriving through the schedule instead of the
@@ -60,7 +60,7 @@ deletion.
 **Two honest statements before the table.**
 
 1. **`.claude/skills/` does not exist in this repo.** Verified: `.claude/` contains
-   `launch.json`, `settings.local.json` and `worktrees/` only. [[foundation-README]] §3.1
+   `launch.json`, `settings.local.json` and `worktrees/` only. [[README|foundation-README]] §3.1
    records **zero committed skills** repo-wide. Everything below is a name, not an asset.
 2. **Every skill this team owns is a checker or a recorder. None generates prose.** A team
    whose job is to prevent claims from outrunning evidence must not own a tool that produces
@@ -76,7 +76,7 @@ deletion.
 | `evidence-type-mix` | T2 | Reporter | Monthly | Share of register evidence by type, trended. Rising `path:line` share is reported as a leading risk |
 | `diligence-index-check` | T2 | Checker | Quarterly, **after the split trigger only** | Each named question has a location and an owner. **Dormant** — listed dormant deliberately, so it is built against a trigger rather than invented to fill a gap |
 
-**Each skill cites a real past instance**, per [[foundation-README]] §3.3's no-speculative-
+**Each skill cites a real past instance**, per [[README|foundation-README]] §3.3's no-speculative-
 skills rule:
 
 - `citation-reverify` would have caught all four founding-artifact defects:

@@ -61,5 +61,5 @@ GROUP BY type
 ## Open
 
 - [ ] Money-moving routes excluded from any `@Public()` allowlist — seam with [[platform-api-charter]]
-- [ ] Spend gate handed to [[action-safety-the-human-gate]]
+- [ ] Spend gate handed to [[action-safety-the-human-gate-charter|action-safety-the-human-gate]]
 - [ ] `vendor-portal` correctness criterion re-classified

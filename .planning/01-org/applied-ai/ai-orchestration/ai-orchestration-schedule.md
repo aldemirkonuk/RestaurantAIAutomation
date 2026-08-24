@@ -5,7 +5,7 @@ department: ai-orchestration
 status: exists
 metrics: [nf_a.retries, nf_a.dlq_depth, nf_a.cost_per_task, nf_a.doneability_verdict_coverage, safety.unconfirmed_mutation_count]
 updated: 2026-08-24
-links: ["[[ai-orchestration-charter]]", "[[ai-orchestration-loops]]", "[[ai-orchestration-directive]]", "[[ai-orchestration-agenda-full]]", "[[skills-charter]]", "[[skill-registry-authoring-charter]]", "[[skill-lifecycle-anti-sprawl-charter]]", "[[research-and-math-charter]]", "[[reliability-charter]]", "[[decision-office-charter]]"]
+links: ["[[ai-orchestration-charter]]", "[[ai-orchestration-loops]]", "[[ai-orchestration-directive]]", "[[ai-orchestration-agenda-full]]", "[[skills-charter]]", "[[skill-registry-authoring-charter]]", "[[skill-lifecycle-anti-sprawl-charter]]", "[[research-math-charter|research-and-math-charter]]", "[[reliability-sre-charter|reliability-charter]]", "[[decision-office-charter]]"]
 ---
 
 # AI Orchestration — Schedule & Skills
@@ -76,8 +76,8 @@ closes, and should then be deleted rather than left as decoration.
 
 | To | When | What |
 |---|---|---|
-| [[research-and-math-charter]] | Continuous | NF-A events — we are the largest producer; they own the methodology |
+| [[research-math-charter|research-and-math-charter]] | Continuous | NF-A events — we are the largest producer; they own the methodology |
 | [[skills-charter]] | Continuous | `skill_id` on the NF-A event, the cheapest firing signal available |
-| `[[fin-inference-cost]]` | Weekly | `nf_a.cost_per_task` by task type |
-| [[reliability-charter]] | Daily | DLQ depth and guardian-agent findings (OD-24 splits code from findings) |
+| `[[inference-cost-charter|fin-inference-cost]]` | Weekly | `nf_a.cost_per_task` by task type |
+| [[reliability-sre-charter|reliability-charter]] | Daily | DLQ depth and guardian-agent findings (OD-24 splits code from findings) |
 | [[decision-office-charter]] | On the bake-off date | OD-03, closed — or an explicit statement of why it did not close |

@@ -6,7 +6,7 @@ team: agent-evaluation-gates
 status: provisional
 metrics: [nf_a.doneability_verdict_coverage]
 updated: 2026-08-24
-links: ["[[agent-evaluation-gates-charter]]", "[[agent-evaluation-gates-agenda-full]]", "[[agent-evaluation-gates-premortem]]", "[[agent-evaluation-gates-loops]]", "[[ai-orchestration-agenda-board]]", "[[research-and-math-charter]]", "[[decision-office-charter]]"]
+links: ["[[agent-evaluation-gates-charter]]", "[[agent-evaluation-gates-agenda-full]]", "[[agent-evaluation-gates-premortem]]", "[[agent-evaluation-gates-loops]]", "[[ai-orchestration-agenda-board]]", "[[research-math-charter|research-and-math-charter]]", "[[decision-office-charter]]"]
 ---
 
 # Agent Evaluation & Gates — Board
@@ -71,7 +71,7 @@ SORT file.name ASC
 
 ## Blocked
 
-- [ ] Vendor-reply rubric, n≈30, two raters *(methodology — [[research-and-math-charter]])*
+- [ ] Vendor-reply rubric, n≈30, two raters *(methodology — [[research-math-charter|research-and-math-charter]])*
 - [ ] Weekly AI eval workflow, **D-25** *(NF-A emission)* — reserved at `e2e-prod.yml:7`, unbuilt
 - [ ] Confidence calibration curves *(NF-A paired outcome data)*
 

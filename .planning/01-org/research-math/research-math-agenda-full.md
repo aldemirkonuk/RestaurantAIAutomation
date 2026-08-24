@@ -5,7 +5,7 @@ department: research-math
 status: provisional
 metrics: [nf_a.event_completeness, nf_a.cost_per_completed_task, nf_a.verified_task_success_rate, nf_a.harness_overhead_ms]
 updated: 2026-08-24
-links: ["[[research-math-charter]]", "[[research-math-premortem]]", "[[research-math-agenda-board]]", "[[research-math-directive]]", "[[research-math-loops]]", "[[research-math-schedule]]", "[[harness-model-routing-charter]]", "[[evaluation-doneability-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[intelligence]]", "[[ORG_STRUCTURE]]", "[[0001-mudavym-single-entity]]", "[[0006-neural-footprint-architecture]]", "[[data-charter]]", "[[engineering-charter]]", "[[security-charter]]", "[[aio-evaluation-gates]]", "[[aio-model-routing]]", "[[decision-office-charter]]"]
+links: ["[[research-math-charter]]", "[[research-math-premortem]]", "[[research-math-agenda-board]]", "[[research-math-directive]]", "[[research-math-loops]]", "[[research-math-schedule]]", "[[harness-model-routing-charter]]", "[[evaluation-doneability-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[intelligence]]", "[[ORG_STRUCTURE]]", "[[0001-mudavym-single-entity]]", "[[0006-neural-footprint-architecture]]", "[[data-charter]]", "[[engineering-charter]]", "[[security-charter]]", "[[agent-evaluation-gates-charter|aio-evaluation-gates]]", "[[harness-model-routing-charter|aio-model-routing]]", "[[decision-office-charter]]"]
 ---
 
 # Research & Math — Full Agenda
@@ -110,7 +110,7 @@ skills or the first overlap, not before (`intelligence.md:504`).
    say different words, and this department's founding argument rests on that sentence.
    Confirm which is canonical, and amend the other.
 2. **Who owns the routing policy?** [[harness-model-routing-charter]] (here) and
-   `[[aio-model-routing]]` (Applied AI, `technology.md:363-388`) have the same mandate —
+   `[[harness-model-routing-charter|aio-model-routing]]` (Applied AI, `technology.md:363-388`) have the same mandate —
    *which model runs which task at what cost* — and the same primary metric, NF-A cost per
    task. The published boundary between the divisions covers **evaluation** only
    (`technology.md:845`). Two teams cannot both own routing. Merge, or draw the line

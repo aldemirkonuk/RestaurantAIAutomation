@@ -6,7 +6,7 @@ team: platform-api
 status: exists
 metrics: [platform.endpoints_protected_by_default_pct, platform.unguarded_reachable_routes, platform.public_decorator_count]
 updated: 2026-08-24
-links: ["[[engineering-charter]]", "[[platform-api-premortem]]", "[[platform-api-agenda-full]]", "[[platform-api-agenda-board]]", "[[platform-api-directive]]", "[[platform-api-loops]]", "[[platform-api-schedule]]", "[[eng-platform-api]]", "[[security-charter]]", "[[integration-engineering-charter]]", "[[procurement-vendor-network-charter]]", "[[messaging-delivery-charter]]", "[[ENDPOINTS]]"]
+links: ["[[engineering-charter]]", "[[platform-api-premortem]]", "[[platform-api-agenda-full]]", "[[platform-api-agenda-board]]", "[[platform-api-directive]]", "[[platform-api-loops]]", "[[platform-api-schedule]]", "[[platform-api-charter|eng-platform-api]]", "[[security-charter]]", "[[integration-engineering-charter]]", "[[procurement-vendor-network-charter]]", "[[messaging-delivery-charter]]", "[[ENDPOINTS]]"]
 ---
 
 # Platform & API — Charter
@@ -56,9 +56,9 @@ auditor are elsewhere.
 | Which routes are *legitimately* public, and their signature verification | [[integration-engineering-charter]] — ~51 public routes with a different correctness criterion |
 | Domain logic behind any endpoint | The owning domain team |
 | Consequence ranking of an exposure | The team that bears it — [[procurement-vendor-network-charter]] for money, [[messaging-delivery-charter]] for sends |
-| Runtime resilience, rate-limit capacity planning under load | [[sre-runtime-resilience]] |
+| Runtime resilience, rate-limit capacity planning under load | [[runtime-resilience-charter|sre-runtime-resilience]] |
 | Schema-level RLS policies | [[schema-migrations-charter]] |
-| Agent action authorisation | [[action-safety-the-human-gate]] *(Applied AI)* |
+| Agent action authorisation | [[action-safety-the-human-gate-charter|action-safety-the-human-gate]] *(Applied AI)* |
 
 ## Metrics it moves
 

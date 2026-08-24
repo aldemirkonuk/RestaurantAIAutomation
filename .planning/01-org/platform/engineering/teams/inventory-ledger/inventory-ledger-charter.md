@@ -6,7 +6,7 @@ team: inventory-ledger
 status: exists
 metrics: [inventory.projection_divergence_rows, inventory.direct_write_paths]
 updated: 2026-08-24
-links: ["[[engineering-charter]]", "[[inventory-ledger-premortem]]", "[[inventory-ledger-agenda-full]]", "[[inventory-ledger-agenda-board]]", "[[inventory-ledger-directive]]", "[[inventory-ledger-loops]]", "[[inventory-ledger-schedule]]", "[[eng-inventory-ledger]]", "[[procurement-vendor-network-charter]]", "[[schema-migrations-charter]]", "[[sre-state-integrity]]", "[[INVENTORY_SOTA_PLAN]]"]
+links: ["[[engineering-charter]]", "[[inventory-ledger-premortem]]", "[[inventory-ledger-agenda-full]]", "[[inventory-ledger-agenda-board]]", "[[inventory-ledger-directive]]", "[[inventory-ledger-loops]]", "[[inventory-ledger-schedule]]", "[[inventory-ledger-charter|eng-inventory-ledger]]", "[[procurement-vendor-network-charter]]", "[[schema-migrations-charter]]", "[[state-integrity-invariants-charter|sre-state-integrity]]", "[[INVENTORY_SOTA_PLAN]]"]
 ---
 
 # Inventory & Ledger — Charter
@@ -51,9 +51,9 @@ exactly why it needs an owner rather than a backlog.
 |---|---|
 | What was ordered, from whom, at what price | [[procurement-vendor-network-charter]] — they own the order; we own the lot it becomes |
 | Authoring the DDL for ledger tables and functions | [[schema-migrations-charter]] — we specify, they author |
-| Running the drift/parity gates in CI | [[sre-state-integrity]] — author ≠ auditor (`technology.md:860`) |
+| Running the drift/parity gates in CI | [[state-integrity-invariants-charter|sre-state-integrity]] — author ≠ auditor (`technology.md:860`) |
 | Whether a POS event was delivered correctly | [[integration-engineering-charter]] |
-| Whether POS telemetry is *fit to use* as L0 | [[dat-pos-telemetry-ingest]] |
+| Whether POS telemetry is *fit to use* as L0 | [[pos-operational-telemetry-ingest-charter|dat-pos-telemetry-ingest]] |
 | Agents that reason about depletion or reorder | [[agent-fleet-charter]] *(Applied AI)* |
 | The inventory UI's layout and comprehension | [[client-surfaces-charter]] |
 

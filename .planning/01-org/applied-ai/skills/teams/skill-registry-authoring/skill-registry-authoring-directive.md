@@ -34,7 +34,7 @@ graph TD
   G -->|no| I["ACCEPT · commit to .claude/skills/<br/>· add to registry index"]
   H --> I
   I --> J["Hand off to lifecycle:<br/>30-day firing clock starts"]
-  J --> K[["skill-lifecycle-anti-sprawl"]]
+  J --> K[[skill-lifecycle-anti-sprawl-charter|"skill-lifecycle-anti-sprawl"]]
 ```
 
 ## Decision rights

@@ -6,7 +6,7 @@ team: agent-evaluation-gates
 status: partial
 metrics: [nf_a.doneability_verdict_coverage]
 updated: 2026-08-24
-links: ["[[agent-evaluation-gates-charter]]", "[[agent-evaluation-gates-premortem]]", "[[agent-evaluation-gates-directive]]", "[[agent-evaluation-gates-schedule]]", "[[ai-orchestration-loops]]", "[[agent-fleet-loops]]", "[[model-routing-inference-economics-loops]]", "[[research-and-math-charter]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
+links: ["[[agent-evaluation-gates-charter]]", "[[agent-evaluation-gates-premortem]]", "[[agent-evaluation-gates-directive]]", "[[agent-evaluation-gates-schedule]]", "[[ai-orchestration-loops]]", "[[agent-fleet-loops]]", "[[model-routing-inference-economics-loops]]", "[[research-math-charter|research-and-math-charter]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
 loop_count: 6
 loop_count: 6
 loop_count: 6
@@ -145,6 +145,6 @@ blocker: "⚠️ The fork has no usable ID. technology.md:845 numbers it OD-21; 
 |---|---|---|
 | [[model-routing-inference-economics-loops]] | The pass verdict — key two of the two-key gate | per-PR |
 | [[agent-fleet-loops]] | Task families that regressed; families with no coverage to gate a prompt change | weekly |
-| [[research-and-math-charter]] | Every place operations needed a definition that did not exist | weekly |
+| [[research-math-charter|research-and-math-charter]] | Every place operations needed a definition that did not exist | weekly |
 | [[ai-orchestration-loops]] | `doneability_verdict_coverage`, per family | weekly |
 | [[decision-office-charter]] | Seam occurrence count | on event |

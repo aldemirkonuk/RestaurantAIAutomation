@@ -5,7 +5,7 @@ department: ai-orchestration
 status: exists
 metrics: [nf_a.task_success_rate, nf_a.cost_per_task, nf_a.retries, nf_a.dlq_depth, nf_a.doneability_verdict_coverage, safety.unconfirmed_mutation_count]
 updated: 2026-08-24
-links: ["[[ai-orchestration-premortem]]", "[[ai-orchestration-agenda-full]]", "[[ai-orchestration-agenda-board]]", "[[ai-orchestration-directive]]", "[[ai-orchestration-loops]]", "[[ai-orchestration-schedule]]", "[[harness-runtime-charter]]", "[[agent-fleet-charter]]", "[[model-routing-inference-economics-charter]]", "[[agent-evaluation-gates-charter]]", "[[action-safety-the-human-gate-charter]]", "[[skills-charter]]", "[[engineering-charter]]", "[[research-and-math-charter]]", "[[reliability-charter]]", "[[ORG_STRUCTURE]]", "[[technology]]", "[[README]]"]
+links: ["[[ai-orchestration-premortem]]", "[[ai-orchestration-agenda-full]]", "[[ai-orchestration-agenda-board]]", "[[ai-orchestration-directive]]", "[[ai-orchestration-loops]]", "[[ai-orchestration-schedule]]", "[[harness-runtime-charter]]", "[[agent-fleet-charter]]", "[[model-routing-inference-economics-charter]]", "[[agent-evaluation-gates-charter]]", "[[action-safety-the-human-gate-charter]]", "[[skills-charter]]", "[[engineering-charter]]", "[[research-math-charter|research-and-math-charter]]", "[[reliability-sre-charter|reliability-charter]]", "[[ORG_STRUCTURE]]", "[[technology]]", "[[README]]"]
 ---
 
 # AI Orchestration — Charter
@@ -65,12 +65,12 @@ degrades all agents identically, an agent bug degrades one
 |---|---|---|
 | L1 domain core, L2 modules, L6 surfaces, the schema | [[engineering-charter]] | We build the agent; they build what it acts on |
 | L0 substrate, corpora, telemetry ingest | [[data-charter]] | We consume rows; Data makes them fit to use |
-| Running it in production — observability, release, resilience | [[reliability-charter]] | We author the harness; SRE operates the deployment |
-| **NF-A metric methodology and the definition of doneability** | [[research-and-math-charter]] *(Intelligence)* | They define what a verdict *means*; [[agent-evaluation-gates-charter]] enforces it in CI and prod. **This line is contested — see below.** |
+| Running it in production — observability, release, resilience | [[reliability-sre-charter|reliability-charter]] | We author the harness; SRE operates the deployment |
+| **NF-A metric methodology and the definition of doneability** | [[research-math-charter|research-and-math-charter]] *(Intelligence)* | They define what a verdict *means*; [[agent-evaluation-gates-charter]] enforces it in CI and prod. **This line is contested — see below.** |
 | The `SKILL.md` contract, registry, lifecycle | [[skills-charter]] | Whether a skill *can* be loaded is harness mechanics; whether it *should exist* is theirs |
-| Findings and alert thresholds of guardian agents | `[[sre-state-integrity]]` | We own `state_invariant_enforcer` / `drift_agent` / `inequality_detector` **code**; SRE owns their **findings** (fork OD-24) |
-| That a message *arrived* once | `[[eng-messaging-delivery]]` | We own what it says; they own that it is delivered exactly once (`technology.md:861`) |
-| Grading data rows | `[[dat-substrate-quality]]` | Task outcome ≠ row quality (`technology.md:862`) |
+| Findings and alert thresholds of guardian agents | `[[state-integrity-invariants-charter|sre-state-integrity]]` | We own `state_invariant_enforcer` / `drift_agent` / `inequality_detector` **code**; SRE owns their **findings** (fork OD-24) |
+| That a message *arrived* once | `[[messaging-delivery-charter|eng-messaging-delivery]]` | We own what it says; they own that it is delivered exactly once (`technology.md:861`) |
+| Grading data rows | `[[substrate-quality-coverage-charter|dat-substrate-quality]]` | Task outcome ≠ row quality (`technology.md:862`) |
 | Finding and classifying security gaps | [[security-charter]] *(Intelligence)* | Security classifies; [[action-safety-the-human-gate-charter]] owns the mutation gate specifically |
 
 ### The non-goal that is not settled — OD-21, carried forward unsoftened

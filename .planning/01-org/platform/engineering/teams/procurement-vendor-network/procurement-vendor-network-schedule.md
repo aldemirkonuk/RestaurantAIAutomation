@@ -6,7 +6,7 @@ team: procurement-vendor-network
 status: provisional
 metrics: []
 updated: 2026-08-24
-links: ["[[procurement-vendor-network-charter]]", "[[procurement-vendor-network-loops]]", "[[engineering-schedule]]", "[[action-safety-the-human-gate]]", "[[skills-charter]]"]
+links: ["[[procurement-vendor-network-charter]]", "[[procurement-vendor-network-loops]]", "[[engineering-schedule]]", "[[action-safety-the-human-gate-charter|action-safety-the-human-gate]]", "[[skills-charter]]"]
 ---
 
 # Procurement & Vendor Network — Schedule & Skills
@@ -40,7 +40,7 @@ deletion.
 
 **Constraint on all three:** **no skill in this team may place, approve, or amend an
 order.** A skill may prepare, evidence, and recommend. Committing spend is
-[[action-safety-the-human-gate]]'s to gate, and a skill that quietly acquires commit
+[[action-safety-the-human-gate-charter|action-safety-the-human-gate]]'s to gate, and a skill that quietly acquires commit
 authority is premortem M4 arriving through the side door — the same shape as the
 `negotiation_playbook` agent that today only logs (`technology.md:41-42`).
 

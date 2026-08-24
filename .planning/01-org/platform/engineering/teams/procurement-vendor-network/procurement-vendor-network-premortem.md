@@ -104,7 +104,7 @@ Also: any change that raises an existing threshold, which is a different and mor
 dangerous event than creating one.
 
 **Counter-pressure.** Committing spend is a **human-gated action** and belongs to
-[[action-safety-the-human-gate]] (Applied AI), not to this team's own judgement. This team
+[[action-safety-the-human-gate-charter|action-safety-the-human-gate]] (Applied AI), not to this team's own judgement. This team
 builds the order mechanics; the gate on committing is owned by a unit that does not
 benefit from procurement throughput. Thresholds, if any exist, are recorded in
 `OPEN-DECISIONS.md` with their value — never in code alone.

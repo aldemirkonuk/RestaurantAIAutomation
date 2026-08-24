@@ -10,7 +10,7 @@ links:
   - "[[customer-relationship-research-charter]]"
   - "[[customer-relationship-research-premortem]]"
   - "[[customer-relationship-research-agenda-board]]"
-  - "[[compliance-charter]]"
+  - "[[compliance-privacy-charter|compliance-charter]]"
 ---
 
 # Customer Relationship Research (M4) — Full Agenda
@@ -24,7 +24,7 @@ links:
 ## What
 
 **One deliverable before any research happens: the approval register**, proposed by this
-team and reviewed by [[compliance-charter|Compliance & Privacy]].
+team and reviewed by [[compliance-privacy-charter|Compliance & Privacy]].
 
 Then, and only then: a findings format, a cohort definition, and the first question.
 

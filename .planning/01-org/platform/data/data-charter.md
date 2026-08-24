@@ -5,7 +5,7 @@ department: data
 status: exists
 metrics: [corpora.demand_weighted_coverage, annotation.gold_set_freshness_days, synthetic.backtest_fidelity_gap, pos.line_resolution_rate, substrate.quarantine_rate, nf_a.task_success_rate, nf_a.cost_per_task]
 updated: 2026-08-24
-links: ["[[data-premortem]]", "[[data-agenda-full]]", "[[data-agenda-board]]", "[[data-directive]]", "[[data-loops]]", "[[data-schedule]]", "[[ORG_STRUCTURE]]", "[[technology]]", "[[README]]", "[[corpora-enrichment-charter]]", "[[annotation-ground-truth-charter]]", "[[synthetic-generation-simulation-charter]]", "[[pos-operational-telemetry-ingest-charter]]", "[[substrate-quality-coverage-charter]]", "[[engineering-charter]]", "[[reliability-charter]]"]
+links: ["[[data-premortem]]", "[[data-agenda-full]]", "[[data-agenda-board]]", "[[data-directive]]", "[[data-loops]]", "[[data-schedule]]", "[[ORG_STRUCTURE]]", "[[technology]]", "[[README]]", "[[corpora-enrichment-charter]]", "[[annotation-ground-truth-charter]]", "[[synthetic-generation-simulation-charter]]", "[[pos-operational-telemetry-ingest-charter]]", "[[substrate-quality-coverage-charter]]", "[[engineering-charter]]", "[[reliability-sre-charter|reliability-charter]]"]
 ---
 
 # Data — Charter

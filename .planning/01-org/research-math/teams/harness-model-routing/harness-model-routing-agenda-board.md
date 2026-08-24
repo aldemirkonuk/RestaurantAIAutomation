@@ -91,7 +91,7 @@ conventions **5** (2 literals, 1 constant, 3 env vars).
 ## Blocked / waiting on someone else
 
 - [ ] **F-5** — are the 7 NestJS callsites in scope for OD-03? *(founder)*
-- [ ] **The routing seam** — RM-1 vs `[[aio-model-routing]]`, same mandate and metric *(founder)*
+- [ ] **The routing seam** — RM-1 vs `[[harness-model-routing-charter|aio-model-routing]]`, same mandate and metric *(founder)*
 - [ ] **Per-caller inference budget number** — wrapper can enforce, cannot invent *(founder)*
 - [ ] **Callsite migration** — [[engineering-charter]] owns adoption
 - [ ] **NF-A field list** — [[neural-footprint-instrumentation-charter]] owns the contract we emit into

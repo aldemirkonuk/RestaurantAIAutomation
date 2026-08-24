@@ -48,7 +48,7 @@ falsifiable.
 [[observability-telemetry-plumbing-premortem]] M4 happens.
 
 **Redaction, before the first new span ships.** Trace and Sentry attributes are opt-in via
-an allowlist, agreed with [[compliance-charter]] — so the team never faces the "leak or go
+an allowlist, agreed with [[compliance-privacy-charter|compliance-charter]] — so the team never faces the "leak or go
 blind" choice under pressure (M5).
 
 ## Why now

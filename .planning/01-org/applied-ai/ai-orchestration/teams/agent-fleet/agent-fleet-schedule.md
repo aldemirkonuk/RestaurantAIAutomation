@@ -6,7 +6,7 @@ team: agent-fleet
 status: partial
 metrics: [nf_a.task_success_rate, fleet.live_agent_ratio]
 updated: 2026-08-24
-links: ["[[agent-fleet-charter]]", "[[agent-fleet-loops]]", "[[agent-fleet-directive]]", "[[agent-fleet-agenda-full]]", "[[ai-orchestration-schedule]]", "[[skills-charter]]", "[[skill-lifecycle-anti-sprawl-charter]]", "[[harness-runtime-charter]]", "[[agent-evaluation-gates-charter]]", "[[reliability-charter]]"]
+links: ["[[agent-fleet-charter]]", "[[agent-fleet-loops]]", "[[agent-fleet-directive]]", "[[agent-fleet-agenda-full]]", "[[ai-orchestration-schedule]]", "[[skills-charter]]", "[[skill-lifecycle-anti-sprawl-charter]]", "[[harness-runtime-charter]]", "[[agent-evaluation-gates-charter]]", "[[reliability-sre-charter|reliability-charter]]"]
 ---
 
 # Agent Fleet — Schedule & Skills
@@ -64,6 +64,6 @@ itself rather than argued each time.
 |---|---|---|
 | [[harness-runtime-charter]] | Daily | Agents whose defects are harness-shaped, not behavior-shaped |
 | [[agent-evaluation-gates-charter]] | Weekly | Task families shipping prompt changes with no eval coverage |
-| `[[sre-state-integrity]]` | Weekly | Guardian canary results; guardian code changes |
+| `[[state-integrity-invariants-charter|sre-state-integrity]]` | Weekly | Guardian canary results; guardian code changes |
 | [[ai-orchestration-schedule]] | Weekly | `fleet.live_agent_ratio` and the four counts for the department board |
 | Product | On event | Any external artifact quoting an agent count without the live/stub split |

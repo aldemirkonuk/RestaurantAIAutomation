@@ -6,7 +6,7 @@ team: agent-fleet
 status: partial
 metrics: [nf_a.task_success_rate, fleet.live_agent_ratio]
 updated: 2026-08-24
-links: ["[[agent-fleet-charter]]", "[[agent-fleet-loops]]", "[[agent-fleet-directive]]", "[[ai-orchestration-premortem]]", "[[harness-runtime-charter]]", "[[agent-evaluation-gates-charter]]", "[[reliability-charter]]", "[[technology]]"]
+links: ["[[agent-fleet-charter]]", "[[agent-fleet-loops]]", "[[agent-fleet-directive]]", "[[ai-orchestration-premortem]]", "[[harness-runtime-charter]]", "[[agent-evaluation-gates-charter]]", "[[reliability-sre-charter|reliability-charter]]", "[[technology]]"]
 ---
 
 # Agent Fleet — Premortem
@@ -121,7 +121,7 @@ precisely because CI will never complain.
 ### 5. The guardian seam went slack in the middle
 
 `state_invariant_enforcer`, `drift_agent` and `inequality_detector` are owned by this
-team as **code**, and by `[[sre-state-integrity]]` as **findings** (OD-24, open,
+team as **code**, and by `[[state-integrity-invariants-charter|sre-state-integrity]]` as **findings** (OD-24, open,
 `technology.md:848`). The seam held for a quarter. Then a detector's recall degraded —
 it stopped catching a class of POS/inventory mismatch — and neither side owned
 noticing. SRE watched the findings queue, which stayed quiet, and quiet looked like

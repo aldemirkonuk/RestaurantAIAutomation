@@ -6,13 +6,13 @@ team: agent-evaluation-gates
 status: partial
 metrics: [nf_a.doneability_verdict_coverage]
 updated: 2026-08-24
-links: ["[[agent-evaluation-gates-premortem]]", "[[agent-evaluation-gates-agenda-full]]", "[[agent-evaluation-gates-agenda-board]]", "[[agent-evaluation-gates-directive]]", "[[agent-evaluation-gates-loops]]", "[[agent-evaluation-gates-schedule]]", "[[ai-orchestration-charter]]", "[[research-and-math-charter]]", "[[agent-fleet-charter]]", "[[model-routing-inference-economics-charter]]", "[[decision-office-charter]]", "[[technology]]", "[[README]]"]
+links: ["[[agent-evaluation-gates-premortem]]", "[[agent-evaluation-gates-agenda-full]]", "[[agent-evaluation-gates-agenda-board]]", "[[agent-evaluation-gates-directive]]", "[[agent-evaluation-gates-loops]]", "[[agent-evaluation-gates-schedule]]", "[[ai-orchestration-charter]]", "[[research-math-charter|research-and-math-charter]]", "[[agent-fleet-charter]]", "[[model-routing-inference-economics-charter]]", "[[decision-office-charter]]", "[[technology]]", "[[README]]"]
 ---
 
 # Agent Evaluation & Gates — Charter
 
 Team of [[ai-orchestration-charter]] · Division: **Applied AI** · Alias in the team
-corpus: `[[aio-evaluation-gates]]` (`technology.md:392`).
+corpus: `[[agent-evaluation-gates-charter|aio-evaluation-gates]]` (`technology.md:392`).
 
 > ⚠️ **This team's existence is an open question, and this charter does not pretend
 > otherwise.** See §The seam. If the methodology/operations line fails, the correct
@@ -67,10 +67,10 @@ and nobody has built.
 
 | Not ours | Whose | The line |
 |---|---|---|
-| **NF-A metric definitions; what a doneability verdict *means*; eval methodology** | [[research-and-math-charter]] *(Intelligence)* | **The seam above.** They define; we enforce |
+| **NF-A metric definitions; what a doneability verdict *means*; eval methodology** | [[research-math-charter|research-and-math-charter]] *(Intelligence)* | **The seam above.** They define; we enforce |
 | Agent behavior and prompts | [[agent-fleet-charter]] | We tell them a task family regressed; they fix the agent |
 | Which model to pick given a pass | [[model-routing-inference-economics-charter]] | We say what passes; they pick the cheapest thing that does |
-| **Grading data rows** | `[[dat-substrate-quality]]` | Task outcome vs. data row (`technology.md:862`) |
+| **Grading data rows** | `[[substrate-quality-coverage-charter|dat-substrate-quality]]` | Task outcome vs. data row (`technology.md:862`) |
 | Product correctness (a wrong stock number, a false merge) | [[engineering-charter]] | Task outcome ≠ product correctness |
 | Attacking *decisions* | [[red-team-charter]] | They premortem decisions; we measure task outcomes |
 

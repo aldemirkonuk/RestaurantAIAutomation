@@ -9,7 +9,7 @@ updated: 2026-08-24
 links:
   - "[[customer-relationship-research-charter]]"
   - "[[media-brand-premortem]]"
-  - "[[compliance-charter]]"
+  - "[[compliance-privacy-charter|compliance-charter]]"
 ---
 
 # Customer Relationship Research (M4) — Premortem

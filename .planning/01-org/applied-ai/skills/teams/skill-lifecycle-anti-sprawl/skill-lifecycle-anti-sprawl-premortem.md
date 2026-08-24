@@ -25,7 +25,7 @@ links: ["[[skill-lifecycle-anti-sprawl-charter]]", "[[skill-lifecycle-anti-spraw
 condition for every other failure**. The 30-day rule asks one question. Today the
 system cannot answer it: no `skill_id`, no invocation log, and L4 emits nothing
 ([[README]] §1). Getting the field added means negotiating with
-[[ai-orchestration-charter]] and `[[sre-observability]]` for a schema change on a
+[[ai-orchestration-charter]] and `[[observability-telemetry-plumbing-charter|sre-observability]]` for a schema change on a
 table that does not exist yet, against OD-11 which is still open. That negotiation
 is slow, unglamorous, and belongs to a team with zero artifacts and no leverage. So
 it slips. Meanwhile skills accumulate. Every staleness review defaults to *keep*,
@@ -122,7 +122,7 @@ skills taking the large majority of invocations while the median skill sits near
 zero. Visible as soon as there are ~10 skills and any firing data at all.
 
 **What would have prevented it.** Pair the firing count with a **doneability
-verdict** from `[[aio-evaluation-gates]]` — [[README]] §4.2 already puts a
+verdict** from `[[agent-evaluation-gates-charter|aio-evaluation-gates]]` — [[README]] §4.2 already puts a
 doneability verdict on the NF-A event, so the join is available if the `skill_id`
 request includes it. **Ask for both fields in the same negotiation**, since asking
 twice costs twice. Retention rule: a skill that fires often and completes rarely is

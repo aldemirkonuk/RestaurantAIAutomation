@@ -19,7 +19,7 @@ Parent: [[knowledge-documentation-charter]] (Corporate). Siblings:
 Standards & Verification is accountable for **whether a document is still true**. It owns
 the documentation quality bar, the [[ORG_STRUCTURE]] §4 anti-sprawl rule (*"an agenda that
 has not changed in 60 days is either finished or fiction"*), brand-drift detection, and the
-regeneration discipline for the companion documents [[foundation-README]] declares
+regeneration discipline for the companion documents [[README|foundation-README]] declares
 *"regenerated rather than hand-edited"* — `ENDPOINTS.md`, `PAGE_MAP.md`,
 `EXTERNAL_CONNECTIONS.md`.
 

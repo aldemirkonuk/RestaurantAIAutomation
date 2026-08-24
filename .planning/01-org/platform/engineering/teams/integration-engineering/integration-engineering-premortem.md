@@ -6,7 +6,7 @@ team: integration-engineering
 status: provisional
 metrics: [integration.verified_signature_coverage, integration.webhook_silence_duration]
 updated: 2026-08-24
-links: ["[[integration-engineering-charter]]", "[[integration-engineering-loops]]", "[[integration-engineering-directive]]", "[[engineering-premortem]]", "[[platform-api-charter]]", "[[dat-pos-telemetry-ingest]]", "[[red-team-charter]]", "[[EXTERNAL_CONNECTIONS]]"]
+links: ["[[integration-engineering-charter]]", "[[integration-engineering-loops]]", "[[integration-engineering-directive]]", "[[engineering-premortem]]", "[[platform-api-charter]]", "[[pos-operational-telemetry-ingest-charter|dat-pos-telemetry-ingest]]", "[[red-team-charter]]", "[[EXTERNAL_CONNECTIONS]]"]
 ---
 
 # Integration Engineering — Premortem
@@ -98,7 +98,7 @@ neither claims within one close-time. The age of that report is the metric.
 
 **Counter-pressure.** The seam has a **default owner**: this team, as left-of-seam
 (`technology.md:859`), takes first triage and answers one question — *did the event arrive,
-intact and on time?* A yes hands it to [[dat-pos-telemetry-ingest]] with evidence attached;
+intact and on time?* A yes hands it to [[pos-operational-telemetry-ingest-charter|dat-pos-telemetry-ingest]] with evidence attached;
 a no keeps it. Answering that question requires per-event delivery records, which is
 therefore a prerequisite rather than a nicety.
 

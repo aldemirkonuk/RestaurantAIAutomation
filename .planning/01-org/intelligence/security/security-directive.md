@@ -5,7 +5,7 @@ department: security
 status: provisional
 metrics: []
 updated: 2026-08-24
-links: ["[[security-charter]]", "[[security-premortem]]", "[[security-loops]]", "[[security-agenda-board]]", "[[access-control-tenant-isolation-directive]]", "[[perimeter-ingress-integrity-directive]]", "[[ai-surface-security-directive]]", "[[red-team-charter]]", "[[decision-office-charter]]", "[[platform-api-charter]]", "[[compliance-charter]]", "[[OPEN-DECISIONS]]"]
+links: ["[[security-charter]]", "[[security-premortem]]", "[[security-loops]]", "[[security-agenda-board]]", "[[access-control-tenant-isolation-directive]]", "[[perimeter-ingress-integrity-directive]]", "[[ai-surface-security-directive]]", "[[red-team-charter]]", "[[decision-office-charter]]", "[[platform-api-charter]]", "[[compliance-privacy-charter|compliance-charter]]", "[[OPEN-DECISIONS]]"]
 ---
 
 # Security — Directive
@@ -120,7 +120,7 @@ Escalate to `OPEN-DECISIONS.md` when **any** of these holds:
 5. A `sec.*` metric is proposed for redefinition while its value is non-zero. Redefining a
    metric mid-campaign is how a number reaches zero without the exposure moving.
 6. A finding concerns **personal data handling** rather than reachability — that is
-   [[compliance-charter]]'s call, and we hand it over rather than ruling on it.
+   [[compliance-privacy-charter|compliance-charter]]'s call, and we hand it over rather than ruling on it.
 
 ## What we hand to Red Team, and why
 

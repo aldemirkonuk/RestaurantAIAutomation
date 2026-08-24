@@ -76,7 +76,7 @@ way. Every report shows both; if a surface can only show one, it shows the secon
 3. **A new controller merged with the census count unchanged** — the census is broken, and
    that is a P1 for this team because everything else depends on it (premortem M2).
 4. **A cross-tenant read found in any environment.** Immediate, jointly to
-   [[security-charter]] and [[compliance-charter]] — this is disclosure territory, not a bug.
+   [[security-charter]] and [[compliance-privacy-charter|compliance-charter]] — this is disclosure territory, not a bug.
 5. **Two modules deriving idempotency keys differently** (premortem M5), or any cross-hop
    duplicate raised by [[inventory-ledger-charter]] — escalates as a seam decision.
 6. **[[security-charter]] and this team disagreeing on classification.** The seam says they

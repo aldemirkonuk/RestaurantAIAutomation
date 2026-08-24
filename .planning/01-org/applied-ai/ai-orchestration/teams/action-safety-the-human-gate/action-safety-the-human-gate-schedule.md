@@ -6,7 +6,7 @@ team: action-safety-the-human-gate
 status: partial
 metrics: [safety.unconfirmed_mutation_count, safety.median_time_to_confirm, safety.rejection_rate]
 updated: 2026-08-24
-links: ["[[action-safety-the-human-gate-charter]]", "[[action-safety-the-human-gate-loops]]", "[[action-safety-the-human-gate-directive]]", "[[action-safety-the-human-gate-agenda-full]]", "[[ai-orchestration-schedule]]", "[[skills-charter]]", "[[skill-lifecycle-anti-sprawl-charter]]", "[[design-charter]]", "[[compliance-and-privacy-charter]]", "[[red-team-charter]]"]
+links: ["[[action-safety-the-human-gate-charter]]", "[[action-safety-the-human-gate-loops]]", "[[action-safety-the-human-gate-directive]]", "[[action-safety-the-human-gate-agenda-full]]", "[[ai-orchestration-schedule]]", "[[skills-charter]]", "[[skill-lifecycle-anti-sprawl-charter]]", "[[design-charter]]", "[[compliance-privacy-charter|compliance-and-privacy-charter]]", "[[red-team-charter]]"]
 ---
 
 # Action Safety & the Human Gate — Schedule & Skills
@@ -67,6 +67,6 @@ its job.
 |---|---|---|
 | [[ai-orchestration-schedule]] | Daily | `safety.unconfirmed_mutation_count` for the department board |
 | [[design-charter]] | Monthly | `time_to_confirm` distribution and confirmations-per-day — surface and friction floor are different decisions |
-| [[compliance-and-privacy-charter]] | Quarterly | Allowlist state, guest-PII family status, audit reconstructability |
+| [[compliance-privacy-charter|compliance-and-privacy-charter]] | Quarterly | Allowlist state, guest-PII family status, audit reconstructability |
 | [[red-team-charter]] | On request | Gate-integrity data. **The attack surface is the reflex, not the bypass** |
 | [[decision-office-charter]] | On event | Any proposal to relax `FUTURES.md` §8.1 — a supersede-ADR, never a PR |

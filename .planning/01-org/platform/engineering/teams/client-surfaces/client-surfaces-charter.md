@@ -6,7 +6,7 @@ team: client-surfaces
 status: exists
 metrics: [surfaces.reachable_route_ratio, surfaces.untraceable_route_components]
 updated: 2026-08-24
-links: ["[[engineering-charter]]", "[[client-surfaces-premortem]]", "[[client-surfaces-agenda-full]]", "[[client-surfaces-agenda-board]]", "[[client-surfaces-directive]]", "[[client-surfaces-loops]]", "[[client-surfaces-schedule]]", "[[eng-client-surfaces]]", "[[design-charter]]", "[[platform-api-charter]]", "[[PAGE_MAP]]", "[[UX_PATHS_CATALOG]]"]
+links: ["[[engineering-charter]]", "[[client-surfaces-premortem]]", "[[client-surfaces-agenda-full]]", "[[client-surfaces-agenda-board]]", "[[client-surfaces-directive]]", "[[client-surfaces-loops]]", "[[client-surfaces-schedule]]", "[[client-surfaces-charter|eng-client-surfaces]]", "[[design-charter]]", "[[platform-api-charter]]", "[[PAGE_MAP]]", "[[UX_PATHS_CATALOG]]"]
 ---
 
 # Client Surfaces — Charter
@@ -57,8 +57,8 @@ screen should be*; this team owns whether the built screen matches, renders, and
 | Whether the data on the screen is correct | [[inventory-ledger-charter]], [[catalogue-identity-charter]], [[procurement-vendor-network-charter]] |
 | Auth on the endpoints the surfaces call | [[platform-api-charter]] |
 | Whether a notification should appear at all | [[messaging-delivery-charter]] delivers it; [[design-charter]] decides it belongs |
-| Agent-facing UX policy — when a human must confirm | [[action-safety-the-human-gate]] |
-| CDN, hosting, deploy pipeline | [[sre-release-engineering]] |
+| Agent-facing UX policy — when a human must confirm | [[action-safety-the-human-gate-charter|action-safety-the-human-gate]] |
+| CDN, hosting, deploy pipeline | [[release-engineering-charter|sre-release-engineering]] |
 
 ## Metrics it moves
 

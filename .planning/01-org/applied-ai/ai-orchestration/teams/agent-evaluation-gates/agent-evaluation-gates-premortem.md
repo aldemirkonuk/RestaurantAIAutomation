@@ -6,7 +6,7 @@ team: agent-evaluation-gates
 status: partial
 metrics: [nf_a.doneability_verdict_coverage]
 updated: 2026-08-24
-links: ["[[agent-evaluation-gates-charter]]", "[[agent-evaluation-gates-loops]]", "[[agent-evaluation-gates-directive]]", "[[ai-orchestration-premortem]]", "[[research-and-math-charter]]", "[[agent-fleet-charter]]", "[[model-routing-inference-economics-charter]]", "[[decision-office-charter]]", "[[technology]]"]
+links: ["[[agent-evaluation-gates-charter]]", "[[agent-evaluation-gates-loops]]", "[[agent-evaluation-gates-directive]]", "[[ai-orchestration-premortem]]", "[[research-math-charter|research-and-math-charter]]", "[[agent-fleet-charter]]", "[[model-routing-inference-economics-charter]]", "[[decision-office-charter]]", "[[technology]]"]
 ---
 
 # Agent Evaluation & Gates — Premortem

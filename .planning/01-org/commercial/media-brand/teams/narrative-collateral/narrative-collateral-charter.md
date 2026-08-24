@@ -13,7 +13,7 @@ links:
   - "[[narrative-collateral-loops]]"
   - "[[narrative-collateral-schedule]]"
   - "[[YC_WEDGE_PLAN]]"
-  - "[[strategy-charter]]"
+  - "[[strategy-fundraising-charter|strategy-charter]]"
   - "[[editorial-gate-charter]]"
 ---
 
@@ -50,7 +50,7 @@ since the facts are already established elsewhere in the repo.
 ## Explicit non-goals
 
 - **The YC path and the decision to apply** belong to
-  [[strategy-charter|Corporate → Strategy & Fundraising]]. M2 owns the craft of the artifact
+  [[strategy-fundraising-charter|Corporate → Strategy & Fundraising]]. M2 owns the craft of the artifact
   and never the decision to send it.
 - **Whether a number may be stated** belongs to [[editorial-gate-charter|Growth G3]]. M2
   writes the claim; G3 verifies it. This is not a formality — see the metric note below.

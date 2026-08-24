@@ -6,7 +6,7 @@ team: agent-fleet
 status: provisional
 metrics: [nf_a.task_success_rate, fleet.live_agent_ratio]
 updated: 2026-08-24
-links: ["[[agent-fleet-charter]]", "[[agent-fleet-premortem]]", "[[agent-fleet-agenda-board]]", "[[agent-fleet-directive]]", "[[agent-fleet-loops]]", "[[agent-fleet-schedule]]", "[[ai-orchestration-agenda-full]]", "[[harness-runtime-charter]]", "[[agent-evaluation-gates-charter]]", "[[reliability-charter]]"]
+links: ["[[agent-fleet-charter]]", "[[agent-fleet-premortem]]", "[[agent-fleet-agenda-board]]", "[[agent-fleet-directive]]", "[[agent-fleet-loops]]", "[[agent-fleet-schedule]]", "[[ai-orchestration-agenda-full]]", "[[harness-runtime-charter]]", "[[agent-evaluation-gates-charter]]", "[[reliability-sre-charter|reliability-charter]]"]
 ---
 
 # Agent Fleet — Full Agenda

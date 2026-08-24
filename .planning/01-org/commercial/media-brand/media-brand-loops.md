@@ -135,6 +135,6 @@ notification channel, or a new outbound document type each add a row.
 
 | Loop | Owner | Why we care |
 |---|---|---|
-| Editorial gate first-pass rate | [[editorial-gate-loops\|Growth G3]] | M1's voice guide is the thing being enforced; a rising rejection rate may be a guide problem, not a writer problem |
-| Visit → activated restaurant | [[conversion-funnel-loops\|Growth G5]] | M3's metric is a subset of it and cannot exist before it |
-| Verified dollars recovered | [[design-partner-operations-loops\|Sales S1]] | M2 may not state the number until this loop closes once |
+| Editorial gate first-pass rate | [[editorial-gate-loops|Growth G3]] | M1's voice guide is the thing being enforced; a rising rejection rate may be a guide problem, not a writer problem |
+| Visit → activated restaurant | [[conversion-funnel-loops|Growth G5]] | M3's metric is a subset of it and cannot exist before it |
+| Verified dollars recovered | [[design-partner-operations-loops|Sales S1]] | M2 may not state the number until this loop closes once |

@@ -6,7 +6,7 @@ team: catalogue-identity
 status: exists
 metrics: [identity.false_merge_count, identity.false_split_count, nf_b.guest_signal_attribution_accuracy]
 updated: 2026-08-24
-links: ["[[engineering-charter]]", "[[catalogue-identity-premortem]]", "[[catalogue-identity-agenda-full]]", "[[catalogue-identity-agenda-board]]", "[[catalogue-identity-directive]]", "[[catalogue-identity-loops]]", "[[catalogue-identity-schedule]]", "[[eng-catalogue-identity]]", "[[dat-corpora-enrichment]]", "[[dat-substrate-quality]]", "[[schema-migrations-charter]]", "[[BEVERAGE_CATALOGUE_ARCHITECTURE]]", "[[DISH_IDENTITY_DESIGN]]"]
+links: ["[[engineering-charter]]", "[[catalogue-identity-premortem]]", "[[catalogue-identity-agenda-full]]", "[[catalogue-identity-agenda-board]]", "[[catalogue-identity-directive]]", "[[catalogue-identity-loops]]", "[[catalogue-identity-schedule]]", "[[catalogue-identity-charter|eng-catalogue-identity]]", "[[corpora-enrichment-charter|dat-corpora-enrichment]]", "[[substrate-quality-coverage-charter|dat-substrate-quality]]", "[[schema-migrations-charter]]", "[[BEVERAGE_CATALOGUE_ARCHITECTURE]]", "[[DISH_IDENTITY_DESIGN]]"]
 ---
 
 # Catalogue & Identity — Charter
@@ -47,10 +47,10 @@ the damage compounds every day the merge stands
 
 | Not ours | Whose it is |
 |---|---|
-| Enriching the corpus — filling in missing attributes, sourcing producer data | [[dat-corpora-enrichment]] |
-| Judging whether a *row* is fit for use as L0 substrate | [[dat-substrate-quality]] |
+| Enriching the corpus — filling in missing attributes, sourcing producer data | [[corpora-enrichment-charter|dat-corpora-enrichment]] |
+| Judging whether a *row* is fit for use as L0 substrate | [[substrate-quality-coverage-charter|dat-substrate-quality]] |
 | The DDL that carries identity tables | [[schema-migrations-charter]] — we specify, they author and own the migration |
-| Whether a guest *should* be identified at all — consent, GDPR, retention | [[compliance-charter]] *(Corporate)* |
+| Whether a guest *should* be identified at all — consent, GDPR, retention | [[compliance-privacy-charter|compliance-charter]] *(Corporate)* |
 | Rendering identity in a UI | [[client-surfaces-charter]] |
 | Agents that reason over the catalogue | [[agent-fleet-charter]] *(Applied AI)* |
 

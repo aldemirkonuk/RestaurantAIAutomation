@@ -6,7 +6,7 @@ team: messaging-delivery
 status: provisional
 metrics: []
 updated: 2026-08-24
-links: ["[[messaging-delivery-charter]]", "[[messaging-delivery-loops]]", "[[engineering-schedule]]", "[[sre-runtime-resilience]]", "[[skills-charter]]"]
+links: ["[[messaging-delivery-charter]]", "[[messaging-delivery-loops]]", "[[engineering-schedule]]", "[[runtime-resilience-charter|sre-runtime-resilience]]", "[[skills-charter]]"]
 ---
 
 # Messaging & Delivery — Schedule & Skills

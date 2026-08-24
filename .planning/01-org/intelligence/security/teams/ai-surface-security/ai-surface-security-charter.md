@@ -6,7 +6,7 @@ team: ai-surface-security
 status: new
 metrics: [nf_a.unauthenticated_inference_spend, sec.injection_corpus_size, sec.corpus_detection_rate, sec.autonomous_send_rate, sec.tenants_with_inference_budget, sec.model_callsites_emitting_cost]
 updated: 2026-08-24
-links: ["[[security-charter]]", "[[ai-surface-security-premortem]]", "[[ai-surface-security-agenda-full]]", "[[ai-surface-security-agenda-board]]", "[[ai-surface-security-directive]]", "[[ai-surface-security-loops]]", "[[ai-surface-security-schedule]]", "[[access-control-tenant-isolation-charter]]", "[[perimeter-ingress-integrity-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[evaluation-doneability-charter]]", "[[harness-model-routing-charter]]", "[[insight-narrative-generation-charter]]", "[[compliance-charter]]", "[[red-team-charter]]", "[[ENDPOINTS]]", "[[OPEN-DECISIONS]]"]
+links: ["[[security-charter]]", "[[ai-surface-security-premortem]]", "[[ai-surface-security-agenda-full]]", "[[ai-surface-security-agenda-board]]", "[[ai-surface-security-directive]]", "[[ai-surface-security-loops]]", "[[ai-surface-security-schedule]]", "[[access-control-tenant-isolation-charter]]", "[[perimeter-ingress-integrity-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[evaluation-doneability-charter]]", "[[harness-model-routing-charter]]", "[[insight-narrative-generation-charter]]", "[[compliance-privacy-charter|compliance-charter]]", "[[red-team-charter]]", "[[ENDPOINTS]]", "[[OPEN-DECISIONS]]"]
 ---
 
 # AI Surface Security — Charter
@@ -39,7 +39,7 @@ door; a budget is a meter, and this team owns the meter.**
 Distinct also from two units outside Security, stated because both boundaries will be
 tested:
 
-- **[[compliance-charter]]** (Corporate) owns lawful basis, DPAs, consent, retention —
+- **[[compliance-privacy-charter|compliance-charter]]** (Corporate) owns lawful basis, DPAs, consent, retention —
   whether we *may*. This team owns whether an attacker *can*.
 - **[[evaluation-doneability-charter]]** (R&M) grades whether model output was *good*.
   This team grades whether it was *attacker-steered*. Same corpus format, opposite pass
@@ -171,5 +171,5 @@ callsites.
 | Which model, what retry, what it costs | [[harness-model-routing-charter]] *(R&M)* |
 | Whether an insight was *worth saying* | [[insight-narrative-generation-charter]] *(A&BI)* |
 | Whether model output was *good* | [[evaluation-doneability-charter]] *(R&M)* — we grade attacker-steered, they grade good |
-| Lawful basis, consent, retention for data in prompts | [[compliance-charter]] *(Corporate)* |
+| Lawful basis, consent, retention for data in prompts | [[compliance-privacy-charter|compliance-charter]] *(Corporate)* |
 | Attacking our corpus's blind spots | [[red-team-charter]] *(advisory)* — the corpus is ours; its coverage gaps are what an independent attacker is for |

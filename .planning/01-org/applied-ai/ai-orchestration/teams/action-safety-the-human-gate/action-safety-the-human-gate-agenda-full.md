@@ -6,7 +6,7 @@ team: action-safety-the-human-gate
 status: provisional
 metrics: [safety.unconfirmed_mutation_count, safety.median_time_to_confirm, safety.rejection_rate]
 updated: 2026-08-24
-links: ["[[action-safety-the-human-gate-charter]]", "[[action-safety-the-human-gate-premortem]]", "[[action-safety-the-human-gate-agenda-board]]", "[[action-safety-the-human-gate-directive]]", "[[action-safety-the-human-gate-loops]]", "[[action-safety-the-human-gate-schedule]]", "[[ai-orchestration-agenda-full]]", "[[harness-runtime-charter]]", "[[design-charter]]", "[[compliance-and-privacy-charter]]", "[[product-and-vision-charter]]"]
+links: ["[[action-safety-the-human-gate-charter]]", "[[action-safety-the-human-gate-premortem]]", "[[action-safety-the-human-gate-agenda-board]]", "[[action-safety-the-human-gate-directive]]", "[[action-safety-the-human-gate-loops]]", "[[action-safety-the-human-gate-schedule]]", "[[ai-orchestration-agenda-full]]", "[[harness-runtime-charter]]", "[[design-charter]]", "[[compliance-privacy-charter|compliance-and-privacy-charter]]", "[[product-vision-charter|product-and-vision-charter]]"]
 ---
 
 # Action Safety & the Human Gate — Full Agenda
@@ -134,7 +134,7 @@ Steps 1, 2 and 4 are unblocked and are the ones that stop being cheap if deferre
    rhetorical question. It determines how aggressively low-stakes families get tiered
    away from the money and stock ones.
 4. **Guest PII exports** are gated hard in `FUTURES.md` §8.2. Does
-   [[compliance-and-privacy-charter]] own that entry, with this team enforcing it? We
+   [[compliance-privacy-charter|compliance-and-privacy-charter]] own that entry, with this team enforcing it? We
    assume yes and would rather have it stated.
 5. **Who may change an autonomy tier?** We propose: moving a family *toward* more
    autonomy requires an ADR; moving it toward less is a PR. Asymmetric on purpose.

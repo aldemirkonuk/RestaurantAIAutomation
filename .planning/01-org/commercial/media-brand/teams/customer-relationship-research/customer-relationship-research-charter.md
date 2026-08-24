@@ -12,7 +12,7 @@ links:
   - "[[customer-relationship-research-directive]]"
   - "[[customer-relationship-research-loops]]"
   - "[[customer-relationship-research-schedule]]"
-  - "[[compliance-charter]]"
+  - "[[compliance-privacy-charter|compliance-charter]]"
   - "[[guest-experience-charter]]"
   - "[[commercial]]"
 ---
@@ -41,7 +41,7 @@ at all.
 >
 > The consent **mechanism** — what the customer is told, how approval is captured, how it is
 > withdrawn, and what legal basis it rests on — is
-> [[compliance-charter|Corporate → Compliance & Privacy]]'s to design. M4 must coordinate
+> [[compliance-privacy-charter|Corporate → Compliance & Privacy]]'s to design. M4 must coordinate
 > with them and **must not claim their scope**. This team proposes; it does not decide the
 > legal shape.
 
@@ -75,7 +75,7 @@ and the retraction queue when a consent is withdrawn.
 ## Explicit non-goals
 
 - **The legal basis, the DPAs, and the consent mechanism's legal shape** belong to
-  [[compliance-charter|Compliance & Privacy]]. M4 proposes the register's operational shape
+  [[compliance-privacy-charter|Compliance & Privacy]]. M4 proposes the register's operational shape
   and implements nothing until they have reviewed it.
 - **The guest-facing product** belongs to [[guest-experience-charter|Product → Guest Experience]].
 - **Prospect research** is not this team's work and must be refused here. A restaurant that

@@ -2,10 +2,11 @@
 type: spec
 id: P1
 title: NF-A Instrumentation
-status: proposed
+status: ready
 updated: 2026-08-24
 owner: research-math
-blocks: [OD-03, OD-04, OD-11]
+blocks: [OD-03, OD-04]
+resolves: [OD-11]
 links: ["[[PLAN]]", "[[AGENDA]]", "[[research-math-charter]]", "[[neural-footprint-instrumentation-charter]]", "[[people-agent-ops-charter]]", "[[inference-cost-charter]]"]
 ---
 
@@ -45,45 +46,64 @@ group by 1,2 order by cost desc;
 
 ## 3. Scope
 
-**In:** `SpendLogger` signature · `api_spend` columns + indexes · a gateway-side emitter ·
+**In:** the `neural_footprint_event` table · `SpendLogger` signature · a gateway-side emitter ·
 backfill posture for existing rows · one CI guard so a new model call site cannot skip the ledger.
 
 **Out:** NF-B (guest), NF-C (gated), the research store, retention/rollup policy,
 dashboards. P1 is emission only — *observe before deciding* ([[PLAN]] §3).
 
-## 4. ⬦ The founder decision — OD-11, three paths
+## 4. The column contract — RESOLVED: Path C
 
-The column contract is open. All three make the §2 query work; they differ in cost now
-versus cost later.
+**Founder chose Path C** on 2026-08-24: implement the full [ADR 0006](../decisions/0006-neural-footprint-architecture.md)
+production shape now, rather than the minimal join Claude recommended. Locked in
+[ADR 0008](../decisions/0008-nf-column-contract.md), which records the rejected paths, the
+overruled recommendation, and the three accepted risks.
 
-### Path A — Minimal join *(Claude's recommendation)*
-Add to `api_spend`: `agent text`, `task_type text`, `correlation_id text`.
-Add to `SpendLogger.log()`: `agent`, `task_type`, `correlation_id`.
+One table, `subject_type` discriminating agent / guest / bio from the first migration:
 
-- **Cost:** one additive migration, three nullable columns, one partial index. No backfill needed — old rows stay `null` and are honestly excluded.
-- **Buys:** the §2 query, cost-per-agent, cost-per-task-type, and the `decision_log` join.
-- **Risk:** `correlation_id` is `text` in `decision_log`, so the join is unindexed until we add one. Cheap to fix.
-- **Why recommended:** it is the *smallest* change that unblocks the *most* loops, and it commits to nothing that a later path would have to undo.
+```sql
+create table neural_footprint_event (
+  id             uuid primary key default gen_random_uuid(),
+  subject_type   text        not null check (subject_type in ('agent','guest','bio')),
+  subject_id     text        not null,
+  stimulus       text        not null,
+  context        jsonb       not null default '{}',
+  internal_state jsonb       not null default '{}',
+  choice         text        not null,
+  outcome        text        check (outcome in ('success','failure','partial')),  -- null = UNKNOWN
+  cost_usd       numeric(10,6),
+  input_tokens   integer,
+  output_tokens  integer,
+  duration_ms    integer,
+  correlation_id text,
+  restaurant_id  uuid,
+  occurred_at    timestamptz not null default now()
+);
 
-### Path B — Path A + latency and outcome
-Also add `duration_ms int`, `outcome text` (`success|failure|partial`), `retries int`.
+create index nfe_agent_cost   on neural_footprint_event (subject_id, occurred_at desc)
+  where subject_type = 'agent';
+create index nfe_guest_choice on neural_footprint_event (subject_id, occurred_at desc)
+  where subject_type = 'guest';
+create index nfe_correlation  on neural_footprint_event (correlation_id)
+  where correlation_id is not null;
+```
 
-- **Cost:** more call-site changes; every emitter must now know its own outcome, which means threading result state into the logger.
-- **Buys:** `nf_a.verified_task_success_rate` and `harness_overhead_ms` — the two metrics **OD-03 (harness bake-off) is currently undecidable without**.
-- **Risk:** `outcome` is exactly the "doneability" question People & Agent Ops owns and has not defined. Shipping a column before the definition invites each call site to invent its own meaning — the failure the metric-contract team exists to prevent.
+**`outcome` is nullable and `null` means *unknown*, never *success*.** Doneability is still
+undefined and owned by People & Agent Ops; a call site that cannot honestly determine an
+outcome writes `null`. This is the mitigation for the main risk C carries — the column
+exists without pre-empting the definition.
 
-### Path C — Full ADR 0006 production shape now
-Implement the whole locked production store: `subject_type`, `stimulus`, `internal_state`, `choice`, `outcome`, `cost`, with partial indexes per `subject_type`.
+**`api_spend` and `decision_log` are not dropped.** They keep their writers; the new table
+is written alongside. Migrating off them is a later decision, after the new table has volume.
 
-- **Cost:** largest. Touches NF-B's shape too, and NF-B has no callers yet.
-- **Buys:** no second migration later; agent and guest share one table from day one.
-- **Risk:** designing guest columns before a single guest event exists is the mistake ADR 0006 §4.3 already avoided once with NF-C. Also the operator-preference `subject_type` question is still open.
-
-**Recommendation: A now, B when doneability is defined, C when NF-B has a caller.** Path A is reversible and additive; B and C both bet on definitions that do not exist yet.
+**NF-B columns ship inert.** Guest Experience has no caller yet ([[guest-identity-consent-charter]]).
+The columns are unused, not wrong — that was the accepted trade in choosing C.
 
 ## 5. Implementation order (after the path is chosen)
 
-1. **Migration** — additive columns + `correlation_id` index. Nullable, so no backfill and no rewrite of history.
+1. **Migration** — create `neural_footprint_event` + the three partial indexes. Purely
+   additive: nothing existing is altered or dropped, so there is no backfill and no
+   rewrite of history.
 2. **`SpendLogger`** — new params **keyword-only with defaults**, so all 16 existing call sites keep working unchanged.
 3. **Gateway emitter** — one shared helper the 7 call sites route through. This is also where hand-rolled retry/timeout gets consolidated (Architecture Review AR-3: 1 of 7 retries, 3 of 7 have no timeout, the other 4 disagree).
 4. **CI guard** — `scripts/check_model_calls_logged.sh`: a new `api.anthropic.com` / Gemini call site that does not route through the emitter fails the build. Without this, D3 recurs.

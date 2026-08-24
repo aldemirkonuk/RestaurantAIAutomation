@@ -54,6 +54,6 @@ closes.
 | To | When | What |
 |---|---|---|
 | [[agent-fleet-charter]] | Daily | DLQ entries classified *agent defect*; agents with sustained elevated retry |
-| `[[sre-resilience]]` | Daily | DLQ entries classified *infrastructure* |
+| `[[runtime-resilience-charter|sre-resilience]]` | Daily | DLQ entries classified *infrastructure* |
 | [[ai-orchestration-schedule]] | Weekly | `nf_a.retries`, `nf_a.dlq_depth` for the department board |
 | [[decision-office-charter]] | Monthly, and on the bake-off date | `od03.days_open`; the closed decision, or why it did not close |

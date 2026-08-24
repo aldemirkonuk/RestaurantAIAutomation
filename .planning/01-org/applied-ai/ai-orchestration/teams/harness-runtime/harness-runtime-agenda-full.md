@@ -6,7 +6,7 @@ team: harness-runtime
 status: provisional
 metrics: [nf_a.retries, nf_a.dlq_depth]
 updated: 2026-08-24
-links: ["[[harness-runtime-charter]]", "[[harness-runtime-premortem]]", "[[harness-runtime-agenda-board]]", "[[harness-runtime-directive]]", "[[harness-runtime-loops]]", "[[harness-runtime-schedule]]", "[[ai-orchestration-agenda-full]]", "[[agent-fleet-charter]]", "[[action-safety-the-human-gate-charter]]", "[[research-and-math-charter]]", "[[decision-office-charter]]"]
+links: ["[[harness-runtime-charter]]", "[[harness-runtime-premortem]]", "[[harness-runtime-agenda-board]]", "[[harness-runtime-directive]]", "[[harness-runtime-loops]]", "[[harness-runtime-schedule]]", "[[ai-orchestration-agenda-full]]", "[[agent-fleet-charter]]", "[[action-safety-the-human-gate-charter]]", "[[research-math-charter|research-and-math-charter]]", "[[decision-office-charter]]"]
 ---
 
 # Harness & Runtime — Full Agenda
@@ -30,7 +30,7 @@ outcomes — a hermes-agent migration still needs to know what the retry rate wa
 
 ### 1. Emit one NF-A event, end to end *(Step 0 of [[ai-orchestration-agenda-full]])*
 
-This team owns the emission point; [[research-and-math-charter]] owns what the fields
+This team owns the emission point; [[research-math-charter|research-and-math-charter]] owns what the fields
 mean. `base_agent.py` already has every hook needed: `_process_with_retry` (`:543`)
 knows the retry count, event append (`:944`) already writes an audit trail, health
 (`:985-1035`) already aggregates. The work is a schema and a call site, not a

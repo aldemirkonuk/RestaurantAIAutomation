@@ -12,7 +12,7 @@ links: ["[[skills-charter]]", "[[skill-harvesting-premortem]]", "[[skill-harvest
 # Skill Harvesting — Charter
 
 Team `skill-harvesting` · department [[skills-charter]] · division `applied-ai`.
-Alias in [[technology]] §4.3: `[[skl-harvesting]]`.
+Alias in [[technology]] §4.3: `[[skill-harvesting-charter|skl-harvesting]]`.
 
 > ## ⚠️ GATED — this team does not staff yet
 >
@@ -20,7 +20,7 @@ Alias in [[technology]] §4.3: `[[skl-harvesting]]`.
 >
 > > *The registry holds ≥ 15 skills, or §4.1's protocol-compliance metric has been
 > > green for two consecutive quarters. Until then, harvesting is a recurring task
-> > inside `[[skl-registry-authoring]]`. **If the team count must be cut, cut this
+> > inside `[[skill-registry-authoring-charter|skl-registry-authoring]]`. **If the team count must be cut, cut this
 > > one first.***
 >
 > **Registry size today: 0.** The trigger is not close. This charter exists so the

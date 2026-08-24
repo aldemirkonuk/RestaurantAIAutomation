@@ -6,7 +6,7 @@ team: ai-surface-security
 status: provisional
 metrics: []
 updated: 2026-08-24
-links: ["[[ai-surface-security-charter]]", "[[ai-surface-security-loops]]", "[[ai-surface-security-agenda-board]]", "[[security-schedule]]", "[[neural-footprint-instrumentation-charter]]", "[[evaluation-doneability-charter]]", "[[skills-charter]]", "[[red-team-charter]]", "[[compliance-charter]]"]
+links: ["[[ai-surface-security-charter]]", "[[ai-surface-security-loops]]", "[[ai-surface-security-agenda-board]]", "[[security-schedule]]", "[[neural-footprint-instrumentation-charter]]", "[[evaluation-doneability-charter]]", "[[skills-charter]]", "[[red-team-charter]]", "[[compliance-privacy-charter|compliance-charter]]"]
 ---
 
 # AI Surface Security — Schedule & Skills
