@@ -576,6 +576,27 @@ class WineFieldParser:
                 contents=prompt["user"],
                 config=config,
             )
+
+            # P1: previously an unlogged model call (dark site)
+            try:
+                from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+                _usage = getattr(response, "usage_metadata", None)
+                _in = getattr(_usage, "prompt_token_count", 0) or 0
+                _out = getattr(_usage, "candidates_token_count", 0) or 0
+                get_spend_logger().log(
+                    provider="google",
+                    model="gemini-2.5-flash",
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
+                    agent_fallback="wine_field_parser",
+                    task_type="wine_field_parse",
+                    outcome="success",  # call-level: response returned
+                )
+            except Exception:
+                pass
+
             result_text = response.text.strip()
 
             # Extract JSON (belt-and-suspenders: Gemini should return raw JSON

@@ -431,6 +431,27 @@ class EmailComposerService:
 
         return self._analyze_style_heuristic(inbound)
 
+    def _log_llm_spend(self, response, task_type: str) -> None:
+        """P1: emit one spend/NF row for a Gemini call (never raises)."""
+        try:
+            from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+            _usage = getattr(response, "usage_metadata", None)
+            _in = getattr(_usage, "prompt_token_count", 0) or 0
+            _out = getattr(_usage, "candidates_token_count", 0) or 0
+            get_spend_logger().log(
+                provider="google",
+                model=self.llm_model_name,
+                input_tokens=_in,
+                output_tokens=_out,
+                cost_usd=estimate_llm_cost(self.llm_model_name, _in, _out),
+                agent_fallback="email_composer_service",
+                task_type=task_type,
+                outcome="success",  # call-level: response returned
+            )
+        except Exception:
+            pass
+
     async def _analyze_style_llm(
         self,
         provider_id: str,
@@ -445,6 +466,7 @@ class EmailComposerService:
 
         try:
             response = await self.llm_client.generate_content_async(prompt)
+            self._log_llm_spend(response, "style_analysis")  # P1
             text = response.text.strip()
             json_match = re.search(r"\{[\s\S]*\}", text)
             if json_match:
@@ -565,6 +587,7 @@ class EmailComposerService:
 
         try:
             response = await self.llm_client.generate_content_async(prompt)
+            self._log_llm_spend(response, "email_compose")  # P1
             body = response.text.strip()
             if body.startswith('"') and body.endswith('"'):
                 body = body[1:-1]

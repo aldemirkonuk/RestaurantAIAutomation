@@ -286,6 +286,14 @@ class VLMExtractionService:
                     input_tokens=_in,
                     output_tokens=_out,
                     cost_usd=0.001,
+                    agent_fallback="vlm_extraction_service",
+                    task_type="vision_extraction",
+                    choice=f"wines:{result.total_wines}",
+                    outcome="success",  # call-level: response returned
+                    context={
+                        "document_type": document_type,
+                        "wines_found": result.total_wines,
+                    },
                 )
             except Exception:
                 pass
@@ -348,6 +356,29 @@ class VLMExtractionService:
 
             raw_text = response.text if response.text else ""
             result = self._parse_response(raw_text, "gemini_text")
+
+            # Log spend — non-fatal (P1: this call was previously unlogged)
+            try:
+                _usage = getattr(response, "usage_metadata", None)
+                _in = getattr(_usage, "prompt_token_count", 0) or 0
+                _out = getattr(_usage, "candidates_token_count", 0) or 0
+                get_spend_logger().log(
+                    provider="google",
+                    model="gemini-2.5-flash",
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=0.0001,
+                    agent_fallback="vlm_extraction_service",
+                    task_type="text_extraction",
+                    choice=f"wines:{result.total_wines}",
+                    outcome="success",  # call-level: response returned
+                    context={
+                        "document_type": document_type,
+                        "wines_found": result.total_wines,
+                    },
+                )
+            except Exception:
+                pass
 
             # Save to training data
             await self._save_training_data(
@@ -554,6 +585,11 @@ class GeminiFlashCrawlerExtractor:
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     cost_usd=result.cost_estimate,
+                    agent_fallback="vlm_extraction_service",
+                    task_type="crawl_extraction",
+                    choice=f"wines:{result.total_wines}",
+                    outcome="success",  # call-level: response returned
+                    context={"wines_found": result.total_wines},
                 )
             except Exception:
                 pass

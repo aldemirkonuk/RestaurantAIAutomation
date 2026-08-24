@@ -341,6 +341,28 @@ class EmailParsingAgent(BaseAgent):
 
     # ── LLM Context Matching ─────────────────────────────────────────
 
+    def _log_gemini_spend(self, response, task_type: str) -> None:
+        """P1: emit one spend/NF row for a Gemini call (never raises)."""
+        try:
+            from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+            _usage = getattr(response, "usage_metadata", None)
+            _in = getattr(_usage, "prompt_token_count", 0) or 0
+            _out = getattr(_usage, "candidates_token_count", 0) or 0
+            get_spend_logger().log(
+                provider="google",
+                model="gemini-pro",
+                input_tokens=_in,
+                output_tokens=_out,
+                cost_usd=estimate_llm_cost("gemini-pro", _in, _out),
+                agent=self.agent_name,
+                task_type=task_type,
+                outcome="success",  # call-level: response returned
+                correlation_id=getattr(self, "_current_correlation_id", None),
+            )
+        except Exception:
+            pass
+
     async def _match_by_context(
         self, sender_email: str, subject: str, body: str
     ) -> Optional[Dict[str, Any]]:
@@ -392,6 +414,7 @@ Which order is this email most likely about? Respond with ONLY valid JSON:
 }}"""
 
             response = await self.gemini_model.generate_content_async(prompt)
+            self._log_gemini_spend(response, "order_matching")  # P1
             text = response.text.strip()
 
             # Extract JSON from response
@@ -513,6 +536,7 @@ Respond with ONLY valid JSON:
 
                 try:
                     response = await self.gemini_model.generate_content_async(prompt)
+                    self._log_gemini_spend(response, "thread_summary")  # P1
                     text = response.text.strip()
                     json_match = re.search(r"\{[^}]+\}", text, re.DOTALL)
                     if json_match:

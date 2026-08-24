@@ -7,10 +7,36 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import task_postrun, task_prerun
 
 from config.settings import Settings
+from utils.logger import clear_log_context, set_log_context
 
 settings = Settings()
+
+
+# ---------------------------------------------------------------------------
+# P1 NF instrumentation: ambient worker identity + correlation for every task.
+#
+# BaseAgent._process_with_retry sets this context for RabbitMQ-driven agents;
+# this hook is the Celery mirror. The Celery task id is the correlation value
+# for job-originated work, so SpendLogger rows emitted anywhere inside a task's
+# call tree (including shared services) join structured logs — and each other —
+# on the same id. Contextvars set here are visible inside asyncio.run() within
+# the task body.
+# ---------------------------------------------------------------------------
+
+
+@task_prerun.connect
+def _set_task_log_context(task_id=None, task=None, **_kwargs):
+    task_name = getattr(task, "name", None) or "celery"
+    worker_identity = task_name.split(".")[0] or "celery"
+    set_log_context(agent_name=worker_identity, correlation_id=task_id)
+
+
+@task_postrun.connect
+def _clear_task_log_context(**_kwargs):
+    clear_log_context()
 
 celery_app = Celery(
     "wineops_jobs",

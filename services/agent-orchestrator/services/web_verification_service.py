@@ -239,6 +239,10 @@ async def parse_search_results(
                 input_tokens=_in,
                 output_tokens=_out,
                 cost_usd=_cost,
+                agent_fallback="web_verification_service",
+                task_type="snippet_parse",
+                outcome="success",  # call-level: response returned
+                context={"wine_name": str(wine_name)[:120]},
             )
     except Exception:
         pass

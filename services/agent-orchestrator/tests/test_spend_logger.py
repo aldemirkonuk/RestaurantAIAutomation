@@ -1,89 +1,324 @@
-"""Tests for SpendLogger service (COST-01)."""
+"""Tests for SpendLogger (COST-01) + Neural Footprint dual-write (P1, ADR 0008)."""
 
+import asyncio
 from unittest.mock import MagicMock, patch
 
+import pytest
 
-def test_log_calls_supabase_insert_with_correct_payload():
-    """SpendLogger.log() inserts row with all required fields."""
-    mock_supabase = MagicMock()
-    mock_supabase.table.return_value.insert.return_value.execute.return_value = (
-        MagicMock()
-    )
+from utils.logger import clear_log_context, get_log_context, set_log_context
 
-    with patch("services.spend_logger.get_settings") as mock_settings, patch(
-        "supabase.create_client", return_value=mock_supabase
-    ):
-        mock_settings.return_value.supabase_url = "https://test.supabase.co"
-        mock_settings.return_value.supabase_key = "test-key"
 
+def _capturing_supabase():
+    """Mock supabase client that records insert payloads per table name."""
+    rows = {}
+    client = MagicMock()
+
+    def table(name):
+        t = MagicMock()
+
+        def insert(payload):
+            rows.setdefault(name, []).append(payload)
+            return t
+
+        t.insert.side_effect = insert
+        t.execute.return_value = MagicMock()
+        return t
+
+    client.table.side_effect = table
+    return client, rows
+
+
+@pytest.fixture(autouse=True)
+def _clean_context():
+    clear_log_context()
+    yield
+    clear_log_context()
+
+
+def _patched_settings(supabase_client):
+    p = patch("services.spend_logger.get_settings")
+    mock = p.start()
+    mock.return_value.supabase_client = supabase_client
+    return p
+
+
+def test_log_dual_writes_api_spend_and_neural_footprint():
+    """One .log() call inserts BOTH the api_spend row and the NF row."""
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
         from services.spend_logger import SpendLogger
 
-        logger = SpendLogger()
-        logger.log(
+        SpendLogger().log(
             provider="anthropic",
             model="claude-haiku-4-5-20251001",
             input_tokens=1024,
             output_tokens=256,
             cost_usd=0.00042,
-            restaurant_id="abc-123",
+            restaurant_id="7c9e6679-7425-40de-944b-e07fc1f90ae7",
+            agent="provider_communication_agent",
+            task_type="email_draft",
+            choice="draft:parsed",
+            outcome="success",
+            correlation_id="corr-123",
+            context={"order_id": "o-1"},
         )
+    finally:
+        p.stop()
 
-    call_args = mock_supabase.table.return_value.insert.call_args[0][0]
-    assert call_args["provider"] == "anthropic"
-    assert call_args["model"] == "claude-haiku-4-5-20251001"
-    assert call_args["input_tokens"] == 1024
-    assert call_args["output_tokens"] == 256
-    assert call_args["cost_usd"] == 0.00042
-    assert call_args["restaurant_id"] == "abc-123"
-    assert "timestamp" in call_args
+    spend = rows["api_spend"][0]
+    assert spend["provider"] == "anthropic"
+    assert spend["model"] == "claude-haiku-4-5-20251001"
+    assert spend["input_tokens"] == 1024
+    assert spend["output_tokens"] == 256
+    assert spend["cost_usd"] == 0.00042
+    assert spend["restaurant_id"] == "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+    assert "timestamp" in spend
+
+    nf = rows["neural_footprint_event"][0]
+    assert nf["subject_type"] == "agent"
+    assert nf["subject_id"] == "provider_communication_agent"
+    assert nf["stimulus"] == "email_draft"
+    assert nf["choice"] == "draft:parsed"
+    assert nf["outcome"] == "success"
+    assert nf["correlation_id"] == "corr-123"
+    assert nf["cost_usd"] == 0.00042
+    assert nf["context"]["outcome_basis"] == "call_level_v0"
+    assert nf["context"]["order_id"] == "o-1"
+    assert nf["context"]["provider"] == "anthropic"
+    assert nf["context"]["task_type"] == "email_draft"
 
 
-def test_log_returns_none_when_supabase_not_configured():
-    """SpendLogger.log() returns without raising if Supabase not configured."""
-    with patch("services.spend_logger.get_settings") as mock_settings:
-        mock_settings.return_value.supabase_url = None
-        mock_settings.return_value.supabase_key = None
-
+def test_legacy_positional_call_still_emits_both_rows():
+    """The pre-P1 call shape (no keywords) breaks nothing and still emits NF."""
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
         from services.spend_logger import SpendLogger
 
-        logger = SpendLogger()
-        result = logger.log(
-            provider="anthropic",
-            model="test",
-            input_tokens=0,
-            output_tokens=0,
-            cost_usd=0.0,
-        )
-    assert result is None
-
-
-def test_log_does_not_raise_on_supabase_exception():
-    """SpendLogger.log() catches all exceptions — never crashes the pipeline."""
-    with patch("services.spend_logger.get_settings") as mock_settings, patch(
-        "supabase.create_client"
-    ) as mock_create:
-        mock_settings.return_value.supabase_url = "https://test.supabase.co"
-        mock_settings.return_value.supabase_key = "test-key"
-        mock_create.side_effect = Exception("Supabase connection refused")
-
-        from services.spend_logger import SpendLogger
-
-        logger = SpendLogger()
-        # Must NOT raise
-        logger.log(
+        SpendLogger().log(
             provider="google",
             model="gemini-2.5-flash",
             input_tokens=100,
             output_tokens=50,
             cost_usd=0.001,
         )
+    finally:
+        p.stop()
+
+    assert len(rows["api_spend"]) == 1
+    nf = rows["neural_footprint_event"][0]
+    assert nf["subject_id"] == "unknown"  # no agent, no ambient, no fallback
+    assert nf["stimulus"] == "google:gemini-2.5-flash"
+    assert nf["choice"] == "completion"
+    assert nf["outcome"] is None  # unknown, NEVER success
+
+
+def test_ambient_context_supplies_subject_and_correlation():
+    """Contextvars set by BaseAgent/Celery hook flow into the NF row."""
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        set_log_context(agent_name="score_agent", correlation_id="task-42")
+        SpendLogger().log(
+            provider="serper",
+            model="serper-search",
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.001,
+            agent_fallback="some_service",
+        )
+    finally:
+        p.stop()
+
+    nf = rows["neural_footprint_event"][0]
+    assert nf["subject_id"] == "score_agent"  # ambient beats agent_fallback
+    assert nf["correlation_id"] == "task-42"
+
+
+def test_explicit_agent_beats_ambient():
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        set_log_context(agent_name="ambient_agent", correlation_id="c-1")
+        SpendLogger().log(
+            provider="serper",
+            model="serper-search",
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.001,
+            agent="explicit_agent",
+        )
+    finally:
+        p.stop()
+
+    assert rows["neural_footprint_event"][0]["subject_id"] == "explicit_agent"
+
+
+def test_invalid_outcome_degrades_to_null_not_success():
+    """Bad outcome values must become NULL (unknown) with the raw value kept."""
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(
+            provider="google",
+            model="gemini-2.5-flash",
+            input_tokens=1,
+            output_tokens=1,
+            cost_usd=0.0,
+            outcome="great_success",  # not in the CHECK constraint
+        )
+    finally:
+        p.stop()
+
+    nf = rows["neural_footprint_event"][0]
+    assert nf["outcome"] is None
+    assert nf["context"]["outcome_invalid"] == "great_success"
+    assert "outcome_basis" not in nf["context"]
+
+
+def test_non_uuid_restaurant_id_diverted_to_context():
+    """Garbage in the uuid column is nulled and preserved in context."""
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(
+            provider="google",
+            model="gemini-2.5-flash",
+            input_tokens=1,
+            output_tokens=1,
+            cost_usd=0.0,
+            restaurant_id="not-a-uuid",
+        )
+    finally:
+        p.stop()
+
+    nf = rows["neural_footprint_event"][0]
+    assert nf["restaurant_id"] is None
+    assert nf["context"]["restaurant_ref"] == "not-a-uuid"
+
+
+def test_api_spend_failure_does_not_cost_the_nf_row_and_is_counted():
+    """Each insert has its own try/except; drops are counted, never raised."""
+    from services import neural_footprint as nf_mod
+
+    rows = {}
+    client = MagicMock()
+
+    def table(name):
+        t = MagicMock()
+        if name == "api_spend":
+            t.insert.side_effect = Exception("api_spend down")
+        else:
+
+            def insert(payload):
+                rows.setdefault(name, []).append(payload)
+                return t
+
+            t.insert.side_effect = insert
+            t.execute.return_value = MagicMock()
+        return t
+
+    client.table.side_effect = table
+
+    before = nf_mod.get_drop_counts()["api_spend"]
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(  # must NOT raise
+            provider="google",
+            model="gemini-2.5-flash",
+            input_tokens=1,
+            output_tokens=1,
+            cost_usd=0.0,
+        )
+    finally:
+        p.stop()
+
+    assert nf_mod.get_drop_counts()["api_spend"] == before + 1
+    assert len(rows["neural_footprint_event"]) == 1  # NF row survived
+
+
+def test_log_does_not_raise_when_everything_is_down():
+    from services import neural_footprint as nf_mod
+
+    client = MagicMock()
+    client.table.side_effect = Exception("supabase gone")
+
+    before = nf_mod.get_drop_counts()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(
+            provider="google",
+            model="gemini-2.5-flash",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.001,
+        )
+    finally:
+        p.stop()
+
+    after = nf_mod.get_drop_counts()
+    assert after["api_spend"] == before["api_spend"] + 1
+    assert after["neural_footprint_event"] == before["neural_footprint_event"] + 1
+
+
+def test_log_returns_none_when_supabase_not_configured():
+    """SpendLogger.log() returns without raising if Supabase not configured."""
+    p = _patched_settings(None)
+    try:
+        from services.spend_logger import SpendLogger
+
+        result = SpendLogger().log(
+            provider="anthropic",
+            model="test",
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+        )
+    finally:
+        p.stop()
+    assert result is None
+
+
+def test_new_params_are_keyword_only():
+    """P1 params must be keyword-only so positional call sites can never drift."""
+    import inspect
+
+    from services.spend_logger import SpendLogger
+
+    sig = inspect.signature(SpendLogger.log)
+    for name in (
+        "agent",
+        "agent_fallback",
+        "task_type",
+        "stimulus",
+        "choice",
+        "outcome",
+        "duration_ms",
+        "correlation_id",
+        "context",
+    ):
+        param = sig.parameters[name]
+        assert param.kind is inspect.Parameter.KEYWORD_ONLY
+        assert param.default is None
 
 
 def test_get_spend_logger_returns_singleton():
     """get_spend_logger() returns the same instance on repeated calls."""
     import services.spend_logger as mod
 
-    # Reset singleton
     mod._spend_logger = None
 
     from services.spend_logger import get_spend_logger
@@ -91,6 +326,46 @@ def test_get_spend_logger_returns_singleton():
     a = get_spend_logger()
     b = get_spend_logger()
     assert a is b
+
+
+def test_estimate_llm_cost_known_and_unknown_models():
+    from services.spend_logger import estimate_llm_cost
+
+    haiku = estimate_llm_cost("claude-haiku-4-5-20251001", 1_000_000, 1_000_000)
+    assert haiku == pytest.approx(0.80 + 4.00)
+    flash = estimate_llm_cost("gemini-2.5-flash", 1_000_000, 0)
+    assert flash == pytest.approx(0.075)
+    assert estimate_llm_cost("mystery-model-9000", 1000, 1000) == 0.0
+
+
+def test_log_context_is_async_task_isolated():
+    """The old threading.local storage let concurrent coroutines clobber each
+    other's correlation_id; ContextVar must keep per-task copies isolated."""
+
+    seen = {}
+
+    async def worker(name: str):
+        set_log_context(agent_name=name, correlation_id=f"corr-{name}")
+        await asyncio.sleep(0.01)  # force interleaving
+        seen[name] = get_log_context()
+
+    async def main():
+        await asyncio.gather(worker("a"), worker("b"))
+
+    asyncio.run(main())
+    assert seen["a"] == ("a", "corr-a")
+    assert seen["b"] == ("b", "corr-b")
+
+
+def test_celery_prerun_hook_sets_worker_identity_and_task_id():
+    from jobs.celery_app import _clear_task_log_context, _set_task_log_context
+
+    task = MagicMock()
+    task.name = "score.lookup_wine"
+    _set_task_log_context(task_id="celery-task-7", task=task)
+    assert get_log_context() == ("score", "celery-task-7")
+    _clear_task_log_context()
+    assert get_log_context() == (None, None)
 
 
 def test_settings_has_manager_email_attribute():

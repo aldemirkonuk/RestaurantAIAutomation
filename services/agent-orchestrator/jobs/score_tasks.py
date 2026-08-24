@@ -167,7 +167,8 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
 
         snippets = await serper_search(query, num_results=5)
 
-        # Log Serper spend
+        # Log Serper spend.
+        # P1 fix: wine_id is NOT a restaurant_id — it now rides in context.
         try:
             get_spend_logger().log(
                 provider="serper",
@@ -175,7 +176,16 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
                 input_tokens=0,
                 output_tokens=0,
                 cost_usd=settings.serper_cost_per_query,
-                restaurant_id=wine_id,
+                restaurant_id=None,
+                agent="score_agent",
+                task_type="score_search",
+                choice=f"search:{len(snippets)}_results",
+                outcome="success",  # call-level: search completed
+                context={
+                    "wine_id": wine_id,
+                    "source": source_key,
+                    "results_count": len(snippets),
+                },
             )
         except Exception:
             pass
@@ -209,6 +219,7 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
     if check_and_reserve_search_budget():
         price_query = queries["wine_searcher"]
         price_snippets = await serper_search(price_query, num_results=5)
+        # P1 fix: wine_id is NOT a restaurant_id — it now rides in context.
         try:
             get_spend_logger().log(
                 provider="serper",
@@ -216,7 +227,12 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
                 input_tokens=0,
                 output_tokens=0,
                 cost_usd=settings.serper_cost_per_query,
-                restaurant_id=wine_id,
+                restaurant_id=None,
+                agent="score_agent",
+                task_type="price_search",
+                choice=f"search:{len(price_snippets)}_results",
+                outcome="success",  # call-level: search completed
+                context={"wine_id": wine_id, "results_count": len(price_snippets)},
             )
         except Exception:
             pass

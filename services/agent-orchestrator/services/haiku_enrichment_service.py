@@ -222,7 +222,8 @@ class HaikuEnrichmentService:
             messages=[{"role": "user", "content": prompt}],
         )
 
-        # Log spend — non-fatal
+        # Log spend — non-fatal.
+        # P1 fix: wine_id is NOT a restaurant_id — it now rides in context.
         try:
             _in = response.usage.input_tokens
             _out = response.usage.output_tokens
@@ -233,7 +234,11 @@ class HaikuEnrichmentService:
                 input_tokens=_in,
                 output_tokens=_out,
                 cost_usd=_cost,
-                restaurant_id=wine_id,
+                restaurant_id=None,
+                agent_fallback="haiku_enrichment_service",
+                task_type="wine_enrichment",
+                outcome="success",  # call-level: completion returned
+                context={"wine_id": str(wine_id)},
             )
         except Exception:
             pass

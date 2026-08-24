@@ -461,6 +461,7 @@ class ProviderCommunicationAgent(BaseAgent):
         draft_json: Dict[str, Any] = {}
         input_tokens = 0
         output_tokens = 0
+        draft_generated = False  # P1: call-level outcome for the spend row
         try:
             haiku = get_haiku_client()
             async with self.haiku_semaphore:
@@ -482,10 +483,13 @@ class ProviderCommunicationAgent(BaseAgent):
                 raw = raw.split("```")[1]
                 if raw.startswith("json"):
                     raw = raw[4:]
-            draft_json = json.loads(raw.strip())
+            # Extract usage BEFORE parsing — a parse failure must not lose the
+            # token counts of a call that already cost money (P1).
             usage = response.usage if hasattr(response, "usage") else None
             input_tokens = usage.input_tokens if usage else estimated_tokens
             output_tokens = usage.output_tokens if usage else 100
+            draft_json = json.loads(raw.strip())
+            draft_generated = True
             cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
             cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
             if cache_read or cache_write:
@@ -509,7 +513,7 @@ class ProviderCommunicationAgent(BaseAgent):
                 ),
             }
 
-        # Step 8: SpendLogger (TOKENBDGT-03)
+        # Step 8: SpendLogger (TOKENBDGT-03) — dual-writes NF (P1)
         try:
             spend_logger = get_spend_logger()
             cost_usd = (input_tokens * 0.00000025) + (output_tokens * 0.00000125)
@@ -520,6 +524,12 @@ class ProviderCommunicationAgent(BaseAgent):
                 output_tokens=output_tokens,
                 cost_usd=cost_usd,
                 restaurant_id=restaurant_id,
+                agent=self.agent_name,
+                task_type="email_draft",
+                choice="draft:parsed" if draft_generated else "draft:fallback",
+                outcome="success" if draft_generated else "failure",
+                correlation_id=getattr(self, "_current_correlation_id", None),
+                context={"order_id": str(order_id)},
             )
         except Exception as exc:
             self.logger.warning(f"SpendLogger failed (non-critical): {exc}")
@@ -989,6 +999,12 @@ class ProviderCommunicationAgent(BaseAgent):
                     output_tokens=output_tokens,
                     cost_usd=cost_usd,
                     restaurant_id=restaurant_id,
+                    agent=self.agent_name,
+                    task_type="profile_extraction",
+                    choice=f"fields:{len(new_fields)}",
+                    outcome="success",  # log runs only after a successful parse
+                    correlation_id=getattr(self, "_current_correlation_id", None),
+                    context={"provider_id": str(provider_id)},
                 )
             except Exception:
                 pass
@@ -1116,6 +1132,12 @@ class ProviderCommunicationAgent(BaseAgent):
                 output_tokens=output_tokens,
                 cost_usd=cost_usd,
                 restaurant_id=restaurant_id,
+                agent=self.agent_name,
+                task_type="summarization",
+                choice=f"facts:{len(facts)}",
+                outcome="success",  # parse succeeded or we returned at :1061
+                correlation_id=getattr(self, "_current_correlation_id", None),
+                context={"conversation_id": str(conversation_id)},
             )
         except Exception:
             pass

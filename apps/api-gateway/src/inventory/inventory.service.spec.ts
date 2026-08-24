@@ -283,6 +283,9 @@ describe("InventoryService", () => {
       expect(mockEstimate).toHaveBeenCalledWith(
         "ZmFrZS1iYXNlNjQ=",
         "Château Pétrus",
+        // P1 NF-A: restaurantId now rides along so the emitted footprint row
+        // is tenant-attributed.
+        "rest-1",
       );
       expect(result).toEqual({
         suggestedQty: 7,

@@ -2,7 +2,7 @@
 type: build-log
 id: P1
 title: P1 Build Log
-status: in-progress
+status: complete
 updated: 2026-08-24
 links: ["[[P1-NF-A-INSTRUMENTATION]]", "[[P1-EMITTER-ARCHITECTURE]]", "[[P1-PYTHON-EMITTER]]", "[[0008-nf-column-contract]]", "[[backtests-charter]]"]
 ---
@@ -95,12 +95,14 @@ Two design rules that matter more than the check itself:
    refused unsigned input. A fix built on that report was written and **reverted**. This
    is why every agent claim in this build was re-verified in source.
 
-## 7. 🔴 Honesty note — what "green" does and does not mean
+## 7. Python D3 — closed, not grandfathered
 
-The guard **exits 0**. That is not the same as Python D3 being closed.
+The guard originally passed with **11 files on a shrink-only `PY_UNLOGGED_DEBT` ratchet**.
+That was green-by-grandfathering, and it was **not** what the founder decided ("both
+runtimes or neither — a ledger with known holes measures nothing reliably"). It is
+recorded here because for a while the guard said PASS while the hole was still open.
 
-Eleven pre-existing unlogged Python files sit on a **shrink-only `PY_UNLOGGED_DEBT`
-ratchet** — grandfathered, not fixed:
+All 11 now reach `SpendLogger` and were removed from the list:
 
 ```
 calendar_agent · email_intel_agent · email_parsing_agent · provider_conversation_agent
@@ -108,13 +110,12 @@ rfq_agent · sommelier_agent · auction_wine_service · email_composer_service
 wine_book_scraper · wine_field_parser · wine_matcher
 ```
 
-The founder's decision was **"both runtimes or neither — a ledger with known holes
-measures nothing reliably."** A ratchet stops the hole *growing*; it does not close it.
-Until those 11 route through `SpendLogger`, `nf_a.cost_per_completed_task` is missing 11
-files' worth of spend and the headline number is **incomplete, not wrong**.
+**Debt list is now empty**, which surfaced a real bug in the guard: an empty bash array
+under `set -u` is an unbound-variable error on macOS's bash 3.2. Fixed with a filtered
+placeholder, so the goal state does not crash the check that measures it.
 
-The ratchet fails in three directions (new unlogged file, debt file that now logs, stale
-entry), so the list can only shrink — but shrinking it is remaining work, tracked here.
+**Final guard state: 18 of 18 Python call sites log · 0 debt · gateway fully routed ·
+exit 0.**
 
 ## 8. Done-when, honestly scored
 
@@ -122,11 +123,25 @@ From [P1 §6](P1-NF-A-INSTRUMENTATION.md):
 
 | Criterion | State |
 |---|---|
-| §2 query returns rows for both runtimes | ⬜ Not until the migration is applied and traffic flows |
-| All 7 gateway call sites emit | ✅ Wired and typechecked |
+| §2 query returns rows for both runtimes | ⬜ Needs the migration applied + real traffic |
+| All 7 gateway call sites emit | ✅ Wired; `tsc` clean; 770 gateway tests pass |
 | CI guard fails a deliberately unlogged call site | ✅ Proven, transcript in §5 |
+| Python side emits | ✅ 18/18 call sites; **785 passed, 3 skipped** |
 | `nf_a.cost_per_completed_task` has a real number | ⬜ Needs applied migration + traffic |
 | Loops blocked solely on NF-A emission move off `blocked` | ⬜ Pending the above |
+
+**Verification actually run** (not asserted): `npx tsc --noEmit` clean · gateway jest
+58 suites / 770 tests · `pytest tests/ -q` → **785 passed, 3 skipped, 71.67s** ·
+`check_model_calls_logged.sh` → exit 0.
+
+## 9. Open items this build leaves
+
+| Item | Why it is not in P1 |
+|---|---|
+| `MODEL_DAILY_SPEND_CEILING_USD` default is **$5/day/restaurant** | The wrapper needed *a* number to be safe by default. The real figure is a founder call. |
+| No live emission test against Supabase | No credentials available here. The insert shape matches the migration exactly, but a first real row is the proof. |
+| Migration not yet applied | Needs `SUPABASE_POOLER_CONNECTION_STRING` (OD-49) or a manual apply. |
+| Research store (wide, append-only) | Out of P1 scope by ADR 0008. |
 
 **P1 is not done because code merged.** It is done when a number exists that nobody had
 to assemble by hand. Code is the precondition, not the criterion.

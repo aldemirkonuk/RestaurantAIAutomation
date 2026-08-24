@@ -127,17 +127,11 @@ PY_ALLOWLIST=(
 # So the only way to touch this list is to make it shorter.
 # ---------------------------------------------------------------------------
 PY_UNLOGGED_DEBT=(
-  "services/agent-orchestrator/agents/calendar_agent.py"
-  "services/agent-orchestrator/agents/email_intel_agent.py"
-  "services/agent-orchestrator/agents/email_parsing_agent.py"
-  "services/agent-orchestrator/agents/provider_conversation_agent.py"
-  "services/agent-orchestrator/agents/rfq_agent.py"
-  "services/agent-orchestrator/agents/sommelier_agent.py"
-  "services/agent-orchestrator/services/auction_wine_service.py"
-  "services/agent-orchestrator/services/email_composer_service.py"
-  "services/agent-orchestrator/services/wine_book_scraper.py"
-  "services/agent-orchestrator/services/wine_field_parser.py"
-  "services/agent-orchestrator/services/wine_matcher.py"
+  # EMPTY, and that is the goal state: every Python model call site reaches the
+  # ledger. All 11 original entries were closed during the P1 build (2026-08-24).
+  # Keep the "" placeholder so the array is defined under `set -u` on bash 3.2;
+  # it is filtered out below and never matches a real path.
+  ""
 )
 
 # ---------------------------------------------------------------------------
@@ -368,6 +362,7 @@ fi
 # actually already gone, which quietly overstates how much is left to fix — and
 # an entry the guard never matches is an entry nobody notices is wrong.
 for d in "${PY_UNLOGGED_DEBT[@]}"; do
+    [ -z "$d" ] && continue
   if ! in_list "$d" "${py_callsites[@]}"; then
     fail=1
     echo

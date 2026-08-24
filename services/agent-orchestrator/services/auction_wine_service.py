@@ -122,6 +122,27 @@ class AuctionWineService:
                 self.gemini_model.generate_content, prompt
             )
 
+            # P1: previously an unlogged model call (dark site)
+            try:
+                from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+                _usage = getattr(response, "usage_metadata", None)
+                _in = getattr(_usage, "prompt_token_count", 0) or 0
+                _out = getattr(_usage, "candidates_token_count", 0) or 0
+                get_spend_logger().log(
+                    provider="google",
+                    model="gemini-pro",
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=estimate_llm_cost("gemini-pro", _in, _out),
+                    agent_fallback="auction_wine_service",
+                    task_type="auction_wine_research",
+                    outcome="success",  # call-level: response returned
+                    context={"wine_name": str(wine_name)[:120]},
+                )
+            except Exception:
+                pass
+
             # Parse response
             result = self._parse_ai_response(response.text, wine_name)
             return result
@@ -147,6 +168,27 @@ class AuctionWineService:
                 ],
                 temperature=0.3,  # Lower temperature for more factual responses
             )
+
+            # P1: previously an unlogged model call (dark site)
+            try:
+                from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+                _usage = getattr(response, "usage", None)
+                _in = getattr(_usage, "prompt_tokens", 0) or 0
+                _out = getattr(_usage, "completion_tokens", 0) or 0
+                get_spend_logger().log(
+                    provider="openai",
+                    model="gpt-4-turbo-preview",
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=estimate_llm_cost("gpt-4-turbo-preview", _in, _out),
+                    agent_fallback="auction_wine_service",
+                    task_type="auction_wine_research",
+                    outcome="success",  # call-level: response returned
+                    context={"wine_name": str(wine_name)[:120]},
+                )
+            except Exception:
+                pass
 
             # Parse response
             result = self._parse_ai_response(
