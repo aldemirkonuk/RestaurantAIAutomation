@@ -130,11 +130,12 @@ DEFAULT_AGENT_SPECS: Dict[str, dict] = {
         "description": "Inbox triage — OPERATIONAL/PROMO/NOISE classification and promo extraction",
     },
     "provider_communication_agent": {
-        # NOTE: this agent and provider_conversation_agent both subscribe to
-        # procurement.order.created and both generate a draft plus a manager
-        # notification. That produced nothing while neither ran; now that both
-        # boot, one order yields two drafts. Deciding which agent owns that key is
-        # a business-logic change and is deliberately not made here.
+        # Sole owner of procurement.order.created (Phase 32 D-32-01 step 1).
+        # provider_conversation_agent subscribed to it too, and both stage a
+        # PENDING_APPROVAL row plus a manager notification — harmless while
+        # neither agent started, two drafts per order the moment they did. That
+        # subscription was removed in the same push that made these CORE;
+        # tests/test_event_topology.py pins the single owner.
         "tier": AgentTier.CORE,
         "dependencies": ["procurement_agent", "notification_agent"],
         "description": "Outbound AI draft engine with constraint enforcement",
