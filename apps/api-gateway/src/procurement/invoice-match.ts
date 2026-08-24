@@ -228,19 +228,26 @@ export function computeMatch(input: MatchInput): MatchResult {
   });
 
   // --- physical vs ship: did everything that left the warehouse get here? ------------------
-  const shortShipped = hasShip && billableReceived < (shippedQty as number);
+  // BOTH SIDES MUST BE PHYSICAL COUNTS. The packing slip counts bottles on the
+  // truck, free ones included, so this compares receivedQty and NOT
+  // billableReceived. Netting free goods out of one side only made an agreed
+  // 11-for-10 with a slip counting 11 read as "1 lost between the warehouse and
+  // the door" — the free-goods false alarm, moved onto the transit axis.
+  const shortShipped = hasShip && receivedQty < (shippedQty as number);
   checks.push({
     id: "physical_vs_ship",
-    ok: hasShip ? billableReceived === (shippedQty as number) : null,
+    ok: hasShip ? receivedQty === (shippedQty as number) : null,
     label: "Everything on the packing slip arrived",
     detail: !hasShip
       ? "No packing slip recorded"
-      : billableReceived === (shippedQty as number)
+      : receivedQty === (shippedQty as number)
         ? `Both ${shippedQty}`
-        : `Slip says ${shippedQty}, ${billableReceived} arrived`,
+        : `Slip says ${shippedQty}, ${receivedQty} arrived`,
   });
 
   // --- physical vs bill: short ship / over delivery ---------------------------------------
+  // The BILLING axis, so free goods come off: the vendor may not bill for what
+  // they gave us. This is the one comparison billableReceived belongs in.
   const physicalMatchesBill =
     hasInvoice && billableReceived === (invoiceQty as number);
   checks.push({
@@ -317,7 +324,8 @@ export function computeMatch(input: MatchInput): MatchResult {
       orderedQty,
       shippedQty,
       invoiceQty,
-      receivedQty: billableReceived,
+      receivedQty,
+      billableReceived,
       acceptedQty,
       rejectedQty,
       freeGoodsQty,
@@ -342,7 +350,10 @@ function summarize(
     orderedQty: number;
     shippedQty: number | null;
     invoiceQty: number | null;
+    /** Physical bottles at the door, free ones included. Use against the slip. */
     receivedQty: number;
+    /** Physical minus free goods. Use against the invoice. */
+    billableReceived: number;
     acceptedQty: number;
     rejectedQty: number;
     freeGoodsQty: number;
@@ -364,18 +375,21 @@ function summarize(
         f.poUnitPrice as number,
       )}.`;
     case "qty_over":
-      return `${f.receivedQty} arrived but only ${f.invoiceQty} were billed.`;
+      return `${f.billableReceived} arrived but only ${f.invoiceQty} were billed.`;
     case "qty_short":
-      return `Billed for ${f.invoiceQty} but only ${f.receivedQty} arrived — ${
-        (f.invoiceQty as number) - f.receivedQty
+      return `Billed for ${f.invoiceQty} but only ${f.billableReceived} arrived — ${
+        (f.invoiceQty as number) - f.billableReceived
       } short.`;
     case "short_shipped":
+      // Physical, to match the check: the slip counted free bottles too, so
+      // billableReceived here would overstate the loss (or invent one).
       return `Packing slip says ${f.shippedQty}, only ${f.receivedQty} arrived — ${
         (f.shippedQty as number) - f.receivedQty
       } lost between the warehouse and the door.`;
     case "rejected":
-      // receivedQty already includes the rejected units — adding them again
-      // reported "2 of 26 rejected" on a 24-bottle delivery.
+      // Physical again — how many of the bottles in front of the manager were
+      // refused. receivedQty already includes the rejected units; adding them
+      // again reported "2 of 26 rejected" on a 24-bottle delivery.
       return `${f.rejectedQty} of ${f.receivedQty} rejected on arrival — credit due.`;
     case "partial":
       return `${f.acceptedQty} of ${f.orderedQty} accepted, ${f.backorderQty} still outstanding.`;
