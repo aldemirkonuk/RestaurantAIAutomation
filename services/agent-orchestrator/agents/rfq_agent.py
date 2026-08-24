@@ -48,7 +48,7 @@ class RFQAgent(BaseAgent):
         self.response_timeout_hours = config.get("response_timeout_hours", 24)
 
         # LLM for response parsing
-        self.llm_model = config.get("llm_model", "gemini-pro")
+        self.llm_model = config.get("llm_model", "gemini-2.5-flash")
         self.google_api_key = config.get("google_api_key")
         self.llm_client = None
 

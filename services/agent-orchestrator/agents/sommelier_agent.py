@@ -40,7 +40,7 @@ class SommelierAgent(BaseAgent):
         super().__init__(agent_name, message_bus, database, config)
 
         # LLM configuration
-        self.llm_model = config.get("llm_model", "gemini-pro")
+        self.llm_model = config.get("llm_model", "gemini-2.5-flash")
         self.google_api_key = config.get("google_api_key")
         self.mock_mode = config.get("mock_mode", True)
 
@@ -661,13 +661,13 @@ Respond with valid JSON only."""
                 )
                 _t0 = time.perf_counter()
                 response = self.genai_client.models.generate_content(
-                    model="gemini-2.0-flash",
+                    model="gemini-2.5-flash",
                     contents=prompt,
                     config=config,
                 )
                 self._log_llm_spend(  # P1
                     response,
-                    "gemini-2.0-flash",
+                    "gemini-2.5-flash",
                     "wine_enrichment_grounded",
                     duration_ms=int((time.perf_counter() - _t0) * 1000),
                 )

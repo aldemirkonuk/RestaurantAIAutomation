@@ -283,6 +283,7 @@ class EmailIntelAgent(BaseAgent):
                 ],
             ),
         )
+        _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
         # P1: previously an unlogged model call (dark site)
         try:
             from services.spend_logger import estimate_llm_cost, get_spend_logger

@@ -196,7 +196,7 @@ class CalendarAgent(BaseAgent):
             # Try Gemini Pro via google.generativeai
             import google.generativeai as genai
 
-            model = genai.GenerativeModel("gemini-pro")
+            model = genai.GenerativeModel("gemini-2.5-flash")
             _t0 = time.perf_counter()
             response = await model.generate_content_async(prompt)
 
@@ -209,10 +209,10 @@ class CalendarAgent(BaseAgent):
                 _out = getattr(_usage, "candidates_token_count", 0) or 0
                 get_spend_logger().log(
                     provider="google",
-                    model="gemini-pro",
+                    model="gemini-2.5-flash",
                     input_tokens=_in,
                     output_tokens=_out,
-                    cost_usd=estimate_llm_cost("gemini-pro", _in, _out),
+                    cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
                     restaurant_id=restaurant_id or None,
                     agent=self.agent_name,
                     task_type="date_extraction",

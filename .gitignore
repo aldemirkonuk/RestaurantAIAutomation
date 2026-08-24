@@ -105,3 +105,6 @@ cursor_chat_backup/
 .planning/.obsidian/workspace-mobile.json
 .planning/.obsidian/cache/
 .planning/.obsidian/plugins/*/data.json
+
+# Ephemeral runner written by scripts/check_gateway_boots.sh
+apps/api-gateway/.gateway-boot-check.cjs

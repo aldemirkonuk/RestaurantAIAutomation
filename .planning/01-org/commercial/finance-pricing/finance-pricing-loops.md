@@ -10,7 +10,7 @@ links: ["[[finance-pricing-charter]]", "[[finance-pricing-premortem]]", "[[finan
 loop_count: 5
 loop_ids: ["fin-ledger-invoice-reconciliation", "fin-meter-liveness", "fin-cost-efficiency-review", "fin-pricing-trigger-watch", "fin-cap-adequacy"]
 loop_close_times: ["monthly", "daily", "weekly", "weekly", "monthly"]
-loop_statuses: ["proposed", "proposed", "blocked", "proposed", "proposed"]
+loop_statuses: ["proposed", "proposed", "gated", "proposed", "proposed"]
 ---
 
 # Finance & Pricing — Loops
@@ -90,21 +90,31 @@ changes: [harness.routing_policy, finance.agenda_full, decisions.open_queue]
 inputs_from: [inference-cost, neural-footprint-instrumentation, agent-evaluation-gates]
 outputs_to: [harness-model-routing, research-and-math, decision-office]
 close_time: weekly
-status: blocked
-blocked_on: "no agent or task_type in api_spend — see inference-cost-agenda-full"
+status: gated
+gate: "production volume — the readout refuses to report a number below 30 agent events"
+evidence: "P1 shipped the bridge this loop was blocked on. neural_footprint_event carries subject_id + context.task_type; `python3 scripts/nf_readout.py` returns cost per agent per task type with no hand-written SQL. nf_a.retry_rate reads context.attempts, emitted by the gateway wrapper (model-client.service.ts:223)."
 ```
+
+> **Moved `blocked` → `gated` on 2026-08-24.** The named dependency — no agent or
+> task_type in `api_spend` — is gone; P1 landed the bridge and the readout. What holds
+> the loop now is a threshold, not a missing mechanism, which is what `gated` means in
+> [[ORG_STRUCTURE]] §5.1. It does **not** move to `active`: three of its four measures
+> can be read today, but `nf_a.cost_per_completed_task` needs a doneability verdict that
+> still does not exist, so the loop would close on cost per *attempted* task and quietly
+> call it completed. The readout reports `outcome_unknown` in the same line as the cost
+> for exactly that reason.
 
 The founder's cost-efficiency mandate — reduce inference cost via cheaper-model routing —
 closes here. F1 supplies the economics; [[harness-model-routing-charter]] makes the
 routing decision (`commercial.md:614`). This loop feeds OD-04
 ([[OPEN-DECISIONS]]:15), which explicitly requires *a cost/quality eval per task type*.
 
-**Status `blocked`, honestly.** The loop cannot close today: cost per task per agent is
-not derivable from what is logged (`spend_logger.py:41-48`). It is written now so that
-unblocking it is a visible, dated event rather than a slow drift into existence.
+It was written as `blocked` so that unblocking would be a visible, dated event rather than
+a slow drift into existence. That is what this is: 2026-08-24, by P1.
 
 **Both numbers or neither.** `cost_per_api_call` may never be reported without
-`cost_per_completed_task` beside it ([[inference-cost-premortem]] M4).
+`cost_per_completed_task` beside it ([[inference-cost-premortem]] M4) — which, since
+nothing grades completion yet, is exactly why the gate holds.
 
 ---
 

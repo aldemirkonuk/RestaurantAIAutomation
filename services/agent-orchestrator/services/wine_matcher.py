@@ -635,7 +635,7 @@ Use web search to find accurate, real-world data. Return ONLY valid JSON with AL
             import google.generativeai as genai
 
             genai.configure(api_key=self.google_api_key)
-            model = genai.GenerativeModel("gemini-pro")
+            model = genai.GenerativeModel("gemini-2.5-flash")
 
             wine_desc = wine_name
             if producer:
@@ -660,10 +660,10 @@ Return ONLY valid JSON with: name, producer, vintage, wine_type, country, region
                 _out = getattr(_usage, "candidates_token_count", 0) or 0
                 get_spend_logger().log(
                     provider="google",
-                    model="gemini-pro",
+                    model="gemini-2.5-flash",
                     input_tokens=_in,
                     output_tokens=_out,
-                    cost_usd=estimate_llm_cost("gemini-pro", _in, _out),
+                    cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
                     agent_fallback="wine_matcher",
                     task_type="wine_enrichment_fallback",
                     outcome="success",  # call-level: response returned

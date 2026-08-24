@@ -40,31 +40,52 @@ query, and **not one describes the product in operation.**
 
 > The org can measure itself as an artifact. It cannot measure itself as an operation.
 
-### NF-A: the metric spine emits nothing
+### NF-A: the spine emits — and the gap moved from *cost* to *completion*
 
-| | |
-|---|---|
-| `nf_a.*` keys defined | **15** |
-| With no instrument | **12** |
-| Blocked | **1** |
-| Computable | **2** — and both measure the *absence*: `nf_a.emission_coverage` = **0**, `nf_a.agent_attributed_spend_pct` = **0%** |
+> **Re-graded 2026-08-24, after P1 shipped.** Everything below the rule was the pre-P1
+> state and is kept because the shape of the old gap is what makes the new one legible.
 
-The mechanism is concrete, not vague. `api_spend` carries `provider, model, input_tokens,
-output_tokens, cost_usd, restaurant_id, timestamp` and nothing else
-(`supabase/migrations/20260805000000_baseline_from_production.sql:2231-2240`);
-`SpendLogger.log()` accepts no agent and no task type
-(`services/agent-orchestrator/services/spend_logger.py:41-49`); no `neural_footprint` table
-exists in any migration; and no key joins `api_spend` to `decision_log`. So **cost exists without
-an agent, reasoning exists without a cost, and nothing joins them.**
+| | Pre-P1 | Now |
+|---|---|---|
+| `nf_a.*` keys defined | 15 | 15 |
+| With no instrument | 12 | **9** |
+| Blocked | 1 (`dlq_depth`, on OD-49) | 0 — OD-49 is closed |
+| Computable | 2 — both measuring an *absence* | **6** |
+| `nf_a.emission_coverage` | 0 | **25 of 25 call sites** — 7 gateway, 18 Python, CI-enforced |
+| `nf_a.agent_attributed_spend_pct` | 0% | **100% of new rows** (0% of the 182 historical `api_spend` rows, which are not backfilled) |
 
-That single gap is what makes `nf_a.cost_per_task`, `nf_a.task_success_rate`,
-`nf_a.doneability_verdict_coverage` and `nf_a.harness_overhead_ms` uncomputable — and those four
-are claimed by **8, 8, 4 and 2 units** respectively — `nf_a.cost_per_task` alone spans five
-divisions (Applied AI, Commercial, Corporate, Platform, Product). It is also why OD-03
-and OD-04 (harness and model roster) are *undecidable on evidence* rather than merely undecided.
+The four that moved from *no instrument* to *computable* are `cost_per_task`,
+`event_completeness`, `dlq_depth` and `retries` — and `retries` moved **only for the
+gateway**, which writes `context.attempts`; the Python emitter does not, so a retry-rate
+figure that mixes the runtimes would understate the Python half. Say which runtime, or do
+not publish the number.
 
-See [[PLAN]] §1 (P1) for the fix and [ADR 0008](../decisions/0008-nf-column-contract.md) for the
-locked column contract.
+What P1 changed is narrow and worth stating precisely: `neural_footprint_event` carries
+`subject_id`, `context.task_type`, `cost_usd`, `correlation_id` and `duration_ms` on one
+row, so **cost and reasoning now share a key**. `python3 scripts/nf_readout.py` prints
+cost per agent per task type with no hand-written SQL.
+
+**Seven of the nine are not blocked on emission — they are blocked on `outcome`.**
+`cost_per_completed_task`, `task_success_rate`, `verified_task_success_rate`,
+`doneability_verdict`, `doneability_verdict_coverage`, `verdict_coverage` and `outcome`
+itself all need a doneability verdict, and nothing in the codebase produces one. Rows do
+carry `outcome`, on `outcome_basis: call_level_v0` — *the HTTP call returned 200* — which
+is a placeholder wearing the right column, not a verdict. ADR 0008 deliberately made
+`outcome` nullable with `null = UNKNOWN`, so the column is waiting rather than lying, and
+the readout prints `outcome_unknown` beside every cost figure. Defining doneability is
+People & Agent Ops's, and it is now the single largest blocker in this document — a
+sharper statement than "no instrument", because the instrument exists and is running.
+
+The other two fail for their own reasons. `nf_a.harness_overhead_ms`: `duration_ms` is
+emitted, but it times the provider call, not the harness around it.
+`nf_a.unauthenticated_inference_spend`: the event records which agent spent the money,
+never whether an authenticated caller triggered it.
+
+OD-03 and OD-04 were *undecidable on evidence*. They are now **decidable but unanswered**:
+the query runs, the volume does not exist yet.
+
+See [[PLAN]] §1 (P1), [ADR 0008](../decisions/0008-nf-column-contract.md) for the locked
+column contract, and [[P1-BUILD-LOG]] for what shipped and what did not.
 
 ### NF-B: an instrument with no callers
 
