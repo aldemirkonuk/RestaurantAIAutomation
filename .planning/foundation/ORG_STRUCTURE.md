@@ -78,7 +78,7 @@ produce written findings against a named unit, and the finding lands in that uni
 
 ## 4. Unit anatomy — LOCKED
 
-Every department and advisory function gets the same seven artifacts, so a unit built
+Every department and advisory function gets the same **eight** artifacts, so a unit built
 in one session is the same shape as one built in another.
 
 | # | File | Contents |
@@ -90,12 +90,13 @@ in one session is the same shape as one built in another.
 | 5 | `directive.md` | How *this* unit decides — an explicit decision graph, shape differs per unit (vision §12G/§12L) |
 | 6 | `loops.md` | Feedback loops owned: what it measures → what it changes → close-time |
 | 7 | `schedule.md` | Recurring work + index of skills owned (`.claude/skills/`) |
+| 8 | `questions.md` | **Delivery point for advisory findings** + this unit's unanswerable questions. Added 2026-08-24 (OD-41): §3's engagement model routed findings here, but the anatomy created no such file, so advisory was inert on arrival. |
 
 **Premortem is artifact #2 deliberately.** A unit that cannot articulate its own
 failure mode before it starts has not been thought through.
 
-**Volume, honestly:** 99 units (19 departments + 2 sub-layers + 3 advisory + 75 teams)
-× 7 artifacts = **693 documents**. That is the cost of
+**Volume, honestly:** 99 units × 8 artifacts = **792 documents** (7-artifact generation
+plus the `questions.md` retrofit). Real upkeep; the anti-sprawl rules apply. That is the cost of
 "full hierarchy." It is achievable in parallel, but it is real upkeep — the anti-sprawl
 rules in foundation §3.3 and §6 apply here too: an agenda that has not changed in 60
 days is either finished or fiction.
