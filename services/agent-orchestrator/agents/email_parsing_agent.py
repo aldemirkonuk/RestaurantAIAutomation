@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple
@@ -357,8 +358,18 @@ class EmailParsingAgent(BaseAgent):
 
     # ── LLM Context Matching ─────────────────────────────────────────
 
-    def _log_gemini_spend(self, response, task_type: str) -> None:
-        """P1: emit one spend/NF row for a Gemini call (never raises)."""
+    def _log_gemini_spend(
+        self,
+        response,
+        task_type: str,
+        duration_ms: Optional[int] = None,
+        restaurant_id: Optional[str] = None,
+    ) -> None:
+        """P1: emit one spend/NF row for a Gemini call (never raises).
+
+        `duration_ms` is measured by the caller around its own model call —
+        timing it here would only measure this helper.
+        """
         try:
             from services.spend_logger import estimate_llm_cost, get_spend_logger
 
@@ -371,9 +382,11 @@ class EmailParsingAgent(BaseAgent):
                 input_tokens=_in,
                 output_tokens=_out,
                 cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
+                restaurant_id=restaurant_id or None,
                 agent=self.agent_name,
                 task_type=task_type,
                 outcome="success",  # call-level: response returned
+                duration_ms=duration_ms,
                 correlation_id=getattr(self, "_current_correlation_id", None),
             )
         except Exception:
@@ -429,8 +442,13 @@ Which order is this email most likely about? Respond with ONLY valid JSON:
   "reasoning": "brief explanation"
 }}"""
 
+            _t0 = time.perf_counter()
             response = await self.gemini_model.generate_content_async(prompt)
-            self._log_gemini_spend(response, "order_matching")  # P1
+            self._log_gemini_spend(  # P1
+                response,
+                "order_matching",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+            )
             text = response.text.strip()
 
             # Extract JSON from response
@@ -551,8 +569,14 @@ Respond with ONLY valid JSON:
 }}"""
 
                 try:
+                    _t0 = time.perf_counter()
                     response = await self.gemini_model.generate_content_async(prompt)
-                    self._log_gemini_spend(response, "thread_summary")  # P1
+                    self._log_gemini_spend(  # P1
+                        response,
+                        "thread_summary",
+                        duration_ms=int((time.perf_counter() - _t0) * 1000),
+                        restaurant_id=restaurant_id,
+                    )
                     text = response.text.strip()
                     json_match = re.search(r"\{[^}]+\}", text, re.DOTALL)
                     if json_match:

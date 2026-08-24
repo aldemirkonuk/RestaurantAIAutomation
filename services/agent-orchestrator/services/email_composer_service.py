@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import re
 import statistics
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
@@ -431,8 +432,14 @@ class EmailComposerService:
 
         return self._analyze_style_heuristic(inbound)
 
-    def _log_llm_spend(self, response, task_type: str) -> None:
-        """P1: emit one spend/NF row for a Gemini call (never raises)."""
+    def _log_llm_spend(
+        self, response, task_type: str, duration_ms: Optional[int] = None
+    ) -> None:
+        """P1: emit one spend/NF row for a Gemini call (never raises).
+
+        `duration_ms` is measured by the caller around its own model call —
+        timing it here would only measure this helper.
+        """
         try:
             from services.spend_logger import estimate_llm_cost, get_spend_logger
 
@@ -448,6 +455,7 @@ class EmailComposerService:
                 agent_fallback="email_composer_service",
                 task_type=task_type,
                 outcome="success",  # call-level: response returned
+                duration_ms=duration_ms,
             )
         except Exception:
             pass
@@ -465,8 +473,13 @@ class EmailComposerService:
         prompt = STYLE_ANALYSIS_PROMPT.replace("{emails}", emails_text)
 
         try:
+            _t0 = time.perf_counter()
             response = await self.llm_client.generate_content_async(prompt)
-            self._log_llm_spend(response, "style_analysis")  # P1
+            self._log_llm_spend(  # P1
+                response,
+                "style_analysis",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+            )
             text = response.text.strip()
             json_match = re.search(r"\{[\s\S]*\}", text)
             if json_match:
@@ -586,8 +599,13 @@ class EmailComposerService:
         )
 
         try:
+            _t0 = time.perf_counter()
             response = await self.llm_client.generate_content_async(prompt)
-            self._log_llm_spend(response, "email_compose")  # P1
+            self._log_llm_spend(  # P1
+                response,
+                "email_compose",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+            )
             body = response.text.strip()
             if body.startswith('"') and body.endswith('"'):
                 body = body[1:-1]

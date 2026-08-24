@@ -50,6 +50,7 @@ import json
 import logging
 import re
 import socket
+import time
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -494,6 +495,7 @@ async def _extract_field_candidates(
             import anthropic
 
             client = anthropic.Anthropic(api_key=settings.claude_api_key)
+            _t0 = time.perf_counter()
             response = client.messages.create(
                 model=model_name,
                 max_tokens=1024,
@@ -521,6 +523,7 @@ async def _extract_field_candidates(
                     agent="research_agent",
                     task_type="field_extraction",
                     outcome="success",  # call-level: completion returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                     context={"field": field_name, "model_tier": model_tier},
                 )
             except Exception:
@@ -553,6 +556,7 @@ async def _extract_field_candidates(
         flash_model = getattr(
             settings, "research_cascade_flash_model", "gemini-2.5-flash"
         )
+        _t0 = time.perf_counter()
         response = client.models.generate_content(
             model=flash_model,
             contents=prompt,
@@ -579,6 +583,7 @@ async def _extract_field_candidates(
                 agent="research_agent",
                 task_type="field_extraction",
                 outcome="success",  # call-level: completion returned
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
                 context={"field": field_name, "model_tier": "flash"},
             )
         except Exception as spend_err:
@@ -725,6 +730,7 @@ async def _process_record(
 
         search_results: list = []
         search_ok = True
+        _t0 = time.perf_counter()
         try:
             search_results = await serper_search(query, num_results=5)
         except Exception as exc:
@@ -747,6 +753,7 @@ async def _process_record(
                 task_type="field_search",
                 choice=f"search:{len(search_results)}_results",
                 outcome="success" if search_ok else "failure",  # call-level
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
                 context={
                     "field": field_name,
                     "wine_id": wine_id,
@@ -1022,6 +1029,7 @@ async def _process_record(
 
             search_results = []
             search_ok = True
+            _t0 = time.perf_counter()
             try:
                 search_results = await serper_search(query, num_results=5)
             except Exception:
@@ -1040,6 +1048,7 @@ async def _process_record(
                     task_type="field_search_reflexion",
                     choice=f"search:{len(search_results)}_results",
                     outcome="success" if search_ok else "failure",  # call-level
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                     context={
                         "field": field_name,
                         "wine_id": wine_id,

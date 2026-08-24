@@ -173,7 +173,7 @@ class EmailIntelAgent(BaseAgent):
                 await self._notify_unknown_sender(restaurant_id, sender_email, payload)
 
         classification = await self._classify_email(
-            email_subject, email_body, restaurant_id or None
+            email_subject, email_body, restaurant_id=restaurant_id or None
         )
 
         await self.log_decision(
@@ -297,15 +297,11 @@ class EmailIntelAgent(BaseAgent):
                 input_tokens=_in,
                 output_tokens=_out,
                 cost_usd=estimate_llm_cost(self.settings.gemini_model, _in, _out),
+                restaurant_id=restaurant_id or None,
                 agent=self.agent_name,
                 task_type="email_classification",
                 outcome="success",  # call-level: response returned
-                # duration_ms and restaurant_id were NULL on every NF row before
-                # this: no call site measured the call, and this one dropped the
-                # tenant it already had in scope. See the P1 readout for the
-                # remaining sites that still need the same two lines.
-                duration_ms=_elapsed_ms,
-                restaurant_id=restaurant_id or None,
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
                 correlation_id=getattr(self, "_current_correlation_id", None),
             )
         except Exception:
@@ -333,7 +329,9 @@ class EmailIntelAgent(BaseAgent):
 
         # Haiku extraction gated by semaphore (AI-SPEC §3, T-24-04-03)
         async with self.haiku_semaphore:
-            details = await self._extract_promo(email_subject, email_body)
+            details = await self._extract_promo(
+                email_subject, email_body, restaurant_id=restaurant_id or None
+            )
 
         # Dedup check: SHA256(vendor_email + product_name + today)
         today_str = date.today().isoformat()
@@ -443,7 +441,9 @@ class EmailIntelAgent(BaseAgent):
     # HAIKU EXTRACTION
     # =========================================================================
 
-    async def _extract_promo(self, subject: str, body: str) -> PromoDetails:
+    async def _extract_promo(
+        self, subject: str, body: str, restaurant_id: Optional[str] = None
+    ) -> PromoDetails:
         haiku = get_haiku_client()
         prompt = (
             "Extract structured deal information from this promotional wine vendor email.\n"
@@ -453,6 +453,7 @@ class EmailIntelAgent(BaseAgent):
             "conditions, confidence (0.0-1.0)\n\n"
             f"Subject: {subject}\n\nBody:\n{body}"
         )
+        _t0 = time.perf_counter()
         response = await haiku.messages.create(
             model=self.settings.haiku_model,
             max_tokens=512,
@@ -471,9 +472,11 @@ class EmailIntelAgent(BaseAgent):
                 input_tokens=_in,
                 output_tokens=_out,
                 cost_usd=estimate_llm_cost(self.settings.haiku_model, _in, _out),
+                restaurant_id=restaurant_id or None,
                 agent=self.agent_name,
                 task_type="promo_extraction",
                 outcome="success",  # call-level: completion returned
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
                 correlation_id=getattr(self, "_current_correlation_id", None),
             )
         except Exception:

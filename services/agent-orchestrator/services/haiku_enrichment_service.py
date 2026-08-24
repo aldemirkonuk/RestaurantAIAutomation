@@ -11,6 +11,7 @@ Phase 7 expansion: 14 scalar fields + 6 JSONB enrichments, all with confidence.
 
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
@@ -216,6 +217,7 @@ class HaikuEnrichmentService:
         )
 
         client = self._get_anthropic()
+        _t0 = time.perf_counter()
         response = await client.messages.create(
             model=self.MODEL,
             max_tokens=self.MAX_TOKENS,
@@ -238,6 +240,7 @@ class HaikuEnrichmentService:
                 agent_fallback="haiku_enrichment_service",
                 task_type="wine_enrichment",
                 outcome="success",  # call-level: completion returned
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
                 context={"wine_id": str(wine_id)},
             )
         except Exception:

@@ -19,6 +19,7 @@ import io
 import json
 import logging
 import base64
+import time
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -145,7 +146,9 @@ class WineBookScraper:
         # Step 3: Process image-heavy pages with Gemini Vision
         for img_page in all_image_pages:
             try:
-                vision_text = await self._extract_with_vision(img_page["image_bytes"])
+                vision_text = await self._extract_with_vision(
+                    img_page["image_bytes"], restaurant_id=restaurant_id
+                )
                 if vision_text:
                     all_text_chunks.append(
                         {
@@ -168,7 +171,9 @@ class WineBookScraper:
         )
 
         # Step 5: Extract structured wine data from chunks
-        wines = await self._extract_wines_from_text(combined_text, source_name)
+        wines = await self._extract_wines_from_text(
+            combined_text, source_name, restaurant_id=restaurant_id
+        )
 
         # Step 6: Validate and normalize
         validated_wines = []
@@ -267,7 +272,9 @@ class WineBookScraper:
         else:
             return "text"  # Even short text pages, try to use the text
 
-    async def _extract_with_vision(self, image_bytes: bytes) -> Optional[str]:
+    async def _extract_with_vision(
+        self, image_bytes: bytes, restaurant_id: Optional[str] = None
+    ) -> Optional[str]:
         """
         Use Gemini Vision to extract wine information from a page image.
         """
@@ -283,6 +290,7 @@ class WineBookScraper:
 
             image_b64 = base64.b64encode(image_bytes).decode()
 
+            _t0 = time.perf_counter()
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=[
@@ -321,9 +329,11 @@ class WineBookScraper:
                     input_tokens=_in,
                     output_tokens=_out,
                     cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
+                    restaurant_id=restaurant_id or None,
                     agent_fallback="wine_book_scraper",
                     task_type="book_vision_extraction",
                     outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                 )
             except Exception:
                 pass
@@ -338,6 +348,7 @@ class WineBookScraper:
         self,
         text: str,
         source_name: str,
+        restaurant_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Use Gemini to extract structured wine entries from combined text.
@@ -409,6 +420,7 @@ Text to process:
 
 Return ONLY a valid JSON array. If no wines found, return []."""
 
+                _t0 = time.perf_counter()
                 response = client.models.generate_content(
                     model="gemini-2.5-flash",
                     contents=prompt,
@@ -431,9 +443,11 @@ Return ONLY a valid JSON array. If no wines found, return []."""
                         input_tokens=_in,
                         output_tokens=_out,
                         cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
+                        restaurant_id=restaurant_id or None,
                         agent_fallback="wine_book_scraper",
                         task_type="book_text_extraction",
                         outcome="success",  # call-level: response returned
+                        duration_ms=int((time.perf_counter() - _t0) * 1000),
                         context={"chunk_index": chunk_idx},
                     )
                 except Exception:
