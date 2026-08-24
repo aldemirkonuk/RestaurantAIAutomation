@@ -1,6 +1,6 @@
 # Foundation Breakdown — Mudavym
 
-- **Status:** PROPOSED. Nothing here is locked. Per [ADR 0002](../decisions/0002-documentation-first-operating-mode.md), every item marked `⬦ FORK` is undecided and belongs to the founder.
+- **Status:** Mixed. §1 (stack), §4 (neural footprint), §5 (AI-native) are **locked** via [ADR 0006](../decisions/0006-neural-footprint-architecture.md)/[0007](../decisions/0007-org-structure.md). §2 is superseded by [ORG_STRUCTURE.md](ORG_STRUCTURE.md). Items marked `⬦ FORK` remain open and belong to the founder.
 - **Date:** 2026-08-24
 - **Purpose:** the contract that lets many sessions work in parallel without producing six incompatible structures.
 - **Keywords:** foundation, departments, skills, neural-footprint, ai-native, schedules, graph-of-loops
@@ -77,8 +77,8 @@ rule that keeps modules independently buildable (vision §9's modular principle)
 | **L1** | **Domain core** | Beverage/dish identity, catalogue, inventory lots, procurement, producer reputation | Strongest layer — most `.planning` mass sits here |
 | **L2** | **Module softwares** | Floor Checker, Email Watcher, Order Watcher, Invoice Understanding, Vendor Finder, Guest App | Mixed: email/order/invoice partially live; Floor Checker + Guest App unbuilt |
 | **L3** | **Agent harness** | `BaseAgent`, orchestration, routing, task-doneability criteria | BaseAgent ≈ Level 3; harness choice open (OD-03) |
-| **L4** | **Neural Footprint** | The metric/event spine — §4 below | ⬦ Does not exist. Defining it is this chapter's core new build |
-| **L5** | **Departments** | The company org: charters, agendas, directives, owned skills | ⬦ Does not exist |
+| **L4** | **Neural Footprint** | The metric/event spine — §4 below | Architecture locked ([ADR 0006](../decisions/0006-neural-footprint-architecture.md)); **emits nothing yet** — no cost/token instrumentation in `apps/api-gateway` |
+| **L5** | **Departments** | The company org: charters, agendas, directives, owned skills | Structure locked ([ORG_STRUCTURE](ORG_STRUCTURE.md)); unit docs being generated |
 | **L6** | **Surfaces** | web, mobile, guest app, API, Ask AI | Live, large, uneven |
 
 **Why L4 sits under L5:** departments are evaluated *by* metrics. If departments
@@ -90,41 +90,14 @@ claim in §8.
 
 ## 2. Departments
 
-### 2.1 What a department is
-
-A department is **not** a folder of notes. It is a unit with five artifacts:
-
-| Artifact | File | Purpose |
-|---|---|---|
-| **Charter** | `charter.md` | Mandate, boundaries, what it explicitly does *not* own |
-| **Full agenda** | `agenda-full.md` | The working document: what/how/why, open questions, next steps, founder questions |
-| **Bullet agenda** | `agenda-board.md` | Glanceable status board. Bullets only, no prose (vision §12F) |
-| **Directive** | `directive.md` | How *this* department decides — an explicit decision graph, shape differs per department (vision §12G/§12L) |
-| **Skills + schedule** | `skills/`, `schedule.md` | The executable half: agent configs it owns, recurring work it runs |
-
-A department that cannot name the metrics it moves (§4) is not ready to exist.
-
-### 2.2 Proposed department set ⬦ FORK
-
-Consolidated from vision §1 (four functions) and §12A (three additions), plus the
-functions the repo already implies. **This list is the fork — argue with it.**
-
-| Department | Owns | Why it exists |
-|---|---|---|
-| **Engineering** | L1–L3, L6 build quality, tech debt | The product gets built |
-| **Research & Math** | Harness quality, task-doneability, cost efficiency, NF-A | Vision §4. Makes building cheaper/faster — internal, not customer-facing |
-| **Data** | L0 substrate, corpora, synthetic generation, POS traffic | The named blocker deserves an owner, not a side task |
-| **Product & Vision** | Module definitions, roadmap, brand direction | Decides what the softwares *are* |
-| **Growth** | SEO/content engine (vision §12B), funnel, analytics narrative | Revenue mandate |
-| **Media & Brand** | Creative, decks, social, customer relationship research (consent-gated, §12A) | Story, not just features |
-| **Sales** | Outbound, target lists, pricing execution | Revenue mandate |
-| **Legal** | The 15 document types named in §12A | Required before contracts/customers |
-| **Security** | §12C checklist + live defect register | Has a concrete first assignment already — see 2.3 |
-
-**Argument against more departments:** every department costs five documents plus
-upkeep. Nine is already ambitious for a solo founder with agent leverage. I'd
-rather merge Sales into Growth at v0 and split later when there's a real pipeline.
-⬦ FORK — your call.
+> **Superseded by [`ORG_STRUCTURE.md`](ORG_STRUCTURE.md) and [ADR 0007](../decisions/0007-org-structure.md).**
+> That document is canonical for the org: **5 divisions · 20 departments · 2 sub-layers ·
+> 3 advisory functions**, with a **7-artifact** unit anatomy (charter, premortem,
+> agenda-full, agenda-board, directive, loops, schedule).
+> The team layer lives in [`teams/`](teams/), one file per division.
+>
+> The nine-department sketch that was here originally is kept only in the ADR 0007
+> review trail, where it belongs as history. One source of truth per decision.
 
 ### 2.3 Security's first assignment (evidence-backed, ready now)
 
@@ -351,15 +324,18 @@ want the tradeoff stated rather than assumed.
 
 ---
 
-## 9. New forks raised by this document
+## 9. Forks raised by this document
 
-To be added to [`OPEN-DECISIONS.md`](../decisions/OPEN-DECISIONS.md):
+Live status is in [`OPEN-DECISIONS.md`](../decisions/OPEN-DECISIONS.md) — that file is
+canonical; this table is a pointer only.
 
-| ID | Fork |
+| Raised here | Resolved as |
 |---|---|
-| OD-09 | Department set — 9 as listed, or merge Sales into Growth at v0? (§2.2) |
-| OD-10 | NF-C: gated research track vs v0 schema participant (§4.3) |
-| OD-11 | NF storage: polymorphic table vs table-per-track (§4.4) |
-| OD-12 | Graph of loops: documentation artifact vs executable routing (§7) |
-| OD-13 | Wave 0 contract-first vs immediate wide parallelism (§8) |
-| OD-14 | Retire or rewrite root `SKILLS.md` (stale "WineOps AI" brand, not a real skill) |
+| OD-09 department set | **Resolved** — expanded to 20, not trimmed ([0007](../decisions/0007-org-structure.md)) |
+| OD-10 NF-C scope | **Resolved** — gated research track ([0006](../decisions/0006-neural-footprint-architecture.md)) |
+| OD-11 NF storage | **Resolved** — production/research split; column detail still open |
+| OD-12 loop graph | **Resolved** — documented now, executable later |
+| OD-13 wave plan | **Resolved** — Wave 0 contracts first |
+| OD-14 root `SKILLS.md` | Open — retire or rewrite |
+| OD-19 endpoint classification | Open — 94 unguarded by omission |
+| OD-20 analytics spend exposure | 🔴 Open, urgent |
