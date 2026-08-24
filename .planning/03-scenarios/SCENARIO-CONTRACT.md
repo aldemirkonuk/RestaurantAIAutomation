@@ -46,7 +46,7 @@ end, every corner named.
 | 7 | **Decisions** | What the human decides; what the system may *propose* (never silently execute — FUTURES §8.1) |
 | 8 | **Failure modes** | What goes wrong in *this* scenario — feeds the owning units' premortems |
 | 9 | **Simulation & deploy gate** | How we run it synthetically (SimPOS, synthetic engine) — and the rule that a scenario-touching change ships only when its sim run passes |
-| 10 | **Tier cut** | Which subscription level sees which parts (OD-48) — the entitlement axis runs *through scenarios*, not through pages |
+| 10 | **Tier cut** | **Core / Plus / Pro** — the entitlement axis runs *through scenarios*, not pages. **Core = operate** (checklists, alerts, one-tap). **Plus = understand** (scorecards, drafts, digests). **Pro = optimize** (cross-entity intelligence, proposals, forecasting). Price points still open (OD-23) |
 | 11 | **Evolution feedback** | What this scenario teaches the app — the signal that drives how the AI-native product evolves |
 
 ## 3. Frontmatter
@@ -93,8 +93,10 @@ team; phase 37 (synthetic restaurant engine) is the prior art.
   and check them against satisfiability: today only **25.1%** of the 573 insight types
   are satisfiable without POS data ([[analytics-bi-charter]]). A scenario promising
   insights its signals cannot feed is fiction.
-- **Simulation before live.** No scenario-touching feature ships without its sim run
-  passing. Release Engineering owns the gate; Data owns the harness.
+- **Simulation before live — locked 2026-08-24.** *Every* scenario must reach `status:
+  simulated` (a recorded synthetic run through SimPOS + the synthetic engine) before it
+  may reach `status: live`. No exceptions, including light scenarios. Release Engineering
+  owns the gate; Data owns the harness. This is the founder's testbed made mandatory.
 - **Scenarios are patterns, not processes.** Each names its **flex points** — the places
   a specific restaurant bends it — so the library stays small while fitting many kitchens.
 - Retire-to-write applies: this layer was paid for by retiring 44 byte-identical
