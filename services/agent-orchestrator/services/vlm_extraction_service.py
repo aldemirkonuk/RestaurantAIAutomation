@@ -209,14 +209,52 @@ class VLMExtractionService:
             self._initialized = False
 
     def _get_training_store(self):
-        """Lazy-load training data store."""
-        if self._training_store is None:
-            try:
-                from services.training_data_store import get_training_store
+        """Lazy-load training data store.
 
-                self._training_store = get_training_store()
-            except Exception:
-                logger.warning("Training data store not available")
+        Failure modes are kept distinct on purpose:
+          - the module or symbol not resolving is a wiring bug (the store ships
+            in this service) and is logged as an error with a traceback
+          - Supabase not being configured is a legitimate state — the store
+            buffers records in memory, so that is only worth an info line
+        """
+        if self._training_store is not None:
+            return self._training_store
+
+        try:
+            from services.training_data_store import get_training_data_store
+        except ImportError:
+            logger.error(
+                "Training data store could not be imported — VLM training "
+                "capture is disabled. This is a wiring bug, not a missing "
+                "optional dependency.",
+                exc_info=True,
+            )
+            return None
+
+        from core.database import get_supabase_client
+
+        supabase = get_supabase_client()
+        if supabase is None:
+            # Legitimate state in local/mock runs: the store buffers in memory.
+            logger.info(
+                "Training capture running without Supabase; records buffer in memory"
+            )
+
+        try:
+            from config.settings import get_settings
+
+            self._training_store = get_training_data_store(
+                supabase_client=supabase,
+                mock_mode=get_settings().mock_llm,
+            )
+        except Exception:
+            logger.error(
+                "Failed to construct the training data store — VLM training "
+                "capture is disabled",
+                exc_info=True,
+            )
+            return None
+
         return self._training_store
 
     # =========================================================================
@@ -444,7 +482,7 @@ class VLMExtractionService:
             return
 
         try:
-            await store.save_extraction(
+            await store.save_scan_pair(
                 dataset_type=f"vlm_{document_type}",
                 input_data={
                     "method": method,
@@ -453,11 +491,17 @@ class VLMExtractionService:
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
                 output_data={"response": response[:5000]},
-                source=f"vlm_{method}",
+                model_version="gemini-2.5-flash",
                 confidence=0.0,
             )
-        except Exception as e:
-            logger.warning(f"Failed to save training data: {e}")
+        except Exception:
+            # save_scan_pair swallows transient DB errors itself and falls back
+            # to its in-memory buffer, so anything surfacing here is a bug in
+            # this call — log it loudly rather than as a benign warning.
+            logger.error(
+                f"Failed to save VLM training data for vlm_{document_type}",
+                exc_info=True,
+            )
 
 
 # =============================================================================
