@@ -125,7 +125,23 @@ Project memory: `~/.claude/projects/-Users-aldemirkonuk-Projects-restaurant-ai-a
 
 ---
 
-## 7. Verification
+## 7. Response style — keep chat short
+
+The founder does not want long chat replies. Detail belongs in documents.
+
+- **Default reply: 2–3 sentences.** What changed, where, and the one thing needing
+  a decision. Nothing else.
+- **No preamble, no recap, no summary of what you are about to do.** Do it, then
+  report the delta.
+- **Findings go to files, chat gets the pointer.** Never paste an analysis into the
+  transcript that belongs in `.planning/`.
+- **Tables and headings in chat only when the founder asks for a comparison.**
+- Exception: when arguing against a decision, state the argument in full — brevity
+  must never quietly drop a concern (§0.4).
+
+---
+
+## 8. Verification
 
 - Claims about behavior need evidence: a test run, a query result, a screenshot,
   or a `file:line` citation. "Should work" is not a report.
