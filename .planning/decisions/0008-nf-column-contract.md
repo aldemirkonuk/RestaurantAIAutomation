@@ -40,7 +40,7 @@ discriminating agent / guest / bio from day one:
 ```
 neural_footprint_event                     -- production store: narrow, polymorphic, live-read
   id              uuid pk
-  subject_type    text not null            -- 'agent' | 'guest' | 'bio'   (bio reserved, gated)
+  subject_type    text not null            -- 'agent' | 'guest' | 'operator' | 'bio'   (bio reserved, gated; operator added 2026-08-24)
   subject_id      text not null            -- agent name | guest identifier | subject ref
   stimulus        text not null            -- what arrived / what was presented
   context         jsonb not null default '{}'
@@ -63,6 +63,8 @@ create index nfe_agent_cost on neural_footprint_event (subject_id, occurred_at d
   where subject_type = 'agent';
 create index nfe_guest_choice on neural_footprint_event (subject_id, occurred_at desc)
   where subject_type = 'guest';
+create index nfe_operator_action on neural_footprint_event (subject_id, occurred_at desc)
+  where subject_type = 'operator';
 create index nfe_correlation on neural_footprint_event (correlation_id)
   where correlation_id is not null;
 ```
@@ -107,6 +109,8 @@ substantive case for C:
 - P1 is unblocked and its scope grows: one new table rather than three added columns.
 - NF-B needs no migration when Guest Experience gets a caller — only a writer.
 - NF-C remains gated per ADR 0006; `subject_type = 'bio'` is reserved and unused.
+- `subject_type = 'operator'` (added 2026-08-24, founder tracking decision): staff/owner
+  actions in the product ride the same spine — page analytics is NF, not a second store.
 - The research store (wide, append-only) is **still unbuilt** and remains out of P1.
 - Revisit if: the table exceeds partial-index performance at volume, or `outcome`
   semantics diverge across call sites despite the null-means-unknown rule.

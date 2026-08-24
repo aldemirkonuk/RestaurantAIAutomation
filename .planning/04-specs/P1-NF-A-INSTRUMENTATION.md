@@ -72,7 +72,7 @@ One table, `subject_type` discriminating agent / guest / bio from the first migr
 ```sql
 create table neural_footprint_event (
   id             uuid primary key default gen_random_uuid(),
-  subject_type   text        not null check (subject_type in ('agent','guest','bio')),
+  subject_type   text        not null check (subject_type in ('agent','guest','operator','bio')),
   subject_id     text        not null,
   stimulus       text        not null,
   context        jsonb       not null default '{}',
@@ -92,6 +92,8 @@ create index nfe_agent_cost   on neural_footprint_event (subject_id, occurred_at
   where subject_type = 'agent';
 create index nfe_guest_choice on neural_footprint_event (subject_id, occurred_at desc)
   where subject_type = 'guest';
+create index nfe_operator_action on neural_footprint_event (subject_id, occurred_at desc)
+  where subject_type = 'operator';
 create index nfe_correlation  on neural_footprint_event (correlation_id)
   where correlation_id is not null;
 ```
