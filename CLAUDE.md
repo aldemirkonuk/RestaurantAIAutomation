@@ -8,7 +8,7 @@
 
 ---
 
-## 0. The five non-negotiables
+## 0. The six non-negotiables
 
 These were set on 2026-08-24 and override convenience every time.
 
@@ -21,10 +21,14 @@ These were set on 2026-08-24 and override convenience every time.
    much as the outcome. A decision made in chat and not written down did not happen.
 3. **Low output footprint per session.** Sessions must stay cheap and legible. See
    §2 — this is a hard operating rule, not a preference.
-4. **No shortcuts, and say so when you take one.** If you narrowed scope, skipped a
+4. **Document as you go — every session, without exception.** Work that is not
+   documented did not happen. A session that changes code, resolves a fork, or learns
+   something durable and leaves no written trace has failed, regardless of what shipped.
+   This is not a phase that ends; it is the standing condition of working here.
+5. **No shortcuts, and say so when you take one.** If you narrowed scope, skipped a
    check, or could not verify something, state it plainly in the final message.
    Reporting a partial result as complete is the one unrecoverable failure here.
-5. **Research depth is uncapped; delivery brevity is not.** These are two separate
+6. **Research depth is uncapped; delivery brevity is not.** These are two separate
    constraints — meeting one is never an excuse to relax the other. Never settle on
    the first plausible approach for a decision or an architecture question. See §3.
 

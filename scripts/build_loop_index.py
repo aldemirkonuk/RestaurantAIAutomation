@@ -47,7 +47,7 @@ for f in files:
     all_loops += loops
 
     # inject queryable arrays (idempotent)
-    fm = re.sub(r"^loop_(ids|close_times|owners|statuses):.*\n", "", fm, flags=re.M)
+    fm = re.sub(r"^loop_(count|ids|close_times|owners|statuses):.*\n", "", fm, flags=re.M)
     def arr(key):
         return "[" + ", ".join('"%s"' % L.get(key, "") for L in loops) + "]"
     fm = fm.rstrip("\n") + "\n"
