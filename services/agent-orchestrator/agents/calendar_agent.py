@@ -186,27 +186,38 @@ class CalendarAgent(BaseAgent):
             )
 
     async def _call_llm_for_dates(self, prompt: str) -> List[Dict[str, Any]]:
-        """Call Gemini Pro to extract dates, with regex fallback"""
+        """Call Gemini to extract dates, with regex fallback"""
         try:
-            # Try Gemini Pro via google.generativeai
-            import google.generativeai as genai
+            # Was the legacy google.generativeai SDK pinned to "gemini-pro" — a
+            # model that is retired (404) — and it never called genai.configure(),
+            # so it had no API key either. Both failures landed in the broad
+            # `except Exception` below, meaning this path had silently been regex
+            # only. Now on the shared new-SDK client like every other call site.
+            from config.settings import get_settings
+            from services.model_clients import get_gemini_client
 
-            model = genai.GenerativeModel("gemini-pro")
-            response = await model.generate_content_async(prompt)
+            model_id = get_settings().gemini_model
+            client = get_gemini_client()
+            response = await client.aio.models.generate_content(
+                model=model_id,
+                contents=prompt,
+            )
 
             # P1: previously an unlogged model call (dark site)
             try:
-                from services.spend_logger import estimate_llm_cost, get_spend_logger
+                from services.spend_logger import (
+                    estimate_llm_cost,
+                    get_spend_logger,
+                    usage_tokens,
+                )
 
-                _usage = getattr(response, "usage_metadata", None)
-                _in = getattr(_usage, "prompt_token_count", 0) or 0
-                _out = getattr(_usage, "candidates_token_count", 0) or 0
+                _in, _out = usage_tokens(response)  # _out includes thinking tokens
                 get_spend_logger().log(
                     provider="google",
-                    model="gemini-pro",
+                    model=model_id,
                     input_tokens=_in,
                     output_tokens=_out,
-                    cost_usd=estimate_llm_cost("gemini-pro", _in, _out),
+                    cost_usd=estimate_llm_cost(model_id, _in, _out),
                     agent=self.agent_name,
                     task_type="date_extraction",
                     outcome="success",  # call-level: response returned
@@ -224,7 +235,7 @@ class CalendarAgent(BaseAgent):
                     return json.loads(json_match.group())
 
         except ImportError:
-            self.logger.debug("google.generativeai not available, using regex fallback")
+            self.logger.debug("google-genai not installed, using regex fallback")
         except Exception as e:
             self.logger.warning(
                 f"LLM date extraction failed, using regex fallback: {e}"

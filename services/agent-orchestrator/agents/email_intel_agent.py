@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -26,6 +27,7 @@ from core.base_agent import BaseAgent
 from core.notifications import notify_restaurant
 from models.email_intel import EmailClassification, PromoDetails
 from services.model_clients import (
+    get_anthropic_client,
     get_gemini_client,
     get_haiku_client,
     get_haiku_semaphore,
@@ -34,9 +36,42 @@ from services.model_clients import (
 logger = logging.getLogger(__name__)
 
 WINE_EVENT_TYPES = ["tasting", "tasting_event", "high_volume_expected"]
-STALE_EMAIL_HOURS = (
-    18  # per premortem R-06: skip digest accumulation for emails older than this
+
+# Taxonomy v2. The v1 three-line definition put every measured classification
+# error in one place: NOISE. Its list ("newsletters, surveys, automated receipts,
+# marketing with no specific offer") omitted most of what actually arrives —
+# office closures, event invitations, greetings, recruitment, range marketing —
+# so those fell through to OPERATIONAL or PROMO. Stating the tests as a
+# stop-at-first-match order and making NOISE the explicit default took
+# gemini-3.5-flash-lite from 92.3% to 100% on the tuned fixture and 80% to 100%
+# on a held-out set written afterwards (54/54 combined).
+#
+# Module-level so scripts/eval_email_classification.py measures the SAME string
+# production sends — an eval with its own copy of the prompt silently stops
+# testing the thing that ships. Keep the `{subject}` / `{body}` placeholders.
+CLASSIFICATION_PROMPT = (
+    "You are an email classifier for a fine-dining restaurant beverage procurement system.\n"
+    "Classify this vendor email as OPERATIONAL, PROMO, or NOISE. Apply these tests in "
+    "order and stop at the first match.\n\n"
+    "1. OPERATIONAL - the email concerns a SPECIFIC transaction or this account's state: "
+    "an order, delivery, invoice, credit note, payment, statement, quote, stock shortage "
+    "or substitution on an order, or a change to this account's terms or contacts. A "
+    "discount already applied to a named order is still OPERATIONAL.\n"
+    "2. PROMO - not the above, and the email makes a CONCRETE commercial offer the reader "
+    "could act on: a discount, a deal, a limited-time or limited-quantity allocation, a "
+    "price special, or an incentive with a stated deadline, price, or quantity limit. A "
+    "general price increase with no offer is OPERATIONAL, not PROMO.\n"
+    "3. NOISE - everything else. This is the default and it is broad: newsletters, blog "
+    "and content pushes, surveys and prize draws, event and tasting invitations (with or "
+    "without a fee), trade-show announcements, office-closure and holiday notices, "
+    "seasonal greetings, recruitment notices, and product-range marketing that names no "
+    "price, discount, deadline, or quantity. Automated acknowledgements that reference no "
+    "specific order are NOISE.\n\n"
+    "Subject: {subject}\n\nBody:\n{body}\n\n"
+    'Respond ONLY with valid JSON: {{"category": "...", "confidence": 0.0-1.0, '
+    '"reasoning": "...", "provider_name": "...", "urgency": "low|medium|high"}}'
 )
+STALE_EMAIL_HOURS = 18  # per premortem R-06: skip digest accumulation for emails older than this
 
 
 class EmailIntelAgent(BaseAgent):
@@ -101,9 +136,7 @@ class EmailIntelAgent(BaseAgent):
     async def initialize(self) -> None:
         # Create haiku_semaphore inside running event loop (AI-SPEC §3 pitfall 4)
         self.haiku_semaphore = get_haiku_semaphore()
-        self.logger.info(
-            "EmailIntelAgent initialized — listening on email.inbound.received"
-        )
+        self.logger.info("EmailIntelAgent initialized — listening on email.inbound.received")
 
     # =========================================================================
     # MESSAGE ENTRY POINT
@@ -242,16 +275,7 @@ class EmailIntelAgent(BaseAgent):
         from google.genai import types as genai_types
 
         gemini = get_gemini_client()
-        prompt = (
-            "You are an email classifier for a fine-dining restaurant beverage procurement system.\n"
-            "Classify this vendor email as OPERATIONAL, PROMO, or NOISE.\n"
-            "OPERATIONAL = order confirmations, invoices, delivery updates, account notices, supply issues\n"
-            "PROMO = discounts, deals, limited-time offers, allocation announcements, price specials\n"
-            "NOISE = newsletters, surveys, automated receipts, marketing with no specific offer\n\n"
-            f"Subject: {subject}\n\nBody:\n{body}\n\n"
-            'Respond ONLY with valid JSON: {"category": "...", "confidence": 0.0-1.0, '
-            '"reasoning": "...", "provider_name": "...", "urgency": "low|medium|high"}'
-        )
+        prompt = CLASSIFICATION_PROMPT.format(subject=subject, body=body)
         response = gemini.models.generate_content(  # spend logged below (P1)
             model=self.settings.gemini_model,
             contents=prompt,
@@ -279,11 +303,13 @@ class EmailIntelAgent(BaseAgent):
         )
         # P1: previously an unlogged model call (dark site)
         try:
-            from services.spend_logger import estimate_llm_cost, get_spend_logger
+            from services.spend_logger import (
+                estimate_llm_cost,
+                get_spend_logger,
+                usage_tokens,
+            )
 
-            _usage = getattr(response, "usage_metadata", None)
-            _in = getattr(_usage, "prompt_token_count", 0) or 0
-            _out = getattr(_usage, "candidates_token_count", 0) or 0
+            _in, _out = usage_tokens(response)  # _out includes thinking tokens
             get_spend_logger().log(
                 provider="google",
                 model=self.settings.gemini_model,
@@ -300,7 +326,88 @@ class EmailIntelAgent(BaseAgent):
 
         raw = response.text or "{}"
         data = json.loads(raw)
-        return EmailClassification(**data)
+        primary = EmailClassification(**data)
+
+        # Escalate only the genuinely uncertain minority. On the 54-case eval the
+        # primary model was 54/54 and never dropped below the threshold, so this
+        # is insurance rather than a cost centre — measured escalation rate 0%.
+        # Sonnet is ~10x the primary's per-token price, which is exactly why the
+        # gate is a floor and not a "when in doubt" default.
+        if primary.confidence >= self.settings.email_intel_escalation_threshold:
+            return primary
+
+        escalated = await self._escalate_classification(subject, body, primary)
+        return escalated or primary
+
+    async def _escalate_classification(
+        self, subject: str, body: str, primary: EmailClassification
+    ) -> Optional[EmailClassification]:
+        """
+        Re-classify a low-confidence email on the escalation model.
+
+        Returns None on any failure so the caller keeps the primary verdict — a
+        degraded classification beats dropping the email, and this path must not
+        become a new way for inbound mail to disappear.
+        """
+        model_id = self.settings.email_intel_escalation_model
+        try:
+            client = get_anthropic_client()
+            response = await client.messages.create(
+                model=model_id,
+                max_tokens=512,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": CLASSIFICATION_PROMPT.format(subject=subject, body=body),
+                    }
+                ],
+            )
+            text = "".join(b.text for b in response.content if b.type == "text")
+            try:
+                from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+                _in = response.usage.input_tokens or 0
+                _out = response.usage.output_tokens or 0
+                get_spend_logger().log(
+                    provider="anthropic",
+                    model=model_id,
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=estimate_llm_cost(model_id, _in, _out),
+                    agent=self.agent_name,
+                    task_type="email_classification_escalation",
+                    outcome="success",
+                    correlation_id=getattr(self, "_current_correlation_id", None),
+                    context={"primary_confidence": primary.confidence},
+                )
+            except Exception:
+                pass
+
+            # Sonnet is not constrained to JSON-only output the way the Gemini
+            # call is (response_mime_type has no Anthropic equivalent), so dig
+            # the object out rather than assuming the whole body is JSON.
+            match = re.search(r"\{.*\}", text, re.DOTALL)
+            if not match:
+                self.logger.warning(
+                    "escalation returned no JSON object; keeping primary verdict"
+                )
+                return None
+            result = EmailClassification(**json.loads(match.group()))
+            self.logger.info(
+                "escalated classification",
+                extra={
+                    "primary": primary.category,
+                    "primary_confidence": primary.confidence,
+                    "escalated": result.category,
+                    "escalation_model": model_id,
+                },
+            )
+            return result
+        except Exception as exc:
+            self.logger.warning(
+                "escalation to %s failed, keeping primary verdict: %s", model_id, exc
+            )
+            return None
 
     # =========================================================================
     # PROMO HANDLING: EXTRACT + SCORE + INSERT + DIGEST
@@ -351,9 +458,7 @@ class EmailIntelAgent(BaseAgent):
         )
 
         # Cross-vendor price (D-18 — restaurant_inventory, NOT order_items.wine_id)
-        last_price = await self._get_last_purchase_price(
-            restaurant_id, details.grape_variety
-        )
+        last_price = await self._get_last_purchase_price(restaurant_id, details.grape_variety)
 
         # Insert to vendor_promotions
         insert_data: Dict[str, Any] = {
@@ -377,11 +482,7 @@ class EmailIntelAgent(BaseAgent):
         }
         promo_id: Optional[str] = None
         try:
-            result = (
-                self.database.supabase.table("vendor_promotions")
-                .insert(insert_data)
-                .execute()
-            )
+            result = self.database.supabase.table("vendor_promotions").insert(insert_data).execute()
             promo_id = result.data[0]["id"] if result.data else None
         except Exception as e:
             self.logger.error(f"vendor_promotions insert failed: {e}")
@@ -405,9 +506,7 @@ class EmailIntelAgent(BaseAgent):
                 pipe.expire(digest_key, 36 * 3600)  # 36h TTL per D-09
                 await pipe.execute()
             except Exception as e:
-                self.logger.warning(
-                    f"Redis digest accumulation failed (non-critical): {e}"
-                )
+                self.logger.warning(f"Redis digest accumulation failed (non-critical): {e}")
 
         # In-app notification (D-03 — direct Supabase INSERT, NOT HTTP to NestJS)
         title = f"🏷️ Deal: {details.product_name}"
@@ -492,9 +591,7 @@ class EmailIntelAgent(BaseAgent):
                 epoch_ms = int(received_at_str)
                 received_dt = datetime.fromtimestamp(epoch_ms / 1000, tz=timezone.utc)
             else:
-                received_dt = datetime.fromisoformat(
-                    str(received_at_str).replace("Z", "+00:00")
-                )
+                received_dt = datetime.fromisoformat(str(received_at_str).replace("Z", "+00:00"))
                 if received_dt.tzinfo is None:
                     received_dt = received_dt.replace(tzinfo=timezone.utc)
             cutoff = datetime.now(tz=timezone.utc) - timedelta(hours=STALE_EMAIL_HOURS)
@@ -524,9 +621,7 @@ class EmailIntelAgent(BaseAgent):
         try:
             inv_result = (
                 self.database.supabase.table("restaurant_inventory")
-                .select(
-                    "stock_live, threshold_min, master_wine_library!inner(grape_variety)"
-                )
+                .select("stock_live, threshold_min, master_wine_library!inner(grape_variety)")
                 .eq("restaurant_id", restaurant_id)
                 .not_.is_("stock_live", "null")
                 .limit(1)
@@ -536,8 +631,7 @@ class EmailIntelAgent(BaseAgent):
                 for row in inv_result.data:
                     mwl = row.get("master_wine_library") or {}
                     if isinstance(mwl, dict) and (
-                        grape_variety.lower()
-                        in (mwl.get("grape_variety") or "").lower()
+                        grape_variety.lower() in (mwl.get("grape_variety") or "").lower()
                     ):
                         stock_live = row.get("stock_live", 0) or 0
                         threshold_min = max(1, row.get("threshold_min", 1) or 1)
@@ -660,10 +754,7 @@ class EmailIntelAgent(BaseAgent):
                 mwl = row.get("master_wine_library") or {}
                 if isinstance(mwl, dict):
                     variety = (mwl.get("grape_variety") or "").lower()
-                    if (
-                        grape_variety.lower() in variety
-                        or variety in grape_variety.lower()
-                    ):
+                    if grape_variety.lower() in variety or variety in grape_variety.lower():
                         price = row.get("last_purchase_price")
                         if price is not None:
                             return float(price)
@@ -711,9 +802,7 @@ class EmailIntelAgent(BaseAgent):
             }
             if metadata:
                 insert_payload["metadata"] = metadata
-            self.database.supabase.table("notifications").insert(
-                insert_payload
-            ).execute()
+            self.database.supabase.table("notifications").insert(insert_payload).execute()
         except Exception as e:
             self.logger.warning(f"Notification insert failed (non-critical): {e}")
 

@@ -89,7 +89,7 @@ from services.research_agent_helpers import (
     _cache_key_producer,
 )
 from services.serper_client import serper_search
-from services.spend_logger import get_spend_logger
+from services.spend_logger import estimate_llm_cost, get_spend_logger
 
 logger = logging.getLogger(__name__)
 
@@ -568,8 +568,14 @@ async def _extract_field_candidates(
         try:
             usage = getattr(response, "usage_metadata", None)
             in_tok = getattr(usage, "prompt_token_count", 0) or 0
-            out_tok = getattr(usage, "candidates_token_count", 0) or 0
-            cost = (in_tok * 0.075 / 1_000_000) + (out_tok * 0.30 / 1_000_000)
+            # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+            out_tok = (getattr(usage, "candidates_token_count", 0) or 0) + (
+                getattr(usage, "thoughts_token_count", 0) or 0
+            )
+            # Was an inline 0.075/0.30 literal — the retired gemini-2.0-flash rate,
+            # applied to whatever flash_model actually is. Route through the
+            # audited table so one correction fixes every site.
+            cost = estimate_llm_cost(flash_model, in_tok, out_tok)
             spend_logger.log(
                 provider="google",
                 model=flash_model,

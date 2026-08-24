@@ -317,7 +317,10 @@ class VLMExtractionService:
             try:
                 _usage = getattr(response, "usage_metadata", None)
                 _in = getattr(_usage, "prompt_token_count", 0) or 0
-                _out = getattr(_usage, "candidates_token_count", 0) or 0
+                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+                _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                    getattr(_usage, "thoughts_token_count", 0) or 0
+                )
                 get_spend_logger().log(
                     provider="google",
                     model="gemini-2.5-flash",
@@ -399,7 +402,10 @@ class VLMExtractionService:
             try:
                 _usage = getattr(response, "usage_metadata", None)
                 _in = getattr(_usage, "prompt_token_count", 0) or 0
-                _out = getattr(_usage, "candidates_token_count", 0) or 0
+                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+                _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                    getattr(_usage, "thoughts_token_count", 0) or 0
+                )
                 get_spend_logger().log(
                     provider="google",
                     model="gemini-2.5-flash",
@@ -622,7 +628,10 @@ class GeminiFlashCrawlerExtractor:
             try:
                 usage = getattr(response, "usage_metadata", None)
                 input_tokens = getattr(usage, "prompt_token_count", 0) or 0
-                output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+                output_tokens = (getattr(usage, "candidates_token_count", 0) or 0) + (
+                    getattr(usage, "thoughts_token_count", 0) or 0
+                )
                 get_spend_logger().log(
                     provider="google",
                     model=self.MODEL_ID,

@@ -59,29 +59,135 @@ from utils.logger import get_log_context
 logger = logging.getLogger(__name__)
 
 
-# Estimated per-1M-token USD rates for models this codebase actually calls.
-# Mirrors the inline formulas already used at lit call sites. These are
-# ESTIMATES for spend visibility, not billing truth — rows carry real token
-# counts so cost can always be recomputed.
+# Per-1M-token USD rates for models this codebase actually calls.
+# These are ESTIMATES for spend visibility, not billing truth — rows carry real
+# token counts so cost can always be recomputed.
+#
+# Gemini rates VERIFIED 2026-08-24 against ai.google.dev/gemini-api/docs/pricing
+# (paid tier, Standard — not Batch/Flex). Output rates are the "Output price
+# (including thinking tokens)" figure, because Google bills reasoning tokens at
+# the output rate; see usage_tokens() below for why that matters.
+#
+# CAUTION — gemini-3.7-flash and gemini-3.6-flash ONLY are promotional through
+# 2026-12-31 and DOUBLE on 2027-01-01 (0.75/3.75 → 1.50/7.50). Revisit those two
+# rows before that date or their spend reads 2x low. Every other row here is flat
+# with no published end date, including the gemini-3.5-flash-lite default.
+#
+# These are text rates. The table is flat per model and does NOT encode Google's
+# modality and context tiers: audio input costs more (2.5-flash 1.00 vs 0.30;
+# 3.1-flash-lite 0.50 vs 0.25) and gemini-2.5-pro doubles above a 200k-token
+# prompt (2.50/15.00 vs 1.25/10.00). No current call site hits those tiers — all
+# are text well under 200k — so the flat rate is exact today. Add the tiering if
+# audio or long-context calls ever ship.
+#
+# Anthropic rates VERIFIED 2026-08-24 against
+# platform.claude.com/docs/en/about-claude/pricing.md, matched to the model ids
+# this repo actually passes: claude-haiku-4-5-20251001 and claude-sonnet-4-20250514.
+#
+# NOT VERIFIED: gpt-4-turbo. Only one live call site and no source was checked
+# for it in this pass; treat it as suspect (OD-59).
 _RATES_PER_M: Dict[str, tuple] = {
-    "claude-haiku": (0.80, 4.00),
+    # claude-haiku was (0.80, 4.00) — Claude Haiku *3.5*'s retired rate, applied
+    # to the 4.5 model this repo actually calls. Same failure as the Gemini
+    # retirement: a superseded model's price frozen in and inherited by its
+    # successor. Under-recorded Haiku spend 20% at 11 call sites.
+    "claude-haiku": (1.00, 5.00),
+    # Sonnet 5 carries an introductory 2.00/10.00 that ends 2026-08-31, a week
+    # after this table was written. The standard 3.00/15.00 is encoded instead:
+    # it slightly over-records for that week and is exact from 1 September, which
+    # is the safer direction and needs no diarised follow-up.
+    "claude-sonnet-5": (3.00, 15.00),
     "claude-sonnet": (3.00, 15.00),
-    "gemini-2.5-flash": (0.075, 0.30),
-    "gemini-2.0-flash": (0.075, 0.30),
-    "gemini-pro": (0.50, 1.50),
-    "gpt-4-turbo": (10.00, 30.00),
+    "gpt-4-turbo": (10.00, 30.00),  # UNVERIFIED
+    # --- Gemini, verified 2026-08-24 ---
+    "gemini-3.7-flash": (0.75, 3.75),  # 1.50/7.50 from 2027-01-01
+    "gemini-3.6-flash": (0.75, 3.75),  # 1.50/7.50 from 2027-01-01
+    "gemini-3.5-flash-lite": (0.30, 2.50),
+    "gemini-3.5-flash": (1.50, 9.00),
+    "gemini-3.1-flash-lite": (0.25, 1.50),
+    "gemini-2.5-flash-lite": (0.10, 0.40),
+    "gemini-2.5-flash": (0.30, 2.50),
+    "gemini-2.5-pro": (1.25, 10.00),
 }
 
 
-def estimate_llm_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    """Best-effort USD cost estimate from token counts. 0.0 when model unknown."""
+# Providers whose spend is derived from _RATES_PER_M by token count. Anything
+# else (Serper's flat per-query fee) prices itself and must not be judged against
+# this table — see the cost_basis guard in SpendLogger.log().
+_TOKEN_PRICED_PROVIDERS = frozenset({"google", "anthropic", "openai"})
+
+
+def _rate_for(model: str) -> Optional[tuple]:
+    """
+    Longest-match-wins rate lookup.
+
+    Matching is by substring, so shorter ids are prefixes of longer ones
+    ("gemini-2.5-flash" is inside "gemini-2.5-flash-lite"), and insertion-order
+    iteration resolved a lite id to the full-flash row.
+
+    This is a GUARD, not a historical fix: under the old table both rows read
+    (0.075, 0.30), so the collision cost ~25% under-pricing on the one lite id
+    and no live call site even passed it. It matters now because the corrected
+    table separates them sharply — 2.5-flash-lite is (0.10, 0.40) against
+    2.5-flash's (0.30, 2.50), so without this the correction would itself have
+    introduced a 6.25x over-charge on lite output. Sorting keys by length
+    descending makes the most specific id win regardless of table order.
+    """
     m = (model or "").lower()
-    for prefix, (rate_in, rate_out) in _RATES_PER_M.items():
-        if m.startswith(prefix) or prefix in m:
-            return (input_tokens * rate_in / 1_000_000) + (
-                output_tokens * rate_out / 1_000_000
-            )
-    return 0.0
+    for prefix in sorted(_RATES_PER_M, key=len, reverse=True):
+        if prefix in m:
+            return _RATES_PER_M[prefix]
+    return None
+
+
+def is_priced_model(model: str) -> bool:
+    """
+    True when _RATES_PER_M can price this model.
+
+    Callers use this to distinguish "this call genuinely cost $0" from "we have
+    no rate for this model", so an unpriced model books NULL rather than a
+    false zero that would quietly deflate every spend aggregate.
+    """
+    return _rate_for(model) is not None
+
+
+def estimate_llm_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    """
+    Best-effort USD cost estimate from token counts. 0.0 when model unknown.
+
+    A 0.0 return is ambiguous by design (the api_spend.cost_usd column is NOT
+    NULL, so it has no way to say "unknown"). Pair it with is_priced_model()
+    whenever the distinction matters — SpendLogger.log() does.
+    """
+    rate = _rate_for(model)
+    if rate is None:
+        return 0.0
+    rate_in, rate_out = rate
+    return (input_tokens * rate_in / 1_000_000) + (output_tokens * rate_out / 1_000_000)
+
+
+def usage_tokens(response: Any) -> tuple:
+    """
+    Extract (input_tokens, output_tokens) from a Gemini response, counting
+    reasoning tokens as output.
+
+    Google bills `thoughts_token_count` at the OUTPUT rate but reports it in a
+    field separate from `candidates_token_count`. Reading only the latter — as
+    every call site here previously did — undercounts billable output badly on
+    any thinking-enabled model: measured 2026-08-24 on the EmailIntelAgent
+    prompt, gemini-2.5-flash billed 598 output tokens while logging 113 (5.3x),
+    and gemini-3.6-flash billed 680 while logging 73 (9.3x).
+
+    Returns (0, 0) for responses without usage metadata rather than raising —
+    spend logging must never break a pipeline.
+    """
+    usage = getattr(response, "usage_metadata", None)
+    if usage is None:
+        return (0, 0)
+    prompt = getattr(usage, "prompt_token_count", 0) or 0
+    candidates = getattr(usage, "candidates_token_count", 0) or 0
+    thoughts = getattr(usage, "thoughts_token_count", 0) or 0
+    return (prompt, candidates + thoughts)
 
 
 class SpendLogger:
@@ -142,9 +248,7 @@ class SpendLogger:
             settings = get_settings()
             supabase = settings.supabase_client
             if supabase is None:
-                logger.debug(
-                    "SpendLogger: Supabase not configured — skipping spend log"
-                )
+                logger.debug("SpendLogger: Supabase not configured — skipping spend log")
                 return
 
             ambient_agent, ambient_correlation = get_log_context()
@@ -185,12 +289,29 @@ class SpendLogger:
                 if context:
                     nf_context.update(context)
 
+                # An unpriced model has no rate in _RATES_PER_M, so estimate_llm_cost
+                # returned 0.0 meaning "unknown" — not "free". NF's cost_usd is
+                # nullable, so record the honest NULL and say why. (api_spend.cost_usd
+                # is NOT NULL and still takes the 0.0; correcting that needs a
+                # migration and is filed as tech debt, not silently fixed here.)
+                #
+                # Gated on provider: only token-priced providers get their cost FROM
+                # this table. Serper bills a flat configured per-query rate
+                # (Settings.serper_cost_per_query) that is exactly known and has no
+                # business being in a per-token table — nulling it would delete real
+                # spend and mislabel it unknown, which is the very defect this guard
+                # exists to prevent.
+                nf_cost = cost_usd
+                if provider in _TOKEN_PRICED_PROVIDERS and not is_priced_model(model):
+                    nf_cost = None
+                    nf_context["cost_basis"] = "unpriced_model"
+
                 row = build_agent_event(
                     subject_id=subject_id,
                     stimulus=stimulus or task_type or f"{provider}:{model}",
                     choice=choice or "completion",
                     outcome=outcome,
-                    cost_usd=cost_usd,
+                    cost_usd=nf_cost,
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     duration_ms=duration_ms,
@@ -202,8 +323,7 @@ class SpendLogger:
             except Exception as exc:
                 total = record_drop("neural_footprint_event")
                 logger.warning(
-                    "SpendLogger: NF row build failed (non-fatal, drop #%d "
-                    "this process): %s",
+                    "SpendLogger: NF row build failed (non-fatal, drop #%d " "this process): %s",
                     total,
                     exc,
                 )

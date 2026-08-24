@@ -913,7 +913,10 @@ class ProviderConversationAgent(BaseAgent):
         try:
             _usage = getattr(response, "usage_metadata", None)
             _in = getattr(_usage, "prompt_token_count", 0) or 0
-            _out = getattr(_usage, "candidates_token_count", 0) or 0
+            # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+            _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                getattr(_usage, "thoughts_token_count", 0) or 0
+            )
             get_spend_logger().log(
                 provider="google",
                 model=self.extraction_model,
