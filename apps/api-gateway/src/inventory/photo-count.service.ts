@@ -4,9 +4,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import axios from "axios";
-
-const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
+import { ModelClientService } from "../common/model-client/model-client.service";
 
 const COUNT_PROMPT =
   "You are helping a bar/restaurant staff member count bottles of a specific " +
@@ -38,11 +36,15 @@ export interface PhotoCountEstimate {
 export class PhotoCountService {
   private readonly logger = new Logger(PhotoCountService.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly modelClient: ModelClientService,
+  ) {}
 
   async estimate(
     imageBase64: string,
     wineName: string,
+    restaurantId?: string,
   ): Promise<PhotoCountEstimate> {
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
     if (!apiKey) {
@@ -54,9 +56,11 @@ export class PhotoCountService {
     const mediaType = this.detectMediaType(imageBase64);
 
     try {
-      const response = await axios.post(
-        ANTHROPIC_API_URL,
-        {
+      // P1 NF-A: model client owns transport + emission. The 30s budget is a
+      // product choice (interactive counting UI) and is preserved as an
+      // explicit override of the client's 60s default.
+      const payload: any = await this.modelClient.call({
+        body: {
           model: "claude-haiku-4-5",
           max_tokens: 512,
           messages: [
@@ -79,17 +83,17 @@ export class PhotoCountService {
             },
           ],
         },
-        {
-          headers: {
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-          },
-          timeout: 30_000,
+        timeoutMs: 30_000,
+        nf: {
+          subjectId: "PhotoCount",
+          taskType: "photo_count",
+          stimulus: "shelf_photo",
+          choice: "count_estimate",
+          restaurantId: restaurantId ?? null,
         },
-      );
+      });
 
-      const content: string = response.data?.content?.[0]?.text ?? "";
+      const content: string = payload?.content?.[0]?.text ?? "";
       return this.parseResponse(content);
     } catch (error: any) {
       this.logger.error(`Photo count estimate failed: ${error.message}`);

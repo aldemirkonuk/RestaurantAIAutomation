@@ -1,0 +1,132 @@
+---
+type: build-log
+id: P1
+title: P1 Build Log
+status: in-progress
+updated: 2026-08-24
+links: ["[[P1-NF-A-INSTRUMENTATION]]", "[[P1-EMITTER-ARCHITECTURE]]", "[[P1-PYTHON-EMITTER]]", "[[0008-nf-column-contract]]", "[[backtests-charter]]"]
+---
+
+# P1 Build Log — what was actually done, and how it was verified
+
+> Written per non-negotiable #4: work that is not documented did not happen. This
+> records the build as it ran, including the parts that failed first.
+> Branch: `feat/p1-nf-instrumentation`.
+
+## 1. Decisions taken into the build
+
+All founder calls, recorded here so the build is traceable to them:
+
+| Decision | Choice | Where locked |
+|---|---|---|
+| Column contract | **Path C** — full ADR 0006 shape now | [ADR 0008](../decisions/0008-nf-column-contract.md) |
+| Fourth subject | **`operator`** added — page analytics rides the NF spine, not a second store | ADR 0008 review trail |
+| Emitter shape | **Full model-client wrapper**, not a thin logger | this log §3 |
+| Emit failure | **Never fail the model call** — but count drops | matches `spend_logger.py`'s "NEVER re-raise" |
+| Retry | **Most complete**: transport-only retry **+ per-restaurant daily spend ceiling** | §3 |
+| `outcome` day one | **Call-level**, stamped `outcome_basis: call_level_v0`, re-graded later by [[backtests-charter\|Backtests]] | §5 |
+| `correlation_id` | **In P1** — gateway threading + fix the RabbitMQ bridge drop | §3 |
+| Python D3 | **In scope** — both runtimes or neither | §4, **see the honesty note** |
+
+Claude recommended Path A and was overruled; that argument is preserved in ADR 0008
+rather than quietly dropped.
+
+## 2. Step 1 — migration
+
+`supabase/migrations/*_neural_footprint_event.sql`. The ADR 0008 schema exactly: one
+polymorphic store, `subject_type in ('agent','guest','operator','bio')`, five partial
+indexes so sparse columns never cost dense reads.
+
+**Verification:** no local Postgres was reachable, so this was a *structural* check, not
+an execution — stated plainly rather than implied. Checks passed: table created,
+4 subject types, `outcome` nullable (NULL = unknown, never success), 5 indexes, balanced
+parens, no `DROP`, idempotent (`if not exists` ×6).
+
+`api_spend` and `decision_log` keep their writers and are **not dropped**.
+
+## 3. Step 2 — gateway model-client wrapper
+
+`apps/api-gateway/src/common/model-client/` — module, service, and `correlation.ts`.
+All **7** call sites route through it: `ux-optimizer`, `vendor-page-extractor`,
+`inbound-responder`, `photo-count`, `document-extractor`, `scan-parser`, `consultants`.
+
+Preserved deliberately: `scan-parser`'s re-chunking on `stop_reason` is *semantic* retry
+and must not be swallowed by transport retry; `inbound-responder`'s beta header and
+temperature pass through verbatim.
+
+**Verification:** `npx tsc --noEmit -p apps/api-gateway/tsconfig.json` — clean.
+All 7 files confirmed importing `model-client`.
+
+## 4. Step 3 — Python emitter
+
+`SpendLogger` extended as the **sole dual-write entry point** (`api_spend` +
+`neural_footprint_event`), with row-building in `services/neural_footprint.py`. New params
+are **keyword-only with defaults**, which the research pass verified breaks zero of the 16
+existing call sites. Client-per-call replaced with the existing `Settings.supabase_client`
+singleton.
+
+## 5. Step 4 — CI guard
+
+`scripts/check_model_calls_logged.sh` + `model-call-ledger` job in `ci.yml`.
+
+Two design rules that matter more than the check itself:
+
+- **Never vacuous.** Five states exit **2** rather than green: wrapper directory missing
+  or empty, zero gateway hits, zero Python call sites, `spend_logger.py` moved. A guard
+  that cannot find what it checks is a failure, not a skip — the same principle
+  `schema-parity.yml` states in its own header.
+- **Proven to fail before being trusted.** A temp unlogged probe took the Python count
+  18 → 19 and exited 1; deleting it returned to clean. Remaining states were proven on a
+  byte-identical fixture: clean exit 0 · unlogged gateway file exit 1 · wrapper deleted
+  exit 2 *with the Python section still evaluated* · debt file made to log exit 1 · all
+  call sites removed exit 2, **not** a pass.
+
+## 6. Things that failed first — recorded, not hidden
+
+1. **My simpos gate broke the JSX.** Wrapping two `<Route>` elements in a fragment
+   produced malformed output; `tsc` caught it (`TS1003`, `TS17015`). Reverted and gated
+   per-route via the element instead. The lesson is the process working: the typecheck was
+   run *before* claiming the fix, not after.
+2. **I mis-read the CI job list.** I printed the last three jobs, saw no
+   `model-call-ledger`, and said the agent had not added it. It was there at `ci.yml:63`.
+   My error, corrected immediately.
+3. **A reported "fail-open" finding was wrong.** Earlier in this chapter, an agent
+   reported Toast's signature check as fail-open; the code already had an `else if` that
+   refused unsigned input. A fix built on that report was written and **reverted**. This
+   is why every agent claim in this build was re-verified in source.
+
+## 7. 🔴 Honesty note — what "green" does and does not mean
+
+The guard **exits 0**. That is not the same as Python D3 being closed.
+
+Eleven pre-existing unlogged Python files sit on a **shrink-only `PY_UNLOGGED_DEBT`
+ratchet** — grandfathered, not fixed:
+
+```
+calendar_agent · email_intel_agent · email_parsing_agent · provider_conversation_agent
+rfq_agent · sommelier_agent · auction_wine_service · email_composer_service
+wine_book_scraper · wine_field_parser · wine_matcher
+```
+
+The founder's decision was **"both runtimes or neither — a ledger with known holes
+measures nothing reliably."** A ratchet stops the hole *growing*; it does not close it.
+Until those 11 route through `SpendLogger`, `nf_a.cost_per_completed_task` is missing 11
+files' worth of spend and the headline number is **incomplete, not wrong**.
+
+The ratchet fails in three directions (new unlogged file, debt file that now logs, stale
+entry), so the list can only shrink — but shrinking it is remaining work, tracked here.
+
+## 8. Done-when, honestly scored
+
+From [P1 §6](P1-NF-A-INSTRUMENTATION.md):
+
+| Criterion | State |
+|---|---|
+| §2 query returns rows for both runtimes | ⬜ Not until the migration is applied and traffic flows |
+| All 7 gateway call sites emit | ✅ Wired and typechecked |
+| CI guard fails a deliberately unlogged call site | ✅ Proven, transcript in §5 |
+| `nf_a.cost_per_completed_task` has a real number | ⬜ Needs applied migration + traffic |
+| Loops blocked solely on NF-A emission move off `blocked` | ⬜ Pending the above |
+
+**P1 is not done because code merged.** It is done when a number exists that nobody had
+to assemble by hand. Code is the precondition, not the criterion.
