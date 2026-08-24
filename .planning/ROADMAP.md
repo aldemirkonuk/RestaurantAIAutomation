@@ -610,6 +610,8 @@ Plans:
 
 **Sequencing note (2026-07-27):** Waves 2-6 hardening resumes AFTER the Testing Campaign (Phases 36–43) — the synthetic world + scored suites are the foundation the remaining agent hardening builds on.
 
+**Roster note (2026-08-24):** `DatasetCreatorAgent` (Wave 4) and `BookScraperAgent` (Wave 6) were deleted, so the waves below now total 22, not the 24 named at the top of this file. Neither was ever in the orchestrator's class map, and the exchanges they subscribed to — `enrichment.events`, `scan.events`, `training.events` — had no publishers anywhere in the repo; the only producer of `enrichment.book_processed` was BookScraperAgent feeding DatasetCreatorAgent. Hardening either to Level 4 would have hardened an agent that receives nothing. Both capabilities remain live through `api/scan_routes.py` (`POST /book-scrape`, `/training-data/*`), which is where the work belongs if they are ever revived.
+
 After Phases 23-25 complete, expand to remaining agents:
 
 **Wave 2 — Communication Layer (4 agents):**
@@ -621,14 +623,14 @@ After Phases 23-25 complete, expand to remaining agents:
 **Wave 3 — Intelligence Layer (4 agents):**
 - RecurringOrderAgent (388 lines), RFQAgent (736 lines), SommelierAgent (708 lines), MenuAnalyzerAgent (911 lines)
 
-**Wave 4 — Support Layer (4 agents):**
-- CalendarAgent (297 lines), VisualVerificationAgent (1,051 lines), StateInvariantEnforcer (246 lines), DatasetCreatorAgent (275 lines)
+**Wave 4 — Support Layer (3 agents):**
+- CalendarAgent (297 lines), VisualVerificationAgent (1,051 lines), StateInvariantEnforcer (246 lines)
 
 **Wave 5 — Stubs (rebuild from scratch, 5 agents):**
 - GhostInventoryAgent (35 lines), NegotiationPlaybookAgent (34 lines), AutoPilotAgent (34 lines), ShrinkageDetective (33 lines), ComplianceAgent (33 lines)
 
-**Wave 6 — Specialty (3 agents):**
-- InequalityDetector (105 lines), BookScraperAgent (113 lines), POSIntegrationAgent v2 (multi-POS: Square, Clover)
+**Wave 6 — Specialty (2 agents):**
+- InequalityDetector (105 lines), POSIntegrationAgent v2 (multi-POS: Square, Clover)
 
 ---
 
