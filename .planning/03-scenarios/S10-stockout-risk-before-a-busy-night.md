@@ -7,7 +7,7 @@ actors: [manager, inventory-ledger, forecast-engine, reorder-agent, vendor]
 modules: ["[[inventory-ledger-charter|inventory-ledger]]", "[[analytics-engine-charter|analytics-engine]]", "[[procurement-vendor-network-charter|procurement-vendor-network]]"]
 signals: [consumption-log, stock-live, lead-time, par-threshold, demand-forecast, nf_a]
 insights_class: [stockout-risk, days-of-cover, reorder-point, dead-stock]
-tier: undecided
+tier: core
 sim_harness: synthetic-engine
 status: proposed
 updated: 2026-08-24
@@ -104,12 +104,28 @@ return null and fall back). Gate: no forecast/reorder change ships until each va
 the correct risk ranking and reorder point against a synthetic consumption book, and until the
 thin-series case degrades honestly instead of fabricating a curve. `simulated` before `live`, locked.
 
-## 10. Tier cut (proposed — OD-48)
-- **Core (operate):** the low-stock/par alert and the at-risk list — reactive thresholds, one-tap.
-- **Plus (understand):** days-of-cover and reorder-point scorecards; the drafted reorder proposal.
-- **Pro (optimize):** the *predictive* layer — Holt-Winters demand forecast, service-level-tuned
-  safety stock with lead-time variance, and the split-vendor hedge. This is the payoff that
-  justifies Pro, and it needs the deepest signal set to earn its keep.
+## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
+
+- **Core (operate):** the reactive threshold layer — the low-stock alert on
+  `threshold_min ?? par_level`, the ranked at-risk list for the coming night (SKU · days of
+  cover · on-hand), and a durable notification with an email path for a manager who is offline.
+  Ships today (`low-stock-alerts.service.ts` → `GmailService`, `LowStockDigestWine`).
+- **Plus (understand):** days-of-cover trend and reorder-point-vs-on-hand scorecards; the
+  **drafted one-tap reorder proposal** that fires at stockout probability > 0.4 with the
+  split-vendor hedge ("if the vendor is slow, split the order across two"); and **dead-stock
+  capital** as the deliberate mirror, so "order more" is always balanced against "you
+  over-ordered here." Ships today.
+- **Pro (optimize):** the predictive layer — `holtWintersAdditive` (level + trend + weekly
+  seasonality), service-level-tuned safety stock via King's formula **with lead-time
+  variance**, and per-SKU stockout probability computed from that SKU's own variance. The code
+  ships (`forecasting.ts`, `inventory-science.ts`) and the `inventory` + `forecast` families
+  sit **inside the 25.1% no-POS band** — but ⛔ **needs POS for depth, not for existence**:
+  Holt-Winters returns an explicit `null` without ≥2 full seasonal cycles, and
+  `wine_consumption_log` only deepens as POS sales flow through `recordConsumption`. A no-POS
+  restaurant on manual counts will get honest nulls and a naive baseline, not a curve.
+
+**This is the strongest Pro in the library** — the only one where the optimize-tier math is
+built, tested, and degrades honestly instead of fabricating confidence.
 
 ## 11. Evolution feedback
 Which reorder proposals the manager edits before confirming teaches the reorder quantity its

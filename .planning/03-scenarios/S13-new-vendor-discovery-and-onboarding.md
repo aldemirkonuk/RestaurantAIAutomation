@@ -7,7 +7,7 @@ actors: [owner-buyer, vendor-finder, vendor-catalogue, providers-service, prospe
 modules: ["[[supply-discovery-charter|supply-discovery]]", "[[procurement-vendor-network-charter|procurement-vendor-network]]", "[[inbound-understanding-charter|inbound-understanding]]"]
 signals: [catalogue-search, provider-create, catalogue-dedup, prospect-capture, onboarding-flag]
 insights_class: [vendor-coverage, price-freshness, category-gap, prospect-funnel]
-tier: undecided
+tier: core
 sim_harness: synthetic-engine
 status: proposed
 updated: 2026-08-24
@@ -122,12 +122,31 @@ gated out and never appears in the lane. Gate: an onboarding or discovery change
 when the synthetic run yields **one provider per intent, zero duplicates, and zero
 auto-sent replies.**
 
-## 10. Tier cut (proposed — OD-48; frontmatter stays `undecided`)
-- **Core (operate):** catalogue search + one-tap add + prospect promotion. Table-stakes
-  onboarding — a restaurant must be able to add a vendor to do anything at all.
-- **Plus (understand):** the coverage scorecard and price-freshness readout.
-- **Pro (optimize):** the supply-graph gap intelligence — *proposed* vendors for uncovered
-  needs, ranked, with the S08 price comparison attached.
+## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
+
+- **Core (operate):** catalogue search with similarity-ranked results; **one-tap add** —
+  auto-filled from a catalogue row (Mode A) or name-only custom (Mode B); the hard 409
+  duplicate block on `catalogue_vendor_id` with already-added rows labelled up front; the
+  **Prospects digest** with one-tap "add as vendor," deduped by domain and **never
+  auto-replied**; and the `vendor_added` onboarding checkmark. All ships today. Table stakes —
+  a restaurant that cannot add a vendor cannot use procurement at all, so this belongs in Core
+  without argument.
+- **Plus (understand):** the vendor-coverage scorecard (`sku_dual_price_coverage_pct`), the
+  price-freshness readout (`price_freshness_p50_days` — a price is a perishable fact), category
+  gaps ("no fish supplier; one wine distributor and no backup"), and the prospect funnel
+  (captured vs promoted). Computable now, but ⛔ **needs POS to be trustworthy**: the coverage
+  *denominator* — the "needed SKU" set — is only as complete as what the restaurant has told us.
+  Without POS, "needed" is partial and **coverage flatters itself**. Ship the number with its
+  denominator visible, or it lies politely.
+- **Pro (optimize):** supply-graph gap intelligence — *proposed* vendors for uncovered needs,
+  ranked, with the S08 price comparison attached. Partly 🚧 **signal not built**: discovery is
+  **catalogue-first, not a live crawl** (Yelp / Apify / Google Maps feed the catalogue upstream,
+  but there is no shipped in-app "find a supplier near me"), and the comparison surfaces
+  `/distributors` and `/vendor-prices` are **currently unreachable in-app** — a pending route
+  verdict, not a built feature.
+
+Boundary that no tier changes: the system never signs terms, never logs into a vendor portal,
+and never emails a vendor. We ship the software that *finds* vendors; Partnerships signs them.
 
 ## 11. Evolution feedback
 Which catalogue results get added versus scrolled past trains the match ranking. Which

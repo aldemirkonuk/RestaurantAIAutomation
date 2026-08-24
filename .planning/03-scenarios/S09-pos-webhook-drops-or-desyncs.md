@@ -7,7 +7,7 @@ actors: [pos-terminal, connector-platform-trust, pos-bridge, inventory-ledger, o
 modules: ["[[connector-platform-trust-charter|connector-platform-trust]]", "[[pos-bridge-charter|pos-bridge]]", "[[inventory-ledger-charter|inventory-ledger]]"]
 signals: [pos_webhook, idempotency_key, dead_letter, reconcile_gap]
 insights_class: [connector-reliability, stock-drift, dead-letter-depth]
-tier: undecided
+tier: core
 sim_harness: simpos
 status: proposed
 updated: 2026-08-24
@@ -105,9 +105,29 @@ no double-deplete* (**passes today** via idempotency) and *missed → detected* 
 today** — no detector exists). Honest status: today only the duplicate variant passes, so
 this scenario is not yet `simulated`.
 
-## 10. Tier cut (proposed — OD-48)
-Core: idempotent dedupe (already works) + dead-letter visibility. Plus: drift reconciliation
-scorecard. Pro: predictive gap detection + auto-replay proposals across providers.
+## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
+
+- **Core (operate):** **idempotent dedupe** — a replayed check is a correct no-op via the
+  depletion key `pos:{source}:{check}:{item}:{lineNo}` plus the `pos_checks` upsert. This is
+  the one desync class the code survives today, and it is invisible by nature: it looks like
+  nothing happened. **Dead-letter visibility** is the honest half-feature: `event_dead_letters`
+  is wired and queryable (`dlq.get_stats`, Celery Beat every minute), but `queue.dead_letters`
+  (RabbitMQ) **has no consumer** and is not queryable by the product at all — and **neither
+  queue covers a pos-hub HTTP ingress failure.** The single most valuable Core output in this
+  scenario, *"a webhook you were expecting never arrived,"* 🚧 **does not exist**: nothing
+  tracks sequence numbers, check counts, or delivery gaps. Stock over-states silently, forever.
+- **Plus (understand):** the connector-reliability scorecard (delivery success rate, duplicate
+  rate, dead-letter depth per provider) and the drift-reconciliation readout (POS-reported
+  sales vs captured checks vs ledger depletion). 🚧 **signal not built** — the scorecard needs
+  a webhook-delivery ledger that does not exist, and the drift readout needs a **pull-based
+  reconcile**; the hub is push-only with no poller.
+- **Pro (optimize):** predictive gap detection and auto-replay proposals across providers.
+  🚧 entirely aspirational — it sits downstream of *both* missing pieces above. **This is the
+  thinnest Pro in the library and should not be offered.**
+
+The uncomfortable framing an entitlement page must carry: S04 and S14 *supply* POS data; S09's
+insights depend on capturing POS **failures**, and the ingress-failure capture layer is
+partial-to-absent. Everything above Core here is a build target, not a deliverable.
 
 ## 11. Evolution feedback
 DLQ depth and duplicate rate teach which providers are flaky; once a delivery ledger exists,

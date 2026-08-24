@@ -7,7 +7,7 @@ actors: [owner, insight-engine, insight-scheduler, narrative-generator]
 modules: ["[[analytics-engine-charter|analytics-engine]]", "[[insight-narrative-generation-charter|insight-narrative-generation]]"]
 signals: [consumption-log, orders, inventory, checks, tables, goals, nf_b]
 insights_class: [sales, inventory, purchasing, forecast, risk, tables, staff]
-tier: undecided
+tier: core
 sim_harness: synthetic-engine
 status: proposed
 updated: 2026-08-24
@@ -114,17 +114,41 @@ false-spike week. Gate: no digest/engine change ships until the reachable counts
 baselines exactly and the empty/false-spike weeks produce honest copy, not fabricated
 insights. `simulated` before `live`, locked — no exception, including this one.
 
-## 10. Tier cut (proposed — OD-48) — sharpest here
-The entitlement story is clearest in this scenario, because the tiers map directly onto the
-satisfiability ladder:
-- **Core (operate):** the handful of consumption/inventory basics computable without POS — a
-  short, honest weekly readout. This is what a no-POS restaurant genuinely gets.
-- **Plus (understand):** the assembled digest, scorecards, and drafted recommendations across
-  the reachable families — the "understand your week" product.
-- **Pro (optimize):** forecasting (Holt-Winters), the guest-side `tables`/`efficiency`
-  families, and cross-entity optimization — the 74.9% that unlocks **only once POS is
-  connected**. Pro is, almost definitionally, "you plugged in your POS." That makes POS
-  connection (S14) the true upgrade trigger, not a price toggle.
+## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23) — sharpest here
+
+The entitlement story is clearest in this scenario, because **the tiers map directly onto the
+satisfiability ladder** — Core/Plus/Pro is, here, literally a data-availability ladder wearing
+a pricing name.
+
+- **Core (operate):** the in-app insight panel showing **only what is currently reachable for
+  this restaurant**, with `candidateTypesAvailable / candidateTypesTotal` stated in-band on
+  every run. For a no-POS restaurant that is the consumption / orders / inventory basics —
+  **144 of 573 types (25.1%)**, dropping to **38 / 573 (6.6%)** if only `wine_consumption_log`
+  is populated. Short, unglamorous, and honest. Ships today.
+- **Plus (understand):** the assembled weekly digest — ranked by effect × significance ×
+  support, capped per category, narrated, with drafted recommendations across the reachable
+  families. The compute and persistence ship (Monday cadence,
+  `insight-scheduler.service.ts`). **Delivery is the honest gap:** the scheduler refreshes and
+  persists but does **not** email; a digest-preference row exists (recipient, hour, toggle) and
+  **its scheduled send is feature-flagged**, with no insight-digest mailer in the analytics
+  module. 🚧 "Owner opens the *email*" is aspirational; "owner opens the in-app panel" is real.
+- **Pro (optimize):** Holt-Winters forecasting plus the guest-side families — and this is
+  **the biggest single POS gate in the library**. ⛔ **needs POS: 429 of 573 types (74.9%)
+  declare a `checks` requirement and 241 (42.1%) declare `tables`.** The two largest categories
+  in the whole catalogue, **`tables` (174 types)** and **`efficiency` (108)**, are entirely
+  dark without POS. Roughly three quarters of Pro's promised surface is unreachable and **no
+  amount of new math changes that**.
+
+**The labelling rule that binds every tier page:** never headline "375 insight types" (the
+number the shipped UI prints) — the enumerated space is **573**, only ~144 are satisfiable
+without POS, and the count shown must be *reachable-for-this-restaurant* (OD-33). A tier page
+advertising a catalogue total is the canonical failure §6 exists to prevent.
+
+**Guard before any of this is sold:** 573 types × live entities produces thousands of
+simultaneous tests per run, with `pValue < 0.1` on one family as the only significance gate and
+**no multiple-comparison correction** — and χ²/p-value appear in **zero assertions across 11
+spec files**. A weekly digest is exactly where spurious "insights" surface confidently. Pro
+sells statistical claims the pipeline cannot yet defend.
 
 ## 11. Evolution feedback
 Which insights the owner opens, acts on, or dismisses is the single best signal of which §6

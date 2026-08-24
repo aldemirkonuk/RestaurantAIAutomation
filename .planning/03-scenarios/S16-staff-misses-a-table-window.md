@@ -7,7 +7,7 @@ actors: [assigned-waiter, table, manager, pos, floor-routing]
 modules: ["[[service-floor-charter|service-floor]]", "[[pos-bridge-charter|pos-bridge]]"]
 signals: [checkin-window-timing, real-engagement-vs-walkpast, kitchen-ready, table-server-join]
 insights_class: [missed-window-rate, ready-to-waiter-latency, slow-pickup-sales-impact]
-tier: undecided
+tier: core
 sim_harness: simpos
 status: proposed
 updated: 2026-08-24
@@ -83,9 +83,30 @@ not, ambiguous routing (shared section). SimPOS (`apps/api-gateway/src/simpos/`)
 latency budget met, and walk-past correctly **not** counted, all in sim before any floor change
 ships. **Simulated before live — locked.**
 
-## 10. Tier cut (proposed — OD-48)
-Core: the missed-window nudge + the food-up alert (operate). Plus: latency/miss scorecard digest
-(understand). Pro: staffing and section proposals from patterns (optimize). Price points open.
+## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
+
+**Nothing ships at any tier today — both of this scenario's signals are absent**, and one of
+them is absent from the *type system*, not just from the data.
+
+- **Core (operate):** the missed-window nudge before the plate sits, the **individual waiter
+  alert the moment food is up** (one person, one device, seconds of latency — not a kitchen
+  board), and one-tap acknowledge / hand-off. 🚧 **signal not built** — check-in timing and the
+  real-engagement-vs-walk-past discrimination have no capture path, and **kitchen-ready is
+  unmodelled**: grepping `pos-hub/pos-types.ts` for `ready`/`fired`/`kitchen` returns one
+  unrelated comment. Adding it to `CanonicalCheck` is a pos-bridge change this scenario must
+  commission. Also ⛔ **needs POS** — `table → server` is POS-sourced and **0 of 47 rows**.
+- **Plus (understand):** missed-window rate by section and shift, and kitchen-ready-to-waiter
+  p95 latency. 🚧 + ⛔ — derived wholly from the two absent signals, so there is no partial
+  version to ship.
+- **Pro (optimize):** staffing and section proposals from observed patterns, and
+  **slow-pickup sales impact** (plates sitting → quality drop → downrating and lost turns) —
+  the commercial read that justifies the alert in the first place. 🚧 on the floor side and
+  ⛔ **needs POS** on the sales side.
+
+**Boundary that outranks the tier cut:** the commercial purpose is **more sales and better
+service, not compliance monitoring**, and that distinction is load-bearing. The moment
+check-in data becomes disciplinary evidence, the floor produces confident, false compliance
+data and every tier above Core is measuring a fiction. No pricing decision relaxes this.
 
 ## 11. Evolution feedback
 Where windows are missed teaches staffing and section sizing; where routing is ambiguous teaches

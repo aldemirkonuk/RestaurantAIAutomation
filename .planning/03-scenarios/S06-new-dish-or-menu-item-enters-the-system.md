@@ -7,7 +7,7 @@ actors: [owner, manager, menu-extraction-pipeline, catalogue-identity, inventory
 modules: ["[[catalogue-identity-charter|catalogue-identity]]", "[[inventory-ledger-charter|inventory-ledger]]"]
 signals: [menu-document, extracted-line, raw_extracted_text, pos-item-string, nf_a]
 insights_class: [catalogue-coverage, provisional-cleanup, extraction-accuracy, basket-affinity]
-tier: undecided
+tier: core
 sim_harness: synthetic-engine
 status: proposed
 updated: 2026-08-24
@@ -95,10 +95,29 @@ extraction/matching changes ship only when the re-import round-trip creates zero
 duplicates and coverage stays in band. Food paths ship `none-yet` until a food menu
 exists.
 
-## 10. Tier cut (proposed — OD-48)
-Core: import a menu + clear the review queue. Plus: catalogue-coverage scorecard +
-provisional cleanup + extraction-accuracy trend. Pro: cross-restaurant library
-intelligence, producer normalization, and (only once built) dish identity.
+## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
+
+**Read every tier below as beverage-only.** The wine path ships (`POST /menus/import` →
+`scanParser` → `resolveAndPersistItems` → `match_library_wine`). The food path does not exist:
+`menu_items` is wine-only, there is no food menu table, and dish identity is a **decided
+defer** (A15) — a dish "enters the system" as a raw POS string and nothing resolves.
+
+- **Core (operate):** import a menu (photo / PDF / CSV / hand-entry), get a **review queue**
+  with each line tagged `library_match` or `provisional_created`, and clear it one tap at a
+  time — confirm match / accept provisional / correct — optionally seeding a
+  `restaurant_inventory` row on accept. Ships today for wine; ⚠️ for food, Core delivers
+  capture-as-a-string and no review queue at all.
+- **Plus (understand):** the catalogue-coverage scorecard (how much of the menu resolved to
+  known identities vs provisionals awaiting cleanup) and the extraction-accuracy trend showing
+  where the parser needed correction, per menu. POS-free and consumption-independent — inside
+  the **25.1% no-POS band**. Wine only.
+- **Pro (optimize):** cross-restaurant library intelligence and producer normalization at
+  scale — 🚧 **signal not built**: there is no shared multi-tenant promotion path above tier-3
+  provisional. Basket affinity over raw item strings **does run today**
+  (`getBasketAffinity()`) but ⛔ **needs POS** — it reads POS item names — and its ceiling is
+  hard: with no dish identity, food pairings cannot dedupe or roll up across restaurants
+  ("Ribeye" here ≠ "Ribeye" next door). Dish identity itself is 🚧 and **deliberately
+  deferred**, so a Pro tier must not imply it is coming next quarter.
 
 ## 11. Evolution feedback
 Where reviewers override the match tells us where extraction/matching is weak; a wine

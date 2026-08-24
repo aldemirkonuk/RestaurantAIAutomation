@@ -7,7 +7,7 @@ actors: [guest, assigned-waiter, manager, pos, floor-routing]
 modules: ["[[service-floor-charter|service-floor]]", "[[pos-bridge-charter|pos-bridge]]", "[[design-charter|design]]"]
 signals: [complaint-event, table-server-join, service-window-timing]
 insights_class: [recovery-rate, complaint-by-section, time-to-recovery]
-tier: undecided
+tier: core
 sim_harness: simpos
 status: proposed
 updated: 2026-08-24
@@ -81,10 +81,27 @@ threshold escalation, ambiguous ownership. SimPOS (`apps/api-gateway/src/simpos/
 `table_id` + `server_name`. Gate: `misroute_rate` = 0 and the kitchen-ready-to-waiter latency
 budget met in sim before any floor change ships. **Simulated before live — locked.**
 
-## 10. Tier cut (proposed — OD-48)
-Core: the individual complaint alert + one-tap recovery (operate). Plus: recovery scorecard +
-digest (understand). Pro: repeat-pattern detection + staffing/section proposals (optimize).
-Price points open.
+## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
+
+**Nothing ships at any tier today.** There is **no complaint-capture surface anywhere**, and
+the routing substrate is absent: `server_name` / `table_id` are **0 of 47 rows**, and no
+`floor` module, service, or route exists. Push and websocket transports exist and must be
+reused — what is missing is the routing that turns a complaint into *one person's* alert.
+
+- **Core (operate):** the **direct individual alert** to the assigned waiter's device (one
+  person, not a board everyone glances past), manager escalation on threshold breach, and the
+  one-tap recovery prompt — revisit / comp proposal / pull the manager. 🚧 **signal not built**
+  (no complaint capture, no routing contract) + ⛔ **needs POS** (the `table → server` join).
+- **Plus (understand):** recovery rate (share of complaints resolved on the floor before the
+  guest left), complaint-by-section and by-shift, and time-to-recovery. 🚧 + ⛔ — these are
+  derived entirely from signals that do not exist, so there is no partial version to ship.
+- **Pro (optimize):** repeat-pattern detection (same table, same dish, same section) and
+  staffing / section proposals. 🚧 + ⛔, and additionally gated on the S06 dish referent for
+  the "same dish" axis.
+
+**Boundary that outranks the tier cut:** by charter this is a **service signal, not a
+performance score**. A Plus or Pro tier packaged as complaint analytics-per-server turns the
+floor adversarial and the data goes false-clean. The constraint survives any pricing decision.
 
 ## 11. Evolution feedback
 Where recovery works vs stalls teaches the recovery playbook; where routing is ambiguous

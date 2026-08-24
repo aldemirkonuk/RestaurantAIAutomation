@@ -7,7 +7,7 @@ actors: [vendor-driver, receiver, manager, invoice-pipeline, credit-ledger, inve
 modules: ["[[inbound-understanding-charter|inbound-understanding]]", "[[procurement-vendor-network-charter|procurement-vendor-network]]", "[[inventory-ledger-charter|inventory-ledger]]"]
 signals: [receiving-count, damage-photo, packing-slip, invoice-document, credit-memo, match-verdict, nf_a]
 insights_class: [vendor-reliability, recovered-credit, short-damage-rate, cogs-leakage]
-tier: undecided
+tier: core
 sim_harness: synthetic-engine
 status: proposed
 updated: 2026-08-24
@@ -126,13 +126,26 @@ the correct verdict, the correct claimable/not-claimable decision, and a recover
 that moves **only** on the memo-settled variant. Release Engineering owns the gate; Data
 owns the harness.
 
-## 10. Tier cut (proposed — OD-48; frontmatter stays `undecided`)
-- **Core (operate):** the match verdict + discrepancy flag at the door. You can receive a
-  broken delivery and know it's broken.
-- **Plus (understand):** vendor reliability scorecard + the drafted, human-approved credit
-  claim.
-- **Pro (optimize):** the settled-recovery ledger with ageing, cross-vendor short/damage
-  benchmarking, and proposed write-offs on dead claims.
+## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
+
+- **Core (operate):** the nine-outcome match verdict computed at the door, surfaced as **one
+  headline verdict per line** ordered by evidentiary strength then severity; the damage photo
+  on the door receipt; `rejectedQty` kept distinct from a short ship so the remedy is right.
+  Ships today (`invoice-match.ts`, `receiving.service.ts`, the web mirror
+  `apps/web/src/lib/invoiceMatch.ts`). You can receive a broken delivery and know it's broken.
+- **Plus (understand):** the vendor reliability scorecard — short rate, damage rate, over-bill
+  rate, oldest-open-claim age; and the **credit claim opened in state `open`, never sent**,
+  with its computed amount and whether it is self-evidenced by the packing slip. Ships today;
+  procurement-side, inside the **25.1% no-POS band**.
+- **Pro (optimize):** the settled-recovery ledger with the four-way split — `recovered`
+  (memo-evidenced) vs `outstanding` vs `promised` vs `rejected` — with ageing and proposed
+  write-offs on dead claims. That ledger ships (`credit-ledger.ts`). **Cross-vendor
+  short/damage benchmarking beyond a single tenant is 🚧 signal not built** — it needs a
+  shared multi-restaurant corpus and a governance path for it, neither of which exists. Sell
+  the ageing ledger; do not sell "how your vendors compare to everyone else's."
+
+No part of this scenario ⛔ needs POS. S03 is one of the few places where a no-POS restaurant
+gets the full Core→Plus→Pro ladder — the honest exception being the cross-tenant benchmark.
 
 ## 11. Evolution feedback
 Where receivers override the door count tells us where the two-stage flow leaks. Which

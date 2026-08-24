@@ -7,7 +7,7 @@ actors: [server, table-guests, kitchen-expo, floor-router, pos]
 modules: ["[[service-floor-charter|service-floor]]", "[[pos-bridge-charter|pos-bridge]]"]
 signals: [table-server-join, check-in-tap, engagement, kitchen-ready, device-route, nf_a]
 insights_class: [check-in-coverage, food-up-latency, misroute-rate]
-tier: undecided
+tier: core
 sim_harness: simpos
 status: proposed
 updated: 2026-08-24
@@ -98,12 +98,30 @@ single device with **zero misroutes** in the recorded run. Per the locked rule, 
 precedes `live` with no exception — and here there is no `live` path at all until a
 non-simulator provider emits the fields.
 
-## 10. Tier cut (proposed — OD-48)
-- **Core (operate):** the personal food-up ping and the check-in-window nudge — the
-  one-tap, in-the-moment layer. This is the founder's headline feature and sits in Core.
-- **Plus (understand):** the check-in-coverage and food-up-latency scorecards over a week.
-- **Pro (optimize):** cross-shift routing intelligence — which sections/handoffs generate
-  misroutes, staffing the floor against measured latency. Needs the fullest signal set.
+## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
+
+**Nothing in this scenario ships at any tier today, and the reason is structural, not a
+backlog item.** The owning module does not exist (no `floor` service or route anywhere in
+`apps/`, `services/`, `supabase/`), `table → server` is **0 of 47 rows** in the only corpus,
+and `kitchen-ready` is **unmodelled** in `CanonicalCheck` — not unpopulated, absent from the
+type. Transports (`expo-push`, `websocket.gateway`) exist; the routing contract does not.
+
+- **Core (operate):** the **personal food-up ping** to the one assigned waiter's device, and
+  the quiet check-in-window nudge. This is the founder's headline feature and it belongs in
+  Core. 🚧 **signal not built** (kitchen-ready unmodelled; no check-in capture) + ⛔ **needs
+  POS** (the `table → server` join is POS-sourced, and 0 providers verified today).
+- **Plus (understand):** the weekly check-in-coverage scorecard (share of tables touched
+  inside window) and food-up → waiter p95 latency. 🚧 + ⛔ — **0 providers emit kitchen-ready**,
+  0 verified providers supply `table_id` + `server_name`.
+- **Pro (optimize):** cross-shift routing intelligence — which sections and handoffs generate
+  misroutes, and staffing the floor against measured latency. 🚧 + ⛔, and it needs the
+  **fullest signal set of any scenario in the library**: it is downstream of a POS change
+  (adding kitchen-ready to `CanonicalCheck`), a new routing contract, and a shipped floor
+  module. This is the furthest-from-buildable Pro in the catalogue.
+
+**Boundary, not a satisfiability note:** none of these tiers may be sold or built as a staff
+ranking or disciplinary record. That framing defeats the system in a week and the data goes
+adversarial — a Pro tier marketed as floor-performance analytics destroys its own input.
 
 ## 11. Evolution feedback
 Where routes go ambiguous teaches the routing contract its real edge cases (splits,

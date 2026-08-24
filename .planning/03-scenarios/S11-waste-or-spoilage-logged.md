@@ -7,7 +7,7 @@ actors: [staff, manager, inventory-system, analytics-engine]
 modules: ["[[inventory-ledger-charter|inventory-ledger]]", "[[analytics-engine-charter|analytics-engine]]"]
 signals: [waste-event, quantity_change, reason, lot-depletion, nf_a]
 insights_class: [waste-rate, waste-cost, margin-drag, par-adjustment]
-tier: undecided
+tier: core
 sim_harness: synthetic-engine
 status: proposed
 updated: 2026-08-24
@@ -88,9 +88,23 @@ a synthetic lot book with known costs. Gate: waste changes ship only when the de
 correct lots FIFO, the reconstructed waste cost matches the seeded lot costs, and a follow-up
 spot count reconciles to zero divergence.
 
-## 10. Tier cut (proposed — OD-48)
-Core: waste logging + on-hand adjust. Plus: waste scorecard by reason/SKU + trend. Pro:
-par-level and order-quantity proposals to cut waste, plus cross-SKU spoilage forecasting.
+## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
+
+- **Core (operate):** the one-tap waste log — SKU + quantity + a **structured** reason picker
+  (breakage / corked / expired / over-pour) — writing a negative `quantity_change` through
+  `apply_stock_movement` with FIFO lot depletion, plus immediate confirmation of the new
+  on-hand and a low-stock re-check if the write crosses a par. Ships today.
+- **Plus (understand):** **waste rate** by SKU and reason with its trend, and the surfaced
+  (never applied) repeat note — "3rd breakage of this SKU this month." Pure consumption, so
+  inside the **25.1% no-POS band**. **Waste *cost* in dollars is the qualified one:** a manual
+  waste log passes `unit_cost = NULL` and the depleted lots' actual cost is consumed but never
+  snapshotted onto the transaction, so dollars must be reconstructed from lots that are already
+  gone. Sell waste-rate as solid; sell waste-cost only where cost was attached at log time.
+- **Pro (optimize):** par-level down-adjustment and smaller-reorder proposals off repeated
+  spoilage ("you over-order X"), and cross-SKU spoilage forecasting — both computable on the
+  existing consumption substrate. **Margin drag** — waste as a share of COGS, and lost margin —
+  ⛔ **needs POS**: it requires sale prices and sales volume and sits outside the no-POS band.
+  Promise margin drag only to a POS-connected restaurant.
 
 ## 11. Evolution feedback
 The reason distribution and whether the owner accepts a proposed par cut tell the app which SKUs

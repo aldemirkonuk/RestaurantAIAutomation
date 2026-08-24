@@ -7,7 +7,7 @@ actors: [guest, consumer-app, pos, identity-spine, nf-b-recorder]
 modules: ["[[taste-fingerprint-charter|taste-fingerprint]]", "[[guest-identity-consent-charter|guest-identity-consent]]", "[[consumer-app-points-economy-charter|consumer-app-points-economy]]"]
 signals: [verified-visit, rating-event, dish-photo, nf_b]
 insights_class: [demand-segment, dish-popularity-by-cohort, par-promote-86]
-tier: undecided
+tier: core
 sim_harness: synthetic-engine
 status: proposed
 updated: 2026-08-24
@@ -81,10 +81,27 @@ Synthetic engine generates guest cohorts, visits, and ratings; SimPOS
 and idempotent under replay, and every NF-B event carries all four fields or is refused.
 **Simulated before live — locked, no exception** (contract §5).
 
-## 10. Tier cut (proposed — OD-48)
-Core: capture visit + rating + points (operate). Plus: demand digest / segment scorecards
-(understand). Pro: cross-entity demand → par/promote proposals + forecasting (optimize).
-Price points open.
+## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
+
+**Nothing in this scenario ships at any tier today.** §3 is empty by design of the write-up:
+no ratings table, no points ledger, `guest_check_links` has zero application callers, NF-B
+has never emitted an event. Every line below is a build target, marked as such.
+
+- **Core (operate):** visit check-in (reservation / POS / QR) → rating submission → points
+  credited, labelled **provisional vs confirmed**; the "rate your dish / add a photo" prompt;
+  tier/badge progress. 🚧 **signal not built** — no ratings table, no points ledger, no
+  check-in writer. Note the asymmetry an entitlement page must not hide: this Core layer is
+  **entirely consumer-app-side**. The operator sees nothing in the moment (§5), so a Core-only
+  restaurant subscriber gets no operator surface from S01 at all — its value to them starts at
+  Plus.
+- **Plus (understand):** dish popularity by k-anonymized cohort, and the demand-segment story
+  in the weekly digest (S15). Rating-derived popularity needs only the guest chain above
+  (🚧 signal not built); attributing a rating to what was actually *sold and at what mix*
+  ⛔ **needs POS** — that is the `checks`/`tables` half of the catalogue.
+- **Pro (optimize):** par / promote / 86 proposals driven by demand segments, and novel-dish
+  fit. 🚧 **signal not built** + ⛔ **needs POS**, and for food additionally blocked at the
+  referent — dish identity is a decided defer (A15), so a food "demand segment" has nothing
+  to be a segment *of*. Wine is the only track where this is reachable at all.
 
 ## 11. Evolution feedback
 Which dishes guests rate and **repeat** teaches par and promotion; `divergence_within_cohort`

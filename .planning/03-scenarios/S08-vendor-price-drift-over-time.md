@@ -7,7 +7,7 @@ actors: [owner-buyer, price-observation-store, consensus-engine, vendor-catalogu
 modules: ["[[procurement-vendor-network-charter|procurement-vendor-network]]", "[[supply-discovery-charter|supply-discovery]]", "[[catalogue-identity-charter|catalogue-identity]]"]
 signals: [vendor-price-observation, price-history, invoice-line-price, quote, scrape]
 insights_class: [cogs-drift, price-variance, vendor-vs-market, switch-worthiness]
-tier: undecided
+tier: plus
 sim_harness: synthetic-engine
 status: proposed
 updated: 2026-08-24
@@ -125,13 +125,32 @@ series produce the correct 7/30/90 verdicts, the churn series produces **no** dr
 already unit-tested without a database (`vendor-comparison.service.ts:40-44`), so the sim
 layer adds the series-over-time dimension.
 
-## 10. Tier cut (proposed — OD-48; frontmatter stays `undecided`)
-- **Core (operate):** none. Drift intelligence is not an operate-a-shift feature.
-- **Plus (understand):** the per-vendor price-variance chip and the 7/30/90 trend on the
-  vendor page.
-- **Pro (optimize):** the headline — cross-vendor switch intelligence, COGS-drift
-  attribution to invoices, and vendor-vs-market decomposition. **This scenario's payoff sits
-  at Pro**; that's what "optimize across entities" means.
+## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
+
+**The only scenario in the library with an empty Core** — hence `tier: plus`.
+
+- **Core (operate):** **none.** Drift is a *series* question; nothing about it helps you run
+  tonight's service. A Core-only subscriber sees the price on today's invoice via S02 and
+  nothing longitudinal. Stated plainly so no entitlement page invents a Core feature here.
+- **Plus (understand):** the vendor-page price ladder with **7/30/90-day trend chips**, each
+  carrying a plain-language note ("Up 9.2% over 90 days") **or an honest null** when
+  observations are too sparse to compute; the **"show your working" panel** listing every
+  observation behind the consensus with its trust tier and parse confidence; and the drift
+  flag when a trailing window crosses threshold. Ships today —
+  `vendor-price-consensus.ts` + `vendor-comparison.service.ts`, unit-tested without a DB.
+- **Pro (optimize):** the scenario's payoff, and it is the **most genuinely built Pro tier in
+  the library** — COGS-drift attribution to specific invoices off `price_history` ("your
+  Sangiovese landed cost is up 11% since spring; here are the seven orders"), vendor-vs-market
+  decomposition (your vendor's margin vs a commodity move), and switch-worthiness at equal
+  `normalized_unit_price` net of estimated switching cost.
+
+No tier here ⛔ needs POS — these are procurement and market signals inside the **25.1%
+no-POS band**. The one honest boundary is domain, not data source: **full fidelity is
+wine-only.** The food case is a *spec* match priced per *usable* unit after yield loss;
+`yield_factor` exists (defaulting to 1, so wine is unaffected) but the food ranking path is
+🚧 **scaffolding, not the live comparison**. Selling Pro switch-worthiness to a restaurant
+buying produce would recommend the wrong vendor — a $40 case at 85% yield beats a $36 case
+at 70%.
 
 ## 11. Evolution feedback
 Which drift flags the owner acts on versus dismisses tunes both the threshold and the

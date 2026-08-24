@@ -2,7 +2,7 @@
 type: moc
 title: Scenario Map
 updated: 2026-08-24
-links: ["[[SCENARIO-CONTRACT]]", "[[HOME]]"]
+links: ["[[SCENARIO-CONTRACT]]", "[[TIER-MAP]]", "[[HOME]]"]
 ---
 
 # Scenario Map — the ritual library
@@ -58,8 +58,9 @@ the Decision Office's, once the library is filled.
 
 ## Open
 
-- **OD-48** — subscription tiers. The entitlement axis runs *through* §10 of each
-  scenario, not through pages. Names, price points, and the core/plus/pro cut are the
-  founder's; every scenario's §10 is `undecided` until then.
+- ~~**OD-48** — subscription tiers.~~ **Resolved 2026-08-24.** The Core/Plus/Pro cut is
+  locked and runs *through* §10 of each scenario, not through pages. All 17 §10 sections are
+  filled and every `tier:` is set (16 `core`, 1 `plus`, 0 `pro`). See [[TIER-MAP]] for the
+  matrix and the buildable-today read. **Price points remain founder-deferred (OD-23).**
 - **Roster sign-off** — this 17-scenario cut is proposed. Which happen, in what order,
   and whether the five-entity grouping is the right spine.

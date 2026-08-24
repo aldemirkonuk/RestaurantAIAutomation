@@ -7,7 +7,7 @@ actors: [server, pos-terminal, pos-bridge, inventory-ledger, owner]
 modules: ["[[pos-bridge-charter|pos-bridge]]", "[[inventory-ledger-charter|inventory-ledger]]", "[[connector-platform-trust-charter|connector-platform-trust]]"]
 signals: [pos_webhook, canonical_check, stock_movement, pos_unresolved_line, nf_a]
 insights_class: [depletion-velocity, stock-variance, live-stock, wine-yield]
-tier: undecided
+tier: core
 sim_harness: simpos
 status: proposed
 updated: 2026-08-24
@@ -103,10 +103,27 @@ without a real POS. **Gate (simulation before live, locked 2026-08-24):** pos-br
 ingestion or stock-effect changes ship only when a SimPOS close produces the correct ledger
 delta **and** a replay of the same `external_check_id` is a no-op (idempotency proven).
 
-## 10. Tier cut (proposed — OD-48)
-Core: stock decrement + live levels + low-stock alert. Plus: depletion/reconciliation
-scorecards + pour velocity. Pro: variance intelligence across SKUs + par-level proposals +
-cross-entity (S02 receiving ↔ S04 depletion) reconciliation.
+## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
+
+**Premise:** this scenario *is* the POS feed — it only exists once S14 connects one. The marks
+below name what is needed **beyond** that connection.
+
+- **Core (operate):** per-line stock decrement on check close, idempotency-keyed so replays are
+  safe; live stock levels that track sales rather than only receiving; the real-time low-stock
+  **edge alert** for every wine the check touched; the `pos_unresolved_lines` queue surfaced so
+  an unmapped wine is queued, never dropped. Wired end to end today (`pos-hub.service.ts`).
+- **Plus (understand):** depletion / pour-velocity scorecards per SKU, wine-by-the-glass yield
+  vs theoretical pour, and 30-day ingestion stats by source. **Partial by construction:** only
+  lines carrying an `inventory_id` deplete — today that is wine. **Food is persisted verbatim
+  to `pos_checks.items` but has no inventory row and never decrements stock** (B36/A11), and
+  unmapped wine sits in `pos_unresolved_lines`. Realized coverage is gated on mapping
+  completeness, not promised outright.
+- **Pro (optimize):** stock-variance intelligence — POS depletion reconciled against S02
+  receiving ("you sold 14 glasses of the Chablis; the bottle math says 12 — where did two
+  go?"); par-level proposals from observed depletion patterns; the cross-entity S02 ↔ S04
+  reconciliation. Real **for wine**. Plate-level variance — the thing an owner assumes "Pro
+  inventory intelligence" means — is 🚧 **signal not built**: it needs recipe-level BOM, which
+  does not exist. Do not let a Pro page imply food depletion.
 
 ## 11. Evolution feedback
 The `pos_unresolved_lines` rate tells us where mapping coverage is thin; which items owners

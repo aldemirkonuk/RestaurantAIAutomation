@@ -7,7 +7,7 @@ actors: [guest, identity-spine, nf-b-recorder, pos, consumer-app]
 modules: ["[[guest-identity-consent-charter|guest-identity-consent]]", "[[taste-fingerprint-charter|taste-fingerprint]]", "[[consumer-app-points-economy-charter|consumer-app-points-economy]]"]
 signals: [consented-check-link, dish-choice-in-context, rating-event, nf_b]
 insights_class: [demand-composition-with-divergence, novel-dish-fit, k-anon-segment-demand]
-tier: undecided
+tier: core
 sim_harness: synthetic-engine
 status: proposed
 updated: 2026-08-24
@@ -89,10 +89,31 @@ tourists carrying **home-region baselines** (delta coverage), and wine choices (
 identity). Gate: `divergence_within_cohort` > 0, `novel_stimulus_hit_rate` above chance, and
 **zero false merges** under adversarial copresence replay. **Simulated before live — locked.**
 
-## 10. Tier cut (proposed — OD-48)
-Core: capture consented visits (operate). Plus: the guest's own taste profile surfaced to them
-(understand). Pro: mechanism-level recommendation + demand proposals to the owner (optimize).
-Price points open.
+## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
+
+**Nothing ships at any tier today, and the food track is blocked by a decision, not a
+backlog.** `guest_check_links` exists as schema with **zero application callers**;
+`nf_b.subject_coverage` is **0%, structural**; NF-B has never emitted an event and its column
+contract is still open (OD-11). Read every tier as *wine-only-if-ever*.
+
+- **Core (operate):** consent-gated visit linkage — the **exact verified key or refuse** check
+  link, and the consent prompt before any linkage is written. 🚧 **signal not built** — nothing
+  writes `guest_check_links`. As in S01, this Core layer is consumer-side: the restaurant
+  operator gets no in-the-moment surface from it.
+- **Plus (understand):** the guest's own taste profile surfaced back to them, and demand
+  composition by cohort **with divergence preserved** (not collapsed to a regional average).
+  🚧 — needs the NF-B tuple emitting. **Wine is the only track where this is even possible:**
+  `master_wine_library` gives a deterministic referent (0 false merges over 732,874 pairs).
+  Over food there is no referent at all — dish identity is DEFERRED and the corpus is 37 raw
+  strings, so a food fingerprint **cannot exist**, not "is hard."
+- **Pro (optimize):** mechanism-level recommendation — exposure as a satiating dose–response,
+  region as a prior not a verdict, tourist choice as a trajectory — plus k-anonymized demand
+  proposals to the owner. 🚧 **signal not built** + ⛔ **needs POS** (the check is what anchors
+  a visit to what was actually eaten).
+
+Alongside S09, **the most aspirational Pro in the library** — with one difference worth stating
+to a buyer: S09's blocker is an unbuilt detector, S12's is a deliberate deferral. Neither
+should be sold; only one is on anyone's roadmap.
 
 ## 11. Evolution feedback
 `divergence_within_cohort` teaches whether it personalizes or averages; `novel_stimulus_hit_rate`

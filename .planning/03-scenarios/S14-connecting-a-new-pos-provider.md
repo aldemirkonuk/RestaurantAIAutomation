@@ -7,7 +7,7 @@ actors: [operator, pos-bridge, connector-platform-trust, onboarding, catalog-mat
 modules: ["[[pos-bridge-charter|pos-bridge]]", "[[connector-platform-trust-charter|connector-platform-trust]]", "[[catalogue-identity-charter|catalogue-identity]]"]
 signals: [provider_registry, onboarding_pos_config, canonical_check, catalog_match_proposal]
 insights_class: [connection-health, catalog-mapping-coverage, depletion-velocity]
-tier: undecided
+tier: core
 sim_harness: simpos
 status: proposed
 updated: 2026-08-24
@@ -104,10 +104,32 @@ catalog, catalog-match, close a check → signed `generic_webhook` POST
 first-check-deplete passes end to end in simulation before any real merchant connects. Each
 new normalizer earns a sim variant before `live`.
 
-## 10. Tier cut (proposed — OD-48)
-Core: connect + `generic_webhook`/`csv_import` bridge + basic connection status. Plus:
-catalog auto-mapping + connection-health scorecards. Pro: native adapters (OAuth) +
-multi-location + cross-provider intelligence.
+## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
+
+**S14 must never sit above Core.** It computes almost nothing itself, but it is the single act
+that moves an owner from **25.1% to 100%** of the insight catalogue. Gating POS connection
+behind a paid tier would gate the product's own value delivery behind a paywall and make every
+other scenario's Plus/Pro look like vapour.
+
+- **Core (operate):** the provider picker across 27 registry providers with **honest status
+  badges** (available / partial / scaffolded / planned) so nobody is promised an adapter that
+  isn't built; the universal `generic_webhook` URL + secret to configure in the POS or
+  middleware; `csv_import` for pull-based houses; and connection status by source
+  (`GET /pos-hub/status/:restaurantId`). Ships today — with the honest caveat that
+  **`generic_webhook` and `csv_import` are the only two providers marked available**; Toast is
+  `partial`, Square and Clover are `scaffolded` (normalizers written, awaiting merchant
+  OAuth/tokens), and the rest are `planned`.
+- **Plus (understand):** catalog auto-mapping at ≥0.9 confidence and unambiguous, with the
+  review queue for everything below; the mapping-coverage readout ("N of M items auto-mapped,
+  K need your review"); and the connection-health scorecard (checks landing, at what rate, from
+  which source). Ships today.
+- **Pro (optimize):** native OAuth adapters, multi-location, and cross-provider intelligence.
+  🚧 **signal not built** — **no native OAuth adapter is `available` today**. A Pro tier sold as
+  "native integrations" would be selling scaffolding.
+
+The framing an entitlement page should carry, from S15 §10: Pro across the whole product is
+almost definitionally *"you plugged in your POS."* That makes **S14 the true upgrade trigger,
+not a price toggle** — and an argument for making connection free and frictionless.
 
 ## 11. Evolution feedback
 Which providers operators actually pick (the onboarding `pos.provider` distribution) tells

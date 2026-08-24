@@ -7,7 +7,7 @@ actors: [vendor-driver, receiver, manager, inventory-system, invoice-pipeline]
 modules: ["[[inbound-understanding-charter|inbound-understanding]]", "[[inventory-ledger-charter|inventory-ledger]]", "[[procurement-vendor-network-charter|procurement-vendor-network]]"]
 signals: [delivery-photo, invoice-document, receiving-count, email, nf_a]
 insights_class: [vendor-reliability, cogs-drift, price-variance, stockout-avoidance]
-tier: undecided
+tier: core
 sim_harness: synthetic-engine
 status: proposed
 updated: 2026-08-24
@@ -66,9 +66,25 @@ Synthetic engine generates: clean delivery · short delivery · substitution · 
 damaged-goods, against a synthetic PO book. Gate: invoice-pipeline changes ship only when
 the five synthetic variants parse to correct ledger deltas.
 
-## 10. Tier cut (proposed — OD-48)
-Core: receiving checklist + basic mismatch flag. Plus: vendor scorecards + credit drafts.
-Pro: price-variance intelligence across vendors + par-level proposals.
+## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
+
+- **Core (operate):** the PO-prefilled receiving checklist at the door; one-tap
+  accept / short / damaged per line; the three-way PO ↔ invoice ↔ received mismatch flag; stock
+  booked on accept. Ships today — `ReceivingWorkspace.tsx`, the live `/receiving/:orderId/door`
+  route, and `invoice-match.ts` as backend authority. This is the strongest Core in the library:
+  a restaurant can receive a truck correctly on day one, with no POS.
+- **Plus (understand):** the vendor scorecard — on-time %, fill rate, price variance vs the
+  observation consensus; the **drafted, never-auto-sent** credit-request email; per-delivery
+  COGS-drift trace ("your flour is up 9% in 6 weeks, here are the three invoices"). All
+  procurement-side, inside the **25.1% no-POS satisfiable band** — real for a restaurant that
+  never connects a POS.
+- **Pro (optimize):** cross-vendor price-variance intelligence (the engine lives in S08);
+  par-level adjustment proposals after repeated shorts; the stockout-risk delta per delivery
+  ("this delivery cleared 4 of 6 weekend risk items"). The first two ship. The risk delta is
+  computable without POS but ⛔ **needs POS for depth** — it reads the same
+  `wine_consumption_log` series S10 depends on, which only deepens as POS sales flow through
+  `recordConsumption`. Per-parse agent economics (cost/verdict per invoice) is 🚧 **signal not
+  built** — NF-A emits nothing in the gateway.
 
 ## 11. Evolution feedback
 Where receivers override the parse tells us where the parser is weak; which insights the

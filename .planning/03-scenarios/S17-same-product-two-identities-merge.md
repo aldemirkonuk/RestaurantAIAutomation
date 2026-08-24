@@ -7,7 +7,7 @@ actors: [owner, governance-reviewer, catalogue-identity, merge-engine, inventory
 modules: ["[[catalogue-identity-charter|catalogue-identity]]", "[[inventory-ledger-charter|inventory-ledger]]"]
 signals: [duplicate-candidate, match-kind, menu-cooccurrence, vintage-agreement, nf_a]
 insights_class: [duplicate-risk, catalogue-health, false-merge-rate]
-tier: undecided
+tier: core
 sim_harness: synthetic-engine
 status: proposed
 updated: 2026-08-24
@@ -98,11 +98,29 @@ change ships only when it commits **zero false merges** on that eval set — the
 killed a fuzzy threshold which had committed 212 false merges (`DISH_IDENTITY_DESIGN.md`
 rationale).
 
-## 10. Tier cut (proposed — OD-48)
-Core: the duplicate-review queue — see candidates, merge manually with the dry-run preview.
-Plus: ranked candidates with match-kind + co-occurrence reasons and pending-merge insight.
-Pro: cross-restaurant and cross-provider dedupe, producer normalization at scale, automated
-candidate surfacing — still human-confirmed, always.
+## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
+
+- **Core (operate):** the duplicate-review queue — see candidate pairs, run the **dry-run
+  preview** naming every FK repoint (15 columns / 15 tables) and the `restaurant_inventory`
+  consolidation before anything commits, then one-tap confirm / reject. The merge itself is
+  **non-destructive**: supersede, never delete — soft-delete with `superseded_by` and a
+  `wine_aliases` redirect. Heavily built and ships today.
+- **Plus (understand):** ranked candidates carrying **match kind** (`identical` vs
+  one-name-contains-the-other, with cuvee suffixes flagged as plausibly *different* wines) and
+  the **menu co-occurrence reason as its own column, never folded into a boolean**; plus the
+  catalogue-health readout — dupes per 100 rows, "N provisionals that look like wines you
+  already carry," and pending-merge queue depth. POS-free, inside the **25.1% no-POS band**.
+- **Pro (optimize):** cross-restaurant and cross-provider dedupe, producer normalization at
+  scale, and automated candidate surfacing. 🚧 **signal not built** — cross-tenant dedupe needs
+  a shared catalogue governance path that does not exist, and promoting a provisional above
+  tier 3 is a governance decision, not a compute one.
+
+**The constraint that must survive every pricing conversation:** Pro here may never become
+auto-merge. A false merge is silent, global, and unrecoverable — the only Engineering mistake
+a deploy revert cannot undo, and un-merge provably does **not** restore inventory (the function
+was renamed `unsupersede_library_wine` precisely so calling it stops asserting a claim it
+cannot back). A missed merge costs ~1/100th of a false one. "Automated" in the Pro line above
+means *surfacing*, always human-confirmed — anything else sells the catalogue's own integrity.
 
 ## 11. Evolution feedback
 Every human accept/reject of a proposed merge is a labeled pair that feeds the eval set and
