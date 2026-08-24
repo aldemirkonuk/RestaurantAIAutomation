@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as crypto from "crypto";
 import { DatabaseService } from "../database/database.service";
+import { ModelClientService } from "../common/model-client/model-client.service";
 import {
   ExtractedItem,
   htmlToText,
@@ -9,8 +10,6 @@ import {
   normalizeExtraction,
 } from "./vendor-page-extraction";
 import { hashWineIdentity } from "./wine-identity";
-
-const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 
 /** Identifies us in request logs so a vendor can allow or block us deliberately. */
 const USER_AGENT =
@@ -63,6 +62,7 @@ export class VendorPageExtractorService {
   constructor(
     private readonly configService: ConfigService,
     private readonly databaseService: DatabaseService,
+    private readonly modelClient: ModelClientService,
   ) {}
 
   private model(): string {
@@ -176,27 +176,26 @@ export class VendorPageExtractorService {
 
     let rawText: string;
     try {
-      const res = await fetch(ANTHROPIC_API_URL, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
+      // P1 NF-A: model client owns transport (same 120s budget as before) and
+      // emits the footprint row. HTTP errors throw as `Anthropic <status>: …`,
+      // so skippedReason carries the same detail the old two-branch code did.
+      const payload: any = await this.modelClient.call({
+        body: {
           model: this.model(),
           max_tokens: 8192,
           system: SYSTEM_PROMPT,
           messages: [{ role: "user", content: text }],
-        }),
-        signal: AbortSignal.timeout(120_000),
+        },
+        timeoutMs: 120_000,
+        nf: {
+          subjectId: "VendorPageExtractor",
+          taskType: "vendor_page_extraction",
+          stimulus: "vendor_page",
+          choice: "extracted_items",
+          restaurantId: params.restaurantId ?? null,
+          context: { url },
+        },
       });
-      if (!res.ok) {
-        const detail = await res.text().catch(() => "");
-        result.skippedReason = `Anthropic ${res.status}: ${detail.slice(0, 200)}`;
-        return result;
-      }
-      const payload: any = await res.json();
       rawText =
         (payload.content || []).find((b: any) => b.type === "text")?.text ??
         "{}";

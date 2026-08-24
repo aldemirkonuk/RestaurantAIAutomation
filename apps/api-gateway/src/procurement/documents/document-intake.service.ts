@@ -217,7 +217,11 @@ export class DocumentIntakeService {
         "No extraction model is configured, so the document was stored unread.",
       );
 
-    return this.extractor.extract(bytes.toString("base64"), input.mimeType);
+    return this.extractor.extract(
+      bytes.toString("base64"),
+      input.mimeType,
+      input.restaurantId,
+    );
   }
 
   private unreadable(reason: string): ParsedDocument {

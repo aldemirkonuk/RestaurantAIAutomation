@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 from core.base_agent import BaseAgent
 from utils.logger import setup_logger
 from services.email_composer_service import EmailComposerService
+from services.spend_logger import estimate_llm_cost, get_spend_logger
 from config.settings import Settings
 from services.model_clients import get_haiku_client
 
@@ -907,6 +908,26 @@ class ProviderConversationAgent(BaseAgent):
     # 3. INTELLIGENCE EXTRACTOR
     # =========================================================================
 
+    def _log_gemini_spend(self, response, task_type: str) -> None:
+        """P1: emit one spend/NF row for a legacy-SDK Gemini call (never raises)."""
+        try:
+            _usage = getattr(response, "usage_metadata", None)
+            _in = getattr(_usage, "prompt_token_count", 0) or 0
+            _out = getattr(_usage, "candidates_token_count", 0) or 0
+            get_spend_logger().log(
+                provider="google",
+                model=self.extraction_model,
+                input_tokens=_in,
+                output_tokens=_out,
+                cost_usd=estimate_llm_cost(self.extraction_model, _in, _out),
+                agent=self.agent_name,
+                task_type=task_type,
+                outcome="success",  # call-level: response returned
+                correlation_id=getattr(self, "_current_correlation_id", None),
+            )
+        except Exception:
+            pass
+
     async def _extract_intelligence(
         self, message_text: str, provider_id: str
     ) -> ExtractionResult:
@@ -929,6 +950,7 @@ class ProviderConversationAgent(BaseAgent):
                     generation_config={"temperature": 0.1, "max_output_tokens": 2000},
                 ),
             )
+            self._log_gemini_spend(response, "intelligence_extraction")  # P1
 
             raw_text = response.text.strip()
             # Strip markdown code fences if present
@@ -1162,6 +1184,21 @@ class ProviderConversationAgent(BaseAgent):
                 model=f"models/{self.embedding_model}",
                 content=text,
                 task_type="retrieval_document",
+            )
+            # P1: embedding calls are API spend too. No token usage is exposed
+            # by the embed API and no per-call price is configured, so tokens
+            # and cost are recorded as 0 with the call flagged unpriced.
+            get_spend_logger().log(
+                provider="google",
+                model=self.embedding_model,
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd=0.0,
+                agent=self.agent_name,
+                task_type="embedding",
+                outcome="success",  # call-level: embedding returned
+                correlation_id=getattr(self, "_current_correlation_id", None),
+                context={"call_kind": "embedding", "pricing": "unpriced"},
             )
             return result["embedding"]
         except Exception as e:
@@ -1877,6 +1914,7 @@ class ProviderConversationAgent(BaseAgent):
                     },
                 ),
             )
+            self._log_gemini_spend(response, "draft_response")  # P1
 
             draft_text = response.text.strip()
 
@@ -2008,6 +2046,28 @@ class ProviderConversationAgent(BaseAgent):
                     }
                 ],
             )
+            # P1: previously an unlogged Haiku call (dark site)
+            try:
+                _in = response.usage.input_tokens if hasattr(response, "usage") else 0
+                _out = (
+                    response.usage.output_tokens if hasattr(response, "usage") else 0
+                )
+                get_spend_logger().log(
+                    provider="anthropic",
+                    model=settings.haiku_model,
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=estimate_llm_cost(settings.haiku_model, _in, _out),
+                    restaurant_id=restaurant_id,
+                    agent=self.agent_name,
+                    task_type="correction_preference",
+                    outcome="success",  # call-level: completion returned
+                    correlation_id=getattr(self, "_current_correlation_id", None),
+                    context={"provider_id": str(provider_id)},
+                )
+            except Exception:
+                pass
+
             preference = response.content[0].text.strip() if response.content else ""
             if preference:
                 # Append to conversation_context.manager_instructions[] on active session
@@ -2055,6 +2115,7 @@ class ProviderConversationAgent(BaseAgent):
                     generation_config={"temperature": 0.3, "max_output_tokens": 200},
                 ),
             )
+            self._log_gemini_spend(response, "session_summary")  # P1
 
             return response.text.strip()
         except Exception as e:

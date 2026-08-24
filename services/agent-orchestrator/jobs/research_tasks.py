@@ -518,6 +518,10 @@ async def _extract_field_candidates(
                     input_tokens=in_tok,
                     output_tokens=out_tok,
                     cost_usd=cost,
+                    agent="research_agent",
+                    task_type="field_extraction",
+                    outcome="success",  # call-level: completion returned
+                    context={"field": field_name, "model_tier": model_tier},
                 )
             except Exception:
                 pass
@@ -572,6 +576,10 @@ async def _extract_field_candidates(
                 input_tokens=in_tok,
                 output_tokens=out_tok,
                 cost_usd=cost,
+                agent="research_agent",
+                task_type="field_extraction",
+                outcome="success",  # call-level: completion returned
+                context={"field": field_name, "model_tier": "flash"},
             )
         except Exception as spend_err:
             logger.debug("Gemini spend log failed (non-fatal): %s", spend_err)
@@ -716,9 +724,11 @@ async def _process_record(
         record_cost += serper_cost
 
         search_results: list = []
+        search_ok = True
         try:
             search_results = await serper_search(query, num_results=5)
         except Exception as exc:
+            search_ok = False
             logger.warning(
                 "Serper search failed for field=%s wine_id=%s: %s",
                 field_name,
@@ -733,6 +743,15 @@ async def _process_record(
                 input_tokens=0,
                 output_tokens=0,
                 cost_usd=serper_cost,
+                agent="research_agent",
+                task_type="field_search",
+                choice=f"search:{len(search_results)}_results",
+                outcome="success" if search_ok else "failure",  # call-level
+                context={
+                    "field": field_name,
+                    "wine_id": wine_id,
+                    "results_count": len(search_results),
+                },
             )
         except Exception as spend_err:
             logger.debug("Serper spend log failed (non-fatal): %s", spend_err)
@@ -1002,9 +1021,36 @@ async def _process_record(
             record_cost += settings.serper_cost_per_query
 
             search_results = []
+            search_ok = True
             try:
                 search_results = await serper_search(query, num_results=5)
             except Exception:
+                search_ok = False
+
+            # P1: this Layer-3 Serper call was previously entirely unlogged —
+            # money left the building with no api_spend row (dark site).
+            try:
+                spend_logger.log(
+                    provider="serper",
+                    model="search",
+                    input_tokens=0,
+                    output_tokens=0,
+                    cost_usd=settings.serper_cost_per_query,
+                    agent="research_agent",
+                    task_type="field_search_reflexion",
+                    choice=f"search:{len(search_results)}_results",
+                    outcome="success" if search_ok else "failure",  # call-level
+                    context={
+                        "field": field_name,
+                        "wine_id": wine_id,
+                        "attempt": attempt,
+                        "results_count": len(search_results),
+                    },
+                )
+            except Exception as spend_err:
+                logger.debug("Serper spend log failed (non-fatal): %s", spend_err)
+
+            if not search_ok:
                 break
 
             if not search_results:

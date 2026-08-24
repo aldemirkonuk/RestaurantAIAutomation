@@ -1657,7 +1657,7 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
-| NEW-758 | `Flow` | Shared `<ContextualInsights host="inventory\|orders\|providers" entity?>` component: same Act/Dismiss/Explain/Pin affordances as NEW-434 / NEW-284. |
+| NEW-758 | `Flow` | Shared `<ContextualInsights host="inventory|orders|providers" entity?>` component: same Act/Dismiss/Explain/Pin affordances as NEW-434 / NEW-284. |
 | NEW-759 | `Flow` | Insight deep links are stable (`/recommendations?insight=<id>` or `?type=<dim.measure.comparator>&entity=<id>`) and work from any host page. |
 | NEW-760 | `Click` | Empty contextual rail explains "connect checks/POS" or "no insights for this entity yet" with Browse-All CTA — never a blank panel. |
 

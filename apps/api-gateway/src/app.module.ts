@@ -45,6 +45,7 @@ import {
 } from "./common/error-tracking";
 import { RateLimitModule, RateLimitGuard } from "./common/rate-limit";
 import { CacheModule } from "./common/cache/cache.module";
+import { ModelClientModule } from "./common/model-client/model-client.module";
 import { TenantGuard } from "./common/tenant/tenant.guard";
 import { OrchestratorModule } from "./common/orchestrator/orchestrator.module";
 import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
@@ -70,6 +71,7 @@ import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
     ErrorTrackingModule, // Global error tracking (Sentry)
     RateLimitModule, // API rate limiting
     CacheModule, // Redis caching layer
+    ModelClientModule, // Single choke point for model calls + NF-A emission (P1)
     OrchestratorModule, // NestJS -> Python bridge (HTTP + RabbitMQ)
     DatabaseModule,
     AuthModule,

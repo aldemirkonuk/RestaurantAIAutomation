@@ -3,7 +3,7 @@
 Status: **Stage 1 research is DONE (2026-08-17).** Prerequisites in §7 are done. Schema
 work (the `producer_reputation_score` columns) is owned by the `BEVERAGE_CATALOGUE_PLAN`
 session and was explicitly NOT built here — Stage 1 produced raw observations only, stored
-in `.planning/stage1_producer_research_raw.json`, ready to load once that schema lands.
+in `datasets/planning-exports/stage1_producer_research_raw.json`, ready to load once that schema lands.
 See §11 for what shipped and what it found.
 
 **Companion documents.** `.planning/BEVERAGE_CATALOGUE_PLAN.md` and
@@ -410,7 +410,7 @@ from any validation that uses price as the target, or the check is circular and 
 **Scope:** all 101 top-value producers researched (99 distinct entities — 2 turned out to be
 duplicate spellings of others already in the list, found and merged mid-research, see below).
 **Method:** WebSearch, not the paid research-agent API — $0 marginal cost. **Output:**
-303 raw observations across 99 producers, in `.planning/stage1_producer_research_raw.json`,
+303 raw observations across 99 producers, in `datasets/planning-exports/stage1_producer_research_raw.json`,
 matching the Layer-1 (observations, not scores) design in §4. Nothing was written to the
 database — no schema exists yet to hold it.
 
@@ -535,7 +535,7 @@ reproducible by re-running the queries in this session's history.
 citations* — not a methodology change, just a deliberate preference for the estate's own
 site over a merchant page when both carried the same fact.
 
-Store: `.planning/stage1_producer_research_raw.json`. Recorder: `/tmp/rec.py`.
+Store: `datasets/planning-exports/stage1_producer_research_raw.json`. Recorder: `/tmp/rec.py`.
 
 **Denominator, stated explicitly** (it was implicit before and cost time to re-derive):
 `source='menu_corpus' AND primary_type <> 'unknown'`, **deduplicated** on

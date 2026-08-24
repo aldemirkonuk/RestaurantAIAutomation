@@ -307,6 +307,27 @@ class WineBookScraper:
                 ],
                 config=types.GenerateContentConfig(temperature=0.1),
             )
+
+            # P1: previously an unlogged model call (dark site)
+            try:
+                from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+                _usage = getattr(response, "usage_metadata", None)
+                _in = getattr(_usage, "prompt_token_count", 0) or 0
+                _out = getattr(_usage, "candidates_token_count", 0) or 0
+                get_spend_logger().log(
+                    provider="google",
+                    model="gemini-2.0-flash",
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=estimate_llm_cost("gemini-2.0-flash", _in, _out),
+                    agent_fallback="wine_book_scraper",
+                    task_type="book_vision_extraction",
+                    outcome="success",  # call-level: response returned
+                )
+            except Exception:
+                pass
+
             return response.text
 
         except Exception as e:
@@ -393,6 +414,30 @@ Return ONLY a valid JSON array. If no wines found, return []."""
                     contents=prompt,
                     config=config,
                 )
+
+                # P1: previously an unlogged model call (dark site)
+                try:
+                    from services.spend_logger import (
+                        estimate_llm_cost,
+                        get_spend_logger,
+                    )
+
+                    _usage = getattr(response, "usage_metadata", None)
+                    _in = getattr(_usage, "prompt_token_count", 0) or 0
+                    _out = getattr(_usage, "candidates_token_count", 0) or 0
+                    get_spend_logger().log(
+                        provider="google",
+                        model="gemini-2.0-flash",
+                        input_tokens=_in,
+                        output_tokens=_out,
+                        cost_usd=estimate_llm_cost("gemini-2.0-flash", _in, _out),
+                        agent_fallback="wine_book_scraper",
+                        task_type="book_text_extraction",
+                        outcome="success",  # call-level: response returned
+                        context={"chunk_index": chunk_idx},
+                    )
+                except Exception:
+                    pass
 
                 result_text = response.text.strip()
                 if "```json" in result_text:

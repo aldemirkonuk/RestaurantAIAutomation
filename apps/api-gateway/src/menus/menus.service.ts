@@ -73,7 +73,7 @@ export class MenusService {
     // 1. Parse input → WineExtractItem[]
     let items: WineExtractItem[];
     if (dto.method === "scan") {
-      items = await this.scanParser.parse(dto.data.imageBase64!);
+      items = await this.scanParser.parse(dto.data.imageBase64!, restaurantId);
     } else if (dto.method === "csv") {
       items = dto.data.fileBase64
         ? await this.csvParser.parseExcel(dto.data.fileBase64)

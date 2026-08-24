@@ -14,6 +14,7 @@ import json
 
 from core.base_agent import BaseAgent
 from core.database import MasterWineLibrary
+from services.spend_logger import estimate_llm_cost, get_spend_logger
 
 
 class SommelierAgent(BaseAgent):
@@ -402,6 +403,26 @@ class SommelierAgent(BaseAgent):
 
         return suggestions
 
+    def _log_llm_spend(self, response, model: str, task_type: str) -> None:
+        """P1: emit one spend/NF row for a Gemini call (never raises)."""
+        try:
+            _usage = getattr(response, "usage_metadata", None)
+            _in = getattr(_usage, "prompt_token_count", 0) or 0
+            _out = getattr(_usage, "candidates_token_count", 0) or 0
+            get_spend_logger().log(
+                provider="google",
+                model=model,
+                input_tokens=_in,
+                output_tokens=_out,
+                cost_usd=estimate_llm_cost(model, _in, _out),
+                agent=self.agent_name,
+                task_type=task_type,
+                outcome="success",  # call-level: response returned
+                correlation_id=getattr(self, "_current_correlation_id", None),
+            )
+        except Exception:
+            pass
+
     async def _interpret_wine_query(self, query: str) -> Dict[str, Any]:
         """
         Interpret natural language wine query using LLM
@@ -437,6 +458,7 @@ Respond with valid JSON only."""
             response = self.llm_client.generate_content(
                 prompt, generation_config={"temperature": 0.1}
             )
+            self._log_llm_spend(response, self.llm_model, "query_interpretation")  # P1
 
             return json.loads(response.text)
 
@@ -507,6 +529,7 @@ Provide a friendly, knowledgeable response recommending wines from the list. Kee
             response = self.llm_client.generate_content(
                 prompt, generation_config={"temperature": 0.7, "max_output_tokens": 150}
             )
+            self._log_llm_spend(response, self.llm_model, "wine_response")  # P1
 
             return response.text.strip()
 
@@ -607,6 +630,9 @@ Respond with valid JSON only."""
                     contents=prompt,
                     config=config,
                 )
+                self._log_llm_spend(  # P1
+                    response, "gemini-2.0-flash", "wine_enrichment_grounded"
+                )
                 result_text = response.text.strip()
                 if "```json" in result_text:
                     result_text = (
@@ -623,6 +649,9 @@ Respond with valid JSON only."""
             if hasattr(self, "llm_client") and self.llm_client:
                 response = self.llm_client.generate_content(
                     prompt, generation_config={"temperature": 0.1}
+                )
+                self._log_llm_spend(  # P1
+                    response, self.llm_model, "wine_enrichment_fallback"
                 )
                 result_text = response.text.strip()
                 if "```json" in result_text:

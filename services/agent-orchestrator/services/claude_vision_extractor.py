@@ -501,6 +501,14 @@ class ClaudeVisionExtractor:
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 cost_usd=cost_usd,
+                agent_fallback="claude_vision_extractor",
+                task_type="menu_page_extraction",
+                choice=f"wines:{len(parsed.get('wines', []))}",
+                outcome="partial" if parse_error else "success",  # call-level
+                context={
+                    "page_index": page_index,
+                    "parse_error": bool(parse_error),
+                },
             )
         except Exception:
             pass
@@ -643,6 +651,11 @@ class ClaudeVisionExtractor:
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 cost_usd=cost_usd,
+                agent_fallback="claude_vision_extractor",
+                task_type="pdf_extraction",
+                choice=f"wines:{len(parsed.get('wines', []))}",
+                outcome="partial" if parse_error else "success",  # call-level
+                context={"parse_error": bool(parse_error)},
             )
         except Exception:
             pass

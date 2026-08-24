@@ -569,6 +569,27 @@ Use web search to find accurate, real-world data. Return ONLY valid JSON with AL
                 config=config,
             )
 
+            # P1: previously an unlogged model call (dark site)
+            try:
+                from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+                _usage = getattr(response, "usage_metadata", None)
+                _in = getattr(_usage, "prompt_token_count", 0) or 0
+                _out = getattr(_usage, "candidates_token_count", 0) or 0
+                get_spend_logger().log(
+                    provider="google",
+                    model="gemini-2.5-flash",
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
+                    agent_fallback="wine_matcher",
+                    task_type="wine_enrichment_grounded",
+                    outcome="success",  # call-level: response returned
+                    context={"wine_name": str(wine_name)[:120]},
+                )
+            except Exception:
+                pass
+
             result_text = response.text.strip()
             if "```json" in result_text:
                 result_text = result_text.split("```json")[1].split("```")[0].strip()
@@ -625,6 +646,28 @@ Return ONLY valid JSON with: name, producer, vintage, wine_type, country, region
             response = model.generate_content(
                 prompt, generation_config={"temperature": 0.1}
             )
+
+            # P1: previously an unlogged model call (dark site)
+            try:
+                from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+                _usage = getattr(response, "usage_metadata", None)
+                _in = getattr(_usage, "prompt_token_count", 0) or 0
+                _out = getattr(_usage, "candidates_token_count", 0) or 0
+                get_spend_logger().log(
+                    provider="google",
+                    model="gemini-pro",
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=estimate_llm_cost("gemini-pro", _in, _out),
+                    agent_fallback="wine_matcher",
+                    task_type="wine_enrichment_fallback",
+                    outcome="success",  # call-level: response returned
+                    context={"wine_name": str(wine_name)[:120]},
+                )
+            except Exception:
+                pass
+
             result_text = response.text.strip()
             if "```json" in result_text:
                 result_text = result_text.split("```json")[1].split("```")[0].strip()

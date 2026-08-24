@@ -252,7 +252,7 @@ class EmailIntelAgent(BaseAgent):
             'Respond ONLY with valid JSON: {"category": "...", "confidence": 0.0-1.0, '
             '"reasoning": "...", "provider_name": "...", "urgency": "low|medium|high"}'
         )
-        response = gemini.models.generate_content(
+        response = gemini.models.generate_content(  # spend logged below (P1)
             model=self.settings.gemini_model,
             contents=prompt,
             config=genai_types.GenerateContentConfig(
@@ -277,6 +277,27 @@ class EmailIntelAgent(BaseAgent):
                 ],
             ),
         )
+        # P1: previously an unlogged model call (dark site)
+        try:
+            from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+            _usage = getattr(response, "usage_metadata", None)
+            _in = getattr(_usage, "prompt_token_count", 0) or 0
+            _out = getattr(_usage, "candidates_token_count", 0) or 0
+            get_spend_logger().log(
+                provider="google",
+                model=self.settings.gemini_model,
+                input_tokens=_in,
+                output_tokens=_out,
+                cost_usd=estimate_llm_cost(self.settings.gemini_model, _in, _out),
+                agent=self.agent_name,
+                task_type="email_classification",
+                outcome="success",  # call-level: response returned
+                correlation_id=getattr(self, "_current_correlation_id", None),
+            )
+        except Exception:
+            pass
+
         raw = response.text or "{}"
         data = json.loads(raw)
         return EmailClassification(**data)
@@ -424,6 +445,27 @@ class EmailIntelAgent(BaseAgent):
             max_tokens=512,
             messages=[{"role": "user", "content": prompt}],
         )
+
+        # P1: previously an unlogged model call (dark site)
+        try:
+            from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+            _in = response.usage.input_tokens if hasattr(response, "usage") else 0
+            _out = response.usage.output_tokens if hasattr(response, "usage") else 0
+            get_spend_logger().log(
+                provider="anthropic",
+                model=self.settings.haiku_model,
+                input_tokens=_in,
+                output_tokens=_out,
+                cost_usd=estimate_llm_cost(self.settings.haiku_model, _in, _out),
+                agent=self.agent_name,
+                task_type="promo_extraction",
+                outcome="success",  # call-level: completion returned
+                correlation_id=getattr(self, "_current_correlation_id", None),
+            )
+        except Exception:
+            pass
+
         raw = response.content[0].text if response.content else "{}"
         # Strip markdown code fences if present
         raw = raw.strip()

@@ -4,10 +4,8 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import axios from "axios";
+import { ModelClientService } from "../../common/model-client/model-client.service";
 import { WineExtractItem } from "../wine-extract-item.interface";
-
-const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 
 /**
  * Two things in this prompt are load-bearing and were both set by measurement.
@@ -76,7 +74,10 @@ const WINE_EXTRACTION_PROMPT =
 export class ScanParserService {
   private readonly logger = new Logger(ScanParserService.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly modelClient: ModelClientService,
+  ) {}
 
   /**
    * Extract wines from a menu image or PDF.
@@ -94,7 +95,10 @@ export class ScanParserService {
    * constant, which is why the split trigger below is the reported
    * stop_reason rather than an estimate derived from it.
    */
-  async parse(imageBase64: string): Promise<WineExtractItem[]> {
+  async parse(
+    imageBase64: string,
+    restaurantId?: string,
+  ): Promise<WineExtractItem[]> {
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
     if (!apiKey) {
       throw new ServiceUnavailableException(
@@ -116,10 +120,15 @@ export class ScanParserService {
     // density threshold the corpus would immediately violate.
     if (isPdf) {
       const preSplit = await this.splitPdfIfLarge(imageBase64);
-      if (preSplit.length > 1) return this.parseChunks(preSplit, apiKey);
+      if (preSplit.length > 1) return this.parseChunks(preSplit, restaurantId);
     }
 
-    const first = await this.parseOne(imageBase64, mediaType, isPdf, apiKey);
+    const first = await this.parseOne(
+      imageBase64,
+      mediaType,
+      isPdf,
+      restaurantId,
+    );
     if (!first.truncated || !isPdf) return first.items;
 
     const chunks = await this.splitPdfIfLarge(imageBase64, { force: true });
@@ -135,7 +144,7 @@ export class ScanParserService {
     this.logger.log(
       `Menu truncated on a single request — retrying as ${chunks.length} page-range chunk(s)`,
     );
-    const retried = await this.parseChunks(chunks, apiKey);
+    const retried = await this.parseChunks(chunks, restaurantId);
     // Keep whichever run recovered more; a split should always win, but never
     // return less than the first attempt already proved was extractable.
     return retried.length >= first.items.length ? retried : first.items;
@@ -153,7 +162,7 @@ export class ScanParserService {
    */
   private async parseChunks(
     chunks: string[],
-    apiKey: string,
+    restaurantId?: string,
     depth = 0,
   ): Promise<WineExtractItem[]> {
     // Splitting once is not always enough. RL Restaurant packs ~27 wines per
@@ -171,7 +180,7 @@ export class ScanParserService {
           chunks[i],
           "application/pdf",
           true,
-          apiKey,
+          restaurantId,
         );
 
         if (truncated && depth < MAX_SPLIT_DEPTH) {
@@ -184,7 +193,11 @@ export class ScanParserService {
               `Menu chunk ${i + 1}/${chunks.length} still truncated — ` +
                 `re-splitting into ${finer.length} (depth ${depth + 1})`,
             );
-            const deeper = await this.parseChunks(finer, apiKey, depth + 1);
+            const deeper = await this.parseChunks(
+              finer,
+              restaurantId,
+              depth + 1,
+            );
             // Never regress: keep whichever pass recovered more.
             all.push(...(deeper.length >= items.length ? deeper : items));
             continue;
@@ -252,12 +265,16 @@ export class ScanParserService {
     imageBase64: string,
     mediaType: string,
     isPdf: boolean,
-    apiKey: string,
+    restaurantId?: string,
   ): Promise<{ items: WineExtractItem[]; truncated: boolean }> {
     try {
-      const response = await axios.post(
-        ANTHROPIC_API_URL,
-        {
+      // P1 NF-A: routed through the model client, which returns the RAW
+      // payload — the stop_reason read below is this parser's truncation
+      // signal and drives the semantic re-chunking retry, which stays
+      // entirely this file's logic. The client's transport retry never
+      // touches it (max_tokens arrives as HTTP 200).
+      const payload: any = await this.modelClient.call({
+        body: {
           model: "claude-haiku-4-5",
           // A real wine list costs ~55-60 output tokens per wine, so 4096 —
           // the previous value — truncated the JSON on any menu past ~70
@@ -286,24 +303,27 @@ export class ScanParserService {
             },
           ],
         },
-        {
-          headers: {
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-          },
-          // A full 16,000-token response takes ~100s at Haiku's measured
-          // throughput (~160 tok/s; Rose Mary produced 11,808 tokens in 73s).
-          // The previous 60s timeout therefore fired *before* a large menu
-          // could finish — converting truncation into a hard failure and
-          // hiding the stop_reason signal the split retry depends on. Sized
-          // to comfortably clear a maxed-out response plus upload time.
-          timeout: 180_000,
+        // A full 16,000-token response takes ~100s at Haiku's measured
+        // throughput (~160 tok/s; Rose Mary produced 11,808 tokens in 73s).
+        // A 60s timeout fired *before* a large menu could finish —
+        // converting truncation into a hard failure and hiding the
+        // stop_reason signal the split retry depends on. LOAD-BEARING
+        // override of the client's 60s default; do not shrink it.
+        timeoutMs: 180_000,
+        nf: {
+          subjectId: "ScanParser",
+          taskType: "menu_scan",
+          stimulus: isPdf ? "menu_pdf" : "menu_image",
+          choice: "wine_extraction",
+          restaurantId: restaurantId ?? null,
+          // The request-scoped correlation id (ALS) already groups every
+          // chunk of one import under one id — the "one menu cost $X across
+          // 9 calls" query the schema could never answer before.
         },
-      );
+      });
 
-      const content: string = response.data?.content?.[0]?.text ?? "";
-      const stopReason: string = response.data?.stop_reason ?? "";
+      const content: string = payload?.content?.[0]?.text ?? "";
+      const stopReason: string = payload?.stop_reason ?? "";
       const items = this.parseJsonResponse(content);
 
       // Truncation used to be invisible: the cut-off array failed JSON.parse

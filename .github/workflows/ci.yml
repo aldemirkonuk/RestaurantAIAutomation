@@ -19,6 +19,92 @@ env:
   PYTHON_VERSION: "3.11"
 
 jobs:
+  # The loop corpus is a contract, not prose. ORG_STRUCTURE §5.1 (OD-47) closes
+  # `close_time` and `status` to fixed sets, and `active`/`running` must cite the
+  # mechanism that closes them. Left unenforced, that rule drifted to 102 distinct
+  # close_time values across 482 loops, and to a live-loop count nobody had checked
+  # against the rule it claimed to follow.
+  #
+  # Unlike loop-watcher.yml, which reports and never blocks, this one fails: §5.1
+  # calls a value outside the sets "a defect, not a variant". Stdlib only, so there
+  # is no install step and a violation surfaces in seconds.
+  loop-contract:
+    name: Loop vocabulary contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Guard against loop vocabulary drift and a stale loop index
+        run: python3 scripts/build_loop_index.py --check
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::Either a loop block breaks ORG_STRUCTURE §5.1, or the generated index is stale."
+          echo "::notice::The permitted values are read from §5.1's own table — fix the block, or amend the table if the contract itself is wrong."
+          echo "::notice::If the index is merely stale: run 'python3 scripts/build_loop_index.py' and commit the result."
+
+  # P1 §5 item 4. Defect D3 was that the entire NestJS gateway wrote nothing to
+  # the spend ledger: seven raw `fetch("https://api.anthropic.com/...")` call
+  # sites, and `grep -c api_spend apps/api-gateway/src` returning 0. Every one of
+  # them, including `claude-opus-4-8` in the consultants path, spent money no
+  # query could see.
+  #
+  # That did not happen in a single commit. Each new call site was written by
+  # copying the last one, and the last one did not log either. So instrumenting
+  # the 18 sites without this job fixes today and loses again in a month — P1
+  # §5.4: "without this, D3 recurs".
+  #
+  # Like loop-contract and unlike loop-watcher.yml, this one blocks. Pure grep,
+  # no install step, seconds to run. It reports exit 2 rather than green when it
+  # cannot find the thing it measures against — a vacuously passing guard is the
+  # failure mode that let D3 hide across seven files.
+  model-call-ledger:
+    name: Model calls reach the spend ledger
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        # Full history: the scope step diffs this PR against its merge base.
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Does this PR touch a runtime that calls models?
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          # Pushes to main/develop always run — that is the backstop for anything
+          # that reached a protected branch without a PR.
+          if [[ "$EVENT_NAME" != "pull_request" ]]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            echo "Push event — running the guard unconditionally."
+            exit 0
+          fi
+          changed="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
+          if echo "$changed" | grep -Eq '^(apps/api-gateway/|services/agent-orchestrator/|scripts/check_model_calls_logged\.sh$|\.github/workflows/ci\.yml$)'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "No file under apps/api-gateway/ or services/agent-orchestrator/ changed."
+          fi
+
+      - name: Guard against a model call site that skips the ledger
+        if: steps.scope.outputs.relevant == 'true'
+        run: ./scripts/check_model_calls_logged.sh
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::A model call site does not reach the P1 emitter, or the guard could not verify one."
+          echo "::notice::Gateway: route the call through apps/api-gateway/src/common/model-client/ instead of a raw fetch."
+          echo "::notice::Python: call get_spend_logger().log(...) on the response — SpendLogger.log() never raises."
+          echo "::notice::Exit 2 means the guard could not check what it claims to (missing wrapper, or a rotted pattern). That is a failure, not a skip: see the NEVER VACUOUS section in scripts/check_model_calls_logged.sh."
+          echo "::notice::The pre-P1 debt list in that script is shrink-only. A new unlogged call site does not belong on it."
+
   # Lint and type-check TypeScript/React code
   lint-typescript:
     name: Lint TypeScript

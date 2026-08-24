@@ -457,7 +457,7 @@ export class InventoryService {
       (item as any)?.master_wine_library?.name ||
       "this wine";
 
-    return this.photoCountService.estimate(imageBase64, wineName);
+    return this.photoCountService.estimate(imageBase64, wineName, restaurantId);
   }
 
   async getLowStockItems(restaurantId: string) {

@@ -194,6 +194,27 @@ class CalendarAgent(BaseAgent):
             model = genai.GenerativeModel("gemini-pro")
             response = await model.generate_content_async(prompt)
 
+            # P1: previously an unlogged model call (dark site)
+            try:
+                from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+                _usage = getattr(response, "usage_metadata", None)
+                _in = getattr(_usage, "prompt_token_count", 0) or 0
+                _out = getattr(_usage, "candidates_token_count", 0) or 0
+                get_spend_logger().log(
+                    provider="google",
+                    model="gemini-pro",
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=estimate_llm_cost("gemini-pro", _in, _out),
+                    agent=self.agent_name,
+                    task_type="date_extraction",
+                    outcome="success",  # call-level: response returned
+                    correlation_id=getattr(self, "_current_correlation_id", None),
+                )
+            except Exception:
+                pass
+
             if response and response.text:
                 # Parse JSON from LLM response
                 text = response.text.strip()
