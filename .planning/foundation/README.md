@@ -92,9 +92,9 @@ claim in §8.
 ## 2. Departments
 
 > **Superseded by [`ORG_STRUCTURE.md`](ORG_STRUCTURE.md) and [ADR 0007](../decisions/0007-org-structure.md).**
-> That document is canonical for the org: **5 divisions · 20 departments · 2 sub-layers ·
-> 3 advisory functions**, with a **7-artifact** unit anatomy (charter, premortem,
-> agenda-full, agenda-board, directive, loops, schedule).
+> That document is canonical for the org: **7 divisions · 19 departments · 2 sub-layers ·
+> 3 advisory functions · 75 teams**, with an **8-artifact** unit anatomy (charter, premortem,
+> agenda-full, agenda-board, directive, loops, schedule, questions).
 > The team layer lives in [`teams/`](teams/), one file per division.
 >
 > The nine-department sketch that was here originally is kept only in the ADR 0007
@@ -111,10 +111,12 @@ The §12A note "have this team look at the live defects" is actionable today:
   authenticated user (`apps/api-gateway/src/common/tenant/tenant.guard.ts:38-46`),
   by design, logging a warning. So auth depends entirely on each controller
   remembering `JwtAuthGuard`.
-- 📋 **Finding:** **11 of 44** controllers in `apps/api-gateway/src` lack
-  `JwtAuthGuard`: `analytics`, `dashboard`, `contacts`, `notifications`,
-  `communications`, `procurement/recurring-orders`, `pos-hub`, plus
-  `toast`, `simpos`, `inbound-email`, `vendor-portal`.
+- 📋 **Finding:** **11 of 44** controllers lack `JwtAuthGuard`. Since superseded by the
+  route-level census: **94 endpoints unguarded by omission** (137 total − 32 webhook-module
+  − 11 explicit `@Public()`). `vendor-portal` was misfiled here and is intentionally public.
+- ✅ **Five holes closed** in PRs #31/#32: analytics paid-LLM spend, the `simpos`
+  confused-deputy over inventory, the unauthenticated `pos-hub` approval gate, Toast's
+  unset-secret path, and a JWT secret falling back to a string published in this repo.
 - **The work:** classify each as *intentionally public* (webhooks — likely the
   last four, which need signature verification instead) or *a real gap*, then fix
   the gaps and add a CI check so the class of defect cannot recur.
