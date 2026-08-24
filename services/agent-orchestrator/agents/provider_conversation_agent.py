@@ -262,8 +262,8 @@ class ProviderConversationAgent(BaseAgent):
         super().__init__(agent_name, message_bus, database, config)
 
         # LLM configuration
-        self.extraction_model = config.get("extraction_model", "gemini-2.0-flash")
-        self.response_model = config.get("response_model", "gemini-2.0-flash")
+        self.extraction_model = config.get("extraction_model", "gemini-2.5-flash")
+        self.response_model = config.get("response_model", "gemini-2.5-flash")
         self.embedding_model = config.get("embedding_model", "text-embedding-004")
         self.llm_temperature = config.get("llm_temperature", 0.7)
         self.google_api_key = config.get("google_api_key")

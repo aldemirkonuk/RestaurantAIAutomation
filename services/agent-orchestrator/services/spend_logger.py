@@ -67,9 +67,19 @@ _RATES_PER_M: Dict[str, tuple] = {
     "claude-haiku": (0.80, 4.00),
     "claude-sonnet": (3.00, 15.00),
     "gemini-2.5-flash": (0.075, 0.30),
+    "gpt-4-turbo": (10.00, 30.00),
+    # `gpt-4o` is deliberately ABSENT. auction_wine_service's OpenAI fallback now
+    # names it, but OPENAI_API_KEY is empty, so the path cannot fire and its
+    # pricing could not be checked against the API the way the Gemini names were.
+    # Absent means is_priced_model() is False, so NF books cost NULL with
+    # cost_basis='unpriced_model' — an unknown cost, not an invented one. Add the
+    # rate when a key exists and the number can be verified.
+    # RETIRED MODELS, KEPT ON PURPOSE. No call site names these any more
+    # (2026-08-24), but historical api_spend rows do, and this table is how such
+    # a row is ever re-costed. Deleting a rate does not delete the spend it
+    # priced — it just makes the past unreadable.
     "gemini-2.0-flash": (0.075, 0.30),
     "gemini-pro": (0.50, 1.50),
-    "gpt-4-turbo": (10.00, 30.00),
 }
 
 
