@@ -5,7 +5,7 @@ department: engineering
 team: client-surfaces
 status: open
 updated: 2026-08-24
-open_questions: 2
+open_questions: 4
 links: ["[[client-surfaces-charter]]", "[[client-surfaces-agenda-full]]", "[[architecture-review-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]"]
 ---
 
@@ -21,6 +21,9 @@ links: ["[[client-surfaces-charter]]", "[[client-surfaces-agenda-full]]", "[[arc
 |---|---|---|---|---|---|
 | DO-10 | page-docs | 2026-08-24 | `/admin`, `/admin/health`, `/dev-sandbox` have **no role gate on the route** (`App.tsx:288` renders `AdminPanel` inside plain auth, vs the studio routes at `:170-187` which do use `ProtectedRoute` roles). The sidebar link is owner-only; the URL is not. Any logged-in staff member can open the admin UI. | Add `ProtectedRoute` role gating to the three routes, mirroring the studio pattern. Coordinate with Security's OD-19 sweep for the backend half. | 2026-10-05 |
 | DO-11 | page-docs | 2026-08-24 | **SimPOS pages are a zombie UI in production**: `SimposModule` vanishes (NODE_ENV gate, PR #32) but the pages neither 404 nor error — the seed failure is swallowed (`SimposTerminalPage.tsx:59-62`), query errors never render (`throwOnError:false`), so a functional-looking empty terminal **polls the dead endpoint every 5s forever** (`:74`) while the Receipts tab shows real data, deepening the illusion. | Gate the routes to non-production like the module, or render an explicit "dev-only" state. | 2026-10-05 |
+
+| DO-12 | page-docs | 2026-08-24 | **Studio's five API calls are mis-wired, not missing.** The endpoints are implemented and tested in the Python orchestrator (`services/agent-orchestrator/main.py` + `test_onboarding_extract_endpoint.py`), but the web proxy (`vite.config.ts:24-28`, `vercel.json`) routes `/api/*` to the NestJS gateway, which has no `/studio` or `/onboarding/extract` module — so studio calls 404 in dev *and* prod despite a working backend existing. | Route studio paths to the orchestrator, or proxy through the gateway. Not in the debt register. | 2026-10-05 |
+| DO-13 | page-docs | 2026-08-24 | **/sommelier ships against an endpoint that does not exist.** `SommelierAI.tsx:172` posts to `/api/v1/sommelier/chat`; the code's own comment says *"this endpoint may not exist yet"*, `main.py` never registers it, and the catch turns every reply into the client-side low-stock fallback. The page presents an AI sommelier whose every answer is local string-matching. | Register the endpoint or label the page's capability honestly. | 2026-10-05 |
 
 ## Answered
 
