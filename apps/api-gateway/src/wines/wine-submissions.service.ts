@@ -1,7 +1,13 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { createHash } from "crypto";
 import { DatabaseService } from "../database/database.service";
 import { CreateWineSubmissionDto } from "./dto/wine-submissions.dto";
+import {
+  buildWineSignature,
+  hashWineSignature,
+  normalizeSignatureText,
+  wineSignatureHashOrNull,
+  wineSignatureInputFromPayload,
+} from "./wine-signature";
 
 type SubmissionRow = {
   id: string;
@@ -57,103 +63,20 @@ export class WineSubmissionsService {
   constructor(private readonly dbService: DatabaseService) {}
 
   /**
-   * Diacritics to delete rather than turn into a space.
-   *
-   * This is deliberately an explicit class and not `\p{Diacritic}`, because
-   * the same rule has to run in Postgres (public.wine_normalize_text) to key
-   * the same columns, and Postgres regex has no Unicode property classes.
-   * When the two drifted, one library row diverged: Catalan "Xarel·lo"
-   * normalized to "xarello" here and "xarel lo" there, because U+00B7 is a
-   * Diacritic to JS but was not in the SQL class.
-   *
-   * `\p{Diacritic}` covers 659 codepoints this omits, all of them Hebrew,
-   * Arabic, Indic, Thai, Tibetan, Burmese or CJK. Deleting versus spacing only
-   * changes the outcome when the character sits BETWEEN Latin alphanumerics —
-   * a run of non-Latin text collapses to spaces either way — so the Latin and
-   * Greek subset below is the part that can actually alter a wine name.
-   *
-   * Parity with the SQL function is asserted in the spec, not assumed.
-   *
-   * Spelled as `\u`-escaped alternatives rather than one character class. The
-   * literal marks rendered as gibberish — they attach to the `[` and to the
-   * range hyphens — and two adjacent combining-mark ranges also trip ESLint's
-   * no-misleading-character-class. Every alternative matches exactly one
-   * character, so the match set is identical to the class it replaces; the
-   * order below is the order it had.
-   */
-  private static readonly DIACRITICS = new RegExp(
-    [
-      "[\\u0300-\\u036F]", // combining diacritical marks
-      "[\\u1AB0-\\u1AFF]", // combining diacritical marks extended
-      "[\\u1DC0-\\u1DFF]", // combining diacritical marks supplement
-      "[\\uFE20-\\uFE2F]", // combining half marks
-      "[\\u005E\\u0060\\u00A8\\u00AF\\u00B4\\u00B7\\u00B8]", // ^ ` ¨ ¯ ´ · ¸
-      "[\\u02B0-\\u02FF]", // spacing modifier letters
-      "[\\u0374\\u0375\\u037A\\u0384\\u0385]", // Greek numeral signs and accents
-    ].join("|"),
-    "g",
-  );
-
-  /**
-   * Trade abbreviations a menu prints, expanded to the word they stand for.
-   *
-   * Measured before this existed: of 27 library producers beginning with an
-   * abbreviable trade word, rewritten the way a menu prints them, ZERO reached
-   * the auto-link floor. "Dom. Faiveley" produced no candidate at all against
-   * "Domaine Faiveley"; "Ten. di Arceno" scored 62 against "Tenuta di Arceno".
-   * Every one of them silently created a duplicate.
-   *
-   * Trigram similarity is the wrong instrument for a prefix truncation --
-   * "dom" and "domaine" share two trigrams out of five however exactly the
-   * rest of the name agrees. Lowering the producer gate far enough to reach 62
-   * would admit "chateau musar" vs "chateau de bligny" at 0.571 and every
-   * other shared-trade-word false positive. So the fix belongs here: these are
-   * the same word, and the normalizer should say so.
-   *
-   * The trailing period is required on every pattern. Bare "dom" is not an
-   * abbreviation -- Dom Perignon is a wine, and expanding it would invent a
-   * producer that does not exist. Multi-token patterns come first so
-   * "az. agr." expands as a unit rather than "az." matching alone.
-   *
-   * Mirrored exactly by public.wine_normalize_text; the spec fails on drift.
-   */
-  private static readonly ABBREVIATIONS: ReadonlyArray<
-    readonly [RegExp, string]
-  > = [
-    [/\baz\.\s*agr\.\s*/g, "azienda agricola "],
-    [/\bdom\.\s*/g, "domaine "],
-    [/\bch\.\s*/g, "chateau "],
-    [/\bcht\.\s*/g, "chateau "],
-    [/\bbod\.\s*/g, "bodegas "],
-    [/\bwgt\.\s*/g, "weingut "],
-    [/\bten\.\s*/g, "tenuta "],
-    [/\bfatt\.\s*/g, "fattoria "],
-    [/\bcant\.\s*/g, "cantina "],
-    [/\bmarch\.\s*/g, "marchesi "],
-    [/\bste\.\s*/g, "sainte "],
-    [/\bst\.\s*/g, "saint "],
-    [/\bmt\.\s*/g, "monte "],
-  ];
-
-
-  /**
    * Public because it is the ONLY correct implementation.
    *
    * There were four: this one, another in wines.service.ts with a narrower
    * diacritic class, a `name.toLowerCase().trim()` in menus.service.ts, and
    * the SQL function. All four wrote the same columns. Anything that needs to
    * normalize a wine string must call this.
+   *
+   * The implementation moved to ./wine-signature — one module, so a fifth copy
+   * cannot appear by accident. This stays as the app-facing name because
+   * menus.service.ts and wines.service.ts call through it and the SQL-parity
+   * spec pins it.
    */
   normalizeText(value?: string | null): string {
-    if (!value) return "";
-    let s = value
-      .normalize("NFD")
-      .replace(WineSubmissionsService.DIACRITICS, "")
-      .toLowerCase();
-    for (const [pattern, expansion] of WineSubmissionsService.ABBREVIATIONS) {
-      s = s.replace(pattern, expansion);
-    }
-    return s.replace(/[^a-z0-9]+/g, " ").trim();
+    return normalizeSignatureText(value);
   }
 
   /**
@@ -168,7 +91,7 @@ export class WineSubmissionsService {
    * it lets a missing producer shift the name into the producer's slot.
    */
   signatureHashFor(input: SignatureInput): string {
-    return this.hashSignature(this.buildSignature(input));
+    return hashWineSignature(input);
   }
 
   /**
@@ -181,21 +104,11 @@ export class WineSubmissionsService {
    * classification rather than an identity attribute — a menu never prints it
    * — so removing it is what makes the two paths agree.
    *
-   * Mirrored by public.wine_signature_hash().
+   * Mirrored by public.wine_signature_hash(). Field order and the constants
+   * behind it now live in ./wine-signature.
    */
   private buildSignature(payload: SignatureInput): string {
-    return [
-      this.normalizeText(payload.producer),
-      this.normalizeText(payload.name),
-      payload.vintage ?? "NV",
-      this.normalizeText(payload.country),
-      this.normalizeText(payload.region),
-      this.normalizeText(payload.grapeVariety),
-    ].join("|");
-  }
-
-  private hashSignature(signature: string): string {
-    return createHash("sha256").update(signature).digest("hex");
+    return buildWineSignature(payload);
   }
 
   private generateWineId(): string {
@@ -209,8 +122,7 @@ export class WineSubmissionsService {
     userId: string,
     payload: CreateWineSubmissionDto,
   ) {
-    const signature = this.buildSignature(payload);
-    const signatureHash = this.hashSignature(signature);
+    const signatureHash = this.signatureHashFor(payload);
     const normalizedFields = {
       normalized_name: this.normalizeText(payload.name),
       normalized_producer: this.normalizeText(payload.producer),
@@ -277,11 +189,37 @@ export class WineSubmissionsService {
 
     for (const submission of submissions) {
       const payload = submission.payload as CreateWineSubmissionDto;
-      const signature = this.buildSignature(payload);
-      const signatureHash =
-        submission.signature_hash || this.hashSignature(signature);
-      const normalizedName = this.normalizeText(payload.name);
-      const normalizedProducer = this.normalizeText(payload.producer);
+      // Read through the tolerant payload reader rather than trusting the cast
+      // above. This table is written by the NestJS DTO (camelCase), the menu
+      // importer, and the Python menu-scan pipeline (snake_case, name under
+      // `wine_name`) — and only the first of those matches the DTO type. Every
+      // identity field below comes from this one reading, so the hash, the
+      // matcher probe and the row eventually inserted cannot disagree about
+      // what wine this is.
+      const identity = wineSignatureInputFromPayload(payload);
+      // Deliberately NOT `submission.signature_hash || …`. The stored value on
+      // scan-pipeline rows comes from a different algorithm; preferring it
+      // guarantees the lookup misses and then writes that foreign key format
+      // into master_wine_library.signature_hash, which is UNIQUE and canonical.
+      // Recomputing is what makes the two paths agree.
+      const signatureHash = wineSignatureHashOrNull(identity);
+      const normalizedName = normalizeSignatureText(identity.name);
+      const normalizedProducer = normalizeSignatureText(identity.producer);
+
+      // No name means no identity. Matching on an empty normalized_name would
+      // pair this row with every other nameless row in the library, and the
+      // provisional insert below would claim a UNIQUE key over nothing.
+      if (!signatureHash) {
+        await this.dbService.supabase
+          .from("master_wine_library_submissions")
+          .update({
+            status: "pending_review",
+            decision_reason: "unidentifiable_payload_no_name",
+          })
+          .eq("id", submission.id);
+        results.push({ id: submission.id, status: "pending_review" });
+        continue;
+      }
 
       // Matching is delegated to the same RPC the menu importer uses. This
       // path used to run its own ladder — exact signature, then
@@ -295,15 +233,15 @@ export class WineSubmissionsService {
       // place.
       const { data: candidates, error: matchError } =
         await this.dbService.supabase.rpc("match_library_wine", {
-          p_name: payload.name,
-          p_producer: payload.producer ?? null,
+          p_name: identity.name,
+          p_producer: identity.producer ?? null,
           p_vintage:
-            typeof payload.vintage === "string"
-              ? parseInt(payload.vintage, 10) || null
-              : (payload.vintage ?? null),
-          p_country: payload.country ?? null,
-          p_region: payload.region ?? null,
-          p_grape_variety: payload.grapeVariety ?? null,
+            typeof identity.vintage === "string"
+              ? parseInt(identity.vintage, 10) || null
+              : (identity.vintage ?? null),
+          p_country: identity.country ?? null,
+          p_region: identity.region ?? null,
+          p_grape_variety: identity.grapeVariety ?? null,
         });
 
       // Leave the submission pending rather than treating an outage as "this
@@ -355,17 +293,22 @@ export class WineSubmissionsService {
       }
 
       const wineId = payload["wineId"] || this.generateWineId();
+      // Identity columns come from the same resolved reading the hash was
+      // computed over. Reading payload.name here directly was the second half
+      // of the same defect: a snake_case payload hashed correctly off
+      // `wine_name` and then wrote NULL into master_wine_library.name, leaving
+      // a canonical row that no future match could ever recognise.
       const insertPayload = {
         wine_id: wineId,
-        name: payload.name,
-        producer: payload.producer,
-        vintage: payload.vintage ?? null,
+        name: identity.name,
+        producer: identity.producer,
+        vintage: identity.vintage ?? null,
         price_reference: payload.priceReference ?? null,
-        primary_type: payload.primaryType ?? "unknown",
-        grape_variety: payload.grapeVariety ?? null,
-        country: payload.country ?? "Unknown",
-        region: payload.region ?? "Unknown",
-        appellation: payload.appellation ?? null,
+        primary_type: identity.primaryType ?? "unknown",
+        grape_variety: identity.grapeVariety ?? null,
+        country: identity.country ?? "Unknown",
+        region: identity.region ?? "Unknown",
+        appellation: identity.appellation ?? null,
         sub_region: payload.subRegion ?? null,
         wine_structure: payload.wineStructure ?? null,
         sensory_profile: payload.sensoryProfile ?? null,
@@ -494,16 +437,14 @@ export class WineSubmissionsService {
       };
     }
 
-    const signatureHash = this.hashSignature(
-      this.buildSignature({
-        name: item.name,
-        producer: item.producer ?? null,
-        vintage: parsedVintage,
-        country: item.country ?? null,
-        region: item.region ?? null,
-        grapeVariety: item.grapeVariety ?? null,
-      }),
-    );
+    const signatureHash = this.signatureHashFor({
+      name: item.name,
+      producer: item.producer ?? null,
+      vintage: parsedVintage,
+      country: item.country ?? null,
+      region: item.region ?? null,
+      grapeVariety: item.grapeVariety ?? null,
+    });
 
     const insertPayload = {
       wine_id: this.generateWineId(),
@@ -666,16 +607,14 @@ export class WineSubmissionsService {
     for (const idx of needsCreate) {
       const item = items[idx];
       const vintage = parseVintage(item.vintage);
-      const signatureHash = this.hashSignature(
-        this.buildSignature({
-          name: item.name,
-          producer: item.producer ?? null,
-          vintage,
-          country: item.country ?? null,
-          region: item.region ?? null,
-          grapeVariety: item.grapeVariety ?? null,
-        }),
-      );
+      const signatureHash = this.signatureHashFor({
+        name: item.name,
+        producer: item.producer ?? null,
+        vintage,
+        country: item.country ?? null,
+        region: item.region ?? null,
+        grapeVariety: item.grapeVariety ?? null,
+      });
       signatureOf.set(idx, signatureHash);
       if (!rowBySignature.has(signatureHash)) {
         rowBySignature.set(signatureHash, {
