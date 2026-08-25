@@ -1459,7 +1459,9 @@ export function Notifications() {
                         />
                       </div>
                       <div className="flex flex-wrap gap-1.5">
-                        {['/inventory', '/orders', '/reports', '/wines', '/providers', '/calendar', '/documents'].map((url) => (
+                        {/* '/documents' was offered here and is not a route — every notification
+                            built with it dead-ended on the catch-all. */}
+                        {['/inventory', '/orders', '/reports', '/wines', '/providers', '/calendar', '/documents-reports'].map((url) => (
                           <button
                             key={url}
                             onClick={() => setNewAction({ ...newAction, actionUrl: url })}

@@ -31,6 +31,77 @@ interface RestaurantSettings {
   enable_predictive_analytics: boolean
 }
 
+/** Shape of one entry in GET /api/v1/health/agents — base_agent.py get_health(). */
+interface AgentSummary {
+  agent_name?: string
+  version?: string
+  status?: string
+  healthy?: boolean
+  capabilities?: string[]
+}
+
+/** `metrics` block of GET /api/v1/health/agents/:name — AgentMetrics.to_dict(). */
+interface AgentDetailMetrics {
+  messages?: {
+    received?: number
+    processed?: number
+    failed?: number
+    skipped?: number
+    /** Preformatted by the service, e.g. "98.50%". */
+    success_rate?: string
+  }
+  timing?: { avg_ms?: number }
+}
+
+interface AgentCard {
+  status: 'active' | 'inactive' | 'warning'
+  messages: number | string
+  avgTime: string
+  errors: string
+}
+
+/** Shown wherever the service did not give us the number. Never substitute a 0. */
+const METRIC_UNAVAILABLE = '—'
+
+/**
+ * "Reached the orchestrator, it has no agents" is a successful answer, not a failure.
+ * It shares the empty-state branch with real errors, so it gets its own sentinel and
+ * its own heading rather than being reported as an outage.
+ */
+const NO_AGENTS_MESSAGE = 'The orchestrator responded but reports no running agents.'
+
+/**
+ * Map orchestrator health onto the badge vocabulary. `healthy` is the service's own
+ * verdict (status in {active,idle} AND success_rate >= 0.9 AND breaker closed), so an
+ * unhealthy-but-running agent lands on "warning" rather than being painted green.
+ */
+function toAgentCard(agent: AgentSummary, metrics: AgentDetailMetrics | null): AgentCard {
+  const state = (agent.status ?? '').toLowerCase()
+  let status: AgentCard['status']
+  if (agent.healthy === true) {
+    status = 'active'
+  } else if (state === 'error' || state === 'stopped' || state === 'stopping') {
+    status = 'inactive'
+  } else {
+    status = 'warning'
+  }
+
+  const processed = metrics?.messages?.processed
+  const avgMs = metrics?.timing?.avg_ms
+  // success_rate arrives as a formatted percentage string; the card's slot is an
+  // error rate, so invert it. Anything unparseable stays unknown.
+  const successPct = Number.parseFloat(metrics?.messages?.success_rate ?? '')
+
+  return {
+    status,
+    messages: typeof processed === 'number' ? processed : METRIC_UNAVAILABLE,
+    avgTime: typeof avgMs === 'number' ? `${avgMs.toFixed(1)}ms` : METRIC_UNAVAILABLE,
+    errors: Number.isFinite(successPct)
+      ? `${Math.max(0, 100 - successPct).toFixed(2)}%`
+      : METRIC_UNAVAILABLE,
+  }
+}
+
 // Animation variants
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -140,7 +211,7 @@ function NumberInput({
 export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState<'general' | 'agents' | 'notifications' | 'integrations'>('general')
   const [saving, setSaving] = useState(false)
-  const [agentStatus, setAgentStatus] = useState<Record<string, { status: 'active' | 'inactive' | 'warning', messages: number | string, avgTime: string, errors: string }>>({})
+  const [agentStatus, setAgentStatus] = useState<Record<string, AgentCard>>({})
   const [agentStatusLoading, setAgentStatusLoading] = useState(true)
   const [agentStatusError, setAgentStatusError] = useState<string | null>(null)
   const [infraProviders, setInfraProviders] = useState<
@@ -205,44 +276,97 @@ export default function AdminPanel() {
     if (activeTab === 'general') void fetchProviders()
   }, [activeTab])
 
-  // Fetch agent metrics from agent-orchestrator
+  /**
+   * Agent health (ADR 0019 / D4).
+   *
+   * This used to call the Python orchestrator directly at
+   * `${VITE_AGENT_ORCHESTRATOR_URL}/health/agents` with a bare axios GET, which was
+   * wrong twice over, so the panel could only ever reach its catch branch:
+   *   1. the real route is `/api/v1/health/agents`
+   *      (services/agent-orchestrator/api/health_routes.py:244, mounted with no
+   *      prefix at services/agent-orchestrator/main.py:154), so the old path 404'd;
+   *   2. it requires an `X-Admin-Key` matching the server's ADMIN_API_KEY
+   *      (health_routes.py:230-241) — a secret that must never reach browser JS.
+   *
+   * The api-gateway already proxies both routes and injects that header server-side
+   * (apps/api-gateway/src/common/orchestrator/health-proxy.controller.ts:27-35 →
+   * orchestrator.service.ts:77-97), so we go through the gateway with the user's JWT,
+   * exactly like the provider fetch above and like handleRestartAgent below.
+   */
   useEffect(() => {
+    if (activeTab !== 'agents') return
+    let cancelled = false
+
     const fetchAgentMetrics = async () => {
       setAgentStatusLoading(true)
       setAgentStatusError(null)
+
+      const apiUrl = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
+      const token = localStorage.getItem('accessToken')
+      const authHeaders = token ? { Authorization: `Bearer ${token}` } : {}
+
       try {
-        const agentOrchestratorUrl = import.meta.env.VITE_AGENT_ORCHESTRATOR_URL || 'http://localhost:8000'
-        const response = await axios.get(`${agentOrchestratorUrl}/health/agents`, {
-          timeout: 5000,
+        const { data } = await axios.get(`${apiUrl}/api/v1/health/agents`, {
+          headers: authHeaders,
+          timeout: 8000,
         })
-        
-        // Transform the response to match the expected format
-        const agents = response.data?.agents || {}
-        const transformed: Record<string, { status: 'active' | 'inactive' | 'warning', messages: number | string, avgTime: string, errors: string }> = {}
-        
-        Object.entries(agents).forEach(([name, data]: [string, any]) => {
-          const state = data.state || 'idle'
-          transformed[name] = {
-            status: state === 'active' ? 'active' : state === 'failed' ? 'inactive' : 'warning',
-            messages: data.messages_processed || 0,
-            avgTime: data.avg_processing_time_ms ? `${data.avg_processing_time_ms.toFixed(1)}ms` : 'N/A',
-            errors: data.error_rate ? `${(data.error_rate * 100).toFixed(2)}%` : '0.00%',
-          }
+
+        // health_routes.py:254-258 returns a LIST under `agents`, not a name-keyed map,
+        // and each entry is get_health() (core/base_agent.py:990-1004) — agent_name /
+        // status / healthy only. The old code read `state`, `messages_processed`,
+        // `avg_processing_time_ms` and `error_rate`, none of which exist on any payload.
+        const summaries: AgentSummary[] = Array.isArray(data?.agents) ? data.agents : []
+
+        // Counters live only on the per-agent detail route (get_detailed_health,
+        // core/base_agent.py:1006-1025). Fetch them per agent; one failure must not
+        // blank the others, and a missing metric renders as "—", never a made-up 0.
+        const details = await Promise.all(
+          summaries.map(async (agent) => {
+            if (!agent?.agent_name) return null
+            try {
+              const res = await axios.get(
+                `${apiUrl}/api/v1/health/agents/${encodeURIComponent(agent.agent_name)}`,
+                { headers: authHeaders, timeout: 8000 },
+              )
+              return (res.data?.metrics ?? null) as AgentDetailMetrics | null
+            } catch {
+              return null
+            }
+          }),
+        )
+        if (cancelled) return
+
+        const transformed: Record<string, AgentCard> = {}
+        summaries.forEach((agent, index) => {
+          const name = agent?.agent_name
+          if (!name) return
+          transformed[name] = toAgentCard(agent, details[index])
         })
-        
+
         setAgentStatus(transformed)
+        setAgentStatusError(
+          Object.keys(transformed).length === 0 ? NO_AGENTS_MESSAGE : null,
+        )
       } catch (error) {
+        if (cancelled) return
         console.error('Failed to fetch agent metrics:', error)
-        setAgentStatusError('Agent metrics will be available when the monitoring service is connected')
-        // Set empty status so UI shows graceful message
+        const status = axios.isAxiosError(error) ? error.response?.status : undefined
+        setAgentStatusError(
+          status === 401 || status === 403
+            ? 'Sign in again — the gateway rejected this session when proxying agent health.'
+            : status === 404
+              ? 'The api-gateway has no /api/v1/health/agents proxy — it may be running an older build.'
+              : 'Could not reach the orchestrator through the api-gateway. Check that AGENT_ORCHESTRATOR_URL and ADMIN_API_KEY are set on the gateway and that the orchestrator is running.',
+        )
         setAgentStatus({})
       } finally {
-        setAgentStatusLoading(false)
+        if (!cancelled) setAgentStatusLoading(false)
       }
     }
 
-    if (activeTab === 'agents') {
-      fetchAgentMetrics()
+    void fetchAgentMetrics()
+    return () => {
+      cancelled = true
     }
   }, [activeTab])
 
@@ -270,8 +394,8 @@ export default function AdminPanel() {
   /**
    * NEW-545. This previously waited 2s and claimed the agent "restarted
    * successfully" without calling anything. Restarting needs an orchestrator
-   * control endpoint that doesn't exist (only GET /health/agents[/:name] is
-   * exposed), so rather than lie we re-check the agent's live health and tell
+   * control endpoint that doesn't exist (only GET /api/v1/health/agents[/:name]
+   * is exposed), so rather than lie we re-check the agent's live health and tell
    * the user what's actually true.
    */
   const handleRestartAgent = async (agentName: string) => {
@@ -549,9 +673,13 @@ export default function AdminPanel() {
                       <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
                         <AlertCircle className="w-8 h-8 text-slate-400" />
                       </div>
-                      <h3 className="text-lg font-semibold text-slate-900 mb-2">Agent Metrics Unavailable</h3>
+                      <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                        {agentStatusError === NO_AGENTS_MESSAGE
+                          ? 'No Agents Running'
+                          : 'Agent Health Unavailable'}
+                      </h3>
                       <p className="text-sm text-slate-500 max-w-md">
-                        {agentStatusError || 'Agent metrics will be available when the monitoring service is connected'}
+                        {agentStatusError || 'The api-gateway returned no agent health for this session.'}
                       </p>
                     </div>
                   </div>
@@ -586,7 +714,11 @@ export default function AdminPanel() {
                           <div className="flex items-center justify-between text-sm">
                             <span className="text-slate-500">Error Rate</span>
                             <span className={`font-semibold tabular-nums ${
-                              typeof data.errors === 'string' && parseFloat(data.errors) > 0.1 ? 'text-warning-600' : 'text-success-600'
+                              data.errors === METRIC_UNAVAILABLE
+                                ? 'text-slate-400'
+                                : parseFloat(data.errors) > 0.1
+                                  ? 'text-warning-600'
+                                  : 'text-success-600'
                             }`}>
                               {data.errors}
                             </span>

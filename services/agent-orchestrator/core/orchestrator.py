@@ -662,8 +662,12 @@ class AgentOrchestrator:
         for agent_name, agent in self.agents.items():
             metrics = agent.metrics.to_dict()
             agent_metrics[agent_name] = metrics
-            total_messages += metrics["messages_processed"]
-            total_errors += metrics["errors"]
+            # to_dict() nests these — `messages.processed` and `health.errors`
+            # (base_agent.py:158-177). Reading them flat raised KeyError on the
+            # first agent, so this endpoint 500'd for as long as any agent was
+            # registered. Found 2026-08-25 during the P2.4 burn-down.
+            total_messages += metrics.get("messages", {}).get("processed", 0)
+            total_errors += metrics.get("health", {}).get("errors", 0)
 
         # Message bus metrics
         bus_stats = await self.message_bus.get_statistics()
