@@ -108,8 +108,11 @@ def main() -> int:
               "ledger — applied by hand, or never applied at all:")
         for version in unregistered:
             print(f"::error::  {version}_{files[version]}.sql")
-        print("::error::Fix: apply via `supabase db push`, or register the row if it "
-              "is already live. Do not assume 'pending' means 'not applied'.")
+        print("::error::Fix depends on which it is — do NOT assume 'pending' means "
+              "'not applied', check the objects first:")
+        print("::error::  already applied by hand -> supabase migration repair "
+              "--status applied <version>")
+        print("::error::  genuinely not applied   -> supabase db push")
 
     if unrecorded:
         print(f"::error::{len(unrecorded)} migration(s) ran in production with NO file "

@@ -32,6 +32,7 @@
 | [0010](0010-gemini-model-retirement.md) | `gemini-3.5-flash-lite` replaces retired `gemini-2.0-flash`/`gemini-pro`; runway beat price. Spend table was wrong (2.5-flash under 8.3x), lite billed as flash, thinking tokens uncounted — all three corrected | 2026-08-24 |
 | [0012](0012-pos-mapping-inventory-integrity.md) | 92 orphaned POS mappings deleted (not repaired) and `pos_item_mappings.inventory_id` given an FK `ON DELETE CASCADE`; root cause was `SYNTH_WRITE_SET` omitting the two tables the POS hub writes indirectly | 2026-08-25 |
 | [0013](0013-migration-ledger-reconciliation.md) | Migration ledger reconciled in BOTH directions (4 unregistered files backfilled, 1 dashboard-only migration recovered to a file); `check_migration_ledger.py` replaces the single-direction `db:drift` signal | 2026-08-25 |
+| [0014](0014-proposal-candidate-set-null.md) | `pos_catalog_match_proposals.candidate_inventory_id` gets `ON DELETE SET NULL`, not the mapping's `CASCADE` — a mapping is a claim and dies with its target, a proposal is a question and outlives its answer | 2026-08-25 |
 
 ## Locked — recorded elsewhere (pre-log)
 

@@ -80,6 +80,57 @@ jobs:
           echo "::notice::Columns/functions only in LOCAL are unpushed — run: supabase db push"
           echo "::notice::Background: .planning/SCHEMA_DRIFT_INVENTORY.txt"
 
+  # ADR 0013. The parity job above compares SCHEMA SHAPE; this one compares the
+  # RECORD of how that shape got there, which drifted independently and in both
+  # directions at once: 4 migrations applied by hand and never registered, and 1
+  # applied through the dashboard with no file in the repo at all.
+  #
+  # `supabase migration list --linked` (pnpm db:drift) sees only the first
+  # direction, and reports it as "pending" — a word that reads as "not yet
+  # applied" when it means "applied, but the ledger never heard about it". Three
+  # of the four were `if not exists`-guarded, so a push would have replayed them
+  # silently and the drift would have compounded rather than surfaced.
+  #
+  # A migration existing ONLY in production is the more dangerous direction and
+  # the one no CLI check covers: a ledger row can be rebuilt from files, but that
+  # SQL lives in exactly one place. Same secret and same posture as the jobs
+  # around it — read-only, no new trust boundary.
+  migration-ledger:
+    name: Migration ledger matches supabase/migrations/
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install psycopg2
+        run: pip install psycopg2-binary
+
+      - name: Every migration is in both places
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_POOLER_URL || secrets.SUPABASE_POOLER_CONNECTION_STRING || secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
+        run: |
+          ./scripts/check_db_reachable.sh
+          python3 scripts/check_migration_ledger.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::If the log says 'Network is unreachable', this is CONNECTIVITY, not drift —"
+          echo "::notice::see scripts/check_db_reachable.sh. Otherwise the ledger and the repo disagree."
+          echo "::notice::File with no ledger row, ALREADY applied by hand:"
+          echo "::notice::  supabase migration repair --status applied <version>"
+          echo "::notice::File with no ledger row, NOT yet applied:  supabase db push"
+          echo "::notice::Ledger row with no file (applied via the dashboard): recover the SQL from"
+          echo "::notice::  supabase_migrations.schema_migrations.statements into a migration file."
+          echo "::notice::Background: .planning/decisions/0013-migration-ledger-reconciliation.md"
+
   # Premortem audit finding (2026-08-18, decision #1): beverage_identity_key
   # (SQL, runs in production) and residual_key (Python, what
   # eval_merge_policies.py's 0-false-merge measurement actually validates)
