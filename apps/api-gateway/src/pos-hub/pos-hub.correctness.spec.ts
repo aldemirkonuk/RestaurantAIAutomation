@@ -30,6 +30,16 @@ function makeDb(opts: { mappings?: Row[]; inventory?: Row } = {}) {
         maybeSingle: async () => ({ data: opts.inventory ?? null, error: null }),
         single: async () => ({ data: { id: "map-1" }, error: null }),
       };
+      if (table === "restaurant_inventory") {
+        // ADR 0011: depletion resolves the sale volume from the inventory row
+        // BEFORE it issues an RPC, in one batched read per check — so the
+        // fixture is served through .in(), not the per-line maybeSingle the
+        // consumption mirror used to do on its own.
+        q.in = async () => ({
+          data: opts.inventory ? [{ id: "inv-1", ...opts.inventory }] : [],
+          error: null,
+        });
+      }
       if (table === "pos_item_mappings") {
         q.in = async () => ({ data: opts.mappings ?? [], error: null });
         q.upsert = (row: Row) => {
@@ -115,14 +125,20 @@ describe("sale_unit reaches the mapping row", () => {
     expect(calls.mappingUpserts[0]).toHaveProperty("sale_unit", "glass");
   });
 
-  it("still allows a deliberate null — unknown routes to the documented default", async () => {
+  it("still allows a deliberate null — which now queues rather than defaulting", async () => {
     const { service, calls } = makeService();
     await service.upsertItemMapping("r1", { item_name: "Unknown pour" });
     expect(calls.mappingUpserts[0].sale_unit).toBeNull();
   });
 
-  it.each(["Glass", "bottles", "GLASS", "", 0])(
-    "rejects %p rather than writing a unit that silently means bottle",
+  // Superseded by ADR 0011. This used to assert that "Glass"/"bottles" were
+  // REJECTED, because sale_unit was a closed two-value vocabulary and anything
+  // else fell through to the `?? "bottle"` default while looking mapped. The
+  // vocabulary is now open — the label is for reporting, sale_volume_ml carries
+  // the arithmetic, and an unrecognised label queues instead of defaulting. So
+  // "Glass" is a legal label; what is still rejected is malformed input.
+  it.each(["", "   ", 0, {}])(
+    "rejects %p — malformed input is not a label",
     async (bad) => {
       const { service, calls } = makeService();
       await expect(
@@ -131,6 +147,19 @@ describe("sale_unit reaches the mapping row", () => {
       expect(calls.mappingUpserts).toHaveLength(0);
     },
   );
+
+  it("accepts a label outside glass/bottle and stores it verbatim", async () => {
+    const { service, calls } = makeService();
+    await service.upsertItemMapping("r1", {
+      item_name: "Magnum of Barolo",
+      sale_unit: "magnum",
+      sale_volume_ml: 1500,
+    });
+    expect(calls.mappingUpserts[0]).toMatchObject({
+      sale_unit: "magnum",
+      sale_volume_ml: 1500,
+    });
+  });
 
   it("a glass mapping depletes a glass, not a bottle", async () => {
     const { service, calls } = makeService({

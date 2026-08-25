@@ -29,6 +29,7 @@
 | [0008](0008-nf-column-contract.md) | NF column contract — full ADR 0006 shape now (Path C); Claude's Path A recommendation overruled | 2026-08-24 |
 | [0007](0007-org-structure.md) | Org — 7 divisions, 19 departments, 3 findings-only advisory functions, 7-artifact unit anatomy | 2026-08-24 |
 | [0009](0009-loop-vocabulary-contract.md) | Loop vocabulary read from ORG_STRUCTURE §5.1's own table and enforced as a hard CI gate; `active`/`running` must cite evidence — live loops 6 → 5 | 2026-08-24 |
+| [0011](0011-pos-sale-volume-contract.md) | POS sale volume — `sale_volume_ml` is the truth, `sale_unit` becomes an open reporting label, and an unresolvable line queues instead of defaulting to a bottle. Kills a silent 5x over-depletion on all 92 production mappings; accepts visible under-depletion in exchange | 2026-08-25 |
 | [0010](0010-gemini-model-retirement.md) | `gemini-3.5-flash-lite` replaces retired `gemini-2.0-flash`/`gemini-pro`; runway beat price. Spend table was wrong (2.5-flash under 8.3x), lite billed as flash, thinking tokens uncounted — all three corrected | 2026-08-24 |
 
 ## Locked — recorded elsewhere (pre-log)

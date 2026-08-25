@@ -13,7 +13,7 @@ import { DatabaseService } from "../database/database.service";
 
 type Row = Record<string, any>;
 
-function makeDb(opts: { mappings?: Row[]; tables?: Row[] }) {
+function makeDb(opts: { mappings?: Row[]; tables?: Row[]; inventory?: Row[] }) {
   const calls = {
     rpc: [] as any[],
     unresolvedInserts: [] as any[],
@@ -27,9 +27,23 @@ function makeDb(opts: { mappings?: Row[]; tables?: Row[] }) {
         select: () => q,
         eq: () => q,
         in: () => q,
+        upsert: async () => ({ error: null }),
       };
       if (table === "pos_item_mappings") {
         q.in = async () => ({ data: opts.mappings ?? [], error: null });
+      }
+      if (table === "restaurant_inventory") {
+        // ADR 0011: a sale volume is resolved from the inventory row before
+        // any depletion RPC. A mapping whose inventory_id resolves to nothing
+        // now queues rather than depleting a guessed bottle, so these fixtures
+        // supply the row the mapping points at. Defaults to the shape of every
+        // production row: a 750ml bottle poured at 150ml.
+        q.in = async () => ({
+          data: opts.inventory ?? [
+            { id: "inv-1", bottle_size_ml: 750, pour_size_ml: 150 },
+          ],
+          error: null,
+        });
       }
       if (table === "restaurant_tables") {
         q.eq = () => ({
@@ -62,7 +76,9 @@ function makeDb(opts: { mappings?: Row[]; tables?: Row[] }) {
   };
 }
 
-function makeService(opts: { mappings?: Row[]; tables?: Row[] } = {}) {
+function makeService(
+  opts: { mappings?: Row[]; tables?: Row[]; inventory?: Row[] } = {},
+) {
   const { db, calls } = makeDb(opts);
   const service = new PosHubService(db);
   return { service, calls };
