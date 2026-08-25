@@ -8,11 +8,18 @@ tier: plus
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[providers]]", "[[wines]]"]
 ---
 
 # /vendor-prices — cross-vendor price comparison
+
+## Surface — buttons → where they go
+
+- **Wine picker** (search) → API `GET /api/v1/wines`
+- Selecting a wine → API `GET /api/v1/vendor-intel/compare`
+- **Add a price you were quoted** → (inline form) → API `POST /api/v1/vendor-intel/observations`
+- (no page-to-page links — dead-end in the page graph)
 
 ## 1. Purpose
 Pick a wine, see every vendor's observed price side by side with source provenance

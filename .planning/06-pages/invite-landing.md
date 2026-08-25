@@ -8,11 +8,19 @@ tier: public
 signals_today: none
 rebrand_strings: 3
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]", "[[register]]", "[[no-access]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[register]]", "[[no-access]]", "[[login]]", "[[dashboard]]"]
 ---
 
 # /invite/:code
+
+## Surface — buttons → where they go
+
+- **Sign in to accept** → [[login]] `/login?redirect=/invite/:code`
+- **Create account to accept** → [[register]] `/register?invite=CODE`
+- **Add {restaurant} (signed-in)** → API `POST /api/v1/auth/invite/:code/accept` → [[dashboard]] `/`
+- **Cancel, go back** → browser history back
+- **Back to sign in (expired invite)** → [[login]] `/login`
 
 ## 1. Purpose
 Landing page for a team-invite link. Previews the invite (restaurant, role) before any commitment. Branches on auth state: signed-out users get "Sign in to accept" (login with `?redirect=` back here, `InviteLanding.tsx:90`) or "Create account to accept" (`/register?invite=CODE`, `:144`); signed-in users get a one-tap "Add {restaurant}" accept (`:154-168`). A 409 ("already a member") is treated as success (`:67-72`). Expired/invalid codes get a dead-end card pointing back to `/login` (`:102-116`).

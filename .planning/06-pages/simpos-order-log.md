@@ -8,11 +8,15 @@ tier: public
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[simpos-terminal]]", "[[logs]]"]
 ---
 
 # /simpos/:restaurantId/orders
+
+## Surface — buttons → where they go
+
+- **Back to terminal** → [[simpos-terminal]] `/simpos/:restaurantId`
 
 ## 1. Purpose
 Full-page debug log over SimPOS's *own* checks — explicitly distinct from the WineOps `/logs` correlated timeline (`SimposOrderLogPage.tsx:1-4`). Per closed check: line items with void/comp status, loss total, and crucially the **webhook delivery status + error** (`:100-118`) — the page you look at to see whether a closed check actually reached PosHub.
@@ -28,7 +32,7 @@ Full-page debug log over SimPOS's *own* checks — explicitly distinct from the 
 ## 4. Endpoints
 | Method | Path | Where called | Atlas |
 |---|---|---|---|
-| GET | `/simpos/:restaurantId/orders` | `SimposOrderLogPage.tsx:21` → `simpos.ts:95` | ENDPOINTS.md:549 (⚠️ unguarded row — resolved by prod removal, PR #32) |
+| GET | `/simpos/:restaurantId/orders` | `SimposOrderLogPage.tsx:21` → `simpos.ts:95` | ENDPOINTS.md:549 (⚠️ unguarded row is stale — prod removal, PR #32, *and* a class-level `JwtAuthGuard` since 2026-08-25 (#55, OD-35), `apps/api-gateway/src/simpos/simpos.controller.ts:54`) |
 
 ## 5. Signals
 **none.**

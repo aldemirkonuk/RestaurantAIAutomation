@@ -64,7 +64,9 @@ that slice while every other slice honestly reports `outcome_unknown`.
    which is what makes it a *verdict* rather than another opinion.
 2. **It is the dominant real path.** Email-sourced extraction runs on a `@Cron */5`
    sweep; manual upload is the exception. Volume arrives without anyone generating it —
-   and the readout needs 30 events before it will print a figure (OD-58).
+   and below 30 events the readout labels the figure `INSUFFICIENT VOLUME` (OD-58).
+   *Corrected 2026-08-25: it prints the figure under that banner and exits 0 — it does
+   not withhold it (`scripts/nf_readout.py:271,308,339`).*
 3. **Its failure mode is already the business risk.** [[PROJECT]] names data credibility
    as the blocker; an invoice that extracts *plausibly but wrongly* is worse than one that
    fails loudly, and only a reconciliation check tells those apart.

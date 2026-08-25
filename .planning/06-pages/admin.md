@@ -8,11 +8,19 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[admin-health]]"]
 ---
 
 # /admin
+
+## Surface — buttons → where they go
+
+- **General / Agents / Notifications / Integrations tabs** → (on this page)
+- **Save Settings** → localStorage only (no admin-config endpoint; the toast says so)
+- **Save Notification Settings** → localStorage only (same handler)
+- **Restart Agent** → API `GET /api/v1/health/agents/:name` (live re-check; restart itself is not wired)
+- (no outbound navigation — dead-end page)
 
 ## 1. Purpose
 "Admin Settings" — four tabs (General / Agents / Notifications / Integrations, `AdminPanel.tsx:299-304`). General shows infra-provider health (Supabase, Gemini, Claude, plus hard-coded RabbitMQ/Redis rows, `AdminPanel.tsx:184-188`) and restaurant knobs (buffer window, default threshold, three feature toggles). Agents shows orchestrator metrics per agent. Two honesty fixes are load-bearing here: **Save persists to localStorage only** and the toast says so — there is no admin-config endpoint (NEW-544, `AdminPanel.tsx:249-268`); **Restart isn't wired** — the button re-checks live health and says restart needs an orchestrator control endpoint that doesn't exist (NEW-545, `AdminPanel.tsx:270-297`).

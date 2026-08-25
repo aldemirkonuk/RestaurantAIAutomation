@@ -65,7 +65,7 @@ authors skills against its own jobs; it does not govern the registry.
 
 | Assumption | Owner | State |
 |---|---|---|
-| A joinable doneability verdict exists | [[agent-evaluation-gates-charter]] *(RM-2)* | Not joinable today — blocks L-IC-4 |
+| A joinable doneability verdict exists | [[agent-evaluation-gates-charter]] *(RM-2)* | *Corrected 2026-08-25:* joinable for **one** task type — `reconciliation_v1` on invoice extraction, a sidecar claim keyed to the event ([[0017-doneability-verdicts-are-sidecar-claims]]). Every other slice still ungraded, so L-IC-4 stays blocked |
 | The NF event contract closes (OD-11) | [[neural-footprint-instrumentation-charter]] *(RM-3)* | Open — bridge columns are temporary until it lands |
-| A single NestJS call wrapper exists | [[harness-model-routing-charter]] *(RM-1)* | Open (OD-03) — until then, 7 callsites stay un-metered or get 7 patches |
+| A single NestJS call wrapper exists | [[harness-model-routing-charter]] *(RM-1)* | *Corrected 2026-08-25:* **it exists** — `apps/api-gateway/src/common/model-client/`, all 7 callsites routed through it in P1. OD-03 (which harness) is a separate, still-open question |
 | Access to the Anthropic and Google billing consoles | Founder | Assumed, **not verified by this session** |

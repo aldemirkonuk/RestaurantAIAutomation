@@ -97,7 +97,8 @@ SORT division ASC
       · 24 claimed (`PROJECT.md:33`) · 26 on disk
 - [ ] `roster.declared_stub_count` — **5**, refused at boot by `core/orchestrator.py:245`
 - [ ] `roster.maturity_level_evidenced_pct` — **0%** — ladder is prose only
-- [ ] `nf_a.doneability_verdict_coverage` — **0%** — no verdict exists anywhere
+- [ ] `nf_a.doneability_verdict_coverage` — **~0%** — corrected 2026-08-25: one basis
+      exists (`reconciliation_v1`, invoices — ADR 0017); every other slice ungraded
 - [ ] `nf_a.cost_per_task` — **not derivable** — `SpendLogger.log()` has no `agent` param
       (`spend_logger.py:41-49`)
 - [ ] `nf_a.verified_task_success_rate` — **unmeasurable** — `base_agent.py:602` records

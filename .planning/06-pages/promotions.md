@@ -8,11 +8,18 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]", "[[providers]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[providers]]", "[[orders]]"]
 ---
 
 # /promotions — vendor offers, trusted senders, prospects
+
+## Surface — buttons → where they go
+
+- **Apply to a new order** (row menu + detail) → [[orders]] `/orders?new=1&promo=<id>`
+- **Copy code** → clipboard
+- **Dismiss** → (local only — dismissed ids persist in localStorage, 8s undo)
+- **Attachment** (prospect detail) → external vendor URL
 
 ## 1. Purpose
 Three tabs (`Promotions.tsx:20`): **Offers** — promotions the AI extracted from vendor

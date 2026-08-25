@@ -37,7 +37,8 @@ Not the easiest file. The **right** file, for three reasons that all point at it
 - It is the most exposed — [[README]] §0 finding 1: `analytics.controller.ts` has zero
   `@UseGuards` and zero `@Public`, so an anonymous caller can toggle the consultant
   layer on and then invoke it. *"Unauthorized spend on the founder's key, reachable
-  now."*
+  now."* *Corrected 2026-08-25: closed — `analytics.controller.ts:51` now carries a
+  class-level `@UseGuards(JwtAuthGuard)`; OD-20 is RESOLVED.*
 - It has **no cost visibility at all**, so if that exposure were being exploited
   today, the first alert would be a provider invoice
   ([[model-routing-inference-economics-premortem]] #4).

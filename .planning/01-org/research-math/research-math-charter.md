@@ -156,7 +156,7 @@ in force.
 
 | Metric | Definition | Honest baseline today |
 |---|---|---|
-| `nf_a.cost_per_completed_task` | USD per task carrying a **passing** doneability verdict — not per API call. A retried failure is cost with no task. | **Unmeasurable.** No cost telemetry on the NestJS surface; no verdict anywhere |
+| `nf_a.cost_per_completed_task` | USD per task carrying a **passing** doneability verdict — not per API call. A retried failure is cost with no task. | *Corrected 2026-08-25:* cost telemetry shipped on the NestJS surface (P1) and one verdict basis exists (`reconciliation_v1`, invoices — ADR 0017). **Still effectively unmeasurable**: coverage ~0%, every other task type ungraded |
 | `nf_a.harness_overhead_ms` | Wall-clock minus model time. The number that actually decides OD-03, since all three candidates can call an API | Not measured |
 | `nf_a.verified_task_success_rate` | Success as scored by an independent verdict, published beside `base_agent.py:144`'s self-reported rate | Near zero outside the merge-policy gate |
 | `nf_a.event_completeness` | Share of model invocations emitting one joinable event carrying all eight NF-A fields | **0% for the NestJS surface**; partial for Python across two unjoined tables |
@@ -186,9 +186,14 @@ earlier designs, one of which committed 212 false merges**. Its guest twin ships
 writes reasoning to `decision_log` with no cost;
 `services/agent-orchestrator/services/spend_logger.py:41-77` writes cost to `api_spend`
 with no verdict. Of the eight NF-A fields ([[README]] §4.2), no single row anywhere holds
-more than four.
+more than four. *Corrected 2026-08-25: superseded by P1 — `neural_footprint_event` is
+one row carrying the full ADR 0008 shape, and the verdict arrives as a sidecar claim
+([[0017-doneability-verdicts-are-sidecar-claims]]).*
 
-**NEW / zero — the NestJS surface emits nothing.** Grepping `apps/api-gateway/src` for
+**NEW / zero — the NestJS surface emitted nothing as of 2026-08-24.** *Corrected
+2026-08-25: superseded by P1 — all 7 gateway callsites now route through
+`common/model-client` and write `neural_footprint_event`
+(`model-client.service.ts:413`). See `.planning/STATE.md`.* Grepping `apps/api-gateway/src` for
 `api_spend`, `cost_usd` or `input_tokens` returns **0 hits** (verified 2026-08-24), across
 **seven** raw-HTTP model callsites: `analytics/consultants.service.ts:28`,
 `common/orchestrator/inbound-responder.service.ts:16`,

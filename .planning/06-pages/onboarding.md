@@ -8,11 +8,17 @@ tier: core
 signals_today: none
 rebrand_strings: 2
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]", "[[get-started]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[get-started]]", "[[dashboard]]"]
 ---
 
 # /onboarding
+
+## Surface — buttons → where they go
+
+- Auto-redirect (menu not yet uploaded) → [[get-started]] `/get-started`
+- **Go to Dashboard →** → [[dashboard]] `/`
+- **Set up my wine list** → [[get-started]] `/get-started`
 
 ## 1. Purpose
 **A tombstone, not a wizard.** The old 9-step onboarding was retired; this page says "Setup has moved — your checklist lives on the dashboard. Connect POS under Settings → Integrations" (`Onboarding.tsx:20-21`) and offers Go to Dashboard / Set up my wine list. Users with no menu uploaded are auto-forwarded to `/get-started` (`Onboarding.tsx:11-16`), so only already-activated users ever see the card.

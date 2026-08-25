@@ -8,11 +8,21 @@ tier: core
 signals_today: none
 rebrand_strings: 4
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[providers]]"]
 ---
 
 # /orders — Orders
+
+## Surface — buttons → where they go
+
+- **Create Order** → (modal on this page) → API `POST /api/v1/procurement/orders`
+- **Approve** → API `POST /api/v1/procurement/orders/:id/approve`
+- **Mark as delivered** → API `POST /api/v1/procurement/orders/:id/deliver`
+- **Receive at the door** (row menu) → [[receiving-door]] `/receiving/:orderId/door`
+- **Go to Providers** (no-vendor guard modal) → [[providers]] `/providers`
+- **Export** → (in-page download via ExportMenu)
+- **Draft email approval panel** → (panel on this page — approve/send vendor email)
 
 ## 1. Purpose
 
@@ -38,7 +48,9 @@ badge (`Sidebar.tsx:409`). Eagerly loaded (`apps/web/src/App.tsx:73`).
 ## 4. Endpoints
 
 Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):389 (`procurement`, 26), :249
-(`inventory`), :461 (`providers`), :663 (`wines`), :10 (`analytics` — ⚠ unguarded).
+(`inventory`), :461 (`providers`), :663 (`wines`), :10 (`analytics` — atlas's ⚠ unguarded
+is stale; guarded at class level since 2026-08-24 (#31),
+`apps/api-gateway/src/analytics/analytics.controller.ts:51`).
 
 | Method | Path | Call site |
 |---|---|---|

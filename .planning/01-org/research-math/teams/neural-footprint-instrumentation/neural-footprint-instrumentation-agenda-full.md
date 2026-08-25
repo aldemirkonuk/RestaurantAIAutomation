@@ -17,7 +17,10 @@ links: ["[[neural-footprint-instrumentation-charter]]", "[[neural-footprint-inst
 
 Make **one joinable event** exist, then make it exist everywhere.
 
-Today the footprint is two halves that do not meet plus a surface that emits nothing:
+As of 2026-08-24 the footprint was two halves that did not meet plus a surface that
+emitted nothing. *Corrected 2026-08-25: P1 closed the gateway half — all 7 callsites
+now emit `neural_footprint_event`; see `.planning/STATE.md`. The table below is the
+pre-P1 state.*
 
 | Half | Holds | Missing |
 |---|---|---|
@@ -80,6 +83,9 @@ what [[0006-neural-footprint-architecture]] §4.3 argued for.
   Our slippage is someone else's blindness.
 - **There is live unauthorized spend and nobody can size it.** OD-20
   (`OPEN-DECISIONS.md:24`) is open and urgent; the exposed callsite emits nothing.
+  *Corrected 2026-08-25: both halves are closed. OD-20 is RESOLVED —
+  `analytics.controller.ts:51` now carries a class-level `@UseGuards(JwtAuthGuard)` —
+  and the callsite emits since P1.*
 - **Every week OD-11 stays open adds a private table.** The alarm threshold is **2** and
   the count is **1**.
 - **The window on INTEL-F3 is closing.** A fourth `subject_type` is a line in an enum before

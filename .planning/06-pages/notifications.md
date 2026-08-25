@@ -8,11 +8,20 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[orders]]", "[[inventory]]"]
 ---
 
 # /notifications — Notifications
+
+## Surface — buttons → where they go
+
+- **Notification row / Take Action** → route from the notification's `actionUrl` (varies by type)
+- **Review & Approve Draft** (draft_ready detail) → [[orders]] `/orders?draft=<conversationId>`
+- **Mark all as read** → API `PATCH /api/v1/notifications/read/all`
+- **Settings** → (in-page tab, `/notifications?tab=settings`)
+- **One-tap action "Open"** → [[inventory]] `/inventory` or [[orders]] `/orders` by action type; gmail actions point at `/emails` (no such route)
+- **Copy link** → clipboard deep link back to this page
 
 ## 1. Purpose
 
@@ -41,8 +50,10 @@ panel that stays in sync with refreshes (:192-200), the One-Tap Action Center, a
 
 ## 4. Endpoints
 
-Atlas row: [ENDPOINTS](../foundation/ENDPOINTS.md):300 (`notifications`, 24 —
-**⚠ all unguarded**), plus :389 for the action center's order reads.
+Atlas row: [ENDPOINTS](../foundation/ENDPOINTS.md):300 (`notifications`, 24 — atlas's
+**⚠ all unguarded** is stale; guarded at class level since 2026-08-25 (#60),
+`apps/api-gateway/src/notifications/notifications.controller.ts:45`), plus :389 for
+the action center's order reads.
 
 | Method | Path | Call site |
 |---|---|---|
@@ -84,7 +95,9 @@ dashboard.md §7.
   (`Notifications.tsx:173,575`), rendered at :693-700, gone on refresh. The
   UX-catalog claim "created quick actions never rendered" is therefore *partly*
   stale — rendering shipped, persistence did not (`v3.0-TECH-DEBT.md:389-390`).
-- All 24 notification endpoints unguarded ([ENDPOINTS](../foundation/ENDPOINTS.md):300).
+- All 24 notification endpoints are guarded since 2026-08-25 (#60) — `@UseGuards(JwtAuthGuard)`
+  at class level (`apps/api-gateway/src/notifications/notifications.controller.ts:45`);
+  the atlas row ([ENDPOINTS](../foundation/ENDPOINTS.md):300) still reads "unguarded" and is stale.
 - Agent-side notification writes were silently failing until 44.1d's fix — history
   in `v3.0-TECH-DEBT.md:95-131`; worth remembering when interpreting old gaps in
   this inbox.

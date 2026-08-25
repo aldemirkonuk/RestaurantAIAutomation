@@ -80,7 +80,9 @@ SORT updated ASC
 
 ## Red today
 
-- [ ] No expiry on consultant enablement, and the toggle route is unguarded (**OD-20**)
+- [ ] No expiry on consultant enablement. *Corrected 2026-08-25: the toggle route is no
+      longer unguarded — OD-20 is RESOLVED, `analytics.controller.ts:51` carries a
+      class-level `@UseGuards(JwtAuthGuard)`. The expiry half stays red.*
 - [ ] No disposition path for the 573-type surface
 - [ ] Nine threshold constants unnamed and untested
 - [ ] No empty-state screen for `insufficient_data`

@@ -8,11 +8,17 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[orders]]"]
 ---
 
 # /receiving/:orderId/door — Door receipt
+
+## Surface — buttons → where they go
+
+- **Done** → API `POST /api/v1/procurement/receiving/orders/:orderId/door` (offline-queued via doorOutbox)
+- **Finish** (success panel) → [[orders]] `/orders`
+- **Back** (header) → browser history back
 
 ## 1. Purpose
 

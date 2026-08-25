@@ -8,11 +8,17 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[orders]]"]
 ---
 
 # /inventory — Inventory Command
+
+## Surface — buttons → where they go
+
+- **Row menu / row expansion: Draft PO** → [[orders]] `/orders?draft=new&inventoryId=…&qty=…`
+- **Row expansion: View ledger** → `/documents?ledger=…` (no such route exists — broken destination)
+- **Receiving verification / Spot count / Cellar map** → (workspaces and views on this page)
 
 ## 1. Purpose
 
@@ -39,7 +45,8 @@ Eagerly loaded (`apps/web/src/App.tsx:72`).
 
 Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):249 (`inventory`, 18), :236
 (`inventory-ledger`), :552 (`storage-locations`), :378 (`procurement/documents`),
-:389 (`procurement`), :10 (`analytics` ⚠).
+:389 (`procurement`), :10 (`analytics` — atlas's ⚠ is stale; guarded at class level
+since 2026-08-24 (#31), `apps/api-gateway/src/analytics/analytics.controller.ts:51`).
 
 | Method | Path | Call site |
 |---|---|---|

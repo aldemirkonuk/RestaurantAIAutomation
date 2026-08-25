@@ -8,11 +8,16 @@ tier: core
 signals_today: none
 rebrand_strings: 3
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[settings]]"]
 ---
 
 # /authorize/:integrationId
+
+## Surface — buttons → where they go
+
+- **Allow** → external — provider OAuth URL via full `window.location.assign` (URL from the authorize API call)
+- **Cancel** → sanitized same-site `returnPath`, default [[settings]] `/settings`
 
 ## 1. Purpose
 Our-vocabulary consent screen shown *before* handing the user to Google/Microsoft OAuth: states what the grant will be used for and what we deliberately do not ask for, so the provider's screen "confirms a decision the user has already understood" (`AuthorizeIntegration.tsx:27-35`). Valid ids are hard-coded: `google_drive`, `excel` (`AuthorizeIntegration.tsx:21`). Allow performs a full `window.location.assign` to the provider URL (`:83-85`); Cancel returns to a sanitized same-site `returnPath` (defaults `/settings`, `:46-51`).

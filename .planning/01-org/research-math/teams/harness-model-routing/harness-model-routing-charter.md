@@ -80,7 +80,7 @@ unworkable, the fix is to merge — not to duplicate"* (`technology.md:406`).
 
 | Metric | Definition | Baseline |
 |---|---|---|
-| `nf_a.cost_per_completed_task` | USD per task carrying a **passing** doneability verdict — not per API call. A retried failure is cost with no task | **Unmeasurable**: no cost events on NestJS, no verdict anywhere |
+| `nf_a.cost_per_completed_task` *(corrected 2026-08-25: cost events ship since P1; one verdict basis exists — `reconciliation_v1`, invoices, ADR 0017; coverage still ~0%)* | USD per task carrying a **passing** doneability verdict — not per API call. A retried failure is cost with no task | **Unmeasurable**: no cost events on NestJS, no verdict anywhere |
 | `nf_a.harness_overhead_ms` | Wall-clock minus model time. **The number that actually decides OD-03**, since all three candidates can call an API | Not measured; **no instrument exists** |
 | `share_of_model_calls_through_wrapper` | Adoption, published weekly from the day the wrapper ships | **0 of 7** NestJS callsites; Python routed via `model_clients.py` but not uniformly |
 

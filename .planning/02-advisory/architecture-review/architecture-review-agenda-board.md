@@ -92,8 +92,8 @@ WHERE type = "loops"
 | **AR-1** | 1 | L6 → L0 direct: browser reads/writes Postgres; `generated_reports` has RLS on and **zero policies** | [[client-surfaces-charter]] · [[platform-api-charter]] | — |
 | **AR-2** | 1 | One legal guardrail, two runtimes, **already diverged** (19 TS / 8 Py under a "verbatim" comment) | [[messaging-delivery-charter]] | — |
 | **AR-3** | 2 | 7 hand-rolled provider callsites; 1 retries; 3 have no timeout | [[model-routing-inference-economics-charter]] | — |
-| **AR-4** | 1 | L4 emits nothing in NestJS; in Python `decision_log` and `api_spend` **cannot be joined** | [[neural-footprint-instrumentation-charter]] | — |
-| **AR-5** | 1 | Tenant isolation is a per-controller convention (`tenant.guard.ts:38-46`); 94 endpoints unguarded by omission | [[security-charter]] · [[platform-api-charter]] | — |
+| **AR-4** | 1 | ~~L4 emits nothing in NestJS; in Python `decision_log` and `api_spend` **cannot be joined**~~ — **closed 2026-08-25 by P1**; both halves fixed | [[neural-footprint-instrumentation-charter]] | — |
+| **AR-5** | 1 | Tenant isolation is a per-controller convention (`tenant.guard.ts:38-46`); 94 endpoints unguarded by omission — *corrected 2026-08-25: the six named modules are now guarded at class level; the count is stale and not recounted* | [[security-charter]] · [[platform-api-charter]] | — |
 | **AR-6** | 3 | Schema drift precedent — 27 tables / 403 cols / 13 functions once existed only by hand | [[schema-migrations-charter]] *(fixed)* | — |
 
 Full citations in [[architecture-review-charter]] §Evidence. **Age is blank on every row

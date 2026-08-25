@@ -8,11 +8,17 @@ tier: public
 signals_today: none
 rebrand_strings: 3
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]", "[[login]]", "[[invite-landing]]", "[[verify-email]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[login]]", "[[invite-landing]]", "[[verify-email]]", "[[dashboard]]"]
 ---
 
 # /register
+
+## Surface — buttons → where they go
+
+- **Create account** (owner flow) → API `POST /api/v1/auth/register/restaurant`, then [[verify-email]] `/verify-email`
+- **Join workspace** (invite flow) → API `POST /api/v1/auth/join`, then [[dashboard]] `/`
+- **Sign in** → [[login]] `/login`
 
 ## 1. Purpose
 Two-path account creation: **Path A "Join Your Team"** — enter an 8-character invite code and create a staff/manager account under an existing restaurant; **Path B "Open a Restaurant"** — create an owner account plus the restaurant record (identity/location/contact in a 3-section rail form). Path B ends at `/verify-email`; Path A lands straight on the dashboard ("No email verification needed", `Register.tsx:196`).

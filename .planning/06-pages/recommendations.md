@@ -8,11 +8,19 @@ tier: plus
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[orders]]", "[[promotions]]", "[[reports]]", "[[providers]]", "[[inventory]]", "[[team]]", "[[recommendations-catalog]]"]
 ---
 
 # /recommendations — Recommendations
+
+## Surface — buttons → where they go
+
+- **Act** (per card; label varies — "Draft PO", "Create promo", …) → [[orders]], [[promotions]], [[reports]], [[providers]], [[inventory]] or [[team]] by rule/category
+- **Browse every insight type** → [[recommendations-catalog]] `/recommendations/catalog`
+- **Enable more insight types** / **Open Reports** (empty state) → [[reports]] `/reports`
+- **Dismiss / Snooze / Assign / Pin** → API `POST /api/v1/analytics/recommendations/:restaurantId/action`
+- **Copy link** → clipboard deep link
 
 ## 1. Purpose
 
@@ -42,7 +50,9 @@ history, and assignment to team members (UX paths NEW-284…NEW-308, header comm
 
 Raw `fetch` against `${VITE_API_GATEWAY_URL}/api/v1/analytics/recommendations`
 (`Recommendations.tsx:54,155`). Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):10
-(`analytics` — **⚠ unguarded**), :565 (`team`).
+(`analytics` — atlas's **⚠ unguarded** is stale; guarded at class level since
+2026-08-24 (#31), `apps/api-gateway/src/analytics/analytics.controller.ts:51`),
+:565 (`team`).
 
 | Method | Path | Call site |
 |---|---|---|

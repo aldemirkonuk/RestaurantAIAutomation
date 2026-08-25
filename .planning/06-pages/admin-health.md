@@ -8,11 +8,18 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[admin]]"]
 ---
 
 # /admin/health
+
+## Surface — buttons → where they go
+
+- **Refresh (button / `r`)** → API `GET /api/v1/health/agents`
+- **Agent card** → (drill-down sheet on this page) → API `GET /api/v1/health/agents/:name`
+- **Healthy / unhealthy filter** → (filters the card grid on this page)
+- (no outbound navigation — dead-end page)
 
 ## 1. Purpose
 Live agent-health board: card grid of orchestrator agents (status, version, capabilities), polled every 30s (`AdminHealth.tsx:63-67`), with a healthy/unhealthy filter (NEW-549) and a per-agent drill-down sheet showing the raw JSON health payload (NEW-548 — "GET /health/agents/:name already existed but nothing called it", `AdminHealth.tsx:69`). Keyboard: `r` refreshes, `Esc` closes the sheet (NEW-553, `AdminHealth.tsx:84-95`). The sheet states plainly that restart control is not exposed (`AdminHealth.tsx:252`).

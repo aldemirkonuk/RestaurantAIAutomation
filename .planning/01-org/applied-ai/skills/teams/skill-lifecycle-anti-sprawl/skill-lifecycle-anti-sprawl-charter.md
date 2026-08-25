@@ -91,7 +91,10 @@ session found nothing to upgrade it.
 - **NEW — no firing telemetry anywhere.** No `skill_id`, no invocation log, no
   counter. [[README]] §1 states L4 *"emits nothing yet — no cost/token
   instrumentation in `apps/api-gateway`"*. The signal this team runs on does not
-  exist at any layer.
+  exist at any layer. *Corrected 2026-08-25: the L4 half is stale — P1 shipped
+  cost/token instrumentation in `apps/api-gateway` (`model-client.service.ts:413`).
+  `skill_id` and an invocation log still do not exist, so the finding stands on
+  those two.*
 - **NEW — no staleness review, no scheduled job, no deprecation path.** The 30-day
   rule is prose at [[README]] §3.3 and nothing else.
 - **NEW — nothing to delete.** `.claude/skills/` does not exist; `registry_size` is

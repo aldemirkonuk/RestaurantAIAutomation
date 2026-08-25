@@ -8,11 +8,17 @@ tier: core
 signals_today: none
 rebrand_strings: 5
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
 # /dev-sandbox
+
+## Surface — buttons → where they go
+
+- **Toast / POS-sim / inventory / OneTap / calendar-report triggers** → (fire local events on this page)
+- **Clear All Local Data** → clears `wineops_*` localStorage keys, then full page reload
+- (no outbound navigation — dead-end page)
 
 ## 1. Purpose
 Manual test bench for frontend-only behaviors: fire each toast variant, simulate POS sales and stock changes (live/shadow), trigger threshold alerts, dispatch realtime events (`dispatchInventoryUpdate`, `dispatchCalendarEvent` via `RealtimeContext`, `DevSandbox.tsx:87`), enqueue OneTap actions, and inspect/clear the app's `wineops_*` localStorage keys (`DevSandbox.tsx:440-457`).

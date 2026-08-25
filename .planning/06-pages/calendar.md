@@ -8,11 +8,18 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
 # /calendar — Calendar (modular)
+
+## Surface — buttons → where they go
+
+- **Click slot / New event** → (EventModal on this page)
+- **Drag-move / resize event** → event mutation via `useCalendarEvents`
+- **Meeting end** → (MeetingMemoPrompt capture on this page)
+- (no outbound navigation — dead-end page)
 
 ## 1. Purpose
 

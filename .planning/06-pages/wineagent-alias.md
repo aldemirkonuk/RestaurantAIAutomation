@@ -8,11 +8,15 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[wine-agent]]", "[[sommelier]]"]
 ---
 
 # /wineagent — Wine Agent (alias route; the one nav actually uses)
+
+## Surface — buttons → where they go
+
+- (no outbound navigation — dead-end page)
 
 ## 1. Purpose
 Duplicate of [[wine-agent]] — same inline placeholder, second spelling. This is the

@@ -1,12 +1,18 @@
 ---
 type: moc
 title: Pages Map
-updated: 2026-08-24
+updated: 2026-08-25
 ---
 
 # Pages Map — the ecosystem layer
 
 > **50 pages documented** against [[PAGE-CONTRACT]]. Generated summary — regenerate by hand-count or script; Dataview query below is live.
+
+**Surface graph (2026-08-25, ADR 0018):** every note now opens with a `## Surface`
+section — the page's buttons, one line each, wikilinked to where they go. **115
+distinct page→page edges** across 50 notes; the Obsidian graph over this folder is
+the interconnection map the founder asked for. 15 pages have no outbound page
+navigation (see findings feed below).
 
 **Instrumented pages: 0 full · 2 partial · 48 none.**
 The founder's tracking mandate lands here: page telemetry rides the NF spine (`subject_type: operator`, ADR 0008), and today it is dark — `uxSignals` ships gated off with zero page importers, and 11 `data-ux-key` markers wait for a reporter.
@@ -65,6 +71,39 @@ The founder's tracking mandate lands here: page telemetry rides the NF spine (`s
 | `/wine-agent` | [[wine-agent]] | owner | core | none | 0 |
 | `/wineagent` | [[wineagent-alias]] | owner | core | none | 0 |
 | `/wines` | [[wines]] | owner | core | none | 0 |
+
+## Surface findings feed — raw material for the P2.3 proposal
+
+> Written by the Surface pass (2026-08-25, three agents, every bullet traced to
+> source). The P2.3 proposal compiles these with the endpoint gaps and
+> `v3.0-TECH-DEBT.md` carry-overs into the founder-approval doc. Until then this
+> feed is the record; nothing here is fixed yet. Compiled into the approval doc:
+> [0019-p2-build-scope](../decisions/0019-p2-build-scope.md).
+
+**Live defects — buttons navigating to routes that do not exist:**
+
+1. Inventory Command "View ledger" → `/documents?ledger=…` — no `/documents`
+   route exists (the page is `/documents-reports`). `apps/web/src/pages/inventory/command/RowExpansion.tsx:329`.
+2. One-Tap Action Center routes `gmail_send`/`gmail_contextual` actions →
+   `/emails` — no such route (comms live at `/communications`). `apps/web/src/components/notifications/OneTapActionCenter.tsx:131`.
+
+**Dead-end pages (no outbound page navigation):** pure placeholders —
+[[wine-agent]], [[wineagent-alias]]; modal/API-only surfaces — [[admin]],
+[[admin-health]], [[calendar]], [[calendar-classic]], [[dev-sandbox]],
+[[documents-reports]], [[inventory-legacy]], [[logs]], [[receipts]],
+[[sommelier]], [[team]], [[vendor-prices]], [[vendor-public-page]].
+A dead end is not automatically wrong — but each is either a deliberate leaf or
+a missing connection, and the proposal decides which.
+
+**Notable behaviors captured:**
+
+- Wines reorder confirm ("Contact Provider") does a hard
+  `window.location.href = '/orders'` full reload instead of SPA navigation
+  (`WineLibrary.tsx:372`).
+- SimPOS terminal exits to `/` via "Exit to WineOps" (`SimposTerminalPage.tsx:337`)
+  — also a rebrand string.
+- Notification `actionUrl` destinations are server-supplied and dynamic — the
+  graph cannot capture them statically.
 
 ## Live query
 

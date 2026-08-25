@@ -3,6 +3,10 @@
 **Defined:** 2026-04-01
 **Core Value:** Manager scans a menu → every wine identified, enriched, and onboarded at < $0.50/restaurant
 
+> **Corrected 2026-08-25 (ADR 0018).** This is a **historical requirements ledger**,
+> grouped by version. None of the sections below is the current milestone — that is
+> **P2 — Web complete + deploy**. See `.planning/STATE.md`.
+
 ## v1 Requirements
 
 ### Claude Vision Extraction (Onboarding Path)

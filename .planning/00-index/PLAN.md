@@ -2,7 +2,7 @@
 type: plan
 title: Plan
 status: live
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[AGENDA]]", "[[HOME]]", "[[ORG-MAP]]", "[[LOOP-MAP]]", "[[SCENARIO-MAP]]"]
 ---
 
@@ -15,6 +15,12 @@ links: ["[[AGENDA]]", "[[HOME]]", "[[ORG-MAP]]", "[[LOOP-MAP]]", "[[SCENARIO-MAP
 
 ## 0. Where we actually are
 
+> **Milestone naming lives in the spine** — current milestone: **P2 — Web complete
+> + deploy** ([ADR 0018](../decisions/0018-p2-plan-of-record.md); stages in
+> [STATE.md](../STATE.md)). The P1/P2 labels below were this file's own push
+> numbering, coined before ADR 0018 reserved P-names for milestones; they are kept
+> as history under 'Push' names to avoid two things called P2.
+
 | Plane | State |
 |---|---|
 | **Structure** — divisions, departments, teams, advisory | ✅ Built. 7 divisions · 19 departments · 2 sub-layers · 3 advisory · 75 teams = 99 units × 8 artifacts = **792 docs** |
@@ -23,14 +29,14 @@ links: ["[[AGENDA]]", "[[HOME]]", "[[ORG-MAP]]", "[[LOOP-MAP]]", "[[SCENARIO-MAP
 | **Instrumentation (L4)** | 🟢 **P1 closed 2026-08-24.** Table live, 25 call sites emit, `scripts/nf_readout.py` produces the number with no hand-written SQL. Both runtimes proved end-to-end against production |
 | **Loops** | 🟡 5 running/active · **4 gated** · 29 blocked · 438 proposed. Two cost loops moved `blocked` → `gated` when P1 landed |
 | **Security** | 🟢 Five holes closed (#31, #32). Plus: the NF table shipped RLS-off with anon grants and was closed the same day |
-| **CI** | 🟢 **P2 closed 2026-08-24.** Schema parity compares for the first time. Two more CI holes found and fixed alongside it — see below |
+| **CI** | 🟢 **Push 2 (schema-parity guard) closed 2026-08-24.** Schema parity compares for the first time. Two more CI holes found and fixed alongside it — see below |
 
 **The honest one-liner has changed.** It used to be *"a complete map of a company that is
 not yet running."* The map is still ahead of the company, but the system now measures
 itself, and the next number is no longer blocked on instrumentation. It is blocked on a
 **definition**.
 
-### What P1 and P2 actually exposed
+### What pushes 1 and 2 actually exposed
 
 Three checks had been red long enough to stop being read, and because `build` needs
 `[lint-typescript, lint-python]`, **the test suites had not run in CI for weeks** — they
@@ -81,7 +87,7 @@ per *attempted* task would produce confidently wrong routing decisions.
 re-grade `call_level_v0` against scenario truth. Recorded as **OD-59**; the analysis and a
 proposed first task type live in [[evaluation-doneability-questions]].
 
-### P1 — Instrument NF-A ✅ **CLOSED 2026-08-24**
+### Push 1 (P1) — Instrument NF-A ✅ **CLOSED 2026-08-24**
 1. Add `agent` + `task_type` to `SpendLogger.log()` and the `api_spend` table
    (`services/agent-orchestrator/services/spend_logger.py:41-49`)
 2. Join `api_spend` ↔ `decision_log` on `correlation_id` — today one has cost without
@@ -89,8 +95,10 @@ proposed first task type live in [[evaluation-doneability-questions]].
 3. Emit from the 7 raw-HTTP gateway call sites (currently zero write to `api_spend`)
 
 **Delivered:** all three items, plus the readout that makes them mean something —
-`python3 scripts/nf_readout.py`, no arguments, no caller SQL, and it **refuses to print a
-cost figure below 30 events** so a smoke test cannot pose as production data. Both
+`python3 scripts/nf_readout.py`, no arguments, no caller SQL, labelling anything under
+30 events `INSUFFICIENT VOLUME`. *(Corrected 2026-08-25: this said "refuses to print" —
+it prints the table under the banner and exits 0; only `--require-volume` changes the
+exit code. See the OD-58 register entry.)* Both
 runtimes proved end-to-end against the live database. See [[P1-BUILD-LOG]] Part II.
 
 **What it unblocked, honestly:** two loops moved `blocked` → `gated`; four stayed
@@ -100,7 +108,7 @@ evidence* to **decidable but unanswered** — the query runs, the volume does no
 **What it did not unblock, and this is the finding:** the 7 keys that need a *verdict*.
 See §1.
 
-### P2 — Restore the drift guard ✅ **CLOSED 2026-08-24**
+### Push 2 — Restore the drift guard ✅ **CLOSED 2026-08-24** *(named "P2" before ADR 0018)*
 The secret was set (`SUPABASE_POOLER_URL`, first in the workflow's fallback chain) and
 `Fresh database equals remote` connected for the first time. It immediately found real
 drift — and the drift was **three hand-made backup tables** (`_bak_library_before_corpus`
@@ -109,12 +117,14 @@ reported differences). Every other column matched. Snapshots are not schema, so 
 is now excluded from the comparison **and printed on every run** — an exclusion you
 cannot see is a blind spot.
 
-### P3 — Connect a POS  ← **NEXT**
-Only **25.1%** of the 573 insight types are satisfiable without POS data. The two largest
-categories (`tables`, `efficiency`) are dark. **The subscription story is gated here** —
-S15 shows the engine is real and the owner-facing depth is not.
+### Push 3 — Connect a POS ✅ **overtaken by events (2026-08-25)**
+Written when only **25.1%** of the 573 insight types were satisfiable without POS data.
+The bridge has since been built and proven against live traffic — insight satisfiability
+moved **1.4% → 67.4%** ([[POS-BRIDGE-AUDIT]]); sale-volume contract and referential
+integrity are locked (ADRs 0011, 0015). Two Toast-side defects remain open in the
+register (OD-64/66/67 cluster), tracked there rather than here.
 
-### P4 — Give NF-B a caller
+### Push 4 — Give NF-B a caller *(open — carried as a P3-candidate in [ROADMAP.md](../ROADMAP.md))*
 The guest consent/identity slice is 564 lines of working migration, three tables, two CI
 guards — and **zero application call sites**. Every guest scenario is blocked on this.
 

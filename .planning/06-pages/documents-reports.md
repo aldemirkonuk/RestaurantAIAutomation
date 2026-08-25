@@ -8,11 +8,21 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
 # /documents-reports — Documents & Reports
+
+## Surface — buttons → where they go
+
+- **Reports / Communication History tabs** → (on this page)
+- **View / Print** → opens `report.fileUrl` (preview / new tab for print)
+- **Download** → opens `report.fileUrl` in a new tab
+- **Email** → external `mailto:` compose with the report link
+- **Copy link** → clipboard (`fileUrl` or `/documents-reports?doc=:id`)
+- **Delete / batch delete** → API delete-report mutation
+- (no outbound navigation — dead-end page)
 
 ## 1. Purpose
 

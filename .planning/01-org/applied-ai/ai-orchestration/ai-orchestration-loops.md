@@ -18,7 +18,9 @@ Every loop names its close-time. A loop that cannot state how fast it closes is 
 diagram, not a loop ([[ORG_STRUCTURE]] §5).
 
 > **Honesty note on `status`.** Six of the seven below are `proposed`, and they are
-> proposed for one reason: **L4 emits nothing yet** ([[README]] §1). A loop whose
+> proposed for one reason: **L4 emits nothing yet** ([[README]] §1). *Corrected
+> 2026-08-25: L4 emits since P1; the live blocker for these loops is verdict coverage
+> and volume, not emission.* A loop whose
 > `measures` field names a metric that is not emitted is a *designed* loop, not a
 > running one. Only `loop-eval-gate-ci` closes today.
 

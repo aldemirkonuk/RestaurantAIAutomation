@@ -8,11 +8,17 @@ tier: core
 signals_today: none
 rebrand_strings: 1
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[studio]]", "[[studio-certify]]"]
 ---
 
 # /studio/queue — override approval queue
+
+## Surface — buttons → where they go
+
+- **Studio** (header) → [[studio]] `/studio`
+- **Certify** (header) → [[studio-certify]] `/studio/certify`
+- **Approve / Reject** → API `PATCH /api/v1/studio/queue/:id`
 
 ## 1. Purpose
 Review-admin surface: approve or reject field overrides submitted by certified

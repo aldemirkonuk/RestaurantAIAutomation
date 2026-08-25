@@ -48,7 +48,9 @@ gates every type on its `DataRequirement` set (`insight-catalog.ts:557-563`):
 - **NF-B** — `checks`/`tables`-dependent share is the truest readout of guest-side substrate
   arrival; the with-POS space is provably larger (`insight-catalog.spec.ts:36-44`).
 - **NF-A** — the digest itself makes no agent decision here, so no NF-A row is owed; and none
-  would land anyway, since NF-A emits nothing in the gateway today.
+  would land anyway, since NF-A emits nothing in the gateway today. *Corrected
+  2026-08-25: the gateway emits since P1; the "no NF-A row is owed here" half of this
+  point still holds on its own.*
 
 ## 4. Queries the product must answer
 - "What changed this week that I'd want to know?" — ranked by effect × significance × support

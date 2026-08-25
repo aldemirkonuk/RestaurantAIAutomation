@@ -8,11 +8,21 @@ tier: core
 signals_today: none
 rebrand_strings: 2
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[login]]", "[[settings]]"]
 ---
 
 # /profile
+
+## Surface — buttons → where they go
+
+- **Save changes** → API `PATCH /api/v1/auth/me`
+- **Change password** → API `POST /api/v1/auth/me/password`
+- **Contact support** → external `mailto:` (VITE_SUPPORT_EMAIL, default support@wineops.ai)
+- **Leave restaurant** → API `POST /api/v1/auth/me/leave-restaurant`
+- **Delete account** → API `DELETE /api/v1/auth/me`, then [[login]] `/login`
+- **Settings → Team** → [[settings]] `/settings?tab=team`
+- **Settings** → [[settings]] `/settings`
 
 ## 1. Purpose
 Personal account page for every role: Account (name/phone; email read-only), Security (change password), Linked accounts (Google link/unlink), Preferences (theme). Managers/owners additionally get Restaurant (name/city/billing contact), Payment, Memberships sections (`Profile.tsx:36-48`). Danger zone: leave the active restaurant, or delete the account behind a type-DELETE confirmation (`Profile.tsx:877-891`).

@@ -8,11 +8,15 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]", "[[help]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[help]]", "[[settings]]"]
 ---
 
 # /services — redirect → /settings?tab=services
+
+## Surface — buttons → where they go
+
+- **(no UI — automatic redirect)** → [[settings]] `/settings?tab=services`
 
 ## 1. Purpose
 Compatibility route. "Services & permissions" (email, web, and privacy access grants)

@@ -91,7 +91,7 @@ inputs_from: [inference-cost, neural-footprint-instrumentation, agent-evaluation
 outputs_to: [harness-model-routing, research-and-math, decision-office]
 close_time: weekly
 status: gated
-gate: "production volume — the readout refuses to report a number below 30 agent events"
+gate: "production volume — below 30 agent events the readout is labelled INSUFFICIENT VOLUME (corrected 2026-08-25: it does not refuse; it prints the table and exits 0 unless --require-volume)"
 evidence: "P1 shipped the bridge this loop was blocked on. neural_footprint_event carries subject_id + context.task_type; `python3 scripts/nf_readout.py` returns cost per agent per task type with no hand-written SQL. nf_a.retry_rate reads context.attempts, emitted by the gateway wrapper (model-client.service.ts:223)."
 ```
 

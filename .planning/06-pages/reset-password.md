@@ -8,11 +8,17 @@ tier: public
 signals_today: none
 rebrand_strings: 5
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[forgot-password]]", "[[login]]"]
 ---
 
 # /reset-password
+
+## Surface — buttons → where they go
+
+- **Reset Password** (submit) → API `POST /api/v1/auth/reset-password`, then auto-redirect → [[login]] `/login`
+- **Request a new link** (invalid-token state) → [[forgot-password]] `/forgot-password`
+- **Back to sign in** → [[login]] `/login`
 
 ## 1. Purpose
 Set a new password from an emailed reset link (`?token=`). Three states: missing token → "Invalid reset link" (`ResetPassword.tsx:64-88`), form (min 8 chars, confirm match, `ResetPassword.tsx:33-40`), success → auto-redirect to `/login` after 2.5s (`ResetPassword.tsx:48-49`). Backend error messages are surfaced verbatim — safe here because possessing the token already proves email receipt, so no enumeration risk (`ResetPassword.tsx:50-58`).

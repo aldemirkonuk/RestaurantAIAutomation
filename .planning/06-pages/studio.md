@@ -8,11 +8,19 @@ tier: core
 signals_today: none
 rebrand_strings: 1
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[studio-queue]]", "[[studio-certify]]", "[[wines]]"]
 ---
 
 # /studio — data ingestion workbench
+
+## Surface — buttons → where they go
+
+- **Queue** (studio header, review_admin/developer only) → [[studio-queue]] `/studio/queue`
+- **Certify** (studio header, review_admin/developer only) → [[studio-certify]] `/studio/certify`
+- **Ingest** (URL / manual) → API `POST /api/v1/studio/sessions`; PDF/photo extraction via `POST /api/v1/onboarding/extract`
+- **Promote** → API `POST /api/v1/studio/promote`
+- **Override a field** → API `POST /api/v1/studio/overrides`
 
 ## 1. Purpose
 Internal contributor tool: ingest a wine list (PDF/photo → Claude Vision, URL → Gemini

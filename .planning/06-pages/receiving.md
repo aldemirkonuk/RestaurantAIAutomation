@@ -8,11 +8,16 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[orders]]"]
 ---
 
 # /receiving — Receiving home (role-split)
+
+## Surface — buttons → where they go
+
+- **Delivery card** (staff view) → [[receiving-door]] `/receiving/:orderId/door`
+- **Issue row** (manager view) → [[orders]] `/orders?order=<id>`
 
 ## 1. Purpose
 
