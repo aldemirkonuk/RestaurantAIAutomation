@@ -95,9 +95,7 @@ async def test_metrics_returns_dlq_size_key(health_client):
     # get_metrics is `async def` (core/orchestrator.py). Mocking it as sync
     # made this test pass against a route that had forgotten to await it —
     # the mock encoded the bug. AsyncMock matches the real signature.
-    mock_orch.get_metrics = AsyncMock(
-        return_value={"agents": {}, "aggregated": {}}
-    )
+    mock_orch.get_metrics = AsyncMock(return_value={"agents": {}, "aggregated": {}})
     mock_settings = MagicMock()
     mock_settings.supabase_client = (
         None  # No DB — triggers except branch (dlq_size = -1)
