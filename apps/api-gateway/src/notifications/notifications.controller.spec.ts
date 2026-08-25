@@ -12,6 +12,7 @@ import {
   BulkIdsDto,
   UpdatePreferencesDto,
 } from "./dto/notifications.dto";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 
 describe("NotificationsController", () => {
   let controller: NotificationsController;
@@ -42,7 +43,13 @@ describe("NotificationsController", () => {
           useValue: mockNotificationsService,
         },
       ],
-    }).compile();
+    })
+      // OD-20 guarded this controller at class level. A unit spec should not
+      // have to construct the auth graph to test a handler — stub the guard
+      // and let the boot guard prove the real one resolves.
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<NotificationsController>(NotificationsController);
     notificationsService =

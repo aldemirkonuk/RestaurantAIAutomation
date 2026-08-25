@@ -5,6 +5,7 @@ import {
   Query,
   HttpException,
   HttpStatus,
+  UseGuards,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -22,6 +23,7 @@ import {
   SalesChartPointDto,
   InventoryBreakdownDto,
 } from "./dto/dashboard-summary.dto";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 
 /**
  * Dashboard Controller - Aggregated API endpoints
@@ -32,6 +34,21 @@ import {
  * - Graceful degradation on partial failures
  */
 @ApiTags("dashboard")
+/**
+ * OD-20 — guarded at class level 2026-08-25.
+ *
+ * This controller had no guard and no @Public(). It was not protected by
+ * TenantGuard either: that guard fails OPEN by design —
+ * "If no authenticated user, allow through — JwtAuthGuard should enforce where
+ * required" (tenant.guard.ts) — and nothing here required it.
+ *
+ * Verified live before the fix: GET /api/v1/dashboard/stats/<uuid> returned 200
+ * with JSON to an unauthenticated caller.
+ *
+ * Routes that are genuinely public must now say so with @Public(), so intent is
+ * recorded rather than inferred from an absent decorator.
+ */
+@UseGuards(JwtAuthGuard)
 @Controller("dashboard")
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
