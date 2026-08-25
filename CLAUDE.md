@@ -146,6 +146,50 @@ Every decision → one file in `.planning/decisions/NNNN-slug.md`, from the temp
 
 ---
 
+## 5b. Claims must be re-checkable
+
+Added 2026-08-25, after five `OPEN-DECISIONS` entries were acted on in one day
+and five were wrong in ways that changed the priority: two had been fixed the
+day before and never struck off, one overstated its severity, one pointed at
+entirely the wrong packages, and one described spurious rows in a table that
+does not exist in production.
+
+None of that was carelessness. **Prose rots because nothing re-reads it.** A
+claim written as a sentence is checked exactly once — the day it is written.
+
+- **If a claim can be checked by a command, write it as one.** Add a line to
+  [`.planning/decisions/CLAIMS.jsonl`](.planning/decisions/CLAIMS.jsonl);
+  `scripts/check_decision_claims.sh` runs them all and blocks CI. `status`
+  drives the expectation: `resolved` means the claim **must** hold, `open` means
+  it must **not** hold yet — so a fixed-but-unstruck entry fails the build.
+  `status` describes the **claim**, not the whole entry: an OD can be partly
+  resolved, and OD-56 is — its Python half is fixed while its Node transitives
+  are not.
+- **Verify an entry before acting on it, not after.** Every fix today was
+  cheaper than the verification that preceded it, and the verification changed
+  what got built more than once. Cite `file:line` or a query result in the
+  commit.
+- **Numbers get re-measured, never copied forward.** Test baselines handed
+  between sessions were stale within hours (65/900 vs the real 69/936). Measure
+  in a clean worktree at `origin/main`.
+- **A patched version is only patched against the CVE you looked up.** Bumping
+  `cryptography` to 49.0.0 closed two advisories and landed inside a third that
+  was already published. Check the version you are moving *to*.
+- **Never reuse an OD number.** Four collisions happened in two days because
+  sessions each took "the next free number" from the same trunk — and **git
+  merges duplicate ids in silence**, since the prose around them differs. One
+  pair turned out to be the same defect filed twice, on `main`, unnoticed by
+  either session. The guard now fails the build on it; when renumbering, move
+  the id with **fewer citations** and prefer a gap over a collision.
+- **Never reuse a migration version either.** `schema_migrations` keys on
+  `version`, so two files sharing a `YYYYMMDDHHMMSS_` prefix make `supabase db
+  reset` die on a duplicate key — and it surfaces as *"Fresh database equals
+  remote"*, a message that says **drift** when the truth is a collision. Same
+  guard, same rule: pick a version past everything on `main`.
+- **What this does not catch:** an entry aimed at the wrong target. Nothing
+  mechanical catches that — but stating a claim precisely enough that someone
+  could *try* to write a check for it is most of the defence.
+
 ## 6. Memory
 
 Project memory: `~/.claude/projects/-Users-aldemirkonuk-Projects-restaurant-ai-automation/memory/`

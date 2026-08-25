@@ -133,6 +133,36 @@ jobs:
           echo "::notice::Exit 2 means the guard could not check what it claims to (missing wrapper, or a rotted pattern). That is a failure, not a skip: see the NEVER VACUOUS section in scripts/check_model_calls_logged.sh."
           echo "::notice::The pre-P1 debt list in that script is shrink-only. A new unlogged call site does not belong on it."
 
+  # Does the decision register still describe reality?
+  #
+  # Added 2026-08-25, after five OPEN-DECISIONS entries were acted on in one day
+  # and five turned out to be wrong in ways that changed the priority: two were
+  # fixed the day before and never struck off, one overstated its severity, one
+  # pointed at entirely the wrong packages, and one described spurious rows in a
+  # table that does not exist.
+  #
+  # Prose rots because nothing re-reads it. Claims that a command can check are
+  # written as commands in .planning/decisions/CLAIMS.jsonl, and this runs them.
+  # Blocks, like the other guards, and exits 2 rather than green when it cannot
+  # check what it claims to.
+  decision-claims:
+    name: Decision register matches reality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Re-verify every executable claim
+        run: ./scripts/check_decision_claims.sh
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::REGRESSED means a decision this repo considers settled has come undone."
+          echo "::notice::STALE means an entry is listed as open but its claim already verifies — strike it off."
+          echo "::notice::A register that lists fixed things is one people stop reading, which is how a critical SSRF sat unread."
+          echo "::notice::Exit 2 means the guard could not check what it claims to. That is a failure, not a skip."
+
   # Does the gateway's dependency graph actually resolve?
   #
   # Added 2026-08-24 after the api-gateway crash-looped in production on the P1
@@ -417,6 +447,7 @@ jobs:
     needs:
       [
         build,
+        decision-claims,
         gateway-boot,
         test-typescript,
         test-e2e,
