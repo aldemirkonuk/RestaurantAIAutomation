@@ -60,3 +60,10 @@
 See [`OPEN-DECISIONS.md`](OPEN-DECISIONS.md) — that file is canonical and this line
 is a pointer, not a count. It has grown well past its original 8 items; four are
 marked 🔴 and several were raised by review agents against Claude's own work.
+
+Evidence annexes attached to open items (each merges into the ADR that resolves its
+item, then is deleted):
+
+| Annex | For |
+|---|---|
+| [`OD-72-rls-census.md`](OD-72-rls-census.md) | OD-72 (142 naked-RLS tables) · OD-73 (12 RLS-off tables with full `anon` DML) |
