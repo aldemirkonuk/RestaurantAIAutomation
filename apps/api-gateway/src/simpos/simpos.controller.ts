@@ -6,8 +6,15 @@ import {
   Param,
   Patch,
   Post,
+  UseGuards,
 } from "@nestjs/common";
-import { ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from "@nestjs/swagger";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { SimposService } from "./simpos.service";
 
 /**
@@ -18,8 +25,33 @@ import { SimposService } from "./simpos.service";
  * feature. Every write here stays inside SimPOS's own tables; the only way
  * anything crosses into WineOps is the signed webhook fired on check close
  * (decision C25).
+ *
+ * ---
+ *
+ * OD-35 — guarded at class level, added 2026-08-25.
+ *
+ * This controller had no guard and no `@Public()`, and `POST check/:id/close`
+ * makes OUR OWN SERVER HMAC-sign a webhook into
+ * `/pos-hub/webhook/generic_webhook/:restaurantId` — which the perimeter then
+ * trusts, because the signature is genuinely valid. That is a confused deputy,
+ * and the deputy depletes stock.
+ *
+ * Two things the register got wrong, both verified rather than assumed:
+ *  - `app.module.ts:89` DOES gate the module on `NODE_ENV !== "production"`,
+ *    and the gate works: `GET /api/v1/simpos/<uuid>/catalog` returns 404 in
+ *    production while `/api/v1/pos-hub/providers` returns 401, so the app is
+ *    routing and this module simply is not loaded there.
+ *  - So this was never remotely exploitable in production.
+ *
+ * It still needed the guard, for a reason the entry did not name: **dev and
+ * staging point at the same Supabase instance as production.** An unauthenticated
+ * endpoint in a local or preview environment writes to real rows. The sim-tenant
+ * check (`slug LIKE 'sim-%'`) bounds the blast radius to sim restaurants; it does
+ * not make the surface authenticated.
  */
 @ApiTags("simpos")
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller("simpos/:restaurantId")
 export class SimposController {
   constructor(private readonly simpos: SimposService) {}
