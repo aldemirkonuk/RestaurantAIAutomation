@@ -83,6 +83,7 @@ export {
   getInventoryBreakdown,
   getOneTapActions,
   executeOneTapAction,
+  cancelOneTapAction,
 } from './dashboard';
 
 /**

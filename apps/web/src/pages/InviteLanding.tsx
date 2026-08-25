@@ -4,8 +4,9 @@ import { useAuth } from '../contexts/AuthContext'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 import { toast } from 'sonner'
+import axios from 'axios'
+import { apiClient, getErrorMessage } from '../services/api/client'
 
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
 type Preview =
   | { valid: false; reason?: string }
@@ -35,8 +36,9 @@ export function InviteLanding() {
     }
     setLoadingPreview(true)
     try {
-      const resp = await fetch(`${API_URL}/api/v1/auth/invite/${encodeURIComponent(code)}`)
-      const data = await resp.json()
+      const { data } = await apiClient.get<Preview>(
+        `/auth/invite/${encodeURIComponent(code)}`,
+      )
       setPreview(data)
     } catch {
       setPreview({ valid: false })
@@ -56,32 +58,21 @@ export function InviteLanding() {
     setAcceptError(null)
     setAccepting(true)
     try {
-      const resp = await fetch(
-        `${API_URL}/api/v1/auth/invite/${encodeURIComponent(code)}/accept`,
-        {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-        },
+      const { data } = await apiClient.post<{ restaurant?: string }>(
+        `/auth/invite/${encodeURIComponent(code)}/accept`,
       )
-      const data = await resp.json().catch(() => ({}))
-      if (resp.status === 409) {
-        toast.success(`You're already a member of ${(preview as any).restaurant || 'this restaurant'}`)
-        await refreshBranches()
-        navigate('/', { replace: true })
-        return
-      }
-      if (!resp.ok) {
-        throw new Error(data.message || 'Could not accept invite')
-      }
       toast.success(`You've joined ${data.restaurant || 'the restaurant'}!`)
       await refreshBranches()
       navigate('/', { replace: true })
     } catch (e) {
-      setAcceptError(
-        e instanceof Error
-          ? e.message
-          : "Couldn't add you to this restaurant. Please try again or contact the owner.",
-      )
+      // 409 = already a member: still a success from the user's point of view.
+      if (axios.isAxiosError(e) && e.response?.status === 409) {
+        toast.success(`You're already a member of ${(preview as any)?.restaurant || 'this restaurant'}`)
+        await refreshBranches()
+        navigate('/', { replace: true })
+        return
+      }
+      setAcceptError(getErrorMessage(e))
     } finally {
       setAccepting(false)
     }

@@ -68,7 +68,6 @@ import { ResetPassword } from './pages/ResetPassword'
 import { VerifyEmail } from './pages/VerifyEmail'
 import { InviteLanding } from './pages/InviteLanding'
 import { NoAccess } from './pages/NoAccess'
-import { Inventory } from './pages/Inventory'
 import { InventoryCommandPage } from './pages/inventory/command/InventoryCommandPage'
 import { Orders } from './pages/Orders'
 import { TeamCommandPage } from './pages/team/command/TeamCommandPage'
@@ -97,7 +96,6 @@ const DocumentsPage = lazyWithRefresh(() => import('./pages/DocumentsPage'))
 const ReceiptsPage = lazyWithRefresh(() => import('./pages/ReceiptsPage'))
 const LogsTimelinePage = lazyWithRefresh(() => import('./pages/LogsTimelinePage'))
 const Notifications = lazyWithRefresh(() => import('./pages/Notifications'))
-const Calendar = lazyWithRefresh(() => import('./pages/Calendar'))
 const CalendarModular = lazyWithRefresh(() => import('./pages/CalendarModular'))
 const Onboarding = lazyWithRefresh(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })))
 const Settings = lazyWithRefresh(() => import('./pages/Settings'))
@@ -253,7 +251,6 @@ function App() {
                 >
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/inventory" element={<InventoryCommandPage />} />
-                  <Route path="/inventory-legacy" element={<Inventory />} />
                   <Route path="/orders" element={<Orders />} />
                   {/* One event, three renderings, chosen by role — see ReceivingHome. */}
                   <Route path="/receiving" element={<ReceivingHome />} />
@@ -275,7 +272,6 @@ function App() {
                   <Route path="/promotions" element={<Promotions />} />
                   <Route path="/team" element={<TeamCommandPage />} />
                   <Route path="/calendar" element={<CalendarModular />} />
-                  <Route path="/calendar-classic" element={<Calendar />} />
                   <Route path="/communications" element={<Communications />} />
                   <Route path="/documents-reports" element={<DocumentsPage />} />
                   <Route path="/receipts" element={<ReceiptsPage />} />
@@ -290,10 +286,13 @@ function App() {
                   <Route path="/admin" element={<ProtectedRoute requiredRole="owner"><AdminPanel /></ProtectedRoute>} />
                   <Route path="/admin/health" element={<ProtectedRoute requiredRole="owner"><AdminHealth /></ProtectedRoute>} />
                   
-                  {/* AI Assistants */}
+                  {/* AI Assistants.
+                      `/wine-agent` and `/wineagent` are retired (ADR 0019 §B): both
+                      rendered the same under-construction placeholder with no
+                      behaviour behind it. Everything that said "Wine Agent" in the
+                      UI already navigated to `/sommelier`, which is the real
+                      inventory & ordering help surface. */}
                   <Route path="/sommelier" element={<SommelierAI />} />
-                  <Route path="/wine-agent" element={<PlaceholderPage title="Wine Agent" />} />
-                  <Route path="/wineagent" element={<PlaceholderPage title="Wine Agent" />} />
                   <Route path="/services" element={<Navigate to="/settings?tab=services" replace />} />
                   
                   {/* Dev/Test Pages */}
@@ -344,30 +343,6 @@ function App() {
         </QueryClientProvider>
       </ThemeProvider>
     </ErrorBoundary>
-  )
-}
-
-// Placeholder page component for routes not yet implemented
-function PlaceholderPage({ title }: { title: string }) {
-  return (
-    <div className="min-h-screen">
-      <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200">
-        <div className="h-16 px-6 flex items-center">
-          <h1 className="text-xl font-bold text-gray-900">{title}</h1>
-        </div>
-      </div>
-      <div className="p-6">
-        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
-          <div className="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center mb-6">
-            <span className="text-4xl">🚧</span>
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">{title}</h2>
-          <p className="text-gray-500 max-w-md">
-            This page is under construction. We're working hard to bring you this feature soon!
-          </p>
-        </div>
-      </div>
-    </div>
   )
 }
 

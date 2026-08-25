@@ -67,7 +67,11 @@ export default function WineAgentScreen() {
           <PressableScale
             onPress={async () => {
               trackGuidance("wine_agent_fab_clicked", { source: "placeholder" });
-              await Linking.openURL(`${WEB_URL}/wineagent`);
+              // Web `/wineagent` is retired (ADR 0019 §B) — it was the same
+              // under-construction placeholder. `/sommelier` is the real
+              // inventory & ordering help surface, and is where the web app's
+              // own Wine Agent entry points already go.
+              await Linking.openURL(`${WEB_URL}/sommelier`);
             }}
             style={{
               marginTop: space.md,

@@ -31,8 +31,8 @@ import {
   routeLabel,
   staticCommands,
 } from "./commands";
+import { apiClient } from "../../services/api/client";
 
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:4000";
 const RECENTS_KEY = "wineops.command.recents";
 const MAX_RECENTS = 5;
 
@@ -77,9 +77,9 @@ export function CommandPalette({
   useEffect(() => {
     if (!open || !restaurantId) return;
     let cancelled = false;
-    fetch(`${API_URL}/api/v1/analytics/recommendations/${restaurantId}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((body) => {
+    apiClient
+      .get<any>(`/analytics/recommendations/${restaurantId}`)
+      .then(({ data: body }) => {
         if (cancelled) return;
         const rec = body?.recommendations?.[0];
         if (rec)

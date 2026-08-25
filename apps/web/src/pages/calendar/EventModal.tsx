@@ -73,6 +73,11 @@ interface EventModalProps {
   initialDate?: Date
   initialEndDate?: Date
   existingEvent?: CalendarEvent
+  /**
+   * Reminders already scheduled for `existingEvent`, so the edit form shows what
+   * will actually fire instead of silently resetting to the create-mode default.
+   */
+  existingReminders?: ReminderEntry[]
   eventTypes: EventType[]
   providers?: Provider[]
 }
@@ -228,6 +233,7 @@ export function EventModal({
   initialDate,
   initialEndDate,
   existingEvent,
+  existingReminders,
   eventTypes,
   providers = [],
 }: EventModalProps) {
@@ -342,6 +348,9 @@ export function EventModal({
       setEndType('never')
       setEndOnDate('')
       setEndAfterCount(10)
+      // Show the reminders that are actually scheduled for this event (empty array
+      // means "none scheduled" and must not fall back to the create-mode default).
+      setReminders(existingReminders ?? [])
     } else {
       setIsViewMode(false)
       const start = initialDate || new Date()
@@ -367,7 +376,7 @@ export function EventModal({
       setReminders([{ id: uid(), minutesBefore: 60, channels: ['in_app', 'email'] }])
       setTimeout(() => titleInputRef.current?.focus(), 100)
     }
-  }, [isOpen, existingEvent, initialDate, initialEndDate, eventTypes])
+  }, [isOpen, existingEvent, existingReminders, initialDate, initialEndDate, eventTypes])
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
@@ -595,6 +604,7 @@ export function EventModal({
               <button
                 type="button"
                 onClick={() => setIsViewMode(false)}
+                aria-label="Edit event"
                 className="w-8 h-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
               >
                 <Edit2 className="w-3.5 h-3.5" />
@@ -603,6 +613,7 @@ export function EventModal({
                 <button
                   type="button"
                   onClick={handleDelete}
+                  aria-label="Delete event"
                   className="w-8 h-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -611,6 +622,7 @@ export function EventModal({
               <button
                 type="button"
                 onClick={onClose}
+                aria-label="Close event"
                 className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"
               >
                 <X className="w-4 h-4" />

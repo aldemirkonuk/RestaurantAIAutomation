@@ -32,7 +32,9 @@ export function WineAgentFab() {
   const open = async () => {
     trackGuidance("wine_agent_fab_clicked");
     if (WEB_URL) {
-      await Linking.openURL(`${WEB_URL}/wineagent`);
+      // Web `/wineagent` is retired (ADR 0019 §B); `/sommelier` is the real
+      // inventory & ordering help surface.
+      await Linking.openURL(`${WEB_URL}/sommelier`);
       return;
     }
     router.push("/wine-agent");

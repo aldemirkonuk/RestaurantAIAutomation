@@ -1,17 +1,42 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, waitFor, fireEvent } from '@testing-library/react'
 import { renderWithProviders } from '../../__tests__/utils/test-utils'
 import { OneTapActionCenter, openRouteForAction } from './OneTapActionCenter'
+import {
+  getOneTapActions,
+  executeOneTapAction,
+  cancelOneTapAction,
+} from '../../services/api/dashboard'
+import { markOrderDelivered } from '../../services/api/orders'
+import { toast } from 'sonner'
 
 vi.mock('../../contexts/RealtimeContext', () => ({
   useRealtime: vi.fn(() => ({})),
-  useRealtimeDispatch: vi.fn(() => vi.fn()),
+  useRealtimeDispatch: vi.fn(() => ({
+    dispatchInventoryUpdate: vi.fn(),
+    dispatchOrderUpdate: vi.fn(),
+  })),
   RealtimeProvider: ({ children }: any) => <>{children}</>,
 }))
 
 vi.mock('../../services/api/orders', () => ({
   getOrdersNeedingApproval: vi.fn().mockResolvedValue([]),
   getOrders: vi.fn().mockResolvedValue([]),
+  markOrderDelivered: vi.fn().mockResolvedValue({ id: 'order-1' }),
+}))
+
+vi.mock('../../services/api/dashboard', () => ({
+  getOneTapActions: vi.fn().mockResolvedValue([]),
+  executeOneTapAction: vi.fn().mockResolvedValue({ success: true, message: 'ok' }),
+  cancelOneTapAction: vi.fn().mockResolvedValue({ success: true, message: 'ok' }),
+}))
+
+vi.mock('../../stores', () => ({
+  useAuthStore: vi.fn((selector: any) => selector({ activeRestaurantId: 'rest-1' })),
+}))
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
 }))
 
 vi.mock('../../hooks/queries', () => ({
@@ -109,6 +134,130 @@ describe('OneTapActionCenter', () => {
     // action title is present as a proxy that the action (with its timestamp)
     // rendered.
     expect(screen.getByText(/Penfolds Grange/i)).toBeInTheDocument()
+  })
+})
+
+/**
+ * `handleApprove` / `handleReject` used to make zero server calls: they wrote
+ * fabricated `ORD-<timestamp>` ids into localStorage, console.logged the rest,
+ * and resolved a 300ms timer so the card vanished and the tap looked like it had
+ * worked. Meanwhile the gateway's `one-tap-actions` module had no callers at all.
+ *
+ * These tests pin the wiring: a tap either reaches a real endpoint, or it is
+ * refused out loud and the card stays.
+ */
+describe('OneTapActionCenter — taps reach the server', () => {
+  const SERVER_ACTION = {
+    id: '11111111-2222-3333-4444-555555555555',
+    restaurantId: 'rest-1',
+    actionType: 'price_change',
+    title: 'Vendor counter-offer',
+    description: 'Bordeaux case, +4%',
+    priority: 'high',
+    status: 'pending',
+    metadata: { originalPrice: 100, counterPrice: 104, deviation: 4 },
+    createdAt: '2026-08-20T10:00:00.000Z',
+  }
+
+  const DERIVED_LOW_STOCK = {
+    id: 'low_stock_wine-9',
+    type: 'low_stock',
+    priority: 'critical',
+    title: 'Penfolds Grange',
+    subtitle: 'Only 2 bottles left',
+    timestamp: new Date('2026-08-20T09:55:00Z').toISOString(),
+    details: { currentStock: 2, threshold: 6, suggestedOrder: 10, estimatedPrice: 1500 },
+  }
+
+  const DERIVED_DELIVERY = {
+    id: 'delivery_order-1',
+    type: 'delivery_confirm',
+    priority: 'high',
+    title: 'Barolo Delivery',
+    subtitle: '6 bottles • Verify & Confirm',
+    timestamp: new Date('2026-08-20T09:50:00Z').toISOString(),
+    details: { expectedQty: 6, invoicePrice: 300, negotiatedPrice: 291, supplier: 'Acme', orderId: 'order-1' },
+  }
+
+  const seed = (actions: unknown[]) => {
+    localStorage.clear()
+    localStorage.setItem('wineops_pending_actions', JSON.stringify(actions))
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getOneTapActions).mockResolvedValue([])
+    vi.mocked(executeOneTapAction).mockResolvedValue({ success: true, message: 'ok' })
+    vi.mocked(cancelOneTapAction).mockResolvedValue({ success: true, message: 'ok' })
+    vi.mocked(markOrderDelivered).mockResolvedValue({ id: 'order-1' } as any)
+  })
+
+  it('executes a server-backed action against /one-tap-actions/:id/execute', async () => {
+    seed([])
+    vi.mocked(getOneTapActions).mockResolvedValue([SERVER_ACTION])
+
+    renderWithProviders(<OneTapActionCenter />)
+
+    const approve = await screen.findByLabelText(/Approve: Vendor counter-offer/i)
+    fireEvent.click(approve)
+
+    await waitFor(() =>
+      expect(executeOneTapAction).toHaveBeenCalledWith(SERVER_ACTION.id, 'rest-1'),
+    )
+  })
+
+  it('cancels a server-backed action against /one-tap-actions/:id/cancel', async () => {
+    seed([])
+    vi.mocked(getOneTapActions).mockResolvedValue([SERVER_ACTION])
+
+    renderWithProviders(<OneTapActionCenter />)
+
+    fireEvent.click(await screen.findByLabelText(/Dismiss: Vendor counter-offer/i))
+
+    await waitFor(() => expect(cancelOneTapAction).toHaveBeenCalledWith(SERVER_ACTION.id, 'rest-1'))
+  })
+
+  it('puts the card back and reports the error when the server refuses', async () => {
+    seed([])
+    vi.mocked(getOneTapActions).mockResolvedValue([SERVER_ACTION])
+    vi.mocked(executeOneTapAction).mockRejectedValue(
+      Object.assign(new Error('Request failed'), { response: { status: 404 } }),
+    )
+
+    renderWithProviders(<OneTapActionCenter />)
+
+    fireEvent.click(await screen.findByLabelText(/Approve: Vendor counter-offer/i))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    // The optimistic removal is rolled back — a failed call must never read as done.
+    expect(await screen.findByText(/Vendor counter-offer/i)).toBeInTheDocument()
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('confirms a delivery through the real orders endpoint', async () => {
+    seed([DERIVED_DELIVERY])
+
+    renderWithProviders(<OneTapActionCenter />)
+
+    fireEvent.click(await screen.findByLabelText(/Approve: Barolo Delivery/i))
+
+    await waitFor(() =>
+      expect(markOrderDelivered).toHaveBeenCalledWith('order-1', undefined, 'rest-1'),
+    )
+  })
+
+  it('refuses to fake a reorder instead of fabricating an order id', async () => {
+    seed([DERIVED_LOW_STOCK])
+
+    renderWithProviders(<OneTapActionCenter />)
+
+    fireEvent.click(await screen.findByLabelText(/Approve: Penfolds Grange/i))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    // No order was invented in localStorage, and the card is still there.
+    expect(localStorage.getItem('wineops_orders_history')).toBeNull()
+    expect(screen.getByText(/Penfolds Grange/i)).toBeInTheDocument()
+    expect(toast.success).not.toHaveBeenCalled()
   })
 })
 

@@ -50,8 +50,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { Header } from "../components/layout/Header";
 import { getTeamMembers } from "../services/api/team";
-
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:4000";
+import { apiClient, getErrorMessage } from "../services/api/client";
 
 type Urgency = "now" | "this_week" | "this_month";
 type Status = "active" | "dismissed" | "snoozed" | "done";
@@ -152,7 +151,7 @@ export default function Recommendations() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const restaurantId = user?.restaurantId;
-  const base = `${API_URL}/api/v1/analytics/recommendations`;
+  const base = "/analytics/recommendations";
 
   const [recs, setRecs] = useState<Card[]>([]);
   const [tabItems, setTabItems] = useState<Card[]>([]);
@@ -193,15 +192,13 @@ export default function Recommendations() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${base}/${restaurantId}`);
-      if (!res.ok) throw new Error(`Request failed (${res.status})`);
-      const body = await res.json();
+      const { data: body } = await apiClient.get<any>(`${base}/${restaurantId}`);
       setRecs(body.recommendations ?? []);
       setRulesEvaluated(body.rulesEvaluated ?? 0);
       if (body.stateCounts)
         setCounts((c) => ({ ...c, ...body.stateCounts }));
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to load recommendations");
+    } catch (e) {
+      setError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -211,13 +208,13 @@ export default function Recommendations() {
     async (which: Exclude<Tab, "active">) => {
       if (!restaurantId) return;
       setLoading(true);
+      setError(null);
       try {
         const url =
           which === "history"
             ? `${base}/${restaurantId}/history`
             : `${base}/${restaurantId}/actions?status=${which}`;
-        const res = await fetch(url);
-        const body = await res.json();
+        const { data: body } = await apiClient.get<any>(url);
         const items: Card[] = (body.items ?? []).map((r: any) => ({
           observation: r.observation ?? "(no snapshot)",
           recommendation: r.recommendation ?? "",
@@ -233,8 +230,10 @@ export default function Recommendations() {
           updatedAt: r.updatedAt,
         }));
         setTabItems(items);
-      } catch {
+      } catch (e) {
+        // An empty list here used to be indistinguishable from a failed call.
         setTabItems([]);
+        setError(getErrorMessage(e));
       } finally {
         setLoading(false);
       }
@@ -249,9 +248,9 @@ export default function Recommendations() {
 
   useEffect(() => {
     if (!restaurantId) return;
-    fetch(`${base}/${restaurantId}/digest`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => d && setDigestEnabled(!!d.digestEnabled))
+    apiClient
+      .get<{ digestEnabled?: boolean }>(`${base}/${restaurantId}/digest`)
+      .then(({ data }) => data && setDigestEnabled(!!data.digestEnabled))
       .catch(() => {});
   }, [restaurantId, base]);
 
@@ -260,10 +259,10 @@ export default function Recommendations() {
     async (ruleKey: string, patch: Record<string, unknown>, snapshot?: unknown) => {
       if (!restaurantId) return;
       try {
-        await fetch(`${base}/${restaurantId}/action`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ ruleKey, ...patch, snapshot }),
+        await apiClient.post(`${base}/${restaurantId}/action`, {
+          ruleKey,
+          ...patch,
+          snapshot,
         });
       } catch {
         toast.error("Couldn't save that — try again");
@@ -380,10 +379,8 @@ export default function Recommendations() {
     const next = !digestEnabled;
     setDigestEnabled(next);
     try {
-      await fetch(`${base}/${restaurantId}/digest`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ digestEnabled: next }),
+      await apiClient.put(`${base}/${restaurantId}/digest`, {
+        digestEnabled: next,
       });
       toast.success(next ? "Daily digest on — top actions to your inbox" : "Daily digest off");
     } catch {
@@ -401,10 +398,9 @@ export default function Recommendations() {
     const n = items.length;
     setSelected(new Set());
     try {
-      await fetch(`${base}/${restaurantId}/bulk-action`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ items, ...patch }),
+      await apiClient.post(`${base}/${restaurantId}/bulk-action`, {
+        items,
+        ...patch,
       });
       toast.success(`${label} ${n} recommendation${n === 1 ? "" : "s"}`);
       loadActive();

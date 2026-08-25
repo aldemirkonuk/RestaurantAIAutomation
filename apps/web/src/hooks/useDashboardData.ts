@@ -33,9 +33,9 @@ const EMPTY_STATS: DashboardStats = {
   totalBottles: 0,
   lowStockItems: 0,
   pendingOrders: 0,
-  todaySales: 0,
-  weekSales: 0,
-  monthSales: 0,
+  todayProcurementSpend: 0,
+  weekProcurementSpend: 0,
+  monthProcurementSpend: 0,
   totalVolumeMl: 0,
   totalVolumeOz: 0,
 };

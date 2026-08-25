@@ -1,6 +1,9 @@
 /**
- * ChannelDonutChart — Revenue by service channel (dine-in, bar, takeout, delivery).
- * Uses wine-type distribution as a proxy when real channel data isn't available.
+ * ChannelDonutChart — vendor SPEND split across service channels.
+ *
+ * The total comes from `procurement_orders` (money paid to vendors), not from
+ * POS sales, and the per-channel split is a hard-coded weighting, not measured
+ * data. Real channel revenue needs `pos_checks` and is not wired yet.
  */
 
 import { useMemo } from 'react'
@@ -19,19 +22,20 @@ const CHANNEL_NAMES  = ['Dine-in', 'Bar', 'Takeout', 'Delivery']
 
 interface Props {
   wineTypeDistribution: WineTypeDistribution[]
-  totalRevenue: number
+  /** Total vendor spend across the window (procurement_orders). */
+  totalSpend: number
   className?: string
 }
 
-export function ChannelDonutChart({ totalRevenue, className = '' }: Props) {
+export function ChannelDonutChart({ totalSpend, className = '' }: Props) {
   const channels = useMemo(() =>
     CHANNEL_NAMES.map((name, i) => ({
       name,
-      value: Math.round(totalRevenue * CHANNEL_WEIGHTS[i]),
+      value: Math.round(totalSpend * CHANNEL_WEIGHTS[i]),
       pct: Math.round(CHANNEL_WEIGHTS[i] * 100),
       color: CHANNEL_COLORS[name],
     })),
-    [totalRevenue],
+    [totalSpend],
   )
 
   const total = channels.reduce((s, c) => s + c.value, 0) || 1
@@ -68,10 +72,10 @@ export function ChannelDonutChart({ totalRevenue, className = '' }: Props) {
           />
         ))}
         <text x={cx} y={cy - 4} textAnchor="middle" fontSize="11" fontWeight="600" fill="#1f2937">
-          {totalRevenue > 0 ? formatMoney(totalRevenue, 'compact') : '—'}
+          {totalSpend > 0 ? formatMoney(totalSpend, 'compact') : '—'}
         </text>
         <text x={cx} y={cy + 10} textAnchor="middle" fontSize="8" fill="#9ca3af">
-          Revenue
+          Spend
         </text>
       </svg>
 
@@ -84,9 +88,9 @@ export function ChannelDonutChart({ totalRevenue, className = '' }: Props) {
             <span className="text-xs font-semibold text-gray-800 ml-1">{c.pct}%</span>
           </div>
         ))}
-        {totalRevenue === 0 && (
+        {totalSpend === 0 && (
           <p className="text-[10px] text-amber-600 mt-1 leading-tight">
-            Estimated — connect POS for live data
+            Split is estimated, not measured
           </p>
         )}
       </div>

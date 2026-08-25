@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   Search, Plus, MapPin, LayoutGrid, Rows3, ChevronDown, PackageCheck,
   ArrowUp, ArrowDown, Copy, X, FileDown, ChevronRight as ChevronRightIcon, Trash2,
+  Power,
 } from 'lucide-react'
 import { useInventoryPage, type InventoryItem } from '../index'
 import { ContextualInsights } from '../../../components/insights/ContextualInsights'
@@ -17,7 +18,10 @@ import { useCreateInventoryItem } from '../../../hooks/queries'
 import { getOrders } from '../../../services/api/orders'
 import { AddWineToInventoryModal } from '../../../components/inventory/AddWineToInventoryModal'
 import { StorageLocationManager } from '../../../components/inventory/StorageLocationManager'
+import { AutoLocatePreviewModal } from '../../../components/inventory/AutoLocatePreviewModal'
+import { computeAutoLocatePlan, type AutoLocateResult, type WineLocationScore } from '../../../lib/autoLocateEngine'
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal'
+import { useTypedInventorySubscription } from '../../../contexts/RealtimeContext'
 import { ManualReceiptWorkspace } from '../../../components/inventory/ManualReceiptWorkspace'
 import { AddWineSelectionModal } from '../../../components/wines/AddWineSelectionModal'
 import { MenuScannerFlow } from '../../../components/scanner/MenuScannerFlow'
@@ -80,10 +84,10 @@ export function InventoryCommandPage() {
   const {
     searchQuery, setSearchQuery, filterType, setFilterType,
     selectedLocationFilter, setSelectedLocationFilter,
-    filteredInventory, stats, refetchInventory,
+    inventory, filteredInventory, stats, refetchInventory, updateInventoryItem,
   } = page
 
-  const { locations, setLocations } = useStorageLocations()
+  const { locations, setLocations, mappings, assignWineToLocation } = useStorageLocations()
   const { availableRestaurants, refreshBranches } = useAuth()
   const multiLocation = availableRestaurants.length > 1
   const createInventoryItem = useCreateInventoryItem()
@@ -102,6 +106,12 @@ export function InventoryCommandPage() {
     return stop
   }, [refetchInventory])
 
+  // Cross-page realtime stock events (order delivery, wine-library add, another tab's
+  // manual override). The legacy page hand-merged each payload into local state, which
+  // drifted from the server; refetching the query is the same freshness with one source
+  // of truth.
+  useTypedInventorySubscription(useCallback(() => { void refetchInventory() }, [refetchInventory]))
+
   const [view, setView] = useState<'table' | 'map'>('table')
   const [sort, setSort] = useState<SortKey>('runway')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -118,10 +128,44 @@ export function InventoryCommandPage() {
   const [showAllLocations, setShowAllLocations] = useState(false)
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const [removeTargets, setRemoveTargets] = useState<InventoryItem[] | null>(null)
+  const [autoLocateResult, setAutoLocateResult] = useState<AutoLocateResult | null>(null)
+  const [showAutoLocate, setShowAutoLocate] = useState(false)
+  const [includeAssigned, setIncludeAssigned] = useState(false)
 
   const anyModalOpen =
     showAddWine || showAddWineSelection || showMenuScanner || showManualReceipt ||
-    showStorageManager || !!verifyOrder || !!removeTargets
+    showStorageManager || !!verifyOrder || !!removeTargets || showAutoLocate
+
+  // Auto-Locate: bulk-score every wine against the storage locations and let the
+  // manager approve the plan before it is persisted. Scored over the whole list,
+  // not the filtered view, so a search box does not silently shrink the plan.
+  const handleAutoLocate = useCallback(() => {
+    setAutoLocateResult(
+      computeAutoLocatePlan(inventory, locations, mappings, { skipAssigned: !includeAssigned }),
+    )
+    setShowAutoLocate(true)
+  }, [inventory, locations, mappings, includeAssigned])
+
+  const handleConfirmAutoLocate = useCallback((selected: WineLocationScore[]) => {
+    for (const a of selected) assignWineToLocation(a.wineId, a.locationId, a.quantity)
+    setShowAutoLocate(false)
+    setAutoLocateResult(null)
+    toast.success(`${selected.length} wine${selected.length === 1 ? '' : 's'} assigned to locations`)
+  }, [assignWineToLocation])
+
+  // Active/inactive: a delisted wine stays in inventory but drops out of the
+  // active list other surfaces read. Only the legacy page could set this.
+  const toggleActive = useCallback(async (item: InventoryItem) => {
+    const next = !item.isActive
+    try {
+      await updateInventoryItem(item.inventoryId || item.id, { isActive: next } as any)
+      toast.success(next ? `${item.name} marked active` : `${item.name} marked inactive`)
+      void refetchInventory()
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || 'Could not change active status')
+    }
+  }, [updateInventoryItem, refetchInventory])
+
 
   // Deliveries still owed a three-way match. PARTIALLY_RECEIVED belongs here too: those orders
   // were matched once and left open for a backorder, so they still need a human when the rest
@@ -491,7 +535,14 @@ export function InventoryCommandPage() {
     const first = (item.locations ?? []).find((l) => l.locationId)
     if (!first) return null
     const loc = locations.find((l) => l.id === first.locationId)
-    return loc ? { ...loc, extra: (item.locations ?? []).filter((l) => l.locationId).length - 1 } : null
+    if (!loc) return null
+    // Full per-location split on hover — the chip can only show the first one.
+    // Moving bottles between these is in the expanded row.
+    const breakdown = (item.locations ?? [])
+      .filter((l) => l.qty > 0)
+      .map((l) => `${locations.find((x) => x.id === l.locationId)?.name ?? 'Unassigned'}: ${l.qty}`)
+      .join('\n')
+    return { ...loc, extra: (item.locations ?? []).filter((l) => l.locationId).length - 1, breakdown }
   }
 
   return (
@@ -761,7 +812,7 @@ export function InventoryCommandPage() {
                             <button
                               onClick={(e) => { e.stopPropagation(); setShowStorageManager(true) }}
                               className="inline-flex items-center gap-1.5 max-w-full px-2.5 py-1 rounded-full bg-white border border-gray-200 hover:border-gray-300 text-[11px] text-gray-600"
-                              title="Adjust locations"
+                              title={loc.breakdown ? `${loc.breakdown}\n\nClick to adjust locations` : 'Adjust locations'}
                             >
                               <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: loc.color || '#be123c' }} />
                               <span className="truncate">{loc.name}</span>
@@ -890,7 +941,25 @@ export function InventoryCommandPage() {
           setShowStorageManager(false)
         }}
         onLocationsChange={(updated: any) => setLocations(updated)}
+        onAutoLocate={handleAutoLocate}
       />
+
+      {autoLocateResult && (
+        <AutoLocatePreviewModal
+          isOpen={showAutoLocate}
+          onClose={() => { setShowAutoLocate(false); setAutoLocateResult(null) }}
+          result={autoLocateResult}
+          allLocations={locations}
+          includeAssigned={includeAssigned}
+          onToggleIncludeAssigned={(val) => {
+            setIncludeAssigned(val)
+            setAutoLocateResult(
+              computeAutoLocatePlan(inventory, locations, mappings, { skipAssigned: !val }),
+            )
+          }}
+          onConfirm={handleConfirmAutoLocate}
+        />
+      )}
 
       {verifyOrder && (
         <ReceivingWorkspace order={verifyOrder} items={filteredInventory} onClose={closeVerify} />
@@ -920,6 +989,11 @@ export function InventoryCommandPage() {
             <MenuItem icon={PackageCheck} label={isSel ? 'Deselect' : 'Select'} onClick={() => { toggleSelect(menu.id); setMenu(null) }} />
             <MenuItem icon={Plus} label={`Draft PO, ${item.threshold} btl`} onClick={() => { navigate(`/orders?draft=new&inventoryId=${menu.id}&qty=${item.threshold}`); setMenu(null) }} />
             <MenuItem icon={Copy} label="Copy name" onClick={() => { navigator.clipboard?.writeText(item.name); setMenu(null) }} />
+            <MenuItem
+              icon={Power}
+              label={item.isActive ? 'Mark inactive' : 'Mark active'}
+              onClick={() => { void toggleActive(item); setMenu(null) }}
+            />
             <MenuItem icon={FileDown} label="Export this row" onClick={() => {
               void runInventoryExport(
                 'csv',

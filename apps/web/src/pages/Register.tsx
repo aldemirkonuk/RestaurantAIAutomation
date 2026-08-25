@@ -154,8 +154,9 @@ export function Register() {
     debounceRef.current = setTimeout(async () => {
       setValidating(true)
       try {
-        const resp = await fetch(`/api/v1/auth/invite/${inviteCode.toUpperCase()}`)
-        const data: InvitePreview = await resp.json()
+        const { data } = await apiClient.get<InvitePreview>(
+          `/auth/invite/${inviteCode.toUpperCase()}`,
+        )
         setInvitePreview(data)
       } catch {
         setInvitePreview({ valid: false, reason: 'not_found' })

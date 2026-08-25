@@ -14,7 +14,7 @@ interface DayData {
 
 interface Props {
   currentData: DayData[]
-  metric?: 'revenue' | 'orders' | 'bottles'
+  metric?: 'spend' | 'orders' | 'bottles'
   className?: string
 }
 
@@ -25,7 +25,7 @@ function mockPrevious(data: DayData[]): DayData[] {
   }))
 }
 
-export function PeriodCompareBar({ currentData, metric = 'revenue', className = '' }: Props) {
+export function PeriodCompareBar({ currentData, metric = 'spend', className = '' }: Props) {
   const prevData = useMemo(() => mockPrevious(currentData), [currentData])
 
   const maxVal = useMemo(
@@ -34,7 +34,7 @@ export function PeriodCompareBar({ currentData, metric = 'revenue', className = 
   )
 
   const fmt = (v: number) =>
-    metric === 'revenue' ? formatMoney(v, 'compact') : formatNumber(v, 'compact')
+    metric === 'spend' ? formatMoney(v, 'compact') : formatNumber(v, 'compact')
 
   const totalCurrent = currentData.reduce((s, d) => s + d.value, 0)
   const totalPrev    = prevData.reduce((s, d) => s + d.value, 0)

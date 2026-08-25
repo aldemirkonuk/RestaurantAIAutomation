@@ -34,8 +34,9 @@ export function WineAgentFab() {
       type="button"
       onClick={() => {
         trackGuidance('wine_agent_fab_clicked')
-        // /wineagent is still a placeholder (App.tsx) — Sommelier AI is the
-        // real inventory & ordering help surface today.
+        // Sommelier AI is the inventory & ordering help surface. The old
+        // `/wineagent` placeholder route is retired (ADR 0019 §B) — this FAB
+        // never pointed at it.
         navigate('/sommelier')
       }}
       aria-label="Wine Agent — inventory & ordering help"

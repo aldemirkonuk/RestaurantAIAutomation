@@ -6,8 +6,8 @@ import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 import { Button } from '../components/ui'
 import { toast } from 'sonner'
 import { getOnboardingProgress } from '../services/api/menus'
+import { apiClient, getErrorMessage } from '../services/api/client'
 
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
 export function VerifyEmail() {
   const [searchParams] = useSearchParams()
@@ -28,17 +28,10 @@ export function VerifyEmail() {
     setVerifying(true)
     setError(null)
     try {
-      const accessToken = localStorage.getItem('accessToken')
-      const resp = await fetch(`${API_URL}/api/v1/auth/verify-email`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-        body: JSON.stringify({ token }),
-      })
-      const data = await resp.json()
-      if (!resp.ok) throw new Error(data.message || 'Verification failed')
+      const { data } = await apiClient.post<{
+        accessToken: string
+        refreshToken: string
+      }>('/auth/verify-email', { token })
 
       // Store new tokens that include emailVerified: true in JWT payload
       localStorage.setItem('accessToken', data.accessToken)
@@ -52,11 +45,7 @@ export function VerifyEmail() {
         window.location.href = destination
       }, 1500)
     } catch (err: unknown) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Verification failed. The link may have expired.',
-      )
+      setError(getErrorMessage(err))
     } finally {
       setVerifying(false)
     }
@@ -70,21 +59,11 @@ export function VerifyEmail() {
     }
     setResending(true)
     try {
-      const accessToken = localStorage.getItem('accessToken')
-      const resp = await fetch(`${API_URL}/api/v1/auth/resend-verification`, {
-        method: 'POST',
-        headers: {
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-      })
-      if (!resp.ok) {
-        const data = await resp.json()
-        throw new Error(data.message || 'Failed to resend')
-      }
+      await apiClient.post('/auth/resend-verification')
       setLastResent(new Date())
       toast.success('Verification email resent! Check your inbox.')
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to resend verification email')
+      toast.error(getErrorMessage(err))
     } finally {
       setResending(false)
     }

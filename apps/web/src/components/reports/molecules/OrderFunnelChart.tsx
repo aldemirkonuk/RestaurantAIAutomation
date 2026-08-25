@@ -7,11 +7,12 @@ import { formatNumber } from '../../../lib/utils'
 
 interface Props {
   totalOrders: number
-  totalRevenue: number
+  /** Total vendor spend across the window (procurement_orders), not revenue. */
+  totalSpend: number
   className?: string
 }
 
-export function OrderFunnelChart({ totalOrders, totalRevenue, className = '' }: Props) {
+export function OrderFunnelChart({ totalOrders, totalSpend, className = '' }: Props) {
   const stages = [
     { label: 'Tables Seated',     value: Math.round(totalOrders * 2.1),  color: '#9E4249' },
     { label: 'Wine Offered',      value: Math.round(totalOrders * 1.6),  color: '#e05c7e' },
@@ -53,7 +54,7 @@ export function OrderFunnelChart({ totalOrders, totalRevenue, className = '' }: 
         <p className="text-[10px] text-amber-600 text-center mt-1">Connect POS for live funnel data</p>
       )}
       <div className="text-[9px] text-gray-400 text-center mt-1">
-        Avg revenue / order: {totalOrders > 0 ? formatNumber(Math.round(totalRevenue / totalOrders)) : '—'}
+        Avg vendor spend / order: {totalOrders > 0 ? formatNumber(Math.round(totalSpend / totalOrders)) : '—'}
       </div>
     </div>
   )

@@ -21,7 +21,7 @@ import { CalendarAgenda } from './CalendarAgenda'
 import { CalendarSidebar } from './CalendarSidebar'
 import { DragDropProvider } from './DragDropProvider'
 import { EventModal } from './EventModal'
-import type { CreateCalendarEventData } from './EventModal'
+import type { CreateCalendarEventData, ReminderEntry } from './EventModal'
 import { MeetingMemoPrompt } from './MeetingMemoPrompt'
 import type { MeetingMemo } from './MeetingMemoPrompt'
 import {
@@ -31,6 +31,13 @@ import {
 } from '../../hooks/queries'
 import { useAuth } from '../../contexts/AuthContext'
 import type { EventType as ApiEventType, RecurringConfig } from '../../services/api/calendar'
+import {
+  scheduleReminder,
+  cancelRemindersForEvent,
+  reminderTypeForMinutes,
+  getScheduledReminders,
+} from '../../lib/reminder-scheduler'
+import { parseCalendarDateString } from '../../lib/calendar-dates'
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
   delivery: '#10B981',
@@ -44,6 +51,38 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
 }
 
 const CALENDAR_SIDEBAR_KEY = 'wineops-calendar-sidebar'
+
+/**
+ * Persist the reminders the user set in the event modal so `startReminderScheduler`
+ * (booted in `main.tsx`) actually fires them.
+ *
+ * This is the only reminder mechanism that fires anything: the calendar API only
+ * stores a `reminderEnabled` flag plus `reminderDaysBefore`, and nothing server-side
+ * reads either column — there is no reminder cron and the iCal feed emits no VALARM.
+ * Re-scheduling is destructive by design: pending reminders for the event are dropped
+ * first so an edited event never fires against a stale time.
+ */
+function syncEventReminders(
+  eventId: string,
+  event: { title: string; eventType: string; eventDate: string; eventTime?: string },
+  reminders: ReminderEntry[] | undefined
+): void {
+  cancelRemindersForEvent(eventId)
+  if (!reminders?.length) return
+
+  const date = parseCalendarDateString(event.eventDate)
+  reminders.forEach((reminder) => {
+    if (!(reminder.minutesBefore > 0)) return
+    scheduleReminder({
+      eventId,
+      title: event.title,
+      eventType: event.eventType,
+      date,
+      startTime: event.eventTime,
+      ...reminderTypeForMinutes(reminder.minutesBefore),
+    })
+  })
+}
 
 function readSidebarOpen(): boolean {
   if (typeof window === 'undefined') return true
@@ -201,35 +240,56 @@ export default function CalendarPage() {
         ? (data.eventType as ApiEventType)
         : 'custom'
 
+      // Reminders live in localStorage (see syncEventReminders) — the API has no
+      // reminder endpoint, so dropping them here is what made the page lie.
+      const reminderContext = {
+        title: data.title,
+        eventType,
+        eventDate: data.eventDate,
+        eventTime: data.allDay ? undefined : data.eventTime,
+      }
+
       if (editingEvent) {
-        updateEvent.mutate({
-          id: editingEvent.id,
-          title: data.title,
-          date: data.eventDate,
-          startTime: data.eventTime,
-          endTime: data.eventTimeEnd,
-          allDay: data.allDay,
-          description: data.description,
-          color: data.color,
-          providerId: data.providerId,
-          type: eventType,
-          status: data.status,
-        })
+        updateEvent.mutate(
+          {
+            id: editingEvent.id,
+            title: data.title,
+            date: data.eventDate,
+            startTime: data.eventTime,
+            endTime: data.eventTimeEnd,
+            allDay: data.allDay,
+            description: data.description,
+            color: data.color,
+            providerId: data.providerId,
+            type: eventType,
+            status: data.status,
+          },
+          {
+            onSuccess: () =>
+              syncEventReminders(editingEvent.id, reminderContext, data.reminders),
+          }
+        )
       } else {
-        createEvent.mutate({
-          restaurantId,
-          title: data.title,
-          date: data.eventDate,
-          startTime: data.eventTime,
-          endTime: data.eventTimeEnd,
-          allDay: data.allDay,
-          description: data.description,
-          color: data.color,
-          providerId: data.providerId,
-          type: eventType,
-          status: data.status,
-          recurring: data.recurrence as RecurringConfig | undefined,
-        })
+        createEvent.mutate(
+          {
+            restaurantId,
+            title: data.title,
+            date: data.eventDate,
+            startTime: data.eventTime,
+            endTime: data.eventTimeEnd,
+            allDay: data.allDay,
+            description: data.description,
+            color: data.color,
+            providerId: data.providerId,
+            type: eventType,
+            status: data.status,
+            recurring: data.recurrence as RecurringConfig | undefined,
+          },
+          {
+            onSuccess: (created) =>
+              syncEventReminders(created.id, reminderContext, data.reminders),
+          }
+        )
       }
 
       // Trigger meeting memo prompt for labeled events
@@ -251,10 +311,30 @@ export default function CalendarPage() {
 
   const handleModalDelete = useCallback(
     (eventId: string) => {
+      // Drop pending reminders too — otherwise they fire for a deleted event.
+      cancelRemindersForEvent(eventId)
       deleteEvent.mutate(eventId)
     },
     [deleteEvent]
   )
+
+  // Reminders for the event being edited, read back from the scheduler store so
+  // the modal shows what is actually scheduled rather than the create-mode default.
+  const editingEventReminders = useMemo<ReminderEntry[] | undefined>(() => {
+    if (!editingEvent) return undefined
+    const scheduled = getScheduledReminders().filter(
+      (reminder) => reminder.eventId === editingEvent.id && reminder.status === 'pending'
+    )
+    if (scheduled.length === 0) return []
+    return scheduled.map((reminder) => ({
+      id: reminder.id,
+      minutesBefore:
+        reminder.reminderType === 'custom'
+          ? reminder.customMinutes ?? 15
+          : { '15min': 15, '1hour': 60, '1day': 1440, '1week': 10080 }[reminder.reminderType],
+      channels: ['in_app'],
+    }))
+  }, [editingEvent])
 
   // View component callbacks
   const handleDayClick = useCallback(
@@ -626,6 +706,7 @@ export default function CalendarPage() {
         initialDate={modalInitialDate}
         initialEndDate={modalInitialEndDate}
         existingEvent={editingEvent || undefined}
+        existingReminders={editingEventReminders}
         eventTypes={eventTypes}
         providers={providers as any}
       />

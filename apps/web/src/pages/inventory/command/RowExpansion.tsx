@@ -7,11 +7,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getItemActivity, reconcileItem, transferStock } from '../../../services/api/inventory'
+import { getItemActivity, recordPour, reconcileItem, transferStock } from '../../../services/api/inventory'
 import { getOrders } from '../../../services/api/orders'
 import type { StorageLocation } from '../../../hooks/useStorageLocations'
 import { useNotificationStore } from '../../../stores'
 import { ThemedSelect } from '../../../components/ui/ThemedSelect'
+import { MultiLocationCell } from '../../../components/inventory/MultiLocationCell'
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
 import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, HoursHeatmap, runwayDays } from './bits'
@@ -61,9 +62,8 @@ export function RowExpansion({
 
   const [delta, setDelta] = useState(0)
   const [reason, setReason] = useState('Count correction')
-  const [transferQty, setTransferQty] = useState(1)
-  const [transferTo, setTransferTo] = useState<string>(locations[0]?.id ?? '')
   const [showSpotCount, setShowSpotCount] = useState(false)
+  const [pouring, setPouring] = useState(false)
 
   const { data: activity } = useQuery({
     queryKey: ['inventory', 'activity', inventoryId],
@@ -95,15 +95,35 @@ export function RowExpansion({
     onError: (e: any) => toast.error('Adjustment failed', e?.response?.data?.message || e?.message),
   })
 
-  const transfer = useMutation({
-    mutationFn: () =>
-      transferStock(inventoryId, { fromLocationId: null, toLocationId: transferTo, qty: transferQty, reason: 'manual transfer' }),
-    onSuccess: () => {
+  /**
+   * A wine can sit in several locations at once (lots are the source of truth), so a
+   * move has to name where the bottles are leaving from. This used to hard-code
+   * `fromLocationId: null`, which told the server "take them from unassigned stock"
+   * no matter which shelf the manager meant.
+   */
+  const doTransfer = async (fromLocationId: string | null, toLocationId: string, qty: number) => {
+    try {
+      await transferStock(inventoryId, { fromLocationId, toLocationId, qty, reason: 'manual transfer' })
       invalidate()
-      toast.success('Bottles transferred')
-    },
-    onError: (e: any) => toast.error('Transfer failed', e?.response?.data?.message || e?.message),
-  })
+      toast.success(`Moved ${qty} bottle${qty === 1 ? '' : 's'}`)
+    } catch (e: any) {
+      toast.error('Transfer failed', e?.response?.data?.message || e?.message)
+      throw e
+    }
+  }
+
+  const pour = async () => {
+    setPouring(true)
+    try {
+      await recordPour(inventoryId, { pours: 1, source: 'manual', reason: 'manual pour' })
+      invalidate()
+      toast.success('Pour recorded')
+    } catch (e: any) {
+      toast.error('Pour failed', e?.response?.data?.message || e?.message)
+    } finally {
+      setPouring(false)
+    }
+  }
 
   const live = item.liveStock ?? 0
   const shadow = item.shadowStock ?? 0
@@ -305,25 +325,27 @@ export function RowExpansion({
 
         <span className="w-px h-6 bg-gray-200" />
 
-        <span className="text-[10.5px] font-bold uppercase tracking-wider text-gray-400">Transfer</span>
-        <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-          <button onClick={() => setTransferQty((q) => Math.max(1, q - 1))} className="w-8 h-8 text-gray-500 hover:bg-gray-50">-</button>
-          <span className="w-9 text-center font-mono text-sm font-bold border-x border-gray-100 leading-8 text-gray-700">{transferQty}</span>
-          <button onClick={() => setTransferQty((q) => Math.min(live, q + 1))} className="w-8 h-8 text-gray-500 hover:bg-gray-50">+</button>
-        </div>
-        <ThemedSelect
-          value={transferTo}
-          options={locations.map((l) => ({ value: l.id, label: `to ${l.name}` }))}
-          onChange={setTransferTo}
-          align="left"
+        <span className="text-[10.5px] font-bold uppercase tracking-wider text-gray-400">Locations</span>
+        <MultiLocationCell
+          totalLive={live}
+          breakdown={item.locations ?? []}
+          locations={locations}
+          onTransfer={doTransfer}
         />
-        <button
-          onClick={() => transfer.mutate()}
-          disabled={!transferTo || transfer.isPending || live < 1}
-          className="h-9 px-4 border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-semibold rounded-lg disabled:opacity-40"
-        >
-          Move
-        </button>
+
+        {(item.saleType === 'glass' || item.saleType === 'both') && (live > 0 || (item.openMl ?? 0) > 0) && (
+          <>
+            <span className="w-px h-6 bg-gray-200" />
+            <button
+              onClick={() => void pour()}
+              disabled={pouring}
+              title="Record one by-the-glass pour — depletes the open bottle"
+              className="h-9 px-4 border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-semibold rounded-lg disabled:opacity-40"
+            >
+              Record pour
+            </button>
+          </>
+        )}
 
         {/*
          * `/documents` is not a route — the documents surface is `/documents-reports`

@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { motion } from 'framer-motion'
-import { Check, Copy, X } from 'lucide-react'
+import { AlertTriangle, Check, Copy, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { format, addDays } from 'date-fns'
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
+import { studioJsonRequest, studioErrorMessage } from '../studioApi'
 
 interface InviteDialogProps {
   open: boolean
@@ -20,35 +21,37 @@ export function InviteDialog({ open, onClose }: InviteDialogProps) {
   const [expiresAt, setExpiresAt] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
-  const APP_URL = import.meta.env.VITE_APP_URL || window.location.origin
-  // Token in path param, not query string (Pitfall 2 from RESEARCH.md — prevents server log and Referer header leakage)
-  const inviteUrl = generatedToken ? `${APP_URL}/studio/invite/${generatedToken}` : ''
+  // OD-82: this used to render `${APP_URL}/studio/invite/${token}` and offer it as a
+  // shareable link. That URL has no route in App.tsx and no page behind it, and the
+  // backend it would have called cannot work for its intended audience:
+  // POST /api/v1/studio/invite/redeem is gated by
+  // require_studio_role("developer", "certified_contributor", "review_admin")
+  // (services/agent-orchestrator/api/studio_routes.py:517-521), so only someone who
+  // already holds a studio role can redeem an invite that exists to grant one.
+  // The dead link is removed rather than reimplemented; the token itself is real
+  // (POST /studio/invite does insert into invite_tokens) so it is shown as a token.
 
   const handleGenerate = async () => {
     setIsGenerating(true)
     try {
-      const token = localStorage.getItem('accessToken')
-      const resp = await fetch(`/api/v1/studio/invite`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ role, target_email: targetEmail || null }),
-      })
-      if (!resp.ok) throw new Error('Invite generation failed')
-      const data = await resp.json()
-      setGeneratedToken(data.token)
-      setExpiresAt(data.expires_at)
-    } catch {
-      toast.error('Invite link generation failed. Please try again.')
+      // Orchestrator, not the gateway — see studioApi.ts. Throws on any non-2xx.
+      const data = await studioJsonRequest<{ token?: string; expires_at?: string }>(
+        '/api/v1/studio/invite',
+        'POST',
+        { role, target_email: targetEmail || null },
+      )
+      setGeneratedToken(data.token ?? null)
+      setExpiresAt(data.expires_at ?? null)
+    } catch (err) {
+      toast.error('Invite generation failed', { description: studioErrorMessage(err).slice(0, 160) })
     } finally {
       setIsGenerating(false)
     }
   }
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(inviteUrl)
+    if (!generatedToken) return
+    navigator.clipboard.writeText(generatedToken)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -76,7 +79,7 @@ export function InviteDialog({ open, onClose }: InviteDialogProps) {
           >
             <div className="flex items-center justify-between mb-4">
               <Dialog.Title className="text-lg font-semibold text-slate-900">
-                {generatedToken ? 'Invite link generated' : 'Invite a Certified Contributor'}
+                {generatedToken ? 'Invite token generated' : 'Invite a Certified Contributor'}
               </Dialog.Title>
               <button onClick={handleClose} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
@@ -86,7 +89,7 @@ export function InviteDialog({ open, onClose }: InviteDialogProps) {
             {!generatedToken ? (
               <>
                 <Dialog.Description className="text-sm text-slate-500 mb-5">
-                  A single-use invite link will be generated. It expires in 7 days.
+                  A single-use invite token will be generated. It expires in 7 days.
                 </Dialog.Description>
                 <div className="space-y-4">
                   <div>
@@ -126,11 +129,11 @@ export function InviteDialog({ open, onClose }: InviteDialogProps) {
             ) : (
               <>
                 <p className="text-sm text-slate-500 mb-4">
-                  Share this link with the contributor. It expires{' '}
+                  Single-use token, expires{' '}
                   {expiresAt ? format(new Date(expiresAt), 'MMM d, yyyy') : addDays(new Date(), 7).toDateString()}.
                 </p>
-                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-4">
-                  <span className="flex-1 text-sm font-mono text-slate-700 truncate">{inviteUrl}</span>
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-3">
+                  <span className="flex-1 text-sm font-mono text-slate-700 truncate">{generatedToken}</span>
                   <button
                     onClick={handleCopy}
                     className="flex items-center gap-1 border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-100 transition-colors flex-shrink-0"
@@ -138,6 +141,14 @@ export function InviteDialog({ open, onClose }: InviteDialogProps) {
                     {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
                     {copied ? 'Copied' : 'Copy'}
                   </button>
+                </div>
+                <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-800">
+                    There is no self-service redemption yet. The redeem endpoint requires a
+                    studio role the invitee does not have, so sending this to a new contributor
+                    will not work — an existing developer or review admin has to grant the role.
+                  </p>
                 </div>
                 <div className="flex justify-end">
                   <Button onClick={handleClose}>Done</Button>

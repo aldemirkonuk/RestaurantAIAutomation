@@ -5,6 +5,7 @@ import { Link2, X, Check, PlusCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '../ui/button'
 import { cn } from '../../lib/utils'
+import { apiClient, getErrorMessage } from '../../services/api/client'
 
 interface StandaloneLocation {
   id: string
@@ -22,7 +23,6 @@ interface AssignToChainDialogProps {
   standaloneLocations: StandaloneLocation[]
 }
 
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
 export function AssignToChainDialog({
   open,
@@ -53,22 +53,17 @@ export function AssignToChainDialog({
     if (selectedIds.size === 0) return
     setIsSubmitting(true)
     try {
-      const token = localStorage.getItem('accessToken')
       await Promise.all(
         Array.from(selectedIds).map((locationId) =>
-          fetch(`${API_URL}/api/v1/organizations/locations/${locationId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ chainId }),
-          }),
+          apiClient.patch(`/organizations/locations/${locationId}`, { chainId }),
         ),
       )
       const n = selectedIds.size
       toast.success(`${n} location${n !== 1 ? 's' : ''} added to "${chainName}"`)
       onSaved()
       handleClose()
-    } catch {
-      toast.error('Could not assign locations — try again')
+    } catch (e) {
+      toast.error(`Could not assign locations — ${getErrorMessage(e)}`)
     } finally {
       setIsSubmitting(false)
     }

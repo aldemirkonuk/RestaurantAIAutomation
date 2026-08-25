@@ -169,21 +169,25 @@ export function useDashboardPage() {
   const formatCurrency = (v: number) => formatMoney(v, 'compact')
   const formatNumber = (v: number) => fmtNumber(v)
   
-  const revenueValue = typeof apiStats.monthSales === 'number' ? formatCurrency(apiStats.monthSales) : '—'
+  // Vendor spend on delivered procurement orders over the last 30 days. This was
+  // labelled "Total Revenue"; it is the opposite — money out, not money in.
+  const procurementSpendValue = typeof apiStats.monthProcurementSpend === 'number' ? formatCurrency(apiStats.monthProcurementSpend) : '—'
   const inventoryValue = typeof inventorySummary?.totalItems === 'number' ? formatNumber(inventorySummary.totalItems) : typeof apiStats.totalWines === 'number' ? formatNumber(apiStats.totalWines) : '—'
   const pendingOrdersValue = formatNumber(apiPendingOrders.length)
   const lowStockValue = formatNumber(apiLowStock.length)
-  const revenueChange = typeof orderMetrics?.monthOverMonthGrowth === 'number' ? orderMetrics.monthOverMonthGrowth : null
+  // `monthOverMonthGrowth` is computed from purchase-order totals, so it is the
+  // month-over-month change in what we PAID vendors, not in what we earned.
+  const procurementSpendChange = typeof orderMetrics?.monthOverMonthGrowth === 'number' ? orderMetrics.monthOverMonthGrowth : null
   const inventoryChange = typeof inventorySummary?.totalBottles === 'number' ? `${formatNumber(inventorySummary.totalBottles)} bottles · ${formatVolume(inventorySummary.totalBottles * 750)}` : typeof apiStats.totalBottles === 'number' ? `${formatNumber(apiStats.totalBottles)} bottles · ${formatVolume(apiStats.totalBottles * 750)}` : 'No data'
   const ordersChange = apiPendingOrders.length > 0 ? `${apiPendingOrders.length} awaiting` : 'No pending orders'
   const lowStockChange = typeof inventorySummary?.criticalCount === 'number' ? `${inventorySummary.criticalCount} critical` : 'No data'
   
   const stats = useMemo(() => [
-    { id: 'revenue' as const, label: 'Total Revenue', value: revenueValue, change: revenueChange === null ? 'No data' : `${revenueChange >= 0 ? '+' : ''}${revenueChange.toFixed(1)}% vs last month`, trend: revenueChange !== null && revenueChange < 0 ? 'down' : 'up', icon: DollarSign, color: 'emerald' },
+    { id: 'procurementSpend' as const, label: 'Vendor Spend (30d)', value: procurementSpendValue, change: procurementSpendChange === null ? 'No data' : `${procurementSpendChange >= 0 ? '+' : ''}${procurementSpendChange.toFixed(1)}% vs last month`, trend: procurementSpendChange !== null && procurementSpendChange < 0 ? 'down' : 'up', icon: DollarSign, color: 'emerald' },
     { id: 'inventory' as const, label: 'Active Inventory', value: inventoryValue, change: inventoryChange, trend: typeof inventorySummary?.totalItems === 'number' || typeof apiStats.totalWines === 'number' ? 'up' : 'down', icon: Package, color: 'blue' },
     { id: 'orders' as const, label: 'Pending Orders', value: pendingOrdersValue, change: ordersChange, trend: apiPendingOrders.length > 0 ? 'up' : 'down', icon: ShoppingCart, color: 'amber' },
     { id: 'lowStock' as const, label: 'Low Stock Alerts', value: lowStockValue, change: lowStockChange, trend: typeof inventorySummary?.criticalCount === 'number' && inventorySummary.criticalCount > 0 ? 'down' : 'up', icon: AlertTriangle, color: 'rose' },
-  ], [revenueValue, inventoryValue, pendingOrdersValue, lowStockValue, revenueChange, inventoryChange, ordersChange, lowStockChange, inventorySummary, apiStats, apiPendingOrders])
+  ], [procurementSpendValue, inventoryValue, pendingOrdersValue, lowStockValue, procurementSpendChange, inventoryChange, ordersChange, lowStockChange, inventorySummary, apiStats, apiPendingOrders])
   
   const lowStockBuckets = useMemo(() => ({
     critical: apiLowStock.filter(i => i.stockLive <= i.thresholdMin * 0.5),

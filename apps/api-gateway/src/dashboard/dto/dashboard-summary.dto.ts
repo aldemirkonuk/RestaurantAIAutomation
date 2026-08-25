@@ -58,20 +58,32 @@ export class CalendarSummaryDto {
   deliveriesThisWeek: number;
 }
 
-export class RevenueSummaryDto {
+/**
+ * Money the restaurant PAID ITS VENDORS, aggregated from delivered
+ * `procurement_orders`. This is cost, not income.
+ *
+ * It used to be called `RevenueSummaryDto` and its fields `totalRevenue` /
+ * `monthlyRevenue` / `revenueByMonth`, which inverted the economics of the
+ * owner's headline KPI: every dollar spent on wine was presented as a dollar
+ * earned. Nothing about the query changed in the rename — only the claim it
+ * makes. Real sales revenue would come from `pos_checks`, which this service
+ * does not read.
+ */
+export class ProcurementSpendSummaryDto {
   @ApiProperty({
-    description: "Total revenue from delivered orders (all time)",
+    description:
+      "Total spent with vendors on delivered orders (all time). NOT revenue.",
   })
-  totalRevenue: number;
+  totalProcurementSpend: number;
 
-  @ApiProperty({ description: "Revenue this month" })
-  monthlyRevenue: number;
+  @ApiProperty({ description: "Vendor spend this month" })
+  monthlyProcurementSpend: number;
 
-  @ApiProperty({ description: "Total bottles delivered" })
+  @ApiProperty({ description: "Total bottles delivered by vendors" })
   totalBottlesDelivered: number;
 
-  @ApiProperty({ description: "Revenue by month [{month, revenue, bottles}]" })
-  revenueByMonth: any[];
+  @ApiProperty({ description: "Vendor spend by month [{month, spend, bottles}]" })
+  spendByMonth: any[];
 }
 
 export class ServiceErrorDto {
@@ -101,8 +113,11 @@ export class DashboardSummaryDto {
   @ApiProperty({ description: "Calendar summary", type: CalendarSummaryDto })
   calendar: CalendarSummaryDto | null;
 
-  @ApiProperty({ description: "Revenue summary", type: RevenueSummaryDto })
-  revenue: RevenueSummaryDto | null;
+  @ApiProperty({
+    description: "Vendor spend summary (money paid out, not earned)",
+    type: ProcurementSpendSummaryDto,
+  })
+  procurementSpend: ProcurementSpendSummaryDto | null;
 
   @ApiProperty({
     description: "List of service errors",
@@ -128,9 +143,19 @@ export class DashboardStatsDto {
   @ApiProperty() totalVolumeOz: number;
   @ApiProperty() lowStockItems: number;
   @ApiProperty() pendingOrders: number;
-  @ApiProperty() todaySales: number;
-  @ApiProperty() weekSales: number;
-  @ApiProperty() monthSales: number;
+
+  // These three were `todaySales` / `weekSales` / `monthSales`, and `monthSales`
+  // is what the web dashboard rendered under the heading "Total Revenue". They
+  // are sums of `procurement_orders.total_cost` for delivered orders — vendor
+  // invoices, i.e. money leaving the restaurant. No sale is involved.
+  @ApiProperty({ description: "Vendor spend on orders delivered today" })
+  todayProcurementSpend: number;
+
+  @ApiProperty({ description: "Vendor spend on orders delivered in the last 7 days" })
+  weekProcurementSpend: number;
+
+  @ApiProperty({ description: "Vendor spend on orders delivered in the last 30 days" })
+  monthProcurementSpend: number;
 }
 
 // ============================================================================

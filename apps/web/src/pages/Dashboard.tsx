@@ -54,6 +54,7 @@ import {
   saveManualImportantDates,
 } from '../data/manualImportantDates'
 import { useDashboardPage } from './dashboard/index'
+import { apiClient } from '../services/api/client'
 
 // Animation variants
 const containerVariants = {
@@ -97,7 +98,7 @@ const getImportantDateConfig = (type?: string) => {
   }
 }
 
-type ModalType = 'revenue' | 'inventory' | 'orders' | 'lowStock' | null
+type ModalType = 'procurementSpend' | 'inventory' | 'orders' | 'lowStock' | null
 
 export function Dashboard() {
   const navigate = useNavigate()
@@ -263,12 +264,9 @@ export function Dashboard() {
 
   const handleCopyICalUrl = async () => {
     try {
-      const accessToken = localStorage.getItem('accessToken')
-      const res = await fetch('/api/v1/calendar/ical-token', {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-      if (!res.ok) throw new Error('Failed to fetch token')
-      const { token } = await res.json()
+      const { data: { token } } = await apiClient.get<{ token: string }>(
+        '/calendar/ical-token',
+      )
       const fullUrl = `${window.location.origin}/api/v1/calendar/feed/${token}.ics`
       await navigator.clipboard.writeText(fullUrl)
       toast.success('Calendar subscription URL copied!')
@@ -309,7 +307,7 @@ export function Dashboard() {
 
   const kpiNavigate = (id: ModalType) => {
     switch (id) {
-      case 'revenue':
+      case 'procurementSpend':
         navigate('/reports')
         break
       case 'inventory':
@@ -1113,8 +1111,10 @@ export function Dashboard() {
               onClick={(e) => e.stopPropagation()}
               className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
             >
-              {/* Revenue Modal */}
-              {activeModal === 'revenue' && (
+              {/* Vendor-spend modal. Every figure here is money paid OUT on
+                  delivered procurement orders; it used to be headed "Total
+                  Revenue", which read the restaurant's cost base as income. */}
+              {activeModal === 'procurementSpend' && (
                 <>
                   <div className="flex items-center justify-between px-6 py-4 border-b bg-emerald-50">
                     <div className="flex items-center gap-3">
@@ -1122,8 +1122,8 @@ export function Dashboard() {
                         <DollarSign className="w-5 h-5 text-emerald-600" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-gray-900">Total Revenue</h3>
-                        <p className="text-sm text-gray-500">This month's performance</p>
+                        <h3 className="font-semibold text-gray-900">Vendor Spend</h3>
+                        <p className="text-sm text-gray-500">Paid on delivered orders</p>
                       </div>
                     </div>
                     <button onClick={() => setActiveModal(null)} className="p-2 hover:bg-white/50 rounded-lg">
@@ -1133,26 +1133,26 @@ export function Dashboard() {
                   <div className="p-6 space-y-6">
                     <div className="text-center">
                       <p className="text-4xl font-bold text-gray-900">
-                        {typeof apiStats.monthSales === 'number' ? formatCurrency(apiStats.monthSales) : 'No data'}
+                        {typeof apiStats.monthProcurementSpend === 'number' ? formatCurrency(apiStats.monthProcurementSpend) : 'No data'}
                       </p>
-                      <p className="text-sm text-emerald-600 mt-1">This month</p>
+                      <p className="text-sm text-emerald-600 mt-1">Last 30 days</p>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="p-4 bg-gray-50 rounded-xl">
                         <p className="text-sm text-gray-500">Today</p>
                         <p className="text-xl font-bold text-gray-900">
-                          {typeof apiStats.todaySales === 'number' ? formatCurrency(apiStats.todaySales) : '—'}
+                          {typeof apiStats.todayProcurementSpend === 'number' ? formatCurrency(apiStats.todayProcurementSpend) : '—'}
                         </p>
                       </div>
                       <div className="p-4 bg-gray-50 rounded-xl">
                         <p className="text-sm text-gray-500">This Week</p>
                         <p className="text-xl font-bold text-gray-900">
-                          {typeof apiStats.weekSales === 'number' ? formatCurrency(apiStats.weekSales) : '—'}
+                          {typeof apiStats.weekProcurementSpend === 'number' ? formatCurrency(apiStats.weekProcurementSpend) : '—'}
                         </p>
                       </div>
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-700 mb-3">Revenue Breakdown</p>
+                      <p className="text-sm font-medium text-gray-700 mb-3">Spend Breakdown</p>
                       <div className="p-4 bg-gray-50 rounded-xl text-sm text-gray-500 text-center">
                         Breakdown data is not available yet.
                       </div>
@@ -1162,7 +1162,7 @@ export function Dashboard() {
                       onClick={() => { setActiveModal(null); navigate('/reports?focus=revenue') }}
                       className="w-full px-4 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors"
                     >
-                      View full revenue report →
+                      View full spend report →
                     </button>
                   </div>
                 </>
@@ -1575,7 +1575,7 @@ export function Dashboard() {
             {
               id: 'open',
               label:
-                kpiMenu.target.id === 'revenue'
+                kpiMenu.target.id === 'procurementSpend'
                   ? 'Open Reports'
                   : kpiMenu.target.id === 'inventory'
                     ? 'Open Inventory'

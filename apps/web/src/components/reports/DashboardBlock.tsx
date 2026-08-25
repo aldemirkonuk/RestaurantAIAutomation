@@ -18,7 +18,7 @@ import { KPIChartBlock } from './molecules/KPIChartBlock'
 import { DataTableBlock, type TableColumn } from './molecules/DataTableBlock'
 import { BusyHoursHeatmap } from './molecules/BusyHoursHeatmap'
 import { ChannelDonutChart } from './molecules/ChannelDonutChart'
-import { LaborRevenueOverlay } from './molecules/LaborRevenueOverlay'
+import { LaborSpendOverlay } from './molecules/LaborSpendOverlay'
 import { OrderFunnelChart } from './molecules/OrderFunnelChart'
 import type { KPIBlockData } from './molecules/KPIChartBlock'
 import type { WineTypeDistribution, TopWine } from './molecules'
@@ -31,7 +31,11 @@ interface DashboardBlockProps {
   onUpdate: (updated: DashboardBlockType) => void
   onDelete: (id: string) => void
   // Data props (passed through from Reports page)
-  salesData: Array<{ date: string; revenue: number; bottles: number; orders?: number; red?: number; white?: number; sparkling?: number; rose?: number; dessert?: number }>
+  /**
+   * Daily PURCHASE-order data. `spend` is money paid to vendors
+   * (procurement_orders), never POS sales revenue.
+   */
+  purchaseDayData: Array<{ date: string; spend: number; bottles: number; orders?: number; red?: number; white?: number; sparkling?: number; rose?: number; dessert?: number }>
   wineTypeDistribution: WineTypeDistribution[]
   topWines: TopWine[]
   timeRange: string
@@ -39,7 +43,8 @@ interface DashboardBlockProps {
   onKPIClick?: (kpiKey: string) => void
   spotlightedKPI?: string | null
   totalOrders?: number
-  totalRevenue?: number
+  /** Total vendor spend across the window. */
+  totalSpend?: number
 }
 
 // ── Table column definitions per data source ───────────────────────────
@@ -47,9 +52,10 @@ interface DashboardBlockProps {
 function getTableColumns(dataSource: string): TableColumn[] {
   switch (dataSource) {
     case 'revenue':
+      // Legacy persisted key; the series it renders is vendor spend.
       return [
         { key: 'date', label: 'Date', format: 'text' },
-        { key: 'revenue', label: 'Revenue', format: 'currency', align: 'right' },
+        { key: 'spend', label: 'Vendor Spend', format: 'currency', align: 'right' },
       ]
     case 'orders':
       return [
@@ -69,7 +75,7 @@ function getTableColumns(dataSource: string): TableColumn[] {
     case 'topWines':
       return [
         { key: 'name', label: 'Wine', format: 'text' },
-        { key: 'value', label: 'Revenue', format: 'currency', align: 'right' },
+        { key: 'value', label: 'Spend', format: 'currency', align: 'right' },
         { key: 'orders', label: 'Orders', format: 'number', align: 'right' },
       ]
     case 'ordersByType':
@@ -84,26 +90,26 @@ function getTableColumns(dataSource: string): TableColumn[] {
     case 'dailyBreakdown':
       return [
         { key: 'date', label: 'Date', format: 'text' },
-        { key: 'revenue', label: 'Revenue', format: 'currency', align: 'right' },
+        { key: 'spend', label: 'Vendor Spend', format: 'currency', align: 'right' },
         { key: 'orders', label: 'Orders', format: 'number', align: 'right' },
         { key: 'bottles', label: 'Bottles', format: 'number', align: 'right' },
       ]
     case 'purchaseCost':
       return [
         { key: 'date', label: 'Date', format: 'text' },
-        { key: 'revenue', label: 'Cost', format: 'currency', align: 'right' },
+        { key: 'spend', label: 'Cost', format: 'currency', align: 'right' },
       ]
     default:
       return [
         { key: 'date', label: 'Date', format: 'text' },
-        { key: 'revenue', label: 'Value', format: 'currency', align: 'right' },
+        { key: 'spend', label: 'Value', format: 'currency', align: 'right' },
       ]
   }
 }
 
 function getTableRows(
   dataSource: string,
-  salesData: DashboardBlockProps['salesData'],
+  purchaseDayData: DashboardBlockProps['purchaseDayData'],
   wineTypeDistribution: WineTypeDistribution[],
   topWines: TopWine[],
 ): Record<string, unknown>[] {
@@ -113,7 +119,7 @@ function getTableRows(
     case 'topWines':
       return topWines as unknown as Record<string, unknown>[]
     default:
-      return salesData as unknown as Record<string, unknown>[]
+      return purchaseDayData as unknown as Record<string, unknown>[]
   }
 }
 
@@ -121,11 +127,11 @@ function getTableRows(
 
 function renderChart(
   block: DashboardBlockType,
-  salesData: DashboardBlockProps['salesData'],
+  purchaseDayData: DashboardBlockProps['purchaseDayData'],
   wineTypeDistribution: WineTypeDistribution[],
   topWines: TopWine[],
   totalOrders = 0,
-  totalRevenue = 0,
+  totalSpend = 0,
 ) {
   const { chartType, dataSource } = block
 
@@ -138,18 +144,18 @@ function renderChart(
     return (
       <ChannelDonutChart
         wineTypeDistribution={wineTypeDistribution}
-        totalRevenue={totalRevenue}
+        totalSpend={totalSpend}
         className="h-full"
       />
     )
   }
 
   if (chartType === 'labor-overlay' || dataSource === 'laborRevenue') {
-    return <LaborRevenueOverlay salesData={salesData} className="h-full" />
+    return <LaborSpendOverlay purchaseDayData={purchaseDayData} className="h-full" />
   }
 
   if (chartType === 'funnel' || dataSource === 'orderFunnel') {
-    return <OrderFunnelChart totalOrders={totalOrders} totalRevenue={totalRevenue} className="h-full" />
+    return <OrderFunnelChart totalOrders={totalOrders} totalSpend={totalSpend} className="h-full" />
   }
 
   // Distribution data for donut
@@ -177,9 +183,9 @@ function renderChart(
     }
     return (
       <BarChart
-        data={topWines.map((w) => ({ name: w.name.length > 20 ? w.name.slice(0, 20) + '...' : w.name, Revenue: w.value }))}
+        data={topWines.map((w) => ({ name: w.name.length > 20 ? w.name.slice(0, 20) + '...' : w.name, Spend: w.value }))}
         index="name"
-        categories={['Revenue']}
+        categories={['Spend']}
         colors={['rose']}
         valueFormatter={(v) => formatMoney(v, 'compact')}
         className="h-full"
@@ -193,7 +199,7 @@ function renderChart(
   if (chartType === 'stacked-bar') {
     return (
       <BarChart
-        data={salesData.map((d) => ({
+        data={purchaseDayData.map((d) => ({
           date: d.date,
           Red: d.red ?? 0,
           White: d.white ?? 0,
@@ -214,14 +220,14 @@ function renderChart(
   // Time-series data value key
   const valueKey = dataSource === 'orders' ? 'orders'
     : dataSource === 'bottles' ? 'bottles'
-    : 'revenue'
+    : 'spend'
 
-  const data = salesData.map((d) => ({
+  const data = purchaseDayData.map((d) => ({
     date: d.date,
     [valueKey]: (d as Record<string, unknown>)[valueKey] ?? 0,
   }))
 
-  const valueFormatter = valueKey === 'revenue'
+  const valueFormatter = valueKey === 'spend'
     ? (v: number) => formatMoney(v, 'compact')
     : (v: number) => formatNumber(v, 'compact')
 
@@ -291,7 +297,7 @@ export function DashboardBlock({
   isEditMode,
   onUpdate,
   onDelete,
-  salesData,
+  purchaseDayData,
   wineTypeDistribution,
   topWines,
   timeRange: _timeRange,
@@ -299,7 +305,7 @@ export function DashboardBlock({
   onKPIClick,
   spotlightedKPI,
   totalOrders = 0,
-  totalRevenue = 0,
+  totalSpend = 0,
 }: DashboardBlockProps) {
   const [showConfig, setShowConfig] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
@@ -434,13 +440,13 @@ export function DashboardBlock({
         ) : block.blockType === 'table' ? (
           <DataTableBlock
             columns={getTableColumns(block.dataSource)}
-            rows={getTableRows(block.dataSource, salesData, wineTypeDistribution, topWines)}
+            rows={getTableRows(block.dataSource, purchaseDayData, wineTypeDistribution, topWines)}
             pageSize={6}
             className="h-full"
           />
         ) : (
           <div className="h-full min-h-[120px]">
-            {renderChart(block, salesData, wineTypeDistribution, topWines, totalOrders, totalRevenue)}
+            {renderChart(block, purchaseDayData, wineTypeDistribution, topWines, totalOrders, totalSpend)}
           </div>
         )}
       </div>

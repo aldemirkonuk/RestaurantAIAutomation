@@ -3,7 +3,7 @@ import type { TourDefinition } from '../tours/registry'
 export const reportsTip = {
   pageId: 'reports' as const,
   title: 'Reports',
-  body: 'Set the time window, arrange charts, read the canvas, then ask AI about the numbers.',
+  body: 'Set the time window, arrange charts, read the canvas, then search the insights behind the numbers.',
 }
 
 export const reportsTour: TourDefinition = {
@@ -29,9 +29,9 @@ export const reportsTour: TourDefinition = {
     },
     {
       element: '[data-tour="reports-ai-pill"]',
-      title: 'Ask about your data',
+      title: 'Search your insights',
       description:
-        'Open the AI command palette (⌘K) to ask about revenue, orders, or trends in plain English.',
+        'Open the palette (⌘K) to filter the insights the analytics engine computed from your data. It does not answer free-text questions yet.',
     },
   ],
 }

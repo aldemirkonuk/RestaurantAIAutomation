@@ -116,7 +116,9 @@ export default function HelpScreen() {
             onPress={async () => {
               guidance?.unlockWineAgentFab();
               trackGuidance("wine_agent_fab_clicked", { source: "help" });
-              if (WEB_URL) await Linking.openURL(`${WEB_URL}/wineagent`);
+              // Web `/wineagent` is retired (ADR 0019 §B); `/sommelier` is the
+              // real inventory & ordering help surface.
+              if (WEB_URL) await Linking.openURL(`${WEB_URL}/sommelier`);
               else router.push("/wine-agent");
             }}
           >
