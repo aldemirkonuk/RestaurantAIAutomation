@@ -10,6 +10,11 @@ import {
   normalizeExtraction,
 } from "./vendor-page-extraction";
 import { hashWineIdentity } from "./wine-identity";
+import {
+  SsrfBlockedError,
+  assertPublicHttpTarget,
+  safeFetch,
+} from "../common/net/ssrf-guard";
 
 /** Identifies us in request logs so a vendor can allow or block us deliberately. */
 const USER_AGENT =
@@ -81,7 +86,10 @@ export class VendorPageExtractorService {
   private async isAllowed(target: URL): Promise<boolean> {
     try {
       const robotsUrl = `${target.origin}/robots.txt`;
-      const res = await fetch(robotsUrl, {
+      // Guarded too, not just the page fetch below. This request is derived from
+      // the same user-supplied host, so leaving it on bare `fetch` would keep a
+      // blind SSRF open that merely returns less data (OD-54).
+      const res = await safeFetch(robotsUrl, {
         headers: { "user-agent": USER_AGENT },
         signal: AbortSignal.timeout(8000),
       });
@@ -131,6 +139,21 @@ export class VendorPageExtractorService {
       return result;
     }
 
+    // OD-54. robots.txt below is politeness, not a security control — it was the
+    // only thing standing between a user-supplied URL and the cloud metadata
+    // endpoint. Refused before the robots probe, so a blocked host costs no
+    // outbound request at all.
+    try {
+      await assertPublicHttpTarget(target);
+    } catch (err: any) {
+      if (err instanceof SsrfBlockedError) {
+        result.skippedReason = err.reason;
+        this.logger.warn(`Refusing ${url} — ${err.reason}`);
+        return result;
+      }
+      throw err;
+    }
+
     if (!(await this.isAllowed(target))) {
       result.skippedReason = "Disallowed by robots.txt";
       this.logger.log(`Skipping ${url} — robots.txt disallows it`);
@@ -139,7 +162,10 @@ export class VendorPageExtractorService {
 
     let html: string;
     try {
-      const res = await fetch(target.toString(), {
+      // safeFetch re-validates every redirect hop. The pre-flight check above is
+      // not enough on its own: a public URL that 302s to 169.254.169.254 defeats
+      // it entirely, and that is the hole most SSRF fixes leave open.
+      const res = await safeFetch(target.toString(), {
         headers: { "user-agent": USER_AGENT, accept: "text/html" },
         signal: AbortSignal.timeout(20_000),
       });

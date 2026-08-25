@@ -379,9 +379,31 @@ export class ScanParserService {
       const pageCount = doc.getPageCount();
       if (pageCount <= SPLIT_THRESHOLD_PAGES) return [base64];
 
+      // OD-55 — loop-bound injection (CodeQL `js/loop-bound-injection`, high).
+      // `pageCount` is read straight out of an UPLOADED PDF, and parseChunks
+      // makes one PAID MODEL CALL per chunk. A 50,000-page PDF is ~8,300 calls
+      // from a single upload. MAX_SPLIT_DEPTH bounds recursion depth; nothing
+      // bounded breadth, which is the cheaper attack.
+      //
+      // The P1 per-restaurant spend ceiling limits the blast radius but does not
+      // fix this: it stops the bill, after the loop has already been running.
+      //
+      // 120 pages is far past any real menu — the densest in the corpus is ~40 —
+      // so the cap is unreachable by legitimate use and is announced rather than
+      // applied silently. Truncating a real 200-page document without saying so
+      // would be its own bug.
+      const MAX_PAGES = 120;
+      const effectivePages = Math.min(pageCount, MAX_PAGES);
+      if (pageCount > MAX_PAGES) {
+        this.logger.error(
+          `Menu PDF reports ${pageCount} pages — refusing to parse beyond ${MAX_PAGES}. ` +
+            `Importing the first ${MAX_PAGES} page(s) only; the rest are skipped.`,
+        );
+      }
+
       const chunks: string[] = [];
-      for (let start = 0; start < pageCount; start += PAGES_PER_CHUNK) {
-        const end = Math.min(start + PAGES_PER_CHUNK, pageCount);
+      for (let start = 0; start < effectivePages; start += PAGES_PER_CHUNK) {
+        const end = Math.min(start + PAGES_PER_CHUNK, effectivePages);
         const out = await PDFDocument.create();
         const pages = await out.copyPages(
           doc,
@@ -408,7 +430,12 @@ export class ScanParserService {
 
   private detectMediaType(
     base64: string,
-  ): "image/jpeg" | "image/png" | "image/webp" | "image/gif" | "application/pdf" {
+  ):
+    | "image/jpeg"
+    | "image/png"
+    | "image/webp"
+    | "image/gif"
+    | "application/pdf" {
     if (base64.startsWith("JVBERi0")) return "application/pdf";
     if (base64.startsWith("/9j/")) return "image/jpeg";
     if (base64.startsWith("iVBORw")) return "image/png";
@@ -443,7 +470,8 @@ export class ScanParserService {
   private keepNamedItems(parsed: unknown[]): WineExtractItem[] {
     return parsed.filter(
       (item: unknown): item is WineExtractItem =>
-        typeof (item as any)?.name === "string" && (item as any).name.length > 0,
+        typeof (item as any)?.name === "string" &&
+        (item as any).name.length > 0,
     );
   }
 
