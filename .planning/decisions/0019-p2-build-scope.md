@@ -30,12 +30,118 @@ leaf or a missing connection; proposed verdicts:
 
 | Page | Proposed verdict |
 |---|---|
-| [[wine-agent]], [[wineagent-alias]] | **Retire** — pure placeholders, zero buttons; the alias doubles the surface for nothing |
+| `/wine-agent`, `/wineagent` | **Retire** — pure placeholders, zero buttons; the alias doubles the surface for nothing. ✅ **Done 2026-08-26** — routes, inline `PlaceholderPage`, sidebar item and both page notes deleted; mobile deep-links repointed at `/sommelier`. |
 | [[admin]], [[admin-health]], [[dev-sandbox]], [[logs]] | **Bless as leaves** — dev/ops surfaces, no product flow should depend on them |
-| [[calendar-classic]], [[inventory-legacy]] | **Retire after parity check** — superseded by [[calendar]] and [[inventory]]; keeping two calendars and two inventories doubles every future change |
+| `/calendar-classic`, `/inventory-legacy` | **Retire after parity check** — superseded by [[calendar]] and [[inventory]]; keeping two calendars and two inventories doubles every future change. ⛔ **Parity check 2026-08-26: both FAILED — retirement blocked**, see §B-parity below. ✅ **Both retired 2026-08-26** after their blockers were ported onto [[inventory]] and [[calendar]]. |
 | [[calendar]] | **Wire** — today's dates should link to [[orders]] / [[promotions]] they reference |
 | [[documents-reports]], [[receipts]] | **Wire** — each document row should link to its [[orders]] order and vendor page; receipts ↔ credits transition exists as API only |
 | [[sommelier]], [[team]], [[vendor-prices]], [[vendor-public-page]] | **Bless as leaves** — self-contained tools; revisit if usage says otherwise |
+
+### B-parity — the check the founder attached to the two "retire" verdicts
+
+Run 2026-08-26, both legacy components read against their replacements. **Both
+failed.** Neither page was deleted. The rule applied: a capability blocks
+retirement only if it is *exclusive* **and** *actually works* — a button that
+lies is not function worth preserving.
+
+**`/inventory-legacy` (`pages/Inventory.tsx`) — 2 blockers. ✅ Both closed and the
+page retired 2026-08-26.** What shipped, in the order the blockers were listed:
+
+1. Auto-Locate is wired into `/inventory` — same engine, same modal, no
+   reimplementation. `handleAutoLocate` / `handleConfirmAutoLocate` in
+   `InventoryCommandPage.tsx`, `onAutoLocate` passed to `StorageLocationManager`,
+   `AutoLocatePreviewModal` mounted. It scores `inventory` (the whole list), not
+   `filteredInventory`, so a search box cannot silently shrink the plan.
+2. `MultiLocationCell` now renders in the expanded row's action bar
+   (`RowExpansion.tsx`), replacing the qty-stepper + "to…" select. `fromLocationId`
+   comes from the chip the manager picked; the hardcoded `null` is gone.
+
+Three further capabilities the first parity pass **missed**, also ported rather than
+deleted: by-the-glass **pour** (`recordPour`, the endpoint's only UI caller), the
+**active/inactive toggle** (row context menu → `PATCH … {isActive}`), and the
+**realtime inventory subscription** — re-expressed as `refetchInventory()` on the
+event instead of the legacy page's 100-line hand-merge into local state.
+
+Original finding, retained:
+
+1. **Auto-Locate.** `lib/autoLocateEngine.ts` scores every unassigned wine against
+   every storage location (temperature band, capacity, type) and
+   `AutoLocatePreviewModal` lets you review and bulk-confirm the plan. It persists:
+   `handleConfirmAutoLocate` (`Inventory.tsx:654`) → `assignWineToLocation` →
+   `POST /storage-locations/:rid/mappings` (`useStorageLocations.ts:238-244`).
+   `/inventory` mounts the same `StorageLocationManager` but **omits the
+   `onAutoLocate` prop** (`InventoryCommandPage.tsx:884-893` vs
+   `Inventory.tsx:1821`), and that prop is what gates the button
+   (`StorageLocationManager.tsx:1067`). The whole engine has exactly one caller.
+2. **Per-location breakdown + source-selected transfer.** `MultiLocationCell`
+   shows a wine's per-location chips and moves *N* bottles **from A to B**
+   (`Inventory.tsx:1464-1476`). `/inventory` shows only the first location plus a
+   "+N" count (`InventoryCommandPage.tsx:278-282, 491-494`), and its transfer
+   hardcodes `fromLocationId: null` (`RowExpansion.tsx:102`) — you cannot say
+   which location the bottles leave.
+
+*Not blockers, verified:* `ManualOverrideModal` is superseded — `/inventory`'s
+"Manual adjust" bar (`RowExpansion.tsx:288-303`) takes a delta plus a reason and
+writes through `reconcileItem`, i.e. the ledger, where the legacy modal PATCHes
+`stockLive`/`shadowStock` directly (`Inventory.tsx:338-345`) — the exact
+dual-bookkeeping the SOTA rebuild removed. "Reset All Stock"
+(`Inventory.tsx:450-484`) is **fake**: it mutates React state only, hits no API,
+and then alerts "This action has been logged to the audit trail." Retiring the
+page would delete a lie, not a feature.
+
+*Tech-debt 44.1e (`InvoiceScannerModal`) is already closed* and is **not** a
+reason to retire this page: the component was deleted in `e5402d67`
+("delete InvoiceScannerModal — and correct my own wrong claim about it"). Zero
+matches remain under `apps/web/src`. `STATE.md:64` still says the page hosts it —
+that line is stale.
+
+**`/calendar-classic` (`pages/Calendar.tsx`) — 1 blocker.**
+
+**Event reminders only actually fire from the classic page.** `handleCreateEvent`
+calls `scheduleReminder()` (`Calendar.tsx:948-960`), which writes to localStorage
+and is drained every 60s by `startReminderScheduler()` (booted in `main.tsx:19`)
+into a browser Notification plus `POST /notifications`
+(`lib/reminder-scheduler.ts:126-206`). It also fires a "New Calendar Event"
+notification on save (`Calendar.tsx:923`). `/calendar` has the *better* reminder
+UI — up to three entries with in-app/email channels
+(`EventModal.tsx:1325-1380`) — and **throws the data away**:
+`CalendarPage.handleModalSave` never reads `data.reminders`
+(`CalendarPage.tsx:196-244`) and never calls `scheduleReminder`, and
+`buildCreatePayload` drops `reminders`/`customReminderMinutes` from the API body
+(`services/api/calendar.ts:105-121`). So the modular page silently discards every
+reminder a user sets. Fixing that is the prerequisite for retiring the classic page
+— and is a live defect on `/calendar` regardless of what happens to the classic one.
+
+✅ **Ported 2026-08-26, and the page retired.** `/calendar` now schedules through the
+same proven mechanism rather than a newly invented one: `syncEventReminders`
+(`CalendarPage.tsx`) writes each reminder the modal collects into the localStorage
+queue `startReminderScheduler` already drains. Server-side persistence was checked
+and rejected on evidence, not preference — the calendar API exposes only
+`reminderEnabled` + `reminderDaysBefore` (`calendar.dto.ts:204-211`), **nothing reads
+those columns** (no `@Cron` in the calendar module, no VALARM in the iCal feed,
+`reminder_sent` has no writer), and the one calendar-touching cron
+(`communications/scheduled-tasks.service.ts:666`) sends a fixed 2-day prep email to
+managers for a single hardcoded restaurant. Persisting there would have been an
+invented endpoint that still fires nothing. Editing an event now re-schedules and
+deleting one cancels; the edit modal reads the scheduled set back so it stops
+silently resetting to the default. 4 tests, all 4 proven to fail against the old
+`handleModalSave`. **Residual, recorded not hidden:** reminders live in one browser
+and the `email` channel toggle still does nothing — see calendar.md §13 items 1–2.
+
+*Not blockers, verified:* `NewEventTypeModal` is superseded — the modular
+`EventModal` creates, renames, recolors and deletes custom event types against the
+same `data/customEventTypes` store (`EventModal.tsx:437-475`). `EntityAutocomplete`
+multi-entity tagging is **not persisted**: `entityTags` never reaches the API
+(absent from `services/api/calendar.ts` entirely), and a single non-provider
+`relatedEntity` is smuggled into the description as a `[tag:type:name]` string
+(`Calendar.tsx:882-886`). Provider linking, the one part that persists, exists on
+`/calendar` too (`EventModal.tsx:519`). The modular page is otherwise a superset:
+month/week/day/agenda, search, drag-move/resize, RRULE recurrence, meeting memos.
+
+**Consequence.** Retiring either page needs a build first, not a delete:
+port Auto-Locate and source-selected transfer onto `/inventory`, and wire
+`/calendar`'s reminders to something. Those are new work items, not part of this
+retirement. ✅ Both builds landed 2026-08-26 and both pages are now retired.
 
 ## C. Cold-entry pages — auth + empty-state audit
 
@@ -87,12 +193,42 @@ deploy full process"*. That instruction locks the build scope; it does not
 license everything in the tables, and two carve-outs are held back
 deliberately rather than assumed:
 
-**HELD — page retirements (section B).** Deleting `/calendar-classic`,
-`/inventory-legacy`, `/wine-agent` and `/wineagent-alias` removes surfaces a
-user may be relying on, and this ADR itself makes each conditional on a parity
-check. Retirement is irreversible in a way the rest of this list is not, so it
-waits for an explicit yes. Everything else in B is additive wiring and is not
-blocked by this.
+**~~HELD~~ — page retirements (section B). Resolved 2026-08-26.** Deleting
+`/calendar-classic`, `/inventory-legacy`, `/wine-agent` and `/wineagent` removes
+surfaces a user may be relying on, and this ADR makes each conditional on a parity
+check. The founder gave the explicit yes; the parity check then split the four:
+
+- `/wine-agent`, `/wineagent` — **retired.** No parity condition to fail: one
+  inline `PlaceholderPage` under two spellings, zero buttons, zero endpoints.
+- `/calendar-classic`, `/inventory-legacy` — **not retired** on the first pass. Both
+  failed parity; each still held working capability the replacement lacked
+  (§B-parity above). They were not "kept for safety" — they were kept because
+  deleting them would delete function. Porting that function was the prerequisite
+  for a second attempt.
+- `/inventory-legacy` — **retired 2026-08-26** on that second attempt. Both blockers
+  (plus three the first pass missed) were ported onto `/inventory` first; then the
+  route, `pages/Inventory.tsx` (1,928 lines) and the now-unimported
+  `components/inventory/ManualOverrideModal.tsx` were deleted. The modal was **not**
+  ported: §B-parity already ruled it superseded, and re-adding a direct
+  `stockLive`/`shadowStock` PATCH to the canonical page would reintroduce the exact
+  dual-bookkeeping the SOTA rebuild removed. "Reset All Stock" was not ported either
+  — it was fake. Both are capability *reductions* made deliberately, not oversights.
+- `/calendar-classic` — **retired 2026-08-26** on its second attempt. Its one blocker
+  (reminders that fire) was ported onto `/calendar` first; then the route,
+  `pages/Calendar.tsx` (2,345 lines) and the now-unimported
+  `components/calendar/NewEventTypeModal.tsx` and
+  `components/shared/EntityAutocomplete.tsx` (330 lines) were deleted. A second parity
+  pass found three further classic-only behaviours, none worth porting, all recorded:
+  the **location** input persisted nowhere (`buildCreatePayload` has no `location`
+  field) — another lying input, deleted with the page; the `[tag:…]` /
+  `[custom_type:…]` strings the page wrote into event descriptions were **never read
+  back** by anything; and a "New Calendar Event" notification the page raised to the
+  user about the event they had just created themselves. One genuine *reduction*:
+  the classic page subscribed to `useCalendarEventsSubscription` for live refresh and
+  `/calendar` does not, so a second operator's edits now appear on react-query refetch
+  rather than instantly. Small, real, and not a reason to keep 2,345 lines.
+
+Everything else in B is additive wiring and was never blocked by this.
 
 **HELD — anything requiring a secret the browser must not hold (D4).** If the
 admin health panel needs a server-side proxy, that is a new endpoint and an ops

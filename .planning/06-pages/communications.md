@@ -7,6 +7,7 @@ audience: owner
 tier: core
 signals_today: none
 rebrand_strings: 3
+maturity: hollow
 status: documented
 updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[documents-reports]]"]
@@ -92,3 +93,83 @@ chrome per dashboard.md §7.
 - Saved templates persist client-side through the builder components rather than a
   server store — check before promising cross-device templates (no debt-register
   entry; observed from the component tree).
+
+## 10. Maturity
+
+**hollow.**
+
+Three of the four tabs are real. The **Scheduled Reports** tab — the tab this page
+is named for in the sidebar subtitle — is a UI over two tables nothing consumes.
+
+| Claim | Evidence |
+|---|---|
+| "Generate report now" produces a report | `POST /reports/generate` inserts one row with `status: "pending"` and `pdf_url`/`excel_url`/`csv_url` left NULL (`apps/api-gateway/src/reports/reports.service.ts:42-67`). **`generated_reports` has no other writer in the repo** — grep returns only this service plus migrations. Nothing ever flips `pending` → `completed` or attaches a file. The toast says "Report generated · Filed in Documents & Reports" (`apps/web/src/pages/Communications.tsx:315-318`) |
+| A schedule causes a send | `scheduleReport` inserts into `scheduled_reports` (`reports.service.ts:147-179`). That table name appears in exactly **three places, all in this one service** (:165, :185, :208) — insert, list, delete. No cron, no consumer, no `next_run_at` advance. The `nextRunAt` field the UI renders is whatever the DB default was |
+| The only weekly report that *does* send is unrelated | `@Cron("0 8 * * 1")` `sendWeeklyEmailReport` (`apps/api-gateway/src/communications/scheduled-tasks.service.ts:162-215`) is a **hardcoded single-restaurant** job gated on `DEFAULT_RESTAURANT_ID` + `MANAGER_EMAIL` env vars (`:70-79`, `:167-172`). It never reads `scheduled_reports` |
+| "Regenerate" summary | `POST /conversations/:id/summarize` publishes `email.summarize.requested` (`apps/api-gateway/src/conversations/conversations.service.ts:438-446`) and returns `{success:true, message:"Summary regeneration requested"}` (:451-455). **That routing key has zero subscribers** — `EmailParsingAgent.get_subscribed_routing_keys()` returns only `email.inbound.received` (`services/agent-orchestrator/agents/email_parsing_agent.py:81-84`), and the string appears nowhere else in the repo |
+
+What **is** real: templates persist server-side (`useTemplates` → `GET/POST/PATCH/DELETE /restaurants/:rid/templates`, `apps/web/src/hooks/useTemplates.ts:15-50`; controller `apps/api-gateway/src/restaurant-templates/restaurant-templates.controller.ts:23-83`, JWT-guarded) — **§9's "saved templates persist client-side" is stale and wrong**. Classified threads and procurement history read live rows.
+
+The nine `@Public` communications test routes named in the P3 brief are confirmed closed: `communications.controller.ts:216,286,329,406,589,704,786,840,897,964` now carry `@UseGuards(NonProductionGuard)`; only `POST /webhooks/gmail` stays `@Public()` (:1030), authenticated by a Google OIDC token instead.
+
+## 11. Data flow
+
+### Calls out
+
+| Method | Path | Auth | Gateway controller | Returns |
+|---|---|---|---|---|
+| POST | `/reports/generate` | JWT (class) | `reports.controller.ts:31-46` | A `pending` row with null file urls |
+| POST | `/reports/schedule` | JWT | `reports.controller.ts:132-147` | A `scheduled_reports` row nothing reads |
+| GET | `/reports/schedules` | JWT | `reports.controller.ts:70-84` — declared **above** `@Get(":id")` on purpose (OD-45) | The list of unread schedules |
+| DELETE | `/reports/schedules/:id` | JWT | `reports.controller.ts:149-166` | 204; scoped by `restaurant_id` |
+| GET | `/conversations/threads` | JWT (class, `conversations.controller.ts:48`) | `:145-211` | Threads with `detected_sentiment`, `conversation_summary` |
+| GET | `/conversations/thread/:id`, `/stats/overview` | JWT | `:216-237`, `:308-325` | Thread messages; sentiment counts |
+| POST | `/conversations/:id/summarize` | JWT | `:291-304` | `{success:true}` — see §10 |
+| GET | `/procurement/conversations/history` | JWT | `procurement.controller.ts` (svc `procurement.service.ts:2928-2997`) | Phase-34 outbound audit rows |
+| GET/POST/PATCH/DELETE | `/restaurants/:rid/templates` | JWT (class) | `restaurant-templates.controller.ts:23-90` | Saved email templates |
+
+### Fed by
+
+| Surface | Producer | Live? |
+|---|---|---|
+| Classified threads | Gmail Pub/Sub push → `communications.controller.ts:1030-1180` publishes `email.inbound.received` → `RabbitMqBridgeService.handleInboundEmail` (`rabbitmq-bridge.service.ts:224-228,528`) inserts `procurement_conversations`; `InboundResponderService` writes `detected_sentiment`/`detected_intent` (`inbound-responder.service.ts:300,520`) | **Yes** — a live Gmail watch carries production traffic (OD-78) |
+| Same, provider-agnostic path | `POST /webhooks/inbound-email` (`common/orchestrator/inbound-email.controller.ts:92`) | **Dormant** — gated on `INBOUND_EMAIL_DOMAIN` + `INBOUND_WEBHOOK_SECRET`, both unset (OD-78 verification note, 2026-08-25) |
+| Procurement history | `provider_communication_agent` outbound drafts, `AgentTier.CORE` since the Phase-32 fix (`services/agent-orchestrator/core/agent_registry.py:132-146`) | Yes |
+| Report archive | **none** — see §10 | No |
+| Templates | Manual authoring on this page | Yes |
+
+### Writes
+
+| Write | Downstream reaction |
+|---|---|
+| `generated_reports` row (`pending`) | Realtime `report:generated` → toast on `/documents-reports` (`DocumentsPage.tsx:331-347`). Nothing else |
+| `scheduled_reports` row | **none** |
+| `restaurant_templates` row | Read back by this page and the SMS/Gmail builders. Not consumed by any sender |
+| `email.summarize.requested` | **none** — unbound routing key on a topic exchange, so the message is dropped |
+
+## 12. Design intent
+
+**Should be:** the one place a manager sees every vendor conversation the system had on their behalf, and sets what goes out on a schedule.
+
+| State | Handled? | Evidence |
+|---|---|---|
+| Loading | Partial | Procurement-history table has a spinner (`Communications.tsx:142-144`); schedules list has none |
+| Empty | Yes | `Communications.tsx:145` |
+| Error | **No** | Schedule/generate failures toast (`:301,:323,:333`), but read failures are silent — `useTemplates` swallows a fetch error into `[]` (`hooks/useTemplates.ts:70-75`), so a broken template API renders "no templates" |
+| Permission-denied | **No** | No 403 branch anywhere on this page |
+
+**Where the UI misleads**
+
+1. "Report generated · Filed in Documents & Reports" with an **Open** deep link (`:315-318`) — the row exists, the report does not.
+2. The Scheduled Reports tab renders a `nextRunAt` for a job that will never run.
+3. **Regenerate** spins, succeeds, invalidates the query, and the summary is byte-identical (`useConversationQueries.ts:235-247`).
+4. `GmailTemplateBuilder.tsx:1349,1417,1464` previews mail branded "WineOps AI" (§7).
+
+## 13. Roadmap
+
+1. **Decide what a generated report is** — a renderer that fills `pdf_url`, or delete the generate button. Blocker: founder decision; nothing in `.planning/decisions/` defines a report artifact. Everything below depends on this.
+2. **Make Regenerate honest** — either subscribe an agent to `email.summarize.requested` (`email_parsing_agent.py:81-84`) or remove the button. One line of Python or one of TSX; today it lies for free.
+3. **Run the schedules** — a cron reading `scheduled_reports` per restaurant, replacing the single-tenant `DEFAULT_RESTAURANT_ID` weekly job (`scheduled-tasks.service.ts:162`). Blocked by (1).
+4. Surface read errors instead of empty states (`useTemplates.ts:70-75`).
+5. Rebrand the three template-preview strings (§7).
+6. Resolve the duplication with `/documents-reports` — `ClassifiedConversationList` is mounted on both (retire-to-write, CLAUDE.md §4). No ADR either way.

@@ -2,8 +2,8 @@
 
 > Generated 2026-08-24 from `apps/web/src/App.tsx` + page sources (`navigate()`, `<Link to>`, `href`).
 
-**51 routes** (re-verified 2026-08-25 — still exact) · ~~39 in-app navigation edges~~ ·
-13 route components unresolved (dynamic/inline).
+**48 routes** (51 at the 2026-08-25 re-verification; `/wine-agent`, `/wineagent`, `/inventory-legacy` and `/calendar-classic` retired 2026-08-26, ADR 0019 §B) · ~~39 in-app navigation edges~~ ·
+12 route components unresolved (dynamic/inline) — the inline `PlaceholderPage` went with the two retired routes.
 
 > **Edges superseded 2026-08-25 (ADR 0018):** the maintained page-to-page graph now
 > lives in the `## Surface` sections of [`06-pages/`](../06-pages/PAGES-MAP.md) —
@@ -19,7 +19,6 @@ graph LR
   n_admin_health["/admin/health<br/><i>AdminHealth</i>"]
   n_authorize__integrationId["/authorize/:integrationId"]
   n_calendar["/calendar<br/><i>CalendarModular</i>"]
-  n_calendar_classic["/calendar-classic<br/><i>Calendar</i>"]
   n_communications["/communications<br/><i>Communications</i>"]
   n_credits["/credits"]
   n_dev_sandbox["/dev-sandbox<br/><i>DevSandbox</i>"]
@@ -29,7 +28,6 @@ graph LR
   n_get_started["/get-started<br/><i>GetStarted</i>"]
   n_help["/help<br/><i>Help</i>"]
   n_inventory["/inventory<br/><i>InventoryCommandPage</i>"]
-  n_inventory_legacy["/inventory-legacy<br/><i>Inventory</i>"]
   n_invite__code["/invite/:code<br/><i>InviteLanding</i>"]
   n_login["/login<br/><i>Login</i>"]
   n_logs["/logs<br/><i>LogsTimelinePage</i>"]
@@ -61,8 +59,6 @@ graph LR
   n_v__slug["/v/:slug<br/><i>VendorPortal</i>"]
   n_vendor_prices["/vendor-prices<br/><i>VendorPriceCompare</i>"]
   n_verify_email["/verify-email<br/><i>VerifyEmail</i>"]
-  n_wine_agent["/wine-agent<br/><i>PlaceholderPage</i>"]
-  n_wineagent["/wineagent<br/><i>PlaceholderPage</i>"]
   n_wines["/wines<br/><i>WineLibrary</i>"]
   n_root --> n_calendar
   n_root --> n_inventory
@@ -114,13 +110,11 @@ Each is a place a user can land cold, so each needs its own auth + empty-state h
 
 - `/admin/health`
 - `/authorize/:integrationId`
-- `/calendar-classic`
 - `/communications`
 - `/credits`
 - `/dev-sandbox`
 - `/distributors`
 - `/documents-reports`
-- `/inventory-legacy`
 - `/logs`
 - `/notifications`
 - `/promotions`
@@ -134,8 +128,6 @@ Each is a place a user can land cold, so each needs its own auth + empty-state h
 - `/team`
 - `/v/:slug`
 - `/vendor-prices`
-- `/wine-agent`
-- `/wineagent`
 
 ## Most-linked-to pages (in-degree)
 
@@ -169,5 +161,3 @@ Route element could not be traced to a file (inline element, or non-standard bin
 - `/studio`
 - `/studio/certify`
 - `/studio/queue`
-- `/wine-agent`
-- `/wineagent`

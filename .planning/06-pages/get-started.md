@@ -7,8 +7,9 @@ audience: owner
 tier: core
 signals_today: partial
 rebrand_strings: 5
+maturity: partial
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[onboarding]]", "[[verify-email]]", "[[dashboard]]", "[[inventory]]", "[[orders]]", "[[providers]]", "[[settings]]", "[[sommelier]]"]
 ---
 
@@ -76,3 +77,74 @@ Plus the event namespace itself: `wineops:guidance` (`guidance/analytics.ts:37`)
 ## 9. Gaps
 - Threshold step is skipped silently when already configured (`GetStarted.tsx:194-199`) — correct, but the `return null` waiting state (`:252-256`) renders a blank screen while progress loads.
 - The guidance funnel has no backend sink (§5) — the founder's tracking mandate lands here first: this page is already emitting, nothing is listening.
+
+---
+
+## 10. Maturity
+
+**partial.** This is the live activation surface — [[onboarding]] is a tombstone that forwards here (`Onboarding.tsx:13-15`), so there is no ambiguity about which of the two is real. The import chain persists genuinely; three named capabilities are absent.
+
+Works end to end: `POST /menus/import` parses scan/CSV/manual into `WineExtractItem[]` and writes a menu plus review items (`menus.controller.ts:36-43` → `menus.service.ts:62-84`); the review screen patches items (`:54-58`); `PATCH /onboarding/threshold` sets `restaurants.default_threshold_min` and `threshold_configured` (`menus.controller.ts:91-102` → `menus.service.ts:704-721`). "Activated" = both flags (`GetStarted.tsx:239-241`).
+
+Absent:
+- **The route is public** (`App.tsx:162`, inside the `{/* Public Routes */}` block at `:148`) — no `ProtectedRoute`. An anonymous visitor renders the full Activate tab with working-looking upload buttons; every call 401s. `useOnboardingProgress` has no `enabled` guard and drops `query.error` (`useOnboardingProgress.ts:7-24`), so 401 is indistinguishable from "nothing imported yet".
+- **No POS question anywhere in activation** (§6). Activation completes with most paid value still dark.
+- **Both writes are cross-tenant writable.** See §11.
+
+## 11. Data flow
+
+### Calls out
+
+| Method | Path | Auth posture | Gateway controller | Returns |
+|---|---|---|---|---|
+| GET | `/onboarding/progress` | Bearer | `menus.controller.ts:68-69,76-80` | progress row; 404→`null` (`menus.service.ts:655-658`, `services/api/menus.ts:41-44`) |
+| POST | `/menus/import` | Bearer; **`restaurantId` read from the request body** | `menus.controller.ts:36-43` → `menus.service.ts:62-84` (`const { restaurantId } = dto`) | `{menuId, itemsExtracted, submissionsCreated, items}` |
+| PATCH | `/menus/items/:id` · POST `/menus/items` | Bearer | `menus.controller.ts:54-58`, `:45-52` | reviewed/added item |
+| PATCH | `/onboarding/threshold` | Bearer; **`restaurantId` read from the request body** | `menus.controller.ts:91-102` → `menus.service.ts:704-721` | `{default_threshold_min, threshold_configured:true}` |
+| GET | `/onboarding/vendor-email` | Bearer; tenant from the principal (`@CurrentUser`) | `menus.controller.ts:103-109` | inbound address, provisioned on demand |
+| GET | `/auth/me/linked-providers` | Bearer | `auth.controller.ts:243-250` | `{google, microsoft}` |
+
+**Tenancy finding — the two writes on this page take their tenant from the caller's body, and nothing verifies it.** `services/api/menus.ts:8-13` and `:61-62` send `restaurantId` from `getActiveRestaurantId()`; `menus.controller.ts:36-43` and `:91-102` pass it straight through; neither service method compares it to the authenticated user (`menus.service.ts:62-84`, `:704-721`). The only intended defence is the global `TenantGuard`.
+
+**That defence does not run here.** `TenantGuard` is registered as an `APP_GUARD` (`app.module.ts:128-131`) and `JwtAuthGuard` is *never* global — the only two `APP_GUARD` entries are `RateLimitGuard` and `TenantGuard` (`app.module.ts:122-131`), and `JwtAuthGuard` is applied per controller/route (`menus.controller.ts:23`, `:69`). NestJS runs global guards before controller and route guards, so `request.user` is still unset when `TenantGuard` executes, and it takes its documented fail-open branch (`tenant.guard.ts:54-59`) on every such route. Corroborating evidence: `settings.controller.ts:32` re-lists `TenantGuard` *after* `JwtAuthGuard` in its own `@UseGuards`, which would be redundant if the global instance were effective; `tenant.guard.spec.ts` constructs a request with `user` already populated, so it pins the guard's logic and not its placement. **Not runtime-verified** — booting the gateway was out of scope for this pass; it should be confirmed with a live request before anything is built on it.
+
+Two consequences, and they pull in opposite directions:
+1. *Reassuring:* the 2026-08-25 tenantless-user denial (`tenant.guard.ts:70-78`) does **not** break this page. No onboarding path in this cluster regresses.
+2. *Alarming:* it does not protect it either. As written, any authenticated user can import a menu into, or set the low-stock threshold of, **any restaurant id they name** (`menus.service.ts:62-84`, `:704-721`). And the moment someone "fixes" the ordering by adding `TenantGuard` to `menus.controller.ts`, these two calls become the first things to 403 — because they name a tenant in the body.
+
+Adjacent, same root cause: `GET /menus/:restaurantId` (`menus.controller.ts:27-34`) passes the path param straight to `menusService.getMenu` with no ownership check.
+
+### Fed by
+
+`user_onboarding_progress` seeded at Path-B registration (`auth.service.ts:634-642`, fire-and-forget); `restaurant_menus` written by this page's own import, and read back by the `menu_uploaded` self-heal for invitees (`menus.service.ts:660-670`); scan imports go through `ScanParserService` (`menus.service.ts:76`), the one model call in the funnel.
+
+### Writes — and what reacts
+
+| Write | Downstream |
+|---|---|
+| menu + items (`menus.service.ts:62-84`) | populates [[inventory]]; the success screen links straight there (`GetStarted.tsx:267`) |
+| `restaurants.default_threshold_min`, `threshold_configured` (`:704-721`) | the low-stock threshold every alert in [[notifications]] compares against — S10 |
+| `user_onboarding_progress` flags | drives the sidebar "Get started" checklist (`Sidebar.tsx:422,601`) and [[onboarding]]'s redirect |
+| `trackGuidance` events (`GetStarted.tsx:445,452`) | **nothing** — `window.dataLayer.push` + a `wineops:guidance` CustomEvent, console-only in dev (`guidance/analytics.ts:19-41`). No server sink exists |
+
+## 12. Design intent
+
+**Should be:** the shortest honest path from "account exists" to "the product has data and knows one threshold" — and the place the POS question gets asked, because that is what unlocks most of the product.
+
+| State | Handled? | Evidence |
+|---|---|---|
+| Empty | yes | Activate tab is the empty state (`GetStarted.tsx:167-169`) |
+| Loading | partial | `isLoading` gates the threshold decision (`:194-199`), but the pending-result branch renders `return null` — a blank screen while progress loads (`:252-256`) |
+| Error | **no** | the hook never exposes `query.error` (`useOnboardingProgress.ts:7-24`); an import failure surfaces only inside the individual upload components |
+| Permission-denied | partial | staff get `StaffWelcome` (`:219-221`) and owner-only cards are filtered (`:272`) — but that is role shaping, not a denial state; an unauthenticated visitor gets the full owner UI |
+
+**Where it misleads:** an anonymous or unverified visitor sees a complete, inviting activation flow whose every button will fail; the `return null` at `:252-256` is a blank page with no explanation; and the guidance events give the impression the funnel is instrumented when nothing receives them.
+
+## 13. Roadmap
+
+1. **Confirm the guard-ordering finding with a live request, then fix tenancy at the source** — take `restaurantId` from `@CurrentUser` in `menus.controller.ts:36-43` and `:91-102` instead of the body (the pattern `getVendorEmail` already uses at `:103-109`), and drop it from the DTOs. This both closes the cross-tenant write and makes the page immune to any future `TenantGuard` placement change.
+2. Wrap `/get-started` in `ProtectedRoute` (`App.tsx:162`).
+3. Surface `query.error` from `useOnboardingProgress` and render a real error state; replace the `return null` at `:252-256` with a spinner.
+4. Build the guidance sink — a `POST /signals` the `wineops:guidance` events land in (`guidance/analytics.ts:19-41`). This page already emits; nothing listens. It is the cheapest first win for the tracking mandate, and every other page's §13 "no sink" blocker resolves here.
+5. Instrument import method chosen / import success / import failure / threshold set — the four events that would actually explain activation drop-off (§5).
+6. Decide whether POS connection joins activation. *Blocked:* founder decision (§6, [TIER-MAP](../03-scenarios/TIER-MAP.md) S14/S15).

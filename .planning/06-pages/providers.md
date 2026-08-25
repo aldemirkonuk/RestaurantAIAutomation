@@ -7,6 +7,7 @@ audience: owner
 tier: core
 signals_today: none
 rebrand_strings: 0
+maturity: partial
 status: documented
 updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[distributors]]", "[[promotions]]", "[[vendor-prices]]", "[[orders]]"]
@@ -81,3 +82,96 @@ none — no user-visible `WineOps` strings (grep of `Providers.tsx`: zero hits).
   providers — flagged there as a stale catalog needing reconciliation before action.
 - S13 Plus coverage metrics "denominator flatters without POS" (TIER-MAP S13) — the
   discover tab shows catalogue reach, not supply-graph truth.
+
+## 10. Maturity
+
+**partial.** The roster half is complete and correct. The intelligence half renders
+panels over five tables whose only writer is a single Python agent, and the page never
+links to the comparison surface built for it.
+
+| Evidence | `path:line` |
+|---|---|
+| **Roster CRUD is complete** — providers, contacts and locations all have real create/read/update/delete routes under a class-level `JwtAuthGuard`. | `providers.controller.ts:37-38,188-303,361-436,573-656` |
+| **Catalogue add is real**, including the 409 dedupe that S13 Core claims. | `vendor-catalogue.controller.ts`; client `services/api/vendors.ts:121,131` |
+| **Discover tab is real** — `GET /distributors/search` runs the `search_distributors` RPC over `vendor_catalogue` joined to `vendor_locations`, `vendor_service_territories` and `vendor_portfolio_facets`. | `distributor-discovery.controller.ts:34-89`; `distributor-discovery.service.ts:84,177-204` |
+| **The intelligence panels depend on one Python agent.** `provider_knowledge`, `provider_sentiment_history`, `conversation_embeddings` and `provider_conversation_sessions` are each written by exactly one file — `provider_conversation_agent.py` — reachable only via the orchestrator's registry and a Level-4 feature flag. If that agent is not running for a restaurant, all four panels render empty and the page gives no indication why. | writers `agents/provider_conversation_agent.py:1453,2216,1160,754`; registry `core/orchestrator.py:181,297`; flag `config/settings.py:193`; readers `provider-intelligence.service.ts:18,251,304,355` |
+| **The Promotions panel now has a live producer** — the D3 lane extracts deterministically from provider-matched inbound mail into `provider_promotions`, on every message, plus a 09:00 digest cron. (Supersedes the "dormant" note carried in memory and in [[promotions]] §9.) | `common/orchestrator/promotion-extractor.service.ts:37-60,179`; wiring `rabbitmq-bridge.service.ts:789-799` |
+| **Never links to [[vendor-prices]]** — the price-comparison page built for exactly this job is unreachable from the vendor hub, which TIER-MAP S13 Pro names as a defect. | §9 of this note; [[vendor-prices]] §2 |
+
+## 11. Data flow
+
+### Calls out
+
+| Method · Path | Auth | Gateway controller | Returns |
+|---|---|---|---|
+| GET/POST/PATCH/DELETE `/providers[/:id]` | JWT (class) | `providers.controller.ts:215,231,188,251,277` | roster CRUD |
+| `/providers/:id/contacts[/:cid]` (4 verbs) | JWT | `:361-436` | contact CRUD |
+| `/providers/:id/locations[/:lid]` (4 verbs) | JWT | `:573-656` | location CRUD |
+| GET `/providers/:id/orders`, `/performance`, `/recommendations` | JWT | `:303,317,464` | order history, scorecard, ranked providers |
+| GET `/providers/:id/knowledge`, `/knowledge/contradictions` | JWT (class) | `provider-intelligence.controller.ts:32,49` | `provider_knowledge` facts + conflicts |
+| GET `/providers/:id/promotions`, `/promotions/active`, `/expiring`, `/compare`, `/savings` | JWT | `:87-146` | `provider_promotions` |
+| GET/POST `/providers/:id/conversation-memory[/search]` | JWT | `:163,185` | `conversation_embeddings` |
+| GET `/providers/:id/sessions[/:sid/summary]`, `/sentiment` | JWT | `:212,232,249` | session + sentiment history |
+| GET `/vendor-catalogue/search`; POST `/providers` | JWT | `vendor-catalogue.controller.ts` | catalogue search, add-with-dedupe |
+| GET `/distributors/search`, `/facets`, `/:id` | JWT (class) | `distributor-discovery.controller.ts:39,64,89` | map results, facet counts, detail |
+| GET `/analytics/insights/:rid` via `ContextualInsights` | **JWT required, none sent** → 401 | `analytics.controller.ts:243` | nothing — same defect as [[orders]] and [[inventory]] |
+
+### Fed by
+
+| Producer | Mechanism | `path:line` |
+|---|---|---|
+| Vendor roster | manual entry + one-tap add from the catalogue + prospect promotion on [[promotions]] | `providers.controller.ts:188`; `common/orchestrator/prospects.controller.ts` |
+| `vendor_catalogue` (discover tab) | seeded corpus | `supabase/migrations/seed/27_vendor_catalogue_seed.sql`; geo migrations `20260807001252/001352/001452` |
+| `provider_promotions` | **D3 inbound-email lane**, live on every provider-matched message | `promotion-extractor.service.ts:37`; `rabbitmq-bridge.service.ts:789` |
+| `provider_knowledge`, `provider_sentiment_history`, `conversation_embeddings`, `provider_conversation_sessions` | `ProviderConversationAgent` only, behind a Level-4 flag | `agents/provider_conversation_agent.py`; `config/settings.py:193` |
+| Order history / performance | POs from [[orders]] | `procurement_orders` |
+
+**Finding:** four of the six intelligence panels have a **single-agent, flag-gated
+producer**. That is not "no producer", but it is a producer that can be off without any
+signal on the page — the panels degrade to empty, which reads as "this vendor is quiet".
+
+### Writes
+
+| Write | Lands in | Downstream |
+|---|---|---|
+| Add / edit / delete provider | `providers` | [[orders]] vendor picker, [[promotions]] prospect promotion target, invoice matching |
+| Add from catalogue | `providers` (409 on duplicate) | as above |
+| Contacts / locations CRUD | `provider_contacts`, `provider_locations` | outbound mail routing, territory checks |
+| Rate a provider (`POST /providers/:id/rate`) | provider score | scorecard |
+| Quick Gmail send | `communications` | vendor thread on [[orders]] |
+
+## 12. Design intent
+
+**Should be:** the supply graph — who we buy from, what we know about them, what they
+have offered lately, and who else could sell us the same bottle for less.
+
+| State | Handled? | Evidence |
+|---|---|---|
+| loading | ✅ | react-query flags |
+| empty | ⚠️ — roster empty state is fine; the four intelligence panels render empty with no explanation of *why* (agent off vs genuinely nothing) | `provider-intelligence.service.ts:18-355` returns `[]` for both |
+| error | ⚠️ partial | CRUD mutations toast; the insights rail swallows its 401 |
+| permission-denied | ❌ | one owner-shaped view; the intelligence endpoints are guarded server-side but nothing adapts client-side |
+
+**Where the UI misleads:** an intelligence panel that is empty because
+`ProviderConversationAgent` never ran is indistinguishable from one that is empty because
+the vendor has been silent. That is the mildest form of the §44.2 shape, but it is the
+same shape.
+
+## 13. Roadmap
+
+1. **Link to [[vendor-prices]] from the provider row and from a wine's provider list.**
+   The comparison page exists, is guarded, and is unreachable — this is the single
+   highest-value edge missing in the vendor cluster, and TIER-MAP S13 Pro already names
+   it. *Blocker: none.*
+2. **Give the four agent-fed panels a distinct empty state** — "no conversation history
+   yet" vs "vendor intelligence is not enabled for this restaurant". *Blocker: needs the
+   flag state exposed to the client; `config/settings.py:193` is server-side only.*
+3. Move `ContextualInsights` to `apiClient` (shared fix with [[orders]] §13.3 and
+   [[inventory]] §13.1).
+4. Reconcile the stale 44.15 bulk-select/column-sort claim against the real page rather
+   than acting on the catalog (`v3.0-TECH-DEBT.md:391-393`).
+5. Emit signals: this page has zero markers and is the entry point for S13, whose Plus
+   tier is scored on coverage the page cannot currently measure.
+6. Fold `pages/distributors/useDistributorsPage.ts` into the discover tab or keep it
+   deliberately — today it is a standalone page hook with one consumer (§9 of
+   [[distributors]]).

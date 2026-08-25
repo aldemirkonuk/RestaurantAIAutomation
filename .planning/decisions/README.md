@@ -35,6 +35,7 @@
 | [0015](0015-pos-referential-integrity.md) | POS referential integrity — `inventory_id` FK added, 92 orphaned mappings from a deleted tenant removed; ledger writes idempotent | 2026-08-25 |
 | [0017](0017-doneability-verdicts-are-sidecar-claims.md) | Doneability verdicts are sidecar claims (`nf_verdict`, one row per event+basis), never edits to the event; first grader `reconciliation_v1` on invoices only; coverage view ships with the verdict | 2026-08-25 |
 | [0018](0018-p2-plan-of-record.md) | P2 plan of record — milestone `P2 — Web complete + deploy`; spine reset; Surface page graph; existing-first then founder-approved proposal | 2026-08-25 |
+| [0020](0020-no-fabricated-answers.md) | **A surface with no data says so; it never invents one** — fabricated analysis deleted rather than labelled, actions that cannot complete refuse out loud, an error never renders as emptiness, a mislabelled number is a fabrication. Generalised from 7 broken / 8 hollow pages | 2026-08-26 |
 
 ## Proposed — implemented, awaiting a founder lock
 

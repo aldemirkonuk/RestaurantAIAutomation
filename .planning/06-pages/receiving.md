@@ -7,6 +7,7 @@ audience: staff
 tier: core
 signals_today: none
 rebrand_strings: 0
+maturity: broken
 status: documented
 updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[orders]]"]
@@ -81,3 +82,78 @@ applies (see dashboard.md §7).
   to. Either a sidebar/palette entry or a dashboard hand-off is missing.
 - PAGE_MAP's entry-point list omits this route (see §2) — the atlas undercounts
   orphans; worth a regeneration note there rather than a fix here.
+
+## 10. Maturity
+
+**broken.** The staff view — the S02 golden path and the only door into
+[[receiving-door]] — cannot list a single delivery, for two independent reasons.
+
+| Evidence | `path:line` |
+|---|---|
+| **1. It filters on a status that does not exist.** `StaffView` requests `/procurement/orders?status=SENT&limit=25`. `ProcurementOrderStatus` has 13 members and **`SENT` is not one of them** (PENDING, APPROVAL_NEEDED, NEGOTIATING, APPROVED, CONFIRMED, IN_TRANSIT, DELIVERED, PARTIALLY_RECEIVED, COMPLETED, CANCELLED, REJECTED, FAILED). `OrderFilterDto.status` is `@IsEnum(ProcurementOrderStatus)` and the app runs a global `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })` → **400 Bad Request**. | call `ReceivingHome.tsx:88-90`; enum `procurement/dto/procurement.dto.ts:15-29`; DTO `:271-275`; pipe `main.ts:69-73` |
+| **2. Even on success it unwraps the wrong shape.** It reads `data?.items ?? data ?? []`. `listOrders` returns `{ orders, total, page, limit, hasMore }` — there is no `items`, so `orders` would be bound to the response *object*, `orders.length === 0` is `undefined`, the empty state is skipped, and `orders.map` throws. The shared client helper does this correctly (`response.data?.orders ?? …`) — this view bypasses it. | `ReceivingHome.tsx:91`; server `procurement.service.ts:508-514`; correct unwrap `services/api/orders.ts:56` |
+| **The failure is invisible.** `useQuery` is destructured as `{ data: orders = [], isLoading }` with no `isError` branch, so a 400 renders the reassuring empty state: *"Nothing is out for delivery right now."* | `ReceivingHome.tsx:85,102-106` |
+| **Manager and owner views are correct.** `/procurement/receiving/queue` and `/procurement/credits/stats` both exist, are JWT-guarded, and return real aggregates. | `receiving.controller.ts:114-153`; `documents/credits.controller.ts:89-123`; `receiving.service.ts:309-370` |
+| The role split itself is well built — role comes from `useAuth` (documented as load-bearing), and unknown roles fall to the cost-free view. | `ReceivingHome.tsx:61-72` |
+
+## 11. Data flow
+
+### Calls out
+
+| Method · Path | Auth | Gateway controller | Returns |
+|---|---|---|---|
+| GET `/procurement/orders?status=SENT` | JWT (class) | `procurement.controller.ts:65` | **400** — invalid enum (§10) |
+| GET `/procurement/receiving/queue` | JWT (class) | `receiving.controller.ts:153` → `receiving.service.ts:309` | `{ items, unverified, totalAtRisk }` — non-`matched` orders joined to open/requested/promised `procurement_credits`, sorted by dollars at risk then by provability |
+| GET `/procurement/credits/stats` | JWT (class) | `documents/credits.controller.ts:123` | `{ recovered, outstanding, promised, rejected, openClaims, oldestOpenDays, settlementRate, selfEvidencedOpen }` |
+
+### Fed by
+
+| Producer | Mechanism | `path:line` |
+|---|---|---|
+| Open deliveries (staff list) | POs created on [[orders]] and the recurring-order cron | `procurement/recurring-orders.service.ts:225,271` |
+| `match_status` / `discrepancy_notes` (manager queue) | the four-way match run from [[inventory]]'s `ReceivingWorkspace` | `ReceivingWorkspace.tsx:274` → `procurement.controller.ts:244` → `procurement/invoice-match.ts` |
+| `procurement_credits` (both manager and owner numbers) | `openCreditClaim`, opened from a match verdict — never sent, only opened; dedup on `23505` | `procurement.service.ts:1104-1140` |
+| `unverified` strip | door receipts with a case count and no bottle count, aged | `receiving.service.ts` `listUnverified`; door writes at `receiving.controller.ts:119` |
+| Invoice documents that make the match possible | 5-minute `@Cron` sweep over `conversation_attachments` → `procurement_documents`, content-addressed | `procurement/documents/document-intake.service.ts:581-620` |
+
+**Finding:** the manager and owner views depend entirely on a match that is only
+triggerable from a *different page* ([[inventory]]). Nothing on `/receiving` starts the
+process it reports on, and nothing links to `/receiving` in the first place (§2).
+
+### Writes
+
+**None.** This page is read-only in all three renderings — every button navigates.
+
+## 12. Design intent
+
+**Should be:** the delivery front door. One event, three renderings by role, with the
+staff path deliberately money-free so a porter never argues with a driver.
+
+| State | Handled? | Evidence |
+|---|---|---|
+| loading | ✅ all three views | `:100,165,273` |
+| empty | ✅ *by text*, ❌ *by truth* — staff's "Nothing is out for delivery right now" is currently a lie (§10); manager's "Nothing to chase" and owner's "No discrepancies found yet" are honest | `:102-106,167-171,318-324` |
+| error | ❌ | no `isError` branch anywhere in the file — the reason the 400 is invisible |
+| permission-denied | ✅ **best in the repo** — the role split *is* the permission model, and unrecognised roles fail toward showing less | `:61-72` |
+
+The owner view is a model of honest numbers: `recovered` counts only issued credit memos,
+money asked for is shown separately and never added in, and the settlement rate supplies
+the denominator (`:251-258,298-304`). Keep that discipline when touching this page.
+
+**Where the UI misleads:** the staff empty state (§10) — it reports a healthy quiet
+delivery day while the request behind it is rejected.
+
+## 13. Roadmap
+
+1. **Fix the staff query.** Use `getOrders({ status: … })` from `services/api/orders.ts`
+   (which maps to the backend enum and unwraps `.orders`), with a real status —
+   `CONFIRMED` and/or `IN_TRANSIT` are the "out for delivery" states. Two bugs, one fix.
+   *Blocker: none, but it needs a decision on which statuses count as "arriving today".*
+2. **Add an error branch to all three views** so a failed request never renders as an
+   empty one. This is the defect that let #1 hide.
+3. **Make the page reachable** — a sidebar entry, a command-palette command, or a
+   dashboard hand-off. Today S02 begins at a URL nothing links to (§2, §9), which also
+   orphans [[receiving-door]].
+4. Link the manager queue's rows to the match workspace on [[inventory]] rather than to
+   `/orders?order=` — the decision the row asks for is made there.
+5. Turn on the reporter for the two `data-ux-key` markers already placed (§5).

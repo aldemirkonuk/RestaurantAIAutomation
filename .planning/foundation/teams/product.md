@@ -185,14 +185,17 @@ foundation README:50-52 assigns the unlinked-route finding to Product & Vision b
 while the UX catalogue and sketches are assigned nowhere yet (see §2).
 
 **Evidence — EXISTS (the backlog is already enumerated):**
-- 51 routes, 39 in-app navigation edges ([PAGE_MAP.md:5](../PAGE_MAP.md)).
-- **24 routes with no inbound in-app link** (PAGE_MAP.md:104-132). Some are legitimate
+- 49 routes, 39 in-app navigation edges ([PAGE_MAP.md:5](../PAGE_MAP.md)).
+- **22 routes with no inbound in-app link** (PAGE_MAP.md). Some are legitimate
   (`/v/:slug` vendor portal, `/invite/:code`); others are unowned surface.
-- **13 route components could not be traced** (PAGE_MAP.md:151-167).
+- **12 route components could not be traced** (PAGE_MAP.md).
 - Live duplication needing a product call, not a design call:
-  `/wine-agent` **and** `/wineagent` both render `PlaceholderPage` (PAGE_MAP.md:58-59);
-  `/inventory` vs `/inventory-legacy` (PAGE_MAP.md:25-26);
-  `/calendar` vs `/calendar-classic` (PAGE_MAP.md:20-21).
+  `/inventory` vs `/inventory-legacy`; `/calendar` vs `/calendar-classic`. Both
+  **failed the first 2026-08-26 parity check** — the legacy pages held working
+  capabilities the replacements lacked ([ADR 0019](../../decisions/0019-p2-build-scope.md) §B-parity).
+  **Both were retired later the same day** once their blockers were ported onto the
+  canonical pages. `/wine-agent` + `/wineagent` were the third duplication; both are
+  now **retired** too. No duplicated surface remains.
 - Cross-check against 448 endpoints / 44 modules ([ENDPOINTS.md](../ENDPOINTS.md)) —
   a module with routes and no page, or a page with no module, is this team's finding.
 
@@ -224,7 +227,9 @@ becomes that module's chatbot, which is precisely the outcome FUTURES §8.3 forb
   `NEW-906` (dangerous intents refused), `NEW-907` (idempotent confirm).
 - Divergent entry points live today: Reports `AICommandPill`/`AICommandPalette`
   (`apps/web/src/components/command/`), `apps/mobile/src/guidance/WineAgentFab.tsx`,
-  `/sommelier` (`SommelierAI`), and two placeholder routes `/wine-agent`, `/wineagent`.
+  and `/sommelier` (`SommelierAI`). The two placeholder routes `/wine-agent` and
+  `/wineagent` were a fourth entry point until they were retired on 2026-08-26;
+  every "Wine Agent" launcher now lands on `/sommelier`.
 - The confirm-card primitive exists: `apps/api-gateway/src/one-tap-actions/` +
   `recommendation_actions` (shipped P0 Recommendations act/dismiss/snooze).
 - Aligned with the AI-native definition at [foundation README:258-266](../README.md) — this
@@ -556,7 +561,7 @@ and already proves it decays without an owner.
   minus the duplicate-ID collision below). Work exists that the record does not know about.
 - Two rows **did** converge all the way to code, which is the proof the pipeline works:
   038 `inventory-command` → *IMPLEMENTED — `apps/web/src/pages/inventory/command/`*
-  (route `/inventory`, legacy at `/inventory-legacy`); 052 `wineops-document` →
+  (route `/inventory`; the legacy page was retired 2026-08-26); 052 `wineops-document` →
   *IMPLEMENTED (document) — `scripts/docgen/templates/wineops_document.html`*, role views
   not built.
 - Duplicate ID `038` is used twice (`038-inventory-command`, `038-manager-shift-desk`) —

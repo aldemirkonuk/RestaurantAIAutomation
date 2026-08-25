@@ -128,8 +128,7 @@ Every `path=` from `App.tsx` Routes. Primary group is exactly one id/name per ro
 | `/providers` | Providers | 5 Procurement & Vendors | — | yes |
 | `/promotions` | Promotions | 6 Communications & Email Intelligence | also_touches: 5 | yes |
 | `/communications` | Communications | 6 Communications & Email Intelligence | — | yes |
-| `/calendar` | CalendarModular | 7 Calendar & Scheduling | — | yes (canonical) |
-| `/calendar-classic` | Calendar | 7 Calendar & Scheduling | — | legacy |
+| `/calendar` | CalendarModular | 7 Calendar & Scheduling | — | yes (canonical, sole calendar since 2026-08-26) |
 | `/` | Dashboard | 8 Analytics, Reports & Insights | — | yes |
 | `/reports` | Reports | 8 Analytics, Reports & Insights | — | yes |
 | `/documents-reports` | DocumentsPage | 8 Analytics, Reports & Insights | — | yes |
@@ -137,8 +136,6 @@ Every `path=` from `App.tsx` Routes. Primary group is exactly one id/name per ro
 | `/notifications` | Notifications | 9 Notifications & Alerts | — | yes |
 | `/recommendations` | Recommendations | 10 AI Assistants & Recommendations | — | yes |
 | `/sommelier` | SommelierAI | 10 AI Assistants & Recommendations | — | yes |
-| `/wine-agent` | PlaceholderPage | 10 AI Assistants & Recommendations | — | yes |
-| `/wineagent` | PlaceholderPage | 10 AI Assistants & Recommendations | — | yes |
 | `/admin` | AdminPanel | 11 Platform & Agent Infrastructure | — | yes |
 | `/admin/health` | AdminHealth | 11 Platform & Agent Infrastructure | — | yes |
 | `/dev-sandbox` | DevSandbox | 11 Platform & Agent Infrastructure | — | yes |
@@ -153,7 +150,7 @@ Every `path=` from `App.tsx` Routes. Primary group is exactly one id/name per ro
 ### Canonical vs legacy/orphan for manual pass
 
 - Prefer `/inventory` (command) over `/inventory-legacy` (`legacy`)
-- Prefer `/calendar` (modular) over `/calendar-classic` (`legacy`)
+- `/calendar` (modular) is the only calendar — `/calendar-classic` retired 2026-08-26
 - `RecurringOrders` = `orphan` — **not** a Phase 43 tick until routed
 
 ### Reserved future surface (Phase 38)

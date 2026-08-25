@@ -7,6 +7,7 @@ audience: owner
 tier: core
 signals_today: none
 rebrand_strings: 0
+maturity: partial
 status: documented
 updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[orders]]", "[[inventory]]"]
@@ -101,3 +102,98 @@ dashboard.md §7.
 - Agent-side notification writes were silently failing until 44.1d's fix — history
   in `v3.0-TECH-DEBT.md:95-131`; worth remembering when interpreting old gaps in
   this inbox.
+
+## 10. Maturity
+
+**partial.** The inbox itself is real and has more live producers than any other page
+in this cluster. Two named capabilities are absent or fake.
+
+**Real.** `notifications` rows are written by seven distinct producers across the
+gateway — team broadcast (`team/team.controller.ts:350`), schedule publish and
+acknowledge (`team/schedule.service.ts:254,484`), procurement
+(`procurement/procurement.service.ts:1062,1368`), the low-stock engine
+(`notifications/low-stock-alerts.service.ts:305,347`), the inbound autonomous
+responder (`common/orchestrator/inbound-responder.service.ts:1287`), and the
+scheduled-task crons. Read/unread/archive/delete all hit real JWT-guarded endpoints
+(`notifications/notifications.controller.ts:45` class-level guard, routes :84-276).
+The 10-second poll and the detail-panel resync are implemented as documented.
+
+**Not real:**
+
+| Gap | Evidence |
+|---|---|
+| Custom one-tap actions do not survive a refresh | Created into `useState` at `Notifications.tsx:173`, appended `:575`, rendered `:693-710`. No storage call, no endpoint. §9's reading is confirmed: rendering shipped, persistence did not |
+| The page cannot report a failure | `useNotifications(...)` destructures `isLoading: _isLoading, error: _error` (`Notifications.tsx:157`) — both underscore-discarded. A 500 or a 401 renders as an empty inbox, forever, while the 10s poll keeps retrying silently |
+| The gateway's own one-tap module has no caller from this page | `one-tap-actions.controller.ts:64` is now JWT-guarded (44.1a closed) with 8 routes; the only web callers are on the dashboard (`services/api/dashboard.ts:166,191`). `OneTapActionCenter` keeps its state in `localStorage` (`OneTapActionCenter.tsx:80-83,175-180,502`) and rebuilds actions client-side from inventory + orders (`:395-460`) |
+
+**§0 correction (stale).** "gmail actions point at `/emails` (no such route)" is fixed:
+`openRouteForAction` now returns `/communications` for `gmail_send` and
+`gmail_contextual`, with a comment explaining that no id can be handed over
+(`OneTapActionCenter.tsx:135-141`).
+
+## 11. Data flow
+
+### Calls out
+
+| Method | Path | Auth | Gateway controller | Returns |
+|---|---|---|---|---|
+| GET | `/notifications?userId=&status=` | JWT (class, `notifications.controller.ts:45`) | `:84-101` | Notification rows for the user |
+| PATCH | `/notifications/:id/read`, `/:id/unread`, `/:id/archive` | JWT | `:203`, `:216`, `:229` | Updated row |
+| PATCH | `/notifications/read/all?userId=` | JWT | `:189-201` | Count marked |
+| DELETE | `/notifications/:id` | JWT | `:263-276` | 204 |
+| GET | `/procurement/orders/pending`, `/procurement/orders` | JWT | `procurement.controller.ts` | Orders the action center turns into cards |
+| GET | `/inventory/:rid` (low stock) | JWT | `inventory` module | Low-stock actions |
+
+### Fed by
+
+| Notification kind | Producer | Live? |
+|---|---|---|
+| Low stock | `@Cron("*/2 * * * *")` edge sweep + `@Cron("0 * * * *")` batched digest (`low-stock-alerts.service.ts:85,110`) → `persistForRestaurant` (`:305,347`) | Yes — memory: notifications-batching-sync |
+| Vendor reply / draft ready | Gmail push → `email.inbound.received` → `rabbitmq-bridge.service.ts:528` → `InboundResponderService.analyzeAndDraftReply` → notification rows `inbound-responder.service.ts:1287` | Yes (live Gmail watch, OD-78) |
+| Schedule published / acknowledged, broadcast | `team/schedule.service.ts:254,484`; `team/team.controller.ts:350` | Yes |
+| Order approval, delivery, price | `procurement.service.ts:1062,1368` | Yes |
+| Weekly report ready, delivery ETA, payment due, audit, event prep, custom reminders | Eight `@Cron`s in `communications/scheduled-tasks.service.ts:127,162,336,431,517,606,666,727` | **Single-tenant** — every one returns early unless `DEFAULT_RESTAURANT_ID` is set (`:78-79`, e.g. `:167,:731`), and sends to `MANAGER_EMAIL`. These are not per-restaurant features |
+| Agent-side writes | Historically silent-failing until 44.1d (`v3.0-TECH-DEBT.md:95-131`) | Fixed |
+
+### Writes
+
+| Write | Downstream reaction |
+|---|---|
+| read / unread / archive / delete | Unread badge in the sidebar and header bell recompute (`Sidebar.tsx:410`, `Header.tsx:191`) |
+| Custom one-tap action | **none** — lives in `useState` until refresh |
+| One-tap execute (order approve) | Goes through the orders API and dispatches a realtime inventory/order update (`OneTapActionCenter.tsx` dispatchers) |
+| Snooze | `localStorage` only (`OneTapActionCenter.tsx:83,97,111`) — not shared across devices |
+
+## 12. Design intent
+
+**Should be:** the queue of things that need a person, oldest first, each one
+resolvable without leaving the row.
+
+| State | Handled? | Evidence |
+|---|---|---|
+| Loading | **No** | `_isLoading` discarded (`:157`) |
+| Empty | Yes | Empty-inbox render |
+| Error | **No** | `_error` discarded — the single most consequential omission on the page: this is the surface that is supposed to prove the system is watching |
+| Permission-denied | **No** | No 403 branch |
+
+**Where the UI misleads**
+
+1. "Create custom one-tap action" is a full modal with icon/colour/priority/URL
+   pickers and a live preview (`:1368-1691`) for an object that is discarded on
+   navigate-away.
+2. An empty inbox after a failed fetch is indistinguishable from a calm restaurant.
+3. Snoozes are per-browser; nothing says so.
+
+## 13. Roadmap
+
+1. **Branch on `error`** (`Notifications.tsx:157`). A watchdog that cannot say it is
+   blind is worse than no watchdog.
+2. **Persist custom one-tap actions** — the gateway module already exists and is
+   guarded (`one-tap-actions.controller.ts:64`, `POST /` at :138). This is wiring,
+   not new backend.
+3. **Move snoozes server-side** onto the same module (`:246` cancel, `:118` pending).
+4. **Make the eight scheduled crons per-restaurant** rather than
+   `DEFAULT_RESTAURANT_ID` (`scheduled-tasks.service.ts:78-79`). Today one restaurant
+   gets reminders and the rest get none, with no UI saying so.
+5. Loading skeleton for the first fetch.
+6. Rebrand `QuickGmailModal` previews (§7).

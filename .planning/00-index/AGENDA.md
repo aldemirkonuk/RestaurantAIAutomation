@@ -26,7 +26,7 @@ Canonical list: the 🔴 rows of [[OPEN-DECISIONS]]. Headlines only:
 
 | Item | One line |
 |---|---|
-| **Page retirements** | [ADR 0019](../decisions/0019-p2-build-scope.md) §B: retire `/calendar-classic`, `/inventory-legacy`, `/wine-agent`, `/wineagent-alias`? Deletion is irreversible and each needs a parity check, so it waits for your yes. `/inventory-legacy` also hosts a modal posting to a nonexistent endpoint (44.1e) |
+| **Page retirements** | [ADR 0019](../decisions/0019-p2-build-scope.md) §B: retire `/calendar-classic`, `/inventory-legacy`, `/wine-agent`, `/wineagent-alias`? ✅ **Answered and closed** — all four are retired (2026-08-26). `/inventory-legacy`'s two parity blockers were ported onto `/inventory` first, and `/calendar-classic`'s one blocker — the only event reminders in the product that actually fire — was ported onto `/calendar` first. The 44.1e modal claim was stale: that component was already deleted in `e5402d67`. |
 | **Gmail push enforcement** | Verification is built but staged OPEN so the deploy could not kill live inbound email. Set `GMAIL_PUBSUB_AUDIENCE` + `GMAIL_PUBSUB_SERVICE_ACCOUNT` on Railway (values come from the Pub/Sub subscription), then `GMAIL_PUBSUB_REQUIRE_AUTH=true` |
 | **OD-73** | 12 tables with RLS **off** and full `anon` DML — including the procurement invoice store and `user_oauth_accounts`; filed 2026-08-25 at your instruction, awaiting the call |
 | OD-72 | The other 142 RLS-on-zero-policy tables — policies, gateway, or RLS off |

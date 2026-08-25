@@ -7,6 +7,7 @@ audience: staff
 tier: core
 signals_today: none
 rebrand_strings: 0
+maturity: complete
 status: documented
 updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]"]
@@ -102,3 +103,101 @@ dashboard.md §7.
   until POS depth exists — the S04 ⚠ wine-only depletion caveat applies
   ([TIER-MAP](../03-scenarios/TIER-MAP.md):40).
 - No debt-register entries name `/team` (checked `v3.0-TECH-DEBT.md` — no hits).
+
+## 10. Maturity
+
+**complete.** The only page in this cluster where every advertised action reaches a
+real, role-enforced endpoint and produces a downstream effect.
+
+| Check | Evidence |
+|---|---|
+| Role gate is enforced server-side, not just in the UI | `assertAccess(userId, rid, "manager")` guards every manager action — publish (`team/schedule.service.ts:232`), broadcast (`team/team.controller.ts:346`), etc. The client split (`TeamCommandPage.tsx:1-4`) is convenience on top, not the control |
+| Publishing a week is a real event | `schedule.service.ts:231-265` sets `status:'published'`, **clears `schedule_receipts`** so "seen" reflects the new version (`:247-251`), and writes a restaurant-wide notification deep-linked back to `/team?schedule=…&week=…` (`:254-263`) |
+| Broadcast reaches four channels | In-app notification + web push + email + SMS, targeted at active linked members, best-effort per channel (`team.controller.ts:335-380`) |
+| Performance numbers are not invented | `PerformancePanel.tsx:3` states the rule explicitly — *"'no data yet' state (never mock numbers) until sales are attributed"* — and honours it. Contrast `/reports` (reports.md §10) |
+| Mutations report failure | Every mutation carries an `onError` toast (`ManagerShiftDesk.tsx:204,209,295,300,329,344`) |
+| Debt register | No `v3.0-TECH-DEBT.md` entry names `/team` (§9, re-verified) |
+
+The one dependency worth naming is not a defect on this page: performance metrics
+come from **manually ingested** sales rows (`POST …/sales`, `…/sales/batch`,
+`services/api/team.ts:240-244`) until POS depth exists (S04 ⚠, TIER-MAP:40). The panel
+says so rather than filling the gap.
+
+## 11. Data flow
+
+### Calls out
+
+All under `/restaurants/:restaurantId/team`, JWT-guarded at class level
+(`apps/api-gateway/src/team/team.controller.ts:51-52`), with per-route
+`assertAccess` for the manager verbs.
+
+| Method | Path | Auth | Gateway controller | Returns |
+|---|---|---|---|---|
+| GET/POST/PATCH/DELETE | `…/members` | JWT + role | `team.controller.ts` → `team.service.ts` | Roster |
+| GET | `…/week`, `…/my-week` | JWT | `team.controller.ts` | Grid / staff week |
+| POST | `…/schedules`, `…/schedules/copy-week` | JWT + manager | `schedule.service.ts` | Draft week |
+| POST | `…/schedules/:id/publish` | JWT + manager | `schedule.service.ts:231-265` | Published schedule + notification |
+| POST | `…/schedules/:id/acknowledge` | JWT | `schedule.service.ts:268-...` | Read receipt |
+| POST/PATCH/DELETE | `…/shifts` (+`/callout`, `/offer-cover`, `/assign`) | JWT | `team.controller.ts` | Shift rows |
+| GET/POST/PATCH/DELETE | `…/certifications`, `…/coverage-templates` | JWT | `team.controller.ts` | Ops rules |
+| GET/POST/PATCH | `…/time-off` | JWT | `team.controller.ts` | Requests |
+| GET | `…/members/:id/performance` | JWT | `team/performance.service.ts` | Attributed sales, or an honest empty |
+| POST | `…/sales`, `…/sales/batch` | JWT | `performance.service.ts` | Ingested rows |
+| POST | `…/broadcast` | JWT + manager | `team.controller.ts:335-380` | Fan-out result |
+| GET/PATCH | `…/settings` | JWT | `team.controller.ts` | Labor/goal settings (edited from `/settings`) |
+| GET | `/calendar/events` | JWT | `calendar.controller.ts:94` | Desk overlay |
+
+### Fed by
+
+| Data | Producer | Live? |
+|---|---|---|
+| Roster, shifts, schedules, certifications, time-off | Manual entry on this page + `ShiftImportModal` | Yes |
+| Sales attribution | **Manual ingest only** (`…/sales`) — no POS producer wires into it today | Manual |
+| Calendar overlay | `/calendar` events (calendar.md §11) | Yes |
+| Invites | `POST /auth/invite` → `InviteTeamDialog` → `/invite/:code` landing | Yes |
+
+No Python agent writes to any `team_*` table — verified. This page is entirely
+human-driven, which is why it has no hollow surfaces: there is no dormant producer to
+be hollow about.
+
+### Writes
+
+| Write | Downstream reaction |
+|---|---|
+| Publish week | Restaurant-wide notification (`/notifications` inbox), receipts cleared, staff `my-week` changes |
+| Broadcast | Notification + push + email + SMS (`team.controller.ts:350-380`) |
+| Acknowledge | `schedule_receipts` row — the manager's "seen" column |
+| Claim cover / callout | Shift assignment changes for both members |
+| Sales ingest | `…/members/:id/performance` becomes non-empty |
+
+## 12. Design intent
+
+**Should be:** one surface that answers "who is on, who saw it, who is missing" for
+the manager, and "what am I working" for everyone else.
+
+| State | Handled? | Evidence |
+|---|---|---|
+| Loading | Yes | `TeamCommandPage.tsx:18,32` |
+| Empty | Yes | `PerformancePanel.tsx:3` — the deliberate no-data state |
+| Error | Partial | Every **write** toasts on failure (`ManagerShiftDesk.tsx:204+`); read queries have no `isError` branch, so a failed roster fetch reads as an empty roster |
+| Permission-denied | Yes, structurally | Non-managers get `MyShifts` rather than a denied Manager desk (`TeamCommandPage.tsx:1-4`), backed by server-side `assertAccess` |
+
+**Where the UI misleads:** nothing found. Print-week opens a real window; import is a
+real upload; the performance panel refuses to draw numbers it does not have.
+
+The boundary to defend: TIER-MAP:104-105 — Floor Checker scenarios (S05/S07/S16)
+"must never be sold as staff performance analytics". `PerformancePanel` is
+sales-ingest based, which is the permitted kind. Keep them apart.
+
+## 13. Roadmap
+
+1. **Attribute sales from POS** instead of manual ingest (`services/api/team.ts:240-244`)
+   — turns the performance panel from a data-entry chore into a by-product. Blocked
+   on POS depth (S04 ⚠, TIER-MAP:40).
+2. **`isError` branches on the read queries** so a failed roster does not read as an
+   empty restaurant — the one state gap on the page.
+3. Instrument this page first when signals land (§5): publish→acknowledge latency and
+   cover-claim time are the two numbers a manager would actually act on, and both are
+   already in the schema (`schedule_receipts`).
+4. Link a broadcast notification back to the specific schedule rather than `/team`
+   (`team.controller.ts:355`) — publish already does this (`schedule.service.ts:259`).

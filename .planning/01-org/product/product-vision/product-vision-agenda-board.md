@@ -84,10 +84,14 @@ SORT department ASC, team ASC
 
 ## Standing counters (hand-entered until the jobs exist)
 
-- [ ] `surface.unowned_surface_count` — **24** routes with no inbound link + **13**
-      untraceable route components, of **51** routes
-- [ ] Live route duplications awaiting a verdict — **3**: `/wine-agent`+`/wineagent`
-      (`App.tsx:293-294`), `/inventory`+`/inventory-legacy`, `/calendar`+`/calendar-classic`
+- [ ] `surface.unowned_surface_count` — **22** routes with no inbound link + **12**
+      untraceable route components, of **49** routes (2026-08-26: `/wine-agent` and
+      `/wineagent` retired, taking the inline `PlaceholderPage` with them)
+- [ ] Live route duplications awaiting a verdict — **2**: `/inventory`+`/inventory-legacy`,
+      `/calendar`+`/calendar-classic`. Both **failed the parity check** on 2026-08-26 and
+      stay routed until the missing capabilities are ported — see
+      [ADR 0019](../../../decisions/0019-p2-build-scope.md) §B-parity.
+      `/wine-agent`+`/wineagent` is **closed**: retired, not deduplicated.
 - [ ] `askai.confirm_without_edit_rate` — **no composer exists**; 0 of 44 api-gateway
       modules is an ask/action module
 - [ ] Ask AI divergent entry points — **4** (+1 adjacent deterministic palette); target **1**
