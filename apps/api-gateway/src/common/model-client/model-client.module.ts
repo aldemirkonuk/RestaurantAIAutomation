@@ -1,5 +1,6 @@
 import { Global, MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { ModelClientService } from "./model-client.service";
+import { NfVerdictService } from "./nf-verdict.service";
 import { correlationMiddleware } from "./correlation";
 
 /**
@@ -16,8 +17,8 @@ import { correlationMiddleware } from "./correlation";
  */
 @Global()
 @Module({
-  providers: [ModelClientService],
-  exports: [ModelClientService],
+  providers: [ModelClientService, NfVerdictService],
+  exports: [ModelClientService, NfVerdictService],
 })
 export class ModelClientModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
