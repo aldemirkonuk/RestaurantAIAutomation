@@ -40,7 +40,7 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config
 })
 
-interface User {
+export interface User {
   userId: string
   email: string
   name: string
@@ -81,7 +81,7 @@ interface JoinViaInviteData {
   password: string
 }
 
-interface AuthContextType {
+export interface AuthContextType {
   user: User | null
   loading: boolean
   error: string | null
@@ -112,7 +112,12 @@ interface RegisterData {
   phone?: string
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined)
+/**
+ * Exported so tests and Storybook can supply a mock auth value directly,
+ * bypassing AuthProvider's network + localStorage bootstrap. Application code
+ * should use `useAuth()` / `<AuthProvider>` rather than consuming this.
+ */
+export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 
