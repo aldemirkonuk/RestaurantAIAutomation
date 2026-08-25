@@ -18,9 +18,10 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from api.auth import verify_admin_key
 from services.field_confidence import (
     should_auto_block,
     JSONB_ENRICHMENT_KEYS,
@@ -83,7 +84,11 @@ def _fc_value(fc: Dict[str, Any], field_name: str) -> Any:
 
 
 @router.get("/review-queue")
-def get_review_queue(limit: int = 50, offset: int = 0):
+def get_review_queue(
+    limit: int = 50,
+    offset: int = 0,
+    _key: str = Depends(verify_admin_key),
+):
     """
     GET /api/v1/quality/review-queue
 
@@ -172,7 +177,11 @@ def get_review_queue(limit: int = 50, offset: int = 0):
 
 
 @router.patch("/review-queue/{submission_id}")
-def patch_review_queue(submission_id: str, body: ReviewQueuePatchRequest):
+def patch_review_queue(
+    submission_id: str,
+    body: ReviewQueuePatchRequest,
+    _key: str = Depends(verify_admin_key),
+):
     """
     PATCH /api/v1/quality/review-queue/{submission_id}
 
@@ -425,7 +434,7 @@ def patch_review_queue(submission_id: str, body: ReviewQueuePatchRequest):
 
 
 @router.get("/calibration")
-def get_calibration():
+def get_calibration(_key: str = Depends(verify_admin_key)):
     """
     GET /api/v1/quality/calibration
 

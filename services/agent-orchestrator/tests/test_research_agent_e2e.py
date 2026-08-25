@@ -330,7 +330,11 @@ def test_research_agent_fills_null_fields(research_submission):
     # Create a minimal test app (avoids pulling in YOLO / all production routers)
     test_app = FastAPI()
     test_app.include_router(research_router)
-    client = TestClient(test_app)
+    # /research/metrics now requires X-Admin-Key; conftest's autouse fixture
+    # puts the matching key in the environment.
+    from conftest import TEST_ADMIN_API_KEY
+
+    client = TestClient(test_app, headers={"X-Admin-Key": TEST_ADMIN_API_KEY})
 
     response = client.get("/api/v1/research/metrics")
     assert (

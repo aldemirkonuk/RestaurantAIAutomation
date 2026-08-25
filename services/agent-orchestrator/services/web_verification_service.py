@@ -227,7 +227,28 @@ async def parse_search_results(
         logger.warning("parse_search_results: Gemini call failed: %s", exc)
         return None
 
-    # Log Gemini Flash spend (non-fatal per pattern from haiku_enrichment_service.py)
+    _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+
+    # OD-75: validate FIRST. This site returns None on a bad answer rather than
+    # raising, so the failure was silent in both directions — the caller got no
+    # verification and NF got a `success` row proving only that Gemini replied.
+    result: Optional[WineVerificationResult] = None
+    try:
+        result = WineVerificationResult.model_validate_json(response.text)
+        logger.debug(
+            "parse_search_results: extracted %d non-null fields for wine=%r",
+            sum(1 for v in result.model_dump().values() if v is not None),
+            wine_name,
+        )
+    except Exception as exc:
+        logger.warning(
+            "parse_search_results: failed to parse Gemini response for wine=%r: %s",
+            wine_name,
+            exc,
+        )
+
+    # Log Gemini Flash spend (non-fatal per pattern from haiku_enrichment_service.py).
+    # Emitted on BOTH paths — the tokens were spent before the validation ran.
     try:
         usage = getattr(response, "usage_metadata", None)
         if usage:
@@ -247,28 +268,23 @@ async def parse_search_results(
                 cost_usd=_cost,
                 agent_fallback="web_verification_service",
                 task_type="snippet_parse",
-                outcome="success",  # call-level: response returned
-                duration_ms=int((time.perf_counter() - _t0) * 1000),
-                context={"wine_name": str(wine_name)[:120]},
+                choice=(
+                    "verification:parse_failed"
+                    if result is None
+                    else "verification:parsed"
+                ),
+                outcome="partial" if result is None else "success",
+                duration_ms=_elapsed_ms,
+                context={
+                    "wine_name": str(wine_name)[:120],
+                    "outcome_basis": "parse_v1",
+                    "parse_failed": result is None,
+                },
             )
     except Exception:
         pass
 
-    try:
-        result = WineVerificationResult.model_validate_json(response.text)
-        logger.debug(
-            "parse_search_results: extracted %d non-null fields for wine=%r",
-            sum(1 for v in result.model_dump().values() if v is not None),
-            wine_name,
-        )
-        return result
-    except Exception as exc:
-        logger.warning(
-            "parse_search_results: failed to parse Gemini response for wine=%r: %s",
-            wine_name,
-            exc,
-        )
-        return None
+    return result
 
 
 # ---------------------------------------------------------------------------

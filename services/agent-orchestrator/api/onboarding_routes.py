@@ -13,10 +13,11 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from api.auth import require_admin_or_studio
 from services.claude_vision_extractor import (
     ClaudeExtractionResult,
     get_claude_vision_extractor,
@@ -54,27 +55,92 @@ def _needs_enrichment(wine: dict) -> bool:
     )
 
 
-def _preflight_cap_check(supabase, restaurant_id: str) -> float:
+class CapLedgerUnavailable(Exception):
+    """The spend ledger could not be read, so the cap cannot be enforced.
+
+    Raised — never swallowed — because an unreadable ledger must not be
+    indistinguishable from "$0.00 spent". This endpoint bills the Anthropic
+    account on every call; the only safe reading of "I don't know how much has
+    been spent" is to refuse the call.
     """
-    Query total extraction spend for this restaurant from api_spend.
-    Returns cumulative cost_usd. Returns 0.0 if Supabase unavailable.
-    Non-fatal: query errors return 0.0 (fail open — never block on infra error).
+
+
+def _preflight_cap_check(supabase, cap_key: str) -> float:
+    """
+    Query total extraction spend for this cap key from api_spend.
+    Returns cumulative cost_usd.
+
+    FAIL CLOSED: a query error raises CapLedgerUnavailable, which the endpoint
+    turns into HTTP 503. This function used to return 0.0 on any exception,
+    which meant a single Supabase hiccup silently removed the only spend limit
+    on a paid-LLM endpoint. "Never block on infra error" is the wrong trade when
+    the thing not being blocked is unbounded spend.
     """
     try:
         resp = (
             supabase.table("api_spend")
             .select("cost_usd")
-            .eq("restaurant_id", restaurant_id)
+            .eq("restaurant_id", cap_key)
             .execute()
         )
         if resp.data:
             return sum(row.get("cost_usd", 0.0) or 0.0 for row in resp.data)
         return 0.0
     except Exception as exc:
-        logger.warning(
-            "preflight_cap_check failed for %s (fail open): %s", restaurant_id, exc
+        logger.error(
+            "preflight_cap_check failed for %s — failing CLOSED: %s", cap_key, exc
         )
-        return 0.0
+        raise CapLedgerUnavailable(str(exc)) from exc
+
+
+def _resolve_cap_key(caller: dict, supabase, requested_restaurant_id: str) -> str:
+    """Decide which restaurant the spend is billed against — server-side.
+
+    The cap used to be keyed on `request.restaurant_id`, a value the caller
+    supplies, so rotating one string reset the limit. The key must come from the
+    caller's authenticated identity instead:
+
+      * admin-key callers are the gateway and internal jobs. They are trusted
+        server-to-server principals and already resolved the tenant before
+        calling, so their body field is authoritative.
+      * studio JWT callers are browsers. Their body field is ignored entirely;
+        the restaurant is looked up from `users.user_id == <jwt sub>`, the same
+        join api/studio_routes.py:355 already uses for actor identity.
+
+    Raises CapLedgerUnavailable if the lookup fails (fail closed), and 403 if the
+    authenticated user has no restaurant — spend that cannot be attributed
+    cannot be capped, so it is not permitted.
+    """
+    if caller.get("kind") == "admin":
+        return requested_restaurant_id
+
+    subject = caller.get("subject")
+    try:
+        resp = (
+            supabase.table("users")
+            .select("restaurant_id")
+            .eq("user_id", subject)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        logger.error(
+            "cap key lookup failed for user %s — failing CLOSED: %s", subject, exc
+        )
+        raise CapLedgerUnavailable(str(exc)) from exc
+
+    rows = resp.data or []
+    resolved = rows[0].get("restaurant_id") if rows else None
+    if not resolved:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "No restaurant is linked to this account, so extraction spend "
+                "cannot be attributed or capped. Ask an admin to link your user "
+                "to a restaurant."
+            ),
+        )
+    return str(resolved)
 
 
 def _send_cap_alert_email(restaurant_id: str, spend: float) -> None:
@@ -146,18 +212,28 @@ class MenuScanRequest(BaseModel):
 
 
 @router.post("/extract")
-async def extract_menu_scan(request: MenuScanRequest):
+async def extract_menu_scan(
+    request: MenuScanRequest,
+    caller: dict = Depends(require_admin_or_studio),
+):
     """
     POST /api/v1/onboarding/extract
 
     Accepts menu images (base64, one per page), sends each to Claude Vision
     in parallel, returns structured wine JSON with cost tracking.
 
+    AUTHENTICATION REQUIRED (X-Admin-Key or a studio-role Bearer token). This
+    endpoint bills the Anthropic account on every call; it was reachable
+    anonymously on the public Railway host until this was added.
+
     Returns:
         200: All pages extracted successfully
         207: Partial success (some pages failed, some succeeded)
+        401: No/invalid credentials
+        402: Per-restaurant spend cap exceeded
+        403: Authenticated, but no restaurant to attribute the spend to
         422: Validation error (missing fields, unsupported input type)
-        503: All pages failed extraction
+        503: All pages failed extraction, or the spend ledger is unreadable
     """
     # Require either pdf_base64 or at least one image
     if not request.pdf_base64 and not request.images:
@@ -166,20 +242,37 @@ async def extract_menu_scan(request: MenuScanRequest):
             detail="Provide either 'pdf_base64' (raw PDF) or 'images' (list of page base64)",
         )
 
-    # Pre-flight per-restaurant cap check (COST-03)
+    # Pre-flight per-restaurant cap check (COST-03).
+    #
+    # FAIL CLOSED throughout: no Supabase client means no ledger, which means the
+    # cap cannot be enforced, which means the call is refused. Previously a
+    # missing client skipped the check entirely and the extraction ran uncapped.
     supabase = get_supabase_client()
-    if supabase:
-        prior_spend = _preflight_cap_check(supabase, request.restaurant_id)
-        if prior_spend > PER_RESTAURANT_CAP_USD:
-            _send_cap_alert_email(request.restaurant_id, prior_spend)
-            raise HTTPException(
-                status_code=402,
-                detail=(
-                    f"Per-restaurant extraction cap exceeded "
-                    f"(spent ${prior_spend:.4f}, cap ${PER_RESTAURANT_CAP_USD:.2f}). "
-                    f"Contact support to reset."
-                ),
-            )
+    if not supabase:
+        raise HTTPException(
+            status_code=503,
+            detail="Spend ledger unavailable — extraction refused (fail closed).",
+        )
+
+    # Key the cap on the authenticated identity, not on a request-body field.
+    cap_key = _resolve_cap_key(caller, supabase, request.restaurant_id)
+    try:
+        prior_spend = _preflight_cap_check(supabase, cap_key)
+    except CapLedgerUnavailable:
+        raise HTTPException(
+            status_code=503,
+            detail="Spend ledger unavailable — extraction refused (fail closed).",
+        )
+    if prior_spend > PER_RESTAURANT_CAP_USD:
+        _send_cap_alert_email(cap_key, prior_spend)
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"Per-restaurant extraction cap exceeded "
+                f"(spent ${prior_spend:.4f}, cap ${PER_RESTAURANT_CAP_USD:.2f}). "
+                f"Contact support to reset."
+            ),
+        )
 
     # Run extraction — PDF native path or image pages path
     extractor = get_claude_vision_extractor()
@@ -195,18 +288,18 @@ async def extract_menu_scan(request: MenuScanRequest):
                     status_code=422,
                     detail=f"Invalid base64 in 'pdf_base64': {exc}",
                 )
-            result: ClaudeExtractionResult = await extractor.extract_pdf(pdf_bytes)
+            result: ClaudeExtractionResult = await extractor.extract_pdf(
+                pdf_bytes, cap_key
+            )
         else:
             result: ClaudeExtractionResult = await extractor.extract_menu(
-                request.images
+                request.images, restaurant_id=cap_key
             )
     except RuntimeError as e:
-        logger.error(f"All pages failed for restaurant {request.restaurant_id}: {e}")
+        logger.error(f"All pages failed for restaurant {cap_key}: {e}")
         raise HTTPException(status_code=503, detail=str(e))
 
-    # Persist to Supabase (reuse client already fetched for preflight)
-    if not supabase:
-        supabase = get_supabase_client()
+    # Persist to Supabase (client already fetched and proven non-None above).
     cost_per_wine = (
         (result.total_cost_usd / result.total_wines) if result.total_wines > 0 else 0.0
     )
@@ -257,7 +350,10 @@ async def extract_menu_scan(request: MenuScanRequest):
                     supabase.table("master_wine_library_submissions")
                     .insert(
                         {
-                            "restaurant_id": request.restaurant_id,
+                            # Server-resolved, never the caller-supplied body
+                            # field: a studio user must not be able to write
+                            # submissions into another tenant by editing JSON.
+                            "restaurant_id": cap_key,
                             "submitted_by": "claude_vision",
                             "payload": submission_payload,
                             "field_confidence": fc or None,
@@ -344,7 +440,7 @@ async def extract_menu_scan(request: MenuScanRequest):
                         signature_hash = hashlib.sha256(sig_str.encode()).hexdigest()
                         supabase.table("master_wine_library_submissions").insert(
                             {
-                                "restaurant_id": request.restaurant_id,
+                                "restaurant_id": cap_key,
                                 "submitted_by": None,
                                 "payload": submission_payload,
                                 "field_confidence": fc or None,

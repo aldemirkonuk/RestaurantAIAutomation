@@ -13,7 +13,9 @@ import base64
 import json
 import time
 from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+
+from api.auth import verify_admin_key
 from pydantic import BaseModel, Field
 
 from config.settings import get_settings
@@ -1310,7 +1312,10 @@ async def yolo_preview_ws(websocket: WebSocket):
 
 
 @router_preview.post("/detect", response_model=PreviewDetectResponse)
-async def preview_detect(request: PreviewDetectRequest):
+async def preview_detect(
+    request: PreviewDetectRequest,
+    _key: str = Depends(verify_admin_key),
+):
     """
     POST /api/v1/preview/detect
 

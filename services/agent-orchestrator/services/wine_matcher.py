@@ -572,40 +572,61 @@ Use web search to find accurate, real-world data. Return ONLY valid JSON with AL
                 config=config,
             )
 
-            # P1: previously an unlogged model call (dark site)
+            _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+
+            # OD-75: a parse failure here falls through to the outer handler and
+            # the non-grounded fallback, so the emit sits in a `finally` below
+            # the parse — that preserves the fallback exactly while grading the
+            # row on whether the grounded answer was actually usable.
+            _outcome = "partial"
             try:
-                from services.spend_logger import estimate_llm_cost, get_spend_logger
+                result_text = response.text.strip()
+                if "```json" in result_text:
+                    result_text = (
+                        result_text.split("```json")[1].split("```")[0].strip()
+                    )
+                elif "```" in result_text:
+                    result_text = result_text.split("```")[1].split("```")[0].strip()
 
-                # label the model actually configured, not a literal (OD-57)
-                _model_id = get_settings().gemini_model
-                _usage = getattr(response, "usage_metadata", None)
-                _in = getattr(_usage, "prompt_token_count", 0) or 0
-                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
-                _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
-                    getattr(_usage, "thoughts_token_count", 0) or 0
-                )
-                get_spend_logger().log(
-                    provider="google",
-                    model="gemini-2.5-flash",
-                    input_tokens=_in,
-                    output_tokens=_out,
-                    cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
-                    agent_fallback="wine_matcher",
-                    task_type="wine_enrichment_grounded",
-                    outcome="success",  # call-level: response returned
-                    duration_ms=int((time.perf_counter() - _t0) * 1000),
-                    context={"wine_name": str(wine_name)[:120]},
-                )
-            except Exception:
-                pass
+                data = json.loads(result_text)
+                _outcome = "success"
+            finally:
+                # P1: previously an unlogged model call (dark site)
+                try:
+                    from services.spend_logger import (
+                        estimate_llm_cost,
+                        get_spend_logger,
+                    )
 
-            result_text = response.text.strip()
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in result_text:
-                result_text = result_text.split("```")[1].split("```")[0].strip()
+                    # label the model actually configured, not a literal (OD-57)
+                    _model_id = get_settings().gemini_model
+                    _usage = getattr(response, "usage_metadata", None)
+                    _in = getattr(_usage, "prompt_token_count", 0) or 0
+                    # thinking tokens bill at the output rate — see
+                    # spend_logger.usage_tokens()
+                    _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                        getattr(_usage, "thoughts_token_count", 0) or 0
+                    )
+                    get_spend_logger().log(
+                        provider="google",
+                        model="gemini-2.5-flash",
+                        input_tokens=_in,
+                        output_tokens=_out,
+                        cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
+                        agent_fallback="wine_matcher",
+                        task_type="wine_enrichment_grounded",
+                        choice=f"enrichment:{_outcome}",
+                        outcome=_outcome,
+                        duration_ms=_elapsed_ms,
+                        context={
+                            "wine_name": str(wine_name)[:120],
+                            "outcome_basis": "parse_v1",
+                            "parse_failed": _outcome != "success",
+                        },
+                    )
+                except Exception:
+                    pass
 
-            data = json.loads(result_text)
             data["source"] = "gemini_grounded_enrichment"
 
             # Capture grounding metadata if available
@@ -657,40 +678,60 @@ Return ONLY valid JSON with: name, producer, vintage, wine_type, country, region
                 prompt, generation_config={"temperature": 0.1}
             )
 
-            # P1: previously an unlogged model call (dark site)
+            _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+
+            # OD-75: same fix as the grounded path above. This twin was not in
+            # the reported list, but leaving it would make the fallback claim
+            # `success` for exactly the answers the primary now grades honestly.
+            _outcome = "partial"
             try:
-                from services.spend_logger import estimate_llm_cost, get_spend_logger
+                result_text = response.text.strip()
+                if "```json" in result_text:
+                    result_text = (
+                        result_text.split("```json")[1].split("```")[0].strip()
+                    )
+                elif "```" in result_text:
+                    result_text = result_text.split("```")[1].split("```")[0].strip()
 
-                # label the model actually configured, not a literal (OD-57)
-                _model_id = get_settings().gemini_model
-                _usage = getattr(response, "usage_metadata", None)
-                _in = getattr(_usage, "prompt_token_count", 0) or 0
-                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
-                _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
-                    getattr(_usage, "thoughts_token_count", 0) or 0
-                )
-                get_spend_logger().log(
-                    provider="google",
-                    model=_model_id,
-                    input_tokens=_in,
-                    output_tokens=_out,
-                    cost_usd=estimate_llm_cost(_model_id, _in, _out),
-                    agent_fallback="wine_matcher",
-                    task_type="wine_enrichment_fallback",
-                    outcome="success",  # call-level: response returned
-                    duration_ms=int((time.perf_counter() - _t0) * 1000),
-                    context={"wine_name": str(wine_name)[:120]},
-                )
-            except Exception:
-                pass
+                data = json.loads(result_text)
+                _outcome = "success"
+            finally:
+                # P1: previously an unlogged model call (dark site)
+                try:
+                    from services.spend_logger import (
+                        estimate_llm_cost,
+                        get_spend_logger,
+                    )
 
-            result_text = response.text.strip()
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in result_text:
-                result_text = result_text.split("```")[1].split("```")[0].strip()
+                    # label the model actually configured, not a literal (OD-57)
+                    _model_id = get_settings().gemini_model
+                    _usage = getattr(response, "usage_metadata", None)
+                    _in = getattr(_usage, "prompt_token_count", 0) or 0
+                    # thinking tokens bill at the output rate — see
+                    # spend_logger.usage_tokens()
+                    _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                        getattr(_usage, "thoughts_token_count", 0) or 0
+                    )
+                    get_spend_logger().log(
+                        provider="google",
+                        model=_model_id,
+                        input_tokens=_in,
+                        output_tokens=_out,
+                        cost_usd=estimate_llm_cost(_model_id, _in, _out),
+                        agent_fallback="wine_matcher",
+                        task_type="wine_enrichment_fallback",
+                        choice=f"enrichment:{_outcome}",
+                        outcome=_outcome,
+                        duration_ms=_elapsed_ms,
+                        context={
+                            "wine_name": str(wine_name)[:120],
+                            "outcome_basis": "parse_v1",
+                            "parse_failed": _outcome != "success",
+                        },
+                    )
+                except Exception:
+                    pass
 
-            data = json.loads(result_text)
             data["source"] = "gemini_enrichment_fallback"
             return data
         except Exception as e:

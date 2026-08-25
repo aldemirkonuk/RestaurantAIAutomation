@@ -579,40 +579,60 @@ class WineFieldParser:
                 config=config,
             )
 
-            # P1: previously an unlogged model call (dark site)
+            _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+
+            # OD-75: emit BELOW the parse, in a `finally` so the outer handler
+            # still sees a parse failure unchanged. `success` above the parse
+            # meant an unparseable menu line — the field parser producing
+            # nothing at all — was recorded as a completed extraction.
+            _outcome = "partial"
             try:
-                from services.spend_logger import estimate_llm_cost, get_spend_logger
+                result_text = response.text.strip()
 
-                _usage = getattr(response, "usage_metadata", None)
-                _in = getattr(_usage, "prompt_token_count", 0) or 0
-                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
-                _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
-                    getattr(_usage, "thoughts_token_count", 0) or 0
-                )
-                get_spend_logger().log(
-                    provider="google",
-                    model="gemini-2.5-flash",
-                    input_tokens=_in,
-                    output_tokens=_out,
-                    cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
-                    agent_fallback="wine_field_parser",
-                    task_type="wine_field_parse",
-                    outcome="success",  # call-level: response returned
-                    duration_ms=int((time.perf_counter() - _t0) * 1000),
-                )
-            except Exception:
-                pass
+                # Extract JSON (belt-and-suspenders: Gemini should return raw
+                # JSON with response_mime_type, but handle markdown fences)
+                if "```json" in result_text:
+                    result_text = (
+                        result_text.split("```json")[1].split("```")[0].strip()
+                    )
+                elif "```" in result_text:
+                    result_text = result_text.split("```")[1].split("```")[0].strip()
 
-            result_text = response.text.strip()
+                data = json.loads(result_text)
+                _outcome = "success"
+            finally:
+                # P1: previously an unlogged model call (dark site)
+                try:
+                    from services.spend_logger import (
+                        estimate_llm_cost,
+                        get_spend_logger,
+                    )
 
-            # Extract JSON (belt-and-suspenders: Gemini should return raw JSON
-            # with response_mime_type, but handle markdown fences just in case)
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in result_text:
-                result_text = result_text.split("```")[1].split("```")[0].strip()
-
-            data = json.loads(result_text)
+                    _usage = getattr(response, "usage_metadata", None)
+                    _in = getattr(_usage, "prompt_token_count", 0) or 0
+                    # thinking tokens bill at the output rate — see
+                    # spend_logger.usage_tokens()
+                    _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                        getattr(_usage, "thoughts_token_count", 0) or 0
+                    )
+                    get_spend_logger().log(
+                        provider="google",
+                        model="gemini-2.5-flash",
+                        input_tokens=_in,
+                        output_tokens=_out,
+                        cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
+                        agent_fallback="wine_field_parser",
+                        task_type="wine_field_parse",
+                        choice=f"fields:{_outcome}",
+                        outcome=_outcome,
+                        duration_ms=_elapsed_ms,
+                        context={
+                            "outcome_basis": "parse_v1",
+                            "parse_failed": _outcome != "success",
+                        },
+                    )
+                except Exception:
+                    pass
 
             # ── Flatten nested field objects ──────────────────────────────────
             # Gemini returns each field as {value, confidence, source} objects.

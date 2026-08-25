@@ -125,7 +125,16 @@ class AuctionWineService:
                 self.gemini_model.generate_content, prompt
             )
 
-            # P1: previously an unlogged model call (dark site)
+            _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+
+            # OD-75: parse first. _parse_ai_response cannot fail visibly — its
+            # regex fallback returns success:True for prose — so the JSON half is
+            # called directly here and None is the honest "not usable" signal.
+            result = self._parse_ai_json(response.text, wine_name)
+            _parse_failed = result is None
+
+            # P1: previously an unlogged model call (dark site).
+            # Emitted on BOTH paths — the tokens were spent before the parse ran.
             try:
                 from services.spend_logger import estimate_llm_cost, get_spend_logger
 
@@ -145,15 +154,20 @@ class AuctionWineService:
                     cost_usd=estimate_llm_cost(_model_id, _in, _out),
                     agent_fallback="auction_wine_service",
                     task_type="auction_wine_research",
-                    outcome="success",  # call-level: response returned
-                    duration_ms=int((time.perf_counter() - _t0) * 1000),
-                    context={"wine_name": str(wine_name)[:120]},
+                    choice="wine:parse_failed" if _parse_failed else "wine:parsed",
+                    outcome="partial" if _parse_failed else "success",
+                    duration_ms=_elapsed_ms,
+                    context={
+                        "wine_name": str(wine_name)[:120],
+                        "outcome_basis": "parse_v1",
+                        "parse_failed": _parse_failed,
+                    },
                 )
             except Exception:
                 pass
 
-            # Parse response
-            result = self._parse_ai_response(response.text, wine_name)
+            if result is None:
+                result = self._parse_text_response(response.text, wine_name)
             return result
 
         except Exception as e:
@@ -179,7 +193,16 @@ class AuctionWineService:
                 temperature=0.3,  # Lower temperature for more factual responses
             )
 
-            # P1: previously an unlogged model call (dark site)
+            _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+
+            # OD-75: same fix as _query_gemini above — this OpenAI twin was not
+            # in the reported list but carries the identical defect.
+            _text = response.choices[0].message.content
+            result = self._parse_ai_json(_text, wine_name)
+            _parse_failed = result is None
+
+            # P1: previously an unlogged model call (dark site).
+            # Emitted on BOTH paths — the tokens were spent before the parse ran.
             try:
                 from services.spend_logger import estimate_llm_cost, get_spend_logger
 
@@ -194,17 +217,20 @@ class AuctionWineService:
                     cost_usd=estimate_llm_cost("gpt-4o", _in, _out),
                     agent_fallback="auction_wine_service",
                     task_type="auction_wine_research",
-                    outcome="success",  # call-level: response returned
-                    duration_ms=int((time.perf_counter() - _t0) * 1000),
-                    context={"wine_name": str(wine_name)[:120]},
+                    choice="wine:parse_failed" if _parse_failed else "wine:parsed",
+                    outcome="partial" if _parse_failed else "success",
+                    duration_ms=_elapsed_ms,
+                    context={
+                        "wine_name": str(wine_name)[:120],
+                        "outcome_basis": "parse_v1",
+                        "parse_failed": _parse_failed,
+                    },
                 )
             except Exception:
                 pass
 
-            # Parse response
-            result = self._parse_ai_response(
-                response.choices[0].message.content, wine_name
-            )
+            if result is None:
+                result = self._parse_text_response(_text, wine_name)
             return result
 
         except Exception as e:
@@ -255,6 +281,23 @@ If you're uncertain about any field, use your best estimate and note it in the c
 
         Attempts to extract JSON, falls back to text parsing if needed
         """
+        parsed = self._parse_ai_json(response_text, original_name)
+        if parsed is not None:
+            return parsed
+
+        # Fallback: text parsing
+        return self._parse_text_response(response_text, original_name)
+
+    def _parse_ai_json(self, response_text: str, original_name: str) -> Optional[Dict]:
+        """
+        JSON half of _parse_ai_response — None when the answer was not JSON.
+
+        Split out for OD-75. The combined method cannot report failure: the regex
+        fallback below it also returns `success: True`, so every call site saw a
+        parsed-looking dict and logged spend as `success` even when the model had
+        answered in prose. The caller needs the None to grade the row honestly;
+        _parse_ai_response keeps the old signature and swallows it as before.
+        """
         try:
             import json
 
@@ -285,8 +328,7 @@ If you're uncertain about any field, use your best estimate and note it in the c
         except Exception as e:
             logger.warning(f"Failed to parse JSON from AI response: {e}")
 
-        # Fallback: text parsing
-        return self._parse_text_response(response_text, original_name)
+        return None
 
     def _parse_text_response(self, text: str, original_name: str) -> Dict:
         """Fallback parser for non-JSON responses"""

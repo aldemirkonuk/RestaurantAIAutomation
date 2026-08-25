@@ -922,11 +922,20 @@ class ProviderConversationAgent(BaseAgent):
         task_type: str,
         duration_ms: Optional[int] = None,
         restaurant_id: Optional[str] = None,
+        outcome: str = "success",
+        context: Optional[Dict[str, Any]] = None,
     ) -> None:
         """P1: emit one spend/NF row for a legacy-SDK Gemini call (never raises).
 
         `duration_ms` is measured by the caller around its own model call —
         timing it here would only measure this helper.
+
+        OD-75: `outcome` and `context` are caller-supplied because only the
+        caller knows whether the completion was usable. The default stays
+        "success" with the default call_level_v0 basis for the two text-only
+        callers (draft_response, session_summary) that have nothing to parse;
+        _extract_intelligence passes "partial" plus outcome_basis="parse_v1"
+        when the JSON does not parse.
         """
         try:
             _usage = getattr(response, "usage_metadata", None)
@@ -944,9 +953,10 @@ class ProviderConversationAgent(BaseAgent):
                 restaurant_id=restaurant_id or None,
                 agent=self.agent_name,
                 task_type=task_type,
-                outcome="success",  # call-level: response returned
+                outcome=outcome,
                 duration_ms=duration_ms,
                 correlation_id=getattr(self, "_current_correlation_id", None),
+                context=context or None,
             )
         except Exception:
             pass
@@ -977,21 +987,38 @@ class ProviderConversationAgent(BaseAgent):
                     generation_config={"temperature": 0.1, "max_output_tokens": 2000},
                 ),
             )
-            self._log_gemini_spend(  # P1
-                response,
-                "intelligence_extraction",
-                duration_ms=int((time.perf_counter() - _t0) * 1000),
-                restaurant_id=restaurant_id,
-            )
+            _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
 
-            raw_text = response.text.strip()
-            # Strip markdown code fences if present
-            if raw_text.startswith("```"):
-                raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
-                raw_text = re.sub(r"\s*```$", "", raw_text)
+            # OD-75: the emit moves into a `finally` BELOW the parse. A prose
+            # answer falls to _fallback_extract — a keyword heuristic, not an
+            # extraction — and logging above the parse recorded that as a
+            # completed task. `finally` keeps the row (the tokens were billed)
+            # and writes it exactly once on both paths.
+            _outcome = "partial"
+            try:
+                raw_text = response.text.strip()
+                # Strip markdown code fences if present
+                if raw_text.startswith("```"):
+                    raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
+                    raw_text = re.sub(r"\s*```$", "", raw_text)
 
-            parsed = json.loads(raw_text)
-            return ExtractionResult.from_dict(parsed)
+                parsed = json.loads(raw_text)
+                result = ExtractionResult.from_dict(parsed)
+                _outcome = "success"
+            finally:
+                self._log_gemini_spend(  # P1
+                    response,
+                    "intelligence_extraction",
+                    duration_ms=_elapsed_ms,
+                    restaurant_id=restaurant_id,
+                    outcome=_outcome,
+                    context={
+                        "outcome_basis": "parse_v1",
+                        "parse_failed": _outcome != "success",
+                    },
+                )
+
+            return result
 
         except json.JSONDecodeError as e:
             self.logger.warning(f"Failed to parse extraction JSON: {e}")

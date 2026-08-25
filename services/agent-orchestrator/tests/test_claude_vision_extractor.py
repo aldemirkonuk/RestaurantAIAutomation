@@ -140,3 +140,39 @@ def test_cost_formula_per_page():
     """Cost formula: (input * 3.0 + output * 15.0) / 1_000_000"""
     expected = (1000 * 3.0 / 1_000_000) + (500 * 15.0 / 1_000_000)
     assert expected == pytest.approx(0.0105)
+
+
+@pytest.mark.asyncio
+async def test_spend_row_carries_restaurant_id_so_the_cap_can_match(
+    mock_anthropic_response, monkeypatch
+):
+    """
+    The per-restaurant cap in onboarding_routes filters
+    `.eq("restaurant_id", cap_key)`. Until 2026-08-26 this extractor logged
+    spend WITHOUT restaurant_id, so every row landed NULL, the filter matched
+    zero rows for every key, and the $2.00 cap had never fired once — on an
+    endpoint that was also unauthenticated.
+
+    This pins the join key. If it regresses the cap silently stops existing
+    again, which is exactly the failure that hid until someone went looking.
+    """
+    captured = {}
+
+    class _Logger:
+        def log(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(
+        "services.claude_vision_extractor.get_spend_logger", lambda: _Logger()
+    )
+
+    extractor = ClaudeVisionExtractor()
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_anthropic_response)
+    extractor._client = mock_client
+    extractor._semaphore = asyncio.Semaphore(5)
+
+    await extractor.extract_menu(["base64imagedata=="], restaurant_id="rest-42")
+
+    assert captured.get("restaurant_id") == "rest-42"
+    assert captured.get("task_type") == "menu_page_extraction"

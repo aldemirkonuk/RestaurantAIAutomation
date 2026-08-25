@@ -188,3 +188,90 @@ async def test_caller_cannot_hand_the_prompt_to_the_fallback_any_more():
     params = list(inspect.signature(CalendarAgent._call_llm_for_dates).parameters)
     assert params[1] == "conversation"
     assert "prompt" not in params
+
+
+# ---------------------------------------------------------------------------
+# OD-75: outcome must reflect the PARSE, not just the HTTP call
+# ---------------------------------------------------------------------------
+
+
+def _gemini_returning(text: str):
+    """A Gemini client whose one call answers with `text` and known usage."""
+    resp = MagicMock()
+    resp.text = text
+    resp.usage_metadata.prompt_token_count = 800
+    resp.usage_metadata.candidates_token_count = 120
+    resp.usage_metadata.thoughts_token_count = 40
+
+    client = MagicMock()
+    client.aio.models.generate_content = AsyncMock(return_value=resp)
+    return client
+
+
+@pytest.mark.asyncio
+async def test_prose_date_answer_records_partial_not_success():
+    """
+    OD-75: this site fails WITHOUT raising — no `[...]` in the answer just means
+    `_dates` stays None and the regex fallback takes over. The emit used to sit
+    above that parse, so the exact path OD-63 was about — the fallback that once
+    invented dates — was written to NF as outcome='success' on the call_level_v0
+    basis, indistinguishable from a real extraction.
+
+    It must now grade 'partial' on the parse_v1 basis. The row is still owed:
+    Gemini billed those tokens before anyone looked at the text.
+    """
+    agent, _ = make_calendar_agent()
+    spend = MagicMock()
+
+    with patch(
+        "services.model_clients.get_gemini_client",
+        return_value=_gemini_returning("I could not find any dates in that email."),
+    ), patch("services.spend_logger.get_spend_logger", return_value=spend):
+        results = await agent._call_llm_for_dates(
+            "Thanks for the order, we will be in touch.",
+            provider_name="Acme Wines",
+            restaurant_id="22222222-2222-2222-2222-222222222222",
+        )
+
+    # Fell through to the regex fallback, which correctly found nothing.
+    assert results == []
+
+    # Exactly one row — the spend is owed, but must not be double-counted.
+    assert spend.log.call_count == 1
+    kwargs = spend.log.call_args.kwargs
+    assert kwargs["outcome"] == "partial"
+    assert kwargs["outcome"] != "success"
+    assert kwargs["context"]["outcome_basis"] == "parse_v1"
+    assert kwargs["context"]["parse_failed"] is True
+    # Cost survives the parse failure — the call was paid for either way.
+    assert kwargs["input_tokens"] == 800
+    assert kwargs["output_tokens"] == 160  # thinking tokens bill as output
+    assert kwargs["cost_usd"] > 0
+
+
+@pytest.mark.asyncio
+async def test_parsed_date_array_records_success_on_parse_basis():
+    """OD-75: a real JSON array keeps 'success', now on the parse_v1 basis."""
+    agent, _ = make_calendar_agent()
+    spend = MagicMock()
+
+    payload = (
+        'Here you go:\n[{"date": "2026-09-14", "event_type": "delivery", '
+        '"description": "delivery window", "confidence": 0.9}]'
+    )
+    with patch(
+        "services.model_clients.get_gemini_client",
+        return_value=_gemini_returning(payload),
+    ), patch("services.spend_logger.get_spend_logger", return_value=spend):
+        results = await agent._call_llm_for_dates(
+            "We can deliver on 2026-09-14.",
+            provider_name="Acme Wines",
+            restaurant_id="22222222-2222-2222-2222-222222222222",
+        )
+
+    assert [r["date"] for r in results] == ["2026-09-14"]
+    assert spend.log.call_count == 1
+    kwargs = spend.log.call_args.kwargs
+    assert kwargs["outcome"] == "success"
+    assert kwargs["context"]["outcome_basis"] == "parse_v1"
+    assert kwargs["context"]["parse_failed"] is False
