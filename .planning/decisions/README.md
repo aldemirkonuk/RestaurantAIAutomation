@@ -33,6 +33,16 @@
 | [0010](0010-gemini-model-retirement.md) | `gemini-3.5-flash-lite` replaces retired `gemini-2.0-flash`/`gemini-pro`; runway beat price. Spend table was wrong (2.5-flash under 8.3x), lite billed as flash, thinking tokens uncounted — all three corrected | 2026-08-24 |
 | [0016](0016-ledgers-must-express-unknown.md) | Ledgers express "unknown" — `api_spend.cost_usd` nullable and `DEFAULT 0.0` dropped, one `unpriced` determination driving both ledgers; every rate row carries a required dated source, so an undated price is a `TypeError` at import; calendar regex fallback reads the email, not the prompt. `gpt-4-turbo` verified correct | 2026-08-25 |
 
+## Proposed — implemented, awaiting a founder lock
+
+> These carry `status: proposed`. The work has landed and the OPEN-DECISIONS rows are
+> closed, but per the template a decision is locked by the founder, never by a session.
+
+| # | Decision | Date |
+|---|---|---|
+| [0012](0012-reports-through-the-gateway.md) | Generated reports read through the gateway, not the browser — RLS-on-with-zero-policies confirmed in production (and on 141 other tables); the missing delete endpoint and three invented columns closed rather than half-ported | 2026-08-25 |
+| [0013](0013-one-commitment-guardrail.md) | One UCC commitment guardrail: TypeScript canon, generated Python module, three independent drift guards. Real counts were 19 / 8 / **3** — a third list existed | 2026-08-25 |
+
 ## Locked — recorded elsewhere (pre-log)
 
 | Decision | Where | Date |

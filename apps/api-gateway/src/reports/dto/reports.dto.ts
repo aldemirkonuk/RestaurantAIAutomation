@@ -102,6 +102,20 @@ export class ReportResponseDto {
   @ApiPropertyOptional()
   csvUrl?: string;
 
+  // OD-45. The web Documents page used to read generated_reports straight from
+  // Postgres and expected `metadata.description` / `metadata.period`. Neither
+  // column exists — the real table carries `summary` and the two period dates.
+  // Exposing them here is what lets the page drop the direct client and stop
+  // rendering fields that were always undefined.
+  @ApiPropertyOptional()
+  summary?: string;
+
+  @ApiPropertyOptional()
+  periodStart?: string;
+
+  @ApiPropertyOptional()
+  periodEnd?: string;
+
   @ApiPropertyOptional()
   createdAt?: string;
 }

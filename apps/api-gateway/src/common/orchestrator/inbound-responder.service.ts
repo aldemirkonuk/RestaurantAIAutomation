@@ -13,6 +13,10 @@ import {
 } from "./commercial-terms";
 import { SenderReputationService } from "./sender-reputation.service";
 import { computePriority } from "./priority";
+// AI-SPEC §6 UCC contract-formation guardrail. Single source of truth for both
+// runtimes (OD-44) — the Python orchestrator's copy is generated from it by
+// scripts/sync_commitment_patterns.py. Edit commitment-patterns.ts, never a copy.
+import { COMMITMENT_PATTERNS } from "./commitment-patterns";
 
 // Claude Haiku 4.5 — fast/cheap, the right tier for this per-reply background call.
 // (Replaces claude-3-5-haiku-20241022, retired 2026-02-19.) For stronger negotiation
@@ -38,35 +42,6 @@ const AUTO_REPLY_SUBJECT_PATTERNS: RegExp[] = [
   /do not reply/i,
   /vacation/i,
   /away from (the )?office/i,
-];
-
-/**
- * AI-SPEC §6 guardrail: phrases that could constitute a binding purchase
- * commitment (UCC contract-formation risk). A draft containing any of these
- * must NEVER auto-send — it is forced to manager approval. Ported verbatim
- * from services/agent-orchestrator/agents/provider_conversation_agent.py.
- */
-const COMMITMENT_PATTERNS: RegExp[] = [
-  /\bwill take\b/i,
-  /\bwould like to order\b/i,
-  /\bplease confirm our order\b/i,
-  /\bwe'?ll proceed with\b/i,
-  /\bwe accept\b/i,
-  /\bconfirm \d+ cases?\b/i,
-  /\blet'?s go ahead\b/i,
-  /\bsending payment\b/i,
-  /\bplace the order\b/i,
-  /\bgo ahead and ship\b/i,
-  // Multilingual commitment phrases (FR / IT / ES / DE) — common in the fine-dining wine trade.
-  /\bnous acceptons\b/i,
-  /\bnous confirmons\b/i,
-  /\bbon de commande\b/i,
-  /\baccettiamo\b/i,
-  /\bconfermiamo l'ordine\b/i,
-  /\baceptamos\b/i,
-  /\bconfirmamos el pedido\b/i,
-  /\bwir akzeptieren\b/i,
-  /\bbestellung aufgeben\b/i,
 ];
 
 interface InboundContext {

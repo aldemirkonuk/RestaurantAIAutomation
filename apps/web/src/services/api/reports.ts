@@ -56,13 +56,50 @@ export interface ScheduledReport {
   createdAt?: string
 }
 
+/**
+ * Mirrors ReportResponseDto in apps/api-gateway/src/reports/dto/reports.dto.ts,
+ * which in turn mirrors the real `generated_reports` columns.
+ *
+ * OD-45: the previous browser-side shape had `format`, `file_url` and a `metadata`
+ * object holding title/description/period/sentTo/fileSize/tags/status. None of
+ * those columns exist on the table — every one of them read as undefined. The
+ * fields below are the actual ones; `summary`, `periodStart` and `periodEnd`
+ * replace the invented `metadata.description` and `metadata.period`.
+ */
 export interface GeneratedReport {
   id: string
+  restaurantId: string
   title: string
   reportType: string
-  format?: string
-  fileUrl?: string | null
+  status: string
+  pdfUrl?: string | null
+  excelUrl?: string | null
+  csvUrl?: string | null
+  summary?: string | null
+  periodStart?: string | null
+  periodEnd?: string | null
   createdAt?: string
+}
+
+export interface ReportListResponse {
+  reports: GeneratedReport[]
+  total: number
+}
+
+/**
+ * GET /reports — replaces a direct `supabase.from('generated_reports')` read.
+ *
+ * The table has RLS enabled and zero policies, so the anon-key client the browser
+ * uses got `[]` back with no error: the page looked empty rather than broken. The
+ * gateway holds the service-role key and scopes by the restaurant on the JWT.
+ */
+export async function listReports(): Promise<GeneratedReport[]> {
+  const { data } = await apiClient.get<ReportListResponse>('/reports')
+  return Array.isArray(data?.reports) ? data.reports : []
+}
+
+export async function deleteReport(id: string): Promise<void> {
+  await apiClient.delete(`/reports/${id}`)
 }
 
 export async function generateReport(payload: GenerateReportPayload): Promise<GeneratedReport> {
