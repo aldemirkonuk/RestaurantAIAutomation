@@ -256,9 +256,7 @@ describe("computeMatch", () => {
 
       expect(r.verdict).toBe("matched");
       expect(check(r, "physical_vs_ship").ok).toBe(false);
-      expect(check(r, "physical_vs_ship").detail).toBe(
-        "Slip says 10, 11 arrived",
-      );
+      expect(check(r, "physical_vs_ship").detail).toBe("Slip says 10, 11 arrived");
     });
 
     it("still catches a real transit loss on a delivery that carried free goods", () => {
@@ -267,9 +265,7 @@ describe("computeMatch", () => {
       const r = computeMatch({ ...deal, shippedQty: 11, acceptedQty: 10 });
 
       expect(check(r, "physical_vs_ship").ok).toBe(false);
-      expect(check(r, "physical_vs_ship").detail).toBe(
-        "Slip says 11, 10 arrived",
-      );
+      expect(check(r, "physical_vs_ship").detail).toBe("Slip says 11, 10 arrived");
       expect(r.creditDue).toBe(true);
     });
 
