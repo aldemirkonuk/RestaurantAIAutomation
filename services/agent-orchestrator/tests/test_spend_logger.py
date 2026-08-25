@@ -412,8 +412,8 @@ def test_usage_tokens_counts_thinking_as_output():
 
 
 def test_unpriced_model_books_null_cost_not_false_zero():
-    """An unpriced model must not book $0.00 as if the call were free — NF
-    records NULL plus context.cost_basis so the gap stays visible."""
+    """An unpriced model must not book $0.00 as if the call were free — BOTH
+    ledgers record NULL, and NF additionally records why."""
     client, rows = _capturing_supabase()
     p = _patched_settings(client)
     try:
@@ -433,9 +433,10 @@ def test_unpriced_model_books_null_cost_not_false_zero():
     nf = rows["neural_footprint_event"][0]
     assert nf["cost_usd"] is None
     assert nf["context"]["cost_basis"] == "unpriced_model"
-    # api_spend.cost_usd is NOT NULL in the schema, so it still takes the 0.0.
-    # That remaining false zero is filed as tech debt, not fixed here.
-    assert rows["api_spend"][0]["cost_usd"] == 0.0
+    # OD-61: api_spend.cost_usd used to be NOT NULL, so the PRIMARY ledger kept
+    # the false zero after NF had stopped booking one. The column is nullable as
+    # of 20260825120000_api_spend_cost_usd_nullable.sql and both agree now.
+    assert rows["api_spend"][0]["cost_usd"] is None
 
 
 def test_serper_flat_fee_is_never_nulled_as_unpriced():
@@ -566,8 +567,8 @@ def test_is_priced_model_knows_what_the_rate_table_covers():
 
 
 def test_unpriced_model_writes_null_nf_cost_not_a_false_zero():
-    """§2 sums cost_usd. An unpriced model must land NULL + a cost_basis reason,
-    while api_spend (cost_usd NOT NULL) still gets its 0.0 row."""
+    """§2 sums cost_usd. An unpriced model must land NULL + a cost_basis reason
+    in NF, and — since OD-61 made the column nullable — NULL in api_spend too."""
     client, rows = _capturing_supabase()
     p = _patched_settings(client)
     try:
@@ -594,7 +595,10 @@ def test_unpriced_model_writes_null_nf_cost_not_a_false_zero():
     assert nf["cost_usd"] is None
     assert nf["context"]["cost_basis"] == "unpriced_model"
     assert nf["input_tokens"] == 146  # tokens are still real, cost is not
-    assert rows["api_spend"][0]["cost_usd"] == 0.0
+    spend = rows["api_spend"][0]
+    assert spend["cost_usd"] is None
+    assert spend["input_tokens"] == 146  # …and the primary ledger keeps them too,
+    assert spend["output_tokens"] == 53  # so the row stays re-costable later
 
 
 def test_priced_model_keeps_its_cost_and_carries_no_cost_basis_flag():
@@ -643,3 +647,208 @@ def test_zero_token_zero_cost_call_is_not_flagged_unpriced():
     nf = rows["neural_footprint_event"][0]
     assert nf["cost_usd"] == 0.001
     assert "cost_basis" not in nf["context"]
+
+
+# ---------------------------------------------------------------------------
+# OD-61 — the two ledgers must agree about whether a cost is KNOWN
+# ---------------------------------------------------------------------------
+
+
+def test_both_ledgers_agree_on_cost_for_every_shape_of_call():
+    """
+    api_spend and neural_footprint_event are written from one determination, so
+    they cannot disagree about whether a call's cost is known.
+
+    The regression this pins is the ledgers DRIFTING: OD-61 existed because NF
+    was fixed to book NULL for an unpriced model while api_spend, being NOT
+    NULL, kept booking a false 0.0 — the primary ledger lying while the
+    secondary one told the truth. Asserting equality across every shape of call
+    catches a future fix applied to only one of them again.
+    """
+    from services.spend_logger import SpendLogger
+
+    cases = [
+        # (label, provider, model, in_tok, out_tok, cost, expected_ledger_cost)
+        (
+            "unpriced model, real tokens",
+            "google",
+            "gemini-9.9-unreleased",
+            100,
+            50,
+            0.0,
+            None,
+        ),
+        (
+            "priced model, real tokens",
+            "google",
+            "gemini-2.5-flash",
+            100,
+            50,
+            0.000155,
+            0.000155,
+        ),
+        (
+            "priced model, zero tokens",
+            "anthropic",
+            "claude-haiku-4-5-20251001",
+            0,
+            0,
+            0.0,
+            0.0,
+        ),
+        ("unpriced model, zero tokens", "openai", "gpt-9-imaginary", 0, 0, 0.0, 0.0),
+        ("flat-fee provider", "serper", "serper-search", 0, 0, 0.001, 0.001),
+    ]
+
+    for label, provider, model, in_tok, out_tok, cost, expected in cases:
+        client, rows = _capturing_supabase()
+        p = _patched_settings(client)
+        try:
+            SpendLogger().log(
+                provider=provider,
+                model=model,
+                input_tokens=in_tok,
+                output_tokens=out_tok,
+                cost_usd=cost,
+                agent="test_agent",
+            )
+        finally:
+            p.stop()
+
+        spend_cost = rows["api_spend"][0]["cost_usd"]
+        nf_cost = rows["neural_footprint_event"][0]["cost_usd"]
+        assert spend_cost == nf_cost, f"{label}: ledgers disagree"
+        if expected is None:
+            assert spend_cost is None, f"{label}: expected NULL, got {spend_cost}"
+        else:
+            assert spend_cost == pytest.approx(expected), label
+
+
+def test_zero_token_call_keeps_its_true_zero_rather_than_going_unknown():
+    """
+    A call that consumed no tokens costs zero at ANY rate, so 0.0 is a measured
+    fact, not a gap. Nulling it would invent an unknown and — because the sole
+    genuinely-free row in production is exactly this shape — would make the
+    ledger less accurate, not more.
+    """
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(
+            provider="anthropic",
+            model="claude-haiku-4-5-20251001",
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            agent="test_agent",
+        )
+    finally:
+        p.stop()
+
+    assert rows["api_spend"][0]["cost_usd"] == 0.0
+    assert rows["neural_footprint_event"][0]["cost_usd"] == 0.0
+    assert "cost_basis" not in rows["neural_footprint_event"][0]["context"]
+
+
+# ---------------------------------------------------------------------------
+# OD-62 — dated-source discipline for the rate table
+# ---------------------------------------------------------------------------
+
+
+def test_rate_rows_all_carry_a_dated_verified_source():
+    """
+    Every row in _RATES_PER_M must name WHEN its price was checked and AGAINST
+    WHAT.
+
+    This is the durable half of OD-62. The table has now been wrong twice the
+    same way — a superseded model's published price frozen in and silently
+    inherited by its successor (Gemini in ADR 0010, then Claude Haiku 3.5's
+    0.80/4.00 applied to the 4.5 model this repo actually calls). Both were
+    caught by a human reading the table months later. Two occurrences of one
+    failure mode is not coincidence, and the fix for it is not a third careful
+    read — it is making an undated rate impossible to ship.
+
+    A third recurrence now breaks the build here instead of being discovered by
+    inspection.
+    """
+    from datetime import date
+
+    from services.spend_logger import _RATES_PER_M, Rate
+
+    today = date.today()
+    placeholders = {"", "unknown", "todo", "tbd", "unverified", "n/a", "none"}
+
+    for model, rate in _RATES_PER_M.items():
+        assert isinstance(rate, Rate), f"{model}: rate is not a Rate (got {type(rate)})"
+
+        assert (
+            rate.verified.strip().lower() not in placeholders
+        ), f"{model}: verification date is a placeholder ({rate.verified!r})"
+        try:
+            checked = date.fromisoformat(rate.verified)
+        except ValueError:
+            raise AssertionError(
+                f"{model}: verified={rate.verified!r} is not an ISO YYYY-MM-DD date"
+            )
+        assert checked <= today, (
+            f"{model}: verified={rate.verified} is in the future — a date nobody "
+            f"could have checked on is worse than no date at all"
+        )
+
+        assert (
+            rate.source.strip().lower() not in placeholders
+        ), f"{model}: source is a placeholder ({rate.source!r})"
+        assert "." in rate.source, (
+            f"{model}: source={rate.source!r} does not look like a published page; "
+            f"it must be somewhere a reviewer can go and re-read the number"
+        )
+
+        assert (
+            rate.input_per_m >= 0 and rate.output_per_m >= 0
+        ), f"{model}: negative rate"
+
+
+def test_a_rate_cannot_be_constructed_without_its_provenance():
+    """
+    The dated source is a REQUIRED field, not a convention the above test polices
+    after the fact. An undated rate fails at import, before any test runs — which
+    is the only version of this discipline that cannot be forgotten.
+    """
+    from services.spend_logger import Rate
+
+    with pytest.raises(TypeError):
+        Rate(10.00, 30.00)  # no verified date, no source
+
+    ok = Rate(10.00, 30.00, "2026-08-25", "developers.openai.com/api/docs/pricing")
+    assert ok.input_per_m == 10.00
+    assert ok.output_per_m == 30.00
+    assert ok.note == ""  # only `note` may be omitted
+
+
+def test_gpt_4_turbo_rate_matches_openais_published_pricing():
+    """
+    OD-62's last unverified row. Checked 2026-08-25 against OpenAI's published
+    pricing (developers.openai.com/api/docs/pricing and the gpt-4-turbo model
+    page): gpt-4-turbo-2024-04-09 is "$10" input / "$30" output per 1M tokens.
+
+    The suspicion did not hold — unlike claude-haiku and the Gemini rows, this
+    number was right. It is pinned anyway because the row now has NO live call
+    site (auction_wine_service moved to gpt-4o), which makes it exactly the kind
+    of row that rots unnoticed while still pricing historical api_spend rows.
+    """
+    from services.spend_logger import _RATES_PER_M, estimate_llm_cost
+
+    rate = _RATES_PER_M["gpt-4-turbo"]
+    assert (rate.input_per_m, rate.output_per_m) == (10.00, 30.00)
+    assert rate.verified == "2026-08-25"
+    assert "openai" in rate.source
+
+    # The ids that call site actually used to pass still resolve to this row.
+    assert estimate_llm_cost("gpt-4-turbo-preview", 1_000_000, 0) == pytest.approx(
+        10.00
+    )
+    assert estimate_llm_cost("gpt-4-turbo-2024-04-09", 0, 1_000_000) == pytest.approx(
+        30.00
+    )

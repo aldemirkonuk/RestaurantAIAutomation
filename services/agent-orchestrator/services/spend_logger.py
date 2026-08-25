@@ -5,7 +5,7 @@ All API-calling services (Claude Vision, Haiku, Gemini, Serper, OpenAI) invoke
 SpendLogger.log() after each API call. Since P1 (ADR 0008) this is the SOLE
 dual-write entry point on the Python side: one call inserts
 
-  1. `api_spend`               — the primary cost ledger (unchanged shape), then
+  1. `api_spend`               — the primary cost ledger, then
   2. `neural_footprint_event`  — the NF production store (subject_type='agent'),
                                  row built by services/neural_footprint.py.
 
@@ -46,7 +46,7 @@ Usage:
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, NamedTuple, Optional
 
 from config.settings import get_settings
 from services.neural_footprint import (
@@ -59,19 +59,37 @@ from utils.logger import get_log_context
 logger = logging.getLogger(__name__)
 
 
+class Rate(NamedTuple):
+    """
+    One model's per-1M-token USD rates, carrying the dated source that proves them.
+
+    `verified` and `source` have NO defaults on purpose (OD-62). Twice now a rate
+    has been wrong the same way — a superseded model's published price frozen in
+    and silently inherited by its successor (Gemini in ADR 0010, then Claude Haiku
+    3.5's 0.80/4.00 applied to the 4.5 model this repo actually calls). Both were
+    found by inspection, months apart, because nothing in the table recorded when
+    or against what its numbers were last checked.
+
+    Making the provenance a required field means a rate added without it fails at
+    import, and test_rate_rows_all_carry_a_dated_verified_source() fails the build
+    if the date is malformed, in the future, or a placeholder. The defect being
+    fixed is the missing discipline, not the two individual numbers.
+    """
+
+    input_per_m: float
+    output_per_m: float
+    verified: str  # ISO YYYY-MM-DD the price was read off the published page
+    source: str  # the published page it was read from
+    note: str = ""  # scheduled change or caveat, if any
+
+
 # Per-1M-token USD rates for models this codebase actually calls.
 # These are ESTIMATES for spend visibility, not billing truth — rows carry real
 # token counts so cost can always be recomputed.
 #
-# Gemini rates VERIFIED 2026-08-24 against ai.google.dev/gemini-api/docs/pricing
-# (paid tier, Standard — not Batch/Flex). Output rates are the "Output price
-# (including thinking tokens)" figure, because Google bills reasoning tokens at
-# the output rate; see usage_tokens() below for why that matters.
-#
-# CAUTION — gemini-3.7-flash and gemini-3.6-flash ONLY are promotional through
-# 2026-12-31 and DOUBLE on 2027-01-01 (0.75/3.75 → 1.50/7.50). Revisit those two
-# rows before that date or their spend reads 2x low. Every other row here is flat
-# with no published end date, including the gemini-3.5-flash-lite default.
+# Gemini output rates are the "Output price (including thinking tokens)" figure,
+# because Google bills reasoning tokens at the output rate; see usage_tokens()
+# below for why that matters. Paid tier, Standard — not Batch/Flex.
 #
 # These are text rates. The table is flat per model and does NOT encode Google's
 # modality and context tiers: audio input costs more (2.5-flash 1.00 vs 0.30;
@@ -79,48 +97,72 @@ logger = logging.getLogger(__name__)
 # prompt (2.50/15.00 vs 1.25/10.00). No current call site hits those tiers — all
 # are text well under 200k — so the flat rate is exact today. Add the tiering if
 # audio or long-context calls ever ship.
-#
-# Anthropic rates VERIFIED 2026-08-24 against
-# platform.claude.com/docs/en/about-claude/pricing.md, matched to the model ids
-# this repo actually passes: claude-haiku-4-5-20251001 and claude-sonnet-4-20250514.
-#
-# NOT VERIFIED: gpt-4-turbo. Only one live call site and no source was checked
-# for it in this pass; treat it as suspect (OD-62).
-_RATES_PER_M: Dict[str, tuple] = {
+_GEMINI_PRICING = "ai.google.dev/gemini-api/docs/pricing"
+_ANTHROPIC_PRICING = "platform.claude.com/docs/en/about-claude/pricing.md"
+_OPENAI_PRICING = "developers.openai.com/api/docs/pricing"
+
+_RATES_PER_M: Dict[str, Rate] = {
     # claude-haiku was (0.80, 4.00) — Claude Haiku *3.5*'s retired rate, applied
     # to the 4.5 model this repo actually calls. Same failure as the Gemini
     # retirement: a superseded model's price frozen in and inherited by its
     # successor. Under-recorded Haiku spend 20% at 11 call sites.
-    "claude-haiku": (1.00, 5.00),
+    "claude-haiku": Rate(1.00, 5.00, "2026-08-24", _ANTHROPIC_PRICING),
     # Sonnet 5 carries an introductory 2.00/10.00 that ends 2026-08-31, a week
     # after this table was written. The standard 3.00/15.00 is encoded instead:
     # it slightly over-records for that week and is exact from 1 September, which
     # is the safer direction and needs no diarised follow-up.
-    "claude-sonnet-5": (3.00, 15.00),
-    "claude-sonnet": (3.00, 15.00),
-    "gpt-4-turbo": (10.00, 30.00),  # UNVERIFIED
+    "claude-sonnet-5": Rate(
+        3.00,
+        15.00,
+        "2026-08-24",
+        _ANTHROPIC_PRICING,
+        "standard rate; intro 2.00/10.00 runs to 2026-08-31 and is not encoded",
+    ),
+    "claude-sonnet": Rate(3.00, 15.00, "2026-08-24", _ANTHROPIC_PRICING),
+    # OD-62's last open row, and the suspicion did NOT hold: 10.00/30.00 is the
+    # published rate for gpt-4-turbo-2024-04-09 ("Input: $10", "Output: $30"),
+    # confirmed on both the pricing table and the model page. Two facts changed
+    # around it, though. The "one live call site" OD-62 cites is gone — the only
+    # OpenAI call site (auction_wine_service.py) now names gpt-4o, so this is a
+    # historical row like the retired Gemini ones below, kept so old api_spend
+    # rows stay re-costable. And the prefix still matches the gpt-4-turbo-preview
+    # ids that call site used to pass, which carry the same 10.00/30.00.
+    "gpt-4-turbo": Rate(
+        10.00,
+        30.00,
+        "2026-08-25",
+        _OPENAI_PRICING,
+        "no live call site; kept to re-cost historical rows (OD-62)",
+    ),
     # `gpt-4o` is deliberately ABSENT. auction_wine_service's OpenAI fallback now
     # names it, but OPENAI_API_KEY is empty, so the path cannot fire and its
     # pricing could not be checked against the API the way the Gemini names were.
-    # Absent means is_priced_model() is False, so NF books cost NULL with
+    # Absent means is_priced_model() is False, so both ledgers book cost NULL with
     # cost_basis='unpriced_model' — an unknown cost, not an invented one. Add the
     # rate when a key exists and the number can be verified.
-    # --- Gemini, verified 2026-08-24 ---
-    "gemini-3.7-flash": (0.75, 3.75),  # 1.50/7.50 from 2027-01-01
-    "gemini-3.6-flash": (0.75, 3.75),  # 1.50/7.50 from 2027-01-01
-    "gemini-3.5-flash-lite": (0.30, 2.50),
-    "gemini-3.5-flash": (1.50, 9.00),
-    "gemini-3.1-flash-lite": (0.25, 1.50),
-    "gemini-2.5-flash-lite": (0.10, 0.40),
-    "gemini-2.5-flash": (0.30, 2.50),
-    "gemini-2.5-pro": (1.25, 10.00),
+    "gemini-3.7-flash": Rate(
+        0.75, 3.75, "2026-08-24", _GEMINI_PRICING, "DOUBLES to 1.50/7.50 2027-01-01"
+    ),
+    "gemini-3.6-flash": Rate(
+        0.75, 3.75, "2026-08-24", _GEMINI_PRICING, "DOUBLES to 1.50/7.50 2027-01-01"
+    ),
+    "gemini-3.5-flash-lite": Rate(0.30, 2.50, "2026-08-24", _GEMINI_PRICING),
+    "gemini-3.5-flash": Rate(1.50, 9.00, "2026-08-24", _GEMINI_PRICING),
+    "gemini-3.1-flash-lite": Rate(0.25, 1.50, "2026-08-24", _GEMINI_PRICING),
+    "gemini-2.5-flash-lite": Rate(0.10, 0.40, "2026-08-24", _GEMINI_PRICING),
+    "gemini-2.5-flash": Rate(0.30, 2.50, "2026-08-24", _GEMINI_PRICING),
+    "gemini-2.5-pro": Rate(1.25, 10.00, "2026-08-24", _GEMINI_PRICING),
     # RETIRED MODELS, KEPT ON PURPOSE. No call site names these any more
     # (2026-08-24), but historical api_spend rows do, and this table is how such
     # a row is ever re-costed. Deleting a rate does not delete the spend it
     # priced — it just makes the past unreadable. _rate_for()'s longest-match
     # ordering keeps them from shadowing any live id.
-    "gemini-2.0-flash": (0.075, 0.30),
-    "gemini-pro": (0.50, 1.50),
+    "gemini-2.0-flash": Rate(
+        0.075, 0.30, "2026-08-24", _GEMINI_PRICING, "retired by Google; historical"
+    ),
+    "gemini-pro": Rate(
+        0.50, 1.50, "2026-08-24", _GEMINI_PRICING, "retired by Google; historical"
+    ),
 }
 
 
@@ -130,7 +172,7 @@ _RATES_PER_M: Dict[str, tuple] = {
 _TOKEN_PRICED_PROVIDERS = frozenset({"google", "anthropic", "openai"})
 
 
-def _rate_for(model: str) -> Optional[tuple]:
+def _rate_for(model: str) -> Optional[Rate]:
     """
     Longest-match-wins rate lookup.
 
@@ -168,15 +210,17 @@ def estimate_llm_cost(model: str, input_tokens: int, output_tokens: int) -> floa
     """
     Best-effort USD cost estimate from token counts. 0.0 when model unknown.
 
-    A 0.0 return is ambiguous by design (the api_spend.cost_usd column is NOT
-    NULL, so it has no way to say "unknown"). Pair it with is_priced_model()
-    whenever the distinction matters — SpendLogger.log() does.
+    A 0.0 return is still ambiguous at THIS boundary — a float cannot say
+    "unknown" — so callers must pair it with is_priced_model() whenever the
+    distinction matters. SpendLogger.log() does, and since OD-61 it turns that
+    pair into a real NULL in both ledgers rather than only in NF.
     """
     rate = _rate_for(model)
     if rate is None:
         return 0.0
-    rate_in, rate_out = rate
-    return (input_tokens * rate_in / 1_000_000) + (output_tokens * rate_out / 1_000_000)
+    return (input_tokens * rate.input_per_m / 1_000_000) + (
+        output_tokens * rate.output_per_m / 1_000_000
+    )
 
 
 def usage_tokens(response: Any) -> tuple:
@@ -270,6 +314,41 @@ class SpendLogger:
             subject_id = agent or ambient_agent or agent_fallback or "unknown"
             corr = correlation_id or ambient_correlation or None
 
+            # An unpriced model has no rate in _RATES_PER_M, so estimate_llm_cost
+            # returned 0.0 meaning "unknown" — not "free". Booking that 0.0 makes
+            # every spend aggregate silently under-report, and worse, makes a
+            # measurement gap indistinguishable from a genuinely free call.
+            #
+            # This used to be computed inside the NF block below and applied to NF
+            # only, because api_spend.cost_usd was NOT NULL and had no way to say
+            # "unknown" — so the PRIMARY ledger kept the defect that the secondary
+            # one had already fixed (OD-61). The column is nullable as of
+            # 20260825_api_spend_cost_usd_nullable.sql, so the determination is
+            # hoisted here and both ledgers now record the same honest NULL.
+            #
+            # Three conditions, each closing a different way to be wrong:
+            #
+            #   provider gate  only token-priced providers get their cost FROM
+            #                  this table. Serper bills a flat configured
+            #                  per-query rate (Settings.serper_cost_per_query)
+            #                  that is exactly known and has no business being
+            #                  judged against a per-token table — nulling it
+            #                  would delete real spend and mislabel it unknown,
+            #                  which is the very defect this guard prevents.
+            #   token gate     a call that consumed no tokens was never priced
+            #                  from this table in the first place. Its 0.0 is
+            #                  arithmetically true at any rate, so it stays 0.0.
+            #   cost gate      a caller that supplied a real non-zero cost knows
+            #                  something the table does not; that is a measured
+            #                  figure, not an unknown, so it survives.
+            unpriced = (
+                provider in _TOKEN_PRICED_PROVIDERS
+                and bool(input_tokens or output_tokens)
+                and not cost_usd
+                and not is_priced_model(model)
+            )
+            ledger_cost: Optional[float] = None if unpriced else cost_usd
+
             # 1) api_spend — primary ledger, written first, own try/except.
             try:
                 supabase.table("api_spend").insert(
@@ -278,7 +357,7 @@ class SpendLogger:
                         "model": model,
                         "input_tokens": input_tokens,
                         "output_tokens": output_tokens,
-                        "cost_usd": cost_usd,
+                        "cost_usd": ledger_cost,
                         "restaurant_id": restaurant_id,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
@@ -304,36 +383,11 @@ class SpendLogger:
                 if context:
                     nf_context.update(context)
 
-                # An unpriced model has no rate in _RATES_PER_M, so estimate_llm_cost
-                # returned 0.0 meaning "unknown" — not "free". The §2 headline query
-                # sums cost_usd, so booking a false 0.0 makes the readout silently
-                # under-report. NF's cost_usd is nullable, so record the honest NULL
-                # and say why. (api_spend.cost_usd is NOT NULL and still takes the
-                # 0.0; correcting that needs a migration and is filed as tech debt,
-                # not silently fixed here.)
-                #
-                # Three conditions, each closing a different way to be wrong:
-                #
-                #   provider gate  only token-priced providers get their cost FROM
-                #                  this table. Serper bills a flat configured
-                #                  per-query rate (Settings.serper_cost_per_query)
-                #                  that is exactly known and has no business being
-                #                  judged against a per-token table — nulling it
-                #                  would delete real spend and mislabel it unknown,
-                #                  which is the very defect this guard prevents.
-                #   token gate     a call that consumed no tokens was never priced
-                #                  from this table in the first place.
-                #   cost gate      a caller that supplied a real non-zero cost knows
-                #                  something the table does not; that is a measured
-                #                  figure, not an unknown, so it survives.
-                nf_cost = cost_usd
-                if (
-                    provider in _TOKEN_PRICED_PROVIDERS
-                    and (input_tokens or output_tokens)
-                    and not cost_usd
-                    and not is_priced_model(model)
-                ):
-                    nf_cost = None
+                # Same determination as api_spend above — one `unpriced` flag now
+                # drives both ledgers, so they cannot disagree about whether a
+                # call's cost is known. NF additionally records WHY, which
+                # api_spend has no column for; that asymmetry is deliberate.
+                if unpriced:
                     nf_context["cost_basis"] = "unpriced_model"
 
                 row = build_agent_event(
@@ -341,7 +395,7 @@ class SpendLogger:
                     stimulus=stimulus or task_type or f"{provider}:{model}",
                     choice=choice or "completion",
                     outcome=outcome,
-                    cost_usd=nf_cost,
+                    cost_usd=ledger_cost,
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     duration_ms=duration_ms,
