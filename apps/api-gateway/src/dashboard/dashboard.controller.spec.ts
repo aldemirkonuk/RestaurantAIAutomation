@@ -9,6 +9,7 @@ import {
   SalesChartPointDto,
   InventoryBreakdownDto,
 } from "./dto/dashboard-summary.dto";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 
 describe("DashboardController", () => {
   let controller: DashboardController;
@@ -31,7 +32,13 @@ describe("DashboardController", () => {
           useValue: mockDashboardService,
         },
       ],
-    }).compile();
+    })
+      // OD-20 guarded this controller at class level. A unit spec should not
+      // have to construct the auth graph to test a handler — stub the guard
+      // and let the boot guard prove the real one resolves.
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<DashboardController>(DashboardController);
     dashboardService = module.get<DashboardService>(DashboardService);
