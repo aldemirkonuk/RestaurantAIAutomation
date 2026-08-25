@@ -214,40 +214,12 @@ export async function getInventory(restaurantId: string, options?: {
   return data as InventoryItem[]
 }
 
-export async function updateInventoryStock(
-  inventoryId: string, 
-  updates: { live_stock?: number; shadow_stock?: number }
-) {
-  const { data, error } = await supabase
-    .from('restaurant_inventory')
-    .update({
-      ...updates,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('inventory_id', inventoryId)
-    .select()
-    .single()
-  
-  if (error) throw error
-  return data as InventoryItem
-}
-
-export async function reconcileShadowStock(inventoryId: string, actualCount: number) {
-  const { data, error } = await supabase
-    .from('restaurant_inventory')
-    .update({
-      live_stock: actualCount,
-      shadow_stock: 0,
-      last_counted_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('inventory_id', inventoryId)
-    .select()
-    .single()
-  
-  if (error) throw error
-  return data as InventoryItem
-}
+// updateInventoryStock and reconcileShadowStock were removed (SimPOS testbed
+// plan, decision A9): both wrote `inventory_id`/`live_stock`, neither of which
+// exists on restaurant_inventory (the real columns are `id` and `stock_live`),
+// and both had zero callers. Stock is never written directly — it is a
+// projection of inventory_lots, mutated only through the apply_stock_movement
+// RPC. Use POST /inventory/:restaurantId/:itemId or the counting endpoint.
 
 // ============ Orders Functions ============
 

@@ -24,6 +24,7 @@ import {
   Save,
   Scan,
 } from 'lucide-react'
+import { SCAN_ACCEPT } from '../../lib/uploadAccept'
 
 interface WineDetectionResult {
   confidence: number
@@ -192,7 +193,7 @@ export function AddWineModal({ isOpen, onClose, onSave, zIndex = 50 }: AddWineMo
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/*"
+                    accept={SCAN_ACCEPT}
                     onChange={handleFileSelect}
                     className="hidden"
                   />

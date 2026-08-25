@@ -1,0 +1,153 @@
+name: Schema parity
+
+# A fresh database built from migrations must equal the remote one.
+#
+# This exists because of what was measured on 2026-08-05: production had 27
+# tables, 403 columns and 13 functions that no migration created, because DDL had
+# been applied by hand over months. restaurant_inventory alone carried 37 such
+# columns, and the 13 functions were business logic with no source in the repo —
+# calculate_sales_velocity, resolve_sku_to_inventory — which would have vanished
+# silently had the database ever been rebuilt. A fresh `supabase db reset` could
+# not complete at all.
+#
+# The baseline migration cleaned that up once. This job is what keeps it clean:
+# it rebuilds from migrations and diffs against remote, so the next hand-applied
+# ALTER fails a pull request instead of going unnoticed for a year.
+#
+# Read-only against remote. It never writes to either database.
+#
+# Connectivity (2026-08-24): `db.<ref>.supabase.co` publishes only an AAAA record
+# and GitHub-hosted runners have no IPv6 route, so every job here failed with
+# "Network is unreachable" — a connectivity failure that looked like drift.
+# Jobs now prefer SUPABASE_POOLER_CONNECTION_STRING (Supavisor, IPv4-reachable)
+# and run scripts/check_db_reachable.sh first, which names the fix instead of
+# emitting a raw psql traceback. Unreachable still fails: a vacuously green
+# parity check is worse than no check.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  # Drift is usually introduced outside a PR — someone fixing production live —
+  # so a daily run is what actually catches it.
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  parity:
+    name: Fresh database equals remote
+    runs-on: ubuntu-latest
+    # Without the connection secret this job can only ever be vacuously green,
+    # and a vacuously green check is worse than no check.
+    if: >
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local stack
+        run: supabase start
+
+      - name: Rebuild local database from migrations only
+        # If this step fails, migrations cannot build a database — exactly the
+        # condition that made local development impossible before the baseline.
+        run: supabase db reset --no-seed
+
+      - name: Compare against remote
+        env:
+          # Pooler first: db.<ref>.supabase.co is IPv6-only and runners are IPv4-only.
+          SUPABASE_DIRECT_CONNECTION_STRING: ${{ secrets.SUPABASE_POOLER_URL || secrets.SUPABASE_POOLER_CONNECTION_STRING || secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
+        run: |
+          ./scripts/check_db_reachable.sh
+          ./scripts/check_schema_parity.sh
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::If the log says 'Network is unreachable', this is CONNECTIVITY, not drift —"
+          echo "::notice::see scripts/check_db_reachable.sh. Otherwise:"
+          echo "::notice::Local and remote schemas disagree."
+          echo "::notice::Columns/functions only in REMOTE were applied by hand — capture them"
+          echo "::notice::as a migration, then: supabase migration repair --status applied <version>"
+          echo "::notice::Columns/functions only in LOCAL are unpushed — run: supabase db push"
+          echo "::notice::Background: .planning/SCHEMA_DRIFT_INVENTORY.txt"
+
+  # Premortem audit finding (2026-08-18, decision #1): beverage_identity_key
+  # (SQL, runs in production) and residual_key (Python, what
+  # eval_merge_policies.py's 0-false-merge measurement actually validates)
+  # are two independent implementations of one algorithm, kept in lockstep
+  # by discipline and a comment, not by anything automated — ci.yml's
+  # merge-identity gate only ever tested the Python side. This job is that
+  # missing enforcement, reusing the one secret in this repo that already
+  # grants CI read-only remote DB access, same posture schema-parity itself
+  # needs — no new secret, no new trust boundary.
+  beverage-identity-parity:
+    name: Beverage identity key — SQL matches Python
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install psycopg2
+        run: pip install psycopg2-binary
+
+      - name: Compare SQL beverage_identity_key() against the validated Python reference
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_POOLER_URL || secrets.SUPABASE_POOLER_CONNECTION_STRING || secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
+        run: |
+          ./scripts/check_db_reachable.sh
+          python3 scripts/check_beverage_identity_parity.py
+
+  # Register A14. Guests are the one entity where a false merge is a
+  # DISCLOSURE rather than a data-quality error, so the pass condition is zero
+  # and there is no threshold policy at all. The negative labels are free, the
+  # same way §3.1's 732,874 same-menu pairs are: two guests linked to one
+  # check are different people.
+  #
+  # This reports 0 pairs until guest capture starts, and that is the point.
+  # Register A6 records a merge policy self-graded against probes its own
+  # author imagined; a gate written after the data is a gate written by
+  # someone who already knows what the data looks like.
+  guest-merge-gate:
+    name: Guest merge policy — zero false merges
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install psycopg2
+        run: pip install psycopg2-binary
+
+      - name: No known-different guests may be merged
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_POOLER_URL || secrets.SUPABASE_POOLER_CONNECTION_STRING || secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
+        run: |
+          ./scripts/check_db_reachable.sh
+          python3 scripts/eval_guest_merge_policies.py
+
+      - name: Guest identity guards
+        run: |
+          ./scripts/check_no_guest_name_matching.sh
+          ./scripts/check_no_raw_guest_channels.sh

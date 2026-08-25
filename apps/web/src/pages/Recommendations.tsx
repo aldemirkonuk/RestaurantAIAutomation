@@ -695,7 +695,7 @@ export default function Recommendations() {
 
         {/* Bulk bar (NEW-293) */}
         {tab === "active" && selected.size > 0 && (
-          <div className="sticky top-2 z-10 flex items-center justify-between gap-3 mb-4 px-4 py-2.5 bg-gray-900 text-white rounded-xl shadow-lg">
+          <div className="sticky top-2 z-10 flex items-center justify-between gap-3 mb-4 px-4 py-2.5 bg-wine-900 text-white rounded-xl shadow-lg">
             <span className="text-sm font-medium">{selected.size} selected</span>
             <div className="flex items-center gap-2">
               <button

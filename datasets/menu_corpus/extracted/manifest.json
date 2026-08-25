@@ -1,0 +1,8 @@
+{
+ "menus": 26,
+ "wines": 4822,
+ "api_calls": 56,
+ "input_tokens": 722965,
+ "output_tokens": 375268,
+ "cost_usd": 2.5993
+}

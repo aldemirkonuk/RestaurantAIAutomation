@@ -85,6 +85,72 @@ A **UX path** here = a concrete user interaction or journey expressed as **trigg
 | `Flow` | Multi-step journey across screens |
 | `Scan` | Camera / file / QR / OCR capture |
 
+> ## ⚠️ AUDITED 2026-07-31 — 13 OF 20 CHECKED ENTRIES WERE STALE
+>
+> **v3.0 task 44.15.** 20 of the 24 flagged entries (15 ❌, 9 ⚠️) were re-checked
+> against current code. **Thirteen describe shipped features as broken or missing** —
+> nearly two thirds of everything checked.
+> Working this document as a backlog without re-checking each line would rebuild
+> things that already exist.
+>
+> ### Stale — the feature shipped
+>
+> | Line | Claim | Evidence it is wrong |
+> |---|---|---|
+> | 173 | Recommendations "entirely read-only — no act/dismiss/snooze" | `recommendation-actions.service.ts` + migration `20260720120000` |
+> | 152 | User menu "Profile / Settings / Help are dead; only Log Out works" | `Header.tsx:421/429/437` navigate to each; `Header.userMenu.test.tsx` has 3 passing tests |
+> | 151 | `ActiveConversationsPanel` "rendered but has no trigger (unreachable)" | `Orders.tsx:1512` sets its open state |
+> | 149 | "⌘K / ESC hints are decorative — no keyboard listener exists" | `CommandProvider.tsx:123` registers a capture-phase `keydown`; `:108` checks meta/ctrl |
+> | 148 | Global search "input is not wired" | `CommandPalette.tsx:69` — `const [query, setQuery] = useState("")` |
+> | 249 | `ContributorTable` "⋮ menu + revoke are unwired" | `StudioCertify.tsx:32` defines `handleRevoke`, passed at `:82` |
+> | 122 | Low-stock modal "Reorder buttons are dead" | `Dashboard.tsx:142` comment reads "had no handler at all" — past tense |
+> | 282 | Settings "Save / toggles are simulated / non-persistent" | `Settings.tsx:850` — `await settingsApi.updateFeatureFlags(updates)` |
+> | 236 | `ReportScheduler` "Save/Generate only `console.log`" | `Communications.tsx:277` — `await scheduleReport({...})`; zero `console.log` in the component |
+> | 268 | "Mark as unread is coming soon" | `Notifications.tsx:405` — "NEW-474: mark back to unread (**was** a disabled 'coming soon' button)" |
+> | 158 | "Add to Calendar quick action → `alert()` stub" | zero `alert(` calls remain in `Dashboard.tsx` |
+>
+> ### Partly stale — one half shipped, one half real
+>
+> | Line | Shipped | Was still true |
+> |---|---|---|
+> | 253 | OAuth / Google One Tap | "Remember me" unbound and `/forgot-password` routing nowhere — **both since removed, `f94ba88`** |
+> | 187 | Promotions `onDismiss` (`Promotions.tsx:557`) | search / sort / pagination not re-checked |
+>
+> ### Appears to still hold — no handler found, but absence is not proof
+>
+> L118 custom quick actions never rendered · L121 cannot edit/delete dashboard
+> dates · L168 Sommelier per-message Copy/Regenerate · L181 providers notes
+> display-only, no multi-select · L202 calendar "Edit" no-op
+>
+> ### Not re-checked
+>
+> ❌ L136, L162 · ⚠️ L252. Plus L102 and L219, where the claimed controls could not
+> be located at all — they may have been removed, renamed or moved. **Unverified,
+> not confirmed.**
+>
+> ---
+>
+> **A third failure mode, beyond staleness: the subject moved.** L136 describes an
+> inventory page with no sorting or selection. That is true of `/inventory-legacy`
+> — but `/inventory` now serves `InventoryCommandPage`, which has both. The entry
+> was never re-pointed when the route changed, so it is simultaneously accurate
+> about a page nobody visits and wrong about the one they do. **The catalogue
+> contains no scoping note naming which inventory page it means.** Check the route,
+> not just the claim.
+>
+> **The structural problem outlives the individual lines.** This catalogue carries
+> no per-entry date, so nothing distinguishes "checked yesterday" from "checked in
+> April" and every line reads as current. That is why it was cited as a live
+> 16-item backlog by both the v2.0 audit and the v3.0 debt register — and why more
+> than half of what was checked turned out to be already done. **Record a verified
+> date beside each entry when you re-check it.**
+
+**Every ⚠️/❌/🚫 entry carries a dated verdict** in backticks at the end of the
+line: `[✅ STALE date — evidence]`, `[◐ PARTLY STALE date]`, `[⏳ appears to hold /
+unverified date]`, `[⏳ could not locate date]`. **Add one whenever you check an
+entry.** Without a date a snapshot reads as current forever — which is how nearly
+two thirds of this document came to describe features that already shipped.
+
 **Status tags used in Part 1:** ✅ works · ⚠️ partial / mocked · ❌ dead button (rendered, no handler) · 🚫 not shipped (built but unrouted).
 
 ---
@@ -99,27 +165,27 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 - ✅ Collapse / expand the rail (chevron); collapsed state shows hover tooltips.
 - ✅ Open the "Get started" onboarding checklist popover (rocket icon) with completion counter; dismiss it ("Don't show again").
 - ✅ Log out (bottom button).
-- ❌ User profile card at the bottom looks clickable but has no handler.
+- ❌ User profile card at the bottom looks clickable but has no handler.  `[⏳ could not locate 2026-07-31]`
 
 ## 2. Global shell — Header (`components/layout/Header.tsx`)
 
 - ✅ Branch/location switcher (only when >1 restaurant): open dropdown, switch active branch (re-issues JWT), "Add location" / "Manage Locations" → `/settings`.
-- ⚠️ Global search: opens a modal, but the input is not wired and the 4 "Quick Actions" buttons have no handlers.
-- ⚠️ `⌘K` / `ESC` hints are decorative — no keyboard listener exists in the shell.
+- ⚠️ Global search: opens a modal, but the input is not wired and the 4 "Quick Actions" buttons have no handlers.  `[✅ STALE 2026-07-31 — CommandPalette.tsx:69]`
+- ⚠️ `⌘K` / `ESC` hints are decorative — no keyboard listener exists in the shell.  `[✅ STALE 2026-07-31 — CommandProvider.tsx:123]`
 - ✅ Theme toggle (light/dark).
 - ✅ Notifications bell: unread badge, open dropdown, mark-all-read, click a notification → mark read + go to `/notifications`, "View all".
-- ⚠️ User menu: opens; **Profile / Settings / Help & Support items are dead**; only Log Out works.
+- ⚠️ User menu: opens; **Profile / Settings / Help & Support items are dead**; only Log Out works.  `[✅ STALE 2026-07-31 — Header.tsx:421/429/437 + 3 tests]`
 
 ## 3. Dashboard (`pages/Dashboard.tsx`, route `/`)
 
 - ✅ Click any of the 4 KPI cards → detail modal (revenue / inventory / orders / low stock).
 - ✅ Quick Actions: New Order, Add Wine, Stock Check, Reports (nav links).
-- ⚠️ "Add to Calendar" quick action → `alert()` stub.
-- ✅ `⌘N` opens Create Quick Action modal; `Esc` closes it. ❌ Created custom actions are never rendered anywhere.
+- ⚠️ "Add to Calendar" quick action → `alert()` stub.  `[✅ STALE 2026-07-31 — no alert() in Dashboard.tsx]`
+- ✅ `⌘N` opens Create Quick Action modal; `Esc` closes it. ❌ Created custom actions are never rendered anywhere.  `[⏳ unverified 2026-07-31]`
 - ✅ Sales calendar: filter by type, search events, prev/next month, "Full Calendar" link, subscribe/copy iCal, click a day with data → Daily Sales Report modal, hover event dots for titles.
 - ✅ Today's Schedule / This Week lists (display); "Add Event" → `/calendar?openModal=true`.
-- ✅ Important Dates: "Add Date" → `AddImportantDateModal`. ❌ Cannot edit/delete dates from dashboard.
-- ✅ Recent Orders "View all"; Low Stock "View all inventory"; Top Performing Wines "Full report". ❌ Low-stock modal "Reorder" buttons are dead; Top Wines is permanently empty.
+- ✅ Important Dates: "Add Date" → `AddImportantDateModal`. ❌ Cannot edit/delete dates from dashboard.  `[⏳ appears to hold 2026-07-31]`
+- ✅ Recent Orders "View all"; Low Stock "View all inventory"; Top Performing Wines "Full report". ❌ Low-stock modal "Reorder" buttons are dead; Top Wines is permanently empty.  `[✅ STALE 2026-07-31 — Dashboard.tsx:142]`
 - ✅ One-Tap Action Center (embedded): expand/collapse rows, approve/reject, batch mode with checkboxes + "Approve Selected", smart suggestions, per-type quick corrections (+6 bottles, +1 case), Gmail composer; `⌘K`/`⌘B`/`⌘A`/`⌘/` shortcuts.
 
 ## 4. Inventory — Command page (`pages/inventory/command/InventoryCommandPage.tsx`, route `/inventory`)
@@ -133,7 +199,7 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 - ✅ Row expansion actions: reconcile shadow→live, "Draft PO" → `/orders`, manual adjust (delta + reason + apply), transfer stock between locations, "View ledger".
 - ✅ Cellar Map: select a zone, "Open in table" (applies location filter), "Manage locations".
 - ✅ Receiving Workspace: three-way match (ordered/invoiced/received), price override + reason, rejected qty + reason, unlisted extras, notes, dynamic submit.
-- ❌ No multi-select, no bulk actions, no column-header sorting, no keyboard nav, no right-click menu, no KPI drill-through. Location filter only exposes first 4 locations.
+- ❌ No multi-select, no bulk actions, no column-header sorting, no keyboard nav, no right-click menu, no KPI drill-through. Location filter only exposes first 4 locations.  `[✅ STALE 2026-07-31 — DESCRIBES THE WRONG PAGE: /inventory now serves InventoryCommandPage, which has column sorting (:627 SORTABLE_COL/applySort), selection (:607), and keydown handling. This entry matches /inventory-legacy, which nothing links to.]`
 - Legacy `pages/Inventory.tsx` still exists with checkboxes + a bulk bar whose buttons have **no handlers**, per-row Pour/Active toggle/Edit/Reconcile/Remove, sortable columns; QR generator is a disabled "coming soon".
 
 ## 5. Orders (`pages/Orders.tsx`, route `/orders`)
@@ -148,7 +214,7 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 - ✅ Per-order: status badge → comms thread drawer; "AI Draft Ready" pill; Approve (opens comms), Mark Ordered, Mark Delivered.
 - ✅ Recurring rows: Pause/Resume, Zap (order now), Delete.
 - ✅ Create Order modal, Wine Config modal (unit/qty/presets/price mode/provider multi-select/notes), Order Approval modal (multi-provider pagination), Draft Email Approval panel, Comms Thread drawer, Deal Approval modal.
-- ❌ `ActiveConversationsPanel` is rendered but has no trigger (unreachable). Heavy `alert()`/`confirm()` usage. No right-click, no drag.
+- ❌ `ActiveConversationsPanel` is rendered but has no trigger (unreachable). Heavy `alert()`/`confirm()` usage. No right-click, no drag.  `[✅ STALE 2026-07-31 — Orders.tsx:1512]`
 
 ## 6. Wine Library (`pages/WineLibrary.tsx`, route `/wines`)
 
@@ -159,18 +225,18 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 - ✅ Row/card click → Wine Detail modal; Add to Inventory; Reorder (rich modal: qty steppers, presets, price mode, provider multi-select + search + select-all, notes, "save for recurring" + frequency); Remove from library (`confirm`).
 - ✅ Grid-only favorite star toggle. Pagination (24 grid / 50 list).
 - ✅ Add Wine → selection modal → single-label scan (`AddWineModal`, mocked detection) or Menu Scanner.
-- ❌ Grid/table bulk multi-select is stubbed but has no UI. Single "Add Wine" and menu-scan batch-add don't persist. Reorder does a full-page reload to `/orders`. Favorite exists in grid but not list.
+- ❌ Grid/table bulk multi-select is stubbed but has no UI. Single "Add Wine" and menu-scan batch-add don't persist. Reorder does a full-page reload to `/orders`. Favorite exists in grid but not list.  `[⏳ unverified 2026-07-31]`
 
 ## 7. Sommelier AI (`pages/SommelierAI.tsx`, route `/sommelier`)
 
 - ✅ New chat; load a past conversation from sidebar; collapse sidebar.
 - ✅ 4 suggested-prompt cards fill the input; type + send (Enter to send, Shift+Enter newline); typing indicator.
-- ❌ Model selector dropdown is decorative. Per-message Copy / ThumbsUp / ThumbsDown / Regenerate are dead. No rename/delete conversation, no stop-generation, no streaming, no attachments.
+- ❌ Model selector dropdown is decorative. Per-message Copy / ThumbsUp / ThumbsDown / Regenerate are dead. No rename/delete conversation, no stop-generation, no streaming, no attachments.  `[⏳ appears to hold 2026-07-31]`
 
 ## 8. Recommendations (`pages/Recommendations.tsx`, route `/recommendations`)
 
 - ✅ "Recompute" refetches; loading/error/empty states; read-only recommendation cards (urgency, category, observation, action, rationale).
-- ❌ Cards are entirely read-only — no act/dismiss/snooze/deep-link, no filter by urgency/category.
+- ❌ Cards are entirely read-only — no act/dismiss/snooze/deep-link, no filter by urgency/category.  `[✅ STALE 2026-07-31 — recommendation-actions.service.ts]`
 
 ## 9. Providers (`pages/Providers.tsx`, route `/providers`)
 
@@ -178,13 +244,13 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 - ✅ Pinned favorites strip; per-card: favorite heart, call (`tel:`), email (`QuickGmailModal`), edit, website, inline star rating; intel badges.
 - ✅ Detail modal: favorite, edit, remove (`confirm`), call/email/website, portfolio/address/contacts/regions, embedded Intelligence panel (Digital Twin / Promotions / Conversations / Sentiment + Actions dropdown for AI outreach).
 - ✅ Add Provider modal (custom types persisted to localStorage), Edit Provider modal (inline-edit identity, Details/Contacts/Locations tabs, Places autocomplete, specialties picker).
-- ❌ No multi-select/bulk, no column sorting (fixed order), notes are display-only (no create/edit UI), Edit modal "Locations" tab + "View Orders"/"Send Message" buttons don't persist/do anything.
+- ❌ No multi-select/bulk, no column sorting (fixed order), notes are display-only (no create/edit UI), Edit modal "Locations" tab + "View Orders"/"Send Message" buttons don't persist/do anything.  `[⏳ appears to hold 2026-07-31]`
 
 ## 10. Promotions (`pages/Promotions.tsx`, route `/promotions`)
 
 - ✅ Tabs (URL-synced): Offers, Trusted senders, Prospects.
 - ✅ Offers: read-only promo cards. Trusted senders: trust/untrust toggle per domain. Prospects: location filter chips, view-message expander + attachment downloads, "Add as vendor" (inline confirm), "Dismiss" + undo bar.
-- ❌ Offers are non-interactive (no act/redeem/dismiss/source link). No search/sort/pagination on any tab.
+- ❌ Offers are non-interactive (no act/redeem/dismiss/source link). No search/sort/pagination on any tab.  `[◐ PARTLY STALE 2026-07-31 — onDismiss wired]`
 
 ## 11. Communications (`pages/Communications.tsx`, route `/communications`)
 
@@ -192,14 +258,14 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 - ✅ Templates: channel switcher (All/Email/SMS), New Template dropdown → Gmail/SMS builders, saved-template galleries (edit/duplicate/delete/use/favorite/default).
 - ✅ Send History: channel stat cards as toggle filters, search, pagination (rows not clickable).
 - ✅ Procurement Emails: filters (date/provider/type/wine), expandable thread replay.
-- ⚠️ Scheduled Reports (`ReportScheduler`): full config UI but Save/Generate only `console.log`. `QuickGmailModal` CC/BCC reveal nothing.
+- ⚠️ Scheduled Reports (`ReportScheduler`): full config UI but Save/Generate only `console.log`. `QuickGmailModal` CC/BCC reveal nothing.  `[✅ STALE 2026-07-31 — Communications.tsx:277]`
 
 ## 12. Calendar (`pages/Calendar.tsx`, route `/calendar`)
 
 - ✅ Prev/next month, Today, search, filter dropdown (by type), Month ↔ Agenda views, Add Event.
 - ✅ Month: click day → select + seed create form; click event pill → details modal. Agenda: click row → details.
 - ✅ Sidebar: selected-date events, "+" create, This Month stats, Coming Up (clickable).
-- ✅ Event details modal: status `<select>` update, delete. ❌ "Edit" button is a no-op.
+- ✅ Event details modal: status `<select>` update, delete. ❌ "Edit" button is a no-op.  `[⏳ appears to hold 2026-07-31]`
 - ✅ Create Event modal: title with entity auto-tagging, event-type grid (+ custom types), date/time (masked inputs, validation), location, description, color, reminders (incl. custom), recurrence (freq/DOW/DOM/end-condition).
 - ✅ A richer modular calendar (`pages/calendar/*`) with **Week/Day views, drag-move/resize, click-slot-to-create, true event editing, RRULE preview, multi-channel reminders, meeting-memo capture** is now **routed at `/calendar`** (2026-07-20, via `pages/CalendarModular.tsx`; classic page at `/calendar-classic`). See §K.
 
@@ -208,7 +274,7 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 - ✅ Time range 7d/30d/90d; Edit Layout toggle + Arrange Charts; Compare toggle; Export dropdown (CSV/PDF work; Excel/Sheets/Drive "coming soon").
 - ✅ Dashboard grid: drag-reorder + resize in edit mode; per-block grip/settings/hide/remove; add-widget modal; reset layout; persisted to localStorage.
 - ✅ Widget selector, chart config modal, chart arrangement modal, inline block config.
-- ⚠️ AI Command Palette (⌘K within Reports) — mock responses.
+- ⚠️ AI Command Palette (⌘K within Reports) — mock responses.  `[⏳ could not locate 2026-07-31 — no Command/Palette component under components/reports]`
 - ✅ KPI section (drag reorder, add/edit/delete), KPI spotlight slide-in (Overview/Heatmap/By Wine Type/Export), data tables (sortable + paginated in `DataTableBlock` only), engine insights (recompute, goals), check scanner upload, preview overlay (Esc/Enter/zoom).
 
 ## 14. Documents (`pages/DocumentsPage.tsx`, route `/documents-reports`)
@@ -216,7 +282,7 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 - ✅ Tabs: Reports ↔ Communication History.
 - ✅ Grid ↔ Folder view; expand/collapse year/month folders; breadcrumbs; search; filter (type/status); sort dropdown.
 - ✅ Multi-select batch bar (Select All / Delete Selected); per-card download / delete.
-- ❌ Per-card View / Email / Print are placeholders. No true table sorting.
+- ❌ Per-card View / Email / Print are placeholders. No true table sorting.  `[⏳ could not locate 2026-07-31]`
 
 ## 15. Notifications (`pages/Notifications.tsx`, route `/notifications`)
 
@@ -224,7 +290,7 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 - ✅ Batch mode: Mark Read / Archive / Delete, Select All / Deselect All.
 - ✅ Per item: click → detail modal (marks read), **right-click context menu** (Star, Mark Read, Archive, Delete), star toggle, quick action.
 - ✅ Keyboard: `⌘K` filters, `⌘B` batch, `⌘A` select all, `⌘/` help.
-- ⚠️ "Mark as unread" is "coming soon"; several actions depend on live endpoints.
+- ⚠️ "Mark as unread" is "coming soon"; several actions depend on live endpoints.  `[✅ STALE 2026-07-31 — Notifications.tsx:405]`
 
 ## 16. Settings (`pages/Settings.tsx`, route `/settings`)
 
@@ -238,7 +304,7 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 ## 18. Admin (`pages/AdminPanel.tsx` `/admin`, `pages/AdminHealth.tsx` `/admin/health`)
 
 - ✅ Admin Panel tabs (General/Agents/Notifications/Integrations); number steppers; toggles; per-agent Restart button.
-- ⚠️ Save Settings / Restart / Notifications toggles are simulated/non-persistent; Integrations "Configure" links are dead.
+- ⚠️ Save Settings / Restart / Notifications toggles are simulated/non-persistent; Integrations "Configure" links are dead.  `[✅ STALE 2026-07-31 — Settings.tsx:850]`
 - ✅ Admin Health: auto-poll every 30s, manual Refresh, agent status cards (read-only).
 
 ## 19. Studio (`pages/studio/*`, routes `/studio`, `/studio/queue`, `/studio/certify`)
@@ -246,11 +312,11 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 - ✅ Command bar: click to pick PDF, drag-drop PDF, paste URL, type wine name, Enter to ingest, manual empty record.
 - ✅ Wine records table: inline `FieldCell` editing with confidence + verification badges, human-override workflow (reason ≥5 chars, citation URL), per-row Promote (idle/loading/promoted/duplicate/error).
 - ✅ Approval queue (poll 30s): approve / reject with inline note; Certify (poll 60s): invite contributor, enable/disable toggle. Metrics dashboard (poll 60s, read-only).
-- ❌ `ContributorTable` ⋮ menu + revoke are unwired. Tables have no sorting/multi-select.
+- ❌ `ContributorTable` ⋮ menu + revoke are unwired. Tables have no sorting/multi-select.  `[✅ STALE 2026-07-31 — StudioCertify.tsx:32]`
 
 ## 20. Auth & Onboarding
 
-- ✅ **Login:** email/password, demo login, links to register. ❌ "Remember me" unbound; "Forgot password?" → non-existent route; no OAuth buttons; no show/hide password.
+- ✅ **Login:** email/password, demo login, links to register. ❌ "Remember me" unbound; "Forgot password?" → non-existent route; no OAuth buttons; no show/hide password.  `[◐ PARTLY STALE 2026-07-31 — OAuth shipped; both real items removed f94ba88]`
 - ✅ **Register:** path selector (Join vs Create); Path A invite (live 8-char validation, trust card, account fields, live email availability); Path B create (account → restaurant identity/location/contact with Places autocomplete, phone validation, country-aware labels).
 - ✅ **Verify Email:** token verify or resend (60s client rate-limit); redirects to `/get-started` or `/`.
 - ✅ **Invite Landing** (`/invite/:code`): preview + accept (branches by auth state).
@@ -1591,7 +1657,7 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|
-| NEW-758 | `Flow` | Shared `<ContextualInsights host="inventory\|orders\|providers" entity?>` component: same Act/Dismiss/Explain/Pin affordances as NEW-434 / NEW-284. |
+| NEW-758 | `Flow` | Shared `<ContextualInsights host="inventory|orders|providers" entity?>` component: same Act/Dismiss/Explain/Pin affordances as NEW-434 / NEW-284. |
 | NEW-759 | `Flow` | Insight deep links are stable (`/recommendations?insight=<id>` or `?type=<dim.measure.comparator>&entity=<id>`) and work from any host page. |
 | NEW-760 | `Click` | Empty contextual rail explains "connect checks/POS" or "no insights for this entity yet" with Browse-All CTA — never a blank panel. |
 

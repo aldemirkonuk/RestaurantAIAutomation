@@ -166,8 +166,14 @@ export async function getOneTapActions(restaurantId?: string): Promise<any[]> {
     const response = await apiClient.get('/one-tap-actions', {
       params: { restaurantId: id },
     });
-    return response.data;
-  } catch {
+    // The endpoint returns { actions, total }; older callers expected a bare array.
+    return Array.isArray(response.data) ? response.data : (response.data?.actions ?? []);
+  } catch (err) {
+    // An empty list is a legitimate answer; a broken endpoint is not, and
+    // returning [] for both is why this stayed broken. Both routes this function
+    // calls 404'd for months — the dashboard rendered "no actions" and nobody
+    // could tell that from "the feature is gone". Log before degrading.
+    console.error('[dashboard] one-tap actions request failed:', err);
     return [];
   }
 }

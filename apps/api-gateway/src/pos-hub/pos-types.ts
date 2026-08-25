@@ -26,6 +26,10 @@ export interface CanonicalCheck {
   externalCheckId: string;
   openedAt: string; // ISO
   closedAt?: string | null; // null = still open (live/hot-table analytics)
+  /** Whole check voided after close (e.g. a mis-fired order). When true, the
+   *  hub reverses stock for every line instead of depleting it (decision B19:
+   *  voids reverse glasses as well as bottles). */
+  voided?: boolean;
   /** Source POS table reference — resolved against restaurant_tables.pos_refs
    *  or label. */
   tableRef?: string | null;

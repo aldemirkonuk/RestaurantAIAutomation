@@ -43,3 +43,6 @@ export * from './useReportQueries'
 
 // Sommelier hooks
 export * from './useSommelierQueries'
+
+// Distributor discovery hooks
+export * from './useDistributorQueries'

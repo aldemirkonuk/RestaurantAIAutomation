@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>052 — WineOps document, three role renderings</title>
+<style>
+  /* One MatchResult, three renderings, chosen by role.
+     Palette is the product's own: #9E4249 BrandMark primary, warm paper ground,
+     warm muted neutrals. Deliberately deterministic — same role, same layout,
+     always. No telemetry, no experiment, no holdout, unit-testable. */
+  :root {
+    --burgundy:#9E4249; --burgundy-deep:#6E2A31; --burgundy-wash:#F5EAEA;
+    --paper:#FAF8F5; --paper-sunk:#F2EEE7; --ink:#1D1A18; --ink-soft:#56504A;
+    --ink-faint:#8B837A; --rule:#E5E0DA; --gold:#9A6B18; --green:#2F6B45;
+    --r:0.75rem;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+       font:15px/1.5 -apple-system,"Helvetica Neue",Arial,sans-serif;padding:34px 26px 70px}
+  .serif{font-family:"Hoefler Text","Iowan Old Style",Georgia,serif}
+  .wrap{max-width:1360px;margin:0 auto}
+
+  .page-head{border-bottom:1px solid var(--ink);padding-bottom:18px;margin-bottom:26px}
+  .page-head .id{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--burgundy);font-weight:700}
+  .page-head h1{margin:8px 0 0;font-size:31px;font-weight:400;letter-spacing:-.02em}
+  .page-head p{margin:10px 0 0;color:var(--ink-soft);max-width:60ch;font-size:14px}
+  .thesis{margin-top:16px;padding:12px 15px;background:var(--burgundy-wash);
+          border-left:3px solid var(--burgundy);border-radius:0 var(--r) var(--r) 0;
+          font-size:13.5px;max-width:74ch;color:var(--burgundy-deep)}
+
+  .cols{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;align-items:start}
+  @media(max-width:1080px){.cols{grid-template-columns:1fr}}
+
+  .col-head{margin-bottom:12px}
+  .role{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--burgundy);font-weight:700}
+  .surface{font-size:19px;margin-top:5px;letter-spacing:-.01em}
+  .where{font-size:12.5px;color:var(--ink-faint);margin-top:4px}
+  .hides{font-size:12px;color:var(--gold);margin-top:7px;font-style:italic}
+
+  .frame{background:#fff;border:1px solid var(--rule);border-radius:var(--r);overflow:hidden}
+
+  /* ---- A. receiver: one full-screen count, thumb targets, no prices ---- */
+  .phone{background:#fff;padding:0}
+  .phone-bar{background:var(--ink);color:#fff;font-size:11px;padding:7px 14px;
+             display:flex;justify-content:space-between;letter-spacing:.04em}
+  .phone-body{padding:20px 18px 22px}
+  .count-wine{font-size:21px;line-height:1.25;letter-spacing:-.015em}
+  .count-meta{font-size:13px;color:var(--ink-faint);margin-top:6px}
+  .count-expect{margin:22px 0;text-align:center}
+  .count-expect .n{font-size:62px;line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+  .count-expect .k{font-size:11px;letter-spacing:.17em;text-transform:uppercase;color:var(--ink-faint);margin-top:8px}
+  .btn{display:block;width:100%;border:none;border-radius:12px;padding:17px;
+       font-size:16px;font-weight:600;margin-top:10px;cursor:pointer;font-family:inherit}
+  .btn-ok{background:var(--green);color:#fff}
+  .btn-off{background:#fff;color:var(--burgundy);border:2px solid var(--burgundy)}
+  .progress{display:flex;gap:4px;margin-top:20px}
+  .progress i{flex:1;height:4px;border-radius:2px;background:var(--rule)}
+  .progress i.done{background:var(--green)}
+  .progress i.now{background:var(--ink)}
+  .phone-note{font-size:11.5px;color:var(--ink-faint);text-align:center;margin-top:14px}
+
+  /* ---- B. manager: discrepancy queue, dollars-sorted ---- */
+  .q-head{display:flex;justify-content:space-between;align-items:baseline;
+          padding:13px 15px;border-bottom:1px solid var(--rule);background:var(--paper-sunk)}
+  .q-head .t{font-size:13px;font-weight:600}
+  .q-head .n{font-size:13px;color:var(--burgundy);font-weight:700;font-variant-numeric:tabular-nums}
+  .q-row{padding:13px 15px;border-bottom:1px solid var(--rule)}
+  .q-row:last-child{border-bottom:none}
+  .q-row.selfev{background:linear-gradient(90deg,var(--burgundy-wash),#fff 55%)}
+  .q-top{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+  .q-wine{font-size:14.5px;letter-spacing:-.008em}
+  .q-amt{font-size:16px;color:var(--burgundy);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .q-what{font-size:12.5px;color:var(--ink-soft);margin-top:5px;line-height:1.45}
+  .chip{display:inline-block;font-size:10px;letter-spacing:.09em;text-transform:uppercase;
+        font-weight:700;padding:3px 8px;border-radius:20px;margin-top:8px}
+  .chip.bad{background:var(--burgundy);color:#fff}
+  .chip.warn{background:#FBEFD8;color:var(--gold)}
+  .chip.unk{background:var(--paper-sunk);color:var(--ink-faint)}
+  .q-acts{display:flex;gap:6px;margin-top:11px}
+  .q-acts button{flex:1;border:1px solid var(--rule);background:#fff;border-radius:8px;
+                 padding:8px 6px;font-size:11.5px;cursor:pointer;font-family:inherit;color:var(--ink-soft)}
+  .q-acts button.primary{background:var(--burgundy);color:#fff;border-color:var(--burgundy);font-weight:600}
+  .q-empty{padding:15px;font-size:12px;color:var(--ink-faint);font-style:italic;
+           border-top:1px solid var(--rule);background:var(--paper-sunk)}
+
+  /* ---- C. owner: one card ---- */
+  .owner{padding:24px 22px}
+  .o-lbl{font-size:11px;letter-spacing:.17em;text-transform:uppercase;color:var(--ink-faint);font-weight:700}
+  .o-big{font-size:44px;line-height:1;letter-spacing:-.03em;margin-top:12px;
+         color:var(--burgundy);font-variant-numeric:tabular-nums}
+  .o-sub{font-size:13px;color:var(--ink-soft);margin-top:8px;line-height:1.5}
+  .o-split{display:flex;gap:20px;margin-top:22px;padding-top:18px;border-top:1px solid var(--rule)}
+  .o-stat .n{font-size:22px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .o-stat .k{font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint);margin-top:5px}
+  .o-worst{margin-top:20px;padding:13px 15px;background:var(--paper-sunk);border-radius:var(--r)}
+  .o-worst .k{font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-faint);font-weight:700}
+  .o-worst .v{font-size:15px;margin-top:6px}
+  .o-worst .d{font-size:12px;color:var(--ink-soft);margin-top:4px}
+  .o-caution{margin-top:18px;font-size:11.5px;color:var(--gold);line-height:1.5;font-style:italic}
+
+  .notes{margin-top:40px;padding-top:22px;border-top:1px solid var(--ink)}
+  .notes h2{font-size:19px;font-weight:400;margin:0 0 14px;letter-spacing:-.015em}
+  .notes ul{margin:0;padding-left:20px;max-width:80ch}
+  .notes li{margin-bottom:11px;font-size:14px;color:var(--ink-soft);line-height:1.6}
+  .notes li b{color:var(--ink)}
+  code{background:var(--paper-sunk);padding:1px 5px;border-radius:4px;font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="page-head">
+    <div class="id">Sketch 052</div>
+    <h1 class="serif">The WineOps document, rendered three ways by role</h1>
+    <p>One delivery. One <code>MatchResult</code>. Three surfaces, chosen deterministically by
+       who is looking — not learned, not personalised, not adaptive.</p>
+    <div class="thesis">
+      This delivers what the agent-native pitch promised — “each user gets a different
+      experience” — with none of the machinery that cannot be validated at n=1 restaurant.
+      Same role, same layout, always. No telemetry, no experiment, no holdout, and it is
+      unit-testable.
+    </div>
+  </div>
+
+  <div class="cols">
+
+    <!-- ============ A. RECEIVER ============ -->
+    <div>
+      <div class="col-head">
+        <div class="role">Staff · receiving</div>
+        <div class="surface serif">One count, one thumb</div>
+        <div class="where">At the door, one-handed, works offline</div>
+        <div class="hides">Hides every price. Line cost is not floor-staff
+          information, and hiding it removes the biggest source of hesitation at the door.</div>
+      </div>
+      <div class="frame phone">
+        <div class="phone-bar"><span>Meridian Wine &amp; Spirits</span><span>7 of 23</span></div>
+        <div class="phone-body">
+          <div class="count-wine serif">Ciro Picariello, Fiano 2022</div>
+          <div class="count-meta">Campania · 6 × 1.5L · SKU 2255607</div>
+
+          <div class="count-expect">
+            <div class="n">12</div>
+            <div class="k">bottles expected</div>
+          </div>
+
+          <button class="btn btn-ok">✓ All 12 are here</button>
+          <button class="btn btn-off">⚠ Something's off</button>
+
+          <div class="progress">
+            <i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i>
+            <i class="done"></i><i class="done"></i><i class="now"></i><i></i><i></i><i></i>
+          </div>
+          <div class="phone-note">Tap the count you actually see. Never pre-filled from the invoice.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ B. MANAGER ============ -->
+    <div>
+      <div class="col-head">
+        <div class="role">Manager · decisions</div>
+        <div class="surface serif">Discrepancy queue</div>
+        <div class="where">Only <code>isDiscrepancy === true</code>, sorted by dollars at risk</div>
+        <div class="hides">Hides matched deliveries entirely. If it matched, it is not a task.</div>
+      </div>
+      <div class="frame">
+        <div class="q-head">
+          <span class="t">4 lines need a decision</span>
+          <span class="n">$147.66 at risk</span>
+        </div>
+
+        <div class="q-row selfev">
+          <div class="q-top">
+            <span class="q-wine serif">Umani Ronchi, Pecorino 2024</span>
+            <span class="q-amt">$34.66</span>
+          </div>
+          <div class="q-what">Their slip says 4 shipped. Their invoice bills 6.
+            <b>Their own two documents disagree</b> — nothing to dispute.</div>
+          <span class="chip bad">Overbilled vs their own slip</span>
+          <div class="q-acts">
+            <button class="primary">Request credit</button>
+            <button>Accept</button>
+            <button>Override…</button>
+          </div>
+        </div>
+
+        <div class="q-row">
+          <div class="q-top">
+            <span class="q-wine serif">House White, Pinot Gris 2023</span>
+            <span class="q-amt">$64.00</span>
+          </div>
+          <div class="q-what">4 of 48 rejected on arrival — cork saturated, label soaked.
+            Billed in full.</div>
+          <span class="chip bad">Rejected on arrival</span>
+          <div class="q-acts">
+            <button class="primary">Request credit</button>
+            <button>Accept</button>
+            <button>Override…</button>
+          </div>
+        </div>
+
+        <div class="q-row">
+          <div class="q-top">
+            <span class="q-wine serif">Ronc dai Luchis, Friulano 2021</span>
+            <span class="q-amt">+14.9%</span>
+          </div>
+          <div class="q-what">Agreed $22.67, billed $25.41. No notice given.
+            Last paid $22.11 on 12 Jun.</div>
+          <span class="chip warn">Price above agreed</span>
+          <div class="q-acts">
+            <button class="primary">Query price</button>
+            <button>Accept new price</button>
+          </div>
+        </div>
+
+        <div class="q-row">
+          <div class="q-top">
+            <span class="q-wine serif">Moschioni, Friulano 2021</span>
+            <span class="q-amt">—</span>
+          </div>
+          <div class="q-what">6 bottles received and signed for. No invoice on file,
+            so nothing here is price-verified.</div>
+          <span class="chip unk">No invoice on file</span>
+          <div class="q-acts">
+            <button class="primary">Chase invoice</button>
+            <button>Snooze 3 days</button>
+          </div>
+        </div>
+
+        <div class="q-empty">19 matched lines hidden — including 1 split case and
+          1 agreed 11-for-10. Neither is a problem, so neither appears.</div>
+      </div>
+    </div>
+
+    <!-- ============ C. OWNER ============ -->
+    <div>
+      <div class="col-head">
+        <div class="role">Owner · monthly</div>
+        <div class="surface serif">One card</div>
+        <div class="where">Lands in the feed; nothing operational</div>
+        <div class="hides">Hides every line item. Leads with drift, not recovery — see note below.</div>
+      </div>
+      <div class="frame owner">
+        <div class="o-lbl">Cost drift caught · July</div>
+        <div class="o-big">1.8 pts</div>
+        <div class="o-sub">of beverage margin. Landed cost moved on <b>34 SKUs</b>
+          across 11 deliveries, concentrated in six wines.</div>
+
+        <div class="o-split">
+          <div class="o-stat">
+            <div class="n">$312</div>
+            <div class="k">Credits landed</div>
+          </div>
+          <div class="o-stat">
+            <div class="n">$1,847</div>
+            <div class="k">Claimed, open</div>
+          </div>
+        </div>
+
+        <div class="o-worst">
+          <div class="k">Worst drift</div>
+          <div class="v serif">Tenuta Orestiadi, Nero d'Avola 2023</div>
+          <div class="d">$16.94 → $19.49 per bottle · +15.1% across 3 deliveries</div>
+        </div>
+
+        <div class="o-caution">
+          “Credits landed” counts only credit memos actually seen arriving on a later
+          invoice. Everything else is “we asked”, and is labelled as such.
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="notes">
+    <h2 class="serif">Why these three, and what each deliberately refuses</h2>
+    <ul>
+      <li><b>The physical count is never pre-filled.</b> Not from the invoice, not from the
+        packing slip, not from the PO. Pre-filling it makes the billed-vs-counted check
+        compare a number to itself and pass trivially — the exact bug this product exists
+        to fix. The receiver types what they see or taps “all here”.</li>
+      <li><b>Staff see no prices, and that is a feature.</b> It removes the largest source
+        of hesitation at the door, and line cost is not floor-staff information. It also
+        means a “something's off” tap is about bottles, never about money.</li>
+      <li><b>Matched is not a task.</b> The manager queue shows only discrepancies. The
+        count of hidden matched lines is stated so the omission is visible rather than
+        mysterious — including, explicitly, the split case and the agreed 11-for-10, the
+        two false alarms most likely to destroy trust in the queue.</li>
+      <li><b>The owner card leads with drift, not dollars recovered.</b> Recoverable billing
+        error on a $1.2M bistro is roughly $150–800/month — real, but it does not carry the
+        story. Silent price creep across hundreds of SKUs is structurally larger, verifiable
+        monthly, and does not depend on a vendor agreeing to anything.</li>
+      <li><b>Absence is rendered, never blank.</b> “No invoice on file” is a visible state
+        with its own action. A blank is what allowed <code>price_verified: true</code> to be
+        written for deliveries nobody ever looked at.</li>
+      <li><b>Ship the staff view as mobile web first.</b> Receiving happens at a door, not
+        a desk.</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ d.house.name }} — Credit Memo {{ d.credit_memo_number }}</title>
+{% include "_reset.html" %}
+<style>
+  /* Credit memo (EDI 812) — the document that makes recovery real.
+     ------------------------------------------------------------------
+     Until an 812 lands, "dollars recovered" means "we asked". That is the whole
+     reason this document is modelled rather than treated as a status flag: a
+     claim is a request, a credit memo is an admission, and the two must never be
+     counted as the same thing on any surface.
+
+     Three properties the layout enforces:
+
+     1. It REFERENCES the original invoice by number and date. A credit that does
+        not cite the invoice it corrects cannot be reconciled by a bookkeeper and
+        will not be accepted by an AR desk as settling anything.
+     2. Amounts are NEGATIVE and shown as such. A credit rendered as a positive
+        number is the most direct way to get it added to a balance instead of
+        subtracted from one.
+     3. It carries the reason per line. "Credit $34.66" is unauditable; "billed 6,
+        shipped 4 per your slip PS-…" is the sentence that closes the dispute.
+
+     Only lines the vendor actually owes for appear. A price variance is a
+     conversation, not a credit, and a short-ship the vendor billed honestly is a
+     carrier matter — putting either here would be claiming money nobody agreed
+     was owed. */
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 8.6pt; color: #111; }
+  .sheet { width: 8.5in; min-height: 11in; padding: 0.45in 0.55in; position: relative; }
+
+  header { margin-top: 14px; display: flex; justify-content: space-between;
+           align-items: flex-start; border-bottom: 2.5px solid #1f5c3a; padding-bottom: 10px; }
+  .co { font-size: 15pt; font-weight: 700; letter-spacing: -.01em; color: #1f5c3a; }
+  .co-sub { font-size: 6.6pt; letter-spacing: .16em; text-transform: uppercase;
+            color: #666; margin-top: 2px; }
+  .co-addr { font-size: 7.4pt; color: #444; margin-top: 6px; line-height: 1.45; }
+  .doc-type { font-size: 15pt; font-weight: 700; text-align: right; color: #1f5c3a;
+              letter-spacing: .04em; }
+  .doc-sub { font-size: 6.6pt; letter-spacing: .12em; text-transform: uppercase;
+             color: #666; text-align: right; margin-top: 3px; }
+
+  /* The reference block. A credit without it settles nothing. */
+  .against { margin: 13px 0; background: #eef5f0; border-left: 4px solid #1f5c3a;
+             padding: 10px 13px; border-radius: 0 4px 4px 0; }
+  .against-label { font-size: 6.4pt; letter-spacing: .13em; text-transform: uppercase;
+                   color: #1f5c3a; font-weight: 700; }
+  .against-grid { display: flex; gap: 30px; margin-top: 6px; font-size: 8.2pt; }
+  .against-grid .k { color: #556; font-size: 6.8pt; display: block;
+                     letter-spacing: .06em; text-transform: uppercase; }
+  .against-grid .v { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+  .parties { display: flex; gap: 14px; margin: 11px 0; }
+  .party { flex: 1; border: 1px solid #bbb; padding: 5px 8px; }
+  .party-label { font-size: 6.2pt; font-weight: 700; text-transform: uppercase;
+                 letter-spacing: .11em; color: #666; margin-bottom: 4px; }
+  .party-body { font-size: 7.6pt; line-height: 1.4; }
+
+  table.lines { width: 100%; margin-top: 6px; }
+  table.lines th { background: #1f5c3a; color: #fff; padding: 4px; font-size: 6.2pt;
+                   text-transform: uppercase; letter-spacing: .06em; text-align: left;
+                   white-space: nowrap; }
+  table.lines td { padding: 5px 4px; border-bottom: 1px solid #e3e3e3; font-size: 7.9pt;
+                   vertical-align: top; }
+  .reason { font-size: 7pt; color: #555; margin-top: 3px; line-height: 1.4; }
+  .credit { color: #1f5c3a; font-weight: 700; }
+  .mono { font-family: "Courier New", monospace; font-size: 7pt; }
+
+  .totals { margin-top: 14px; display: flex; justify-content: flex-end; }
+  table.tot { min-width: 3in; }
+  table.tot td { padding: 4px 9px; font-size: 8.4pt; }
+  table.tot td.k { text-align: right; color: #555; }
+  table.tot td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  table.tot tr.grand td { border-top: 2px solid #1f5c3a; border-bottom: 3px double #1f5c3a;
+                          font-size: 12pt; font-weight: 700; color: #1f5c3a; padding-top: 7px; }
+
+  .application { margin-top: 16px; background: #f7f7f5; padding: 11px 13px;
+                 border-radius: 4px; font-size: 7.2pt; line-height: 1.6; }
+  .application b { color: #1f5c3a; }
+  footer { margin-top: 18px; border-top: 1px solid #bbb; padding-top: 9px;
+           font-size: 6.8pt; color: #555; line-height: 1.5; }
+  .empty { padding: 26px; text-align: center; color: #777; font-size: 9pt;
+           border: 2px dashed #ccc; border-radius: 6px; margin-top: 14px; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="synthetic-band">{{ SYNTHETIC_MARK }}</div>
+  <div class="watermark">SYNTHETIC</div>
+
+  <header>
+    <div>
+      <div class="co">{{ d.house.name }}</div>
+      <div class="co-sub">{{ d.house.tagline }}</div>
+      <div class="co-addr">
+        {{ d.house.address }} · {{ d.house.city_state_zip }}<br>
+        Accounts receivable: {{ d.house.ar_email }} · {{ d.house.ar_phone }}
+        {% if d.house.license_no %}<br>Licence {{ d.house.license_no }}{% endif %}
+      </div>
+    </div>
+    <div>
+      <div class="doc-type">CREDIT MEMO</div>
+      <div class="doc-sub">EDI 812 · reduces amount due</div>
+    </div>
+  </header>
+
+  <div class="against">
+    <div class="against-label">Issued against</div>
+    <div class="against-grid">
+      <div><span class="k">Credit memo</span><span class="v mono">{{ d.credit_memo_number }}</span></div>
+      <div><span class="k">Original invoice</span><span class="v mono">{{ d.invoice_number }}</span></div>
+      <div><span class="k">Invoice date</span><span class="v">{{ d.invoice_date | fmtdate(d.house.date_format) }}</span></div>
+      <div><span class="k">Delivery</span><span class="v">{{ d.delivery_date | fmtdate(d.house.date_format) }}</span></div>
+      <div><span class="k">Your PO</span><span class="v mono">{{ d.po_number }}</span></div>
+    </div>
+  </div>
+
+  <div class="parties">
+    <div class="party">
+      <div class="party-label">Credit to</div>
+      <div class="party-body">
+        {{ d.restaurant_name }}<br>{{ d.restaurant_address }}<br>
+        {{ d.restaurant_city_state_zip }}<br>Licence {{ d.restaurant_license_no }}
+      </div>
+    </div>
+    <div class="party">
+      <div class="party-label">Issued by</div>
+      <div class="party-body">
+        {{ d.house.name }}<br>{{ d.house.address }}<br>{{ d.house.city_state_zip }}
+      </div>
+    </div>
+  </div>
+
+  {% if credit_lines %}
+  <table class="lines">
+    <thead>
+      <tr>
+        <th style="width:22px">#</th>
+        {% if d.house.uses_vendor_sku %}<th style="width:60px">Item No.</th>{% endif %}
+        <th>Description &amp; reason for credit</th>
+        <th style="width:40px" class="num">Billed</th>
+        <th style="width:40px" class="num">Credit qty</th>
+        <th style="width:52px" class="num">Unit</th>
+        <th style="width:64px" class="num">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in credit_lines %}
+      {% set l = row.line %}
+      <tr>
+        <td class="num">{{ l.line_no }}</td>
+        {% if d.house.uses_vendor_sku %}<td class="mono">{{ l.vendor_sku }}</td>{% endif %}
+        <td>
+          {{ l.wine_name | upper_if(d.house.uppercase_descriptions) }}
+          {% if l.producer %} — {{ l.producer }}{% endif %}
+          {# The sentence that closes the dispute. #}
+          <div class="reason">{{ row.reason }}</div>
+        </td>
+        <td class="num">{{ l.outcome.invoice_qty }}</td>
+        <td class="num">{{ row.credit_qty }}</td>
+        <td class="num">{{ l.outcome.invoice_unit_price | money }}</td>
+        {# Negative, and shown as negative. #}
+        <td class="num credit">({{ row.amount | money }})</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="totals">
+    <table class="tot">
+      <tr><td class="k">Lines credited</td><td class="v">{{ credit_lines | length }}</td></tr>
+      <tr class="grand">
+        <td class="k">Total credit</td>
+        <td class="v">({{ d.credit_total() | money }})</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="application">
+    <b>How this credit is applied.</b> This memo reduces the balance on invoice
+    {{ d.invoice_number }} by ${{ d.credit_total() | money }}. It is not a payment and
+    not a refund: it appears as a deduction on your next statement, and is only
+    settled once it has been taken against an invoice. Container deposits, where
+    charged, are refunded separately on return of undamaged containers and are not
+    included in the figure above.
+  </div>
+  {% else %}
+  <div class="empty">
+    No lines on this delivery were credit-eligible.<br>
+    <span style="font-size:7.4pt">
+      A price variance is a conversation, not a credit; a short shipment the vendor
+      billed honestly is a carrier matter. Neither belongs on a credit memo.
+    </span>
+  </div>
+  {% endif %}
+
+  <footer>
+    Credit claims must reference the original invoice number. Retain this memo with
+    the invoice it corrects — a credit that cannot be tied to an invoice cannot be
+    reconciled, and an unreconciled credit is indistinguishable from one that was
+    never issued.
+  </footer>
+</div>
+</body>
+</html>

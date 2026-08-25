@@ -2,19 +2,32 @@
  * Receiving workspace — the canonical WineOps invoice.
  *
  * Vendors send wildly different paperwork; we never make the manager read theirs. This renders
- * OUR normalized three-way match instead, always the same shape:
+ * OUR normalized FOUR-way match instead, always the same shape:
  *
- *   ORDERED (what we agreed to buy)  vs  INVOICED (what they billed)  vs  RECEIVED (what came)
+ *   ORDERED (agreed)  vs  SHIPPED (their packing slip)  vs  RECEIVED (counted)  vs  INVOICED (billed)
  *
- * The vendor's own document stays attached as evidence, never as the working surface.
- * Delivery already stocked bottles in at invoice quantity; this is the audit layer. The server
- * recomputes the verdict and derives the ledger correction — what we send is evidence, not a
- * decision. Rules mirrored from lib/invoiceMatch.ts (the backend is authoritative).
+ * The vendor's own document stays attached as evidence, never as the working surface — but the
+ * numbers on it are now READ rather than retyped. Any invoice or packing slip already ingested
+ * for this order (photographed at the door, emailed in, or parsed from an EDI 810/856) pre-fills
+ * the columns, so a manager confirms a transcription instead of performing one.
+ *
+ * NOTHING IS PRE-FILLED FROM THE ORDER ITSELF. Until an invoice is actually in hand the invoice
+ * column is empty and the verdict is `unmatched`. It previously defaulted to the stocked quantity,
+ * which made the headline check compare a number to itself and recorded a price as verified that
+ * nobody had ever looked at.
+ *
+ * The server recomputes the verdict and derives the ledger correction — what we send is evidence,
+ * not a decision. Rules mirrored from lib/invoiceMatch.ts (the backend is authoritative).
  */
-import { useMemo, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { X, Check, AlertTriangle, Plus, Receipt } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { X, Check, AlertTriangle, Plus, Receipt, FileText, ShieldCheck } from 'lucide-react'
 import { verifyOrderReceipt } from '../../../services/api/orders'
+import {
+  allocatedChargesFor,
+  documentsApi,
+  pickDocuments,
+} from '../../../services/api/documents'
 import { useNotificationStore } from '../../../stores'
 import { ThemedSelect } from '../../../components/ui/ThemedSelect'
 import { computeMatch, verdictStyle, money } from '../../../lib/invoiceMatch'
@@ -33,6 +46,64 @@ interface ExtraLine {
   inventoryId: string
   label: string
   countedQty: number
+}
+
+/**
+ * What the vendor's own paperwork said, and how much to trust our reading of it.
+ *
+ * Shown above the numbers rather than beside them because it changes how the whole screen should
+ * be read: a manager confirming a machine transcription behaves differently from one entering
+ * figures themselves, and the difference matters most when the extraction is doubtful.
+ *
+ * A document whose lines do not add up to its own stated total is surfaced loudly. That is the
+ * cheapest hallucination detector available — a misread quantity or price nearly always breaks
+ * the arithmetic — and it is exactly the invoice a person should look at before arguing from it.
+ */
+function DocumentStrip({
+  invoice,
+  packingSlip,
+}: {
+  invoice: { doc_number: string | null; ties_out: boolean | null; status: string; extraction_confidence: number | null } | null
+  packingSlip: { doc_number: string | null; status: string } | null
+}) {
+  if (!invoice && !packingSlip) {
+    return (
+      <div className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 text-[11px] text-gray-500">
+        <FileText className="w-3.5 h-3.5 shrink-0" />
+        No paperwork attached to this delivery yet — photograph it, or type what the invoice says.
+      </div>
+    )
+  }
+
+  const doubtful = invoice?.ties_out === false
+
+  return (
+    <div
+      className={cn(
+        'mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 rounded-lg border text-[11px]',
+        doubtful
+          ? 'bg-amber-50 border-amber-200 text-amber-800'
+          : 'bg-emerald-50/60 border-emerald-100 text-emerald-800',
+      )}
+    >
+      <span className="flex items-center gap-1.5 font-semibold">
+        {doubtful ? <AlertTriangle className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+        Read from their paperwork
+      </span>
+      {invoice && (
+        <span>
+          Invoice {invoice.doc_number ?? '(no number)'}
+          {invoice.status === 'verified' ? ' · checked by a human' : ''}
+        </span>
+      )}
+      {packingSlip && <span>Packing slip {packingSlip.doc_number ?? '(no number)'}</span>}
+      {doubtful && (
+        <span className="font-semibold">
+          Its lines do not add up to its own total — check the figures before accepting.
+        </span>
+      )}
+    </div>
+  )
 }
 
 /** Small stepper used for every count on this screen. */
@@ -91,37 +162,90 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
     order.finalPrice ?? order.negotiatedPrice ?? order.quotedPrice ?? order.unitPrice ?? null
   const stockedQty: number = order.quantityReceived ?? order.quantity ?? 0
 
-  // The invoice is expected to agree with the PO — we render our own format — so it starts
-  // pre-filled from the order. Editing these is how a vendor deviation gets recorded.
-  const [invoiceQty, setInvoiceQty] = useState<number>(stockedQty)
-  const [invoiceUnitPrice, setInvoiceUnitPrice] = useState<number | null>(poUnitPrice)
+  // NULL until an invoice is actually in hand. Absence is not agreement: defaulting these to the
+  // order made physical_vs_bill compare a number to itself and wrote price_verified for a delivery
+  // nobody had checked.
+  const [invoiceQty, setInvoiceQty] = useState<number | null>(null)
+  const [invoiceUnitPrice, setInvoiceUnitPrice] = useState<number | null>(null)
+  const [shippedQty, setShippedQty] = useState<number | null>(null)
+  const [freeGoodsQty, setFreeGoodsQty] = useState<number>(0)
+  // The physical count DOES start from what was stocked — that number came from a human at the
+  // door, not from the vendor, so it is a real observation rather than an assumption.
   const [acceptedQty, setAcceptedQty] = useState<number>(stockedQty)
   const [rejectedQty, setRejectedQty] = useState<number>(0)
   const [rejectedReason, setRejectedReason] = useState('')
   const [priceOverrideReason, setPriceOverrideReason] = useState('')
   const [note, setNote] = useState('')
+  /** True once a value came from a document, so re-fetches never clobber typing. */
+  const [prefilled, setPrefilled] = useState(false)
 
   const [extras, setExtras] = useState<ExtraLine[]>([])
   const [addingId, setAddingId] = useState('')
+
+  const { data: documents = [] } = useQuery({
+    queryKey: ['procurement-documents', order.id],
+    queryFn: () => documentsApi.forOrder(order.id),
+    enabled: !!order.id,
+    staleTime: 30_000,
+  })
+
+  const { invoice, packingSlip } = useMemo(() => pickDocuments(documents), [documents])
+  const allocatedCharges = useMemo(() => allocatedChargesFor(invoice), [invoice])
+
+  /**
+   * Read the vendor's numbers off the documents.
+   *
+   * Runs once. A manager who has corrected a misread figure must not have it overwritten by a
+   * background refetch — that is how a correction silently disappears and the wrong number gets
+   * sent to a distributor.
+   */
+  useEffect(() => {
+    if (prefilled || readOnly) return
+    if (!invoice && !packingSlip) return
+
+    if (invoice) {
+      const lines = (invoice as any).extracted?.lines as any[] | undefined
+      const totalBottles = lines?.reduce((n, l) => n + (Number(l.qtyBottles) || 0), 0)
+      if (totalBottles) setInvoiceQty(totalBottles)
+      const firstPriced = lines?.find((l) => l.unitPrice != null)
+      if (firstPriced?.unitPrice != null) setInvoiceUnitPrice(Number(firstPriced.unitPrice))
+      const free = lines?.reduce((n, l) => n + (Number(l.freeGoodsQty) || 0), 0)
+      if (free) setFreeGoodsQty(free)
+    }
+
+    if (packingSlip) {
+      const lines = (packingSlip as any).extracted?.lines as any[] | undefined
+      const shipped = lines?.reduce((n, l) => n + (Number(l.qtyBottles) || 0), 0)
+      if (shipped) setShippedQty(shipped)
+    }
+
+    setPrefilled(true)
+  }, [invoice, packingSlip, prefilled, readOnly])
 
   const match = useMemo(
     () =>
       computeMatch({
         orderedQty,
         poUnitPrice,
+        shippedQty,
         invoiceQty,
         invoiceUnitPrice,
         acceptedQty,
         rejectedQty,
+        freeGoodsQty,
+        allocatedCharges,
         priceOverrideReason,
       }),
     [
       orderedQty,
       poUnitPrice,
+      shippedQty,
       invoiceQty,
       invoiceUnitPrice,
       acceptedQty,
       rejectedQty,
+      freeGoodsQty,
+      allocatedCharges,
       priceOverrideReason,
     ],
   )
@@ -148,8 +272,14 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   const verify = useMutation({
     mutationFn: () =>
       verifyOrderReceipt(order.id, {
-        invoiceQuantity: invoiceQty,
+        // undefined, not a fallback. The server reads an absent invoice quantity as
+        // "unknown" and returns `unmatched`, which keeps the order open until the
+        // paperwork actually turns up.
+        invoiceQuantity: invoiceQty ?? undefined,
         invoiceUnitPrice: invoiceUnitPrice ?? undefined,
+        shippedQuantity: shippedQty ?? undefined,
+        freeGoodsQuantity: freeGoodsQty || undefined,
+        allocatedCharges: allocatedCharges || undefined,
         acceptedQuantity: acceptedQty,
         rejectedQuantity: rejectedQty,
         rejectedReason: rejectedQty > 0 ? rejectedReason || 'damaged on arrival' : undefined,
@@ -219,18 +349,24 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
         </div>
 
         <div className="px-6 py-4 max-h-[62vh] overflow-y-auto">
-          {/* three-way header */}
-          <div className="grid grid-cols-[1fr_86px_86px_86px_86px_74px] gap-2 items-end pb-2 text-[10.5px] font-bold uppercase tracking-wider text-gray-400">
+          {/* What the vendor's own paperwork said, and how confident we are we read it right. */}
+          <DocumentStrip invoice={invoice} packingSlip={packingSlip} />
+
+          {/* four-way header */}
+          <div className="grid grid-cols-[1fr_74px_74px_74px_74px_74px_66px] gap-1.5 items-end pb-2 text-[10.5px] font-bold uppercase tracking-wider text-gray-400">
             <div className="truncate">{order.wineName || 'Ordered wine'}</div>
             <div className="text-center">Ordered</div>
+            <div className="text-center" title="From the vendor's own packing slip">
+              Shipped
+            </div>
             <div className="text-center">Invoiced</div>
             <div className="text-center">Accepted</div>
             <div className="text-center">Rejected</div>
-            <div className="text-right">Backorder</div>
+            <div className="text-right">Back</div>
           </div>
 
           {/* quantities */}
-          <div className="grid grid-cols-[1fr_86px_86px_86px_86px_74px] gap-2 items-center py-3 border-t border-gray-100">
+          <div className="grid grid-cols-[1fr_74px_74px_74px_74px_74px_66px] gap-1.5 items-center py-3 border-t border-gray-100">
             <div className="text-xs text-gray-500">Bottles</div>
             <div className="text-center font-mono text-sm text-gray-500">{orderedQty}</div>
             <div className="flex justify-center">
@@ -238,9 +374,37 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
                 type="number"
                 min={0}
                 disabled={readOnly}
-                value={invoiceQty}
-                onChange={(e) => setInvoiceQty(Math.max(0, Number(e.target.value) || 0))}
-                className="w-[70px] h-8 text-center font-mono text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-wine-500 focus:border-transparent disabled:bg-gray-50"
+                placeholder="—"
+                aria-label="Quantity shipped per the packing slip"
+                title="What their packing slip says shipped. Disagreeing with the invoice proves an overbill from their own paperwork."
+                value={shippedQty ?? ''}
+                onChange={(e) =>
+                  setShippedQty(
+                    e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0),
+                  )
+                }
+                className={cn(
+                  'w-[64px] h-8 text-center font-mono text-sm border rounded-lg outline-none focus:ring-2 focus:ring-wine-500 focus:border-transparent disabled:bg-gray-50',
+                  match.selfEvidenced ? 'border-rose-400 bg-rose-50' : 'border-gray-200',
+                )}
+              />
+            </div>
+            <div className="flex justify-center">
+              <input
+                type="number"
+                min={0}
+                disabled={readOnly}
+                // Empty means "no invoice yet", which is a real and common state —
+                // many houses bill weekly in arrears. It must not read as zero.
+                placeholder="—"
+                aria-label="Quantity invoiced"
+                value={invoiceQty ?? ''}
+                onChange={(e) =>
+                  setInvoiceQty(
+                    e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0),
+                  )
+                }
+                className="w-[64px] h-8 text-center font-mono text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-wine-500 focus:border-transparent disabled:bg-gray-50"
               />
             </div>
             <div className="flex justify-center">
@@ -260,7 +424,7 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
           </div>
 
           {/* prices — exact match, no tolerance band */}
-          <div className="grid grid-cols-[1fr_86px_86px_246px] gap-2 items-center py-3 border-t border-gray-50">
+          <div className="grid grid-cols-[1fr_74px_74px_280px] gap-1.5 items-center py-3 border-t border-gray-50">
             <div className="text-xs text-gray-500">Unit price</div>
             <div className="text-center font-mono text-sm text-gray-500">
               {poUnitPrice != null ? money(poUnitPrice) : '—'}
@@ -271,6 +435,8 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
                 min={0}
                 step="0.01"
                 disabled={readOnly}
+                aria-label="Invoice unit price"
+                placeholder="—"
                 value={invoiceUnitPrice ?? ''}
                 onChange={(e) =>
                   setInvoiceUnitPrice(
@@ -415,10 +581,18 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
                 )}
               </div>
             </div>
-            {receivedQty !== invoiceQty && (
+            {invoiceQty != null && receivedQty !== invoiceQty && (
               <p className="text-[10.5px] text-gray-500 mt-2 pt-2 border-t border-black/5">
                 {receivedQty} physically arrived ({acceptedQty} accepted + {rejectedQty} rejected)
-                against {invoiceQty} billed.
+                against {invoiceQty} billed
+                {freeGoodsQty > 0 ? `, ${freeGoodsQty} of them free` : ''}.
+              </p>
+            )}
+            {match.selfEvidenced && (
+              <p className="text-[10.5px] font-semibold text-rose-700 mt-2 pt-2 border-t border-black/5">
+                {/* The one claim that needs no argument — their two documents disagree. */}
+                Their packing slip and their invoice disagree. Attach the slip to the credit
+                request and there is nothing to dispute.
               </p>
             )}
           </div>

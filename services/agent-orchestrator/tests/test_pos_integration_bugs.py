@@ -92,6 +92,14 @@ class TestBUG03HmacAPI:
         wrong_sig = "deadbeef" * 8
         assert agent.verify_webhook_signature(raw, wrong_sig) is False
 
+    def test_verify_webhook_signature_fails_closed_without_secret(self):
+        """SimPOS testbed decision B16: an unconfigured secret must reject,
+        never silently pass verification."""
+        agent = _make_agent()
+        agent.toast_webhook_secret = None
+        assert agent.verify_webhook_signature("payload", "any-signature") is False
+        assert agent.verify_webhook_signature("payload", "") is False
+
 
 # ---------------------------------------------------------------------------
 # BUG-05: Signature must be verified against raw bytes, not re-serialized JSON
@@ -156,10 +164,21 @@ class TestBUG04WineDetection:
         assert agent.is_wine_item("Caymus", selection=None) is False
 
     def test_non_wine_category_returns_false(self):
-        """Item in 'Beverages' category -> False even if it had wine-adjacent words."""
+        """Item in 'Beverages' category with a name that matches no wine keyword -> False."""
         agent = _make_agent()
         selection = {"menuGroup": {"category": "Beverages"}}
-        assert agent.is_wine_item("Sparkling Water", selection=selection) is False
+        assert agent.is_wine_item("Iced Tea", selection=selection) is False
+
+    def test_unlisted_wine_category_falls_through_to_keywords(self):
+        """SimPOS testbed decision B21: a category NOT on the hardcoded
+        wine_menu_categories list (e.g. a house category like 'Reserve List')
+        is not proof the item isn't wine — it just means Toast/POS didn't use
+        one of our known category names. The keyword check must still run and
+        catch it by name, instead of the old behavior where any non-empty,
+        non-listed category was treated as a definitive not-wine verdict."""
+        agent = _make_agent()
+        selection = {"menuGroup": {"category": "Reserve List"}}
+        assert agent.is_wine_item("Estate Cabernet 2019", selection=selection) is True
 
     def test_keyword_fallback_for_uncategorized(self):
         """No category on selection, but 'chardonnay' in name -> keyword fallback True."""
@@ -187,8 +206,13 @@ class TestBUG06RefundLogic:
 
         published_events = []
 
-        async def mock_publish(exchange, routing_key, message):
-            published_events.append(message)
+        # Parameter names match MessageBus.publish(exchange_name, routing_key,
+        # message_body). They are not cosmetic: the agent calls publish() with
+        # keyword arguments, so a stale name here makes the call raise instead of
+        # recording, and the test fails as "0 events published" rather than as a
+        # signature mismatch — which is why this looked like a refund bug.
+        async def mock_publish(exchange_name, routing_key, message_body, **kwargs):
+            published_events.append(message_body)
 
         agent.message_bus = MagicMock()
         agent.message_bus.publish = mock_publish
@@ -229,8 +253,13 @@ class TestBUG06RefundLogic:
         agent = _make_agent()
         published_events = []
 
-        async def mock_publish(exchange, routing_key, message):
-            published_events.append(message)
+        # Parameter names match MessageBus.publish(exchange_name, routing_key,
+        # message_body). They are not cosmetic: the agent calls publish() with
+        # keyword arguments, so a stale name here makes the call raise instead of
+        # recording, and the test fails as "0 events published" rather than as a
+        # signature mismatch — which is why this looked like a refund bug.
+        async def mock_publish(exchange_name, routing_key, message_body, **kwargs):
+            published_events.append(message_body)
 
         agent.message_bus = MagicMock()
         agent.message_bus.publish = mock_publish

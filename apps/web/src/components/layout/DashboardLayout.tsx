@@ -7,9 +7,10 @@ import { GuidanceProvider } from '../../guidance/GuidanceProvider'
 import { PageTipStrip } from '../../guidance/components/PageTipStrip'
 import { SetupNudgeBanner } from '../../guidance/components/SetupNudgeBanner'
 import { WineAgentFab } from '../../guidance/components/WineAgentFab'
-import { TourHelpButton } from '../../guidance/components/TourHelpButton'
+import { GuidanceLiveRegion } from '../../guidance/announce'
 import { useUIStore } from '../../stores/uiStore'
 import { cn } from '../../lib/utils'
+import { BrandMark } from '../brand/BrandMark'
 
 interface DashboardLayoutProps {
   children?: React.ReactNode
@@ -35,7 +36,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     return () => window.removeEventListener('keydown', onKey)
   }, [setSidebarOpen])
 
-  const desktopPad = sidebarCollapsed ? 'md:pl-20' : 'md:pl-[260px]'
+  const desktopPad = sidebarCollapsed ? 'md:pl-[72px]' : 'md:pl-[260px]'
 
   return (
     <CommandProvider>
@@ -71,19 +72,16 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               >
                 <Menu className="w-5 h-5" />
               </button>
-              <span className="text-sm font-bold text-gray-900">WineOps AI</span>
-              <TourHelpButton />
-            </div>
-
-            {/* Desktop tour help */}
-            <div className="hidden md:flex sticky top-0 z-10 justify-end px-4 pt-2 pointer-events-none">
-              <div className="pointer-events-auto">
-                <TourHelpButton />
+              <div className="flex items-center gap-2">
+                <BrandMark size={24} alt="" />
+                <span className="text-sm font-bold text-gray-900">WineOps AI</span>
               </div>
+              <div className="w-11 h-11 shrink-0" aria-hidden />
             </div>
 
             <SetupNudgeBanner />
             <PageTipStrip />
+            <GuidanceLiveRegion />
             <main className="min-h-screen pb-safe">{children || <Outlet />}</main>
           </div>
 

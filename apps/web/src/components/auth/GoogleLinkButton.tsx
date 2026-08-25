@@ -1,47 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2 } from 'lucide-react'
 import { profileApi } from '../../services/api/profile'
-
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        id: {
-          initialize: (config: {
-            client_id: string
-            callback: (response: { credential: string }) => void
-          }) => void
-          renderButton: (parent: HTMLElement, options: Record<string, unknown>) => void
-        }
-      }
-    }
-  }
-}
-
-const GSI_SCRIPT_SRC = 'https://accounts.google.com/gsi/client'
-let gsiScriptPromise: Promise<void> | null = null
-
-function loadGoogleIdentityScript(): Promise<void> {
-  if (window.google?.accounts?.id) return Promise.resolve()
-  if (gsiScriptPromise) return gsiScriptPromise
-
-  gsiScriptPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>(`script[src="${GSI_SCRIPT_SRC}"]`)
-    if (existing) {
-      existing.addEventListener('load', () => resolve())
-      existing.addEventListener('error', () => reject(new Error('Failed to load Google script')))
-      return
-    }
-    const script = document.createElement('script')
-    script.src = GSI_SCRIPT_SRC
-    script.async = true
-    script.defer = true
-    script.onload = () => resolve()
-    script.onerror = () => reject(new Error('Failed to load Google script'))
-    document.head.appendChild(script)
-  })
-  return gsiScriptPromise
-}
+import { getGoogleClientId, loadGoogleIdentityScript } from '../../lib/googleIdentity'
 
 interface GoogleLinkButtonProps {
   isLinked: boolean
@@ -65,7 +25,7 @@ export function GoogleLinkButton({ isLinked, onLinked, onError }: GoogleLinkButt
   const [notConfigured, setNotConfigured] = useState(false)
   const [linking, setLinking] = useState(false)
 
-  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined
+  const clientId = getGoogleClientId()
 
   useEffect(() => {
     if (isLinked) return

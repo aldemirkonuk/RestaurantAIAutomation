@@ -43,11 +43,33 @@ class BufferWindow:
         self.sales.append({"quantity": quantity, "timestamp": timestamp, **sale_data})
 
     def calculate_final_stock(self, current_stock: int) -> int:
-        """Calculate final stock at end of window (LIFO)"""
-        if self.initial_stock is None:
-            self.initial_stock = current_stock + self.total_sold
+        """Apply the window's sales to the stock on hand.
 
-        self.final_stock = current_stock
+        This previously did:
+
+            self.initial_stock = current_stock + self.total_sold   # invent a "before"
+            self.final_stock = current_stock                       # return input unchanged
+
+        which never subtracted anything. It reconstructed a pre-sale figure by
+        adding the sales back on, then returned the value it was given — so the
+        evaluation logged a convincing "41 -> 40, sold 1" while writing back
+        exactly the number already in the database. Depletion was a no-op by
+        construction, and the log made it look like it was working. That single
+        line is why a POS sale never moved a bottle.
+
+        `current_stock` is read fresh from the database immediately before this
+        call (`_evaluate_buffer` passes `use_cache=False`), so it is the stock on
+        hand BEFORE this window is applied, and the sales must be subtracted.
+
+        Floored at zero: overselling past empty is a real occurrence — the count
+        was wrong, or a bottle was poured that was never in the system — and it
+        must not be recorded as negative inventory, which would corrupt valuation
+        and every downstream average.
+        """
+        if self.initial_stock is None:
+            self.initial_stock = current_stock
+
+        self.final_stock = max(0, current_stock - self.total_sold)
         return self.final_stock
 
     @property
@@ -401,11 +423,22 @@ class BufferManagerAgent(BaseAgent):
                 if last_alert_level is None or final_stock < last_alert_level:
 
                     # Check for active IN_TRANSIT orders
-                    in_transit = inventory.get("in_transit_quantity", 0)
+                    in_transit = inventory.get("in_transit_quantity") or 0
 
                     if in_transit == 0:
-                        # Calculate urgency metrics
-                        sales_velocity_7d = inventory.get("sales_velocity_7d", 0)
+                        # Calculate urgency metrics.
+                        #
+                        # `or 0`, not `.get(key, 0)`: the column exists and is
+                        # NULL for any wine without seven days of sales history,
+                        # and dict.get's default only fires when the KEY is
+                        # absent, not when its value is None. The comparison then
+                        # raised "'>' not supported between NoneType and int",
+                        # the whole evaluation aborted in its except block, and no
+                        # threshold breach was ever published — so a wine with no
+                        # velocity, which is precisely a newly stocked wine, could
+                        # never trigger a reorder.
+                        sales_velocity_7d = inventory.get("sales_velocity_7d") or 0
+                        in_transit = inventory.get("in_transit_quantity") or 0
                         estimated_stockout_days = (
                             final_stock / sales_velocity_7d
                             if sales_velocity_7d > 0

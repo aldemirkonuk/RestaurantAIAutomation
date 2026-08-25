@@ -10,6 +10,30 @@ Newest entries first. Maintained by the project skill
 
 <!-- Entries appear below this line. Do not rewrite older entries. -->
 
+### 2026-07-27 — api-gateway crash / login failing (UxOptimizer AuthModule DI)
+
+- **Trigger:** user "fix error in the website check railway logs login is failing"
+- **Source:** Railway production logs for `@wineops/api-gateway` (CRASHED)
+- **Harvested:** 1 defect
+
+| # | Symptom | Location | Severity | Outcome |
+|---|---------|----------|----------|---------|
+| 1 | Site login fails; api-gateway crash-loops on boot | `apps/api-gateway/src/ux-optimizer/ux-optimizer.module.ts` | blocker | fixed |
+
+**Root cause**
+`UxOptimizerController` uses `@UseGuards(JwtAuthGuard)`. `JwtAuthGuard` injects `TokenBlacklistService`, and Nest resolves guards in the controller's module context. `UxOptimizerModule` did not import `AuthModule`, so the whole Nest app failed to boot (not just that route). Introduced in `7c80b58`; fix already existed on local `main` (`1ddf084`) but was never pushed to `origin/main`, so Railway kept deploying the broken commit (`aa260f4`).
+
+**Files touched**
+- `apps/api-gateway/src/ux-optimizer/ux-optimizer.module.ts` (import + comment)
+- Deployed as hotfix `b0913ab` on `origin/main`
+
+**Verification**
+- Railway `@wineops/api-gateway` → ● Online on `b0913ab` (SUCCESS)
+- `POST /api/v1/auth/login` → 401 (service up; auth path reachable, not 502/crash)
+
+**Notes**
+- Minimal hotfix only; did not push the three unpushed local `main` receiving commits with this emergency restore.
+
 ### 2026-07-14 09:38 — pages sweep #3 (react-hooks/exhaustive-deps missing deps, high-risk batch)
 
 - **Trigger:** user `/fix-error` — "one by one … with bulletproof testing, only deploy if fully confident"

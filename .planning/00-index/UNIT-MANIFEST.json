@@ -1,0 +1,1996 @@
+{
+ "divisions": [
+  {
+   "slug": "research-math",
+   "title": "Research & Math",
+   "departments": [
+    "research-math"
+   ]
+  },
+  {
+   "slug": "platform",
+   "title": "Platform",
+   "departments": [
+    "engineering",
+    "data",
+    "reliability-sre"
+   ]
+  },
+  {
+   "slug": "applied-ai",
+   "title": "Applied AI",
+   "departments": [
+    "ai-orchestration",
+    "skills"
+   ]
+  },
+  {
+   "slug": "intelligence",
+   "title": "Intelligence",
+   "departments": [
+    "security",
+    "analytics-bi"
+   ]
+  },
+  {
+   "slug": "product",
+   "title": "Product",
+   "departments": [
+    "product-vision",
+    "guest-experience",
+    "design",
+    "partnerships-integrations"
+   ]
+  },
+  {
+   "slug": "commercial",
+   "title": "Commercial",
+   "departments": [
+    "growth",
+    "finance-pricing",
+    "sales",
+    "media-brand"
+   ]
+  },
+  {
+   "slug": "corporate",
+   "title": "Corporate",
+   "departments": [
+    "legal",
+    "knowledge-documentation",
+    "compliance-privacy",
+    "people-agent-ops",
+    "strategy-fundraising"
+   ]
+  }
+ ],
+ "units": [
+  {
+   "kind": "department",
+   "slug": "engineering",
+   "title": "Engineering",
+   "division": "platform",
+   "dir": "01-org/platform/engineering",
+   "files": {
+    "charter": "01-org/platform/engineering/engineering-charter.md",
+    "premortem": "01-org/platform/engineering/engineering-premortem.md",
+    "agenda-full": "01-org/platform/engineering/engineering-agenda-full.md",
+    "agenda-board": "01-org/platform/engineering/engineering-agenda-board.md",
+    "directive": "01-org/platform/engineering/engineering-directive.md",
+    "loops": "01-org/platform/engineering/engineering-loops.md",
+    "schedule": "01-org/platform/engineering/engineering-schedule.md",
+    "questions": "01-org/platform/engineering/engineering-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "catalogue-identity",
+   "title": "Catalogue & Identity",
+   "id": "2.1",
+   "division": "platform",
+   "department": "engineering",
+   "gated": false,
+   "dir": "01-org/platform/engineering/teams/catalogue-identity",
+   "files": {
+    "charter": "01-org/platform/engineering/teams/catalogue-identity/catalogue-identity-charter.md",
+    "premortem": "01-org/platform/engineering/teams/catalogue-identity/catalogue-identity-premortem.md",
+    "agenda-full": "01-org/platform/engineering/teams/catalogue-identity/catalogue-identity-agenda-full.md",
+    "agenda-board": "01-org/platform/engineering/teams/catalogue-identity/catalogue-identity-agenda-board.md",
+    "directive": "01-org/platform/engineering/teams/catalogue-identity/catalogue-identity-directive.md",
+    "loops": "01-org/platform/engineering/teams/catalogue-identity/catalogue-identity-loops.md",
+    "schedule": "01-org/platform/engineering/teams/catalogue-identity/catalogue-identity-schedule.md",
+    "questions": "01-org/platform/engineering/teams/catalogue-identity/catalogue-identity-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "inventory-ledger",
+   "title": "Inventory & Ledger",
+   "id": "2.2",
+   "division": "platform",
+   "department": "engineering",
+   "gated": false,
+   "dir": "01-org/platform/engineering/teams/inventory-ledger",
+   "files": {
+    "charter": "01-org/platform/engineering/teams/inventory-ledger/inventory-ledger-charter.md",
+    "premortem": "01-org/platform/engineering/teams/inventory-ledger/inventory-ledger-premortem.md",
+    "agenda-full": "01-org/platform/engineering/teams/inventory-ledger/inventory-ledger-agenda-full.md",
+    "agenda-board": "01-org/platform/engineering/teams/inventory-ledger/inventory-ledger-agenda-board.md",
+    "directive": "01-org/platform/engineering/teams/inventory-ledger/inventory-ledger-directive.md",
+    "loops": "01-org/platform/engineering/teams/inventory-ledger/inventory-ledger-loops.md",
+    "schedule": "01-org/platform/engineering/teams/inventory-ledger/inventory-ledger-schedule.md",
+    "questions": "01-org/platform/engineering/teams/inventory-ledger/inventory-ledger-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "procurement-vendor-network",
+   "title": "Procurement & Vendor Network",
+   "id": "2.3",
+   "division": "platform",
+   "department": "engineering",
+   "gated": false,
+   "dir": "01-org/platform/engineering/teams/procurement-vendor-network",
+   "files": {
+    "charter": "01-org/platform/engineering/teams/procurement-vendor-network/procurement-vendor-network-charter.md",
+    "premortem": "01-org/platform/engineering/teams/procurement-vendor-network/procurement-vendor-network-premortem.md",
+    "agenda-full": "01-org/platform/engineering/teams/procurement-vendor-network/procurement-vendor-network-agenda-full.md",
+    "agenda-board": "01-org/platform/engineering/teams/procurement-vendor-network/procurement-vendor-network-agenda-board.md",
+    "directive": "01-org/platform/engineering/teams/procurement-vendor-network/procurement-vendor-network-directive.md",
+    "loops": "01-org/platform/engineering/teams/procurement-vendor-network/procurement-vendor-network-loops.md",
+    "schedule": "01-org/platform/engineering/teams/procurement-vendor-network/procurement-vendor-network-schedule.md",
+    "questions": "01-org/platform/engineering/teams/procurement-vendor-network/procurement-vendor-network-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "messaging-delivery",
+   "title": "Messaging & Delivery",
+   "id": "2.4",
+   "division": "platform",
+   "department": "engineering",
+   "gated": false,
+   "dir": "01-org/platform/engineering/teams/messaging-delivery",
+   "files": {
+    "charter": "01-org/platform/engineering/teams/messaging-delivery/messaging-delivery-charter.md",
+    "premortem": "01-org/platform/engineering/teams/messaging-delivery/messaging-delivery-premortem.md",
+    "agenda-full": "01-org/platform/engineering/teams/messaging-delivery/messaging-delivery-agenda-full.md",
+    "agenda-board": "01-org/platform/engineering/teams/messaging-delivery/messaging-delivery-agenda-board.md",
+    "directive": "01-org/platform/engineering/teams/messaging-delivery/messaging-delivery-directive.md",
+    "loops": "01-org/platform/engineering/teams/messaging-delivery/messaging-delivery-loops.md",
+    "schedule": "01-org/platform/engineering/teams/messaging-delivery/messaging-delivery-schedule.md",
+    "questions": "01-org/platform/engineering/teams/messaging-delivery/messaging-delivery-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "client-surfaces",
+   "title": "Client Surfaces",
+   "id": "2.5",
+   "division": "platform",
+   "department": "engineering",
+   "gated": false,
+   "dir": "01-org/platform/engineering/teams/client-surfaces",
+   "files": {
+    "charter": "01-org/platform/engineering/teams/client-surfaces/client-surfaces-charter.md",
+    "premortem": "01-org/platform/engineering/teams/client-surfaces/client-surfaces-premortem.md",
+    "agenda-full": "01-org/platform/engineering/teams/client-surfaces/client-surfaces-agenda-full.md",
+    "agenda-board": "01-org/platform/engineering/teams/client-surfaces/client-surfaces-agenda-board.md",
+    "directive": "01-org/platform/engineering/teams/client-surfaces/client-surfaces-directive.md",
+    "loops": "01-org/platform/engineering/teams/client-surfaces/client-surfaces-loops.md",
+    "schedule": "01-org/platform/engineering/teams/client-surfaces/client-surfaces-schedule.md",
+    "questions": "01-org/platform/engineering/teams/client-surfaces/client-surfaces-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "platform-api",
+   "title": "Platform & API",
+   "id": "2.6",
+   "division": "platform",
+   "department": "engineering",
+   "gated": false,
+   "dir": "01-org/platform/engineering/teams/platform-api",
+   "files": {
+    "charter": "01-org/platform/engineering/teams/platform-api/platform-api-charter.md",
+    "premortem": "01-org/platform/engineering/teams/platform-api/platform-api-premortem.md",
+    "agenda-full": "01-org/platform/engineering/teams/platform-api/platform-api-agenda-full.md",
+    "agenda-board": "01-org/platform/engineering/teams/platform-api/platform-api-agenda-board.md",
+    "directive": "01-org/platform/engineering/teams/platform-api/platform-api-directive.md",
+    "loops": "01-org/platform/engineering/teams/platform-api/platform-api-loops.md",
+    "schedule": "01-org/platform/engineering/teams/platform-api/platform-api-schedule.md",
+    "questions": "01-org/platform/engineering/teams/platform-api/platform-api-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "integration-engineering",
+   "title": "Integration Engineering",
+   "id": "2.7",
+   "division": "platform",
+   "department": "engineering",
+   "gated": false,
+   "dir": "01-org/platform/engineering/teams/integration-engineering",
+   "files": {
+    "charter": "01-org/platform/engineering/teams/integration-engineering/integration-engineering-charter.md",
+    "premortem": "01-org/platform/engineering/teams/integration-engineering/integration-engineering-premortem.md",
+    "agenda-full": "01-org/platform/engineering/teams/integration-engineering/integration-engineering-agenda-full.md",
+    "agenda-board": "01-org/platform/engineering/teams/integration-engineering/integration-engineering-agenda-board.md",
+    "directive": "01-org/platform/engineering/teams/integration-engineering/integration-engineering-directive.md",
+    "loops": "01-org/platform/engineering/teams/integration-engineering/integration-engineering-loops.md",
+    "schedule": "01-org/platform/engineering/teams/integration-engineering/integration-engineering-schedule.md",
+    "questions": "01-org/platform/engineering/teams/integration-engineering/integration-engineering-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "schema-migrations",
+   "title": "Schema & Migrations",
+   "id": "2.8",
+   "division": "platform",
+   "department": "engineering",
+   "gated": false,
+   "dir": "01-org/platform/engineering/teams/schema-migrations",
+   "files": {
+    "charter": "01-org/platform/engineering/teams/schema-migrations/schema-migrations-charter.md",
+    "premortem": "01-org/platform/engineering/teams/schema-migrations/schema-migrations-premortem.md",
+    "agenda-full": "01-org/platform/engineering/teams/schema-migrations/schema-migrations-agenda-full.md",
+    "agenda-board": "01-org/platform/engineering/teams/schema-migrations/schema-migrations-agenda-board.md",
+    "directive": "01-org/platform/engineering/teams/schema-migrations/schema-migrations-directive.md",
+    "loops": "01-org/platform/engineering/teams/schema-migrations/schema-migrations-loops.md",
+    "schedule": "01-org/platform/engineering/teams/schema-migrations/schema-migrations-schedule.md",
+    "questions": "01-org/platform/engineering/teams/schema-migrations/schema-migrations-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "data",
+   "title": "Data",
+   "division": "platform",
+   "dir": "01-org/platform/data",
+   "files": {
+    "charter": "01-org/platform/data/data-charter.md",
+    "premortem": "01-org/platform/data/data-premortem.md",
+    "agenda-full": "01-org/platform/data/data-agenda-full.md",
+    "agenda-board": "01-org/platform/data/data-agenda-board.md",
+    "directive": "01-org/platform/data/data-directive.md",
+    "loops": "01-org/platform/data/data-loops.md",
+    "schedule": "01-org/platform/data/data-schedule.md",
+    "questions": "01-org/platform/data/data-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "corpora-enrichment",
+   "title": "Corpora & Enrichment",
+   "id": "5.1",
+   "division": "platform",
+   "department": "data",
+   "gated": false,
+   "dir": "01-org/platform/data/teams/corpora-enrichment",
+   "files": {
+    "charter": "01-org/platform/data/teams/corpora-enrichment/corpora-enrichment-charter.md",
+    "premortem": "01-org/platform/data/teams/corpora-enrichment/corpora-enrichment-premortem.md",
+    "agenda-full": "01-org/platform/data/teams/corpora-enrichment/corpora-enrichment-agenda-full.md",
+    "agenda-board": "01-org/platform/data/teams/corpora-enrichment/corpora-enrichment-agenda-board.md",
+    "directive": "01-org/platform/data/teams/corpora-enrichment/corpora-enrichment-directive.md",
+    "loops": "01-org/platform/data/teams/corpora-enrichment/corpora-enrichment-loops.md",
+    "schedule": "01-org/platform/data/teams/corpora-enrichment/corpora-enrichment-schedule.md",
+    "questions": "01-org/platform/data/teams/corpora-enrichment/corpora-enrichment-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "annotation-ground-truth",
+   "title": "Annotation & Ground Truth",
+   "id": "5.2",
+   "division": "platform",
+   "department": "data",
+   "gated": false,
+   "dir": "01-org/platform/data/teams/annotation-ground-truth",
+   "files": {
+    "charter": "01-org/platform/data/teams/annotation-ground-truth/annotation-ground-truth-charter.md",
+    "premortem": "01-org/platform/data/teams/annotation-ground-truth/annotation-ground-truth-premortem.md",
+    "agenda-full": "01-org/platform/data/teams/annotation-ground-truth/annotation-ground-truth-agenda-full.md",
+    "agenda-board": "01-org/platform/data/teams/annotation-ground-truth/annotation-ground-truth-agenda-board.md",
+    "directive": "01-org/platform/data/teams/annotation-ground-truth/annotation-ground-truth-directive.md",
+    "loops": "01-org/platform/data/teams/annotation-ground-truth/annotation-ground-truth-loops.md",
+    "schedule": "01-org/platform/data/teams/annotation-ground-truth/annotation-ground-truth-schedule.md",
+    "questions": "01-org/platform/data/teams/annotation-ground-truth/annotation-ground-truth-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "synthetic-generation-simulation",
+   "title": "Synthetic Generation & Simulation",
+   "id": "5.3",
+   "division": "platform",
+   "department": "data",
+   "gated": false,
+   "dir": "01-org/platform/data/teams/synthetic-generation-simulation",
+   "files": {
+    "charter": "01-org/platform/data/teams/synthetic-generation-simulation/synthetic-generation-simulation-charter.md",
+    "premortem": "01-org/platform/data/teams/synthetic-generation-simulation/synthetic-generation-simulation-premortem.md",
+    "agenda-full": "01-org/platform/data/teams/synthetic-generation-simulation/synthetic-generation-simulation-agenda-full.md",
+    "agenda-board": "01-org/platform/data/teams/synthetic-generation-simulation/synthetic-generation-simulation-agenda-board.md",
+    "directive": "01-org/platform/data/teams/synthetic-generation-simulation/synthetic-generation-simulation-directive.md",
+    "loops": "01-org/platform/data/teams/synthetic-generation-simulation/synthetic-generation-simulation-loops.md",
+    "schedule": "01-org/platform/data/teams/synthetic-generation-simulation/synthetic-generation-simulation-schedule.md",
+    "questions": "01-org/platform/data/teams/synthetic-generation-simulation/synthetic-generation-simulation-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "pos-operational-telemetry-ingest",
+   "title": "POS & Operational Telemetry Ingest",
+   "id": "5.4",
+   "division": "platform",
+   "department": "data",
+   "gated": false,
+   "dir": "01-org/platform/data/teams/pos-operational-telemetry-ingest",
+   "files": {
+    "charter": "01-org/platform/data/teams/pos-operational-telemetry-ingest/pos-operational-telemetry-ingest-charter.md",
+    "premortem": "01-org/platform/data/teams/pos-operational-telemetry-ingest/pos-operational-telemetry-ingest-premortem.md",
+    "agenda-full": "01-org/platform/data/teams/pos-operational-telemetry-ingest/pos-operational-telemetry-ingest-agenda-full.md",
+    "agenda-board": "01-org/platform/data/teams/pos-operational-telemetry-ingest/pos-operational-telemetry-ingest-agenda-board.md",
+    "directive": "01-org/platform/data/teams/pos-operational-telemetry-ingest/pos-operational-telemetry-ingest-directive.md",
+    "loops": "01-org/platform/data/teams/pos-operational-telemetry-ingest/pos-operational-telemetry-ingest-loops.md",
+    "schedule": "01-org/platform/data/teams/pos-operational-telemetry-ingest/pos-operational-telemetry-ingest-schedule.md",
+    "questions": "01-org/platform/data/teams/pos-operational-telemetry-ingest/pos-operational-telemetry-ingest-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "substrate-quality-coverage",
+   "title": "Substrate Quality & Coverage",
+   "id": "5.5",
+   "division": "platform",
+   "department": "data",
+   "gated": false,
+   "dir": "01-org/platform/data/teams/substrate-quality-coverage",
+   "files": {
+    "charter": "01-org/platform/data/teams/substrate-quality-coverage/substrate-quality-coverage-charter.md",
+    "premortem": "01-org/platform/data/teams/substrate-quality-coverage/substrate-quality-coverage-premortem.md",
+    "agenda-full": "01-org/platform/data/teams/substrate-quality-coverage/substrate-quality-coverage-agenda-full.md",
+    "agenda-board": "01-org/platform/data/teams/substrate-quality-coverage/substrate-quality-coverage-agenda-board.md",
+    "directive": "01-org/platform/data/teams/substrate-quality-coverage/substrate-quality-coverage-directive.md",
+    "loops": "01-org/platform/data/teams/substrate-quality-coverage/substrate-quality-coverage-loops.md",
+    "schedule": "01-org/platform/data/teams/substrate-quality-coverage/substrate-quality-coverage-schedule.md",
+    "questions": "01-org/platform/data/teams/substrate-quality-coverage/substrate-quality-coverage-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "reliability-sre",
+   "title": "Reliability / SRE",
+   "division": "platform",
+   "dir": "01-org/platform/reliability-sre",
+   "files": {
+    "charter": "01-org/platform/reliability-sre/reliability-sre-charter.md",
+    "premortem": "01-org/platform/reliability-sre/reliability-sre-premortem.md",
+    "agenda-full": "01-org/platform/reliability-sre/reliability-sre-agenda-full.md",
+    "agenda-board": "01-org/platform/reliability-sre/reliability-sre-agenda-board.md",
+    "directive": "01-org/platform/reliability-sre/reliability-sre-directive.md",
+    "loops": "01-org/platform/reliability-sre/reliability-sre-loops.md",
+    "schedule": "01-org/platform/reliability-sre/reliability-sre-schedule.md",
+    "questions": "01-org/platform/reliability-sre/reliability-sre-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "observability-telemetry-plumbing",
+   "title": "Observability & Telemetry Plumbing",
+   "id": "6.1",
+   "division": "platform",
+   "department": "reliability-sre",
+   "gated": false,
+   "dir": "01-org/platform/reliability-sre/teams/observability-telemetry-plumbing",
+   "files": {
+    "charter": "01-org/platform/reliability-sre/teams/observability-telemetry-plumbing/observability-telemetry-plumbing-charter.md",
+    "premortem": "01-org/platform/reliability-sre/teams/observability-telemetry-plumbing/observability-telemetry-plumbing-premortem.md",
+    "agenda-full": "01-org/platform/reliability-sre/teams/observability-telemetry-plumbing/observability-telemetry-plumbing-agenda-full.md",
+    "agenda-board": "01-org/platform/reliability-sre/teams/observability-telemetry-plumbing/observability-telemetry-plumbing-agenda-board.md",
+    "directive": "01-org/platform/reliability-sre/teams/observability-telemetry-plumbing/observability-telemetry-plumbing-directive.md",
+    "loops": "01-org/platform/reliability-sre/teams/observability-telemetry-plumbing/observability-telemetry-plumbing-loops.md",
+    "schedule": "01-org/platform/reliability-sre/teams/observability-telemetry-plumbing/observability-telemetry-plumbing-schedule.md",
+    "questions": "01-org/platform/reliability-sre/teams/observability-telemetry-plumbing/observability-telemetry-plumbing-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "release-engineering",
+   "title": "Release Engineering",
+   "id": "6.2",
+   "division": "platform",
+   "department": "reliability-sre",
+   "gated": false,
+   "dir": "01-org/platform/reliability-sre/teams/release-engineering",
+   "files": {
+    "charter": "01-org/platform/reliability-sre/teams/release-engineering/release-engineering-charter.md",
+    "premortem": "01-org/platform/reliability-sre/teams/release-engineering/release-engineering-premortem.md",
+    "agenda-full": "01-org/platform/reliability-sre/teams/release-engineering/release-engineering-agenda-full.md",
+    "agenda-board": "01-org/platform/reliability-sre/teams/release-engineering/release-engineering-agenda-board.md",
+    "directive": "01-org/platform/reliability-sre/teams/release-engineering/release-engineering-directive.md",
+    "loops": "01-org/platform/reliability-sre/teams/release-engineering/release-engineering-loops.md",
+    "schedule": "01-org/platform/reliability-sre/teams/release-engineering/release-engineering-schedule.md",
+    "questions": "01-org/platform/reliability-sre/teams/release-engineering/release-engineering-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "runtime-resilience",
+   "title": "Runtime Resilience",
+   "id": "6.3",
+   "division": "platform",
+   "department": "reliability-sre",
+   "gated": false,
+   "dir": "01-org/platform/reliability-sre/teams/runtime-resilience",
+   "files": {
+    "charter": "01-org/platform/reliability-sre/teams/runtime-resilience/runtime-resilience-charter.md",
+    "premortem": "01-org/platform/reliability-sre/teams/runtime-resilience/runtime-resilience-premortem.md",
+    "agenda-full": "01-org/platform/reliability-sre/teams/runtime-resilience/runtime-resilience-agenda-full.md",
+    "agenda-board": "01-org/platform/reliability-sre/teams/runtime-resilience/runtime-resilience-agenda-board.md",
+    "directive": "01-org/platform/reliability-sre/teams/runtime-resilience/runtime-resilience-directive.md",
+    "loops": "01-org/platform/reliability-sre/teams/runtime-resilience/runtime-resilience-loops.md",
+    "schedule": "01-org/platform/reliability-sre/teams/runtime-resilience/runtime-resilience-schedule.md",
+    "questions": "01-org/platform/reliability-sre/teams/runtime-resilience/runtime-resilience-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "state-integrity-invariants",
+   "title": "State Integrity & Invariants",
+   "id": "6.4",
+   "division": "platform",
+   "department": "reliability-sre",
+   "gated": false,
+   "dir": "01-org/platform/reliability-sre/teams/state-integrity-invariants",
+   "files": {
+    "charter": "01-org/platform/reliability-sre/teams/state-integrity-invariants/state-integrity-invariants-charter.md",
+    "premortem": "01-org/platform/reliability-sre/teams/state-integrity-invariants/state-integrity-invariants-premortem.md",
+    "agenda-full": "01-org/platform/reliability-sre/teams/state-integrity-invariants/state-integrity-invariants-agenda-full.md",
+    "agenda-board": "01-org/platform/reliability-sre/teams/state-integrity-invariants/state-integrity-invariants-agenda-board.md",
+    "directive": "01-org/platform/reliability-sre/teams/state-integrity-invariants/state-integrity-invariants-directive.md",
+    "loops": "01-org/platform/reliability-sre/teams/state-integrity-invariants/state-integrity-invariants-loops.md",
+    "schedule": "01-org/platform/reliability-sre/teams/state-integrity-invariants/state-integrity-invariants-schedule.md",
+    "questions": "01-org/platform/reliability-sre/teams/state-integrity-invariants/state-integrity-invariants-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "ai-orchestration",
+   "title": "AI Orchestration",
+   "division": "applied-ai",
+   "dir": "01-org/applied-ai/ai-orchestration",
+   "files": {
+    "charter": "01-org/applied-ai/ai-orchestration/ai-orchestration-charter.md",
+    "premortem": "01-org/applied-ai/ai-orchestration/ai-orchestration-premortem.md",
+    "agenda-full": "01-org/applied-ai/ai-orchestration/ai-orchestration-agenda-full.md",
+    "agenda-board": "01-org/applied-ai/ai-orchestration/ai-orchestration-agenda-board.md",
+    "directive": "01-org/applied-ai/ai-orchestration/ai-orchestration-directive.md",
+    "loops": "01-org/applied-ai/ai-orchestration/ai-orchestration-loops.md",
+    "schedule": "01-org/applied-ai/ai-orchestration/ai-orchestration-schedule.md",
+    "questions": "01-org/applied-ai/ai-orchestration/ai-orchestration-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "harness-runtime",
+   "title": "Harness & Runtime",
+   "id": "3.1",
+   "division": "applied-ai",
+   "department": "ai-orchestration",
+   "gated": false,
+   "dir": "01-org/applied-ai/ai-orchestration/teams/harness-runtime",
+   "files": {
+    "charter": "01-org/applied-ai/ai-orchestration/teams/harness-runtime/harness-runtime-charter.md",
+    "premortem": "01-org/applied-ai/ai-orchestration/teams/harness-runtime/harness-runtime-premortem.md",
+    "agenda-full": "01-org/applied-ai/ai-orchestration/teams/harness-runtime/harness-runtime-agenda-full.md",
+    "agenda-board": "01-org/applied-ai/ai-orchestration/teams/harness-runtime/harness-runtime-agenda-board.md",
+    "directive": "01-org/applied-ai/ai-orchestration/teams/harness-runtime/harness-runtime-directive.md",
+    "loops": "01-org/applied-ai/ai-orchestration/teams/harness-runtime/harness-runtime-loops.md",
+    "schedule": "01-org/applied-ai/ai-orchestration/teams/harness-runtime/harness-runtime-schedule.md",
+    "questions": "01-org/applied-ai/ai-orchestration/teams/harness-runtime/harness-runtime-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "agent-fleet",
+   "title": "Agent Fleet",
+   "id": "3.2",
+   "division": "applied-ai",
+   "department": "ai-orchestration",
+   "gated": false,
+   "dir": "01-org/applied-ai/ai-orchestration/teams/agent-fleet",
+   "files": {
+    "charter": "01-org/applied-ai/ai-orchestration/teams/agent-fleet/agent-fleet-charter.md",
+    "premortem": "01-org/applied-ai/ai-orchestration/teams/agent-fleet/agent-fleet-premortem.md",
+    "agenda-full": "01-org/applied-ai/ai-orchestration/teams/agent-fleet/agent-fleet-agenda-full.md",
+    "agenda-board": "01-org/applied-ai/ai-orchestration/teams/agent-fleet/agent-fleet-agenda-board.md",
+    "directive": "01-org/applied-ai/ai-orchestration/teams/agent-fleet/agent-fleet-directive.md",
+    "loops": "01-org/applied-ai/ai-orchestration/teams/agent-fleet/agent-fleet-loops.md",
+    "schedule": "01-org/applied-ai/ai-orchestration/teams/agent-fleet/agent-fleet-schedule.md",
+    "questions": "01-org/applied-ai/ai-orchestration/teams/agent-fleet/agent-fleet-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "model-routing-inference-economics",
+   "title": "Model Routing & Inference Economics",
+   "id": "3.3",
+   "division": "applied-ai",
+   "department": "ai-orchestration",
+   "gated": false,
+   "dir": "01-org/applied-ai/ai-orchestration/teams/model-routing-inference-economics",
+   "files": {
+    "charter": "01-org/applied-ai/ai-orchestration/teams/model-routing-inference-economics/model-routing-inference-economics-charter.md",
+    "premortem": "01-org/applied-ai/ai-orchestration/teams/model-routing-inference-economics/model-routing-inference-economics-premortem.md",
+    "agenda-full": "01-org/applied-ai/ai-orchestration/teams/model-routing-inference-economics/model-routing-inference-economics-agenda-full.md",
+    "agenda-board": "01-org/applied-ai/ai-orchestration/teams/model-routing-inference-economics/model-routing-inference-economics-agenda-board.md",
+    "directive": "01-org/applied-ai/ai-orchestration/teams/model-routing-inference-economics/model-routing-inference-economics-directive.md",
+    "loops": "01-org/applied-ai/ai-orchestration/teams/model-routing-inference-economics/model-routing-inference-economics-loops.md",
+    "schedule": "01-org/applied-ai/ai-orchestration/teams/model-routing-inference-economics/model-routing-inference-economics-schedule.md",
+    "questions": "01-org/applied-ai/ai-orchestration/teams/model-routing-inference-economics/model-routing-inference-economics-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "agent-evaluation-gates",
+   "title": "Agent Evaluation & Gates",
+   "id": "3.4",
+   "division": "applied-ai",
+   "department": "ai-orchestration",
+   "gated": false,
+   "dir": "01-org/applied-ai/ai-orchestration/teams/agent-evaluation-gates",
+   "files": {
+    "charter": "01-org/applied-ai/ai-orchestration/teams/agent-evaluation-gates/agent-evaluation-gates-charter.md",
+    "premortem": "01-org/applied-ai/ai-orchestration/teams/agent-evaluation-gates/agent-evaluation-gates-premortem.md",
+    "agenda-full": "01-org/applied-ai/ai-orchestration/teams/agent-evaluation-gates/agent-evaluation-gates-agenda-full.md",
+    "agenda-board": "01-org/applied-ai/ai-orchestration/teams/agent-evaluation-gates/agent-evaluation-gates-agenda-board.md",
+    "directive": "01-org/applied-ai/ai-orchestration/teams/agent-evaluation-gates/agent-evaluation-gates-directive.md",
+    "loops": "01-org/applied-ai/ai-orchestration/teams/agent-evaluation-gates/agent-evaluation-gates-loops.md",
+    "schedule": "01-org/applied-ai/ai-orchestration/teams/agent-evaluation-gates/agent-evaluation-gates-schedule.md",
+    "questions": "01-org/applied-ai/ai-orchestration/teams/agent-evaluation-gates/agent-evaluation-gates-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "action-safety-the-human-gate",
+   "title": "Action Safety & the Human Gate",
+   "id": "3.5",
+   "division": "applied-ai",
+   "department": "ai-orchestration",
+   "gated": false,
+   "dir": "01-org/applied-ai/ai-orchestration/teams/action-safety-the-human-gate",
+   "files": {
+    "charter": "01-org/applied-ai/ai-orchestration/teams/action-safety-the-human-gate/action-safety-the-human-gate-charter.md",
+    "premortem": "01-org/applied-ai/ai-orchestration/teams/action-safety-the-human-gate/action-safety-the-human-gate-premortem.md",
+    "agenda-full": "01-org/applied-ai/ai-orchestration/teams/action-safety-the-human-gate/action-safety-the-human-gate-agenda-full.md",
+    "agenda-board": "01-org/applied-ai/ai-orchestration/teams/action-safety-the-human-gate/action-safety-the-human-gate-agenda-board.md",
+    "directive": "01-org/applied-ai/ai-orchestration/teams/action-safety-the-human-gate/action-safety-the-human-gate-directive.md",
+    "loops": "01-org/applied-ai/ai-orchestration/teams/action-safety-the-human-gate/action-safety-the-human-gate-loops.md",
+    "schedule": "01-org/applied-ai/ai-orchestration/teams/action-safety-the-human-gate/action-safety-the-human-gate-schedule.md",
+    "questions": "01-org/applied-ai/ai-orchestration/teams/action-safety-the-human-gate/action-safety-the-human-gate-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "skills",
+   "title": "Skills",
+   "division": "applied-ai",
+   "dir": "01-org/applied-ai/skills",
+   "files": {
+    "charter": "01-org/applied-ai/skills/skills-charter.md",
+    "premortem": "01-org/applied-ai/skills/skills-premortem.md",
+    "agenda-full": "01-org/applied-ai/skills/skills-agenda-full.md",
+    "agenda-board": "01-org/applied-ai/skills/skills-agenda-board.md",
+    "directive": "01-org/applied-ai/skills/skills-directive.md",
+    "loops": "01-org/applied-ai/skills/skills-loops.md",
+    "schedule": "01-org/applied-ai/skills/skills-schedule.md",
+    "questions": "01-org/applied-ai/skills/skills-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "skill-registry-authoring",
+   "title": "Skill Registry & Authoring",
+   "id": "4.1",
+   "division": "applied-ai",
+   "department": "skills",
+   "gated": false,
+   "dir": "01-org/applied-ai/skills/teams/skill-registry-authoring",
+   "files": {
+    "charter": "01-org/applied-ai/skills/teams/skill-registry-authoring/skill-registry-authoring-charter.md",
+    "premortem": "01-org/applied-ai/skills/teams/skill-registry-authoring/skill-registry-authoring-premortem.md",
+    "agenda-full": "01-org/applied-ai/skills/teams/skill-registry-authoring/skill-registry-authoring-agenda-full.md",
+    "agenda-board": "01-org/applied-ai/skills/teams/skill-registry-authoring/skill-registry-authoring-agenda-board.md",
+    "directive": "01-org/applied-ai/skills/teams/skill-registry-authoring/skill-registry-authoring-directive.md",
+    "loops": "01-org/applied-ai/skills/teams/skill-registry-authoring/skill-registry-authoring-loops.md",
+    "schedule": "01-org/applied-ai/skills/teams/skill-registry-authoring/skill-registry-authoring-schedule.md",
+    "questions": "01-org/applied-ai/skills/teams/skill-registry-authoring/skill-registry-authoring-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "skill-lifecycle-anti-sprawl",
+   "title": "Skill Lifecycle & Anti-Sprawl",
+   "id": "4.2",
+   "division": "applied-ai",
+   "department": "skills",
+   "gated": false,
+   "dir": "01-org/applied-ai/skills/teams/skill-lifecycle-anti-sprawl",
+   "files": {
+    "charter": "01-org/applied-ai/skills/teams/skill-lifecycle-anti-sprawl/skill-lifecycle-anti-sprawl-charter.md",
+    "premortem": "01-org/applied-ai/skills/teams/skill-lifecycle-anti-sprawl/skill-lifecycle-anti-sprawl-premortem.md",
+    "agenda-full": "01-org/applied-ai/skills/teams/skill-lifecycle-anti-sprawl/skill-lifecycle-anti-sprawl-agenda-full.md",
+    "agenda-board": "01-org/applied-ai/skills/teams/skill-lifecycle-anti-sprawl/skill-lifecycle-anti-sprawl-agenda-board.md",
+    "directive": "01-org/applied-ai/skills/teams/skill-lifecycle-anti-sprawl/skill-lifecycle-anti-sprawl-directive.md",
+    "loops": "01-org/applied-ai/skills/teams/skill-lifecycle-anti-sprawl/skill-lifecycle-anti-sprawl-loops.md",
+    "schedule": "01-org/applied-ai/skills/teams/skill-lifecycle-anti-sprawl/skill-lifecycle-anti-sprawl-schedule.md",
+    "questions": "01-org/applied-ai/skills/teams/skill-lifecycle-anti-sprawl/skill-lifecycle-anti-sprawl-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "skill-harvesting",
+   "title": "Skill Harvesting",
+   "id": "4.3",
+   "division": "applied-ai",
+   "department": "skills",
+   "gated": false,
+   "dir": "01-org/applied-ai/skills/teams/skill-harvesting",
+   "files": {
+    "charter": "01-org/applied-ai/skills/teams/skill-harvesting/skill-harvesting-charter.md",
+    "premortem": "01-org/applied-ai/skills/teams/skill-harvesting/skill-harvesting-premortem.md",
+    "agenda-full": "01-org/applied-ai/skills/teams/skill-harvesting/skill-harvesting-agenda-full.md",
+    "agenda-board": "01-org/applied-ai/skills/teams/skill-harvesting/skill-harvesting-agenda-board.md",
+    "directive": "01-org/applied-ai/skills/teams/skill-harvesting/skill-harvesting-directive.md",
+    "loops": "01-org/applied-ai/skills/teams/skill-harvesting/skill-harvesting-loops.md",
+    "schedule": "01-org/applied-ai/skills/teams/skill-harvesting/skill-harvesting-schedule.md",
+    "questions": "01-org/applied-ai/skills/teams/skill-harvesting/skill-harvesting-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "research-math",
+   "title": "Research & Math",
+   "division": "research-math",
+   "dir": "01-org/research-math",
+   "files": {
+    "charter": "01-org/research-math/research-math-charter.md",
+    "premortem": "01-org/research-math/research-math-premortem.md",
+    "agenda-full": "01-org/research-math/research-math-agenda-full.md",
+    "agenda-board": "01-org/research-math/research-math-agenda-board.md",
+    "directive": "01-org/research-math/research-math-directive.md",
+    "loops": "01-org/research-math/research-math-loops.md",
+    "schedule": "01-org/research-math/research-math-schedule.md",
+    "questions": "01-org/research-math/research-math-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "harness-model-routing",
+   "title": "Harness & Model Routing",
+   "id": "RM-1",
+   "division": "research-math",
+   "department": "research-math",
+   "gated": false,
+   "dir": "01-org/research-math/teams/harness-model-routing",
+   "files": {
+    "charter": "01-org/research-math/teams/harness-model-routing/harness-model-routing-charter.md",
+    "premortem": "01-org/research-math/teams/harness-model-routing/harness-model-routing-premortem.md",
+    "agenda-full": "01-org/research-math/teams/harness-model-routing/harness-model-routing-agenda-full.md",
+    "agenda-board": "01-org/research-math/teams/harness-model-routing/harness-model-routing-agenda-board.md",
+    "directive": "01-org/research-math/teams/harness-model-routing/harness-model-routing-directive.md",
+    "loops": "01-org/research-math/teams/harness-model-routing/harness-model-routing-loops.md",
+    "schedule": "01-org/research-math/teams/harness-model-routing/harness-model-routing-schedule.md",
+    "questions": "01-org/research-math/teams/harness-model-routing/harness-model-routing-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "evaluation-doneability",
+   "title": "Evaluation & Doneability",
+   "id": "RM-2",
+   "division": "research-math",
+   "department": "research-math",
+   "gated": false,
+   "dir": "01-org/research-math/teams/evaluation-doneability",
+   "files": {
+    "charter": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-charter.md",
+    "premortem": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-premortem.md",
+    "agenda-full": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-agenda-full.md",
+    "agenda-board": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-agenda-board.md",
+    "directive": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-directive.md",
+    "loops": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-loops.md",
+    "schedule": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-schedule.md",
+    "questions": "01-org/research-math/teams/evaluation-doneability/evaluation-doneability-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "neural-footprint-instrumentation",
+   "title": "Neural Footprint Instrumentation",
+   "id": "RM-3",
+   "division": "research-math",
+   "department": "research-math",
+   "gated": false,
+   "dir": "01-org/research-math/teams/neural-footprint-instrumentation",
+   "files": {
+    "charter": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-charter.md",
+    "premortem": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-premortem.md",
+    "agenda-full": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-agenda-full.md",
+    "agenda-board": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-agenda-board.md",
+    "directive": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-directive.md",
+    "loops": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-loops.md",
+    "schedule": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-schedule.md",
+    "questions": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "security",
+   "title": "Security",
+   "division": "intelligence",
+   "dir": "01-org/intelligence/security",
+   "files": {
+    "charter": "01-org/intelligence/security/security-charter.md",
+    "premortem": "01-org/intelligence/security/security-premortem.md",
+    "agenda-full": "01-org/intelligence/security/security-agenda-full.md",
+    "agenda-board": "01-org/intelligence/security/security-agenda-board.md",
+    "directive": "01-org/intelligence/security/security-directive.md",
+    "loops": "01-org/intelligence/security/security-loops.md",
+    "schedule": "01-org/intelligence/security/security-schedule.md",
+    "questions": "01-org/intelligence/security/security-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "access-control-tenant-isolation",
+   "title": "Access Control & Tenant Isolation",
+   "id": "SEC-1",
+   "division": "intelligence",
+   "department": "security",
+   "gated": false,
+   "dir": "01-org/intelligence/security/teams/access-control-tenant-isolation",
+   "files": {
+    "charter": "01-org/intelligence/security/teams/access-control-tenant-isolation/access-control-tenant-isolation-charter.md",
+    "premortem": "01-org/intelligence/security/teams/access-control-tenant-isolation/access-control-tenant-isolation-premortem.md",
+    "agenda-full": "01-org/intelligence/security/teams/access-control-tenant-isolation/access-control-tenant-isolation-agenda-full.md",
+    "agenda-board": "01-org/intelligence/security/teams/access-control-tenant-isolation/access-control-tenant-isolation-agenda-board.md",
+    "directive": "01-org/intelligence/security/teams/access-control-tenant-isolation/access-control-tenant-isolation-directive.md",
+    "loops": "01-org/intelligence/security/teams/access-control-tenant-isolation/access-control-tenant-isolation-loops.md",
+    "schedule": "01-org/intelligence/security/teams/access-control-tenant-isolation/access-control-tenant-isolation-schedule.md",
+    "questions": "01-org/intelligence/security/teams/access-control-tenant-isolation/access-control-tenant-isolation-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "perimeter-ingress-integrity",
+   "title": "Perimeter & Ingress Integrity",
+   "id": "SEC-2",
+   "division": "intelligence",
+   "department": "security",
+   "gated": false,
+   "dir": "01-org/intelligence/security/teams/perimeter-ingress-integrity",
+   "files": {
+    "charter": "01-org/intelligence/security/teams/perimeter-ingress-integrity/perimeter-ingress-integrity-charter.md",
+    "premortem": "01-org/intelligence/security/teams/perimeter-ingress-integrity/perimeter-ingress-integrity-premortem.md",
+    "agenda-full": "01-org/intelligence/security/teams/perimeter-ingress-integrity/perimeter-ingress-integrity-agenda-full.md",
+    "agenda-board": "01-org/intelligence/security/teams/perimeter-ingress-integrity/perimeter-ingress-integrity-agenda-board.md",
+    "directive": "01-org/intelligence/security/teams/perimeter-ingress-integrity/perimeter-ingress-integrity-directive.md",
+    "loops": "01-org/intelligence/security/teams/perimeter-ingress-integrity/perimeter-ingress-integrity-loops.md",
+    "schedule": "01-org/intelligence/security/teams/perimeter-ingress-integrity/perimeter-ingress-integrity-schedule.md",
+    "questions": "01-org/intelligence/security/teams/perimeter-ingress-integrity/perimeter-ingress-integrity-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "ai-surface-security",
+   "title": "AI Surface Security",
+   "id": "SEC-3",
+   "division": "intelligence",
+   "department": "security",
+   "gated": false,
+   "dir": "01-org/intelligence/security/teams/ai-surface-security",
+   "files": {
+    "charter": "01-org/intelligence/security/teams/ai-surface-security/ai-surface-security-charter.md",
+    "premortem": "01-org/intelligence/security/teams/ai-surface-security/ai-surface-security-premortem.md",
+    "agenda-full": "01-org/intelligence/security/teams/ai-surface-security/ai-surface-security-agenda-full.md",
+    "agenda-board": "01-org/intelligence/security/teams/ai-surface-security/ai-surface-security-agenda-board.md",
+    "directive": "01-org/intelligence/security/teams/ai-surface-security/ai-surface-security-directive.md",
+    "loops": "01-org/intelligence/security/teams/ai-surface-security/ai-surface-security-loops.md",
+    "schedule": "01-org/intelligence/security/teams/ai-surface-security/ai-surface-security-schedule.md",
+    "questions": "01-org/intelligence/security/teams/ai-surface-security/ai-surface-security-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "analytics-bi",
+   "title": "Analytics & BI",
+   "division": "intelligence",
+   "dir": "01-org/intelligence/analytics-bi",
+   "files": {
+    "charter": "01-org/intelligence/analytics-bi/analytics-bi-charter.md",
+    "premortem": "01-org/intelligence/analytics-bi/analytics-bi-premortem.md",
+    "agenda-full": "01-org/intelligence/analytics-bi/analytics-bi-agenda-full.md",
+    "agenda-board": "01-org/intelligence/analytics-bi/analytics-bi-agenda-board.md",
+    "directive": "01-org/intelligence/analytics-bi/analytics-bi-directive.md",
+    "loops": "01-org/intelligence/analytics-bi/analytics-bi-loops.md",
+    "schedule": "01-org/intelligence/analytics-bi/analytics-bi-schedule.md",
+    "questions": "01-org/intelligence/analytics-bi/analytics-bi-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "analytics-engine",
+   "title": "Analytics Engine (Decision Science)",
+   "id": "AB-1",
+   "division": "intelligence",
+   "department": "analytics-bi",
+   "gated": false,
+   "dir": "01-org/intelligence/analytics-bi/teams/analytics-engine",
+   "files": {
+    "charter": "01-org/intelligence/analytics-bi/teams/analytics-engine/analytics-engine-charter.md",
+    "premortem": "01-org/intelligence/analytics-bi/teams/analytics-engine/analytics-engine-premortem.md",
+    "agenda-full": "01-org/intelligence/analytics-bi/teams/analytics-engine/analytics-engine-agenda-full.md",
+    "agenda-board": "01-org/intelligence/analytics-bi/teams/analytics-engine/analytics-engine-agenda-board.md",
+    "directive": "01-org/intelligence/analytics-bi/teams/analytics-engine/analytics-engine-directive.md",
+    "loops": "01-org/intelligence/analytics-bi/teams/analytics-engine/analytics-engine-loops.md",
+    "schedule": "01-org/intelligence/analytics-bi/teams/analytics-engine/analytics-engine-schedule.md",
+    "questions": "01-org/intelligence/analytics-bi/teams/analytics-engine/analytics-engine-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "insight-narrative-generation",
+   "title": "Insight & Narrative Generation",
+   "id": "AB-2",
+   "division": "intelligence",
+   "department": "analytics-bi",
+   "gated": false,
+   "dir": "01-org/intelligence/analytics-bi/teams/insight-narrative-generation",
+   "files": {
+    "charter": "01-org/intelligence/analytics-bi/teams/insight-narrative-generation/insight-narrative-generation-charter.md",
+    "premortem": "01-org/intelligence/analytics-bi/teams/insight-narrative-generation/insight-narrative-generation-premortem.md",
+    "agenda-full": "01-org/intelligence/analytics-bi/teams/insight-narrative-generation/insight-narrative-generation-agenda-full.md",
+    "agenda-board": "01-org/intelligence/analytics-bi/teams/insight-narrative-generation/insight-narrative-generation-agenda-board.md",
+    "directive": "01-org/intelligence/analytics-bi/teams/insight-narrative-generation/insight-narrative-generation-directive.md",
+    "loops": "01-org/intelligence/analytics-bi/teams/insight-narrative-generation/insight-narrative-generation-loops.md",
+    "schedule": "01-org/intelligence/analytics-bi/teams/insight-narrative-generation/insight-narrative-generation-schedule.md",
+    "questions": "01-org/intelligence/analytics-bi/teams/insight-narrative-generation/insight-narrative-generation-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "metric-contract-truth-assurance",
+   "title": "Metric Contract & Truth Assurance",
+   "id": "AB-3",
+   "division": "intelligence",
+   "department": "analytics-bi",
+   "gated": false,
+   "dir": "01-org/intelligence/analytics-bi/teams/metric-contract-truth-assurance",
+   "files": {
+    "charter": "01-org/intelligence/analytics-bi/teams/metric-contract-truth-assurance/metric-contract-truth-assurance-charter.md",
+    "premortem": "01-org/intelligence/analytics-bi/teams/metric-contract-truth-assurance/metric-contract-truth-assurance-premortem.md",
+    "agenda-full": "01-org/intelligence/analytics-bi/teams/metric-contract-truth-assurance/metric-contract-truth-assurance-agenda-full.md",
+    "agenda-board": "01-org/intelligence/analytics-bi/teams/metric-contract-truth-assurance/metric-contract-truth-assurance-agenda-board.md",
+    "directive": "01-org/intelligence/analytics-bi/teams/metric-contract-truth-assurance/metric-contract-truth-assurance-directive.md",
+    "loops": "01-org/intelligence/analytics-bi/teams/metric-contract-truth-assurance/metric-contract-truth-assurance-loops.md",
+    "schedule": "01-org/intelligence/analytics-bi/teams/metric-contract-truth-assurance/metric-contract-truth-assurance-schedule.md",
+    "questions": "01-org/intelligence/analytics-bi/teams/metric-contract-truth-assurance/metric-contract-truth-assurance-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "product-vision",
+   "title": "Product & Vision",
+   "division": "product",
+   "dir": "01-org/product/product-vision",
+   "files": {
+    "charter": "01-org/product/product-vision/product-vision-charter.md",
+    "premortem": "01-org/product/product-vision/product-vision-premortem.md",
+    "agenda-full": "01-org/product/product-vision/product-vision-agenda-full.md",
+    "agenda-board": "01-org/product/product-vision/product-vision-agenda-board.md",
+    "directive": "01-org/product/product-vision/product-vision-directive.md",
+    "loops": "01-org/product/product-vision/product-vision-loops.md",
+    "schedule": "01-org/product/product-vision/product-vision-schedule.md",
+    "questions": "01-org/product/product-vision/product-vision-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "inbound-understanding",
+   "title": "Inbound Understanding",
+   "id": "1.1",
+   "division": "product",
+   "department": "product-vision",
+   "gated": false,
+   "dir": "01-org/product/product-vision/teams/inbound-understanding",
+   "files": {
+    "charter": "01-org/product/product-vision/teams/inbound-understanding/inbound-understanding-charter.md",
+    "premortem": "01-org/product/product-vision/teams/inbound-understanding/inbound-understanding-premortem.md",
+    "agenda-full": "01-org/product/product-vision/teams/inbound-understanding/inbound-understanding-agenda-full.md",
+    "agenda-board": "01-org/product/product-vision/teams/inbound-understanding/inbound-understanding-agenda-board.md",
+    "directive": "01-org/product/product-vision/teams/inbound-understanding/inbound-understanding-directive.md",
+    "loops": "01-org/product/product-vision/teams/inbound-understanding/inbound-understanding-loops.md",
+    "schedule": "01-org/product/product-vision/teams/inbound-understanding/inbound-understanding-schedule.md",
+    "questions": "01-org/product/product-vision/teams/inbound-understanding/inbound-understanding-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "service-floor",
+   "title": "Service Floor (Floor Checker)",
+   "id": "1.2",
+   "division": "product",
+   "department": "product-vision",
+   "gated": false,
+   "dir": "01-org/product/product-vision/teams/service-floor",
+   "files": {
+    "charter": "01-org/product/product-vision/teams/service-floor/service-floor-charter.md",
+    "premortem": "01-org/product/product-vision/teams/service-floor/service-floor-premortem.md",
+    "agenda-full": "01-org/product/product-vision/teams/service-floor/service-floor-agenda-full.md",
+    "agenda-board": "01-org/product/product-vision/teams/service-floor/service-floor-agenda-board.md",
+    "directive": "01-org/product/product-vision/teams/service-floor/service-floor-directive.md",
+    "loops": "01-org/product/product-vision/teams/service-floor/service-floor-loops.md",
+    "schedule": "01-org/product/product-vision/teams/service-floor/service-floor-schedule.md",
+    "questions": "01-org/product/product-vision/teams/service-floor/service-floor-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "supply-discovery",
+   "title": "Supply Discovery (Vendor Finder)",
+   "id": "1.3",
+   "division": "product",
+   "department": "product-vision",
+   "gated": false,
+   "dir": "01-org/product/product-vision/teams/supply-discovery",
+   "files": {
+    "charter": "01-org/product/product-vision/teams/supply-discovery/supply-discovery-charter.md",
+    "premortem": "01-org/product/product-vision/teams/supply-discovery/supply-discovery-premortem.md",
+    "agenda-full": "01-org/product/product-vision/teams/supply-discovery/supply-discovery-agenda-full.md",
+    "agenda-board": "01-org/product/product-vision/teams/supply-discovery/supply-discovery-agenda-board.md",
+    "directive": "01-org/product/product-vision/teams/supply-discovery/supply-discovery-directive.md",
+    "loops": "01-org/product/product-vision/teams/supply-discovery/supply-discovery-loops.md",
+    "schedule": "01-org/product/product-vision/teams/supply-discovery/supply-discovery-schedule.md",
+    "questions": "01-org/product/product-vision/teams/supply-discovery/supply-discovery-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "surface-portfolio",
+   "title": "Surface Portfolio",
+   "id": "1.4",
+   "division": "product",
+   "department": "product-vision",
+   "gated": false,
+   "dir": "01-org/product/product-vision/teams/surface-portfolio",
+   "files": {
+    "charter": "01-org/product/product-vision/teams/surface-portfolio/surface-portfolio-charter.md",
+    "premortem": "01-org/product/product-vision/teams/surface-portfolio/surface-portfolio-premortem.md",
+    "agenda-full": "01-org/product/product-vision/teams/surface-portfolio/surface-portfolio-agenda-full.md",
+    "agenda-board": "01-org/product/product-vision/teams/surface-portfolio/surface-portfolio-agenda-board.md",
+    "directive": "01-org/product/product-vision/teams/surface-portfolio/surface-portfolio-directive.md",
+    "loops": "01-org/product/product-vision/teams/surface-portfolio/surface-portfolio-loops.md",
+    "schedule": "01-org/product/product-vision/teams/surface-portfolio/surface-portfolio-schedule.md",
+    "questions": "01-org/product/product-vision/teams/surface-portfolio/surface-portfolio-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "ask-ai",
+   "title": "Ask AI",
+   "id": "1.5",
+   "division": "product",
+   "department": "product-vision",
+   "gated": false,
+   "dir": "01-org/product/product-vision/teams/ask-ai",
+   "files": {
+    "charter": "01-org/product/product-vision/teams/ask-ai/ask-ai-charter.md",
+    "premortem": "01-org/product/product-vision/teams/ask-ai/ask-ai-premortem.md",
+    "agenda-full": "01-org/product/product-vision/teams/ask-ai/ask-ai-agenda-full.md",
+    "agenda-board": "01-org/product/product-vision/teams/ask-ai/ask-ai-agenda-board.md",
+    "directive": "01-org/product/product-vision/teams/ask-ai/ask-ai-directive.md",
+    "loops": "01-org/product/product-vision/teams/ask-ai/ask-ai-loops.md",
+    "schedule": "01-org/product/product-vision/teams/ask-ai/ask-ai-schedule.md",
+    "questions": "01-org/product/product-vision/teams/ask-ai/ask-ai-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "guest-experience",
+   "title": "Guest Experience (sub-layer)",
+   "division": "product",
+   "dir": "01-org/product/guest-experience",
+   "files": {
+    "charter": "01-org/product/guest-experience/guest-experience-charter.md",
+    "premortem": "01-org/product/guest-experience/guest-experience-premortem.md",
+    "agenda-full": "01-org/product/guest-experience/guest-experience-agenda-full.md",
+    "agenda-board": "01-org/product/guest-experience/guest-experience-agenda-board.md",
+    "directive": "01-org/product/guest-experience/guest-experience-directive.md",
+    "loops": "01-org/product/guest-experience/guest-experience-loops.md",
+    "schedule": "01-org/product/guest-experience/guest-experience-schedule.md",
+    "questions": "01-org/product/guest-experience/guest-experience-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "guest-identity-consent",
+   "title": "Guest Identity & Consent",
+   "id": "2.1",
+   "division": "product",
+   "department": "guest-experience",
+   "gated": false,
+   "dir": "01-org/product/guest-experience/teams/guest-identity-consent",
+   "files": {
+    "charter": "01-org/product/guest-experience/teams/guest-identity-consent/guest-identity-consent-charter.md",
+    "premortem": "01-org/product/guest-experience/teams/guest-identity-consent/guest-identity-consent-premortem.md",
+    "agenda-full": "01-org/product/guest-experience/teams/guest-identity-consent/guest-identity-consent-agenda-full.md",
+    "agenda-board": "01-org/product/guest-experience/teams/guest-identity-consent/guest-identity-consent-agenda-board.md",
+    "directive": "01-org/product/guest-experience/teams/guest-identity-consent/guest-identity-consent-directive.md",
+    "loops": "01-org/product/guest-experience/teams/guest-identity-consent/guest-identity-consent-loops.md",
+    "schedule": "01-org/product/guest-experience/teams/guest-identity-consent/guest-identity-consent-schedule.md",
+    "questions": "01-org/product/guest-experience/teams/guest-identity-consent/guest-identity-consent-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "taste-fingerprint",
+   "title": "Taste Fingerprint (NF-B)",
+   "id": "2.2",
+   "division": "product",
+   "department": "guest-experience",
+   "gated": false,
+   "dir": "01-org/product/guest-experience/teams/taste-fingerprint",
+   "files": {
+    "charter": "01-org/product/guest-experience/teams/taste-fingerprint/taste-fingerprint-charter.md",
+    "premortem": "01-org/product/guest-experience/teams/taste-fingerprint/taste-fingerprint-premortem.md",
+    "agenda-full": "01-org/product/guest-experience/teams/taste-fingerprint/taste-fingerprint-agenda-full.md",
+    "agenda-board": "01-org/product/guest-experience/teams/taste-fingerprint/taste-fingerprint-agenda-board.md",
+    "directive": "01-org/product/guest-experience/teams/taste-fingerprint/taste-fingerprint-directive.md",
+    "loops": "01-org/product/guest-experience/teams/taste-fingerprint/taste-fingerprint-loops.md",
+    "schedule": "01-org/product/guest-experience/teams/taste-fingerprint/taste-fingerprint-schedule.md",
+    "questions": "01-org/product/guest-experience/teams/taste-fingerprint/taste-fingerprint-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "consumer-app-points-economy",
+   "title": "Consumer App & Points Economy",
+   "id": "2.3",
+   "division": "product",
+   "department": "guest-experience",
+   "gated": false,
+   "dir": "01-org/product/guest-experience/teams/consumer-app-points-economy",
+   "files": {
+    "charter": "01-org/product/guest-experience/teams/consumer-app-points-economy/consumer-app-points-economy-charter.md",
+    "premortem": "01-org/product/guest-experience/teams/consumer-app-points-economy/consumer-app-points-economy-premortem.md",
+    "agenda-full": "01-org/product/guest-experience/teams/consumer-app-points-economy/consumer-app-points-economy-agenda-full.md",
+    "agenda-board": "01-org/product/guest-experience/teams/consumer-app-points-economy/consumer-app-points-economy-agenda-board.md",
+    "directive": "01-org/product/guest-experience/teams/consumer-app-points-economy/consumer-app-points-economy-directive.md",
+    "loops": "01-org/product/guest-experience/teams/consumer-app-points-economy/consumer-app-points-economy-loops.md",
+    "schedule": "01-org/product/guest-experience/teams/consumer-app-points-economy/consumer-app-points-economy-schedule.md",
+    "questions": "01-org/product/guest-experience/teams/consumer-app-points-economy/consumer-app-points-economy-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "guest-value-monetization",
+   "title": "Guest Value & Monetization",
+   "id": "2.4",
+   "division": "product",
+   "department": "guest-experience",
+   "gated": false,
+   "dir": "01-org/product/guest-experience/teams/guest-value-monetization",
+   "files": {
+    "charter": "01-org/product/guest-experience/teams/guest-value-monetization/guest-value-monetization-charter.md",
+    "premortem": "01-org/product/guest-experience/teams/guest-value-monetization/guest-value-monetization-premortem.md",
+    "agenda-full": "01-org/product/guest-experience/teams/guest-value-monetization/guest-value-monetization-agenda-full.md",
+    "agenda-board": "01-org/product/guest-experience/teams/guest-value-monetization/guest-value-monetization-agenda-board.md",
+    "directive": "01-org/product/guest-experience/teams/guest-value-monetization/guest-value-monetization-directive.md",
+    "loops": "01-org/product/guest-experience/teams/guest-value-monetization/guest-value-monetization-loops.md",
+    "schedule": "01-org/product/guest-experience/teams/guest-value-monetization/guest-value-monetization-schedule.md",
+    "questions": "01-org/product/guest-experience/teams/guest-value-monetization/guest-value-monetization-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "design",
+   "title": "Design",
+   "division": "product",
+   "dir": "01-org/product/design",
+   "files": {
+    "charter": "01-org/product/design/design-charter.md",
+    "premortem": "01-org/product/design/design-premortem.md",
+    "agenda-full": "01-org/product/design/design-agenda-full.md",
+    "agenda-board": "01-org/product/design/design-agenda-board.md",
+    "directive": "01-org/product/design/design-directive.md",
+    "loops": "01-org/product/design/design-loops.md",
+    "schedule": "01-org/product/design/design-schedule.md",
+    "questions": "01-org/product/design/design-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "ux-path-burn-down",
+   "title": "UX Path Burn-Down",
+   "id": "3.1",
+   "division": "product",
+   "department": "design",
+   "gated": false,
+   "dir": "01-org/product/design/teams/ux-path-burn-down",
+   "files": {
+    "charter": "01-org/product/design/teams/ux-path-burn-down/ux-path-burn-down-charter.md",
+    "premortem": "01-org/product/design/teams/ux-path-burn-down/ux-path-burn-down-premortem.md",
+    "agenda-full": "01-org/product/design/teams/ux-path-burn-down/ux-path-burn-down-agenda-full.md",
+    "agenda-board": "01-org/product/design/teams/ux-path-burn-down/ux-path-burn-down-agenda-board.md",
+    "directive": "01-org/product/design/teams/ux-path-burn-down/ux-path-burn-down-directive.md",
+    "loops": "01-org/product/design/teams/ux-path-burn-down/ux-path-burn-down-loops.md",
+    "schedule": "01-org/product/design/teams/ux-path-burn-down/ux-path-burn-down-schedule.md",
+    "questions": "01-org/product/design/teams/ux-path-burn-down/ux-path-burn-down-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "design-system-motion-substrate",
+   "title": "Design System & Motion Substrate",
+   "id": "3.2",
+   "division": "product",
+   "department": "design",
+   "gated": false,
+   "dir": "01-org/product/design/teams/design-system-motion-substrate",
+   "files": {
+    "charter": "01-org/product/design/teams/design-system-motion-substrate/design-system-motion-substrate-charter.md",
+    "premortem": "01-org/product/design/teams/design-system-motion-substrate/design-system-motion-substrate-premortem.md",
+    "agenda-full": "01-org/product/design/teams/design-system-motion-substrate/design-system-motion-substrate-agenda-full.md",
+    "agenda-board": "01-org/product/design/teams/design-system-motion-substrate/design-system-motion-substrate-agenda-board.md",
+    "directive": "01-org/product/design/teams/design-system-motion-substrate/design-system-motion-substrate-directive.md",
+    "loops": "01-org/product/design/teams/design-system-motion-substrate/design-system-motion-substrate-loops.md",
+    "schedule": "01-org/product/design/teams/design-system-motion-substrate/design-system-motion-substrate-schedule.md",
+    "questions": "01-org/product/design/teams/design-system-motion-substrate/design-system-motion-substrate-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "exploration-studio",
+   "title": "Exploration Studio",
+   "id": "3.3",
+   "division": "product",
+   "department": "design",
+   "gated": false,
+   "dir": "01-org/product/design/teams/exploration-studio",
+   "files": {
+    "charter": "01-org/product/design/teams/exploration-studio/exploration-studio-charter.md",
+    "premortem": "01-org/product/design/teams/exploration-studio/exploration-studio-premortem.md",
+    "agenda-full": "01-org/product/design/teams/exploration-studio/exploration-studio-agenda-full.md",
+    "agenda-board": "01-org/product/design/teams/exploration-studio/exploration-studio-agenda-board.md",
+    "directive": "01-org/product/design/teams/exploration-studio/exploration-studio-directive.md",
+    "loops": "01-org/product/design/teams/exploration-studio/exploration-studio-loops.md",
+    "schedule": "01-org/product/design/teams/exploration-studio/exploration-studio-schedule.md",
+    "questions": "01-org/product/design/teams/exploration-studio/exploration-studio-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "activation-in-product-guidance",
+   "title": "Activation & In-Product Guidance",
+   "id": "3.4",
+   "division": "product",
+   "department": "design",
+   "gated": false,
+   "dir": "01-org/product/design/teams/activation-in-product-guidance",
+   "files": {
+    "charter": "01-org/product/design/teams/activation-in-product-guidance/activation-in-product-guidance-charter.md",
+    "premortem": "01-org/product/design/teams/activation-in-product-guidance/activation-in-product-guidance-premortem.md",
+    "agenda-full": "01-org/product/design/teams/activation-in-product-guidance/activation-in-product-guidance-agenda-full.md",
+    "agenda-board": "01-org/product/design/teams/activation-in-product-guidance/activation-in-product-guidance-agenda-board.md",
+    "directive": "01-org/product/design/teams/activation-in-product-guidance/activation-in-product-guidance-directive.md",
+    "loops": "01-org/product/design/teams/activation-in-product-guidance/activation-in-product-guidance-loops.md",
+    "schedule": "01-org/product/design/teams/activation-in-product-guidance/activation-in-product-guidance-schedule.md",
+    "questions": "01-org/product/design/teams/activation-in-product-guidance/activation-in-product-guidance-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "partnerships-integrations",
+   "title": "Partnerships & Integrations",
+   "division": "product",
+   "dir": "01-org/product/partnerships-integrations",
+   "files": {
+    "charter": "01-org/product/partnerships-integrations/partnerships-integrations-charter.md",
+    "premortem": "01-org/product/partnerships-integrations/partnerships-integrations-premortem.md",
+    "agenda-full": "01-org/product/partnerships-integrations/partnerships-integrations-agenda-full.md",
+    "agenda-board": "01-org/product/partnerships-integrations/partnerships-integrations-agenda-board.md",
+    "directive": "01-org/product/partnerships-integrations/partnerships-integrations-directive.md",
+    "loops": "01-org/product/partnerships-integrations/partnerships-integrations-loops.md",
+    "schedule": "01-org/product/partnerships-integrations/partnerships-integrations-schedule.md",
+    "questions": "01-org/product/partnerships-integrations/partnerships-integrations-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "pos-bridge",
+   "title": "POS Bridge",
+   "id": "4.1",
+   "division": "product",
+   "department": "partnerships-integrations",
+   "gated": false,
+   "dir": "01-org/product/partnerships-integrations/teams/pos-bridge",
+   "files": {
+    "charter": "01-org/product/partnerships-integrations/teams/pos-bridge/pos-bridge-charter.md",
+    "premortem": "01-org/product/partnerships-integrations/teams/pos-bridge/pos-bridge-premortem.md",
+    "agenda-full": "01-org/product/partnerships-integrations/teams/pos-bridge/pos-bridge-agenda-full.md",
+    "agenda-board": "01-org/product/partnerships-integrations/teams/pos-bridge/pos-bridge-agenda-board.md",
+    "directive": "01-org/product/partnerships-integrations/teams/pos-bridge/pos-bridge-directive.md",
+    "loops": "01-org/product/partnerships-integrations/teams/pos-bridge/pos-bridge-loops.md",
+    "schedule": "01-org/product/partnerships-integrations/teams/pos-bridge/pos-bridge-schedule.md",
+    "questions": "01-org/product/partnerships-integrations/teams/pos-bridge/pos-bridge-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "partner-alliance-development",
+   "title": "Partner & Alliance Development",
+   "id": "4.2",
+   "division": "product",
+   "department": "partnerships-integrations",
+   "gated": false,
+   "dir": "01-org/product/partnerships-integrations/teams/partner-alliance-development",
+   "files": {
+    "charter": "01-org/product/partnerships-integrations/teams/partner-alliance-development/partner-alliance-development-charter.md",
+    "premortem": "01-org/product/partnerships-integrations/teams/partner-alliance-development/partner-alliance-development-premortem.md",
+    "agenda-full": "01-org/product/partnerships-integrations/teams/partner-alliance-development/partner-alliance-development-agenda-full.md",
+    "agenda-board": "01-org/product/partnerships-integrations/teams/partner-alliance-development/partner-alliance-development-agenda-board.md",
+    "directive": "01-org/product/partnerships-integrations/teams/partner-alliance-development/partner-alliance-development-directive.md",
+    "loops": "01-org/product/partnerships-integrations/teams/partner-alliance-development/partner-alliance-development-loops.md",
+    "schedule": "01-org/product/partnerships-integrations/teams/partner-alliance-development/partner-alliance-development-schedule.md",
+    "questions": "01-org/product/partnerships-integrations/teams/partner-alliance-development/partner-alliance-development-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "supplier-distributor-network",
+   "title": "Supplier & Distributor Network",
+   "id": "4.3",
+   "division": "product",
+   "department": "partnerships-integrations",
+   "gated": false,
+   "dir": "01-org/product/partnerships-integrations/teams/supplier-distributor-network",
+   "files": {
+    "charter": "01-org/product/partnerships-integrations/teams/supplier-distributor-network/supplier-distributor-network-charter.md",
+    "premortem": "01-org/product/partnerships-integrations/teams/supplier-distributor-network/supplier-distributor-network-premortem.md",
+    "agenda-full": "01-org/product/partnerships-integrations/teams/supplier-distributor-network/supplier-distributor-network-agenda-full.md",
+    "agenda-board": "01-org/product/partnerships-integrations/teams/supplier-distributor-network/supplier-distributor-network-agenda-board.md",
+    "directive": "01-org/product/partnerships-integrations/teams/supplier-distributor-network/supplier-distributor-network-directive.md",
+    "loops": "01-org/product/partnerships-integrations/teams/supplier-distributor-network/supplier-distributor-network-loops.md",
+    "schedule": "01-org/product/partnerships-integrations/teams/supplier-distributor-network/supplier-distributor-network-schedule.md",
+    "questions": "01-org/product/partnerships-integrations/teams/supplier-distributor-network/supplier-distributor-network-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "connector-platform-trust",
+   "title": "Connector Platform & Trust",
+   "id": "4.4",
+   "division": "product",
+   "department": "partnerships-integrations",
+   "gated": false,
+   "dir": "01-org/product/partnerships-integrations/teams/connector-platform-trust",
+   "files": {
+    "charter": "01-org/product/partnerships-integrations/teams/connector-platform-trust/connector-platform-trust-charter.md",
+    "premortem": "01-org/product/partnerships-integrations/teams/connector-platform-trust/connector-platform-trust-premortem.md",
+    "agenda-full": "01-org/product/partnerships-integrations/teams/connector-platform-trust/connector-platform-trust-agenda-full.md",
+    "agenda-board": "01-org/product/partnerships-integrations/teams/connector-platform-trust/connector-platform-trust-agenda-board.md",
+    "directive": "01-org/product/partnerships-integrations/teams/connector-platform-trust/connector-platform-trust-directive.md",
+    "loops": "01-org/product/partnerships-integrations/teams/connector-platform-trust/connector-platform-trust-loops.md",
+    "schedule": "01-org/product/partnerships-integrations/teams/connector-platform-trust/connector-platform-trust-schedule.md",
+    "questions": "01-org/product/partnerships-integrations/teams/connector-platform-trust/connector-platform-trust-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "growth",
+   "title": "Growth",
+   "division": "commercial",
+   "dir": "01-org/commercial/growth",
+   "files": {
+    "charter": "01-org/commercial/growth/growth-charter.md",
+    "premortem": "01-org/commercial/growth/growth-premortem.md",
+    "agenda-full": "01-org/commercial/growth/growth-agenda-full.md",
+    "agenda-board": "01-org/commercial/growth/growth-agenda-board.md",
+    "directive": "01-org/commercial/growth/growth-directive.md",
+    "loops": "01-org/commercial/growth/growth-loops.md",
+    "schedule": "01-org/commercial/growth/growth-schedule.md",
+    "questions": "01-org/commercial/growth/growth-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "search-demand-research",
+   "title": "Search Demand Research",
+   "id": "G1",
+   "division": "commercial",
+   "department": "growth",
+   "gated": false,
+   "dir": "01-org/commercial/growth/teams/search-demand-research",
+   "files": {
+    "charter": "01-org/commercial/growth/teams/search-demand-research/search-demand-research-charter.md",
+    "premortem": "01-org/commercial/growth/teams/search-demand-research/search-demand-research-premortem.md",
+    "agenda-full": "01-org/commercial/growth/teams/search-demand-research/search-demand-research-agenda-full.md",
+    "agenda-board": "01-org/commercial/growth/teams/search-demand-research/search-demand-research-agenda-board.md",
+    "directive": "01-org/commercial/growth/teams/search-demand-research/search-demand-research-directive.md",
+    "loops": "01-org/commercial/growth/teams/search-demand-research/search-demand-research-loops.md",
+    "schedule": "01-org/commercial/growth/teams/search-demand-research/search-demand-research-schedule.md",
+    "questions": "01-org/commercial/growth/teams/search-demand-research/search-demand-research-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "content-production",
+   "title": "Content Production",
+   "id": "G2",
+   "division": "commercial",
+   "department": "growth",
+   "gated": false,
+   "dir": "01-org/commercial/growth/teams/content-production",
+   "files": {
+    "charter": "01-org/commercial/growth/teams/content-production/content-production-charter.md",
+    "premortem": "01-org/commercial/growth/teams/content-production/content-production-premortem.md",
+    "agenda-full": "01-org/commercial/growth/teams/content-production/content-production-agenda-full.md",
+    "agenda-board": "01-org/commercial/growth/teams/content-production/content-production-agenda-board.md",
+    "directive": "01-org/commercial/growth/teams/content-production/content-production-directive.md",
+    "loops": "01-org/commercial/growth/teams/content-production/content-production-loops.md",
+    "schedule": "01-org/commercial/growth/teams/content-production/content-production-schedule.md",
+    "questions": "01-org/commercial/growth/teams/content-production/content-production-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "editorial-gate",
+   "title": "Editorial Gate",
+   "id": "G3",
+   "division": "commercial",
+   "department": "growth",
+   "gated": false,
+   "dir": "01-org/commercial/growth/teams/editorial-gate",
+   "files": {
+    "charter": "01-org/commercial/growth/teams/editorial-gate/editorial-gate-charter.md",
+    "premortem": "01-org/commercial/growth/teams/editorial-gate/editorial-gate-premortem.md",
+    "agenda-full": "01-org/commercial/growth/teams/editorial-gate/editorial-gate-agenda-full.md",
+    "agenda-board": "01-org/commercial/growth/teams/editorial-gate/editorial-gate-agenda-board.md",
+    "directive": "01-org/commercial/growth/teams/editorial-gate/editorial-gate-directive.md",
+    "loops": "01-org/commercial/growth/teams/editorial-gate/editorial-gate-loops.md",
+    "schedule": "01-org/commercial/growth/teams/editorial-gate/editorial-gate-schedule.md",
+    "questions": "01-org/commercial/growth/teams/editorial-gate/editorial-gate-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "technical-seo-ai-answer-surface",
+   "title": "Technical SEO & AI Answer Surface",
+   "id": "G4",
+   "division": "commercial",
+   "department": "growth",
+   "gated": false,
+   "dir": "01-org/commercial/growth/teams/technical-seo-ai-answer-surface",
+   "files": {
+    "charter": "01-org/commercial/growth/teams/technical-seo-ai-answer-surface/technical-seo-ai-answer-surface-charter.md",
+    "premortem": "01-org/commercial/growth/teams/technical-seo-ai-answer-surface/technical-seo-ai-answer-surface-premortem.md",
+    "agenda-full": "01-org/commercial/growth/teams/technical-seo-ai-answer-surface/technical-seo-ai-answer-surface-agenda-full.md",
+    "agenda-board": "01-org/commercial/growth/teams/technical-seo-ai-answer-surface/technical-seo-ai-answer-surface-agenda-board.md",
+    "directive": "01-org/commercial/growth/teams/technical-seo-ai-answer-surface/technical-seo-ai-answer-surface-directive.md",
+    "loops": "01-org/commercial/growth/teams/technical-seo-ai-answer-surface/technical-seo-ai-answer-surface-loops.md",
+    "schedule": "01-org/commercial/growth/teams/technical-seo-ai-answer-surface/technical-seo-ai-answer-surface-schedule.md",
+    "questions": "01-org/commercial/growth/teams/technical-seo-ai-answer-surface/technical-seo-ai-answer-surface-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "conversion-funnel",
+   "title": "Conversion & Funnel",
+   "id": "G5",
+   "division": "commercial",
+   "department": "growth",
+   "gated": false,
+   "dir": "01-org/commercial/growth/teams/conversion-funnel",
+   "files": {
+    "charter": "01-org/commercial/growth/teams/conversion-funnel/conversion-funnel-charter.md",
+    "premortem": "01-org/commercial/growth/teams/conversion-funnel/conversion-funnel-premortem.md",
+    "agenda-full": "01-org/commercial/growth/teams/conversion-funnel/conversion-funnel-agenda-full.md",
+    "agenda-board": "01-org/commercial/growth/teams/conversion-funnel/conversion-funnel-agenda-board.md",
+    "directive": "01-org/commercial/growth/teams/conversion-funnel/conversion-funnel-directive.md",
+    "loops": "01-org/commercial/growth/teams/conversion-funnel/conversion-funnel-loops.md",
+    "schedule": "01-org/commercial/growth/teams/conversion-funnel/conversion-funnel-schedule.md",
+    "questions": "01-org/commercial/growth/teams/conversion-funnel/conversion-funnel-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "finance-pricing",
+   "title": "Finance & Pricing (sub-layer)",
+   "division": "commercial",
+   "dir": "01-org/commercial/finance-pricing",
+   "files": {
+    "charter": "01-org/commercial/finance-pricing/finance-pricing-charter.md",
+    "premortem": "01-org/commercial/finance-pricing/finance-pricing-premortem.md",
+    "agenda-full": "01-org/commercial/finance-pricing/finance-pricing-agenda-full.md",
+    "agenda-board": "01-org/commercial/finance-pricing/finance-pricing-agenda-board.md",
+    "directive": "01-org/commercial/finance-pricing/finance-pricing-directive.md",
+    "loops": "01-org/commercial/finance-pricing/finance-pricing-loops.md",
+    "schedule": "01-org/commercial/finance-pricing/finance-pricing-schedule.md",
+    "questions": "01-org/commercial/finance-pricing/finance-pricing-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "inference-cost",
+   "title": "Inference Cost",
+   "id": "F1",
+   "division": "commercial",
+   "department": "finance-pricing",
+   "gated": false,
+   "dir": "01-org/commercial/finance-pricing/teams/inference-cost",
+   "files": {
+    "charter": "01-org/commercial/finance-pricing/teams/inference-cost/inference-cost-charter.md",
+    "premortem": "01-org/commercial/finance-pricing/teams/inference-cost/inference-cost-premortem.md",
+    "agenda-full": "01-org/commercial/finance-pricing/teams/inference-cost/inference-cost-agenda-full.md",
+    "agenda-board": "01-org/commercial/finance-pricing/teams/inference-cost/inference-cost-agenda-board.md",
+    "directive": "01-org/commercial/finance-pricing/teams/inference-cost/inference-cost-directive.md",
+    "loops": "01-org/commercial/finance-pricing/teams/inference-cost/inference-cost-loops.md",
+    "schedule": "01-org/commercial/finance-pricing/teams/inference-cost/inference-cost-schedule.md",
+    "questions": "01-org/commercial/finance-pricing/teams/inference-cost/inference-cost-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "unit-economics-pricing",
+   "title": "Unit Economics & Pricing",
+   "id": "F2",
+   "division": "commercial",
+   "department": "finance-pricing",
+   "gated": false,
+   "dir": "01-org/commercial/finance-pricing/teams/unit-economics-pricing",
+   "files": {
+    "charter": "01-org/commercial/finance-pricing/teams/unit-economics-pricing/unit-economics-pricing-charter.md",
+    "premortem": "01-org/commercial/finance-pricing/teams/unit-economics-pricing/unit-economics-pricing-premortem.md",
+    "agenda-full": "01-org/commercial/finance-pricing/teams/unit-economics-pricing/unit-economics-pricing-agenda-full.md",
+    "agenda-board": "01-org/commercial/finance-pricing/teams/unit-economics-pricing/unit-economics-pricing-agenda-board.md",
+    "directive": "01-org/commercial/finance-pricing/teams/unit-economics-pricing/unit-economics-pricing-directive.md",
+    "loops": "01-org/commercial/finance-pricing/teams/unit-economics-pricing/unit-economics-pricing-loops.md",
+    "schedule": "01-org/commercial/finance-pricing/teams/unit-economics-pricing/unit-economics-pricing-schedule.md",
+    "questions": "01-org/commercial/finance-pricing/teams/unit-economics-pricing/unit-economics-pricing-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "sales",
+   "title": "Sales",
+   "division": "commercial",
+   "dir": "01-org/commercial/sales",
+   "files": {
+    "charter": "01-org/commercial/sales/sales-charter.md",
+    "premortem": "01-org/commercial/sales/sales-premortem.md",
+    "agenda-full": "01-org/commercial/sales/sales-agenda-full.md",
+    "agenda-board": "01-org/commercial/sales/sales-agenda-board.md",
+    "directive": "01-org/commercial/sales/sales-directive.md",
+    "loops": "01-org/commercial/sales/sales-loops.md",
+    "schedule": "01-org/commercial/sales/sales-schedule.md",
+    "questions": "01-org/commercial/sales/sales-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "design-partner-operations",
+   "title": "Design Partner Operations",
+   "id": "S1",
+   "division": "commercial",
+   "department": "sales",
+   "gated": false,
+   "dir": "01-org/commercial/sales/teams/design-partner-operations",
+   "files": {
+    "charter": "01-org/commercial/sales/teams/design-partner-operations/design-partner-operations-charter.md",
+    "premortem": "01-org/commercial/sales/teams/design-partner-operations/design-partner-operations-premortem.md",
+    "agenda-full": "01-org/commercial/sales/teams/design-partner-operations/design-partner-operations-agenda-full.md",
+    "agenda-board": "01-org/commercial/sales/teams/design-partner-operations/design-partner-operations-agenda-board.md",
+    "directive": "01-org/commercial/sales/teams/design-partner-operations/design-partner-operations-directive.md",
+    "loops": "01-org/commercial/sales/teams/design-partner-operations/design-partner-operations-loops.md",
+    "schedule": "01-org/commercial/sales/teams/design-partner-operations/design-partner-operations-schedule.md",
+    "questions": "01-org/commercial/sales/teams/design-partner-operations/design-partner-operations-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "outbound-engine",
+   "title": "Outbound Engine",
+   "id": "S2",
+   "division": "commercial",
+   "department": "sales",
+   "gated": false,
+   "dir": "01-org/commercial/sales/teams/outbound-engine",
+   "files": {
+    "charter": "01-org/commercial/sales/teams/outbound-engine/outbound-engine-charter.md",
+    "premortem": "01-org/commercial/sales/teams/outbound-engine/outbound-engine-premortem.md",
+    "agenda-full": "01-org/commercial/sales/teams/outbound-engine/outbound-engine-agenda-full.md",
+    "agenda-board": "01-org/commercial/sales/teams/outbound-engine/outbound-engine-agenda-board.md",
+    "directive": "01-org/commercial/sales/teams/outbound-engine/outbound-engine-directive.md",
+    "loops": "01-org/commercial/sales/teams/outbound-engine/outbound-engine-loops.md",
+    "schedule": "01-org/commercial/sales/teams/outbound-engine/outbound-engine-schedule.md",
+    "questions": "01-org/commercial/sales/teams/outbound-engine/outbound-engine-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "media-brand",
+   "title": "Media & Brand",
+   "division": "commercial",
+   "dir": "01-org/commercial/media-brand",
+   "files": {
+    "charter": "01-org/commercial/media-brand/media-brand-charter.md",
+    "premortem": "01-org/commercial/media-brand/media-brand-premortem.md",
+    "agenda-full": "01-org/commercial/media-brand/media-brand-agenda-full.md",
+    "agenda-board": "01-org/commercial/media-brand/media-brand-agenda-board.md",
+    "directive": "01-org/commercial/media-brand/media-brand-directive.md",
+    "loops": "01-org/commercial/media-brand/media-brand-loops.md",
+    "schedule": "01-org/commercial/media-brand/media-brand-schedule.md",
+    "questions": "01-org/commercial/media-brand/media-brand-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "brand-identity",
+   "title": "Brand Identity",
+   "id": "M1",
+   "division": "commercial",
+   "department": "media-brand",
+   "gated": false,
+   "dir": "01-org/commercial/media-brand/teams/brand-identity",
+   "files": {
+    "charter": "01-org/commercial/media-brand/teams/brand-identity/brand-identity-charter.md",
+    "premortem": "01-org/commercial/media-brand/teams/brand-identity/brand-identity-premortem.md",
+    "agenda-full": "01-org/commercial/media-brand/teams/brand-identity/brand-identity-agenda-full.md",
+    "agenda-board": "01-org/commercial/media-brand/teams/brand-identity/brand-identity-agenda-board.md",
+    "directive": "01-org/commercial/media-brand/teams/brand-identity/brand-identity-directive.md",
+    "loops": "01-org/commercial/media-brand/teams/brand-identity/brand-identity-loops.md",
+    "schedule": "01-org/commercial/media-brand/teams/brand-identity/brand-identity-schedule.md",
+    "questions": "01-org/commercial/media-brand/teams/brand-identity/brand-identity-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "narrative-collateral",
+   "title": "Narrative & Collateral",
+   "id": "M2",
+   "division": "commercial",
+   "department": "media-brand",
+   "gated": false,
+   "dir": "01-org/commercial/media-brand/teams/narrative-collateral",
+   "files": {
+    "charter": "01-org/commercial/media-brand/teams/narrative-collateral/narrative-collateral-charter.md",
+    "premortem": "01-org/commercial/media-brand/teams/narrative-collateral/narrative-collateral-premortem.md",
+    "agenda-full": "01-org/commercial/media-brand/teams/narrative-collateral/narrative-collateral-agenda-full.md",
+    "agenda-board": "01-org/commercial/media-brand/teams/narrative-collateral/narrative-collateral-agenda-board.md",
+    "directive": "01-org/commercial/media-brand/teams/narrative-collateral/narrative-collateral-directive.md",
+    "loops": "01-org/commercial/media-brand/teams/narrative-collateral/narrative-collateral-loops.md",
+    "schedule": "01-org/commercial/media-brand/teams/narrative-collateral/narrative-collateral-schedule.md",
+    "questions": "01-org/commercial/media-brand/teams/narrative-collateral/narrative-collateral-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "social-community",
+   "title": "Social & Community",
+   "id": "M3",
+   "division": "commercial",
+   "department": "media-brand",
+   "gated": false,
+   "dir": "01-org/commercial/media-brand/teams/social-community",
+   "files": {
+    "charter": "01-org/commercial/media-brand/teams/social-community/social-community-charter.md",
+    "premortem": "01-org/commercial/media-brand/teams/social-community/social-community-premortem.md",
+    "agenda-full": "01-org/commercial/media-brand/teams/social-community/social-community-agenda-full.md",
+    "agenda-board": "01-org/commercial/media-brand/teams/social-community/social-community-agenda-board.md",
+    "directive": "01-org/commercial/media-brand/teams/social-community/social-community-directive.md",
+    "loops": "01-org/commercial/media-brand/teams/social-community/social-community-loops.md",
+    "schedule": "01-org/commercial/media-brand/teams/social-community/social-community-schedule.md",
+    "questions": "01-org/commercial/media-brand/teams/social-community/social-community-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "customer-relationship-research",
+   "title": "Customer Relationship Research",
+   "id": "M4",
+   "division": "commercial",
+   "department": "media-brand",
+   "gated": false,
+   "dir": "01-org/commercial/media-brand/teams/customer-relationship-research",
+   "files": {
+    "charter": "01-org/commercial/media-brand/teams/customer-relationship-research/customer-relationship-research-charter.md",
+    "premortem": "01-org/commercial/media-brand/teams/customer-relationship-research/customer-relationship-research-premortem.md",
+    "agenda-full": "01-org/commercial/media-brand/teams/customer-relationship-research/customer-relationship-research-agenda-full.md",
+    "agenda-board": "01-org/commercial/media-brand/teams/customer-relationship-research/customer-relationship-research-agenda-board.md",
+    "directive": "01-org/commercial/media-brand/teams/customer-relationship-research/customer-relationship-research-directive.md",
+    "loops": "01-org/commercial/media-brand/teams/customer-relationship-research/customer-relationship-research-loops.md",
+    "schedule": "01-org/commercial/media-brand/teams/customer-relationship-research/customer-relationship-research-schedule.md",
+    "questions": "01-org/commercial/media-brand/teams/customer-relationship-research/customer-relationship-research-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "legal",
+   "title": "Legal",
+   "division": "corporate",
+   "dir": "01-org/corporate/legal",
+   "files": {
+    "charter": "01-org/corporate/legal/legal-charter.md",
+    "premortem": "01-org/corporate/legal/legal-premortem.md",
+    "agenda-full": "01-org/corporate/legal/legal-agenda-full.md",
+    "agenda-board": "01-org/corporate/legal/legal-agenda-board.md",
+    "directive": "01-org/corporate/legal/legal-directive.md",
+    "loops": "01-org/corporate/legal/legal-loops.md",
+    "schedule": "01-org/corporate/legal/legal-schedule.md",
+    "questions": "01-org/corporate/legal/legal-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "instruments-equity",
+   "title": "Instruments & Equity",
+   "id": "1.1",
+   "division": "corporate",
+   "department": "legal",
+   "gated": false,
+   "dir": "01-org/corporate/legal/teams/instruments-equity",
+   "files": {
+    "charter": "01-org/corporate/legal/teams/instruments-equity/instruments-equity-charter.md",
+    "premortem": "01-org/corporate/legal/teams/instruments-equity/instruments-equity-premortem.md",
+    "agenda-full": "01-org/corporate/legal/teams/instruments-equity/instruments-equity-agenda-full.md",
+    "agenda-board": "01-org/corporate/legal/teams/instruments-equity/instruments-equity-agenda-board.md",
+    "directive": "01-org/corporate/legal/teams/instruments-equity/instruments-equity-directive.md",
+    "loops": "01-org/corporate/legal/teams/instruments-equity/instruments-equity-loops.md",
+    "schedule": "01-org/corporate/legal/teams/instruments-equity/instruments-equity-schedule.md",
+    "questions": "01-org/corporate/legal/teams/instruments-equity/instruments-equity-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "commercial-workforce-agreements",
+   "title": "Commercial & Workforce Agreements",
+   "id": "1.2",
+   "division": "corporate",
+   "department": "legal",
+   "gated": false,
+   "dir": "01-org/corporate/legal/teams/commercial-workforce-agreements",
+   "files": {
+    "charter": "01-org/corporate/legal/teams/commercial-workforce-agreements/commercial-workforce-agreements-charter.md",
+    "premortem": "01-org/corporate/legal/teams/commercial-workforce-agreements/commercial-workforce-agreements-premortem.md",
+    "agenda-full": "01-org/corporate/legal/teams/commercial-workforce-agreements/commercial-workforce-agreements-agenda-full.md",
+    "agenda-board": "01-org/corporate/legal/teams/commercial-workforce-agreements/commercial-workforce-agreements-agenda-board.md",
+    "directive": "01-org/corporate/legal/teams/commercial-workforce-agreements/commercial-workforce-agreements-directive.md",
+    "loops": "01-org/corporate/legal/teams/commercial-workforce-agreements/commercial-workforce-agreements-loops.md",
+    "schedule": "01-org/corporate/legal/teams/commercial-workforce-agreements/commercial-workforce-agreements-schedule.md",
+    "questions": "01-org/corporate/legal/teams/commercial-workforce-agreements/commercial-workforce-agreements-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "knowledge-documentation",
+   "title": "Knowledge & Documentation",
+   "division": "corporate",
+   "dir": "01-org/corporate/knowledge-documentation",
+   "files": {
+    "charter": "01-org/corporate/knowledge-documentation/knowledge-documentation-charter.md",
+    "premortem": "01-org/corporate/knowledge-documentation/knowledge-documentation-premortem.md",
+    "agenda-full": "01-org/corporate/knowledge-documentation/knowledge-documentation-agenda-full.md",
+    "agenda-board": "01-org/corporate/knowledge-documentation/knowledge-documentation-agenda-board.md",
+    "directive": "01-org/corporate/knowledge-documentation/knowledge-documentation-directive.md",
+    "loops": "01-org/corporate/knowledge-documentation/knowledge-documentation-loops.md",
+    "schedule": "01-org/corporate/knowledge-documentation/knowledge-documentation-schedule.md",
+    "questions": "01-org/corporate/knowledge-documentation/knowledge-documentation-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "corpus-archive",
+   "title": "Corpus & Archive",
+   "id": "2.1",
+   "division": "corporate",
+   "department": "knowledge-documentation",
+   "gated": false,
+   "dir": "01-org/corporate/knowledge-documentation/teams/corpus-archive",
+   "files": {
+    "charter": "01-org/corporate/knowledge-documentation/teams/corpus-archive/corpus-archive-charter.md",
+    "premortem": "01-org/corporate/knowledge-documentation/teams/corpus-archive/corpus-archive-premortem.md",
+    "agenda-full": "01-org/corporate/knowledge-documentation/teams/corpus-archive/corpus-archive-agenda-full.md",
+    "agenda-board": "01-org/corporate/knowledge-documentation/teams/corpus-archive/corpus-archive-agenda-board.md",
+    "directive": "01-org/corporate/knowledge-documentation/teams/corpus-archive/corpus-archive-directive.md",
+    "loops": "01-org/corporate/knowledge-documentation/teams/corpus-archive/corpus-archive-loops.md",
+    "schedule": "01-org/corporate/knowledge-documentation/teams/corpus-archive/corpus-archive-schedule.md",
+    "questions": "01-org/corporate/knowledge-documentation/teams/corpus-archive/corpus-archive-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "graph-retrieval",
+   "title": "Graph & Retrieval",
+   "id": "2.2",
+   "division": "corporate",
+   "department": "knowledge-documentation",
+   "gated": false,
+   "dir": "01-org/corporate/knowledge-documentation/teams/graph-retrieval",
+   "files": {
+    "charter": "01-org/corporate/knowledge-documentation/teams/graph-retrieval/graph-retrieval-charter.md",
+    "premortem": "01-org/corporate/knowledge-documentation/teams/graph-retrieval/graph-retrieval-premortem.md",
+    "agenda-full": "01-org/corporate/knowledge-documentation/teams/graph-retrieval/graph-retrieval-agenda-full.md",
+    "agenda-board": "01-org/corporate/knowledge-documentation/teams/graph-retrieval/graph-retrieval-agenda-board.md",
+    "directive": "01-org/corporate/knowledge-documentation/teams/graph-retrieval/graph-retrieval-directive.md",
+    "loops": "01-org/corporate/knowledge-documentation/teams/graph-retrieval/graph-retrieval-loops.md",
+    "schedule": "01-org/corporate/knowledge-documentation/teams/graph-retrieval/graph-retrieval-schedule.md",
+    "questions": "01-org/corporate/knowledge-documentation/teams/graph-retrieval/graph-retrieval-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "standards-verification",
+   "title": "Standards & Verification",
+   "id": "2.3",
+   "division": "corporate",
+   "department": "knowledge-documentation",
+   "gated": false,
+   "dir": "01-org/corporate/knowledge-documentation/teams/standards-verification",
+   "files": {
+    "charter": "01-org/corporate/knowledge-documentation/teams/standards-verification/standards-verification-charter.md",
+    "premortem": "01-org/corporate/knowledge-documentation/teams/standards-verification/standards-verification-premortem.md",
+    "agenda-full": "01-org/corporate/knowledge-documentation/teams/standards-verification/standards-verification-agenda-full.md",
+    "agenda-board": "01-org/corporate/knowledge-documentation/teams/standards-verification/standards-verification-agenda-board.md",
+    "directive": "01-org/corporate/knowledge-documentation/teams/standards-verification/standards-verification-directive.md",
+    "loops": "01-org/corporate/knowledge-documentation/teams/standards-verification/standards-verification-loops.md",
+    "schedule": "01-org/corporate/knowledge-documentation/teams/standards-verification/standards-verification-schedule.md",
+    "questions": "01-org/corporate/knowledge-documentation/teams/standards-verification/standards-verification-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "compliance-privacy",
+   "title": "Compliance & Privacy",
+   "division": "corporate",
+   "dir": "01-org/corporate/compliance-privacy",
+   "files": {
+    "charter": "01-org/corporate/compliance-privacy/compliance-privacy-charter.md",
+    "premortem": "01-org/corporate/compliance-privacy/compliance-privacy-premortem.md",
+    "agenda-full": "01-org/corporate/compliance-privacy/compliance-privacy-agenda-full.md",
+    "agenda-board": "01-org/corporate/compliance-privacy/compliance-privacy-agenda-board.md",
+    "directive": "01-org/corporate/compliance-privacy/compliance-privacy-directive.md",
+    "loops": "01-org/corporate/compliance-privacy/compliance-privacy-loops.md",
+    "schedule": "01-org/corporate/compliance-privacy/compliance-privacy-schedule.md",
+    "questions": "01-org/corporate/compliance-privacy/compliance-privacy-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "privacy-engineering",
+   "title": "Privacy Engineering",
+   "id": "3.1",
+   "division": "corporate",
+   "department": "compliance-privacy",
+   "gated": false,
+   "dir": "01-org/corporate/compliance-privacy/teams/privacy-engineering",
+   "files": {
+    "charter": "01-org/corporate/compliance-privacy/teams/privacy-engineering/privacy-engineering-charter.md",
+    "premortem": "01-org/corporate/compliance-privacy/teams/privacy-engineering/privacy-engineering-premortem.md",
+    "agenda-full": "01-org/corporate/compliance-privacy/teams/privacy-engineering/privacy-engineering-agenda-full.md",
+    "agenda-board": "01-org/corporate/compliance-privacy/teams/privacy-engineering/privacy-engineering-agenda-board.md",
+    "directive": "01-org/corporate/compliance-privacy/teams/privacy-engineering/privacy-engineering-directive.md",
+    "loops": "01-org/corporate/compliance-privacy/teams/privacy-engineering/privacy-engineering-loops.md",
+    "schedule": "01-org/corporate/compliance-privacy/teams/privacy-engineering/privacy-engineering-schedule.md",
+    "questions": "01-org/corporate/compliance-privacy/teams/privacy-engineering/privacy-engineering-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "regulatory-posture",
+   "title": "Regulatory Posture",
+   "id": "3.2",
+   "division": "corporate",
+   "department": "compliance-privacy",
+   "gated": false,
+   "dir": "01-org/corporate/compliance-privacy/teams/regulatory-posture",
+   "files": {
+    "charter": "01-org/corporate/compliance-privacy/teams/regulatory-posture/regulatory-posture-charter.md",
+    "premortem": "01-org/corporate/compliance-privacy/teams/regulatory-posture/regulatory-posture-premortem.md",
+    "agenda-full": "01-org/corporate/compliance-privacy/teams/regulatory-posture/regulatory-posture-agenda-full.md",
+    "agenda-board": "01-org/corporate/compliance-privacy/teams/regulatory-posture/regulatory-posture-agenda-board.md",
+    "directive": "01-org/corporate/compliance-privacy/teams/regulatory-posture/regulatory-posture-directive.md",
+    "loops": "01-org/corporate/compliance-privacy/teams/regulatory-posture/regulatory-posture-loops.md",
+    "schedule": "01-org/corporate/compliance-privacy/teams/regulatory-posture/regulatory-posture-schedule.md",
+    "questions": "01-org/corporate/compliance-privacy/teams/regulatory-posture/regulatory-posture-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "regulated-operations",
+   "title": "Regulated Operations",
+   "id": "3.3",
+   "division": "corporate",
+   "department": "compliance-privacy",
+   "gated": true,
+   "dir": "01-org/corporate/compliance-privacy/teams/regulated-operations",
+   "files": {
+    "charter": "01-org/corporate/compliance-privacy/teams/regulated-operations/regulated-operations-charter.md",
+    "premortem": "01-org/corporate/compliance-privacy/teams/regulated-operations/regulated-operations-premortem.md",
+    "agenda-full": "01-org/corporate/compliance-privacy/teams/regulated-operations/regulated-operations-agenda-full.md",
+    "agenda-board": "01-org/corporate/compliance-privacy/teams/regulated-operations/regulated-operations-agenda-board.md",
+    "directive": "01-org/corporate/compliance-privacy/teams/regulated-operations/regulated-operations-directive.md",
+    "loops": "01-org/corporate/compliance-privacy/teams/regulated-operations/regulated-operations-loops.md",
+    "schedule": "01-org/corporate/compliance-privacy/teams/regulated-operations/regulated-operations-schedule.md",
+    "questions": "01-org/corporate/compliance-privacy/teams/regulated-operations/regulated-operations-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "people-agent-ops",
+   "title": "People & Agent Ops",
+   "division": "corporate",
+   "dir": "01-org/corporate/people-agent-ops",
+   "files": {
+    "charter": "01-org/corporate/people-agent-ops/people-agent-ops-charter.md",
+    "premortem": "01-org/corporate/people-agent-ops/people-agent-ops-premortem.md",
+    "agenda-full": "01-org/corporate/people-agent-ops/people-agent-ops-agenda-full.md",
+    "agenda-board": "01-org/corporate/people-agent-ops/people-agent-ops-agenda-board.md",
+    "directive": "01-org/corporate/people-agent-ops/people-agent-ops-directive.md",
+    "loops": "01-org/corporate/people-agent-ops/people-agent-ops-loops.md",
+    "schedule": "01-org/corporate/people-agent-ops/people-agent-ops-schedule.md",
+    "questions": "01-org/corporate/people-agent-ops/people-agent-ops-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "roster-lifecycle",
+   "title": "Roster & Lifecycle",
+   "id": "4.1",
+   "division": "corporate",
+   "department": "people-agent-ops",
+   "gated": false,
+   "dir": "01-org/corporate/people-agent-ops/teams/roster-lifecycle",
+   "files": {
+    "charter": "01-org/corporate/people-agent-ops/teams/roster-lifecycle/roster-lifecycle-charter.md",
+    "premortem": "01-org/corporate/people-agent-ops/teams/roster-lifecycle/roster-lifecycle-premortem.md",
+    "agenda-full": "01-org/corporate/people-agent-ops/teams/roster-lifecycle/roster-lifecycle-agenda-full.md",
+    "agenda-board": "01-org/corporate/people-agent-ops/teams/roster-lifecycle/roster-lifecycle-agenda-board.md",
+    "directive": "01-org/corporate/people-agent-ops/teams/roster-lifecycle/roster-lifecycle-directive.md",
+    "loops": "01-org/corporate/people-agent-ops/teams/roster-lifecycle/roster-lifecycle-loops.md",
+    "schedule": "01-org/corporate/people-agent-ops/teams/roster-lifecycle/roster-lifecycle-schedule.md",
+    "questions": "01-org/corporate/people-agent-ops/teams/roster-lifecycle/roster-lifecycle-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "performance-doneability",
+   "title": "Performance & Doneability",
+   "id": "4.2",
+   "division": "corporate",
+   "department": "people-agent-ops",
+   "gated": false,
+   "dir": "01-org/corporate/people-agent-ops/teams/performance-doneability",
+   "files": {
+    "charter": "01-org/corporate/people-agent-ops/teams/performance-doneability/performance-doneability-charter.md",
+    "premortem": "01-org/corporate/people-agent-ops/teams/performance-doneability/performance-doneability-premortem.md",
+    "agenda-full": "01-org/corporate/people-agent-ops/teams/performance-doneability/performance-doneability-agenda-full.md",
+    "agenda-board": "01-org/corporate/people-agent-ops/teams/performance-doneability/performance-doneability-agenda-board.md",
+    "directive": "01-org/corporate/people-agent-ops/teams/performance-doneability/performance-doneability-directive.md",
+    "loops": "01-org/corporate/people-agent-ops/teams/performance-doneability/performance-doneability-loops.md",
+    "schedule": "01-org/corporate/people-agent-ops/teams/performance-doneability/performance-doneability-schedule.md",
+    "questions": "01-org/corporate/people-agent-ops/teams/performance-doneability/performance-doneability-questions.md"
+   }
+  },
+  {
+   "kind": "department",
+   "slug": "strategy-fundraising",
+   "title": "Strategy & Fundraising",
+   "division": "corporate",
+   "dir": "01-org/corporate/strategy-fundraising",
+   "files": {
+    "charter": "01-org/corporate/strategy-fundraising/strategy-fundraising-charter.md",
+    "premortem": "01-org/corporate/strategy-fundraising/strategy-fundraising-premortem.md",
+    "agenda-full": "01-org/corporate/strategy-fundraising/strategy-fundraising-agenda-full.md",
+    "agenda-board": "01-org/corporate/strategy-fundraising/strategy-fundraising-agenda-board.md",
+    "directive": "01-org/corporate/strategy-fundraising/strategy-fundraising-directive.md",
+    "loops": "01-org/corporate/strategy-fundraising/strategy-fundraising-loops.md",
+    "schedule": "01-org/corporate/strategy-fundraising/strategy-fundraising-schedule.md",
+    "questions": "01-org/corporate/strategy-fundraising/strategy-fundraising-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "positioning-fundraise-readiness",
+   "title": "Positioning & Fundraise Readiness",
+   "id": "5.1",
+   "division": "corporate",
+   "department": "strategy-fundraising",
+   "gated": false,
+   "dir": "01-org/corporate/strategy-fundraising/teams/positioning-fundraise-readiness",
+   "files": {
+    "charter": "01-org/corporate/strategy-fundraising/teams/positioning-fundraise-readiness/positioning-fundraise-readiness-charter.md",
+    "premortem": "01-org/corporate/strategy-fundraising/teams/positioning-fundraise-readiness/positioning-fundraise-readiness-premortem.md",
+    "agenda-full": "01-org/corporate/strategy-fundraising/teams/positioning-fundraise-readiness/positioning-fundraise-readiness-agenda-full.md",
+    "agenda-board": "01-org/corporate/strategy-fundraising/teams/positioning-fundraise-readiness/positioning-fundraise-readiness-agenda-board.md",
+    "directive": "01-org/corporate/strategy-fundraising/teams/positioning-fundraise-readiness/positioning-fundraise-readiness-directive.md",
+    "loops": "01-org/corporate/strategy-fundraising/teams/positioning-fundraise-readiness/positioning-fundraise-readiness-loops.md",
+    "schedule": "01-org/corporate/strategy-fundraising/teams/positioning-fundraise-readiness/positioning-fundraise-readiness-schedule.md",
+    "questions": "01-org/corporate/strategy-fundraising/teams/positioning-fundraise-readiness/positioning-fundraise-readiness-questions.md"
+   }
+  },
+  {
+   "kind": "advisory",
+   "slug": "architecture-review",
+   "title": "Architecture Review",
+   "division": "advisory",
+   "dir": "02-advisory/architecture-review",
+   "files": {
+    "charter": "02-advisory/architecture-review/architecture-review-charter.md",
+    "premortem": "02-advisory/architecture-review/architecture-review-premortem.md",
+    "agenda-full": "02-advisory/architecture-review/architecture-review-agenda-full.md",
+    "agenda-board": "02-advisory/architecture-review/architecture-review-agenda-board.md",
+    "directive": "02-advisory/architecture-review/architecture-review-directive.md",
+    "loops": "02-advisory/architecture-review/architecture-review-loops.md",
+    "schedule": "02-advisory/architecture-review/architecture-review-schedule.md",
+    "questions": "02-advisory/architecture-review/architecture-review-questions.md"
+   }
+  },
+  {
+   "kind": "advisory",
+   "slug": "red-team",
+   "title": "Red Team",
+   "division": "advisory",
+   "dir": "02-advisory/red-team",
+   "files": {
+    "charter": "02-advisory/red-team/red-team-charter.md",
+    "premortem": "02-advisory/red-team/red-team-premortem.md",
+    "agenda-full": "02-advisory/red-team/red-team-agenda-full.md",
+    "agenda-board": "02-advisory/red-team/red-team-agenda-board.md",
+    "directive": "02-advisory/red-team/red-team-directive.md",
+    "loops": "02-advisory/red-team/red-team-loops.md",
+    "schedule": "02-advisory/red-team/red-team-schedule.md",
+    "questions": "02-advisory/red-team/red-team-questions.md"
+   }
+  },
+  {
+   "kind": "advisory",
+   "slug": "decision-office",
+   "title": "Decision Office",
+   "division": "advisory",
+   "dir": "02-advisory/decision-office",
+   "files": {
+    "charter": "02-advisory/decision-office/decision-office-charter.md",
+    "premortem": "02-advisory/decision-office/decision-office-premortem.md",
+    "agenda-full": "02-advisory/decision-office/decision-office-agenda-full.md",
+    "agenda-board": "02-advisory/decision-office/decision-office-agenda-board.md",
+    "directive": "02-advisory/decision-office/decision-office-directive.md",
+    "loops": "02-advisory/decision-office/decision-office-loops.md",
+    "schedule": "02-advisory/decision-office/decision-office-schedule.md",
+    "questions": "02-advisory/decision-office/decision-office-questions.md"
+   }
+  },
+  {
+   "kind": "team",
+   "slug": "backtests",
+   "title": "Backtests",
+   "id": "RM-4",
+   "division": "research-math",
+   "department": "research-math",
+   "gated": false,
+   "dir": "01-org/research-math/teams/backtests",
+   "files": {
+    "charter": "01-org/research-math/teams/backtests/backtests-charter.md",
+    "premortem": "01-org/research-math/teams/backtests/backtests-premortem.md",
+    "agenda-full": "01-org/research-math/teams/backtests/backtests-agenda-full.md",
+    "agenda-board": "01-org/research-math/teams/backtests/backtests-agenda-board.md",
+    "directive": "01-org/research-math/teams/backtests/backtests-directive.md",
+    "loops": "01-org/research-math/teams/backtests/backtests-loops.md",
+    "schedule": "01-org/research-math/teams/backtests/backtests-schedule.md"
+   }
+  }
+ ]
+}

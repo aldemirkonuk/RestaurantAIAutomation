@@ -113,7 +113,18 @@ export const queryKeys = {
     contacts: (providerId: string) => [...queryKeys.providers.all, 'contacts', providerId] as const,
     orders: (providerId: string) => [...queryKeys.providers.all, 'orders', providerId] as const,
   },
-  
+
+  // Distributor discovery (territory-gated map search)
+  distributors: {
+    all: ['distributors'] as const,
+    searches: () => [...queryKeys.distributors.all, 'search'] as const,
+    search: (restaurantId: string, params?: Record<string, unknown>) =>
+      [...queryKeys.distributors.searches(), restaurantId, params] as const,
+    facets: (restaurantId: string, params?: Record<string, unknown>) =>
+      [...queryKeys.distributors.all, 'facets', restaurantId, params] as const,
+    detail: (id: string) => [...queryKeys.distributors.all, 'detail', id] as const,
+  },
+
   // Calendar
   calendar: {
     all: ['calendar'] as const,

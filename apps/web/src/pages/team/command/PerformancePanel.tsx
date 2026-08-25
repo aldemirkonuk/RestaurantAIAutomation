@@ -10,6 +10,7 @@ import { BarChart3, Plus, Upload } from 'lucide-react'
 import { getMemberPerformance, ingestSales, ingestSalesBatch, type TeamMember } from '../../../services/api/team'
 import { ExportMenu } from '../../../components/ui/ExportMenu'
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport'
+import { TABULAR_ACCEPT } from '../../../lib/uploadAccept'
 
 export function PerformancePanel({ member }: { member: TeamMember | null }) {
   const qc = useQueryClient()
@@ -147,7 +148,7 @@ export function PerformancePanel({ member }: { member: TeamMember | null }) {
           <input
             ref={fileRef}
             type="file"
-            accept=".csv,text/csv"
+            accept={TABULAR_ACCEPT}
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0]
@@ -242,7 +243,7 @@ function Sparkline({ analytic }: { analytic: NonNullable<import('../../../servic
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-14">
       <rect x={0} y={Y(band[1])} width={W} height={Math.max(1, Y(band[0]) - Y(band[1]))} fill="#f3f4f6" />
       <line x1={0} y1={Y(median)} x2={W} y2={Y(median)} stroke="#d1d5db" strokeDasharray="3 3" />
-      <path d={path} fill="none" stroke="#cd2d5b" strokeWidth={2} />
+      <path d={path} fill="none" stroke="#9E4249" strokeWidth={2} />
     </svg>
   )
 }

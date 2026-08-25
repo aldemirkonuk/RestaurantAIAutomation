@@ -6,8 +6,10 @@ Provides fallback mechanisms and confidence scoring
 
 import logging
 import os
+import time
 from typing import Dict, Optional
 import asyncio
+from config.settings import get_settings
 
 try:
     import google.generativeai as genai
@@ -53,7 +55,7 @@ class AuctionWineService:
         if self.gemini_api_key and GEMINI_AVAILABLE:
             try:
                 genai.configure(api_key=self.gemini_api_key)
-                self.gemini_model = genai.GenerativeModel("gemini-pro")
+                self.gemini_model = genai.GenerativeModel(get_settings().gemini_model)
                 self.gemini_available = True
                 logger.info("Gemini API initialized successfully")
             except Exception as e:
@@ -118,9 +120,37 @@ class AuctionWineService:
         prompt = self._build_research_prompt(wine_name)
 
         try:
+            _t0 = time.perf_counter()
             response = await asyncio.to_thread(
                 self.gemini_model.generate_content, prompt
             )
+
+            # P1: previously an unlogged model call (dark site)
+            try:
+                from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+                # label the model actually configured, not a literal (OD-57)
+                _model_id = get_settings().gemini_model
+                _usage = getattr(response, "usage_metadata", None)
+                _in = getattr(_usage, "prompt_token_count", 0) or 0
+                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+                _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                    getattr(_usage, "thoughts_token_count", 0) or 0
+                )
+                get_spend_logger().log(
+                    provider="google",
+                    model=_model_id,
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=estimate_llm_cost(_model_id, _in, _out),
+                    agent_fallback="auction_wine_service",
+                    task_type="auction_wine_research",
+                    outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
+                    context={"wine_name": str(wine_name)[:120]},
+                )
+            except Exception:
+                pass
 
             # Parse response
             result = self._parse_ai_response(response.text, wine_name)
@@ -135,9 +165,10 @@ class AuctionWineService:
         prompt = self._build_research_prompt(wine_name)
 
         try:
+            _t0 = time.perf_counter()
             response = await asyncio.to_thread(
                 self.openai_client.chat.completions.create,
-                model="gpt-4-turbo-preview",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "system",
@@ -147,6 +178,28 @@ class AuctionWineService:
                 ],
                 temperature=0.3,  # Lower temperature for more factual responses
             )
+
+            # P1: previously an unlogged model call (dark site)
+            try:
+                from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+                _usage = getattr(response, "usage", None)
+                _in = getattr(_usage, "prompt_tokens", 0) or 0
+                _out = getattr(_usage, "completion_tokens", 0) or 0
+                get_spend_logger().log(
+                    provider="openai",
+                    model="gpt-4o",
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=estimate_llm_cost("gpt-4o", _in, _out),
+                    agent_fallback="auction_wine_service",
+                    task_type="auction_wine_research",
+                    outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
+                    context={"wine_name": str(wine_name)[:120]},
+                )
+            except Exception:
+                pass
 
             # Parse response
             result = self._parse_ai_response(

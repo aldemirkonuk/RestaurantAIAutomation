@@ -1,4 +1,5 @@
 ---
+status: complete  # added 2026-07-31: work was done, the field was missing
 phase: quick-260403-dgf
 plan: 01
 subsystem: crawl-pipeline

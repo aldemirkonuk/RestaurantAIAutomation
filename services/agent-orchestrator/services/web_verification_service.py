@@ -16,6 +16,7 @@ It is NOT a separate column. merge_field_confidence() propagates it correctly.
 """
 
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -25,7 +26,7 @@ from supabase import create_client
 
 from config.settings import get_settings
 from services.field_confidence import merge_field_confidence
-from services.spend_logger import get_spend_logger
+from services.spend_logger import estimate_llm_cost, get_spend_logger
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +214,7 @@ async def parse_search_results(
 
     try:
         client = genai.Client(api_key=settings.google_api_key)
+        _t0 = time.perf_counter()
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
@@ -230,15 +232,24 @@ async def parse_search_results(
         usage = getattr(response, "usage_metadata", None)
         if usage:
             _in = getattr(usage, "prompt_token_count", 0) or 0
-            _out = getattr(usage, "candidates_token_count", 0) or 0
-            # Gemini 2.5 Flash pricing: ~$0.075/$0.30 per 1M tokens (input/output)
-            _cost = (_in * 0.075 / 1_000_000) + (_out * 0.30 / 1_000_000)
+            # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+            _out = (getattr(usage, "candidates_token_count", 0) or 0) + (
+                getattr(usage, "thoughts_token_count", 0) or 0
+            )
+            # Was an inline 0.075/0.30 literal — understated real 2.5-flash
+            # pricing (0.30/2.50) by 4x in and 8.3x out. Use the audited table.
+            _cost = estimate_llm_cost("gemini-2.5-flash", _in, _out)
             get_spend_logger().log(
                 provider="google",
                 model="gemini-2.5-flash",
                 input_tokens=_in,
                 output_tokens=_out,
                 cost_usd=_cost,
+                agent_fallback="web_verification_service",
+                task_type="snippet_parse",
+                outcome="success",  # call-level: response returned
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                context={"wine_name": str(wine_name)[:120]},
             )
     except Exception:
         pass

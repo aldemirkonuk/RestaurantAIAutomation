@@ -1,0 +1,35 @@
+{
+  "archetype_id": "bistro",
+  "display_name": "Casual Bistro",
+  "snapshot": "datasets/sim/menus/bistro.json",
+  "defaults": {
+    "cuisine": "italian-american",
+    "size": "medium",
+    "wine_program_depth": "deep",
+    "sales_volume": "medium",
+    "price_tier": "mid",
+    "ordering_rhythm": "twice_weekly"
+  },
+  "opening_stock": {
+    "default_bottles": 12,
+    "min_bottles": 2,
+    "max_bottles": 36,
+    "by_price_tier": {
+      "entry": 24,
+      "mid": 12,
+      "premium": 6
+    },
+    "by_primary_type": {
+      "sparkling": 18,
+      "red": 12,
+      "white": 12
+    },
+    "threshold_min": 5
+  },
+  "restaurant": {
+    "name": "Sim Bistro",
+    "timezone": "America/Chicago",
+    "city": "Chicago",
+    "country": "USA"
+  }
+}

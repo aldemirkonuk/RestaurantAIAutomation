@@ -859,8 +859,12 @@ export class DashboardService {
     try {
       const { data: inventory, error } = await client
         .from("restaurant_inventory")
+        // wine_type/stock_status/unit_price do not exist on this table; a
+        // single unknown column 42703s the whole request. Type comes from the
+        // wine library, status from inventory_state, price from
+        // menu_price_current.
         .select(
-          "id, wine_type, stock_live, stock_status, storage_location_id, unit_price",
+          "id, stock_live, inventory_state, storage_location_id, menu_price_current, master_wine_library(primary_type)",
         )
         .eq("restaurant_id", restaurantId);
 
@@ -876,13 +880,19 @@ export class DashboardService {
       const locationMap = new Map<string, number>();
 
       for (const item of items) {
-        const type = item.wine_type || "unknown";
+        // supabase-js types a FK embed as an array; at runtime a to-one
+        // relation comes back as an object. Accept either.
+        const lib: any = (item as any).master_wine_library;
+        const type =
+          (Array.isArray(lib) ? lib[0]?.primary_type : lib?.primary_type) ||
+          "unknown";
         const typeEntry = typeMap.get(type) || { count: 0, value: 0 };
         typeEntry.count += item.stock_live || 0;
-        typeEntry.value += (item.stock_live || 0) * (item.unit_price || 0);
+        typeEntry.value +=
+          (item.stock_live || 0) * (Number(item.menu_price_current) || 0);
         typeMap.set(type, typeEntry);
 
-        const status = item.stock_status || "unknown";
+        const status = item.inventory_state || "unknown";
         statusMap.set(status, (statusMap.get(status) || 0) + 1);
 
         // storage_location_id is a UUID FK; use 'unassigned' when null

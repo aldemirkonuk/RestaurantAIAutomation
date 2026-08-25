@@ -150,6 +150,23 @@ export class ReceivingController {
     }
   }
 
+  @Get("queue")
+  @ApiOperation({
+    summary: "Deliveries that need a decision, worst money first",
+    description:
+      "Only discrepancies — a delivery that matched is not a task, and listing it would bury the four that cost something under forty that did not. Sorted by dollars at risk rather than by date, because the reason to open this list is to recover money. Claims provable from the vendor's own packing slip are marked; those are the ones worth starting with.",
+  })
+  async queue(@CurrentUser() user: AuthedUser) {
+    try {
+      return await this.receiving.managerQueue(user.restaurantId);
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to load the receiving queue",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Get("unverified")
   @ApiOperation({
     summary: "Deliveries counted by case and not yet counted by bottle",

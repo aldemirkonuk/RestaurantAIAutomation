@@ -11,6 +11,19 @@ Handles:
 - Menu modifications
 
 Publishes to RabbitMQ exchanges for consumption by other agents.
+
+SCOPE, as of the SimPOS Synthetic Testbed plan (decision B13/B14): the NestJS
+pos-hub (apps/api-gateway/src/pos-hub) is the single POS door and the only
+place that writes stock — via apply_stock_movement / record_glass_pour, gated
+on closed/paid checks, resolved through pos_item_mappings. This agent, and
+buffer_manager.py which consumes its pos.sale.completed events, do NOT write
+restaurant_inventory.stock_live or shadow_stock anywhere in this file, and
+that is intentional, not an oversight: it never became a second write path,
+and per decision B14 it should not become one. What remains here (buffering
+for shadow-stock threshold alerts, wine-name matching, saga-based polling for
+incomplete webhooks) is exactly the "drift and reorder" work the orchestrator
+keeps. Do not add a stock write to this file — route it through
+apply_stock_movement in NestJS instead.
 """
 
 import asyncio
@@ -166,10 +179,16 @@ class POSIntegrationAgent(BaseAgent):
             True if signature is valid, False otherwise
         """
         if not self.toast_webhook_secret:
-            self.logger.warning(
-                "No Toast webhook secret configured - skipping signature verification"
+            # SimPOS testbed plan (decision B16): fail closed. An unconfigured
+            # secret must reject real traffic, not wave it through — the
+            # previous "return True" meant a missing env var silently turned
+            # off webhook auth in whatever environment forgot to set it.
+            # Local/dev testing without a secret should use mock_mode instead
+            # (checked by the caller before this method is even invoked).
+            self.logger.error(
+                "No Toast webhook secret configured - rejecting webhook (fail closed)"
             )
-            return True
+            return False
 
         try:
             expected_signature = hmac.HMAC(
@@ -534,9 +553,9 @@ class POSIntegrationAgent(BaseAgent):
                 }
 
                 await self.message_bus.publish(
-                    exchange="pos.events",
+                    exchange_name="pos.events",
                     routing_key="pos.sale.refunded",
-                    message=event_data,
+                    message_body=event_data,
                 )
                 events_published += 1
 
@@ -560,9 +579,9 @@ class POSIntegrationAgent(BaseAgent):
                     "priority": 7,
                 }
                 await self.message_bus.publish(
-                    exchange="pos.events",
+                    exchange_name="pos.events",
                     routing_key="pos.sale.refunded",
-                    message=event_data,
+                    message_body=event_data,
                 )
 
             self.logger.info(
@@ -601,7 +620,9 @@ class POSIntegrationAgent(BaseAgent):
 
         # Publish to message bus
         await self.message_bus.publish(
-            exchange="pos.events", routing_key="pos.menu.modified", message=event_data
+            exchange_name="pos.events",
+            routing_key="pos.menu.modified",
+            message_body=event_data,
         )
 
         return {"status": "success", "action": "sync_triggered"}
@@ -612,11 +633,19 @@ class POSIntegrationAgent(BaseAgent):
         """
         Check if an item is a wine product.
 
-        Strategy (BUG-04 fix):
+        Strategy (SimPOS testbed plan, decision B21 fix):
         1. If a Toast selection dict is provided, check menuGroup.category first.
            Toast categorises wines correctly for named wines (Caymus, Opus One, etc.)
-           that contain no wine keywords in their name.
-        2. Fall back to keyword scan for uncategorised items or when selection is None.
+           that contain no wine keywords in their name. A category match here is a
+           POSITIVE signal only — it is one restaurant's finite house category list
+           (self.wine_menu_categories), not Toast's exhaustive category vocabulary,
+           so a category that ISN'T on that list is evidence of nothing.
+        2. Always fall back to the keyword scan when step 1 didn't already confirm
+           a wine. Previously, any non-empty category not on the wine list was
+           treated as "definitively not wine" — so a restaurant with wine filed
+           under "Reserve List", "Cellar Selections", or any house category this
+           hardcoded list didn't happen to include had every such wine silently
+           reclassified as not-wine, with the keyword check never even running.
 
         Args:
             item_name: Name of the menu item
@@ -626,17 +655,16 @@ class POSIntegrationAgent(BaseAgent):
         Returns:
             True if item is a wine, False otherwise
         """
-        # Step 1: Category-based detection (accurate for brand-name wines)
+        # Step 1: Category-based detection (accurate for brand-name wines) —
+        # positive signal only, never a negative one.
         if selection:
             category = (selection.get("menuGroup") or {}).get("category", "")
-            if category:
-                # When Toast supplies a non-empty category, treat it as authoritative.
-                # A non-wine category (e.g. "Beverages") means definitively not wine;
-                # a wine category (e.g. "Red Wine") means definitively wine.
-                return category in self.wine_menu_categories
+            if category and category in self.wine_menu_categories:
+                return True
 
-        # Step 2: Keyword fallback — only reached when category is empty/absent,
-        # meaning Toast did not categorise the item (catches uncategorised wines).
+        # Step 2: Keyword fallback — always runs unless step 1 already
+        # confirmed a wine, so an uncategorised OR unrecognised-category item
+        # still gets a real chance at being caught by name.
         item_name_lower = item_name.lower()
         return any(
             keyword in item_name_lower for keyword in self.wine_category_keywords
@@ -781,7 +809,15 @@ class POSIntegrationAgent(BaseAgent):
                     "restaurant_guid": restaurant_guid,
                     "restaurant_id": restaurant_id,
                     "order_guid": order_guid,
+                    # Same value under both keys. `match_wine_to_library` returns
+                    # a `restaurant_inventory` row id, so `inventory_id` is what it
+                    # actually is — and it is the key BufferManager reads
+                    # (buffer_manager.py:171). Emitting only `wine_id` meant every
+                    # sale was dropped with "Sale event missing inventory_id",
+                    # which is the last reason a POS sale never moved a bottle.
+                    # `wine_id` is kept because other consumers may read it.
                     "wine_id": wine_id,
+                    "inventory_id": wine_id,
                     "wine_name": wine_sale["item_name"],
                     "quantity": wine_sale["quantity"],
                     "price": wine_sale["price"],
@@ -797,9 +833,9 @@ class POSIntegrationAgent(BaseAgent):
             }
 
             await self.message_bus.publish(
-                exchange="pos.events",
+                exchange_name="pos.events",
                 routing_key="pos.sale.completed",
-                message=event_data,
+                message_body=event_data,
             )
 
             self.logger.debug(f"Published wine sale event for {wine_sale['item_name']}")
@@ -835,7 +871,9 @@ class POSIntegrationAgent(BaseAgent):
             }
 
             await self.message_bus.publish(
-                exchange="pos.events", routing_key="pos.sale.voided", message=event_data
+                exchange_name="pos.events",
+                routing_key="pos.sale.voided",
+                message_body=event_data,
             )
 
             self.logger.debug(f"Published wine void event for {item_name}")
@@ -873,18 +911,34 @@ class POSIntegrationAgent(BaseAgent):
             return None
 
     async def get_restaurant_id(self, restaurant_guid: str) -> Optional[str]:
-        """Get internal restaurant ID from Toast GUID"""
+        """Get internal restaurant ID from the POS provider's own restaurant GUID.
+
+        This queried `restaurants.toast_restaurant_guid`, a column that exists in
+        NO environment — production stores the mapping in the `pos_credentials`
+        JSONB, keyed `restaurant_guid`, alongside `pos_system`. Every webhook
+        therefore failed to resolve a restaurant and the sale event went out with
+        `restaurant_id: None`. Postgres reported the missing column on every
+        request, and the broad except turned it into a returned None, so it read
+        as "restaurant not found" rather than "this query cannot ever work".
+        """
+        if not restaurant_guid:
+            return None
         try:
-            # Use Supabase to query restaurants table
             response = (
                 self.database.supabase.table("restaurants")
                 .select("id")
-                .eq("toast_restaurant_guid", restaurant_guid)
-                .single()
+                .eq("pos_credentials->>restaurant_guid", restaurant_guid)
+                .limit(1)
                 .execute()
             )
-
-            return response.data.get("id") if response.data else None
+            rows = response.data or []
+            if rows:
+                return rows[0].get("id")
+            self.logger.warning(
+                "No restaurant has pos_credentials->>restaurant_guid = %s",
+                restaurant_guid,
+            )
+            return None
         except Exception as e:
             self.logger.error(f"Error getting restaurant ID: {e}")
             return None
@@ -933,9 +987,9 @@ class POSIntegrationAgent(BaseAgent):
             }
 
             await self.message_bus.publish(
-                exchange="pos.events",
+                exchange_name="pos.events",
                 routing_key="pos.sync.completed",
-                message=response_data,
+                message_body=response_data,
             )
 
         except Exception as e:

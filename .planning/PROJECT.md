@@ -30,12 +30,12 @@ See [FUTURES.md](./FUTURES.md). Summary:
 
 ## Current Milestone: v2.0 Backend Kitchen Architecture — Production-Grade Agent System
 
-**Goal:** Transform 24 Level 0-1 agents into Level 4 (Resilient) production agents, starting with 4 core agents in the golden path workflow, deployed and tested with real Toast POS data from a Turkish restaurant in San Francisco.
+**Goal:** Transform 24 Level 0-1 agents into Level 4 (Resilient) production agents, starting with 4 core agents in the golden path workflow, deployed and tested against **real POS data from a live restaurant** (first connector: Toast, as one adapter among many).
 
 **Target features:**
 - BaseAgent infrastructure upgrade (6 additions: idempotency, decision logging, structured JSON logging, distributed tracing, dead letter queue, saga state)
 - Wave 1 agent hardening: InventoryEngine, POSIntegrationAgent, NotificationAgent, ReportingAgent → Level 4
-- Golden path E2E: Toast webhook → POSIntegrationAgent → InventoryEngine → NotificationAgent → Manager gets SMS/email alert
+- Golden path E2E: **any POS webhook** → POSIntegrationAgent → InventoryEngine → NotificationAgent → Manager gets SMS/email alert
 - Infrastructure tables: saga state, transactional outbox, decision log, idempotency dedup, event store
 - Observability foundation: Sentry error tracking + structured JSON logs + per-agent health dashboards
 - Production deployment: Vercel (frontend) + Supabase Cloud (DB) + Railway/Fly.io (Python services)
@@ -74,23 +74,23 @@ All v1.0 requirements validated. See REQUIREMENTS.md for full list (CLVS-01..07,
 
 **Hardening (HARD)**
 - [ ] HARD-01: InventoryEngine to Level 4 (idempotency, decision log, optimistic lock, tests)
-- [ ] HARD-02: POSIntegrationAgent to Level 4 (webhook dedup, Toast polling fallback, tests)
+- [ ] HARD-02: POSIntegrationAgent to Level 4 (webhook dedup, provider-agnostic polling fallback, tests)
 - [ ] HARD-03: NotificationAgent to Level 4 (delivery tracking, DLQ, persisted rate limits, tests)
 - [ ] HARD-04: ReportingAgent to Level 4 (real reports, real export, idempotent scheduling, tests)
 
 **Golden Path E2E (E2E-v2)**
-- [ ] E2E-v2-01: Toast webhook → POSIntegrationAgent → wine sale event published
+- [ ] E2E-v2-01: POS webhook (any provider) → POSIntegrationAgent → wine sale event published
 - [ ] E2E-v2-02: Wine sale event → InventoryEngine → stock decremented + state changed
 - [ ] E2E-v2-03: Stock threshold breach → NotificationAgent → manager gets SMS/email
 - [ ] E2E-v2-04: All events → ReportingAgent → dashboard data updated
-- [ ] E2E-v2-05: Full path integration test with real Toast data
+- [ ] E2E-v2-05: Full path integration test with real POS data from a live provider
 - [ ] E2E-v2-06: Chaos test — kill agent mid-flow → verify recovery
 
 **Observability (OBS)**
 - [ ] OBS-01: Sentry integration for error tracking
 - [ ] OBS-02: Per-agent health dashboard endpoint
 - [ ] OBS-03: Structured JSON log aggregation
-- [ ] OBS-04: Business metrics (stock updates/sec, notification delivery rate)
+- [x] OBS-04: Business metrics (stock updates/sec, notification delivery rate, report generation time, webhook latency) — `business` block of `GET /api/v1/metrics`, built 2026-08-04
 
 **Deployment (DEP)**
 - [ ] DEP-01: Frontend deployed to Vercel
@@ -98,11 +98,11 @@ All v1.0 requirements validated. See REQUIREMENTS.md for full list (CLVS-01..07,
 - [ ] DEP-03: Python services on Railway/Fly.io (Docker)
 - [ ] DEP-04: RabbitMQ on CloudAMQP
 - [ ] DEP-05: Redis on Upstash
-- [ ] DEP-06: Toast API credentials configured for friend's restaurant
+- [ ] DEP-06: POS credentials configured for the first live restaurant (Toast adapter is ready; five env vars)
 
 ### Out of Scope (v2.0)
 - Waves 2-6 agent hardening (20 remaining agents) — future milestone
-- Multi-POS support (Square, Clover) — future
+- Deep multi-POS parity (Square, Clover beyond scaffolding) — future; the **positioning** is already POS-agnostic
 - Invoice OCR pipeline — separate pipeline
 - Mudavym beverage / bakery / kitchen expansion — see FUTURES.md + ROADMAP backlog 999.2–999.4
 - Guest profiles / points — see FUTURES.md §7 + ROADMAP backlog 999.1
@@ -124,7 +124,12 @@ All v1.0 requirements validated. See REQUIREMENTS.md for full list (CLVS-01..07,
 
 **Surgical audit completed (2026-04-09):** Deep code review of all 4 Wave 1 agents + BaseAgent. Bug lists, maturity levels, gap-to-Level-4 documented. See memory: `agent_surgical_audit.md`.
 
-**First user:** Friend's Turkish restaurant in SF using Toast POS. Full API access available.
+**First user:** a Turkish restaurant in SF, connecting through the Toast adapter. Full API access available.
+
+**Positioning (locked 2026-08-24):** Mudavym is **POS-agnostic — a bridge, not a POS, and not Toast-only.**
+The provider registry carries 27 providers; Toast is `partial`, Square and Clover are `scaffolded`
+with normalizers implemented (`pos-provider.registry.ts:58,71,83`). No document should present
+Toast as the product's POS. See OD-38.
 
 **Deployment target:** Vercel (frontend) + Supabase Cloud (DB) + Railway/Fly.io (Python, ~$10-20/mo) + CloudAMQP (RabbitMQ) + Upstash (Redis).
 
@@ -136,7 +141,7 @@ All v1.0 requirements validated. See REQUIREMENTS.md for full list (CLVS-01..07,
 - **Deployment budget**: ~$10-20/month (Vercel free + Supabase free + Railway $5-10 + CloudAMQP free + Upstash free)
 - **Architectural defaults locked**: RabbitMQ+saga, PG events, Redis, Sentry+logs, Diamond testing
 - **Backward compatibility**: v2.0 infrastructure must not break v1.0 extraction pipeline
-- **Real data**: All E2E testing against real Toast data from friend's restaurant
+- **Real data**: All E2E testing against real POS data from a live restaurant — never mock-only
 - **Expansion quality bar**: Non-wine categories must meet wine-depth extraction + photos (FUTURES.md); no thin SKU rows
 
 ## Current State
@@ -156,7 +161,8 @@ v1.0 complete (2026-04-08) — 17 phases, 73 plans, 96% completion. All extracti
 | Wave sequencing (6 waves, 24 agents) | Golden path first, then communication, intelligence, support, stubs, specialty | — v2.0 |
 | C→A→B approach | Audit agents → build infrastructure → wire golden path E2E | — v2.0 |
 | 7 core principles | Determinism, idempotency, replayability, observability, isolation, temporal reasoning, evolvability | — v2.0 |
-| Real Toast data from day 1 | Friend's restaurant in SF — no mock-only testing | — v2.0 |
+| Real POS data from day 1 | A live restaurant, first via the Toast adapter — no mock-only testing | — v2.0 |
+| **POS-agnostic positioning** | Bridge, not a POS; Toast is one adapter of 27, never the framing | Locked 2026-08-24 — OD-38 |
 
 ### v1.0 Decisions (archived)
 | Decision | Rationale | Outcome |

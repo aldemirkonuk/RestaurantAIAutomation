@@ -15,6 +15,7 @@ import { ThemedSelect } from '../../../components/ui/ThemedSelect'
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
 import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, HoursHeatmap, runwayDays } from './bits'
+import { SpotCountPanel } from './SpotCountPanel'
 
 function Card({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -62,6 +63,7 @@ export function RowExpansion({
   const [reason, setReason] = useState('Count correction')
   const [transferQty, setTransferQty] = useState(1)
   const [transferTo, setTransferTo] = useState<string>(locations[0]?.id ?? '')
+  const [showSpotCount, setShowSpotCount] = useState(false)
 
   const { data: activity } = useQuery({
     queryKey: ['inventory', 'activity', inventoryId],
@@ -275,6 +277,15 @@ export function RowExpansion({
 
       {/* action bar */}
       <div className="flex flex-wrap items-center gap-3 mt-3.5 bg-white border border-gray-100 rounded-xl px-4 py-3">
+        <button
+          onClick={() => setShowSpotCount(true)}
+          className="h-9 px-4 border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold rounded-lg"
+        >
+          Spot count
+        </button>
+
+        <span className="w-px h-6 bg-gray-200" />
+
         <span className="text-[10.5px] font-bold uppercase tracking-wider text-gray-400">Manual adjust</span>
         <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
           <button onClick={() => setDelta((d) => d - 1)} className="w-8 h-8 text-gray-500 hover:bg-gray-50">-</button>
@@ -321,6 +332,14 @@ export function RowExpansion({
           View ledger
         </button>
       </div>
+
+      {showSpotCount && (
+        <SpotCountPanel
+          item={item}
+          onClose={() => setShowSpotCount(false)}
+          onCommitted={invalidate}
+        />
+      )}
     </div>
   )
 }

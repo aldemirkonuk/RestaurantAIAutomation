@@ -12,14 +12,17 @@ type SubmissionRow = {
   matched_master_id?: string | null;
 };
 
-/** Structural subset shared by CreateWineSubmissionDto and menu-import items. */
+/**
+ * Structural subset shared by CreateWineSubmissionDto and menu-import items.
+ *
+ * primaryType is absent deliberately — see buildSignature.
+ */
 interface SignatureInput {
   name: string;
   producer?: string | null;
   vintage?: string | number | null;
   country?: string | null;
   region?: string | null;
-  primaryType?: string | null;
   grapeVariety?: string | null;
 }
 
@@ -36,6 +39,15 @@ export interface LibraryResolutionResult {
   masterWineId: string;
   matched: boolean;
   libraryTier: number | null;
+  /**
+   * Score of the best candidate, 0-100, or null when nothing came back.
+   *
+   * Populated even when `matched` is false: a wine that scored 79 against a
+   * real library entry is a review candidate, and a wine that scored nothing
+   * is a genuinely new bottle that needs enrichment. Collapsing both into
+   * "unmatched" is what makes the two indistinguishable downstream.
+   */
+  confidence: number | null;
 }
 
 @Injectable()
@@ -44,32 +56,141 @@ export class WineSubmissionsService {
 
   constructor(private readonly dbService: DatabaseService) {}
 
-  private normalizeText(value?: string | null): string {
+  /**
+   * Diacritics to delete rather than turn into a space.
+   *
+   * This is deliberately an explicit class and not `\p{Diacritic}`, because
+   * the same rule has to run in Postgres (public.wine_normalize_text) to key
+   * the same columns, and Postgres regex has no Unicode property classes.
+   * When the two drifted, one library row diverged: Catalan "Xarel·lo"
+   * normalized to "xarello" here and "xarel lo" there, because U+00B7 is a
+   * Diacritic to JS but was not in the SQL class.
+   *
+   * `\p{Diacritic}` covers 659 codepoints this omits, all of them Hebrew,
+   * Arabic, Indic, Thai, Tibetan, Burmese or CJK. Deleting versus spacing only
+   * changes the outcome when the character sits BETWEEN Latin alphanumerics —
+   * a run of non-Latin text collapses to spaces either way — so the Latin and
+   * Greek subset below is the part that can actually alter a wine name.
+   *
+   * Parity with the SQL function is asserted in the spec, not assumed.
+   *
+   * Spelled as `\u`-escaped alternatives rather than one character class. The
+   * literal marks rendered as gibberish — they attach to the `[` and to the
+   * range hyphens — and two adjacent combining-mark ranges also trip ESLint's
+   * no-misleading-character-class. Every alternative matches exactly one
+   * character, so the match set is identical to the class it replaces; the
+   * order below is the order it had.
+   */
+  private static readonly DIACRITICS = new RegExp(
+    [
+      "[\\u0300-\\u036F]", // combining diacritical marks
+      "[\\u1AB0-\\u1AFF]", // combining diacritical marks extended
+      "[\\u1DC0-\\u1DFF]", // combining diacritical marks supplement
+      "[\\uFE20-\\uFE2F]", // combining half marks
+      "[\\u005E\\u0060\\u00A8\\u00AF\\u00B4\\u00B7\\u00B8]", // ^ ` ¨ ¯ ´ · ¸
+      "[\\u02B0-\\u02FF]", // spacing modifier letters
+      "[\\u0374\\u0375\\u037A\\u0384\\u0385]", // Greek numeral signs and accents
+    ].join("|"),
+    "g",
+  );
+
+  /**
+   * Trade abbreviations a menu prints, expanded to the word they stand for.
+   *
+   * Measured before this existed: of 27 library producers beginning with an
+   * abbreviable trade word, rewritten the way a menu prints them, ZERO reached
+   * the auto-link floor. "Dom. Faiveley" produced no candidate at all against
+   * "Domaine Faiveley"; "Ten. di Arceno" scored 62 against "Tenuta di Arceno".
+   * Every one of them silently created a duplicate.
+   *
+   * Trigram similarity is the wrong instrument for a prefix truncation --
+   * "dom" and "domaine" share two trigrams out of five however exactly the
+   * rest of the name agrees. Lowering the producer gate far enough to reach 62
+   * would admit "chateau musar" vs "chateau de bligny" at 0.571 and every
+   * other shared-trade-word false positive. So the fix belongs here: these are
+   * the same word, and the normalizer should say so.
+   *
+   * The trailing period is required on every pattern. Bare "dom" is not an
+   * abbreviation -- Dom Perignon is a wine, and expanding it would invent a
+   * producer that does not exist. Multi-token patterns come first so
+   * "az. agr." expands as a unit rather than "az." matching alone.
+   *
+   * Mirrored exactly by public.wine_normalize_text; the spec fails on drift.
+   */
+  private static readonly ABBREVIATIONS: ReadonlyArray<
+    readonly [RegExp, string]
+  > = [
+    [/\baz\.\s*agr\.\s*/g, "azienda agricola "],
+    [/\bdom\.\s*/g, "domaine "],
+    [/\bch\.\s*/g, "chateau "],
+    [/\bcht\.\s*/g, "chateau "],
+    [/\bbod\.\s*/g, "bodegas "],
+    [/\bwgt\.\s*/g, "weingut "],
+    [/\bten\.\s*/g, "tenuta "],
+    [/\bfatt\.\s*/g, "fattoria "],
+    [/\bcant\.\s*/g, "cantina "],
+    [/\bmarch\.\s*/g, "marchesi "],
+    [/\bste\.\s*/g, "sainte "],
+    [/\bst\.\s*/g, "saint "],
+    [/\bmt\.\s*/g, "monte "],
+  ];
+
+
+  /**
+   * Public because it is the ONLY correct implementation.
+   *
+   * There were four: this one, another in wines.service.ts with a narrower
+   * diacritic class, a `name.toLowerCase().trim()` in menus.service.ts, and
+   * the SQL function. All four wrote the same columns. Anything that needs to
+   * normalize a wine string must call this.
+   */
+  normalizeText(value?: string | null): string {
     if (!value) return "";
-    return value
+    let s = value
       .normalize("NFD")
-      .replace(/\p{Diacritic}/gu, "")
-      .replace(/[^a-zA-Z0-9]+/g, " ")
-      .trim()
+      .replace(WineSubmissionsService.DIACRITICS, "")
       .toLowerCase();
+    for (const [pattern, expansion] of WineSubmissionsService.ABBREVIATIONS) {
+      s = s.replace(pattern, expansion);
+    }
+    return s.replace(/[^a-z0-9]+/g, " ").trim();
   }
 
+  /**
+   * The signature hash for a wine, under the one contract that
+   * master_wine_library.signature_hash is keyed on.
+   *
+   * Public for the same reason as normalizeText: wines.service.ts had its own
+   * version that dropped empty segments with `.filter(Boolean)` and added
+   * primary_type and appellation, so wines it created were unreachable from
+   * the menu-import path and from the SQL mirror. Dropping empty segments is
+   * the specific bug documented at length in vendor-intel/wine-identity.ts —
+   * it lets a missing producer shift the name into the producer's slot.
+   */
+  signatureHashFor(input: SignatureInput): string {
+    return this.hashSignature(this.buildSignature(input));
+  }
+
+  /**
+   * The master-library dedup key.
+   *
+   * primary_type used to occupy a slot here, and that silently split the key
+   * space in two: submitWine() passed a value for it and
+   * resolveOrCreateLibraryWine() did not, so the same bottle hashed two
+   * different ways depending on which door it came through. It is a derived
+   * classification rather than an identity attribute — a menu never prints it
+   * — so removing it is what makes the two paths agree.
+   *
+   * Mirrored by public.wine_signature_hash().
+   */
   private buildSignature(payload: SignatureInput): string {
-    const producer = this.normalizeText(payload.producer);
-    const name = this.normalizeText(payload.name);
-    const vintage = payload.vintage ?? "NV";
-    const country = this.normalizeText(payload.country);
-    const region = this.normalizeText(payload.region);
-    const primaryType = this.normalizeText(payload.primaryType);
-    const grapeVariety = this.normalizeText(payload.grapeVariety);
     return [
-      producer,
-      name,
-      vintage,
-      country,
-      region,
-      primaryType,
-      grapeVariety,
+      this.normalizeText(payload.producer),
+      this.normalizeText(payload.name),
+      payload.vintage ?? "NV",
+      this.normalizeText(payload.country),
+      this.normalizeText(payload.region),
+      this.normalizeText(payload.grapeVariety),
     ].join("|");
   }
 
@@ -159,48 +280,73 @@ export class WineSubmissionsService {
       const signature = this.buildSignature(payload);
       const signatureHash =
         submission.signature_hash || this.hashSignature(signature);
+      const normalizedName = this.normalizeText(payload.name);
+      const normalizedProducer = this.normalizeText(payload.producer);
 
-      // Exact signature match
-      const { data: existingMaster } = await this.dbService.supabase
-        .from("master_wine_library")
-        .select("id")
-        .eq("signature_hash", signatureHash)
-        .maybeSingle();
+      // Matching is delegated to the same RPC the menu importer uses. This
+      // path used to run its own ladder — exact signature, then
+      // normalized_name + normalized_producer equality with `.limit(1)` and no
+      // ORDER BY — which carried every defect the importer's copy did:
+      // unreachable across the library's two naming styles, blind to
+      // abbreviated producers, and non-deterministic whenever duplicates
+      // existed. Two matchers on one table also means two answers for one
+      // wine depending on which door it came through, which is what put
+      // primary_type in the signature and split the key space in the first
+      // place.
+      const { data: candidates, error: matchError } =
+        await this.dbService.supabase.rpc("match_library_wine", {
+          p_name: payload.name,
+          p_producer: payload.producer ?? null,
+          p_vintage:
+            typeof payload.vintage === "string"
+              ? parseInt(payload.vintage, 10) || null
+              : (payload.vintage ?? null),
+          p_country: payload.country ?? null,
+          p_region: payload.region ?? null,
+          p_grape_variety: payload.grapeVariety ?? null,
+        });
 
-      if (existingMaster?.id) {
+      // Leave the submission pending rather than treating an outage as "this
+      // wine is new" — that is how duplicates get created.
+      if (matchError) {
+        this.logger.error("Library match failed for submission", {
+          id: submission.id,
+          error: matchError.message,
+        });
+        results.push({ id: submission.id, status: "pending" });
+        continue;
+      }
+
+      const best = (candidates ?? [])[0];
+
+      if (best && best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE) {
         await this.dbService.supabase
           .from("master_wine_library_submissions")
           .update({
             status: "merged",
-            matched_master_id: existingMaster.id,
-            decision_reason: "signature_match",
+            matched_master_id: best.id,
+            decision_reason: `library_match_${best.confidence}`,
             signature_hash: signatureHash,
           })
           .eq("id", submission.id);
         results.push({
           id: submission.id,
           status: "merged",
-          matchedMasterId: existingMaster.id,
+          matchedMasterId: best.id,
         });
         continue;
       }
 
-      // Conservative review: same name+producer, different vintage
-      const normalizedName = this.normalizeText(payload.name);
-      const normalizedProducer = this.normalizeText(payload.producer);
-      const { data: nameProducerMatch } = await this.dbService.supabase
-        .from("master_wine_library")
-        .select("id, vintage")
-        .eq("normalized_name", normalizedName)
-        .eq("normalized_producer", normalizedProducer)
-        .limit(1);
-
-      if (nameProducerMatch && nameProducerMatch.length > 0) {
+      // A near miss is the case a human should look at: close enough that
+      // creating a second row is probably wrong, not close enough to link
+      // automatically. Governance keeps this conservative on purpose.
+      if (best) {
         await this.dbService.supabase
           .from("master_wine_library_submissions")
           .update({
             status: "pending_review",
-            decision_reason: "name_producer_match",
+            decision_reason: `near_match_${best.confidence}`,
+            matched_master_id: best.id,
             signature_hash: signatureHash,
           })
           .eq("id", submission.id);
@@ -273,73 +419,91 @@ export class WineSubmissionsService {
   }
 
   /**
+   * Confidence at or above which a candidate is linked without review.
+   *
+   * Set from measurement, not taste. 660 probes derived from real library rows
+   * and perturbed the way menus actually print them (bare name against a
+   * verbose library entry, producer trade-suffix dropped, both at once) recall
+   * the correct row at 0.966-1.000 and score 100 when the vintage agrees. The
+   * one perturbation that lands below this line is an abbreviated producer
+   * ("Dom. Mandeliere" for "Domaine de la Mandeliere") at 73, which is
+   * genuinely ambiguous and belongs in review rather than auto-linked.
+   */
+  private static readonly AUTO_LINK_CONFIDENCE = 85;
+
+  /**
    * Synchronous match-or-create against master_wine_library, used by the menu
    * importer so it can populate menu_items.wine_library_id and
    * restaurant_inventory.master_wine_id immediately (both are FK targets and
    * cannot be left null the way the old fire-and-forget submission path did).
    *
-   * Resolution order mirrors processPendingSubmissions:
-   *   1. Exact signature_hash match → link, no governance change.
-   *   2. normalized_name + normalized_producer match (only when a producer
-   *      is present, to avoid false-positive matches across unrelated wines
-   *      that all share an empty producer) → link, no governance change.
-   *   3. No match → create a Provisional (library_tier=3) row. It is
-   *      immediately usable for this restaurant's inventory, but stays
-   *      outside the canonical (tier 0) library until reviewed via /studio
-   *      or the research/ontology pipeline.
+   * Matching is delegated to the match_library_wine RPC. Three reasons it does
+   * not belong here as PostgREST calls:
+   *
+   *   - It was three round trips per wine (exact, fallback, insert). RL
+   *     Restaurant's menu is 485 wines, so ~1,500 round trips for one import.
+   *   - The fallback compared normalized_name for exact equality, and the
+   *     library stores names in two styles depending on which importer wrote
+   *     the row: "chardonnay" and "2022 olivier leflaive les setilles
+   *     bourgogne france". Half the library was unreachable. Bridging that
+   *     needs trigram word-similarity, which has to run in the database to use
+   *     the index.
+   *   - The fallback was `.limit(1)` with no ORDER BY, so when the library
+   *     held duplicates (it holds 14 such groups) the same menu linked to a
+   *     different row on each import.
+   *
+   * Below the auto-link floor the wine still gets a Provisional
+   * (library_tier=3) row so the import completes and inventory works, but
+   * `matched: false` marks it for governance review via /studio or the
+   * research pipeline. Near-miss candidates are returned so the caller can
+   * show a reviewer what it nearly matched instead of making them search.
    */
   async resolveOrCreateLibraryWine(
     item: LibraryResolutionInput,
   ): Promise<LibraryResolutionResult> {
-    const signatureInput: SignatureInput = {
-      name: item.name,
-      producer: item.producer ?? null,
-      vintage: item.vintage ?? null,
-      country: item.country ?? null,
-      region: item.region ?? null,
-      grapeVariety: item.grapeVariety ?? null,
-    };
-    const signature = this.buildSignature(signatureInput);
-    const signatureHash = this.hashSignature(signature);
-    const normalizedName = this.normalizeText(item.name);
-    const normalizedProducer = this.normalizeText(item.producer);
-
-    const { data: exactMatch } = await this.dbService.supabase
-      .from("master_wine_library")
-      .select("id, library_tier")
-      .eq("signature_hash", signatureHash)
-      .maybeSingle();
-
-    if (exactMatch?.id) {
-      return {
-        masterWineId: exactMatch.id,
-        matched: true,
-        libraryTier: exactMatch.library_tier ?? null,
-      };
-    }
-
-    if (normalizedProducer) {
-      const { data: nameProducerMatch } = await this.dbService.supabase
-        .from("master_wine_library")
-        .select("id, library_tier")
-        .eq("normalized_name", normalizedName)
-        .eq("normalized_producer", normalizedProducer)
-        .limit(1)
-        .maybeSingle();
-
-      if (nameProducerMatch?.id) {
-        return {
-          masterWineId: nameProducerMatch.id,
-          matched: true,
-          libraryTier: nameProducerMatch.library_tier ?? null,
-        };
-      }
-    }
-
     const parsedVintage =
       typeof item.vintage === "string"
         ? parseInt(item.vintage, 10) || null
-        : item.vintage ?? null;
+        : (item.vintage ?? null);
+
+    const { data: candidates, error: matchError } =
+      await this.dbService.supabase.rpc("match_library_wine", {
+        p_name: item.name,
+        p_producer: item.producer ?? null,
+        p_vintage: parsedVintage,
+        p_country: item.country ?? null,
+        p_region: item.region ?? null,
+        p_grape_variety: item.grapeVariety ?? null,
+      });
+
+    // A matcher failure must not be silently downgraded into "no match" —
+    // that would fabricate a duplicate library row for a wine that exists.
+    if (matchError) {
+      throw new Error(
+        `Library match failed for "${item.name}": ${matchError.message}`,
+      );
+    }
+
+    const best = (candidates ?? [])[0];
+    if (best && best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE) {
+      return {
+        masterWineId: best.id,
+        matched: true,
+        libraryTier: best.library_tier ?? null,
+        confidence: best.confidence,
+      };
+    }
+
+    const signatureHash = this.hashSignature(
+      this.buildSignature({
+        name: item.name,
+        producer: item.producer ?? null,
+        vintage: parsedVintage,
+        country: item.country ?? null,
+        region: item.region ?? null,
+        grapeVariety: item.grapeVariety ?? null,
+      }),
+    );
 
     const insertPayload = {
       wine_id: this.generateWineId(),
@@ -353,31 +517,230 @@ export class WineSubmissionsService {
       library_tier: 3, // Provisional — usable now, pending governance review
       source: "menu_import",
       signature_hash: signatureHash,
-      normalized_name: normalizedName,
-      normalized_producer: normalizedProducer,
+      normalized_name: this.normalizeText(item.name),
+      normalized_producer: this.normalizeText(item.producer),
       signature_source: "menu_import",
     };
 
+    // ignoreDuplicates rather than the default merge. Two concurrent imports
+    // of the same wine race here, and an upsert that merges would overwrite
+    // the row the other request just created — including stamping
+    // primary_type back to "unknown" and library_tier back to 3 if the loser
+    // happened to collide with a curated row. Losing the race is fine; the
+    // winner's row is the one we want, so re-read it.
     const { data: created, error } = await this.dbService.supabase
       .from("master_wine_library")
-      .upsert(insertPayload, { onConflict: "signature_hash" })
+      .upsert(insertPayload, {
+        onConflict: "signature_hash",
+        ignoreDuplicates: true,
+      })
       .select("id, library_tier")
-      .single();
+      .maybeSingle();
 
-    if (error || !created) {
+    if (error) {
       this.logger.error("Failed to create provisional library wine", {
-        error: error?.message,
+        error: error.message,
         name: item.name,
       });
       throw new Error(
-        `Failed to resolve library wine "${item.name}": ${error?.message}`,
+        `Failed to resolve library wine "${item.name}": ${error.message}`,
       );
     }
 
-    return {
-      masterWineId: created.id,
-      matched: false,
-      libraryTier: created.library_tier ?? 3,
-    };
+    if (created?.id) {
+      return {
+        masterWineId: created.id,
+        matched: false,
+        libraryTier: created.library_tier ?? 3,
+        confidence: best?.confidence ?? null,
+      };
+    }
+
+    // ignoreDuplicates returns no row when the insert was skipped, which means
+    // a concurrent request already created it. Read that row rather than
+    // failing an import over a race we expected.
+    const { data: existing } = await this.dbService.supabase
+      .from("master_wine_library")
+      .select("id, library_tier")
+      .eq("signature_hash", signatureHash)
+      .maybeSingle();
+
+    if (existing?.id) {
+      return {
+        masterWineId: existing.id,
+        matched: true,
+        libraryTier: existing.library_tier ?? null,
+        confidence: best?.confidence ?? null,
+      };
+    }
+
+    throw new Error(
+      `Failed to resolve library wine "${item.name}": insert was skipped but ` +
+        `no row carries signature ${signatureHash.slice(0, 12)}`,
+    );
+  }
+
+  /**
+   * Resolve a whole menu at once.
+   *
+   * resolveOrCreateLibraryWine is one round trip per wine, and against this
+   * project's pooler each is ~320-380ms — almost entirely network, since the
+   * query itself runs in single-digit milliseconds off the indexes. Measured
+   * on a real 182-wine extraction scaled to RL Restaurant's 485:
+   *
+   *     per wine   183.12s   (378ms each)
+   *     batched      0.91s
+   *                  202x
+   *
+   * No amount of index work touches that; the round trips are the cost. This
+   * collapses an import to three statements regardless of menu size: one match,
+   * one bulk insert of the wines that matched nothing, one read-back.
+   *
+   * Results are index-aligned with `items`, which the caller depends on to zip
+   * them against its own array. Aligning on name would be wrong — the same
+   * wine legitimately appears twice on a menu (by the glass and by the
+   * bottle), so position is the only correct join.
+   */
+  async resolveLibraryWinesBatch(
+    items: LibraryResolutionInput[],
+  ): Promise<Array<LibraryResolutionResult | null>> {
+    if (items.length === 0) return [];
+
+    const parseVintage = (v: LibraryResolutionInput["vintage"]) =>
+      typeof v === "string" ? parseInt(v, 10) || null : (v ?? null);
+
+    const { data: matches, error: matchError } =
+      await this.dbService.supabase.rpc("match_library_wines_batch", {
+        p_wines: items.map((i) => ({
+          name: i.name,
+          producer: i.producer ?? null,
+          vintage: i.vintage == null ? null : String(i.vintage),
+          country: i.country ?? null,
+          region: i.region ?? null,
+          grape_variety: i.grapeVariety ?? null,
+        })),
+      });
+
+    // A matcher outage must not be downgraded into "none of these exist" —
+    // that would fabricate a duplicate for every wine on the menu.
+    if (matchError) {
+      throw new Error(`Library batch match failed: ${matchError.message}`);
+    }
+
+    const byIndex = new Map<number, any>();
+    for (const row of matches ?? []) {
+      if (row?.id) byIndex.set(row.input_index, row);
+    }
+
+    const results: Array<LibraryResolutionResult | null> = new Array(
+      items.length,
+    ).fill(null);
+    const needsCreate: number[] = [];
+
+    items.forEach((_, idx) => {
+      const best = byIndex.get(idx);
+      if (
+        best &&
+        best.confidence >= WineSubmissionsService.AUTO_LINK_CONFIDENCE
+      ) {
+        results[idx] = {
+          masterWineId: best.id,
+          matched: true,
+          libraryTier: best.library_tier ?? null,
+          confidence: best.confidence,
+        };
+      } else {
+        needsCreate.push(idx);
+      }
+    });
+
+    if (needsCreate.length === 0) return results;
+
+    // Two wines on one menu can share a signature — the same bottle listed by
+    // the glass and by the bottle. Insert one row per distinct signature and
+    // fan the resulting id back out, rather than letting Postgres reject the
+    // statement for touching a conflict target twice.
+    const signatureOf = new Map<number, string>();
+    const rowBySignature = new Map<string, Record<string, unknown>>();
+
+    for (const idx of needsCreate) {
+      const item = items[idx];
+      const vintage = parseVintage(item.vintage);
+      const signatureHash = this.hashSignature(
+        this.buildSignature({
+          name: item.name,
+          producer: item.producer ?? null,
+          vintage,
+          country: item.country ?? null,
+          region: item.region ?? null,
+          grapeVariety: item.grapeVariety ?? null,
+        }),
+      );
+      signatureOf.set(idx, signatureHash);
+      if (!rowBySignature.has(signatureHash)) {
+        rowBySignature.set(signatureHash, {
+          wine_id: this.generateWineId(),
+          name: item.name,
+          producer: item.producer || item.name,
+          primary_type: "unknown",
+          country: item.country || "Unknown",
+          region: item.region ?? null,
+          grape_variety: item.grapeVariety ?? null,
+          vintage,
+          library_tier: 3,
+          source: "menu_import",
+          signature_hash: signatureHash,
+          normalized_name: this.normalizeText(item.name),
+          normalized_producer: this.normalizeText(item.producer),
+          signature_source: "menu_import",
+        });
+      }
+    }
+
+    const { error: insertError } = await this.dbService.supabase
+      .from("master_wine_library")
+      .upsert([...rowBySignature.values()], {
+        onConflict: "signature_hash",
+        ignoreDuplicates: true,
+      });
+
+    if (insertError) {
+      throw new Error(
+        `Failed to create ${rowBySignature.size} provisional library wine(s): ` +
+          insertError.message,
+      );
+    }
+
+    // Read back by signature rather than trusting the insert's RETURNING:
+    // ignoreDuplicates omits rows a concurrent import already created, and
+    // those rows are exactly the ones we still need ids for.
+    const signatures = [...rowBySignature.keys()];
+    const { data: created, error: readError } = await this.dbService.supabase
+      .from("master_wine_library")
+      .select("id, library_tier, signature_hash")
+      .in("signature_hash", signatures);
+
+    if (readError) {
+      throw new Error(
+        `Failed to read back provisional library wines: ${readError.message}`,
+      );
+    }
+
+    const idBySignature = new Map(
+      (created ?? []).map((r) => [r.signature_hash, r]),
+    );
+
+    for (const idx of needsCreate) {
+      const row = idBySignature.get(signatureOf.get(idx) as string);
+      if (!row) continue; // stays null — the caller reports it as unlinked
+      results[idx] = {
+        masterWineId: row.id,
+        matched: false,
+        libraryTier: row.library_tier ?? 3,
+        confidence: byIndex.get(idx)?.confidence ?? null,
+      };
+    }
+
+    return results;
   }
 }

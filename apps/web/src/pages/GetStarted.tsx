@@ -29,6 +29,7 @@ import { useAuth } from '../contexts/AuthContext'
 import type { MenuImportResult } from '../services/api/menus'
 import { trackGuidance } from '../guidance/analytics'
 import { cn } from '../lib/utils'
+import { BrandMark } from '../components/brand/BrandMark'
 
 type ImportMethod = 'scan' | 'csv' | 'manual'
 type TabId = 'activate' | 'use'
@@ -68,7 +69,7 @@ function SuccessScreen({
           </Button>
           <Button
             onClick={onContinueGuide}
-            className="bg-[#722F37] hover:bg-[#8B3A44] text-white"
+            className="bg-wine-600 hover:bg-wine-500 text-white"
           >
             How to use the app →
           </Button>
@@ -273,8 +274,8 @@ export default function GetStarted() {
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <header className="p-6 flex items-center justify-between border-b border-gray-100">
-        <div className="flex items-center">
-          <Wine className="w-6 h-6 text-[#722F37] mr-2" />
+        <div className="flex items-center gap-2">
+          <BrandMark size={28} alt="" />
           <span className="font-bold text-gray-900">WineOps</span>
         </div>
         <button
@@ -301,7 +302,7 @@ export default function GetStarted() {
               className={cn(
                 'px-4 py-3 text-sm font-medium border-b-2 transition-colors',
                 tab === t.id
-                  ? 'border-[#722F37] text-[#722F37]'
+                  ? 'border-wine-600 text-wine-600'
                   : 'border-transparent text-gray-500 hover:text-gray-800',
               )}
             >
@@ -341,8 +342,8 @@ export default function GetStarted() {
                 />
                 <MenuImportCard
                   icon={<FileSpreadsheet className="w-5 h-5" />}
-                  title="Upload CSV"
-                  description="Export from your POS system or Excel and import directly"
+                  title="Upload File"
+                  description="Export from your POS system or Excel and import directly. Supports CSV, PDF, and other common formats."
                   active={activeMethod === 'csv'}
                   dimmed={activeMethod !== null && activeMethod !== 'csv'}
                   onClick={() => toggleMethod('csv')}
@@ -396,7 +397,7 @@ export default function GetStarted() {
               <div className="flex justify-center gap-4 mt-6">
                 <button
                   onClick={() => selectTab('use')}
-                  className="text-sm text-[#722F37] hover:text-[#8B3A44] font-medium"
+                  className="text-sm text-wine-600 hover:text-wine-500 font-medium"
                 >
                   Skip to app guide →
                 </button>
@@ -428,10 +429,10 @@ export default function GetStarted() {
                   return (
                     <div
                       key={card.id}
-                      className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl border border-gray-200 hover:border-[#722F37]/30 transition-colors bg-white"
+                      className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl border border-gray-200 hover:border-wine-600/30 transition-colors bg-white"
                     >
-                      <div className="w-10 h-10 rounded-xl bg-[#722F37]/10 flex items-center justify-center flex-shrink-0">
-                        <Icon className="w-5 h-5 text-[#722F37]" />
+                      <div className="w-10 h-10 rounded-xl bg-wine-600/10 flex items-center justify-center flex-shrink-0">
+                        <Icon className="w-5 h-5 text-wine-600" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-gray-900">{card.title}</p>
@@ -463,7 +464,7 @@ export default function GetStarted() {
               </div>
 
               <div className="mt-8 rounded-xl border border-dashed border-gray-200 p-4 text-center">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[#722F37] text-white mb-2">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-wine-600 text-white mb-2">
                   <Bot className="w-5 h-5" />
                 </div>
                 <p className="text-sm text-gray-600 max-w-md mx-auto">

@@ -8,7 +8,7 @@
  * - Icons / manifest: cache-first with offline fallback
  */
 
-const CACHE_NAME = "wineops-v2"
+const CACHE_NAME = "wineops-v3"
 const PRECACHE_URLS = [
   "/logo.png",
   "/badge.png",

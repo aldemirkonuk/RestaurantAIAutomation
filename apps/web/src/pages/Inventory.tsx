@@ -161,7 +161,6 @@ export function Inventory() {
   const [reconcileModal, setReconcileModal] = useState<InventoryItem | null>(null)
   const [actualCount, setActualCount] = useState('')
   const [showAddWineModal, setShowAddWineModal] = useState(false)
-  const [_showInvoiceScannerModal, _setShowInvoiceScannerModal] = useState(false)
   const [manualOverrideModal, setManualOverrideModal] = useState<InventoryItem | null>(null)
   const [showInventoryInsights, setShowInventoryInsights] = useState(true)
   const [showStorageManager, setShowStorageManager] = useState(false)

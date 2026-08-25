@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ d.house.name }} — Invoice {{ d.invoice_number }}</title>
+<style>
+  /* Meridian: the control layout. Every fact has its own column and its own
+     label. If extraction fails here, no other house is worth measuring. */
+  @page { size: Letter; margin: 0; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 8.6pt;
+    color: #111;
+    background: #fff;
+    -webkit-font-smoothing: antialiased;
+  }
+  .sheet { width: 8.5in; min-height: 11in; padding: 0.5in 0.55in; position: relative; }
+
+  .synthetic-band {
+    position: absolute; top: 0; left: 0; right: 0;
+    background: #b45309; color: #fff;
+    font-size: 6.6pt; letter-spacing: .14em; font-weight: 700;
+    text-align: center; padding: 3px 0; text-transform: uppercase;
+  }
+
+  header { display: flex; justify-content: space-between; align-items: flex-start;
+           border-bottom: 2.5px solid #1e3a5f; padding-bottom: 10px; margin-top: 14px; }
+  .brand-name { font-size: 17pt; font-weight: 700; color: #1e3a5f; letter-spacing: -.01em; }
+  .brand-tag  { font-size: 7pt; color: #64748b; letter-spacing: .09em;
+                text-transform: uppercase; margin-top: 2px; }
+  .brand-addr { font-size: 7.6pt; color: #475569; margin-top: 7px; line-height: 1.45; }
+  .doc-type   { font-size: 15pt; font-weight: 700; color: #1e3a5f; text-align: right;
+                letter-spacing: .05em; }
+  .doc-meta   { margin-top: 8px; font-size: 7.8pt; text-align: right; line-height: 1.6; }
+  .doc-meta .k { color: #64748b; display: inline-block; min-width: 74px; text-align: left; }
+  .doc-meta .v { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .parties { display: flex; gap: 26px; margin: 16px 0 14px; }
+  .party { flex: 1; }
+  .party-label { font-size: 6.6pt; letter-spacing: .13em; text-transform: uppercase;
+                 color: #64748b; font-weight: 700; border-bottom: 1px solid #cbd5e1;
+                 padding-bottom: 3px; margin-bottom: 6px; }
+  .party-body { font-size: 8pt; line-height: 1.5; }
+  .party-body strong { font-size: 8.8pt; }
+
+  table.lines { width: 100%; border-collapse: collapse; margin-top: 4px; }
+  table.lines thead th {
+    background: #1e3a5f; color: #fff; font-size: 6.4pt; letter-spacing: .07em;
+    text-transform: uppercase; font-weight: 700; padding: 5px 4px; text-align: left;
+    white-space: nowrap;
+  }
+  table.lines tbody td { padding: 4px; border-bottom: 1px solid #e2e8f0;
+                         font-size: 7.9pt; vertical-align: top; }
+  table.lines tbody tr:nth-child(even) td { background: #f8fafc; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ctr { text-align: center; }
+  .sku { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 7.2pt; color: #334155; }
+  .upc { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 6.6pt; color: #94a3b8; }
+  .desc-producer { color: #475569; font-size: 7.2pt; }
+  .fg { display: inline-block; background: #166534; color: #fff; font-size: 6.2pt;
+        font-weight: 700; padding: 1px 4px; border-radius: 2px; letter-spacing: .05em; }
+  /* Loose bottles outside a whole case — the "+3" that turns a case price into
+     a split-case fee two lines further down. */
+  .loose { color: #b45309; font-size: 6.8pt; font-weight: 600; }
+
+  /* Long invoices run to a second sheet. Repeat the header row so a page-2
+     crop is still parseable on its own, and never break inside a line. */
+  table.lines { page-break-inside: auto; }
+  table.lines tr { page-break-inside: avoid; page-break-after: auto; }
+  table.lines thead { display: table-header-group; }
+
+  .totals { margin-top: 14px; display: flex; justify-content: flex-end; }
+  table.tot { border-collapse: collapse; min-width: 3.1in; }
+  table.tot td { padding: 3.5px 8px; font-size: 8pt; }
+  table.tot td.k { color: #475569; text-align: right; }
+  table.tot td.v { text-align: right; font-variant-numeric: tabular-nums;
+                   min-width: 88px; font-weight: 600; }
+  table.tot tr.grand td { border-top: 2px solid #1e3a5f; padding-top: 6px;
+                          font-size: 10.5pt; font-weight: 700; color: #1e3a5f; }
+  table.tot tr.deposit td { color: #92400e; }
+
+  footer { margin-top: 20px; border-top: 1px solid #cbd5e1; padding-top: 9px;
+           display: flex; justify-content: space-between; gap: 20px; }
+  .remit { font-size: 7.2pt; color: #475569; line-height: 1.55; }
+  .remit b { color: #1e3a5f; }
+  .terms-note { font-size: 6.6pt; color: #94a3b8; max-width: 3.3in; line-height: 1.5; }
+  .lic { font-size: 6.6pt; color: #64748b; margin-top: 5px; }
+
+  .watermark {
+    position: absolute; top: 46%; left: 50%;
+    transform: translate(-50%, -50%) rotate(-28deg);
+    font-size: 58pt; font-weight: 800; color: rgba(180, 83, 9, 0.07);
+    letter-spacing: .1em; pointer-events: none; white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="synthetic-band">{{ SYNTHETIC_MARK }}</div>
+  <div class="watermark">SYNTHETIC</div>
+
+  <header>
+    <div>
+      <div class="brand-name">{{ d.house.name }}</div>
+      <div class="brand-tag">{{ d.house.tagline }}</div>
+      <div class="brand-addr">
+        {{ d.house.address }}<br>
+        {{ d.house.city_state_zip }}<br>
+        {{ d.house.phone }}
+      </div>
+    </div>
+    <div>
+      <div class="doc-type">INVOICE</div>
+      <div class="doc-meta">
+        <div><span class="k">Invoice No.</span> <span class="v">{{ d.invoice_number }}</span></div>
+        <div><span class="k">Invoice Date</span> <span class="v">{{ d.invoice_date | fmtdate(d.house.date_format) }}</span></div>
+        <div><span class="k">Terms</span> <span class="v">{{ d.terms }}</span></div>
+        {% if d.invoice_due_date %}
+        <div><span class="k">Due</span> <span class="v">{{ d.invoice_due_date | fmtdate(d.house.date_format) }}</span></div>
+        {% endif %}
+        <div><span class="k">Your PO</span> <span class="v">{{ d.po_number }}{% if d.secondary_po_number %}, {{ d.secondary_po_number }}{% endif %}</span></div>
+        <div><span class="k">Delivered</span> <span class="v">{{ d.delivery_date | fmtdate(d.house.date_format) }}</span></div>
+      </div>
+    </div>
+  </header>
+
+  <div class="parties">
+    <div class="party">
+      <div class="party-label">Sold To</div>
+      <div class="party-body">
+        <strong>{{ d.restaurant_name }}</strong><br>
+        {{ d.restaurant_address }}<br>
+        {{ d.restaurant_city_state_zip }}<br>
+        Licence {{ d.restaurant_license_no }}
+      </div>
+    </div>
+    <div class="party">
+      <div class="party-label">Ship To</div>
+      <div class="party-body">
+        <strong>{{ d.restaurant_name }}</strong><br>
+        {{ d.restaurant_address }}<br>
+        {{ d.restaurant_city_state_zip }}
+      </div>
+    </div>
+    <div class="party">
+      <div class="party-label">Delivery</div>
+      <div class="party-body">
+        Driver: {{ d.driver_name }}<br>
+        Received by: {{ d.signed_by }}<br>
+        Ship date: {{ d.ship_date | fmtdate(d.house.date_format) }}
+      </div>
+    </div>
+  </div>
+
+  <table class="lines">
+    <thead>
+      <tr>
+        <th style="width:22px">#</th>
+        <th style="width:64px">Item No.</th>
+        <th>Description</th>
+        <th style="width:38px" class="ctr">Vint</th>
+        <th style="width:40px" class="ctr">Size</th>
+        <th style="width:34px" class="ctr">Pack</th>
+        <th style="width:32px" class="num">Cs</th>
+        <th style="width:38px" class="num">Btls</th>
+        <th style="width:26px" class="ctr">FG</th>
+        <th style="width:56px" class="num">Unit</th>
+        <th style="width:66px" class="num">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in billed_lines %}
+      <tr>
+        <td class="num">{{ l.line_no }}</td>
+        <td class="sku">
+          {{ l.vendor_sku }}
+          {% if l.upc %}<div class="upc">{{ l.upc }}</div>{% endif %}
+        </td>
+        <td>
+          {{ l.wine_name | upper_if(d.house.uppercase_descriptions) }}
+          {% if l.producer %}<div class="desc-producer">{{ l.producer }}{% if l.region %} · {{ l.region }}{% endif %}</div>{% endif %}
+        </td>
+        <td class="ctr">{{ l.invoiced_vintage | dash }}</td>
+        <td class="ctr">{{ l.bottle_size }}</td>
+        <td class="ctr">{{ l.bottles_per_case }}</td>
+        <td class="num">{{ l.invoice_full_cases }}{% if l.invoice_loose_bottles %}<span class="loose">+{{ l.invoice_loose_bottles }}</span>{% endif %}</td>
+        <td class="num">{{ l.outcome.invoice_qty | qty }}</td>
+        <td class="ctr">{% if l.outcome.free_goods_qty %}<span class="fg">{{ l.outcome.free_goods_qty }}</span>{% endif %}</td>
+        <td class="num">{{ l.outcome.invoice_unit_price | money }}</td>
+        <td class="num">{{ l.extension() | money }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="totals">
+    <table class="tot">
+      <tr><td class="k">Subtotal</td><td class="v">{{ d.subtotal() | money }}</td></tr>
+      {% if d.freight() %}
+      <tr><td class="k">Freight</td><td class="v">{{ d.freight() | money }}</td></tr>
+      {% endif %}
+      {% if d.fuel_surcharge() %}
+      <tr><td class="k">Fuel surcharge</td><td class="v">{{ d.fuel_surcharge() | money }}</td></tr>
+      {% endif %}
+      {% if d.split_case_fees() %}
+      <tr><td class="k">Split case fees</td><td class="v">{{ d.split_case_fees() | money }}</td></tr>
+      {% endif %}
+      {% if d.deposits() %}
+      <tr class="deposit"><td class="k">Container deposits</td><td class="v">{{ d.deposits() | money }}</td></tr>
+      {% endif %}
+      <tr class="grand"><td class="k">Total Due</td><td class="v">${{ d.total() | money }}</td></tr>
+    </table>
+  </div>
+
+  <footer>
+    <div class="remit">
+      <b>Remit to</b> {{ d.house.name }}, {{ d.house.address }}, {{ d.house.city_state_zip }}<br>
+      Accounts receivable: {{ d.house.ar_email }} · {{ d.house.ar_phone }}<br>
+      {% if d.house.license_no %}<span class="lic">Distributor licence {{ d.house.license_no }}</span>{% endif %}
+    </div>
+    <div class="terms-note">
+      Claims for shortage or breakage must be reported within 48 hours of
+      delivery and reference this invoice number. Title passes on delivery.
+      Container deposits are refundable on return of undamaged containers and
+      are not subject to discount.
+    </div>
+  </footer>
+</div>
+</body>
+</html>

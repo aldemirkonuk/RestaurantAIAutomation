@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ d.house.name }} — Invoice {{ d.invoice_number }}</title>
+{% include "_reset.html" %}
+<style>
+  /* Harbor Point: the realistic worst case that is still machine-printed.
+     Everything crammed, uppercase, truncated at 34 characters, pack size welded
+     into the description, no vintage column, deposits and fuel surcharge in the
+     footer, and lines that reference two different POs. This is what most
+     beverage invoices actually look like. */
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 7.6pt; color: #000; }
+  .sheet { width: 8.5in; min-height: 11in; padding: 0.42in 0.4in; position: relative; }
+
+  header { margin-top: 12px; border-bottom: 3px double #000; padding-bottom: 6px; }
+  .hdr-row { display: flex; justify-content: space-between; align-items: flex-start; }
+  .co { font-size: 13pt; font-weight: 700; letter-spacing: -.02em; }
+  .co-sub { font-size: 6.4pt; letter-spacing: .18em; text-transform: uppercase; margin-top: 1px; }
+  .co-addr { font-size: 6.8pt; margin-top: 4px; line-height: 1.35; }
+  .doc-title { font-size: 12pt; font-weight: 700; text-align: right; letter-spacing: .1em; }
+
+  /* Metadata as a bordered grid — the ERP-report look, not a designed one. */
+  table.meta { width: 100%; margin-top: 7px; font-size: 6.9pt; }
+  table.meta td { border: 1px solid #000; padding: 2px 4px; }
+  table.meta td.k { background: #ddd; font-weight: 700; white-space: nowrap;
+                    letter-spacing: .04em; text-transform: uppercase; font-size: 6.1pt; }
+
+  .parties { display: flex; gap: 10px; margin: 7px 0; }
+  .party { flex: 1; border: 1px solid #000; padding: 4px 5px; }
+  .party-label { font-size: 5.9pt; font-weight: 700; text-transform: uppercase;
+                 letter-spacing: .1em; border-bottom: 1px solid #999;
+                 margin-bottom: 3px; padding-bottom: 1px; }
+  .party-body { font-size: 7pt; line-height: 1.35; }
+
+  table.lines { width: 100%; margin-top: 3px; }
+  table.lines th { border: 1px solid #000; background: #ddd; padding: 2.5px 3px;
+                   font-size: 5.9pt; text-transform: uppercase; letter-spacing: .04em;
+                   text-align: left; white-space: nowrap; }
+  table.lines td { border: 1px solid #666; padding: 2.5px 3px; font-size: 7.1pt; }
+  .mono { font-family: "Courier New", Courier, monospace; font-size: 6.8pt; }
+  .po-tag { font-size: 5.9pt; color: #333; }
+
+  .totbox { margin-top: 8px; display: flex; justify-content: space-between; gap: 12px; }
+  .legal { font-size: 5.9pt; line-height: 1.45; max-width: 4.2in; }
+  table.tot { min-width: 2.6in; }
+  table.tot td { border: 1px solid #000; padding: 2.5px 6px; font-size: 7.3pt; }
+  table.tot td.k { background: #eee; text-transform: uppercase; font-size: 6.1pt;
+                   letter-spacing: .05em; }
+  table.tot tr.grand td { font-weight: 700; font-size: 9pt; background: #000; color: #fff; }
+  table.tot tr.grand td.k { background: #000; color: #fff; }
+
+  footer { margin-top: 9px; border-top: 1px solid #000; padding-top: 5px;
+           font-size: 6.3pt; line-height: 1.4; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="synthetic-band">{{ SYNTHETIC_MARK }}</div>
+  <div class="watermark">SYNTHETIC</div>
+
+  <header>
+    <div class="hdr-row">
+      <div>
+        <div class="co">{{ d.house.name }}</div>
+        <div class="co-sub">{{ d.house.tagline }}</div>
+        <div class="co-addr">
+          {{ d.house.address }} · {{ d.house.city_state_zip }}<br>
+          TEL {{ d.house.phone }}
+          {% if d.house.license_no %} · LIC {{ d.house.license_no }}{% endif %}
+        </div>
+      </div>
+      <div class="doc-title">INVOICE</div>
+    </div>
+
+    <table class="meta">
+      <tr>
+        <td class="k">Invoice</td><td class="mono">{{ d.invoice_number }}</td>
+        <td class="k">Date</td><td>{{ d.invoice_date | fmtdate(d.house.date_format) }}</td>
+        <td class="k">Terms</td><td>{{ d.terms }}</td>
+        <td class="k">Due</td><td>{{ d.invoice_due_date | fmtdate(d.house.date_format) }}</td>
+      </tr>
+      <tr>
+        <td class="k">Cust PO</td>
+        <td class="mono">{{ d.po_number }}{% if d.secondary_po_number %} / {{ d.secondary_po_number }}{% endif %}</td>
+        <td class="k">Shipped</td><td>{{ d.ship_date | fmtdate(d.house.date_format) }}</td>
+        <td class="k">Delivered</td><td>{{ d.delivery_date | fmtdate(d.house.date_format) }}</td>
+        <td class="k">Route</td><td>{{ d.driver_name }}</td>
+      </tr>
+    </table>
+  </header>
+
+  <div class="parties">
+    <div class="party">
+      <div class="party-label">Sold To</div>
+      <div class="party-body">
+        {{ d.restaurant_name | upper }}<br>
+        {{ d.restaurant_address | upper }}<br>
+        {{ d.restaurant_city_state_zip | upper }}<br>
+        LIC {{ d.restaurant_license_no }}
+      </div>
+    </div>
+    <div class="party">
+      <div class="party-label">Ship To</div>
+      <div class="party-body">
+        {{ d.restaurant_name | upper }}<br>
+        {{ d.restaurant_address | upper }}<br>
+        {{ d.restaurant_city_state_zip | upper }}<br>
+        SIGNED: {{ d.signed_by | upper }}
+      </div>
+    </div>
+  </div>
+
+  <table class="lines">
+    <thead>
+      <tr>
+        <th style="width:20px">LN</th>
+        <th style="width:60px">ITEM</th>
+        <th>DESCRIPTION</th>
+        <th style="width:34px" class="ctr">UM</th>
+        <th style="width:32px" class="num">QTY</th>
+        <th style="width:52px" class="num">PRICE</th>
+        <th style="width:60px" class="num">AMOUNT</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in billed_lines %}
+      <tr>
+        <td class="num">{{ l.line_no }}</td>
+        <td class="mono">{{ l.vendor_sku }}</td>
+        <td>
+          {# Pack size and vintage welded into the description, then truncated —
+             producer and year are the first casualties, which is exactly why
+             line matching cannot rely on description text alone. #}
+          {{ (l.wine_name ~ (" " ~ l.invoiced_vintage if l.invoiced_vintage else "")
+              ~ " " ~ l.bottles_per_case ~ "/" ~ (l.bottle_size | upper))
+              | upper_if(true) | truncate_at(d.house.description_max_chars) }}
+          {% if l.outcome.free_goods_qty %} ({{ l.outcome.free_goods_qty }} FREE){% endif %}
+          {% if d.secondary_po_number and loop.index0 % 3 == 1 %}
+            <span class="po-tag">[PO {{ d.secondary_po_number }}]</span>
+          {% endif %}
+        </td>
+        <td class="ctr">CS</td>
+        <td class="num">{{ l.invoice_full_cases }}{% if l.invoice_loose_bottles %}.{{ l.invoice_loose_bottles }}{% endif %}</td>
+        <td class="num">{{ l.outcome.invoice_unit_price | money }}</td>
+        <td class="num">{{ l.extension() | money }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="totbox">
+    <div class="legal">
+      ALL CLAIMS FOR SHORTAGE, BREAKAGE OR ERROR MUST BE MADE WITHIN 48 HOURS AND
+      MUST REFERENCE THIS INVOICE NUMBER. NO RETURNS WITHOUT PRIOR AUTHORIZATION.
+      CONTAINER DEPOSITS ARE NOT SUBJECT TO CASH DISCOUNT AND ARE REFUNDED ON
+      RETURN OF UNDAMAGED CONTAINERS. A SERVICE CHARGE OF 1.5% PER MONTH APPLIES
+      TO PAST DUE BALANCES. TITLE PASSES ON DELIVERY TO A LICENSED PREMISES.
+    </div>
+    <table class="tot">
+      <tr><td class="k">Merchandise</td><td class="num">{{ d.subtotal() | money }}</td></tr>
+      {% if d.freight() %}<tr><td class="k">Freight</td><td class="num">{{ d.freight() | money }}</td></tr>{% endif %}
+      {% if d.fuel_surcharge() %}<tr><td class="k">Fuel Surchg</td><td class="num">{{ d.fuel_surcharge() | money }}</td></tr>{% endif %}
+      {% if d.split_case_fees() %}<tr><td class="k">Split Case</td><td class="num">{{ d.split_case_fees() | money }}</td></tr>{% endif %}
+      {% if d.deposits() %}<tr><td class="k">Deposits</td><td class="num">{{ d.deposits() | money }}</td></tr>{% endif %}
+      <tr class="grand"><td class="k">Total Due</td><td class="num">{{ d.total() | money }}</td></tr>
+    </table>
+  </div>
+
+  <footer>
+    REMIT TO: {{ d.house.name }}, {{ d.house.address }}, {{ d.house.city_state_zip }} ·
+    A/R {{ d.house.ar_email }} · {{ d.house.ar_phone }}
+  </footer>
+</div>
+</body>
+</html>

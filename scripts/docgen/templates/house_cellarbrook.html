@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ d.house.name }} — Invoice {{ d.invoice_number }}</title>
+{% include "_reset.html" %}
+<style>
+  /* Cellarbrook: a carbon copy left with the delivery. Violet impact ink on
+     tinted stock, struck unevenly. No vendor SKU and no packing slip ever, so
+     line matching falls back to description trigram and the ship axis stays
+     genuinely unknown. Freight lives inside the unit price and the document
+     says so nowhere — landed cost is unknowable here and must be reported as
+     unknown rather than guessed. */
+  body { font-family: "Courier New", Courier, monospace; font-size: 8.4pt; color: #2f2a55; }
+  .sheet { width: 8.5in; min-height: 11in; padding: 0.5in 0.6in; position: relative;
+           background: #fdfbf4; }
+
+  /* Uneven strike — the giveaway of a real carbon. Applied per-cell below. */
+  .strike-1 { opacity: .95; }
+  .strike-2 { opacity: .78; }
+  .strike-3 { opacity: .62; }
+
+  header { margin-top: 16px; text-align: center; }
+  .co { font-size: 13pt; letter-spacing: .22em; font-weight: 700; }
+  .co-sub { font-size: 7.2pt; letter-spacing: .1em; margin-top: 3px; font-style: italic; }
+  .co-addr { font-size: 7.6pt; margin-top: 6px; line-height: 1.5; }
+  .rule { border-top: 1.5px solid #2f2a55; margin: 10px 0 8px; opacity: .7; }
+
+  .meta { display: flex; justify-content: space-between; font-size: 8pt;
+          line-height: 1.9; margin-bottom: 8px; }
+  .meta .lbl { display: inline-block; min-width: 96px; }
+  .dots { border-bottom: 1px dotted #6b638f; display: inline-block; min-width: 128px; }
+
+  .soldto { font-size: 8.2pt; line-height: 1.6; margin: 10px 0 12px; }
+  .soldto .lbl { font-size: 7pt; letter-spacing: .16em; }
+
+  table.lines { width: 100%; margin-top: 4px; }
+  table.lines th { font-size: 7pt; letter-spacing: .1em; text-align: left;
+                   border-bottom: 1.5px solid #2f2a55; padding: 3px 4px;
+                   text-transform: uppercase; white-space: nowrap; }
+  table.lines td { padding: 4px; font-size: 8.1pt; border-bottom: 1px dotted #b9b3d0;
+                   vertical-align: top; }
+
+  .totals { margin-top: 14px; margin-left: auto; width: 3in; font-size: 8.4pt; }
+  .totals tr td { padding: 3px 6px; }
+  .totals tr.grand td { border-top: 1.5px solid #2f2a55; border-bottom: 3px double #2f2a55;
+                        font-weight: 700; font-size: 10pt; padding-top: 6px; }
+
+  .sig { margin-top: 26px; display: flex; gap: 40px; font-size: 7.6pt; }
+  .sig .line { border-bottom: 1px solid #2f2a55; min-width: 2.1in; height: 22px;
+               margin-bottom: 3px; }
+  .note { margin-top: 18px; font-size: 7.2pt; line-height: 1.6; font-style: italic;
+          opacity: .8; }
+  .copy-tag { position: absolute; top: 0.5in; right: 0.6in; font-size: 7pt;
+              letter-spacing: .2em; border: 1.5px solid #2f2a55; padding: 3px 7px;
+              opacity: .75; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="synthetic-band">{{ SYNTHETIC_MARK }}</div>
+  <div class="watermark">SYNTHETIC</div>
+
+  <div class="copy-tag">CUSTOMER COPY</div>
+
+  <header>
+    <div class="co">{{ d.house.name | upper }}</div>
+    <div class="co-sub">{{ d.house.tagline }}</div>
+    <div class="co-addr">
+      {{ d.house.address }} &nbsp;·&nbsp; {{ d.house.city_state_zip }}<br>
+      {{ d.house.phone }} &nbsp;·&nbsp; {{ d.house.ar_email }}
+    </div>
+  </header>
+
+  <div class="rule"></div>
+
+  <div class="meta">
+    <div>
+      <div><span class="lbl">INVOICE NO.</span> <span class="dots strike-1">{{ d.invoice_number }}</span></div>
+      <div><span class="lbl">DATE</span> <span class="dots strike-2">{{ d.invoice_date | fmtdate(d.house.date_format) }}</span></div>
+      <div><span class="lbl">ORDER REF.</span> <span class="dots strike-1">{{ d.po_number }}</span></div>
+    </div>
+    <div>
+      <div><span class="lbl">TERMS</span> <span class="dots strike-2">{{ d.terms }}</span></div>
+      <div><span class="lbl">DELIVERED</span> <span class="dots strike-1">{{ d.delivery_date | fmtdate(d.house.date_format) }}</span></div>
+      <div><span class="lbl">DELIVERED BY</span> <span class="dots strike-3">{{ d.driver_name }}</span></div>
+    </div>
+  </div>
+
+  <div class="soldto">
+    <div class="lbl">SOLD TO</div>
+    {{ d.restaurant_name }}<br>
+    {{ d.restaurant_address }}<br>
+    {{ d.restaurant_city_state_zip }}<br>
+    Licence {{ d.restaurant_license_no }}
+  </div>
+
+  <table class="lines">
+    <thead>
+      <tr>
+        <th style="width:26px">No.</th>
+        <th>Wine</th>
+        <th style="width:70px" class="num">Bottles</th>
+        <th style="width:74px" class="num">Per Bottle</th>
+        <th style="width:80px" class="num">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in billed_lines %}
+      <tr class="strike-{{ (loop.index0 % 3) + 1 }}">
+        <td class="num">{{ l.line_no }}</td>
+        <td>
+          {# Everything in one prose blob, the way a small importer writes it. #}
+          {{ l.producer ~ ", " if l.producer }}{{ l.wine_name }}{% if l.invoiced_vintage %} {{ l.invoiced_vintage }}{% endif %}
+          {%- if l.region %} ({{ l.region }}){% endif %}
+          {% if l.outcome.free_goods_qty %}<br><em>incl. {{ l.outcome.free_goods_qty }} bottle(s) at no charge, as agreed</em>{% endif %}
+        </td>
+        {# Bottles only. This house has no case concept at all, so a reader who
+           assumes the quantity column means cases is off by a factor of 12. #}
+        <td class="num">{{ l.outcome.invoice_qty | qty }}</td>
+        <td class="num">{{ l.outcome.invoice_unit_price | money }}</td>
+        <td class="num">{{ l.extension() | money }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <table class="totals">
+    <tr><td>Subtotal</td><td class="num">{{ d.subtotal() | money }}</td></tr>
+    {% if d.freight() %}<tr><td>Delivery</td><td class="num">{{ d.freight() | money }}</td></tr>{% endif %}
+    <tr class="grand"><td>TOTAL DUE</td><td class="num">${{ d.total() | money }}</td></tr>
+  </table>
+
+  <div class="sig">
+    <div><div class="line"></div>Received in good order</div>
+    <div><div class="line">{{ d.signed_by }}</div>Print name</div>
+  </div>
+
+  <div class="note">
+    Prices are delivered prices and include carriage. Please advise any shortage
+    on the day of delivery — we cannot consider claims raised later. Wines are
+    sold subject to availability of the stated vintage.
+  </div>
+</div>
+</body>
+</html>

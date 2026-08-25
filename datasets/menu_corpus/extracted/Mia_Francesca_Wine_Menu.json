@@ -1,0 +1,1024 @@
+{
+ "menu": "Mia_Francesca_Wine_Menu.pdf",
+ "pages": 13,
+ "wine_count": 149,
+ "seconds": 65.3,
+ "wines": [
+  {
+   "name": "Limoncello Di Fragole",
+   "producer": "Mbia Francesca",
+   "category": "cocktail",
+   "price": 16
+  },
+  {
+   "name": "The Benito",
+   "producer": "Mbia Francesca",
+   "category": "cocktail",
+   "price": 22
+  },
+  {
+   "name": "Paloma Bergamo",
+   "producer": "Mbia Francesca",
+   "category": "cocktail",
+   "price": 16
+  },
+  {
+   "name": "Svegliati",
+   "producer": "Mbia Francesca",
+   "category": "cocktail",
+   "price": 18
+  },
+  {
+   "name": "Bocelli",
+   "producer": "Mbia Francesca",
+   "category": "cocktail",
+   "price": 18
+  },
+  {
+   "name": "Venetian G & T",
+   "producer": "Mbia Francesca",
+   "category": "cocktail",
+   "price": 18
+  },
+  {
+   "name": "Amore Primaverile Spritz",
+   "producer": "Mbia Francesca",
+   "category": "cocktail",
+   "price": 16
+  },
+  {
+   "name": "Dove Va Negroni",
+   "producer": "Mbia Francesca",
+   "category": "cocktail",
+   "price": 16
+  },
+  {
+   "name": "Sophia Loren",
+   "producer": "Mbia Francesca",
+   "category": "cocktail",
+   "price": 17
+  },
+  {
+   "name": "Malvasia Dolce",
+   "producer": "Ca De Medici",
+   "category": "spumante",
+   "name_full": "Rubigalia",
+   "region": "Emilia-Romagna",
+   "by_glass_price": 13,
+   "bottle_price": 51
+  },
+  {
+   "name": "Prosecco Superiore",
+   "producer": "Case Bianche",
+   "category": "spumante",
+   "vintage": "2018",
+   "region": "Valdobbiadene",
+   "bottle_price": 49
+  },
+  {
+   "name": "Prosecco",
+   "producer": "Prima Perla",
+   "category": "spumante",
+   "region": "Treviso",
+   "by_glass_price": 13,
+   "bottle_price": 51
+  },
+  {
+   "name": "Brut Rosé",
+   "producer": "Tenuta Col Sandago",
+   "category": "spumante",
+   "region": "Veneto",
+   "bottle_price": 65
+  },
+  {
+   "name": "Yellow Label Champagne",
+   "producer": "Veuve Clicquot",
+   "category": "spumante",
+   "vintage": "NV",
+   "bottle_price": 95,
+   "bottle_price_750ml": 150
+  },
+  {
+   "name": "Rosé",
+   "producer": "Elouan",
+   "category": "rosé",
+   "vintage": "2023",
+   "region": "Oregon",
+   "by_glass_price": 12,
+   "bottle_price": 47
+  },
+  {
+   "name": "Noble House Riesling",
+   "producer": "Dr. Pauly",
+   "category": "bianco",
+   "vintage": "2023",
+   "region": "Mosel",
+   "by_glass_price": 11,
+   "bottle_price": 43
+  },
+  {
+   "name": "Pinot Grigio",
+   "producer": "Depaolo",
+   "category": "bianco",
+   "vintage": "2023",
+   "region": "Delle Venezie",
+   "by_glass_price": 12,
+   "bottle_price": 47
+  },
+  {
+   "name": "Pinot Grigio",
+   "producer": "Tramin",
+   "category": "bianco",
+   "vintage": "2023",
+   "region": "Alto Adige",
+   "by_glass_price": 15,
+   "bottle_price": 59
+  },
+  {
+   "name": "Sauvignon Blanc",
+   "producer": "Zorzettig",
+   "category": "bianco",
+   "vintage": "2023",
+   "region": "Friuli Colli Orientali",
+   "by_glass_price": 14,
+   "bottle_price": 55
+  },
+  {
+   "name": "Sonoma County Sauvignon Blanc",
+   "producer": "Matanzas Creek",
+   "category": "bianco",
+   "vintage": "2023",
+   "region": "Sonoma",
+   "by_glass_price": 16,
+   "bottle_price": 63
+  },
+  {
+   "name": "Le Bruniche Chardonnay",
+   "producer": "Tenuta Di Nozzole",
+   "category": "bianco",
+   "vintage": "2023",
+   "region": "Tuscany",
+   "by_glass_price": 12,
+   "bottle_price": 47
+  },
+  {
+   "name": "Russian River Chardonnay",
+   "producer": "Sonoma-Cutrer",
+   "category": "bianco",
+   "vintage": "2023",
+   "region": "Sonoma",
+   "by_glass_price": 16,
+   "bottle_price": 63
+  },
+  {
+   "name": "Costamolino Vermentino",
+   "producer": "Argiolas",
+   "category": "bianco",
+   "vintage": "2023",
+   "region": "Sardinia",
+   "by_glass_price": 12,
+   "bottle_price": 47
+  },
+  {
+   "name": "Gavi Di Gavi",
+   "producer": "Villa Sparina",
+   "category": "bianco",
+   "vintage": "2023",
+   "region": "Piedmonte",
+   "bottle_price": 45
+  },
+  {
+   "name": "Lacryma Christi Del Vesuvio Bianco",
+   "producer": "Mastroberardino",
+   "category": "bianco",
+   "vintage": "2021",
+   "region": "Campania",
+   "bottle_price": 49
+  },
+  {
+   "name": "Sauvignon Blanc",
+   "producer": "Freemark Abbey",
+   "category": "bianco",
+   "vintage": "2023",
+   "region": "Napa",
+   "bottle_price": 67
+  },
+  {
+   "name": "Crossbarn Chardonnay",
+   "producer": "Paul Hobbs",
+   "category": "bianco",
+   "vintage": "2023",
+   "region": "Sonoma Coast",
+   "bottle_price": 55
+  },
+  {
+   "name": "Truchard Vineyard Chardonnay",
+   "producer": "Nickel & Nickel",
+   "category": "bianco",
+   "vintage": "2022",
+   "region": "Napa",
+   "bottle_price": 99
+  },
+  {
+   "name": "Proprietary White Blend",
+   "producer": "Conundrum",
+   "category": "bianco",
+   "vintage": "2022",
+   "region": "California",
+   "bottle_price": 42
+  },
+  {
+   "name": "San Jacopo Chianti Classico",
+   "producer": "Vicchiomaggio",
+   "category": "rosso",
+   "vintage": "2022",
+   "region": "Tuscany",
+   "by_glass_price": 12,
+   "bottle_price": 47
+  },
+  {
+   "name": "Castelli Romani Rosso",
+   "producer": "Via Castello 19",
+   "category": "rosso",
+   "vintage": "2017",
+   "region": "Lazio",
+   "by_glass_price": 11,
+   "bottle_price": 43
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "The Wines Of Francis Coppola",
+   "category": "rosso",
+   "vintage": "2021",
+   "region": "Paso Robles",
+   "by_glass_price": 12,
+   "bottle_price": 47
+  },
+  {
+   "name": "Red Blend",
+   "producer": "Omen",
+   "category": "rosso",
+   "vintage": "2021",
+   "region": "Sierra Foothills",
+   "by_glass_price": 15,
+   "bottle_price": 59
+  },
+  {
+   "name": "Reserva Malbec",
+   "producer": "Santa Julia",
+   "category": "rosso",
+   "vintage": "2023",
+   "region": "Mendoza",
+   "by_glass_price": 11,
+   "bottle_price": 43
+  },
+  {
+   "name": "Tre",
+   "producer": "Brancaia",
+   "category": "rosso",
+   "vintage": "2022",
+   "region": "Tuscany",
+   "by_glass_price": 17,
+   "bottle_price": 67
+  },
+  {
+   "name": "Sangiovese",
+   "producer": "Ghibello",
+   "category": "rosso",
+   "vintage": "2022",
+   "region": "Tuscany",
+   "by_glass_price": 11,
+   "bottle_price": 43
+  },
+  {
+   "name": "Montepulciano D'abruzzo",
+   "producer": "Masciarelli",
+   "category": "rosso",
+   "vintage": "2022",
+   "region": "Abruzzo",
+   "by_glass_price": 11,
+   "bottle_price": 43
+  },
+  {
+   "name": "Pinot Noir",
+   "producer": "Depaolo",
+   "category": "rosso",
+   "vintage": "2023",
+   "region": "Veneto",
+   "by_glass_price": 12,
+   "bottle_price": 47
+  },
+  {
+   "name": "Decoy Merlot",
+   "producer": "Duckhorn",
+   "category": "rosso",
+   "vintage": "2022",
+   "region": "California",
+   "by_glass_price": 14,
+   "bottle_price": 55
+  },
+  {
+   "name": "The Critic Cabernet Sauvignon",
+   "producer": "Opici Wines",
+   "category": "rosso",
+   "vintage": "2023",
+   "region": "Napa",
+   "by_glass_price": 16,
+   "bottle_price": 63
+  },
+  {
+   "name": "Pinot Noir",
+   "producer": "Outlier",
+   "category": "rosso",
+   "vintage": "2022",
+   "region": "Lake County",
+   "by_glass_price": 16,
+   "bottle_price": 63
+  },
+  {
+   "name": "Chianti Classico Riserva",
+   "producer": "Badia A Coltibuono",
+   "category": "rosso",
+   "vintage": "2019",
+   "region": "Tuscany",
+   "bottle_price": 90
+  },
+  {
+   "name": "Brunello Di Montalcino",
+   "producer": "Carpineto",
+   "category": "rosso",
+   "vintage": "2018",
+   "region": "Tuscany",
+   "bottle_price": 135
+  },
+  {
+   "name": "Bolgheri Rosso",
+   "producer": "Grattamacco",
+   "category": "rosso",
+   "vintage": "2022",
+   "region": "Tuscany",
+   "bottle_price": 67
+  },
+  {
+   "name": "Spelt Montepulciano D'abruzzo",
+   "producer": "Valentina",
+   "category": "rosso",
+   "vintage": "2020",
+   "region": "Abruzzo",
+   "bottle_price": 54
+  },
+  {
+   "name": "Vino Nobile Di Montepulciano",
+   "producer": "Poliziano",
+   "category": "rosso",
+   "vintage": "2021",
+   "region": "Tuscany",
+   "bottle_price": 67
+  },
+  {
+   "name": "Rosso Di Montalcino",
+   "producer": "Altesino",
+   "category": "rosso",
+   "vintage": "2022",
+   "region": "Tuscany",
+   "bottle_price": 54
+  },
+  {
+   "name": "Tre Vigne Barbera D'asti",
+   "producer": "Vietti",
+   "category": "rosso",
+   "vintage": "2022",
+   "region": "Piedmonte",
+   "bottle_price": 44
+  },
+  {
+   "name": "Reyna Barbaresco",
+   "producer": "Michele Chiarlo",
+   "category": "rosso",
+   "vintage": "2021",
+   "region": "Piedmonte",
+   "bottle_price": 105
+  },
+  {
+   "name": "Barolo",
+   "producer": "Massolino",
+   "category": "rosso",
+   "vintage": "2020",
+   "region": "Piedmonte",
+   "bottle_price": 115
+  },
+  {
+   "name": "Terrenegre Valpolicella Ripasso",
+   "producer": "Villa San Zeno",
+   "category": "rosso",
+   "vintage": "2021",
+   "region": "Veneto",
+   "bottle_price": 47
+  },
+  {
+   "name": "Amarone Della Valpolicella",
+   "producer": "Palazzo Maffei",
+   "category": "rosso",
+   "vintage": "2021",
+   "region": "Veneto",
+   "bottle_price": 93
+  },
+  {
+   "name": "Napa Valley Cabernet Sauvignon",
+   "producer": "Hall",
+   "category": "rosso",
+   "vintage": "2020",
+   "region": "Napa",
+   "bottle_price": 125
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Justin",
+   "category": "rosso",
+   "vintage": "2021",
+   "region": "Paso Robles",
+   "bottle_price": 65
+  },
+  {
+   "name": "Willamette Pinot Noir",
+   "producer": "Siduri",
+   "category": "rosso",
+   "vintage": "2022",
+   "region": "Willamette Valley",
+   "bottle_price": 77
+  },
+  {
+   "name": "Sonoma Coast Pinot Noir",
+   "producer": "Macrostie",
+   "category": "rosso",
+   "vintage": "2022",
+   "region": "Sonoma",
+   "bottle_price": 80
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Post & Beam",
+   "category": "rosso",
+   "vintage": "2021",
+   "region": "Napa",
+   "bottle_price": 85
+  },
+  {
+   "name": "Red Blend",
+   "producer": "Unshackled (by Prisoner)",
+   "category": "rosso",
+   "vintage": "2021",
+   "region": "California",
+   "bottle_price": 47
+  },
+  {
+   "name": "Pinot Noir",
+   "producer": "Lonesome Rock",
+   "category": "rosso",
+   "vintage": "2021",
+   "region": "Willamette Valley",
+   "bottle_price": 125
+  },
+  {
+   "name": "Miller Light",
+   "producer": "Miller Light",
+   "category": "beer",
+   "price": 5
+  },
+  {
+   "name": "Peroni",
+   "producer": "Peroni",
+   "category": "beer",
+   "price": 7
+  },
+  {
+   "name": "Moretti",
+   "producer": "Moretti",
+   "category": "beer",
+   "price": 8
+  },
+  {
+   "name": "IPA",
+   "producer": "Lagunitas",
+   "category": "beer",
+   "price": 8
+  },
+  {
+   "name": "Stella Cidre",
+   "producer": "Stella Cidre",
+   "category": "beer",
+   "price": 7
+  },
+  {
+   "name": "Peroni 0.0 N/A",
+   "producer": "Peroni",
+   "category": "beer",
+   "price": 7
+  },
+  {
+   "name": "Grey Goose",
+   "producer": "Grey Goose",
+   "category": "vodka",
+   "price": 14
+  },
+  {
+   "name": "Grey Goose Strawberry-Lemongrass",
+   "producer": "Grey Goose",
+   "category": "vodka",
+   "price": 14
+  },
+  {
+   "name": "Ketel One",
+   "producer": "Ketel One",
+   "category": "vodka",
+   "price": 13
+  },
+  {
+   "name": "Tito's",
+   "producer": "Tito's",
+   "category": "vodka",
+   "price": 13
+  },
+  {
+   "name": "Blanco",
+   "producer": "Casamigos",
+   "category": "tequila",
+   "price": 16
+  },
+  {
+   "name": "Reposado",
+   "producer": "Casamigos",
+   "category": "tequila",
+   "price": 18
+  },
+  {
+   "name": "Anejo",
+   "producer": "Casamigos",
+   "category": "tequila",
+   "price": 19
+  },
+  {
+   "name": "Mezcal",
+   "producer": "Casamigos",
+   "category": "tequila",
+   "price": 19
+  },
+  {
+   "name": "Silver",
+   "producer": "Cuervo Tradicional",
+   "category": "tequila",
+   "price": 10
+  },
+  {
+   "name": "Don Julio 1942",
+   "producer": "Don Julio",
+   "category": "tequila",
+   "price": 38
+  },
+  {
+   "name": "Lalo Blanco",
+   "producer": "Lalo",
+   "category": "tequila",
+   "price": 15
+  },
+  {
+   "name": "Anejo",
+   "producer": "Mijenta",
+   "category": "tequila",
+   "price": 35
+  },
+  {
+   "name": "Blanco",
+   "producer": "Mijenta",
+   "category": "tequila",
+   "price": 16
+  },
+  {
+   "name": "Reposado",
+   "producer": "Mijenta",
+   "category": "tequila",
+   "price": 20
+  },
+  {
+   "name": "Superior",
+   "producer": "Bacardi",
+   "category": "rum",
+   "price": 11
+  },
+  {
+   "name": "Captain Morgan",
+   "producer": "Captain Morgan",
+   "category": "rum",
+   "price": 12
+  },
+  {
+   "name": "Malibu",
+   "producer": "Malibu",
+   "category": "rum",
+   "price": 11
+  },
+  {
+   "name": "Original Dark",
+   "producer": "Plantation",
+   "category": "rum",
+   "price": 12
+  },
+  {
+   "name": "Sapphire",
+   "producer": "Bombay",
+   "category": "gin",
+   "price": 13
+  },
+  {
+   "name": "Jardin d'Ete",
+   "producer": "Citadelle",
+   "category": "gin",
+   "price": 12
+  },
+  {
+   "name": "Original",
+   "producer": "Citadelle",
+   "category": "gin",
+   "price": 12
+  },
+  {
+   "name": "Gray Whale",
+   "producer": "Gray Whale",
+   "category": "gin",
+   "price": 14
+  },
+  {
+   "name": "Hendrick's",
+   "producer": "Hendrick's",
+   "category": "gin",
+   "price": 14
+  },
+  {
+   "name": "Stray Dog",
+   "producer": "Stray Dog",
+   "category": "gin",
+   "price": 14
+  },
+  {
+   "name": "Tanqueray",
+   "producer": "Tanqueray",
+   "category": "gin",
+   "price": 12
+  },
+  {
+   "name": "Crown Royal",
+   "producer": "Crown Royal",
+   "category": "whiskey",
+   "by_glass_price": 12
+  },
+  {
+   "name": "Jack Daniels",
+   "producer": "Jack Daniels",
+   "category": "whiskey",
+   "by_glass_price": 12
+  },
+  {
+   "name": "Jameson",
+   "producer": "Jameson",
+   "category": "whiskey",
+   "by_glass_price": 13
+  },
+  {
+   "name": "Dewar's White Label",
+   "producer": "Dewar's",
+   "category": "scotch blended",
+   "by_glass_price": 10
+  },
+  {
+   "name": "Johnny Walker Black",
+   "producer": "Johnnie Walker",
+   "category": "scotch blended",
+   "by_glass_price": 14
+  },
+  {
+   "name": "Johnny Walker Blue",
+   "producer": "Johnnie Walker",
+   "category": "scotch blended",
+   "by_glass_price": 48
+  },
+  {
+   "name": "Glenlivet 12",
+   "producer": "Glenlivet",
+   "category": "scotch single malt",
+   "by_glass_price": 17
+  },
+  {
+   "name": "Lagavulin 16",
+   "producer": "Lagavulin",
+   "category": "scotch single malt",
+   "by_glass_price": 29
+  },
+  {
+   "name": "Laphroaig 10",
+   "producer": "Laphroaig",
+   "category": "scotch single malt",
+   "by_glass_price": 15
+  },
+  {
+   "name": "Macallan 12",
+   "producer": "Macallan",
+   "category": "scotch single malt",
+   "by_glass_price": 22
+  },
+  {
+   "name": "Macallan 18",
+   "producer": "Macallan",
+   "category": "scotch single malt",
+   "by_glass_price": 79
+  },
+  {
+   "name": "Oban 14",
+   "producer": "Oban",
+   "category": "scotch single malt",
+   "by_glass_price": 24
+  },
+  {
+   "name": "Buffalo Trace",
+   "producer": "Buffalo Trace",
+   "category": "bourbon",
+   "by_glass_price": 14
+  },
+  {
+   "name": "Four Roses",
+   "producer": "Four Roses",
+   "category": "bourbon",
+   "by_glass_price": 10
+  },
+  {
+   "name": "Four Roses Small Batch",
+   "producer": "Four Roses",
+   "category": "bourbon",
+   "by_glass_price": 15
+  },
+  {
+   "name": "Jim Beam",
+   "producer": "Jim Beam",
+   "category": "bourbon",
+   "by_glass_price": 10
+  },
+  {
+   "name": "Knob Creek",
+   "producer": "Knob Creek",
+   "category": "bourbon",
+   "by_glass_price": 15
+  },
+  {
+   "name": "Maker's Mark",
+   "producer": "Maker's Mark",
+   "category": "bourbon",
+   "by_glass_price": 12
+  },
+  {
+   "name": "Michter's Small Batch",
+   "producer": "Michter's",
+   "category": "bourbon",
+   "by_glass_price": 17
+  },
+  {
+   "name": "Woodford Reserve",
+   "producer": "Woodford Reserve",
+   "category": "bourbon",
+   "by_glass_price": 14
+  },
+  {
+   "name": "Architect",
+   "producer": "Penelope",
+   "category": "bourbon",
+   "by_glass_price": 22
+  },
+  {
+   "name": "Barrel Strength",
+   "producer": "Penelope",
+   "category": "bourbon",
+   "by_glass_price": 22
+  },
+  {
+   "name": "Four Grain",
+   "producer": "Penelope",
+   "category": "bourbon",
+   "by_glass_price": 16
+  },
+  {
+   "name": "Toasted",
+   "producer": "Penelope",
+   "category": "bourbon",
+   "by_glass_price": 22
+  },
+  {
+   "name": "Rose Cask",
+   "producer": "Penelope",
+   "category": "bourbon",
+   "by_glass_price": 18
+  },
+  {
+   "name": "Michter's Rye",
+   "producer": "Michter's",
+   "category": "rye",
+   "by_glass_price": 17
+  },
+  {
+   "name": "WhistlePig 12 year",
+   "producer": "WhistlePig",
+   "category": "rye",
+   "by_glass_price": 35
+  },
+  {
+   "name": "WhistlePig Piggy Back",
+   "producer": "WhistlePig",
+   "category": "rye",
+   "by_glass_price": 18
+  },
+  {
+   "name": "Aperol",
+   "producer": "Aperol",
+   "category": "digestivi, apertivi",
+   "by_glass_price": 10
+  },
+  {
+   "name": "Averna",
+   "producer": "Averna",
+   "category": "digestivi, apertivi",
+   "by_glass_price": 12
+  },
+  {
+   "name": "Campari",
+   "producer": "Campari",
+   "category": "digestivi, apertivi",
+   "by_glass_price": 12
+  },
+  {
+   "name": "Fernet Branca",
+   "producer": "Fernet Branca",
+   "category": "digestivi, apertivi",
+   "by_glass_price": 12
+  },
+  {
+   "name": "Montenegro Amaro",
+   "producer": "Montenegro",
+   "category": "digestivi, apertivi",
+   "by_glass_price": 12
+  },
+  {
+   "name": "Poli Cleopatra Moscato Oro",
+   "producer": "Poli",
+   "category": "cognac, grappa",
+   "by_glass_price": 20
+  },
+  {
+   "name": "Poli Elisik Camomilla",
+   "producer": "Poli",
+   "category": "cognac, grappa",
+   "by_glass_price": 12
+  },
+  {
+   "name": "Poli Scarpa Oro 4 yr",
+   "producer": "Poli",
+   "category": "cognac, grappa",
+   "by_glass_price": 17
+  },
+  {
+   "name": "Remy Martin VSOP",
+   "producer": "Remy Martin",
+   "category": "cognac, grappa",
+   "by_glass_price": 15
+  },
+  {
+   "name": "Bailey's",
+   "producer": "Bailey's",
+   "category": "cordials",
+   "by_glass_price": 12
+  },
+  {
+   "name": "Chinola Passionfruit",
+   "producer": "Chinola",
+   "category": "cordials",
+   "by_glass_price": 10
+  },
+  {
+   "name": "Disaronno",
+   "producer": "Disaronno",
+   "category": "cordials",
+   "by_glass_price": 12
+  },
+  {
+   "name": "Fiorente Elderflower",
+   "producer": "Fiorente",
+   "category": "cordials",
+   "by_glass_price": 11
+  },
+  {
+   "name": "Frangelico",
+   "producer": "Frangelico",
+   "category": "cordials",
+   "by_glass_price": 13
+  },
+  {
+   "name": "Grand Mariner",
+   "producer": "Grand Marnier",
+   "category": "cordials",
+   "by_glass_price": 12
+  },
+  {
+   "name": "Kahlua",
+   "producer": "Kahlua",
+   "category": "cordials",
+   "by_glass_price": 11
+  },
+  {
+   "name": "Licor 43",
+   "producer": "Licor 43",
+   "category": "cordials",
+   "by_glass_price": 10
+  },
+  {
+   "name": "Licor 43 Chocolate",
+   "producer": "Licor 43",
+   "category": "cordials",
+   "by_glass_price": 10
+  },
+  {
+   "name": "Meletti Coffee",
+   "producer": "Meletti",
+   "category": "cordials",
+   "by_glass_price": 10
+  },
+  {
+   "name": "Sambucca Romano",
+   "producer": "Sambucca Romano",
+   "category": "cordials",
+   "by_glass_price": 11
+  },
+  {
+   "name": "Amaro Alpino",
+   "producer": "Faccia Brutto",
+   "category": "cordials",
+   "by_glass_price": 15
+  },
+  {
+   "name": "Amaro Gorini",
+   "producer": "Faccia Brutto",
+   "category": "cordials",
+   "by_glass_price": 15
+  },
+  {
+   "name": "Apertivo",
+   "producer": "Faccia Brutto",
+   "category": "cordials",
+   "by_glass_price": 11
+  },
+  {
+   "name": "Carciofo",
+   "producer": "Faccia Brutto",
+   "category": "cordials",
+   "by_glass_price": 15
+  },
+  {
+   "name": "Centerbe",
+   "producer": "Faccia Brutto",
+   "category": "cordials",
+   "by_glass_price": 15
+  },
+  {
+   "name": "Fernet Pianta",
+   "producer": "Faccia Brutto",
+   "category": "cordials",
+   "by_glass_price": 15
+  },
+  {
+   "name": "Nocino",
+   "producer": "Faccia Brutto",
+   "category": "cordials",
+   "by_glass_price": 20
+  },
+  {
+   "name": "Fine Ruby",
+   "producer": "Quinta do Noval",
+   "category": "port",
+   "by_glass_price": 10
+  },
+  {
+   "name": "LBV",
+   "producer": "Quinta do Noval",
+   "category": "port",
+   "by_glass_price": 12
+  },
+  {
+   "name": "10 Yr Tawny",
+   "producer": "Quinta do Noval",
+   "category": "port",
+   "by_glass_price": 14
+  },
+  {
+   "name": "Vintage 2016",
+   "producer": "Quinta do Noval",
+   "category": "port",
+   "vintage": "2016",
+   "by_glass_price": 25
+  }
+ ]
+}

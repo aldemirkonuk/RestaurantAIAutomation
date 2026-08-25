@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Header } from '../components/layout/Header'
 import {
@@ -13,6 +13,7 @@ import {
   X,
   Trash2,
   Truck,
+  Compass,
   Plus,
   Star,
   ExternalLink,
@@ -33,6 +34,10 @@ import {
   addProviderContact,
   updateProviderContact,
   deleteProviderContact,
+  getProviderLocations,
+  createProviderLocation,
+  updateProviderLocation,
+  deleteProviderLocation,
 } from '../services/api/providers'
 import { toast } from 'sonner'
 import { AddProviderModal, NewProviderData } from '../components/providers/AddProviderModal'
@@ -138,6 +143,65 @@ function EmptyProvidersState({ onBrowseCatalogue, onAddCustom }: EmptyProvidersS
   )
 }
 
+type ProvidersTab = 'mine' | 'discover'
+
+// Loaded on demand — the map surface pulls in a tile renderer that the roster view
+// has no use for, so it should not be in the Providers bundle.
+const DistributorMapPage = lazy(
+  () => import('./distributors/command/DistributorMapPage').then(m => ({ default: m.DistributorMapPage })),
+)
+
+/**
+ * Segmented control between the vendor roster and distributor discovery.
+ * Matches the tab pattern already used on Documents & Reports.
+ */
+function ProvidersTabs({
+  tab,
+  onChange,
+  count,
+}: {
+  tab: ProvidersTab
+  onChange: (t: ProvidersTab) => void
+  count: number | null
+}) {
+  const item = (value: ProvidersTab, label: string, badge?: string) => (
+    <button
+      key={value}
+      type="button"
+      onClick={() => onChange(value)}
+      aria-current={tab === value ? 'page' : undefined}
+      className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 text-sm ${
+        tab === value
+          ? 'bg-wine-600 text-white shadow-sm'
+          : 'text-gray-600 hover:bg-gray-100'
+      }`}
+    >
+      {value === 'mine' ? (
+        <Truck className="w-4 h-4" />
+      ) : (
+        <Compass className="w-4 h-4" />
+      )}
+      {label}
+      {badge && (
+        <span
+          className={`px-1.5 py-0.5 text-xs rounded-full ${
+            tab === value ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+          }`}
+        >
+          {badge}
+        </span>
+      )}
+    </button>
+  )
+
+  return (
+    <div className="flex bg-white rounded-xl border border-gray-200 p-1 w-fit">
+      {item('mine', 'My Providers', count != null ? String(count) : undefined)}
+      {item('discover', 'Find Distributors')}
+    </div>
+  )
+}
+
 export function Providers() {
   const restaurantId = useAuthStore(state => state.activeRestaurantId)
   const { preferences, updatePreferences } = useUserPreferences()
@@ -157,6 +221,26 @@ export function Providers() {
   }, [rawOrders])
 
   const navigate = useNavigate()
+  // Discovery lives here rather than in the sidebar: "who I buy from" and "who could
+  // I buy from" are two views of one subject. Kept in the URL so it is linkable and
+  // so the old /distributors route can redirect straight into it.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab: ProvidersTab =
+    searchParams.get('tab') === 'discover' ? 'discover' : 'mine'
+  const setTab = useCallback(
+    (next: ProvidersTab) => {
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev)
+          if (next === 'discover') p.set('tab', 'discover')
+          else p.delete('tab')
+          return p
+        },
+        { replace: true },
+      )
+    },
+    [setSearchParams],
+  )
   const [searchQuery, setSearchQuery]               = useState('')
   const [businessTypeFilter, setBusinessTypeFilter] = useState<BusinessTypeFilter>('All')
   const [viewMode, setViewMode]                     = useState<ViewMode>('grid')
@@ -177,23 +261,7 @@ export function Providers() {
   const favorites: string[]                          = preferences.providerFavorites ?? []
   const notes: Record<string, ProviderNote>          = (preferences.providerNotes ?? {}) as Record<string, ProviderNote>
 
-  // Local ratings state — updates immediately for snappy UI. Syncs to remote
-  // preferences async. The useEffect seeds from server data on first load /
-  // hard refresh but never overwrites in-session changes.
-  const [ratings, setLocalRatings] = useState<Record<string, number>>(
-    () => (preferences.providerRatings ?? {}) as Record<string, number>,
-  )
-  useEffect(() => {
-    const serverRatings = (preferences.providerRatings ?? {}) as Record<string, number>
-    // Only seed local state when it is still empty (fresh mount / hard refresh)
-    setLocalRatings(prev => {
-      if (Object.keys(prev).length === 0 && Object.keys(serverRatings).length > 0) {
-        return serverRatings
-      }
-      // Merge server ratings in for any provider the local state hasn't touched
-      return { ...serverRatings, ...prev }
-    })
-  }, [preferences.providerRatings])
+  const ratings: Record<string, number> = (preferences.providerRatings ?? {}) as Record<string, number>
 
   const setFavorites = useCallback((updater: (prev: string[]) => string[]) => {
     updatePreferences({ providerFavorites: updater(favorites) })
@@ -204,13 +272,9 @@ export function Providers() {
   }, [notes, updatePreferences])
 
   const setRatings = useCallback((updater: (prev: Record<string, number>) => Record<string, number>) => {
-    setLocalRatings(prev => {
-      const next = updater(prev)
-      // Persist async — never block the UI on this
-      updatePreferences({ providerRatings: next })
-      return next
-    })
-  }, [updatePreferences])
+    // Rely entirely on the optimistic update in useUserPreferences
+    updatePreferences({ providerRatings: updater(ratings) })
+  }, [updatePreferences, ratings])
 
   const { data: providers = [], isLoading, isFetching, error, refetch } = useProviders(restaurantId || '', {
     search: searchQuery,
@@ -326,6 +390,50 @@ export function Providers() {
           : 'Unknown error'
       toast.warning(`Provider saved, but contacts could not be synced. ${reason}`)
     }
+
+    // ── Step 3: sync provider_locations (decoupled — never blocks the save) ─
+    if (data.locations && data.locations.length > 0) {
+      try {
+        const existingDbLocations = await getProviderLocations(providerId)
+        const existingDbIds = new Set(existingDbLocations.map(l => l.id))
+        const currentRealIds = new Set(
+          data.locations.filter(l => !l.id.startsWith('new-loc-') && !l.id.startsWith('primary-location-')).map(l => l.id)
+        )
+
+        // Delete locations the user removed
+        await Promise.all(
+          existingDbLocations
+            .filter(l => !currentRealIds.has(l.id))
+            .map(l => deleteProviderLocation(providerId, l.id))
+        )
+
+        // Create new locations or update existing ones
+        await Promise.all(
+          data.locations.map(loc => {
+            // Coordinates are sent only as a complete pair. The DB enforces
+            // (latitude IS NULL) = (longitude IS NULL), so half a coordinate
+            // is rejected loudly rather than stored as an unplottable row.
+            const hasCoords =
+              typeof loc.latitude === 'number' && typeof loc.longitude === 'number'
+            const payload = {
+              name: loc.name || 'Office',
+              type: loc.type,
+              address: loc.address || '',
+              isPrimary: loc.isPrimary,
+              ...(hasCoords
+                ? { latitude: loc.latitude as number, longitude: loc.longitude as number }
+                : {}),
+            }
+            if (loc.id.startsWith('new-loc-') || loc.id.startsWith('primary-location-') || !existingDbIds.has(loc.id)) {
+              return createProviderLocation(providerId, payload)
+            }
+            return updateProviderLocation(providerId, loc.id, payload)
+          })
+        )
+      } catch (err: any) {
+        console.error('Location sync failed:', err)
+      }
+    }
   }
 
   const handleOpenEmail = (email: string, e?: React.MouseEvent) => {
@@ -342,7 +450,9 @@ export function Providers() {
         primaryBusinessType: (providerData.primaryBusinessType as 'Distributor' | 'Importer' | 'Wholesaler') || 'Distributor',
         phone: providerData.phone, email: providerData.email,
         physicalAddress: providerData.address, restaurantId,
-        contactPerson: providerData.contactPerson, website: providerData.website,
+        contactFirstName: providerData.contactFirstName, 
+        contactLastName: providerData.contactLastName,
+        website: providerData.website,
         accountNumber: providerData.accountNumber,
         winePortfolio: providerData.specialties.join(', '),
         statesOrRegionsServed: providerData.deliveryDays,
@@ -352,9 +462,50 @@ export function Providers() {
         notes: `Specialties: ${providerData.specialties.join(', ')}`,
       })
       if (providerData.rating > 0 && result?.id) setRatings(prev => ({ ...prev, [result.id]: providerData.rating }))
+
+      // Persist the address as a geocoded primary location.
+      //
+      // A provider's coordinates live in provider_locations, not on the
+      // provider row — listProviders reads them from there to place map pins.
+      // This step used to be missing entirely, so a provider added here was
+      // permanently unpinnable no matter how many times the map re-fitted its
+      // bounds; only re-saving through the edit sidebar (which does sync
+      // locations) ever gave it coordinates.
+      //
+      // Decoupled from the create like the edit path's location sync is: the
+      // provider is already saved, and a location failure must not present as
+      // "failed to add provider".
+      if (result?.id && providerData.address) {
+        const hasCoords =
+          typeof providerData.latitude === 'number' &&
+          typeof providerData.longitude === 'number'
+        try {
+          await createProviderLocation(result.id, {
+            name: 'Main Office',
+            type: 'office',
+            address: providerData.address,
+            isPrimary: true,
+            // Sent only as a complete pair — the DB enforces
+            // (latitude IS NULL) = (longitude IS NULL).
+            ...(hasCoords
+              ? {
+                  latitude: providerData.latitude as number,
+                  longitude: providerData.longitude as number,
+                }
+              : {}),
+          })
+          if (!hasCoords) {
+            toast.info('Provider saved. Pick the address from the dropdown to show it on the map.')
+          }
+        } catch (locErr) {
+          console.error('Provider location create failed:', locErr)
+          toast.warning('Provider saved, but its address could not be mapped.')
+        }
+      }
+
       await dispatchProviderUpdate({
         type: 'added', providerId: result?.id ?? '', providerName: providerData.name,
-        data: { contactPerson: providerData.contactPerson, email: providerData.email, phone: providerData.phone, businessType: providerData.primaryBusinessType, specialties: providerData.specialties },
+        data: { contactPerson: `${providerData.contactFirstName} ${providerData.contactLastName}`.trim(), email: providerData.email, phone: providerData.phone, businessType: providerData.primaryBusinessType, specialties: providerData.specialties },
         source: 'providers_page', timestamp: new Date().toISOString(),
       })
     } catch (err) {
@@ -486,6 +637,33 @@ export function Providers() {
     return () => window.removeEventListener('click', close)
   }, [providerMenu])
 
+  // Discovery deliberately sits above the provider-list loading and error gates:
+  // having no providers yet — or a roster that failed to load — is exactly when you
+  // want to go find some. Making it wait on that data would be backwards.
+  if (tab === 'discover') {
+    return (
+      <div className="min-h-screen">
+        <Header
+          title="Wine Providers"
+          subtitle="Find distributors that can legally supply your restaurant, nearest first"
+        />
+        <div className="px-6 pt-6">
+          <ProvidersTabs
+            tab={tab}
+            onChange={setTab}
+            count={providers.length || null}
+          />
+        </div>
+        {/* The map page keeps its own "Find distributors" heading, which reads as the
+            section title under the page title rather than a competing one. Left alone
+            deliberately so this tab needs no changes inside the distributor surface. */}
+        <Suspense fallback={<div className="px-6 pt-6"><PageSkeleton /></div>}>
+          <DistributorMapPage customProviders={providers} />
+        </Suspense>
+      </div>
+    )
+  }
+
   // Only show full-page skeleton on the very first load (no cached data at all).
   // For re-mounts / SPA navigations with stale cache, placeholderData keeps prior
   // results visible while the background refetch runs, so isLoading stays false.
@@ -522,7 +700,15 @@ export function Providers() {
           : 'Manage your supplier relationships'}
       />
 
-      <div className="p-6" data-tour="providers-list">
+      <div className="p-6">
+
+        <div className="mb-5">
+          <ProvidersTabs
+            tab={tab}
+            onChange={setTab}
+            count={providers.length || null}
+          />
+        </div>
 
         {/* ── Empty state ── */}
         {providers.length === 0 && !isLoading && (
@@ -540,11 +726,11 @@ export function Providers() {
             {/* ════════════════════════════════════════
                 TOOLBAR  (sketch 008-A: two-row layout)
             ════════════════════════════════════════ */}
-            <div className="space-y-2.5 mb-5" data-tour="providers-add">
+            <div className="space-y-2.5 mb-5">
 
               {/* Row 1: search + CTA */}
               <div className="flex gap-2.5">
-                <div className="flex-1 relative">
+                <div className="flex-1 relative" data-tour="providers-search">
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                   <input
                     ref={searchRef}
@@ -565,6 +751,7 @@ export function Providers() {
                 </div>
                 <button
                   onClick={() => setShowVendorSearch(true)}
+                  data-tour="providers-add"
                   className="px-4 py-2.5 bg-wine-600 text-white font-semibold rounded-xl hover:bg-wine-700 active:scale-[0.98] shadow-sm shadow-wine-600/30 transition-all flex items-center gap-1.5 whitespace-nowrap text-sm"
                 >
                   <Plus className="w-4 h-4" />
@@ -573,7 +760,7 @@ export function Providers() {
               </div>
 
               {/* Row 2: filter chips + view toggle */}
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center justify-between gap-3" data-tour="providers-filters">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {(['All', 'Distributor', 'Importer', 'Wholesaler'] as BusinessTypeFilter[]).map(type => (
                     <button
@@ -786,7 +973,7 @@ export function Providers() {
                 Action-first cards, dot badges, red hearts
             ════════════════════════════════════════ */}
             {filteredProviders.length > 0 && viewMode === 'grid' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-tour="providers-list">
                 {filteredProviders.map((provider, index) => {
                   const isFav = favorites.includes(provider.id)
                   return (
@@ -868,10 +1055,24 @@ export function Providers() {
 
                       {/* Footer */}
                       <div className="pt-2.5 border-t border-gray-50 flex items-center justify-between">
-                        <div className="flex items-center gap-1 min-w-0 text-xs text-gray-400">
-                          <MapPin className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate">{provider.physicalAddress}</span>
-                        </div>
+                        {provider.physicalAddress && provider.physicalAddress !== 'N/A' ? (
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(provider.physicalAddress)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-1 min-w-0 text-xs text-gray-500 hover:text-wine-600 transition-colors group/addr"
+                            title="Open address in Google Maps"
+                          >
+                            <MapPin className="w-3 h-3 flex-shrink-0 text-wine-500 group-hover/addr:scale-110 transition-transform" />
+                            <span className="truncate hover:underline">{provider.physicalAddress}</span>
+                          </a>
+                        ) : (
+                          <div className="flex items-center gap-1 min-w-0 text-xs text-gray-400">
+                            <MapPin className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">No address on file</span>
+                          </div>
+                        )}
                         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
                           {lastOrderDates[provider.id] && (
                             <span className="flex items-center gap-1 text-xs text-emerald-600">
@@ -894,7 +1095,7 @@ export function Providers() {
 
             {/* ── Compact view ── */}
             {filteredProviders.length > 0 && viewMode === 'compact' && (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2" data-tour="providers-list">
                 {filteredProviders.map((provider, index) => {
                   const isFav = favorites.includes(provider.id)
                   return (
@@ -932,7 +1133,7 @@ export function Providers() {
 
             {/* ── List view ── */}
             {filteredProviders.length > 0 && viewMode === 'list' && (
-              <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+              <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden" data-tour="providers-list">
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[700px]">
                     <thead>
@@ -1248,7 +1449,12 @@ export function Providers() {
         )
       })()}
 
-      <AddProviderModal isOpen={showAddProviderModal} onClose={() => setShowAddProviderModal(false)} onSave={handleAddProvider} />
+      <AddProviderModal
+        isOpen={showAddProviderModal}
+        onClose={() => setShowAddProviderModal(false)}
+        onSave={handleAddProvider}
+        onCatalogueVendorAdded={() => refetch()}
+      />
       <EditProviderModal
         isOpen={!!editingProvider}
         onClose={() => setEditingProvider(null)}
@@ -1258,7 +1464,15 @@ export function Providers() {
           : null
         }
       />
-      <VendorSearchModal open={showVendorSearch} onClose={() => setShowVendorSearch(false)} onProviderAdded={() => refetch()} onAddCustom={() => setShowAddProviderModal(true)} />
+      <VendorSearchModal
+        open={showVendorSearch}
+        onClose={() => setShowVendorSearch(false)}
+        onProviderAdded={() => refetch()}
+        onAddCustom={() => setShowAddProviderModal(true)}
+        addedCatalogueVendorIds={providers
+          .map((p) => p.catalogueVendorId)
+          .filter((id): id is string => !!id)}
+      />
       {showEmailModal && (
         <QuickGmailModal onClose={() => { setShowEmailModal(false); setEmailRecipient('') }} prefilledRecipient={emailRecipient} />
       )}

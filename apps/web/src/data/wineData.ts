@@ -10,9 +10,13 @@ export interface Wine {
   id: string
   sku?: string
   name: string
+  /** Full descriptive name, disambiguating vintage variants. Falls back to `name` when absent. */
+  displayName?: string
   producer: string
   vintage: number | null
   price: number
+  /** Average market/retail price for the bottle; undefined when no price data exists yet. */
+  marketPrice?: number
   menuPrice?: number
   menuPriceGlass?: number
   type: 'red' | 'white' | 'sparkling' | 'rose' | 'dessert'

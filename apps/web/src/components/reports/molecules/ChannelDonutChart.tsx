@@ -8,7 +8,7 @@ import { formatMoney } from '../../../lib/utils'
 import type { WineTypeDistribution } from './index'
 
 const CHANNEL_COLORS: Record<string, string> = {
-  'Dine-in':  '#cd2d5b',
+  'Dine-in':  '#9E4249',
   'Bar':      '#f472b6',
   'Takeout':  '#fbbf24',
   'Delivery': '#a78bfa',

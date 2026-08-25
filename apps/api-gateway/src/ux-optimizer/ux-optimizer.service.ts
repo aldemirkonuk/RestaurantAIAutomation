@@ -7,6 +7,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { Cron } from "@nestjs/schedule";
 import { DatabaseService } from "../database/database.service";
+import { ModelClientService } from "../common/model-client/model-client.service";
 
 /** Most signals read into one friction summary. See summarize() for why it is ordered. */
 const SIGNAL_SAMPLE_CAP = 5000;
@@ -40,9 +41,6 @@ const SIGNAL_SAMPLE_CAP = 5000;
 export class UxOptimizerService {
   private readonly logger = new Logger(UxOptimizerService.name);
 
-  private static readonly ANTHROPIC_URL =
-    "https://api.anthropic.com/v1/messages";
-
   /**
    * SOTA usability rubric the agent reasons against. Kept explicit so proposals
    * are auditable and grounded, not vibes.
@@ -61,6 +59,7 @@ export class UxOptimizerService {
   constructor(
     private readonly dbService: DatabaseService,
     private readonly configService: ConfigService,
+    private readonly modelClient: ModelClientService,
   ) {}
 
   private enabled(): boolean {
@@ -207,7 +206,7 @@ export class UxOptimizerService {
 
     if (apiKey && summary.totalSignals > 0) {
       try {
-        proposals = await this.llmProposals(apiKey, summary);
+        proposals = await this.llmProposals(summary, restaurantId);
         source = "llm";
       } catch (err: any) {
         this.logger.warn(`LLM proposals failed, falling back: ${err?.message}`);
@@ -244,7 +243,7 @@ export class UxOptimizerService {
     return { enabled: this.enabled(), source, proposals: persisted, summary };
   }
 
-  private async llmProposals(apiKey: string, summary: any) {
+  private async llmProposals(summary: any, restaurantId: string) {
     const model =
       this.configService.get<string>("UX_OPTIMIZER_MODEL") ||
       "claude-haiku-4-5-20251001";
@@ -263,14 +262,11 @@ OUTPUT — respond with ONLY valid JSON:
 {"proposals":[{"kind":"copy","targetKey":"...","title":"...","rationale":"...","change":{},"confidence":0.0}]}
 Return 2–5 proposals sorted by (confidence × expected friction removed) descending. Each rationale ≤ 2 sentences and must cite a number from the summary.`;
 
-    const res = await fetch(UxOptimizerService.ANTHROPIC_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
+    // P1 NF-A: routed through the model client (emission + timeout + transport
+    // retry). Previously this fetch had no timeout at all; the client's 60s
+    // default is the consolidation AR-3 asked for.
+    const payload: any = await this.modelClient.call({
+      body: {
         model,
         max_tokens: 2048,
         system,
@@ -280,10 +276,16 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
             content: `Friction summary (authoritative; do not contradict):\n${JSON.stringify(summary)}\n\nPropose SOTA usability improvements for page "${summary.page}".`,
           },
         ],
-      }),
+      },
+      nf: {
+        subjectId: "UxOptimizer",
+        taskType: "ux_proposals",
+        stimulus: "friction_summary",
+        choice: "proposals",
+        restaurantId,
+        context: { page: summary.page },
+      },
     });
-    if (!res.ok) throw new Error(`Anthropic ${res.status}`);
-    const payload: any = await res.json();
     const textBlock = (payload.content || []).find(
       (b: any) => b.type === "text",
     );

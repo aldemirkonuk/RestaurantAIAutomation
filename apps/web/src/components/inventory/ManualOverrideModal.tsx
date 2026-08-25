@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useAuth } from '../../contexts/AuthContext'
 import {
   X,
   AlertTriangle,
@@ -56,6 +57,7 @@ export function ManualOverrideModal({
   currentShadowStock,
   onSave,
 }: ManualOverrideModalProps) {
+  const { user } = useAuth()
   const [newLiveStock, setNewLiveStock] = useState(currentLiveStock)
   const [newShadowStock, setNewShadowStock] = useState(currentShadowStock)
   const [reasonCategory, setReasonCategory] = useState('')
@@ -109,8 +111,15 @@ export function ManualOverrideModal({
       reason: REASON_CATEGORIES.find(r => r.value === reasonCategory)?.label || reasonCategory,
       reasonCategory,
       notes: notes.trim(),
-      managerId: 'MGR_001', // TODO: Get from auth context
-      managerName: 'Current Manager', // TODO: Get from auth context
+      // The real signed-in user. This was hardcoded to MGR_001 / "Current
+      // Manager", which made every entry in the override history name the same
+      // fictional person — and an override ledger where every row has the same
+      // author is not an audit trail, which is the entire reason the record
+      // exists. Note these are for DISPLAY only: when this is finally persisted
+      // through the ledger, the server takes the actor from the JWT and must
+      // never trust a client-supplied identity.
+      managerId: user?.userId ?? 'unknown',
+      managerName: user?.name || user?.email || 'Unknown user',
       timestamp: new Date(),
     }
 
