@@ -172,6 +172,12 @@ claim written as a sentence is checked exactly once — the day it is written.
 - **A patched version is only patched against the CVE you looked up.** Bumping
   `cryptography` to 49.0.0 closed two advisories and landed inside a third that
   was already published. Check the version you are moving *to*.
+- **Never reuse an OD number.** Four collisions happened in two days because
+  sessions each took "the next free number" from the same trunk — and **git
+  merges duplicate ids in silence**, since the prose around them differs. One
+  pair turned out to be the same defect filed twice, on `main`, unnoticed by
+  either session. The guard now fails the build on it; when renumbering, move
+  the id with **fewer citations** and prefer a gap over a collision.
 - **What this does not catch:** an entry aimed at the wrong target. Nothing
   mechanical catches that — but stating a claim precisely enough that someone
   could *try* to write a check for it is most of the defence.

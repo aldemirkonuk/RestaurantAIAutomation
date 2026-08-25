@@ -80,6 +80,38 @@ case $? in
   4) echo "FAIL — $CLAIMS parsed to zero claims. A guard with nothing to check must not report success."; exit 2 ;;
 esac
 
+# ---------------------------------------------------------------------------
+# Structural check: no OD id may name two different decisions.
+# ---------------------------------------------------------------------------
+# Four id collisions happened across 2026-08-24/25. Sessions each take "the next
+# free number" from the same trunk, and git merges the duplicates IN SILENCE,
+# because the surrounding prose differs — no conflict, no warning, two decisions
+# wearing one name. One pair (OD-64) turned out to be the same defect filed
+# twice; both landed on main and neither session saw the other.
+#
+# A row may legitimately appear once in Open and once in Resolved (OD-25: the
+# partial agreement is recorded, the remainder is still open). Twice in the SAME
+# section is always a collision.
+REGISTER=".planning/decisions/OPEN-DECISIONS.md"
+[ -f "$REGISTER" ] || { echo "FAIL — $REGISTER is missing"; exit 2; }
+
+dupes="$(python3 "$(dirname "$0")/_od_collisions.py" "$REGISTER")"
+dupe_status=$?
+if [ "$dupe_status" -ne 0 ]; then
+  echo "FAIL — could not check $REGISTER for id collisions (exit $dupe_status)"
+  exit 2
+fi
+if [ -n "$dupes" ]; then
+  echo "== ID COLLISION — one OD number naming two decisions"
+  printf '   %s\n' "$dupes"
+  echo "   Renumber the one with FEWER citations (grep .planning and source comments first),"
+  echo "   or fold them together if they are the same decision. Git will not catch this:"
+  echo "   duplicate ids merge cleanly because the prose around them differs."
+  echo
+  echo "FAIL — a decision id names more than one decision."
+  exit 1
+fi
+
 total=0; held=0; broken=0; stale=0
 declare -a BROKEN_MSG=() STALE_MSG=()
 
