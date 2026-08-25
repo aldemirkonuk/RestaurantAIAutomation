@@ -169,14 +169,37 @@ Live counts from production, 2026-08-24:
 | `restaurant_tables` | **0** |
 | `wine_consumption_log` | **0** |
 | `pos_unresolved_lines` | 0 |
-| `pos_item_mappings` | 92 (all `generic_webhook`, all `is_wine`, **all `sale_unit = null`**) |
-| `pos_catalog_match_proposals` | 92 |
+| `pos_item_mappings` | ~~92 (all `generic_webhook`, all `is_wine`, **all `sale_unit = null`**)~~ → **0** (see correction below) |
+| `pos_catalog_match_proposals` | ~~92~~ → **0** |
 | `restaurant_inventory` | 72 |
 | `restaurants` | 10 — **all `pos_system = 'toast'`, 1 with non-null `pos_credentials`** |
 
 The charter's own reality check (`pos-bridge-charter.md:132-136`) cites 47 simulator rows in
 `pos_checks`. **Those are gone; it is zero now.** No canonical check produced by a real
 restaurant has ever entered this system.
+
+> **Correction, 2026-08-25 — the 92 mappings could never have produced a wrong number.**
+> This audit twice implies they were doing damage ("already producing wrong numbers against
+> the 92 mappings that exist", §3). That was wrong, and the reason matters. Every one of the
+> 92 carried an `inventory_id` that resolved to **zero** rows in `restaurant_inventory`, and
+> they belonged to a `restaurant_id` that is in no row of `restaurants` — the torn-down sim
+> `bistro` tenant — while the checks that later arrived belong to a different restaurant with
+> no mappings at all. `loadItemMappings` filters on `restaurant_id`, so nothing ever resolved
+> against them.
+>
+> The real defect was the opposite shape, and worse. `apply_stock_movement` and
+> `record_glass_pour` both `RAISE 'inventory % not found'`, so a matching line would have
+> written **nothing** — but it had already skipped the `if (!it.inventory_id)` branch at
+> `pos-hub.service.ts:347`, so it would land in *neither* stock *nor* `pos_unresolved_lines`.
+> Not over-depletion: a **black hole**, strictly worse than the unmapped case B20 built the
+> queue to prevent. Root cause was `SYNTH_WRITE_SET` omitting `pos_item_mappings` and
+> `pos_catalog_match_proposals`, so `synth teardown` deleted the inventory and left the
+> matcher output behind. All 184 rows deleted and an FK `ON DELETE CASCADE` added —
+> [ADR 0012](../decisions/0012-pos-mapping-inventory-integrity.md).
+>
+> **Counts as of 2026-08-25:** `pos_checks` **66**, `pos_unresolved_lines` **39**,
+> `pos_item_mappings` **0**, `pos_catalog_match_proposals` **0**, `restaurant_inventory` 72,
+> `wine_consumption_log` **0**, `inventory_transactions` where `source='pos'` **0**.
 
 ---
 
@@ -459,9 +482,13 @@ The governing facts:
 
 **Two things that look like they belong in this section but do not**, because they are wrong
 *now* rather than unbuilt: the `sale_unit` default (§2.6d) and the unpersisted `voided`
-(§1.2). Both are already producing wrong numbers against the 92 mappings that exist, and the
-`sale_unit` one will silently corrupt the very first real venue's stock count. They are #1
-and #2 below.
+(§1.2). ~~Both are already producing wrong numbers against the 92 mappings that exist~~ —
+**corrected 2026-08-25: neither ever did.** The 92 mappings resolved to no inventory and
+belonged to a restaurant no webhook addresses, so nothing was ever computed against them
+(see the correction under §1's row-count table). Both defects were real but **latent**, armed
+for the first venue rather than firing; both were fixed on 2026-08-24 while the exposure was
+still zero rows. The `sale_unit` one would have silently corrupted the first real venue's
+stock count. They are #1 and #2 below.
 
 ---
 

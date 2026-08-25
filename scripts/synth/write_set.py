@@ -42,6 +42,18 @@ SYNTH_WRITE_SET: list[str] = [
     # can't resolve to an inventory item here instead of dropping it
     # (decision B20) — same leakage risk as pos_checks above.
     "pos_unresolved_lines",
+    # Written INDIRECTLY by CatalogMatcherService.pullAndMatch, not by seed.py:
+    # auto-map writes pos_item_mappings and queueProposal writes
+    # pos_catalog_match_proposals. Both were missing here until 2026-08-25, and
+    # the omission is what left 92 production mappings pointing at
+    # restaurant_inventory rows teardown had already deleted (ADR 0012) — the
+    # same "easy to forget, and forgetting it is leakage" case spelled out for
+    # pos_checks and pos_unresolved_lines above, missed for the two tables whose
+    # rows OUTLIVE the tenant instead of merely surviving alongside it. A
+    # mapping is worse than an orphan check: it names a stock target, so a POS
+    # line matching it skips the unresolved queue and depletes nothing.
+    "pos_item_mappings",
+    "pos_catalog_match_proposals",
     # SimPOS testbed tables (decisions C23/C24): the fake POS terminal's own
     # state, seeded once from the sim menu then free to diverge (that
     # divergence is the whole point — it's what the drift agent finds).

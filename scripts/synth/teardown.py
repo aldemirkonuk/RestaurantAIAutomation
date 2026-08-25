@@ -37,6 +37,14 @@ DELETE_ORDER: list[str] = [
     "pos_checks",
     # Same reasoning — nothing references pos_unresolved_lines.
     "pos_unresolved_lines",
+    # Written indirectly by CatalogMatcherService.pullAndMatch. Ordered BEFORE
+    # restaurant_inventory on purpose: since 2026-08-25 pos_item_mappings has an
+    # FK on inventory_id with ON DELETE CASCADE, so the inventory delete would
+    # clear the mappings on its own — but this file deletes children explicitly
+    # rather than leaning on implicit cascade (see the simpos_* note below), and
+    # pos_catalog_match_proposals has no such FK, so it would otherwise leak.
+    "pos_item_mappings",
+    "pos_catalog_match_proposals",
     # SimPOS testbed tables. Children before parents even though the FKs are
     # ON DELETE CASCADE/SET NULL — explicit order, not implicit cascade.
     "simpos_check_lines",
@@ -263,6 +271,10 @@ def _handler_organizations(
 TEARDOWN_HANDLERS: dict[str, Callable[..., None]] = {
     "pos_checks": _handler_by_restaurant("pos_checks"),
     "pos_unresolved_lines": _handler_by_restaurant("pos_unresolved_lines"),
+    "pos_item_mappings": _handler_by_restaurant("pos_item_mappings"),
+    "pos_catalog_match_proposals": _handler_by_restaurant(
+        "pos_catalog_match_proposals"
+    ),
     "simpos_check_lines": _handler_by_restaurant("simpos_check_lines"),
     "simpos_checks": _handler_by_restaurant("simpos_checks"),
     "simpos_tables": _handler_by_restaurant("simpos_tables"),
