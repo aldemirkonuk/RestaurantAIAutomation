@@ -8,11 +8,18 @@ tier: plus
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[recommendations]]", "[[settings]]"]
 ---
 
 # /recommendations/catalog — Insight Catalog
+
+## Surface — buttons → where they go
+
+- **← Recommendations** → [[recommendations]] `/recommendations`
+- **Open Settings** (blocked-type explainer) → [[settings]] `/settings`
+- **Export** → (in-page download via ExportMenu)
+- **Copy link** (per type) → clipboard deep link
 
 ## 1. Purpose
 

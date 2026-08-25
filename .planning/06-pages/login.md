@@ -8,11 +8,18 @@ tier: public
 signals_today: none
 rebrand_strings: 3
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]", "[[PAGE_MAP]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[PAGE_MAP]]", "[[dashboard]]", "[[forgot-password]]", "[[register]]"]
 ---
 
 # /login
+
+## Surface — buttons → where they go
+
+- **Sign In** → API `POST /api/v1/auth/login`, then the `?redirect=` target or [[dashboard]] `/`
+- **Google sign-in / One Tap** → API `POST /api/v1/auth/oauth/google`, same redirect
+- **Forgot password?** → [[forgot-password]] `/forgot-password`
+- **Create one now** → [[register]] `/register`
 
 ## 1. Purpose
 Sign in with email/password or Google. The front door for every returning user (owner, staff, dev alike). Gmail addresses are auto-routed to Google's account chooser instead of attempting a password (`Login.tsx:35-37`); OAuth-only accounts flagged by the backend (`code: OAUTH_ONLY`) get the same treatment (`Login.tsx:52-58`).

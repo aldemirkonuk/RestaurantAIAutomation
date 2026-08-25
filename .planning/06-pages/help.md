@@ -8,11 +8,20 @@ tier: core
 signals_today: partial
 rebrand_strings: 4
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]", "[[privacy]]", "[[sommelier]]", "[[services]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[privacy]]", "[[sommelier]]", "[[services]]", "[[get-started]]", "[[settings]]", "[[profile]]"]
 ---
 
 # /help — Help & Support
+
+## Surface — buttons → where they go
+
+- **Email support** → external `mailto:` (support address)
+- **Slack** → external — WineOps support Slack workspace
+- **Open app guide** → [[get-started]] `/get-started?tab=use`
+- **Manage services** → [[settings]] `/settings?tab=services`
+- **Open Wine Agent** → [[sommelier]] `/sommelier` (`/wineagent` is still a placeholder)
+- **Profile link (footer)** → [[profile]] `/profile`
 
 ## 1. Purpose
 Recovery hub: support channels (email + Slack), 4 FAQ stubs, and jump-off cards to

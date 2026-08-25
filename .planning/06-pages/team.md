@@ -8,11 +8,24 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
 # /team — Team Command
+
+## Surface — buttons → where they go
+
+- **Invite member / Add staff** (manager) → (modal — InviteTeamDialog)
+- **Publish week / Re-publish** (manager) → API `POST /restaurants/:rid/team/schedules/:scheduleId/publish`
+- **Copy last week** (manager) → API `POST /restaurants/:rid/team/schedules/copy-week`
+- **Broadcast crew** (manager) → API `POST /restaurants/:rid/team/broadcast`
+- **Import sheet** (manager) → (modal — ShiftImportModal)
+- **Print week** (manager) → (new browser window — printable schedule sheet)
+- **Got it** (staff, acknowledge schedule) → API `POST /restaurants/:rid/team/schedules/:scheduleId/acknowledge`
+- **Claim** (staff, cover offer) → API `POST /restaurants/:rid/team/shifts/:shiftId/assign`
+- **Request time off this week** (staff) → API `POST /restaurants/:rid/team/time-off`
+- (no page-to-page links — dead-end in the page graph)
 
 ## 1. Purpose
 

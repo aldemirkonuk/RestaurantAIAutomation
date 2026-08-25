@@ -8,11 +8,15 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[receipts]]"]
 ---
 
 # /credits — redirect → /receipts?tab=credits
+
+## Surface — buttons → where they go
+
+- **(immediate redirect, no UI)** → [[receipts]] `/receipts?tab=credits`
 
 ## 1. Purpose
 Compatibility route. Vendor credit claims (short/damaged deliveries → credit ledger)

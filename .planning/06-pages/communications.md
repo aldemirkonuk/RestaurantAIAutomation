@@ -8,11 +8,18 @@ tier: core
 signals_today: none
 rebrand_strings: 3
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[documents-reports]]"]
 ---
 
 # /communications — Communications
+
+## Surface — buttons → where they go
+
+- **Templates / Send History / Scheduled Reports / Procurement Emails tabs** → (on this page)
+- **New Email / SMS template** → (builder on this page)
+- **Generate report now** → API `POST /reports/generate`; success toast's **Open** → [[documents-reports]] `/documents-reports`
+- **Delete schedule** → API (report-schedule delete)
 
 ## 1. Purpose
 

@@ -8,11 +8,21 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]", "[[distributors]]", "[[promotions]]", "[[vendor-prices]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[distributors]]", "[[promotions]]", "[[vendor-prices]]", "[[orders]]"]
 ---
 
 # /providers — vendor roster + distributor discovery
+
+## Surface — buttons → where they go
+
+- **Add provider** → (modal) → API `POST /api/v1/providers`
+- **View orders** (row menu) → [[orders]] `/orders?provider=<id>`
+- **Discover tab** → renders the [[distributors]] map inline (no route change)
+- **Email vendor** → (QuickGmailModal on this page)
+- **Call** → external `tel:<phone>`
+- **Open website** → external vendor site
+- **Address** → external Google Maps search
 
 ## 1. Purpose
 Owner/manager vendor hub with two tabs (`Providers.tsx:146`): **mine** — the

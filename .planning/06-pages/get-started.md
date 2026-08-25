@@ -8,11 +8,24 @@ tier: core
 signals_today: partial
 rebrand_strings: 5
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]", "[[onboarding]]", "[[verify-email]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[onboarding]]", "[[verify-email]]", "[[dashboard]]", "[[inventory]]", "[[orders]]", "[[providers]]", "[[settings]]", "[[sommelier]]"]
 ---
 
 # /get-started
+
+## Surface — buttons → where they go
+
+- **Go to Dashboard (header)** → [[dashboard]] `/`
+- **Activate: Scan Photo / Upload File / Manual Entry** → (import flow on this page → review → threshold step)
+- **Success screen: open inventory** → [[inventory]] `/inventory`
+- **Card: Import your wine list** → (switches to Activate tab)
+- **Card: Check inventory & alerts** → [[inventory]] `/inventory`
+- **Card: Create & track orders** → [[orders]] `/orders`
+- **Card: Add a vendor** → [[providers]] `/providers`
+- **Card: Invite your team** → [[settings]] `/settings?tab=team`
+- **Card: Wine Agent** → [[sommelier]] `/sommelier`
+- **Card: Services & permissions** → [[settings]] `/settings?tab=services`
 
 ## 1. Purpose
 The live activation surface: **Activate** tab (import your wine list via Scan Photo / Upload File / Manual Entry → review screen → one-time low-stock threshold step) and **Use the app** tab (seven guide cards into the main surfaces + Wine Agent explainer). "Activated" = menu + threshold (`GetStarted.tsx:239-240`). Staff get a separate read-only welcome with no upload/threshold/invite steps (`GetStarted.tsx:217-221` → `StaffWelcome`).

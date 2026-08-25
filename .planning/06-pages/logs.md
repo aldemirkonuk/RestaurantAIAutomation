@@ -8,11 +8,15 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[simpos-order-log]]"]
 ---
 
 # /logs
+
+## Surface — buttons → where they go
+
+- (no outbound navigation — dead-end page)
 
 ## 1. Purpose
 Read-only correlated timeline for the active restaurant across six sources: POS checks, agent decisions, stock movements, procurement documents, audit log, and (when filtered) the event store (`LogsTimelinePage.tsx:1-3,14-20`). Filter by correlation id via `?correlationId=` or the search box; clicking any event's correlation id pivots the whole timeline onto that thread (`LogsTimelinePage.tsx:171-179`). This is the "show your working" surface for anything an agent did to inventory.

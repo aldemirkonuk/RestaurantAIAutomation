@@ -8,11 +8,16 @@ tier: public
 signals_today: none
 rebrand_strings: 4
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[login]]", "[[reset-password]]"]
 ---
 
 # /forgot-password
+
+## Surface — buttons → where they go
+
+- **Send reset link** → API `POST /api/v1/auth/request-password-reset`
+- **Back to sign in** → [[login]] `/login`
 
 ## 1. Purpose
 Request a password-reset email. Deliberately enumeration-resistant: the UI has no "email not found" branch because the backend always answers success (`ForgotPassword.tsx:27-32`, reasoning mirrors `AuthService#requestPasswordReset`). Only genuinely non-account-revealing failures render: 429 throttle and generic 5xx (`ForgotPassword.tsx:37-41`).

@@ -8,11 +8,17 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[orders]]"]
 ---
 
 # /inventory — Inventory Command
+
+## Surface — buttons → where they go
+
+- **Row menu / row expansion: Draft PO** → [[orders]] `/orders?draft=new&inventoryId=…&qty=…`
+- **Row expansion: View ledger** → `/documents?ledger=…` (no such route exists — broken destination)
+- **Receiving verification / Spot count / Cellar map** → (workspaces and views on this page)
 
 ## 1. Purpose
 

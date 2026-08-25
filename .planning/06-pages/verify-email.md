@@ -8,11 +8,17 @@ tier: public
 signals_today: none
 rebrand_strings: 3
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]", "[[register]]", "[[get-started]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[register]]", "[[get-started]]", "[[login]]", "[[dashboard]]"]
 ---
 
 # /verify-email
+
+## Surface — buttons → where they go
+
+- **Verify My Email** → API `POST /api/v1/auth/verify-email`, then auto-redirect → [[get-started]] `/get-started` (or [[dashboard]] `/` when a menu is already uploaded)
+- **Resend Verification Email** → API `POST /api/v1/auth/resend-verification` (client rate-limit 1/min)
+- **Back to Sign In** → [[login]] `/login`
 
 ## 1. Purpose
 Post-registration email-verification gate for Path B (restaurant-creating) users. Two modes: **without `?token`** — "Check Your Email" instructions plus a resend button (client-side rate-limited 1/min, T-26-05-03, `VerifyEmail.tsx:66-70`); **with `?token`** — a "Verify My Email" button that redeems the token, stores fresh JWTs carrying `emailVerified: true` (`VerifyEmail.tsx:44-45`), then routes to `/get-started` — or straight to `/` when a menu is already uploaded (re-verification flows, `VerifyEmail.tsx:48-53`).

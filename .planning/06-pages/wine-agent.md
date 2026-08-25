@@ -8,11 +8,15 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[wineagent-alias]]", "[[sommelier]]"]
 ---
 
 # /wine-agent — Wine Agent (placeholder)
+
+## Surface — buttons → where they go
+
+- (no outbound navigation — dead-end page)
 
 ## 1. Purpose
 Intended home of the hands-off inventory/ordering agent. Today it renders a generic

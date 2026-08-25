@@ -8,11 +8,17 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]", "[[TIER-MAP]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[TIER-MAP]]", "[[orders]]"]
 ---
 
 # /wines — Wine Library
+
+## Surface — buttons → where they go
+
+- **Add Wine** → (modal — AddWineSelectionModal → scanner / manual-entry flows)
+- **Add to Inventory** → (modal — AddToInventoryFromLibraryModal)
+- **Reorder → Contact Provider** → stages the pending order, then hard-navigates → [[orders]] `/orders`
 
 ## 1. Purpose
 Browse the master wine catalogue as this restaurant sees it — search/filter/sort ~500

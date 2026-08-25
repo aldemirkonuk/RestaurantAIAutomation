@@ -8,11 +8,20 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[orders]]", "[[inventory]]"]
 ---
 
 # /notifications — Notifications
+
+## Surface — buttons → where they go
+
+- **Notification row / Take Action** → route from the notification's `actionUrl` (varies by type)
+- **Review & Approve Draft** (draft_ready detail) → [[orders]] `/orders?draft=<conversationId>`
+- **Mark all as read** → API `PATCH /api/v1/notifications/read/all`
+- **Settings** → (in-page tab, `/notifications?tab=settings`)
+- **One-tap action "Open"** → [[inventory]] `/inventory` or [[orders]] `/orders` by action type; gmail actions point at `/emails` (no such route)
+- **Copy link** → clipboard deep link back to this page
 
 ## 1. Purpose
 

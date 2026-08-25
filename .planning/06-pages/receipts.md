@@ -8,11 +8,17 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
 # /receipts — Receipts & Credits
+
+## Surface — buttons → where they go
+
+- **Verify** (needs-review lane) → API `POST /api/v1/procurement/documents/:id/verify`
+- **Credit state buttons** → API `POST /api/v1/procurement/credits/:id/transition`
+- (no outbound navigation — dead-end page)
 
 ## 1. Purpose
 

@@ -8,11 +8,17 @@ tier: public
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[providers]]", "[[vendor-prices]]"]
 ---
 
 # /v/:slug — public vendor catalogue
+
+## Surface — buttons → where they go
+
+- **Contact email / phone** → external `mailto:` / `tel:` links
+- **Website** → external vendor site URL
+- (no in-app navigation — dead-end in the page graph)
 
 ## 1. Purpose
 A vendor's published wine catalogue for *their* customers: searchable, sortable

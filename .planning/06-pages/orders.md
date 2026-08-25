@@ -8,11 +8,21 @@ tier: core
 signals_today: none
 rebrand_strings: 4
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[providers]]"]
 ---
 
 # /orders — Orders
+
+## Surface — buttons → where they go
+
+- **Create Order** → (modal on this page) → API `POST /api/v1/procurement/orders`
+- **Approve** → API `POST /api/v1/procurement/orders/:id/approve`
+- **Mark as delivered** → API `POST /api/v1/procurement/orders/:id/deliver`
+- **Receive at the door** (row menu) → [[receiving-door]] `/receiving/:orderId/door`
+- **Go to Providers** (no-vendor guard modal) → [[providers]] `/providers`
+- **Export** → (in-page download via ExportMenu)
+- **Draft email approval panel** → (panel on this page — approve/send vendor email)
 
 ## 1. Purpose
 

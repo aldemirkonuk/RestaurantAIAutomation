@@ -8,11 +8,19 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
 # /calendar-classic — Calendar (superseded monolith)
+
+## Surface — buttons → where they go
+
+- **New Event / click a day** → (create-event modal on this page)
+- **Event click** → (detail/edit modal on this page)
+- **New event type** → (custom-type modal on this page)
+- **Save with reminder** → API `createNotification` (client-scheduled reminder)
+- (no outbound navigation — dead-end page)
 
 ## 1. Purpose
 

@@ -8,11 +8,18 @@ tier: plus
 signals_today: none
 rebrand_strings: 2
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[settings]]", "[[orders]]", "[[inventory]]", "[[team]]", "[[promotions]]", "[[recommendations]]", "[[recommendations-catalog]]"]
 ---
 
 # /reports — Reports
+
+## Surface — buttons → where they go
+
+- **Configure POS** (placeholder-data banner) → [[settings]] `/settings?tab=pos`
+- **Act on engine insight** → by category: [[orders]], [[inventory]], [[team]], [[promotions]], or stays here (sales/efficiency/tables/goals); fallback [[recommendations]]
+- **Browse table insight types** (seating panel menu) → [[recommendations-catalog]] `/recommendations/catalog?dim=table`
+- **Open in Inventory** (zone menu) → [[inventory]] `/inventory`
 
 ## 1. Purpose
 

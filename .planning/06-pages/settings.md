@@ -8,11 +8,22 @@ tier: core
 signals_today: none
 rebrand_strings: 8
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[profile]]", "[[help]]", "[[privacy]]", "[[authorize-integration]]"]
 ---
 
 # /settings — Settings
+
+## Surface — buttons → where they go
+
+- **Open Profile** (staff "ask a manager" view) → [[profile]] `/profile`
+- **Help & Support** (staff "ask a manager" view) → [[help]] `/help`
+- **Privacy** link (services tab) → [[privacy]] `/privacy`
+- **Connect** per integration (features tab) → [[authorize-integration]] `/authorize/:integrationId`
+- **Invite member** (team tab) → (modal on this page — InviteTeamDialog)
+- **Add location / chain management** (locations tab) → (modals on this page)
+- **Docs** per POS provider (pos tab) → external provider docs URL
+- **iCal subscribe URL** (calendar tab) → external `GET /api/v1/calendar/feed/:token.ics`
 
 ## 1. Purpose
 

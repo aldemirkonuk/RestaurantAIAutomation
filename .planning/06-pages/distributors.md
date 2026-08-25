@@ -8,11 +8,15 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[providers]]"]
 ---
 
 # /distributors — legacy redirect → /providers?tab=discover
+
+## Surface — buttons → where they go
+
+- **(immediate redirect, no UI)** → [[providers]] `/providers?tab=discover`
 
 ## 1. Purpose
 Compatibility route only. Distributor discovery moved into Providers as its

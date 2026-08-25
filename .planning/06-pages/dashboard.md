@@ -8,11 +8,25 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[reports]]", "[[inventory]]", "[[orders]]", "[[calendar]]", "[[wines]]"]
 ---
 
 # / — Dashboard
+
+## Surface — buttons → where they go
+
+- **KPI card: Revenue** → [[reports]] `/reports` (its modal's "Full report" → `/reports?focus=revenue`)
+- **KPI card: Inventory** → [[inventory]] `/inventory`
+- **KPI card: Orders** → [[orders]] `/orders`
+- **KPI card: Low stock** → [[inventory]] `/inventory?filter=low`
+- **Reorder / Reorder selected** → [[orders]] `/orders?draft=new&…`
+- **Low-stock row** → [[inventory]] `/inventory?highlight=…`
+- **Calendar strip day / Add Event / important date** → [[calendar]] `/calendar?date=…` / `?openModal=true`
+- **Recent order row / View all** → [[orders]] `/orders?orderId=…`
+- **Top wine row** → [[wines]] `/wines?search=…` or `?wineId=…`
+- **Reports View all** → [[reports]] `/reports`
+- **Quick Actions panel** → user-configured shortcuts (any internal route or external URL)
 
 ## 1. Purpose
 

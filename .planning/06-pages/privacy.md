@@ -8,11 +8,17 @@ tier: public
 signals_today: none
 rebrand_strings: 4
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]", "[[help]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[help]]", "[[settings]]", "[[profile]]"]
 ---
 
 # /privacy — privacy & data notice
+
+## Surface — buttons → where they go
+
+- **Settings → Services & permissions** → [[settings]] `/settings`
+- **Settings → Integrations** → [[settings]] `/settings`
+- **your profile** → [[profile]] `/profile`
 
 ## 1. Purpose
 Plain-language privacy notice "written to match what the code actually does rather

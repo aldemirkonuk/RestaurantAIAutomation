@@ -8,11 +8,19 @@ tier: core
 signals_today: none
 rebrand_strings: 1
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[studio]]", "[[studio-queue]]"]
 ---
 
 # /studio/certify — certified contributors admin
+
+## Surface — buttons → where they go
+
+- **Studio** (header) → [[studio]] `/studio`
+- **Queue** (header) → [[studio-queue]] `/studio/queue`
+- **Invite contributor** → (modal — InviteDialog) → API `POST /api/v1/studio/invite`
+- **Revoke** → API `PATCH /api/v1/studio/contributors/:userId/revoke`
+- **Enable / Disable** → API `PATCH /api/v1/studio/contributors/:userId/enable|disable`
 
 ## 1. Purpose
 Manage the certified-contributor roster: invite (single-use link), revoke, and

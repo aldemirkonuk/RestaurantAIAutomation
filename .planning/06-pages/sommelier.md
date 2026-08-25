@@ -8,11 +8,17 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[wineagent-alias]]", "[[wines]]"]
 ---
 
 # /sommelier — Sommelier AI chat
+
+## Surface — buttons → where they go
+
+- **Send** → API `POST {agent-orchestrator}/api/v1/sommelier/chat`
+- **New Chat / persona picker / rename / delete** → (in-page state only)
+- (no page-to-page links — dead-end in the page graph)
 
 ## 1. Purpose
 Chat assistant for pairings, pricing, reorders and staff coaching, with three personas

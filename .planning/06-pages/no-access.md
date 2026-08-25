@@ -8,11 +8,16 @@ tier: public
 signals_today: none
 rebrand_strings: 2
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[invite-landing]]", "[[login]]"]
 ---
 
 # /no-access
+
+## Surface — buttons → where they go
+
+- **Sign out** → API `POST /api/v1/auth/logout`, session cleared → [[login]] `/login`
+- **Back to sign in** → [[login]] `/login`
 
 ## 1. Purpose
 Dead-end card for a signed-in user with no restaurant membership: shows their email, tells them to ask an owner for an invite link, offers Sign out (`NoAccess.tsx:24-31`, calls `logout`) and Back to sign in.

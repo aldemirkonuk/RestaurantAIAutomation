@@ -24,89 +24,23 @@ See [FUTURES.md](./FUTURES.md). Summary:
 | 2 | Food → bakery MVP (ingredients, recipes, finished goods, waste, POS) then full bakery north star |
 | 3 | Rest of kitchen food categories |
 
-**Profile types:** restaurant **members** (owner/manager/staff, per-restaurant roles) and — as a futures addition — **guests**: customers who visit these restaurants, with Beli-style ratings and **points earned for sharing/recommending**. Guest signal is demand-side input to the backend, not a standalone social product. See FUTURES.md §7 and ROADMAP backlog 999.1.
+**Profile types:** restaurant **members** (owner/manager/staff, per-restaurant roles) and — as a futures addition — **guests**: customers who visit these restaurants, with Beli-style ratings and **points earned for sharing/recommending**. Guest signal is demand-side input to the backend, not a standalone social product. See FUTURES.md §7.
 
-**Ask AI:** global entry that **creates allowlisted actions** (draft PO, vendor email, calendar, inventory drafts, nav) with human confirm — eases complexity as the product expands. See FUTURES.md §8 and ROADMAP backlog 999.5.
+**Ask AI:** global entry that **creates allowlisted actions** (draft PO, vendor email, calendar, inventory drafts, nav) with human confirm — eases complexity as the product expands. See FUTURES.md §8.
 
-## Current Milestone: v2.0 Backend Kitchen Architecture — Production-Grade Agent System
+## Current Milestone: P2 — Web complete + deploy
 
-**Goal:** Transform 24 Level 0-1 agents into Level 4 (Resilient) production agents, starting with 4 core agents in the golden path workflow, deployed and tested against **real POS data from a live restaurant** (first connector: Toast, as one adapter among many).
+Locked 2026-08-25, [ADR 0018](decisions/0018-p2-plan-of-record.md). Docs
+bulletproof first; the founder approves the feature set before build; then the
+web app feature-complete and deployed. Stages and position: [STATE.md](STATE.md).
+Order of operations: [ROADMAP.md](ROADMAP.md).
 
-**Target features:**
-- BaseAgent infrastructure upgrade (6 additions: idempotency, decision logging, structured JSON logging, distributed tracing, dead letter queue, saga state)
-- Wave 1 agent hardening: InventoryEngine, POSIntegrationAgent, NotificationAgent, ReportingAgent → Level 4
-- Golden path E2E: **any POS webhook** → POSIntegrationAgent → InventoryEngine → NotificationAgent → Manager gets SMS/email alert
-- Infrastructure tables: saga state, transactional outbox, decision log, idempotency dedup, event store
-- Observability foundation: Sentry error tracking + structured JSON logs + per-agent health dashboards
-- Production deployment: Vercel (frontend) + Supabase Cloud (DB) + Railway/Fly.io (Python services)
-- Wave 2-6: Expand all remaining 20 agents to Level 4 following the same pattern
-
-## Requirements
-
-### v1.0 — Completed
-All v1.0 requirements validated. See REQUIREMENTS.md for full list (CLVS-01..07, GMFL-01..05, YOLO-01..05, HAIKU-01..05, COST-01..03, QUAL-01..02, IMGX-01..07, CONF-01..08, WEBV-01..05, ONT-01..05, CRIT-01..05, TEMP-01..05, RSRCH-01..06, STUDIO-01..08, E2E-01..10, SLOC-01..03, UNIF-01..04, ALOC-01..08, SLMGR-01..03).
-
-### v2.0 — Active
-
-**Infrastructure (INFRA)**
-- [ ] INFRA-01: Idempotency mixin — message_id dedup via Redis/PG in BaseAgent
-- [ ] INFRA-02: Decision logging — log_decision() method + decision_log table
-- [ ] INFRA-03: Structured JSON logging — swap logger format, add correlation_id
-- [ ] INFRA-04: Distributed tracing — correlation_id propagation across agents
-- [ ] INFRA-05: Dead letter queue — publish to dlq.{agent_name} after max retries
-- [ ] INFRA-06: Saga state helpers — start_saga, advance_saga, compensate_saga + saga table
-- [ ] INFRA-07: Transactional outbox table + background publisher worker
-- [ ] INFRA-08: Event store table — append-only, for critical aggregates
-
-**Bug Fixes (BUG)**
-- [ ] BUG-01: InventoryEngine race condition — add optimistic locking
-- [ ] BUG-02: InventoryEngine dead code removal (update_queue, batch_size)
-- [ ] BUG-03: POSIntegrationAgent hmac.new → hmac.HMAC fix
-- [ ] BUG-04: POSIntegrationAgent wine detection beyond keywords
-- [ ] BUG-05: POSIntegrationAgent signature verification raw payload fix
-- [ ] BUG-06: POSIntegrationAgent refund logic separation from void
-- [ ] BUG-07: NotificationAgent persist rate limit counters in Redis
-- [ ] BUG-08: NotificationAgent store batch processor task reference
-- [ ] BUG-09: ReportingAgent self.db → self.database fix
-- [ ] BUG-10: ReportingAgent SMS append outside if-block fix
-- [ ] BUG-11: ReportingAgent implement real inventory + sales reports
-- [ ] BUG-12: ReportingAgent implement PDF export
-
-**Hardening (HARD)**
-- [ ] HARD-01: InventoryEngine to Level 4 (idempotency, decision log, optimistic lock, tests)
-- [ ] HARD-02: POSIntegrationAgent to Level 4 (webhook dedup, provider-agnostic polling fallback, tests)
-- [ ] HARD-03: NotificationAgent to Level 4 (delivery tracking, DLQ, persisted rate limits, tests)
-- [ ] HARD-04: ReportingAgent to Level 4 (real reports, real export, idempotent scheduling, tests)
-
-**Golden Path E2E (E2E-v2)**
-- [ ] E2E-v2-01: POS webhook (any provider) → POSIntegrationAgent → wine sale event published
-- [ ] E2E-v2-02: Wine sale event → InventoryEngine → stock decremented + state changed
-- [ ] E2E-v2-03: Stock threshold breach → NotificationAgent → manager gets SMS/email
-- [ ] E2E-v2-04: All events → ReportingAgent → dashboard data updated
-- [ ] E2E-v2-05: Full path integration test with real POS data from a live provider
-- [ ] E2E-v2-06: Chaos test — kill agent mid-flow → verify recovery
-
-**Observability (OBS)**
-- [ ] OBS-01: Sentry integration for error tracking
-- [ ] OBS-02: Per-agent health dashboard endpoint
-- [ ] OBS-03: Structured JSON log aggregation
-- [x] OBS-04: Business metrics (stock updates/sec, notification delivery rate, report generation time, webhook latency) — `business` block of `GET /api/v1/metrics`, built 2026-08-04
-
-**Deployment (DEP)**
-- [ ] DEP-01: Frontend deployed to Vercel
-- [ ] DEP-02: Supabase Cloud database with migrations applied
-- [ ] DEP-03: Python services on Railway/Fly.io (Docker)
-- [ ] DEP-04: RabbitMQ on CloudAMQP
-- [ ] DEP-05: Redis on Upstash
-- [ ] DEP-06: POS credentials configured for the first live restaurant (Toast adapter is ready; five env vars)
-
-### Out of Scope (v2.0)
-- Waves 2-6 agent hardening (20 remaining agents) — future milestone
-- Deep multi-POS parity (Square, Clover beyond scaffolding) — future; the **positioning** is already POS-agnostic
-- Invoice OCR pipeline — separate pipeline
-- Mudavym beverage / bakery / kitchen expansion — see FUTURES.md + ROADMAP backlog 999.2–999.4
-- Guest profiles / points — see FUTURES.md §7 + ROADMAP backlog 999.1
-- Ask AI action creation — see FUTURES.md §8 + ROADMAP backlog 999.5
+Prior milestones: v1.0 complete (2026-04-08); v2.0 closed `gaps_found`
+(2026-07-28, [audit](archive/v2.0-MILESTONE-AUDIT.md)) — its unfinished work is
+the live defect register [v3.0-TECH-DEBT.md](v3.0-TECH-DEBT.md), which feeds
+P2.3's proposal rather than a phase plan of its own; P1 Neural Footprint
+instrumentation closed 2026-08-25 (ADRs 0006/0008/0017). Requirement IDs and
+their status live in [REQUIREMENTS.md](REQUIREMENTS.md), never here.
 
 ## Context
 
@@ -114,15 +48,7 @@ All v1.0 requirements validated. See REQUIREMENTS.md for full list (CLVS-01..07,
 
 **Live camera capture stack (target, locked 2026-07-27):** RF-DETR for live preview boxes → PaddleOCR (or DeepSeek-OCR on GPU) on shutter → Gemini for field parse (evaluate Qwen2.5-VL / RolmOCR later). Never run full OCR every live frame — boxes live; OCR on shutter. See [SCANNING_PIPELINE_SETUP.md](../SCANNING_PIPELINE_SETUP.md#live-camera-capture-stack-target--2026-07-27).
 
-**v2.0 motivation:** 24 agents exist but all are Level 0-1 (prototype quality). BaseAgent already provides Level 3 infrastructure (circuit breaker, retry, backpressure, metrics, health checks, graceful shutdown). Gap to Level 4 is 6 additions to BaseAgent + per-agent bug fixes and hardening.
-
-**Agent system architecture:**
-- `services/agent-orchestrator/core/base_agent.py` — BaseAgent with circuit breaker, retry, backpressure, lifecycle management (already Level 3)
-- `services/agent-orchestrator/agents/` — 24 agents, all Level 0-1
-- Infrastructure: Docker Compose (Postgres, RabbitMQ, Redis)
-- Wave 1 agents (golden path): InventoryEngine (326 lines, Level 1.5), POSIntegrationAgent (520 lines, Level 1.5), NotificationAgent (1,761 lines, Level 2), ReportingAgent (682 lines, Level 0.5)
-
-**Surgical audit completed (2026-04-09):** Deep code review of all 4 Wave 1 agents + BaseAgent. Bug lists, maturity levels, gap-to-Level-4 documented. See memory: `agent_surgical_audit.md`.
+**Agent system:** `services/agent-orchestrator/` — BaseAgent (Level 3+ infrastructure: circuit breaker, retry, backpressure, idempotency, decision logging, DLQ) and ~24 agents at mixed maturity; the golden-path four were hardened in v2.0. Every model call in both runtimes emits a `neural_footprint_event` row (P1).
 
 **First user:** a Turkish restaurant in SF, connecting through the Toast adapter. Full API access available.
 
@@ -131,7 +57,7 @@ The provider registry carries 27 providers; Toast is `partial`, Square and Clove
 with normalizers implemented (`pos-provider.registry.ts:58,71,83`). No document should present
 Toast as the product's POS. See OD-38.
 
-**Deployment target:** Vercel (frontend) + Supabase Cloud (DB) + Railway/Fly.io (Python, ~$10-20/mo) + CloudAMQP (RabbitMQ) + Upstash (Redis).
+**Deployment (live):** Vercel (web) + Supabase Cloud (DB) + Railway (NestJS gateway + Python orchestrator) + CloudAMQP (RabbitMQ) + Upstash (Redis).
 
 ## Constraints
 
@@ -140,13 +66,15 @@ Toast as the product's POS. See OD-38.
 - **No revenue pressure**: Build right, not fast
 - **Deployment budget**: ~$10-20/month (Vercel free + Supabase free + Railway $5-10 + CloudAMQP free + Upstash free)
 - **Architectural defaults locked**: RabbitMQ+saga, PG events, Redis, Sentry+logs, Diamond testing
-- **Backward compatibility**: v2.0 infrastructure must not break v1.0 extraction pipeline
+- **Backward compatibility**: new infrastructure must not break the v1.0 extraction pipeline
 - **Real data**: All E2E testing against real POS data from a live restaurant — never mock-only
 - **Expansion quality bar**: Non-wine categories must meet wine-depth extraction + photos (FUTURES.md); no thin SKU rows
+- **Docs before features** (ADR 0018): the founder approves the feature set before build; every decision gets a record; claims get executable checks
 
 ## Current State
 
-v1.0 complete (2026-04-08) — 17 phases, 73 plans, 96% completion. All extraction, enrichment, verification, ontology, research, and UI phases done. v2.0 milestone setup in progress — surgical audit of Wave 1 agents complete, requirements defined, phase sequencing planned (Phases 18-22+). Product futures locked 2026-07-26 as **Mudavym** (see FUTURES.md).
+Lives in [STATE.md](STATE.md) — one page, one truth. This file holds identity
+and decisions only, so the two can never disagree about what is current.
 
 ## Key Decisions
 
@@ -163,6 +91,7 @@ v1.0 complete (2026-04-08) — 17 phases, 73 plans, 96% completion. All extracti
 | 7 core principles | Determinism, idempotency, replayability, observability, isolation, temporal reasoning, evolvability | — v2.0 |
 | Real POS data from day 1 | A live restaurant, first via the Toast adapter — no mock-only testing | — v2.0 |
 | **POS-agnostic positioning** | Bridge, not a POS; Toast is one adapter of 27, never the framing | Locked 2026-08-24 — OD-38 |
+| **P2 plan of record** | Spine reset → page graph → approved feature set → build → deploy | Locked 2026-08-25 — [ADR 0018](decisions/0018-p2-plan-of-record.md) |
 
 ### v1.0 Decisions (archived)
 | Decision | Rationale | Outcome |
@@ -177,4 +106,4 @@ v1.0 complete (2026-04-08) — 17 phases, 73 plans, 96% completion. All extracti
 | No full OCR on live frames | Too slow/expensive; shutter-only OCR | Locked 2026-07-27 — target stack |
 
 ---
-*Last updated: 2026-07-27 — live camera capture stack target (RF-DETR → PaddleOCR → Gemini)*
+*Last updated: 2026-08-25 — current milestone set to P2 (ADR 0018); state moved to STATE.md as the single source.*

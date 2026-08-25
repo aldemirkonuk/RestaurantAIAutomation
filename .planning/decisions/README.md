@@ -32,6 +32,9 @@
 | [0011](0011-pos-sale-volume-contract.md) | POS sale volume — `sale_volume_ml` is the truth, `sale_unit` becomes an open reporting label, and an unresolvable line queues instead of defaulting to a bottle. Kills a silent 5x over-depletion on all 92 production mappings; accepts visible under-depletion in exchange | 2026-08-25 |
 | [0010](0010-gemini-model-retirement.md) | `gemini-3.5-flash-lite` replaces retired `gemini-2.0-flash`/`gemini-pro`; runway beat price. Spend table was wrong (2.5-flash under 8.3x), lite billed as flash, thinking tokens uncounted — all three corrected | 2026-08-24 |
 | [0016](0016-ledgers-must-express-unknown.md) | Ledgers express "unknown" — `api_spend.cost_usd` nullable and `DEFAULT 0.0` dropped, one `unpriced` determination driving both ledgers; every rate row carries a required dated source, so an undated price is a `TypeError` at import; calendar regex fallback reads the email, not the prompt. `gpt-4-turbo` verified correct | 2026-08-25 |
+| [0015](0015-pos-referential-integrity.md) | POS referential integrity — `inventory_id` FK added, 92 orphaned mappings from a deleted tenant removed; ledger writes idempotent | 2026-08-25 |
+| [0017](0017-doneability-verdicts-are-sidecar-claims.md) | Doneability verdicts are sidecar claims (`nf_verdict`, one row per event+basis), never edits to the event; first grader `reconciliation_v1` on invoices only; coverage view ships with the verdict | 2026-08-25 |
+| [0018](0018-p2-plan-of-record.md) | P2 plan of record — milestone `P2 — Web complete + deploy`; spine reset; Surface page graph; existing-first then founder-approved proposal | 2026-08-25 |
 
 ## Proposed — implemented, awaiting a founder lock
 

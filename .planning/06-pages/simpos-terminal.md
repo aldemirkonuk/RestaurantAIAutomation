@@ -8,11 +8,19 @@ tier: public
 signals_today: none
 rebrand_strings: 3
 status: documented
-updated: 2026-08-24
-links: ["[[PAGE-CONTRACT]]", "[[simpos-order-log]]", "[[logs]]"]
+updated: 2026-08-25
+links: ["[[PAGE-CONTRACT]]", "[[simpos-order-log]]", "[[logs]]", "[[dashboard]]"]
 ---
 
 # /simpos/:restaurantId
+
+## Surface — buttons → where they go
+
+- **Check logs in full page** → [[simpos-order-log]] `/simpos/:restaurantId/orders`
+- **Exit to WineOps** (footer) → [[dashboard]] `/`
+- **Close check** → API `POST /simpos/:restaurantId/check/:checkId/close` (server fires the HMAC webhook into PosHub)
+- **Void / comp a line** → API `PATCH /simpos/:restaurantId/lines/:lineId`
+- **Edit POS** (catalog editor) → API `POST /simpos/:restaurantId/catalog`
 
 ## 1. Purpose
 Chrome-free fake POS terminal (decisions C26–C30, `SimposTerminalPage.tsx:1-11`): open check + loss tracker, wine→vintage→size menu, void/comp lines, Edit POS catalog editor ("drift generator"), disabled Tables 1–20 (C29), and a Receipts/Invoices tab over the fake restaurant's `procurement_documents`. Closing a check makes the *server* HMAC-sign a webhook into PosHub, which depletes real stock — the only channel into WineOps (C25, `services/api/simpos.ts:2-5`). Footer says what it is: "Synthetic test fixture — not a WineOps feature" (`:335`).

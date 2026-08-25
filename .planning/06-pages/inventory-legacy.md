@@ -8,11 +8,21 @@ tier: core
 signals_today: none
 rebrand_strings: 0
 status: documented
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
 # /inventory-legacy — Inventory (parked legacy page)
+
+## Surface — buttons → where they go
+
+- **Add Wine** → (AddWineToInventoryModal on this page)
+- **Reconcile count** → (modal on this page → stock PATCH)
+- **Manual override** → (ManualOverrideModal on this page)
+- **Storage locations** → (StorageManager panel on this page)
+- **Auto-locate** → (AutoLocatePreviewModal on this page)
+- **Reset stock** → (confirm modal on this page)
+- (no outbound navigation — dead-end page)
 
 ## 1. Purpose
 
