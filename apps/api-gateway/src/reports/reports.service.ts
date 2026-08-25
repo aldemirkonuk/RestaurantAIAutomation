@@ -17,6 +17,9 @@ interface GeneratedReportRow {
   pdf_url: string | null;
   excel_url: string | null;
   csv_url: string | null;
+  summary: string | null;
+  report_period_start: string | null;
+  report_period_end: string | null;
   created_at: string;
 }
 
@@ -115,6 +118,32 @@ export class ReportsService {
     return this.mapReportRow(data as GeneratedReportRow);
   }
 
+  /**
+   * OD-45. The Documents page deleted rows from `generated_reports` directly
+   * through the browser Supabase client; the gateway owned every other operation
+   * on this table but had no delete, so there was nothing to route the page to.
+   *
+   * Scoped by `restaurant_id` as well as `id` — the restaurant comes from the JWT,
+   * so a caller cannot delete another tenant's report by guessing a uuid. That
+   * scoping is the substantive difference from the client-side delete it replaces.
+   */
+  async deleteReport(restaurantId: string, reportId: string): Promise<void> {
+    const { error } = await this.databaseService.supabase
+      .from("generated_reports")
+      .delete()
+      .eq("restaurant_id", restaurantId)
+      .eq("id", reportId);
+
+    if (error) {
+      this.logger.error("Failed to delete report", {
+        restaurantId,
+        reportId,
+        error: error.message,
+      });
+      throw error;
+    }
+  }
+
   async scheduleReport(
     restaurantId: string,
     dto: ScheduleReportDto,
@@ -201,6 +230,9 @@ export class ReportsService {
       pdfUrl: row.pdf_url ?? undefined,
       excelUrl: row.excel_url ?? undefined,
       csvUrl: row.csv_url ?? undefined,
+      summary: row.summary ?? undefined,
+      periodStart: row.report_period_start ?? undefined,
+      periodEnd: row.report_period_end ?? undefined,
       createdAt: row.created_at,
     };
   }

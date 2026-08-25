@@ -61,6 +61,28 @@ export class ReportsController {
     }
   }
 
+  // ── Literal routes must be declared before the `:id` wildcard ──────────────
+  // Nest registers handlers in declaration order, so `@Get("schedules")` sitting
+  // below `@Get(":id")` meant GET /reports/schedules was answered by getReport()
+  // with reportId = "schedules" — an invalid-uuid 500 for a route the web client
+  // already calls (services/api/reports.ts listReportSchedules). Found while
+  // routing the Documents page through this controller for OD-45.
+  @Get("schedules")
+  @ApiOperation({ summary: "List scheduled reports" })
+  @ApiResponse({ status: 200, type: [ScheduledReportResponseDto] })
+  async listSchedules(
+    @CurrentUser() user: { restaurantId: string },
+  ): Promise<ScheduledReportResponseDto[]> {
+    try {
+      return await this.reportsService.listSchedules(user.restaurantId);
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to fetch report schedules",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Get(":id")
   @ApiOperation({ summary: "Get report details" })
   @ApiResponse({ status: 200, type: ReportResponseDto })
@@ -124,22 +146,6 @@ export class ReportsController {
     }
   }
 
-  @Get("schedules")
-  @ApiOperation({ summary: "List scheduled reports" })
-  @ApiResponse({ status: 200, type: [ScheduledReportResponseDto] })
-  async listSchedules(
-    @CurrentUser() user: { restaurantId: string },
-  ): Promise<ScheduledReportResponseDto[]> {
-    try {
-      return await this.reportsService.listSchedules(user.restaurantId);
-    } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to fetch report schedules",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-
   @Delete("schedules/:id")
   @ApiOperation({ summary: "Delete scheduled report" })
   @ApiResponse({ status: 200, description: "Schedule deleted" })
@@ -153,6 +159,25 @@ export class ReportsController {
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to delete schedule",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // Declared after "schedules/:id" so the two-segment literal route always wins.
+  @Delete(":id")
+  @ApiOperation({ summary: "Delete a generated report" })
+  @ApiResponse({ status: 200, description: "Report deleted" })
+  async deleteReport(
+    @Param("id") reportId: string,
+    @CurrentUser() user: { restaurantId: string },
+  ): Promise<{ success: boolean }> {
+    try {
+      await this.reportsService.deleteReport(user.restaurantId, reportId);
+      return { success: true };
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to delete report",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

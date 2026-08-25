@@ -1344,7 +1344,15 @@ async def _check_daily_budget() -> bool:
             .gte("timestamp", today)
             .execute()
         )
-        total_today = sum(float(r.get("cost_usd", 0)) for r in (result.data or []))
+        # `or 0` not `, 0` — cost_usd is nullable since OD-61, and NULL means the
+        # model had no rate, not that the call was free. `.get("cost_usd", 0)`
+        # returns None for a present-but-NULL key, and float(None) raises
+        # TypeError straight into the fail-open handler below: a single unpriced
+        # call would have silently switched this budget gate OFF for the rest of
+        # the day. Unknown spend cannot be summed, so it is skipped — the same
+        # thing _get_monthly_spend and _preflight_cap_check do, and the same
+        # thing SUM() does in SQL.
+        total_today = sum(float(r.get("cost_usd") or 0) for r in (result.data or []))
         return total_today < settings.research_daily_budget_usd
     except Exception as exc:
         logger.warning("Budget check failed (fail-open): %s", exc)

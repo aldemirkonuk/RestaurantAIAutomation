@@ -45,6 +45,34 @@ jobs:
           echo "::notice::The permitted values are read from §5.1's own table — fix the block, or amend the table if the contract itself is wrong."
           echo "::notice::If the index is merely stale: run 'python3 scripts/build_loop_index.py' and commit the result."
 
+  # OD-44. The UCC contract-formation guardrail exists in two runtimes that ship as
+  # separate containers. They were two hand-written lists under a comment claiming
+  # they were "ported verbatim" — TypeScript carried 19 patterns, Python carried 8,
+  # and Python is the runtime that actually auto-sends. The runtime that could bind
+  # the restaurant to a purchase had the weaker guardrail, and the comment kept that
+  # invisible for as long as nobody counted.
+  #
+  # Syncing the lists fixes today. This job is what stops it recurring: the Python
+  # module is generated from the TypeScript canon, and a hand-edit of either side
+  # fails here. Like loop-contract it blocks; stdlib only, so no install step.
+  commitment-guardrail-sync:
+    name: Commitment guardrail is one source of truth
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Guard against the two runtimes' guardrails diverging
+        run: python3 scripts/sync_commitment_patterns.py --check
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::The commitment-language guardrail differs between the TypeScript gateway and the Python orchestrator."
+          echo "::notice::Canon is apps/api-gateway/src/common/orchestrator/commitment-patterns.ts — edit it there, never the generated Python module."
+          echo "::notice::Then run 'python3 scripts/sync_commitment_patterns.py' and commit both files."
+          echo "::notice::Weakening the list to make this pass is a legal-guardrail regression, not a fix."
+
   # P1 §5 item 4. Defect D3 was that the entire NestJS gateway wrote nothing to
   # the spend ledger: seven raw `fetch("https://api.anthropic.com/...")` call
   # sites, and `grep -c api_spend apps/api-gateway/src` returning 0. Every one of
