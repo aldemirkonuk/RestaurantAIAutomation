@@ -852,3 +852,108 @@ def test_gpt_4_turbo_rate_matches_openais_published_pricing():
     assert estimate_llm_cost("gpt-4-turbo-2024-04-09", 0, 1_000_000) == pytest.approx(
         30.00
     )
+
+
+# ---------------------------------------------------------------------------
+# OD-74 — the emit returns the row id, so a verdict can attach to it later.
+#
+# Before this, insert_event returned a bare bool and log() returned None, which
+# discarded the only handle a grader could use. ADR 0017's doneability verdicts
+# key on the event id, so without this the entire Python runtime — 43 of the
+# instrument's 50 emit points — was structurally unreachable by any verdict.
+# ---------------------------------------------------------------------------
+
+
+def test_build_agent_event_mints_a_unique_id():
+    """The id exists BEFORE the insert, and two events never share one."""
+    import uuid as _uuid
+
+    from services.neural_footprint import build_agent_event
+
+    a = build_agent_event(subject_id="agent", stimulus="s", choice="c")
+    b = build_agent_event(subject_id="agent", stimulus="s", choice="c")
+
+    # Must parse as a real uuid — the column is uuid-typed, so a non-uuid
+    # string would be rejected by Postgres at insert time, not here.
+    _uuid.UUID(a["id"])
+    assert a["id"] != b["id"]
+
+
+def test_insert_event_returns_the_row_id_on_success():
+    client, rows = _capturing_supabase()
+
+    from services.neural_footprint import build_agent_event, insert_event
+
+    row = build_agent_event(subject_id="agent", stimulus="s", choice="c")
+    returned = insert_event(client, row)
+
+    assert returned == row["id"]
+    assert rows["neural_footprint_event"][0]["id"] == row["id"]
+
+
+def test_insert_event_returns_none_when_the_write_fails():
+    """An id whose row does not exist would produce a verdict grading nothing."""
+    from services.neural_footprint import build_agent_event, insert_event
+
+    client = MagicMock()
+    client.table.side_effect = RuntimeError("db down")
+
+    row = build_agent_event(subject_id="agent", stimulus="s", choice="c")
+    assert insert_event(client, row) is None
+
+
+def test_insert_event_return_stays_truthy_for_existing_callers():
+    """Callers written against the old bool contract must read the same."""
+    client, _ = _capturing_supabase()
+
+    from services.neural_footprint import build_agent_event, insert_event
+
+    row = build_agent_event(subject_id="agent", stimulus="s", choice="c")
+    assert bool(insert_event(client, row)) is True
+
+    failing = MagicMock()
+    failing.table.side_effect = RuntimeError("db down")
+    assert bool(insert_event(failing, row)) is False
+
+
+def test_log_returns_the_nf_event_id():
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        event_id = SpendLogger().log(
+            provider="anthropic",
+            model="claude-haiku-4-5",
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.0001,
+            agent="visual_verification_agent",
+            task_type="invoice_extraction",
+            outcome="success",
+        )
+    finally:
+        p.stop()
+
+    assert event_id is not None
+    assert event_id == rows["neural_footprint_event"][0]["id"]
+
+
+def test_log_returns_none_when_supabase_is_unconfigured():
+    """The early return must not leave the name unbound — log() never raises."""
+    p = _patched_settings(None)
+    try:
+        from services.spend_logger import SpendLogger
+
+        assert (
+            SpendLogger().log(
+                provider="anthropic",
+                model="claude-haiku-4-5",
+                input_tokens=1,
+                output_tokens=1,
+                cost_usd=0.0,
+            )
+            is None
+        )
+    finally:
+        p.stop()

@@ -275,9 +275,16 @@ class SpendLogger:
         duration_ms: Optional[int] = None,
         correlation_id: Optional[str] = None,
         context: Optional[Dict[str, Any]] = None,
-    ) -> None:
+    ) -> Optional[str]:
         """
         Insert one row into api_spend AND one into neural_footprint_event.
+
+        Returns the neural_footprint_event row id, or None if the NF row was
+        not written (OD-74). That id is the handle a later grader needs to
+        attach a doneability verdict (ADR 0017) — without it the entire Python
+        runtime, 43 of the instrument's 50 emit points, is unreachable by any
+        verdict. Every existing call site ignores the return value and is
+        unaffected; `log()` still never raises.
 
         Positional args (unchanged since COST-01 — existing call sites intact):
             provider: "anthropic" | "google" | "serper" | "openai"
@@ -301,6 +308,12 @@ class SpendLogger:
             correlation_id: joins decision_log; defaults to ambient context
             context: extra jsonb payload (wine_id, results_count, parse flags…)
         """
+        # Bound BEFORE the outer try so every exit path can return it. There is
+        # an early `return` when Supabase is unconfigured, and the outer except
+        # swallows anything else — an unbound name here would turn the one
+        # function that promises never to raise into an UnboundLocalError.
+        nf_event_id: Optional[str] = None
+
         try:
             settings = get_settings()
             supabase = settings.supabase_client
@@ -403,7 +416,8 @@ class SpendLogger:
                     restaurant_id=restaurant_id,
                     context=nf_context,
                 )
-                insert_event(supabase, row)  # never raises; counts drops
+                # never raises; returns the row id, or None on a counted drop
+                nf_event_id = insert_event(supabase, row)
             except Exception as exc:
                 total = record_drop("neural_footprint_event")
                 logger.warning(
@@ -415,6 +429,11 @@ class SpendLogger:
         except Exception as exc:
             # NEVER re-raise — a spend logging failure must not crash the pipeline
             logger.warning(f"SpendLogger.log() failed (non-fatal): {exc}")
+
+        # None whenever the NF row was not written, for any reason. A caller
+        # holding an id for a row that does not exist would write a verdict
+        # grading nothing.
+        return nf_event_id
 
 
 _spend_logger: Optional[SpendLogger] = None
