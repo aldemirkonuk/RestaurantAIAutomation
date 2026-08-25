@@ -71,6 +71,7 @@
 
 | ID | Resolved as | Date |
 |---|---|---|
+| OD-71 | **POS referential integrity closed** ([0015](0015-pos-referential-integrity.md)) — the ten remaining reference columns across the four `pos_*` tables now have foreign keys. Delete behaviour derived from a census of the 224 existing public FKs (`restaurant_id`→CASCADE 62/72, `auth.users`→SET NULL 2/2); the two genuinely split targets fall back to ADR 0014's rule — a claim dies with its target, a question outlives its answer. Zero orphans; cascade proven in a rolled-back transaction against production | 2026-08-25 |
 | OD-02 | **Department structure decided** — 5 divisions, 20 departments, 2 sub-layers ([ORG_STRUCTURE §2](../foundation/ORG_STRUCTURE.md)) | 2026-08-24 |
 | OD-09 | **Department set expanded, not trimmed** — founder overruled the "merge Sales into Growth" recommendation; ambition over solo-founder capacity | 2026-08-24 |
 | OD-10 | **NF-C = gated research track** — reserved via `subject_type`, entry trigger required ([foundation §4.3](../foundation/README.md)) | 2026-08-24 |
