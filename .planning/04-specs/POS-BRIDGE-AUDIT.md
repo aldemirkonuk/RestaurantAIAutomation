@@ -585,6 +585,31 @@ That asymmetry is what makes it dangerous. Every replay or re-import inflates th
 series behind velocity, XYZ classification, reorder points, Holt-Winters forecasting and
 goal progress — while the stock count, the number a human would check, stays right.
 
+## A.4b All three fixed, 2026-08-24
+
+`20260824190000_pos_voided_and_consumption_idempotency.sql` — **applied to production and
+read back**: `pos_checks.voided boolean NOT NULL DEFAULT false`, plus
+`pos_checks_voided_idx` and `wine_consumption_log_pos_idem_uidx`.
+
+| Defect | Fix |
+|---|---|
+| §2.6d `sale_unit` never written | Added to `upsertItemMapping`'s row. Unrecognised values now **throw** rather than coerce — writing `"Glass "` would take the same silent bottle fallback while looking mapped in the UI |
+| `voided` never persisted | Column added and written; the three revenue readers (`table-analytics`, `insight-generator`, `goals`) now filter `voided = false`. Persisting the flag without filtering the readers would have fixed nothing |
+| §A.4 `recordConsumption` not idempotent | `upsert(..., { onConflict: "restaurant_id,notes", ignoreDuplicates: true })` behind a **unique index**, so the guarantee lives in the database and a second caller cannot reintroduce it. `notes` is now the key verbatim — it used to render `pos:pos:…` |
+
+**Proven, not asserted.** 14 regression tests in `pos-hub.correctness.spec.ts`: **14 failed
+against the pre-fix code, 14 pass after.** One of them originally passed pre-fix — *"a
+voided check writes no consumption row"* was true before the fix because **nothing ever
+reached that table**. It was rewritten to assert the *difference* (void → 0, ordinary → 1).
+A test that passes for the wrong reason reports that behaviour is guarded when only the
+failure mode is.
+
+The unique index was verified against production directly: a second insert of the same key
+is rejected with `duplicate key value violates unique constraint
+"wine_consumption_log_pos_idem_uidx"`. The probe was rolled back; the table holds 0 rows.
+
+Gates: `tsc --noEmit` clean · jest **62 suites / 812 passed** (was 61 / 798).
+
 ## A.5 Also found, not fixed
 
 | | |
