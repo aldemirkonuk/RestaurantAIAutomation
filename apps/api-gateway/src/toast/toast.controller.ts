@@ -11,7 +11,10 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  UseGuards,
 } from "@nestjs/common";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { Public } from "../auth/decorators/public.decorator";
 import {
   ApiTags,
   ApiOperation,
@@ -49,6 +52,15 @@ import {
  * - Mock data fallback
  */
 @ApiTags("toast")
+// Guarded at class level, same shape as PosHubController. Only the Toast
+// webhook is @Public() — it authenticates by HMAC signature instead. Before
+// this, GET /toast/menus and GET /toast/sales took restaurantId as a QUERY
+// PARAMETER with no guard of any kind, so an anonymous caller could read any
+// restaurant's menus and sales (verified 200 in production, 2026-08-25), and
+// POST /toast/orders could write one. The global TenantGuard fails open by
+// design and never covered this. Found by the ENDPOINTS.md re-verification —
+// this controller predates the auth sweep in #60 and was missed by it.
+@UseGuards(JwtAuthGuard)
 @Controller("toast")
 export class ToastController {
   private readonly logger = new Logger(ToastController.name);
@@ -65,6 +77,7 @@ export class ToastController {
    *
    * Verifies signature using HMAC-SHA256 with TOAST_WEBHOOK_SECRET
    */
+  @Public() // authenticated by HMAC signature, not JWT — Toast cannot send a bearer token
   @Post("webhook")
   @ApiOperation({
     summary: "Receive Toast POS webhooks",
