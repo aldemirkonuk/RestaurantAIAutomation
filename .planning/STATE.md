@@ -39,14 +39,37 @@
 
 | Stage | Status |
 |---|---|
-| 1. Spine reset (PROJECT / STATE / ROADMAP) | this PR |
-| 2. Page graph — Surface pass over all 51 notes | this PR |
-| 3. Gap proposal → **founder approves feature set** | next — blocks stage 4 |
-| 4. Build burn-down of the approved list | not started |
-| 5. Web deploy complete (then mobile) | not started |
+| 1. Spine reset (PROJECT / STATE / ROADMAP) | ✅ #65 |
+| 2. Page graph — Surface pass over all 51 notes | ✅ #65 — 115 page→page edges |
+| 3. Gap proposal → founder approves feature set | ✅ [ADR 0019](decisions/0019-p2-build-scope.md), locked with two carve-outs |
+| 4. Build burn-down of the approved list | ✅ #67 |
+| 5. Web deploy + live verification | ✅ verified on production 2026-08-25 |
 
-**Next action:** stage 3 — compile the proposal (missing pages, dead ends,
-endpoint gaps, `v3.0-TECH-DEBT.md` carry-overs) and put it to the founder.
+**Deploy verification (2026-08-25, against production, not staging):**
+
+| Check | Result |
+|---|---|
+| `communications/test/*` + `test/e2e/step*` | reachable → **401** (nine routes, one of them an open email relay) |
+| `toast/menus`, `toast/sales` | **200 → 401**; unsigned Toast webhook now rejected |
+| Gmail push webhook | still 200 — staged rollout, deliberately not yet closed |
+| `auth/login`, pos-hub webhook | unchanged (negative controls: the fixes broke nothing) |
+| Web bundle | contains `/documents-reports`; **zero** `/documents` or `/emails` dead literals |
+| Web assets | all 200, no page errors |
+
+**Held, needing the founder — the only P2 items not done:**
+
+1. **Page retirements** (ADR 0019 §B): `/calendar-classic`, `/inventory-legacy`,
+   `/wine-agent`, `/wineagent-alias`. Deletion is irreversible and each was
+   made conditional on a parity check, so it waits for an explicit yes.
+   `/inventory-legacy` also still hosts `InvoiceScannerModal`, which posts to
+   an endpoint that does not exist (44.1e) — retiring the page closes that too.
+2. **Gmail push verification** is built but staged open. Set
+   `GMAIL_PUBSUB_AUDIENCE` + `GMAIL_PUBSUB_SERVICE_ACCOUNT` on Railway (values
+   come from the Pub/Sub subscription — nobody can invent them), then
+   `GMAIL_PUBSUB_REQUIRE_AUTH=true`. Until then the gateway logs an error per
+   unverified push and counts them.
+
+**Next action:** P3 selection (ROADMAP candidates), or the two held items above.
 
 ## Standing constraints
 
@@ -56,4 +79,4 @@ endpoint gaps, `v3.0-TECH-DEBT.md` carry-overs) and put it to the founder.
 - Real data, never mock-only; docs bulletproof before features (ADR 0018).
 
 ---
-*Last updated: 2026-08-25 — P2 spine reset (ADR 0018).*
+*Last updated: 2026-08-25 — P2 complete through deploy; two items held for the founder.*

@@ -115,4 +115,5 @@ of the line item.
 |---|---|---|
 | 2026-08-25 | — | Drafted from the Surface findings feed + register; awaiting founder lock |
 | 2026-08-25 | Aldemir | Build authorized ("complete P2 start to end, deploy"); retirements and secret-bearing work held back explicitly |
+| 2026-08-25 | Production | Deployed and verified live: the nine public test routes went reachable → 401, Toast reads 200 → 401, and the web bundle carries zero dead-route literals. Negative controls (login, pos-hub webhook) unchanged |
 | 2026-08-25 | Verification | D1's stated premise was FALSE — TenantGuard already blocked cross-tenant reads; the real hole was the tenantless-session bypass, now closed. Row corrected in place |
