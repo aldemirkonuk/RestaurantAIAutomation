@@ -103,6 +103,20 @@ export class ToastService {
    * @param timestamp Timestamp from Toast-Timestamp header
    * @returns true if signature is valid
    */
+  /**
+   * Whether an UNSIGNED webhook must be rejected.
+   *
+   * Mock mode may accept unsigned webhooks in dev/test only. In production the
+   * escape is closed unconditionally: TOAST_MOCK_MODE defaults to TRUE
+   * (constructor above), so any deploy that never set the variable would
+   * otherwise accept unsigned stock mutations from anyone on the internet —
+   * found 2026-08-25 by the external-connections verification. Same posture as
+   * pos-hub, which has no mock escape at all.
+   */
+  private enforceSignature(): boolean {
+    return !this.mockMode || process.env.NODE_ENV === "production";
+  }
+
   verifyWebhookSignature(
     payload: string,
     signature: string,
@@ -199,16 +213,16 @@ export class ToastService {
             HttpStatus.UNAUTHORIZED,
           );
         }
-      } else if (!this.webhookSecret && !this.mockMode) {
-        // Secret not configured outside mock mode: previously this fell through and
-        // accepted an unsigned webhook silently. Refuse instead — a POS ingress route
+      } else if (!this.webhookSecret && this.enforceSignature()) {
+        // Secret not configured: previously this fell through and accepted an
+        // unsigned webhook silently. Refuse instead — a POS ingress route
         // that mutates stock must never accept unverifiable input.
         this.webhookMetrics.errors++;
         throw new HttpException(
           "Toast webhook rejected: TOAST_WEBHOOK_SECRET is not configured",
           HttpStatus.UNAUTHORIZED,
         );
-      } else if (this.webhookSecret && !this.mockMode) {
+      } else if (this.webhookSecret && this.enforceSignature()) {
         // Secret configured but caller sent no signature — already fail-closed.
         this.webhookMetrics.errors++;
         throw new HttpException(

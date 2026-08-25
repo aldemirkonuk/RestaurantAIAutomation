@@ -203,3 +203,83 @@ describe("ToastService.applyOrderSaleEffects (via processWebhook)", () => {
     expect(calls.unresolvedInserts[0].external_item_id).toBe("item-1");
   });
 });
+
+describe("ToastService webhook signature enforcement in production", () => {
+  // TOAST_MOCK_MODE defaults to TRUE, and until 2026-08-25 mock mode also
+  // bypassed signature checking — so a production deploy that never set the
+  // variable accepted unsigned stock mutations from anyone. These tests pin
+  // the closed escape: in production, unsigned webhooks are rejected no
+  // matter what mock mode says. Dev/test keep the mock-mode ergonomics.
+  const prodEnv = () => {
+    const prev = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    return () => {
+      process.env.NODE_ENV = prev;
+    };
+  };
+
+  it("rejects an unsigned webhook in production even in mock mode (no secret)", async () => {
+    const restore = prodEnv();
+    try {
+      const { service } = makeService({});
+      await expect(
+        service.processWebhook(
+          webhookDto(ToastWebhookEventType.ORDER_CLOSED),
+          "{}",
+          null,
+          null,
+        ),
+      ).rejects.toThrow("TOAST_WEBHOOK_SECRET is not configured");
+    } finally {
+      restore();
+    }
+  });
+
+  it("rejects an unsigned webhook in production when a secret IS configured", async () => {
+    const restore = prodEnv();
+    try {
+      const { client } = ((): any => makeSupabase({}))();
+      const configService: any = {
+        get: (key: string, fallback?: any) => {
+          if (key === "TOAST_MOCK_MODE") return true;
+          if (key === "TOAST_WEBHOOK_SECRET") return "real-secret";
+          return fallback;
+        },
+      };
+      const cacheService: any = {
+        invalidateByPattern: async () => 0,
+        del: async () => undefined,
+        get: async () => null,
+        set: async () => undefined,
+      };
+      const service = new ToastService(
+        configService,
+        cacheService,
+        { supabase: client } as any,
+      );
+      await expect(
+        service.processWebhook(
+          webhookDto(ToastWebhookEventType.ORDER_CLOSED),
+          "{}",
+          null,
+          null,
+        ),
+      ).rejects.toThrow("Missing webhook signature");
+    } finally {
+      restore();
+    }
+  });
+
+  it("still accepts unsigned webhooks in mock mode outside production", async () => {
+    // Dev ergonomics are the reason the mock escape exists; losing them
+    // silently would push people to disable verification some other way.
+    const { service } = makeService({});
+    const res = await service.processWebhook(
+      webhookDto(ToastWebhookEventType.ORDER_CLOSED),
+      "{}",
+      null,
+      null,
+    );
+    expect(res.status).not.toBe("error");
+  });
+});
