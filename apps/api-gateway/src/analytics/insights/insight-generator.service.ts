@@ -246,6 +246,8 @@ export class InsightGeneratorService {
             "id, source, table_id, server_name, server_external_id, opened_at, closed_at, covers, total, tip, items",
           )
           .eq("restaurant_id", restaurantId)
+          // Voided checks are not revenue — see pos_checks.voided.
+          .eq("voided", false)
           .gte("opened_at", since90),
         client
           .from("restaurant_tables")

@@ -196,6 +196,12 @@ export class PosHubService {
           subtotal: check.subtotal ?? null,
           total: check.total ?? null,
           tip: check.tip ?? null,
+          // Persisted from 2026-08-24. `voided` had driven stock reversal
+          // (isVoid, below) since the contract was written, but was never
+          // written to the row — and the column did not exist. A voided check
+          // therefore returned its stock correctly and stayed revenue forever,
+          // because every reader sums `total` with nothing to filter on.
+          voided: check.voided === true,
           items,
           raw: check.raw ?? null,
         };
@@ -492,18 +498,39 @@ export class PosHubService {
       const unitPrice =
         Number(item.price) || Number(inv?.menu_price_current) || null;
 
-      await db.from("wine_consumption_log").insert({
-        restaurant_id: restaurantId,
-        inventory_id: item.inventory_id,
-        wine_name: item.name,
-        consumption_type: unit,
-        quantity: qty,
-        volume_ml: volumeMl,
-        unit_price: unitPrice,
-        total_revenue: unitPrice != null ? unitPrice * qty : null,
-        source: "pos",
-        notes: `pos:${idempotencyKey}`,
-      });
+      // Idempotent from 2026-08-24, matching the stock write it follows.
+      //
+      // The caller reaches here whenever apply_stock_movement returned no error
+      // — but that RPC is idempotent and returns the EXISTING transaction for a
+      // known key, so "no error" does not mean "this depleted just now". The
+      // bare insert that used to be here therefore left stock correct and the
+      // consumption log inflated: one check line replayed twice produced three
+      // rows. Stock is the number a human checks; the log is the series behind
+      // velocity, XYZ, reorder points, Holt-Winters and goal progress. Drifting
+      // the invisible one is the worse failure.
+      //
+      // `ignoreDuplicates` needs the unique index from
+      // 20260824190000_pos_voided_and_consumption_idempotency.sql — the
+      // constraint lives in the database so a second caller cannot reintroduce
+      // this by writing its own insert.
+      //
+      // `notes` is the idempotency key verbatim. It used to be `pos:${key}`
+      // while the key already began with "pos:", rendering "pos:pos:…".
+      await db.from("wine_consumption_log").upsert(
+        {
+          restaurant_id: restaurantId,
+          inventory_id: item.inventory_id,
+          wine_name: item.name,
+          consumption_type: unit,
+          quantity: qty,
+          volume_ml: volumeMl,
+          unit_price: unitPrice,
+          total_revenue: unitPrice != null ? unitPrice * qty : null,
+          source: "pos",
+          notes: idempotencyKey,
+        },
+        { onConflict: "restaurant_id,notes", ignoreDuplicates: true },
+      );
     } catch (err: any) {
       this.logger.warn(
         `Consumption log write failed for ${item.name}: ${err?.message}`,
@@ -512,6 +539,23 @@ export class PosHubService {
   }
 
   async upsertItemMapping(restaurantId: string, mapping: any) {
+    // sale_unit was missing from this row until 2026-08-24, and this is the ONLY
+    // writer of the column — used by both auto-map and human approve. So all 92
+    // production mappings carried sale_unit = null, the `?? "bottle"` fallback in
+    // applyStockEffects fired unconditionally, and EVERY BY-THE-GLASS SALE
+    // DEPLETED A WHOLE BOTTLE. Confirmed at runtime: a glass-priced item booked
+    // volume_ml 750 instead of 150.
+    //
+    // Unrecognised values are rejected rather than coerced. Writing a wrong unit
+    // is worse than writing none: null at least routes to a documented default,
+    // while "Glass " or "bottles" would silently take the same fallback while
+    // looking mapped in the UI.
+    const rawUnit = mapping.sale_unit ?? null;
+    if (rawUnit !== null && rawUnit !== "glass" && rawUnit !== "bottle") {
+      throw new Error(
+        `sale_unit must be "glass", "bottle", or null — got ${JSON.stringify(rawUnit)}`,
+      );
+    }
     const row = {
       restaurant_id: restaurantId,
       source: mapping.source || "*",
@@ -521,6 +565,7 @@ export class PosHubService {
       is_wine: mapping.is_wine === true,
       master_wine_id: mapping.master_wine_id ?? null,
       inventory_id: mapping.inventory_id ?? null,
+      sale_unit: rawUnit as "glass" | "bottle" | null,
       updated_at: new Date().toISOString(),
     };
     if (!row.external_item_id && !row.item_name)
