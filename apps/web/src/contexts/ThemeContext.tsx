@@ -18,6 +18,9 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 const THEME_STORAGE_KEY = 'wineops-theme';
+// Bumped when the product default changes; browsers that stored a theme under
+// the old default (system/dark) are reset to light exactly once.
+const THEME_MIGRATION_KEY = 'wineops-theme-v2';
 
 /**
  * Get the system theme preference
@@ -30,15 +33,20 @@ function getSystemTheme(): 'light' | 'dark' {
 }
 
 /**
- * Get the stored theme or default to system
+ * Get the stored theme or default to light
  */
 function getStoredTheme(): Theme {
-  if (typeof window === 'undefined') return 'system';
+  if (typeof window === 'undefined') return 'light';
+  if (!localStorage.getItem(THEME_MIGRATION_KEY)) {
+    localStorage.setItem(THEME_MIGRATION_KEY, '1');
+    localStorage.setItem(THEME_STORAGE_KEY, 'light');
+    return 'light';
+  }
   const stored = localStorage.getItem(THEME_STORAGE_KEY);
   if (stored === 'light' || stored === 'dark' || stored === 'system') {
     return stored;
   }
-  return 'system';
+  return 'light';
 }
 
 /**

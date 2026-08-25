@@ -5,7 +5,6 @@ import {
   ForbiddenException,
   Get,
   Header,
-  HttpCode,
   HttpException,
   HttpStatus,
   Param,
@@ -23,6 +22,7 @@ import {
   OrderListResponseDto,
   OrderResponseDto,
   UpdateOrderDto,
+  VerifyReceiptDto,
 } from "./dto/procurement.dto";
 import { ApproveDraftDto } from "./dto/approve-draft.dto";
 import { ProcurementService } from "./procurement.service";
@@ -237,6 +237,37 @@ export class ProcurementController {
       throw new HttpException(
         error.message || "Failed to mark order delivered",
         HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post("orders/:id/verify-receipt")
+  @ApiOperation({
+    summary:
+      "Three-way match a delivered order (PO vs invoice vs physical count); apply corrections, then complete or hold open as a backorder",
+  })
+  @ApiResponse({ status: 200, type: OrderResponseDto })
+  @ApiResponse({
+    status: 422,
+    description:
+      "Invoice price differs from the agreed price and no override reason was given",
+  })
+  async verifyReceipt(
+    @Param("id") orderId: string,
+    @Body() body: VerifyReceiptDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<OrderResponseDto> {
+    try {
+      return await this.procurementService.verifyReceipt(
+        user.restaurantId,
+        orderId,
+        user.userId,
+        body ?? {},
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to verify receipt",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }

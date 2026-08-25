@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sketch 044 - WineOps Signature Motions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --wine: #cd2d5b;
+    --wine-light: #e0578a;
+    --amber: #c4922a;
+    --amber-bg: rgba(196, 146, 42, .14);
+    --ink: #1a1518;
+    --ink-settled: #2a2428;
+    --slate-cool: #3d4f66;
+    --cork: #c4a574;
+    --cork-dark: #8b6914;
+    --bg: #0f0f14;
+    --panel: rgba(255, 255, 255, .04);
+    --line: rgba(255, 255, 255, .08);
+    --text: #ece9ef;
+    --muted: rgba(255, 255, 255, .5);
+    --ease: cubic-bezier(.16, 1, .3, 1);
+    --spring: cubic-bezier(.22, 1, .36, 1);
+  }
+  * { box-sizing: border-box; }
+  button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+
+  body {
+    margin: 0; padding: 56px 20px 64px;
+    background: var(--bg); color: var(--text);
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; gap: 6px;
+    padding: 10px 16px;
+    background: rgba(15, 15, 20, .92);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-right: 4px; font-family: "JetBrains Mono", monospace; }
+  .nav-tab {
+    padding: 7px 12px; border-radius: 9px;
+    border: 1px solid var(--line); background: var(--panel);
+    color: var(--muted); font-size: 11px; font-weight: 700; white-space: nowrap;
+    transition: all .2s var(--spring);
+  }
+  .nav-tab:hover { color: var(--text); background: rgba(255,255,255,.08); }
+  .nav-tab.active { background: var(--wine); border-color: var(--wine); color: #fff; }
+
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  .kicker { color: var(--wine-light); font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+  h1 { margin: 8px 0 8px; font-size: 26px; font-weight: 800; letter-spacing: -.03em; }
+  .lede { max-width: 760px; margin: 0 0 28px; color: var(--muted); font-size: 13.5px; line-height: 1.6; }
+
+  .layout { display: grid; grid-template-columns: 390px 1fr; gap: 28px; align-items: start; }
+  @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
+  .panel { display: none; }
+  .panel.active { display: grid; grid-template-columns: 390px 1fr; gap: 28px; }
+  @media (max-width: 960px) { .panel.active { grid-template-columns: 1fr; } }
+
+  .phone-wrap { display: flex; flex-direction: column; align-items: center; }
+  .phone {
+    width: 375px; border-radius: 44px;
+    box-shadow: 0 40px 100px rgba(0,0,0,.55), 0 0 0 10px #1c1c24, 0 0 0 11px #2a2a34;
+    overflow: hidden;
+  }
+  .notch { height: 34px; background: #000; width: 120px; margin: 0 auto; border-radius: 0 0 16px 16px; }
+  .screen {
+    position: relative; height: 720px;
+    background: linear-gradient(180deg, #16141c, #121018);
+    overflow: hidden;
+  }
+
+  .spec {
+    padding: 22px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel);
+  }
+  .spec-tag { display: inline-block; padding: 4px 10px; border-radius: 999px; background: rgba(205,45,91,.15); color: #f4a9ba; font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 12px; }
+  .spec h2 { margin: 0 0 10px; font-size: 18px; font-weight: 800; letter-spacing: -.02em; }
+  .spec-block { margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+  .spec-block:last-child { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
+  .spec-block h3 { margin: 0 0 5px; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--wine-light); }
+  .spec-block p { margin: 0; color: rgba(255,255,255,.68); font-size: 12px; line-height: 1.55; }
+  .spec-block ul { margin: 6px 0 0; padding-left: 16px; color: rgba(255,255,255,.6); font-size: 11.5px; line-height: 1.5; }
+  .spec-block code { font-family: "JetBrains Mono", monospace; font-size: 10px; padding: 1px 5px; border-radius: 4px; background: rgba(255,255,255,.06); }
+
+  .replay-btn, .action-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    margin-top: 14px; padding: 10px 16px;
+    border: 1px solid rgba(205,45,91,.4); border-radius: 11px;
+    background: rgba(205,45,91,.12); color: #f4a9ba;
+    font-size: 12px; font-weight: 700;
+    transition: transform .2s var(--spring), background .2s;
+  }
+  .replay-btn:hover, .action-btn:hover { background: rgba(205,45,91,.22); transform: translateY(-1px); }
+
+  .haptic-log {
+    margin-top: 12px; padding: 10px 12px;
+    border-radius: 9px; background: rgba(255,255,255,.04);
+    border: 1px dashed var(--line);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px; color: var(--muted);
+    min-height: 36px;
+  }
+  .haptic-log.on { color: #6ee7b7; border-color: rgba(110,231,183,.3); }
+
+  .app-hd { padding: 12px 16px 8px; }
+  .app-hd h3 { margin: 0; font-size: 17px; font-weight: 800; }
+  .app-hd small { color: var(--muted); font-size: 10px; font-weight: 600; }
+
+  /* ===== MOMENT 1: SEDIMENT SETTLE ===== */
+  .desk-scene { padding: 0 16px 20px; height: calc(100% - 52px); display: flex; flex-direction: column; }
+  .decision-card {
+    position: relative;
+    margin-top: 12px;
+    padding: 14px;
+    border: 1px solid rgba(196, 146, 42, .35);
+    border-radius: 14px;
+    background: var(--amber-bg);
+    overflow: hidden;
+    transition: background .45s var(--ease), border-color .45s var(--ease);
+  }
+  .decision-card.settled {
+    background: rgba(42, 36, 40, .85);
+    border-color: rgba(255, 255, 255, .08);
+  }
+  .decision-card.settled::after {
+    content: "";
+    position: absolute; left: 14px; right: 14px; bottom: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--ink), transparent);
+    animation: leesLine .2s var(--ease) forwards;
+  }
+  @keyframes leesLine { from { opacity: 0; transform: scaleX(.3); } to { opacity: 1; transform: scaleX(1); } }
+  .decision-card h4 { margin: 0; font-size: 13px; font-weight: 800; }
+  .decision-card p { margin: 6px 0 0; font-size: 11px; color: var(--muted); line-height: 1.45; }
+  .decision-card.settled h4, .decision-card.settled p { color: rgba(236, 233, 239, .75); }
+  #sedimentCanvas {
+    position: absolute; inset: 0; pointer-events: none;
+    width: 100%; height: 100%;
+  }
+  .confirm-btn {
+    width: 100%; height: 46px; margin-top: auto;
+    border-radius: 13px;
+    background: linear-gradient(150deg, var(--wine-light), var(--wine));
+    color: #fff; font-size: 13px; font-weight: 800;
+    box-shadow: 0 8px 22px rgba(205,45,91,.35);
+    transition: opacity .3s, transform .15s var(--spring);
+  }
+  .confirm-btn:active { transform: scale(.98); }
+  .confirm-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ===== MOMENT 2: CELLAR BREATH ===== */
+  .cellar-scene { padding: 0 16px 16px; height: calc(100% - 52px); display: flex; flex-direction: column; }
+  .zone-label { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 8px 0 10px; }
+  .cellar-grid {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    flex: 1;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: rgba(255,255,255,.02);
+    overflow: hidden;
+  }
+  .cellar-draft {
+    position: absolute; inset: 0; pointer-events: none; opacity: 0;
+    background: radial-gradient(circle at var(--dx, 50%) var(--dy, 50%), rgba(61,79,102,.35), transparent 55%);
+    transition: opacity .15s;
+  }
+  .cellar-draft.sweep { animation: draftSweep .3s var(--ease) forwards; }
+  @keyframes draftSweep {
+    0% { opacity: 0; transform: scale(1.15); }
+    40% { opacity: .85; transform: scale(1); }
+    100% { opacity: 0; transform: scale(.92); }
+  }
+  .bin {
+    position: relative;
+    aspect-ratio: 1;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: rgba(255,255,255,.04);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700; color: var(--muted);
+    transition: transform .3s var(--spring), box-shadow .3s;
+  }
+  .bin .lvl { font-size: 14px; font-weight: 800; color: var(--text); margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .bin.low { border-color: rgba(61, 79, 102, .5); }
+  .bin.breathe {
+    animation: binBreath .3s var(--spring) forwards;
+  }
+  @keyframes binBreath {
+    0% { transform: scale(1); }
+    45% { transform: scale(.97); }
+    100% { transform: scale(1); }
+  }
+  .bin.outline-hold {
+    box-shadow: 0 0 0 1px rgba(61, 79, 102, .6);
+    animation: outlineFade 1s ease forwards;
+  }
+  @keyframes outlineFade {
+    0%, 30% { box-shadow: 0 0 0 1px rgba(61, 79, 102, .7); }
+    100% { box-shadow: 0 0 0 1px rgba(61, 79, 102, 0); }
+  }
+  .bin.low .lvl { color: #8fa4be; }
+
+  /* ===== MOMENT 3: CORK COMMIT ===== */
+  .po-scene { padding: 0 16px 24px; height: calc(100% - 52px); display: flex; flex-direction: column; }
+  .po-summary {
+    margin-top: 12px; padding: 14px;
+    border: 1px solid var(--line); border-radius: 14px;
+    background: rgba(255,255,255,.03);
+    font-size: 11px;
+  }
+  .po-summary .row { display: flex; justify-content: space-between; margin-bottom: 6px; color: var(--muted); }
+  .po-summary .row b { color: var(--text); font-weight: 700; }
+  .po-summary .total { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 15px; font-weight: 800; }
+  .send-wrap {
+    position: relative; margin-top: auto;
+    height: 56px;
+  }
+  .send-btn {
+    position: relative; z-index: 1;
+    width: 100%; height: 56px;
+    border-radius: 16px;
+    background: linear-gradient(180deg, #2a2428, #1a1518);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-size: 14px; font-weight: 800;
+    overflow: hidden;
+    transition: color .3s;
+  }
+  .send-btn .neck {
+    position: absolute; top: 0; left: 50%;
+    width: 36px; height: 14px; margin-left: -18px;
+    background: rgba(255,255,255,.06);
+    border-radius: 0 0 8px 8px;
+    border: 1px solid var(--line);
+    border-top: 0;
+  }
+  .send-btn .label { position: relative; z-index: 2; transition: opacity .25s, transform .25s; }
+  .send-btn.sealing .label { opacity: 0; transform: scale(.9); }
+  .send-btn.sealed {
+    background: linear-gradient(180deg, #1e1a1d, #141114);
+    color: rgba(255,255,255,.45);
+    pointer-events: none;
+  }
+  .send-btn.sealed::after { content: "Order sealed"; }
+  #corkCanvas {
+    position: absolute; inset: 0; pointer-events: none; z-index: 3;
+    width: 100%; height: 100%;
+  }
+  .pressure-ring {
+    position: absolute; left: 50%; top: 50%;
+    width: 20px; height: 20px; margin: -10px 0 0 -10px;
+    border: 2px solid rgba(196, 165, 116, .5);
+    border-radius: 50%;
+    opacity: 0; pointer-events: none; z-index: 2;
+  }
+  .pressure-ring.pulse { animation: pressurePulse .45s var(--ease) forwards; }
+  @keyframes pressurePulse {
+    0% { transform: scale(.5); opacity: .9; }
+    100% { transform: scale(4); opacity: 0; }
+  }
+
+  .foot { margin-top: 28px; text-align: center; color: var(--muted); font-size: 11.5px; }
+  .foot code { padding: 2px 6px; border-radius: 5px; background: rgba(255,255,255,.06); font-family: "JetBrains Mono", monospace; font-size: 10px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <span class="nav-label">044</span>
+  <button class="nav-tab active" type="button" data-panel="sediment">Sediment settle</button>
+  <button class="nav-tab" type="button" data-panel="breath">Cellar breath</button>
+  <button class="nav-tab" type="button" data-panel="cork">Cork commit</button>
+</nav>
+
+<div class="wrap">
+  <div class="kicker">Sketch 044 · WineOps Signature Motions</div>
+  <h1>Three motions that give weight to real decisions</h1>
+  <p class="lede">Each moment is spatially anchored, fires rarely, and maps to an irreversible ops action. Prototype timing and haptic cues here; ship in RN Skia + Reanimated.</p>
+
+  <!-- SEDIMENT SETTLE -->
+  <div class="panel active" id="panel-sediment">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="app-hd"><h3>Manager desk</h3><small>Confirm 86</small></div>
+          <div class="desk-scene">
+            <div class="decision-card" id="decisionCard">
+              <canvas id="sedimentCanvas"></canvas>
+              <h4>86 Barolo 2016 until Friday delivery</h4>
+              <p>Floor team requested. Removes from menu tonight; par unchanged.</p>
+            </div>
+            <button class="confirm-btn" id="sedimentBtn" type="button">Confirm decision</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="spec">
+      <span class="spec-tag">Moment 1</span>
+      <h2>Sediment settle</h2>
+      <div class="spec-block">
+        <h3>Why it's signature</h3>
+        <p>A decision doesn't just "save" — it visibly settles like sediment falling still in a rested bottle, giving weight to a manager's judgment.</p>
+      </div>
+      <div class="spec-block">
+        <h3>When it triggers</h3>
+        <p>On confirming a consequential decision at the manager desk (approving a 86'd item, locking a par change, committing a shift plan) — not on trivial toggles.</p>
+      </div>
+      <div class="spec-block">
+        <h3>Motion + haptic (~450ms)</h3>
+        <ul>
+          <li>Skia: fine dark particles suspended over the card</li>
+          <li>On release: drift down, compact into 2px "lees" bottom border</li>
+          <li>Card tint: pending amber → settled ink</li>
+          <li>Haptic: one soft <code>mediumImpact</code> when particles touch the line</li>
+        </ul>
+      </div>
+      <div class="spec-block">
+        <h3>Why not a gimmick</h3>
+        <p>Spatially anchored to the decision, reads as finality/commitment, particle count tiny and monochrome.</p>
+      </div>
+      <button class="replay-btn" type="button" id="sedimentReset">Reset demo</button>
+      <div class="haptic-log" id="sedimentHaptic">Haptic: waiting...</div>
+    </aside>
+  </div>
+
+  <!-- CELLAR BREATH -->
+  <div class="panel" id="panel-breath">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="app-hd"><h3>Cellar map</h3><small>Bar Stock zone</small></div>
+          <div class="cellar-scene">
+            <div class="zone-label">Below par · 2 bins</div>
+            <div class="cellar-grid" id="cellarGrid">
+              <div class="cellar-draft" id="cellarDraft"></div>
+              <!-- bins injected by JS -->
+            </div>
+            <button class="action-btn" id="breathBtn" type="button" style="margin-top:14px;width:100%;justify-content:center;">Enter zone (first time)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="spec">
+      <span class="spec-tag">Moment 2</span>
+      <h2>Cellar breath</h2>
+      <div class="spec-block">
+        <h3>Why it's signature</h3>
+        <p>The cellar map "breathes" once when you enter a low-stock zone, so scarcity is felt in the body before it's read in a number.</p>
+      </div>
+      <div class="spec-block">
+        <h3>When it triggers</h3>
+        <p>First time a zone view loads (or zone scrolls into focus) where a bin crossed below par — once per zone per session.</p>
+      </div>
+      <div class="spec-block">
+        <h3>Motion + haptic (~300ms)</h3>
+        <ul>
+          <li>Reanimated: scale 1.0 → 0.97 → 1.0 spring on affected bins</li>
+          <li>Skia: cool slate-blue radial draft sweeps inward, dissipates</li>
+          <li>Below-par bins: 1px breathing outline ~1s</li>
+          <li>Haptic: light selection at contraction trough</li>
+        </ul>
+      </div>
+      <div class="spec-block">
+        <h3>Why not a gimmick</h3>
+        <p>Replaces jarring red badge with somatic cue; fires rarely; stays in wine-cellar sensory world (cool air, stillness).</p>
+      </div>
+      <button class="replay-btn" type="button" id="breathReset">Reset session flag</button>
+      <div class="haptic-log" id="breathHaptic">Haptic: waiting...</div>
+    </aside>
+  </div>
+
+  <!-- CORK COMMIT -->
+  <div class="panel" id="panel-cork">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="app-hd"><h3>Send purchase order</h3><small>Domaine Leflaive</small></div>
+          <div class="po-scene">
+            <div class="po-summary">
+              <div class="row"><span>Meursault 2022</span><b>12 bt</b></div>
+              <div class="row"><span>Chablis PC</span><b>6 bt</b></div>
+              <div class="row"><span>Delivery</span><b>Fri 18</b></div>
+              <div class="total">$2,840 total</div>
+            </div>
+            <div class="send-wrap">
+              <div class="pressure-ring" id="pressureRing"></div>
+              <canvas id="corkCanvas"></canvas>
+              <button class="send-btn" id="sendBtn" type="button">
+                <span class="neck"></span>
+                <span class="label">Send order</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="spec">
+      <span class="spec-tag">Moment 3</span>
+      <h2>Cork commit</h2>
+      <div class="spec-block">
+        <h3>Why it's signature</h3>
+        <p>Sending a purchase order ends with the tactile finality of seating a cork — the order is sealed, not merely submitted.</p>
+      </div>
+      <div class="spec-block">
+        <h3>When it triggers</h3>
+        <p>Final "Send order" in procurement/receiving handoff, after review — highest-stakes button in that flow.</p>
+      </div>
+      <div class="spec-block">
+        <h3>Motion + haptic (~500ms)</h3>
+        <ul>
+          <li>Label recedes; Skia cork cylinder descends into button neck</li>
+          <li>Spring overshoot-then-settle; pressure glow pulses once</li>
+          <li>Button locks to sealed state</li>
+          <li>Haptic: soft press on entry, firm mediumImpact on seat (double-beat)</li>
+        </ul>
+      </div>
+      <div class="spec-block">
+        <h3>Why not a gimmick</h3>
+        <p>Maps 1:1 to irreversible money-moving action; prevents double-sends; cork metaphor is intrinsic to wine.</p>
+      </div>
+      <button class="replay-btn" type="button" id="corkReset">Reset PO</button>
+      <div class="haptic-log" id="corkHaptic">Haptic: waiting...</div>
+    </aside>
+  </div>
+
+  <p class="foot"><code>.planning/sketches/044-wineops-signature-motions/index.html</code></p>
+</div>
+
+<script>
+(() => {
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* Tabs */
+  document.querySelectorAll('.nav-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.nav-tab').forEach((t) => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById(`panel-${tab.dataset.panel}`).classList.add('active');
+    });
+  });
+
+  const logHaptic = (el, msg) => {
+    el.textContent = `Haptic: ${msg}`;
+    el.classList.add('on');
+    setTimeout(() => el.classList.remove('on'), 600);
+  };
+
+  /* ===== 1. SEDIMENT SETTLE ===== */
+  const card = document.getElementById('decisionCard');
+  const sedimentBtn = document.getElementById('sedimentBtn');
+  const sedimentCanvas = document.getElementById('sedimentCanvas');
+  const sedimentHaptic = document.getElementById('sedimentHaptic');
+  const sedimentCtx = sedimentCanvas.getContext('2d');
+  let sedimentDone = false;
+  let particles = [];
+  let sedimentAnim = null;
+
+  const resizeSediment = () => {
+    const r = card.getBoundingClientRect();
+    sedimentCanvas.width = r.width * 2;
+    sedimentCanvas.height = r.height * 2;
+    sedimentCanvas.style.width = r.width + 'px';
+    sedimentCanvas.style.height = r.height + 'px';
+    sedimentCtx.setTransform(2, 0, 0, 2, 0, 0);
+  };
+
+  const spawnParticles = () => {
+    particles = [];
+    const w = sedimentCanvas.width / 2;
+    const h = sedimentCanvas.height / 2;
+    for (let i = 0; i < 28; i++) {
+      particles.push({
+        x: w * 0.15 + Math.random() * w * 0.7,
+        y: h * 0.2 + Math.random() * h * 0.45,
+        vx: (Math.random() - 0.5) * 0.3,
+        vy: 0.4 + Math.random() * 0.8,
+        r: 0.6 + Math.random() * 1.2,
+        settled: false,
+      });
+    }
+  };
+
+  const runSediment = (t0) => {
+    const w = sedimentCanvas.width / 2;
+    const h = sedimentCanvas.height / 2;
+    const floor = h - 2;
+    sedimentCtx.clearRect(0, 0, w, h);
+    let allSettled = true;
+    particles.forEach((p) => {
+      if (!p.settled) {
+        allSettled = false;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.04;
+        if (p.y >= floor - p.r) {
+          p.y = floor - p.r;
+          p.settled = true;
+        }
+      }
+      sedimentCtx.fillStyle = `rgba(26, 21, 24, ${p.settled ? 0.85 : 0.55})`;
+      sedimentCtx.beginPath();
+      sedimentCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      sedimentCtx.fill();
+    });
+    if (!allSettled) {
+      sedimentAnim = requestAnimationFrame(() => runSediment(t0));
+    } else if (!sedimentDone) {
+      sedimentDone = true;
+      card.classList.add('settled');
+      logHaptic(sedimentHaptic, 'mediumImpact — particles seated (clunk)');
+      sedimentBtn.disabled = true;
+      sedimentBtn.textContent = 'Decision committed';
+    }
+  };
+
+  const triggerSediment = () => {
+    if (sedimentDone) return;
+    resizeSediment();
+    spawnParticles();
+    logHaptic(sedimentHaptic, 'release → sediment drift begins');
+    cancelAnimationFrame(sedimentAnim);
+    setTimeout(() => {
+      if (reduced) {
+        card.classList.add('settled');
+        sedimentDone = true;
+        sedimentBtn.disabled = true;
+        sedimentBtn.textContent = 'Decision committed';
+        logHaptic(sedimentHaptic, 'mediumImpact (reduced motion)');
+        return;
+      }
+      runSediment(performance.now());
+    }, 50);
+  };
+
+  sedimentBtn.addEventListener('click', triggerSediment);
+  document.getElementById('sedimentReset').addEventListener('click', () => {
+    sedimentDone = false;
+    card.classList.remove('settled');
+    sedimentBtn.disabled = false;
+    sedimentBtn.textContent = 'Confirm decision';
+    sedimentCtx.clearRect(0, 0, sedimentCanvas.width, sedimentCanvas.height);
+    sedimentHaptic.textContent = 'Haptic: waiting...';
+    sedimentHaptic.classList.remove('on');
+  });
+  window.addEventListener('resize', () => { if (document.getElementById('panel-sediment').classList.contains('active')) resizeSediment(); });
+
+  /* ===== 2. CELLAR BREATH ===== */
+  const cellarGrid = document.getElementById('cellarGrid');
+  const cellarDraft = document.getElementById('cellarDraft');
+  const breathHaptic = document.getElementById('breathHaptic');
+  const breathBtn = document.getElementById('breathBtn');
+  let breathFired = false;
+
+  const bins = [
+    { id: 'A1', lvl: 18, low: false }, { id: 'A2', lvl: 22, low: false },
+    { id: 'B1', lvl: 4, low: true }, { id: 'B2', lvl: 14, low: false },
+    { id: 'C1', lvl: 9, low: false }, { id: 'C2', lvl: 3, low: true },
+    { id: 'D1', lvl: 20, low: false }, { id: 'D2', lvl: 16, low: false },
+  ];
+
+  bins.forEach((b) => {
+    const el = document.createElement('div');
+    el.className = 'bin' + (b.low ? ' low' : '');
+    el.dataset.id = b.id;
+    el.innerHTML = `${b.id}<span class="lvl">${b.lvl}</span>`;
+    cellarGrid.appendChild(el);
+  });
+
+  const runBreath = () => {
+    if (breathFired) {
+      breathHaptic.textContent = 'Already breathed this session (once per zone)';
+      return;
+    }
+    breathFired = true;
+    breathBtn.textContent = 'Zone entered (session locked)';
+    breathBtn.disabled = true;
+
+    cellarDraft.style.setProperty('--dx', '50%');
+    cellarDraft.style.setProperty('--dy', '50%');
+    cellarDraft.classList.remove('sweep');
+    void cellarDraft.offsetWidth;
+    cellarDraft.classList.add('sweep');
+
+    const lowBins = cellarGrid.querySelectorAll('.bin.low');
+    lowBins.forEach((bin) => {
+      bin.classList.remove('breathe', 'outline-hold');
+      void bin.offsetWidth;
+      bin.classList.add('breathe');
+      setTimeout(() => bin.classList.add('outline-hold'), 280);
+    });
+
+    setTimeout(() => logHaptic(breathHaptic, 'selectionAsync — contraction trough'), reduced ? 0 : 135);
+  };
+
+  breathBtn.addEventListener('click', runBreath);
+  document.getElementById('breathReset').addEventListener('click', () => {
+    breathFired = false;
+    breathBtn.disabled = false;
+    breathBtn.textContent = 'Enter zone (first time)';
+    cellarGrid.querySelectorAll('.bin').forEach((b) => b.classList.remove('breathe', 'outline-hold'));
+    breathHaptic.textContent = 'Haptic: waiting...';
+    breathHaptic.classList.remove('on');
+  });
+
+  /* ===== 3. CORK COMMIT ===== */
+  const sendBtn = document.getElementById('sendBtn');
+  const corkCanvas = document.getElementById('corkCanvas');
+  const corkCtx = corkCanvas.getContext('2d');
+  const pressureRing = document.getElementById('pressureRing');
+  const corkHaptic = document.getElementById('corkHaptic');
+  let corkSealed = false;
+  let corkY = -40;
+  let corkAnim = null;
+
+  const resizeCork = () => {
+    const wrap = sendBtn.parentElement;
+    corkCanvas.width = wrap.clientWidth * 2;
+    corkCanvas.height = wrap.clientHeight * 2;
+    corkCanvas.style.width = wrap.clientWidth + 'px';
+    corkCanvas.style.height = wrap.clientHeight + 'px';
+    corkCtx.setTransform(2, 0, 0, 2, 0, 0);
+  };
+
+  const drawCork = (y) => {
+    const w = corkCanvas.width / 2;
+    const h = corkCanvas.height / 2;
+    corkCtx.clearRect(0, 0, w, h);
+    if (y > -35) {
+      const cx = w / 2;
+      const grad = corkCtx.createLinearGradient(cx - 12, y, cx + 12, y + 28);
+      grad.addColorStop(0, '#d4b896');
+      grad.addColorStop(0.5, '#c4a574');
+      grad.addColorStop(1, '#8b6914');
+      corkCtx.fillStyle = grad;
+      corkCtx.beginPath();
+      corkCtx.roundRect(cx - 11, y, 22, 26, 4);
+      corkCtx.fill();
+      corkCtx.strokeStyle = 'rgba(90,60,10,.3)';
+      corkCtx.lineWidth = 0.5;
+      for (let i = 0; i < 4; i++) {
+        corkCtx.beginPath();
+        corkCtx.moveTo(cx - 8 + i * 4, y + 4);
+        corkCtx.lineTo(cx - 6 + i * 4, y + 22);
+        corkCtx.stroke();
+      }
+    }
+  };
+
+  const animateCork = () => {
+    const target = 8;
+    const t = Math.min(1, (corkY + 40) / (target + 40));
+    const eased = t < 1 ? 1 - Math.pow(1 - t, 3) : 1;
+    corkY = -40 + (target + 40) * eased;
+    if (t < 1) {
+      corkY += Math.sin(t * Math.PI) * 3;
+    }
+    drawCork(corkY);
+    if (t < 1) {
+      corkAnim = requestAnimationFrame(animateCork);
+    } else {
+      pressureRing.classList.remove('pulse');
+      void pressureRing.offsetWidth;
+      pressureRing.classList.add('pulse');
+      logHaptic(corkHaptic, 'impactMedium — cork seated');
+      sendBtn.classList.add('sealed');
+      sendBtn.querySelector('.label').textContent = '';
+      corkSealed = true;
+    }
+  };
+
+  sendBtn.addEventListener('click', () => {
+    if (corkSealed) return;
+    resizeCork();
+    sendBtn.classList.add('sealing');
+    logHaptic(corkHaptic, 'impactLight — cork entering neck');
+    corkY = -40;
+    if (reduced) {
+      drawCork(8);
+      sendBtn.classList.add('sealed');
+      corkSealed = true;
+      logHaptic(corkHaptic, 'impactMedium (reduced motion)');
+      return;
+    }
+    setTimeout(() => animateCork(), 120);
+  });
+
+  document.getElementById('corkReset').addEventListener('click', () => {
+    corkSealed = false;
+    corkY = -40;
+    sendBtn.classList.remove('sealing', 'sealed');
+    sendBtn.querySelector('.label').textContent = 'Send order';
+    corkCtx.clearRect(0, 0, corkCanvas.width, corkCanvas.height);
+    corkHaptic.textContent = 'Haptic: waiting...';
+    corkHaptic.classList.remove('on');
+  });
+
+  resizeSediment();
+  resizeCork();
+})();
+</script>
+</body>
+</html>

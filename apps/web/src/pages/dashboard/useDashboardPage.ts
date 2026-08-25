@@ -243,7 +243,16 @@ export function useDashboardPage() {
   }, [refreshReminders])
   
   const handleDayClick = useCallback((dateStr: string, dayData: DayData | undefined) => {
-    if (dayData) setSelectedDay({ date: dateStr, data: dayData })
+    const empty: DayData = {
+      revenue: 0,
+      bottles: 0,
+      avgPrice: 0,
+      byType: { red: 0, white: 0, sparkling: 0, rose: 0, dessert: 0 },
+      topSeller: '—',
+      orders: 0,
+      events: [],
+    }
+    setSelectedDay({ date: dateStr, data: dayData ?? empty })
   }, [])
   
   const navigateMonth = useCallback((direction: 'prev' | 'next') => {

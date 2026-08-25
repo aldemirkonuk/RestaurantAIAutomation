@@ -284,7 +284,7 @@ export function NotificationsSection() {
             value={quiet.startTime}
             disabled={!quiet.enabled}
             onChange={(e) => saveQuiet({ startTime: e.target.value })}
-            className="px-2.5 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-wine-500 focus:border-transparent outline-none disabled:opacity-50"
+            className="px-2.5 py-2 border border-gray-200 rounded-lg text-sm font-semibold tabular-nums text-gray-900 focus:ring-2 focus:ring-wine-500 focus:border-transparent outline-none disabled:opacity-50"
           />
           <span className="text-gray-400 text-sm">to</span>
           <input
@@ -292,7 +292,7 @@ export function NotificationsSection() {
             value={quiet.endTime}
             disabled={!quiet.enabled}
             onChange={(e) => saveQuiet({ endTime: e.target.value })}
-            className="px-2.5 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-wine-500 focus:border-transparent outline-none disabled:opacity-50"
+            className="px-2.5 py-2 border border-gray-200 rounded-lg text-sm font-semibold tabular-nums text-gray-900 focus:ring-2 focus:ring-wine-500 focus:border-transparent outline-none disabled:opacity-50"
           />
           <Toggle checked={quiet.enabled} onChange={() => saveQuiet({ enabled: !quiet.enabled })} />
         </Row>

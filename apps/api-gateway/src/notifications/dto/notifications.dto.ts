@@ -223,7 +223,9 @@ export class LowStockPrefsDto {
   @IsOptional()
   enabled?: boolean;
 
-  @ApiPropertyOptional({ description: "Alert the moment a wine first crosses par" })
+  @ApiPropertyOptional({
+    description: "Alert the moment a wine first crosses par",
+  })
   @IsBoolean()
   @IsOptional()
   instantFirstAlert?: boolean;
@@ -233,7 +235,9 @@ export class LowStockPrefsDto {
   @IsOptional()
   criticalImmediate?: boolean;
 
-  @ApiPropertyOptional({ description: "'daily' | 'off' — reminder for still-low wines" })
+  @ApiPropertyOptional({
+    description: "'daily' | 'off' — reminder for still-low wines",
+  })
   @IsString()
   @IsOptional()
   digestFrequency?: string;

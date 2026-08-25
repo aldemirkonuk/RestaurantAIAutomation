@@ -5,6 +5,7 @@
 
 import { Camera } from 'lucide-react'
 import { CollapsibleSection } from '../atoms'
+import { SCAN_ACCEPT } from '../../../lib/uploadAccept'
 
 interface CheckScan {
   id: number
@@ -58,7 +59,7 @@ export function CheckScannerSection({
           <input
             type="file"
             id="check-file-input"
-            accept="image/*"
+            accept={SCAN_ACCEPT}
             className="hidden"
             onChange={handleFileChange}
           />

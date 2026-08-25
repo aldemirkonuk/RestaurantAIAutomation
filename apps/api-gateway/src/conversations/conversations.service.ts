@@ -15,8 +15,11 @@ interface ListConversationsOptions {
   restaurantId?: string;
   providerId?: string;
   orderId?: string;
+  orderNumber?: string;
+  threadKey?: string;
   channel?: string;
   direction?: string;
+  sentiment?: string;
   dateFrom?: string;
   dateTo?: string;
   quarter?: string;
@@ -28,6 +31,76 @@ interface ListConversationsOptions {
   limit: number;
   sortBy: string;
   sortOrder: "asc" | "desc";
+}
+
+const ALLOWED_SENTIMENTS = new Set([
+  "positive",
+  "neutral",
+  "negative",
+  "unclassified",
+]);
+const ALLOWED_DIRECTIONS = new Set(["inbound", "outbound"]);
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Collapse the quarter / month / year filters into one concrete created_at window,
+ * combined with any explicit dateFrom / dateTo.
+ */
+function resolveDateWindow(options: {
+  dateFrom?: string;
+  dateTo?: string;
+  quarter?: string;
+  year?: string;
+  month?: string;
+}): { from: string | null; to: string | null } {
+  let from = options.dateFrom || null;
+  let to = options.dateTo || null;
+
+  const widen = (start: Date, end: Date) => {
+    from = from
+      ? new Date(
+          Math.max(new Date(from).getTime(), start.getTime()),
+        ).toISOString()
+      : start.toISOString();
+    to = to
+      ? new Date(Math.min(new Date(to).getTime(), end.getTime())).toISOString()
+      : end.toISOString();
+  };
+
+  if (options.quarter && options.year) {
+    const yr = parseInt(options.year, 10);
+    const q = parseInt(options.quarter.replace("Q", ""), 10);
+    const startMonth = (q - 1) * 3;
+    widen(
+      new Date(yr, startMonth, 1),
+      new Date(yr, startMonth + 3, 0, 23, 59, 59),
+    );
+  } else if (options.year && options.month) {
+    const yr = parseInt(options.year, 10);
+    const mo = parseInt(options.month, 10) - 1;
+    widen(new Date(yr, mo, 1), new Date(yr, mo + 1, 0, 23, 59, 59));
+  } else if (options.year) {
+    const yr = parseInt(options.year, 10);
+    widen(new Date(yr, 0, 1), new Date(yr, 11, 31, 23, 59, 59));
+  }
+
+  return { from, to };
+}
+
+/**
+ * Flatten nested inventory.wine_name onto procurement_orders.wine_name so the
+ * frontend can keep a single wine_name field.
+ */
+function flattenWineName(rows: any[]): any[] {
+  return rows.map((row: any) => {
+    const order = row.procurement_orders;
+    if (!order) return row;
+    const wineName = order.inventory?.wine_name ?? order.wine_name ?? null;
+    const { inventory: _inv, ...rest } = order;
+    return { ...row, procurement_orders: { ...rest, wine_name: wineName } };
+  });
 }
 
 @Injectable()
@@ -46,13 +119,16 @@ export class ConversationsService {
       const { page, limit, sortBy, sortOrder } = options;
       const offset = (page - 1) * limit;
 
+      // Always a LEFT join. An !inner join here silently drops every message that has
+      // no order — which is most of them, since a negotiation precedes its order.
+      // Order-number filtering runs off order_number_snapshot instead (see below).
       let query = this.databaseService.supabase
         .from("procurement_conversations")
         .select(
           `
           *,
           providers (id, name),
-          procurement_orders (id, order_number, quantity, status, negotiated_price, final_price)
+          procurement_orders (id, order_number, quantity, status, negotiated_price, final_price, inventory:inventory_id(wine_name))
         `,
           { count: "exact" },
         );
@@ -67,11 +143,44 @@ export class ConversationsService {
       if (options.orderId) {
         query = query.eq("order_id", options.orderId);
       }
+      if (options.orderNumber) {
+        // Snapshot rather than the joined column: it is kept in sync by trigger and
+        // survives deletion of the order, so history stays searchable either way.
+        query = query.ilike(
+          "order_number_snapshot",
+          `%${options.orderNumber.trim()}%`,
+        );
+      }
+      if (options.threadKey) {
+        query = query.eq("thread_key", options.threadKey);
+      }
       if (options.channel) {
         query = query.eq("channel", options.channel);
       }
+      // Direction may be stored as OUTBOUND/INBOUND (legacy) or lowercase —
+      // match case-insensitively via ilike exact pattern.
       if (options.direction) {
-        query = query.eq("direction", options.direction);
+        const dir = options.direction.trim().toLowerCase();
+        if (!ALLOWED_DIRECTIONS.has(dir)) {
+          throw new Error(
+            `Invalid direction "${options.direction}". Use inbound or outbound.`,
+          );
+        }
+        query = query.ilike("direction", dir);
+      }
+      if (options.sentiment) {
+        const sent = options.sentiment.trim().toLowerCase();
+        if (!ALLOWED_SENTIMENTS.has(sent)) {
+          throw new Error(
+            `Invalid sentiment "${options.sentiment}". Use positive, neutral, negative, or unclassified.`,
+          );
+        }
+        if (sent === "unclassified") {
+          // Align with client normalizeSentiment: null OR empty string
+          query = query.or("detected_sentiment.is.null,detected_sentiment.eq.");
+        } else {
+          query = query.ilike("detected_sentiment", sent);
+        }
       }
       if (options.dateFrom) {
         query = query.gte("created_at", options.dateFrom);
@@ -125,7 +234,7 @@ export class ConversationsService {
       }
 
       return {
-        conversations: data || [],
+        conversations: flattenWineName(data || []),
         total: count || 0,
         page,
         limit,
@@ -138,23 +247,139 @@ export class ConversationsService {
   }
 
   /**
+   * List conversations paginated BY THREAD rather than by message.
+   *
+   * Message-level pagination splits a thread across the pager, so a 6-message
+   * negotiation renders as 4 + 2 and looks broken. Here the page boundary always
+   * falls between threads: the RPC selects a page of thread keys, then every message
+   * belonging to those threads is fetched in one go.
+   */
+  async listConversationThreads(options: ListConversationsOptions) {
+    const { page, limit } = options;
+
+    if (!options.restaurantId) {
+      throw new Error("restaurantId is required to list conversation threads");
+    }
+
+    const direction = options.direction?.trim().toLowerCase();
+    if (direction && !ALLOWED_DIRECTIONS.has(direction)) {
+      throw new Error(
+        `Invalid direction "${options.direction}". Use inbound or outbound.`,
+      );
+    }
+    const sentiment = options.sentiment?.trim().toLowerCase();
+    if (sentiment && !ALLOWED_SENTIMENTS.has(sentiment)) {
+      throw new Error(
+        `Invalid sentiment "${options.sentiment}". Use positive, neutral, negative, or unclassified.`,
+      );
+    }
+
+    const window = resolveDateWindow(options);
+
+    const { data: threadRows, error: threadError } =
+      await this.databaseService.supabase.rpc("list_conversation_threads", {
+        p_restaurant_id: options.restaurantId,
+        p_provider_id: options.providerId ?? null,
+        p_channel: options.channel ?? null,
+        p_direction: direction ?? null,
+        p_sentiment: sentiment ?? null,
+        p_status: options.status ?? null,
+        p_search: options.search ?? null,
+        p_order_number: options.orderNumber ?? null,
+        p_thread_key: options.threadKey ?? null,
+        p_date_from: window.from,
+        p_date_to: window.to,
+        p_limit: limit,
+        p_offset: (page - 1) * limit,
+      });
+
+    if (threadError) {
+      this.logger.error(`List threads error: ${threadError.message}`);
+      throw new Error(threadError.message);
+    }
+
+    const threads = (threadRows || []) as any[];
+    const total = Number(threads[0]?.total_threads ?? 0);
+    const keys = threads.map((t) => t.thread_key);
+
+    if (keys.length === 0) {
+      return {
+        conversations: [],
+        threads: [],
+        total,
+        page,
+        limit,
+        totalPages: 0,
+      };
+    }
+
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_conversations")
+      .select(
+        `
+        *,
+        providers (id, name),
+        procurement_orders (id, order_number, quantity, status, negotiated_price, final_price, inventory:inventory_id(wine_name))
+      `,
+      )
+      .eq("restaurant_id", options.restaurantId)
+      .in("thread_key", keys)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      this.logger.error(`List thread messages error: ${error.message}`);
+      throw new Error(error.message);
+    }
+
+    return {
+      conversations: flattenWineName(data || []),
+      threads: threads.map((t) => ({
+        key: t.thread_key,
+        messageCount: Number(t.message_count),
+        firstAt: t.first_at,
+        lastAt: t.last_at,
+        orderId: t.order_id,
+        orderNumber: t.order_number,
+        providerId: t.provider_id,
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
    * Get a full conversation thread by threadId
    */
-  async getThread(threadId: string) {
+  async getThread(threadId: string, restaurantId: string) {
     try {
-      // Thread matching: if thread_id column exists use it, otherwise
-      // fall back to grouping by order_id (pre-email-tracking migration)
-      const { data, error } = await this.databaseService.supabase
-        .from("procurement_conversations")
-        .select(
-          `
+      const select = `
           *,
           providers (id, name),
           procurement_orders (id, order_number, quantity, status, negotiated_price)
-        `,
-        )
-        .eq("order_id", threadId)
+        `;
+
+      // Tenant scope is mandatory: thread keys are derived from Gmail thread ids, so
+      // without this any authenticated user could read another restaurant's entire
+      // negotiation history by guessing or replaying a key.
+      const scoped = () =>
+        this.databaseService.supabase
+          .from("procurement_conversations")
+          .select(select)
+          .eq("restaurant_id", restaurantId);
+
+      // thread_key is the durable identity. Older callers (and saved links) may still
+      // pass an order UUID, so fall back to order_id when the key matches nothing.
+      let { data, error } = await scoped()
+        .eq("thread_key", threadId)
         .order("created_at", { ascending: true });
+
+      if (!error && (!data || data.length === 0) && UUID_RE.test(threadId)) {
+        ({ data, error } = await scoped()
+          .eq("order_id", threadId)
+          .order("created_at", { ascending: true }));
+      }
 
       if (error) {
         throw new Error(error.message);
@@ -267,17 +492,21 @@ export class ConversationsService {
       for (const c of conversations) {
         // By channel
         byChannel[c.channel] = (byChannel[c.channel] || 0) + 1;
-        // By direction
-        byDirection[c.direction] = (byDirection[c.direction] || 0) + 1;
+        // By direction (normalize casing)
+        const dir = String(c.direction || "")
+          .trim()
+          .toLowerCase();
+        if (dir) byDirection[dir] = (byDirection[dir] || 0) + 1;
         // By provider
         if (c.provider_id) {
           byProvider[c.provider_id] = (byProvider[c.provider_id] || 0) + 1;
         }
-        // By sentiment
-        if (c.detected_sentiment) {
-          bySentiment[c.detected_sentiment] =
-            (bySentiment[c.detected_sentiment] || 0) + 1;
-        }
+        // By sentiment (normalize; null → unclassified)
+        const sent = String(c.detected_sentiment || "")
+          .trim()
+          .toLowerCase();
+        const sentKey = sent || "unclassified";
+        bySentiment[sentKey] = (bySentiment[sentKey] || 0) + 1;
         // By month
         if (c.created_at) {
           const monthKey = c.created_at.substring(0, 7); // YYYY-MM

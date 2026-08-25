@@ -1,18 +1,19 @@
-# 🗺️ WineOps AI - Complete Feature Roadmap
+# 🗺️ Mudavym — Complete Feature Roadmap
 
-**Version:** 2.0 (Updated with expanded scope)  
-**Last Updated:** January 7, 2026  
-**Status:** Documentation Phase Complete - Ready for Development
+**Version:** 2.1 (Mudavym futures — beverages → bakery → kitchen)  
+**Last Updated:** July 26, 2026  
+**Status:** Active development + living futures (see [`.planning/FUTURES.md`](../../.planning/FUTURES.md))
 
 ---
 
 ## 🎯 EXECUTIVE SUMMARY
 
-This roadmap outlines the complete development timeline for WineOps AI, from MVP to full-featured autonomous wine operations platform, including the separate Sommelier AI project.
+This roadmap covers Mudavym (evolving from WineOps AI): a full autonomous restaurant backend. Wine remains the first vertical and extraction quality bar. Expansion order is locked: **wine → full beverages → bakery → rest of kitchen**. Near-term delivery still follows the phased build below; product expansion detail lives in FUTURES.md and ROADMAP backlog 999.2–999.4.
 
-**Total Timeline:** 14 weeks to full platform (excluding Sommelier AI)  
+**Total Timeline:** 14 weeks to full wine-platform baseline (excluding Sommelier AI / Mudavym expansion stages)  
 **MVP Timeline:** 2 weeks  
-**Critical Path Features:** Mobile App, Vintage Substitution Rules
+**Critical Path Features:** Mobile App, Vintage Substitution Rules  
+**Futures:** Full beverages + bakery MVP + kitchen — not scheduled until wine inventory trust is earned
 
 ---
 
@@ -810,6 +811,64 @@ ADD COLUMN storage_location_id UUID REFERENCES storage_locations(id);
 
 ---
 
+### Mudavym — Full Beverages → Bakery → Kitchen
+**Timeline:** Post–wine inventory trust (not scheduled) — see [`.planning/FUTURES.md`](../../.planning/FUTURES.md)  
+**Complexity:** High  
+**Brand:** Mudavym (WineOps evolves into the autonomous restaurant backend)
+
+**North star:** Full autonomous backend for restaurants. Expansion order locked: **wine → full beverages → bakery (first food) → rest of kitchen**.
+
+**Stage 1 — Beverages**
+- Taxonomy: `beverage` → wine (red/white/rosé/sparkling/…), beer, cocktail, hard alcohol (whiskey/vodka/gin/…), NA
+- Every item extracted to finest features + photos (same depth bar as wine)
+- Cocktail **Recipes** in inventory row detail: build sheet, linked SKUs, pour specs, method, garnish, cost roll-up
+
+**Stage 2 — Bakery (food subsection)**
+- Ingredients + pars/alerts, recipes/build sheets, finished goods + waste, POS sell-through
+- Ship a **smaller MVP** first (manual recipes + waste + simple POS decrement); full BOM/spoilage intelligence later
+
+**Stage 3 — Rest of kitchen** — only after bakery earns the model
+
+**UX anchor:** Inventory command table (`RowExpansion` on `/inventory`); wine bottle rows unchanged for composed-recipe panels.
+
+**Dependencies:** Catalog taxonomy (`domain` / `subsection` / `subtype`), Phase 2 lots/ledger for pour-through and recipe costing.
+
+---
+
+### Mudavym — Guest Profiles, Ratings & Points (Share/Recommend)
+**Timeline:** Backlog 999.1 (not scheduled) — see [`.planning/FUTURES.md`](../../.planning/FUTURES.md) §7  
+**Complexity:** High
+
+**Vision:** A second profile type for the **customers who come to see these restaurants**, existing independently of any restaurant org. Beli-style dish and restaurant ratings, follows, and discovery — plus **points earned for sharing and recommending**, with a bonus when a share converts (recipient signs up or logs a verified visit).
+
+**Points integrity (locked):**
+- Append-only points ledger; balance derived — same source-of-truth discipline as inventory
+- Provisional points confirm only on verified visit / verified conversion; unconfirmed points expire
+- Anti-abuse: no self-referral, duplicate-device checks, rate limits, review quality gate
+- Redemption launches as **status/tiers**; perks are opt-in and funded per restaurant
+
+**Restaurant value:** consent-based, k-anonymized audience segments; advocacy signal feeds par levels, promotions, and menu experiments in the ops backend.
+
+**UX anchors:** `UX_PATHS_CATALOG.md` §W (`NEW-652…NEW-666`) + §AB (`NEW-861…NEW-885`).
+
+**Dependencies:** Guest identity separate from restaurant membership roles, verified-visit channel (reservation/POS/QR), consent + privacy controls.
+
+---
+
+### Mudavym — Ask AI Action Creation
+**Timeline:** Backlog 999.5 (not scheduled) — see [`.planning/FUTURES.md`](../../.planning/FUTURES.md) §8  
+**Complexity:** High
+
+**Vision:** The **Ask AI** button becomes an action composer that eases app complexity as Mudavym grows. Natural-language intent → allowlisted typed action card → human confirm → execute via existing APIs (draft PO, vendor email draft, calendar event, inventory transfer/waste, recipe start, insight→Act, deep-link nav).
+
+**Contract:** Ask → propose → confirm → execute. No silent stock/money/email mutations. Unify Reports Ask AI pill, Wine Agent FAB, and contextual “Ask about this page” behind one schema.
+
+**UX anchors:** `UX_PATHS_CATALOG.md` §AC (`NEW-886…NEW-910`); overlaps Wine Agent `NEW-644…646` and `NEW-688`.
+
+**Dependencies:** Command palette + `recommendation_actions` / OneTap plumbing; real retrieval+tools replacing current Reports mock answers.
+
+---
+
 ## 📊 COMPLETE TIMELINE OVERVIEW
 
 ```
@@ -839,7 +898,7 @@ WEEKS 5-6: PHASE 2B
 WEEKS 7-8: PHASE 3A
 ├─ Mobile App Development ⭐ MUST
 ├─ Customizable Dashboard ⭐ PRIORITY
-└─ Computer Vision (YOLOv8 + OCR)
+└─ Computer Vision (RF-DETR live + PaddleOCR on shutter + Gemini fields)
 
 WEEKS 9-10: PHASE 3B
 ├─ Storage Location Tracking
@@ -966,7 +1025,7 @@ WEEK 15+: SOMMELIER AI PROJECT
 - [ ] Mobile App (Native) ⭐ MUST
 - [ ] Customizable Dashboard ⭐ PRIORITY
 - [ ] Storage Location Tracking
-- [ ] Computer Vision (YOLOv8 + OCR)
+- [ ] Computer Vision (RF-DETR live + PaddleOCR on shutter + Gemini fields)
 - [ ] Google Sheets Sync (two-way)
 
 ### Future Later

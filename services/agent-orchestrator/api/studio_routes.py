@@ -307,8 +307,9 @@ def get_approval_queue(
             .range(offset, offset + min(limit, 100) - 1)
             .execute()
         )
+        queue = _hydrate_queue_rows(supabase, rows_resp.data or [])
         return {
-            "queue": rows_resp.data or [],
+            "queue": queue,
             "total": total,
             "limit": limit,
             "offset": offset,
@@ -316,6 +317,93 @@ def get_approval_queue(
     except Exception as exc:
         logger.error("get_approval_queue failed: %s", exc)
         raise HTTPException(status_code=503, detail="Database query failed")
+
+
+def _hydrate_queue_rows(supabase, rows: list[dict]) -> list[dict]:
+    """Fills in wine_name/vintage (from the submission payload), actor_email,
+    actor_role, and trust_count for each pending override row.
+
+    GET /queue previously did a bare select("*") on override_events, which
+    has none of these columns — QueueRow.tsx rendered "(unknown)" for every
+    wine and never showed the trust bar for certified contributors. This
+    performs three small batch lookups instead of N+1 queries per row.
+    """
+    if not rows:
+        return rows
+
+    submission_ids = list({r["submission_id"] for r in rows if r.get("submission_id")})
+    actor_ids = list({r["actor_id"] for r in rows if r.get("actor_id")})
+
+    payload_by_submission: dict[str, dict] = {}
+    if submission_ids:
+        try:
+            sub_resp = (
+                supabase.table("master_wine_library_submissions")
+                .select("id, payload")
+                .in_("id", submission_ids)
+                .execute()
+            )
+            for sub in sub_resp.data or []:
+                payload_by_submission[sub["id"]] = sub.get("payload") or {}
+        except Exception as exc:
+            logger.warning("_hydrate_queue_rows: submission lookup failed: %s", exc)
+
+    email_by_actor: dict[str, str] = {}
+    if actor_ids:
+        try:
+            user_resp = (
+                supabase.table("users")
+                .select("user_id, email")
+                .in_("user_id", actor_ids)
+                .execute()
+            )
+            for u in user_resp.data or []:
+                email_by_actor[u["user_id"]] = u.get("email")
+        except Exception as exc:
+            logger.warning("_hydrate_queue_rows: user lookup failed: %s", exc)
+
+    role_by_actor: dict[str, str] = {}
+    trust_by_actor: dict[str, int] = {}
+    if actor_ids:
+        try:
+            role_resp = (
+                supabase.table("user_roles")
+                .select("user_id, role, consecutive_approved_overrides")
+                .in_("user_id", actor_ids)
+                .is_("revoked_at", "null")
+                .execute()
+            )
+            for role_row in role_resp.data or []:
+                uid = role_row["user_id"]
+                # Prefer certified_contributor if a user has multiple active roles —
+                # it is the only role with trust progress to show.
+                if (
+                    uid not in role_by_actor
+                    or role_row["role"] == "certified_contributor"
+                ):
+                    role_by_actor[uid] = role_row["role"]
+                    trust_by_actor[uid] = (
+                        role_row.get("consecutive_approved_overrides") or 0
+                    )
+        except Exception as exc:
+            logger.warning("_hydrate_queue_rows: role lookup failed: %s", exc)
+
+    hydrated = []
+    for row in rows:
+        payload = payload_by_submission.get(row.get("submission_id"), {})
+        actor_id = row.get("actor_id")
+        vintage = payload.get("vintage")
+        hydrated.append(
+            {
+                **row,
+                "wine_name": payload.get("name"),
+                "vintage": str(vintage) if vintage is not None else None,
+                "actor_email": email_by_actor.get(actor_id),
+                "actor_role": role_by_actor.get(actor_id),
+                "trust_count": trust_by_actor.get(actor_id),
+            }
+        )
+    return hydrated
 
 
 # --- PATCH /queue/{override_id} ---

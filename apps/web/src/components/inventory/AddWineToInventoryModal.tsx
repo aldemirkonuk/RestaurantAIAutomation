@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import {
   X,
   Search,
@@ -18,6 +20,7 @@ import { useWines } from '../../hooks/queries'
 import { mapApiWinesToUiWines } from '../../lib/wine-library'
 import { AddWineModal } from '../wines/AddWineModal'
 import { MenuScannerFlow } from '../scanner/MenuScannerFlow'
+import { summarizeMenuScanPersist } from '../../lib/menuScannerPersistence'
 import { useStorageLocations } from '../../hooks/useStorageLocations'
 import {
   COMMON_BOTTLE_SIZES,
@@ -38,6 +41,13 @@ interface VolumeFields {
   saleType: SaleType
   pourSizeMl?: number
   menuPriceGlass?: number
+  costPerBottle?: number
+  /**
+   * Free/comp bottle (distributor tasting sample, staff gift, etc.). The caller maps
+   * this to `costProvenance: 'sample'` with a cost of $0, which the WAC rollup
+   * excludes — the bottles count as stock, never toward average cost.
+   */
+  isSample?: boolean
 }
 
 interface AddWineToInventoryModalProps {
@@ -48,11 +58,14 @@ interface AddWineToInventoryModalProps {
 
 export function AddWineToInventoryModal({ isOpen, onClose, onAddWine }: AddWineToInventoryModalProps) {
   const { measurementUnit } = useRestaurantSettingsStore()
+  const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<TabType>('search')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedWine, setSelectedWine] = useState<WineType | null>(null)
   const [quantity, setQuantity] = useState<number>(1)
   const [threshold, setThreshold] = useState<number>(10)
+  const [costPerBottle, setCostPerBottle] = useState<number>(0)
+  const [isSample, setIsSample] = useState(false)
   const [showPhotoModal, setShowPhotoModal] = useState(false)
   const [showScannerFlow, setShowScannerFlow] = useState(false)
   const [detectedWine, setDetectedWine] = useState<WineType | null>(null)
@@ -85,6 +98,7 @@ export function AddWineToInventoryModal({ isOpen, onClose, onAddWine }: AddWineT
     const query = searchQuery.toLowerCase()
     return uiWines.filter(wine =>
       wine.name.toLowerCase().includes(query) ||
+      (wine.displayName || '').toLowerCase().includes(query) ||
       wine.producer.toLowerCase().includes(query) ||
       wine.grape.toLowerCase().includes(query) ||
       wine.region.toLowerCase().includes(query) ||
@@ -100,6 +114,8 @@ export function AddWineToInventoryModal({ isOpen, onClose, onAddWine }: AddWineT
     setDetectedWine(null)
     setQuantity(1)
     setThreshold(10)
+    setCostPerBottle(0)
+    setIsSample(false)
     setSelectedStorageLocationId(undefined)
     setBottleSizeMl(750)
     setCustomBottleSizeInput('')
@@ -117,6 +133,8 @@ export function AddWineToInventoryModal({ isOpen, onClose, onAddWine }: AddWineT
     setSelectedWine(wine)
     setQuantity(wine.liveStock || 1)
     setThreshold(wine.threshold || 10)
+    setCostPerBottle(wine.price || 0)
+    setIsSample(false)
   }
 
   const handleAddToInventory = () => {
@@ -125,6 +143,10 @@ export function AddWineToInventoryModal({ isOpen, onClose, onAddWine }: AddWineT
         bottleSizeMl,
         saleType,
         ...(showGlassFields && { pourSizeMl, menuPriceGlass }),
+        // A sample carries a real $0, not an absent cost. The caller turns this flag
+        // into costProvenance 'sample', which the WAC rollup excludes by name — so a
+        // free bottle stays distinguishable from one whose price was never entered.
+        ...(isSample ? { isSample: true, costPerBottle: 0 } : { costPerBottle }),
       }
       onAddWine(selectedWine, quantity, threshold, selectedStorageLocationId, volumeFields)
       handleClose()
@@ -290,7 +312,7 @@ export function AddWineToInventoryModal({ isOpen, onClose, onAddWine }: AddWineT
                                     <h3 className={`font-semibold text-sm truncate ${
                                       isSelected ? 'text-wine-900' : 'text-gray-900'
                                     }`}>
-                                      {wine.name}
+                                      {wine.displayName || wine.name}
                                     </h3>
                                     {isSelected && (
                                       <Check className="w-5 h-5 text-wine-600 flex-shrink-0" />
@@ -439,6 +461,40 @@ export function AddWineToInventoryModal({ isOpen, onClose, onAddWine }: AddWineT
                         </button>
                       </div>
                       <p className="text-xs text-gray-500 mt-1">Current stock level</p>
+                    </div>
+
+                    {/* Cost per bottle / sample toggle */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium text-gray-700">Cost per Bottle</label>
+                        <label className="flex items-center gap-1.5 text-xs font-medium text-gray-500 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={isSample}
+                            onChange={(e) => setIsSample(e.target.checked)}
+                            className="w-3.5 h-3.5 rounded border-gray-300 text-wine-600 focus:ring-wine-500 cursor-pointer"
+                          />
+                          Free sample
+                        </label>
+                      </div>
+                      {isSample ? (
+                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                          Marked as a free/comp bottle — no cost is recorded, so it won't skew your average cost (WAC) or value-on-hand.
+                        </p>
+                      ) : (
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={costPerBottle || ''}
+                            onChange={(e) => setCostPerBottle(Math.max(0, parseFloat(e.target.value) || 0))}
+                            placeholder="0.00"
+                            className="w-full pl-7 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-wine-500"
+                          />
+                        </div>
+                      )}
                     </div>
 
                     {/* Threshold */}
@@ -701,9 +757,17 @@ export function AddWineToInventoryModal({ isOpen, onClose, onAddWine }: AddWineT
         <MenuScannerFlow
           isOpen={showScannerFlow}
           onClose={() => setShowScannerFlow(false)}
-          onWinesAdded={(wines) => {
-            console.log(`${wines.length} wines added from scanner`)
-            setShowScannerFlow(false)
+          onWinesAdded={(_wines, result) => {
+            // The scanner's batch step already wrote these rows; reporting is all
+            // that's left, so this must not persist a second time.
+            if (!result) return
+            toast.success(`Menu scan: ${summarizeMenuScanPersist(result)}`, {
+              description:
+                result.provisional.length > 0
+                  ? `${result.provisional.map((r) => r.wineName).join(', ')} — added to the Master Wine Library as provisional entries.`
+                  : undefined,
+            })
+            queryClient.invalidateQueries({ queryKey: ['inventory'] })
           }}
         />,
         document.body

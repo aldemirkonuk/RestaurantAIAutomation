@@ -6,6 +6,7 @@ import {
   fetchUnreadNotifications,
   fetchUnreadCount,
   markNotificationAsRead,
+  markNotificationAsUnread,
   markNotificationsAsRead,
   markAllNotificationsAsRead,
   archiveNotification,
@@ -29,7 +30,11 @@ import { syncManager } from '../../lib/sync-manager'
  * Hook to fetch notifications for a user
  * With offline support: caches data and falls back to cached data when offline
  */
-export function useNotifications(userId: string, filters?: NotificationFilters) {
+export function useNotifications(
+  userId: string,
+  filters?: NotificationFilters,
+  options?: { refetchInterval?: number | false; staleTime?: number },
+) {
   const cacheKey = `notifications_${userId}_${JSON.stringify(filters || {})}`
   
   return useQuery({
@@ -60,8 +65,10 @@ export function useNotifications(userId: string, filters?: NotificationFilters) 
       }
     },
     enabled: !!userId,
-    staleTime: 60_000,      // 1 min — notifications are low-urgency; the bell icon doesn't need sub-second freshness
+    staleTime: options?.staleTime ?? 15_000,
     gcTime: 15 * 60_000,    // 15 min — prevent Header from causing a full refetch on every page visit
+    refetchInterval: options?.refetchInterval,
+    refetchOnWindowFocus: true,
     select: (data): Notification[] => (Array.isArray(data) ? data : []),
   })
 }
@@ -154,6 +161,25 @@ export function useMarkNotificationAsRead() {
       
       // Update store
       notificationStore.decrementUnreadCount()
+    },
+  })
+}
+
+/**
+ * Hook to mark a notification back to unread (NEW-474)
+ */
+export function useMarkNotificationAsUnread() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (id: string) => markNotificationAsUnread(id),
+    onSuccess: (updated) => {
+      if (updated?.userId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.notifications.list(updated.userId) })
+        queryClient.invalidateQueries({ queryKey: queryKeys.notifications.unread(updated.userId) })
+        queryClient.invalidateQueries({ queryKey: queryKeys.notifications.count(updated.userId) })
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all })
     },
   })
 }

@@ -1,21 +1,42 @@
 /**
  * WineOps AI Service Worker
  * Handles push notifications, background sync, and caching
+ *
+ * Cache strategy:
+ * - Navigations / HTML: network-first (never serve a stale index.html after deploy)
+ * - Hashed /assets/*: cache-first (immutable content hashes)
+ * - Icons / manifest: cache-first with offline fallback
  */
 
-const CACHE_NAME = "wineops-v1"
-const urlsToCache = [
-  "/",
+const CACHE_NAME = "wineops-v3"
+const PRECACHE_URLS = [
   "/logo.png",
   "/badge.png",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/manifest.json",
 ]
 
-// Install event - cache assets
+function isNavigationRequest(request) {
+  if (request.mode === "navigate") return true
+  const accept = request.headers.get("accept") || ""
+  return accept.includes("text/html")
+}
+
+function isHashedAsset(url) {
+  return url.pathname.startsWith("/assets/")
+}
+
+function isPrecacheableStatic(url) {
+  return PRECACHE_URLS.includes(url.pathname)
+}
+
+// Install event - cache static shell assets (not index.html)
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log("Service Worker: Caching files")
-      return cache.addAll(urlsToCache)
+      console.log("Service Worker: Caching static files")
+      return cache.addAll(PRECACHE_URLS)
     })
   )
   self.skipWaiting()
@@ -28,7 +49,7 @@ self.addEventListener("activate", (event) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
-            console.log("Service Worker: Clearing old cache")
+            console.log("Service Worker: Clearing old cache", cacheName)
             return caches.delete(cacheName)
           }
         })
@@ -192,14 +213,60 @@ async function syncInventory() {
   }
 }
 
-// Fetch event - serve from cache when offline
+async function networkFirst(request) {
+  try {
+    const networkResponse = await fetch(request)
+    return networkResponse
+  } catch (error) {
+    const cached = await caches.match(request)
+    if (cached) return cached
+    // Offline SPA fallback: try a previously fetched document shell if present
+    if (isNavigationRequest(request)) {
+      const offlineShell = await caches.match("/")
+      if (offlineShell) return offlineShell
+    }
+    throw error
+  }
+}
+
+async function cacheFirst(request) {
+  const cached = await caches.match(request)
+  if (cached) return cached
+
+  const networkResponse = await fetch(request)
+  // Only cache successful same-origin responses
+  if (networkResponse.ok && networkResponse.type === "basic") {
+    const cache = await caches.open(CACHE_NAME)
+    cache.put(request, networkResponse.clone())
+  }
+  return networkResponse
+}
+
+// Fetch event
 self.addEventListener("fetch", (event) => {
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request)
-    })
-  )
+  const { request } = event
+  if (request.method !== "GET") return
+
+  const url = new URL(request.url)
+  if (url.origin !== self.location.origin) return
+
+  // Never intercept API — always hit network
+  if (url.pathname.startsWith("/api/")) return
+
+  // HTML / navigations: always prefer network so deploys aren't masked by stale index.html
+  if (isNavigationRequest(request) || url.pathname === "/" || url.pathname.endsWith(".html")) {
+    event.respondWith(networkFirst(request))
+    return
+  }
+
+  // Hashed Vite assets + static icons: cache-first
+  if (isHashedAsset(url) || isPrecacheableStatic(url)) {
+    event.respondWith(cacheFirst(request))
+    return
+  }
+
+  // Default: network with cache fallback
+  event.respondWith(networkFirst(request))
 })
 
-console.log("Service Worker: Loaded")
-
+console.log("Service Worker: Loaded", CACHE_NAME)

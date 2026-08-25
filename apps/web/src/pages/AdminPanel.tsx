@@ -13,12 +13,15 @@ import {
   Cpu,
   Clock,
   ChevronRight,
-  Wine,
   AlertCircle
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Link } from 'react-router-dom'
 import axios from 'axios'
+import { BrandMark } from '../components/brand/BrandMark'
+
+/** Admin config persists locally — there is no admin-config endpoint (NEW-544). */
+const ADMIN_SETTINGS_KEY = 'wineops.admin.settings'
 
 interface RestaurantSettings {
   buffer_window_minutes: number
@@ -140,14 +143,67 @@ export default function AdminPanel() {
   const [agentStatus, setAgentStatus] = useState<Record<string, { status: 'active' | 'inactive' | 'warning', messages: number | string, avgTime: string, errors: string }>>({})
   const [agentStatusLoading, setAgentStatusLoading] = useState(true)
   const [agentStatusError, setAgentStatusError] = useState<string | null>(null)
+  const [infraProviders, setInfraProviders] = useState<
+    Array<{ id: string; name: string; desc: string; status: string; healthy: boolean }>
+  >([])
   
-  const [settings, setSettings] = useState<RestaurantSettings>({
-    buffer_window_minutes: 30,
-    default_threshold_min: 5,
-    enable_auto_procurement: true,
-    enable_visual_verification: false,
-    enable_predictive_analytics: false,
+  const [settings, setSettings] = useState<RestaurantSettings>(() => {
+    const defaults: RestaurantSettings = {
+      buffer_window_minutes: 30,
+      default_threshold_min: 5,
+      enable_auto_procurement: true,
+      enable_visual_verification: false,
+      enable_predictive_analytics: false,
+    }
+    // Rehydrate what Save wrote, so "saved on this device" is actually true.
+    try {
+      const stored = localStorage.getItem(ADMIN_SETTINGS_KEY)
+      return stored ? { ...defaults, ...JSON.parse(stored) } : defaults
+    } catch {
+      return defaults
+    }
   })
+
+  // Provider health (Supabase / Gemini / Claude for Studio)
+  useEffect(() => {
+    const fetchProviders = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
+        const token = localStorage.getItem('accessToken')
+        const { data } = await axios.get(`${apiUrl}/api/v1/health/providers`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          timeout: 5000,
+        })
+        const fromApi = (data?.providers ?? []) as Array<{
+          id: string
+          name: string
+          desc: string
+          status: string
+          healthy: boolean
+        }>
+        setInfraProviders([
+          ...fromApi,
+          { id: 'rabbitmq', name: 'Message Queue', desc: 'RabbitMQ', status: 'Active', healthy: true },
+          { id: 'redis', name: 'Cache', desc: 'Redis', status: 'Running', healthy: true },
+        ])
+      } catch {
+        setInfraProviders([
+          { id: 'supabase', name: 'Database', desc: 'Supabase PostgreSQL', status: 'Unknown', healthy: false },
+          { id: 'rabbitmq', name: 'Message Queue', desc: 'RabbitMQ', status: 'Unknown', healthy: false },
+          { id: 'redis', name: 'Cache', desc: 'Redis', status: 'Unknown', healthy: false },
+          { id: 'gemini', name: 'AI Engine', desc: 'Gemini Pro', status: 'Unknown', healthy: false },
+          {
+            id: 'claude',
+            name: 'Studio Vision',
+            desc: 'Claude API (Haiku / Sonnet — /studio extract)',
+            status: 'Unknown',
+            healthy: false,
+          },
+        ])
+      }
+    }
+    if (activeTab === 'general') void fetchProviders()
+  }, [activeTab])
 
   // Fetch agent metrics from agent-orchestrator
   useEffect(() => {
@@ -190,11 +246,20 @@ export default function AdminPanel() {
     }
   }, [activeTab])
 
+  /**
+   * NEW-544. This previously faked a 1s delay and reported "saved
+   * successfully" — a success message for a no-op. There is no admin-config
+   * endpoint (the settings module only exposes feature flags), so the values
+   * are persisted locally and the toast says exactly that instead of implying
+   * a server write.
+   */
   const handleSaveSettings = async () => {
     setSaving(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      toast.success('Settings saved successfully')
+      localStorage.setItem(ADMIN_SETTINGS_KEY, JSON.stringify(settings))
+      toast.success('Settings saved on this device', {
+        description: 'Admin config has no server endpoint yet, so these apply locally.',
+      })
     } catch {
       toast.error('Failed to save settings')
     } finally {
@@ -202,10 +267,33 @@ export default function AdminPanel() {
     }
   }
 
+  /**
+   * NEW-545. This previously waited 2s and claimed the agent "restarted
+   * successfully" without calling anything. Restarting needs an orchestrator
+   * control endpoint that doesn't exist (only GET /health/agents[/:name] is
+   * exposed), so rather than lie we re-check the agent's live health and tell
+   * the user what's actually true.
+   */
   const handleRestartAgent = async (agentName: string) => {
-    toast.info(`Restarting ${agentName.replace('_', ' ')}...`)
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    toast.success(`${agentName.replace('_', ' ')} restarted successfully`)
+    const pretty = agentName.replace(/_/g, ' ')
+    try {
+      const apiUrl = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
+      const token = localStorage.getItem('accessToken')
+      const res = await axios.get(`${apiUrl}/api/v1/health/agents/${agentName}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        timeout: 8000,
+      })
+      const healthy = res.data?.healthy ?? res.data?.agent?.healthy
+      toast.warning(`Restart isn't wired for ${pretty}`, {
+        description: healthy
+          ? `It currently reports healthy. Restarting needs an orchestrator control endpoint.`
+          : `It currently reports unhealthy. Restarting needs an orchestrator control endpoint — check the service logs.`,
+      })
+    } catch {
+      toast.error(`Couldn't reach ${pretty}`, {
+        description: 'Restart control is not implemented; the health check also failed.',
+      })
+    }
   }
 
   const tabs = [
@@ -229,9 +317,7 @@ export default function AdminPanel() {
                 <ArrowLeft className="w-5 h-5 text-slate-600" />
               </Link>
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-gradient-to-br from-brand-500 to-brand-600 rounded-xl flex items-center justify-center">
-                  <Wine className="w-5 h-5 text-white" />
-                </div>
+                <BrandMark size={36} alt="" />
                 <div>
                   <h1 className="text-lg font-bold text-slate-900">Admin Settings</h1>
                 </div>
@@ -393,26 +479,55 @@ export default function AdminPanel() {
                     <p className="text-sm text-slate-500 mt-1">Infrastructure health overview</p>
                   </div>
                   <div className="p-6 space-y-3">
-                    {[
-                      { name: 'Database', desc: 'Supabase PostgreSQL', icon: Database, status: 'Connected' },
-                      { name: 'Message Queue', desc: 'RabbitMQ', icon: Server, status: 'Active' },
-                      { name: 'Cache', desc: 'Redis', icon: Cpu, status: 'Running' },
-                      { name: 'AI Engine', desc: 'Gemini Pro', icon: Zap, status: 'Ready' },
-                    ].map((service) => (
+                    {(infraProviders.length
+                      ? infraProviders
+                      : [
+                          { id: 'supabase', name: 'Database', desc: 'Supabase PostgreSQL', status: '…', healthy: true },
+                          { id: 'rabbitmq', name: 'Message Queue', desc: 'RabbitMQ', status: '…', healthy: true },
+                          { id: 'redis', name: 'Cache', desc: 'Redis', status: '…', healthy: true },
+                          { id: 'gemini', name: 'AI Engine', desc: 'Gemini Pro', status: '…', healthy: true },
+                          {
+                            id: 'claude',
+                            name: 'Studio Vision',
+                            desc: 'Claude API (Haiku / Sonnet — /studio extract)',
+                            status: '…',
+                            healthy: true,
+                          },
+                        ]
+                    ).map((service) => {
+                      const Icon =
+                        service.id === 'supabase'
+                          ? Database
+                          : service.id === 'rabbitmq'
+                            ? Server
+                            : service.id === 'redis'
+                              ? Cpu
+                              : Zap
+                      return (
                       <div
-                        key={service.name}
+                        key={service.id}
                         className="flex items-center justify-between p-4 bg-slate-50 rounded-xl"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-2.5 h-2.5 bg-success-500 rounded-full animate-pulse-soft" />
-                          <div>
-                            <p className="font-medium text-slate-900">{service.name}</p>
-                            <p className="text-sm text-slate-500">{service.desc}</p>
+                          <div
+                            className={`w-2.5 h-2.5 rounded-full ${
+                              service.healthy ? 'bg-success-500 animate-pulse-soft' : 'bg-amber-400'
+                            }`}
+                          />
+                          <div className="flex items-center gap-2.5">
+                            <Icon className="w-4 h-4 text-slate-400" />
+                            <div>
+                              <p className="font-medium text-slate-900">{service.name}</p>
+                              <p className="text-sm text-slate-500">{service.desc}</p>
+                            </div>
                           </div>
                         </div>
-                        <span className="badge-success">{service.status}</span>
+                        <span className={service.healthy ? 'badge-success' : 'badge-warning'}>
+                          {service.status}
+                        </span>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               </div>

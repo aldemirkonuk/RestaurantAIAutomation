@@ -1,0 +1,36 @@
+{
+  "archetype_id": "cafe",
+  "display_name": "Cafe",
+  "snapshot": "datasets/sim/menus/cafe.json",
+  "defaults": {
+    "cuisine": "cafe-american",
+    "size": "small",
+    "wine_program_depth": "shallow",
+    "sales_volume": "low",
+    "price_tier": "entry",
+    "ordering_rhythm": "weekly"
+  },
+  "opening_stock": {
+    "default_bottles": 6,
+    "min_bottles": 1,
+    "max_bottles": 18,
+    "by_price_tier": {
+      "entry": 12,
+      "mid": 6,
+      "premium": 2
+    },
+    "by_primary_type": {
+      "sparkling": 6,
+      "red": 6,
+      "white": 8,
+      "rose": 4
+    },
+    "threshold_min": 2
+  },
+  "restaurant": {
+    "name": "Sim Cafe",
+    "timezone": "America/Chicago",
+    "city": "Chicago",
+    "country": "USA"
+  }
+}

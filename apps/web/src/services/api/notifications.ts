@@ -135,6 +135,14 @@ export async function markNotificationAsRead(id: string): Promise<Notification> 
 }
 
 /**
+ * Mark a notification back to unread (NEW-474)
+ */
+export async function markNotificationAsUnread(id: string): Promise<Notification> {
+  const response = await apiClient.patch<Notification>(`/notifications/${id}/unread`)
+  return response.data
+}
+
+/**
  * Mark multiple notifications as read
  */
 export async function markNotificationsAsRead(ids: string[]): Promise<void> {

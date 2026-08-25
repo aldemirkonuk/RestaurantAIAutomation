@@ -24,10 +24,13 @@ class ToastAdapter:
     async def verify_webhook(self, raw: bytes, signature: str) -> bool:
         """Return True if HMAC-SHA256 signature matches the raw payload."""
         if not self._secret:
-            logger.warning(
-                "ToastAdapter: TOAST_WEBHOOK_SECRET not set — skipping HMAC verification"
+            # SimPOS testbed plan (decision B16): fail closed rather than
+            # open. A missing TOAST_WEBHOOK_SECRET must reject every webhook,
+            # not accept everything unsigned.
+            logger.error(
+                "ToastAdapter: TOAST_WEBHOOK_SECRET not set — rejecting webhook (fail closed)"
             )
-            return True  # Fail-open when secret not configured (dev/mock mode)
+            return False
         if not signature:
             return False
         try:

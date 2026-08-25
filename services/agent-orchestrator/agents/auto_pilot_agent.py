@@ -9,6 +9,12 @@ from core.base_agent import BaseAgent
 
 
 class AutoPilotAgent(BaseAgent):
+    #: This agent is a stub — process_message() logs and returns. Declaring it
+    #: here means the orchestrator refuses to start it rather than running an
+    #: agent that consumes events and produces nothing, which reads identically
+    #: to a working one from every dashboard and health check.
+    IS_STUB = True
+
     async def initialize(self) -> None:
         self.logger.info("Initializing Auto-Pilot Agent")
         self.logger.info("✓ Auto-Pilot Agent initialized")

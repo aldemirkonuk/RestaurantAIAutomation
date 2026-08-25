@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { Card, Button } from '../components/ui'
 import { Header } from '../components/layout/Header'
@@ -6,6 +6,7 @@ import { OrderApprovalModal } from '../components/orders/OrderApprovalModal'
 import { OrderGuardModal } from '../components/orders/OrderGuardModal'
 import { DraftEmailApprovalPanel } from '../components/orders/DraftEmailApprovalPanel'
 import { ActiveConversationsPanel } from '../components/orders/ActiveConversationsPanel'
+import { ContextualInsights } from '../components/insights/ContextualInsights'
 import { CommsThreadDrawer } from '../components/orders/CommsThreadDrawer'
 import { useApproveDraft, useDiscardDraft, useEditDraft, useActiveConversations, type ActiveConversationDto } from '../hooks/queries/useDraftEmailQueries'
 import {
@@ -18,6 +19,7 @@ import {
   MessageSquare,
   Plus,
   Search,
+  Copy,
   Wine,
   X,
   Minus,
@@ -35,8 +37,10 @@ import {
   Play,
   AlertCircle,
   Loader2,
+  Camera,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { toast } from 'sonner'
 import axios from 'axios'
 import { Wine as WineType } from '../data/wineData'
 import type { Provider } from '../services/api/providers'
@@ -49,6 +53,9 @@ import { formatVolume } from '../utils/volumeUtils'
 import { useOrders } from '../hooks/queries/useOrderQueries'
 import { useUIStore, useRestaurantSettingsStore } from '../stores'
 import { useOrdersPage, OrderSummary, OrderFilters, CreateOrderModal } from './orders/index'
+import { ExportMenu } from '../components/ui/ExportMenu'
+import { exportTable, type TableExportColumn, type TableExportFormat } from '../lib/tableExport'
+import { useGuidanceOptional } from '../guidance'
 
 const API_URL = import.meta.env?.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 const isUuid = (value?: string | null) =>
@@ -68,6 +75,9 @@ const mapApiStatusToUi = (status?: string): Order['status'] => {
     case 'IN_TRANSIT':
       return 'ordered'
     case 'DELIVERED':
+    // Physically arrived but short; this page's buckets have no finer grain than
+    // "delivered", so this deliberately falls through.
+    case 'PARTIALLY_RECEIVED':
     case 'COMPLETED':
       return 'delivered'
     case 'CANCELLED':
@@ -293,6 +303,19 @@ export function Orders() {
     }
     setShowCreateOrderModal(true)
   }, [providers])
+
+  // First-visit tutorial for the create-order modal. It has no dedicated
+  // route (see PAGE_TOUR_ROUTES), so it's started manually on first open
+  // rather than via the route-based tip strip.
+  const guidance = useGuidanceOptional()
+  // TODO: Re-enable guidance tutorial — currently disabled due to bug in guider instruction
+  // useEffect(() => {
+  //   if (!showCreateOrderModal || !guidance) return
+  //   const tourStatus = guidance.state.pages['orders-create']?.tour ?? 'unseen'
+  //   if (tourStatus !== 'unseen') return
+  //   const timer = setTimeout(() => guidance.startTour('orders-create'), 300)
+  //   return () => clearTimeout(timer)
+  // }, [showCreateOrderModal, guidance])
   const [createOrderItems, setCreateOrderItems] = useState<CreateOrderItem[]>([])
   const [wineSearch, setWineSearch] = useState('')
   const inventoryMasterIds = useMemo(() => {
@@ -1111,6 +1134,49 @@ Shadow stock has been moved to Live Stock.`)
     return copy
   }, [filteredOrders])
 
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  // NEW-159: export the current filtered/sorted order set in the chosen format.
+  const exportOrders = useCallback(
+    async (format: TableExportFormat) => {
+      const columns: TableExportColumn<Order>[] = [
+        { header: 'Order ID', value: (o) => o.order_id },
+        { header: 'Wine', value: (o) => resolveOrderWineName(o) },
+        { header: 'Provider', value: (o) => resolveOrderProviderName(o) },
+        { header: 'Status', value: (o) => o.status },
+        { header: 'Quantity', value: (o) => o.quantity ?? '' },
+        {
+          header: 'Price',
+          value: (o) => (o as any).final_price ?? (o as any).total_cost ?? '',
+        },
+        {
+          header: 'Created',
+          value: (o) => (o.created_at ? new Date(o.created_at).toISOString().slice(0, 10) : ''),
+        },
+      ]
+
+      try {
+        await exportTable({
+          format,
+          rows: sortedOrdersWithAutoHide,
+          columns,
+          filename: `orders-${new Date().toISOString().slice(0, 10)}`,
+          title: 'Orders',
+        })
+        toast.success(
+          format === 'clipboard'
+            ? `Copied ${sortedOrdersWithAutoHide.length} orders to clipboard`
+            : format === 'print'
+              ? 'Opening print view'
+              : `Exported ${sortedOrdersWithAutoHide.length} orders`,
+        )
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Export failed')
+      }
+    },
+    [sortedOrdersWithAutoHide, resolveOrderWineName, resolveOrderProviderName],
+  )
+
   // Re-group sortedOrdersWithAutoHide (hook's groupedOrders is based on sortedOrders, not sortedOrdersWithAutoHide)
   const groupedOrdersWithAutoHide = useMemo(() => {
     const sourceOrders = sortedOrdersWithAutoHide
@@ -1183,6 +1249,16 @@ Shadow stock has been moved to Live Stock.`)
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // "/" focuses the orders search (NEW-143), when not already typing.
+      if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const t = e.target as HTMLElement | null
+        const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+        if (!typing) {
+          e.preventDefault()
+          searchRef.current?.focus()
+          return
+        }
+      }
       // Escape to close modals
       if (e.key === 'Escape') {
         setShowCreateOrderModal(false)
@@ -1328,6 +1404,26 @@ Shadow stock has been moved to Live Stock.`)
     setSelectedOrders(newSelected)
   }
 
+  // ── Right-click context menu (NEW-135) + double-click open (NEW-136) ─────
+  const [orderMenu, setOrderMenu] = useState<{ orderId: string; x: number; y: number } | null>(null)
+  const openThread = useCallback((order: Order) => {
+    setCommsDrawerOrder({
+      orderId: order.order_id,
+      wineName: resolveOrderWineName(order) ?? order.wine_name ?? 'Order',
+      orderStatus: order.status,
+    })
+  }, [resolveOrderWineName])
+  const onOrderContextMenu = useCallback((e: React.MouseEvent, orderId: string) => {
+    e.preventDefault()
+    setOrderMenu({ orderId, x: e.clientX, y: e.clientY })
+  }, [])
+  useEffect(() => {
+    if (!orderMenu) return
+    const close = () => setOrderMenu(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [orderMenu])
+
   // Filter orders with search
 
   if (loading) {
@@ -1363,8 +1459,11 @@ Shadow stock has been moved to Live Stock.`)
           </motion.div>
         )}
 
+        {/* engine insights in context (NEW-738) */}
+        <ContextualInsights host="orders" defaultOpen={false} className="mb-6" />
+
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6" data-tour="orders-toolbar">
           <div className="flex items-center gap-4">
             <h2 className="text-2xl font-bold text-gray-900">Order Management</h2>
             {/* View Mode Toggle */}
@@ -1400,25 +1499,45 @@ Shadow stock has been moved to Live Stock.`)
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
+                ref={searchRef}
                 type="text"
-                placeholder="Search orders... (⌘K)"
+                placeholder="Search orders... ( / )"
                 value={orderSearch}
                 onChange={(e) => setOrderSearch(e.target.value)}
                 className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-64 focus:ring-2 focus:ring-wine-500 focus:border-transparent"
               />
             </div>
+            {activeConversations.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => setIsActiveConvPanelOpen(true)}
+                title="Open live vendor conversation threads"
+              >
+                <MessageSquare className="w-4 h-4 mr-2" />
+                Live threads
+                <span className="ml-2 px-1.5 py-0.5 text-xs font-bold bg-wine-100 text-wine-700 rounded-full">
+                  {activeConversations.length}
+                </span>
+              </Button>
+            )}
+            <ExportMenu
+              onExport={exportOrders}
+              count={sortedOrdersWithAutoHide.length}
+            />
             <Button
               variant="default"
               onClick={openCreateOrderFlow}
+              data-tour="orders-create"
               className="bg-wine-600 hover:bg-wine-700 shadow-lg shadow-wine-600/30"
             >
               <Plus className="w-4 h-4 mr-2" />
-              Create Order
+              <span>Create Order</span>
               <span className="ml-2 text-xs opacity-70">⌘N</span>
             </Button>
           </div>
         </div>
 
+        <div data-tour="orders-status">
         <OrderSummary
           pendingCount={pendingCount}
           approvedCount={approvedCount}
@@ -1440,6 +1559,7 @@ Shadow stock has been moved to Live Stock.`)
             }
           }}
         />
+        </div>
 
          {/* Bulk Actions Bar */}
          <AnimatePresence>
@@ -1559,7 +1679,7 @@ Shadow stock has been moved to Live Stock.`)
             className="space-y-6"
           >
             {/* Advanced Filters */}
-            <Card variant="glass" padding="md">
+            <Card variant="glass" padding="md" data-tour="orders-filters">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3 flex-1">
                   {/* Order Type Filter */}
@@ -1634,7 +1754,7 @@ Shadow stock has been moved to Live Stock.`)
             </Card>
 
             {/* Unified Orders Table */}
-            <div className="space-y-4">
+            <div className="space-y-4" data-tour="orders-list">
               {(() => {
                 // Filter orders based on type and order-type (cancelled already excluded by sortedOrdersWithAutoHide)
                 const filtered = sortedOrdersWithAutoHide.filter(order => {
@@ -1753,9 +1873,11 @@ Shadow stock has been moved to Live Stock.`)
                                     return (
                                       <div
                                         key={order.order_id}
+                                        onContextMenu={(e) => onOrderContextMenu(e, order.order_id)}
+                                        onDoubleClick={() => openThread(order)}
                                         className={`bg-white rounded-xl p-4 shadow-sm border-2 transition-all ${
                                           isSelected ? 'border-wine-500 bg-wine-50' :
-                                          order.isRecurring ? 'border-blue-200 hover:border-blue-300' : 
+                                          order.isRecurring ? 'border-blue-200 hover:border-blue-300' :
                                           'border-gray-200 hover:shadow-md'
                                         }`}
                                       >
@@ -2084,7 +2206,7 @@ Shadow stock has been moved to Live Stock.`)
 
         {/* SPLIT VIEW - Original Layout */}
         {viewMode === 'split' && (
-          <>
+          <div data-tour="orders-list">
         {/* Recurring Orders Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -2509,6 +2631,8 @@ Shadow stock has been moved to Live Stock.`)
                             return (
                               <div
                                 key={order.order_id}
+                                onContextMenu={(e) => onOrderContextMenu(e, order.order_id)}
+                                onDoubleClick={() => openThread(order)}
                                 className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 hover:shadow-md transition-shadow"
                               >
                                 <div className="flex items-start justify-between">
@@ -2704,7 +2828,7 @@ Shadow stock has been moved to Live Stock.`)
             </div>
           </Card>
         )}
-        </>
+        </div>
         )}
       </div>
 
@@ -3339,6 +3463,56 @@ Shadow stock has been moved to Live Stock.`)
           }
         }}
       />
+
+      {/* Right-click order context menu (NEW-135) */}
+      {orderMenu && (() => {
+        const order = orders.find((o) => o.order_id === orderMenu.orderId)
+        if (!order) return null
+        const MItem = ({ icon: Icon, label, danger, onClick }: { icon: any; label: string; danger?: boolean; onClick: () => void }) => (
+          <button
+            onClick={onClick}
+            className={`flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm rounded-lg hover:bg-gray-50 ${danger ? 'text-red-600' : 'text-gray-700'}`}
+          >
+            <Icon className={`w-4 h-4 ${danger ? 'text-red-500' : 'text-gray-400'}`} /> {label}
+          </button>
+        )
+        return (
+          <div
+            className="fixed z-[60] w-52 bg-white border border-gray-200 rounded-xl shadow-xl p-1"
+            style={{ top: Math.min(orderMenu.y, window.innerHeight - 240), left: Math.min(orderMenu.x, window.innerWidth - 220) }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {order.status === 'pending_approval' && (
+              <>
+                <MItem icon={CheckCircle} label="Approve" onClick={() => { openThread(order); setOrderMenu(null) }} />
+                <MItem icon={XCircle} label="Reject" danger onClick={() => { handleReject(order.order_id); setOrderMenu(null) }} />
+              </>
+            )}
+            {order.status === 'approved' && (
+              <MItem icon={ShoppingCart} label="Mark as ordered" onClick={() => { handleMarkAsOrdered(order.order_id); setOrderMenu(null) }} />
+            )}
+            {order.status === 'ordered' && (
+              <>
+                {/*
+                  The door flow, for the person actually standing at the truck.
+                  Separate from "Mark as delivered" on purpose: that closes the
+                  order from a desk on the assumption everything arrived, while
+                  this records a case count and leaves the delivery open for the
+                  bottle count that catches a short case.
+                */}
+                <MItem
+                  icon={Camera}
+                  label="Receive at the door"
+                  onClick={() => { window.location.assign(`/receiving/${order.order_id}/door`); setOrderMenu(null) }}
+                />
+                <MItem icon={Truck} label="Mark as delivered" onClick={() => { handleMarkAsDelivered(order.order_id); setOrderMenu(null) }} />
+              </>
+            )}
+            <MItem icon={MessageSquare} label="Open thread" onClick={() => { openThread(order); setOrderMenu(null) }} />
+            <MItem icon={Copy} label="Copy order ID" onClick={() => { navigator.clipboard?.writeText(order.order_id); setOrderMenu(null) }} />
+          </div>
+        )
+      })()}
 
       {/* Active Conversations Panel */}
       <ActiveConversationsPanel

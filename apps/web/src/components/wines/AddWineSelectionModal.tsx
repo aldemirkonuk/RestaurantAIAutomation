@@ -1,14 +1,26 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Wine as WineIcon, Camera, ScanText, ArrowRight } from 'lucide-react'
+import { X, Wine as WineIcon, Camera, ScanText, ArrowRight, Truck } from 'lucide-react'
 
 interface AddWineSelectionModalProps {
   isOpen: boolean
   onClose: () => void
   onSelectSingle: () => void
   onSelectMenu: () => void
+  /** Bulk manual receipt. Omitted on surfaces where stock isn't the point (e.g. the Wine Library). */
+  onSelectReceipt?: () => void
+  title?: string
+  subtitle?: string
 }
 
-export function AddWineSelectionModal({ isOpen, onClose, onSelectSingle, onSelectMenu }: AddWineSelectionModalProps) {
+export function AddWineSelectionModal({
+  isOpen,
+  onClose,
+  onSelectSingle,
+  onSelectMenu,
+  onSelectReceipt,
+  title = 'Add Wine to Library',
+  subtitle = 'Choose how to add wines',
+}: AddWineSelectionModalProps) {
   if (!isOpen) return null
 
   return (
@@ -26,7 +38,7 @@ export function AddWineSelectionModal({ isOpen, onClose, onSelectSingle, onSelec
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden"
+            className={`bg-white rounded-3xl shadow-2xl w-full overflow-hidden ${onSelectReceipt ? 'max-w-4xl' : 'max-w-2xl'}`}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-wine-50 to-wine-100">
@@ -35,8 +47,8 @@ export function AddWineSelectionModal({ isOpen, onClose, onSelectSingle, onSelec
                   <WineIcon className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">Add Wine to Library</h2>
-                  <p className="text-sm text-gray-500">Choose how to add wines</p>
+                  <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+                  <p className="text-sm text-gray-500">{subtitle}</p>
                 </div>
               </div>
               <button
@@ -48,7 +60,7 @@ export function AddWineSelectionModal({ isOpen, onClose, onSelectSingle, onSelec
             </div>
 
             {/* Options */}
-            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className={`p-6 grid grid-cols-1 gap-4 ${onSelectReceipt ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
               {/* Single Wine Scanner */}
               <button
                 onClick={() => {
@@ -110,6 +122,39 @@ export function AddWineSelectionModal({ isOpen, onClose, onSelectSingle, onSelec
                   <span className="text-xs text-gray-500">• Bulk import</span>
                 </div>
               </button>
+
+              {/* Manual bulk receipt */}
+              {onSelectReceipt && (
+                <button
+                  onClick={() => {
+                    onSelectReceipt()
+                    onClose()
+                  }}
+                  className="group relative p-6 rounded-2xl border-2 border-emerald-200 hover:border-emerald-500 bg-gradient-to-br from-emerald-50 to-white hover:shadow-xl transition-all text-left"
+                >
+                  <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="p-1.5 bg-emerald-600 rounded-full">
+                      <ArrowRight className="w-4 h-4 text-white" />
+                    </div>
+                  </div>
+
+                  <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <Truck className="w-7 h-7 text-emerald-600" />
+                  </div>
+
+                  <h3 className="text-lg font-bold text-gray-900 mb-2">Receive a delivery</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Many wines at once with quantity, cost and location per line — no purchase order needed
+                  </p>
+
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full">
+                      Spreadsheet
+                    </span>
+                    <span className="text-xs text-gray-500">• Free samples too</span>
+                  </div>
+                </button>
+              )}
             </div>
 
             {/* Info Footer */}

@@ -518,13 +518,20 @@ export function WebSocketProvider({
       
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
-      
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.notifications.all,
+        refetchType: 'active',
+      })
+
       window.dispatchEvent(new CustomEvent('inventory_change', {
         detail: { eventType: 'UPDATE', new: data.data, source: 'websocket' },
       }))
       window.dispatchEvent(new CustomEvent('ws:dashboard-invalidate'))
+      window.dispatchEvent(new CustomEvent('notification_sent', {
+        detail: { eventType: 'INSERT', new: data.data, source: 'websocket', kind: 'stock:low' },
+      }))
     })
-    
+
     newSocket.on('order:created', (data: OrderCreatedEvent) => {
       console.log('📋 Order created:', data)
       incrementMessagesReceived()
@@ -561,28 +568,71 @@ export function WebSocketProvider({
       window.dispatchEvent(new CustomEvent('ws:dashboard-invalidate'))
     })
     
-    newSocket.on('notification:new', (data: NotificationEvent) => {
-      console.log('🔔 New notification:', data)
+    newSocket.on('notification:new', (raw: NotificationEvent | Record<string, unknown>) => {
+      console.log('🔔 New notification:', raw)
       incrementMessagesReceived()
-      
-      const toastFn = data.data.type === 'error' ? toast.error
-        : data.data.type === 'success' ? toast.success
-        : data.data.type === 'warning' ? toast.warning
-        : toast.info
-      
-      toastFn(data.data.title, {
-        description: data.data.message,
-        action: data.data.action_url ? {
-          label: 'View',
-          onClick: () => window.location.href = data.data.action_url!,
-        } : undefined,
+
+      // Server emits two shapes historically:
+      //   A) { event, data: { id, title, message, type, action_url }, timestamp }
+      //   B) flat { type, title, message|body, action_url, data: metadata }
+      const nested =
+        raw && typeof raw === 'object' && 'data' in raw && (raw as NotificationEvent).data &&
+        typeof (raw as NotificationEvent).data === 'object' &&
+        'title' in ((raw as NotificationEvent).data as object)
+          ? (raw as NotificationEvent).data
+          : null
+      const flat = !nested && raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null
+      const title = String(nested?.title ?? flat?.title ?? 'New notification')
+      const message = String(
+        nested?.message ?? flat?.message ?? flat?.body ?? '',
+      )
+      const actionUrl = (nested?.action_url ?? flat?.action_url ?? flat?.actionUrl) as
+        | string
+        | undefined
+      const kind = String(nested?.type ?? flat?.type ?? 'info')
+
+      const toastFn =
+        kind === 'error' || kind === 'critical'
+          ? toast.error
+          : kind === 'success'
+            ? toast.success
+            : kind === 'warning' || kind === 'high' || kind === 'inventory_low_stock'
+              ? toast.warning
+              : toast.info
+
+      toastFn(title, {
+        description: message || undefined,
+        action: actionUrl
+          ? {
+              label: 'View',
+              onClick: () => {
+                window.location.href = actionUrl
+              },
+            }
+          : undefined,
       })
-      
-      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.all })
-      
-      window.dispatchEvent(new CustomEvent('notification_sent', {
-        detail: { eventType: 'INSERT', new: data.data, source: 'websocket' },
-      }))
+
+      // Force active queries to refetch even when staleTime hasn't elapsed
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.notifications.all,
+        refetchType: 'active',
+      })
+
+      window.dispatchEvent(
+        new CustomEvent('notification_sent', {
+          detail: {
+            eventType: 'INSERT',
+            new: nested ?? {
+              title,
+              message,
+              type: kind,
+              action_url: actionUrl,
+              ...(flat ?? {}),
+            },
+            source: 'websocket',
+          },
+        }),
+      )
     })
     
     // AI Conversation Approval (80% Push + 20% OneTap)

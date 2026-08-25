@@ -1,0 +1,665 @@
+{
+ "menu": "Bar_Tutto_Bottle_Wine_Menu.pdf",
+ "pages": 10,
+ "wine_count": 74,
+ "seconds": 53.7,
+ "wines": [
+  {
+   "name": "Frizzante",
+   "producer": "Bisson",
+   "category": "sparkling",
+   "vintage": "2024",
+   "region": "Veneto",
+   "grape_variety": "Glera",
+   "bottle_price": 65
+  },
+  {
+   "name": "L'EST",
+   "producer": "Sorelle Bronca",
+   "category": "sparkling",
+   "vintage": "NV",
+   "region": "Veneto",
+   "grape_variety": "Glera",
+   "bottle_price": 74
+  },
+  {
+   "name": "Spumante",
+   "producer": "Coffele",
+   "category": "sparkling",
+   "vintage": "2022",
+   "region": "Veneto",
+   "grape_variety": "Garganega",
+   "bottle_price": 68
+  },
+  {
+   "name": "Brut Rosé",
+   "producer": "Jeio",
+   "category": "sparkling",
+   "vintage": "2024",
+   "region": "Veneto",
+   "grape_variety": "Glera/Pinot Noir",
+   "bottle_price": 62
+  },
+  {
+   "name": "Bollicini Cheri Rosé",
+   "producer": "Coppi",
+   "category": "sparkling",
+   "vintage": "NV",
+   "region": "Puglia",
+   "grape_variety": "Negroamaro",
+   "bottle_price": 60
+  },
+  {
+   "name": "L'Acino",
+   "producer": "Corte Manzini",
+   "category": "sparkling",
+   "vintage": "NV",
+   "region": "Emilia-Romagna",
+   "grape_variety": "Lambrusco Grasparasso",
+   "bottle_price": 58
+  },
+  {
+   "name": "Petnat Rosé",
+   "producer": "Lucchetti",
+   "category": "sparkling",
+   "vintage": "NV",
+   "region": "Marche",
+   "grape_variety": "Lacrima",
+   "bottle_price": 60
+  },
+  {
+   "name": "La Luna",
+   "producer": "Cara de Casatico",
+   "category": "sparkling",
+   "vintage": "NV",
+   "region": "Emilia-Romagna",
+   "grape_variety": "Lambrusco di Sorbara",
+   "bottle_price": 80
+  },
+  {
+   "name": "No Autoclave Lambrusco",
+   "producer": "Terrevive",
+   "category": "sparkling",
+   "vintage": "NV",
+   "region": "Emilia-Romagna",
+   "grape_variety": "Salamino di Santa Croce/Sorbara",
+   "bottle_price": 62
+  },
+  {
+   "name": "Mi Ti Et Mes Amis",
+   "producer": "Massimo Coletti",
+   "category": "sparkling",
+   "vintage": "NV",
+   "region": "Veneto",
+   "grape_variety": "Glera/Chardonnay",
+   "bottle_price": 60
+  },
+  {
+   "name": "Julius Frizzante",
+   "producer": "Bulli",
+   "category": "sparkling",
+   "vintage": "NV",
+   "region": "Emilia-Romagna",
+   "grape_variety": "Malvasia di Candia",
+   "bottle_price": 60
+  },
+  {
+   "name": "Carbo-Nation Swim Batch 002",
+   "producer": "Carboniste",
+   "category": "sparkling",
+   "vintage": "NV",
+   "region": "Sonoma, California",
+   "grape_variety": "Albariño/Pinot Noir",
+   "bottle_price": 75
+  },
+  {
+   "name": "Metodo Classico Sognare! Sognare!",
+   "producer": "Villa Picta",
+   "category": "sparkling",
+   "vintage": "2022",
+   "region": "Emilia-Romagna",
+   "grape_variety": "Lambrusco di Sorbara",
+   "bottle_price": 112
+  },
+  {
+   "name": "Enrico Serafino",
+   "producer": "Enrico Serafino",
+   "category": "sparkling",
+   "vintage": "2020",
+   "region": "Piedmont",
+   "grape_variety": "Pinot Noir/Chardonnay",
+   "bottle_price": 90
+  },
+  {
+   "name": "1er Cru Blanc de Blanc",
+   "producer": "Pierre Gimonnet",
+   "category": "sparkling",
+   "vintage": "NV",
+   "region": "Champagne, France",
+   "grape_variety": "Chardonnay",
+   "bottle_price": 120
+  },
+  {
+   "name": "L'Inattendue",
+   "producer": "Domaine Lagille",
+   "category": "sparkling",
+   "vintage": "NV",
+   "region": "Champagne, France",
+   "grape_variety": "Pinot Meunier",
+   "bottle_price": 165
+  },
+  {
+   "name": "Le Nombre d'Or Sablé BDB",
+   "producer": "L. Aubry Fils",
+   "category": "sparkling",
+   "vintage": "2015",
+   "region": "Champagne, France",
+   "grape_variety": "Chardonnay",
+   "bottle_price": 220
+  },
+  {
+   "name": "Colli",
+   "producer": "Ronchi di Cialla",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Friuli-Venezia Guilia",
+   "grape_variety": "Friulano",
+   "bottle_price": 75
+  },
+  {
+   "name": "Vigneti Delle Dolomiti",
+   "producer": "Terra Alpina",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Alto Adige",
+   "grape_variety": "Pinot Bianco",
+   "bottle_price": 58
+  },
+  {
+   "name": "Bianca",
+   "producer": "Birichino",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Monterey, California",
+   "grape_variety": "Malvasia",
+   "bottle_price": 70
+  },
+  {
+   "name": "Camporengo",
+   "producer": "Le Fraghe",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Veneto",
+   "grape_variety": "Garganega",
+   "bottle_price": 65
+  },
+  {
+   "name": "Tralivio",
+   "producer": "Sartarelli",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Marche",
+   "grape_variety": "Verdicchio",
+   "bottle_price": 70
+  },
+  {
+   "name": "Pinot Grigio",
+   "producer": "Spasso",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Veneto",
+   "bottle_price": 56
+  },
+  {
+   "name": "Falanghina",
+   "producer": "Di Majo Norante",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Molise",
+   "bottle_price": 66
+  },
+  {
+   "name": "Zoli",
+   "producer": "Caruso e Minini",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Sicily",
+   "grape_variety": "Inzolia",
+   "bottle_price": 54
+  },
+  {
+   "name": "Bricco Bartolomeo",
+   "producer": "La Colombera",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Piedmont",
+   "grape_variety": "Cortese",
+   "bottle_price": 68
+  },
+  {
+   "name": "Sauvignon Blanc",
+   "producer": "Kurtatsch",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Alto Adige",
+   "bottle_price": 72
+  },
+  {
+   "name": "Fruste",
+   "producer": "Vinchio Vaglio",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Piedmont",
+   "grape_variety": "Arneis",
+   "bottle_price": 60
+  },
+  {
+   "name": "Larion Bianco",
+   "producer": "Piccinin",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Veneto",
+   "grape_variety": "Chardonnay/Durella",
+   "bottle_price": 105
+  },
+  {
+   "name": "Alder Springs",
+   "producer": "William Lane",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Mendocino, California",
+   "grape_variety": "Vermentino",
+   "bottle_price": 88
+  },
+  {
+   "name": "Anthilia",
+   "producer": "Donnafugata",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Sicily",
+   "grape_variety": "Catarratto",
+   "bottle_price": 70
+  },
+  {
+   "name": "Vermentino",
+   "producer": "Argiolas",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Sardegna",
+   "bottle_price": 85
+  },
+  {
+   "name": "Stoan",
+   "producer": "Cantina Tramin Kellerei",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Alto Adige",
+   "grape_variety": "Chardonnay/Sauvignon Blanc",
+   "bottle_price": 110
+  },
+  {
+   "name": "Obvius Bianco",
+   "producer": "Salcheto",
+   "category": "orange/rosé",
+   "vintage": "2022",
+   "region": "Tuscany",
+   "grape_variety": "Trebbiano/Vermentino",
+   "bottle_price": 70
+  },
+  {
+   "name": "Vino Bianco",
+   "producer": "Aransat",
+   "category": "orange/rosé",
+   "vintage": "2023",
+   "region": "Friuli-Venezia Giulia",
+   "grape_variety": "Pinot Grigio/Sauvignon Blanc",
+   "bottle_price": 70
+  },
+  {
+   "name": "Wild Series White",
+   "producer": "Pali Wine Co.",
+   "category": "orange/rosé",
+   "vintage": "2024",
+   "region": "Santa Barbara, California",
+   "grape_variety": "Gewürtztraminer/Pinot Noir",
+   "bottle_price": 80
+  },
+  {
+   "name": "Cirò Rosato",
+   "producer": "Cataldo Calabretta",
+   "category": "orange/rosé",
+   "vintage": "2024",
+   "region": "Calabria",
+   "grape_variety": "Alicante",
+   "bottle_price": 66
+  },
+  {
+   "name": "La Messa",
+   "producer": "Montinore Estate",
+   "category": "orange/rosé",
+   "vintage": "2022",
+   "region": "Emiglia-Romagna",
+   "grape_variety": "Albana",
+   "bottle_price": 65
+  },
+  {
+   "name": "Arancino",
+   "producer": "Caruso e Minini",
+   "category": "orange/rosé",
+   "vintage": "2024",
+   "region": "Sicily",
+   "grape_variety": "Cataratto",
+   "bottle_price": 62
+  },
+  {
+   "name": "Chardonnay",
+   "producer": "Scribe",
+   "category": "orange/rosé",
+   "vintage": "2023",
+   "region": "Sonoma, California",
+   "bottle_price": 90
+  },
+  {
+   "name": "Rosato",
+   "producer": "La Torre Alla Tolfe",
+   "category": "orange/rosé",
+   "vintage": "2024",
+   "region": "Tuscany",
+   "grape_variety": "Sangiovese",
+   "bottle_price": 80
+  },
+  {
+   "name": "Sikele",
+   "producer": "Cantina Marilina",
+   "category": "orange/rosé",
+   "vintage": "2024",
+   "region": "Sicily",
+   "grape_variety": "Grecanico",
+   "bottle_price": 72
+  },
+  {
+   "name": "Ramato",
+   "producer": "Grawü",
+   "category": "orange/rosé",
+   "vintage": "2022",
+   "region": "Trentino",
+   "grape_variety": "Pinot Grigio",
+   "bottle_price": 110
+  },
+  {
+   "name": "Leptir",
+   "producer": "Sanctum",
+   "category": "orange/rosé",
+   "vintage": "2022",
+   "region": "Slovenia",
+   "grape_variety": "Pinot Blanc/Chardonnay",
+   "bottle_price": 70
+  },
+  {
+   "name": "Viognier",
+   "producer": "Florez Wines",
+   "category": "orange/rosé",
+   "vintage": "2023",
+   "region": "Santa Cruz, California",
+   "bottle_price": 90
+  },
+  {
+   "name": "Cerasuolo",
+   "producer": "Cirelli",
+   "category": "red",
+   "vintage": "2024",
+   "region": "Abruzzo",
+   "grape_variety": "Montepulciano",
+   "bottle_price": 65
+  },
+  {
+   "name": "Lezer",
+   "producer": "Foradori",
+   "category": "red",
+   "vintage": "2024",
+   "region": "Trentino",
+   "grape_variety": "Teroldego",
+   "bottle_price": 75
+  },
+  {
+   "name": "Nebbiolo",
+   "producer": "Ettore Germano",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Piedmont",
+   "bottle_price": 72
+  },
+  {
+   "name": "Miró",
+   "producer": "Cristinano Guttarolo",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Puglia",
+   "grape_variety": "Primitivo",
+   "bottle_price": 85
+  },
+  {
+   "name": "Ciglianello",
+   "producer": "Cigliano di Sopra",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Tuscany",
+   "grape_variety": "Sangiovese",
+   "bottle_price": 97
+  },
+  {
+   "name": "Terre Siciliane Calaniuru",
+   "producer": "Mortellito",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Sicily",
+   "grape_variety": "Nero d'Avola/Frappato",
+   "bottle_price": 77
+  },
+  {
+   "name": "St Daniel Riserva",
+   "producer": "Cantina Colterenzio",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Alto Adige",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 120
+  },
+  {
+   "name": "Il Vulcano di Elisa",
+   "producer": "Il Vulcano di Elisa",
+   "category": "red",
+   "vintage": "2024",
+   "region": "Sicily",
+   "grape_variety": "Nerello Mascalese",
+   "bottle_price": 80
+  },
+  {
+   "name": "Masse Pasut",
+   "producer": "Viniverso",
+   "category": "red",
+   "vintage": "2024",
+   "region": "Friuli-Venezia Guilia",
+   "grape_variety": "Cabernet Sauvignon",
+   "bottle_price": 75
+  },
+  {
+   "name": "Colli Orientali",
+   "producer": "Ronchi di Cialla",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Friuli-Venezia Guilia",
+   "grape_variety": "Schioppettino",
+   "bottle_price": 88
+  },
+  {
+   "name": "Trebbiolo",
+   "producer": "La Stoppa",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Emilia-Romagna",
+   "grape_variety": "Barbera",
+   "bottle_price": 80
+  },
+  {
+   "name": "Langhe Sito Moresco",
+   "producer": "Gaja",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Piedmont",
+   "grape_variety": "Nebbiolo/Barbera",
+   "bottle_price": 210
+  },
+  {
+   "name": "Dolcetto",
+   "producer": "Azelia",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Piedmont",
+   "bottle_price": 68
+  },
+  {
+   "name": "Mazzapink",
+   "producer": "Tenuta di Valgiano",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Tuscany",
+   "grape_variety": "Sangiovese/Merlot",
+   "bottle_price": 82
+  },
+  {
+   "name": "Scaia Rosso",
+   "producer": "Tenuta Sant'Antonio",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Veneto",
+   "grape_variety": "Corvina",
+   "bottle_price": 55
+  },
+  {
+   "name": "Valpolicella",
+   "producer": "Ca 'del Monte",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Veneto",
+   "grape_variety": "Corvina",
+   "bottle_price": 60
+  },
+  {
+   "name": "Perlyaia",
+   "producer": "Cantine Valpane",
+   "category": "red",
+   "vintage": "2012",
+   "region": "Piedmont",
+   "grape_variety": "Barbera",
+   "bottle_price": 68
+  },
+  {
+   "name": "Montepulciano",
+   "producer": "Jasci",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Abruzzo",
+   "bottle_price": 70
+  },
+  {
+   "name": "Terre di San Leonardo",
+   "producer": "Terre di San Leonardo",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Trentino",
+   "grape_variety": "Cabernet Sauvignon/Merlot/Carmenere",
+   "bottle_price": 78
+  },
+  {
+   "name": "Nevio",
+   "producer": "Nevio",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Abruzzo",
+   "grape_variety": "Montepulciano",
+   "bottle_price": 82
+  },
+  {
+   "name": "Belnero",
+   "producer": "Castello Banfi",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Tuscany",
+   "grape_variety": "Sangiovese/Cabernet Suavignon/Merlot",
+   "bottle_price": 80
+  },
+  {
+   "name": "Insoglio",
+   "producer": "Tenuta de Biserno",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Tuscany",
+   "grape_variety": "Syrah/Merlot/Cabernet Franc",
+   "bottle_price": 85
+  },
+  {
+   "name": "Toscana Rosso",
+   "producer": "Ampelieia",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Tuscany",
+   "grape_variety": "Cabernet Franc",
+   "bottle_price": 150
+  },
+  {
+   "name": "Bolgheri Rosso",
+   "producer": "Poderi Grattamacco",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Tuscany",
+   "grape_variety": "Cabernet Sauvignon/Merlot/Cabernet Franc",
+   "bottle_price": 100
+  },
+  {
+   "name": "Al Passo",
+   "producer": "Tolaini",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Tuscany",
+   "grape_variety": "Barbera",
+   "bottle_price": 90
+  },
+  {
+   "name": "Sangue di Drago",
+   "producer": "Marco Donati",
+   "category": "red",
+   "vintage": "2016",
+   "region": "Trentino",
+   "grape_variety": "Teroldego",
+   "bottle_price": 150
+  },
+  {
+   "name": "Vino Nobile di Montepulciano",
+   "producer": "Salcheto",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Tuscany",
+   "grape_variety": "Sangiovese",
+   "bottle_price": 80
+  },
+  {
+   "name": "Chianti Classico",
+   "producer": "Volpaia",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Tuscany",
+   "grape_variety": "Sangiovese",
+   "bottle_price": 75
+  },
+  {
+   "name": "Aetneus Etna Rosso",
+   "producer": "I Custodi",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Sicily",
+   "grape_variety": "Nerello Mascalese",
+   "bottle_price": 165
+  }
+ ]
+}

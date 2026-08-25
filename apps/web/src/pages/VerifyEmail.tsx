@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
-import { Wine, Mail, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
+import { Mail, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
+import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 import { Button } from '../components/ui'
 import { toast } from 'sonner'
 import { getOnboardingProgress } from '../services/api/menus'
@@ -92,118 +92,103 @@ export function VerifyEmail() {
 
   if (verified) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-wine-50/30 to-gray-50 px-4">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="text-center"
-        >
-          <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900">Email Verified!</h2>
-          <p className="text-gray-500 mt-2">Redirecting to your dashboard...</p>
-        </motion.div>
-      </div>
+      <AuthShell title="Email Verified!" subtitle="Redirecting you now…">
+        <AuthCard className="text-center py-10">
+          <CheckCircle className="w-14 h-14 text-emerald-500 mx-auto" strokeWidth={1.5} />
+        </AuthCard>
+      </AuthShell>
     )
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-wine-50/30 to-gray-50 px-4 py-12">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
-      >
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-wine-600 rounded-2xl mb-4 shadow-lg">
-            <Wine className="w-8 h-8 text-white" />
+    <AuthShell
+      title="Check Your Email"
+      subtitle={
+        user?.email
+          ? `We sent a verification link to ${user.email}`
+          : 'We sent a verification link to your inbox'
+      }
+    >
+      <AuthCard>
+        <div className="flex justify-center mb-6">
+          <div className="w-14 h-14 bg-wine-50 rounded-full flex items-center justify-center ring-1 ring-wine-100">
+            <Mail className="w-6 h-6 text-wine-600" strokeWidth={1.75} />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Check Your Email</h1>
-          <p className="text-gray-500 mt-2">
-            We sent a verification link to <strong>{user?.email}</strong>
-          </p>
         </div>
 
-        <div className="bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-2xl p-8">
-          <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 bg-wine-50 rounded-full flex items-center justify-center">
-              <Mail className="w-8 h-8 text-wine-500" />
-            </div>
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" strokeWidth={1.75} />
+            <p className="text-sm text-red-700">{error}</p>
           </div>
+        )}
 
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-              <p className="text-sm text-red-700">{error}</p>
-            </div>
-          )}
-
-          <div className="space-y-3 my-6">
-            {[
-              'Open the email from WineOps AI',
-              'Click "Verify My Email"',
-              `You'll be guided through setting up your wine list`,
-            ].map((text, i) => (
-              <div key={i} className="flex items-start gap-3 bg-gray-50 rounded-lg p-3">
-                <div className="w-5 h-5 rounded-full bg-wine-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-                  {i + 1}
-                </div>
-                <p className="text-sm text-gray-600 leading-relaxed">{text}</p>
+        <div className="space-y-3 my-6">
+          {[
+            'Open the email from WineOps AI',
+            'Click "Verify My Email"',
+            `You'll be guided through setting up your wine list`,
+          ].map((text, i) => (
+            <div key={i} className="flex items-start gap-3 bg-wine-50/50 rounded-xl p-3">
+              <div className="w-5 h-5 rounded-full bg-wine-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                {i + 1}
               </div>
-            ))}
-          </div>
-
-          {token ? (
-            <div className="space-y-3">
-              <p className="text-sm text-gray-600 text-center">
-                Click below to verify your email address.
-              </p>
-              <Button className="w-full h-12" onClick={handleVerify} disabled={verifying}>
-                {verifying ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    Verifying...
-                  </>
-                ) : (
-                  'Verify My Email'
-                )}
-              </Button>
+              <p className="text-sm text-gray-600 leading-relaxed">{text}</p>
             </div>
-          ) : (
-            <div className="space-y-4">
-              <p className="text-sm text-gray-600 text-center">
-                Didn't receive the email? Check your spam folder or resend below.
-              </p>
-              <Button
-                variant="outline"
-                className="w-full h-12"
-                onClick={handleResend}
-                disabled={resending}
-              >
-                {resending ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    Resending...
-                  </>
-                ) : (
-                  'Resend Verification Email'
-                )}
-              </Button>
-              {lastResent && (
-                <p className="text-xs text-center text-gray-400">
-                  Resent at {lastResent.toLocaleTimeString()}. Wait 1 minute before resending again.
-                </p>
-              )}
-            </div>
-          )}
-
-          <div className="mt-6 pt-4 border-t border-gray-100 text-center">
-            <Link to="/login" className="text-sm text-wine-600 hover:text-wine-700 font-medium">
-              Back to Sign In
-            </Link>
-          </div>
+          ))}
         </div>
-      </motion.div>
-    </div>
+
+        {token ? (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600 text-center">
+              Click below to verify your email address.
+            </p>
+            <Button className="w-full" size="lg" onClick={handleVerify} disabled={verifying}>
+              {verifying ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" strokeWidth={1.75} />
+                  Verifying...
+                </>
+              ) : (
+                'Verify My Email'
+              )}
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600 text-center">
+              Didn&apos;t receive the email? Check your spam folder or resend below.
+            </p>
+            <Button
+              variant="outline"
+              className="w-full"
+              size="lg"
+              onClick={handleResend}
+              disabled={resending}
+            >
+              {resending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" strokeWidth={1.75} />
+                  Resending...
+                </>
+              ) : (
+                'Resend Verification Email'
+              )}
+            </Button>
+            {lastResent && (
+              <p className="text-xs text-center text-gray-400">
+                Resent at {lastResent.toLocaleTimeString()}. Wait 1 minute before resending again.
+              </p>
+            )}
+          </div>
+        )}
+
+        <div className="mt-6 pt-4 border-t border-gray-100 text-center">
+          <Link to="/login" className="text-sm text-wine-600 hover:text-wine-700 font-semibold">
+            Back to Sign In
+          </Link>
+        </div>
+      </AuthCard>
+    </AuthShell>
   )
 }

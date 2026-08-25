@@ -15,10 +15,15 @@ import {
 const SHIFT_TYPES = ['am', 'pm', 'double', 'split', 'training', 'borrowed']
 const EMP_TYPES = ['full_time', 'part_time', 'trial', 'borrowed']
 
+import { createPortal } from 'react-dom'
+
 function Overlay({ children, onClose, title }: { children: React.ReactNode; onClose: () => void; title: string }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md m-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+  const content = (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+      onClick={onClose}
+    >
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h3 className="text-base font-bold text-gray-900">{title}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
@@ -27,6 +32,11 @@ function Overlay({ children, onClose, title }: { children: React.ReactNode; onCl
       </div>
     </div>
   )
+  
+  if (typeof document !== 'undefined') {
+    return createPortal(content, document.body)
+  }
+  return content
 }
 
 const inputCls = 'w-full h-9 px-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-wine-100 focus:border-wine-500 outline-none'
@@ -129,9 +139,11 @@ export function ShiftEditor({
   )
 }
 
-export function MemberEditor({ member, wageVisible = true, onClose }: { member?: TeamMember | null; wageVisible?: boolean; onClose: () => void }) {
+export function MemberEditor({ member, wageVisible = true, ownerCount = 1, onClose }: { member?: TeamMember | null; wageVisible?: boolean; ownerCount?: number; onClose: () => void }) {
   const qc = useQueryClient()
   const editing = !!member
+  const isSoleOwner = member?.role === 'owner' && ownerCount <= 1;
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [form, setForm] = useState({
     displayName: member?.display_name ?? '',
     email: member?.email ?? '',
@@ -250,9 +262,33 @@ export function MemberEditor({ member, wageVisible = true, onClose }: { member?:
         <label className={labelCls}>Notes</label>
         <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className={inputCls} />
       </div>
+      {showDeleteConfirm && (
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3.5 space-y-2">
+          <p className="text-sm font-semibold text-gray-900">Are you sure you want to remove <span className="font-bold">{member?.display_name}</span>?</p>
+          <p className="text-xs text-gray-500">This will permanently remove the member from your team. This cannot be undone.</p>
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              onClick={() => setShowDeleteConfirm(false)}
+              className="h-8 px-3 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => remove.mutate()}
+              disabled={remove.isPending}
+              className="h-8 px-3 text-xs font-semibold text-white bg-wine-600 hover:bg-wine-700 rounded-lg transition-colors disabled:opacity-60"
+            >
+              {remove.isPending ? 'Removing…' : 'Yes, Remove'}
+            </button>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between pt-2">
-        {editing ? (
-          <button onClick={() => remove.mutate()} className="inline-flex items-center gap-1.5 h-9 px-3 text-rose-600 text-sm font-semibold hover:bg-rose-50 rounded-lg">
+        {editing && !isSoleOwner ? (
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="inline-flex items-center gap-1.5 h-9 px-3 text-rose-600 text-sm font-semibold hover:bg-rose-50 rounded-lg"
+          >
             <Trash2 className="w-4 h-4" /> Remove
           </button>
         ) : <span />}

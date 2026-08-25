@@ -40,6 +40,8 @@ export class TeamService {
     restaurantId: string,
     required?: "owner" | "manager",
   ): Promise<{ role: Role }> {
+    let accessRole: string | null = null;
+
     const { data: access } = await this.sb
       .from("user_restaurant_access")
       .select("role")
@@ -48,13 +50,30 @@ export class TeamService {
       .eq("is_active", true)
       .maybeSingle();
 
-    if (!access) throw new ForbiddenException("Access denied to this restaurant");
+    if (access) {
+      accessRole = access.role;
+    } else {
+      const { data: user } = await this.sb
+        .from("users")
+        .select("restaurant_id, role")
+        .eq("user_id", userId)
+        .maybeSingle();
 
-    const role = access.role as Role;
+      if (user && user.restaurant_id === restaurantId) {
+        accessRole = user.role || "staff";
+      }
+    }
+
+    if (!accessRole)
+      throw new ForbiddenException("Access denied to this restaurant");
+
+    const role = accessRole as Role;
     if (required === "owner" && role !== "owner")
       throw new ForbiddenException("Only owners can perform this action");
     if (required === "manager" && role === "staff")
-      throw new ForbiddenException("Only owners and managers can perform this action");
+      throw new ForbiddenException(
+        "Only owners and managers can perform this action",
+      );
 
     return { role };
   }
@@ -66,14 +85,18 @@ export class TeamService {
    * email (the "manager adds staff, they claim the account later" flow).
    */
   /** Verify a member row belongs to this tenant (prevents cross-restaurant refs). */
-  async assertMemberInRestaurant(restaurantId: string, memberId: string): Promise<void> {
+  async assertMemberInRestaurant(
+    restaurantId: string,
+    memberId: string,
+  ): Promise<void> {
     const { data } = await this.sb
       .from("team_members")
       .select("id")
       .eq("id", memberId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
-    if (!data) throw new NotFoundException("Member not found in this restaurant");
+    if (!data)
+      throw new NotFoundException("Member not found in this restaurant");
   }
 
   async listMembers(userId: string, restaurantId: string): Promise<any[]> {
@@ -115,14 +138,16 @@ export class TeamService {
             .in("user_id", userIds)
         : Promise.resolve({ data: [] as any[] }),
     ]);
-    const roleMap = new Map((access ?? []).map((a: any) => [a.user_id, a.role]));
+    const roleMap = new Map(
+      (access ?? []).map((a: any) => [a.user_id, a.role]),
+    );
     const userMap = new Map((users ?? []).map((u: any) => [u.user_id, u]));
 
     return (members ?? []).map((m: any) => {
       const row = {
         ...m,
-        role: m.user_id ? roleMap.get(m.user_id) ?? null : null,
-        linkedUser: m.user_id ? userMap.get(m.user_id) ?? null : null,
+        role: m.user_id ? (roleMap.get(m.user_id) ?? null) : null,
+        linkedUser: m.user_id ? (userMap.get(m.user_id) ?? null) : null,
         accountLinked: !!m.user_id,
       };
       if (!showWage) row.hourly_wage = null;
@@ -148,7 +173,9 @@ export class TeamService {
       .eq("restaurant_id", restaurantId)
       .not("user_id", "is", null);
     const linked = new Set((existing ?? []).map((m: any) => m.user_id));
-    const missing = access.filter((a: any) => a.user_id && !linked.has(a.user_id));
+    const missing = access.filter(
+      (a: any) => a.user_id && !linked.has(a.user_id),
+    );
     if (!missing.length) return;
 
     const { data: users } = await this.sb
@@ -167,7 +194,12 @@ export class TeamService {
         display_name: u?.name || u?.email || "Team member",
         email: u?.email ?? null,
         avatar_url: u?.avatar_url ?? null,
-        position: a.role === "owner" ? "Owner" : a.role === "manager" ? "Manager" : "Staff",
+        position:
+          a.role === "owner"
+            ? "Owner"
+            : a.role === "manager"
+              ? "Manager"
+              : "Staff",
         employment_type: "full_time",
         status: "active",
         // Seed mock wage so labor lens has something when tracking is on;
@@ -185,7 +217,10 @@ export class TeamService {
    * prevents linking a stranger who happens to share an email and prevents
    * any cross-tenant leakage. Case-insensitive; the update is tenant-scoped.
    */
-  private async autoLinkByEmail(restaurantId: string, members: any[]): Promise<void> {
+  private async autoLinkByEmail(
+    restaurantId: string,
+    members: any[],
+  ): Promise<void> {
     const orphans = members.filter((m) => !m.user_id && m.email);
     if (!orphans.length) return;
 
@@ -269,7 +304,8 @@ export class TeamService {
         patch.status = "trial";
       }
     }
-    if (dto.homeLocation !== undefined) patch.home_location = dto.homeLocation || null;
+    if (dto.homeLocation !== undefined)
+      patch.home_location = dto.homeLocation || null;
     if (dto.hourlyWage !== undefined) patch.hourly_wage = dto.hourlyWage;
     if (dto.skills !== undefined) patch.skills = dto.skills;
     if (dto.hireDate !== undefined) patch.hire_date = dto.hireDate || null;
@@ -297,12 +333,52 @@ export class TeamService {
     memberId: string,
   ): Promise<void> {
     await this.assertAccess(userId, restaurantId, "manager");
+
+    // Fetch the member to get their user_id and check their role.
+    const { data: member } = await this.sb
+      .from("team_members")
+      .select("user_id")
+      .eq("id", memberId)
+      .eq("restaurant_id", restaurantId)
+      .single();
+
+    // If member has a linked user, check their access role — owners cannot be removed.
+    if (member?.user_id) {
+      const { data: access } = await this.sb
+        .from("user_restaurant_access")
+        .select("role")
+        .eq("user_id", member.user_id)
+        .eq("restaurant_id", restaurantId)
+        .single();
+
+      if (access?.role === "owner") {
+        const { count } = await this.sb
+          .from("user_restaurant_access")
+          .select("*", { count: "exact", head: true })
+          .eq("restaurant_id", restaurantId)
+          .eq("role", "owner");
+
+        if (count && count <= 1) {
+          throw new ForbiddenException("Cannot remove the last owner of the restaurant.");
+        }
+      }
+
+      // Remove from user_restaurant_access so they lose access and are not backfilled.
+      await this.sb
+        .from("user_restaurant_access")
+        .delete()
+        .eq("user_id", member.user_id)
+        .eq("restaurant_id", restaurantId);
+    }
+
+    // Remove from team_members roster.
     const { error } = await this.sb
       .from("team_members")
       .delete()
       .eq("id", memberId)
       .eq("restaurant_id", restaurantId);
-    if (error) throw new InternalServerErrorException("Failed to remove member");
+    if (error)
+      throw new InternalServerErrorException("Failed to remove member");
   }
 
   // ── Certifications ───────────────────────────────────────────────────────
@@ -314,7 +390,10 @@ export class TeamService {
     return "valid";
   }
 
-  async listCertifications(userId: string, restaurantId: string): Promise<any[]> {
+  async listCertifications(
+    userId: string,
+    restaurantId: string,
+  ): Promise<any[]> {
     await this.assertAccess(userId, restaurantId);
     const { data } = await this.sb
       .from("team_certifications")
@@ -347,7 +426,8 @@ export class TeamService {
       })
       .select()
       .single();
-    if (error) throw new InternalServerErrorException("Failed to add certification");
+    if (error)
+      throw new InternalServerErrorException("Failed to add certification");
     return data;
   }
 
@@ -374,7 +454,8 @@ export class TeamService {
       .eq("restaurant_id", restaurantId)
       .select()
       .single();
-    if (error) throw new InternalServerErrorException("Failed to update certification");
+    if (error)
+      throw new InternalServerErrorException("Failed to update certification");
     return data;
   }
 
@@ -418,7 +499,9 @@ export class TeamService {
         .eq("user_id", userId)
         .maybeSingle();
       if (!me || me.id !== dto.memberId) {
-        throw new ForbiddenException("You can only request time off for yourself");
+        throw new ForbiddenException(
+          "You can only request time off for yourself",
+        );
       }
     }
 
@@ -433,7 +516,8 @@ export class TeamService {
       })
       .select()
       .single();
-    if (error) throw new InternalServerErrorException("Failed to create request");
+    if (error)
+      throw new InternalServerErrorException("Failed to create request");
     return data;
   }
 
@@ -455,7 +539,8 @@ export class TeamService {
       .eq("restaurant_id", restaurantId)
       .select()
       .maybeSingle();
-    if (error) throw new InternalServerErrorException("Failed to review request");
+    if (error)
+      throw new InternalServerErrorException("Failed to review request");
     if (!data) throw new NotFoundException("Request not found");
     return data;
   }
@@ -471,7 +556,10 @@ export class TeamService {
   }
 
   // ── Coverage templates ───────────────────────────────────────────────────
-  async listCoverageTemplates(userId: string, restaurantId: string): Promise<any[]> {
+  async listCoverageTemplates(
+    userId: string,
+    restaurantId: string,
+  ): Promise<any[]> {
     await this.assertAccess(userId, restaurantId);
     const { data } = await this.sb
       .from("coverage_templates")
@@ -497,7 +585,8 @@ export class TeamService {
       })
       .select()
       .single();
-    if (error) throw new InternalServerErrorException("Failed to add coverage rule");
+    if (error)
+      throw new InternalServerErrorException("Failed to add coverage rule");
     return data;
   }
 
@@ -545,13 +634,18 @@ export class TeamService {
     if (dto.laborTrackingEnabled !== undefined)
       patch.labor_tracking_enabled = dto.laborTrackingEnabled;
     if (dto.wageVisible !== undefined) patch.wage_visible = dto.wageVisible;
-    if (dto.laborTargetPct !== undefined) patch.labor_target_pct = dto.laborTargetPct;
+    if (dto.laborTargetPct !== undefined)
+      patch.labor_target_pct = dto.laborTargetPct;
     const { data, error } = await this.sb
       .from("team_settings")
       .upsert(patch, { onConflict: "restaurant_id" })
       .select()
       .single();
-    if (error) throw new InternalServerErrorException("Failed to update settings");
+    if (error) {
+      throw new InternalServerErrorException(
+        `Failed to update team settings: ${error.message}`,
+      );
+    }
     return data;
   }
 }

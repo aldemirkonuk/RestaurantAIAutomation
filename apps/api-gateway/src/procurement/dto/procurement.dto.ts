@@ -20,6 +20,8 @@ export enum ProcurementOrderStatus {
   CONFIRMED = "CONFIRMED",
   IN_TRANSIT = "IN_TRANSIT",
   DELIVERED = "DELIVERED",
+  /** Accepted less than was ordered; the remainder stays open as a backorder. */
+  PARTIALLY_RECEIVED = "PARTIALLY_RECEIVED",
   COMPLETED = "COMPLETED",
   CANCELLED = "CANCELLED",
   REJECTED = "REJECTED",
@@ -158,6 +160,112 @@ export class UpdateOrderDto {
   @IsString()
   @IsOptional()
   locationId?: string;
+}
+
+/** One signed stock correction applied while verifying a receipt. */
+export class ReceiptAdjustmentDto {
+  @ApiProperty()
+  @IsString()
+  inventoryId: string;
+
+  @ApiProperty({
+    description: "Signed correction; positive adds, negative removes.",
+  })
+  @IsNumber()
+  delta: number;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  reason?: string;
+}
+
+/**
+ * Three-way match payload (PO <-> Invoice <-> Receipt).
+ *
+ * `adjustments` remains supported for callers that only correct counts. When the match
+ * fields below are supplied the server recomputes the verdict itself via computeMatch()
+ * and derives the ledger correction — the client is never trusted to decide the outcome.
+ */
+export class VerifyReceiptDto {
+  @ApiPropertyOptional({ type: [ReceiptAdjustmentDto] })
+  @IsArray()
+  @IsOptional()
+  @Type(() => ReceiptAdjustmentDto)
+  adjustments?: ReceiptAdjustmentDto[];
+
+  @ApiPropertyOptional({
+    description: "Quantity the vendor invoice bills for.",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  invoiceQuantity?: number;
+
+  @ApiPropertyOptional({ description: "Unit price the vendor invoice bills." })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  invoiceUnitPrice?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Quantity the vendor's own packing slip / ASN says shipped. When this disagrees with the invoice, the overbill is proven by the vendor's own paperwork and the claim needs no argument.",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  shippedQuantity?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Units supplied free under an agreed deal (11 for the price of 10). Netted out of quantity comparisons so a negotiated bonus stops reading as an overage.",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  freeGoodsQuantity?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Freight, fuel surcharge and split-case fees apportioned to this line. Folded into landed cost — freight is a cost component, not a price variance.",
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  allocatedCharges?: number;
+
+  @ApiPropertyOptional({ description: "Units accepted into stock." })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  acceptedQuantity?: number;
+
+  @ApiPropertyOptional({
+    description: "Units that arrived but were refused (damaged).",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  rejectedQuantity?: number;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  rejectedReason?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Required when the invoice price differs from the agreed price.",
+  })
+  @IsString()
+  @IsOptional()
+  priceOverrideReason?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  note?: string;
 }
 
 export class OrderFilterDto {

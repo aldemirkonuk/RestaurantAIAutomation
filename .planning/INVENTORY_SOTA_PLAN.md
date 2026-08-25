@@ -1,6 +1,14 @@
 # WineOps — `/inventory` SOTA Rebuild Plan
 
-> **Status:** Approved for execution (Phase 0 pending)
+> **Status:** ⚠️ PHASE 1 IS PARTLY LIVE — this header said "Phase 0 pending" until
+> 2026-08-04, when the v3.0 triage checked it. `/inventory` no longer serves the
+> page this plan was written against: `App.tsx:201` routes it to
+> `pages/inventory/command/InventoryCommandPage.tsx`, and the old page is parked at
+> `/inventory-legacy` (`App.tsx:202`), which nothing links to.
+>
+> Phases 2 and 3 (§6, §7) remain unstarted and are the real carry-forward.
+> **Phase 0's "verify ground truth" step is still worth running** — but run it
+> against `InventoryCommandPage`, not the legacy page this plan describes.
 > **Date:** 2026-07-10
 > **Owner:** aldemirkonuk
 > **Sources:** two read-only expert audits (Inventory Systems-Engineering ≈2.6/10; Inventory SOTA/Innovation ≈3.9/10) + direct code verification in this repo.
@@ -73,7 +81,7 @@ Confirmed against this repo — the audits are ~90% accurate. Severity **re-grad
 | Total Value = menu price (~3× inflated) + self-contradictory | **True** | Table `Inventory.tsx:1257` (menu×stock) vs export `:555` (cost×stock). |
 | Integer-only stock breaks BTG (ml) depletion | **True** | `stock_live INTEGER`; `glassesPerBottle` uses `Math.floor` (remainder lost). |
 | Three incompatible status definitions | **True** | Backend view vs `useInventoryPage.ts:272` vs `inventory_engine.py:461`. |
-| `\|\| 0` masks unknown as out-of-stock | **True** | `useInventoryPage.ts:143`. |
+| `|| 0` masks unknown as out-of-stock | **True** | `useInventoryPage.ts:143`. |
 | Invoice scanner + QR built-but-unwired | **True** | `_showInvoiceScannerModal` unused; QR button is a placeholder. |
 | Shrinkage / Ghost Inventory agents are stubs | **True** | `shrinkage_detective_agent.py:34`, `ghost_inventory_agent.py:35`; tables exist, never written. |
 | One-wine-one-location constraint blocks multi-location | **True** | `UNIQUE(restaurant_id, wine_id)` — `20260304020000:9`. |
@@ -321,6 +329,29 @@ Ship in this order; everything else is opt-in, triggered by a felt need:
 ### 12.6 Data-reality red flags (label, don't silently trust)
 - `safety_stock = z·σ·√LT` has neither a real σ (intermittent demand) nor a real lead-time distribution today → confident garbage. Ship as suggestion beside the human par.
 - WAC quality is capped by receiving discipline; today's "purchased price" is the *library* price, not invoice cost. Until receipts reliably capture cost, WAC is data-entry-quality — **label its provenance** (D16).
+
+---
+
+## 13. Future plans — Mudavym expansion *(post–wine trust, not scheduled)*
+
+> Canonical vision: [`.planning/FUTURES.md`](./FUTURES.md). Ultimate goal remains a **full autonomous restaurant backend**. Sequencing: **wine → full beverages → bakery → rest of kitchen**.
+
+Inventory implications when the product expands under **Mudavym**:
+
+| Stage | Inventory / UX work | UX anchor |
+|---|---|---|
+| **1 — Beverages** | Catalog + filters: `domain=beverage` → subsection (`wine`, `beer`, `cocktail`, `hard_alcohol`, `na`) → subtype (e.g. wine/red, spirits/gin). Each leaf item: fine-grained attributes + photos (wine depth as the bar). | Inventory command table filters + detail |
+| **1 — Cocktail recipes** | Composed SKUs get a **Recipes** section — build sheet, linked ingredient SKUs, pour specs, method, garnish, optional cost roll-up from lot WAC. | `RowExpansion` on `/inventory` (`apps/web/src/pages/inventory/command/RowExpansion.tsx`) |
+| **2 — Bakery (first food)** | `domain=food` → `bakery`: ingredients, intermediates, finished goods. MVP: catalog+photos, pars/alerts, manual recipes, manual waste, simple POS finished-good decrement. North star adds full BOM explosion + spoilage intelligence. | Same inventory surfaces + recipe panel |
+| **3 — Rest of kitchen** | Broader food subsections after bakery proves the model. | — |
+
+**Notes:**
+- Wine bottle rows stay as-is (vintage, par, cellar location); recipes apply to **composed** items (cocktails, bakery finished goods) only.
+- Ingredient lines should deplete linked inventory SKUs (pour-through / recipe costing), gated on Phase 2 lots + ledger trust.
+- Schema early: `domain ∈ {beverage, food, supply}`, `subsection`, `subtype`, plus type-specific attribute packs — so UI can branch without a later rewrite.
+- Do not invent a thinner product row model; extraction + photos must match wine’s finest-feature standard (see FUTURES §4).
+
+**Trigger:** Promote from ROADMAP backlog 999.x when wine inventory trust (this plan’s Phase 1–2) is earned.
 
 ---
 

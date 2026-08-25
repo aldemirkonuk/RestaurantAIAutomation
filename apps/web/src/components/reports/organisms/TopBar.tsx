@@ -6,18 +6,14 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Download,
   ChevronDown,
   Pencil,
-  FileSpreadsheet,
-  Table,
-  FileText,
-  Cloud,
   CheckCircle,
   LayoutGrid,
   GitCompare,
 } from 'lucide-react'
-import { Button } from '../../ui'
+import { ExportMenu } from '../../ui/ExportMenu'
+import type { TableExportFormat } from '../../../lib/tableExport'
 
 interface TopBarProps {
   timeRange: '7d' | '30d' | '90d'
@@ -25,11 +21,12 @@ interface TopBarProps {
   isEditMode: boolean
   onEditToggle: () => void
   onOpenArrange: () => void
-  onExport: (format: string) => void
+  onExport: (format: TableExportFormat) => void
   exportSuccess?: string | null
   showComparison?: boolean
   onToggleComparison?: () => void
   className?: string
+  exportCount?: number
 }
 
 export function TopBar({
@@ -43,14 +40,9 @@ export function TopBar({
   showComparison = false,
   onToggleComparison,
   className = '',
+  exportCount,
 }: TopBarProps) {
-  const [showExportMenu, setShowExportMenu] = useState(false)
   const [showEditMenu, setShowEditMenu] = useState(false)
-
-  const handleExport = (format: string) => {
-    setShowExportMenu(false)
-    onExport(format)
-  }
 
   return (
     <>
@@ -154,77 +146,14 @@ export function TopBar({
             </AnimatePresence>
           </div>
 
-          {/* Export Button with Dropdown */}
-          <div className="relative">
-            <Button variant="default" onClick={() => setShowExportMenu(!showExportMenu)}>
-              <Download className="w-4 h-4 mr-2" />
-              Export
-              <ChevronDown className="w-4 h-4 ml-2" />
-            </Button>
-
-          <AnimatePresence>
-            {showExportMenu && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-50"
-              >
-                <button
-                  onClick={() => handleExport('csv')}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors"
-                >
-                  <FileSpreadsheet className="w-4 h-4 text-green-600" />
-                  <div className="text-left">
-                    <p className="text-sm font-medium text-gray-900">CSV</p>
-                    <p className="text-xs text-gray-500">Comma-separated values</p>
-                  </div>
-                </button>
-                <button
-                  onClick={() => handleExport('excel')}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors"
-                >
-                  <Table className="w-4 h-4 text-green-700" />
-                  <div className="text-left">
-                    <p className="text-sm font-medium text-gray-900">Excel</p>
-                    <p className="text-xs text-gray-500">.xlsx spreadsheet</p>
-                  </div>
-                </button>
-                <button
-                  onClick={() => handleExport('pdf')}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors"
-                >
-                  <FileText className="w-4 h-4 text-red-600" />
-                  <div className="text-left">
-                    <p className="text-sm font-medium text-gray-900">PDF</p>
-                    <p className="text-xs text-gray-500">Printable document</p>
-                  </div>
-                </button>
-                <div className="border-t border-gray-100 my-1" />
-                <button
-                  onClick={() => handleExport('sheets')}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors"
-                >
-                  <FileSpreadsheet className="w-4 h-4 text-green-500" />
-                  <div className="text-left">
-                    <p className="text-sm font-medium text-gray-900">Google Sheets</p>
-                    <p className="text-xs text-gray-500">Open in Sheets</p>
-                  </div>
-                </button>
-                <button
-                  onClick={() => handleExport('drive')}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors"
-                >
-                  <Cloud className="w-4 h-4 text-blue-500" />
-                  <div className="text-left">
-                    <p className="text-sm font-medium text-gray-900">Google Drive</p>
-                    <p className="text-xs text-gray-500">Save to Drive</p>
-                  </div>
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-          </div>
+          {/* Shared ExportMenu — same formats as Orders / Inventory / Wine Library */}
+          <ExportMenu
+            variant="wine"
+            label="Export"
+            count={exportCount}
+            onExport={onExport}
+            title="Export report data"
+          />
         </div>
       </div>
 

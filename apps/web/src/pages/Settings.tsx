@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Settings as SettingsIcon,
@@ -33,6 +34,8 @@ import {
   Link2,
   Check,
   Copy,
+  ChefHat,
+  MapPin,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/layout/Header';
@@ -40,19 +43,24 @@ import { settingsApi, FeatureFlags, UpdateFeatureFlagsRequest } from '../service
 import { useRestaurantSettingsStore } from '../stores';
 import { InviteTeamDialog } from '../components/team/InviteTeamDialog';
 import { TeamLaborSettings } from '../components/team/TeamLaborSettings';
+import { TeamGoalsSettings } from '../components/team/TeamGoalsSettings';
 import { EmailSenderSettings } from '../components/settings/EmailSenderSettings';
 import { NotificationsSection } from '../components/settings/NotificationsSection';
+import { IntegrationsAuth } from '../components/settings/IntegrationsAuth';
+import { PosSettingsSection } from '../components/settings/PosSettingsSection';
 import { AddLocationDialog } from '../components/locations/AddLocationDialog';
 import { EditLocationChainDialog } from '../components/locations/EditLocationChainDialog';
 import { CreateChainDialog } from '../components/locations/CreateChainDialog';
 import { AssignToChainDialog } from '../components/locations/AssignToChainDialog';
 import { useAuth, type RestaurantBranch } from '../contexts/AuthContext';
+import { useUserPreferences, type UserPreferences } from '../hooks/useUserPreferences';
 import {
   COMMON_POUR_SIZES,
   formatVolumeWithBothUnits,
   isValidPourSize,
 } from '../utils/volumeUtils';
 import { cn } from '../lib/utils';
+import { ServicesPermissions } from '../components/settings/ServicesPermissions';
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000';
 
@@ -71,15 +79,18 @@ interface PendingInviteRow {
 
 // ─── Section nav ─────────────────────────────────────────────────────────────
 
-const SECTION_IDS = ['team', 'email', 'notifications', 'locations', 'measurement', 'features', 'calendar'] as const;
+const SECTION_IDS = ['team', 'services', 'email', 'notifications', 'locations', 'measurement', 'map', 'features', 'pos', 'calendar'] as const;
 type SectionId = (typeof SECTION_IDS)[number];
 const SECTION_LABELS: Record<SectionId, string> = {
   team: 'Team',
+  services: 'Services',
   email: 'Email',
   notifications: 'Notifications',
   locations: 'Locations',
   measurement: 'Measurement',
+  map: 'Map',
   features: 'Features',
+  pos: 'POS',
   calendar: 'Calendar',
 };
 
@@ -229,6 +240,72 @@ function CalendarSubscriptionSection() {
   );
 }
 
+// ─── Map section ──────────────────────────────────────────────────────────────
+
+const MAP_SCOPE_OPTIONS: Array<{
+  value: NonNullable<UserPreferences['mapDefaultScope']>;
+  label: string;
+  hint: string;
+}> = [
+  { value: 'continent', label: 'Continent', hint: 'All of North America' },
+  { value: 'country', label: 'Country', hint: 'Your whole country' },
+  { value: 'state', label: 'State', hint: 'Your state or province' },
+  { value: 'city', label: 'City', hint: 'Your city and its suburbs' },
+];
+
+/**
+ * How wide the Find-distributors map frames the restaurant when it opens.
+ *
+ * A preference rather than a fixed value because the right answer depends on
+ * how a restaurant buys: a group sourcing nationally wants the country, a
+ * single site working with local reps wants the city. Continent is the default
+ * because it is the one framing that is never wrong — you can always see where
+ * you are relative to everything else and zoom in from there.
+ */
+function MapDefaultViewSection() {
+  const { preferences, updatePreferences, isLoading } = useUserPreferences();
+  const scope = preferences?.mapDefaultScope ?? 'continent';
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="px-6 py-4 flex items-center gap-2 border-b border-gray-100">
+        <MapPin className="w-4 h-4 text-wine-500" />
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">Map</h2>
+          <p className="text-xs text-gray-400 mt-0.5">How Find distributors frames your restaurant</p>
+        </div>
+      </div>
+
+      <div className="px-6 py-4">
+        <p className="text-sm font-medium text-gray-700 mb-1">Default view</p>
+        <p className="text-xs text-gray-400 mb-3">
+          Applies when the map opens. Zooming in on a distributor never changes this — use
+          &ldquo;Back to&rdquo; on the map to return here.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {MAP_SCOPE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              disabled={isLoading}
+              onClick={() => updatePreferences({ mapDefaultScope: opt.value })}
+              title={opt.hint}
+              aria-pressed={scope === opt.value}
+              className={cn(
+                'px-4 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50',
+                scope === opt.value
+                  ? 'bg-wine-600 text-white'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Measurement section ──────────────────────────────────────────────────────
 
 function MeasurementVolumeSection() {
@@ -316,6 +393,82 @@ function MeasurementVolumeSection() {
             <span className="text-sm text-gray-500">{formatVolumeWithBothUnits(effectivePourMl)}</span>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function RecipesSection() {
+  const {
+    recipesEnabled,
+    recipeYieldUnit,
+    measurementUnit,
+    setRecipesEnabled,
+    setRecipeYieldUnit,
+  } = useRestaurantSettingsStore();
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mt-3">
+      <div className="px-6 py-4 flex items-center gap-2 border-b border-gray-100">
+        <ChefHat className="w-4 h-4 text-wine-500" />
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">Recipes</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Cocktail and by-the-glass recipes tied to bottle pours
+          </p>
+        </div>
+      </div>
+      <div className="divide-y divide-gray-50">
+        <div className="px-6 py-4 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-gray-700">Enable recipes</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Track recipe yields and deduct pours from inventory
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={recipesEnabled}
+            onClick={() => setRecipesEnabled(!recipesEnabled)}
+            className={cn(
+              'relative w-11 h-6 rounded-full transition-colors',
+              recipesEnabled ? 'bg-wine-600' : 'bg-gray-200',
+            )}
+          >
+            <span
+              className={cn(
+                'absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
+                recipesEnabled && 'translate-x-5',
+              )}
+            />
+          </button>
+        </div>
+        {recipesEnabled && (
+          <div className="px-6 py-4">
+            <p className="text-sm font-medium text-gray-700 mb-2">Default recipe yield unit</p>
+            <div className="flex gap-2">
+              {(['ml', 'oz'] as const).map((unit) => (
+                <button
+                  key={unit}
+                  type="button"
+                  onClick={() => setRecipeYieldUnit(unit)}
+                  className={cn(
+                    'px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                    recipeYieldUnit === unit
+                      ? 'bg-wine-600 text-white'
+                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
+                  )}
+                >
+                  {unit === 'ml' ? 'Metric (ml)' : 'US (oz)'}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-2">
+              Display unit is currently {measurementUnit}. Recipe yields can use a different unit.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -552,12 +705,29 @@ export default function Settings() {
   const [chainsList, setChainsList] = useState<{ id: string; name: string }[]>([]);
   const [assigningToChain, setAssigningToChain] = useState<{ id: string; name: string } | null>(null);
   const [flagSearch, setFlagSearch] = useState('');
-  const [activeSection, setActiveSection] = useState<SectionId>('team');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const initialSection =
+    tabParam && (SECTION_IDS as readonly string[]).includes(tabParam)
+      ? (tabParam as SectionId)
+      : 'team';
+  const [activeSection, setActiveSection] = useState<SectionId>(initialSection);
   const [teamMembers, setTeamMembers] = useState<TeamMemberRow[]>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInviteRow[]>([]);
   const [teamLoading, setTeamLoading] = useState(false);
 
   const effectiveRole = activeRole ?? user?.role ?? null;
+
+  // Deep-link: /settings?tab=services|team|...
+  useEffect(() => {
+    if (tabParam && (SECTION_IDS as readonly string[]).includes(tabParam)) {
+      const id = tabParam as SectionId;
+      setActiveSection(id);
+      requestAnimationFrame(() => {
+        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+  }, [tabParam]);
 
   // Scrollspy: highlight whichever section's top is nearest the sticky bar
   useEffect(() => {
@@ -578,6 +748,10 @@ export default function Settings() {
   }, []);
 
   const scrollToSection = (id: SectionId) => {
+    setActiveSection(id);
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', id);
+    setSearchParams(next, { replace: true });
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -794,6 +968,40 @@ export default function Settings() {
     );
   }
 
+  // Staff (waiter) — restaurant ops Settings are manager/owner only
+  const isStaffOnly = effectiveRole === 'staff';
+  if (isStaffOnly) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <Header title="Settings" subtitle="Restaurant settings are managed by your manager" />
+        <div className="max-w-lg mx-auto px-6 py-16 text-center">
+          <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-gray-100 flex items-center justify-center">
+            <SettingsIcon className="w-7 h-7 text-gray-400" />
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Ask a manager</h2>
+          <p className="text-sm text-gray-500 mb-8">
+            Team, locations, feature flags, and other restaurant settings can only be changed by
+            managers or owners. You can still manage your personal account.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link
+              to="/profile"
+              className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-wine-600 text-white text-sm font-medium hover:bg-wine-700"
+            >
+              Open Profile
+            </Link>
+            <Link
+              to="/help"
+              className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-white"
+            >
+              Help & Support
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Header title="Settings" subtitle="Manage features and preferences" />
@@ -888,7 +1096,10 @@ export default function Settings() {
           </div>
           <div className="px-6 py-5">
             {activeRestaurantId && (effectiveRole === 'owner' || effectiveRole === 'manager') && (
-              <TeamLaborSettings />
+              <>
+                <TeamLaborSettings />
+                <TeamGoalsSettings />
+              </>
             )}
             {!activeRestaurantId ? (
               <p className="text-sm text-gray-500 text-center py-6">
@@ -1030,6 +1241,11 @@ export default function Settings() {
             anchorRef={teamInviteAnchorRef}
           />
         )}
+
+        {/* ── Services & permissions ── */}
+        <div id="services" className="scroll-mt-32 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden p-6">
+          <ServicesPermissions />
+        </div>
 
         {/* ── Email sign-off ── */}
         <EmailSenderSettings />
@@ -1226,6 +1442,12 @@ export default function Settings() {
         {/* ── Measurement ── */}
         <div id="measurement" className="scroll-mt-32">
           <MeasurementVolumeSection />
+          <RecipesSection />
+        </div>
+
+        {/* ── Map ── */}
+        <div id="map" className="scroll-mt-32">
+          <MapDefaultViewSection />
         </div>
 
         {/* ── Feature Flags ── */}
@@ -1256,7 +1478,10 @@ export default function Settings() {
           )}
 
           {Object.entries(groupedFlags).map(([category, items]) => {
-            const enabledCount = items.filter((f) => localFlags?.[f.key]).length;
+            const flagEnabled = items.filter((f) => localFlags?.[f.key]).length;
+            const authExtra = category === 'integrations' ? 2 : 0;
+            const enabledCount = flagEnabled; // auth rows tracked separately in IntegrationsAuth
+            const totalCount = items.length + authExtra;
             return (
               <motion.div
                 key={category}
@@ -1272,7 +1497,7 @@ export default function Settings() {
                     'text-xs px-2 py-0.5 rounded-full font-medium',
                     enabledCount > 0 ? 'bg-wine-50 text-wine-600' : 'bg-gray-100 text-gray-400',
                   )}>
-                    {enabledCount}/{items.length} on
+                    {enabledCount}/{totalCount} on
                   </span>
                 </div>
 
@@ -1313,10 +1538,14 @@ export default function Settings() {
                     );
                   })}
                 </div>
+                {category === 'integrations' && <IntegrationsAuth />}
               </motion.div>
             );
           })}
         </div>
+
+        {/* ── POS ── */}
+        <PosSettingsSection />
 
         {/* ── Calendar Subscription ── */}
         <div id="calendar" className="scroll-mt-32 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">

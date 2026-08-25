@@ -1,0 +1,100 @@
+{
+  "collapse-filter": false,
+  "search": "",
+  "showTags": true,
+  "showAttachments": false,
+  "hideUnresolved": false,
+  "showOrphans": true,
+  "collapse-color-groups": false,
+  "colorGroups": [
+    {
+      "query": "path:01-org/research-math",
+      "color": {
+        "a": 1,
+        "rgb": 9338051
+      }
+    },
+    {
+      "query": "path:01-org/platform",
+      "color": {
+        "a": 1,
+        "rgb": 5214169
+      }
+    },
+    {
+      "query": "path:01-org/applied-ai",
+      "color": {
+        "a": 1,
+        "rgb": 4171924
+      }
+    },
+    {
+      "query": "path:01-org/intelligence",
+      "color": {
+        "a": 1,
+        "rgb": 13013566
+      }
+    },
+    {
+      "query": "path:01-org/product",
+      "color": {
+        "a": 1,
+        "rgb": 13789514
+      }
+    },
+    {
+      "query": "path:01-org/commercial",
+      "color": {
+        "a": 1,
+        "rgb": 12603514
+      }
+    },
+    {
+      "query": "path:01-org/corporate",
+      "color": {
+        "a": 1,
+        "rgb": 7238792
+      }
+    },
+    {
+      "query": "path:02-advisory",
+      "color": {
+        "a": 1,
+        "rgb": 11745850
+      }
+    },
+    {
+      "query": "path:03-scenarios",
+      "color": {
+        "a": 1,
+        "rgb": 2911823
+      }
+    },
+    {
+      "query": "path:decisions",
+      "color": {
+        "a": 1,
+        "rgb": 2039583
+      }
+    },
+    {
+      "query": "path:00-index",
+      "color": {
+        "a": 1,
+        "rgb": 0
+      }
+    }
+  ],
+  "collapse-display": false,
+  "showArrow": false,
+  "textFadeMultiplier": 0,
+  "nodeSizeMultiplier": 1,
+  "lineSizeMultiplier": 1,
+  "collapse-forces": true,
+  "centerStrength": 0.518713248970312,
+  "repelStrength": 12,
+  "linkStrength": 1,
+  "linkDistance": 180,
+  "scale": 0.09679754405761212,
+  "close": true
+}

@@ -399,6 +399,22 @@ export async function deleteRecurringEventFuture(
 }
 
 /**
+ * Get (provisioning if needed) this user's iCal subscription token.
+ */
+export async function getIcalToken(): Promise<{ token: string }> {
+  const response = await apiClient.get<{ token: string }>('/calendar/ical-token')
+  return response.data
+}
+
+/**
+ * Regenerate the iCal subscription token, invalidating the previous feed URL.
+ */
+export async function regenerateIcalToken(): Promise<{ token: string }> {
+  const response = await apiClient.post<{ token: string }>('/calendar/ical-token/regenerate')
+  return response.data
+}
+
+/**
  * Get event conflicts for a time slot
  */
 export async function checkEventConflicts(

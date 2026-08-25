@@ -13,7 +13,8 @@ Tracks:
 
 import json
 import re
-from typing import Dict, List, Any
+import time
+from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 
 from core.base_agent import BaseAgent
@@ -117,7 +118,9 @@ class CalendarAgent(BaseAgent):
             )
 
             # Call Gemini Pro via the database's LLM helper (or direct API)
-            extracted_dates = await self._call_llm_for_dates(prompt)
+            extracted_dates = await self._call_llm_for_dates(
+                prompt, restaurant_id=restaurant_id
+            )
 
             if not extracted_dates:
                 self.logger.debug(
@@ -185,14 +188,51 @@ class CalendarAgent(BaseAgent):
                 f"Error extracting dates from conversation: {e}", exc_info=True
             )
 
-    async def _call_llm_for_dates(self, prompt: str) -> List[Dict[str, Any]]:
-        """Call Gemini Pro to extract dates, with regex fallback"""
+    async def _call_llm_for_dates(
+        self, prompt: str, restaurant_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Call Gemini to extract dates, with regex fallback"""
         try:
-            # Try Gemini Pro via google.generativeai
-            import google.generativeai as genai
+            # Was the legacy google.generativeai SDK pinned to "gemini-pro" — a
+            # model that is retired (404) — and it never called genai.configure(),
+            # so it had no API key either. Both failures landed in the broad
+            # `except Exception` below, meaning this path had silently been regex
+            # only. Now on the shared new-SDK client like every other call site.
+            from config.settings import get_settings
+            from services.model_clients import get_gemini_client
 
-            model = genai.GenerativeModel("gemini-pro")
-            response = await model.generate_content_async(prompt)
+            model_id = get_settings().gemini_model
+            client = get_gemini_client()
+            _t0 = time.perf_counter()
+            response = await client.aio.models.generate_content(
+                model=model_id,
+                contents=prompt,
+            )
+
+            # P1: previously an unlogged model call (dark site)
+            try:
+                from services.spend_logger import (
+                    estimate_llm_cost,
+                    get_spend_logger,
+                    usage_tokens,
+                )
+
+                _in, _out = usage_tokens(response)  # _out includes thinking tokens
+                get_spend_logger().log(
+                    provider="google",
+                    model=model_id,
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=estimate_llm_cost(model_id, _in, _out),
+                    restaurant_id=restaurant_id or None,
+                    agent=self.agent_name,
+                    task_type="date_extraction",
+                    outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
+                    correlation_id=getattr(self, "_current_correlation_id", None),
+                )
+            except Exception:
+                pass
 
             if response and response.text:
                 # Parse JSON from LLM response
@@ -203,7 +243,7 @@ class CalendarAgent(BaseAgent):
                     return json.loads(json_match.group())
 
         except ImportError:
-            self.logger.debug("google.generativeai not available, using regex fallback")
+            self.logger.debug("google-genai not installed, using regex fallback")
         except Exception as e:
             self.logger.warning(
                 f"LLM date extraction failed, using regex fallback: {e}"

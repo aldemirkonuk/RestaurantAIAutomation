@@ -593,11 +593,30 @@ export class CommunicationsController {
       }
     }
 
-    // Update stock in DB
+    // Update stock via the ledger RPC — restaurant_inventory.stock_live is a
+    // projection of inventory_lots (owned by project_stock_from_lots) and is
+    // never written directly (SimPOS testbed plan, decision A8).
     if (inventoryId) {
+      const { data: current } = await this.databaseService.supabase
+        .from("restaurant_inventory")
+        .select("stock_live")
+        .eq("id", inventoryId)
+        .maybeSingle();
+      const delta = newStock - Number(current?.stock_live ?? 0);
+      if (delta !== 0) {
+        await this.databaseService.supabase.rpc("apply_stock_movement", {
+          p_inventory_id: inventoryId,
+          p_stock_state: "live",
+          p_delta: delta,
+          p_transaction_type: "adjustment",
+          p_source: "system",
+          p_reason: "E2E test — manual spillage scenario",
+          p_idempotency_key: `e2e-step1:${inventoryId}:${Date.now()}`,
+        });
+      }
       await this.databaseService.supabase
         .from("restaurant_inventory")
-        .update({ stock_live: newStock, threshold_min: threshold })
+        .update({ threshold_min: threshold })
         .eq("id", inventoryId);
     }
 

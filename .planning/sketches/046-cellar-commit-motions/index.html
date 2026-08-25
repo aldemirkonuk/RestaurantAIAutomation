@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sketch 046 - Cellar Commit Motions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --wine: #cd2d5b;
+    --wine-light: #e0578a;
+    --burgundy: #8b2548;
+    --foil: #c9a227;
+    --foil-sheen: #e8d48a;
+    --cellar-glow: rgba(205, 45, 91, .22);
+    --bg: #0f0f14;
+    --panel: rgba(255, 255, 255, .04);
+    --line: rgba(255, 255, 255, .08);
+    --text: #ece9ef;
+    --muted: rgba(255, 255, 255, .5);
+    --ease: cubic-bezier(.16, 1, .3, 1);
+    --spring: cubic-bezier(.22, 1, .36, 1);
+  }
+  * { box-sizing: border-box; }
+  button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+
+  body {
+    margin: 0; padding: 56px 20px 64px;
+    background: var(--bg); color: var(--text);
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; gap: 6px;
+    padding: 10px 16px;
+    background: rgba(15, 15, 20, .92);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-right: 4px; font-family: "JetBrains Mono", monospace; }
+  .nav-tab {
+    padding: 7px 12px; border-radius: 9px;
+    border: 1px solid var(--line); background: var(--panel);
+    color: var(--muted); font-size: 11px; font-weight: 700; white-space: nowrap;
+    transition: all .2s var(--spring);
+  }
+  .nav-tab:hover { color: var(--text); background: rgba(255,255,255,.08); }
+  .nav-tab.active { background: var(--wine); border-color: var(--wine); color: #fff; }
+
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  .kicker { color: var(--wine-light); font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+  h1 { margin: 8px 0 8px; font-size: 26px; font-weight: 800; letter-spacing: -.03em; }
+  .lede { max-width: 760px; margin: 0 0 28px; color: var(--muted); font-size: 13.5px; line-height: 1.6; }
+
+  .panel { display: none; }
+  .panel.active { display: grid; grid-template-columns: 390px 1fr; gap: 28px; align-items: start; }
+  @media (max-width: 960px) { .panel.active { grid-template-columns: 1fr; } }
+
+  .phone-wrap { display: flex; flex-direction: column; align-items: center; }
+  .phone {
+    width: 375px; border-radius: 44px;
+    box-shadow: 0 40px 100px rgba(0,0,0,.55), 0 0 0 10px #1c1c24, 0 0 0 11px #2a2a34;
+    overflow: hidden;
+  }
+  .notch { height: 34px; background: #000; width: 120px; margin: 0 auto; border-radius: 0 0 16px 16px; }
+  .screen {
+    position: relative; height: 720px;
+    background: linear-gradient(180deg, #16141c, #121018);
+    overflow: hidden;
+  }
+
+  .spec {
+    padding: 22px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel);
+  }
+  .spec-tag { display: inline-block; padding: 4px 10px; border-radius: 999px; background: rgba(205,45,91,.15); color: #f4a9ba; font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 12px; }
+  .spec h2 { margin: 0 0 10px; font-size: 18px; font-weight: 800; letter-spacing: -.02em; }
+  .spec-block { margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+  .spec-block:last-child { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
+  .spec-block h3 { margin: 0 0 5px; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--wine-light); }
+  .spec-block p { margin: 0; color: rgba(255,255,255,.68); font-size: 12px; line-height: 1.55; }
+  .spec-block ul { margin: 6px 0 0; padding-left: 16px; color: rgba(255,255,255,.6); font-size: 11.5px; line-height: 1.5; }
+  .spec-block code { font-family: "JetBrains Mono", monospace; font-size: 10px; padding: 1px 5px; border-radius: 4px; background: rgba(255,255,255,.06); }
+
+  .replay-btn, .action-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    margin-top: 14px; padding: 10px 16px;
+    border: 1px solid rgba(205,45,91,.4); border-radius: 11px;
+    background: rgba(205,45,91,.12); color: #f4a9ba;
+    font-size: 12px; font-weight: 700;
+    transition: transform .2s var(--spring), background .2s;
+  }
+  .replay-btn:hover, .action-btn:hover { background: rgba(205,45,91,.22); transform: translateY(-1px); }
+  .action-btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+  .haptic-log {
+    margin-top: 12px; padding: 10px 12px;
+    border-radius: 9px; background: rgba(255,255,255,.04);
+    border: 1px dashed var(--line);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px; color: var(--muted);
+    min-height: 36px;
+  }
+  .haptic-log.on { color: #6ee7b7; border-color: rgba(110,231,183,.3); }
+
+  .app-hd { padding: 12px 16px 8px; }
+  .app-hd h3 { margin: 0; font-size: 17px; font-weight: 800; }
+  .app-hd small { color: var(--muted); font-size: 10px; font-weight: 600; }
+
+  /* ===== MOMENT 1: CORK SEAT ===== */
+  .cork-scene { padding: 0 16px 24px; height: calc(100% - 52px); display: flex; flex-direction: column; }
+  .commit-context {
+    margin-top: 12px; padding: 14px;
+    border: 1px solid var(--line); border-radius: 14px;
+    background: rgba(255,255,255,.03); font-size: 11px;
+  }
+  .commit-context .row { display: flex; justify-content: space-between; margin-bottom: 6px; color: var(--muted); }
+  .commit-context .row b { color: var(--text); }
+  .commit-wrap {
+    position: relative; margin-top: auto;
+    height: 58px;
+  }
+  #corkSeatCanvas {
+    position: absolute; inset: 0; pointer-events: none; z-index: 2;
+    width: 100%; height: 100%;
+  }
+  .cork-seat-btn {
+    position: relative; z-index: 1;
+    width: 100%; height: 58px;
+    border-radius: 16px;
+    background: linear-gradient(180deg, #2a2428, #1a1518);
+    border: 1px solid rgba(139, 37, 72, .35);
+    color: var(--text);
+    font-size: 14px; font-weight: 800;
+    transform-origin: center bottom;
+    transition: transform .28s var(--spring), background .3s, color .3s, border-color .3s;
+    overflow: hidden;
+  }
+  .cork-seat-btn .neck {
+    position: absolute; top: 0; left: 50%;
+    width: 40px; height: 12px; margin-left: -20px;
+    background: rgba(255,255,255,.05);
+    border-radius: 0 0 8px 8px;
+    border: 1px solid var(--line); border-top: 0;
+  }
+  .cork-seat-btn.seating {
+    transform: scaleY(0.92);
+  }
+  .cork-seat-btn.seated {
+    transform: scaleY(1);
+    background: linear-gradient(180deg, #1e1a1d, #141114);
+    border-color: var(--burgundy);
+    color: rgba(255,255,255,.45);
+    pointer-events: none;
+  }
+  .cork-seat-btn.seated .label { display: none; }
+  .cork-seat-btn.seated::after { content: "Decision locked"; position: relative; z-index: 3; }
+
+  /* ===== MOMENT 2: CAPSULE SWEEP ===== */
+  .capsule-scene { padding: 0 16px 24px; height: calc(100% - 52px); display: flex; flex-direction: column; }
+  .scan-status {
+    margin-top: 10px; padding: 8px 12px;
+    border-radius: 10px; background: rgba(110, 231, 183, .1);
+    border: 1px solid rgba(110, 231, 183, .25);
+    font-size: 10px; font-weight: 700; color: #6ee7b7;
+    text-align: center;
+  }
+  .product-row-wrap {
+    position: relative; margin-top: 14px;
+    border-radius: 14px; overflow: hidden;
+  }
+  #capsuleCanvas {
+    position: absolute; inset: 0; pointer-events: none; z-index: 2;
+    width: 100%; height: 100%;
+  }
+  .product-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: rgba(255,255,255,.04);
+    transition: border-color .3s;
+  }
+  .product-row.verified { border-color: rgba(201, 162, 39, .4); }
+  .bottle-thumb {
+    width: 44px; height: 64px; border-radius: 6px;
+    background: linear-gradient(180deg, #2a1a22, #1a1018);
+    border: 1px solid var(--line);
+    flex-shrink: 0;
+    position: relative;
+  }
+  .bottle-thumb::after {
+    content: ""; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 14px; height: 8px; background: rgba(255,255,255,.08); border-radius: 0 0 4px 4px;
+  }
+  .product-info h4 { margin: 0; font-size: 13px; font-weight: 800; }
+  .product-info p { margin: 4px 0 0; font-size: 10px; color: var(--muted); }
+  .product-info .sku { font-family: "JetBrains Mono", monospace; font-size: 9px; color: rgba(255,255,255,.4); margin-top: 6px; }
+  .match-pill {
+    margin-left: auto; padding: 5px 10px; border-radius: 999px;
+    background: rgba(255,255,255,.06); font-size: 9px; font-weight: 700; color: var(--muted);
+    transition: background .3s, color .3s;
+  }
+  .product-row.verified .match-pill { background: rgba(201, 162, 39, .15); color: var(--foil-sheen); }
+
+  /* ===== MOMENT 3: BIN BREATH ===== */
+  .bin-scene { padding: 0 16px 24px; height: calc(100% - 52px); display: flex; flex-direction: column; }
+  .assign-bar {
+    margin-top: 10px; padding: 10px 12px;
+    border: 1px solid var(--line); border-radius: 12px;
+    background: rgba(255,255,255,.03); font-size: 11px; color: var(--muted);
+  }
+  .assign-bar b { color: var(--text); }
+  .bin-map-wrap {
+    position: relative; flex: 1; margin-top: 12px;
+    padding: 14px; border: 1px solid var(--line); border-radius: 16px;
+    background: rgba(255,255,255,.02);
+  }
+  #binGlowCanvas {
+    position: absolute; inset: 14px; pointer-events: none; z-index: 0;
+    width: calc(100% - 28px); height: calc(100% - 28px);
+  }
+  .bin-map {
+    position: relative; z-index: 1;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+    height: 100%;
+  }
+  .bin-cell {
+    aspect-ratio: 1; border: 1px solid var(--line); border-radius: 12px;
+    background: rgba(255,255,255,.04);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; color: var(--muted);
+    transition: transform .4s var(--spring), border-color .35s, box-shadow .35s;
+  }
+  .bin-cell .count { font-size: 16px; font-weight: 800; color: var(--text); margin-top: 4px; }
+  .bin-cell.target {
+    transform: scale(1.04);
+    border-color: rgba(205, 45, 91, .5);
+    box-shadow: 0 0 0 1px rgba(205, 45, 91, .25);
+  }
+  .bin-cell.placed {
+    transform: scale(1);
+    border-color: rgba(205, 45, 91, .35);
+  }
+  .stock-chip {
+    margin-top: 12px; padding: 10px 14px;
+    border: 1px dashed rgba(205, 45, 91, .35); border-radius: 12px;
+    font-size: 11px; display: flex; align-items: center; gap: 10px;
+    transition: opacity .3s, transform .4s var(--spring);
+  }
+  .stock-chip.hidden { opacity: 0; transform: translateY(8px); pointer-events: none; }
+  .stock-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--wine); }
+
+  .foot { margin-top: 28px; text-align: center; color: var(--muted); font-size: 11.5px; }
+  .foot code { padding: 2px 6px; border-radius: 5px; background: rgba(255,255,255,.06); font-family: "JetBrains Mono", monospace; font-size: 10px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <span class="nav-label">046</span>
+  <button class="nav-tab active" type="button" data-panel="cork">Cork seat</button>
+  <button class="nav-tab" type="button" data-panel="capsule">Capsule sweep</button>
+  <button class="nav-tab" type="button" data-panel="bin">Bin breath</button>
+</nav>
+
+<div class="wrap">
+  <div class="kicker">Sketch 046 · Cellar Commit Motions</div>
+  <h1>Pressure, authenticity, and place — not UI bounce</h1>
+  <p class="lede">Three tactile moments reserved for rare, meaningful ops actions. Everyday taps stay silent; irreversible commits, identity locks, and stock placement each get one honest motion.</p>
+
+  <!-- CORK SEAT -->
+  <div class="panel active" id="panel-cork">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="app-hd"><h3>Variance write-off</h3><small>Irreversible commit</small></div>
+          <div class="cork-scene">
+            <div class="commit-context">
+              <div class="row"><span>Item</span><b>Barolo 2016 · 2 bt</b></div>
+              <div class="row"><span>Reason</span><b>Breakage · service</b></div>
+              <div class="row"><span>Owner</span><b>M.Kim</b></div>
+              <div class="row"><span>Value</span><b>−$340</b></div>
+            </div>
+            <div class="commit-wrap">
+              <canvas id="corkSeatCanvas"></canvas>
+              <button class="cork-seat-btn" id="corkSeatBtn" type="button">
+                <span class="neck"></span>
+                <span class="label">Lock write-off</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="spec">
+      <span class="spec-tag">Moment 1</span>
+      <h2>Cork seat</h2>
+      <div class="spec-block">
+        <h3>Why it's signature</h3>
+        <p>Committing a decision should feel like seating a cork — pressure, then lock — not a UI bounce.</p>
+      </div>
+      <div class="spec-block">
+        <h3>When it triggers</h3>
+        <p>Only on irreversible manager commits: approve/send PO, lock a desk decision, confirm a variance write-off.</p>
+      </div>
+      <div class="spec-block">
+        <h3>Motion + haptic (~280ms)</h3>
+        <ul>
+          <li>Reanimated: control compresses ~8% on Y (cork into neck)</li>
+          <li>Skia: thin burgundy contact ring flashes once at seat point</li>
+          <li>Spring settle back to locked state</li>
+          <li>Haptic: <code>impactMedium</code> at contact</li>
+        </ul>
+      </div>
+      <div class="spec-block">
+        <h3>Why not a gimmick</h3>
+        <p>Cork = sealed ops decision; reserved for rare commits so everyday taps stay silent.</p>
+      </div>
+      <button class="replay-btn" type="button" id="corkReset">Reset commit</button>
+      <div class="haptic-log" id="corkHaptic">Haptic: waiting...</div>
+    </aside>
+  </div>
+
+  <!-- CAPSULE SWEEP -->
+  <div class="panel" id="panel-capsule">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="app-hd"><h3>Receiving scan</h3><small>Label match</small></div>
+          <div class="capsule-scene">
+            <div class="scan-status">Label ↔ SKU match found</div>
+            <div class="product-row-wrap">
+              <canvas id="capsuleCanvas"></canvas>
+              <div class="product-row" id="productRow">
+                <div class="bottle-thumb"></div>
+                <div class="product-info">
+                  <h4>Meursault Genevrières 2022</h4>
+                  <p>Domaine Leflaive · 750ml</p>
+                  <div class="sku">SKU · WN-LFL-MRS-22</div>
+                </div>
+                <span class="match-pill" id="matchPill">Pending</span>
+              </div>
+            </div>
+            <button class="action-btn" id="capsuleBtn" type="button" style="width:100%;margin-top:auto;">Confirm bottle identity</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="spec">
+      <span class="spec-tag">Moment 2</span>
+      <h2>Capsule sweep</h2>
+      <div class="spec-block">
+        <h3>Why it's signature</h3>
+        <p>Confirming bottle identity should feel like the foil capsule locking authenticity — one wrap, done.</p>
+      </div>
+      <div class="spec-block">
+        <h3>When it triggers</h3>
+        <p>Receiving/scan match success (label ↔ SKU), or cellar lookup "this is the bottle" confirm.</p>
+      </div>
+      <div class="spec-block">
+        <h3>Motion + haptic (~220–320ms)</h3>
+        <ul>
+          <li>Skia: foil band wraps once around product row</li>
+          <li>Color: burgundy → brief metallic sheen</li>
+          <li>No particles, no linger after wrap</li>
+          <li>Haptic: light <code>notificationSuccess</code> at wrap complete</li>
+        </ul>
+      </div>
+      <div class="spec-block">
+        <h3>Why not a gimmick</h3>
+        <p>Capsules mean authenticity in wine; motion maps to identity lock, not decoration or progress chrome.</p>
+      </div>
+      <button class="replay-btn" type="button" id="capsuleReset">Reset scan</button>
+      <div class="haptic-log" id="capsuleHaptic">Haptic: waiting...</div>
+    </aside>
+  </div>
+
+  <!-- BIN BREATH -->
+  <div class="panel" id="panel-bin">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="app-hd"><h3>Cellar map</h3><small>Assign stock</small></div>
+          <div class="bin-scene">
+            <div class="assign-bar">Placing <b>6 bt Meursault 2022</b> · select bin</div>
+            <div class="bin-map-wrap" id="binMapWrap">
+              <canvas id="binGlowCanvas"></canvas>
+              <div class="bin-map" id="binMap">
+                <div class="bin-cell" data-id="A1">A1<span class="count">8</span></div>
+                <div class="bin-cell" data-id="A2">A2<span class="count">12</span></div>
+                <div class="bin-cell" data-id="A3">A3<span class="count">4</span></div>
+                <div class="bin-cell" data-id="B1">B1<span class="count">18</span></div>
+                <div class="bin-cell target" data-id="B2" id="targetBin">B2<span class="count">6</span></div>
+                <div class="bin-cell" data-id="B3">B3<span class="count">9</span></div>
+                <div class="bin-cell" data-id="C1">C1<span class="count">14</span></div>
+                <div class="bin-cell" data-id="C2">C2<span class="count">7</span></div>
+                <div class="bin-cell" data-id="C3">C3<span class="count">11</span></div>
+              </div>
+            </div>
+            <div class="stock-chip" id="stockChip">
+              <span class="dot"></span>
+              <span>6 bt · Meursault 2022 → B2</span>
+            </div>
+            <button class="action-btn" id="binBtn" type="button" style="width:100%;">Confirm placement</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="spec">
+      <span class="spec-tag">Moment 3</span>
+      <h2>Bin breath</h2>
+      <div class="spec-block">
+        <h3>Why it's signature</h3>
+        <p>Placing stock should feel like the cellar light finding the right slot — spatial, then still.</p>
+      </div>
+      <div class="spec-block">
+        <h3>When it triggers</h3>
+        <p>Assigning stock to a bin, confirming a cellar-map pin, or finishing a relocate.</p>
+      </div>
+      <div class="spec-block">
+        <h3>Motion + haptic (~350–450ms)</h3>
+        <ul>
+          <li>Skia: soft radial glow on target bin expands once, settles</li>
+          <li>Reanimated: selection springs into place</li>
+          <li>One breath on place — never ambient glow on idle map</li>
+          <li>Haptic: soft tick at settle</li>
+        </ul>
+      </div>
+      <div class="spec-block">
+        <h3>Why not a gimmick</h3>
+        <p>Cellar work is place-memory; one breath on place, never ambient glow on idle map.</p>
+      </div>
+      <button class="replay-btn" type="button" id="binReset">Reset placement</button>
+      <div class="haptic-log" id="binHaptic">Haptic: waiting...</div>
+    </aside>
+  </div>
+
+  <p class="foot"><code>.planning/sketches/046-cellar-commit-motions/index.html</code></p>
+</div>
+
+<script>
+(() => {
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  document.querySelectorAll('.nav-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.nav-tab').forEach((t) => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById(`panel-${tab.dataset.panel}`).classList.add('active');
+      if (tab.dataset.panel === 'capsule') resizeCapsule();
+      if (tab.dataset.panel === 'bin') resizeBinGlow();
+    });
+  });
+
+  const logHaptic = (el, msg) => {
+    el.textContent = `Haptic: ${msg}`;
+    el.classList.add('on');
+    setTimeout(() => el.classList.remove('on'), 600);
+  };
+
+  /* ===== 1. CORK SEAT ===== */
+  const corkBtn = document.getElementById('corkSeatBtn');
+  const corkCanvas = document.getElementById('corkSeatCanvas');
+  const corkCtx = corkCanvas.getContext('2d');
+  const corkHaptic = document.getElementById('corkHaptic');
+  let corkDone = false;
+
+  const resizeCork = () => {
+    const wrap = corkBtn.parentElement;
+    corkCanvas.width = wrap.clientWidth * 2;
+    corkCanvas.height = wrap.clientHeight * 2;
+    corkCanvas.style.width = wrap.clientWidth + 'px';
+    corkCanvas.style.height = wrap.clientHeight + 'px';
+    corkCtx.setTransform(2, 0, 0, 2, 0, 0);
+  };
+
+  const drawContactRing = (opacity, scale) => {
+    const w = corkCanvas.width / 2;
+    const h = corkCanvas.height / 2;
+    corkCtx.clearRect(0, 0, w, h);
+    const cx = w / 2;
+    const cy = h * 0.35;
+    corkCtx.strokeStyle = `rgba(139, 37, 72, ${opacity})`;
+    corkCtx.lineWidth = 1.5;
+    corkCtx.beginPath();
+    corkCtx.ellipse(cx, cy, 48 * scale, 8 * scale, 0, 0, Math.PI * 2);
+    corkCtx.stroke();
+  };
+
+  const triggerCorkSeat = () => {
+    if (corkDone) return;
+    resizeCork();
+    corkBtn.classList.add('seating');
+
+    if (reduced) {
+      drawContactRing(0.8, 1);
+      corkBtn.classList.remove('seating');
+      corkBtn.classList.add('seated');
+      corkDone = true;
+      logHaptic(corkHaptic, 'impactMedium (reduced motion)');
+      return;
+    }
+
+    const t0 = performance.now();
+    const ringAnim = (now) => {
+      const elapsed = now - t0;
+      if (elapsed < 80) {
+        drawContactRing(0.9, 0.7 + elapsed / 200);
+      } else if (elapsed < 180) {
+        const p = (elapsed - 80) / 100;
+        drawContactRing(0.9 * (1 - p), 1 + p * 0.15);
+      } else {
+        corkCtx.clearRect(0, 0, corkCanvas.width, corkCanvas.height);
+      }
+      if (elapsed < 280) requestAnimationFrame(ringAnim);
+    };
+    requestAnimationFrame(ringAnim);
+
+    setTimeout(() => logHaptic(corkHaptic, 'impactMedium — cork seated'), 140);
+    setTimeout(() => {
+      corkBtn.classList.remove('seating');
+      corkBtn.classList.add('seated');
+      corkDone = true;
+    }, 280);
+  };
+
+  corkBtn.addEventListener('click', triggerCorkSeat);
+  document.getElementById('corkReset').addEventListener('click', () => {
+    corkDone = false;
+    corkBtn.classList.remove('seating', 'seated');
+    corkCtx.clearRect(0, 0, corkCanvas.width, corkCanvas.height);
+    corkHaptic.textContent = 'Haptic: waiting...';
+    corkHaptic.classList.remove('on');
+  });
+
+  /* ===== 2. CAPSULE SWEEP ===== */
+  const capsuleCanvas = document.getElementById('capsuleCanvas');
+  const capsuleCtx = capsuleCanvas.getContext('2d');
+  const productRow = document.getElementById('productRow');
+  const matchPill = document.getElementById('matchPill');
+  const capsuleBtn = document.getElementById('capsuleBtn');
+  const capsuleHaptic = document.getElementById('capsuleHaptic');
+  let capsuleDone = false;
+
+  const resizeCapsule = () => {
+    const wrap = capsuleCanvas.parentElement;
+    capsuleCanvas.width = wrap.clientWidth * 2;
+    capsuleCanvas.height = wrap.clientHeight * 2;
+    capsuleCanvas.style.width = wrap.clientWidth + 'px';
+    capsuleCanvas.style.height = wrap.clientHeight + 'px';
+    capsuleCtx.setTransform(2, 0, 0, 2, 0, 0);
+  };
+
+  const drawCapsule = (progress) => {
+    const w = capsuleCanvas.width / 2;
+    const h = capsuleCanvas.height / 2;
+    capsuleCtx.clearRect(0, 0, w, h);
+
+    const pad = 2;
+    const bandH = h - pad * 2;
+    const sweep = progress * (w + 40) - 20;
+
+    const grad = capsuleCtx.createLinearGradient(sweep - 30, 0, sweep + 30, 0);
+    if (progress < 0.7) {
+      grad.addColorStop(0, 'rgba(139, 37, 72, 0)');
+      grad.addColorStop(0.4, 'rgba(139, 37, 72, 0.75)');
+      grad.addColorStop(0.6, 'rgba(201, 162, 39, 0.85)');
+      grad.addColorStop(1, 'rgba(139, 37, 72, 0)');
+    } else {
+      const sheen = (progress - 0.7) / 0.3;
+      grad.addColorStop(0, 'rgba(201, 162, 39, 0)');
+      grad.addColorStop(0.5, `rgba(232, 212, 138, ${0.6 * (1 - sheen * 0.5)})`);
+      grad.addColorStop(1, 'rgba(201, 162, 39, 0)');
+    }
+
+    capsuleCtx.fillStyle = grad;
+    capsuleCtx.beginPath();
+    capsuleCtx.roundRect(pad, pad, w - pad * 2, bandH, 12);
+    capsuleCtx.fill();
+
+    if (progress >= 0.95) {
+      capsuleCtx.strokeStyle = 'rgba(201, 162, 39, 0.35)';
+      capsuleCtx.lineWidth = 1;
+      capsuleCtx.beginPath();
+      capsuleCtx.roundRect(pad + 1, pad + 1, w - pad * 2 - 2, bandH - 2, 11);
+      capsuleCtx.stroke();
+    }
+  };
+
+  const animateCapsule = () => {
+    const duration = 280;
+    const t0 = performance.now();
+    const step = (now) => {
+      const p = Math.min(1, (now - t0) / duration);
+      const eased = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+      drawCapsule(eased);
+      if (p < 1) {
+        requestAnimationFrame(step);
+      } else {
+        productRow.classList.add('verified');
+        matchPill.textContent = 'Verified';
+        capsuleDone = true;
+        capsuleBtn.disabled = true;
+        capsuleBtn.textContent = 'Identity locked';
+        logHaptic(capsuleHaptic, 'notificationSuccess — wrap complete');
+        setTimeout(() => capsuleCtx.clearRect(0, 0, capsuleCanvas.width, capsuleCanvas.height), 400);
+      }
+    };
+    requestAnimationFrame(step);
+  };
+
+  capsuleBtn.addEventListener('click', () => {
+    if (capsuleDone) return;
+    resizeCapsule();
+    logHaptic(capsuleHaptic, 'foil sweep begins');
+    if (reduced) {
+      drawCapsule(1);
+      productRow.classList.add('verified');
+      matchPill.textContent = 'Verified';
+      capsuleDone = true;
+      capsuleBtn.disabled = true;
+      logHaptic(capsuleHaptic, 'notificationSuccess (reduced motion)');
+      return;
+    }
+    animateCapsule();
+  });
+
+  document.getElementById('capsuleReset').addEventListener('click', () => {
+    capsuleDone = false;
+    productRow.classList.remove('verified');
+    matchPill.textContent = 'Pending';
+    capsuleBtn.disabled = false;
+    capsuleBtn.textContent = 'Confirm bottle identity';
+    capsuleCtx.clearRect(0, 0, capsuleCanvas.width, capsuleCanvas.height);
+    capsuleHaptic.textContent = 'Haptic: waiting...';
+    capsuleHaptic.classList.remove('on');
+  });
+
+  /* ===== 3. BIN BREATH ===== */
+  const binGlowCanvas = document.getElementById('binGlowCanvas');
+  const binGlowCtx = binGlowCanvas.getContext('2d');
+  const targetBin = document.getElementById('targetBin');
+  const stockChip = document.getElementById('stockChip');
+  const binBtn = document.getElementById('binBtn');
+  const binHaptic = document.getElementById('binHaptic');
+  let binDone = false;
+
+  const getBinCenter = () => {
+    const wrap = binGlowCanvas.getBoundingClientRect();
+    const r = targetBin.getBoundingClientRect();
+    return {
+      x: r.left - wrap.left + r.width / 2,
+      y: r.top - wrap.top + r.height / 2,
+      radius: Math.max(r.width, r.height) * 0.55,
+    };
+  };
+
+  const resizeBinGlow = () => {
+    const wrap = binGlowCanvas.parentElement;
+    binGlowCanvas.width = wrap.clientWidth * 2;
+    binGlowCanvas.height = wrap.clientHeight * 2;
+    binGlowCanvas.style.width = wrap.clientWidth + 'px';
+    binGlowCanvas.style.height = wrap.clientHeight + 'px';
+    binGlowCtx.setTransform(2, 0, 0, 2, 0, 0);
+  };
+
+  const drawBinGlow = (progress) => {
+    const w = binGlowCanvas.width / 2;
+    const h = binGlowCanvas.height / 2;
+    binGlowCtx.clearRect(0, 0, w, h);
+
+    const { x, y, radius } = getBinCenter();
+    const expand = progress < 0.55 ? progress / 0.55 : 1 - (progress - 0.55) / 0.45 * 0.35;
+    const alpha = progress < 0.55
+      ? 0.15 + (progress / 0.55) * 0.2
+      : 0.35 * (1 - (progress - 0.55) / 0.45);
+
+    const grad = binGlowCtx.createRadialGradient(x, y, 0, x, y, radius * (0.6 + expand * 0.8));
+    grad.addColorStop(0, `rgba(205, 45, 91, ${alpha})`);
+    grad.addColorStop(0.6, `rgba(205, 45, 91, ${alpha * 0.4})`);
+    grad.addColorStop(1, 'rgba(205, 45, 91, 0)');
+    binGlowCtx.fillStyle = grad;
+    binGlowCtx.fillRect(0, 0, w, h);
+  };
+
+  const animateBinBreath = () => {
+    const duration = 400;
+    const t0 = performance.now();
+    targetBin.classList.add('target');
+
+    const step = (now) => {
+      const p = Math.min(1, (now - t0) / duration);
+      drawBinGlow(p);
+
+      if (p >= 0.7 && !targetBin.classList.contains('placed')) {
+        targetBin.classList.remove('target');
+        targetBin.classList.add('placed');
+        targetBin.querySelector('.count').textContent = '12';
+        stockChip.classList.add('hidden');
+        logHaptic(binHaptic, 'soft tick — stock settled');
+      }
+
+      if (p < 1) {
+        requestAnimationFrame(step);
+      } else {
+        binGlowCtx.clearRect(0, 0, binGlowCanvas.width, binGlowCanvas.height);
+        binDone = true;
+        binBtn.disabled = true;
+        binBtn.textContent = 'Placed in B2';
+      }
+    };
+    requestAnimationFrame(step);
+  };
+
+  binBtn.addEventListener('click', () => {
+    if (binDone) return;
+    resizeBinGlow();
+    logHaptic(binHaptic, 'cellar breath begins');
+    if (reduced) {
+      targetBin.classList.add('placed');
+      targetBin.querySelector('.count').textContent = '12';
+      stockChip.classList.add('hidden');
+      binDone = true;
+      binBtn.disabled = true;
+      logHaptic(binHaptic, 'soft tick (reduced motion)');
+      return;
+    }
+    animateBinBreath();
+  });
+
+  document.getElementById('binReset').addEventListener('click', () => {
+    binDone = false;
+    targetBin.classList.remove('target', 'placed');
+    targetBin.querySelector('.count').textContent = '6';
+    stockChip.classList.remove('hidden');
+    binBtn.disabled = false;
+    binBtn.textContent = 'Confirm placement';
+    binGlowCtx.clearRect(0, 0, binGlowCanvas.width, binGlowCanvas.height);
+    binHaptic.textContent = 'Haptic: waiting...';
+    binHaptic.classList.remove('on');
+  });
+
+  resizeCork();
+  resizeCapsule();
+  resizeBinGlow();
+})();
+</script>
+</body>
+</html>

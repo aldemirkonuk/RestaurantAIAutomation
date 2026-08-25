@@ -4,6 +4,7 @@ import { Link2, FileText, Globe, Loader2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '../../contexts/AuthContext'
 import { useStudioSessionStore } from '../../stores/useStudioSessionStore'
+import { SCAN_ACCEPT, isScannable, isPdfFile, resetFileInput } from '../../lib/uploadAccept'
 
 type IngestionType = 'pdf' | 'url' | 'manual' | null
 
@@ -27,13 +28,19 @@ export function CommandBar() {
 
   // All studio/onboarding API calls go through Vite proxy → FastAPI (port 8000)
   // Using relative URLs avoids the VITE_API_GATEWAY_URL=4000 (NestJS) misdirection
+  // Studio's endpoints live in the PYTHON orchestrator (services/agent-orchestrator/
+  // main.py, with tests), not in the NestJS gateway. A relative path here goes through
+  // the Vite/Vercel proxy to the gateway, which has no /studio or /onboarding module —
+  // so every studio call 404'd in dev and prod despite a working backend existing.
+  // Same env var CameraCapture already uses.
   const studioFetch = async (path: string, body: object) => {
     const token = localStorage.getItem('accessToken')
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     }
-    const resp = await fetch(path, { method: 'POST', headers, body: JSON.stringify(body) })
+    const base = import.meta.env?.VITE_AGENT_ORCHESTRATOR_URL || ''
+    const resp = await fetch(`${base}${path}`, { method: 'POST', headers, body: JSON.stringify(body) })
     if (!resp.ok) {
       const errData = await resp.json().catch(() => ({}))
       throw new Error(errData.detail || `HTTP ${resp.status}`)
@@ -49,21 +56,26 @@ export function CommandBar() {
     setExtractionError(null)
     try {
       if (type === 'pdf' && pendingFile) {
-        // Read PDF as raw base64 — send via pdf_base64 so FastAPI uses native PDF path
-        const pdfBase64 = await new Promise<string>((res, rej) => {
+        const fileBase64 = await new Promise<string>((res, rej) => {
           const reader = new FileReader()
           reader.onload = (e) => res((e.target?.result as string).split(',')[1])
           reader.onerror = rej
           reader.readAsDataURL(pendingFile)
         })
+        const asPdf = isPdfFile(pendingFile)
         const sessData = await studioFetch('/api/v1/studio/sessions', {
-          source_type: 'pdf_upload', source_ref: pendingFile.name,
+          source_type: asPdf ? 'pdf_upload' : 'image_upload',
+          source_ref: pendingFile.name,
         })
         const sessionId = sessData.session?.id ?? null
 
+        // /api/v1/onboarding/extract takes either `pdf_base64` (native PDF
+        // path) or `images` (list of page base64) — send whichever matches
+        // the file actually picked, rather than forcing everything down the
+        // PDF branch.
         const extractData = await studioFetch('/api/v1/onboarding/extract', {
           restaurant_id: user?.restaurantId ?? 'studio',
-          pdf_base64: pdfBase64,
+          ...(asPdf ? { pdf_base64: fileBase64 } : { images: [fileBase64] }),
         })
 
         // Claude returns each field as {value, confidence, source}.
@@ -137,11 +149,13 @@ export function CommandBar() {
     e.preventDefault()
     setDragActive(false)
     const file = e.dataTransfer.files[0]
-    if (file?.name.toLowerCase().endsWith('.pdf')) {
+    if (file && isScannable(file)) {
       setPendingFile(file)
       setInputValue(file.name)
-    } else {
-      toast.error('Only PDF files are supported for drag-and-drop.')
+    } else if (file) {
+      toast.error(`"${file.name}" is not a PDF or image.`, {
+        description: 'Drop a PDF or a photo of the list, or paste a URL.',
+      })
     }
   }
 
@@ -170,7 +184,7 @@ export function CommandBar() {
         onDragLeave={() => setDragActive(false)}
         onDrop={handleDrop}
         onClick={handleBarClick}
-        title="Click to select a PDF from your computer"
+        title="Click to select a PDF or image from your computer"
       >
         {pendingFile ? (
           <FileText className="w-5 h-5 text-wine-600 flex-shrink-0" />
@@ -179,7 +193,7 @@ export function CommandBar() {
         )}
         <input
           className="flex-1 text-base bg-transparent outline-none placeholder:text-slate-400 text-slate-900 disabled:cursor-not-allowed"
-          placeholder="Click to pick a PDF, drag & drop, or paste a URL — auto-detected"
+          placeholder="Click to pick a PDF or photo, drag & drop, or paste a URL — auto-detected"
           value={inputValue}
           disabled={isExtracting}
           onChange={(e) => { setInputValue(e.target.value); setPendingFile(null) }}
@@ -188,11 +202,17 @@ export function CommandBar() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf"
+          accept={SCAN_ACCEPT}
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0]
-            if (f) { setPendingFile(f); setInputValue(f.name) }
+            if (f && isScannable(f)) {
+              setPendingFile(f)
+              setInputValue(f.name)
+            } else if (f) {
+              toast.error(`"${f.name}" is not a PDF or image.`)
+            }
+            resetFileInput(e.target)
           }}
         />
         <button

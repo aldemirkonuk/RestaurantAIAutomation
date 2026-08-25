@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WineOps — Delivery Record {{ d.delivery_id }}</title>
+{% include "_reset.html" %}
+<style>
+  /* The WineOps normalized document.
+     ------------------------------------------------------------------
+     A distributor's invoice is organised around who to pay. This is
+     organised around what happened and what it is worth. The vendor's own
+     totals are demoted to a reconciliation block; the verdict leads.
+
+     Palette is the product's own: #9E4249 primary (the BrandMark), warm paper
+     ground hsl(30 20% 97.5%), warm muted neutrals, 0.75rem radius. Editorial
+     rather than clerical — serif for anything a human reads as a sentence,
+     tabular sans for anything they compare as a number. */
+
+  :root {
+    --burgundy:       #9E4249;
+    --burgundy-deep:  #6E2A31;
+    --burgundy-lift:  #B85055;
+    --burgundy-wash:  #F5EAEA;
+    --paper:          #FAF8F5;
+    --paper-sunk:     #F2EEE7;
+    --ink:            #1D1A18;
+    --ink-soft:       #56504A;
+    --ink-faint:      #8B837A;
+    --rule:           #E5E0DA;
+    --gold:           #9A6B18;
+    --green:          #2F6B45;
+  }
+
+  body { background: var(--paper); color: var(--ink);
+         font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; }
+  .sheet { width: 8.5in; min-height: 11in; padding: 0.34in 0.72in 0.7in;
+           position: relative; background: var(--paper); }
+  .serif { font-family: "Hoefler Text", "Iowan Old Style", Georgia, serif; }
+
+  /* ---- masthead ---------------------------------------------------- */
+  .masthead { display: flex; justify-content: space-between; align-items: flex-end;
+              padding: 26px 0 13px; border-bottom: 1px solid var(--ink); }
+  .brand { display: flex; align-items: center; gap: 9px; }
+  .brand-word { font-size: 12.5pt; letter-spacing: -.015em; font-weight: 600; }
+  .brand-word span { color: var(--burgundy); }
+  .kicker { font-size: 6.9pt; letter-spacing: .2em; text-transform: uppercase;
+            color: var(--ink-faint); margin-top: 4px; }
+  .masthead-right { text-align: right; font-size: 7.6pt; color: var(--ink-soft);
+                    line-height: 1.6; }
+  .masthead-right b { color: var(--ink); }
+
+  /* ---- the verdict, as a headline --------------------------------- */
+  .lede { display: grid; grid-template-columns: 1.42fr 1fr; gap: 34px;
+          padding: 26px 0 24px; border-bottom: 1px solid var(--rule); }
+  .lede h1 { margin: 0; font-size: 26pt; line-height: 1.14; letter-spacing: -.022em;
+             font-weight: 400; }
+  .lede h1 em { font-style: normal; color: var(--burgundy); }
+  .lede .standfirst { margin-top: 11px; font-size: 9.4pt; line-height: 1.62;
+                      color: var(--ink-soft); max-width: 3.5in; }
+  .figures { display: flex; flex-direction: column; gap: 12px; }
+  .figure { border-left: 2.5px solid var(--burgundy); padding-left: 12px; }
+  .figure.quiet { border-left-color: var(--rule); }
+  .figure .n { font-size: 19pt; letter-spacing: -.02em; line-height: 1;
+               font-variant-numeric: tabular-nums; }
+  .figure .n.money { color: var(--burgundy); }
+  .figure .lbl { font-size: 6.8pt; letter-spacing: .15em; text-transform: uppercase;
+                 color: var(--ink-faint); margin-top: 5px; }
+  .figure .sub { font-size: 7.4pt; color: var(--ink-soft); margin-top: 3px; }
+
+  /* ---- section furniture ------------------------------------------ */
+  section { padding: 22px 0 4px; }
+  .sec-head { display: flex; align-items: baseline; gap: 11px; margin-bottom: 13px; }
+  .sec-num { font-size: 7pt; color: var(--burgundy); letter-spacing: .12em;
+             font-weight: 700; }
+  .sec-title { font-size: 12pt; letter-spacing: -.012em; }
+  .sec-note { font-size: 7.6pt; color: var(--ink-faint); margin-left: auto;
+              max-width: 3in; text-align: right; line-height: 1.45; }
+
+  /* ---- provenance ------------------------------------------------- */
+  .prov { display: grid; grid-template-columns: repeat(5, 1fr); gap: 9px; }
+  .prov-card { background: #fff; border: 1px solid var(--rule); border-radius: 9px;
+               padding: 10px 11px; min-height: 88px; }
+  .prov-card.absent { background: var(--paper-sunk); border-style: dashed;
+                      border-color: #D6CFC5; }
+  .prov-doc { font-size: 7.6pt; font-weight: 600; letter-spacing: -.005em; }
+  .prov-state { font-size: 6.5pt; letter-spacing: .13em; text-transform: uppercase;
+                margin-top: 6px; font-weight: 700; }
+  .prov-card .prov-state { color: var(--green); }
+  .prov-card.absent .prov-state { color: var(--gold); }
+  .prov-ref { font-size: 7pt; color: var(--ink-soft); margin-top: 6px; line-height: 1.4;
+              font-variant-numeric: tabular-nums; }
+  /* Absence is a rendered state, never a blank cell. A blank is what let
+     `price_verified: true` be written for deliveries nobody looked at. */
+  .prov-absent-note { font-size: 6.9pt; color: var(--gold); margin-top: 6px;
+                      line-height: 1.4; font-style: italic; }
+
+  /* ---- the four-way spine ---------------------------------------- */
+  .line-card { background: #fff; border: 1px solid var(--rule); border-radius: 10px;
+               padding: 13px 15px; margin-bottom: 9px;
+               display: grid; grid-template-columns: 1.55fr 1.5fr 1fr; gap: 18px;
+               page-break-inside: avoid; }
+  .line-card.claim { border-color: var(--burgundy); border-left-width: 3px; }
+  .line-card.selfev { background: linear-gradient(90deg, var(--burgundy-wash) 0%, #fff 42%); }
+
+  .wine { font-size: 9.6pt; line-height: 1.32; letter-spacing: -.008em; }
+  .wine-meta { font-size: 7.1pt; color: var(--ink-faint); margin-top: 4px; line-height: 1.45; }
+  .chip { display: inline-block; font-size: 6.4pt; letter-spacing: .09em;
+          text-transform: uppercase; font-weight: 700; padding: 2.5px 7px;
+          border-radius: 20px; margin-top: 7px; }
+  .chip.bad  { background: var(--burgundy); color: #fff; }
+  .chip.warn { background: #FBEFD8; color: var(--gold); }
+  .chip.ok   { background: #EAF2ED; color: var(--green); }
+  .chip.unknown { background: var(--paper-sunk); color: var(--ink-faint); }
+  .evidence { font-size: 6.6pt; color: var(--ink-faint); margin-top: 5px;
+              letter-spacing: .04em; }
+  .evidence b { color: var(--burgundy); }
+
+  /* Four legs. `—` is a first-class value meaning "no document said". */
+  .legs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px;
+          align-self: start; }
+  .leg { text-align: center; padding: 6px 2px; border-radius: 6px; }
+  .leg .v { font-size: 12pt; font-variant-numeric: tabular-nums; line-height: 1; }
+  .leg .k { font-size: 5.9pt; letter-spacing: .1em; text-transform: uppercase;
+            color: var(--ink-faint); margin-top: 5px; }
+  .leg.off .v { color: var(--burgundy); font-weight: 600; }
+  .leg.unknown { background: var(--paper-sunk); }
+  .leg.unknown .v { color: var(--ink-faint); }
+  .leg-note { grid-column: 1 / -1; font-size: 6.5pt; color: var(--ink-faint);
+              text-align: center; margin-top: 5px; font-style: italic; }
+
+  .money-col { text-align: right; align-self: start; }
+  .money-row { display: flex; justify-content: space-between; gap: 8px;
+               font-size: 7.6pt; padding: 2px 0; }
+  .money-row .k { color: var(--ink-faint); }
+  .money-row .v { font-variant-numeric: tabular-nums; }
+  .money-row.landed { border-top: 1px solid var(--rule); margin-top: 4px;
+                      padding-top: 5px; font-size: 8.4pt; }
+  .money-row.landed .v { color: var(--burgundy); font-weight: 600; }
+  .money-row.claim .v { color: var(--burgundy); font-weight: 700; }
+  .delta-up { color: var(--burgundy); }
+  .delta-down { color: var(--green); }
+  .unknowable { font-size: 6.8pt; color: var(--gold); font-style: italic;
+                margin-top: 5px; line-height: 1.4; text-align: right; }
+
+  /* ---- matched lines, deliberately quiet ------------------------- */
+  .quiet-list { background: var(--paper-sunk); border-radius: 9px; padding: 11px 14px; }
+  .quiet-list .qhead { font-size: 7pt; letter-spacing: .13em; text-transform: uppercase;
+                       color: var(--ink-faint); margin-bottom: 7px; font-weight: 700; }
+  .quiet-row { display: flex; justify-content: space-between; font-size: 7.6pt;
+               padding: 2.5px 0; color: var(--ink-soft); }
+  .quiet-row .v { font-variant-numeric: tabular-nums; }
+
+  /* ---- drift ----------------------------------------------------- */
+  table.drift { width: 100%; }
+  table.drift th { font-size: 6.5pt; letter-spacing: .12em; text-transform: uppercase;
+                   color: var(--ink-faint); text-align: left; font-weight: 700;
+                   padding: 0 6px 7px; border-bottom: 1px solid var(--ink); }
+  table.drift td { padding: 7px 6px; font-size: 8pt; border-bottom: 1px solid var(--rule);
+                   font-variant-numeric: tabular-nums; }
+  table.drift td.wine-cell { font-variant-numeric: normal; }
+
+  /* ---- reconciliation -------------------------------------------- */
+  .recon { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+  .recon-rows { font-size: 8.2pt; }
+  .recon-row { display: flex; justify-content: space-between; padding: 4px 0;
+               border-bottom: 1px solid var(--rule); }
+  .recon-row .v { font-variant-numeric: tabular-nums; }
+  .recon-row.total { border-bottom: none; border-top: 1.5px solid var(--ink);
+                     margin-top: 5px; padding-top: 8px; font-size: 10.5pt; }
+  .recon-row.excluded .k { color: var(--gold); }
+  .recon-row.excluded .v { color: var(--gold); }
+  .recon-caption { font-size: 6.9pt; color: var(--ink-faint); line-height: 1.5;
+                   margin-top: 9px; }
+
+  .evidence-block { background: #fff; border: 1px solid var(--rule);
+                    border-radius: 10px; padding: 13px 15px; font-size: 7.8pt;
+                    line-height: 1.65; }
+  .evidence-block .row { display: flex; justify-content: space-between; gap: 10px;
+                         padding: 3px 0; }
+  .evidence-block .k { color: var(--ink-faint); }
+  .not-stated { color: var(--gold); font-style: italic; }
+
+  footer { margin-top: 26px; padding-top: 11px; border-top: 1px solid var(--ink);
+           display: flex; justify-content: space-between; gap: 20px;
+           font-size: 6.8pt; color: var(--ink-faint); line-height: 1.55; }
+  footer .note { max-width: 4.6in; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="synthetic-band">{{ SYNTHETIC_MARK }}</div>
+
+  <div class="masthead">
+    <div>
+      <div class="brand">
+        {# The canonical mark, inline — matches BrandMark.tsx exactly. #}
+        <svg width="26" height="26" viewBox="0 0 64 64" aria-label="WineOps">
+          <circle cx="32" cy="32" r="32" fill="#9E4249"/>
+          <path d="M22 18h20c0 7.5-4.2 14-10 16.5C26.2 32 22 25.5 22 18Z" fill="none"
+                stroke="#fff" stroke-width="2.25" stroke-linejoin="round"/>
+          <path d="M24.5 26.5c1.2 5.2 4.2 9.2 7.5 10.8 3.3-1.6 6.3-5.6 7.5-10.8" fill="none"
+                stroke="#fff" stroke-width="1.5" stroke-linecap="round" opacity=".55"/>
+          <path d="M32 34.5V46" fill="none" stroke="#fff" stroke-width="2.25" stroke-linecap="round"/>
+          <path d="M23 50.5c3.2 2.2 6.5 3.2 9 3.2s5.8-1 9-3.2" fill="none"
+                stroke="#fff" stroke-width="2.25" stroke-linecap="round"/>
+        </svg>
+        <div>
+          <div class="brand-word">Wine<span>Ops</span></div>
+          <div class="kicker">Delivery Record</div>
+        </div>
+      </div>
+    </div>
+    <div class="masthead-right">
+      <b>{{ d.house.name }}</b><br>
+      Delivered {{ d.delivery_date.strftime("%d %B %Y") }} · {{ d.restaurant_name }}<br>
+      Ref {{ d.delivery_id }}
+    </div>
+  </div>
+
+  {# ---- 1. the verdict, as a headline ---------------------------- #}
+  <div class="lede">
+    <div>
+      <h1 class="serif">
+        {% if summary.claim_count %}
+          <em>{{ summary.claim_count }} line{{ "s" if summary.claim_count != 1 }}</em> on this
+          delivery {{ "are" if summary.claim_count != 1 else "is" }} worth money back.
+        {% elif not summary.has_invoice %}
+          The goods arrived. <em>The invoice did not.</em>
+        {% elif summary.discrepancy_count %}
+          {{ summary.discrepancy_count }} line{{ "s" if summary.discrepancy_count != 1 }}
+          need{{ "" if summary.discrepancy_count != 1 else "s" }} <em>a decision</em>.
+        {% else %}
+          Everything on this delivery <em>ties out</em>.
+        {% endif %}
+      </h1>
+      <div class="standfirst">
+        {% if not summary.has_invoice %}
+          Nothing here is price-verified and nothing should be. Until the invoice
+          arrives, every line reads <b>unmatched</b> — not agreed.
+        {% elif summary.claim_count %}
+          {{ summary.line_count }} lines checked against
+          {{ "four documents" if summary.has_packing_slip else "three documents" }}.
+          {% if summary.has_packing_slip %}Where the vendor's own slip and invoice
+          disagree, there is nothing left to dispute.{% else %}{{ d.house.name }}
+          issues no packing slip, so the shipped column is unknown rather than
+          agreed.{% endif %}
+        {% else %}
+          {{ summary.line_count }} lines reconciled across ordered, shipped,
+          received and billed.
+        {% endif %}
+      </div>
+    </div>
+    <div class="figures">
+      <div class="figure">
+        <div class="n money">${{ "{:,.2f}".format(summary.dollars_at_risk) }}</div>
+        <div class="lbl">Claimable this delivery</div>
+        <div class="sub">
+          {{ summary.claim_count }} of {{ summary.line_count }} lines · not yet recovered
+        </div>
+      </div>
+      <div class="figure {{ '' if summary.drift_line_count else 'quiet' }}">
+        <div class="n">{{ summary.drift_line_count }}</div>
+        <div class="lbl">SKUs whose cost moved</div>
+        <div class="sub">
+          {% if summary.drift_dollars > 0 %}+{% endif %}${{ "{:,.2f}".format(summary.drift_dollars) }}
+          against last verified purchase
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ---- 2. provenance ------------------------------------------- #}
+  <section>
+    <div class="sec-head">
+      <div class="sec-num">01</div>
+      <div class="sec-title serif">What we hold</div>
+      <div class="sec-note">A missing document is stated, never left blank. Silence
+        is not agreement.</div>
+    </div>
+    <div class="prov">
+      {% for p in provenance %}
+      <div class="prov-card {{ '' if p.have else 'absent' }}">
+        <div class="prov-doc">{{ p.doc }}</div>
+        <div class="prov-state">{{ "On file" if p.have else "Absent" }}</div>
+        {% if p.have %}
+          <div class="prov-ref">
+            {% if p.ref %}{{ p.ref }}<br>{% endif %}
+            {% if p.when %}{{ p.when.strftime("%d %b %Y") }}{% endif %}
+          </div>
+        {% else %}
+          <div class="prov-absent-note">{{ p.absent_note }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# ---- 3. the spine ------------------------------------------- #}
+  {% if discrepant %}
+  <section>
+    <div class="sec-head">
+      <div class="sec-num">02</div>
+      <div class="sec-title serif">Lines that need a decision</div>
+      <div class="sec-note">Ordered · shipped · received · billed, in bottles.
+        Sorted by dollars at risk.</div>
+    </div>
+
+    {# Already ordered by dollars at risk in wineops_doc.build_context. #}
+    {% for s in discrepant %}
+    <div class="line-card {{ 'claim' if s.is_claimable }} {{ 'selfev' if s.evidence == 'self_evidenced' }}">
+      <div>
+        <div class="wine serif">{{ s.display_name }}</div>
+        <div class="wine-meta">
+          {{ s.line.region or "Region not stated on source" }}
+          · {{ s.line.bottles_per_case }}×{{ s.line.bottle_size }}
+          {% if s.line.vendor_sku %} · SKU {{ s.line.vendor_sku }}{% endif %}
+          {% if s.vintage_mismatch %}
+            <br><span class="not-stated">Ordered {{ s.line.vintage }}, delivered {{ s.line.invoiced_vintage }} — substitution</span>
+          {% endif %}
+        </div>
+        <span class="chip {{ 'bad' if s.is_claimable else ('unknown' if s.verdict == 'unmatched' else 'warn') }}">
+          {{ verdict_label[s.verdict] }}
+        </span>
+        <div class="evidence">
+          {% if s.evidence == "self_evidenced" %}
+            <b>Their own two documents disagree</b> — nothing to dispute
+          {% elif s.evidence == "our_count" %}
+            Evidence: our count at the door, signed {{ d.signed_by }}
+          {% elif s.evidence == "their_slip" %}
+            Evidence: their packing slip
+          {% elif s.evidence == "our_po" %}
+            Evidence: the agreed price on {{ d.po_number }}
+          {% else %}
+            No invoice to compare against
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="legs">
+        <div class="leg"><div class="v">{{ s.ordered }}</div><div class="k">Ordered</div></div>
+        {% if s.shipped is none %}
+        <div class="leg unknown"><div class="v">—</div><div class="k">Shipped</div></div>
+        {% else %}
+        <div class="leg {{ 'off' if s.shipped != s.ordered }}"><div class="v">{{ s.shipped }}</div><div class="k">Shipped</div></div>
+        {% endif %}
+        <div class="leg {{ 'off' if s.received != s.ordered }}"><div class="v">{{ s.received }}</div><div class="k">Received</div></div>
+        {% if s.billed is none %}
+        <div class="leg unknown"><div class="v">—</div><div class="k">Billed</div></div>
+        {% else %}
+        <div class="leg {{ 'off' if s.billed != s.received }}"><div class="v">{{ s.billed }}</div><div class="k">Billed</div></div>
+        {% endif %}
+        {% if s.shipped is none %}
+          <div class="leg-note">No packing slip — shipped quantity unknown, not agreed</div>
+        {% elif s.rejected %}
+          <div class="leg-note">{{ s.rejected }} rejected on arrival · {{ s.accepted }} accepted into stock</div>
+        {% elif s.free_goods %}
+          <div class="leg-note">Includes {{ s.free_goods }} free goods, netted out of the billing comparison</div>
+        {% endif %}
+      </div>
+
+      <div class="money-col">
+        {% if s.po_unit_price is not none %}
+        <div class="money-row"><span class="k">Agreed</span><span class="v">${{ s.po_unit_price | money }}</span></div>
+        {% endif %}
+        {% if s.billed_unit_price is not none %}
+        <div class="money-row"><span class="k">Billed</span><span class="v">${{ s.billed_unit_price | money }}</span></div>
+        {% else %}
+        <div class="money-row"><span class="k">Billed</span><span class="v not-stated">not invoiced</span></div>
+        {% endif %}
+        {% if s.last_price_paid is not none %}
+        <div class="money-row">
+          <span class="k">Last paid</span>
+          <span class="v">${{ s.last_price_paid | money }}
+            {% if s.price_delta %}
+              <span class="{{ 'delta-up' if s.price_delta > 0 else 'delta-down' }}">
+                {{ "+" if s.price_delta > 0 }}{{ s.price_delta_pct }}%
+              </span>
+            {% endif %}
+          </span>
+        </div>
+        {% else %}
+        <div class="money-row"><span class="k">Last paid</span><span class="v not-stated">first purchase</span></div>
+        {% endif %}
+        {% if s.landed_unit_cost is not none %}
+        <div class="money-row landed"><span class="k">Landed / bottle</span><span class="v">${{ s.landed_unit_cost | money }}</span></div>
+        {% elif s.billed is none %}
+        {# No invoice yet. Landed cost is pending, not unknowable — the two have
+           different causes and different remedies, and printing the wrong one
+           is a false statement on a document meant to settle disputes. #}
+        <div class="unknowable">Landed cost pending — no invoice to price against yet</div>
+        {% elif not summary.landed_cost_knowable %}
+        <div class="unknowable">Landed cost unknowable — this vendor includes carriage in the unit price without stating it</div>
+        {% else %}
+        <div class="unknowable">Landed cost not computable — nothing was accepted into stock</div>
+        {% endif %}
+        {% if s.claim_amount %}
+        <div class="money-row claim"><span class="k">Claim</span><span class="v">${{ s.claim_amount | money }}</span></div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {# Matched lines are not a task. They get one quiet line each. #}
+  {% set matched = spine | rejectattr("is_discrepant") | list %}
+  {% if matched %}
+  <section>
+    <div class="sec-head">
+      <div class="sec-num">03</div>
+      <div class="sec-title serif">Reconciled — no action</div>
+      <div class="sec-note">Includes split cases and agreed free goods, which are
+        matches and must never alarm.</div>
+    </div>
+    <div class="quiet-list">
+      <div class="qhead">{{ matched | length }} lines tied out across every document held</div>
+      {% for s in matched %}
+      <div class="quiet-row">
+        <span>{{ s.display_name }}{% if s.free_goods %} · {{ s.free_goods }} free{% endif %}</span>
+        <span class="v">{{ s.billed if s.billed is not none else "—" }} btl
+          {% if s.landed_unit_cost is not none %}· ${{ s.landed_unit_cost | money }}/btl landed{% endif %}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {# ---- 4. cost drift ----------------------------------------- #}
+  {% if drift %}
+  <section>
+    <div class="sec-head">
+      <div class="sec-num">04</div>
+      <div class="sec-title serif">Cost drift</div>
+      <div class="sec-note">Verifiable monthly and structurally larger than any
+        single credit. Silent creep is where wine-programme margin leaks.</div>
+    </div>
+    <table class="drift">
+      <thead>
+        <tr>
+          <th>Wine</th>
+          <th class="num">Last paid</th>
+          <th class="num">Now billed</th>
+          <th class="num">Δ / bottle</th>
+          <th class="num">Δ %</th>
+          <th class="num">This delivery</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in drift[:8] %}
+        <tr>
+          <td class="wine-cell">{{ s.display_name }}</td>
+          <td class="num">${{ s.last_price_paid | money }}</td>
+          <td class="num">${{ s.billed_unit_price | money }}</td>
+          <td class="num {{ 'delta-up' if s.price_delta > 0 else 'delta-down' }}">
+            {{ "+" if s.price_delta > 0 }}${{ s.price_delta | money }}
+          </td>
+          <td class="num {{ 'delta-up' if s.price_delta > 0 else 'delta-down' }}">
+            {{ "+" if s.price_delta > 0 }}{{ s.price_delta_pct }}%
+          </td>
+          <td class="num">{{ "+" if s.price_delta > 0 }}${{ (s.price_delta * (s.billed or 0)) | money }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {# ---- 5. reconciliation + evidence -------------------------- #}
+  <section>
+    <div class="sec-head">
+      <div class="sec-num">0{{ 5 if drift else 4 }}</div>
+      <div class="sec-title serif">Reconciliation &amp; evidence</div>
+    </div>
+    <div class="recon">
+      <div>
+        <div class="recon-rows">
+          <div class="recon-row"><span class="k">Wine, as billed</span><span class="v">${{ d.subtotal() | money }}</span></div>
+          {% if d.freight() %}<div class="recon-row"><span class="k">Freight</span><span class="v">${{ d.freight() | money }}</span></div>{% endif %}
+          {% if d.fuel_surcharge() %}<div class="recon-row"><span class="k">Fuel surcharge</span><span class="v">${{ d.fuel_surcharge() | money }}</span></div>{% endif %}
+          {% if d.split_case_fees() %}<div class="recon-row"><span class="k">Split-case fees</span><span class="v">${{ d.split_case_fees() | money }}</span></div>{% endif %}
+          {% if d.deposits() %}
+          <div class="recon-row excluded">
+            <span class="k">Container deposits — refundable, excluded from COGS</span>
+            <span class="v">${{ d.deposits() | money }}</span>
+          </div>
+          {% endif %}
+          <div class="recon-row total"><span class="k serif">Vendor total</span><span class="v">${{ d.total() | money }}</span></div>
+        </div>
+        <div class="recon-caption">
+          {% if not summary.landed_cost_knowable %}
+            This vendor states delivered prices with carriage included, so freight
+            cannot be separated from wine cost on this document. Landed cost is
+            reported as unknown rather than estimated.
+          {% else %}
+            Freight, fuel and split-case fees are allocated to lines above and are
+            inside each landed cost. They are cost components, not price variances.
+          {% endif %}
+          {% if d.deposits() %} Deposits are held refundable and never reach COGS.{% endif %}
+        </div>
+      </div>
+
+      <div class="evidence-block">
+        <div class="row"><span class="k">Received &amp; signed by</span><span>{{ d.signed_by }}</span></div>
+        <div class="row"><span class="k">Delivered by</span><span>{{ d.driver_name }}</span></div>
+        <div class="row"><span class="k">Delivery date</span><span>{{ d.delivery_date.strftime("%d %b %Y") }}</span></div>
+        <div class="row"><span class="k">Invoice date</span>
+          <span>{% if summary.has_invoice %}{{ d.invoice_date.strftime("%d %b %Y") }}{% else %}<span class="not-stated">not received</span>{% endif %}</span>
+        </div>
+        <div class="row"><span class="k">Terms as printed</span><span>{{ d.terms }}</span></div>
+        {# Never computed. A statutory due date varies by state and product
+           category, and inventing one on a TTB-required record is worse than
+           omitting it. Research §B.3 / A9. #}
+        <div class="row"><span class="k">Statutory due date</span>
+          <span class="not-stated">not computed — requires jurisdiction</span></div>
+        <div class="row"><span class="k">Buyer licence</span><span>{{ d.restaurant_license_no }}</span></div>
+        <div class="row"><span class="k">Seller licence</span>
+          <span>{% if d.house.license_no %}{{ d.house.license_no }}{% else %}<span class="not-stated">not stated on source</span>{% endif %}</span>
+        </div>
+        <div class="row"><span class="k">Vendor AR</span><span>{{ d.house.ar_phone }}</span></div>
+        <div class="row"><span class="k">Credit claim state</span>
+          <span>{% if summary.claim_count %}not_claimed{% else %}n/a{% endif %}</span></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="note">
+      Normalized by WineOps from the vendor's own {{ d.house.medium | replace("_", " ") }}
+      document. Quantities are bottle-equivalents; where the vendor billed in cases
+      the conversion used their stated pack size. Fields marked
+      <span class="not-stated">in gold</span> were not stated on the source and have
+      not been inferred. This record is derived — the original document is retained
+      unaltered and is the artifact to produce in a dispute.
+    </div>
+    <div style="text-align:right;white-space:nowrap">
+      {{ d.delivery_id }}<br>
+      Generated {{ generated_on.strftime("%d %b %Y") }}
+      {% if synthetic_history %}<br><span class="not-stated">Price history synthetic</span>{% endif %}
+    </div>
+  </footer>
+</div>
+</body>
+</html>

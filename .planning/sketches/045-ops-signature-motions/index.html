@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sketch 045 - Ops Signature Motions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --wine: #cd2d5b;
+    --wine-light: #e0578a;
+    --burgundy: #6b1e3a;
+    --burgundy-rule: #8b2548;
+    --ledger-ink: #c9a0a8;
+    --route-blue: #4a6fa5;
+    --thread: rgba(205, 45, 91, .55);
+    --bg: #0f0f14;
+    --panel: rgba(255, 255, 255, .04);
+    --line: rgba(255, 255, 255, .08);
+    --text: #ece9ef;
+    --muted: rgba(255, 255, 255, .5);
+    --ease: cubic-bezier(.16, 1, .3, 1);
+    --spring: cubic-bezier(.22, 1, .36, 1);
+  }
+  * { box-sizing: border-box; }
+  button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+
+  body {
+    margin: 0; padding: 56px 20px 64px;
+    background: var(--bg); color: var(--text);
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; gap: 6px;
+    padding: 10px 16px;
+    background: rgba(15, 15, 20, .92);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-right: 4px; font-family: "JetBrains Mono", monospace; }
+  .nav-tab {
+    padding: 7px 12px; border-radius: 9px;
+    border: 1px solid var(--line); background: var(--panel);
+    color: var(--muted); font-size: 11px; font-weight: 700; white-space: nowrap;
+    transition: all .2s var(--spring);
+  }
+  .nav-tab:hover { color: var(--text); background: rgba(255,255,255,.08); }
+  .nav-tab.active { background: var(--wine); border-color: var(--wine); color: #fff; }
+
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  .kicker { color: var(--wine-light); font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+  h1 { margin: 8px 0 8px; font-size: 26px; font-weight: 800; letter-spacing: -.03em; }
+  .lede { max-width: 760px; margin: 0 0 28px; color: var(--muted); font-size: 13.5px; line-height: 1.6; }
+
+  .panel { display: none; }
+  .panel.active { display: grid; grid-template-columns: 390px 1fr; gap: 28px; align-items: start; }
+  @media (max-width: 960px) { .panel.active { grid-template-columns: 1fr; } }
+
+  .phone-wrap { display: flex; flex-direction: column; align-items: center; }
+  .phone {
+    width: 375px; border-radius: 44px;
+    box-shadow: 0 40px 100px rgba(0,0,0,.55), 0 0 0 10px #1c1c24, 0 0 0 11px #2a2a34;
+    overflow: hidden;
+  }
+  .notch { height: 34px; background: #000; width: 120px; margin: 0 auto; border-radius: 0 0 16px 16px; }
+  .screen {
+    position: relative; height: 720px;
+    background: linear-gradient(180deg, #16141c, #121018);
+    overflow: hidden;
+  }
+
+  .spec {
+    padding: 22px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel);
+  }
+  .spec-tag { display: inline-block; padding: 4px 10px; border-radius: 999px; background: rgba(205,45,91,.15); color: #f4a9ba; font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 12px; }
+  .spec h2 { margin: 0 0 10px; font-size: 18px; font-weight: 800; letter-spacing: -.02em; }
+  .spec-block { margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+  .spec-block:last-child { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
+  .spec-block h3 { margin: 0 0 5px; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--wine-light); }
+  .spec-block p { margin: 0; color: rgba(255,255,255,.68); font-size: 12px; line-height: 1.55; }
+  .spec-block ul { margin: 6px 0 0; padding-left: 16px; color: rgba(255,255,255,.6); font-size: 11.5px; line-height: 1.5; }
+  .spec-block code { font-family: "JetBrains Mono", monospace; font-size: 10px; padding: 1px 5px; border-radius: 4px; background: rgba(255,255,255,.06); }
+
+  .replay-btn, .action-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    margin-top: 14px; padding: 10px 16px;
+    border: 1px solid rgba(205,45,91,.4); border-radius: 11px;
+    background: rgba(205,45,91,.12); color: #f4a9ba;
+    font-size: 12px; font-weight: 700;
+    transition: transform .2s var(--spring), background .2s;
+  }
+  .replay-btn:hover, .action-btn:hover { background: rgba(205,45,91,.22); transform: translateY(-1px); }
+  .action-btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+  .haptic-log {
+    margin-top: 12px; padding: 10px 12px;
+    border-radius: 9px; background: rgba(255,255,255,.04);
+    border: 1px dashed var(--line);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px; color: var(--muted);
+    min-height: 36px;
+  }
+  .haptic-log.on { color: #6ee7b7; border-color: rgba(110,231,183,.3); }
+
+  .app-hd { padding: 12px 16px 8px; }
+  .app-hd h3 { margin: 0; font-size: 17px; font-weight: 800; }
+  .app-hd small { color: var(--muted); font-size: 10px; font-weight: 600; }
+
+  /* ===== MOMENT 1: LEDGER FOLD ===== */
+  .ledger-scene { padding: 0 16px 20px; height: calc(100% - 52px); display: flex; flex-direction: column; }
+  .rec-card {
+    position: relative;
+    margin-top: 10px;
+    padding: 14px;
+    border: 1px solid rgba(205, 45, 91, .25);
+    border-radius: 14px;
+    background: rgba(205, 45, 91, .08);
+    overflow: hidden;
+    transform-origin: top center;
+    transition: max-height .32s var(--ease), padding .32s var(--ease), border-radius .32s var(--ease), background .32s var(--ease), border-color .32s var(--ease), margin .32s var(--ease);
+    max-height: 140px;
+  }
+  .rec-card.folding {
+    max-height: 36px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: linear-gradient(90deg, var(--burgundy), var(--burgundy-rule));
+    border-color: rgba(139, 37, 72, .6);
+    margin-top: 0;
+  }
+  .rec-card.folding .rec-body { opacity: 0; max-height: 0; margin: 0; overflow: hidden; }
+  .rec-card.folding .rec-title { font-size: 11px; color: var(--ledger-ink); font-weight: 700; }
+  .rec-card.folding .rec-meta { display: none; }
+  .rec-card.folding .rec-rule-label { display: flex; }
+  .rec-title { margin: 0; font-size: 13px; font-weight: 800; transition: font-size .32s var(--ease), color .32s var(--ease); }
+  .rec-meta { margin-top: 6px; font-size: 10px; color: var(--muted); display: flex; gap: 10px; }
+  .rec-body { margin-top: 8px; font-size: 11px; color: rgba(255,255,255,.65); line-height: 1.45; transition: opacity .2s, max-height .32s; max-height: 60px; }
+  .rec-rule-label {
+    display: none; align-items: center; justify-content: space-between; width: 100%;
+    font-size: 10px; font-weight: 700; color: rgba(255,255,255,.75);
+  }
+  .rec-rule-label .ts { font-family: "JetBrains Mono", monospace; font-size: 9px; color: rgba(255,255,255,.5); opacity: 0; transition: opacity .2s .25s; }
+  .rec-card.folding .rec-rule-label .ts.visible { opacity: 1; }
+  #ledgerTsCanvas {
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    width: 72px; height: 14px; pointer-events: none;
+  }
+  .shift-timeline {
+    flex: 1; margin-top: 16px; padding-top: 12px;
+    border-top: 1px solid var(--line);
+    position: relative;
+  }
+  .timeline-label { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+  .timeline-track { position: relative; padding-left: 14px; border-left: 2px solid rgba(255,255,255,.06); min-height: 120px; }
+  .timeline-entry {
+    position: relative; margin-bottom: 10px; padding: 8px 10px;
+    border-radius: 6px; background: rgba(255,255,255,.03);
+    font-size: 10px; color: var(--muted);
+    opacity: .7;
+  }
+  .timeline-entry::before {
+    content: ""; position: absolute; left: -19px; top: 12px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: rgba(255,255,255,.15); border: 2px solid var(--bg);
+  }
+  .timeline-entry.new {
+    opacity: 0; transform: translateY(-8px);
+    animation: timelineJoin .28s var(--ease) .28s forwards;
+  }
+  @keyframes timelineJoin {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .timeline-entry.new::before {
+    background: var(--burgundy-rule);
+    box-shadow: 0 0 0 3px rgba(139, 37, 72, .25);
+    animation: tickNotch .15s var(--spring) .32s forwards;
+  }
+  @keyframes tickNotch {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.35); }
+    100% { transform: scale(1); }
+  }
+  .timeline-entry.new b { color: var(--ledger-ink); font-weight: 700; }
+  .ledger-slot { min-height: 36px; margin-bottom: 8px; }
+
+  /* ===== MOMENT 2: CELLAR ROUTE LOCK ===== */
+  .route-scene { padding: 0 16px 20px; height: calc(100% - 52px); display: flex; flex-direction: column; }
+  .alloc-bar {
+    margin-top: 10px; padding: 10px 12px;
+    border: 1px solid rgba(74, 111, 165, .3); border-radius: 12px;
+    background: rgba(74, 111, 165, .08);
+    font-size: 11px;
+  }
+  .alloc-bar b { color: var(--text); }
+  .route-grid-wrap {
+    position: relative; flex: 1; margin-top: 12px;
+    padding: 12px; border: 1px solid var(--line); border-radius: 16px;
+    background: rgba(255,255,255,.02);
+  }
+  #routeCanvas {
+    position: absolute; inset: 12px; pointer-events: none;
+    width: calc(100% - 24px); height: calc(100% - 24px);
+  }
+  .route-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+    height: 100%; position: relative; z-index: 1;
+  }
+  .route-bin {
+    aspect-ratio: 1; border: 1px solid var(--line); border-radius: 10px;
+    background: rgba(255,255,255,.04);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700; color: var(--muted);
+    transition: transform .25s var(--spring), box-shadow .25s, border-color .25s;
+  }
+  .route-bin .qty { font-size: 13px; font-weight: 800; color: var(--text); margin-top: 2px; }
+  .route-bin.selected { border-color: rgba(74, 111, 165, .55); background: rgba(74, 111, 165, .1); }
+  .route-bin.on-path { border-color: var(--route-blue); box-shadow: 0 0 0 1px rgba(74, 111, 165, .4); }
+  .route-bin.settled { transform: scale(.94); }
+  .dispatch-node {
+    grid-column: span 4;
+    height: 44px; margin-top: 4px;
+    border: 1px dashed rgba(74, 111, 165, .35); border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+    color: rgba(74, 111, 165, .7);
+    transition: border-color .3s, background .3s, color .3s;
+  }
+  .dispatch-node.locked {
+    border-style: solid; border-color: var(--route-blue);
+    background: rgba(74, 111, 165, .12); color: var(--text);
+  }
+
+  /* ===== MOMENT 3: PROVENANCE STITCH ===== */
+  .prov-scene { padding: 0 16px 24px; height: calc(100% - 52px); display: flex; flex-direction: column; }
+  .lot-card {
+    margin-top: 10px; padding: 12px;
+    border: 1px solid var(--line); border-radius: 14px;
+    background: rgba(255,255,255,.03); font-size: 11px;
+  }
+  .lot-card .row { display: flex; justify-content: space-between; margin-bottom: 5px; color: var(--muted); }
+  .lot-card .row b { color: var(--text); }
+  .prov-chain {
+    position: relative; flex: 1; margin-top: 16px;
+    padding: 20px 8px;
+    border: 1px solid var(--line); border-radius: 16px;
+    background: rgba(255,255,255,.02);
+  }
+  #provCanvas {
+    position: absolute; inset: 0; pointer-events: none;
+    width: 100%; height: 100%;
+  }
+  .prov-nodes {
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column; gap: 28px;
+    height: 100%; justify-content: space-between;
+  }
+  .prov-node {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; border-radius: 12px;
+    border: 1px solid var(--line); background: rgba(255,255,255,.04);
+    transition: border-color .3s, box-shadow .3s, transform .35s var(--spring);
+  }
+  .prov-node .icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: rgba(255,255,255,.06);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0;
+  }
+  .prov-node .lbl { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .prov-node .val { font-size: 12px; font-weight: 800; margin-top: 2px; }
+  .prov-node.linked { border-color: rgba(205, 45, 91, .35); }
+  .prov-node.final { transform-origin: left center; }
+  .prov-node.final.tighten { transform: scale(.98); box-shadow: 0 0 0 1px rgba(205, 45, 91, .45); }
+  .checks { display: flex; gap: 6px; margin-top: 10px; }
+  .check { padding: 4px 8px; border-radius: 6px; font-size: 9px; font-weight: 700; background: rgba(110, 231, 183, .12); color: #6ee7b7; }
+
+  .foot { margin-top: 28px; text-align: center; color: var(--muted); font-size: 11.5px; }
+  .foot code { padding: 2px 6px; border-radius: 5px; background: rgba(255,255,255,.06); font-family: "JetBrains Mono", monospace; font-size: 10px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <span class="nav-label">045</span>
+  <button class="nav-tab active" type="button" data-panel="ledger">Ledger fold</button>
+  <button class="nav-tab" type="button" data-panel="route">Cellar route lock</button>
+  <button class="nav-tab" type="button" data-panel="prov">Provenance stitch</button>
+</nav>
+
+<div class="wrap">
+  <div class="kicker">Sketch 045 · Ops Signature Motions</div>
+  <h1>Accountability, routing, and chain-of-custody in motion</h1>
+  <p class="lede">Three moments that make operational transitions legible — from pending recommendation to permanent record, allocated stock to pick path, and received lot to stored provenance. Prototype here; ship in RN Skia + Reanimated.</p>
+
+  <!-- LEDGER FOLD -->
+  <div class="panel active" id="panel-ledger">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="app-hd"><h3>Manager desk</h3><small>Commit recommendation</small></div>
+          <div class="ledger-scene">
+            <div class="ledger-slot" id="ledgerSlot">
+              <div class="rec-card" id="recCard">
+                <canvas id="ledgerTsCanvas"></canvas>
+                <div class="rec-rule-label">
+                  <span>Par bump · Barolo 2016 → 24</span>
+                  <span class="ts" id="ledgerTs">19:42</span>
+                </div>
+                <h4 class="rec-title">Raise par after weekend sell-through</h4>
+                <div class="rec-meta"><span>Owner: M.Kim</span><span>Reason: 3× reorder in 48h</span></div>
+                <p class="rec-body">Floor reported repeated 86 risk. Recommend +6 bottles through Friday delivery window.</p>
+              </div>
+            </div>
+            <div class="shift-timeline">
+              <div class="timeline-label">Shift timeline</div>
+              <div class="timeline-track" id="timelineTrack">
+                <div class="timeline-entry">17:15 · Coverage swap approved · J.Reyes</div>
+                <div class="timeline-entry">18:02 · 86 Chablis until restock · A.Park</div>
+              </div>
+            </div>
+            <button class="action-btn" id="ledgerBtn" type="button" style="width:100%;justify-content:center;margin-top:auto;">Commit with reason &amp; owner</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="spec">
+      <span class="spec-tag">Moment 1</span>
+      <h2>Ledger fold</h2>
+      <div class="spec-block">
+        <h3>Why it's signature</h3>
+        <p>A manager's decision visibly becomes part of the permanent operational record.</p>
+      </div>
+      <div class="spec-block">
+        <h3>When it triggers</h3>
+        <p>A recommendation is committed with its reason and owner.</p>
+      </div>
+      <div class="spec-block">
+        <h3>Motion + haptic (~320ms)</h3>
+        <ul>
+          <li>Reanimated: decision card compresses into burgundy ledger rule</li>
+          <li>Skia: timestamp draws as card folds</li>
+          <li>Rule slides into shift timeline as new entry</li>
+          <li>Haptic: one restrained rigid tick as it joins the timeline</li>
+        </ul>
+      </div>
+      <div class="spec-block">
+        <h3>Why not a gimmick</h3>
+        <p>Clarifies the transition from pending work to recorded accountability.</p>
+      </div>
+      <button class="replay-btn" type="button" id="ledgerReset">Reset demo</button>
+      <div class="haptic-log" id="ledgerHaptic">Haptic: waiting...</div>
+    </aside>
+  </div>
+
+  <!-- CELLAR ROUTE LOCK -->
+  <div class="panel" id="panel-route">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="app-hd"><h3>Pick wave #2847</h3><small>Barolo allocation</small></div>
+          <div class="route-scene">
+            <div class="alloc-bar">6 bt allocated · <b>Route pending</b></div>
+            <div class="route-grid-wrap">
+              <canvas id="routeCanvas"></canvas>
+              <div class="route-grid" id="routeGrid">
+                <div class="route-bin selected" data-id="A2" data-x="0" data-y="0">A2<span class="qty">2</span></div>
+                <div class="route-bin" data-id="B1" data-x="1" data-y="0">B1<span class="qty">8</span></div>
+                <div class="route-bin selected" data-id="C1" data-x="2" data-y="0">C1<span class="qty">2</span></div>
+                <div class="route-bin" data-id="D2" data-x="3" data-y="0">D2<span class="qty">14</span></div>
+                <div class="route-bin" data-id="A1" data-x="0" data-y="1">A1<span class="qty">12</span></div>
+                <div class="route-bin selected" data-id="B3" data-x="1" data-y="1">B3<span class="qty">2</span></div>
+                <div class="route-bin" data-id="C3" data-x="2" data-y="1">C3<span class="qty">9</span></div>
+                <div class="route-bin" data-id="D1" data-x="3" data-y="1">D1<span class="qty">11</span></div>
+                <div class="dispatch-node" id="dispatchNode">→ Dispatch</div>
+              </div>
+            </div>
+            <button class="action-btn" id="routeBtn" type="button" style="width:100%;justify-content:center;margin-top:14px;">Lock pick route</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="spec">
+      <span class="spec-tag">Moment 2</span>
+      <h2>Cellar route lock</h2>
+      <div class="spec-block">
+        <h3>Why it's signature</h3>
+        <p>It turns allocation into a brief, spatially legible cellar plan.</p>
+      </div>
+      <div class="spec-block">
+        <h3>When it triggers</h3>
+        <p>Stock for an order or pick wave is fully allocated.</p>
+      </div>
+      <div class="spec-block">
+        <h3>Motion + haptic (~420ms)</h3>
+        <ul>
+          <li>Skia: path trims through selected bins toward dispatch</li>
+          <li>Bin markers settle inward 2px as path reaches each stop</li>
+          <li>Dispatch node locks solid on completion</li>
+          <li>Haptic: <code>mediumImpact</code> when route locks</li>
+        </ul>
+      </div>
+      <div class="spec-block">
+        <h3>Why not a gimmick</h3>
+        <p>The motion previews the actual pick sequence and catches implausible routing.</p>
+      </div>
+      <button class="replay-btn" type="button" id="routeReset">Reset route</button>
+      <div class="haptic-log" id="routeHaptic">Haptic: waiting...</div>
+    </aside>
+  </div>
+
+  <!-- PROVENANCE STITCH -->
+  <div class="panel" id="panel-prov">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="app-hd"><h3>Receiving</h3><small>Lot QC complete</small></div>
+          <div class="prov-scene">
+            <div class="lot-card">
+              <div class="row"><span>Lot</span><b>LF-2024-0847</b></div>
+              <div class="row"><span>Supplier</span><b>Domaine Leflaive</b></div>
+              <div class="checks"><span class="check">Temp OK</span><span class="check">Label match</span><span class="check">Qty verified</span></div>
+            </div>
+            <div class="prov-chain" id="provChain">
+              <canvas id="provCanvas"></canvas>
+              <div class="prov-nodes">
+                <div class="prov-node" data-node="supplier"><div class="icon">🏭</div><div><div class="lbl">Supplier</div><div class="val">Domaine Leflaive</div></div></div>
+                <div class="prov-node" data-node="lot"><div class="icon">📋</div><div><div class="lbl">Lot</div><div class="val">LF-2024-0847 · 12 bt</div></div></div>
+                <div class="prov-node" data-node="inspection"><div class="icon">✓</div><div><div class="lbl">Inspection</div><div class="val">Passed · M.Kim · 19:38</div></div></div>
+                <div class="prov-node final" data-node="bin"><div class="icon">🍷</div><div><div class="lbl">Cellar bin</div><div class="val">C2 · Bar Stock</div></div></div>
+              </div>
+            </div>
+            <button class="action-btn" id="provBtn" type="button" style="width:100%;justify-content:center;margin-top:14px;">Save cellar location</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="spec">
+      <span class="spec-tag">Moment 3</span>
+      <h2>Provenance stitch</h2>
+      <div class="spec-block">
+        <h3>Why it's signature</h3>
+        <p>It makes chain-of-custody completion tangible without celebrating routine data entry.</p>
+      </div>
+      <div class="spec-block">
+        <h3>When it triggers</h3>
+        <p>A receiving lot passes all checks and its cellar location is saved.</p>
+      </div>
+      <div class="spec-block">
+        <h3>Motion + haptic (~500ms)</h3>
+        <ul>
+          <li>Skia: fine thread connects supplier → lot → inspection → bin</li>
+          <li>Reanimated: line tightens at final node with spring</li>
+          <li>Each node highlights as thread reaches it</li>
+          <li>Haptic: one soft success pulse at stitch completion</li>
+        </ul>
+      </div>
+      <div class="spec-block">
+        <h3>Why not a gimmick</h3>
+        <p>Every animated node represents stored provenance that staff can reopen.</p>
+      </div>
+      <button class="replay-btn" type="button" id="provReset">Reset chain</button>
+      <div class="haptic-log" id="provHaptic">Haptic: waiting...</div>
+    </aside>
+  </div>
+
+  <p class="foot"><code>.planning/sketches/045-ops-signature-motions/index.html</code></p>
+</div>
+
+<script>
+(() => {
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  document.querySelectorAll('.nav-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.nav-tab').forEach((t) => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById(`panel-${tab.dataset.panel}`).classList.add('active');
+      if (tab.dataset.panel === 'route') resizeRoute();
+      if (tab.dataset.panel === 'prov') resizeProv();
+    });
+  });
+
+  const logHaptic = (el, msg) => {
+    el.textContent = `Haptic: ${msg}`;
+    el.classList.add('on');
+    setTimeout(() => el.classList.remove('on'), 600);
+  };
+
+  /* ===== 1. LEDGER FOLD ===== */
+  const recCard = document.getElementById('recCard');
+  const ledgerBtn = document.getElementById('ledgerBtn');
+  const ledgerHaptic = document.getElementById('ledgerHaptic');
+  const timelineTrack = document.getElementById('timelineTrack');
+  const ledgerTs = document.getElementById('ledgerTs');
+  const ledgerTsCanvas = document.getElementById('ledgerTsCanvas');
+  const tsCtx = ledgerTsCanvas.getContext('2d');
+  let ledgerDone = false;
+
+  const drawTimestamp = (progress) => {
+    const w = ledgerTsCanvas.width;
+    const h = ledgerTsCanvas.height;
+    tsCtx.clearRect(0, 0, w, h);
+    tsCtx.font = '500 18px "JetBrains Mono", monospace';
+    tsCtx.fillStyle = `rgba(255,255,255,${0.5 * progress})`;
+    const text = '19:42';
+    const clip = Math.floor(text.length * progress);
+    tsCtx.fillText(text.slice(0, clip), 0, 14);
+  };
+
+  const triggerLedger = () => {
+    if (ledgerDone) return;
+    ledgerDone = true;
+    ledgerBtn.disabled = true;
+    ledgerBtn.textContent = 'Recorded in ledger';
+
+    recCard.classList.add('folding');
+    ledgerTs.classList.add('visible');
+
+    if (reduced) {
+      drawTimestamp(1);
+      appendTimeline();
+      logHaptic(ledgerHaptic, 'rigid tick — joined timeline (reduced)');
+      return;
+    }
+
+    const t0 = performance.now();
+    const animateTs = (now) => {
+      const p = Math.min(1, (now - t0) / 280);
+      drawTimestamp(p);
+      if (p < 1) requestAnimationFrame(animateTs);
+    };
+    requestAnimationFrame(animateTs);
+
+    setTimeout(appendTimeline, 280);
+    setTimeout(() => logHaptic(ledgerHaptic, 'rigid tick — joined shift timeline'), 320);
+  };
+
+  const appendTimeline = () => {
+    const entry = document.createElement('div');
+    entry.className = 'timeline-entry new';
+    entry.innerHTML = '<b>19:42</b> · Par bump Barolo 2016 → 24 · M.Kim';
+    timelineTrack.appendChild(entry);
+    recCard.style.display = 'none';
+  };
+
+  ledgerBtn.addEventListener('click', triggerLedger);
+  document.getElementById('ledgerReset').addEventListener('click', () => {
+    ledgerDone = false;
+    recCard.classList.remove('folding');
+    recCard.style.display = '';
+    ledgerTs.classList.remove('visible');
+    ledgerBtn.disabled = false;
+    ledgerBtn.textContent = 'Commit with reason & owner';
+    timelineTrack.querySelectorAll('.timeline-entry.new').forEach((e) => e.remove());
+    tsCtx.clearRect(0, 0, ledgerTsCanvas.width, ledgerTsCanvas.height);
+    ledgerHaptic.textContent = 'Haptic: waiting...';
+    ledgerHaptic.classList.remove('on');
+  });
+
+  ledgerTsCanvas.width = 144;
+  ledgerTsCanvas.height = 28;
+
+  /* ===== 2. CELLAR ROUTE LOCK ===== */
+  const routeCanvas = document.getElementById('routeCanvas');
+  const routeCtx = routeCanvas.getContext('2d');
+  const routeGrid = document.getElementById('routeGrid');
+  const routeBtn = document.getElementById('routeBtn');
+  const routeHaptic = document.getElementById('routeHaptic');
+  const dispatchNode = document.getElementById('dispatchNode');
+  const routeOrder = ['A2', 'C1', 'B3'];
+  let routeLocked = false;
+
+  const getBinCenter = (id) => {
+    const bin = routeGrid.querySelector(`[data-id="${id}"]`);
+    const wrap = routeCanvas.getBoundingClientRect();
+    const r = bin.getBoundingClientRect();
+    return {
+      x: r.left - wrap.left + r.width / 2,
+      y: r.top - wrap.top + r.height / 2,
+    };
+  };
+
+  const getDispatchCenter = () => {
+    const wrap = routeCanvas.getBoundingClientRect();
+    const r = dispatchNode.getBoundingClientRect();
+    return {
+      x: r.left - wrap.left + r.width / 2,
+      y: r.top - wrap.top + r.height / 2,
+    };
+  };
+
+  const resizeRoute = () => {
+    const wrap = routeCanvas.parentElement;
+    routeCanvas.width = wrap.clientWidth * 2;
+    routeCanvas.height = wrap.clientHeight * 2;
+    routeCanvas.style.width = wrap.clientWidth + 'px';
+    routeCanvas.style.height = wrap.clientHeight + 'px';
+    routeCtx.setTransform(2, 0, 0, 2, 0, 0);
+  };
+
+  const drawRoute = (progress) => {
+    const w = routeCanvas.width / 2;
+    const h = routeCanvas.height / 2;
+    routeCtx.clearRect(0, 0, w, h);
+
+    const points = routeOrder.map(getBinCenter);
+    points.push(getDispatchCenter());
+
+    let totalLen = 0;
+    const segs = [];
+    for (let i = 0; i < points.length - 1; i++) {
+      const dx = points[i + 1].x - points[i].x;
+      const dy = points[i + 1].y - points[i].y;
+      const len = Math.hypot(dx, dy);
+      segs.push({ from: points[i], to: points[i + 1], len });
+      totalLen += len;
+    }
+
+    const drawLen = totalLen * progress;
+    let consumed = 0;
+    routeCtx.strokeStyle = 'rgba(74, 111, 165, 0.85)';
+    routeCtx.lineWidth = 2;
+    routeCtx.lineCap = 'round';
+    routeCtx.lineJoin = 'round';
+    routeCtx.setLineDash([6, 4]);
+    routeCtx.beginPath();
+
+    for (const seg of segs) {
+      if (consumed >= drawLen) break;
+      const remain = drawLen - consumed;
+      const t = Math.min(1, remain / seg.len);
+      const x = seg.from.x + (seg.to.x - seg.from.x) * t;
+      const y = seg.from.y + (seg.to.y - seg.from.y) * t;
+      routeCtx.moveTo(seg.from.x, seg.from.y);
+      routeCtx.lineTo(x, y);
+      consumed += seg.len;
+    }
+    routeCtx.stroke();
+    routeCtx.setLineDash([]);
+
+    let acc = 0;
+    routeOrder.forEach((id, i) => {
+      const segLen = segs[i]?.len || 0;
+      acc += segLen;
+      const bin = routeGrid.querySelector(`[data-id="${id}"]`);
+      if (progress >= acc / totalLen - 0.05) {
+        bin.classList.add('on-path', 'settled');
+      }
+    });
+  };
+
+  const animateRoute = () => {
+    const duration = 420;
+    const t0 = performance.now();
+    const step = (now) => {
+      const p = Math.min(1, (now - t0) / duration);
+      const eased = 1 - Math.pow(1 - p, 2.2);
+      drawRoute(eased);
+      if (p < 1) {
+        requestAnimationFrame(step);
+      } else {
+        dispatchNode.classList.add('locked');
+        dispatchNode.textContent = 'Route locked · A2 → C1 → B3';
+        routeBtn.disabled = true;
+        routeBtn.textContent = 'Pick sequence set';
+        routeLocked = true;
+        logHaptic(routeHaptic, 'mediumImpact — route locked');
+      }
+    };
+    requestAnimationFrame(step);
+  };
+
+  routeBtn.addEventListener('click', () => {
+    if (routeLocked) return;
+    resizeRoute();
+    routeGrid.querySelectorAll('.route-bin').forEach((b) => b.classList.remove('on-path', 'settled'));
+    dispatchNode.classList.remove('locked');
+    dispatchNode.textContent = '→ Dispatch';
+    logHaptic(routeHaptic, 'path trim begins');
+    if (reduced) {
+      drawRoute(1);
+      routeGrid.querySelectorAll('.route-bin.selected').forEach((b) => b.classList.add('on-path', 'settled'));
+      dispatchNode.classList.add('locked');
+      routeLocked = true;
+      routeBtn.disabled = true;
+      logHaptic(routeHaptic, 'mediumImpact (reduced motion)');
+      return;
+    }
+    animateRoute();
+  });
+
+  document.getElementById('routeReset').addEventListener('click', () => {
+    routeLocked = false;
+    routeBtn.disabled = false;
+    routeBtn.textContent = 'Lock pick route';
+    routeCtx.clearRect(0, 0, routeCanvas.width, routeCanvas.height);
+    routeGrid.querySelectorAll('.route-bin').forEach((b) => b.classList.remove('on-path', 'settled'));
+    dispatchNode.classList.remove('locked');
+    dispatchNode.textContent = '→ Dispatch';
+    routeHaptic.textContent = 'Haptic: waiting...';
+    routeHaptic.classList.remove('on');
+  });
+
+  /* ===== 3. PROVENANCE STITCH ===== */
+  const provCanvas = document.getElementById('provCanvas');
+  const provCtx = provCanvas.getContext('2d');
+  const provChain = document.getElementById('provChain');
+  const provBtn = document.getElementById('provBtn');
+  const provHaptic = document.getElementById('provHaptic');
+  const provNodes = [...document.querySelectorAll('.prov-node')];
+  let provDone = false;
+
+  const getNodeAnchor = (node) => {
+    const wrap = provCanvas.getBoundingClientRect();
+    const icon = node.querySelector('.icon');
+    const r = icon.getBoundingClientRect();
+    return {
+      x: r.left - wrap.left + r.width / 2,
+      y: r.top - wrap.top + r.height / 2,
+    };
+  };
+
+  const resizeProv = () => {
+    provCanvas.width = provChain.clientWidth * 2;
+    provCanvas.height = provChain.clientHeight * 2;
+    provCanvas.style.width = provChain.clientWidth + 'px';
+    provCanvas.style.height = provChain.clientHeight + 'px';
+    provCtx.setTransform(2, 0, 0, 2, 0, 0);
+  };
+
+  const drawThread = (progress, tighten = 0) => {
+    const w = provCanvas.width / 2;
+    const h = provCanvas.height / 2;
+    provCtx.clearRect(0, 0, w, h);
+
+    const anchors = provNodes.map(getNodeAnchor);
+    let totalLen = 0;
+    const segs = [];
+    for (let i = 0; i < anchors.length - 1; i++) {
+      const len = Math.hypot(anchors[i + 1].x - anchors[i].x, anchors[i + 1].y - anchors[i].y);
+      segs.push({ from: anchors[i], to: anchors[i + 1], len });
+      totalLen += len;
+    }
+
+    const drawLen = totalLen * progress;
+    let consumed = 0;
+
+    provCtx.strokeStyle = `rgba(205, 45, 91, ${0.45 + tighten * 0.25})`;
+    provCtx.lineWidth = 1 + tighten * 0.5;
+    provCtx.beginPath();
+
+    for (const seg of segs) {
+      if (consumed >= drawLen) break;
+      const remain = drawLen - consumed;
+      const t = Math.min(1, remain / seg.len);
+      let tx = seg.to.x;
+      let ty = seg.to.y;
+      if (t < 1) {
+        tx = seg.from.x + (seg.to.x - seg.from.x) * t;
+        ty = seg.from.y + (seg.to.y - seg.from.y) * t;
+      } else if (tighten > 0 && seg === segs[segs.length - 1]) {
+        tx = seg.from.x + (seg.to.x - seg.from.x) * (1 - tighten * 0.02);
+        ty = seg.from.y + (seg.to.y - seg.from.y) * (1 - tighten * 0.02);
+      }
+      provCtx.moveTo(seg.from.x, seg.from.y);
+      provCtx.lineTo(tx, ty);
+      consumed += seg.len;
+    }
+    provCtx.stroke();
+
+    let acc = 0;
+    provNodes.forEach((node, i) => {
+      if (i === 0) { node.classList.add('linked'); return; }
+      acc += segs[i - 1].len;
+      if (progress >= acc / totalLen - 0.02) node.classList.add('linked');
+    });
+  };
+
+  const animateProv = () => {
+    const duration = 400;
+    const t0 = performance.now();
+    const step = (now) => {
+      const p = Math.min(1, (now - t0) / duration);
+      drawThread(p);
+      if (p < 1) {
+        requestAnimationFrame(step);
+      } else {
+        const finalNode = provNodes[provNodes.length - 1];
+        finalNode.classList.add('tighten');
+        let tighten = 0;
+        const tightenStep = () => {
+          tighten = Math.min(1, tighten + 0.08);
+          drawThread(1, tighten);
+          if (tighten < 1) {
+            requestAnimationFrame(tightenStep);
+          } else {
+            provDone = true;
+            provBtn.disabled = true;
+            provBtn.textContent = 'Provenance saved';
+            logHaptic(provHaptic, 'notificationSuccess — stitch complete');
+          }
+        };
+        setTimeout(() => requestAnimationFrame(tightenStep), 50);
+      }
+    };
+    requestAnimationFrame(step);
+  };
+
+  provBtn.addEventListener('click', () => {
+    if (provDone) return;
+    resizeProv();
+    provNodes.forEach((n) => n.classList.remove('linked', 'tighten'));
+    logHaptic(provHaptic, 'thread draw begins');
+    if (reduced) {
+      drawThread(1, 1);
+      provNodes.forEach((n) => n.classList.add('linked'));
+      provNodes[provNodes.length - 1].classList.add('tighten');
+      provDone = true;
+      provBtn.disabled = true;
+      logHaptic(provHaptic, 'notificationSuccess (reduced motion)');
+      return;
+    }
+    animateProv();
+  });
+
+  document.getElementById('provReset').addEventListener('click', () => {
+    provDone = false;
+    provBtn.disabled = false;
+    provBtn.textContent = 'Save cellar location';
+    provNodes.forEach((n) => n.classList.remove('linked', 'tighten'));
+    provCtx.clearRect(0, 0, provCanvas.width, provCanvas.height);
+    provHaptic.textContent = 'Haptic: waiting...';
+    provHaptic.classList.remove('on');
+  });
+
+  resizeRoute();
+  resizeProv();
+})();
+</script>
+</body>
+</html>

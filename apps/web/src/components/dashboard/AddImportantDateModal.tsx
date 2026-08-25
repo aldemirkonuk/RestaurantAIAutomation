@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X,
@@ -66,6 +66,16 @@ export function AddImportantDateModal({
   const [selectedType, setSelectedType] = useState<ImportantDate['type']>(editingDate?.type || 'event')
   const [selectedColor, setSelectedColor] = useState(editingDate?.color || 'purple')
   const [notes, setNotes] = useState(editingDate?.notes || '')
+
+  useEffect(() => {
+    if (!isOpen) return
+    setTitle(editingDate?.title || '')
+    setDate(editingDate?.date || new Date().toISOString().split('T')[0])
+    setTime(editingDate?.time || '')
+    setSelectedType(editingDate?.type || 'event')
+    setSelectedColor(editingDate?.color || 'purple')
+    setNotes(editingDate?.notes || '')
+  }, [isOpen, editingDate])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

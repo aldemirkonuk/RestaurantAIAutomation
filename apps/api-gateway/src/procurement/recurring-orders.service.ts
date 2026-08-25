@@ -11,11 +11,10 @@
  */
 
 import { Injectable, Logger } from "@nestjs/common";
-import { Cron, CronExpression } from "@nestjs/schedule";
+import { Cron } from "@nestjs/schedule";
 import { DatabaseService } from "../database/database.service";
 import { ProcurementService } from "./procurement.service";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
-import { ProcurementOrderStatus } from "./dto/procurement.dto";
 
 export interface RecurringOrderTemplate {
   id?: string;

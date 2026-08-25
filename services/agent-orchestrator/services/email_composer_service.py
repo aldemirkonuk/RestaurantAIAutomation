@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import re
 import statistics
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ from dataclasses import dataclass, field
 import aiohttp
 
 from utils.logger import setup_logger
+from config.settings import get_settings
 
 logger = setup_logger("email_composer_service")
 
@@ -178,7 +180,8 @@ class EmailComposerService:
         self.database = database
         self.api_gateway_url = config.get("api_gateway_url", "http://localhost:3001")
         self.google_api_key = config.get("google_api_key")
-        self.llm_model_name = config.get("llm_model", "gemini-2.0-flash")
+        # gemini-2.0-flash was shut down 2026-06-01 (OD-57).
+        self.llm_model_name = config.get("llm_model", get_settings().gemini_model)
         self.mock_mode = config.get("mock_mode", True)
         self.default_restaurant_name = config.get(
             "default_restaurant_name", "WineOps Restaurant"
@@ -431,6 +434,37 @@ class EmailComposerService:
 
         return self._analyze_style_heuristic(inbound)
 
+    def _log_llm_spend(
+        self, response, task_type: str, duration_ms: Optional[int] = None
+    ) -> None:
+        """P1: emit one spend/NF row for a Gemini call (never raises).
+
+        `duration_ms` is measured by the caller around its own model call —
+        timing it here would only measure this helper.
+        """
+        try:
+            from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+            _usage = getattr(response, "usage_metadata", None)
+            _in = getattr(_usage, "prompt_token_count", 0) or 0
+            # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+            _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                getattr(_usage, "thoughts_token_count", 0) or 0
+            )
+            get_spend_logger().log(
+                provider="google",
+                model=self.llm_model_name,
+                input_tokens=_in,
+                output_tokens=_out,
+                cost_usd=estimate_llm_cost(self.llm_model_name, _in, _out),
+                agent_fallback="email_composer_service",
+                task_type=task_type,
+                outcome="success",  # call-level: response returned
+                duration_ms=duration_ms,
+            )
+        except Exception:
+            pass
+
     async def _analyze_style_llm(
         self,
         provider_id: str,
@@ -444,7 +478,13 @@ class EmailComposerService:
         prompt = STYLE_ANALYSIS_PROMPT.replace("{emails}", emails_text)
 
         try:
+            _t0 = time.perf_counter()
             response = await self.llm_client.generate_content_async(prompt)
+            self._log_llm_spend(  # P1
+                response,
+                "style_analysis",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+            )
             text = response.text.strip()
             json_match = re.search(r"\{[\s\S]*\}", text)
             if json_match:
@@ -564,7 +604,13 @@ class EmailComposerService:
         )
 
         try:
+            _t0 = time.perf_counter()
             response = await self.llm_client.generate_content_async(prompt)
+            self._log_llm_spend(  # P1
+                response,
+                "email_compose",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+            )
             body = response.text.strip()
             if body.startswith('"') and body.endswith('"'):
                 body = body[1:-1]

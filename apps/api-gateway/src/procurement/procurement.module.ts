@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { ProcurementController } from "./procurement.controller";
 import { ProcurementService } from "./procurement.service";
 import { RecurringOrdersService } from "./recurring-orders.service";
@@ -10,6 +10,13 @@ import { InventoryLedgerModule } from "../inventory-ledger/inventory-ledger.modu
 import { OrchestratorModule } from "../common/orchestrator/orchestrator.module";
 import { CommunicationsModule } from "../communications/communications.module";
 import { WebsocketModule } from "../websocket/websocket.module";
+import { NotificationsModule } from "../notifications/notifications.module";
+import { DocumentsController } from "./documents/documents.controller";
+import { DocumentIntakeService } from "./documents/document-intake.service";
+import { DocumentExtractorService } from "./documents/document-extractor.service";
+import { ReceivingController } from "./receiving.controller";
+import { ReceivingService } from "./receiving.service";
+import { CreditsController } from "./documents/credits.controller";
 
 @Module({
   imports: [
@@ -20,9 +27,27 @@ import { WebsocketModule } from "../websocket/websocket.module";
     OrchestratorModule,
     CommunicationsModule,
     WebsocketModule,
+    forwardRef(() => NotificationsModule),
   ],
-  controllers: [ProcurementController, RecurringOrdersController],
-  providers: [ProcurementService, RecurringOrdersService],
-  exports: [ProcurementService, RecurringOrdersService],
+  controllers: [
+    ProcurementController,
+    RecurringOrdersController,
+    DocumentsController,
+    ReceivingController,
+    CreditsController,
+  ],
+  providers: [
+    ProcurementService,
+    RecurringOrdersService,
+    DocumentIntakeService,
+    DocumentExtractorService,
+    ReceivingService,
+  ],
+  // Exported for callers that already depend on procurement. The inbound-email
+  // path deliberately does NOT call it directly — ProcurementModule imports
+  // OrchestratorModule, so that would need a circular forwardRef, and Nest fails
+  // those by injecting undefined at runtime rather than erroring at build time.
+  // The email channel runs as a sweep inside DocumentIntakeService instead.
+  exports: [ProcurementService, RecurringOrdersService, DocumentIntakeService],
 })
 export class ProcurementModule {}

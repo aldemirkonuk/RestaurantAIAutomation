@@ -1,4 +1,7 @@
 import { useState, useEffect } from 'react'
+import { SendMessageSlideOver } from './SendMessageSlideOver'
+import { useNavigate } from 'react-router-dom'
+import { useOrderHistory } from '../../hooks/queries/useOrderQueries'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X,
@@ -15,14 +18,19 @@ import {
   Download,
   Package,
   ChevronDown,
+  ChevronUp,
   Tag,
   UserPlus,
   Edit,
   MapPin,
   Plus,
+  ExternalLink,
+  ShoppingBag,
 } from 'lucide-react'
 import type { Provider } from '../../services/api/providers'
-import { fetchProviderContacts } from '../../services/api/providers'
+import { fetchProviderContacts, getProviderLocations } from '../../services/api/providers'
+import { VendorMatchModal } from './VendorMatchModal'
+import { useDuplicateVendorCheck } from '../../hooks/useDuplicateVendorCheck'
 import { PhoneNumberInput } from '../ui/PhoneNumberInput'
 import { PlacesAutocomplete, type PlaceResult } from '../ui/PlacesAutocomplete'
 import { useAuth } from '../../contexts/AuthContext'
@@ -33,6 +41,13 @@ export interface ProviderLocation {
   type: 'office' | 'warehouse' | 'store' | 'other'
   address: string
   isPrimary: boolean
+  /**
+   * Set only when the address came from Places autocomplete. Undefined means
+   * the address was typed and never geocoded — distinct from 0, which is a
+   * real coordinate.
+   */
+  latitude?: number | null
+  longitude?: number | null
 }
 
 export interface EditProviderData {
@@ -218,6 +233,7 @@ function buildInitialLocations(provider: Provider | null): ProviderLocation[] {
 
 export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditProviderModalProps) {
   const { user } = useAuth()
+  const navigate = useNavigate()
 
   const [formData, setFormData] = useState<EditProviderData>({
     id: '',
@@ -240,6 +256,34 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
   })
 
   const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({})
+
+  // ── Duplicate detection on rename ─────────────────────────────────────
+  // Renaming is the other way a duplicate appears: "Breakthru Bev" becomes
+  // "Breakthru Beverage Group" and now collides with a catalogue vendor or
+  // with another provider already in the list. Only checked once the name or
+  // address actually CHANGES from what was loaded — otherwise simply opening
+  // and saving an untouched provider would report a match against records it
+  // is already equivalent to.
+  const nameChanged = !!provider && formData.name.trim() !== (provider.name ?? '').trim()
+  const addressChanged =
+    !!provider && formData.address.trim() !== (provider.physicalAddress ?? '').trim()
+
+  const { pendingMatch, acknowledge, reset: resetMatches } = useDuplicateVendorCheck({
+    enabled: isOpen && (nameChanged || addressChanged),
+    name: formData.name,
+    address: formData.address,
+    // Without this the row being edited matches itself at 1.0.
+    excludeProviderId: provider?.id,
+    // A provider created from the catalogue legitimately carries that
+    // vendor's exact name; warning that it duplicates the entry it is
+    // already linked to would be noise, not a finding.
+    linkedCatalogueVendorId: provider?.catalogueVendorId ?? null,
+  })
+
+  const handleDismissMatch = () => {
+    if (pendingMatch) acknowledge(pendingMatch.id)
+  }
+
   const [activeTab, setActiveTab] = useState<'details' | 'contacts' | 'locations'>('details')
   const [expandedContactId, setExpandedContactId] = useState<string | null>(null)
   const [isEditingName, setIsEditingName] = useState(false)
@@ -248,6 +292,14 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
   const [wineLibrarySearch, setWineLibrarySearch] = useState('')
   const [showCustomInput, setShowCustomInput] = useState(false)
   const [customSpecialtyInput, setCustomSpecialtyInput] = useState('')
+  const [showSendMessage, setShowSendMessage] = useState(false)
+  const [showOrderDropdown, setShowOrderDropdown] = useState(false)
+
+  // Fetch recent orders for this provider
+  const { data: orderHistoryData, isLoading: ordersLoading } = useOrderHistory({
+    providerId: formData.id || undefined,
+    limit: 5,
+  })
 
   // Populate form from provider
   useEffect(() => {
@@ -285,7 +337,7 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
       setShowCustomInput(false)
       setCustomSpecialtyInput('')
 
-      // Replace placeholder contacts with real ones from the DB
+      // Fetch real contacts & locations from DB
       let aborted = false
       fetchProviderContacts(provider.id)
         .then(dbContacts => {
@@ -311,6 +363,30 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
         .catch((err) => {
           const status = (err as any)?.response?.status
           console.warn(`[EditProviderModal] fetchProviderContacts failed (${status ?? 'network'}) — using derived contacts`)
+        })
+
+      getProviderLocations(provider.id)
+        .then(dbLocations => {
+          if (aborted || dbLocations.length === 0) return
+          setFormData(prev => {
+            const locs: ProviderLocation[] = dbLocations.map(l => ({
+              id: l.id,
+              name: l.name,
+              type: (l.type as any) || 'office',
+              address: l.address || '',
+              isPrimary: l.isPrimary ?? false,
+            }))
+            const primaryLoc = locs.find(l => l.isPrimary) || locs[0]
+            return {
+              ...prev,
+              locations: locs,
+              address: primaryLoc && primaryLoc.address ? primaryLoc.address : prev.address,
+            }
+          })
+        })
+        .catch((err) => {
+          const status = (err as any)?.response?.status
+          console.warn(`[EditProviderModal] getProviderLocations failed (${status ?? 'network'}) — using derived locations`)
         })
 
       return () => { aborted = true }
@@ -343,6 +419,7 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
 
   const handleClose = () => {
     setValidationErrors({})
+    resetMatches()
     onClose()
   }
 
@@ -360,6 +437,11 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
 
   const handleSave = () => {
     if (!validate()) return
+    // Same belt-and-braces as the add form: the warning modal already
+    // overlays this one whenever a match is pending, but the debounced
+    // lookup can resolve in the same tick as the click. Dismissing the
+    // warning clears pendingMatch and Save proceeds.
+    if (pendingMatch) return
     onSave(formData)
     handleClose()
   }
@@ -422,10 +504,15 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
   }
 
   const updateLocation = (locationId: string, updates: Partial<ProviderLocation>) => {
-    setFormData(prev => ({
-      ...prev,
-      locations: prev.locations.map(l => l.id === locationId ? { ...l, ...updates } : l),
-    }))
+    setFormData(prev => {
+      const updatedLocations = prev.locations.map(l => l.id === locationId ? { ...l, ...updates } : l)
+      const primaryLoc = updatedLocations.find(l => l.isPrimary)
+      return {
+        ...prev,
+        locations: updatedLocations,
+        address: primaryLoc ? primaryLoc.address : prev.address,
+      }
+    })
   }
 
   const removeLocation = (locationId: string) => {
@@ -435,18 +522,28 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
       if (removedWasPrimary && updated.length > 0) {
         updated[0] = { ...updated[0], isPrimary: true }
       }
-      return { ...prev, locations: updated }
+      const primaryLoc = updated.find(l => l.isPrimary)
+      return {
+        ...prev,
+        locations: updated,
+        address: primaryLoc ? primaryLoc.address : prev.address,
+      }
     })
   }
 
   const setPrimaryLocation = (locationId: string) => {
-    setFormData(prev => ({
-      ...prev,
-      locations: prev.locations.map(l => ({
+    setFormData(prev => {
+      const updatedLocations = prev.locations.map(l => ({
         ...l,
         isPrimary: l.id === locationId,
-      })),
-    }))
+      }))
+      const primaryLoc = updatedLocations.find(l => l.isPrimary)
+      return {
+        ...prev,
+        locations: updatedLocations,
+        address: primaryLoc ? primaryLoc.address : prev.address,
+      }
+    })
   }
 
   const toggleSpecialty = (specialty: string) => {
@@ -511,8 +608,12 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
   const isActive = (provider as any).isActive !== false
 
   return (
+    // Children carry explicit keys: AnimatePresence tracks its children by
+    // key, and several siblings without one collide (React logs "two children
+    // with the same key" and may drop or duplicate them on exit).
     <AnimatePresence>
       <motion.div
+        key="edit-provider-backdrop"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -693,10 +794,92 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
               {/* Quick actions */}
               <div className="mt-auto space-y-1.5">
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Actions</p>
-                <button className="w-full text-left text-xs text-gray-600 hover:text-amber-600 py-1.5 px-2 rounded-lg hover:bg-amber-50 transition-all">
-                  View Orders
-                </button>
-                <button className="w-full text-left text-xs text-gray-600 hover:text-amber-600 py-1.5 px-2 rounded-lg hover:bg-amber-50 transition-all">
+
+                {/* ── View Orders dropdown ── */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowOrderDropdown(v => !v)}
+                    className="w-full text-left text-xs text-gray-600 hover:text-amber-600 py-1.5 px-2 rounded-lg hover:bg-amber-50 transition-all flex items-center justify-between"
+                  >
+                    <span>View Orders</span>
+                    {showOrderDropdown
+                      ? <ChevronUp className="w-3 h-3 text-gray-400" />
+                      : <ChevronDown className="w-3 h-3 text-gray-400" />}
+                  </button>
+
+                  {showOrderDropdown && (
+                    <div className="mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                      {ordersLoading ? (
+                        <div className="px-3 py-4 text-center">
+                          <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto mb-1.5" />
+                          <p className="text-[10px] text-gray-400">Loading orders…</p>
+                        </div>
+                      ) : (() => {
+                        const orders = (orderHistoryData as any)?.data ?? []
+                        if (orders.length === 0) {
+                          return (
+                            <div className="px-3 py-4 text-center">
+                              <ShoppingBag className="w-5 h-5 text-gray-300 mx-auto mb-1.5" />
+                              <p className="text-[10px] text-gray-500 font-medium">No recent orders with</p>
+                              <p className="text-[10px] text-gray-400 truncate">{formData.name}</p>
+                            </div>
+                          )
+                        }
+                        return (
+                          <>
+                            <div className="max-h-[160px] overflow-y-auto divide-y divide-gray-100">
+                              {orders.slice(0, 5).map((order: any) => {
+                                const statusColors: Record<string, string> = {
+                                  delivered: 'bg-emerald-100 text-emerald-700',
+                                  approved: 'bg-blue-100 text-blue-700',
+                                  pending: 'bg-amber-100 text-amber-700',
+                                  cancelled: 'bg-gray-100 text-gray-500',
+                                }
+                                return (
+                                  <div key={order.id} className="px-3 py-2 hover:bg-gray-50 transition-colors">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className="text-[11px] font-medium text-gray-800 truncate">
+                                        {order.wineName || order.orderNumber || `Order #${order.id.slice(0, 6)}`}
+                                      </p>
+                                      <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 capitalize ${statusColors[order.status] || 'bg-gray-100 text-gray-500'}`}>
+                                        {order.status}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-0.5 text-[10px] text-gray-400">
+                                      <span>{order.quantity} btl{order.quantity !== 1 ? 's' : ''}</span>
+                                      <span>·</span>
+                                      <span>${(order.totalPrice ?? order.unitPrice * order.quantity).toLocaleString()}</span>
+                                      <span>·</span>
+                                      <span>{new Date(order.createdAt || order.requestedAt).toLocaleDateString()}</span>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onClose()
+                                navigate(`/orders?provider=${encodeURIComponent(formData.id)}`)
+                              }}
+                              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-[10px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border-t border-gray-200 transition-colors"
+                            >
+                              View all orders
+                              <ExternalLink className="w-3 h-3" />
+                            </button>
+                          </>
+                        )
+                      })()}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowSendMessage(true)}
+                  className="w-full text-left text-xs text-gray-600 hover:text-amber-600 py-1.5 px-2 rounded-lg hover:bg-amber-50 transition-all"
+                >
                   Send Message
                 </button>
               </div>
@@ -776,7 +959,21 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                           <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
                           <PlacesAutocomplete
                             value={formData.address}
-                            onChange={(val) => setFormData({ ...formData, address: val })}
+                            onChange={(val) => {
+                              setFormData(prev => {
+                                const hasPrimary = prev.locations.some(l => l.isPrimary)
+                                const updatedLocs = hasPrimary
+                                  ? prev.locations.map(l => l.isPrimary ? { ...l, address: val } : l)
+                                  : prev.locations.length > 0
+                                    ? prev.locations.map((l, idx) => idx === 0 ? { ...l, address: val, isPrimary: true } : l)
+                                    : [{ id: `loc-${Date.now()}`, name: 'Main Office', type: 'office' as const, address: val, isPrimary: true }]
+                                return {
+                                  ...prev,
+                                  address: val,
+                                  locations: updatedLocs,
+                                }
+                              })
+                            }}
                             onPlaceSelect={(place: PlaceResult) => {
                               const full = [
                                 place.streetAddress,
@@ -787,7 +984,23 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
                               ]
                                 .filter(Boolean)
                                 .join(', ')
-                              setFormData((prev) => ({ ...prev, address: full }))
+                              setFormData(prev => {
+                                const hasPrimary = prev.locations.some(l => l.isPrimary)
+                                const coords = {
+                                  latitude: place.latitude,
+                                  longitude: place.longitude,
+                                }
+                                const updatedLocs = hasPrimary
+                                  ? prev.locations.map(l => l.isPrimary ? { ...l, address: full, ...coords } : l)
+                                  : prev.locations.length > 0
+                                    ? prev.locations.map((l, idx) => idx === 0 ? { ...l, address: full, isPrimary: true, ...coords } : l)
+                                    : [{ id: `loc-${Date.now()}`, name: 'Main Office', type: 'office' as const, address: full, isPrimary: true, ...coords }]
+                                return {
+                                  ...prev,
+                                  address: full,
+                                  locations: updatedLocs,
+                                }
+                              })
                             }}
                             placeholder="Start typing an address…"
                             className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white text-gray-900 focus:ring-2 focus:ring-amber-500"
@@ -1404,6 +1617,26 @@ export function EditProviderModal({ isOpen, onClose, onSave, provider }: EditPro
           </div>
         </motion.div>
       </motion.div>
+
+      {/* Send Message Slide-Over */}
+      <SendMessageSlideOver
+        key="edit-provider-send-message"
+        isOpen={showSendMessage}
+        onClose={() => setShowSendMessage(false)}
+        providerName={formData.name}
+        providerEmail={formData.email}
+        providerPhone={formData.phone}
+      />
+
+      {/* Duplicate warning on rename. context="edit" so it only warns —
+          merging existing provider records is deliberately not offered. */}
+      <VendorMatchModal
+        key="edit-provider-duplicate-warning"
+        open={!!pendingMatch}
+        match={pendingMatch}
+        context="edit"
+        onDismiss={handleDismissMatch}
+      />
     </AnimatePresence>
   )
 }

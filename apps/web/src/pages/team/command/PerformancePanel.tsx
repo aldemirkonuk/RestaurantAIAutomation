@@ -8,6 +8,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { BarChart3, Plus, Upload } from 'lucide-react'
 import { getMemberPerformance, ingestSales, ingestSalesBatch, type TeamMember } from '../../../services/api/team'
+import { ExportMenu } from '../../../components/ui/ExportMenu'
+import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport'
+import { TABULAR_ACCEPT } from '../../../lib/uploadAccept'
 
 export function PerformancePanel({ member }: { member: TeamMember | null }) {
   const qc = useQueryClient()
@@ -20,6 +23,43 @@ export function PerformancePanel({ member }: { member: TeamMember | null }) {
     queryFn: () => getMemberPerformance(member!.id),
     enabled: !!member,
   })
+
+  /** NEW-529: export this member's performance series in shared formats. */
+  const exportSeries = async (format: TableExportFormat) => {
+    const series = data?.analytic?.series ?? []
+    if (series.length === 0) {
+      toast.error('No performance data to export yet')
+      return
+    }
+    const rows = series.map((v: any, i: number) => ({
+      member: member?.display_name ?? '',
+      point: i + 1,
+      value: typeof v === 'number' ? v : (v?.value ?? ''),
+    }))
+    const columns: TableExportColumn<(typeof rows)[number]>[] = [
+      { header: 'Member', value: (r) => r.member },
+      { header: 'Point', value: (r) => r.point },
+      { header: 'Value', value: (r) => r.value },
+    ]
+    try {
+      await exportTable({
+        format,
+        rows,
+        columns,
+        filename: `performance-${(member?.display_name ?? 'member').replace(/[^\w]+/g, '-').toLowerCase()}`,
+        title: `Performance · ${member?.display_name ?? 'member'}`,
+      })
+      toast.success(
+        format === 'clipboard'
+          ? `Copied ${rows.length} points`
+          : format === 'print'
+            ? 'Opening print view'
+            : `Exported ${rows.length} points`,
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Export failed')
+    }
+  }
 
   const save = useMutation({
     mutationFn: () =>
@@ -108,7 +148,7 @@ export function PerformancePanel({ member }: { member: TeamMember | null }) {
           <input
             ref={fileRef}
             type="file"
-            accept=".csv,text/csv"
+            accept={TABULAR_ACCEPT}
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0]
@@ -124,6 +164,14 @@ export function PerformancePanel({ member }: { member: TeamMember | null }) {
           >
             <Upload className="w-3 h-3" /> CSV
           </button>
+          <ExportMenu
+            variant="soft"
+            size="xs"
+            label="Export"
+            count={(data?.analytic?.series ?? []).length}
+            onExport={exportSeries}
+            title="Export this member's performance series"
+          />
           <button
             onClick={() => setAdding((v) => !v)}
             className="inline-flex items-center gap-1 h-7 px-2 border border-gray-200 rounded-lg text-[10px] font-bold text-gray-600 hover:bg-gray-50"
@@ -195,7 +243,7 @@ function Sparkline({ analytic }: { analytic: NonNullable<import('../../../servic
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-14">
       <rect x={0} y={Y(band[1])} width={W} height={Math.max(1, Y(band[0]) - Y(band[1]))} fill="#f3f4f6" />
       <line x1={0} y1={Y(median)} x2={W} y2={Y(median)} stroke="#d1d5db" strokeDasharray="3 3" />
-      <path d={path} fill="none" stroke="#cd2d5b" strokeWidth={2} />
+      <path d={path} fill="none" stroke="#9E4249" strokeWidth={2} />
     </svg>
   )
 }

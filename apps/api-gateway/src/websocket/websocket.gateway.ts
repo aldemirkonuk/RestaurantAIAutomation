@@ -26,6 +26,7 @@ import { Server, Socket } from "socket.io";
 import { Interval } from "@nestjs/schedule";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
+import { resolveJwtSecret } from "../auth/jwt-secret";
 
 // =============================================================================
 // TYPES & INTERFACES
@@ -652,9 +653,9 @@ export class WebsocketGateway
     if (token) {
       try {
         const payload = this.jwtService.verify(token, {
-          secret:
-            this.configService.get<string>("JWT_SECRET") ||
-            "your-secret-key-change-in-production",
+          secret: resolveJwtSecret(
+            this.configService.get<string>("JWT_SECRET"),
+          ),
         }) as { sub?: string; restaurantId?: string };
 
         return {

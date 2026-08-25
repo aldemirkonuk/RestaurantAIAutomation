@@ -262,9 +262,9 @@ This is an automated alert from WineOps AI.
    * Send a BATCHED low-stock digest — many wines in one email. Replaces the
    * per-wine loop so N low wines produce a single email instead of N.
    */
-  async sendLowStockDigest(data: LowStockDigestData & { to: string[] }): Promise<
-    EmailResult
-  > {
+  async sendLowStockDigest(
+    data: LowStockDigestData & { to: string[] },
+  ): Promise<EmailResult> {
     const html = lowStockDigestTemplate(data);
     const total = data.wines.length;
     const criticalCount = data.wines.filter(

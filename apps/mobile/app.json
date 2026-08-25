@@ -1,40 +1,58 @@
 {
   "expo": {
-    "name": "WineOps AI",
+    "name": "WineOps",
     "slug": "wineops-ai",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#6B1B3D"
+      "backgroundColor": "#7C1D3C"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "ai.wineops.mobile"
+      "bundleIdentifier": "ai.wineops.mobile",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Unlock WineOps with Face ID instead of typing your password.",
+        "NSCameraUsageDescription": "The camera scans bottle barcodes and labels while receiving deliveries."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#6B1B3D"
+        "backgroundColor": "#7C1D3C"
       },
       "package": "ai.wineops.mobile",
-      "permissions": [
-        "CAMERA",
-        "NOTIFICATIONS"
-      ]
+      "permissions": ["CAMERA", "NOTIFICATIONS", "USE_BIOMETRIC", "USE_FINGERPRINT"]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "scheme": "wineops",
     "plugins": [
-      "expo-secure-store"
-    ]
+      "expo-router",
+      "expo-secure-store",
+      "expo-local-authentication",
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "color": "#7C1D3C"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "The camera scans bottle barcodes and labels while receiving deliveries."
+        }
+      ]
+    ],
+    "extra": {
+      "router": {}
+    }
   }
 }

@@ -1,0 +1,1355 @@
+{
+ "menu": "Piccolo_Sogno_Wine_Menu.pdf",
+ "pages": 4,
+ "wine_count": 169,
+ "seconds": 62.8,
+ "wines": [
+  {
+   "name": "Prosecco DOC",
+   "producer": "Piccolo Sogno",
+   "category": "sparkling",
+   "vintage": "N.V.",
+   "region": "Veneto",
+   "by_glass_price": 12.0,
+   "bottle_price": 48.0
+  },
+  {
+   "name": "Franciacorta Brut DOCG",
+   "producer": "Contadi Castaldi",
+   "category": "sparkling",
+   "vintage": "N.V.",
+   "region": "Lombardia",
+   "by_glass_price": 15.0,
+   "bottle_price": 60.0
+  },
+  {
+   "name": "Arneis Langhe DOC",
+   "producer": "Ceretto",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Piemonte",
+   "by_glass_price": 16.0,
+   "bottle_price": 64.0
+  },
+  {
+   "name": "Pecorino Torre di Chieti IGT",
+   "producer": "Lunaria",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Abruzzo",
+   "by_glass_price": 13.0,
+   "bottle_price": 52.0
+  },
+  {
+   "name": "Pinot Grigio DOC",
+   "producer": "Pitars",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Friuli-Venezia Giulia",
+   "by_glass_price": 13.0,
+   "bottle_price": 52.0
+  },
+  {
+   "name": "Verdicchio Classico DOC",
+   "producer": "Bucci",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Marche",
+   "by_glass_price": 14.0,
+   "bottle_price": 56.0
+  },
+  {
+   "name": "Pinot Bianco DOC",
+   "producer": "Kettmeir",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Trentino Alto Adige",
+   "by_glass_price": 13.0,
+   "bottle_price": 52.0
+  },
+  {
+   "name": "Soave Classico DOC",
+   "producer": "Pieropan",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Veneto",
+   "by_glass_price": 12.0,
+   "bottle_price": 48.0
+  },
+  {
+   "name": "Sauvignon DOC",
+   "producer": "Pitars",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Friuli-Venezia Giulia",
+   "by_glass_price": 13.0,
+   "bottle_price": 52.0
+  },
+  {
+   "name": "Gavi Cortesi di Gavi DOCG",
+   "producer": "Banfi",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Piemonte",
+   "by_glass_price": 13.0,
+   "bottle_price": 52.0
+  },
+  {
+   "name": "Chardonnay IGT",
+   "producer": "Antinori",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Umbria",
+   "by_glass_price": 13.0,
+   "bottle_price": 52.0
+  },
+  {
+   "name": "Rosato Salento IGT",
+   "producer": "Tormaresca",
+   "category": "rosé",
+   "vintage": "2024",
+   "region": "Puglia",
+   "by_glass_price": 12.0,
+   "bottle_price": 48.0
+  },
+  {
+   "name": "Primitivo Salento IGT",
+   "producer": "Rocca Dei Mori",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Puglia",
+   "by_glass_price": 14.0,
+   "bottle_price": 56.0
+  },
+  {
+   "name": "Chianti Classico Riserva DOCG",
+   "producer": "La Pergola Degli Uberti",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Toscana",
+   "by_glass_price": 15.0,
+   "bottle_price": 60.0
+  },
+  {
+   "name": "Pinot Noir IGT",
+   "producer": "Enrico Marcato",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Veneto",
+   "by_glass_price": 13.0,
+   "bottle_price": 52.0
+  },
+  {
+   "name": "Nero D'Avola IGT",
+   "producer": "Feudo Macari",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Sicilia",
+   "by_glass_price": 16.0,
+   "bottle_price": 64.0
+  },
+  {
+   "name": "Amarone Della Valpolicella DOCG",
+   "producer": "Luigi Righetti",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Veneto",
+   "by_glass_price": 22.0,
+   "bottle_price": 88.0
+  },
+  {
+   "name": "Barolo DOCG",
+   "producer": "San Silvestro",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Piemonte",
+   "by_glass_price": 21.0,
+   "bottle_price": 84.0
+  },
+  {
+   "name": "Montepulciano D'Abruzzo Riserva DOP",
+   "producer": "Barone di Valforte",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Abruzzo",
+   "by_glass_price": 14.0,
+   "bottle_price": 56.0
+  },
+  {
+   "name": "Supremus IGT",
+   "producer": "Monte Antico",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Toscana",
+   "by_glass_price": 18.0,
+   "bottle_price": 72.0
+  },
+  {
+   "name": "Etna Rosso DOC",
+   "producer": "Cusumano",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Sicilia",
+   "by_glass_price": 15.0,
+   "bottle_price": 60.0
+  },
+  {
+   "name": "Rose Brut",
+   "producer": "Principe Corsini",
+   "category": "sparkling",
+   "vintage": "N.V.",
+   "region": "Toscana",
+   "bottle_price": 45.0
+  },
+  {
+   "name": "Prosecco Brut DOC",
+   "producer": "Bisol",
+   "category": "sparkling",
+   "vintage": "N.V.",
+   "region": "Veneto",
+   "bottle_price": 48.0
+  },
+  {
+   "name": "Prosecco DOCG",
+   "producer": "Nino Franco",
+   "category": "sparkling",
+   "vintage": "N.V.",
+   "region": "Veneto",
+   "bottle_price": 58.0
+  },
+  {
+   "name": "Spumante Brut",
+   "producer": "Nino Franco",
+   "category": "sparkling",
+   "vintage": "N.V.",
+   "region": "Veneto",
+   "bottle_price": 115.0
+  },
+  {
+   "name": "Franciacorta Brut Rose DOCG",
+   "producer": "Ricci Curbastro",
+   "category": "sparkling",
+   "vintage": "N.V.",
+   "region": "Lombardia",
+   "bottle_price": 90.0
+  },
+  {
+   "name": "Franciacorta Cuvee Prestige Brut DOCG",
+   "producer": "Ca'del Bosco",
+   "category": "sparkling",
+   "vintage": "N.V.",
+   "region": "Lombardia",
+   "bottle_price": 95.0
+  },
+  {
+   "name": "Rose Metodo Classico Brut IGT",
+   "producer": "Il Borro",
+   "category": "sparkling",
+   "vintage": "2013",
+   "region": "Toscana",
+   "bottle_price": 225.0
+  },
+  {
+   "name": "Pinot Grigio IGT",
+   "producer": "Bollini",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Trentino Alto Adige",
+   "bottle_price": 36.0
+  },
+  {
+   "name": "Pinot Grigio DOC",
+   "producer": "Tenuta Fernanda Cappello",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Friuli-Venezia Giulia",
+   "bottle_price": 38.0
+  },
+  {
+   "name": "Pinot Grigio Delle Venezie DOC",
+   "producer": "Tenuta Giacobbe",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Veneto",
+   "bottle_price": 45.0
+  },
+  {
+   "name": "Pinot Grigio DOC",
+   "producer": "Terlato",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Friuli-Venezia Giulia",
+   "bottle_price": 48.0
+  },
+  {
+   "name": "Pinot Grigio Ramato DOC",
+   "producer": "Perusini",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Friuli-Venezia Giulia",
+   "bottle_price": 50.0
+  },
+  {
+   "name": "Pino Grigio DOC",
+   "producer": "Livio Felluga",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Friuli-Venezia Giulia",
+   "bottle_price": 60.0
+  },
+  {
+   "name": "Friulano DOC",
+   "producer": "Due del Monte",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Friuli-Venezia Giulia",
+   "bottle_price": 87.0
+  },
+  {
+   "name": "Chardonnay DOC",
+   "producer": "Pitars",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Friuli-Venezia Giulia",
+   "bottle_price": 54.0
+  },
+  {
+   "name": "Chardonnay DOC",
+   "producer": "Pio Cesare",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Piemonte",
+   "bottle_price": 60.0
+  },
+  {
+   "name": "Sauvignon DOC",
+   "producer": "Perusini",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Friuli-Venezia Giulia",
+   "bottle_price": 50.0
+  },
+  {
+   "name": "Sauvignon DOC",
+   "producer": "Tenuta Fernanda Cappello",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Friuli-Venezia Giulia",
+   "bottle_price": 40.0
+  },
+  {
+   "name": "Sauvignon Blanc DOC",
+   "producer": "Cantina Puiatti",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Friuli-Venezia Giulia",
+   "bottle_price": 48.0
+  },
+  {
+   "name": "Sauvignon DOC",
+   "producer": "Marco Felluga",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Friuli-Venezia Giulia",
+   "bottle_price": 110.0
+  },
+  {
+   "name": "Vintage Tunina",
+   "producer": "Jermann",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Friuli-Venezia Giulia",
+   "bottle_price": 160.0
+  },
+  {
+   "name": "Soave Classico DOC",
+   "producer": "Pieropan",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Veneto",
+   "bottle_price": 95.0
+  },
+  {
+   "name": "Gavi Cortesi di Gavi DOCG",
+   "producer": "Pio Cesare",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Piemonte",
+   "bottle_price": 45.0
+  },
+  {
+   "name": "Gavi Di Gavi DOCG",
+   "producer": "Villa Sparina",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Piemonte",
+   "bottle_price": 56.0
+  },
+  {
+   "name": "Gavi Cortesi di Gavi DOCG",
+   "producer": "La Scolca",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Piemonte",
+   "bottle_price": 130.0
+  },
+  {
+   "name": "Lugana DOC",
+   "producer": "Ca dei Frati",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Lombardia",
+   "bottle_price": 48.0
+  },
+  {
+   "name": "Roero Arneis DOCG",
+   "producer": "Bruno Giacosa",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Piemonte",
+   "bottle_price": 66.0
+  },
+  {
+   "name": "Vernaccia di San Gimignano DOCG",
+   "producer": "La Lastra",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Toscana",
+   "bottle_price": 45.0
+  },
+  {
+   "name": "Viognier IGT",
+   "producer": "Le Berne",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Toscana",
+   "bottle_price": 50.0
+  },
+  {
+   "name": "Vermentino - Chadonnay IGT",
+   "producer": "Tenuta Montecchiesi",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Toscana",
+   "bottle_price": 45.0
+  },
+  {
+   "name": "Chardonnay IGT",
+   "producer": "Il Borro",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Toscana",
+   "bottle_price": 58.0
+  },
+  {
+   "name": "Chardonnay IGT",
+   "producer": "Felsina",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Toscana",
+   "bottle_price": 75.0
+  },
+  {
+   "name": "Chardonnay",
+   "producer": "Querciabella",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Toscana",
+   "bottle_price": 180.0
+  },
+  {
+   "name": "Grechetto IGT",
+   "producer": "Roccafiore",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Umbria",
+   "bottle_price": 50.0
+  },
+  {
+   "name": "Chardonnay IGT",
+   "producer": "Drei Dona",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Emilia-Romagna",
+   "bottle_price": 60.0
+  },
+  {
+   "name": "Catarratto DOC",
+   "producer": "Luna Sicana",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Sicilia",
+   "bottle_price": 52.0
+  },
+  {
+   "name": "Chardonnay",
+   "producer": "Tormaresca",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Puglia",
+   "bottle_price": 38.0
+  },
+  {
+   "name": "Chardonnay DOC",
+   "producer": "Planeta",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Sicilia",
+   "bottle_price": 110.0
+  },
+  {
+   "name": "Chardonnay IGP",
+   "producer": "Passopisciaro",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Sicilia",
+   "bottle_price": 80.0
+  },
+  {
+   "name": "Falanghina Falerno Del Massico Bianco DOP",
+   "producer": "Villa Matilde",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Campania",
+   "bottle_price": 60.0
+  },
+  {
+   "name": "Greco Di Tufo DOCG",
+   "producer": "Feudi San Gregorio",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Campania",
+   "bottle_price": 45.0
+  },
+  {
+   "name": "Pecorino DOP",
+   "producer": "Barone di Valforte",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Abruzzo",
+   "bottle_price": 42.0
+  },
+  {
+   "name": "Fiano Di Avelino DOCG",
+   "producer": "Rocca Del Principe",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Campania",
+   "bottle_price": 55.0
+  },
+  {
+   "name": "Etna Bianco DOC",
+   "producer": "Girolamo Russo",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Sicilia",
+   "bottle_price": 90.0
+  },
+  {
+   "name": "Rosato DOC",
+   "producer": "Ca dei Frati",
+   "category": "rosé",
+   "vintage": "2024",
+   "region": "Lombardia",
+   "bottle_price": 60.0
+  },
+  {
+   "name": "Etna Rosato DOC",
+   "producer": "Girolamo Russo",
+   "category": "rosé",
+   "vintage": "2024",
+   "region": "Sicilia",
+   "bottle_price": 65.0
+  },
+  {
+   "name": "Rosato IGT",
+   "producer": "Il Borro",
+   "category": "rosé",
+   "vintage": "2024",
+   "region": "Toscana",
+   "bottle_price": 40.0
+  },
+  {
+   "name": "Pinot Nero IGT",
+   "producer": "Marco Donati",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Trentino-Alto Adige",
+   "bottle_price": 48.0
+  },
+  {
+   "name": "Pinot Nero DOC",
+   "producer": "Conte D'Attimis-Maniago",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Friuli-Venezia Giulia",
+   "bottle_price": 50.0
+  },
+  {
+   "name": "Pinot Nero DOC",
+   "producer": "Tenuta Mazzolino",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Lombardia",
+   "bottle_price": 95.0
+  },
+  {
+   "name": "Perla Nera",
+   "producer": "Vini Belluzzo",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Venezia Giulia",
+   "bottle_price": 65.0
+  },
+  {
+   "name": "Refosco Dal Penducolo Rosso DOC",
+   "producer": "Perusini",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Friuli-Venezia Giulia",
+   "bottle_price": 60.0
+  },
+  {
+   "name": "Valpolicella Ripasso DOC",
+   "producer": "Musella",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Veneto",
+   "bottle_price": 55.0
+  },
+  {
+   "name": "Valpolicella DOC",
+   "producer": "Bertani",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Veneto",
+   "bottle_price": 48.0
+  },
+  {
+   "name": "Valpolicella Ripasso DOC",
+   "producer": "Montecariano",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Veneto",
+   "bottle_price": 65.0
+  },
+  {
+   "name": "Appassimento",
+   "producer": "Domini Veneti",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Veneto",
+   "bottle_price": 70.0
+  },
+  {
+   "name": "Valpolicella Ripasso DOC",
+   "producer": "Cesari",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Veneto",
+   "bottle_price": 84.0
+  },
+  {
+   "name": "Amarone della Valpolicella Classico DOCG",
+   "producer": "Le Ragose",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Veneto",
+   "bottle_price": 110.0
+  },
+  {
+   "name": "Amarone della Valpolicella Classico DOCG",
+   "producer": "Musella",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Veneto",
+   "bottle_price": 115.0
+  },
+  {
+   "name": "Amarone della Valpolicella Classico DOCG",
+   "producer": "Domini Veneti",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Veneto",
+   "bottle_price": 125.0
+  },
+  {
+   "name": "Amarone della Valpolicella Classico DOCG",
+   "producer": "Masi",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Veneto",
+   "bottle_price": 140.0
+  },
+  {
+   "name": "Amarone della Valpolicella Classico DOCG",
+   "producer": "Bertani",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Veneto",
+   "bottle_price": 140.0
+  },
+  {
+   "name": "Amarone della Valpolicella Classico Riserva DOCG",
+   "producer": "Musella",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Veneto",
+   "bottle_price": 155.0
+  },
+  {
+   "name": "Amarone della Valpolicella Classico DOCG",
+   "producer": "Allegrini",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Veneto",
+   "bottle_price": 190.0
+  },
+  {
+   "name": "Gattinara DOCG",
+   "producer": "Travaglini",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Piemonte",
+   "bottle_price": 80.0
+  },
+  {
+   "name": "Barbera D'Alba DOCG",
+   "producer": "Marcarini Ciabot Camerano",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Piemonte",
+   "bottle_price": 40.0
+  },
+  {
+   "name": "Barbera D'Alba DOC",
+   "producer": "Pertinace",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Piemonte",
+   "bottle_price": 40.0
+  },
+  {
+   "name": "Barbera Del Monferrato DOC",
+   "producer": "Villa Sparina",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Piemonte",
+   "bottle_price": 44.0
+  },
+  {
+   "name": "Barbera D'Alba DOC",
+   "producer": "Pio Cesare",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Piemonte",
+   "bottle_price": 65.0
+  },
+  {
+   "name": "Barbaresco DOCG",
+   "producer": "Fontanabianca",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Piemonte",
+   "bottle_price": 90.0
+  },
+  {
+   "name": "Barbaresco DOCG",
+   "producer": "Carlo Giacosa",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Piemonte",
+   "bottle_price": 110.0
+  },
+  {
+   "name": "Barbaresco-Langhe DOC",
+   "producer": "Gaja",
+   "category": "red",
+   "vintage": "2011",
+   "region": "Piemonte",
+   "bottle_price": 1500.0
+  },
+  {
+   "name": "Barolo DOCG",
+   "producer": "Duchessa Lia",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Piemonte",
+   "bottle_price": 90.0
+  },
+  {
+   "name": "Barolo DOCG",
+   "producer": "Pertinace",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Piemonte",
+   "bottle_price": 95.0
+  },
+  {
+   "name": "Barolo DOCG",
+   "producer": "Franco Molino",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Piemonte",
+   "bottle_price": 110.0
+  },
+  {
+   "name": "Barolo DOCG",
+   "producer": "Pincipiano",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Piemonte",
+   "bottle_price": 80.0
+  },
+  {
+   "name": "Barolo DOCG",
+   "producer": "Gianni Gagliardo",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Piemonte",
+   "bottle_price": 145.0
+  },
+  {
+   "name": "Barolo Riserva DOCG",
+   "producer": "Costa Di Bussia",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Piemonte",
+   "bottle_price": 150.0
+  },
+  {
+   "name": "Chianti Classico DOCG",
+   "producer": "Mazzei",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Toscana",
+   "bottle_price": 50.0
+  },
+  {
+   "name": "Chianti Classico DOCG",
+   "producer": "Villa Calcinaia",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Toscana",
+   "bottle_price": 44.0
+  },
+  {
+   "name": "Chianti Classico Riserva DOCG",
+   "producer": "Nozzole",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Toscana",
+   "bottle_price": 70.0
+  },
+  {
+   "name": "Chianti Rufina DOCG",
+   "producer": "Frescobaldi",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Toscana",
+   "bottle_price": 60.0
+  },
+  {
+   "name": "Chianti Classico",
+   "producer": "Felsina",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Toscana",
+   "bottle_price": 70.0
+  },
+  {
+   "name": "Chianti Classico Riserva DOCG",
+   "producer": "Mazzei",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Toscana",
+   "bottle_price": 85.0
+  },
+  {
+   "name": "Rosso Di Montepulciano DOC",
+   "producer": "Poliziano",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Toscana",
+   "bottle_price": 55.0
+  },
+  {
+   "name": "Rosso Di Montalcino DOC",
+   "producer": "Col D'Orcia",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Toscana",
+   "bottle_price": 60.0
+  },
+  {
+   "name": "Rosso Di Montalcino DOC",
+   "producer": "Banfi",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Toscana",
+   "bottle_price": 55.0
+  },
+  {
+   "name": "Rosso Di Montalcino DOC",
+   "producer": "Ridolfi",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Toscana",
+   "bottle_price": 58.0
+  },
+  {
+   "name": "Vino Nobile Di Montepulciano DOCG",
+   "producer": "Poliziano",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Toscana",
+   "bottle_price": 65.0
+  },
+  {
+   "name": "Vino Nobile Di Montepulciano Riserva DOCG",
+   "producer": "Le Berne",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Toscana",
+   "bottle_price": 95.0
+  },
+  {
+   "name": "Montefalcoo Sagrantino DOCG",
+   "producer": "Roccafiore",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Umbria",
+   "bottle_price": 70.0
+  },
+  {
+   "name": "Brunello Di Montalcino DOCG",
+   "producer": "San Fiorenzo",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Toscana",
+   "bottle_price": 90.0
+  },
+  {
+   "name": "Brunello Di Montalcino DOCG",
+   "producer": "Caparzo",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Toscana",
+   "bottle_price": 100.0
+  },
+  {
+   "name": "Brunello Di Montalcino DOCG",
+   "producer": "Cerbaia",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Toscana",
+   "bottle_price": 110.0
+  },
+  {
+   "name": "Brunello Di Montalcino DOCG",
+   "producer": "Caprilli",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Toscana",
+   "bottle_price": 115.0
+  },
+  {
+   "name": "Rosso IGT",
+   "producer": "Zanelli",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Toscana",
+   "bottle_price": 50.0
+  },
+  {
+   "name": "Mongrana",
+   "producer": "Querciabella",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Toscana",
+   "bottle_price": 55.0
+  },
+  {
+   "name": "Villa Antinori Rosso IGT",
+   "producer": "Antinori",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Toscana",
+   "bottle_price": 50.0
+  },
+  {
+   "name": "Modus",
+   "producer": "Ruffino",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Toscana",
+   "bottle_price": 60.0
+  },
+  {
+   "name": "Belnero",
+   "producer": "Banfi",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Toscana",
+   "bottle_price": 63.0
+  },
+  {
+   "name": "Bolgheri Rosso IGT",
+   "producer": "I Greppi",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Toscana",
+   "bottle_price": 65.0
+  },
+  {
+   "name": "Le Volte",
+   "producer": "Ornellaia",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Toscana",
+   "bottle_price": 66.0
+  },
+  {
+   "name": "Governo",
+   "producer": "Villa Puccini",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Toscana",
+   "bottle_price": 68.0
+  },
+  {
+   "name": "IL Bruciato",
+   "producer": "Tenuta Guado Al Tasso",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Toscana",
+   "bottle_price": 70.0
+  },
+  {
+   "name": "Capatosta",
+   "producer": "Poggio Argentiera",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Toscana",
+   "bottle_price": 70.0
+  },
+  {
+   "name": "Le Cupole IGT",
+   "producer": "Tenuta di Trinoro",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Toscana",
+   "bottle_price": 80.0
+  },
+  {
+   "name": "Philip IGT",
+   "producer": "Mazzei",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Toscana",
+   "bottle_price": 90.0
+  },
+  {
+   "name": "Bolgheri Rosso DOC",
+   "producer": "Le Macchiole",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Toscana",
+   "bottle_price": 90.0
+  },
+  {
+   "name": "Il Carbonaione",
+   "producer": "Podere Poggio Scalette",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Toscana",
+   "bottle_price": 100.0
+  },
+  {
+   "name": "Marsiliana",
+   "producer": "Principe Corsini",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Toscana",
+   "bottle_price": 100.0
+  },
+  {
+   "name": "Birba",
+   "producer": "La Gerla",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Toscana",
+   "bottle_price": 120.0
+  },
+  {
+   "name": "Le Serre Nuove",
+   "producer": "Ornellaia",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Toscana",
+   "bottle_price": 150.0
+  },
+  {
+   "name": "Promis",
+   "producer": "Ca'Marcanda Gaja",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Toscana",
+   "bottle_price": 120.0
+  },
+  {
+   "name": "Fontalloro",
+   "producer": "Felsina",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Toscana",
+   "bottle_price": 170.0
+  },
+  {
+   "name": "Concerto",
+   "producer": "Mazzei",
+   "category": "red",
+   "vintage": "2016",
+   "region": "Toscana",
+   "bottle_price": 180.0
+  },
+  {
+   "name": "Solengo",
+   "producer": "Argiano",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Toscana",
+   "bottle_price": 180.0
+  },
+  {
+   "name": "Testamatta IGT",
+   "producer": "Bibi Graetz",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Toscana",
+   "bottle_price": 230.0
+  },
+  {
+   "name": "Siepi",
+   "producer": "Mazzei",
+   "category": "red",
+   "vintage": "2016",
+   "region": "Toscana",
+   "bottle_price": 280.0
+  },
+  {
+   "name": "Tignanello",
+   "producer": "Antinori",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Toscana",
+   "bottle_price": 360.0
+  },
+  {
+   "name": "Ornellaia",
+   "producer": "Tenuta dell'Ornellaia",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Toscana",
+   "bottle_price": 600.0
+  },
+  {
+   "name": "Sassicaia",
+   "producer": "Tenuta San Guido",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Toscana",
+   "bottle_price": 600.0
+  },
+  {
+   "name": "Montepulciano D'Abruzzo DOC",
+   "producer": "La Valentina",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Abruzzo",
+   "bottle_price": 110.0
+  },
+  {
+   "name": "Rosso Appassimento",
+   "producer": "Feudi Salentini",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Puglia",
+   "bottle_price": 50.0
+  },
+  {
+   "name": "Aglianico DOC",
+   "producer": "Bocca Di Lupo",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Puglia",
+   "bottle_price": 65.0
+  },
+  {
+   "name": "Aglianico Riserva DOP",
+   "producer": "Terre Stregate",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Campania",
+   "bottle_price": 80.0
+  },
+  {
+   "name": "Cabernet DOC",
+   "producer": "Bocca Di Lupo",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Puglia",
+   "bottle_price": 60.0
+  },
+  {
+   "name": "Primitivo IGT",
+   "producer": "Coppi",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Puglia",
+   "bottle_price": 50.0
+  },
+  {
+   "name": "Primitivo Salento Torcicoda IGT",
+   "producer": "Tormaresca",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Puglia",
+   "bottle_price": 60.0
+  },
+  {
+   "name": "Primitivo Di Manduria DOP",
+   "producer": "San Marzano",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Puglia",
+   "bottle_price": 95.0
+  },
+  {
+   "name": "Nero D'Avola DOC",
+   "producer": "Tenuta Regaleali",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Sicilia",
+   "bottle_price": 52.0
+  },
+  {
+   "name": "Nero D'Avola DOC",
+   "producer": "Mazzei",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Sicilia",
+   "bottle_price": 60.0
+  },
+  {
+   "name": "Nerello Mascalese DOC",
+   "producer": "Passopisciaro",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Sicilia",
+   "bottle_price": 80.0
+  },
+  {
+   "name": "Etna Rosso DOC",
+   "producer": "Tenuta delle Terre Nere",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Sicilia",
+   "bottle_price": 70.0
+  },
+  {
+   "name": "Aglianico DOC",
+   "producer": "Di Majo Norante",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Molise",
+   "bottle_price": 50.0
+  },
+  {
+   "name": "Montepulciano Riserva DOC",
+   "producer": "Di Majo Norante",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Molise",
+   "bottle_price": 75.0
+  },
+  {
+   "name": "Menabrea Bionda",
+   "producer": "Menabrea",
+   "category": "beer",
+   "bottle_price": 7.0
+  },
+  {
+   "name": "Menabrea Ambrata",
+   "producer": "Menabrea",
+   "category": "beer",
+   "bottle_price": 7.0
+  },
+  {
+   "name": "Peroni 'Nastro Azzuro'",
+   "producer": "Peroni",
+   "category": "beer",
+   "bottle_price": 7.0
+  },
+  {
+   "name": "Peroni 0.0% 'Nastro Azzuro'",
+   "producer": "Peroni",
+   "category": "beer",
+   "bottle_price": 7.0
+  },
+  {
+   "name": "Lagunitas IPA",
+   "producer": "Lagunitas",
+   "category": "beer",
+   "bottle_price": 8.0
+  },
+  {
+   "name": "Goose Island '312'",
+   "producer": "Goose Island",
+   "category": "beer",
+   "bottle_price": 7.0
+  },
+  {
+   "name": "Goose Island 'Matilda'",
+   "producer": "Goose Island",
+   "category": "beer",
+   "bottle_price": 8.0
+  },
+  {
+   "name": "Krombacher",
+   "producer": "Krombacher",
+   "category": "beer",
+   "bottle_price": 7.0
+  },
+  {
+   "name": "Amstel Light",
+   "producer": "Amstel Light",
+   "category": "beer",
+   "bottle_price": 7.0
+  },
+  {
+   "name": "Heineken",
+   "producer": "Heineken",
+   "category": "beer",
+   "bottle_price": 7.0
+  },
+  {
+   "name": "Miller Lite",
+   "producer": "Miller Lite",
+   "category": "beer",
+   "bottle_price": 5.0
+  },
+  {
+   "name": "Blitz",
+   "producer": "Felsina",
+   "category": "beer",
+   "bottle_price": 8.0
+  },
+  {
+   "name": "Red Iga",
+   "producer": "Felsina",
+   "category": "beer",
+   "bottle_price": 12.0
+  }
+ ]
+}

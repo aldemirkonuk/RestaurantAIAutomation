@@ -109,10 +109,14 @@ export class ToastService {
     timestamp: string,
   ): boolean {
     if (!this.webhookSecret) {
-      this.logger.warn(
-        "Webhook signature verification skipped - no secret configured",
+      // SimPOS testbed plan (decision B16): fail closed. A missing
+      // TOAST_WEBHOOK_SECRET must reject every signed request, not wave
+      // everything through — mock mode (this.mockMode, checked by callers)
+      // is the intended way to run without a real secret.
+      this.logger.error(
+        "Webhook signature verification failed - no secret configured (fail closed)",
       );
-      return true; // Allow in development/testing
+      return false;
     }
 
     try {
@@ -195,8 +199,17 @@ export class ToastService {
             HttpStatus.UNAUTHORIZED,
           );
         }
+      } else if (!this.webhookSecret && !this.mockMode) {
+        // Secret not configured outside mock mode: previously this fell through and
+        // accepted an unsigned webhook silently. Refuse instead — a POS ingress route
+        // that mutates stock must never accept unverifiable input.
+        this.webhookMetrics.errors++;
+        throw new HttpException(
+          "Toast webhook rejected: TOAST_WEBHOOK_SECRET is not configured",
+          HttpStatus.UNAUTHORIZED,
+        );
       } else if (this.webhookSecret && !this.mockMode) {
-        // In production with secret configured, require signature
+        // Secret configured but caller sent no signature — already fail-closed.
         this.webhookMetrics.errors++;
         throw new HttpException(
           "Missing webhook signature",
@@ -430,62 +443,103 @@ export class ToastService {
       const qty = Math.max(0, Math.round(line.quantity ?? 0));
       if (!menuGuid || qty <= 0) continue;
 
-      // Resolve mapping: Toast menu item → inventory item + sale unit.
+      // Mapping-table-first resolution (decision B21/B22): pos_item_mappings
+      // is the provider-agnostic table (source='toast', external_item_id=
+      // Toast's item guid). toast_item_mappings is retired — its extra
+      // columns (sale_unit, sales rollups) were migrated onto
+      // pos_item_mappings in the SimPOS testbed spine repair.
       const { data: mapping } = await db
-        .from("toast_item_mappings")
-        .select("inventory_id, sale_unit, toast_item_name")
+        .from("pos_item_mappings")
+        .select("inventory_id, sale_unit, item_name")
         .eq("restaurant_id", restaurantId)
-        .eq("toast_guid", menuGuid)
+        .in("source", ["toast", "*"])
+        .eq("external_item_id", menuGuid)
         .maybeSingle();
 
       let inventoryId = mapping?.inventory_id as string | undefined;
-      const saleUnit = mapping?.sale_unit as "glass" | "bottle" | null | undefined;
-      const itemName = (mapping?.toast_item_name || line.name || "").toLowerCase();
+      // B36: sale unit comes from the mapping row only — never inferred
+      // from the item name. A wrong glass/bottle unit is a silent cost
+      // error, so an unmapped sale unit falls back to "bottle" rather than
+      // guessing from a name-regex.
+      const saleUnit =
+        (mapping?.sale_unit as "glass" | "bottle" | null) ?? null;
 
-      // Fallback: single-guid mapping on restaurant_inventory.toast_item_guid.
-      let invSaleType: string | undefined;
+      // Fallback: single-guid mapping on restaurant_inventory.toast_item_guid
+      // (pre-dates pos_item_mappings; still honoured for older data, sale
+      // unit still resolved through the mapping table only).
       if (!inventoryId) {
         const { data: inv } = await db
           .from("restaurant_inventory")
-          .select("id, sale_type")
+          .select("id")
           .eq("restaurant_id", restaurantId)
           .eq("toast_item_guid", menuGuid)
           .maybeSingle();
         inventoryId = inv?.id as string | undefined;
-        invSaleType = inv?.sale_type as string | undefined;
       }
+
       if (!inventoryId) {
-        this.logger.debug(
-          `POS sale: no inventory mapping for Toast item ${menuGuid} (${line.name}); skipping`,
-        );
+        // B20: an unmapped POS line is queued for review, never silently
+        // dropped. supabase-js resolves { error } rather than throwing on
+        // the partial unique index, so a 23505 here just means it's
+        // already queued and open.
+        const { error: queueError } = await db
+          .from("pos_unresolved_lines")
+          .insert({
+            restaurant_id: restaurantId,
+            source: "toast",
+            external_check_id: order.guid,
+            external_item_id: menuGuid,
+            item_name: line.name ?? mapping?.item_name ?? "unknown",
+            qty,
+            price: line.unitPrice ?? null,
+            raw: line,
+          });
+        if (queueError && queueError.code !== "23505") {
+          this.logger.warn(
+            `Failed to queue unresolved Toast line ${line.name}: ${queueError.message}`,
+          );
+        }
         continue;
       }
 
-      // Unit: explicit mapping → name heuristic → inventory sale_type → default bottle.
-      const looksGlass = /glass|btg|by[\s-]?the[\s-]?glass|pour/.test(itemName);
-      const unit: "glass" | "bottle" =
-        saleUnit ?? (looksGlass || invSaleType === "glass" ? "glass" : "bottle");
-
+      const unit: "glass" | "bottle" = saleUnit ?? "bottle";
+      // B15-equivalent idempotency key for the Toast door specifically.
       const idem = `toast_${isVoid ? "void" : "sale"}_${order.guid}_${menuGuid}`;
+
+      // supabase-js resolves RPC failures as { error } rather than
+      // throwing — checked explicitly so a failed depletion never reports
+      // success silently (the same class of bug the receiving-door fix
+      // addressed).
+      let rpcError: { message?: string } | null = null;
       try {
         if (unit === "glass") {
           if (isVoid) {
-            this.logger.warn(
-              `POS void of a glass sale (${line.name}) is not auto-reversed; adjust manually if needed`,
-            );
-            continue;
+            // B19: voids reverse glasses as well as bottles.
+            // record_glass_pour has no reversal mode, so a glass void is
+            // booked as a live-stock return of the equivalent glass count —
+            // previously this branch logged a warning and skipped entirely.
+            ({ error: rpcError } = await db.rpc("apply_stock_movement", {
+              p_inventory_id: inventoryId,
+              p_stock_state: "live",
+              p_delta: qty,
+              p_transaction_type: "return",
+              p_source: "pos",
+              p_reason: `POS void (glass): ${line.name}`,
+              p_idempotency_key: idem,
+            }));
+          } else {
+            ({ error: rpcError } = await db.rpc("record_glass_pour", {
+              p_inventory_id: inventoryId,
+              p_pours: qty,
+              p_pour_ml: null,
+              p_location_id: null,
+              p_source: "pos",
+              p_reason: `POS sale: ${line.name}`,
+              p_idempotency_key: idem,
+            }));
           }
-          await db.rpc("record_glass_pour", {
-            p_inventory_id: inventoryId,
-            p_pours: qty,
-            p_pour_ml: null,
-            p_location_id: null,
-            p_source: "pos",
-            p_reason: `POS sale: ${line.name}`,
-            p_idempotency_key: idem,
-          });
         } else {
-          await db.rpc("apply_stock_movement", {
+          ({ error: rpcError } = await db.rpc("apply_stock_movement", {
             p_inventory_id: inventoryId,
             p_stock_state: "live",
             p_delta: isVoid ? qty : -qty,
@@ -493,12 +547,18 @@ export class ToastService {
             p_source: "pos",
             p_reason: `POS ${isVoid ? "void" : "sale"}: ${line.name}`,
             p_idempotency_key: idem,
-          });
+          }));
         }
-        affectedInventoryIds.add(inventoryId);
+        if (rpcError) {
+          this.logger.warn(
+            `POS sale effect failed for ${line.name} (${unit}): ${rpcError.message}`,
+          );
+        } else {
+          affectedInventoryIds.add(inventoryId);
+        }
       } catch (err: any) {
         this.logger.warn(
-          `POS sale effect failed for ${line.name} (${unit}): ${err?.message}`,
+          `POS sale effect threw for ${line.name} (${unit}): ${err?.message}`,
         );
       }
     }

@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sketch 037 — Team Command</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --wine: #cd2d5b;
+    --wine-700: #a51f47;
+    --wine-50: #fdeef2;
+    --ink: #17131c;
+    --muted: #6b6472;
+    --line: #ece8ef;
+    --bg: #f4f2f6;
+    --ok: #12a150;
+    --ok-bg: #e8f7ee;
+    --warn: #e07b00;
+    --warn-bg: #fdf3e3;
+    --crit: #d92d20;
+    --crit-bg: #fdecea;
+    --blue: #3b5bdb;
+    --blue-bg: #eef2ff;
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  * { box-sizing: border-box; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+  body {
+    margin: 0;
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+    color: var(--ink);
+    background: radial-gradient(900px 420px at 10% -10%, #fbe9ef 0%, transparent 55%), var(--bg);
+    -webkit-font-smoothing: antialiased;
+    padding: 32px 24px 72px;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; }
+  .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--wine); }
+  h1 { font-size: 26px; font-weight: 800; letter-spacing: -.035em; margin: 6px 0 6px; }
+  .q { font-size: 13.5px; color: var(--muted); max-width: 780px; line-height: 1.55; margin: 0 0 22px; }
+
+  .app {
+    border-radius: 20px; overflow: hidden;
+    border: 1px solid rgba(255,255,255,.85);
+    background: #fbfafc;
+    box-shadow: 0 1px 2px rgba(20,15,25,.04), 0 20px 48px -20px rgba(20,15,25,.16);
+  }
+
+  /* Glass app bar */
+  .appbar {
+    position: relative; isolation: isolate;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 14px 20px;
+    border-bottom: 1px solid rgb(255 255 255 / .4);
+    background: linear-gradient(135deg, rgb(255 255 255 / .8), rgb(255 255 255 / .5));
+    backdrop-filter: blur(18px) saturate(160%);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / .6);
+  }
+  .branch { font-size: 10.5px; font-weight: 600; color: var(--muted); letter-spacing: .05em; }
+  .appbar h2 { font-size: 16px; font-weight: 800; letter-spacing: -.02em; margin: 1px 0 0; }
+  .bar-actions { display: flex; align-items: center; gap: 8px; }
+  .loc-switch { font-family: inherit; font-size: 11.5px; font-weight: 700; border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px; background: #fff; }
+  .invite {
+    position: relative; isolation: isolate; overflow: hidden;
+    font-family: inherit; font-size: 12px; font-weight: 700; color: #fff;
+    border: 1px solid rgb(255 255 255 / .2);
+    background: linear-gradient(180deg, #d93662, var(--wine));
+    border-radius: 999px; padding: 8px 15px; cursor: pointer;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / .25), 0 4px 14px rgba(205,45,91,.26);
+    transition: transform .3s var(--ease);
+  }
+  .invite::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; opacity: 0;
+    background: radial-gradient(80px circle at var(--mx,50%) var(--my,50%), rgb(255 255 255 / .35), transparent 65%);
+    transition: opacity .3s var(--ease);
+  }
+  .invite:hover { transform: scale(1.02); }
+  .invite:hover::after { opacity: 1; }
+
+  /* Tabs */
+  .tabs {
+    display: flex; gap: 4px; padding: 12px 20px 0;
+    border-bottom: 1px solid var(--line);
+    background: rgb(255 255 255 / .5);
+  }
+  .tab {
+    font-family: inherit; font-size: 12.5px; font-weight: 700; color: var(--muted);
+    background: none; border: none; cursor: pointer;
+    padding: 10px 14px; border-radius: 12px 12px 0 0; position: relative;
+    transition: color .25s var(--ease);
+  }
+  .tab .badge {
+    font-size: 9px; font-weight: 800; background: var(--crit); color: #fff;
+    border-radius: 999px; padding: 1px 6px; margin-left: 5px; vertical-align: 2px;
+  }
+  .tab.active { color: var(--ink); }
+  .tab.active::after {
+    content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px;
+    height: 2px; border-radius: 2px; background: var(--wine);
+  }
+  .pane { display: none; }
+  .pane.active { display: block; animation: fadeUp .3s var(--ease); }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  /* ═══ TONIGHT ═══ */
+  .tonight-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 18px 20px 4px; flex-wrap: wrap;
+  }
+  .tonight-head .big { font-size: 22px; font-weight: 800; letter-spacing: -.03em; }
+  .tonight-head .sub { font-size: 12px; color: var(--muted); font-weight: 500; margin-top: 2px; }
+  .cov-now { display: flex; align-items: center; gap: 8px; }
+  .cov-chip { font-size: 11px; font-weight: 800; padding: 7px 12px; border-radius: 10px; }
+  .cov-chip.warn { background: var(--warn-bg); color: var(--warn); }
+  .cov-chip small { display: block; font-size: 9px; font-weight: 600; }
+  .broadcast {
+    font-family: inherit; font-size: 11.5px; font-weight: 700; color: var(--wine-700);
+    background: var(--wine-50); border: 1px solid rgb(205 45 91 / .18);
+    border-radius: 10px; padding: 8px 12px; cursor: pointer;
+  }
+
+  .duty { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; padding: 14px 20px 6px; }
+  @media (max-width: 1000px) { .duty { grid-template-columns: repeat(2, 1fr); } }
+  .duty-card {
+    border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 12px;
+    position: relative;
+  }
+  .duty-card .status {
+    position: absolute; top: 10px; right: 10px;
+    font-size: 9px; font-weight: 800; padding: 3px 7px; border-radius: 6px;
+  }
+  .status.in { background: var(--ok-bg); color: var(--ok); }
+  .status.late { background: var(--warn-bg); color: var(--warn); }
+  .status.sick { background: var(--crit-bg); color: var(--crit); }
+  .status.due { background: #f0edf2; color: var(--muted); }
+  .avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 800;
+    background: #eeebf0; color: #5a5362; border: 1px solid var(--line);
+  }
+  .avatar.owner { background: var(--wine-50); color: var(--wine-700); }
+  .duty-card .nm { font-size: 12.5px; font-weight: 700; margin-top: 8px; }
+  .duty-card .rl { font-size: 10.5px; color: var(--muted); font-weight: 500; margin-top: 1px; }
+  .duty-card .tm { font-size: 10px; font-weight: 700; color: var(--ink); margin-top: 6px; }
+  .duty-card.gap {
+    border-style: dashed; border-color: rgb(217 45 32 / .4); background: var(--crit-bg);
+    display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
+  }
+  .duty-card.gap .nm { color: var(--crit); margin-top: 0; }
+  .fill-btn {
+    font-family: inherit; font-size: 10.5px; font-weight: 800; color: #fff;
+    background: var(--crit); border: none; border-radius: 8px; padding: 6px 10px;
+    cursor: pointer; margin-top: 8px;
+  }
+
+  .handover {
+    margin: 10px 20px 0; padding: 11px 14px; border-radius: 12px;
+    border: 1px solid var(--line); background: #fff;
+    display: flex; gap: 10px; align-items: flex-start; font-size: 12px;
+  }
+  .handover .hd { font-size: 10px; font-weight: 800; color: var(--blue); background: var(--blue-bg); border-radius: 8px; padding: 4px 8px; flex: none; }
+  .handover p { margin: 0; font-weight: 500; line-height: 1.5; }
+
+  /* Needs attention queue */
+  .queue { margin: 14px 20px 20px; border: 1px solid var(--line); border-radius: 14px; background: #fff; overflow: hidden; }
+  .queue h3 {
+    margin: 0; padding: 11px 14px; font-size: 12px; font-weight: 800;
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .queue h3 .count { font-size: 10px; font-weight: 800; background: var(--crit); color: #fff; border-radius: 999px; padding: 2px 8px; }
+  .qitem { display: flex; align-items: center; gap: 10px; padding: 11px 14px; }
+  .qitem + .qitem { border-top: 1px solid #f3f0f5; }
+  .prio { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .prio.p1 { background: var(--crit); }
+  .prio.p2 { background: var(--warn); }
+  .prio.p3 { background: var(--blue); }
+  .qitem .txt { flex: 1; min-width: 0; }
+  .qitem .t1 { font-size: 12px; font-weight: 700; }
+  .qitem .t2 { font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+  .approve, .deny, .act {
+    font-family: inherit; font-size: 10.5px; font-weight: 700; border-radius: 8px; padding: 6px 10px; cursor: pointer; border: 1px solid; flex: none;
+  }
+  .approve { background: var(--ok-bg); color: var(--ok); border-color: rgb(18 161 80 / .2); }
+  .deny { background: #fff; color: var(--muted); border-color: var(--line); }
+  .act { background: var(--blue-bg); color: var(--blue); border-color: rgb(59 91 219 / .2); }
+
+  /* ═══ SCHEDULE ═══ */
+  .sched-toolbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 16px 20px 12px; flex-wrap: wrap;
+  }
+  .week-nav { display: flex; align-items: center; gap: 8px; }
+  .wk-btn { font-family: inherit; width: 28px; height: 28px; border-radius: 9px; border: 1px solid var(--line); background: #fff; cursor: pointer; color: var(--muted); }
+  .wk-label { font-size: 13.5px; font-weight: 800; }
+  .wk-label small { display: block; font-size: 10px; font-weight: 600; color: var(--muted); }
+  .lens { display: flex; background: #efecf2; border-radius: 10px; padding: 3px; gap: 2px; }
+  .lens button {
+    font-family: inherit; font-size: 11px; font-weight: 700; color: var(--muted);
+    background: none; border: none; border-radius: 8px; padding: 6px 11px; cursor: pointer;
+    transition: all .25s var(--ease);
+  }
+  .lens button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(20,15,25,.1); }
+  .pub-group { display: flex; align-items: center; gap: 10px; }
+  .receipts { font-size: 10.5px; font-weight: 600; color: var(--muted); }
+  .receipts b { color: var(--warn); }
+  .publish {
+    font-family: inherit; font-size: 12px; font-weight: 700; color: #fff;
+    background: var(--ink); border: none; border-radius: 10px; padding: 8px 15px; cursor: pointer;
+  }
+
+  .grid-scroll { overflow-x: auto; padding: 0 20px 8px; }
+  .sgrid {
+    display: grid; grid-template-columns: 150px repeat(7, minmax(104px, 1fr));
+    min-width: 900px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff;
+  }
+  .sgrid > div { border-bottom: 1px solid var(--line); border-right: 1px solid #f3f0f5; }
+  .sgrid > div:nth-child(8n) { border-right: none; }
+  .hdrc { padding: 9px 8px; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); background: #faf9fb; text-align: center; }
+  .hdrc.evt { color: var(--wine-700); }
+  .hdrc small { display: block; font-size: 8.5px; font-weight: 600; text-transform: none; letter-spacing: 0; }
+  .hdrc:first-child { text-align: left; }
+  .rowhead { padding: 9px 12px; display: flex; align-items: center; gap: 8px; background: #faf9fb; }
+  .rowhead .avatar { width: 25px; height: 25px; font-size: 9px; }
+  .rowhead .nm { font-size: 11px; font-weight: 700; }
+  .rowhead .fair { font-size: 8.5px; font-weight: 700; color: var(--warn); }
+  .cellc { padding: 4px; min-height: 42px; display: flex; flex-direction: column; gap: 3px; justify-content: center; }
+  .cellc.off { background: repeating-linear-gradient(45deg, #fbfafc 0 6px, #f5f3f7 6px 12px); }
+  .shift { font-size: 9.5px; font-weight: 700; padding: 5px 6px; border-radius: 8px; text-align: center; line-height: 1.25; cursor: pointer; }
+  .shift small { display: block; font-size: 8px; font-weight: 600; opacity: .75; }
+  .shift.am { background: var(--blue-bg); color: var(--blue); }
+  .shift.pm { background: var(--wine-50); color: var(--wine-700); }
+  .shift.dbl { background: #f3eefc; color: #7048b6; }
+  .shift.borrow { background: var(--ok-bg); color: var(--ok); outline: 1.5px dashed rgb(18 161 80 / .4); }
+  .shift.fair-flag { outline: 2px solid var(--warn); outline-offset: 1px; }
+
+  .lens-note {
+    margin: 10px 20px 20px; padding: 9px 14px; border-radius: 12px;
+    font-size: 11.5px; font-weight: 600; display: flex; align-items: center; gap: 8px;
+  }
+  .lens-note.fairness { background: var(--warn-bg); color: var(--warn); }
+
+  /* ═══ PEOPLE ═══ */
+  .people-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 18px 20px 20px; }
+  @media (max-width: 1000px) { .people-grid { grid-template-columns: 1fr; } }
+  .pcard { border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 14px; }
+  .pcard .top { display: flex; align-items: center; gap: 10px; }
+  .pcard .nm { font-size: 13px; font-weight: 700; }
+  .pcard .ps { font-size: 10.5px; color: var(--muted); }
+  .pcard .kv { display: flex; justify-content: space-between; font-size: 11px; padding: 7px 0; border-top: 1px solid #f3f0f5; margin-top: 8px; }
+  .pcard .kv:first-of-type { margin-top: 12px; }
+  .pcard .kv .k { color: var(--muted); font-weight: 500; }
+  .pcard .kv .v { font-weight: 700; }
+  .pcard .kv .v.warn { color: var(--warn); }
+  .pcard .kv .v.ok { color: var(--ok); }
+  .milestone { margin-top: 10px; font-size: 10.5px; font-weight: 700; color: var(--wine-700); background: var(--wine-50); border-radius: 8px; padding: 6px 9px; }
+
+  .foot { text-align: center; font-size: 12px; color: var(--muted); margin-top: 26px; }
+  .foot code { background: #ebe6ef; padding: 2px 6px; border-radius: 6px; font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Sketch 037 · Team Command · ui-skill-consultant pass</div>
+  <h1>Tonight → Schedule → People</h1>
+  <p class="q">70 features, one calm surface. The manager's time horizons drive the structure: live tonight board, lens-toggled week grid, people depth in its own tab. One prioritized alert queue replaces scattered badges.</p>
+
+  <div class="app">
+
+    <header class="appbar">
+      <div>
+        <div class="branch">WineOps · Team</div>
+        <h2>Nob Hill · Wine Bar</h2>
+      </div>
+      <div class="bar-actions">
+        <select class="loc-switch">
+          <option>Nob Hill · Wine Bar</option>
+          <option>Marina · Bistro</option>
+          <option>All locations</option>
+        </select>
+        <button class="invite" type="button">Invite</button>
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="tonight" type="button">Tonight<span class="badge">4</span></button>
+      <button class="tab" data-tab="schedule" type="button">Schedule</button>
+      <button class="tab" data-tab="people" type="button">People</button>
+    </nav>
+
+    <!-- ═══ TONIGHT ═══ -->
+    <section class="pane active" id="tonight">
+      <div class="tonight-head">
+        <div>
+          <div class="big">Tuesday dinner service</div>
+          <div class="sub">Jul 14 · 4 scheduled · 1 call-in · doors 5pm</div>
+        </div>
+        <div class="cov-now">
+          <span class="cov-chip warn">3 / 4 on floor<small>short 1 server</small></span>
+          <button class="broadcast" type="button">Broadcast to tonight's crew</button>
+        </div>
+      </div>
+
+      <div class="duty">
+        <div class="duty-card">
+          <span class="status in">Clocked in</span>
+          <div class="avatar owner">MC</div>
+          <div class="nm">Mara Chen</div>
+          <div class="rl">MOD · Somm L2</div>
+          <div class="tm">4:00p - 11:00p</div>
+        </div>
+        <div class="duty-card">
+          <span class="status in">Clocked in</span>
+          <div class="avatar">JO</div>
+          <div class="nm">James Ortiz</div>
+          <div class="rl">Bar</div>
+          <div class="tm">5:00p - 11:00p</div>
+        </div>
+        <div class="duty-card">
+          <span class="status late">15 min late</span>
+          <div class="avatar">LB</div>
+          <div class="nm">Lena Baros</div>
+          <div class="rl">Sommelier</div>
+          <div class="tm">6:00p - 10:00p</div>
+        </div>
+        <div class="duty-card">
+          <span class="status sick">Called in sick</span>
+          <div class="avatar">SR</div>
+          <div class="nm">Sofia Reyes</div>
+          <div class="rl">Server</div>
+          <div class="tm">5:00p - 10:00p</div>
+        </div>
+        <div class="duty-card gap">
+          <div class="nm">Server gap · 5p-10p</div>
+          <div class="rl" style="color:var(--crit); opacity:.8">Sofia's shift needs cover</div>
+          <button class="fill-btn" type="button">Text 3 available servers</button>
+        </div>
+      </div>
+
+      <div class="handover">
+        <span class="hd">AM handover</span>
+        <p><b>Table 12 comped dessert</b> (long wait) · VIP couple at 8pm, anniversary, they drink Burgundy · Cellar delivery arrived, 2 cases need shelving before service.</p>
+      </div>
+
+      <div class="queue">
+        <h3>Needs attention <span class="count">4</span></h3>
+        <div class="qitem">
+          <span class="prio p1"></span>
+          <div class="txt">
+            <div class="t1">Tonight: server gap 5p-10p</div>
+            <div class="t2">Daniel and 2 Marina staff are available · travel-time OK</div>
+          </div>
+          <button class="act" type="button">Offer shift</button>
+        </div>
+        <div class="qitem">
+          <span class="prio p2"></span>
+          <div class="txt">
+            <div class="t1">Swap: Sofia → Daniel · Fri 18</div>
+            <div class="t2">Daniel accepted · awaiting your approval</div>
+          </div>
+          <button class="approve" type="button">Approve</button>
+          <button class="deny" type="button">Deny</button>
+        </div>
+        <div class="qitem">
+          <span class="prio p2"></span>
+          <div class="txt">
+            <div class="t1">James: alcohol service cert expires in 12 days</div>
+            <div class="t2">He can't legally pour after Jul 26 · renewal link ready</div>
+          </div>
+          <button class="act" type="button">Send renewal</button>
+        </div>
+        <div class="qitem">
+          <span class="prio p3"></span>
+          <div class="txt">
+            <div class="t1">Fairness: Sofia has closed 4 Saturdays straight</div>
+            <div class="t2">Suggest rotating Sat close to Daniel next week</div>
+          </div>
+          <button class="act" type="button">Fix in schedule</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ SCHEDULE ═══ -->
+    <section class="pane" id="schedule">
+      <div class="sched-toolbar">
+        <div class="week-nav">
+          <button class="wk-btn" type="button">‹</button>
+          <div class="wk-label">Jul 14 - Jul 20<small>Week 29 · Event template: Wine dinner (Fri)</small></div>
+          <button class="wk-btn" type="button">›</button>
+        </div>
+        <div class="lens">
+          <button class="on" type="button">Coverage</button>
+          <button type="button">Labor $</button>
+          <button type="button">Fairness</button>
+        </div>
+        <div class="pub-group">
+          <span class="receipts">Published · <b>3 of 5 seen</b> · reminders auto-send 2h before</span>
+          <button class="publish" type="button">Republish</button>
+        </div>
+      </div>
+
+      <div class="grid-scroll">
+        <div class="sgrid">
+          <div class="hdrc">Staff</div>
+          <div class="hdrc">Mon 14</div>
+          <div class="hdrc">Tue 15</div>
+          <div class="hdrc">Wed 16</div>
+          <div class="hdrc">Thu 17</div>
+          <div class="hdrc evt">Fri 18<small>Wine dinner · +3 staff</small></div>
+          <div class="hdrc evt">Sat 19</div>
+          <div class="hdrc">Sun 20</div>
+
+          <div class="rowhead"><div class="avatar owner">MC</div><div><div class="nm">Mara</div></div></div>
+          <div class="cellc"><div class="shift pm">4p-11p<small>MOD</small></div></div>
+          <div class="cellc off"></div>
+          <div class="cellc"><div class="shift pm">4p-11p<small>MOD</small></div></div>
+          <div class="cellc"><div class="shift pm">4p-11p<small>MOD</small></div></div>
+          <div class="cellc"><div class="shift dbl">12p-11p<small>double · MOD</small></div></div>
+          <div class="cellc"><div class="shift pm">4p-12a<small>MOD</small></div></div>
+          <div class="cellc off"></div>
+
+          <div class="rowhead"><div class="avatar">JO</div><div><div class="nm">James</div></div></div>
+          <div class="cellc"><div class="shift pm">5p-11p<small>bar</small></div></div>
+          <div class="cellc"><div class="shift pm">5p-11p<small>bar</small></div></div>
+          <div class="cellc off"></div>
+          <div class="cellc"><div class="shift pm">5p-11p<small>bar</small></div></div>
+          <div class="cellc"><div class="shift dbl">12p-11p<small>double</small></div></div>
+          <div class="cellc"><div class="shift pm">5p-12a<small>bar</small></div></div>
+          <div class="cellc"><div class="shift am">11a-4p<small>brunch</small></div></div>
+
+          <div class="rowhead"><div class="avatar">SR</div><div><div class="nm">Sofia</div><div class="fair">4 Sat closes</div></div></div>
+          <div class="cellc off"></div>
+          <div class="cellc"><div class="shift pm">5p-10p</div></div>
+          <div class="cellc"><div class="shift pm">5p-10p</div></div>
+          <div class="cellc off"></div>
+          <div class="cellc"><div class="shift pm">5p-11p<small>swap pending</small></div></div>
+          <div class="cellc"><div class="shift pm fair-flag">5p-12a<small>close · 5th Sat</small></div></div>
+          <div class="cellc"><div class="shift am">10a-4p<small>brunch</small></div></div>
+
+          <div class="rowhead"><div class="avatar">DK</div><div><div class="nm">Daniel</div></div></div>
+          <div class="cellc"><div class="shift pm">5p-10p</div></div>
+          <div class="cellc off"></div>
+          <div class="cellc"><div class="shift pm">5p-10p</div></div>
+          <div class="cellc"><div class="shift pm">5p-10p</div></div>
+          <div class="cellc"><div class="shift pm">5p-11p<small>event</small></div></div>
+          <div class="cellc"><div class="shift pm">5p-11p</div></div>
+          <div class="cellc"><div class="shift am">10a-4p<small>brunch</small></div></div>
+
+          <div class="rowhead"><div class="avatar">RT</div><div><div class="nm">Rui</div><div class="fair" style="color:var(--ok)">Marina · borrowed</div></div></div>
+          <div class="cellc off"></div>
+          <div class="cellc off"></div>
+          <div class="cellc off"></div>
+          <div class="cellc off"></div>
+          <div class="cellc"><div class="shift borrow">5p-11p<small>bar · from Marina</small></div></div>
+          <div class="cellc off"></div>
+          <div class="cellc off"></div>
+        </div>
+      </div>
+
+      <div class="lens-note fairness">
+        Fairness lens preview: Sofia is on her 5th consecutive Saturday close. Daniel has had none this month. One drag fixes both.
+      </div>
+    </section>
+
+    <!-- ═══ PEOPLE ═══ -->
+    <section class="pane" id="people">
+      <div class="people-grid">
+        <div class="pcard">
+          <div class="top">
+            <div class="avatar owner">MC</div>
+            <div><div class="nm">Mara Chen</div><div class="ps">Owner · MOD · Somm L2 · Keyholder</div></div>
+          </div>
+          <div class="kv"><span class="k">Tenure</span><span class="v">3 yrs 2 mo</span></div>
+          <div class="kv"><span class="k">Certs</span><span class="v ok">All current</span></div>
+          <div class="kv"><span class="k">Preference score</span><span class="v">92%</span></div>
+        </div>
+        <div class="pcard">
+          <div class="top">
+            <div class="avatar">JO</div>
+            <div><div class="nm">James Ortiz</div><div class="ps">Manager · Bar · Keyholder</div></div>
+          </div>
+          <div class="kv"><span class="k">Tenure</span><span class="v">1 yr 11 mo</span></div>
+          <div class="kv"><span class="k">Certs</span><span class="v warn">Alcohol · 12 days</span></div>
+          <div class="kv"><span class="k">Preference score</span><span class="v">88%</span></div>
+          <div class="milestone">2-year anniversary next week · plan a staff toast</div>
+        </div>
+        <div class="pcard">
+          <div class="top">
+            <div class="avatar">SR</div>
+            <div><div class="nm">Sofia Reyes</div><div class="ps">Server · FOH · ES/EN</div></div>
+          </div>
+          <div class="kv"><span class="k">Availability</span><span class="v">No Mondays</span></div>
+          <div class="kv"><span class="k">Retention signal</span><span class="v warn">Watch · sick calls up</span></div>
+          <div class="kv"><span class="k">Preference score</span><span class="v warn">61%</span></div>
+        </div>
+        <div class="pcard">
+          <div class="top">
+            <div class="avatar">DK</div>
+            <div><div class="nm">Daniel Kim</div><div class="ps">Server · cross-trained bar</div></div>
+          </div>
+          <div class="kv"><span class="k">Onboarding</span><span class="v ok">Complete</span></div>
+          <div class="kv"><span class="k">Certs</span><span class="v ok">All current</span></div>
+          <div class="kv"><span class="k">Preference score</span><span class="v">85%</span></div>
+        </div>
+        <div class="pcard">
+          <div class="top">
+            <div class="avatar">LB</div>
+            <div><div class="nm">Lena Baros</div><div class="ps">Sommelier · Somm L3</div></div>
+          </div>
+          <div class="kv"><span class="k">PTO</span><span class="v">Jul 18 requested</span></div>
+          <div class="kv"><span class="k">Wine authority</span><span class="v">Grand Cru approved</span></div>
+          <div class="kv"><span class="k">Preference score</span><span class="v">90%</span></div>
+        </div>
+        <div class="pcard">
+          <div class="top">
+            <div class="avatar">+</div>
+            <div><div class="nm">Trial: Ana Duarte</div><div class="ps">Server candidate · stage Thu 17</div></div>
+          </div>
+          <div class="kv"><span class="k">Onboarding</span><span class="v">Wine quiz pending</span></div>
+          <div class="kv"><span class="k">Feedback form</span><span class="v">Opens after stage</span></div>
+          <div class="kv"><span class="k">Rehire pool</span><span class="v ok">Referred by Lena</span></div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <p class="foot"><code>.planning/sketches/037-team-command/index.html</code> · click tabs · Tonight is the hero, grid demoted to Schedule, depth in People</p>
+</div>
+
+<script>
+  document.querySelectorAll('.invite').forEach(btn => {
+    btn.addEventListener('pointermove', e => {
+      const r = btn.getBoundingClientRect();
+      btn.style.setProperty('--mx', ((e.clientX - r.left) / r.width * 100) + '%');
+      btn.style.setProperty('--my', ((e.clientY - r.top) / r.height * 100) + '%');
+    });
+  });
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById(tab.dataset.tab).classList.add('active');
+    });
+  });
+  document.querySelectorAll('.lens button').forEach(b => {
+    b.addEventListener('click', () => {
+      b.parentElement.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+    });
+  });
+</script>
+</body>
+</html>

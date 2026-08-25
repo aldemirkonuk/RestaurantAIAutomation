@@ -113,7 +113,9 @@ export class UpdateCertDto {
   @IsOptional() @IsDateString() issuedAt?: string;
   @IsOptional() @IsDateString() expiresAt?: string;
   @IsOptional() @IsString() docUrl?: string;
-  @IsOptional() @IsIn(["valid", "expiring", "expired", "submitted"]) status?: string;
+  @IsOptional()
+  @IsIn(["valid", "expiring", "expired", "submitted"])
+  status?: string;
 }
 
 // ── Time off / swaps ───────────────────────────────────────────────────────
@@ -165,5 +167,10 @@ export class BroadcastDto {
 export class UpdateTeamSettingsDto {
   @IsOptional() @IsBoolean() laborTrackingEnabled?: boolean;
   @IsOptional() @IsBoolean() wageVisible?: boolean;
-  @IsOptional() @IsNumber() laborTargetPct?: number;
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
+  @Max(100)
+  laborTargetPct?: number;
 }

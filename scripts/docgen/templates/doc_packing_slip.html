@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ d.house.name }} — Packing Slip {{ d.packing_slip_number }}</title>
+{% include "_reset.html" %}
+<style>
+  /* Packing slip / advance ship notice (EDI 856).
+     ------------------------------------------------------------------
+     NO PRICES. A ship notice states what left the warehouse, not what it costs,
+     and putting money on it would be wrong in a way that matters: the entire
+     value of this document is that it is the vendor's own account of quantity,
+     produced by their warehouse rather than their billing system. When it
+     disagrees with their invoice, their two documents disagree and there is
+     nothing left to argue about — the highest-confidence claim the system can
+     make. Adding a price column would invite the reader to reconcile money here
+     instead, which is the invoice's job.
+
+     Only houses with sends_packing_slip=True ever produce one. For the others the
+     ship column stays unknown, and that must read as unknown rather than as
+     agreement. */
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 8.4pt; color: #111; }
+  .sheet { width: 8.5in; min-height: 11in; padding: 0.45in 0.5in; position: relative; }
+
+  header { margin-top: 14px; display: flex; justify-content: space-between;
+           align-items: flex-start; border-bottom: 2px solid #111; padding-bottom: 9px; }
+  .co { font-size: 14pt; font-weight: 700; letter-spacing: -.01em; }
+  .co-sub { font-size: 6.6pt; letter-spacing: .16em; text-transform: uppercase;
+            color: #555; margin-top: 2px; }
+  .co-addr { font-size: 7.4pt; color: #444; margin-top: 6px; line-height: 1.45; }
+  .doc-type { font-size: 13pt; font-weight: 700; text-align: right; letter-spacing: .06em; }
+  .doc-sub { font-size: 6.6pt; letter-spacing: .12em; text-transform: uppercase;
+             color: #666; text-align: right; margin-top: 3px; }
+
+  table.meta { width: 100%; margin-top: 10px; font-size: 7.6pt; }
+  table.meta td { border: 1px solid #999; padding: 3px 5px; }
+  table.meta td.k { background: #eee; font-weight: 700; font-size: 6.4pt;
+                    text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+
+  .parties { display: flex; gap: 14px; margin: 10px 0; }
+  .party { flex: 1; border: 1px solid #999; padding: 5px 7px; }
+  .party-label { font-size: 6.2pt; font-weight: 700; text-transform: uppercase;
+                 letter-spacing: .11em; color: #555; border-bottom: 1px solid #ccc;
+                 padding-bottom: 2px; margin-bottom: 4px; }
+  .party-body { font-size: 7.6pt; line-height: 1.4; }
+
+  .no-price-note { margin: 8px 0 4px; font-size: 6.6pt; color: #666;
+                   letter-spacing: .04em; font-style: italic; }
+
+  table.lines { width: 100%; margin-top: 4px; }
+  table.lines th { background: #111; color: #fff; padding: 4px 4px; font-size: 6.2pt;
+                   text-transform: uppercase; letter-spacing: .06em; text-align: left;
+                   white-space: nowrap; }
+  table.lines td { padding: 4px; border-bottom: 1px solid #ddd; font-size: 7.8pt;
+                   vertical-align: top; }
+  table.lines tbody tr:nth-child(even) td { background: #f7f7f7; }
+  .mono { font-family: "Courier New", monospace; font-size: 7pt; }
+  .short { color: #9a2c2c; font-weight: 700; }
+  .bo { display: inline-block; background: #fbefd8; color: #7a5510; font-size: 6pt;
+        font-weight: 700; padding: 1px 4px; letter-spacing: .05em; }
+
+  .totals { margin-top: 12px; display: flex; justify-content: space-between; gap: 16px; }
+  .cartons { border: 1.5px solid #111; padding: 7px 12px; font-size: 8pt; }
+  .cartons .n { font-size: 15pt; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .cartons .k { font-size: 6.2pt; letter-spacing: .12em; text-transform: uppercase; color: #555; }
+  .instructions { font-size: 6.6pt; line-height: 1.5; max-width: 4.4in; color: #333; }
+
+  .sig { margin-top: 20px; border-top: 1px solid #111; padding-top: 10px;
+         display: flex; gap: 28px; font-size: 7pt; }
+  .sig .line { border-bottom: 1px solid #111; height: 24px; min-width: 2.1in;
+               margin-bottom: 3px; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="synthetic-band">{{ SYNTHETIC_MARK }}</div>
+  <div class="watermark">SYNTHETIC</div>
+
+  <header>
+    <div>
+      <div class="co">{{ d.house.name }}</div>
+      <div class="co-sub">{{ d.house.tagline }}</div>
+      <div class="co-addr">
+        {{ d.house.address }} · {{ d.house.city_state_zip }}<br>
+        {{ d.house.phone }}
+        {% if d.house.license_no %} · Licence {{ d.house.license_no }}{% endif %}
+      </div>
+    </div>
+    <div>
+      <div class="doc-type">PACKING SLIP</div>
+      <div class="doc-sub">Advance ship notice · EDI 856</div>
+    </div>
+  </header>
+
+  <table class="meta">
+    <tr>
+      <td class="k">Slip No.</td><td class="mono">{{ d.packing_slip_number }}</td>
+      <td class="k">Ship Date</td><td>{{ d.ship_date | fmtdate(d.house.date_format) }}</td>
+      <td class="k">Your PO</td><td class="mono">{{ d.po_number }}</td>
+    </tr>
+    <tr>
+      <td class="k">Carrier</td><td>Company vehicle</td>
+      <td class="k">Driver</td><td>{{ d.driver_name }}</td>
+      <td class="k">Del. Date</td><td>{{ d.delivery_date | fmtdate(d.house.date_format) }}</td>
+    </tr>
+  </table>
+
+  <div class="parties">
+    <div class="party">
+      <div class="party-label">Ship From</div>
+      <div class="party-body">
+        {{ d.house.name }}<br>{{ d.house.address }}<br>{{ d.house.city_state_zip }}
+      </div>
+    </div>
+    <div class="party">
+      <div class="party-label">Ship To</div>
+      <div class="party-body">
+        {{ d.restaurant_name }}<br>{{ d.restaurant_address }}<br>
+        {{ d.restaurant_city_state_zip }}<br>Licence {{ d.restaurant_license_no }}
+      </div>
+    </div>
+  </div>
+
+  <div class="no-price-note">
+    This document states quantities shipped. It carries no prices — refer to the
+    invoice for amounts due.
+  </div>
+
+  <table class="lines">
+    <thead>
+      <tr>
+        <th style="width:22px">#</th>
+        {% if d.house.uses_vendor_sku %}<th style="width:62px">Item No.</th>{% endif %}
+        <th>Description</th>
+        <th style="width:38px" class="ctr">Vint</th>
+        <th style="width:34px" class="ctr">Pack</th>
+        <th style="width:44px" class="num">Ordered</th>
+        <th style="width:44px" class="num">Shipped</th>
+        <th style="width:52px" class="ctr">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in slip_lines %}
+      <tr>
+        <td class="num">{{ l.line_no }}</td>
+        {% if d.house.uses_vendor_sku %}<td class="mono">{{ l.vendor_sku }}</td>{% endif %}
+        <td>
+          {{ l.wine_name | upper_if(d.house.uppercase_descriptions) | truncate_at(d.house.description_max_chars) }}
+          {% if l.producer %}<div style="font-size:7pt;color:#555">{{ l.producer }}</div>{% endif %}
+        </td>
+        <td class="ctr">{{ l.invoiced_vintage | dash }}</td>
+        <td class="ctr">{{ l.bottles_per_case }}</td>
+        <td class="num">{{ l.outcome.ordered_qty }}</td>
+        {# The datum this document exists for. #}
+        <td class="num {{ 'short' if l.outcome.shipped_qty is not none and l.outcome.shipped_qty < l.outcome.ordered_qty }}">
+          {{ l.outcome.shipped_qty if l.outcome.shipped_qty is not none else "—" }}
+        </td>
+        <td class="ctr">
+          {% if l.outcome.shipped_qty is none %}—
+          {% elif l.outcome.shipped_qty >= l.outcome.ordered_qty %}Complete
+          {% else %}<span class="bo">B/O {{ l.outcome.ordered_qty - l.outcome.shipped_qty }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="totals">
+    <div class="cartons">
+      <div class="n">{{ carton_count }}</div>
+      <div class="k">Cartons on this delivery</div>
+    </div>
+    <div class="instructions">
+      Count cartons against this slip BEFORE signing. Note any shortage, breakage or
+      substitution directly on the delivery receipt in the driver's presence — claims
+      raised after the vehicle departs cannot be verified against our warehouse count
+      and may be refused. Back-ordered lines marked B/O will follow on a later
+      delivery and are not billed on this shipment.
+    </div>
+  </div>
+
+  <div class="sig">
+    <div><div class="line"></div>Cartons received — signature</div>
+    <div><div class="line"></div>Print name &amp; time</div>
+  </div>
+</div>
+</body>
+</html>

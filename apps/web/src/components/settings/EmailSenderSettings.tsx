@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Mail, Save, RefreshCw } from 'lucide-react'
+import { Mail, Save, RefreshCw, Send } from 'lucide-react'
 import { apiClient } from '../../services/api/client'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -48,6 +48,23 @@ export function EmailSenderSettings() {
     onError: () => toast.error('Could not save. Try again.'),
   })
 
+  /**
+   * NEW-495: verify the email pipeline without composing a real vendor mail.
+   * POST /communications/test/email existed with no caller. It sends to the
+   * gateway's configured manager recipients (not this form's sign-off name), so
+   * the copy says that rather than implying it emails the person typing.
+   */
+  const sendTest = useMutation({
+    mutationFn: () => apiClient.post('/communications/test/email'),
+    onSuccess: (r: any) => {
+      const to = r?.data?.recipients ?? r?.data?.to
+      toast.success('Test email sent', {
+        description: Array.isArray(to) && to.length ? `Delivered to ${to.join(', ')}` : 'Check the configured manager inbox.',
+      })
+    },
+    onError: () => toast.error('Test email failed — check the Gmail integration in Admin.'),
+  })
+
   const dirty = (identity?.body ?? '') !== name.trim()
 
   return (
@@ -83,6 +100,21 @@ export function EmailSenderSettings() {
         <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
           Replaces the old “[Manager Name]” placeholder. Emails end with “Best regards, {name.trim() || 'your name'}”.
         </p>
+        <div className="mt-4 pt-4 border-t border-gray-50 flex items-center justify-between gap-3">
+          <p className="text-[11px] text-gray-400 leading-relaxed">
+            Send a test to confirm the Gmail connection works. It goes to the configured
+            manager recipients, not to this sign-off name.
+          </p>
+          <button
+            type="button"
+            onClick={() => sendTest.mutate()}
+            disabled={sendTest.isPending}
+            className="shrink-0 px-3 py-1.5 text-xs font-semibold text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+          >
+            {sendTest.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+            Send test email
+          </button>
+        </div>
       </div>
     </div>
   )

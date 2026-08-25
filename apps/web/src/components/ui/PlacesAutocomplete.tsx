@@ -9,6 +9,18 @@ export interface PlaceResult {
   postalCode: string;
   country: string;
   neighborhood: string;
+  /**
+   * Coordinates of the selected place.
+   *
+   * Google resolves these as part of the same fetchFields call that already
+   * returns the address components, so capturing them costs no extra request
+   * and no separate geocoding service. Null when Places declines to supply a
+   * location for the chosen prediction — callers must treat "no coordinates"
+   * as a real state rather than defaulting to 0,0, which renders as a pin in
+   * the Gulf of Guinea.
+   */
+  latitude: number | null;
+  longitude: number | null;
 }
 
 interface SuggestionRow {
@@ -86,6 +98,12 @@ function parseAddressComponents(
   const route = get('route');
 
   return {
+    // Coordinates are not in addressComponents — they come from place.location
+    // and are attached by the caller after fetchFields resolves. Initialised
+    // null rather than omitted so the type stays honest about what this
+    // function can and cannot know.
+    latitude: null,
+    longitude: null,
     streetAddress: [streetNumber, route].filter(Boolean).join(' '),
     city:
       get('locality') ||
@@ -226,7 +244,9 @@ export function PlacesAutocomplete({
 
     try {
       const place = row.prediction.toPlace();
-      await place.fetchFields({ fields: ['addressComponents', 'formattedAddress'] });
+      await place.fetchFields({
+        fields: ['addressComponents', 'formattedAddress', 'location'],
+      });
 
       if (!place.addressComponents) return;
 
@@ -234,6 +254,8 @@ export function PlacesAutocomplete({
       if (!result.streetAddress && place.formattedAddress) {
         result.streetAddress = place.formattedAddress.split(',')[0].trim();
       }
+      result.latitude = place.location?.lat() ?? null;
+      result.longitude = place.location?.lng() ?? null;
       onPlaceSelect(result);
     } catch (err) {
       console.warn('[PlacesAutocomplete] getDetails failed', err);

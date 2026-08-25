@@ -36,20 +36,57 @@ export interface ConversationMessage {
   created_at: string
   confidence_score: number | null
   thread_id: string | null
+  /** Durable thread identity set by a DB trigger — never null on stored rows. */
+  thread_key?: string | null
+  gmail_thread_id?: string | null
+  email_headers?: {
+    subject?: string
+    in_reply_to?: string
+    references?: string
+  } | null
   conversation_summary: string | null
   summary_updated_at: string | null
   order_id: string | null
+  /** Order number captured at write time, so history survives deleting the order. */
+  order_number_snapshot?: string | null
+  /** Lifecycle of an outbound message: DRAFT / PENDING_APPROVAL / APPROVED / SENT / DISCARDED / CANCELLED. */
+  status?: string | null
+  delivery_status?: string | null
   provider_id: string | null
   restaurant_id: string | null
   manager_approval_status: string | null
-  providers?: { id: string; name: string; primary_contact: any } | null
+  providers?: { id: string; name: string; primary_contact?: unknown } | null
   procurement_orders?: {
     id: string
-    wine_name: string
+    order_number: string | null
+    wine_name: string | null
     quantity: number
     status: string
-    negotiated_price_per_bottle: number | null
+    negotiated_price?: number | null
+    final_price?: number | null
+    negotiated_price_per_bottle?: number | null
+    inventory?: { wine_name: string | null } | null
   } | null
+}
+
+export interface ConversationThreadSummary {
+  key: string
+  messageCount: number
+  firstAt: string | null
+  lastAt: string | null
+  orderId: string | null
+  orderNumber: string | null
+  providerId: string | null
+}
+
+/** Thread-paginated response: `total` counts threads, not messages. */
+export interface ConversationThreadListResponse {
+  conversations: ConversationMessage[]
+  threads: ConversationThreadSummary[]
+  total: number
+  page: number
+  limit: number
+  totalPages: number
 }
 
 export interface ConversationListResponse {
@@ -85,8 +122,14 @@ export interface ConversationFilters {
   restaurantId?: string
   providerId?: string
   orderId?: string
+  /** Filter by human-readable procurement order number (ilike). */
+  orderNumber?: string
+  /** Fetch one conversation thread whole, regardless of order linkage. */
+  threadKey?: string
   channel?: string
   direction?: string
+  /** positive | neutral | negative | unclassified */
+  sentiment?: string
   dateFrom?: string
   dateTo?: string
   quarter?: string
@@ -127,6 +170,29 @@ export function useConversations(filters: ConversationFilters = {}) {
         }
       })
       const { data } = await api.get(`/api/v1/conversations?${params.toString()}`)
+      return data
+    },
+    staleTime: 30_000,
+  })
+}
+
+/**
+ * List conversations paginated BY THREAD, so a thread is never split across pages.
+ * Prefer this over `useConversations` for any grouped view.
+ */
+export function useConversationThreads(filters: ConversationFilters = {}) {
+  return useQuery<ConversationThreadListResponse>({
+    queryKey: [...conversationKeys.lists(), 'byThread', filters],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          params.append(key, String(value))
+        }
+      })
+      const { data } = await api.get(
+        `/api/v1/conversations/threads?${params.toString()}`,
+      )
       return data
     },
     staleTime: 30_000,

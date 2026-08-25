@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Header } from '../components/layout/Header'
 import {
@@ -12,6 +13,7 @@ import {
   X,
   Trash2,
   Truck,
+  Compass,
   Plus,
   Star,
   ExternalLink,
@@ -32,6 +34,10 @@ import {
   addProviderContact,
   updateProviderContact,
   deleteProviderContact,
+  getProviderLocations,
+  createProviderLocation,
+  updateProviderLocation,
+  deleteProviderLocation,
 } from '../services/api/providers'
 import { toast } from 'sonner'
 import { AddProviderModal, NewProviderData } from '../components/providers/AddProviderModal'
@@ -39,7 +45,10 @@ import { EditProviderModal, EditProviderData } from '../components/providers/Edi
 import { VendorSearchModal } from '../components/providers/VendorSearchModal'
 import { ProviderIntelligencePanel } from '../components/providers/ProviderIntelligencePanel'
 import { PageSkeleton, ErrorState } from '../components/ui'
+import { ExportMenu } from '../components/ui/ExportMenu'
+import { exportTable, type TableExportColumn, type TableExportFormat } from '../lib/tableExport'
 import { QuickGmailModal } from '../components/emails/QuickGmailModal'
+import { ContextualInsights } from '../components/insights/ContextualInsights'
 import { useRealtimeDispatch } from '../contexts/RealtimeContext'
 
 type BusinessTypeFilter = 'All' | 'Distributor' | 'Importer' | 'Wholesaler'
@@ -134,6 +143,65 @@ function EmptyProvidersState({ onBrowseCatalogue, onAddCustom }: EmptyProvidersS
   )
 }
 
+type ProvidersTab = 'mine' | 'discover'
+
+// Loaded on demand — the map surface pulls in a tile renderer that the roster view
+// has no use for, so it should not be in the Providers bundle.
+const DistributorMapPage = lazy(
+  () => import('./distributors/command/DistributorMapPage').then(m => ({ default: m.DistributorMapPage })),
+)
+
+/**
+ * Segmented control between the vendor roster and distributor discovery.
+ * Matches the tab pattern already used on Documents & Reports.
+ */
+function ProvidersTabs({
+  tab,
+  onChange,
+  count,
+}: {
+  tab: ProvidersTab
+  onChange: (t: ProvidersTab) => void
+  count: number | null
+}) {
+  const item = (value: ProvidersTab, label: string, badge?: string) => (
+    <button
+      key={value}
+      type="button"
+      onClick={() => onChange(value)}
+      aria-current={tab === value ? 'page' : undefined}
+      className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 text-sm ${
+        tab === value
+          ? 'bg-wine-600 text-white shadow-sm'
+          : 'text-gray-600 hover:bg-gray-100'
+      }`}
+    >
+      {value === 'mine' ? (
+        <Truck className="w-4 h-4" />
+      ) : (
+        <Compass className="w-4 h-4" />
+      )}
+      {label}
+      {badge && (
+        <span
+          className={`px-1.5 py-0.5 text-xs rounded-full ${
+            tab === value ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+          }`}
+        >
+          {badge}
+        </span>
+      )}
+    </button>
+  )
+
+  return (
+    <div className="flex bg-white rounded-xl border border-gray-200 p-1 w-fit">
+      {item('mine', 'My Providers', count != null ? String(count) : undefined)}
+      {item('discover', 'Find Distributors')}
+    </div>
+  )
+}
+
 export function Providers() {
   const restaurantId = useAuthStore(state => state.activeRestaurantId)
   const { preferences, updatePreferences } = useUserPreferences()
@@ -152,6 +220,27 @@ export function Providers() {
     return dates
   }, [rawOrders])
 
+  const navigate = useNavigate()
+  // Discovery lives here rather than in the sidebar: "who I buy from" and "who could
+  // I buy from" are two views of one subject. Kept in the URL so it is linkable and
+  // so the old /distributors route can redirect straight into it.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab: ProvidersTab =
+    searchParams.get('tab') === 'discover' ? 'discover' : 'mine'
+  const setTab = useCallback(
+    (next: ProvidersTab) => {
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev)
+          if (next === 'discover') p.set('tab', 'discover')
+          else p.delete('tab')
+          return p
+        },
+        { replace: true },
+      )
+    },
+    [setSearchParams],
+  )
   const [searchQuery, setSearchQuery]               = useState('')
   const [businessTypeFilter, setBusinessTypeFilter] = useState<BusinessTypeFilter>('All')
   const [viewMode, setViewMode]                     = useState<ViewMode>('grid')
@@ -162,26 +251,17 @@ export function Providers() {
   const [showEmailModal, setShowEmailModal]         = useState(false)
   const [emailRecipient, setEmailRecipient]         = useState('')
   const [showFavoritesOnly, setShowFavoritesOnly]   = useState(false)
+  // §H additions: list sorting (NEW-313), rating-band filter (NEW-336),
+  // right-click menu (NEW-310), `/`-focus search (NEW-326).
+  const [sortKey, setSortKey]                       = useState<'default' | 'name' | 'type' | 'rating'>('default')
+  const [sortDir, setSortDir]                       = useState<'asc' | 'desc'>('asc')
+  const [ratingBand, setRatingBand]                 = useState<'all' | '4' | '3' | 'unrated'>('all')
+  const [providerMenu, setProviderMenu]             = useState<{ id: string; x: number; y: number } | null>(null)
+  const searchRef                                   = useRef<HTMLInputElement>(null)
   const favorites: string[]                          = preferences.providerFavorites ?? []
   const notes: Record<string, ProviderNote>          = (preferences.providerNotes ?? {}) as Record<string, ProviderNote>
 
-  // Local ratings state — updates immediately for snappy UI. Syncs to remote
-  // preferences async. The useEffect seeds from server data on first load /
-  // hard refresh but never overwrites in-session changes.
-  const [ratings, setLocalRatings] = useState<Record<string, number>>(
-    () => (preferences.providerRatings ?? {}) as Record<string, number>,
-  )
-  useEffect(() => {
-    const serverRatings = (preferences.providerRatings ?? {}) as Record<string, number>
-    // Only seed local state when it is still empty (fresh mount / hard refresh)
-    setLocalRatings(prev => {
-      if (Object.keys(prev).length === 0 && Object.keys(serverRatings).length > 0) {
-        return serverRatings
-      }
-      // Merge server ratings in for any provider the local state hasn't touched
-      return { ...serverRatings, ...prev }
-    })
-  }, [preferences.providerRatings])
+  const ratings: Record<string, number> = (preferences.providerRatings ?? {}) as Record<string, number>
 
   const setFavorites = useCallback((updater: (prev: string[]) => string[]) => {
     updatePreferences({ providerFavorites: updater(favorites) })
@@ -192,13 +272,9 @@ export function Providers() {
   }, [notes, updatePreferences])
 
   const setRatings = useCallback((updater: (prev: Record<string, number>) => Record<string, number>) => {
-    setLocalRatings(prev => {
-      const next = updater(prev)
-      // Persist async — never block the UI on this
-      updatePreferences({ providerRatings: next })
-      return next
-    })
-  }, [updatePreferences])
+    // Rely entirely on the optimistic update in useUserPreferences
+    updatePreferences({ providerRatings: updater(ratings) })
+  }, [updatePreferences, ratings])
 
   const { data: providers = [], isLoading, isFetching, error, refetch } = useProviders(restaurantId || '', {
     search: searchQuery,
@@ -314,6 +390,50 @@ export function Providers() {
           : 'Unknown error'
       toast.warning(`Provider saved, but contacts could not be synced. ${reason}`)
     }
+
+    // ── Step 3: sync provider_locations (decoupled — never blocks the save) ─
+    if (data.locations && data.locations.length > 0) {
+      try {
+        const existingDbLocations = await getProviderLocations(providerId)
+        const existingDbIds = new Set(existingDbLocations.map(l => l.id))
+        const currentRealIds = new Set(
+          data.locations.filter(l => !l.id.startsWith('new-loc-') && !l.id.startsWith('primary-location-')).map(l => l.id)
+        )
+
+        // Delete locations the user removed
+        await Promise.all(
+          existingDbLocations
+            .filter(l => !currentRealIds.has(l.id))
+            .map(l => deleteProviderLocation(providerId, l.id))
+        )
+
+        // Create new locations or update existing ones
+        await Promise.all(
+          data.locations.map(loc => {
+            // Coordinates are sent only as a complete pair. The DB enforces
+            // (latitude IS NULL) = (longitude IS NULL), so half a coordinate
+            // is rejected loudly rather than stored as an unplottable row.
+            const hasCoords =
+              typeof loc.latitude === 'number' && typeof loc.longitude === 'number'
+            const payload = {
+              name: loc.name || 'Office',
+              type: loc.type,
+              address: loc.address || '',
+              isPrimary: loc.isPrimary,
+              ...(hasCoords
+                ? { latitude: loc.latitude as number, longitude: loc.longitude as number }
+                : {}),
+            }
+            if (loc.id.startsWith('new-loc-') || loc.id.startsWith('primary-location-') || !existingDbIds.has(loc.id)) {
+              return createProviderLocation(providerId, payload)
+            }
+            return updateProviderLocation(providerId, loc.id, payload)
+          })
+        )
+      } catch (err: any) {
+        console.error('Location sync failed:', err)
+      }
+    }
   }
 
   const handleOpenEmail = (email: string, e?: React.MouseEvent) => {
@@ -330,7 +450,9 @@ export function Providers() {
         primaryBusinessType: (providerData.primaryBusinessType as 'Distributor' | 'Importer' | 'Wholesaler') || 'Distributor',
         phone: providerData.phone, email: providerData.email,
         physicalAddress: providerData.address, restaurantId,
-        contactPerson: providerData.contactPerson, website: providerData.website,
+        contactFirstName: providerData.contactFirstName, 
+        contactLastName: providerData.contactLastName,
+        website: providerData.website,
         accountNumber: providerData.accountNumber,
         winePortfolio: providerData.specialties.join(', '),
         statesOrRegionsServed: providerData.deliveryDays,
@@ -340,9 +462,50 @@ export function Providers() {
         notes: `Specialties: ${providerData.specialties.join(', ')}`,
       })
       if (providerData.rating > 0 && result?.id) setRatings(prev => ({ ...prev, [result.id]: providerData.rating }))
+
+      // Persist the address as a geocoded primary location.
+      //
+      // A provider's coordinates live in provider_locations, not on the
+      // provider row — listProviders reads them from there to place map pins.
+      // This step used to be missing entirely, so a provider added here was
+      // permanently unpinnable no matter how many times the map re-fitted its
+      // bounds; only re-saving through the edit sidebar (which does sync
+      // locations) ever gave it coordinates.
+      //
+      // Decoupled from the create like the edit path's location sync is: the
+      // provider is already saved, and a location failure must not present as
+      // "failed to add provider".
+      if (result?.id && providerData.address) {
+        const hasCoords =
+          typeof providerData.latitude === 'number' &&
+          typeof providerData.longitude === 'number'
+        try {
+          await createProviderLocation(result.id, {
+            name: 'Main Office',
+            type: 'office',
+            address: providerData.address,
+            isPrimary: true,
+            // Sent only as a complete pair — the DB enforces
+            // (latitude IS NULL) = (longitude IS NULL).
+            ...(hasCoords
+              ? {
+                  latitude: providerData.latitude as number,
+                  longitude: providerData.longitude as number,
+                }
+              : {}),
+          })
+          if (!hasCoords) {
+            toast.info('Provider saved. Pick the address from the dropdown to show it on the map.')
+          }
+        } catch (locErr) {
+          console.error('Provider location create failed:', locErr)
+          toast.warning('Provider saved, but its address could not be mapped.')
+        }
+      }
+
       await dispatchProviderUpdate({
         type: 'added', providerId: result?.id ?? '', providerName: providerData.name,
-        data: { contactPerson: providerData.contactPerson, email: providerData.email, phone: providerData.phone, businessType: providerData.primaryBusinessType, specialties: providerData.specialties },
+        data: { contactPerson: `${providerData.contactFirstName} ${providerData.contactLastName}`.trim(), email: providerData.email, phone: providerData.phone, businessType: providerData.primaryBusinessType, specialties: providerData.specialties },
         source: 'providers_page', timestamp: new Date().toISOString(),
       })
     } catch (err) {
@@ -366,7 +529,21 @@ export function Providers() {
     if (businessTypeFilter !== 'All') {
       filtered = filtered.filter(p => p.primaryBusinessType === businessTypeFilter)
     }
+    // NEW-336: rating-band filter (4+ / 3+ / unrated).
+    if (ratingBand !== 'all') {
+      filtered = filtered.filter(p => {
+        const r = ratings[p.id] || 0
+        if (ratingBand === 'unrated') return r === 0
+        return r >= Number(ratingBand)
+      })
+    }
+    // NEW-313: explicit column sort in list view; favorites still float first
+    // in the default ordering so the pinned strip stays coherent.
+    const dir = sortDir === 'asc' ? 1 : -1
     return filtered.sort((a, b) => {
+      if (sortKey === 'name') return dir * a.name.localeCompare(b.name)
+      if (sortKey === 'type') return dir * (a.primaryBusinessType || '').localeCompare(b.primaryBusinessType || '')
+      if (sortKey === 'rating') return dir * ((ratings[a.id] || 0) - (ratings[b.id] || 0))
       const aFav = favorites.includes(a.id) ? 1 : 0
       const bFav = favorites.includes(b.id) ? 1 : 0
       if (aFav !== bFav) return bFav - aFav
@@ -374,7 +551,7 @@ export function Providers() {
       if (aR !== bR) return bR - aR
       return a.name.localeCompare(b.name)
     })
-  }, [providers, searchQuery, businessTypeFilter, showFavoritesOnly, favorites, ratings])
+  }, [providers, searchQuery, businessTypeFilter, showFavoritesOnly, favorites, ratings, ratingBand, sortKey, sortDir])
 
   const favoriteProviders = useMemo(() =>
     providers.filter(p => favorites.includes(p.id)),
@@ -389,7 +566,103 @@ export function Providers() {
     setRatings(prev => ({ ...prev, [providerId]: rating }))
   }, [setRatings])
 
-  const clearFilters = () => { setSearchQuery(''); setBusinessTypeFilter('All'); setShowFavoritesOnly(false) }
+  const clearFilters = () => { setSearchQuery(''); setBusinessTypeFilter('All'); setShowFavoritesOnly(false); setRatingBand('all') }
+
+  /** NEW-313: click a list column header to sort; click again to flip direction. */
+  const applyProviderSort = useCallback((key: 'name' | 'type' | 'rating') => {
+    setSortKey(prev => {
+      if (prev === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+      else setSortDir(key === 'rating' ? 'desc' : 'asc')
+      return key
+    })
+  }, [])
+
+  /** NEW-334: export the provider directory (filtered set) in the shared formats. */
+  const exportProviders = useCallback(
+    async (format: TableExportFormat) => {
+      const columns: TableExportColumn<(typeof filteredProviders)[number]>[] = [
+        { header: 'Name', value: (p) => p.name },
+        { header: 'Type', value: (p) => p.primaryBusinessType ?? '' },
+        { header: 'Portfolio', value: (p) => p.winePortfolio ?? '' },
+        { header: 'Address', value: (p) => p.physicalAddress ?? '' },
+        { header: 'Phone', value: (p) => p.phone ?? '' },
+        { header: 'Email', value: (p) => p.email ?? '' },
+        { header: 'Website', value: (p) => p.website ?? '' },
+        { header: 'Regions', value: (p) => (p.statesOrRegionsServed ?? []).join('; ') },
+        { header: 'Rating', value: (p) => ratings[p.id] || '' },
+        { header: 'Favorite', value: (p) => (favorites.includes(p.id) ? 'yes' : 'no') },
+      ]
+      try {
+        await exportTable({
+          format,
+          rows: filteredProviders,
+          columns,
+          filename: `providers-${new Date().toISOString().slice(0, 10)}`,
+          title: 'Providers',
+        })
+        toast.success(
+          format === 'clipboard'
+            ? `Copied ${filteredProviders.length} providers`
+            : format === 'print'
+              ? 'Opening print view'
+              : `Exported ${filteredProviders.length} providers`,
+        )
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Export failed')
+      }
+    },
+    [filteredProviders, ratings, favorites],
+  )
+
+  // ── Keyboard shortcuts (NEW-326) ──────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+      if (selectedProvider || editingProvider || showAddProviderModal || showVendorSearch || showEmailModal) return
+      if (e.key === '/') { e.preventDefault(); searchRef.current?.focus() }
+      else if (e.key === 'n') { e.preventDefault(); setShowAddProviderModal(true) }
+      else if (e.key === 'f') setShowFavoritesOnly(s => !s)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedProvider, editingProvider, showAddProviderModal, showVendorSearch, showEmailModal])
+
+  // Close the right-click menu on any outside click.
+  useEffect(() => {
+    if (!providerMenu) return
+    const close = () => setProviderMenu(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [providerMenu])
+
+  // Discovery deliberately sits above the provider-list loading and error gates:
+  // having no providers yet — or a roster that failed to load — is exactly when you
+  // want to go find some. Making it wait on that data would be backwards.
+  if (tab === 'discover') {
+    return (
+      <div className="min-h-screen">
+        <Header
+          title="Wine Providers"
+          subtitle="Find distributors that can legally supply your restaurant, nearest first"
+        />
+        <div className="px-6 pt-6">
+          <ProvidersTabs
+            tab={tab}
+            onChange={setTab}
+            count={providers.length || null}
+          />
+        </div>
+        {/* The map page keeps its own "Find distributors" heading, which reads as the
+            section title under the page title rather than a competing one. Left alone
+            deliberately so this tab needs no changes inside the distributor surface. */}
+        <Suspense fallback={<div className="px-6 pt-6"><PageSkeleton /></div>}>
+          <DistributorMapPage customProviders={providers} />
+        </Suspense>
+      </div>
+    )
+  }
 
   // Only show full-page skeleton on the very first load (no cached data at all).
   // For re-mounts / SPA navigations with stale cache, placeholderData keeps prior
@@ -429,6 +702,14 @@ export function Providers() {
 
       <div className="p-6">
 
+        <div className="mb-5">
+          <ProvidersTabs
+            tab={tab}
+            onChange={setTab}
+            count={providers.length || null}
+          />
+        </div>
+
         {/* ── Empty state ── */}
         {providers.length === 0 && !isLoading && (
           <EmptyProvidersState
@@ -439,6 +720,9 @@ export function Providers() {
 
         {providers.length > 0 && (
           <>
+            {/* engine insights in context (NEW-748) */}
+            <ContextualInsights host="providers" defaultOpen={false} className="mb-4" />
+
             {/* ════════════════════════════════════════
                 TOOLBAR  (sketch 008-A: two-row layout)
             ════════════════════════════════════════ */}
@@ -446,11 +730,12 @@ export function Providers() {
 
               {/* Row 1: search + CTA */}
               <div className="flex gap-2.5">
-                <div className="flex-1 relative">
+                <div className="flex-1 relative" data-tour="providers-search">
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                   <input
+                    ref={searchRef}
                     type="text"
-                    placeholder="Search providers, portfolios, regions…"
+                    placeholder="Search providers, portfolios, regions…    ( / )"
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     className="w-full pl-10 pr-9 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-wine-500/20 focus:border-wine-400 outline-none transition-all text-sm placeholder:text-gray-400"
@@ -466,6 +751,7 @@ export function Providers() {
                 </div>
                 <button
                   onClick={() => setShowVendorSearch(true)}
+                  data-tour="providers-add"
                   className="px-4 py-2.5 bg-wine-600 text-white font-semibold rounded-xl hover:bg-wine-700 active:scale-[0.98] shadow-sm shadow-wine-600/30 transition-all flex items-center gap-1.5 whitespace-nowrap text-sm"
                 >
                   <Plus className="w-4 h-4" />
@@ -474,7 +760,7 @@ export function Providers() {
               </div>
 
               {/* Row 2: filter chips + view toggle */}
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center justify-between gap-3" data-tour="providers-filters">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {(['All', 'Distributor', 'Importer', 'Wholesaler'] as BusinessTypeFilter[]).map(type => (
                     <button
@@ -508,6 +794,40 @@ export function Providers() {
                       </span>
                     )}
                   </button>
+
+                  <div className="w-px h-4 bg-gray-200 mx-0.5" />
+
+                  {/* Rating-band filter (NEW-336) */}
+                  {([
+                    { key: '4' as const, label: '4★+' },
+                    { key: '3' as const, label: '3★+' },
+                    { key: 'unrated' as const, label: 'Unrated' },
+                  ]).map(band => (
+                    <button
+                      key={band.key}
+                      onClick={() => setRatingBand(ratingBand === band.key ? 'all' : band.key)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                        ratingBand === band.key
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                          : 'bg-white text-gray-600 border border-gray-200 hover:border-amber-200 hover:text-amber-600'
+                      }`}
+                    >
+                      {band.label}
+                    </button>
+                  ))}
+
+                  <div className="w-px h-4 bg-gray-200 mx-0.5" />
+
+                  {/* Export directory (NEW-334) */}
+                  <ExportMenu
+                    variant="ghost"
+                    size="sm"
+                    label="Export"
+                    count={filteredProviders.length}
+                    onExport={exportProviders}
+                    title="Export the filtered provider directory"
+                    triggerClassName="rounded-full px-3 py-1.5 h-auto"
+                  />
                 </div>
 
                 {/* View mode toggle */}
@@ -573,6 +893,7 @@ export function Providers() {
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 18px rgba(0,0,0,0.09)'; (e.currentTarget as HTMLElement).style.borderColor = '#e8c8cc' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 1px 4px rgba(124,29,47,0.06)'; (e.currentTarget as HTMLElement).style.borderColor = '#f0e0e3' }}
                       onClick={() => setSelectedProvider(provider)}
+                      onContextMenu={e => { e.preventDefault(); setProviderMenu({ id: provider.id, x: e.clientX, y: e.clientY }) }}
                     >
                       <div className="flex items-start justify-between mb-1.5">
                         <h3 className="font-semibold text-gray-900 text-xs leading-snug line-clamp-2 flex-1 mr-2">{provider.name}</h3>
@@ -652,7 +973,7 @@ export function Providers() {
                 Action-first cards, dot badges, red hearts
             ════════════════════════════════════════ */}
             {filteredProviders.length > 0 && viewMode === 'grid' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-tour="providers-list">
                 {filteredProviders.map((provider, index) => {
                   const isFav = favorites.includes(provider.id)
                   return (
@@ -662,6 +983,7 @@ export function Providers() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.03, type: 'spring', stiffness: 320, damping: 26 }}
                       onClick={() => setSelectedProvider(provider)}
+                      onContextMenu={e => { e.preventDefault(); setProviderMenu({ id: provider.id, x: e.clientX, y: e.clientY }) }}
                       className="bg-white rounded-[18px] border p-[18px] cursor-pointer transition-all group"
                       style={{
                         borderColor: isFav ? '#f0e0e3' : '#ebebed',
@@ -733,10 +1055,24 @@ export function Providers() {
 
                       {/* Footer */}
                       <div className="pt-2.5 border-t border-gray-50 flex items-center justify-between">
-                        <div className="flex items-center gap-1 min-w-0 text-xs text-gray-400">
-                          <MapPin className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate">{provider.physicalAddress}</span>
-                        </div>
+                        {provider.physicalAddress && provider.physicalAddress !== 'N/A' ? (
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(provider.physicalAddress)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-1 min-w-0 text-xs text-gray-500 hover:text-wine-600 transition-colors group/addr"
+                            title="Open address in Google Maps"
+                          >
+                            <MapPin className="w-3 h-3 flex-shrink-0 text-wine-500 group-hover/addr:scale-110 transition-transform" />
+                            <span className="truncate hover:underline">{provider.physicalAddress}</span>
+                          </a>
+                        ) : (
+                          <div className="flex items-center gap-1 min-w-0 text-xs text-gray-400">
+                            <MapPin className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">No address on file</span>
+                          </div>
+                        )}
                         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
                           {lastOrderDates[provider.id] && (
                             <span className="flex items-center gap-1 text-xs text-emerald-600">
@@ -759,7 +1095,7 @@ export function Providers() {
 
             {/* ── Compact view ── */}
             {filteredProviders.length > 0 && viewMode === 'compact' && (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2" data-tour="providers-list">
                 {filteredProviders.map((provider, index) => {
                   const isFav = favorites.includes(provider.id)
                   return (
@@ -769,6 +1105,7 @@ export function Providers() {
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ delay: index * 0.015 }}
                       onClick={() => setSelectedProvider(provider)}
+                      onContextMenu={e => { e.preventDefault(); setProviderMenu({ id: provider.id, x: e.clientX, y: e.clientY }) }}
                       className={`bg-white rounded-xl border p-3 hover:shadow-md transition-all cursor-pointer group ${
                         isFav ? 'border-[#f0e0e3]' : 'border-gray-100 hover:border-gray-200'
                       }`}
@@ -796,16 +1133,37 @@ export function Providers() {
 
             {/* ── List view ── */}
             {filteredProviders.length > 0 && viewMode === 'list' && (
-              <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+              <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden" data-tour="providers-list">
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[700px]">
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50/60">
-                        <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Provider</th>
-                        <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-36">Type</th>
+                        {/* NEW-313: sortable columns (name / type / rating) */}
+                        {([
+                          { key: 'name' as const, label: 'Provider', cls: '' },
+                          { key: 'type' as const, label: 'Type', cls: 'w-36' },
+                        ]).map(col => (
+                          <th key={col.key} className={`px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide ${col.cls}`}>
+                            <button
+                              onClick={() => applyProviderSort(col.key)}
+                              className={`flex items-center gap-1 uppercase tracking-wide ${sortKey === col.key ? 'text-wine-700' : 'text-gray-400 hover:text-gray-600'}`}
+                            >
+                              {col.label}
+                              {sortKey === col.key && <span aria-hidden>{sortDir === 'asc' ? '↑' : '↓'}</span>}
+                            </button>
+                          </th>
+                        ))}
                         <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Portfolio</th>
                         <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-32">Contact</th>
-                        <th className="px-4 py-3 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-28">Rating</th>
+                        <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide w-28">
+                          <button
+                            onClick={() => applyProviderSort('rating')}
+                            className={`flex items-center gap-1 uppercase tracking-wide ${sortKey === 'rating' ? 'text-wine-700' : 'text-gray-400 hover:text-gray-600'}`}
+                          >
+                            Rating
+                            {sortKey === 'rating' && <span aria-hidden>{sortDir === 'asc' ? '↑' : '↓'}</span>}
+                          </button>
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
@@ -815,6 +1173,7 @@ export function Providers() {
                           <tr
                             key={provider.id}
                             onClick={() => setSelectedProvider(provider)}
+                      onContextMenu={e => { e.preventDefault(); setProviderMenu({ id: provider.id, x: e.clientX, y: e.clientY }) }}
                             className="hover:bg-gray-50/40 cursor-pointer transition-colors group"
                           >
                             <td className="px-4 py-3 w-56">
@@ -1060,7 +1419,42 @@ export function Providers() {
         )}
       </div>
 
-      <AddProviderModal isOpen={showAddProviderModal} onClose={() => setShowAddProviderModal(false)} onSave={handleAddProvider} />
+      {/* Right-click provider context menu (NEW-310) */}
+      {providerMenu && (() => {
+        const p = providers.find(x => x.id === providerMenu.id)
+        if (!p) return null
+        const MItem = ({ icon: Icon, label, disabled, onClick }: { icon: any; label: string; disabled?: boolean; onClick: () => void }) => (
+          <button
+            onClick={onClick}
+            disabled={disabled}
+            className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            <Icon className="w-4 h-4 text-gray-400" /> {label}
+          </button>
+        )
+        return (
+          <div
+            className="fixed z-[60] w-52 bg-white border border-gray-200 rounded-xl shadow-xl p-1"
+            style={{ top: Math.min(providerMenu.y, window.innerHeight - 280), left: Math.min(providerMenu.x, window.innerWidth - 220) }}
+            onClick={e => e.stopPropagation()}
+          >
+            <MItem icon={Phone} label="Call" disabled={!p.phone} onClick={() => { window.location.href = `tel:${p.phone}`; setProviderMenu(null) }} />
+            <MItem icon={Mail} label="Email" disabled={!p.email} onClick={() => { setEmailRecipient(p.email || ''); setShowEmailModal(true); setProviderMenu(null) }} />
+            <MItem icon={Edit} label="Edit" onClick={() => { setEditingProvider(p); setProviderMenu(null) }} />
+            <MItem icon={Heart} label={favorites.includes(p.id) ? 'Unfavorite' : 'Favorite'} onClick={() => { toggleFavorite(p.id); setProviderMenu(null) }} />
+            {/* NEW-316: View Orders filters the Orders page to this provider */}
+            <MItem icon={Truck} label="View orders" onClick={() => { navigate(`/orders?provider=${encodeURIComponent(p.id)}`); setProviderMenu(null) }} />
+            <MItem icon={Globe} label="Open website" disabled={!p.website} onClick={() => { window.open(p.website, '_blank', 'noopener'); setProviderMenu(null) }} />
+          </div>
+        )
+      })()}
+
+      <AddProviderModal
+        isOpen={showAddProviderModal}
+        onClose={() => setShowAddProviderModal(false)}
+        onSave={handleAddProvider}
+        onCatalogueVendorAdded={() => refetch()}
+      />
       <EditProviderModal
         isOpen={!!editingProvider}
         onClose={() => setEditingProvider(null)}
@@ -1070,7 +1464,15 @@ export function Providers() {
           : null
         }
       />
-      <VendorSearchModal open={showVendorSearch} onClose={() => setShowVendorSearch(false)} onProviderAdded={() => refetch()} onAddCustom={() => setShowAddProviderModal(true)} />
+      <VendorSearchModal
+        open={showVendorSearch}
+        onClose={() => setShowVendorSearch(false)}
+        onProviderAdded={() => refetch()}
+        onAddCustom={() => setShowAddProviderModal(true)}
+        addedCatalogueVendorIds={providers
+          .map((p) => p.catalogueVendorId)
+          .filter((id): id is string => !!id)}
+      />
       {showEmailModal && (
         <QuickGmailModal onClose={() => { setShowEmailModal(false); setEmailRecipient('') }} prefilledRecipient={emailRecipient} />
       )}

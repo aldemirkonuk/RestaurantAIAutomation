@@ -101,7 +101,19 @@ export class OrganizationsController {
       chainId: body.chainId,
       name: body.name,
       city: body.city,
+      email: body.email,
+      phone: body.phone,
     });
+  }
+
+  @Get("locations/:id")
+  async getLocation(
+    @Req() req: Request & { user: AuthenticatedUser },
+    @Param("id") id: string,
+  ) {
+    const userId: string = (req.user as AuthenticatedUser)?.userId;
+    if (!userId) throw new UnauthorizedException("Missing user identity");
+    return this.organizationsService.getLocation(userId, id);
   }
 
   @Post("locations")

@@ -289,6 +289,8 @@ This document captures a comprehensive analysis of the WineOps AI project, inclu
 
 ### 7. Extensibility to Full Restaurant Inventory
 
+> **Canonical futures:** [`.planning/FUTURES.md`](../.planning/FUTURES.md) — brand **Mudavym**, sequence wine → beverages → bakery → kitchen. Ultimate goal remains a full autonomous restaurant backend.
+
 #### Required Changes
 
 **Database (Major Refactor)**
@@ -296,34 +298,37 @@ This document captures a comprehensive analysis of the WineOps AI project, inclu
 -- Current (Wine-specific)
 master_wine_library → restaurant_inventory
 
--- Needed (Generic)
+-- Needed (Mudavym catalog)
 master_product_catalog → restaurant_inventory
-  ├── product_type: 'wine' | 'food' | 'beverage' | 'supply'
-  ├── product_category: JSONB (flexible)
-  └── product_attributes: JSONB (type-specific)
+  ├── domain: 'beverage' | 'food' | 'supply'
+  ├── subsection: e.g. 'wine' | 'beer' | 'cocktail' | 'hard_alcohol' | 'na' | 'bakery'
+  ├── subtype / ontology_path: e.g. 'wine/red', 'hard_alcohol/gin'
+  ├── product_attributes: JSONB (type-specific; wine depth as the bar)
+  └── media: photos / labels (first-class, like wine enrichment)
 ```
 
 **Changes Needed:**
-1. Rename `master_wine_library` → `master_product_catalog`
-2. Add `product_type` enum field
-3. Move wine-specific fields to JSONB `product_attributes`
-4. Create product type-specific tables (optional):
-   - `wine_attributes` (vintage, grape, etc.)
-   - `food_attributes` (expiry, allergens, etc.)
-   - `beverage_attributes` (alcohol_content, etc.)
+1. Generalize `master_wine_library` → `master_product_catalog` (migrate gradually; wine remains the reference quality bar)
+2. Add `domain`, `subsection`, `subtype` (not a flat `product_type` alone)
+3. Move type-specific fields into structured attribute packs / JSONB
+4. Type-specific packs (examples):
+   - `wine_attributes` (vintage, grape, region, …) — existing depth
+   - `beer_attributes`, `spirit_attributes`, `cocktail_recipe`, `na_attributes`
+   - `bakery_attributes` (allergens, shelf life, yield, …) — first food vertical
+5. Photos/brand imagery on every catalog item at wine parity
 
 **Code Changes:**
 
-- **Backend (Python)**: Refactor `InventoryItem` model to be generic
-- **Frontend (TypeScript)**: Create generic `Product` interface
-- **Agents**: Update all agents to handle multiple product types
+- **Backend (Python)**: Refactor `InventoryItem` model to be generic across domain/subsection
+- **Frontend (TypeScript)**: Generic `Product` interface with subsection-aware detail panels
+- **Agents**: Update agents to handle multiple product types without lowering extraction quality
 
 **Effort Estimate:**
 - Database migration: 2-3 days
 - Backend refactoring: 1-2 weeks
 - Frontend refactoring: 1-2 weeks
 - Testing: 1 week
-- **Total: ~4-6 weeks**
+- **Total: ~4-6 weeks** (foundations only; bakery MVP and rest-of-kitchen are separate backlog phases)
 
 #### What Makes It Easier ✅
 

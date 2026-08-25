@@ -210,7 +210,10 @@ describe("OneTapActionsService", () => {
         error: null,
       });
 
-      const result = await service.getAction(actionId);
+      const result = await service.getAction(
+        actionId,
+        mockAction.restaurant_id,
+      );
 
       expect(result.id).toBe(actionId);
     });
@@ -223,9 +226,9 @@ describe("OneTapActionsService", () => {
         error: { message: "Not found" },
       });
 
-      await expect(service.getAction(actionId)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.getAction(actionId, "test-restaurant"),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -262,7 +265,12 @@ describe("OneTapActionsService", () => {
         // Second call for update
         .mockResolvedValueOnce({ data: mockUpdatedAction, error: null });
 
-      const result = await service.executeAction(actionId, userId, {});
+      const result = await service.executeAction(
+        actionId,
+        mockExistingAction.restaurant_id,
+        userId,
+        {},
+      );
 
       expect(result.status).toBe(OneTapActionStatus.COMPLETED);
     });

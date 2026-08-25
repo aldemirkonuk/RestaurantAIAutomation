@@ -10,9 +10,11 @@ import {
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { SearchVendorsDto } from "./dto/search-vendors.dto";
+import { MatchVendorsDto } from "./dto/match-vendors.dto";
 import {
   VendorCatalogueRow,
   VendorCatalogueService,
+  VendorMatchCandidate,
   VendorSearchResult,
 } from "./vendor-catalogue.service";
 
@@ -64,6 +66,36 @@ export class VendorCatalogueController {
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to search vendor catalogue",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // MUST come before `@Get(":id")` — Nest matches routes in declaration
+  // order, and ":id" would otherwise swallow "/vendor-catalogue/match" as a
+  // literal id lookup.
+  @Get("match")
+  @ApiOperation({
+    summary:
+      "Duplicate-detection candidates for the add-provider form — is this vendor already in the curated catalogue?",
+  })
+  @ApiQuery({ name: "name", required: false })
+  @ApiQuery({ name: "address", required: false })
+  @ApiQuery({ name: "country", required: false })
+  @ApiQuery({ name: "limit", required: false, type: Number })
+  @ApiResponse({
+    status: 200,
+    description: "Curated vendors that plausibly match, ranked by similarity",
+  })
+  @ApiResponse({ status: 401, description: "Unauthorized" })
+  async match(
+    @Query() dto: MatchVendorsDto,
+  ): Promise<VendorMatchCandidate[]> {
+    try {
+      return await this.vendorCatalogueService.match(dto);
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to match vendor catalogue",
         error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

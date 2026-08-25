@@ -1,12 +1,14 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
   Optional,
   UnprocessableEntityException,
+  forwardRef,
 } from "@nestjs/common";
 import { Interval } from "@nestjs/schedule";
 import { DatabaseService } from "../database/database.service";
@@ -17,11 +19,7 @@ import { InboundResponderService } from "../common/orchestrator/inbound-responde
 import { InboundAddressService } from "../common/orchestrator/inbound-address.service";
 import { GmailService } from "../communications/gmail.service";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
-import {
-  StockType,
-  TransactionSource,
-  TransactionType,
-} from "../inventory-ledger/dto/inventory-ledger.dto";
+import { NotificationsService } from "../notifications/notifications.service";
 import { EventType, SourcePage } from "../events/dto/event.dto";
 import {
   CreateOrderDto,
@@ -30,7 +28,10 @@ import {
   OrderResponseDto,
   ProcurementOrderStatus,
   UpdateOrderDto,
+  VerifyReceiptDto,
 } from "./dto/procurement.dto";
+import { computeMatch, isDiscrepancy, MatchResult } from "./invoice-match";
+import { draftClaimFromMatch } from "./documents/credit-ledger";
 import { ApproveDraftDto } from "./dto/approve-draft.dto";
 
 interface ProcurementOrderRow {
@@ -69,6 +70,9 @@ export class ProcurementService {
     @Optional() private readonly inboundResponder?: InboundResponderService,
     @Optional() private readonly websocketGateway?: WebsocketGateway,
     @Optional() private readonly inboundAddress?: InboundAddressService,
+    @Optional()
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notificationsService?: NotificationsService,
   ) {}
 
   /**
@@ -171,7 +175,13 @@ export class ProcurementService {
     restaurantId: string,
     userId: string,
     order: OrderResponseDto,
-    changeType: "created" | "updated" | "approved" | "delivered" | "cancelled",
+    changeType:
+      | "created"
+      | "updated"
+      | "approved"
+      | "delivered"
+      | "completed"
+      | "cancelled",
   ): Promise<void> {
     try {
       await this.eventsService.createEvent(restaurantId, userId, {
@@ -794,7 +804,8 @@ export class ProcurementService {
       await this.databaseService.supabase
         .from("restaurant_inventory")
         .update({
-          in_transit_quantity: ((inv as any)?.in_transit_quantity ?? 0) + quantity,
+          in_transit_quantity:
+            ((inv as any)?.in_transit_quantity ?? 0) + quantity,
         })
         .eq("restaurant_id", restaurantId)
         .eq("id", inventoryId);
@@ -973,7 +984,7 @@ export class ProcurementService {
             const currentShadow = currentStock?.shadow_stock ?? 0;
             const currentInTransit = currentStock?.in_transit_quantity ?? 0;
             const shadowRelease = Math.min(resolvedQuantity, currentShadow);
-            const unitCost = (row.final_price ?? row.suggested_price) ?? null;
+            const unitCost = row.final_price ?? row.suggested_price ?? null;
 
             if (shadowRelease > 0) {
               await this.databaseService.supabase.rpc("apply_stock_movement", {
@@ -1043,6 +1054,352 @@ export class ProcurementService {
     // Emit order_change event for cross-page sync (triggers inventory update)
     await this.emitOrderChangeEvent(restaurantId, userId, order, "delivered");
 
+    // Pinned receipt-verification task: stock is already in (above), but a human
+    // must confirm the physical count against the vendor's digital invoice.
+    // Critical priority keeps it at the top of the inbox until verified; the
+    // group key lets verifyReceipt() resolve it for every member at once.
+    if (this.notificationsService) {
+      await this.notificationsService.persistForRestaurant(
+        restaurantId,
+        {
+          type: "invoice_received",
+          title: `Verify delivery: ${order.wineName || order.orderNumber || "order"}`,
+          message: `${resolvedQuantity} bottles stocked in. Confirm the physical count against the vendor invoice.`,
+          priority: "critical",
+          actionUrl: `/inventory?verify=${orderId}`,
+          actionLabel: "Verify receipt",
+          groupKey: `receipt_verify:${orderId}`,
+          metadata: {
+            orderId,
+            inventoryId: order.inventoryId,
+            wineName: order.wineName,
+            quantity: resolvedQuantity,
+            providerId: order.providerId,
+          },
+        },
+        { dedupeWithinMinutes: 24 * 60 },
+      );
+    }
+
+    return order;
+  }
+
+  /**
+   * Apply one signed correction to live stock through the ledger.
+   * The idempotency key is per (order, inventory) so a replayed request — the mobile
+   * outbox retries — can never double-count.
+   */
+  /**
+   * Open a vendor credit claim from a match verdict.
+   *
+   * The claim is opened, never sent. Contacting a distributor stays a human act
+   * behind the existing draft-then-approve flow, in line with every other
+   * outbound path in this codebase.
+   *
+   * Deliberately silent about what it declines to claim: draftClaimFromMatch
+   * returns null for `partial` and `unmatched` (paperwork still in flight, not a
+   * vendor error) and for any discrepancy whose amount cannot be computed. A $0
+   * claim in a distributor's inbox costs more credibility than it recovers.
+   */
+  private async openCreditClaim(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    match: MatchResult,
+  ): Promise<void> {
+    try {
+      const claim = draftClaimFromMatch(match);
+      if (!claim) return;
+
+      const { error } = await this.databaseService.supabase
+        .from("procurement_credits")
+        .insert({
+          restaurant_id: restaurantId,
+          order_id: orderId,
+          reason: claim.reason,
+          summary: claim.summary,
+          claimed_amount: claim.claimedAmount,
+          // True only when the vendor's own packing slip proves the overbill.
+          // Worth knowing which claims are winnable before spending a call.
+          self_evidenced: claim.selfEvidenced,
+          state: "open",
+          opened_by: userId,
+          // Snapshot: the order can be corrected later, and the claim must still
+          // be able to say what it was based on when it was raised.
+          evidence: match as unknown as Record<string, unknown>,
+        });
+
+      // 23505 = a claim for this line and reason is already open. Re-running the
+      // match must not manufacture a second claim for money already being
+      // chased — that would double-count recovery and embarrass the restaurant.
+      if (error && error.code !== "23505")
+        this.logger.warn(
+          `openCreditClaim failed for order ${orderId}: ${error.message}`,
+        );
+    } catch (err: any) {
+      this.logger.warn(`openCreditClaim threw for ${orderId}: ${err?.message}`);
+    }
+  }
+
+  /**
+   * @param unitCost What the bottle VERIFIABLY cost, from the invoice — landed,
+   *   including allocated freight and fees. Passing it is the difference between
+   *   a match that means something and a match that is decoration: without it
+   *   apply_stock_movement writes cost_provenance='estimated' and the lot keeps
+   *   the price we hoped for at ordering time, so catching a $2 overcharge
+   *   changes a badge on a screen and leaves inventory valuation, WAC, pour cost
+   *   and COGS all still quoting the old number.
+   */
+  private async applyReceiptAdjustment(
+    orderId: string,
+    inventoryId: string,
+    delta: number,
+    reason: string,
+    unitCost?: number | null,
+  ): Promise<void> {
+    const { error } = await this.databaseService.supabase.rpc(
+      "apply_stock_movement",
+      {
+        p_inventory_id: inventoryId,
+        p_stock_state: "live",
+        p_delta: delta,
+        p_transaction_type: "adjustment",
+        p_source: "receiving",
+        p_reason: reason,
+        p_unit_cost: unitCost ?? null,
+        p_order_id: orderId,
+        p_idempotency_key: `receipt-verify:${orderId}:${inventoryId}`,
+      },
+    );
+    if (error) {
+      this.logger.error(
+        `verifyReceipt adjustment failed for ${inventoryId}: ${error.message}`,
+      );
+      throw new UnprocessableEntityException(
+        `Adjustment failed for item ${inventoryId}: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * RECEIPT VERIFICATION — three-way match (PO <-> Invoice <-> Receipt).
+   *
+   * Delivery already stocked bottles in at invoice quantity; this is the audit layer that
+   * reconciles what we ordered, what the vendor billed, and what physically arrived.
+   * computeMatch() decides the verdict server-side — the client never dictates the outcome.
+   *
+   * Two payload shapes are supported on purpose:
+   *  - Legacy `{ adjustments }` only: the mobile receive screen queues requests in an
+   *    offline outbox, so payloads composed before this shipped can still arrive. They keep
+   *    exactly the old behavior (apply deltas, complete the order).
+   *  - Match payload: quantities/prices are reconciled, the order completes or stays open
+   *    as PARTIALLY_RECEIVED with a backorder, and any discrepancy alerts the manager.
+   */
+  async verifyReceipt(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    body: VerifyReceiptDto,
+  ): Promise<OrderResponseDto> {
+    const adjustments = (body.adjustments || []).filter(
+      (a) => a.inventoryId && Number.isFinite(a.delta) && a.delta !== 0,
+    );
+
+    const hasMatchFields =
+      body.acceptedQuantity != null ||
+      body.invoiceQuantity != null ||
+      body.invoiceUnitPrice != null ||
+      body.rejectedQuantity != null;
+
+    const { data: orderRow, error: fetchError } =
+      await this.databaseService.supabase
+        .from("procurement_orders")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .single();
+
+    if (fetchError || !orderRow) {
+      throw new NotFoundException(`Order ${orderId} not found`);
+    }
+
+    // What markDelivered already pushed into the ledger; corrections are relative to it.
+    const stockedQty =
+      (orderRow as any).quantity_received ?? (orderRow as any).quantity ?? 0;
+    const orderedQty = (orderRow as any).quantity ?? 0;
+    const poUnitPrice =
+      (orderRow as any).final_price ??
+      (orderRow as any).negotiated_price ??
+      (orderRow as any).quoted_price ??
+      null;
+
+    // Silence is NOT agreement. An unstated invoice used to be inferred from the
+    // PO, which had two consequences: physical_vs_bill compared a number to
+    // itself and always passed, and price_verified=true was written for a
+    // delivery where nobody had looked at a document. That is a manufactured
+    // audit assertion in a column a customer will lean on in a vendor dispute.
+    // Absent now means absent, and the verdict comes back `unmatched`.
+    const match = hasMatchFields
+      ? computeMatch({
+          orderedQty,
+          poUnitPrice,
+          shippedQty: body.shippedQuantity ?? null,
+          invoiceQty: body.invoiceQuantity ?? null,
+          invoiceUnitPrice: body.invoiceUnitPrice ?? null,
+          acceptedQty: body.acceptedQuantity ?? stockedQty,
+          rejectedQty: body.rejectedQuantity ?? 0,
+          freeGoodsQty: body.freeGoodsQuantity ?? 0,
+          allocatedCharges: body.allocatedCharges ?? 0,
+          priceOverrideReason: body.priceOverrideReason ?? null,
+          stockedQty,
+        })
+      : null;
+    const hasInvoice = body.invoiceQuantity != null;
+
+    // A price that differs from the agreed one is never accepted silently (D-B).
+    if (match?.requiresOverride) {
+      throw new UnprocessableEntityException(
+        `${match.summary} Accept the price difference with a reason, or correct the invoice price.`,
+      );
+    }
+
+    // Correct the ordered line to the accepted count, then apply any unlisted extras.
+    if (match && match.ledgerDelta !== 0 && (orderRow as any).inventory_id) {
+      await this.applyReceiptAdjustment(
+        orderId,
+        (orderRow as any).inventory_id,
+        match.ledgerDelta,
+        `receipt verification for order ${orderId}: ${match.summary}`,
+        // Verified landed cost, so the corrected lot carries what the bottle
+        // really cost rather than what we expected it to.
+        match.effectiveUnitCost,
+      );
+    }
+
+    for (const adj of adjustments) {
+      // Skip the ordered line when the match already corrected it.
+      if (match && adj.inventoryId === (orderRow as any).inventory_id) continue;
+      await this.applyReceiptAdjustment(
+        orderId,
+        adj.inventoryId,
+        adj.delta,
+        adj.reason ||
+          `receipt verification for order ${orderId}${body.note ? `: ${body.note}` : ""}`,
+      );
+    }
+
+    // Accepting less than was ordered keeps the order open, so the outstanding bottles stay
+    // visible as a backorder instead of stranding phantom shadow stock (D17).
+    // An order also stays open when no invoice has arrived. Many distributors
+    // bill weekly in arrears — the paper at the door is a packing slip with no
+    // prices — so closing on the goods alone would mark the delivery finished
+    // before anyone could check what was charged for it, and reconciling late
+    // is exactly where the recoverable money lives.
+    const awaitingInvoice = match?.verdict === "unmatched";
+    const status =
+      match && (match.backorderQty > 0 || awaitingInvoice)
+        ? ProcurementOrderStatus.PARTIALLY_RECEIVED
+        : ProcurementOrderStatus.COMPLETED;
+
+    const update: Record<string, any> = {
+      status,
+      notes: body.note ?? undefined,
+    };
+
+    if (match) {
+      const acceptedQty = body.acceptedQuantity ?? stockedQty;
+      const rejectedQty = body.rejectedQuantity ?? 0;
+      Object.assign(update, {
+        quantity_received: acceptedQty + rejectedQty,
+        accepted_quantity: acceptedQty,
+        rejected_quantity: rejectedQty,
+        rejected_reason: body.rejectedReason ?? null,
+        invoice_quantity: body.invoiceQuantity ?? null,
+        invoice_unit_price: body.invoiceUnitPrice ?? null,
+        backorder_quantity: match.backorderQty,
+        match_status: match.verdict,
+        // NULL, not false, when there was no invoice to verify against: "we
+        // checked and it did not match" and "nobody has checked" are different
+        // facts, and only one of them is an accusation.
+        price_verified: hasInvoice ? match.priceVerified : null,
+        price_override_reason: body.priceOverrideReason ?? null,
+        discrepancy_notes: isDiscrepancy(match.verdict) ? match.summary : null,
+        match_verified_at: new Date().toISOString(),
+        match_verified_by: userId,
+      });
+    }
+
+    // Raise a vendor credit claim when the match found money owed back.
+    // Best-effort: a failure here must not strand a delivery that has already
+    // been counted, and the claim can be raised again from the discrepancy queue.
+    if (match) await this.openCreditClaim(restaurantId, orderId, userId, match);
+
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .update(update)
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .select("*, inventory:inventory_id(wine_name)")
+      .single();
+
+    if (error) {
+      this.logger.error(`verifyReceipt status update failed: ${error.message}`);
+      throw error;
+    }
+
+    // Resolve the pinned notification for every member.
+    await this.databaseService.supabase
+      .from("notifications")
+      .update({ status: "read", read_at: new Date().toISOString() })
+      .eq("restaurant_id", restaurantId)
+      .eq("group_key", `receipt_verify:${orderId}`)
+      .eq("status", "unread");
+
+    const row = data as any;
+    const order = this.mapOrderRow({
+      ...row,
+      wine_name:
+        row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
+    });
+
+    // The manager hears about a bad delivery immediately, as its own task — the verify
+    // task above has just been resolved, so the discrepancy needs its own thread (D-E).
+    if (match && isDiscrepancy(match.verdict) && this.notificationsService) {
+      await this.notificationsService.persistForRestaurant(
+        restaurantId,
+        {
+          type: "invoice_received",
+          title: `Delivery discrepancy: ${order.wineName || order.orderNumber || "order"}`,
+          message: match.summary,
+          priority: "critical",
+          actionUrl: `/inventory?verify=${orderId}`,
+          actionLabel: "Review match",
+          groupKey: `receipt_discrepancy:${orderId}`,
+          metadata: {
+            orderId,
+            inventoryId: (orderRow as any).inventory_id,
+            matchStatus: match.verdict,
+            backorderQty: match.backorderQty,
+            creditDue: match.creditDue,
+            effectiveUnitCost: match.effectiveUnitCost,
+            providerId: (orderRow as any).provider_id,
+          },
+        },
+        { dedupeWithinMinutes: 24 * 60 },
+      );
+    }
+
+    await this.emitOrderChangeEvent(
+      restaurantId,
+      userId,
+      order,
+      status === ProcurementOrderStatus.COMPLETED ? "completed" : "updated",
+    );
+
+    this.logger.log(
+      `Receipt verified for order ${orderId}: verdict=${match?.verdict ?? "legacy"}, ` +
+        `status=${status}, adjustments=${adjustments.length}`,
+    );
     return order;
   }
 
@@ -1251,7 +1608,6 @@ export class ProcurementService {
 
     const rawEmailBody = dto.modifiedContent ?? (conv as any).content ?? "";
     const providerEmail = (conv as any).providers?.contact_email ?? null;
-    const providerName = (conv as any).providers?.name ?? "Provider";
     const rawOrder = (conv as any).procurement_orders;
     const wineName =
       rawOrder?.inventory?.wine_name ?? rawOrder?.wine_name ?? "Wine Order";

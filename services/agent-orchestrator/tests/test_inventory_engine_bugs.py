@@ -1,4 +1,4 @@
-"""Tests for BUG-01 (optimistic locking) and BUG-02 (dead code removal)."""
+"""Tests for BUG-01 (stock write via apply_stock_movement RPC) and BUG-02 (dead code removal)."""
 
 import pytest
 from unittest.mock import MagicMock
@@ -21,91 +21,95 @@ class TestBUG02DeadCodeRemoval:
         ), "batch_size dead code must be removed from __init__"
 
 
-class TestBUG01OptimisticLocking:
-    """BUG-01: update_stock must use optimistic locking (WHERE version = N)."""
+class TestBUG01StockWriteViaRpc:
+    """BUG-01: update_stock must apply deltas through apply_stock_movement (not direct CAS)."""
 
     @pytest.fixture
     def mock_supabase(self):
-        sb = MagicMock()
-        return sb
+        return MagicMock()
 
     @pytest.mark.asyncio
     async def test_successful_update_returns_item(self, mock_supabase):
-        """Happy path: version matches, update succeeds."""
+        """Happy path: read current, apply delta via RPC, return refreshed row."""
         from core.database import InventoryRepository
 
         repo = InventoryRepository.__new__(InventoryRepository)
         repo.supabase = mock_supabase
         repo.table_name = "inventory_stock"
 
-        # Simulate current row has version=3
-        mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {
-            "id": "inv-1",
-            "stock_live": 10,
-            "version": 3,
-        }
-        # Simulate successful UPDATE returning version=4
-        mock_supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
-            {"id": "inv-1", "stock_live": 7, "version": 4}
+        select_execute = (
+            mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute
+        )
+        select_execute.side_effect = [
+            MagicMock(data={"id": "inv-1", "stock_live": 10}),
+            MagicMock(data={"id": "inv-1", "stock_live": 7, "version": 4}),
         ]
+        mock_supabase.rpc.return_value.execute.return_value = MagicMock(data=None)
 
         result = await repo.update_stock("inv-1", 7, "sale")
         assert result is not None
         assert result["stock_live"] == 7
+        mock_supabase.rpc.assert_called_once()
+        args, kwargs = mock_supabase.rpc.call_args
+        assert args[0] == "apply_stock_movement"
+        assert args[1]["p_inventory_id"] == "inv-1"
+        assert args[1]["p_delta"] == -3
+        assert args[1]["p_stock_state"] == "live"
 
     @pytest.mark.asyncio
-    async def test_conflict_triggers_retry(self, mock_supabase):
-        """Version conflict (empty RETURNING) causes retry, succeeds on 2nd attempt."""
+    async def test_zero_delta_skips_rpc(self, mock_supabase):
+        """When target equals current stock, skip RPC and return refreshed row."""
         from core.database import InventoryRepository
 
         repo = InventoryRepository.__new__(InventoryRepository)
         repo.supabase = mock_supabase
         repo.table_name = "inventory_stock"
 
-        # First SELECT: version=3
-        # Second SELECT (after conflict): version=4 (another writer incremented it)
-        select_mock = (
+        select_execute = (
             mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute
         )
-        select_mock.side_effect = [
-            MagicMock(data={"id": "inv-1", "stock_live": 10, "version": 3}),
-            MagicMock(data={"id": "inv-1", "stock_live": 9, "version": 4}),
-        ]
-
-        # First UPDATE: conflict → empty list; Second UPDATE: success
-        update_mock = (
-            mock_supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.execute
-        )
-        update_mock.side_effect = [
-            MagicMock(data=[]),  # conflict
-            MagicMock(data=[{"id": "inv-1", "stock_live": 8, "version": 5}]),
+        select_execute.side_effect = [
+            MagicMock(data={"id": "inv-1", "stock_live": 8}),
+            MagicMock(data={"id": "inv-1", "stock_live": 8, "version": 2}),
         ]
 
         result = await repo.update_stock("inv-1", 8, "sale")
         assert result is not None
-        assert result["version"] == 5
-        assert update_mock.call_count == 2
+        assert result["stock_live"] == 8
+        mock_supabase.rpc.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_exhausted_retries_returns_none(self, mock_supabase):
-        """After 3 retries all conflicting → returns None."""
+    async def test_rpc_failure_returns_none(self, mock_supabase):
+        """If apply_stock_movement raises, update_stock returns None."""
         from core.database import InventoryRepository
 
         repo = InventoryRepository.__new__(InventoryRepository)
         repo.supabase = mock_supabase
         repo.table_name = "inventory_stock"
 
-        select_mock = (
+        select_execute = (
             mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute
         )
-        select_mock.return_value = MagicMock(
-            data={"id": "inv-1", "stock_live": 10, "version": 3}
-        )
-        update_mock = (
-            mock_supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.execute
-        )
-        update_mock.return_value = MagicMock(data=[])  # always conflict
+        select_execute.return_value = MagicMock(data={"id": "inv-1", "stock_live": 10})
+        mock_supabase.rpc.return_value.execute.side_effect = RuntimeError("rpc down")
 
         result = await repo.update_stock("inv-1", 8, "sale")
         assert result is None
-        assert update_mock.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_missing_inventory_returns_none(self, mock_supabase):
+        """Missing inventory row returns None without calling RPC."""
+        from core.database import InventoryRepository
+
+        repo = InventoryRepository.__new__(InventoryRepository)
+        repo.supabase = mock_supabase
+        repo.table_name = "inventory_stock"
+
+        select_execute = (
+            mock_supabase.table.return_value.select.return_value.eq.return_value.single.return_value.execute
+        )
+        select_execute.return_value = MagicMock(data=None)
+
+        result = await repo.update_stock("missing", 1, "sale")
+        assert result is None
+        mock_supabase.rpc.assert_not_called()

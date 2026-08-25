@@ -21,6 +21,51 @@ export interface UserPreferences {
   templateDefaults?: Record<string, { templateId: string; templateName: string }>
   reportsLayout?: unknown
   dashboardBlocks?: unknown
+  /** Interactive guidance tip/tour/FAB state (see apps/web/src/guidance/types.ts) */
+  guidance?: unknown
+  /** Settings → Services & permissions toggles */
+  servicePermissions?: Partial<
+    Record<'email' | 'web' | 'privacy_analytics' | 'privacy_sharing', boolean>
+  >
+  /** Settings → Team → Goals */
+  teamGoals?: {
+    weeklyCountTarget?: number
+    parComplianceTargetPct?: number
+    trainingCompletionTargetPct?: number
+  }
+  /**
+   * @deprecated Superseded by integration_oauth_connections server-side. Kept so
+   * previously stored preference blobs still parse; nothing reads it.
+   */
+  integrationsAuth?: Partial<
+    Record<'excel' | 'google_drive', { connected: boolean; account?: string }>
+  >
+  /** Home dashboard Quick Actions (order, hidden builtins, custom shortcuts) */
+  quickActions?: {
+    order: string[]
+    hiddenBuiltin: string[]
+    custom: Array<{
+      id: string
+      kind: 'custom'
+      title: string
+      href: string
+      icon: string
+      color?: string
+      description?: string
+    }>
+  }
+  /**
+   * Settings → Map — how wide the Find-distributors map frames the restaurant
+   * on load. Stored here rather than in localStorage so the choice follows the
+   * user to another browser and to the mobile app, which is what a preference
+   * surfaced in Settings implies.
+   */
+  mapDefaultScope?: 'continent' | 'country' | 'state' | 'city'
+  /** Settings → POS — active provider selection */
+  posConfig?: {
+    activeProvider?: string
+    updatedAt?: string
+  }
   [key: string]: unknown
 }
 

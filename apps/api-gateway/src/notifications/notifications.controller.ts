@@ -196,6 +196,19 @@ export class NotificationsController {
     }
   }
 
+  @Patch(":id/unread")
+  async markAsUnread(@Param("id") id: string) {
+    try {
+      const notification = await this.notificationsService.markAsUnread(id);
+      return notification;
+    } catch (error) {
+      this.logger.error(
+        `Failed to mark notification as unread: ${error.message}`,
+      );
+      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
   @Patch(":id/archive")
   async archiveNotification(@Param("id") id: string) {
     try {

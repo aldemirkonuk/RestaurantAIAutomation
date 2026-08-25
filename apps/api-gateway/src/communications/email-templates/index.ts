@@ -10,6 +10,9 @@ export * from "./base-template";
 // Onboarding
 export * from "./onboarding.template";
 
+// Password reset
+export * from "./password-reset.template";
+
 // Individual templates
 export * from "./low-stock-alert.template";
 export * from "./low-stock-digest.template";

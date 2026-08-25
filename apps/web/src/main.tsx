@@ -6,6 +6,8 @@ import { initGlobalErrorHandler } from './lib/global-error-handler'
 import { initErrorTracking } from './lib/error-tracking'
 import { startEmailScheduler } from './lib/email-scheduler'
 import { startReminderScheduler } from './lib/reminder-scheduler'
+import { registerServiceWorker } from './lib/register-sw'
+import { applyDevAuthBypass } from './lib/devAuthBypass'
 
 // Initialize global error handler
 initGlobalErrorHandler()
@@ -17,8 +19,15 @@ startEmailScheduler()
 // Start reminder scheduler
 startReminderScheduler()
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-)
+// PWA service worker (production builds)
+registerServiceWorker()
+
+// A no-op await outside dev-bypass mode (see the file for the full gate), so
+// this does not delay a normal or production boot.
+applyDevAuthBypass().finally(() => {
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>,
+  )
+})

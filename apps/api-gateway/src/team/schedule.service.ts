@@ -67,11 +67,16 @@ export class ScheduleService {
       .insert({ restaurant_id: restaurantId, week_start: weekStart })
       .select()
       .single();
-    if (error) throw new InternalServerErrorException("Failed to create schedule");
+    if (error)
+      throw new InternalServerErrorException("Failed to create schedule");
     return data;
   }
 
-  async createSchedule(userId: string, restaurantId: string, dto: CreateScheduleDto) {
+  async createSchedule(
+    userId: string,
+    restaurantId: string,
+    dto: CreateScheduleDto,
+  ) {
     return this.getOrCreateWeek(userId, restaurantId, dto.weekStart);
   }
 
@@ -108,15 +113,19 @@ export class ScheduleService {
 
     const shiftRows = shifts ?? [];
     const receipts = schedule
-      ? (
+      ? ((
           await this.sb
             .from("schedule_receipts")
             .select("member_id, seen_at")
             .eq("schedule_id", schedule.id)
-        ).data ?? []
+        ).data ?? [])
       : [];
 
-    const coverage = await this.computeCoverage(restaurantId, weekStart, shiftRows);
+    const coverage = await this.computeCoverage(
+      restaurantId,
+      weekStart,
+      shiftRows,
+    );
     const labor = await this.computeLabor(restaurantId, shiftRows, settings);
 
     return { schedule, shifts: shiftRows, coverage, labor, receipts, settings };
@@ -154,7 +163,9 @@ export class ScheduleService {
       return rest;
     };
     const all = (shifts ?? []).map(strip);
-    const mine = member ? all.filter((s: any) => s.member_id === member.id) : [];
+    const mine = member
+      ? all.filter((s: any) => s.member_id === member.id)
+      : [];
     const open = all.filter((s: any) => s.state === "open" || !s.member_id);
 
     let acknowledged = false;
@@ -172,7 +183,11 @@ export class ScheduleService {
 
   async copyWeek(userId: string, restaurantId: string, dto: CopyWeekDto) {
     await this.team.assertAccess(userId, restaurantId, "manager");
-    const target = await this.getOrCreateWeek(userId, restaurantId, dto.toWeekStart);
+    const target = await this.getOrCreateWeek(
+      userId,
+      restaurantId,
+      dto.toWeekStart,
+    );
     const fromEnd = addDays(dto.fromWeekStart, 6);
     const toEnd = addDays(dto.toWeekStart, 6);
     const { data: src } = await this.sb
@@ -230,7 +245,10 @@ export class ScheduleService {
       throw new InternalServerErrorException("Failed to publish schedule");
 
     // Re-publish resets receipts so "seen" reflects the new version.
-    await this.sb.from("schedule_receipts").delete().eq("schedule_id", scheduleId);
+    await this.sb
+      .from("schedule_receipts")
+      .delete()
+      .eq("schedule_id", scheduleId);
 
     // Notify the whole restaurant + deep-link back into /team.
     await this.notifications.persistForRestaurant(restaurantId, {
@@ -264,12 +282,14 @@ export class ScheduleService {
       .eq("user_id", userId)
       .maybeSingle();
     if (!member) return { acknowledged: false };
-    await this.sb
-      .from("schedule_receipts")
-      .upsert(
-        { schedule_id: scheduleId, member_id: member.id, seen_at: new Date().toISOString() },
-        { onConflict: "schedule_id,member_id" },
-      );
+    await this.sb.from("schedule_receipts").upsert(
+      {
+        schedule_id: scheduleId,
+        member_id: member.id,
+        seen_at: new Date().toISOString(),
+      },
+      { onConflict: "schedule_id,member_id" },
+    );
     return { acknowledged: true };
   }
 
@@ -294,13 +314,21 @@ export class ScheduleService {
 
   async createShift(userId: string, restaurantId: string, dto: CreateShiftDto) {
     await this.team.assertAccess(userId, restaurantId, "manager");
-    if (dto.memberId) await this.team.assertMemberInRestaurant(restaurantId, dto.memberId);
+    if (dto.memberId)
+      await this.team.assertMemberInRestaurant(restaurantId, dto.memberId);
     const schedule = await this.getOrCreateWeek(
       userId,
       restaurantId,
-      dto.scheduleId ? await this.weekStartOfSchedule(dto.scheduleId) : mondayOf(dto.shiftDate),
+      dto.scheduleId
+        ? await this.weekStartOfSchedule(dto.scheduleId)
+        : mondayOf(dto.shiftDate),
     );
-    const cost = await this.laborCost(restaurantId, dto.memberId, dto.startTime, dto.endTime);
+    const cost = await this.laborCost(
+      restaurantId,
+      dto.memberId,
+      dto.startTime,
+      dto.endTime,
+    );
     const { data, error } = await this.sb
       .from("shifts")
       .insert({
@@ -311,7 +339,8 @@ export class ScheduleService {
         start_time: dto.startTime,
         end_time: dto.endTime,
         role: dto.role ?? null,
-        shift_type: dto.shiftType ?? (dto.memberId ? periodOf(dto.startTime) : "open"),
+        shift_type:
+          dto.shiftType ?? (dto.memberId ? periodOf(dto.startTime) : "open"),
         state: dto.memberId ? "scheduled" : "open",
         note: dto.note ?? null,
         labor_cost: cost,
@@ -329,7 +358,8 @@ export class ScheduleService {
     dto: UpdateShiftDto,
   ) {
     await this.team.assertAccess(userId, restaurantId, "manager");
-    if (dto.memberId) await this.team.assertMemberInRestaurant(restaurantId, dto.memberId);
+    if (dto.memberId)
+      await this.team.assertMemberInRestaurant(restaurantId, dto.memberId);
     const patch: Record<string, any> = { updated_at: new Date().toISOString() };
     if (dto.memberId !== undefined) patch.member_id = dto.memberId;
     if (dto.shiftDate !== undefined) patch.shift_date = dto.shiftDate;
@@ -350,13 +380,24 @@ export class ScheduleService {
 
     // Rebind schedule when the date moves into another week.
     const nextDate = dto.shiftDate ?? cur.shift_date;
-    if (dto.shiftDate !== undefined && mondayOf(dto.shiftDate) !== mondayOf(cur.shift_date)) {
-      const schedule = await this.getOrCreateWeek(userId, restaurantId, mondayOf(nextDate));
+    if (
+      dto.shiftDate !== undefined &&
+      mondayOf(dto.shiftDate) !== mondayOf(cur.shift_date)
+    ) {
+      const schedule = await this.getOrCreateWeek(
+        userId,
+        restaurantId,
+        mondayOf(nextDate),
+      );
       patch.schedule_id = schedule.id;
     }
 
     // Recompute labor cost if member/time changed.
-    if (dto.memberId !== undefined || dto.startTime !== undefined || dto.endTime !== undefined) {
+    if (
+      dto.memberId !== undefined ||
+      dto.startTime !== undefined ||
+      dto.endTime !== undefined
+    ) {
       patch.labor_cost = await this.laborCost(
         restaurantId,
         dto.memberId ?? cur.member_id,
@@ -410,7 +451,7 @@ export class ScheduleService {
         state: "callout",
         note: dto.reason
           ? `Call-out: ${dto.reason}`
-          : original.note ?? "Called out — cover needed",
+          : (original.note ?? "Called out — cover needed"),
         updated_at: new Date().toISOString(),
       })
       .eq("id", shiftId)
@@ -473,14 +514,20 @@ export class ScheduleService {
       .select("user_id")
       .eq("restaurant_id", restaurantId)
       .in("id", dto.memberIds);
-    const targetUserIds = (members ?? []).map((m: any) => m.user_id).filter(Boolean);
+    const targetUserIds = (members ?? [])
+      .map((m: any) => m.user_id)
+      .filter(Boolean);
 
     if (targetUserIds.length) {
       await this.push.sendToUsers(targetUserIds, {
         title: "Shift available — can you cover?",
         body: `${shift.role ?? "Shift"} ${shift.shift_date} ${shift.start_time}-${shift.end_time}. Tap to claim.`,
         priority: "high",
-        data: { type: "shift_offer", shiftId, actionUrl: `/team?shift=${shiftId}` },
+        data: {
+          type: "shift_offer",
+          shiftId,
+          actionUrl: `/team?shift=${shiftId}`,
+        },
       });
     }
     return { offered: dto.memberIds.length, notified: targetUserIds.length };
@@ -517,11 +564,17 @@ export class ScheduleService {
         .maybeSingle();
       const isOpen = shift.state === "open" || !shift.member_id;
       if (!isOpen || !me || me.id !== dto.memberId) {
-        throw new ForbiddenException("You can only claim open shifts for yourself");
+        throw new ForbiddenException(
+          "You can only claim open shifts for yourself",
+        );
       }
     }
 
-    const cost = await this.recomputeCostForMember(restaurantId, shiftId, dto.memberId);
+    const cost = await this.recomputeCostForMember(
+      restaurantId,
+      shiftId,
+      dto.memberId,
+    );
     const { data, error } = await this.sb
       .from("shifts")
       .update({
@@ -534,7 +587,8 @@ export class ScheduleService {
       .eq("restaurant_id", restaurantId)
       .select("*, shift_breaks(*)")
       .maybeSingle();
-    if (error || !data) throw new InternalServerErrorException("Failed to assign cover");
+    if (error || !data)
+      throw new InternalServerErrorException("Failed to assign cover");
     // Staff must never see labor_cost (wage proxy) in the claim response.
     if (role === "staff") {
       const { labor_cost: _omit, ...rest } = data;
@@ -595,10 +649,17 @@ export class ScheduleService {
           return srole === trole && periodOf(s.start_time) === r.shift_period;
         }).length;
         if (staffed < r.min_staff) {
-          gaps.push({ role: r.role, period: r.shift_period, staffed, required: r.min_staff });
+          gaps.push({
+            role: r.role,
+            period: r.shift_period,
+            staffed,
+            required: r.min_staff,
+          });
         }
       }
-      const openShifts = shifts.filter((s) => s.shift_date === date && (s.state === "open" || !s.member_id)).length;
+      const openShifts = shifts.filter(
+        (s) => s.shift_date === date && (s.state === "open" || !s.member_id),
+      ).length;
       days.push({
         date,
         staffed: dayShifts.length,
@@ -620,12 +681,19 @@ export class ScheduleService {
       return { enabled: false, totalHours: hoursTotal(shifts) };
     }
     const totalHours = hoursTotal(shifts);
-    const totalCost = shifts.reduce((s, sh) => s + Number(sh.labor_cost ?? 0), 0);
+    const totalCost = shifts.reduce(
+      (s, sh) => s + Number(sh.labor_cost ?? 0),
+      0,
+    );
     // Per-member overtime (>40h/week) flags.
     const byMember = new Map<string, number>();
     for (const s of shifts) {
       if (!s.member_id) continue;
-      byMember.set(s.member_id, (byMember.get(s.member_id) ?? 0) + hoursBetween(s.start_time, s.end_time));
+      byMember.set(
+        s.member_id,
+        (byMember.get(s.member_id) ?? 0) +
+          hoursBetween(s.start_time, s.end_time),
+      );
     }
     const overtime = [...byMember.entries()]
       .filter(([, h]) => h > 40)
@@ -657,7 +725,8 @@ function addDays(date: string, n: number): string {
 }
 function daysBetween(a: string, b: string): number {
   return Math.round(
-    (new Date(b + "T00:00:00Z").getTime() - new Date(a + "T00:00:00Z").getTime()) /
+    (new Date(b + "T00:00:00Z").getTime() -
+      new Date(a + "T00:00:00Z").getTime()) /
       86_400_000,
   );
 }
@@ -669,5 +738,8 @@ function mondayOf(date: string): string {
   return d.toISOString().slice(0, 10);
 }
 function hoursTotal(shifts: any[]): number {
-  return shifts.reduce((s, sh) => s + hoursBetween(sh.start_time, sh.end_time), 0);
+  return shifts.reduce(
+    (s, sh) => s + hoursBetween(sh.start_time, sh.end_time),
+    0,
+  );
 }

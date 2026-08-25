@@ -13,7 +13,7 @@ interface Props {
 
 export function OrderFunnelChart({ totalOrders, totalRevenue, className = '' }: Props) {
   const stages = [
-    { label: 'Tables Seated',     value: Math.round(totalOrders * 2.1),  color: '#cd2d5b' },
+    { label: 'Tables Seated',     value: Math.round(totalOrders * 2.1),  color: '#9E4249' },
     { label: 'Wine Offered',      value: Math.round(totalOrders * 1.6),  color: '#e05c7e' },
     { label: 'Order Placed',      value: totalOrders,                    color: '#ec4899' },
     { label: 'Upsell Accepted',   value: Math.round(totalOrders * 0.35), color: '#f472b6' },

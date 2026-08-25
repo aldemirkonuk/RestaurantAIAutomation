@@ -27,7 +27,7 @@ export function MenuScanUpload({ onSuccess }: MenuScanUploadProps) {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-4">
-        <div className="w-12 h-12 rounded-full border-4 border-[#722F37]/20 border-t-[#722F37] animate-spin" />
+        <div className="w-12 h-12 rounded-full border-4 border-[#9E4249]/20 border-t-[#9E4249] animate-spin" />
         <p className="text-gray-600 font-medium">Analyzing your menu with AI...</p>
         <p className="text-sm text-gray-400">This usually takes 10–20 seconds</p>
       </div>
@@ -53,6 +53,7 @@ export function MenuScanUpload({ onSuccess }: MenuScanUploadProps) {
           onCapture={handleImage}
           onFileUpload={handleImage}
           enableLiveDetection={false}
+          useCameraModal={true}
         />
       </div>
       <p className="mt-3 text-xs text-center text-gray-400">

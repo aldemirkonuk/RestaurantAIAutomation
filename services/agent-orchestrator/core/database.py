@@ -12,7 +12,6 @@ Production-grade Supabase client with:
 
 from __future__ import annotations
 
-import asyncio
 from abc import ABC
 from typing import Dict, List, Any, Optional, TypeVar, Generic, Type
 from datetime import datetime, timedelta
@@ -579,6 +578,13 @@ class BaseRepository(ABC, Generic[ModelT]):
         use_cache: bool = True,
     ) -> Optional[ModelT]:
         """Get entity by ID with multi-level caching"""
+        # A missing id is a legitimate "not found", not a crash. Without this,
+        # `_cache_key` raises TypeError joining None, and the traceback names the
+        # cache layer rather than the caller that had no id — which is how a
+        # missing provider on an inventory row presented as a caching bug.
+        # Every caller already handles a None return.
+        if not id:
+            return None
         cache_key = self._cache_key("id", id)
 
         # L1: Local cache
@@ -828,6 +834,92 @@ class InventoryRepository(BaseRepository[InventoryItem]):
             limit=500,
             order_by="wine_name",
         )
+
+    async def find_wine_by_name_similarity(
+        self,
+        wine_name: str,
+        restaurant_id: str,
+        *,
+        min_score: float = 0.62,
+    ) -> Optional[Dict[str, Any]]:
+        """Resolve a POS item name to an inventory row.
+
+        `POSIntegrationAgent.match_wine_to_library` has always called this method
+        and it was never implemented, so every wine sale raised AttributeError,
+        the sale event went out with no `inventory_id`, and BufferManager dropped
+        it with "Sale event missing inventory_id". That is one of the reasons the
+        POS-to-stock path never moved a bottle.
+
+        The matching problem is real: a POS button reads "MASSOLINO BARBERA
+        D'ALBA (Glass)" while inventory holds wine_name "BARBERA D'ALBA" with
+        producer "MASSOLINO" — the strings are never equal.
+
+        Deliberately conservative. A wrong match silently decrements the wrong
+        wine and nobody notices for months, which is far worse than not matching
+        at all: an unmatched sale is visible in the logs, a mismatched one is
+        invisible everywhere. So below `min_score` this returns None rather than
+        the best of a bad set, and exact matches always win over fuzzy ones.
+
+        The durable fix is `pos_item_mappings` (the NestJS hub already resolves
+        that way); this is the fallback for items nobody has mapped yet.
+        """
+        import difflib
+        import re as _re
+
+        def normalise(text: str) -> str:
+            text = (text or "").lower()
+            # Serving-format suffixes are how the same wine appears twice on a POS.
+            text = _re.sub(r"\((glass|btl|bottle|carafe|pour)\)", " ", text)
+            text = _re.sub(r"[^a-z0-9\s]", " ", text)
+            return _re.sub(r"\s+", " ", text).strip()
+
+        target = normalise(wine_name)
+        if not target:
+            return None
+
+        items = await self.get_by_restaurant(restaurant_id)
+        if not items:
+            return None
+
+        target_tokens = set(target.split())
+        best: Optional[Dict[str, Any]] = None
+        best_score = 0.0
+
+        for item in items:
+            raw = item.model_dump() if hasattr(item, "model_dump") else dict(item)
+            name = normalise(str(raw.get("wine_name") or ""))
+            producer = normalise(str(raw.get("producer") or ""))
+            if not name:
+                continue
+
+            combined = f"{producer} {name}".strip()
+
+            # Exact on either form ends the search — nothing fuzzy can beat it.
+            if target in (name, combined):
+                return raw
+
+            ratio = max(
+                difflib.SequenceMatcher(None, target, name).ratio(),
+                difflib.SequenceMatcher(None, target, combined).ratio(),
+            )
+            # Token containment catches "massolino barbera d alba glass" against
+            # "barbera d alba", where raw ratio is dragged down by the extra words.
+            tokens = set(combined.split())
+            overlap = len(target_tokens & tokens) / len(tokens) if tokens else 0.0
+            score = max(ratio, overlap)
+
+            if score > best_score:
+                best_score, best = score, raw
+
+        if best_score < min_score:
+            logger.debug(
+                "No inventory match for %r (best score %.2f < %.2f)",
+                wine_name,
+                best_score,
+                min_score,
+            )
+            return None
+        return best
 
     async def get_low_stock(
         self,
@@ -1952,3 +2044,30 @@ def set_database(client: DatabaseClient) -> None:
     """Set global database client"""
     global _db_client_instance
     _db_client_instance = client
+
+
+def get_supabase_client() -> Optional[Client]:
+    """Get the raw Supabase client, or None when no database is configured.
+
+    Resolution order:
+      1. the connected DatabaseClient facade, so callers share the same client
+         the repositories already use
+      2. the lazily-built client on Settings (SUPABASE_URL / SUPABASE_KEY)
+
+    Returning None is a legitimate state — local and mock runs have no
+    database — and callers are expected to branch on it. Import or
+    configuration faults are a different thing entirely, so callers should
+    not wrap this in a bare `except Exception` that makes a wiring bug
+    indistinguishable from "no database configured".
+    """
+    db = _db_client_instance
+    if db is not None and db.supabase is not None:
+        return db.supabase
+
+    try:
+        from config.settings import get_settings
+
+        return get_settings().supabase_client
+    except Exception as e:
+        logger.warning(f"Could not build a Supabase client from settings: {e}")
+        return None

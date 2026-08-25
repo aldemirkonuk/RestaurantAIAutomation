@@ -30,6 +30,11 @@ if _PROJECT_ROOT not in sys.path:
     # Ensure `import jobs`, `import services`, etc. resolve during pytest runs
     sys.path.insert(0, _PROJECT_ROOT)
 
+# Monorepo root (parent of services/) so `import scripts.synth` works in Phase 37 tests.
+_REPO_ROOT = os.path.abspath(os.path.join(_PROJECT_ROOT, "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 
 # NOTE: We intentionally do NOT override the `event_loop` fixture.
 # A previous session-scoped override (new_event_loop() without set_event_loop())

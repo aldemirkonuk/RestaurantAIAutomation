@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sketch 043 - Motion Signature Moments</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --wine: #cd2d5b;
+    --wine-light: #e0578a;
+    --wine-deep: #8b1a3d;
+    --gold: #c9a227;
+    --gold-light: #e8c547;
+    --bg: #0f0f14;
+    --panel: rgba(255, 255, 255, .04);
+    --line: rgba(255, 255, 255, .08);
+    --text: #ece9ef;
+    --muted: rgba(255, 255, 255, .5);
+    --ease: cubic-bezier(.16, 1, .3, 1);
+    --spring: cubic-bezier(.22, 1, .36, 1);
+  }
+  * { box-sizing: border-box; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  body {
+    margin: 0;
+    padding: 56px 20px 64px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Top nav */
+  .nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; gap: 6px;
+    padding: 10px 16px;
+    background: rgba(15, 15, 20, .92);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; margin-right: 4px; font-family: "JetBrains Mono", monospace; }
+  .nav-tab {
+    padding: 7px 12px; border-radius: 9px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--muted);
+    font-size: 11px; font-weight: 700; white-space: nowrap;
+    transition: all .2s var(--spring);
+  }
+  .nav-tab:hover { color: var(--text); background: rgba(255,255,255,.08); }
+  .nav-tab.active { background: var(--wine); border-color: var(--wine); color: #fff; }
+
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  .kicker { color: var(--wine-light); font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+  h1 { margin: 8px 0 8px; font-size: 26px; font-weight: 800; letter-spacing: -.03em; }
+  .lede { max-width: 720px; margin: 0 0 28px; color: var(--muted); font-size: 13.5px; line-height: 1.6; }
+  .lede b { color: var(--text); font-weight: 700; }
+
+  .layout { display: grid; grid-template-columns: 390px 1fr; gap: 28px; align-items: start; }
+  @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
+
+  /* Phone */
+  .phone-wrap { display: flex; flex-direction: column; align-items: center; }
+  .phone {
+    width: 375px; border-radius: 44px;
+    box-shadow: 0 40px 100px rgba(0,0,0,.55), 0 0 0 10px #1c1c24, 0 0 0 11px #2a2a34;
+    overflow: hidden;
+  }
+  .notch { height: 34px; background: #000; width: 120px; margin: 0 auto; border-radius: 0 0 16px 16px; }
+  .screen {
+    position: relative;
+    height: 720px;
+    background: linear-gradient(180deg, #16141c, #121018);
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+  }
+
+  /* Sidebar spec */
+  .spec {
+    padding: 22px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--panel);
+  }
+  .spec h2 { margin: 0 0 6px; font-size: 18px; font-weight: 800; letter-spacing: -.02em; }
+  .spec .sub { margin: 0 0 18px; color: var(--muted); font-size: 12.5px; line-height: 1.55; }
+  .spec-tag { display: inline-block; padding: 4px 10px; border-radius: 999px; background: rgba(205,45,91,.15); color: #f4a9ba; font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 12px; }
+  .spec-row { margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+  .spec-row:last-of-type { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
+  .spec-row h3 { margin: 0 0 6px; font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+  .spec-row p, .spec-row li { margin: 0; color: rgba(255,255,255,.65); font-size: 12px; line-height: 1.5; }
+  .spec-row ul { margin: 6px 0 0; padding-left: 16px; }
+  .spec-row code { font-family: "JetBrains Mono", monospace; font-size: 10.5px; padding: 1px 5px; border-radius: 4px; background: rgba(255,255,255,.06); }
+  .replay-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    margin-top: 16px; padding: 10px 16px;
+    border: 1px solid rgba(205,45,91,.4);
+    border-radius: 11px;
+    background: rgba(205,45,91,.12);
+    color: #f4a9ba;
+    font-size: 12px; font-weight: 700;
+    transition: transform .2s var(--spring), background .2s;
+  }
+  .replay-btn:hover { background: rgba(205,45,91,.22); transform: translateY(-1px); }
+  .replay-btn:active { transform: scale(.98); }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* Shared app chrome */
+  .app-hd { padding: 12px 16px 8px; display: flex; align-items: center; justify-content: space-between; }
+  .app-hd h3 { margin: 0; font-size: 17px; font-weight: 800; }
+  .app-hd small { color: var(--muted); font-size: 10px; font-weight: 600; }
+
+  /* ===== 1. FEED ZERO ===== */
+  .feed-zero {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; padding: 24px; text-align: center;
+  }
+  .zero-stage { position: relative; width: 140px; height: 160px; margin-bottom: 24px; }
+  .zero-bottle {
+    position: absolute; left: 50%; bottom: 0;
+    width: 44px; height: 120px;
+    transform: translateX(-50%);
+    border-radius: 8px 8px 14px 14px;
+    background: linear-gradient(90deg, rgba(255,255,255,.04), rgba(255,255,255,.1), rgba(255,255,255,.04));
+    border: 1px solid rgba(255,255,255,.12);
+    opacity: 0;
+    animation: bottleIn 1.2s var(--ease) forwards;
+  }
+  .zero-bottle::before {
+    content: ""; position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
+    width: 16px; height: 22px; border-radius: 4px 4px 0 0;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1);
+  }
+  .zero-ring {
+    position: absolute; left: 50%; top: 50%;
+    width: 100px; height: 100px;
+    margin: -50px 0 0 -50px;
+    border: 1px solid rgba(205,45,91,.25);
+    border-radius: 50%;
+    animation: ringPulse 2.4s var(--ease) infinite;
+  }
+  .zero-ring:nth-child(2) { animation-delay: .8s; opacity: .5; }
+  .zero-dust {
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at 50% 60%, rgba(205,45,91,.08), transparent 55%);
+    animation: dustDrift 4s ease-in-out infinite alternate;
+  }
+  @keyframes bottleIn { from { opacity: 0; transform: translateX(-50%) translateY(12px) scale(.92); } to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); } }
+  @keyframes ringPulse { 0%, 100% { transform: scale(.85); opacity: .3; } 50% { transform: scale(1.15); opacity: .7; } }
+  @keyframes dustDrift { from { opacity: .4; } to { opacity: .8; } }
+  .zero-copy h4 { margin: 0; font-size: 16px; font-weight: 800; opacity: 0; animation: fadeUp .7s var(--ease) .4s forwards; }
+  .zero-copy p { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; max-width: 240px; opacity: 0; animation: fadeUp .7s var(--ease) .65s forwards; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  /* ===== 2. WAX SEAL APPROVE ===== */
+  .seal-scene {
+    display: flex; flex-direction: column; height: 100%; padding: 0 16px 20px;
+  }
+  .doc-card {
+    margin-top: 12px; padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: rgba(255,255,255,.03);
+  }
+  .doc-card .row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 6px; color: var(--muted); }
+  .doc-card .row b { color: var(--text); font-weight: 700; }
+  .seal-zone {
+    position: relative; flex: 1;
+    display: flex; align-items: center; justify-content: center;
+    margin: 20px 0;
+  }
+  .seal-target {
+    position: relative;
+    width: 120px; height: 120px;
+    border: 2px dashed rgba(201, 162, 39, .35);
+    border-radius: 50%;
+    display: grid; place-items: center;
+    color: rgba(201, 162, 39, .6);
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  }
+  .seal-imprint {
+    position: absolute; inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #e8c547, #c9a227 40%, #8b6914 100%);
+    box-shadow: inset 0 2px 8px rgba(255,255,255,.3), 0 8px 24px rgba(201,162,39,.4);
+    transform: scale(0);
+    opacity: 0;
+  }
+  .seal-imprint.show { animation: sealStamp .55s var(--spring) forwards; }
+  @keyframes sealStamp {
+    0% { transform: scale(2.2); opacity: 0; }
+    40% { transform: scale(.88); opacity: 1; }
+    65% { transform: scale(1.06); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .seal-imprint::after {
+    content: "W";
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
+    font-size: 42px; font-weight: 800; color: rgba(90, 60, 10, .55);
+    font-family: Georgia, serif;
+  }
+  .seal-splash {
+    position: absolute; left: 50%; top: 50%;
+    width: 160px; height: 160px; margin: -80px 0 0 -80px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(201,162,39,.35), transparent 65%);
+    transform: scale(0); opacity: 0; pointer-events: none;
+  }
+  .seal-splash.show { animation: splash .6s var(--ease) forwards; }
+  @keyframes splash { 0% { transform: scale(.2); opacity: .8; } 100% { transform: scale(1.4); opacity: 0; } }
+  .seal-btn {
+    width: 100%; height: 48px;
+    border: 0; border-radius: 14px;
+    background: linear-gradient(150deg, var(--gold-light), var(--gold));
+    color: #3d2e08;
+    font-size: 14px; font-weight: 800;
+    box-shadow: 0 8px 24px rgba(201,162,39,.35);
+    transition: transform .15s var(--spring);
+  }
+  .seal-btn:active { transform: scale(.97); }
+  .seal-btn.done { background: rgba(24,121,78,.25); color: #6ee7b7; box-shadow: none; }
+
+  /* ===== 3. LIQUID RECEIVING FILL ===== */
+  .recv-scene { display: flex; flex-direction: column; height: 100%; padding: 0 16px 16px; }
+  .recv-bin {
+    position: relative; flex: 1;
+    margin: 16px 0;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: rgba(255,255,255,.02);
+    overflow: hidden;
+  }
+  .recv-liquid {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    height: 0%;
+    background: linear-gradient(180deg, rgba(224,87,138,.7), rgba(205,45,91,.92));
+    transition: height .9s var(--ease);
+  }
+  .recv-liquid::before {
+    content: ""; position: absolute; left: 0; right: 0; top: -5px; height: 10px;
+    background: rgba(255,255,255,.2); filter: blur(2px); border-radius: 50%;
+    animation: wave 2s ease-in-out infinite;
+  }
+  @keyframes wave { 0%, 100% { transform: translateX(-2px); } 50% { transform: translateX(2px); } }
+  .recv-label {
+    position: relative; z-index: 1;
+    padding: 16px;
+    display: flex; flex-direction: column; justify-content: flex-end; height: 100%;
+  }
+  .recv-label .zone { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .recv-label .count { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.03em; margin-top: 4px; }
+  .recv-label .count span { font-size: 14px; color: var(--muted); font-weight: 600; }
+  .recv-lines { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .recv-line {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: rgba(255,255,255,.03);
+    font-size: 11px; font-weight: 600;
+    transition: border-color .3s, background .3s;
+  }
+  .recv-line.done { border-color: rgba(24,121,78,.35); background: rgba(24,121,78,.1); }
+  .recv-line b { font-variant-numeric: tabular-nums; }
+
+  /* ===== 4. SKIA POUR PULL-TO-REFRESH ===== */
+  .ptr-scene { position: relative; height: 100%; overflow: hidden; }
+  .ptr-feed {
+    position: absolute; inset: 0;
+    padding: 52px 16px 16px;
+    transition: transform .45s var(--spring);
+    will-change: transform;
+  }
+  .ptr-indicator {
+    position: absolute; top: 0; left: 0; right: 0; height: 100px;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+    padding-bottom: 8px;
+    pointer-events: none;
+  }
+  .ptr-canvas-wrap { width: 64px; height: 72px; position: relative; }
+  #ptrCanvas { width: 64px; height: 72px; display: block; }
+  .ptr-hint { font-size: 9px; font-weight: 700; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; margin-top: 4px; opacity: .7; }
+  .feed-card {
+    padding: 12px; margin-bottom: 8px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(255,255,255,.03);
+  }
+  .feed-card .t { font-size: 12px; font-weight: 700; }
+  .feed-card .m { margin-top: 3px; font-size: 10px; color: var(--muted); }
+  .ptr-refreshing .ptr-feed { animation: ptrSnap .5s var(--spring); }
+  @keyframes ptrSnap { 0% { transform: translateY(72px); } 100% { transform: translateY(0); } }
+
+  .foot { margin-top: 28px; text-align: center; color: var(--muted); font-size: 11.5px; }
+  .foot code { padding: 2px 6px; border-radius: 5px; background: rgba(255,255,255,.06); font-family: "JetBrains Mono", monospace; font-size: 10px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav" aria-label="Motion demos">
+  <span class="nav-label">043</span>
+  <button class="nav-tab active" type="button" data-panel="feed-zero">Feed zero</button>
+  <button class="nav-tab" type="button" data-panel="wax-seal">Wax seal approve</button>
+  <button class="nav-tab" type="button" data-panel="liquid-recv">Liquid receiving</button>
+  <button class="nav-tab" type="button" data-panel="skia-pour">Skia pour PTR</button>
+</nav>
+
+<div class="wrap">
+  <div class="kicker">Sketch 043 · Motion Signature Moments</div>
+  <h1>Four mobile motions that make WineOps feel alive</h1>
+  <p class="lede">Interactive motion prototypes for the inventory feed and receiving flows. Production target: <b>React Native Skia + Reanimated</b> (see sketch 042). This HTML sketch simulates timing, easing, and gesture thresholds so engineering can match feel before native implementation.</p>
+
+  <!-- FEED ZERO -->
+  <div class="layout panel active" id="panel-feed-zero">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="app-hd"><h3>Activity</h3><small>Live feed</small></div>
+          <div class="feed-zero" id="feedZero">
+            <div class="zero-stage">
+              <div class="zero-dust"></div>
+              <div class="zero-ring"></div>
+              <div class="zero-ring"></div>
+              <div class="zero-bottle"></div>
+            </div>
+            <div class="zero-copy">
+              <h4>Cellar is quiet</h4>
+              <p>No stock moves yet tonight. Counts, pours, and deliveries will appear here as they happen.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="spec">
+      <span class="spec-tag">Empty state</span>
+      <h2>Feed zero</h2>
+      <p class="sub">When the activity feed has no events, don't show a dead list. A ghost bottle materializes with pulsing cellar rings and staggered copy.</p>
+      <div class="spec-row">
+        <h3>Motion beats</h3>
+        <ul>
+          <li>0ms: radial dust glow fades in</li>
+          <li>200ms: bottle rises + scales (opacity 0 to 1)</li>
+          <li>400ms: headline fades up</li>
+          <li>650ms: subcopy fades up</li>
+          <li>Loop: concentric rings pulse at 2.4s (subtle, not distracting)</li>
+        </ul>
+      </div>
+      <div class="spec-row">
+        <h3>Skia / Reanimated</h3>
+        <p><code>useSharedValue</code> + <code>withSpring</code> for bottle Y. Skia <code>BlurMask</code> on ring circles. Haptic: <code>impactLight</code> once on mount.</p>
+      </div>
+      <button class="replay-btn" type="button" data-replay="feed-zero">Replay animation</button>
+    </aside>
+  </div>
+
+  <!-- WAX SEAL -->
+  <div class="layout panel" id="panel-wax-seal">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="app-hd"><h3>Approve delivery</h3><small>Manager sign-off</small></div>
+          <div class="seal-scene">
+            <div class="doc-card">
+              <div class="row"><span>Vendor</span><b>Domaine Leflaive</b></div>
+              <div class="row"><span>Bottles</span><b>24 received</b></div>
+              <div class="row"><span>Variance</span><b>0 discrepancies</b></div>
+            </div>
+            <div class="seal-zone">
+              <div class="seal-splash" id="sealSplash"></div>
+              <div class="seal-target" id="sealTarget">
+                Tap to seal
+                <div class="seal-imprint" id="sealImprint"></div>
+              </div>
+            </div>
+            <button class="seal-btn" id="sealBtn" type="button">Approve with wax seal</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="spec">
+      <span class="spec-tag">Approval ritual</span>
+      <h2>Wax seal approve</h2>
+      <p class="sub">Receiving sign-off becomes a deliberate manager ritual, not a flat checkbox. Gold wax stamp with splash + spring overshoot communicates authority.</p>
+      <div class="spec-row">
+        <h3>Motion beats</h3>
+        <ul>
+          <li>Press: button scale 0.97 + haptic medium</li>
+          <li>0ms: gold splash radial (scale 0.2 to 1.4, fade out)</li>
+          <li>80ms: seal scales from 2.2x with spring overshoot to 1.0</li>
+          <li>600ms: button turns green "Approved"</li>
+        </ul>
+      </div>
+      <div class="spec-row">
+        <h3>Skia / Reanimated</h3>
+        <p>Skia <code>RadialGradient</code> + <code>Path</code> for wax drip irregularity. <code>withSequence(withSpring(0.88), withSpring(1))</code>. Optional paper texture via noise shader.</p>
+      </div>
+      <button class="replay-btn" type="button" data-replay="wax-seal">Replay seal</button>
+    </aside>
+  </div>
+
+  <!-- LIQUID RECEIVING -->
+  <div class="layout panel" id="panel-liquid-recv">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="app-hd"><h3>Receiving</h3><small>Bar Stock zone</small></div>
+          <div class="recv-scene">
+            <div class="recv-bin">
+              <div class="recv-liquid" id="recvLiquid"></div>
+              <div class="recv-label">
+                <span class="zone">Bar Stock</span>
+                <div class="count"><span id="recvCount">68</span> <span>/ 100 bottles</span></div>
+              </div>
+            </div>
+            <div class="recv-lines" id="recvLines">
+              <div class="recv-line" data-qty="8"><span>Meursault 2022</span><b>+8</b></div>
+              <div class="recv-line" data-qty="6"><span>Chablis Premier Cru</span><b>+6</b></div>
+              <div class="recv-line" data-qty="10"><span>Prosecco DOC</span><b>+10</b></div>
+            </div>
+            <button class="seal-btn" id="recvBtn" type="button" style="background:linear-gradient(150deg,var(--wine-light),var(--wine));color:#fff;box-shadow:0 8px 24px rgba(205,45,91,.4);">Stock in next line</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="spec">
+      <span class="spec-tag">Receiving</span>
+      <h2>Liquid receiving fill</h2>
+      <p class="sub">Each confirmed line raises the zone liquid level in real time. Managers see physical capacity fill, not just a number ticking up.</p>
+      <div class="spec-row">
+        <h3>Motion beats</h3>
+        <ul>
+          <li>Tap "Stock in": line card turns green (200ms)</li>
+          <li>Same frame: liquid height animates over 900ms ease-out</li>
+          <li>Surface wave shimmer loops while filling</li>
+          <li>Count increments with <code>withTiming</code> number morph</li>
+        </ul>
+      </div>
+      <div class="spec-row">
+        <h3>Skia / Reanimated</h3>
+        <p>Skia <code>Path</code> wave at liquid top (sine + phase offset). Fill height drives <code>clipRect</code>. Near-limit: liquid shifts amber gradient at 85%+.</p>
+      </div>
+      <button class="replay-btn" type="button" data-replay="liquid-recv">Reset receiving</button>
+    </aside>
+  </div>
+
+  <!-- SKIA POUR PTR -->
+  <div class="layout panel" id="panel-skia-pour">
+    <div class="phone-wrap">
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen ptr-scene" id="ptrScene">
+          <div class="ptr-indicator">
+            <div class="ptr-canvas-wrap"><canvas id="ptrCanvas" width="128" height="144"></canvas></div>
+            <span class="ptr-hint" id="ptrHint">Pull to refresh</span>
+          </div>
+          <div class="ptr-feed" id="ptrFeed">
+            <div class="app-hd" style="padding-left:0;padding-right:0;"><h3>Activity</h3><small>Updated just now</small></div>
+            <div class="feed-card"><div class="t">Barolo received</div><div class="m">24 bottles · Bar Stock · 2m ago</div></div>
+            <div class="feed-card"><div class="t">Pinot Noir low</div><div class="m">Below par · reorder suggested · 18m ago</div></div>
+            <div class="feed-card"><div class="t">Table 4 pour</div><div class="m">Champagne · 1 glass · 32m ago</div></div>
+            <div class="feed-card"><div class="t">VIP delivery ETA</div><div class="m">Domaine Leflaive · 5:30pm · 1h ago</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="spec">
+      <span class="spec-tag">Gesture</span>
+      <h2>Skia pour pull-to-refresh</h2>
+      <p class="sub">Pull down on the feed and wine pours from the top into a glass indicator. Release past threshold triggers refresh with spring snap-back.</p>
+      <div class="spec-row">
+        <h3>Gesture thresholds</h3>
+        <ul>
+          <li>0-40px pull: hint text only</li>
+          <li>40-120px: pour stream grows, glass fills</li>
+          <li>120px+: release triggers refresh</li>
+          <li>Refresh: 800ms pour + snap feed, haptic success</li>
+        </ul>
+      </div>
+      <div class="spec-row">
+        <h3>Skia implementation</h3>
+        <p><code>Canvas</code> + <code>Path</code> bezier pour stream tied to <code>pullY</code> shared value. Glass fill = <code>interpolate(pullY, [0,120], [0,1])</code>. Use <code>runOnJS</code> for data fetch on release.</p>
+      </div>
+      <p class="sub" style="margin-top:12px;margin-bottom:0;"><b>Try it:</b> drag down inside the phone screen.</p>
+    </aside>
+  </div>
+
+  <p class="foot"><code>.planning/sketches/043-motion-signature-moments/index.html</code> · switch tabs · interact inside phone</p>
+</div>
+
+<script>
+(() => {
+  /* Tab switching */
+  const tabs = document.querySelectorAll('.nav-tab');
+  const panels = document.querySelectorAll('.panel');
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      tabs.forEach((t) => t.classList.remove('active'));
+      panels.forEach((p) => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById(`panel-${tab.dataset.panel}`).classList.add('active');
+    });
+  });
+
+  /* 1. Feed zero replay */
+  const replayFeedZero = () => {
+    const el = document.getElementById('feedZero');
+    const clone = el.cloneNode(true);
+    el.replaceWith(clone);
+  };
+  document.querySelector('[data-replay="feed-zero"]')?.addEventListener('click', replayFeedZero);
+
+  /* 2. Wax seal */
+  const sealBtn = document.getElementById('sealBtn');
+  const sealImprint = document.getElementById('sealImprint');
+  const sealSplash = document.getElementById('sealSplash');
+  const sealTarget = document.getElementById('sealTarget');
+  let sealed = false;
+
+  const runSeal = () => {
+    if (sealed) return;
+    sealed = true;
+    sealSplash.classList.remove('show');
+    sealImprint.classList.remove('show');
+    void sealSplash.offsetWidth;
+    void sealImprint.offsetWidth;
+    sealSplash.classList.add('show');
+    sealImprint.classList.add('show');
+    sealTarget.childNodes[0].textContent = '';
+    setTimeout(() => {
+      sealBtn.textContent = 'Approved';
+      sealBtn.classList.add('done');
+    }, 500);
+  };
+  sealBtn.addEventListener('click', runSeal);
+  sealTarget.addEventListener('click', runSeal);
+  document.querySelector('[data-replay="wax-seal"]')?.addEventListener('click', () => {
+    sealed = false;
+    sealImprint.classList.remove('show');
+    sealSplash.classList.remove('show');
+    sealTarget.childNodes[0].textContent = 'Tap to seal';
+    sealBtn.textContent = 'Approve with wax seal';
+    sealBtn.classList.remove('done');
+  });
+
+  /* 3. Liquid receiving */
+  const recvLiquid = document.getElementById('recvLiquid');
+  const recvCount = document.getElementById('recvCount');
+  const recvLines = document.getElementById('recvLines');
+  const recvBtn = document.getElementById('recvBtn');
+  let current = 68;
+  const max = 100;
+
+  const resetRecv = () => {
+    current = 68;
+    recvCount.textContent = current;
+    recvLiquid.style.height = `${(current / max) * 100}%`;
+    recvLines.querySelectorAll('.recv-line').forEach((l) => l.classList.remove('done'));
+    recvBtn.textContent = 'Stock in next line';
+    recvBtn.disabled = false;
+  };
+
+  recvLiquid.style.height = `${(current / max) * 100}%`;
+
+  recvBtn.addEventListener('click', () => {
+    const next = recvLines.querySelector('.recv-line:not(.done)');
+    if (!next) return;
+    const qty = Number(next.dataset.qty);
+    next.classList.add('done');
+    current = Math.min(max, current + qty);
+    recvCount.textContent = current;
+    recvLiquid.style.height = `${(current / max) * 100}%`;
+    if (!recvLines.querySelector('.recv-line:not(.done)')) {
+      recvBtn.textContent = 'Receiving complete';
+      recvBtn.disabled = true;
+    }
+  });
+  document.querySelector('[data-replay="liquid-recv"]')?.addEventListener('click', resetRecv);
+
+  /* 4. Skia pour pull-to-refresh (canvas simulation) */
+  const canvas = document.getElementById('ptrCanvas');
+  const ctx = canvas.getContext('2d');
+  const ptrFeed = document.getElementById('ptrFeed');
+  const ptrScene = document.getElementById('ptrScene');
+  const ptrHint = document.getElementById('ptrHint');
+
+  const W = 128, H = 144;
+  let pull = 0;
+  let refreshing = false;
+  let startY = 0;
+  let dragging = false;
+
+  const drawPour = (p) => {
+    ctx.clearRect(0, 0, W, H);
+    const fill = Math.min(1, Math.max(0, (p - 20) / 100));
+
+    /* Glass */
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(44, 50);
+    ctx.lineTo(40, 120);
+    ctx.quadraticCurveTo(64, 128, 88, 120);
+    ctx.lineTo(84, 50);
+    ctx.stroke();
+
+    /* Liquid in glass */
+    const liquidTop = 120 - fill * 55;
+    ctx.fillStyle = `rgba(205, 45, 91, ${0.35 + fill * 0.55})`;
+    ctx.beginPath();
+    ctx.moveTo(42, liquidTop);
+    ctx.lineTo(40, 120);
+    ctx.quadraticCurveTo(64, 128, 88, 120);
+    ctx.lineTo(86, liquidTop);
+    ctx.closePath();
+    ctx.fill();
+
+    /* Pour stream */
+    if (p > 15) {
+      const streamW = Math.min(8, 2 + p * 0.04);
+      const streamH = Math.min(50, p * 0.45);
+      const grad = ctx.createLinearGradient(64, 8, 64, 8 + streamH);
+      grad.addColorStop(0, 'rgba(224,87,138,0.9)');
+      grad.addColorStop(1, 'rgba(205,45,91,0.95)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(64 - streamW / 2, 8);
+      ctx.bezierCurveTo(64 - streamW, 8 + streamH * 0.3, 64 + streamW, 8 + streamH * 0.6, 64, 8 + streamH);
+      ctx.bezierCurveTo(64 - streamW * 0.5, 8 + streamH * 0.8, 64 + streamW * 0.5, 8 + streamH, 64 - streamW / 2, 8);
+      ctx.fill();
+    }
+
+    /* Bottle neck at top */
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillRect(58, 0, 12, 14);
+  };
+
+  const setPull = (p) => {
+    pull = Math.max(0, Math.min(140, p));
+    ptrFeed.style.transform = `translateY(${pull}px)`;
+    drawPour(pull);
+    if (pull < 40) ptrHint.textContent = 'Pull to refresh';
+    else if (pull < 120) ptrHint.textContent = 'Keep pulling...';
+    else ptrHint.textContent = 'Release to refresh';
+  };
+
+  const doRefresh = () => {
+    if (refreshing) return;
+    refreshing = true;
+    ptrScene.classList.add('ptr-refreshing');
+    ptrHint.textContent = 'Refreshing...';
+    setTimeout(() => {
+      setPull(0);
+      ptrScene.classList.remove('ptr-refreshing');
+      ptrHint.textContent = 'Updated just now';
+      refreshing = false;
+      setTimeout(() => { ptrHint.textContent = 'Pull to refresh'; }, 2000);
+    }, 900);
+  };
+
+  ptrScene.addEventListener('pointerdown', (e) => {
+    if (refreshing) return;
+    dragging = true;
+    startY = e.clientY;
+    ptrScene.setPointerCapture(e.pointerId);
+  });
+  ptrScene.addEventListener('pointermove', (e) => {
+    if (!dragging || refreshing) return;
+    const dy = e.clientY - startY;
+    if (dy > 0) setPull(dy * 0.85);
+  });
+  const endDrag = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    if (pull >= 120) doRefresh();
+    else {
+      ptrFeed.style.transition = 'transform .4s cubic-bezier(.22,1,.36,1)';
+      setPull(0);
+      setTimeout(() => { ptrFeed.style.transition = ''; }, 400);
+    }
+  };
+  ptrScene.addEventListener('pointerup', endDrag);
+  ptrScene.addEventListener('pointercancel', endDrag);
+
+  drawPour(0);
+})();
+</script>
+</body>
+</html>

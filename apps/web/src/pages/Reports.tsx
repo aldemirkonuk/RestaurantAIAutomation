@@ -13,10 +13,8 @@ import { useOrdersMetrics } from '../hooks/useOrdersMetrics'
 import { useWinesByIds } from '../hooks/queries'
 import { mapApiWinesToUiWines } from '../lib/wine-library'
 import { Header } from '../components/layout/Header'
+import { exportTable, type TableExportColumn, type TableExportFormat } from '../lib/tableExport'
 import {
-  DollarSign,
-  TrendingUp,
-  Target,
   AlertTriangle,
   Wine,
   Settings,
@@ -24,7 +22,9 @@ import {
 import { isInteractiveReorderSurfaceTarget } from '../lib/reports-drag'
 import { ReportGenerator } from '../components/reports/ReportGenerator'
 import { TopBar } from '../components/reports/organisms/TopBar'
-import { AIInsightsSection } from '../components/reports/organisms/AIInsightsSection'
+import { HeadlineInsightsBar } from '../components/reports/organisms/HeadlineInsightsBar'
+import { EngineInsightsPanel } from '../components/reports/organisms/EngineInsightsPanel'
+import { SeatingDensityPanel } from '../components/reports/organisms/SeatingDensityPanel'
 import { DataTablesSection, ExpandedSections } from '../components/reports/organisms/DataTablesSection'
 import { AICommandPalette, AICommandPill } from '../components/reports/organisms/AICommandPalette'
 import { MonthlyReconciliation } from '../components/reports/organisms/MonthlyReconciliation'
@@ -42,7 +42,6 @@ import {
 } from '../lib/reports'
 import { useUserPreferences } from '../hooks/useUserPreferences'
 import type { LayoutConfig } from '../lib/reports/types'
-import type { Insight } from '../components/reports/atoms'
 import type { WineTypeDistribution, TopWine, PurchaseMetrics, CheckScan } from '../components/reports/molecules'
 
 // New dashboard system
@@ -219,7 +218,7 @@ export function Reports() {
   })
 
   // AI Insights state
-  const [showAIInsights, setShowAIInsights] = useState(true)
+  // (headline strip + EngineInsightsPanel; legacy AIInsightsSection removed)
 
   // KPI Spotlight state
   const [spotlightedKPI, setSpotlightedKPI] = useState<string | null>(null)
@@ -412,69 +411,6 @@ export function Reports() {
     ]
   }, [wineTypeTotals])
 
-  const weekendPerformance = useMemo(() => {
-    const weekendDays = salesData.filter((day) => {
-      const date = new Date(day.fullDate)
-      return date.getDay() === 0 || date.getDay() === 6
-    })
-    const weekdayDays = salesData.filter((day) => {
-      const date = new Date(day.fullDate)
-      return date.getDay() !== 0 && date.getDay() !== 6
-    })
-    const weekendAvg = weekendDays.length > 0
-      ? weekendDays.reduce((sum, d) => sum + d.revenue, 0) / weekendDays.length
-      : 0
-    const weekdayAvg = weekdayDays.length > 0
-      ? weekdayDays.reduce((sum, d) => sum + d.revenue, 0) / weekdayDays.length
-      : 0
-    const liftPct = weekdayAvg > 0 ? Math.round(((weekendAvg - weekdayAvg) / weekdayAvg) * 100) : 0
-    return { weekendAvg, weekdayAvg, liftPct }
-  }, [salesData])
-
-  // AI Insights
-  const aiInsights: Insight[] = useMemo(() => [
-    {
-      id: 'red-wine',
-      type: 'opportunity',
-      icon: Target,
-      title: 'Red Wine Dominance',
-      description: metrics.totalBottles > 0
-        ? `Red wines account for ${Math.round((wineTypeTotals.red / metrics.totalBottles) * 100)}% of total sales. Consider expanding your red wine selection.`
-        : 'Not enough sales data yet to determine wine type dominance.',
-      action: 'View Red Wines',
-      color: 'emerald',
-    },
-    {
-      id: 'weekend',
-      type: 'insight',
-      icon: TrendingUp,
-      title: 'Weekend Performance',
-      description: weekendPerformance.weekdayAvg > 0
-        ? `Weekend revenue averages ${weekendPerformance.liftPct}% higher than weekdays. Ensure adequate staffing and stock.`
-        : 'Not enough data to compare weekend vs weekday performance.',
-      action: 'Schedule Staff',
-      color: 'blue',
-    },
-    {
-      id: 'upsell',
-      type: 'opportunity',
-      icon: DollarSign,
-      title: 'Upselling Opportunity',
-      description: `Average order value of $${metrics.avgOrderValue} suggests opportunity for premium upselling strategies.`,
-      action: 'View Premium Wines',
-      color: 'amber',
-    },
-    {
-      id: 'sparkling',
-      type: 'alert',
-      icon: AlertTriangle,
-      title: 'Sparkling Wine Promotion',
-      description: 'Sparkling wine sales peak on weekends. Consider special promotions on slower days.',
-      action: 'Create Promotion',
-      color: 'purple',
-    },
-  ], [wineTypeTotals, metrics, weekendPerformance])
-
   // ── Consumption Analytics ────────────────────────────────────────────
   // Will come from wine_consumption_log API when POS is connected
   const consumptionData = useMemo(() => [], [])
@@ -567,107 +503,47 @@ export function Reports() {
     setDashboardBlocks(DEFAULT_BLOCKS.map((b) => ({ ...b })))
   }, [])
 
-  // ── Export handler ─────────────────────────────────────────────────
+  // ── Export handler (shared formats via tableExport) ─────────────────
 
-  const handleExport = useCallback(async (format: string) => {
+  const handleExport = useCallback(async (format: TableExportFormat) => {
     const reportId = `rpt-${Date.now()}`
     const timestamp = new Date().toISOString()
 
-    setTimeout(() => {
+    const columns: TableExportColumn<(typeof salesData)[number]>[] = [
+      { header: 'Date', value: (d) => d.date },
+      { header: 'Revenue', value: (d) => d.revenue },
+      { header: 'Orders', value: (d) => d.orders },
+      { header: 'Bottles', value: (d) => d.bottles },
+      { header: 'Avg Order', value: (d) => d.avgOrderValue },
+      { header: 'Red', value: (d) => d.red },
+      { header: 'White', value: (d) => d.white },
+      { header: 'Sparkling', value: (d) => d.sparkling },
+      { header: 'Rose', value: (d) => d.rose },
+      { header: 'Dessert', value: (d) => d.dessert },
+    ]
+
+    try {
+      await exportTable({
+        format,
+        rows: salesData,
+        columns,
+        filename: `wineops-report-${timeRange}-${new Date().toISOString().slice(0, 10)}`,
+        title: `WineOps AI Report · ${timeRange}`,
+      })
       setExportSuccess(format)
       setTimeout(() => setExportSuccess(null), 3000)
-    }, 500)
-
-    switch (format) {
-      case 'csv': {
-        const summaryRows = [
-          ['WineOps AI Report'],
-          [`Report Period: ${timeRange}`],
-          [`Generated: ${new Date().toLocaleString()}`],
-          [''],
-          ['=== SUMMARY ==='],
-          ['Metric', 'Value'],
-          ['Total Revenue', formatMoney(metrics.totalRevenue, 'table')],
-          ['Total Orders', metrics.totalOrders.toString()],
-          ['Total Bottles', metrics.totalBottles.toString()],
-          ['Avg Order Value', formatMoney(metrics.avgOrderValue, 'table')],
-          ['Profit Margin', `${metrics.profitMargin}%`],
-          ['Inventory Value', formatMoney(metrics.inventoryValue, 'table')],
-          [''],
-          ['=== DAILY BREAKDOWN ==='],
-          ['Date', 'Revenue', 'Orders', 'Bottles', 'Avg Order', 'Red', 'White', 'Sparkling', 'Rose', 'Dessert'],
-          ...salesData.map((d) => [d.date, d.revenue, d.orders, d.bottles, d.avgOrderValue, d.red, d.white, d.sparkling, d.rose, d.dessert]),
-        ]
-        const csvContent = summaryRows.map((row) => row.map((cell) => `"${cell}"`).join(',')).join('\n')
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `wineops-report-${timeRange}-${new Date().toISOString().split('T')[0]}.csv`
-        a.click()
-        URL.revokeObjectURL(url)
-        break
-      }
-      case 'pdf': {
-        const printWindow = window.open('', '_blank')
-        if (printWindow) {
-          printWindow.document.write(`
-            <html><head><title>WineOps Report - ${timeRange}</title>
-            <style>
-              body { font-family: Arial, sans-serif; margin: 40px; color: #1f2937; }
-              h1 { color: #7c2d12; border-bottom: 2px solid #7c2d12; padding-bottom: 8px; }
-              h2 { color: #374151; margin-top: 24px; }
-              table { border-collapse: collapse; width: 100%; margin: 12px 0; }
-              th, td { border: 1px solid #d1d5db; padding: 8px 12px; text-align: left; font-size: 12px; }
-              th { background: #f3f4f6; font-weight: bold; }
-              .metric { display: inline-block; margin: 8px 16px 8px 0; }
-              .metric-label { font-size: 11px; color: #6b7280; }
-              .metric-value { font-size: 18px; font-weight: bold; color: #1f2937; }
-            </style></head><body>
-            <h1>WineOps AI Report</h1>
-            <p>Period: ${timeRange} | Generated: ${new Date().toLocaleString()}</p>
-            <h2>Key Metrics</h2>
-            <div>
-              <div class="metric"><div class="metric-label">Revenue</div><div class="metric-value">${formatMoney(metrics.totalRevenue, 'full')}</div></div>
-              <div class="metric"><div class="metric-label">Orders</div><div class="metric-value">${metrics.totalOrders}</div></div>
-              <div class="metric"><div class="metric-label">Bottles</div><div class="metric-value">${metrics.totalBottles}</div></div>
-              <div class="metric"><div class="metric-label">Avg Order</div><div class="metric-value">$${metrics.avgOrderValue}</div></div>
-              <div class="metric"><div class="metric-label">Margin</div><div class="metric-value">${metrics.profitMargin}%</div></div>
-            </div>
-            <h2>Daily Breakdown</h2>
-            <table>
-              <thead><tr><th>Date</th><th>Revenue</th><th>Orders</th><th>Bottles</th><th>Red</th><th>White</th><th>Sparkling</th></tr></thead>
-              <tbody>
-                ${salesData.map((d) => `<tr><td>${d.date}</td><td>$${d.revenue}</td><td>${d.orders}</td><td>${d.bottles}</td><td>${d.red}</td><td>${d.white}</td><td>${d.sparkling}</td></tr>`).join('')}
-              </tbody>
-            </table>
-            <p style="color:#9ca3af;font-size:10px;margin-top:24px;">Generated by WineOps AI</p>
-            </body></html>
-          `)
-          printWindow.document.close()
-          printWindow.print()
-        }
-        break
-      }
-      case 'excel':
-        alert('Excel export coming soon. Use CSV for now.')
-        break
-      case 'sheets':
-        alert('Google Sheets integration coming soon.')
-        break
-      case 'drive':
-        alert('Google Drive integration coming soon.')
-        break
+    } catch {
+      setExportSuccess(null)
     }
 
     await dispatchReportEvent({
       type: 'generated',
       reportId,
       reportType: 'sales-summary',
-      format: format as 'csv' | 'pdf' | 'excel',
+      format: format === 'excel' || format === 'pdf' || format === 'csv' ? format : 'csv',
       timestamp,
     })
-  }, [salesData, metrics, timeRange, dispatchReportEvent])
+  }, [salesData, timeRange, dispatchReportEvent])
 
   // Section toggle handler
   const handleSectionToggle = useCallback((section: string) => {
@@ -679,12 +555,12 @@ export function Reports() {
     return (
       <>
         {sectionId === 'aiInsights' && (
-          <AIInsightsSection
-            insights={aiInsights}
-            isOpen={showAIInsights}
-            onToggle={() => setShowAIInsights(!showAIInsights)}
-            onInsightAction={(id) => console.log('Insight action:', id)}
-          />
+          <div className="space-y-4">
+            <div id="engine-insights">
+              <EngineInsightsPanel />
+            </div>
+            <SeatingDensityPanel />
+          </div>
         )}
 
         {sectionId === 'dataTable' && (
@@ -869,7 +745,7 @@ export function Reports() {
                     analysis per wine.
                   </p>
                   <Link
-                    to="/settings"
+                    to="/settings?tab=pos"
                     className="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition-colors"
                   >
                     <Settings className="w-4 h-4" />
@@ -924,7 +800,7 @@ export function Reports() {
               </p>
             </div>
             <a
-              href="/settings"
+              href="/settings?tab=pos"
               className="ml-auto px-4 py-2 bg-amber-600 text-white text-xs font-medium rounded-lg hover:bg-amber-700 transition-colors whitespace-nowrap"
             >
               Configure POS
@@ -932,7 +808,19 @@ export function Reports() {
           </div>
         )}
 
+        {/* Plain-language AI insights (above controls) */}
+        {(metrics.totalRevenue > 0 || metrics.totalOrders > 0) && (
+          <HeadlineInsightsBar
+            onSeeDetails={() => {
+              const el = document.getElementById('engine-insights')
+              const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+              el?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+            }}
+          />
+        )}
+
         {/* Top Control Bar */}
+        <div data-tour="reports-topbar">
         <TopBar
           timeRange={timeRange}
           onTimeRangeChange={setTimeRange}
@@ -941,11 +829,14 @@ export function Reports() {
           onOpenArrange={() => setIsEditMode(true)}
           onExport={handleExport}
           exportSuccess={exportSuccess}
+          exportCount={salesData.length}
           showComparison={showComparison}
           onToggleComparison={() => setShowComparison((v) => !v)}
         />
+        </div>
 
         {/* Edit Toolbar (replaces old EditLayoutPanel) */}
+        <div data-tour="reports-edit-layout">
         <EditToolbar
           isEditMode={isEditMode}
           onToggleEditMode={() => setIsEditMode(!isEditMode)}
@@ -953,8 +844,10 @@ export function Reports() {
           onApplyPreset={handleApplyPreset}
           onReset={handleResetBlocks}
         />
+        </div>
 
         {/* Dashboard Canvas — react-grid-layout drag/resize for all chart blocks */}
+        <div data-tour="reports-canvas">
         <DashboardCanvas
           blocks={dashboardBlocks}
           isEditMode={isEditMode}
@@ -969,6 +862,7 @@ export function Reports() {
           totalOrders={metrics.totalOrders}
           totalRevenue={metrics.totalRevenue}
         />
+        </div>
 
         {/* Period Comparison Bar (optional, below canvas) */}
         {showComparison && salesData.length > 0 && (
@@ -1061,7 +955,9 @@ export function Reports() {
 
       {/* Floating ⌘K pill — always visible */}
       {!showAIPalette && (
-        <AICommandPill onClick={() => setShowAIPalette(true)} />
+        <div data-tour="reports-ai-pill">
+          <AICommandPill onClick={() => setShowAIPalette(true)} />
+        </div>
       )}
     </div>
   )

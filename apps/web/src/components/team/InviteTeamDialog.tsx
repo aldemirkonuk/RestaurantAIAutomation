@@ -13,6 +13,11 @@ interface InviteTeamDialogProps {
   restaurantId: string
   /** When set, the dialog is fixed below this element, right-aligned to it (e.g. Invite Member button). Otherwise centered in the viewport. */
   anchorRef?: RefObject<HTMLElement | null>
+  /**
+   * Optional escape hatch: create a schedule roster profile without sending an
+   * account invite (walk-in / contractor who only needs shifts, not WineOps login).
+   */
+  onRosterOnly?: () => void
 }
 
 interface GeneratedInvite {
@@ -21,7 +26,7 @@ interface GeneratedInvite {
   inviteUrl: string
 }
 
-export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef }: InviteTeamDialogProps) {
+export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRosterOnly }: InviteTeamDialogProps) {
   const [targetEmail, setTargetEmail] = useState('')
   const [role, setRole] = useState<'manager' | 'staff'>('manager')
   const [isGenerating, setIsGenerating] = useState(false)
@@ -136,11 +141,25 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef }: Inv
                   </div>
                   <p className="text-xs text-gray-400">Expires: 7 days from generation · Single-use</p>
                 </div>
-                <div className="flex items-center justify-end gap-3 mt-6">
-                  <Button variant="ghost" onClick={handleClose}>Cancel</Button>
-                  <Button onClick={handleGenerate} disabled={isGenerating} className="bg-wine-600 text-white hover:bg-wine-700">
-                    {isGenerating ? 'Generating...' : 'Generate Invite Link'}
-                  </Button>
+                <div className="flex flex-col gap-3 mt-6">
+                  <div className="flex items-center justify-end gap-3">
+                    <Button variant="ghost" onClick={handleClose}>Cancel</Button>
+                    <Button onClick={handleGenerate} disabled={isGenerating} className="bg-wine-600 text-white hover:bg-wine-700">
+                      {isGenerating ? 'Generating...' : 'Generate Invite Link'}
+                    </Button>
+                  </div>
+                  {onRosterOnly && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleClose()
+                        onRosterOnly()
+                      }}
+                      className="text-xs text-gray-500 hover:text-wine-700 text-center underline-offset-2 hover:underline"
+                    >
+                      Add roster-only staff (no WineOps login)
+                    </button>
+                  )}
                 </div>
               </>
             ) : (
