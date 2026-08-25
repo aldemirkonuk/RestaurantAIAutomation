@@ -99,3 +99,12 @@ cursor_chat_backup/
 # Railway IaC — CLI-installed agent skill and transient config-pull temp dirs
 .agents/
 .railway-config-pull-*/
+
+# Obsidian workspace-local state (vault config itself IS committed)
+.planning/.obsidian/workspace.json
+.planning/.obsidian/workspace-mobile.json
+.planning/.obsidian/cache/
+.planning/.obsidian/plugins/*/data.json
+
+# Ephemeral runner written by scripts/check_gateway_boots.sh
+apps/api-gateway/.gateway-boot-check.cjs

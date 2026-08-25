@@ -22,6 +22,7 @@ import { estimateCountFromPhoto } from '../../../services/api/inventory'
 import { submitSpotCount, newClientCountId } from '../../../lib/spotCountOutbox'
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
+import { SCAN_ACCEPT, resolveMimeType } from '../../../lib/uploadAccept'
 
 interface SpotCountPanelProps {
   item: InventoryItem
@@ -155,7 +156,7 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
     setPhotoNote(null)
     try {
       const base64 = await toBase64(file)
-      setPhotoPreview(`data:${file.type || 'image/jpeg'};base64,${base64}`)
+      setPhotoPreview(`data:${resolveMimeType(file)};base64,${base64}`)
       const estimate = await estimateCountFromPhoto(inventoryId, base64)
       setPhotoNote(estimate.note)
       if (estimate.suggestedQty != null) {
@@ -265,7 +266,7 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
             <input
               ref={fileRef}
               type="file"
-              accept="image/*"
+              accept={SCAN_ACCEPT}
               capture="environment"
               className="hidden"
               onChange={(e) => {
@@ -277,7 +278,13 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
 
           {photoPreview && (
             <div className="flex items-center gap-2.5 bg-gray-50 border border-gray-100 rounded-xl p-2.5">
-              <img src={photoPreview} alt="Count reference" className="w-12 h-12 object-cover rounded-lg" />
+              {photoPreview.startsWith('data:application/pdf') ? (
+                <div className="w-12 h-12 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-[9px] font-bold text-gray-500">
+                  PDF
+                </div>
+              ) : (
+                <img src={photoPreview} alt="Count reference" className="w-12 h-12 object-cover rounded-lg" />
+              )}
               <p className="text-[11px] text-gray-500 leading-snug">{photoNote}</p>
             </div>
           )}

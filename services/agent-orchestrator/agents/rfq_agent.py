@@ -11,9 +11,12 @@ AI-powered polite bidding system with:
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 import json
+import re
+import time
 
 from core.base_agent import BaseAgent
 from core.database import RFQRequest, Provider
+from config.settings import get_settings
 
 
 class RFQAgent(BaseAgent):
@@ -47,7 +50,9 @@ class RFQAgent(BaseAgent):
         self.response_timeout_hours = config.get("response_timeout_hours", 24)
 
         # LLM for response parsing
-        self.llm_model = config.get("llm_model", "gemini-pro")
+        # Reasoning-shaped: vendor-quote interpretation runs on Claude via the
+        # Anthropic client, so the fallback is the Claude primary (OD-57).
+        self.llm_model = config.get("llm_model", get_settings().llm_primary_model)
         self.google_api_key = config.get("google_api_key")
         self.llm_client = None
 
@@ -83,16 +88,17 @@ class RFQAgent(BaseAgent):
         if self.mock_mode:
             self.logger.warning("⚠️ Running in MOCK mode")
         else:
-            # Initialize Gemini Pro client
-            if self.google_api_key:
-                try:
-                    import google.generativeai as genai
+            # Anthropic, not Gemini (OD-57). The orchestrator fills llm_model
+            # from llm_primary_model — a Claude id — and this handed it to
+            # genai.GenerativeModel(), so the one real call site could never
+            # succeed. The model stays Claude; the client is what changed.
+            try:
+                from services.model_clients import get_anthropic_client
 
-                    genai.configure(api_key=self.google_api_key)
-                    self.llm_client = genai.GenerativeModel(self.llm_model)
-                    self.logger.info("✓ Gemini Pro client initialized")
-                except Exception as e:
-                    self.logger.error(f"Failed to initialize LLM client: {e}")
+                self.llm_client = get_anthropic_client()
+                self.logger.info(f"✓ Anthropic client initialized ({self.llm_model})")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize LLM client: {e}")
 
         self.logger.info("✓ RFQ Agent initialized")
 
@@ -447,11 +453,39 @@ Extract JSON:
 
 Respond with valid JSON only."""
 
-            response = self.llm_client.generate_content(
-                prompt, generation_config={"temperature": 0.1}
+            _t0 = time.perf_counter()
+            response = await self.llm_client.messages.create(
+                model=self.llm_model,
+                max_tokens=1024,
+                messages=[{"role": "user", "content": prompt}],
             )
+            text = "".join(b.text for b in response.content if b.type == "text")
 
-            return json.loads(response.text)
+            # P1: previously an unlogged model call (dark site)
+            try:
+                from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+                _in = response.usage.input_tokens or 0
+                _out = response.usage.output_tokens or 0
+                get_spend_logger().log(
+                    provider="anthropic",
+                    model=self.llm_model,
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=estimate_llm_cost(self.llm_model, _in, _out),
+                    agent=self.agent_name,
+                    task_type="rfq_response_parse",
+                    outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
+                    correlation_id=getattr(self, "_current_correlation_id", None),
+                )
+            except Exception:
+                pass
+
+            # Anthropic has no response_mime_type, so JSON can arrive wrapped in
+            # prose; the caller's except falls back to regex parsing.
+            _m = re.search(r"\{.*\}", text, re.DOTALL)
+            return json.loads(_m.group() if _m else text)
 
         except Exception as e:
             self.logger.error(f"LLM parsing failed: {e}")

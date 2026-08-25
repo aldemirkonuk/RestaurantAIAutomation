@@ -1,0 +1,322 @@
+{
+ "menu": "Seville_Chicago_Wine_Menu.pdf",
+ "pages": 1,
+ "wine_count": 46,
+ "seconds": 16.9,
+ "wines": [
+  {
+   "name": "Brut",
+   "producer": "Cava",
+   "category": "sparkling",
+   "region": "Spain",
+   "by_glass_price": 12.0,
+   "bottle_price": 48.0
+  },
+  {
+   "name": "Undisclosed Cellar",
+   "producer": "Prosecco",
+   "category": "sparkling",
+   "region": "Friuli Italy",
+   "by_glass_price": 13.0,
+   "bottle_price": 52.0
+  },
+  {
+   "name": "Brut Imperia (Split)",
+   "producer": "Moet Brut",
+   "category": "sparkling",
+   "region": "Champagne France",
+   "by_glass_price": 30.0
+  },
+  {
+   "name": "Dom Perignon 2013",
+   "producer": "Champagne",
+   "category": "sparkling",
+   "vintage": "2013",
+   "region": "Champagne France",
+   "bottle_price": 500.0
+  },
+  {
+   "name": "Rosé",
+   "producer": "Cava",
+   "category": "rosé",
+   "region": "Barcelona Chic - Cataluña, Spain",
+   "by_glass_price": 12.0,
+   "bottle_price": 52.0
+  },
+  {
+   "name": "Rosé",
+   "producer": "Prosecco",
+   "category": "rosé",
+   "region": "Canella - Veneto, Italy",
+   "by_glass_price": 13.0,
+   "bottle_price": 48.0
+  },
+  {
+   "name": "Whispering Angel",
+   "producer": "Rosé",
+   "category": "rosé",
+   "region": "Cote de Provence, France",
+   "by_glass_price": 15.0,
+   "bottle_price": 60.0
+  },
+  {
+   "name": "Albarino",
+   "producer": "Martin Codax",
+   "category": "white",
+   "region": "Rias Baixas, Spain",
+   "by_glass_price": 12.0,
+   "bottle_price": 52.0
+  },
+  {
+   "name": "Les Charmes",
+   "producer": "Chardonnay",
+   "category": "white",
+   "region": "Burgundy",
+   "by_glass_price": 14.0,
+   "bottle_price": 56.0
+  },
+  {
+   "name": "Chardonnay",
+   "producer": "Chalk Hill",
+   "category": "white",
+   "region": "Sonoma, California",
+   "bottle_price": 88.0
+  },
+  {
+   "name": "Black",
+   "producer": "Gavi di Gavi",
+   "category": "white",
+   "region": "La Scolea - Piedmont, Italy",
+   "bottle_price": 135.0
+  },
+  {
+   "name": "Pinot Grigio",
+   "producer": "Undisclosed Cellar BIN N9",
+   "category": "white",
+   "region": "Friuli, Italy",
+   "by_glass_price": 12.0,
+   "bottle_price": 52.0
+  },
+  {
+   "name": "Sauvignon Blanc",
+   "producer": "Wairau",
+   "category": "white",
+   "region": "Marlborough, New Zealand",
+   "by_glass_price": 15.0,
+   "bottle_price": 60.0
+  },
+  {
+   "name": "White Blend",
+   "producer": "Marques de Rascal",
+   "category": "white",
+   "region": "Rueda Spain",
+   "by_glass_price": 14.0,
+   "bottle_price": 56.0
+  },
+  {
+   "name": "Tempranillo",
+   "producer": "Hacienda De Arinzano",
+   "category": "red",
+   "region": "Navarra, Spain",
+   "by_glass_price": 13.0,
+   "bottle_price": 52.0
+  },
+  {
+   "name": "Tempranillo",
+   "producer": "Ramon Bilbao",
+   "category": "red",
+   "region": "Rioja, Spain",
+   "by_glass_price": 15.0,
+   "bottle_price": 60.0
+  },
+  {
+   "name": "Chianti Classico",
+   "producer": "Gabbiano",
+   "category": "red",
+   "region": "Chianti, Italy",
+   "bottle_price": 65.0
+  },
+  {
+   "name": "Chianti Classico Riserva",
+   "producer": "Gabbiano",
+   "category": "red",
+   "region": "Chianti, Italy",
+   "bottle_price": 62.0
+  },
+  {
+   "name": "Etna Rosso",
+   "producer": "Planeta",
+   "category": "red",
+   "region": "Sicily, Italy",
+   "bottle_price": 80.0
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Bonanza",
+   "category": "red",
+   "region": "California",
+   "by_glass_price": 13.0,
+   "bottle_price": 52.0
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Torres Gran Coronas",
+   "category": "red",
+   "region": "Catalonia, Spain",
+   "bottle_price": 65.0
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "The Quilt",
+   "category": "red",
+   "region": "Napa, California",
+   "bottle_price": 94.0
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Warrior",
+   "category": "red",
+   "region": "Napa, California",
+   "bottle_price": 130.0
+  },
+  {
+   "name": "Red Blend",
+   "producer": "Undisclosed Cellar BIN V3",
+   "category": "red",
+   "region": "Veneto, Italy",
+   "by_glass_price": 14.0,
+   "bottle_price": 56.0
+  },
+  {
+   "name": "Pinot Noir",
+   "producer": "Boen",
+   "category": "red",
+   "region": "Russian River, California",
+   "by_glass_price": 14.0,
+   "bottle_price": 56.0
+  },
+  {
+   "name": "Bin 27",
+   "producer": "Port",
+   "category": "sweet",
+   "region": "Fonseca - Douro, Portugal",
+   "by_glass_price": 16.0,
+   "bottle_price": 64.0
+  },
+  {
+   "name": "Port",
+   "producer": "Ramos Tawny",
+   "category": "sweet",
+   "by_glass_price": 14.0,
+   "bottle_price": 60.0
+  },
+  {
+   "name": "Madeira",
+   "producer": "Sandeman",
+   "category": "sweet",
+   "region": "Madeira, Spain",
+   "by_glass_price": 16.0,
+   "bottle_price": 64.0
+  },
+  {
+   "name": "Sherry",
+   "producer": "Gonzales 30yrs (375ml)",
+   "category": "sweet",
+   "region": "Jerez, Spain",
+   "bottle_price": 135.0
+  },
+  {
+   "name": "Peroni Nastro Azzurro",
+   "producer": "Pilsner",
+   "category": "beer",
+   "region": "Italy",
+   "by_glass_price": 8.0
+  },
+  {
+   "name": "New Colorado Voodoo Ranger",
+   "producer": "IPA",
+   "category": "beer",
+   "region": "Colorado",
+   "by_glass_price": 9.0
+  },
+  {
+   "name": "Right Bee Semi Dry",
+   "producer": "Cider",
+   "category": "beer",
+   "region": "Chicago",
+   "by_glass_price": 8.0
+  },
+  {
+   "name": "Birra Moretti",
+   "producer": "Lager",
+   "category": "beer",
+   "region": "Italy",
+   "by_glass_price": 9.0
+  },
+  {
+   "name": "Rotating Seasonal Selection",
+   "category": "beer",
+   "by_glass_price": 9.0
+  },
+  {
+   "name": "ADIOS FUEGO",
+   "category": "cocktail",
+   "by_glass_price": 16.0
+  },
+  {
+   "name": "RUNNING WITH THE BULLS",
+   "category": "cocktail",
+   "by_glass_price": 16.0
+  },
+  {
+   "name": "LAZY PIRATE",
+   "category": "cocktail",
+   "by_glass_price": 16.0
+  },
+  {
+   "name": "HABEMUS MANHATTAN",
+   "category": "cocktail",
+   "by_glass_price": 16.0
+  },
+  {
+   "name": "ALAMBRA 75",
+   "category": "cocktail",
+   "by_glass_price": 16.0
+  },
+  {
+   "name": "CAPRI SPRITZ",
+   "category": "cocktail",
+   "by_glass_price": 16.0
+  },
+  {
+   "name": "FLUID MARGHERITA",
+   "category": "cocktail",
+   "by_glass_price": 16.0
+  },
+  {
+   "name": "ONE NIGHT IN MADRID - ESPRESSO MARTINI",
+   "category": "cocktail",
+   "by_glass_price": 16.0
+  },
+  {
+   "name": "FLAMENCO",
+   "category": "spirit-free cocktail",
+   "by_glass_price": 14.0
+  },
+  {
+   "name": "LA ENA MORA",
+   "category": "spirit-free cocktail",
+   "by_glass_price": 14.0
+  },
+  {
+   "name": "PEACH PLEASE",
+   "category": "spirit-free cocktail",
+   "by_glass_price": 14.0
+  },
+  {
+   "name": "SUNRISE IN PROVENCE",
+   "category": "spirit-free cocktail",
+   "by_glass_price": 14.0
+  }
+ ]
+}

@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
@@ -39,7 +40,8 @@ from dataclasses import dataclass, field
 from core.base_agent import BaseAgent
 from utils.logger import setup_logger
 from services.email_composer_service import EmailComposerService
-from config.settings import Settings
+from services.spend_logger import estimate_llm_cost, get_spend_logger
+from config.settings import Settings, get_settings
 from services.model_clients import get_haiku_client
 
 logger = setup_logger("agent.provider_conversation")
@@ -261,8 +263,11 @@ class ProviderConversationAgent(BaseAgent):
         super().__init__(agent_name, message_bus, database, config)
 
         # LLM configuration
-        self.extraction_model = config.get("extraction_model", "gemini-2.0-flash")
-        self.response_model = config.get("response_model", "gemini-2.0-flash")
+        # gemini-2.0-flash was shut down 2026-06-01 (OD-57); fall back to the
+        # configured Gemini default so one id changes at the next retirement.
+        _gemini_default = get_settings().gemini_model
+        self.extraction_model = config.get("extraction_model", _gemini_default)
+        self.response_model = config.get("response_model", _gemini_default)
         self.embedding_model = config.get("embedding_model", "text-embedding-004")
         self.llm_temperature = config.get("llm_temperature", 0.7)
         self.google_api_key = config.get("google_api_key")
@@ -335,8 +340,8 @@ class ProviderConversationAgent(BaseAgent):
             ("conversation.events", "conversation.inbound.voice_transcript"),
             # Intent requests from other agents
             ("procurement.events", "procurement.conversation_request"),
-            # Direct order-created events from NestJS api-gateway
-            ("procurement.events", "procurement.order.created"),
+            # NOT procurement.order.created. That key belongs to
+            # ProviderCommunicationAgent — see the note on _handle_procurement_intent.
             ("provider.events", "provider.promo_check_requested"),
             ("provider.events", "provider.profile_refresh_requested"),
             ("provider.events", "provider.outreach_scheduled"),
@@ -377,13 +382,6 @@ class ProviderConversationAgent(BaseAgent):
 
             # --- Intent requests from other agents ---
             elif routing_key == "procurement.conversation_request":
-                await self._handle_procurement_intent(payload)
-
-            # --- Direct order creation from NestJS api-gateway ---
-            elif routing_key == "procurement.order.created":
-                # Map the NestJS draftPayload fields to the intent payload shape
-                if "intent_type" not in payload:
-                    payload["intent_type"] = "negotiate_price"
                 await self._handle_procurement_intent(payload)
             elif routing_key == "provider.promo_check_requested":
                 await self._handle_promo_check(payload)
@@ -471,7 +469,9 @@ class ProviderConversationAgent(BaseAgent):
             )
 
             # --- Intelligence Extraction Pipeline ---
-            extraction = await self._extract_intelligence(message_text, provider_id)
+            extraction = await self._extract_intelligence(
+                message_text, provider_id, restaurant_id=restaurant_id
+            )
 
             # --- Embed and store in conversational memory ---
             await self._store_conversation_embedding(
@@ -551,7 +551,21 @@ class ProviderConversationAgent(BaseAgent):
             )
 
     async def _handle_procurement_intent(self, payload: Dict[str, Any]) -> None:
-        """Handle intent from ProcurementAgent to communicate with a provider."""
+        """Handle intent from ProcurementAgent to communicate with a provider.
+
+        Reached via `procurement.conversation_request` only. This agent must NOT
+        subscribe to `procurement.order.created`: Phase 32 D-32-01 splits the loop
+        so that ProviderCommunicationAgent owns the order-created draft (step 1)
+        and this agent owns the reply draft after a provider responds (step 3).
+        Both handlers stage a PENDING_APPROVAL row in procurement_conversations and
+        notify the manager, so a shared subscription is two drafts and two
+        notifications for one order — identical output, no dedup between them.
+
+        The overlap is easy to reintroduce because ProcurementAgent publishes
+        `procurement.conversation_request` AND `procurement.order.created` for the
+        same auto-reorder; subscribing to both would double this agent against
+        itself as well. tests/test_event_topology.py pins the single owner.
+        """
         provider_id = payload.get("provider_id")
         restaurant_id = payload.get("restaurant_id")
         intent_type = payload.get("intent_type", "negotiate_price")
@@ -900,8 +914,46 @@ class ProviderConversationAgent(BaseAgent):
     # 3. INTELLIGENCE EXTRACTOR
     # =========================================================================
 
+    def _log_gemini_spend(
+        self,
+        response,
+        task_type: str,
+        duration_ms: Optional[int] = None,
+        restaurant_id: Optional[str] = None,
+    ) -> None:
+        """P1: emit one spend/NF row for a legacy-SDK Gemini call (never raises).
+
+        `duration_ms` is measured by the caller around its own model call —
+        timing it here would only measure this helper.
+        """
+        try:
+            _usage = getattr(response, "usage_metadata", None)
+            _in = getattr(_usage, "prompt_token_count", 0) or 0
+            # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+            _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                getattr(_usage, "thoughts_token_count", 0) or 0
+            )
+            get_spend_logger().log(
+                provider="google",
+                model=self.extraction_model,
+                input_tokens=_in,
+                output_tokens=_out,
+                cost_usd=estimate_llm_cost(self.extraction_model, _in, _out),
+                restaurant_id=restaurant_id or None,
+                agent=self.agent_name,
+                task_type=task_type,
+                outcome="success",  # call-level: response returned
+                duration_ms=duration_ms,
+                correlation_id=getattr(self, "_current_correlation_id", None),
+            )
+        except Exception:
+            pass
+
     async def _extract_intelligence(
-        self, message_text: str, provider_id: str
+        self,
+        message_text: str,
+        provider_id: str,
+        restaurant_id: Optional[str] = None,
     ) -> ExtractionResult:
         """Extract structured intelligence from a message using LLM."""
         if self.mock_mode:
@@ -915,12 +967,19 @@ class ProviderConversationAgent(BaseAgent):
                 f"EXTRACTED JSON:"
             )
 
+            _t0 = time.perf_counter()
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: self.llm_client.generate_content(
                     prompt,
                     generation_config={"temperature": 0.1, "max_output_tokens": 2000},
                 ),
+            )
+            self._log_gemini_spend(  # P1
+                response,
+                "intelligence_extraction",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                restaurant_id=restaurant_id,
             )
 
             raw_text = response.text.strip()
@@ -1151,10 +1210,27 @@ class ProviderConversationAgent(BaseAgent):
         try:
             import google.generativeai as genai
 
+            _t0 = time.perf_counter()
             result = genai.embed_content(
                 model=f"models/{self.embedding_model}",
                 content=text,
                 task_type="retrieval_document",
+            )
+            # P1: embedding calls are API spend too. No token usage is exposed
+            # by the embed API and no per-call price is configured, so tokens
+            # and cost are recorded as 0 with the call flagged unpriced.
+            get_spend_logger().log(
+                provider="google",
+                model=self.embedding_model,
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd=0.0,
+                agent=self.agent_name,
+                task_type="embedding",
+                outcome="success",  # call-level: embedding returned
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                correlation_id=getattr(self, "_current_correlation_id", None),
+                context={"call_kind": "embedding", "pricing": "unpriced"},
             )
             return result["embedding"]
         except Exception as e:
@@ -1860,6 +1936,7 @@ class ProviderConversationAgent(BaseAgent):
                 credit_terms=db_ctx["credit_terms"],
             )
 
+            _t0 = time.perf_counter()
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: self.llm_client.generate_content(
@@ -1869,6 +1946,12 @@ class ProviderConversationAgent(BaseAgent):
                         "max_output_tokens": 300,
                     },
                 ),
+            )
+            self._log_gemini_spend(  # P1
+                response,
+                "draft_response",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                restaurant_id=restaurant_id,
             )
 
             draft_text = response.text.strip()
@@ -1986,6 +2069,7 @@ class ProviderConversationAgent(BaseAgent):
         try:
             haiku = get_haiku_client()
             settings = Settings()
+            _t0 = time.perf_counter()
             response = await haiku.messages.create(
                 model=settings.haiku_model,
                 max_tokens=100,
@@ -2001,6 +2085,27 @@ class ProviderConversationAgent(BaseAgent):
                     }
                 ],
             )
+            # P1: previously an unlogged Haiku call (dark site)
+            try:
+                _in = response.usage.input_tokens if hasattr(response, "usage") else 0
+                _out = response.usage.output_tokens if hasattr(response, "usage") else 0
+                get_spend_logger().log(
+                    provider="anthropic",
+                    model=settings.haiku_model,
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=estimate_llm_cost(settings.haiku_model, _in, _out),
+                    restaurant_id=restaurant_id,
+                    agent=self.agent_name,
+                    task_type="correction_preference",
+                    outcome="success",  # call-level: completion returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
+                    correlation_id=getattr(self, "_current_correlation_id", None),
+                    context={"provider_id": str(provider_id)},
+                )
+            except Exception:
+                pass
+
             preference = response.content[0].text.strip() if response.content else ""
             if preference:
                 # Append to conversation_context.manager_instructions[] on active session
@@ -2041,12 +2146,19 @@ class ProviderConversationAgent(BaseAgent):
 
             prompt = SUMMARY_PROMPT.format(conversation_transcript=transcript[:3000])
 
+            _t0 = time.perf_counter()
             response = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: self.llm_client.generate_content(
                     prompt,
                     generation_config={"temperature": 0.3, "max_output_tokens": 200},
                 ),
+            )
+            self._log_gemini_spend(  # P1
+                response,
+                "session_summary",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                restaurant_id=getattr(session, "restaurant_id", None),
             )
 
             return response.text.strip()

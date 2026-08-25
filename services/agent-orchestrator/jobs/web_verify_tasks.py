@@ -20,6 +20,7 @@ Retry policy: max_retries=3, countdown 60→120→240s (matching haiku_tasks.py 
 
 import asyncio
 import logging
+import time
 from datetime import date, datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -300,9 +301,11 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
         logger.info("_verify_async: searching wine_id=%s query=%r", wine_id, query)
 
         # Execute Serper search
+        _t0 = time.perf_counter()
         snippets = await serper_search(query, num_results=5)
 
-        # Log Serper spend (fixed $0.001/query per Starter plan)
+        # Log Serper spend (fixed $0.001/query per Starter plan).
+        # P1 fix: wine_id is NOT a restaurant_id — it now rides in context.
         try:
             get_spend_logger().log(
                 provider="serper",
@@ -310,7 +313,13 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
                 input_tokens=0,
                 output_tokens=0,
                 cost_usd=settings.serper_cost_per_query,
-                restaurant_id=wine_id,
+                restaurant_id=None,
+                agent="web_verify",
+                task_type="web_verify_search",
+                choice=f"search:{len(snippets)}_results",
+                outcome="success",  # call-level: search completed
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                context={"wine_id": wine_id, "results_count": len(snippets)},
             )
         except Exception:
             pass

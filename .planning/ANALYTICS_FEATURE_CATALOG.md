@@ -28,8 +28,8 @@ delivered set. **Before planning from this document, verify each batch against
 ## How to use this file
 
 - **Humans:** Browse by category sections below.
-- **Extraction:** Use the [JSON file](./analytics-feature-catalog.json) for scripts, spreadsheets, or roadmap import.
-- **CSV:** [analytics-feature-catalog.csv](./analytics-feature-catalog.csv) — open directly in Excel/Sheets/Notion.
+- **Extraction:** Use the [JSON file](../datasets/planning-exports/analytics-feature-catalog.json) for scripts, spreadsheets, or roadmap import.
+- **CSV:** [analytics-feature-catalog.csv](../datasets/planning-exports/analytics-feature-catalog.csv) — open directly in Excel/Sheets/Notion.
 
 ### Field schema
 
@@ -958,4 +958,4 @@ These close the gap against **Toast Analytics** — the whole-restaurant operati
 
 ---
 
-*Catalog maintained in `.planning/`. Machine-readable exports: [JSON](./analytics-feature-catalog.json) · [CSV](./analytics-feature-catalog.csv). **460** features (Batch 6 = seating density). *
+*Catalog maintained in `.planning/`. Machine-readable exports: [JSON](../datasets/planning-exports/analytics-feature-catalog.json) · [CSV](../datasets/planning-exports/analytics-feature-catalog.csv). **460** features (Batch 6 = seating density). *

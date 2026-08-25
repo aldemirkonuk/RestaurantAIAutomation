@@ -1,0 +1,3930 @@
+{
+ "menu": "Saison_Cellar_&_Wine_Bar__San_Francisco_10.29.25.pdf",
+ "pages": 34,
+ "wine_count": 486,
+ "seconds": 294.1,
+ "wines": [
+  {
+   "name": "Chardonnay, Brosseau, Chalone",
+   "producer": "Saison",
+   "category": "white",
+   "vintage": "2020",
+   "region": "Chalone",
+   "bottle_price": 64
+  },
+  {
+   "name": "Chardonnay, Regan, Santa Cruz Mountains",
+   "producer": "Saison",
+   "category": "white",
+   "vintage": "2020",
+   "region": "Santa Cruz Mountains",
+   "bottle_price": 64
+  },
+  {
+   "name": "Pinot Noir, Regan, Santa Cruz Mountains",
+   "producer": "Saison",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Santa Cruz Mountains",
+   "bottle_price": 80
+  },
+  {
+   "name": "Merlot, Regan, Santa Cruz Mountains",
+   "producer": "Saison",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Santa Cruz Mountains",
+   "bottle_price": 98
+  },
+  {
+   "name": "Hearth Cuvée Blend, Santa Cruz Mountains",
+   "producer": "Saison",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Santa Cruz Mountains",
+   "bottle_price": 88
+  },
+  {
+   "name": "Cabernet Sauvignon, Mariana's, Santa Cruz Mountains",
+   "producer": "Saison",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Santa Cruz Mountains",
+   "bottle_price": 108
+  },
+  {
+   "name": "Clos du Murger, Meursault",
+   "producer": "Albert Grivault",
+   "category": "white",
+   "vintage": "2020",
+   "region": "Meursault, Burgundy",
+   "bottle_price": 135
+  },
+  {
+   "name": "Meursault Perrieres 1er Cru",
+   "producer": "Albert Grivault",
+   "category": "white",
+   "vintage": "2020",
+   "region": "Burgundy",
+   "bottle_price": 238
+  },
+  {
+   "name": "Le Mont, Moelleux, Vouvray",
+   "producer": "Huet",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Vouvray, Loire",
+   "bottle_price": 95
+  },
+  {
+   "name": "Le Mont, Sec, Vouvray",
+   "producer": "Huet",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Vouvray, Loire",
+   "bottle_price": 63
+  },
+  {
+   "name": "Volnay, Santenots 1er Cru",
+   "producer": "Ballot-Millot",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Burgundy",
+   "bottle_price": 105
+  },
+  {
+   "name": "Marsannay",
+   "producer": "Domaine Joseph Roty",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Burgundy",
+   "bottle_price": 78
+  },
+  {
+   "name": "Estournelles saint-Jacques 1er Cru Gevery Chambertin",
+   "producer": "Frédéric Esmonin",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Burgundy",
+   "bottle_price": 145
+  },
+  {
+   "name": "Les Fouises, V.V. Gevery Chambertin",
+   "producer": "Frédéric Esmonin",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Burgundy",
+   "bottle_price": 89
+  },
+  {
+   "name": "Empreinte, Saint Joseph",
+   "producer": "Verzier Chante-Perdrix",
+   "category": "red",
+   "vintage": "2015",
+   "region": "Rhone",
+   "bottle_price": 48
+  },
+  {
+   "name": "Pinot Noir, Reed, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2014",
+   "region": "Mount Harlan, California",
+   "bottle_price": 180
+  },
+  {
+   "name": "Syrah, Central Coast",
+   "producer": "Qupe",
+   "category": "red",
+   "vintage": "2000",
+   "region": "Central Coast, California",
+   "bottle_price": 40
+  },
+  {
+   "name": "Sassicaia Bolgheri",
+   "producer": "Tenuta San Guido",
+   "category": "red",
+   "vintage": "2004",
+   "region": "Tuscany, Italy",
+   "bottle_price": 338
+  },
+  {
+   "name": "Brut, Grande Reserve",
+   "producer": "Gosset",
+   "category": "sparkling",
+   "region": "Champagne, France",
+   "bottle_price": 240
+  },
+  {
+   "name": "Brut, Blanc de Blancs, Cuvée Royal",
+   "producer": "Saint-Chamant",
+   "category": "sparkling",
+   "region": "Champagne, France",
+   "bottle_price": 585
+  },
+  {
+   "name": "Brut, Blanc de Blancs, Grand Cru Cuvée Speciale, Les Chétillons",
+   "producer": "Pierre Péters",
+   "category": "sparkling",
+   "vintage": "1990",
+   "region": "Champagne, France",
+   "bottle_price": 2310
+  },
+  {
+   "name": "Extra Brut, Blanc de Blancs, Grand Blanc",
+   "producer": "Philipponnat",
+   "category": "sparkling",
+   "vintage": "2013",
+   "region": "Champagne, France",
+   "bottle_price": 540
+  },
+  {
+   "name": "Extra Brut, Sensation",
+   "producer": "Vincent Couche",
+   "category": "sparkling",
+   "vintage": "1999",
+   "region": "Champagne, France",
+   "bottle_price": 546
+  },
+  {
+   "name": "Vaillons Premier Cru, Chablis",
+   "producer": "Sebastien Dampt",
+   "category": "white",
+   "vintage": "2019",
+   "region": "Chablis, Burgundy",
+   "bottle_price": 230
+  },
+  {
+   "name": "Corton-Charlemange Grand Cru",
+   "producer": "Michel Mallard",
+   "category": "white",
+   "vintage": "2011",
+   "region": "Burgundy",
+   "bottle_price": 1010
+  },
+  {
+   "name": "Corton-Charlemange Grand Cru",
+   "producer": "Michel Mallard",
+   "category": "white",
+   "vintage": "2012",
+   "region": "Burgundy",
+   "bottle_price": 1010
+  },
+  {
+   "name": "Corton-Charlemange Grand Cru",
+   "producer": "Tollot-Beaut",
+   "category": "white",
+   "vintage": "2019",
+   "region": "Burgundy",
+   "bottle_price": 900
+  },
+  {
+   "name": "Elevation 382, Bourgogne Hautes De Beaune",
+   "producer": "Boris Champy",
+   "category": "white",
+   "vintage": "2019",
+   "region": "Burgundy",
+   "bottle_price": 395
+  },
+  {
+   "name": "Cuvée St. Joseph Oliviers, Saint-Joseph",
+   "producer": "Pierre Gonon",
+   "category": "white",
+   "vintage": "2015",
+   "region": "Rhone",
+   "bottle_price": 576
+  },
+  {
+   "name": "Chardonnay, En Barbi, Arbois, Jura",
+   "producer": "Domaine du Pélican",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Arbois, Jura",
+   "bottle_price": 378
+  },
+  {
+   "name": "Savagnin/Chardonnay, Tradition, Côtes du Jura",
+   "producer": "Rolet",
+   "category": "white",
+   "vintage": "1994",
+   "region": "Côtes du Jura",
+   "bottle_price": 255
+  },
+  {
+   "name": "Savagnin/Chardonnay, Tradition, Côtes du Jura",
+   "producer": "Rolet",
+   "category": "white",
+   "vintage": "1999",
+   "region": "Côtes du Jura",
+   "bottle_price": 255
+  },
+  {
+   "name": "Derière la Grange 1er Cru, Chambolle-Musigny",
+   "producer": "Louis Remy",
+   "category": "red",
+   "vintage": "1990",
+   "region": "Burgundy",
+   "bottle_price": 1125
+  },
+  {
+   "name": "Echézeaux du Dessus Grand Cru",
+   "producer": "Hoffman-Jayer",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Burgundy",
+   "bottle_price": 2100
+  },
+  {
+   "name": "Petite Chapelle, Gevrey-Chambertin",
+   "producer": "Marchand-Grillot",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Burgundy",
+   "bottle_price": 535
+  },
+  {
+   "name": "Clos des Ducs 1er Cru, Volnay",
+   "producer": "Marquis d'Angerville",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Burgundy",
+   "bottle_price": 1920
+  },
+  {
+   "name": "Côte De Nuits-Village",
+   "producer": "Didier Fornerol",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Burgundy",
+   "bottle_price": 320
+  },
+  {
+   "name": "La Rochelle, Moulin-a-Vent, Beaujolais",
+   "producer": "Château du Moulin-a-Vent",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Beaujolais",
+   "bottle_price": 330
+  },
+  {
+   "name": "Clos de la Grand Cour, Fleurie, Beaujolais",
+   "producer": "JL Dutraive (Domaine de la Grand Cour)",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Beaujolais",
+   "bottle_price": 270
+  },
+  {
+   "name": "Cuvee Memorial, Arbois, Jura",
+   "producer": "Rolet",
+   "category": "red",
+   "vintage": "1999",
+   "region": "Jura",
+   "bottle_price": 255
+  },
+  {
+   "name": "Pauillac, Bordeaux",
+   "producer": "Pontet-Canet",
+   "category": "red",
+   "vintage": "2012",
+   "region": "Bordeaux",
+   "bottle_price": 630
+  },
+  {
+   "name": "de Villiers, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2007",
+   "region": "Mount Harlan",
+   "bottle_price": 540
+  },
+  {
+   "name": "de Villiers, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2008",
+   "region": "Mount Harlan",
+   "bottle_price": 540
+  },
+  {
+   "name": "de Villiers, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2012",
+   "region": "Mount Harlan",
+   "bottle_price": 576
+  },
+  {
+   "name": "de Villiers, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2013",
+   "region": "Mount Harlan",
+   "bottle_price": 540
+  },
+  {
+   "name": "de Villiers, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2014",
+   "region": "Mount Harlan",
+   "bottle_price": 576
+  },
+  {
+   "name": "de Villiers, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2015",
+   "region": "Mount Harlan",
+   "bottle_price": 540
+  },
+  {
+   "name": "Jensen, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2005",
+   "region": "Mount Harlan",
+   "bottle_price": 1080
+  },
+  {
+   "name": "Jensen, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2006",
+   "region": "Mount Harlan",
+   "bottle_price": 900
+  },
+  {
+   "name": "Jensen, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2008",
+   "region": "Mount Harlan",
+   "bottle_price": 900
+  },
+  {
+   "name": "Jensen, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2009",
+   "region": "Mount Harlan",
+   "bottle_price": 1080
+  },
+  {
+   "name": "Jensen, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2012",
+   "region": "Mount Harlan",
+   "bottle_price": 900
+  },
+  {
+   "name": "Jensen, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2013",
+   "region": "Mount Harlan",
+   "bottle_price": 1080
+  },
+  {
+   "name": "Mills, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2006",
+   "region": "Mount Harlan",
+   "bottle_price": 468
+  },
+  {
+   "name": "Mills, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2011",
+   "region": "Mount Harlan",
+   "bottle_price": 540
+  },
+  {
+   "name": "Mills, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2012",
+   "region": "Mount Harlan",
+   "bottle_price": 540
+  },
+  {
+   "name": "Mills, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2013",
+   "region": "Mount Harlan",
+   "bottle_price": 612
+  },
+  {
+   "name": "Reed, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2001",
+   "region": "Mount Harlan",
+   "bottle_price": 540
+  },
+  {
+   "name": "Reed, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2002",
+   "region": "Mount Harlan",
+   "bottle_price": 540
+  },
+  {
+   "name": "Reed, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2003",
+   "region": "Mount Harlan",
+   "bottle_price": 540
+  },
+  {
+   "name": "Reed, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2004",
+   "region": "Mount Harlan",
+   "bottle_price": 540
+  },
+  {
+   "name": "Reed, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2006",
+   "region": "Mount Harlan",
+   "bottle_price": 540
+  },
+  {
+   "name": "Reed, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2011",
+   "region": "Mount Harlan",
+   "bottle_price": 540
+  },
+  {
+   "name": "Reed, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2012",
+   "region": "Mount Harlan",
+   "bottle_price": 720
+  },
+  {
+   "name": "Reed, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2013",
+   "region": "Mount Harlan",
+   "bottle_price": 720
+  },
+  {
+   "name": "Reed, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2014",
+   "region": "Mount Harlan",
+   "bottle_price": 648
+  },
+  {
+   "name": "Reed, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2015",
+   "region": "Mount Harlan",
+   "bottle_price": 810
+  },
+  {
+   "name": "Ryan, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2003",
+   "region": "Mount Harlan",
+   "bottle_price": 540
+  },
+  {
+   "name": "Ryan, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2004",
+   "region": "Mount Harlan",
+   "bottle_price": 540
+  },
+  {
+   "name": "Ryan, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2005",
+   "region": "Mount Harlan",
+   "bottle_price": 468
+  },
+  {
+   "name": "Ryan, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2006",
+   "region": "Mount Harlan",
+   "bottle_price": 288
+  },
+  {
+   "name": "Ryan, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2010",
+   "region": "Mount Harlan",
+   "bottle_price": 540
+  },
+  {
+   "name": "Ryan, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2011",
+   "region": "Mount Harlan",
+   "bottle_price": 540
+  },
+  {
+   "name": "Ryan, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2012",
+   "region": "Mount Harlan",
+   "bottle_price": 540
+  },
+  {
+   "name": "Ryan, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2013",
+   "region": "Mount Harlan",
+   "bottle_price": 612
+  },
+  {
+   "name": "Ryan, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2015",
+   "region": "Mount Harlan",
+   "bottle_price": 540
+  },
+  {
+   "name": "Selleck, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2011",
+   "region": "Mount Harlan",
+   "bottle_price": 720
+  },
+  {
+   "name": "Selleck, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2014",
+   "region": "Mount Harlan",
+   "bottle_price": 1080
+  },
+  {
+   "name": "Selleck, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2015",
+   "region": "Mount Harlan",
+   "bottle_price": 1500
+  },
+  {
+   "name": "Selleck, Mount Harlan",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2016",
+   "region": "Mount Harlan",
+   "bottle_price": 1500
+  },
+  {
+   "name": "Brut, Grand Resserve",
+   "producer": "Gosset",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 125
+  },
+  {
+   "name": "Brut Tradition 1er Cru",
+   "producer": "Gaston Chiquet",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 128
+  },
+  {
+   "name": "Cuvée de Reserve Brut",
+   "producer": "Marc Herbart",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 123
+  },
+  {
+   "name": "Origine",
+   "producer": "A.Bergère",
+   "category": "sparkling",
+   "bottle_price": 132
+  },
+  {
+   "name": "Cuvée Grande Reserve Premier Cru",
+   "producer": "Vilmart & Cie",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 140
+  },
+  {
+   "name": "Coversation Brut Blanc de Blancs Grand Cru",
+   "producer": "J.L. Vergnon",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 153
+  },
+  {
+   "name": "Eloquence Extra Brut Blanc de Blancs Grand Cru",
+   "producer": "J.L. Vergnon",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 153
+  },
+  {
+   "name": "Cuvee M., 1er cru",
+   "producer": "A. Margaine",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 173
+  },
+  {
+   "name": "Au Bout du Chemin, Extra Brut Blanc de Blancs, 1er Cru",
+   "producer": "Girard-Bonnet",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 183
+  },
+  {
+   "name": "Recueil Extrauit No. 1 Extra Brut Blanc de Blancs, Grand Cru",
+   "producer": "Girard-Bonnet",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 188
+  },
+  {
+   "name": "Soliste Blanc de Blancs, Pierry 1er Cru",
+   "producer": "JM Seleque",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 330
+  },
+  {
+   "name": "Grand Cuvee 171 Eme MV",
+   "producer": "Krug",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 448
+  },
+  {
+   "name": "Brut, Paradoye 1erCru",
+   "producer": "Pierre Gimonnet",
+   "category": "sparkling",
+   "vintage": "2019",
+   "region": "Champagne",
+   "bottle_price": 175
+  },
+  {
+   "name": "Brut, Fleuson 1er Cru",
+   "producer": "Pierre Gimonnet",
+   "category": "sparkling",
+   "vintage": "2017",
+   "region": "Champagne",
+   "bottle_price": 175
+  },
+  {
+   "name": "Brut, Fleuson 1er Cru",
+   "producer": "Pierre Gimonnet",
+   "category": "sparkling",
+   "vintage": "2019",
+   "region": "Champagne",
+   "bottle_price": 185
+  },
+  {
+   "name": "Volupte, Cumierres 1er",
+   "producer": "Geoffroy",
+   "category": "sparkling",
+   "vintage": "2016",
+   "region": "Champagne",
+   "bottle_price": 175
+  },
+  {
+   "name": "L'Exigeante, Brut Blanc de Blancs",
+   "producer": "Noel Bazin",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 200
+  },
+  {
+   "name": "Brut, Special Club 1er Cru",
+   "producer": "Gaston Chiquet",
+   "category": "sparkling",
+   "vintage": "2016",
+   "region": "Champagne",
+   "bottle_price": 210
+  },
+  {
+   "name": "Ambonnay Grand Cru",
+   "producer": "H. Billiot Fils",
+   "category": "sparkling",
+   "vintage": "2018",
+   "region": "Champagne",
+   "bottle_price": 218
+  },
+  {
+   "name": "Ambonnay Grand Cru",
+   "producer": "H. Billiot Fils",
+   "category": "sparkling",
+   "vintage": "2019",
+   "region": "Champagne",
+   "bottle_price": 218
+  },
+  {
+   "name": "Blanc de Noirs Extra Brut, Taissy 1er Cru",
+   "producer": "Pierre Pillard",
+   "category": "sparkling",
+   "vintage": "2019",
+   "region": "Champagne",
+   "bottle_price": 240
+  },
+  {
+   "name": "Le Nombre D'Or Sable Blanc de Blancs",
+   "producer": "L. Aubry Fils",
+   "category": "sparkling",
+   "vintage": "2018",
+   "region": "Champagne",
+   "bottle_price": 263
+  },
+  {
+   "name": "Brut Special Club 1er Cru",
+   "producer": "Hebrart",
+   "category": "sparkling",
+   "vintage": "2021",
+   "region": "Champagne",
+   "bottle_price": 280
+  },
+  {
+   "name": "Grande Cellar D' Or, Brut",
+   "producer": "Vilmart & Cie",
+   "category": "sparkling",
+   "vintage": "2020",
+   "region": "Champagne",
+   "bottle_price": 280
+  },
+  {
+   "name": "Brut, Blanc de Blancs, Special Club",
+   "producer": "A. Margaine",
+   "category": "sparkling",
+   "vintage": "2018",
+   "region": "Champagne",
+   "bottle_price": 298
+  },
+  {
+   "name": "Extra Brut, Terre Milledime 1er Cru",
+   "producer": "Geoffroy",
+   "category": "sparkling",
+   "vintage": "2010",
+   "region": "Champagne",
+   "bottle_price": 315
+  },
+  {
+   "name": "Soliste, Pierry 1er Cru",
+   "producer": "JM Sélèque",
+   "category": "sparkling",
+   "vintage": "2019",
+   "region": "Champagne",
+   "bottle_price": 330
+  },
+  {
+   "name": "Blanc de Blancs, Grand Cru, Neyrot",
+   "producer": "Demiere-Ansiot",
+   "category": "sparkling",
+   "vintage": "2014",
+   "region": "Champagne",
+   "bottle_price": 360
+  },
+  {
+   "name": "Brut, Blanc de Blancs, Grand Cru",
+   "producer": "Demiere-Ansiot",
+   "category": "sparkling",
+   "vintage": "2018",
+   "region": "Champagne",
+   "bottle_price": 250
+  },
+  {
+   "name": "Hors Serie Grand Cru",
+   "producer": "Chartogne-Taillet",
+   "category": "sparkling",
+   "vintage": "2020",
+   "region": "Champagne",
+   "bottle_price": 408
+  },
+  {
+   "name": "Brut",
+   "producer": "Krug",
+   "category": "sparkling",
+   "vintage": "2011",
+   "region": "Champagne",
+   "bottle_price": 690
+  },
+  {
+   "name": "Clos du Mesnil Blanc de Blanc, Grand Cru",
+   "producer": "Krug",
+   "category": "sparkling",
+   "vintage": "2006",
+   "region": "Champagne",
+   "bottle_price": 3650
+  },
+  {
+   "name": "Blanc de Blancs, Grand Cru, Grand Bouquet Vintage",
+   "producer": "Vazart-Coquart et Fils",
+   "category": "sparkling",
+   "vintage": "2016",
+   "region": "Champagne",
+   "bottle_price": 220
+  },
+  {
+   "name": "Blanc de Blancs, Grand Cru, Grand Bouquet Vintage",
+   "producer": "Vazart-Coquart et Fils",
+   "category": "sparkling",
+   "vintage": "2017",
+   "region": "Champagne",
+   "bottle_price": 242
+  },
+  {
+   "name": "Brut, Crede, Valdobbiadene, Prosecco Superiore",
+   "producer": "Bisol",
+   "category": "sparkling",
+   "vintage": "2020",
+   "region": "Italy",
+   "bottle_price": 62
+  },
+  {
+   "name": "Chardonnay, Grand Reserve, Sta. Rita Hills",
+   "producer": "Racines",
+   "category": "sparkling",
+   "region": "California",
+   "bottle_price": 132
+  },
+  {
+   "name": "Extra Brut, Rose Prosecco",
+   "producer": "Pasqua",
+   "category": "sparkling",
+   "region": "Italy",
+   "bottle_price": 84
+  },
+  {
+   "name": "Brut Rosé, Cremant de Alsace",
+   "producer": "Pierre Sparr",
+   "category": "sparkling",
+   "region": "France",
+   "bottle_price": 64
+  },
+  {
+   "name": "Rosé de Saignée",
+   "producer": "Jean Vesselle",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 144
+  },
+  {
+   "name": "La Pimpante Brut Rose D' Assemblage",
+   "producer": "Noel Bazin",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 150
+  },
+  {
+   "name": "Brut Rose 1er Cru",
+   "producer": "Aubry",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 168
+  },
+  {
+   "name": "Cuvée Rubis Rose Premier Cru",
+   "producer": "Vilmart & Cie",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 203
+  },
+  {
+   "name": "Les Terres Brut Rose, Bouzy Grand Cru",
+   "producer": "Pierre Pillard",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 210
+  },
+  {
+   "name": "Influence Brut Rose",
+   "producer": "Miniere F&R",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 210
+  },
+  {
+   "name": "Cuvée Elisabeth",
+   "producer": "Billecart-Salmon",
+   "category": "sparkling",
+   "vintage": "2012",
+   "region": "Champagne",
+   "bottle_price": 525
+  },
+  {
+   "name": "Tavel Vintage, Rhône",
+   "producer": "L'Anglore",
+   "category": "rosé",
+   "vintage": "2018",
+   "region": "Rhône",
+   "bottle_price": 504
+  },
+  {
+   "name": "Prima, Tavel, Rhône",
+   "producer": "L'Anglore",
+   "category": "rosé",
+   "vintage": "2020",
+   "region": "Rhône",
+   "bottle_price": 302
+  },
+  {
+   "name": "La Croix, Provence",
+   "producer": "Peyrassol",
+   "category": "rosé",
+   "vintage": "2020",
+   "region": "Provence",
+   "bottle_price": 50
+  },
+  {
+   "name": "Fosso Cancelli, Cerasuolo d'Abruzzo",
+   "producer": "Ciavolich",
+   "category": "rosé",
+   "vintage": "2021",
+   "region": "Italy",
+   "bottle_price": 92
+  },
+  {
+   "name": "Rosé Trevenezie, 11 Minutes, Verona",
+   "producer": "Pasqua",
+   "category": "rosé",
+   "vintage": "2023",
+   "region": "Italy",
+   "bottle_price": 60
+  },
+  {
+   "name": "Pink, Dry Creek Valley, Sonoma County",
+   "producer": "Nimble",
+   "category": "rosé",
+   "vintage": "2017",
+   "region": "California",
+   "bottle_price": 55
+  },
+  {
+   "name": "Sommras, Napa Valley",
+   "producer": "Sommras",
+   "category": "rosé",
+   "vintage": "2022",
+   "region": "Napa Valley",
+   "bottle_price": 64
+  },
+  {
+   "name": "Extra Brut, Sainte Anne",
+   "producer": "Chartogne-Taillet",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 178
+  },
+  {
+   "name": "Oerophile",
+   "producer": "Pierre Gimonnet",
+   "category": "sparkling",
+   "vintage": "2018",
+   "region": "Champagne",
+   "bottle_price": 175
+  },
+  {
+   "name": "Extra Brut, Blanc de Blancs, Grand Cru, Les Jardins du Mesnil",
+   "producer": "André Robert",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 180
+  },
+  {
+   "name": "Extra Brut, Les Vignes de Montigny",
+   "producer": "André Robert",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 160
+  },
+  {
+   "name": "Extra Brut, Solessence",
+   "producer": "JM Sélèque",
+   "category": "sparkling",
+   "region": "Champagne",
+   "bottle_price": 165
+  },
+  {
+   "name": "Brut Nature, Heraclite 1er Cru",
+   "producer": "Timothee Stroebel",
+   "category": "sparkling",
+   "vintage": "2019",
+   "region": "Champagne",
+   "bottle_price": 245
+  },
+  {
+   "name": "Extra Brut, Blanc de Blancs, Les 3 Terroirs",
+   "producer": "Michel Gonet",
+   "category": "sparkling",
+   "vintage": "2019",
+   "region": "Champagne",
+   "bottle_price": 148
+  },
+  {
+   "name": "Zero Dosage, Blanc de Blancs, Grand Cru, Mesnil Sur Oger",
+   "producer": "Michel Gonet",
+   "category": "sparkling",
+   "vintage": "2015",
+   "region": "Champagne",
+   "bottle_price": 175
+  },
+  {
+   "name": "Chablis",
+   "producer": "Vocoret",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Chablis",
+   "bottle_price": 215
+  },
+  {
+   "name": "Les Vaillons 1er Cru",
+   "producer": "Billaud-Simon",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Chablis",
+   "bottle_price": 215
+  },
+  {
+   "name": "Cote de Lechet 1er Cru",
+   "producer": "Laroche",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Chablis",
+   "bottle_price": 180
+  },
+  {
+   "name": "Les Fourcharmes 1er Cru",
+   "producer": "Laroche",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Chablis",
+   "bottle_price": 220
+  },
+  {
+   "name": "Les Vaudevey 1er Cru",
+   "producer": "Laroche",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Chablis",
+   "bottle_price": 210
+  },
+  {
+   "name": "Montmains 1er Cru",
+   "producer": "Laroche",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Chablis",
+   "bottle_price": 190
+  },
+  {
+   "name": "Vaillons 1er Cru",
+   "producer": "Laroche",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Chablis",
+   "bottle_price": 192
+  },
+  {
+   "name": "Montée de Tonnerre 1er Cru",
+   "producer": "Vocoret",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Chablis",
+   "bottle_price": 186
+  },
+  {
+   "name": "Vaillons 1er Cru",
+   "producer": "Vocoret",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Chablis",
+   "bottle_price": 126
+  },
+  {
+   "name": "Les Clos Grand Cru",
+   "producer": "Billaud-Simon",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Chablis",
+   "bottle_price": 390
+  },
+  {
+   "name": "Les Preuses Grand Cru",
+   "producer": "Billaud-Simon",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Chablis",
+   "bottle_price": 390
+  },
+  {
+   "name": "Bouguerots Grand Cru",
+   "producer": "Laroche",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Chablis",
+   "bottle_price": 400
+  },
+  {
+   "name": "Les Blanchots Grand Cru",
+   "producer": "Laroche",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Chablis",
+   "bottle_price": 498
+  },
+  {
+   "name": "Les Clos Grand Cru",
+   "producer": "Maison des Lions",
+   "category": "white",
+   "vintage": "2019",
+   "region": "Chablis",
+   "bottle_price": 245
+  },
+  {
+   "name": "Blanchots Grand Cru",
+   "producer": "Vocoret",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Chablis",
+   "bottle_price": 235
+  },
+  {
+   "name": "Les Clos Grand Cru",
+   "producer": "Vocoret",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Chablis",
+   "bottle_price": 280
+  },
+  {
+   "name": "Les Marnes Blanches, Ladoix",
+   "producer": "Faiveley",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Ladoix-Serrigny",
+   "bottle_price": 135
+  },
+  {
+   "name": "Les Hautes",
+   "producer": "Chantereves",
+   "category": "white",
+   "vintage": "2020",
+   "region": "Auxey-Duresses",
+   "bottle_price": 236
+  },
+  {
+   "name": "Clos des Bouchères",
+   "producer": "Domaine Roulot",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Meursault",
+   "bottle_price": 1167
+  },
+  {
+   "name": "Les Vireuils",
+   "producer": "Domaine Roulot",
+   "category": "white",
+   "vintage": "2020",
+   "region": "Meursault",
+   "bottle_price": 900
+  },
+  {
+   "name": "Clos de la Croix Noire",
+   "producer": "Philippe Bouzereau",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Meursault",
+   "bottle_price": 180
+  },
+  {
+   "name": "Clos des Boucheres 1er Cru, Monopole",
+   "producer": "Domaine Roulot",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Meursault",
+   "bottle_price": 1167
+  },
+  {
+   "name": "Meursault-Poruzots 1er Cru",
+   "producer": "Philippe Bouzereau",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Meursault",
+   "bottle_price": 345
+  },
+  {
+   "name": "Les Corbins",
+   "producer": "Vincent Dancer",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Meursault",
+   "bottle_price": 890
+  },
+  {
+   "name": "Les Folatieres 1er Cru",
+   "producer": "Génot-Boulanger",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Puligny-Montrachet",
+   "bottle_price": 580
+  },
+  {
+   "name": "Les Folatieres 1er Cru",
+   "producer": "Faiveley",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Puligny-Montrachet",
+   "bottle_price": 435
+  },
+  {
+   "name": "Les Caillerets 1er Cru",
+   "producer": "Lamy-Caillat",
+   "category": "white",
+   "vintage": "2020",
+   "region": "Chassagne-Montrachet",
+   "bottle_price": 1500
+  },
+  {
+   "name": "Blanchots Dessous 1er Cru",
+   "producer": "Marc Morey",
+   "category": "white",
+   "vintage": "2011",
+   "region": "Chassagne-Montrachet",
+   "bottle_price": 900
+  },
+  {
+   "name": "en Virondot 1er Cru",
+   "producer": "Marc Morey",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Chassagne-Montrachet",
+   "bottle_price": 366
+  },
+  {
+   "name": "Les Caillerets 1er Cru",
+   "producer": "Ramonet",
+   "category": "white",
+   "vintage": "1959",
+   "region": "Chassagne-Montrachet",
+   "bottle_price": 4500
+  },
+  {
+   "name": "Les Caillerets 1er Cru",
+   "producer": "Ramonet",
+   "category": "white",
+   "vintage": "1973",
+   "region": "Chassagne-Montrachet",
+   "bottle_price": 2250
+  },
+  {
+   "name": "Morgeot 1er Cru",
+   "producer": "Ramonet",
+   "category": "white",
+   "vintage": "1973",
+   "region": "Chassagne-Montrachet",
+   "bottle_price": 1200
+  },
+  {
+   "name": "Les Ruchottes 1er Cru",
+   "producer": "Ramonet",
+   "category": "white",
+   "vintage": "1959",
+   "region": "Chassagne-Montrachet",
+   "bottle_price": 2250
+  },
+  {
+   "name": "Les Ruchottes 1er Cru",
+   "producer": "Ramonet",
+   "category": "white",
+   "vintage": "1970",
+   "region": "Chassagne-Montrachet",
+   "bottle_price": 1200
+  },
+  {
+   "name": "Les Ruchottes 1er Cru",
+   "producer": "Ramonet",
+   "category": "white",
+   "vintage": "1972",
+   "region": "Chassagne-Montrachet",
+   "bottle_price": 1200
+  },
+  {
+   "name": "Les Ruchottes 1er Cru",
+   "producer": "Ramonet",
+   "category": "white",
+   "vintage": "1973",
+   "region": "Chassagne-Montrachet",
+   "bottle_price": 1200
+  },
+  {
+   "name": "en I'Ebaupin",
+   "producer": "Lamy-Caillat",
+   "category": "white",
+   "vintage": "2020",
+   "region": "Saint Aubin",
+   "bottle_price": 645
+  },
+  {
+   "name": "Rully",
+   "producer": "Marc Morey",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Rully",
+   "bottle_price": 144
+  },
+  {
+   "name": "Mâcon-Verzé",
+   "producer": "Leflaive",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Mâconnais",
+   "bottle_price": 220
+  },
+  {
+   "name": "Les Chênes, Mâcon-Verzé",
+   "producer": "Leflaive",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Mâconnais",
+   "bottle_price": 242
+  },
+  {
+   "name": "Le Monté, Mâcon-Verzé",
+   "producer": "Leflaive",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Mâconnais",
+   "bottle_price": 255
+  },
+  {
+   "name": "Pouilly-Fuissé",
+   "producer": "Roc Des Boutires",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Mâconnais",
+   "bottle_price": 130
+  },
+  {
+   "name": "Bas des Ees",
+   "producer": "Chantereves",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Bourgogne Aligoté",
+   "bottle_price": 245
+  },
+  {
+   "name": "Les Chagniots",
+   "producer": "Chantereves",
+   "category": "white",
+   "vintage": "2019",
+   "region": "Bourgogne Aligoté",
+   "bottle_price": 312
+  },
+  {
+   "name": "Les Chagniots",
+   "producer": "Chantereves",
+   "category": "white",
+   "vintage": "2020",
+   "region": "Bourgogne Aligoté",
+   "bottle_price": 185
+  },
+  {
+   "name": "Quarts De Chaume",
+   "producer": "Domaine des Baumard",
+   "category": "white",
+   "vintage": "1990",
+   "region": "Loire Valley",
+   "bottle_price": 385
+  },
+  {
+   "name": "Chenin Blanc, Anjou",
+   "producer": "Clau de Nell",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Loire Valley",
+   "bottle_price": 198
+  },
+  {
+   "name": "Chenin Blanc, Clos de la Bergerie, Savennières",
+   "producer": "Famille Joly",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Loire Valley",
+   "bottle_price": 250
+  },
+  {
+   "name": "Chenin Blanc, Clos de la Coulée de Serrant, Savennières",
+   "producer": "Famille Joly",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Loire Valley",
+   "bottle_price": 380
+  },
+  {
+   "name": "Chenin Blanc, Les Vieux Clos, Savennières",
+   "producer": "Famille Joly",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Loire Valley",
+   "bottle_price": 175
+  },
+  {
+   "name": "Chenin Blanc, Les Vieux Clos, Savennières",
+   "producer": "Famille Joly",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Loire Valley",
+   "bottle_price": 192
+  },
+  {
+   "name": "Sancerre",
+   "producer": "Pascal Jolivet",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Loire Valley",
+   "bottle_price": 120
+  },
+  {
+   "name": "Sauvage, Sancerre",
+   "producer": "Pascal Jolivet",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Loire Valley",
+   "bottle_price": 180
+  },
+  {
+   "name": "Saint-Joseph Blanc",
+   "producer": "Courbis",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Rhône",
+   "bottle_price": 115
+  },
+  {
+   "name": "Les Grands Amandiers Condrieu",
+   "producer": "Paul Jaboulet",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Rhône",
+   "bottle_price": 298
+  },
+  {
+   "name": "Chateauneuf-du-Pape Blanc",
+   "producer": "Château de Beaucastel",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Rhône",
+   "bottle_price": 265
+  },
+  {
+   "name": "Hermitage Blanc",
+   "producer": "Maison Les Alexandrins",
+   "category": "white",
+   "vintage": "2020",
+   "region": "Rhône",
+   "bottle_price": 238
+  },
+  {
+   "name": "Savagnin, Ouille, Arbois",
+   "producer": "Domaine du Pélican",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Jura",
+   "bottle_price": 140
+  },
+  {
+   "name": "Savagnin, Ouille, Grand Curoulet, Arbois",
+   "producer": "Domaine du Pélican",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Jura",
+   "bottle_price": 186
+  },
+  {
+   "name": "Grenache Gris, Iglesia Vella, Languedoc",
+   "producer": "Le Roc Des Anges",
+   "category": "white",
+   "vintage": "2017",
+   "region": "Southern France",
+   "bottle_price": 120
+  },
+  {
+   "name": "Montagne 382, Hautes-Côtes De Beaune",
+   "producer": "Boris Champy",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Bourgogne Blanc",
+   "bottle_price": 155
+  },
+  {
+   "name": "Mainbey, Hautes-Côtes De Beaune",
+   "producer": "Chantereves",
+   "category": "white",
+   "vintage": "2020",
+   "region": "Bourgogne Blanc",
+   "bottle_price": 212
+  },
+  {
+   "name": "Le Mont de Fussey, Hautes-Côtes De Beaune",
+   "producer": "Chantereves",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Bourgogne Blanc",
+   "bottle_price": 212
+  },
+  {
+   "name": "Bourgogne Blanc",
+   "producer": "Benoit Moreau",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Bourgogne Blanc",
+   "bottle_price": 220
+  },
+  {
+   "name": "Bourgogne Chardonnay",
+   "producer": "Chantereves",
+   "category": "white",
+   "vintage": "2020",
+   "region": "Bourgogne Blanc",
+   "bottle_price": 186
+  },
+  {
+   "name": "Bourgogne Chardonnay",
+   "producer": "Chantereves",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Bourgogne Blanc",
+   "bottle_price": 160
+  },
+  {
+   "name": "Bourgogne Blanc",
+   "producer": "Didier Fornerol",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Bourgogne Blanc",
+   "bottle_price": 104
+  },
+  {
+   "name": "Pinot Gris, Trocken, Burgenland",
+   "producer": "Kracher",
+   "category": "white",
+   "vintage": "2020",
+   "region": "Austria",
+   "bottle_price": 55
+  },
+  {
+   "name": "Riesling Spätlese, Bernkasterler Badstube, Mosel",
+   "producer": "JJ Prüm",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Germany",
+   "bottle_price": 160
+  },
+  {
+   "name": "Riesling Smaragd, Ried Singerriedel, Wachau",
+   "producer": "Franz Hirtzberger",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Austria",
+   "bottle_price": 300
+  },
+  {
+   "name": "Grüner Veltliner, Ried Loibenberg, Wachau",
+   "producer": "F.X. Pichler",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Austria",
+   "bottle_price": 224
+  },
+  {
+   "name": "Riesling, Graubunden",
+   "producer": "Weingut Daniel & Marta Gantenbein",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Switzerland",
+   "bottle_price": 498
+  },
+  {
+   "name": "Verdeca, Petraluce, Puglia",
+   "producer": "Castello Monaci",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Italy",
+   "bottle_price": 33
+  },
+  {
+   "name": "Sauvignon Blanc, Potter Valley, Mendocino",
+   "producer": "Polemonium",
+   "category": "white",
+   "vintage": "2023",
+   "region": "California",
+   "bottle_price": 90
+  },
+  {
+   "name": "Sauvignon Blanc, Russian River Valley, Sonoma",
+   "producer": "Rochioli",
+   "category": "white",
+   "vintage": "2023",
+   "region": "California",
+   "bottle_price": 105
+  },
+  {
+   "name": "Chardonnay, Sanford & Benedict Vineyard, Santa Ynez Valley",
+   "producer": "Au Bon Climat",
+   "category": "white",
+   "vintage": "2002",
+   "region": "California",
+   "bottle_price": 150
+  },
+  {
+   "name": "Chardonnay, Rincon, Talley Vineyard, Arroyo Grande Valley",
+   "producer": "Au Bon Climat",
+   "category": "white",
+   "vintage": "2002",
+   "region": "California",
+   "bottle_price": 150
+  },
+  {
+   "name": "Chardonnay, Howard Family, Santa Cruz Mountains",
+   "producer": "Big Basin",
+   "category": "white",
+   "vintage": "2020",
+   "region": "California",
+   "bottle_price": 120
+  },
+  {
+   "name": "Chardonnay, Mount Harlan",
+   "producer": "Calera",
+   "category": "white",
+   "vintage": "2012",
+   "region": "California",
+   "bottle_price": 144
+  },
+  {
+   "name": "Chardonnay, Mount Harlan",
+   "producer": "Calera",
+   "category": "white",
+   "vintage": "2016",
+   "region": "California",
+   "bottle_price": 180
+  },
+  {
+   "name": "Chardonnay, Mount Harlan",
+   "producer": "Calera",
+   "category": "white",
+   "vintage": "2017",
+   "region": "California",
+   "bottle_price": 144
+  },
+  {
+   "name": "Chardonnay, Sta. Rita Hills Cuvée, Sta. Rita Hills",
+   "producer": "Racines",
+   "category": "white",
+   "vintage": "2022",
+   "region": "California",
+   "bottle_price": 85
+  },
+  {
+   "name": "Chardonnay, Sanford & Benedict, Sta. Rita Hills",
+   "producer": "Racines",
+   "category": "white",
+   "vintage": "2022",
+   "region": "California",
+   "bottle_price": 190
+  },
+  {
+   "name": "Chardonnay, Russian River Valley, Sonoma",
+   "producer": "Rochioli",
+   "category": "white",
+   "vintage": "2023",
+   "region": "California",
+   "bottle_price": 130
+  },
+  {
+   "name": "Chardonnay, Willamette Valley, Oregon",
+   "producer": "Composition",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Oregon",
+   "bottle_price": 290
+  },
+  {
+   "name": "Chardonnay, Willamette Valley, Oregon",
+   "producer": "Composition",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Oregon",
+   "bottle_price": 290
+  },
+  {
+   "name": "Chardonnay, Bunker Hill, Willamette Valley, Oregon",
+   "producer": "Lingua Franca",
+   "category": "white",
+   "vintage": "2019",
+   "region": "Oregon",
+   "bottle_price": 180
+  },
+  {
+   "name": "Chardonnay, Freedom Hill, Willamette Valley, Oregon",
+   "producer": "Walter Scott",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Oregon",
+   "bottle_price": 240
+  },
+  {
+   "name": "Pinot Gris/Pinot Blanc/Aligoté, Hildegard, Santa Maria Valley",
+   "producer": "Au Bon Climat",
+   "category": "white",
+   "vintage": "2003",
+   "region": "California",
+   "bottle_price": 200
+  },
+  {
+   "name": "Chardonnay, Stellenbosch",
+   "producer": "Aslina",
+   "category": "white",
+   "vintage": "2022",
+   "region": "South Africa",
+   "bottle_price": 60
+  },
+  {
+   "name": "Chenin Blanc, Skin Contact, Stellenbosch",
+   "producer": "Aslina",
+   "category": "white",
+   "vintage": "2022",
+   "region": "South Africa",
+   "bottle_price": 88
+  },
+  {
+   "name": "Sauvignon Blanc, Stellenbosch",
+   "producer": "Aslina",
+   "category": "white",
+   "vintage": "2022",
+   "region": "South Africa",
+   "bottle_price": 60
+  },
+  {
+   "name": "Chardonnay, Hemel-en-Aarde",
+   "producer": "Hamilton Russel",
+   "category": "white",
+   "vintage": "2022",
+   "region": "South Africa",
+   "bottle_price": 128
+  },
+  {
+   "name": "Sémillon Gris, Tin Man, Swartland",
+   "producer": "Thorne & Daughters",
+   "category": "white",
+   "vintage": "2021",
+   "region": "South Africa",
+   "bottle_price": 80
+  },
+  {
+   "name": "Chardonnay, Patagonia",
+   "producer": "Chacra",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Argentina",
+   "bottle_price": 264
+  },
+  {
+   "name": "Chardonnay, Mainque, Patagonia",
+   "producer": "Chacra",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Argentina",
+   "bottle_price": 120
+  },
+  {
+   "name": "Chardonnay, Amelia, Valle del Limarí",
+   "producer": "Concha y Toro",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Chile",
+   "bottle_price": 105
+  },
+  {
+   "name": "Clos du Roy",
+   "producer": "Charles Audoin",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Marsannay",
+   "bottle_price": 175
+  },
+  {
+   "name": "Champs Perdrix",
+   "producer": "Aurelien Verdet",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Marsannay",
+   "bottle_price": 255
+  },
+  {
+   "name": "Les Longeroies",
+   "producer": "Château de Marsannay",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Marsannay",
+   "bottle_price": 308
+  },
+  {
+   "name": "Gevrey-Chambertin",
+   "producer": "Henri Rebourseau",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Gevrey-Chambertin",
+   "bottle_price": 275
+  },
+  {
+   "name": "Gevrey-Chambertin",
+   "producer": "Jerome Castagnier",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Gevrey-Chambertin",
+   "bottle_price": 500
+  },
+  {
+   "name": "Aux Corvées",
+   "producer": "Henri Rebourseau",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Gevrey-Chambertin",
+   "bottle_price": 275
+  },
+  {
+   "name": "La Brunelle",
+   "producer": "Henri Rebourseau",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Gevrey-Chambertin",
+   "bottle_price": 340
+  },
+  {
+   "name": "La Combe Aux Moines 1er Cru",
+   "producer": "Faiveley",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Gevrey-Chambertin",
+   "bottle_price": 405
+  },
+  {
+   "name": "Fonteny 1er Cru",
+   "producer": "Henri Rebourseau",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Gevrey-Chambertin",
+   "bottle_price": 535
+  },
+  {
+   "name": "La Perrière 1er Cru",
+   "producer": "Henri Rebourseau",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Gevrey-Chambertin",
+   "bottle_price": 535
+  },
+  {
+   "name": "Clos-De-Bèze Grand Cru, Chambertin",
+   "producer": "Armand Rousseau",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Gevrey-Chambertin",
+   "bottle_price": 5300
+  },
+  {
+   "name": "Les Condemennes",
+   "producer": "Aurelien Verdet",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Chambolle-Musigny",
+   "bottle_price": 355
+  },
+  {
+   "name": "Combe d'Orveau, VV",
+   "producer": "Desaunay-Bissey",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Chambolle-Musigny",
+   "bottle_price": 308
+  },
+  {
+   "name": "Chambolle-Musigny",
+   "producer": "Fromont",
+   "category": "red",
+   "vintage": "1955",
+   "region": "Chambolle-Musigny",
+   "bottle_price": 750
+  },
+  {
+   "name": "Bones-Mares Grand Cru",
+   "producer": "La Maison des Lions",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Chambolle-Musigny",
+   "bottle_price": 680
+  },
+  {
+   "name": "Bones-Mares Grand Cru",
+   "producer": "Comte Georges de Vogüé",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Chambolle-Musigny",
+   "bottle_price": 1935
+  },
+  {
+   "name": "Bonnes-Mares Grand Cru",
+   "producer": "Domaine Roumier",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Chambolle-Musigny",
+   "bottle_price": 2450
+  },
+  {
+   "name": "Morey-Saint-Denis",
+   "producer": "Lecheneaut",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Morey-Saint-Denis",
+   "bottle_price": 276
+  },
+  {
+   "name": "Monts Luisants 1er Cru",
+   "producer": "Dujac",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Morey-Saint-Denis",
+   "bottle_price": 510
+  },
+  {
+   "name": "Clos-Bussiere 1er Cru",
+   "producer": "Domaine Roumier",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Morey-Saint-Denis",
+   "bottle_price": 675
+  },
+  {
+   "name": "Clos de la Roche Grand Cru",
+   "producer": "Hospices de Beaune, Ponsot",
+   "category": "red",
+   "vintage": "2010",
+   "region": "Morey-Saint-Denis",
+   "bottle_price": 1275
+  },
+  {
+   "name": "Clos de la Roche Grand Cru",
+   "producer": "La Maison des Lions",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Morey-Saint-Denis",
+   "bottle_price": 1000
+  },
+  {
+   "name": "Clos de Reas 1er Cru, Monopole",
+   "producer": "Michel Gros",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Vosne-Romanée",
+   "bottle_price": 435
+  },
+  {
+   "name": "Richeboourg Grand Cru",
+   "producer": "Thibault Liger-Belair",
+   "category": "red",
+   "vintage": "2011",
+   "region": "Vosne-Romanée",
+   "bottle_price": 1750
+  },
+  {
+   "name": "Echézeaux Grand Cru",
+   "producer": "Dujac",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Flagey-Echézeaux",
+   "bottle_price": 1320
+  },
+  {
+   "name": "Clos de Vougeot Grand Cru, Hommage à Jean Morin",
+   "producer": "Château de La Tour",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Vougeot",
+   "bottle_price": 1450
+  },
+  {
+   "name": "Clos de Vougeot Grand Cru",
+   "producer": "Château de La Tour",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Vougeot",
+   "bottle_price": 772
+  },
+  {
+   "name": "Clos de Vougeot Grand Cru",
+   "producer": "P. Misserey",
+   "category": "red",
+   "vintage": "1982",
+   "region": "Vougeot",
+   "bottle_price": 620
+  },
+  {
+   "name": "Clos de Vougeot Grand Cru",
+   "producer": "Pierre André",
+   "category": "red",
+   "vintage": "1990",
+   "region": "Vougeot",
+   "bottle_price": 525
+  },
+  {
+   "name": "Corton-Bressandes Grand Cru",
+   "producer": "Domaine Chandon de Brailles",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Corton",
+   "bottle_price": 735
+  },
+  {
+   "name": "Corton",
+   "producer": "Jaffelin",
+   "category": "red",
+   "vintage": "1978",
+   "region": "Corton",
+   "bottle_price": 600
+  },
+  {
+   "name": "Nuits-Saint-Georges",
+   "producer": "Ambroise",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Nuits-Saint-Georges",
+   "bottle_price": 196
+  },
+  {
+   "name": "Les Montroziers",
+   "producer": "Faiveley",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Nuits-Saint-Georges",
+   "bottle_price": 195
+  },
+  {
+   "name": "Au Chouillet, VV",
+   "producer": "Lecheneaut",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Nuits-Saint-Georges",
+   "bottle_price": 276
+  },
+  {
+   "name": "Les Damodes 1er Cru",
+   "producer": "Faiveley",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Nuits-Saint-Georges",
+   "bottle_price": 570
+  },
+  {
+   "name": "Petit Aigle",
+   "producer": "Boris Champy",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Savigny-lès-Beaune",
+   "bottle_price": 165
+  },
+  {
+   "name": "Dessus de Montchenevoy",
+   "producer": "Chantereves",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Savigny-lès-Beaune",
+   "bottle_price": 170
+  },
+  {
+   "name": "Dessus de Montchenevoy",
+   "producer": "Chantereves",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Savigny-lès-Beaune",
+   "bottle_price": 300
+  },
+  {
+   "name": "Aux Fournaux",
+   "producer": "Domaine Chandon de Brailles",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Savigny-lès-Beaune",
+   "bottle_price": 195
+  },
+  {
+   "name": "Les Lavières 1er Cru",
+   "producer": "Domaine Chandon de Brailles",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Savigny-lès-Beaune",
+   "bottle_price": 246
+  },
+  {
+   "name": "Les Grans Picotins",
+   "producer": "Domaine du Prieuré",
+   "category": "red",
+   "vintage": "1991",
+   "region": "Savigny-lès-Beaune",
+   "bottle_price": 150
+  },
+  {
+   "name": "Les Vergelesses 1er Cru",
+   "producer": "Louis Max",
+   "category": "red",
+   "vintage": "1990",
+   "region": "Savigny-lès-Beaune",
+   "bottle_price": 150
+  },
+  {
+   "name": "Les Serpentières 1er Cru",
+   "producer": "Michel Mallard",
+   "category": "red",
+   "vintage": "1990",
+   "region": "Savigny-lès-Beaune",
+   "bottle_price": 210
+  },
+  {
+   "name": "Les Champs Long",
+   "producer": "Chantereves",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Chorey-lès-Beaune",
+   "bottle_price": 170
+  },
+  {
+   "name": "Les Beaumonts",
+   "producer": "Domaine Vincent Ledy",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Chorey-lès-Beaune",
+   "bottle_price": 140
+  },
+  {
+   "name": "Les Vergelesses 1er Cru",
+   "producer": "Chandon de Briailles",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Pernand-Vergelesses",
+   "bottle_price": 225
+  },
+  {
+   "name": "En Boeuf",
+   "producer": "Boris Champy",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Pommard",
+   "bottle_price": 240
+  },
+  {
+   "name": "VV",
+   "producer": "Joseph Voillot",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Pommard",
+   "bottle_price": 340
+  },
+  {
+   "name": "Les Epenots 1er Cru",
+   "producer": "Joseph Voillot",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Pommard",
+   "bottle_price": 430
+  },
+  {
+   "name": "Cuvée Guigone de Salins",
+   "producer": "Hospices de Beaune, Savour Club",
+   "category": "red",
+   "vintage": "1986",
+   "region": "Beaune",
+   "bottle_price": 300
+  },
+  {
+   "name": "Beaune",
+   "producer": "Thorin",
+   "category": "red",
+   "vintage": "1978",
+   "region": "Beaune",
+   "bottle_price": 315
+  },
+  {
+   "name": "Aux Coucheras 1er Cru",
+   "producer": "Boris Champy",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Beaune",
+   "bottle_price": 240
+  },
+  {
+   "name": "Vignes Franches 1er Cru",
+   "producer": "Boris Champy",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Beaune",
+   "bottle_price": 295
+  },
+  {
+   "name": "Les Grèves 1er Cru",
+   "producer": "Bouchard Pere et Fils",
+   "category": "red",
+   "vintage": "1990",
+   "region": "Beaune",
+   "bottle_price": 385
+  },
+  {
+   "name": "Pertuizots 1er Cru",
+   "producer": "Bouzereau-Emonin",
+   "category": "red",
+   "vintage": "1990",
+   "region": "Beaune",
+   "bottle_price": 180
+  },
+  {
+   "name": "Les Blanches Fleurs 1er Cru",
+   "producer": "Chantereves",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Beaune",
+   "bottle_price": 385
+  },
+  {
+   "name": "Clos Des Mouches 1er Cru",
+   "producer": "Edmond Girardin",
+   "category": "red",
+   "vintage": "1990",
+   "region": "Beaune",
+   "bottle_price": 300
+  },
+  {
+   "name": "Clos De L'Ecu 1er Cru, Monopole",
+   "producer": "Faiveley",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Beaune",
+   "bottle_price": 280
+  },
+  {
+   "name": "Les Tuvilains 1er Cru",
+   "producer": "Georges Noellat",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Beaune",
+   "bottle_price": 352
+  },
+  {
+   "name": "Boucherottes 1er Cru",
+   "producer": "Jacques Parent",
+   "category": "red",
+   "vintage": "1985",
+   "region": "Beaune",
+   "bottle_price": 350
+  },
+  {
+   "name": "Sous Dos d'Ane 1er Cru, Blagny",
+   "producer": "Leflaive",
+   "category": "red",
+   "vintage": "1990",
+   "region": "Meursault",
+   "bottle_price": 780
+  },
+  {
+   "name": "La Piece Sous le Bois 1er Cru, Blagny",
+   "producer": "Matrot",
+   "category": "red",
+   "vintage": "1976",
+   "region": "Meursault",
+   "bottle_price": 450
+  },
+  {
+   "name": "La Piece Sous le Bois 1er Cru, Blagny",
+   "producer": "Matrot",
+   "category": "red",
+   "vintage": "1978",
+   "region": "Meursault",
+   "bottle_price": 1080
+  },
+  {
+   "name": "La Piece Sous le Bois 1er Cru, Blagny",
+   "producer": "Matrot",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Meursault",
+   "bottle_price": 245
+  },
+  {
+   "name": "Les Écusseaux 1er Cru",
+   "producer": "Ampeu",
+   "category": "red",
+   "vintage": "1990",
+   "region": "Auxey-Duresses",
+   "bottle_price": 340
+  },
+  {
+   "name": "1er Cru",
+   "producer": "Domaine Roulot",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Auxey-Duresses",
+   "bottle_price": 300
+  },
+  {
+   "name": "Les Duresses 1er Cru",
+   "producer": "Philippe Bouzereau",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Auxey-Duresses",
+   "bottle_price": 165
+  },
+  {
+   "name": "Monthelie",
+   "producer": "Chauvenet",
+   "category": "red",
+   "vintage": "1985",
+   "region": "Monthelie",
+   "bottle_price": 195
+  },
+  {
+   "name": "Le Clos Gauthey 1er Cru",
+   "producer": "Jacques Parent",
+   "category": "red",
+   "vintage": "1985",
+   "region": "Monthelie",
+   "bottle_price": 225
+  },
+  {
+   "name": "Volnay",
+   "producer": "Denis Boussey",
+   "category": "red",
+   "vintage": "1990",
+   "region": "Volnay",
+   "bottle_price": 290
+  },
+  {
+   "name": "VV",
+   "producer": "Rossignol-Février",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Volnay",
+   "bottle_price": 245
+  },
+  {
+   "name": "Les Caillerets 1er Cru",
+   "producer": "Joseph Voillot",
+   "category": "red",
+   "vintage": "1991",
+   "region": "Volnay",
+   "bottle_price": 675
+  },
+  {
+   "name": "Champans 1er Cru",
+   "producer": "Marquis d'Angerville",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Volnay",
+   "bottle_price": 460
+  },
+  {
+   "name": "Clos des Ducs 1er Cru",
+   "producer": "Marquis d'Angerville",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Volnay",
+   "bottle_price": 840
+  },
+  {
+   "name": "Taillepieds 1er Cru",
+   "producer": "Marquis d'Angerville",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Volnay",
+   "bottle_price": 486
+  },
+  {
+   "name": "Les Cailleret 1er Cru",
+   "producer": "Nicolas Rossignol",
+   "category": "red",
+   "vintage": "2012",
+   "region": "Volnay",
+   "bottle_price": 390
+  },
+  {
+   "name": "La Boudriotte 1er Cru",
+   "producer": "Ramonet",
+   "category": "red",
+   "vintage": "1970",
+   "region": "Chassagne-Montrachet",
+   "bottle_price": 1800
+  },
+  {
+   "name": "La Boudriotte 1er Cru",
+   "producer": "Ramonet",
+   "category": "red",
+   "vintage": "1972",
+   "region": "Chassagne-Montrachet",
+   "bottle_price": 1800
+  },
+  {
+   "name": "Clos Saint-Jean 1er Cru",
+   "producer": "Ramonet",
+   "category": "red",
+   "vintage": "1972",
+   "region": "Chassagne-Montrachet",
+   "bottle_price": 1800
+  },
+  {
+   "name": "Les Gravières 1er Cru",
+   "producer": "Laurence",
+   "category": "red",
+   "vintage": "1978",
+   "region": "Santenay",
+   "bottle_price": 350
+  },
+  {
+   "name": "Les Gravières 1er Cru",
+   "producer": "Laurence",
+   "category": "red",
+   "vintage": "1990",
+   "region": "Santenay",
+   "bottle_price": 375
+  },
+  {
+   "name": "Domaine de la Renarde 1er Cru",
+   "producer": "Andre Delorme",
+   "category": "red",
+   "vintage": "1976",
+   "region": "Mercurey",
+   "bottle_price": 150
+  },
+  {
+   "name": "Clos Marcilly 1er Cru, VV",
+   "producer": "Baudrand",
+   "category": "red",
+   "vintage": "1948",
+   "region": "Mercurey",
+   "bottle_price": 405
+  },
+  {
+   "name": "La Framboisiere, Monopole",
+   "producer": "Faiveley",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Mercurey",
+   "bottle_price": 155
+  },
+  {
+   "name": "VV",
+   "producer": "Faiveley",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Mercurey",
+   "bottle_price": 136
+  },
+  {
+   "name": "Mercurey",
+   "producer": "Paul Reitz",
+   "category": "red",
+   "vintage": "1979",
+   "region": "Mercurey",
+   "bottle_price": 150
+  },
+  {
+   "name": "Les Champs Martin 1er Cru",
+   "producer": "Michel Juillot",
+   "category": "red",
+   "vintage": "1993",
+   "region": "Mercurey",
+   "bottle_price": 150
+  },
+  {
+   "name": "Grand Clos Fortoul 1er Cru",
+   "producer": "Montrieux",
+   "category": "red",
+   "vintage": "1989",
+   "region": "Mercurey",
+   "bottle_price": 120
+  },
+  {
+   "name": "Mercurey",
+   "producer": "Regis Brillard",
+   "category": "red",
+   "vintage": "1976",
+   "region": "Mercurey",
+   "bottle_price": 150
+  },
+  {
+   "name": "Clos Marcilly 1er Cru",
+   "producer": "Regis Brillard",
+   "category": "red",
+   "vintage": "1989",
+   "region": "Mercurey",
+   "bottle_price": 160
+  },
+  {
+   "name": "Mercurey",
+   "producer": "Vincent Dureuil-Janthial",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Mercurey",
+   "bottle_price": 225
+  },
+  {
+   "name": "Prieuré, Hautes-Côtes De Nuits",
+   "producer": "Aurélien Verdet",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Bourgogne Rouge",
+   "bottle_price": 150
+  },
+  {
+   "name": "Cuvée Louis Auguste, Hautes-Côtes De Nuits",
+   "producer": "David Duband",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Bourgogne Rouge",
+   "bottle_price": 185
+  },
+  {
+   "name": "Hautes-Côtes De Nuits",
+   "producer": "Lecheneaut",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Bourgogne Rouge",
+   "bottle_price": 135
+  },
+  {
+   "name": "Altitude, Hautes-Côtes De Beaune",
+   "producer": "Boris Champy",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Bourgogne Rouge",
+   "bottle_price": 152
+  },
+  {
+   "name": "Bignon 421, Hautes-Côtes De Beaune",
+   "producer": "Boris Champy",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Bourgogne Rouge",
+   "bottle_price": 172
+  },
+  {
+   "name": "Bignon 421, Hautes-Côtes De Beaune",
+   "producer": "Boris Champy",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Bourgogne Rouge",
+   "bottle_price": 172
+  },
+  {
+   "name": "Bignon 429, Hautes-Côtes De Beaune",
+   "producer": "Boris Champy",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Bourgogne Rouge",
+   "bottle_price": 130
+  },
+  {
+   "name": "Gamay Fin, Côteaux Bourguignons",
+   "producer": "Boris Champy",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Bourgogne Rouge",
+   "bottle_price": 118
+  },
+  {
+   "name": "Paris l'Hopital, Hautes-Côtes De Beaune",
+   "producer": "Chantereves",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Bourgogne Rouge",
+   "bottle_price": 236
+  },
+  {
+   "name": "Chantereves",
+   "producer": "Chantereves",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Bourgogne Rouge",
+   "bottle_price": 312
+  },
+  {
+   "name": "Chantereves",
+   "producer": "Chantereves",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Bourgogne Rouge",
+   "bottle_price": 148
+  },
+  {
+   "name": "Bourgogne Rouge",
+   "producer": "David Duband",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Bourgogne Rouge",
+   "bottle_price": 240
+  },
+  {
+   "name": "Grand Ordinaire, En Bollery",
+   "producer": "Marchand-Grillot",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Bourgogne Rouge",
+   "bottle_price": 75
+  },
+  {
+   "name": "Pasquier des Chenes",
+   "producer": "Marchand-Grillot",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Bourgogne Rouge",
+   "bottle_price": 90
+  },
+  {
+   "name": "VV",
+   "producer": "Stephane Aviron",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Chénas",
+   "bottle_price": 60
+  },
+  {
+   "name": "La Rochelle",
+   "producer": "Château du Moulin-à-Vent",
+   "category": "red",
+   "vintage": "2016",
+   "region": "Moulin-à-Vent",
+   "bottle_price": 190
+  },
+  {
+   "name": "Côte-Rotie",
+   "producer": "Domaine Burgaud",
+   "category": "red",
+   "vintage": "2016",
+   "region": "Côte-Rotie",
+   "bottle_price": 280
+  },
+  {
+   "name": "Côte-Rotie",
+   "producer": "Domaine Pichat Champon's",
+   "category": "red",
+   "vintage": "2011",
+   "region": "Côte-Rotie",
+   "bottle_price": 240
+  },
+  {
+   "name": "La Côte Sud",
+   "producer": "Courbis",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Saint-Joseph",
+   "bottle_price": 165
+  },
+  {
+   "name": "Saint-Joseph",
+   "producer": "Pierre Gonon",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Saint-Joseph",
+   "bottle_price": 231
+  },
+  {
+   "name": "Saint-Joseph",
+   "producer": "Pierre Gonon",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Saint-Joseph",
+   "bottle_price": 276
+  },
+  {
+   "name": "Saint-Joseph",
+   "producer": "Rousset",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Saint-Joseph",
+   "bottle_price": 100
+  },
+  {
+   "name": "Au Fil du Temps",
+   "producer": "Emmanuel Darnaud",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Crozes-Hermitage",
+   "bottle_price": 140
+  },
+  {
+   "name": "Domaine de Thalabert Crozes-Hermitage",
+   "producer": "Paul Jaboulet",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Crozes-Hermitage",
+   "bottle_price": 159
+  },
+  {
+   "name": "La Maison Bleue Hermitage",
+   "producer": "Paul Jaboulet",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Hermitage",
+   "bottle_price": 531
+  },
+  {
+   "name": "La Chapelle Hermitage",
+   "producer": "Paul Jaboulet",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Hermitage",
+   "bottle_price": 980
+  },
+  {
+   "name": "Les Eygats",
+   "producer": "Courbis",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Cornas",
+   "bottle_price": 250
+  },
+  {
+   "name": "Domaine de Saint Pierre Cornas",
+   "producer": "Paul Jaboulet",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Cornas",
+   "bottle_price": 378
+  },
+  {
+   "name": "Côtes du Rhône Reserve",
+   "producer": "Mont-Redon",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Côtes du Rhône",
+   "bottle_price": 46
+  },
+  {
+   "name": "Côtes du Rhône",
+   "producer": "Coudoulet de Beaucastel",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Côtes du Rhône",
+   "bottle_price": 120
+  },
+  {
+   "name": "Lieu dit Pignan",
+   "producer": "Georges Lelektsoglou",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Châteauneuf-du-Pape",
+   "bottle_price": 272
+  },
+  {
+   "name": "Le Ruisseau, Vin de France",
+   "producer": "L'Anglore",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Tavel-VDF",
+   "bottle_price": 238
+  },
+  {
+   "name": "Terre D'Ombre, Vin de France",
+   "producer": "L'Anglore",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Tavel-VDF",
+   "bottle_price": 302
+  },
+  {
+   "name": "Vejade, Vin de France",
+   "producer": "L'Anglore",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Tavel-VDF",
+   "bottle_price": 302
+  },
+  {
+   "name": "Ploussard Docteurs Rouge",
+   "producer": "Aviet, Caveau de Bacchus",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Jura",
+   "bottle_price": 160
+  },
+  {
+   "name": "Trousseau, Les Bruyères Réserve, Arbois",
+   "producer": "Aviet",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Jura",
+   "bottle_price": 165
+  },
+  {
+   "name": "Mondeuse, Arbin",
+   "producer": "Louis Magnin",
+   "category": "red",
+   "vintage": "2104",
+   "region": "Savoie",
+   "bottle_price": 105
+  },
+  {
+   "name": "Sociando Mallet",
+   "producer": "Sociando Mallet",
+   "category": "red",
+   "vintage": "2000",
+   "region": "Haut-Médoc",
+   "bottle_price": 275
+  },
+  {
+   "name": "Sociando Mallet",
+   "producer": "Sociando Mallet",
+   "category": "red",
+   "vintage": "2001",
+   "region": "Haut-Médoc",
+   "bottle_price": 275
+  },
+  {
+   "name": "Chateau Phelan Segur",
+   "producer": "Chateau Phelan Segur",
+   "category": "red",
+   "vintage": "2015",
+   "region": "Saint-Estèphe",
+   "bottle_price": 175
+  },
+  {
+   "name": "Chateau Calon Segur",
+   "producer": "Chateau Calon Segur",
+   "category": "red",
+   "vintage": "2002",
+   "region": "Saint-Estèphe",
+   "bottle_price": 420
+  },
+  {
+   "name": "Leoville Poyferre",
+   "producer": "Leoville Poyferre",
+   "category": "red",
+   "vintage": "1986",
+   "region": "Saint-Julien",
+   "bottle_price": 450
+  },
+  {
+   "name": "Connetable Talbot",
+   "producer": "Connetable Talbot",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Saint-Julien",
+   "bottle_price": 110
+  },
+  {
+   "name": "Chasse Spleen",
+   "producer": "Chasse Spleen",
+   "category": "red",
+   "vintage": "1986",
+   "region": "Moulis",
+   "bottle_price": 350
+  },
+  {
+   "name": "Chasse Spleen",
+   "producer": "Chasse Spleen",
+   "category": "red",
+   "vintage": "2014",
+   "region": "Moulis",
+   "bottle_price": 120
+  },
+  {
+   "name": "Alter Ego de Palmer",
+   "producer": "Alter Ego de Palmer",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Margaux",
+   "bottle_price": 285
+  },
+  {
+   "name": "Chateau du Tertre",
+   "producer": "Chateau du Tertre",
+   "category": "red",
+   "vintage": "2001",
+   "region": "Margaux",
+   "bottle_price": 285
+  },
+  {
+   "name": "La Chapelle de La Mission Haut-Brion",
+   "producer": "La Chapelle de La Mission Haut-Brion",
+   "category": "red",
+   "vintage": "2011",
+   "region": "Pessac-Léognan",
+   "bottle_price": 255
+  },
+  {
+   "name": "Petit Figeac",
+   "producer": "Petit Figeac",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Saint-Emilion Grand Cru",
+   "bottle_price": 180
+  },
+  {
+   "name": "Petit Figeac",
+   "producer": "Petit Figeac",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Saint-Emilion Grand Cru",
+   "bottle_price": 180
+  },
+  {
+   "name": "Sogno d'an Piole, Canavese, Piedmont",
+   "producer": "Giovanetto",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Italy",
+   "bottle_price": 74
+  },
+  {
+   "name": "Aleste, Barolo, Piedmont",
+   "producer": "Sandrone",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Italy",
+   "bottle_price": 375
+  },
+  {
+   "name": "Le Vigne, Barolo, Piedmont",
+   "producer": "Sandrone",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Italy",
+   "bottle_price": 330
+  },
+  {
+   "name": "Vigna del Fiore Brunello di Montalcino, Tuscany",
+   "producer": "Fattoria del Barbi",
+   "category": "red",
+   "vintage": "2016",
+   "region": "Italy",
+   "bottle_price": 435
+  },
+  {
+   "name": "Negroamaro, Maru, Salento IGT, Puglia",
+   "producer": "Castello Monaci",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Italy",
+   "bottle_price": 35
+  },
+  {
+   "name": "Nero D'avola, Alto Reale, Sicily",
+   "producer": "Rapitala",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Italy",
+   "bottle_price": 49
+  },
+  {
+   "name": "Montefalco, Umbria",
+   "producer": "Arnaldo-Caprai",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Italy",
+   "bottle_price": 58
+  },
+  {
+   "name": "Serpico, Campania Rosso",
+   "producer": "Feudi di Gregorio",
+   "category": "red",
+   "vintage": "2015",
+   "region": "Italy",
+   "bottle_price": 272
+  },
+  {
+   "name": "Priorat",
+   "producer": "Salmos",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Spain",
+   "bottle_price": 110
+  },
+  {
+   "name": "Purgatori",
+   "producer": "Costers del Segre",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Spain",
+   "bottle_price": 140
+  },
+  {
+   "name": "Cabernet Sauvignon, Mas La Plana, Penedes",
+   "producer": "Torres",
+   "category": "red",
+   "vintage": "2012",
+   "region": "Spain",
+   "bottle_price": 280
+  },
+  {
+   "name": "Secret Del Priorat",
+   "producer": "Torres",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Spain",
+   "bottle_price": 100
+  },
+  {
+   "name": "Gran Faustino Rioja Reserva",
+   "producer": "Faustino",
+   "category": "red",
+   "vintage": "2004",
+   "region": "Spain",
+   "bottle_price": 231
+  },
+  {
+   "name": "Cabernet Sauvignon, Gran Coronas Reserva",
+   "producer": "Torres",
+   "category": "red",
+   "vintage": "2016",
+   "region": "Spain",
+   "bottle_price": 55
+  },
+  {
+   "name": "Cabernet Sauvignon, Gran Coronas Reserva",
+   "producer": "Torres",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Spain",
+   "bottle_price": 55
+  },
+  {
+   "name": "Pinot Noir, Graubünden",
+   "producer": "Weingut Daniel & Martha Gantenbein",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Switzerland",
+   "bottle_price": 555
+  },
+  {
+   "name": "de Villiers",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2015",
+   "region": "Mount Harlan",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 220
+  },
+  {
+   "name": "Jensen",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "1995",
+   "region": "Mount Harlan",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 540
+  },
+  {
+   "name": "Jensen",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2010",
+   "region": "Mount Harlan",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 360
+  },
+  {
+   "name": "Jensen",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2011",
+   "region": "Mount Harlan",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 360
+  },
+  {
+   "name": "Mills",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2013",
+   "region": "Mount Harlan",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 216
+  },
+  {
+   "name": "Mills",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Mount Harlan",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 216
+  },
+  {
+   "name": "Reed",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2002",
+   "region": "Mount Harlan",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 252
+  },
+  {
+   "name": "Reed",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2004",
+   "region": "Mount Harlan",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 252
+  },
+  {
+   "name": "Reed",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2006",
+   "region": "Mount Harlan",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 252
+  },
+  {
+   "name": "Reed",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2008",
+   "region": "Mount Harlan",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 252
+  },
+  {
+   "name": "Reed",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2011",
+   "region": "Mount Harlan",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 252
+  },
+  {
+   "name": "Reed",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2013",
+   "region": "Mount Harlan",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 360
+  },
+  {
+   "name": "Reed",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Mount Harlan",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 270
+  },
+  {
+   "name": "Selleck",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "1988",
+   "region": "Mount Harlan",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 252
+  },
+  {
+   "name": "Selleck",
+   "producer": "Calera",
+   "category": "red",
+   "vintage": "1999",
+   "region": "Mount Harlan",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 468
+  },
+  {
+   "name": "\"Rincon,\" Talley Vineyard",
+   "producer": "Au Bon Climat",
+   "category": "red",
+   "vintage": "2003",
+   "region": "San Luis Obispo County",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 200
+  },
+  {
+   "name": "\"Estate\"",
+   "producer": "Barham Mendelsohn",
+   "category": "red",
+   "vintage": "2002",
+   "region": "Sonoma",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 150
+  },
+  {
+   "name": "\"Estate\"",
+   "producer": "Barham Mendelsohn",
+   "category": "red",
+   "vintage": "2003",
+   "region": "Sonoma",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 150
+  },
+  {
+   "name": "Sonoma Coast",
+   "producer": "Vivier",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Sonoma",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 132
+  },
+  {
+   "name": "Hirsch Vineyard",
+   "producer": "Whitethorn",
+   "category": "red",
+   "vintage": "1999",
+   "region": "Sonoma",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 240
+  },
+  {
+   "name": "Sanford & Benedict Vineyard",
+   "producer": "Au Bon Climat",
+   "category": "red",
+   "vintage": "2002",
+   "region": "Santa Barbara County",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 240
+  },
+  {
+   "name": "Sta. Rita Hills Cuvée",
+   "producer": "Racines",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Santa Barbara County",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 86
+  },
+  {
+   "name": "San Mateo",
+   "producer": "Rhys",
+   "category": "red",
+   "vintage": "2010",
+   "region": "Bay Area",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 160
+  },
+  {
+   "name": "Gravely Meadow",
+   "producer": "Diamond Creek",
+   "category": "red",
+   "vintage": "1978",
+   "region": "Napa Valley",
+   "grape_variety": "Cabernet Sauvignon",
+   "bottle_price": 2200
+  },
+  {
+   "name": "Volcanic Hill",
+   "producer": "Diamond Creek",
+   "category": "red",
+   "vintage": "1980",
+   "region": "Napa Valley",
+   "grape_variety": "Cabernet Sauvignon",
+   "bottle_price": 750
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Freemark Abbey",
+   "category": "red",
+   "vintage": "1974",
+   "region": "Napa Valley",
+   "bottle_price": 735
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Freemark Abbey",
+   "category": "red",
+   "vintage": "1977",
+   "region": "Napa Valley",
+   "bottle_price": 585
+  },
+  {
+   "name": "\"Centennial Vintage\"",
+   "producer": "Inglenook",
+   "category": "red",
+   "vintage": "1979",
+   "region": "Napa Valley",
+   "grape_variety": "Cabernet Sauvignon",
+   "bottle_price": 595
+  },
+  {
+   "name": "\"Reserve Cask\"",
+   "producer": "Inglenook",
+   "category": "red",
+   "vintage": "1983",
+   "region": "Napa Valley",
+   "grape_variety": "Cabernet Sauvignon",
+   "bottle_price": 435
+  },
+  {
+   "name": "Cabernet Sauvignon/Sangiovese \"Estate Tuscan\"",
+   "producer": "Sommras",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Napa Valley",
+   "bottle_price": 305
+  },
+  {
+   "name": "Spring Mountain District",
+   "producer": "Smith-Madrone",
+   "category": "red",
+   "vintage": "2003",
+   "region": "Napa Valley",
+   "grape_variety": "Cabernet Sauvignon",
+   "bottle_price": 205
+  },
+  {
+   "name": "Spring Mountain District",
+   "producer": "Smith-Madrone",
+   "category": "red",
+   "vintage": "2007",
+   "region": "Napa Valley",
+   "grape_variety": "Cabernet Sauvignon",
+   "bottle_price": 190
+  },
+  {
+   "name": "Spring Mountain District",
+   "producer": "Smith-Madrone",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Napa Valley",
+   "grape_variety": "Cabernet Sauvignon",
+   "bottle_price": 140
+  },
+  {
+   "name": "\"Cask 23\"",
+   "producer": "Stag's Leap Cellars",
+   "category": "red",
+   "vintage": "1983",
+   "region": "Napa Valley",
+   "grape_variety": "Cabernet Sauvignon",
+   "bottle_price": 1125
+  },
+  {
+   "name": "\"Lot 2\"",
+   "producer": "Stag's Leap Cellars",
+   "category": "red",
+   "vintage": "1977",
+   "region": "Napa Valley",
+   "grape_variety": "Cabernet Sauvignon",
+   "bottle_price": 885
+  },
+  {
+   "name": "Stag's Leap Vineyard",
+   "producer": "Stag's Leap Cellars",
+   "category": "red",
+   "vintage": "1977",
+   "region": "Napa Valley",
+   "grape_variety": "Cabernet Sauvignon",
+   "bottle_price": 975
+  },
+  {
+   "name": "Olive Hill Vineyard",
+   "producer": "B.R. Cohn",
+   "category": "red",
+   "vintage": "1975",
+   "region": "Sonoma",
+   "grape_variety": "Cabernet Sauvignon",
+   "bottle_price": 295
+  },
+  {
+   "name": "Olive Hill Vineyard",
+   "producer": "B.R. Cohn",
+   "category": "red",
+   "vintage": "1983",
+   "region": "Sonoma",
+   "grape_variety": "Cabernet Sauvignon",
+   "bottle_price": 295
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Nobis",
+   "category": "red",
+   "vintage": "2013",
+   "region": "Sonoma",
+   "bottle_price": 154
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Nobis",
+   "category": "red",
+   "vintage": "2014",
+   "region": "Sonoma",
+   "bottle_price": 154
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Nobis",
+   "category": "red",
+   "vintage": "2015",
+   "region": "Sonoma",
+   "bottle_price": 154
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Nobis",
+   "category": "red",
+   "vintage": "2016",
+   "region": "Sonoma",
+   "bottle_price": 154
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Vocal Vineyards",
+   "category": "red",
+   "vintage": "2019",
+   "region": "San Benito County",
+   "bottle_price": 128
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Vocal Vineyards",
+   "category": "red",
+   "vintage": "2022",
+   "region": "San Benito County",
+   "bottle_price": 128
+  },
+  {
+   "name": "Dry Creek Valley",
+   "producer": "Nimble",
+   "category": "red",
+   "vintage": "2013",
+   "region": "Sonoma",
+   "grape_variety": "Syrah",
+   "bottle_price": 77
+  },
+  {
+   "name": "\"For Us\"",
+   "producer": "Nimble, Nobis",
+   "category": "red",
+   "vintage": "2010",
+   "region": "Sonoma",
+   "grape_variety": "Syrah",
+   "bottle_price": 75
+  },
+  {
+   "name": "\"For Us\"",
+   "producer": "Nimble, Nobis",
+   "category": "red",
+   "vintage": "2011",
+   "region": "Sonoma",
+   "grape_variety": "Syrah",
+   "bottle_price": 75
+  },
+  {
+   "name": "\"For Us\"",
+   "producer": "Nimble, Nobis",
+   "category": "red",
+   "vintage": "2013",
+   "region": "Sonoma",
+   "grape_variety": "Syrah",
+   "bottle_price": 75
+  },
+  {
+   "name": "\"For Us\"",
+   "producer": "Nimble, Nobis",
+   "category": "red",
+   "vintage": "2014",
+   "region": "Sonoma",
+   "grape_variety": "Syrah",
+   "bottle_price": 75
+  },
+  {
+   "name": "Santa Barbara County",
+   "producer": "Qupe",
+   "category": "red",
+   "vintage": "2001",
+   "region": "Santa Barbara",
+   "grape_variety": "Syrah",
+   "bottle_price": 95
+  },
+  {
+   "name": "Santa Barbara County",
+   "producer": "Qupe",
+   "category": "red",
+   "vintage": "2003",
+   "region": "Santa Barbara",
+   "grape_variety": "Syrah",
+   "bottle_price": 85
+  },
+  {
+   "name": "Santa Barbara County",
+   "producer": "Qupe",
+   "category": "red",
+   "vintage": "2013",
+   "region": "Santa Barbara",
+   "grape_variety": "Syrah",
+   "bottle_price": 80
+  },
+  {
+   "name": "Alisos Vineyard",
+   "producer": "Qupe",
+   "category": "red",
+   "vintage": "2002",
+   "region": "Santa Barbara",
+   "grape_variety": "Syrah",
+   "bottle_price": 85
+  },
+  {
+   "name": "Alisos Vineyard",
+   "producer": "Qupe",
+   "category": "red",
+   "vintage": "2003",
+   "region": "Santa Barbara",
+   "grape_variety": "Syrah",
+   "bottle_price": 85
+  },
+  {
+   "name": "Alisos Vineyard",
+   "producer": "Qupe",
+   "category": "red",
+   "vintage": "2004",
+   "region": "Santa Barbara",
+   "grape_variety": "Syrah",
+   "bottle_price": 85
+  },
+  {
+   "name": "Nielson Vineyard",
+   "producer": "Qupe",
+   "category": "red",
+   "vintage": "2005",
+   "region": "Santa Barbara",
+   "grape_variety": "Syrah",
+   "bottle_price": 80
+  },
+  {
+   "name": "Nielson Vineyard",
+   "producer": "Qupe",
+   "category": "red",
+   "vintage": "2008",
+   "region": "Santa Barbara",
+   "grape_variety": "Syrah",
+   "bottle_price": 80
+  },
+  {
+   "name": "Stolpman Vineyard",
+   "producer": "Qupe",
+   "category": "red",
+   "vintage": "2004",
+   "region": "Santa Barbara",
+   "grape_variety": "Syrah",
+   "bottle_price": 75
+  },
+  {
+   "name": "Stolpman Vineyard",
+   "producer": "Qupe",
+   "category": "red",
+   "vintage": "2005",
+   "region": "Santa Barbara",
+   "grape_variety": "Syrah",
+   "bottle_price": 75
+  },
+  {
+   "name": "Purisima Mountain",
+   "producer": "Qupe",
+   "category": "red",
+   "vintage": "2001",
+   "region": "Santa Barbara",
+   "grape_variety": "Syrah",
+   "bottle_price": 90
+  },
+  {
+   "name": "Purisima Mountain",
+   "producer": "Qupe",
+   "category": "red",
+   "vintage": "2003",
+   "region": "Santa Barbara",
+   "grape_variety": "Syrah",
+   "bottle_price": 85
+  },
+  {
+   "name": "Purisima Mountain",
+   "producer": "Qupe",
+   "category": "red",
+   "vintage": "2005",
+   "region": "Santa Barbara",
+   "grape_variety": "Syrah",
+   "bottle_price": 85
+  },
+  {
+   "name": "Bien Nacido Hillside Estate",
+   "producer": "Qupe",
+   "category": "red",
+   "vintage": "2002",
+   "region": "Santa Barbara",
+   "grape_variety": "Syrah",
+   "bottle_price": 95
+  },
+  {
+   "name": "Bien Nacido Hillside Estate",
+   "producer": "Qupe",
+   "category": "red",
+   "vintage": "2004",
+   "region": "Santa Barbara",
+   "grape_variety": "Syrah",
+   "bottle_price": 95
+  },
+  {
+   "name": "Sonoma County",
+   "producer": "Lytton Springs",
+   "category": "red",
+   "vintage": "1987",
+   "region": "California",
+   "grape_variety": "Zinfandel",
+   "bottle_price": 295
+  },
+  {
+   "name": "Dry Creek Valley",
+   "producer": "Nimble Zinfandel",
+   "category": "red",
+   "vintage": "2012",
+   "region": "Sonoma County",
+   "grape_variety": "Zinfandel",
+   "bottle_price": 77
+  },
+  {
+   "name": "Dry Creek Valley",
+   "producer": "Nimble Zinfandel",
+   "category": "red",
+   "vintage": "2013",
+   "region": "Sonoma County",
+   "grape_variety": "Zinfandel",
+   "bottle_price": 77
+  },
+  {
+   "name": "Pija Blend",
+   "producer": "Talmage Cellars",
+   "category": "red",
+   "vintage": "2007",
+   "region": "Mendocino",
+   "bottle_price": 35
+  },
+  {
+   "name": "Pinot Noir",
+   "producer": "Black Oak Ridge",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Oregon",
+   "bottle_price": 145
+  },
+  {
+   "name": "Pinot Noir",
+   "producer": "Composition",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Oregon",
+   "bottle_price": 250
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Chadwick",
+   "category": "red",
+   "vintage": "2016",
+   "region": "Chile",
+   "bottle_price": 795
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Chadwick",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Chile",
+   "bottle_price": 785
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Seña",
+   "category": "red",
+   "vintage": "2009",
+   "region": "Chile",
+   "bottle_price": 448
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Seña",
+   "category": "red",
+   "vintage": "2015",
+   "region": "Chile",
+   "bottle_price": 456
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Seña",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Chile",
+   "bottle_price": 405
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Seña",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Chile",
+   "bottle_price": 428
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Seña",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Chile",
+   "bottle_price": 398
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Seña",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Chile",
+   "bottle_price": 460
+  },
+  {
+   "name": "\"Barda\"",
+   "producer": "Chacra",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Argentina",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 108
+  },
+  {
+   "name": "Cincuenta y Cinco",
+   "producer": "Chacra",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Argentina",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 130
+  },
+  {
+   "name": "\"Lunita\"",
+   "producer": "Chacra",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Argentina",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 130
+  },
+  {
+   "name": "Trienta y Dos",
+   "producer": "Chacra",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Argentina",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 306
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Aslina",
+   "category": "red",
+   "vintage": "2021",
+   "region": "South Africa",
+   "bottle_price": 80
+  },
+  {
+   "name": "\"Umsasane\"",
+   "producer": "Aslina",
+   "category": "red",
+   "vintage": "2021",
+   "region": "South Africa",
+   "bottle_price": 100
+  },
+  {
+   "name": "Pinot Noir",
+   "producer": "Dry River",
+   "category": "red",
+   "vintage": "2017",
+   "region": "New Zealand",
+   "bottle_price": 100
+  },
+  {
+   "name": "Pinot Noir",
+   "producer": "Loop Rd.",
+   "category": "red",
+   "vintage": "2022",
+   "region": "New Zealand",
+   "bottle_price": 90
+  },
+  {
+   "name": "\"Waimahu\"",
+   "producer": "The Bone Line",
+   "category": "red",
+   "vintage": "2019",
+   "region": "New Zealand",
+   "grape_variety": "Pinot Noir",
+   "bottle_price": 120
+  },
+  {
+   "name": "Shiraz, Grange, Bin 95",
+   "producer": "Penfolds",
+   "category": "red",
+   "vintage": "2013",
+   "region": "Australia",
+   "bottle_price": 1575
+  },
+  {
+   "name": "Shiraz, Grange, Bin 95",
+   "producer": "Penfolds",
+   "category": "red",
+   "vintage": "2014",
+   "region": "Australia",
+   "bottle_price": 1575
+  },
+  {
+   "name": "Shiraz, Grange, Bin 95",
+   "producer": "Penfolds",
+   "category": "red",
+   "vintage": "2015",
+   "region": "Australia",
+   "bottle_price": 1550
+  },
+  {
+   "name": "Shiraz, Grange, Bin 95",
+   "producer": "Penfolds",
+   "category": "red",
+   "vintage": "2016",
+   "region": "Australia",
+   "bottle_price": 1500
+  },
+  {
+   "name": "Shiraz, Grange, Bin 95",
+   "producer": "Penfolds",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Australia",
+   "bottle_price": 1500
+  }
+ ]
+}

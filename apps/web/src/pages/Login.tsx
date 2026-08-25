@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
-import { useAuth } from '../contexts/AuthContext'
+import { useAuth, LoginError } from '../contexts/AuthContext'
 import { Button } from '../components/ui'
 import { Mail, Lock, AlertCircle } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
-import { GoogleSignInButton } from '../components/auth/GoogleSignInButton'
+import { GoogleSignInButton, type GoogleSignInHandle } from '../components/auth/GoogleSignInButton'
 
 const fieldClass =
   'block w-full pl-11 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 shadow-sm transition-all focus:outline-none focus:border-wine-600 focus:ring-4 focus:ring-wine-600/10 disabled:opacity-60'
@@ -13,7 +13,8 @@ const fieldClass =
 export function Login() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { login, error: authError } = useAuth()
+  const { login, error: authError, clearError } = useAuth()
+  const googleRef = useRef<GoogleSignInHandle>(null)
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -27,14 +28,12 @@ export function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    clearError()
 
-    // Auto-direct gmail accounts to Google Sign-In
-    if (email.toLowerCase().endsWith('@gmail.com')) {
-      const googleBtn = document.getElementById('google-signin-btn')
-      if (googleBtn) {
-        googleBtn.click()
-        return
-      }
+    // Auto-direct Gmail addresses straight to Google's chooser — these can
+    // never have a WineOps password, so don't even try one.
+    if (email.toLowerCase().endsWith('@gmail.com') && googleRef.current?.open()) {
+      return
     }
 
     setLoading(true)
@@ -43,15 +42,24 @@ export function Login() {
       await login(email, password)
       navigate(from, { replace: true })
     } catch (err: any) {
-      // Auto-direct if the backend says this account uses Google sign-in
-      if (err.message?.includes('Google sign-in')) {
-        const googleBtn = document.getElementById('google-signin-btn')
-        if (googleBtn) {
-          googleBtn.click()
-          setLoading(false)
-          return
-        }
+      // The backend flags any account with no password (Google- or
+      // Microsoft-provisioned) via a structured { code, provider } — see
+      // auth.service.ts#validateUser. Branch on that, not on the message
+      // text: a hotmail.com address is a Microsoft account just as often as
+      // a Google one, and auto-clicking "Sign in with Google" for a
+      // Microsoft-only account would send the user into a flow that can
+      // never work for them.
+      const isOAuthOnly = err instanceof LoginError && err.code === 'OAUTH_ONLY'
+      if (isOAuthOnly && err.provider === 'google' && googleRef.current?.open()) {
+        // `login()` stashes the raw message in context error state before
+        // throwing — clear it so it never flashes before the redirect fires.
+        clearError()
+        setLoading(false)
+        return
       }
+      // Microsoft-only accounts have no working sign-in button on this page
+      // yet, so just surface the backend's message as-is — it already
+      // points the user at "Forgot password?" as the working path.
       setError(err.message || 'Login failed')
     } finally {
       setLoading(false)
@@ -165,16 +173,13 @@ export function Login() {
           </div>
 
           <GoogleSignInButton
+            ref={googleRef}
             enableOneTap
             disabled={loading}
             onSuccess={() => navigate(from, { replace: true })}
             onError={setError}
           />
-          <p className="text-center text-xs text-gray-400 leading-relaxed">
-            Email and password sign in to your WineOps account. Google account passwords do not
-            work here — use <span className="font-medium text-gray-500">Sign in with Google</span>{' '}
-            for Google-linked accounts.
-          </p>
+
         </form>
 
         <div className="mt-6 text-center">

@@ -1,0 +1,728 @@
+{
+ "menu": "Ema_River_North_Beverage_Menu.pdf",
+ "pages": 2,
+ "wine_count": 82,
+ "seconds": 56.0,
+ "wines": [
+  {
+   "name": "Lightbeam Hazy IPA",
+   "producer": "Hopewell Brewing",
+   "category": "beer",
+   "region": "Chicago",
+   "bottle_price": 9
+  },
+  {
+   "name": "Hefeweizen",
+   "producer": "Double Clutch",
+   "category": "beer",
+   "region": "Evanston",
+   "bottle_price": 8
+  },
+  {
+   "name": "Kolsch N/A",
+   "producer": "Best Day Brewing",
+   "category": "beer",
+   "region": "Sausalito",
+   "bottle_price": 8
+  },
+  {
+   "name": "E-Phora Cider",
+   "producer": "Eris Cider House",
+   "category": "cider",
+   "region": "Chicago",
+   "bottle_price": 6
+  },
+  {
+   "name": "Pale Lager",
+   "producer": "Estrella Damm",
+   "category": "beer",
+   "region": "Barcelona",
+   "bottle_price": 7
+  },
+  {
+   "name": "Paradise Pilsner",
+   "producer": "Moody Tongue",
+   "category": "beer",
+   "region": "Chicago",
+   "bottle_price": 8
+  },
+  {
+   "name": "Blanc de Blancs",
+   "producer": "Odd Bird",
+   "category": "sparkling",
+   "region": "Languedoc, France",
+   "by_glass_price": 17,
+   "bottle_price": 68
+  },
+  {
+   "name": "Prosecco",
+   "producer": "Giuliana",
+   "category": "sparkling",
+   "region": "Italy",
+   "by_glass_price": 15,
+   "bottle_price": 60
+  },
+  {
+   "name": "Akakies",
+   "producer": "Kir-Yianni",
+   "category": "sparkling",
+   "grape_variety": "Xinomavro",
+   "region": "Amyndeon, Greece",
+   "vintage": "2024",
+   "by_glass_price": 17,
+   "bottle_price": 68
+  },
+  {
+   "name": "Cuvée Léonie",
+   "producer": "Canard-Duchêne",
+   "category": "sparkling",
+   "region": "France",
+   "by_glass_price": 29,
+   "bottle_price": 116
+  },
+  {
+   "name": "Apla",
+   "producer": "Apla",
+   "category": "white",
+   "grape_variety": "Malagousia/Assyrtiko/Vidiano",
+   "region": "Macedonia, Greece",
+   "vintage": "2024",
+   "by_glass_price": 14,
+   "bottle_price": 56
+  },
+  {
+   "name": "Ema",
+   "producer": "Verdelia",
+   "category": "white",
+   "grape_variety": "Sauvignon Blanc",
+   "region": "Happy Canyon of Santa Barbara, California",
+   "vintage": "2024",
+   "by_glass_price": 15,
+   "bottle_price": 60
+  },
+  {
+   "name": "Sauvignon Blanc",
+   "producer": "B. Millet",
+   "category": "white",
+   "region": "Sancerre, France",
+   "vintage": "2024",
+   "by_glass_price": 24,
+   "bottle_price": 96
+  },
+  {
+   "name": "Falanghina",
+   "producer": "Feudi di San Gregorio",
+   "category": "white",
+   "region": "Campania, Italy",
+   "vintage": "2023",
+   "by_glass_price": 14,
+   "bottle_price": 56
+  },
+  {
+   "name": "Good Karma",
+   "producer": "Red Tail Ridge",
+   "category": "white",
+   "grape_variety": "Riesling",
+   "region": "Finger Lakes, New York",
+   "vintage": "2024",
+   "by_glass_price": 17,
+   "bottle_price": 68
+  },
+  {
+   "name": "Atlantis",
+   "producer": "Argyros",
+   "category": "white",
+   "grape_variety": "Assyrtiko",
+   "region": "Santorini, Greece",
+   "vintage": "2024",
+   "by_glass_price": 18,
+   "bottle_price": 72
+  },
+  {
+   "name": "The Fableist",
+   "producer": "The Fableist",
+   "category": "white",
+   "grape_variety": "Chardonnay",
+   "region": "Edna Valley, California",
+   "vintage": "2023",
+   "by_glass_price": 19,
+   "bottle_price": 76
+  },
+  {
+   "name": "Ema",
+   "producer": "Kalokaíri",
+   "category": "rosé",
+   "grape_variety": "Agiorgitiko/Moschofilero",
+   "region": "Peloponnese, Greece",
+   "vintage": "2024",
+   "by_glass_price": 16,
+   "bottle_price": 64
+  },
+  {
+   "name": "Gassier",
+   "producer": "Gassier",
+   "category": "rosé",
+   "grape_variety": "Grenache et al.",
+   "region": "Côtes de Provence, France",
+   "vintage": "2024",
+   "by_glass_price": 18,
+   "bottle_price": 72
+  },
+  {
+   "name": "Pinot Noir",
+   "producer": "Au Bon Climat",
+   "category": "red",
+   "region": "Santa Barbara County, California",
+   "vintage": "2024",
+   "by_glass_price": 21,
+   "bottle_price": 84
+  },
+  {
+   "name": "Vin de Bonté",
+   "producer": "Le Souleil",
+   "category": "red",
+   "grape_variety": "Grenache/Syrah/Mourvèdre",
+   "region": "Rhône Valley, France",
+   "vintage": "2024",
+   "by_glass_price": 16,
+   "bottle_price": 64
+  },
+  {
+   "name": "Young Vines",
+   "producer": "Thymiopoulos",
+   "category": "red",
+   "grape_variety": "Xinomavro",
+   "region": "Naoussa, Greece",
+   "vintage": "2023",
+   "by_glass_price": 16,
+   "bottle_price": 64
+  },
+  {
+   "name": "St. George",
+   "producer": "Domaine Skouras",
+   "category": "red",
+   "grape_variety": "Agiorgitiko",
+   "region": "Nemea, Greece",
+   "vintage": "2023",
+   "by_glass_price": 15,
+   "bottle_price": 60
+  },
+  {
+   "name": "Mount Hermon",
+   "producer": "Mount Hermon",
+   "category": "red",
+   "grape_variety": "Cabernet Sauvignon/Merlot/Cabernet Franc",
+   "region": "Galilee, Israel",
+   "vintage": "2024",
+   "by_glass_price": 15,
+   "bottle_price": 60
+  },
+  {
+   "name": "Jeune Rouge",
+   "producer": "Chateau Musar",
+   "category": "red",
+   "grape_variety": "Cinsault/Syrah/Cabernet Sauvignon",
+   "region": "Bekaa Valley, Lebanon",
+   "vintage": "2022",
+   "by_glass_price": 19,
+   "bottle_price": 76
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "Donati",
+   "category": "red",
+   "region": "Paso Robles, California",
+   "vintage": "2022",
+   "by_glass_price": 20,
+   "bottle_price": 80
+  },
+  {
+   "name": "Blanco Seco",
+   "producer": "Bodegas Tajinaste",
+   "category": "white",
+   "grape_variety": "Listan Blanco",
+   "region": "Tenerife, Canary Islands",
+   "vintage": "2022",
+   "bottle_price": 70
+  },
+  {
+   "name": "Salto",
+   "producer": "Domaine Skouras",
+   "category": "white",
+   "grape_variety": "Moschofilero",
+   "region": "Peloponnese, Greece",
+   "vintage": "2024",
+   "bottle_price": 55
+  },
+  {
+   "name": "Falanghina",
+   "producer": "San Salvatore",
+   "category": "white",
+   "region": "Campania, Italy",
+   "vintage": "2022",
+   "bottle_price": 88
+  },
+  {
+   "name": "Turtles",
+   "producer": "Alpha Estate",
+   "category": "white",
+   "grape_variety": "Malagouzia",
+   "region": "Florina, Greece",
+   "vintage": "2024",
+   "bottle_price": 58
+  },
+  {
+   "name": "Assyrtiko",
+   "producer": "Mylonas",
+   "category": "white",
+   "region": "Attica, Greece",
+   "vintage": "2023",
+   "bottle_price": 65
+  },
+  {
+   "name": "Assyrtiko",
+   "producer": "Domaine Sigalas",
+   "category": "white",
+   "region": "Santorini, Greece",
+   "vintage": "2024",
+   "bottle_price": 135
+  },
+  {
+   "name": "Impression",
+   "producer": "Tepperberg",
+   "category": "white",
+   "grape_variety": "Chardonnay",
+   "region": "Judean Hills, Israel",
+   "vintage": "2021",
+   "bottle_price": 90
+  },
+  {
+   "name": "Finca Enguera",
+   "producer": "Finca Enguera",
+   "category": "rosé",
+   "grape_variety": "Tempranillo",
+   "region": "Valencia, Spain",
+   "vintage": "2024",
+   "bottle_price": 54
+  },
+  {
+   "name": "Clos Cibonne",
+   "producer": "Clos Cibonne",
+   "category": "rosé",
+   "grape_variety": "Tibouren",
+   "region": "Côtes de Provence, France",
+   "vintage": "2023",
+   "bottle_price": 110
+  },
+  {
+   "name": "Naked Truth",
+   "producer": "Mylonas",
+   "category": "orange",
+   "grape_variety": "Savatiano",
+   "region": "Attiki, Greece",
+   "vintage": "2023",
+   "bottle_price": 68
+  },
+  {
+   "name": "Paradosis",
+   "producer": "Tsiakkas",
+   "category": "orange",
+   "grape_variety": "Xynisteri",
+   "region": "Kato Milos, Cyprus",
+   "vintage": "2022",
+   "bottle_price": 90
+  },
+  {
+   "name": "CALX",
+   "producer": "CALX",
+   "category": "red",
+   "grape_variety": "Primitivo",
+   "region": "Puglia, Italy",
+   "vintage": "2023",
+   "bottle_price": 60
+  },
+  {
+   "name": "Le Colombier",
+   "producer": "Massaya",
+   "category": "red",
+   "grape_variety": "Grenache/Cinsault/Tempranillo",
+   "region": "Bekaa Valley, Lebanon",
+   "vintage": "2021",
+   "bottle_price": 70
+  },
+  {
+   "name": "Morta Maio",
+   "producer": "Domaine Antoine-Marie Arena",
+   "category": "red",
+   "grape_variety": "Niellucciu",
+   "region": "Patrimonio, Corsica",
+   "vintage": "2019",
+   "bottle_price": 132
+  },
+  {
+   "name": "Benanti",
+   "producer": "Benanti",
+   "category": "red",
+   "grape_variety": "Nerello Mascalese",
+   "region": "Etna, Sicily",
+   "vintage": "2022",
+   "bottle_price": 130
+  },
+  {
+   "name": "Alexakis",
+   "producer": "Alexakis",
+   "category": "red",
+   "grape_variety": "Kotsifali/Syrah",
+   "region": "Crete, Greece",
+   "vintage": "2018",
+   "bottle_price": 52
+  },
+  {
+   "name": "Cuvée Villages",
+   "producer": "Kir-Yianni",
+   "category": "red",
+   "grape_variety": "Xinomavro",
+   "region": "Naoussa, Greece",
+   "vintage": "2022",
+   "bottle_price": 62
+  },
+  {
+   "name": "Hedgehog",
+   "producer": "Alpha Estate",
+   "category": "red",
+   "grape_variety": "Xinomavro",
+   "region": "Amyndeon, Greece",
+   "vintage": "2022",
+   "bottle_price": 68
+  },
+  {
+   "name": "Xinomavro",
+   "producer": "Domaine Karydas",
+   "category": "red",
+   "region": "Naoussa, Greece",
+   "vintage": "2020",
+   "bottle_price": 104
+  },
+  {
+   "name": "Aftorizo",
+   "producer": "Thymiopoulos Vineyards",
+   "category": "red",
+   "grape_variety": "Xinomavro",
+   "region": "Naoussa, Greece",
+   "vintage": "2019",
+   "bottle_price": 240
+  },
+  {
+   "name": "Vrana Petra",
+   "producer": "Thymiopoulos Vineyards",
+   "category": "red",
+   "grape_variety": "Xinomavro",
+   "region": "Naoussa, Greece",
+   "vintage": "2019",
+   "bottle_price": 275
+  },
+  {
+   "name": "En Arhi",
+   "producer": "Makarounas",
+   "category": "red",
+   "grape_variety": "Cabernet Franc",
+   "region": "Paphos, Cyprus",
+   "vintage": "2024",
+   "bottle_price": 68
+  },
+  {
+   "name": "Brunello di Montalcino",
+   "producer": "Altesino",
+   "category": "red",
+   "grape_variety": "Sangiovese",
+   "region": "Italy",
+   "vintage": "2019",
+   "bottle_price": 168
+  },
+  {
+   "name": "SMX",
+   "producer": "Alpha Estate",
+   "category": "red",
+   "grape_variety": "Syrah/Merlot/Xinomavro",
+   "region": "Amyndeon, Greece",
+   "vintage": "2021",
+   "bottle_price": 90
+  },
+  {
+   "name": "Vamvakada",
+   "producer": "Tsiakkas",
+   "category": "red",
+   "region": "Lemesos, Cyprus",
+   "vintage": "2020",
+   "bottle_price": 95
+  },
+  {
+   "name": "Megas Oenos",
+   "producer": "Domaine Skouras",
+   "category": "red",
+   "grape_variety": "Agiorghitiko/Cabernet Sauvignon",
+   "region": "Peloponnese, Greece",
+   "vintage": "2021",
+   "bottle_price": 92
+  },
+  {
+   "name": "Chateau Belle-Vue",
+   "producer": "Chateau Belle-Vue",
+   "category": "red",
+   "grape_variety": "Merlot/Cabernet Sauvignon",
+   "region": "Bhamdoun, Lebanon",
+   "vintage": "2013",
+   "bottle_price": 126
+  },
+  {
+   "name": "Xynisteri/Malaga",
+   "producer": "Tsiakkas",
+   "category": "white",
+   "region": "Lemesos, Cyprus",
+   "vintage": "2024",
+   "bottle_price": 75
+  },
+  {
+   "name": "Reserva",
+   "producer": "VallDolina",
+   "category": "sparkling",
+   "region": "Cava, Spain",
+   "bottle_price": 62
+  },
+  {
+   "name": "Perpétuelle Change 3rd Edition",
+   "producer": "Red Tail Ridge",
+   "category": "sparkling",
+   "region": "Finger Lakes, New York",
+   "bottle_price": 86
+  },
+  {
+   "name": "Van Der Kamp Vineyard",
+   "producer": "Poe",
+   "category": "sparkling",
+   "grape_variety": "Pinot Meunier",
+   "region": "Sonoma Mountain, California",
+   "vintage": "2018",
+   "bottle_price": 112
+  },
+  {
+   "name": "Brut Nature",
+   "producer": "Bodegas Los Bermejos",
+   "category": "sparkling",
+   "grape_variety": "Malvasia",
+   "region": "Lanzarote, Canary Islands",
+   "vintage": "2018",
+   "bottle_price": 120
+  },
+  {
+   "name": "In Corregio",
+   "producer": "Lini 910",
+   "category": "sparkling",
+   "grape_variety": "Lambrusco",
+   "region": "Emilia-Romagna, Italy",
+   "bottle_price": 65
+  },
+  {
+   "name": "The Paring",
+   "producer": "The Paring",
+   "category": "white",
+   "grape_variety": "Sauvignon Blanc",
+   "region": "California",
+   "vintage": "2023",
+   "bottle_price": 65
+  },
+  {
+   "name": "Sauvignon Blanc",
+   "producer": "Domaine Durand",
+   "category": "white",
+   "region": "Sancerre, France",
+   "vintage": "2023",
+   "bottle_price": 98
+  },
+  {
+   "name": "Amphibolite",
+   "producer": "Landron",
+   "category": "white",
+   "grape_variety": "Melon B",
+   "region": "Muscadet Sèvre-et-Maine, France",
+   "vintage": "2022",
+   "bottle_price": 125
+  },
+  {
+   "name": "Sea Queen",
+   "producer": "Cadre",
+   "category": "white",
+   "grape_variety": "Albariño",
+   "region": "Edna Valley, California",
+   "vintage": "2023",
+   "bottle_price": 80
+  },
+  {
+   "name": "Riesling",
+   "producer": "Red Tail Ridge",
+   "category": "white",
+   "region": "Finger Lakes, New York",
+   "vintage": "2023",
+   "bottle_price": 72
+  },
+  {
+   "name": "Semillon",
+   "producer": "Brokenwood",
+   "category": "white",
+   "region": "Hunter Valley, Australia",
+   "vintage": "2022",
+   "bottle_price": 64
+  },
+  {
+   "name": "Hoopla",
+   "producer": "Hoopla",
+   "category": "white",
+   "grape_variety": "Chardonnay",
+   "region": "Napa Valley, California",
+   "vintage": "2020",
+   "bottle_price": 56
+  },
+  {
+   "name": "Chardonnay",
+   "producer": "Maison Chanzy",
+   "category": "white",
+   "region": "Bourgogne, France",
+   "vintage": "2023",
+   "bottle_price": 92
+  },
+  {
+   "name": "Central Coast",
+   "producer": "Sandhi",
+   "category": "white",
+   "grape_variety": "Chardonnay",
+   "region": "California",
+   "vintage": "2022",
+   "bottle_price": 94
+  },
+  {
+   "name": "Cabernet Franc",
+   "producer": "Dourthe",
+   "category": "rosé",
+   "region": "Bordeaux, France",
+   "vintage": "2023",
+   "bottle_price": 52
+  },
+  {
+   "name": "Brisa Suave",
+   "producer": "Brisa Suave",
+   "category": "rosé",
+   "grape_variety": "Vinho Verde",
+   "region": "Portugal",
+   "vintage": "2023",
+   "bottle_price": 66
+  },
+  {
+   "name": "Failla",
+   "producer": "Failla",
+   "category": "red",
+   "grape_variety": "Pinot Noir",
+   "region": "Willamette Valley, Oregon",
+   "vintage": "2022",
+   "bottle_price": 80
+  },
+  {
+   "name": "Cuvée Argile",
+   "producer": "Domaine des Ardoisières",
+   "category": "red",
+   "grape_variety": "Gamay/Mondeuse/Persan",
+   "region": "Savoie, France",
+   "vintage": "2020",
+   "bottle_price": 110
+  },
+  {
+   "name": "Seis de Luberri",
+   "producer": "Seis de Luberri",
+   "category": "red",
+   "grape_variety": "Tempranillo",
+   "region": "Rioja, Spain",
+   "vintage": "2022",
+   "bottle_price": 60
+  },
+  {
+   "name": "Bosconia",
+   "producer": "López de Heredia",
+   "category": "red",
+   "grape_variety": "Tempranillo",
+   "region": "Rioja Reserva, Spain",
+   "vintage": "2013",
+   "bottle_price": 98
+  },
+  {
+   "name": "More Better",
+   "producer": "Stolpman",
+   "category": "red",
+   "grape_variety": "Syrah",
+   "region": "Santa Barbara County, California",
+   "vintage": "2022",
+   "bottle_price": 80
+  },
+  {
+   "name": "Barolo",
+   "producer": "Eraldo Viberti",
+   "category": "red",
+   "grape_variety": "Nebbiolo",
+   "region": "Italy",
+   "vintage": "2019",
+   "bottle_price": 135
+  },
+  {
+   "name": "Lieu Dit",
+   "producer": "Lieu Dit",
+   "category": "red",
+   "grape_variety": "Cabernet Franc",
+   "region": "Santa Ynez Valley, California",
+   "vintage": "2023",
+   "bottle_price": 120
+  },
+  {
+   "name": "The Vice",
+   "producer": "The Vice",
+   "category": "red",
+   "grape_variety": "Cabernet Sauvignon",
+   "region": "Napa Valley, California",
+   "vintage": "2022",
+   "bottle_price": 92
+  },
+  {
+   "name": "Chateau Musar Blanc",
+   "producer": "Chateau Musar",
+   "category": "white",
+   "grape_variety": "Obaideh/Merwah",
+   "region": "Bekaa Valley, Lebanon",
+   "vintage": "2010",
+   "bottle_price": 272
+  },
+  {
+   "name": "Musar Jeune Rosé",
+   "producer": "Chateau Musar",
+   "category": "rosé",
+   "grape_variety": "Cinsault/Mourvèdre",
+   "region": "Bekaa Valley, Lebanon",
+   "vintage": "2022",
+   "bottle_price": 80
+  },
+  {
+   "name": "Chateau Musar",
+   "producer": "Chateau Musar",
+   "category": "red",
+   "grape_variety": "Cabernet Sauvignon/Cinsault/Carignan",
+   "region": "Bekaa Valley, Lebanon",
+   "vintage": "2012",
+   "bottle_price": 220
+  },
+  {
+   "name": "Chateau Musar",
+   "producer": "Chateau Musar",
+   "category": "red",
+   "grape_variety": "Cabernet Sauvignon/Cinsault/Carignan",
+   "region": "Bekaa Valley, Lebanon",
+   "vintage": "2013",
+   "bottle_price": 180
+  }
+ ]
+}

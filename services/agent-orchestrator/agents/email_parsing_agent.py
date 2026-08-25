@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple
@@ -21,6 +22,7 @@ from core.base_agent import BaseAgent
 from core.message_bus import EventPriority
 from core.database import DatabaseClient
 from utils.logger import setup_logger
+from config.settings import get_settings
 
 logger = setup_logger("email_parsing_agent")
 
@@ -40,22 +42,38 @@ class EmailParsingAgent(BaseAgent):
     Processes inbound vendor emails with header-based and LLM-based matching.
     """
 
-    def __init__(self, message_bus, db: DatabaseClient, config: dict = None):
+    def __init__(
+        self,
+        message_bus,
+        database: DatabaseClient = None,
+        config: dict = None,
+        agent_name: str = "email_parsing_agent",
+        db: DatabaseClient = None,
+    ):
+        # Was (message_bus, db, config) forwarding `db=db` to BaseAgent, which takes
+        # `database` — so this raised TypeError however it was called, and the
+        # orchestrator's (agent_name, message_bus, database, config) factory could
+        # not construct it either. `db` is kept as an alias for existing callers.
         super().__init__(
-            agent_name="email_parsing_agent",
+            agent_name=agent_name,
             message_bus=message_bus,
-            db=db,
+            database=database if database is not None else db,
             config=config or {},
         )
+        # BaseAgent turns the dict into an AgentConfig pydantic model, which has no
+        # .get() and drops unknown keys — so reading self.config.get("google_api_key")
+        # raised AttributeError out of initialize() and killed start(). This agent is
+        # CORE, so that was one of the roster silently failing to boot. Keep the dict.
+        self.raw_config = config or {}
         self.gemini_model = None
 
     async def initialize(self) -> None:
         """Set up Gemini model for context matching and summarization"""
         if GEMINI_AVAILABLE:
-            api_key = self.config.get("google_api_key") or ""
+            api_key = self.raw_config.get("google_api_key") or ""
             if api_key:
                 genai.configure(api_key=api_key)
-                self.gemini_model = genai.GenerativeModel("gemini-pro")
+                self.gemini_model = genai.GenerativeModel(get_settings().gemini_model)
                 self.logger.info("Gemini Pro initialized for email parsing")
             else:
                 self.logger.warning("GEMINI_API_KEY not set — LLM features disabled")
@@ -341,6 +359,45 @@ class EmailParsingAgent(BaseAgent):
 
     # ── LLM Context Matching ─────────────────────────────────────────
 
+    def _log_gemini_spend(
+        self,
+        response,
+        task_type: str,
+        duration_ms: Optional[int] = None,
+        restaurant_id: Optional[str] = None,
+    ) -> None:
+        """P1: emit one spend/NF row for a Gemini call (never raises).
+
+        `duration_ms` is measured by the caller around its own model call —
+        timing it here would only measure this helper.
+        """
+        try:
+            from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+            # label the model actually configured, not a literal (OD-57)
+            _model_id = get_settings().gemini_model
+            _usage = getattr(response, "usage_metadata", None)
+            _in = getattr(_usage, "prompt_token_count", 0) or 0
+            # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+            _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                getattr(_usage, "thoughts_token_count", 0) or 0
+            )
+            get_spend_logger().log(
+                provider="google",
+                model=_model_id,
+                input_tokens=_in,
+                output_tokens=_out,
+                cost_usd=estimate_llm_cost(_model_id, _in, _out),
+                restaurant_id=restaurant_id or None,
+                agent=self.agent_name,
+                task_type=task_type,
+                outcome="success",  # call-level: response returned
+                duration_ms=duration_ms,
+                correlation_id=getattr(self, "_current_correlation_id", None),
+            )
+        except Exception:
+            pass
+
     async def _match_by_context(
         self, sender_email: str, subject: str, body: str
     ) -> Optional[Dict[str, Any]]:
@@ -391,7 +448,13 @@ Which order is this email most likely about? Respond with ONLY valid JSON:
   "reasoning": "brief explanation"
 }}"""
 
+            _t0 = time.perf_counter()
             response = await self.gemini_model.generate_content_async(prompt)
+            self._log_gemini_spend(  # P1
+                response,
+                "order_matching",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+            )
             text = response.text.strip()
 
             # Extract JSON from response
@@ -512,7 +575,14 @@ Respond with ONLY valid JSON:
 }}"""
 
                 try:
+                    _t0 = time.perf_counter()
                     response = await self.gemini_model.generate_content_async(prompt)
+                    self._log_gemini_spend(  # P1
+                        response,
+                        "thread_summary",
+                        duration_ms=int((time.perf_counter() - _t0) * 1000),
+                        restaurant_id=restaurant_id,
+                    )
                     text = response.text.strip()
                     json_match = re.search(r"\{[^}]+\}", text, re.DOTALL)
                     if json_match:
@@ -645,7 +715,7 @@ Respond with ONLY valid JSON:
             except Exception:
                 pass
         # Fallback to config
-        return self.config.get("default_restaurant_id")
+        return self.raw_config.get("default_restaurant_id")
 
     async def _detect_intent(self, subject: str, body: str) -> str:
         """Intent detection with scarcity/urgency awareness"""

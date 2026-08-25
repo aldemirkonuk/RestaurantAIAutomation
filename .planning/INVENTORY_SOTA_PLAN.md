@@ -81,7 +81,7 @@ Confirmed against this repo — the audits are ~90% accurate. Severity **re-grad
 | Total Value = menu price (~3× inflated) + self-contradictory | **True** | Table `Inventory.tsx:1257` (menu×stock) vs export `:555` (cost×stock). |
 | Integer-only stock breaks BTG (ml) depletion | **True** | `stock_live INTEGER`; `glassesPerBottle` uses `Math.floor` (remainder lost). |
 | Three incompatible status definitions | **True** | Backend view vs `useInventoryPage.ts:272` vs `inventory_engine.py:461`. |
-| `\|\| 0` masks unknown as out-of-stock | **True** | `useInventoryPage.ts:143`. |
+| `|| 0` masks unknown as out-of-stock | **True** | `useInventoryPage.ts:143`. |
 | Invoice scanner + QR built-but-unwired | **True** | `_showInvoiceScannerModal` unused; QR button is a placeholder. |
 | Shrinkage / Ghost Inventory agents are stubs | **True** | `shrinkage_detective_agent.py:34`, `ghost_inventory_agent.py:35`; tables exist, never written. |
 | One-wine-one-location constraint blocks multi-location | **True** | `UNIQUE(restaurant_id, wine_id)` — `20260304020000:9`. |

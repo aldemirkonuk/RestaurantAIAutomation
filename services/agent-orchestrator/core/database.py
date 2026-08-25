@@ -2044,3 +2044,30 @@ def set_database(client: DatabaseClient) -> None:
     """Set global database client"""
     global _db_client_instance
     _db_client_instance = client
+
+
+def get_supabase_client() -> Optional[Client]:
+    """Get the raw Supabase client, or None when no database is configured.
+
+    Resolution order:
+      1. the connected DatabaseClient facade, so callers share the same client
+         the repositories already use
+      2. the lazily-built client on Settings (SUPABASE_URL / SUPABASE_KEY)
+
+    Returning None is a legitimate state — local and mock runs have no
+    database — and callers are expected to branch on it. Import or
+    configuration faults are a different thing entirely, so callers should
+    not wrap this in a bare `except Exception` that makes a wiring bug
+    indistinguishable from "no database configured".
+    """
+    db = _db_client_instance
+    if db is not None and db.supabase is not None:
+        return db.supabase
+
+    try:
+        from config.settings import get_settings
+
+        return get_settings().supabase_client
+    except Exception as e:
+        logger.warning(f"Could not build a Supabase client from settings: {e}")
+        return None

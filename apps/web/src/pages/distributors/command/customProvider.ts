@@ -58,6 +58,50 @@ export function unwrapCustomId(id: string): string {
   return id.startsWith(CUSTOM_ID_PREFIX) ? id.slice(CUSTOM_ID_PREFIX.length) : id
 }
 
+/**
+ * US state codes, keyed by both the code and the full name.
+ *
+ * Needed because a custom provider stores one flat address string while the
+ * catalogue stores a separate `state`. Without this a custom provider is
+ * invisible to the state filter — it would sit in the list under "Michigan"
+ * while being from Texas, which is worse than not offering the filter.
+ *
+ * Deliberately US-only and best-effort. It reads a code or a state name out of
+ * a comma-separated address and returns null when it finds neither. Null means
+ * "unknown", and an unknown-state provider is hidden by an active state filter
+ * rather than assumed to match — claiming a state we did not read would be a
+ * quieter, worse failure than omitting the row.
+ */
+const US_STATES: Record<string, string> = {
+  alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA',
+  colorado: 'CO', connecticut: 'CT', delaware: 'DE', florida: 'FL', georgia: 'GA',
+  hawaii: 'HI', idaho: 'ID', illinois: 'IL', indiana: 'IN', iowa: 'IA',
+  kansas: 'KS', kentucky: 'KY', louisiana: 'LA', maine: 'ME', maryland: 'MD',
+  massachusetts: 'MA', michigan: 'MI', minnesota: 'MN', mississippi: 'MS',
+  missouri: 'MO', montana: 'MT', nebraska: 'NE', nevada: 'NV',
+  'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY',
+  'north carolina': 'NC', 'north dakota': 'ND', ohio: 'OH', oklahoma: 'OK',
+  oregon: 'OR', pennsylvania: 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
+  'south dakota': 'SD', tennessee: 'TN', texas: 'TX', utah: 'UT', vermont: 'VT',
+  virginia: 'VA', washington: 'WA', 'west virginia': 'WV', wisconsin: 'WI',
+  wyoming: 'WY', 'district of columbia': 'DC',
+}
+const STATE_CODES = new Set(Object.values(US_STATES))
+
+export function stateFromAddress(address: string | null | undefined): string | null {
+  if (!address) return null
+  for (const raw of address.split(',')) {
+    const part = raw.trim()
+    if (!part) continue
+    // "MI 48823" — a code followed by a ZIP is the shape Places produces.
+    const token = part.split(/\s+/)[0]?.toUpperCase()
+    if (token && STATE_CODES.has(token)) return token
+    const named = US_STATES[part.toLowerCase()]
+    if (named) return named
+  }
+  return null
+}
+
 /** `Provider.primaryBusinessType` → the catalogue's `DistributorType`. */
 function toDistributorType(p: Provider): DistributorType {
   switch (p.primaryBusinessType) {
@@ -90,11 +134,13 @@ export function providerToDistributor(
     id: toCustomDistributorId(p.id),
     name: p.name,
     type: toDistributorType(p),
-    // Provider stores one flat address string, so city and state are not
-    // separable here. Null is the honest answer; splitting on commas would
-    // invent structure the record does not have.
+    // City stays null: a flat address string cannot be split into a city with
+    // any confidence, and inventing one would put a wrong place name on the
+    // card. State is different — it appears in a recognisable, checkable form
+    // (a known code or name), so it can be read out rather than guessed, and
+    // reading it is what lets the state filter apply to custom providers too.
     city: null,
-    state: null,
+    state: stateFromAddress(p.physicalAddress),
     country: null,
     website: p.website || null,
     wine_specialties: p.specialties?.length ? p.specialties.join(', ') : null,
@@ -116,6 +162,10 @@ export function providerToDistributor(
     // claiming perfect confidence would outrank genuinely vetted entries.
     data_confidence: null,
     verified_at: null,
+    // The flat address string the user entered — shown on the card as a
+    // fallback when city/state are absent, which they always are for custom
+    // providers because a single string cannot be reliably split.
+    full_address: p.physicalAddress || null,
   }
 }
 

@@ -142,7 +142,7 @@ function App() {
             <AuthProvider>
               <WebSocketProvider>
                 <RealtimeProvider>
-                  <Router>
+                  <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <Suspense fallback={<PageLoader />}>
               <Routes>
                 {/* Public Routes */}
@@ -215,7 +215,7 @@ function App() {
                   path="/simpos/:restaurantId"
                   element={
                     <ProtectedRoute>
-                      <SimposTerminalPage />
+                      {import.meta.env.PROD ? <Navigate to="/" replace /> : <SimposTerminalPage />}
                     </ProtectedRoute>
                   }
                 />
@@ -223,7 +223,7 @@ function App() {
                   path="/simpos/:restaurantId/orders"
                   element={
                     <ProtectedRoute>
-                      <SimposOrderLogPage />
+                      {import.meta.env.PROD ? <Navigate to="/" replace /> : <SimposOrderLogPage />}
                     </ProtectedRoute>
                   }
                 />
@@ -285,8 +285,10 @@ function App() {
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/help" element={<Help />} />
-                  <Route path="/admin" element={<AdminPanel />} />
-                  <Route path="/admin/health" element={<AdminHealth />} />
+                  {/* Gated: the sidebar link is owner-only, but the URL was not —
+                      any authenticated staff member could open the admin UI. */}
+                  <Route path="/admin" element={<ProtectedRoute requiredRole="owner"><AdminPanel /></ProtectedRoute>} />
+                  <Route path="/admin/health" element={<ProtectedRoute requiredRole="owner"><AdminHealth /></ProtectedRoute>} />
                   
                   {/* AI Assistants */}
                   <Route path="/sommelier" element={<SommelierAI />} />
@@ -295,7 +297,7 @@ function App() {
                   <Route path="/services" element={<Navigate to="/settings?tab=services" replace />} />
                   
                   {/* Dev/Test Pages */}
-                  <Route path="/dev-sandbox" element={<DevSandbox />} />
+                  <Route path="/dev-sandbox" element={<ProtectedRoute requiredRole="owner"><DevSandbox /></ProtectedRoute>} />
                 </Route>
 
                 {/* Catch all */}

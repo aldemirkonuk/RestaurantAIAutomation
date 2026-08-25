@@ -226,6 +226,17 @@
         }
       }
     },
+    "/api/v1/auth/dev-bypass-login": {
+      "post": {
+        "operationId": "AuthController_devBypassLogin",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/auth/register": {
       "post": {
         "operationId": "AuthController_register",
@@ -3179,6 +3190,555 @@
         ]
       }
     },
+    "/api/v1/notifications": {
+      "post": {
+        "operationId": "NotificationsController_createNotification",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      },
+      "get": {
+        "operationId": "NotificationsController_getNotifications",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "query",
+            "description": "User ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "restaurantId",
+            "required": false,
+            "in": "query",
+            "description": "Restaurant ID filter",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "inventory_low_stock",
+                "order_pending",
+                "order_delivered",
+                "price_change",
+                "delivery_scheduled",
+                "calendar_reminder",
+                "system",
+                "ai_suggestion",
+                "draft_ready",
+                "constraint_triggered",
+                "unknown_sender",
+                "invoice_received"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "unread",
+                "read",
+                "archived"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "required": false,
+            "in": "query",
+            "description": "Filter from date (ISO)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateTo",
+            "required": false,
+            "in": "query",
+            "description": "Filter to date (ISO)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/unread": {
+      "get": {
+        "operationId": "NotificationsController_getUnreadNotifications",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "query",
+            "description": "User ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "restaurantId",
+            "required": false,
+            "in": "query",
+            "description": "Restaurant ID filter",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 50,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/unread/count": {
+      "get": {
+        "operationId": "NotificationsController_getUnreadCount",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "query",
+            "description": "User ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "restaurantId",
+            "required": false,
+            "in": "query",
+            "description": "Restaurant ID filter",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/history": {
+      "get": {
+        "operationId": "NotificationsController_getNotificationHistory",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "query",
+            "description": "User ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "days",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 30,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/preferences": {
+      "get": {
+        "operationId": "NotificationsController_getPreferences",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "query",
+            "description": "User ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "patch": {
+        "operationId": "NotificationsController_updatePreferences",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "query",
+            "description": "User ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePreferencesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/read/bulk": {
+      "patch": {
+        "operationId": "NotificationsController_markBulkAsRead",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkIdsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/read/all": {
+      "patch": {
+        "operationId": "NotificationsController_markAllAsRead",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "query",
+            "description": "User ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "restaurantId",
+            "required": false,
+            "in": "query",
+            "description": "Restaurant ID filter",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      },
+      "delete": {
+        "operationId": "NotificationsController_deleteAllRead",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "query",
+            "description": "User ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/{id}/read": {
+      "patch": {
+        "operationId": "NotificationsController_markAsRead",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/{id}/unread": {
+      "patch": {
+        "operationId": "NotificationsController_markAsUnread",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/{id}/archive": {
+      "patch": {
+        "operationId": "NotificationsController_archiveNotification",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/bulk": {
+      "delete": {
+        "operationId": "NotificationsController_deleteBulk",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkIdsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/{id}": {
+      "delete": {
+        "operationId": "NotificationsController_deleteNotification",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/push/subscribe": {
+      "post": {
+        "operationId": "NotificationsController_subscribeToPush",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushSubscribeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/push/unsubscribe": {
+      "post": {
+        "operationId": "NotificationsController_unsubscribeFromPush",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushUnsubscribeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/test": {
+      "post": {
+        "operationId": "NotificationsController_sendTestNotification",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/order-approval": {
+      "post": {
+        "operationId": "NotificationsController_notifyOrderApproval",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/low-stock": {
+      "post": {
+        "operationId": "NotificationsController_notifyLowStock",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/delivery": {
+      "post": {
+        "operationId": "NotificationsController_notifyDelivery",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/price-negotiation": {
+      "post": {
+        "operationId": "NotificationsController_notifyPriceNegotiation",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/system-alert": {
+      "post": {
+        "operationId": "NotificationsController_sendSystemAlert",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/send-email": {
+      "post": {
+        "operationId": "NotificationsController_sendEmail",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/simpos/{restaurantId}/catalog/seed": {
       "post": {
         "operationId": "SimposController_seedCatalog",
@@ -4180,555 +4740,6 @@
         "tags": [
           "toast"
         ]
-      }
-    },
-    "/api/v1/notifications": {
-      "post": {
-        "operationId": "NotificationsController_createNotification",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      },
-      "get": {
-        "operationId": "NotificationsController_getNotifications",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "query",
-            "description": "User ID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "restaurantId",
-            "required": false,
-            "in": "query",
-            "description": "Restaurant ID filter",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "type",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "enum": [
-                "inventory_low_stock",
-                "order_pending",
-                "order_delivered",
-                "price_change",
-                "delivery_scheduled",
-                "calendar_reminder",
-                "system",
-                "ai_suggestion",
-                "draft_ready",
-                "constraint_triggered",
-                "unknown_sender",
-                "invoice_received"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "name": "status",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "enum": [
-                "unread",
-                "read",
-                "archived"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "name": "dateFrom",
-            "required": false,
-            "in": "query",
-            "description": "Filter from date (ISO)",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "dateTo",
-            "required": false,
-            "in": "query",
-            "description": "Filter to date (ISO)",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": 1,
-              "type": "number"
-            }
-          },
-          {
-            "name": "limit",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": 20,
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/unread": {
-      "get": {
-        "operationId": "NotificationsController_getUnreadNotifications",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "query",
-            "description": "User ID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "restaurantId",
-            "required": false,
-            "in": "query",
-            "description": "Restaurant ID filter",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": 50,
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/unread/count": {
-      "get": {
-        "operationId": "NotificationsController_getUnreadCount",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "query",
-            "description": "User ID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "restaurantId",
-            "required": false,
-            "in": "query",
-            "description": "Restaurant ID filter",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/history": {
-      "get": {
-        "operationId": "NotificationsController_getNotificationHistory",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "query",
-            "description": "User ID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "days",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": 30,
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/preferences": {
-      "get": {
-        "operationId": "NotificationsController_getPreferences",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "query",
-            "description": "User ID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      },
-      "patch": {
-        "operationId": "NotificationsController_updatePreferences",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "query",
-            "description": "User ID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdatePreferencesDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/read/bulk": {
-      "patch": {
-        "operationId": "NotificationsController_markBulkAsRead",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BulkIdsDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/read/all": {
-      "patch": {
-        "operationId": "NotificationsController_markAllAsRead",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "query",
-            "description": "User ID",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "restaurantId",
-            "required": false,
-            "in": "query",
-            "description": "Restaurant ID filter",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      },
-      "delete": {
-        "operationId": "NotificationsController_deleteAllRead",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "query",
-            "description": "User ID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/{id}/read": {
-      "patch": {
-        "operationId": "NotificationsController_markAsRead",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/{id}/unread": {
-      "patch": {
-        "operationId": "NotificationsController_markAsUnread",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/{id}/archive": {
-      "patch": {
-        "operationId": "NotificationsController_archiveNotification",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/bulk": {
-      "delete": {
-        "operationId": "NotificationsController_deleteBulk",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BulkIdsDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/{id}": {
-      "delete": {
-        "operationId": "NotificationsController_deleteNotification",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/push/subscribe": {
-      "post": {
-        "operationId": "NotificationsController_subscribeToPush",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PushSubscribeDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/push/unsubscribe": {
-      "post": {
-        "operationId": "NotificationsController_unsubscribeFromPush",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PushUnsubscribeDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/test": {
-      "post": {
-        "operationId": "NotificationsController_sendTestNotification",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/order-approval": {
-      "post": {
-        "operationId": "NotificationsController_notifyOrderApproval",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/low-stock": {
-      "post": {
-        "operationId": "NotificationsController_notifyLowStock",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/delivery": {
-      "post": {
-        "operationId": "NotificationsController_notifyDelivery",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/price-negotiation": {
-      "post": {
-        "operationId": "NotificationsController_notifyPriceNegotiation",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/system-alert": {
-      "post": {
-        "operationId": "NotificationsController_sendSystemAlert",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
-      }
-    },
-    "/api/v1/notifications/send-email": {
-      "post": {
-        "operationId": "NotificationsController_sendEmail",
-        "parameters": [],
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        }
       }
     },
     "/api/v1/inventory/{restaurantId}": {
@@ -7822,6 +7833,47 @@
         "responses": {
           "200": {
             "description": "Recommended providers"
+          }
+        },
+        "tags": [
+          "providers"
+        ]
+      }
+    },
+    "/api/v1/providers/match": {
+      "get": {
+        "operationId": "ProvidersController_matchProviders",
+        "summary": "Providers in this restaurant's own list that look like duplicates of the given name/address",
+        "parameters": [
+          {
+            "name": "name",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "address",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "excludeId",
+            "required": false,
+            "in": "query",
+            "description": "Provider being edited, excluded so it does not match itself at 1.0",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ranked duplicate candidates"
           }
         },
         "tags": [
@@ -12169,6 +12221,62 @@
         ]
       }
     },
+    "/api/v1/vendor-catalogue/match": {
+      "get": {
+        "operationId": "VendorCatalogueController_match",
+        "summary": "Duplicate-detection candidates for the add-provider form — is this vendor already in the curated catalogue?",
+        "parameters": [
+          {
+            "name": "name",
+            "required": false,
+            "in": "query",
+            "description": "Vendor name as typed so far, matched against the curated catalogue by trigram similarity.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "address",
+            "required": false,
+            "in": "query",
+            "description": "Vendor address as typed so far. Optional second signal — a match on address alone (e.g. a DBA name) still surfaces.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "country",
+            "required": false,
+            "in": "query",
+            "description": "Restrict candidates to this country (ISO alpha-2).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Max candidates to return (default: 5, max: 10)",
+            "schema": {
+              "default": 5,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Curated vendors that plausibly match, ranked by similarity"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "vendor-catalogue"
+        ]
+      }
+    },
     "/api/v1/vendor-catalogue/{id}": {
       "get": {
         "operationId": "VendorCatalogueController_findById",
@@ -13855,6 +13963,123 @@
           }
         }
       },
+      "CategoriesDto": {
+        "type": "object",
+        "properties": {
+          "inventory": {
+            "type": "boolean"
+          },
+          "orders": {
+            "type": "boolean"
+          },
+          "calendar": {
+            "type": "boolean"
+          },
+          "system": {
+            "type": "boolean"
+          },
+          "ai": {
+            "type": "boolean"
+          }
+        }
+      },
+      "QuietHoursDto": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "startTime": {
+            "type": "string",
+            "description": "Start time HH:mm"
+          },
+          "endTime": {
+            "type": "string",
+            "description": "End time HH:mm"
+          }
+        }
+      },
+      "LowStockPrefsDto": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Master switch for low-stock alerts"
+          },
+          "instantFirstAlert": {
+            "type": "boolean",
+            "description": "Alert the moment a wine first crosses par"
+          },
+          "criticalImmediate": {
+            "type": "boolean",
+            "description": "Critical (≤50% par) sends immediately"
+          },
+          "digestFrequency": {
+            "type": "string",
+            "description": "'daily' | 'off' — reminder for still-low wines"
+          },
+          "digestTime": {
+            "type": "string",
+            "description": "Daily digest send time HH:mm"
+          }
+        }
+      },
+      "UpdatePreferencesDto": {
+        "type": "object",
+        "properties": {
+          "preferences": {
+            "type": "object",
+            "description": "Partial preferences object to deep-merge"
+          }
+        },
+        "required": [
+          "preferences"
+        ]
+      },
+      "BulkIdsDto": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "description": "Array of notification IDs",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "ids"
+        ]
+      },
+      "PushSubscribeDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "User ID"
+          },
+          "subscription": {
+            "type": "object",
+            "description": "Web Push subscription object"
+          }
+        },
+        "required": [
+          "userId",
+          "subscription"
+        ]
+      },
+      "PushUnsubscribeDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "User ID"
+          }
+        },
+        "required": [
+          "userId"
+        ]
+      },
       "OneTapActionResponseDto": {
         "type": "object",
         "properties": {
@@ -14724,123 +14949,6 @@
           "totalRevenue",
           "startTime",
           "endTime"
-        ]
-      },
-      "CategoriesDto": {
-        "type": "object",
-        "properties": {
-          "inventory": {
-            "type": "boolean"
-          },
-          "orders": {
-            "type": "boolean"
-          },
-          "calendar": {
-            "type": "boolean"
-          },
-          "system": {
-            "type": "boolean"
-          },
-          "ai": {
-            "type": "boolean"
-          }
-        }
-      },
-      "QuietHoursDto": {
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "type": "boolean"
-          },
-          "startTime": {
-            "type": "string",
-            "description": "Start time HH:mm"
-          },
-          "endTime": {
-            "type": "string",
-            "description": "End time HH:mm"
-          }
-        }
-      },
-      "LowStockPrefsDto": {
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "type": "boolean",
-            "description": "Master switch for low-stock alerts"
-          },
-          "instantFirstAlert": {
-            "type": "boolean",
-            "description": "Alert the moment a wine first crosses par"
-          },
-          "criticalImmediate": {
-            "type": "boolean",
-            "description": "Critical (≤50% par) sends immediately"
-          },
-          "digestFrequency": {
-            "type": "string",
-            "description": "'daily' | 'off' — reminder for still-low wines"
-          },
-          "digestTime": {
-            "type": "string",
-            "description": "Daily digest send time HH:mm"
-          }
-        }
-      },
-      "UpdatePreferencesDto": {
-        "type": "object",
-        "properties": {
-          "preferences": {
-            "type": "object",
-            "description": "Partial preferences object to deep-merge"
-          }
-        },
-        "required": [
-          "preferences"
-        ]
-      },
-      "BulkIdsDto": {
-        "type": "object",
-        "properties": {
-          "ids": {
-            "description": "Array of notification IDs",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "ids"
-        ]
-      },
-      "PushSubscribeDto": {
-        "type": "object",
-        "properties": {
-          "userId": {
-            "type": "string",
-            "description": "User ID"
-          },
-          "subscription": {
-            "type": "object",
-            "description": "Web Push subscription object"
-          }
-        },
-        "required": [
-          "userId",
-          "subscription"
-        ]
-      },
-      "PushUnsubscribeDto": {
-        "type": "object",
-        "properties": {
-          "userId": {
-            "type": "string",
-            "description": "User ID"
-          }
-        },
-        "required": [
-          "userId"
         ]
       },
       "CreateInventoryItemDto": {
@@ -16770,6 +16878,9 @@
             "items": {
               "type": "string"
             }
+          },
+          "physicalAddress": {
+            "type": "string"
           },
           "address": {
             "type": "object"

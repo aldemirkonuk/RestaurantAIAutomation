@@ -1,0 +1,293 @@
+{
+ "menu": "Avli_Taverna_Lincoln_Park_Wine_Menu.pdf",
+ "pages": 2,
+ "wine_count": 42,
+ "seconds": 16.3,
+ "wines": [
+  {
+   "name": "Blanc de Blancs",
+   "producer": "Les Allies",
+   "category": "bubbles",
+   "region": "Pays d'Oc",
+   "by_glass_price": 9,
+   "bottle_price": 40
+  },
+  {
+   "name": "Rosé of Xinomavro",
+   "producer": "Kir Yianni",
+   "category": "bubbles",
+   "region": "Amyndeon",
+   "by_glass_price": 12,
+   "bottle_price": 52
+  },
+  {
+   "name": "Assyrtiko",
+   "producer": "Matamis",
+   "category": "bubbles",
+   "region": "Epanomi",
+   "bottle_price": 60
+  },
+  {
+   "name": "Taverna Carafe",
+   "producer": "Cavino",
+   "category": "rosé",
+   "by_glass_price": 8,
+   "bottle_price": 36
+  },
+  {
+   "name": "Kidonitsa",
+   "producer": "Tsibidis",
+   "category": "rosé",
+   "region": "Monemvasia",
+   "by_glass_price": 9,
+   "bottle_price": 36
+  },
+  {
+   "name": "Xinomavro",
+   "producer": "Alpha Estates",
+   "category": "rosé",
+   "region": "Amyndeon",
+   "by_glass_price": 15,
+   "bottle_price": 60
+  },
+  {
+   "name": "Taverna Carafe",
+   "producer": "Tsibidis",
+   "category": "white",
+   "by_glass_price": 7,
+   "bottle_price": 32
+  },
+  {
+   "name": "Assyrtiko",
+   "producer": "Skouras",
+   "category": "white",
+   "region": "Peloponnese",
+   "by_glass_price": 12,
+   "bottle_price": 46
+  },
+  {
+   "name": "Assyrtiko",
+   "producer": "Santo",
+   "category": "white",
+   "region": "Santorini",
+   "bottle_price": 68
+  },
+  {
+   "name": "Chardonnay",
+   "producer": "Amalagos",
+   "category": "white",
+   "region": "Drama",
+   "by_glass_price": 10,
+   "bottle_price": 38
+  },
+  {
+   "name": "Chardonnay",
+   "producer": "Skouras",
+   "category": "white",
+   "region": "Peloponnese",
+   "by_glass_price": 13,
+   "bottle_price": 54
+  },
+  {
+   "name": "Malagousia",
+   "producer": "Alpha Estates",
+   "category": "white",
+   "region": "Florina",
+   "bottle_price": 48
+  },
+  {
+   "name": "Moscofilero",
+   "producer": "Skouras",
+   "category": "white",
+   "region": "Mantinia",
+   "by_glass_price": 11,
+   "bottle_price": 44
+  },
+  {
+   "name": "Retsina",
+   "producer": "Kechris",
+   "category": "white",
+   "region": "Macedonia",
+   "by_glass_price": 12,
+   "bottle_price": 24
+  },
+  {
+   "name": "Sauvignon Blanc",
+   "producer": "Costa Lazaridi",
+   "category": "white",
+   "region": "Drama",
+   "bottle_price": 60
+  },
+  {
+   "name": "Sauvignon Blanc",
+   "producer": "Alpha Estates",
+   "category": "white",
+   "region": "Amyndeon",
+   "by_glass_price": 14,
+   "bottle_price": 54
+  },
+  {
+   "name": "Taverna Carafe",
+   "producer": "Amalagos",
+   "category": "red",
+   "by_glass_price": 10,
+   "bottle_price": 44
+  },
+  {
+   "name": "Agioritiko",
+   "producer": "Kotrosos",
+   "category": "red",
+   "region": "Peloponnese",
+   "by_glass_price": 12,
+   "bottle_price": 46
+  },
+  {
+   "name": "Agioritiko",
+   "producer": "Skouras",
+   "category": "red",
+   "region": "Nemea",
+   "bottle_price": 80
+  },
+  {
+   "name": "Cabernet",
+   "producer": "Costa Lazaridis",
+   "category": "red",
+   "region": "Drama",
+   "by_glass_price": 17,
+   "bottle_price": 65
+  },
+  {
+   "name": "Cabernet",
+   "producer": "Hatzimichalis",
+   "category": "red",
+   "region": "Atalanti Valley",
+   "by_glass_price": 15,
+   "bottle_price": 58
+  },
+  {
+   "name": "Greek Meritage",
+   "producer": "Skouras",
+   "category": "red",
+   "region": "Nemea",
+   "bottle_price": 79
+  },
+  {
+   "name": "Monemvasios",
+   "producer": "Tsibidis",
+   "category": "red",
+   "region": "Monemvasia",
+   "by_glass_price": 11,
+   "bottle_price": 42
+  },
+  {
+   "name": "Pinot Noir",
+   "producer": "Alpha Estates",
+   "category": "red",
+   "region": "Florina",
+   "bottle_price": 79
+  },
+  {
+   "name": "Xinomavro",
+   "producer": "Kir Yianni",
+   "category": "red",
+   "region": "Naoussa",
+   "by_glass_price": 13,
+   "bottle_price": 46
+  },
+  {
+   "name": "Mastiha",
+   "producer": "Skinos",
+   "category": "greek spirits",
+   "by_glass_price": 4,
+   "bottle_price": 8
+  },
+  {
+   "name": "Ouzo",
+   "producer": "Miltemi",
+   "category": "greek spirits",
+   "by_glass_price": 4,
+   "bottle_price": 8
+  },
+  {
+   "name": "Tsipouro",
+   "producer": "Idoniko",
+   "category": "greek spirits",
+   "by_glass_price": 4,
+   "bottle_price": 8
+  },
+  {
+   "name": "Teach Me to Dance",
+   "category": "cocktail",
+   "bottle_price": 13
+  },
+  {
+   "name": "A-Gouri",
+   "category": "cocktail",
+   "bottle_price": 12
+  },
+  {
+   "name": "Athenian Spritz",
+   "category": "cocktail",
+   "bottle_price": 14
+  },
+  {
+   "name": "Spicy Baba",
+   "category": "cocktail",
+   "bottle_price": 13
+  },
+  {
+   "name": "Smoky Trellis",
+   "category": "cocktail",
+   "bottle_price": 13
+  },
+  {
+   "name": "Aha Moment",
+   "category": "cocktail",
+   "bottle_price": 13
+  },
+  {
+   "name": "A Secret Message",
+   "category": "cocktail",
+   "bottle_price": 14
+  },
+  {
+   "name": "Fog Over Town",
+   "category": "cocktail",
+   "bottle_price": 14
+  },
+  {
+   "name": "Out of Office",
+   "category": "cocktail",
+   "bottle_price": 13
+  },
+  {
+   "name": "Lager",
+   "producer": "Mythos",
+   "category": "beer",
+   "bottle_price": 7
+  },
+  {
+   "name": "Hellas Lager",
+   "producer": "Fix",
+   "category": "beer",
+   "bottle_price": 7
+  },
+  {
+   "name": "IPA",
+   "producer": "Kirki 'Pikri'",
+   "category": "beer",
+   "bottle_price": 9
+  },
+  {
+   "name": "Na Pale Lager",
+   "producer": "Stella Artois",
+   "category": "beer",
+   "bottle_price": 7
+  },
+  {
+   "name": "Elemental Stillness",
+   "category": "spirit free",
+   "bottle_price": 10
+  }
+ ]
+}

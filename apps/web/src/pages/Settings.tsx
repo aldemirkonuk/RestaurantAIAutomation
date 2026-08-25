@@ -35,6 +35,7 @@ import {
   Check,
   Copy,
   ChefHat,
+  MapPin,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/layout/Header';
@@ -52,6 +53,7 @@ import { EditLocationChainDialog } from '../components/locations/EditLocationCha
 import { CreateChainDialog } from '../components/locations/CreateChainDialog';
 import { AssignToChainDialog } from '../components/locations/AssignToChainDialog';
 import { useAuth, type RestaurantBranch } from '../contexts/AuthContext';
+import { useUserPreferences, type UserPreferences } from '../hooks/useUserPreferences';
 import {
   COMMON_POUR_SIZES,
   formatVolumeWithBothUnits,
@@ -77,7 +79,7 @@ interface PendingInviteRow {
 
 // ─── Section nav ─────────────────────────────────────────────────────────────
 
-const SECTION_IDS = ['team', 'services', 'email', 'notifications', 'locations', 'measurement', 'features', 'pos', 'calendar'] as const;
+const SECTION_IDS = ['team', 'services', 'email', 'notifications', 'locations', 'measurement', 'map', 'features', 'pos', 'calendar'] as const;
 type SectionId = (typeof SECTION_IDS)[number];
 const SECTION_LABELS: Record<SectionId, string> = {
   team: 'Team',
@@ -86,6 +88,7 @@ const SECTION_LABELS: Record<SectionId, string> = {
   notifications: 'Notifications',
   locations: 'Locations',
   measurement: 'Measurement',
+  map: 'Map',
   features: 'Features',
   pos: 'POS',
   calendar: 'Calendar',
@@ -232,6 +235,72 @@ function CalendarSubscriptionSection() {
           {regenerating ? 'Regenerating...' : 'Regenerate Token'}
         </button>
         <p className="mt-1 text-xs text-gray-400">Warning: regenerating invalidates all existing subscriptions.</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Map section ──────────────────────────────────────────────────────────────
+
+const MAP_SCOPE_OPTIONS: Array<{
+  value: NonNullable<UserPreferences['mapDefaultScope']>;
+  label: string;
+  hint: string;
+}> = [
+  { value: 'continent', label: 'Continent', hint: 'All of North America' },
+  { value: 'country', label: 'Country', hint: 'Your whole country' },
+  { value: 'state', label: 'State', hint: 'Your state or province' },
+  { value: 'city', label: 'City', hint: 'Your city and its suburbs' },
+];
+
+/**
+ * How wide the Find-distributors map frames the restaurant when it opens.
+ *
+ * A preference rather than a fixed value because the right answer depends on
+ * how a restaurant buys: a group sourcing nationally wants the country, a
+ * single site working with local reps wants the city. Continent is the default
+ * because it is the one framing that is never wrong — you can always see where
+ * you are relative to everything else and zoom in from there.
+ */
+function MapDefaultViewSection() {
+  const { preferences, updatePreferences, isLoading } = useUserPreferences();
+  const scope = preferences?.mapDefaultScope ?? 'continent';
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="px-6 py-4 flex items-center gap-2 border-b border-gray-100">
+        <MapPin className="w-4 h-4 text-wine-500" />
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">Map</h2>
+          <p className="text-xs text-gray-400 mt-0.5">How Find distributors frames your restaurant</p>
+        </div>
+      </div>
+
+      <div className="px-6 py-4">
+        <p className="text-sm font-medium text-gray-700 mb-1">Default view</p>
+        <p className="text-xs text-gray-400 mb-3">
+          Applies when the map opens. Zooming in on a distributor never changes this — use
+          &ldquo;Back to&rdquo; on the map to return here.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {MAP_SCOPE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              disabled={isLoading}
+              onClick={() => updatePreferences({ mapDefaultScope: opt.value })}
+              title={opt.hint}
+              aria-pressed={scope === opt.value}
+              className={cn(
+                'px-4 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50',
+                scope === opt.value
+                  ? 'bg-wine-600 text-white'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -1374,6 +1443,11 @@ export default function Settings() {
         <div id="measurement" className="scroll-mt-32">
           <MeasurementVolumeSection />
           <RecipesSection />
+        </div>
+
+        {/* ── Map ── */}
+        <div id="map" className="scroll-mt-32">
+          <MapDefaultViewSection />
         </div>
 
         {/* ── Feature Flags ── */}

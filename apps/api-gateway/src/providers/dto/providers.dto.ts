@@ -41,6 +41,17 @@ export class CreateProviderDto {
   @IsOptional()
   alternativeContacts?: Record<string, any>[];
 
+  /**
+   * The address as a plain string — what the user typed or picked from Places
+   * autocomplete. This is the field to send; `address` below is the legacy
+   * JSONB shape, kept only so older clients keep working.
+   */
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  physicalAddress?: string;
+
+  /** @deprecated Legacy JSONB shape ({ line1: … }). Send `physicalAddress`. */
   @ApiPropertyOptional()
   @IsOptional()
   address?: Record<string, any>;

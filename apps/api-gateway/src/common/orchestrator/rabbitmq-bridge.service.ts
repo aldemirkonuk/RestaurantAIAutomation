@@ -20,7 +20,7 @@ import { WebsocketGateway } from "../../websocket/websocket.gateway";
 import { DatabaseService } from "../../database/database.service";
 import { InboundResponderService } from "./inbound-responder.service";
 import { deriveTransportSignals, looksPromotional } from "./email-triage";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { PromotionExtractorService } from "./promotion-extractor.service";
 import { ProspectsService } from "./prospects.service";
 
@@ -527,6 +527,13 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
 
   private async handleInboundEmail(msg: any): Promise<void> {
     const payload = msg?.payload || msg;
+    // The Python email agents put correlation_id on the message envelope
+    // (base_agent.py:660-662) and it was being dropped here — the ONLY flow
+    // where a gateway NF/decision_log row can truthfully join the Python
+    // decision_log chain. Mint one if absent, matching base_agent.py:549-550
+    // (`message.get("correlation_id") or uuid4()`).
+    const correlationId: string =
+      msg?.correlation_id || payload.correlation_id || randomUUID();
     const from: string = payload.from || "";
     const subject: string = payload.subject || "";
     const body: string = payload.body || "";
@@ -825,6 +832,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           inboundSubject: subject || null,
           inboundAttachments: attachments,
           transportSignals,
+          correlationId,
         });
       }
     } catch (err: any) {

@@ -52,8 +52,23 @@ fi
 # Columns and non-extension functions are the two things that actually broke.
 # Extension-owned functions are excluded: they are installed by CREATE EXTENSION,
 # not by migrations, and counting them reports 165 phantom differences.
+#
+# Ad-hoc backup tables (_bak_*) are excluded, for the same reason as extension
+# functions: they are not schema. They are snapshots someone took by hand before
+# a risky change, they will never be in a migration, and on 2026-08-24 three of
+# them (_bak_library_before_corpus 88 cols, _bak_seed_repair_20260813 6,
+# _bak_wine_match_keys_20260812 4) accounted for ALL 98 reported differences —
+# every other column matched exactly. Left in, this check can only ever be red,
+# and a check that is always red is a check nobody reads.
+#
+# They are excluded from the COMPARISON but printed on every run below. An
+# exclusion you cannot see is indistinguishable from a blind spot.
 COLS_Q="SELECT table_name||'.'||column_name||':'||data_type
-        FROM information_schema.columns WHERE table_schema='public' ORDER BY 1;"
+        FROM information_schema.columns WHERE table_schema='public'
+          AND table_name NOT LIKE '\\_bak\\_%' ORDER BY 1;"
+BAK_Q="SELECT table_name||' ('||count(*)||' cols)'
+       FROM information_schema.columns WHERE table_schema='public'
+         AND table_name LIKE '\\_bak\\_%' GROUP BY table_name ORDER BY 1;"
 FNS_Q="SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
        WHERE n.nspname='public'
          AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid=p.oid AND d.deptype='e')
@@ -63,6 +78,7 @@ docker exec -i "$DBC" psql -U postgres -d postgres -qtAc "$COLS_Q" | sort > "$WO
 docker exec -i "$DBC" psql "$REMOTE_URL"  -qtAc "$COLS_Q" | sort > "$WORK/remote_cols"
 docker exec -i "$DBC" psql -U postgres -d postgres -qtAc "$FNS_Q"  | sort > "$WORK/local_fns"
 docker exec -i "$DBC" psql "$REMOTE_URL"  -qtAc "$FNS_Q"  | sort > "$WORK/remote_fns"
+docker exec -i "$DBC" psql "$REMOTE_URL"  -qtAc "$BAK_Q"  | sort > "$WORK/remote_bak"
 
 only_remote_cols="$(comm -13 "$WORK/local_cols" "$WORK/remote_cols")"
 only_local_cols="$(comm -23 "$WORK/local_cols" "$WORK/remote_cols")"
@@ -71,6 +87,14 @@ only_local_fns="$(comm -23 "$WORK/local_fns" "$WORK/remote_fns")"
 
 echo "local  : $(wc -l < "$WORK/local_cols" | tr -d ' ') columns, $(wc -l < "$WORK/local_fns" | tr -d ' ') functions"
 echo "remote : $(wc -l < "$WORK/remote_cols" | tr -d ' ') columns, $(wc -l < "$WORK/remote_fns" | tr -d ' ') functions"
+
+# Named, never silent. If one of these is ever a real table rather than a
+# snapshot, it shows up here rather than vanishing from the comparison.
+if [[ -s "$WORK/remote_bak" ]]; then
+  echo "excluded from the comparison — ad-hoc backup tables on remote ($(wc -l < "$WORK/remote_bak" | tr -d ' ')):"
+  sed 's/^/   /' "$WORK/remote_bak"
+  echo "   (snapshots, not schema. Drop them on production when they are no longer needed.)"
+fi
 
 fail=0
 report() {

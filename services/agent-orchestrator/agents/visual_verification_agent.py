@@ -10,12 +10,13 @@ AI-powered delivery verification with:
 - Barcode-invoice cross-reference
 """
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from datetime import datetime
 import asyncio
 import base64
 import io
 import json
+import time
 
 from core.base_agent import BaseAgent
 from core.database import OrderInteraction
@@ -588,51 +589,77 @@ class VisualVerificationAgent(BaseAgent):
 
         try:
             haiku = _get_haiku()
+            _t0 = time.perf_counter()
             response = await haiku.messages.create(
                 model=_HAIKU_MODEL,
                 max_tokens=512,
                 messages=[{"role": "user", "content": prompt}],
             )
-            raw = response.content[0].text if response.content else "{}"
-            raw = raw.strip()
-            if raw.startswith("```"):
-                parts = raw.split("```")
-                raw = parts[1] if len(parts) > 1 else "{}"
-                if raw.startswith("json"):
-                    raw = raw[4:]
-            result = json.loads(raw.strip())
-
-            # SpendLogger (TOKENBDGT-03)
-            try:
-                input_tokens = (
-                    response.usage.input_tokens
-                    if hasattr(response, "usage")
-                    else len(prompt) // 4
-                )
-                output_tokens = (
-                    response.usage.output_tokens if hasattr(response, "usage") else 100
-                )
-                cost_usd = (input_tokens * 0.00000025) + (output_tokens * 0.00000125)
-                _get_spend_logger().log(
-                    provider="anthropic",
-                    model=_HAIKU_MODEL,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    cost_usd=cost_usd,
-                    restaurant_id=None,
-                )
-            except Exception:
-                pass
-
-            return result
-        except (json.JSONDecodeError, Exception) as exc:
+        except Exception as exc:
             self.logger.warning(
-                f"Haiku invoice extraction failed, using regex fallback: {exc}"
+                f"Haiku invoice extraction call failed, using regex fallback: {exc}"
             )
             try:
                 return self._parse_invoice_text(email_body)
             except Exception:
                 return {}
+
+        # P1 defect fix: tokens were spent the moment the call returned, so the
+        # spend log must NOT sit behind json.loads — previously a parse failure
+        # jumped to the except and the row was never written (under-counting
+        # failure paths in api_spend).
+        raw = response.content[0].text if response.content else "{}"
+        raw = raw.strip()
+        if raw.startswith("```"):
+            parts = raw.split("```")
+            raw = parts[1] if len(parts) > 1 else "{}"
+            if raw.startswith("json"):
+                raw = raw[4:]
+
+        result: Optional[dict] = None
+        parse_failed = False
+        try:
+            result = json.loads(raw.strip())
+        except (json.JSONDecodeError, ValueError) as exc:
+            parse_failed = True
+            self.logger.warning(
+                f"Haiku invoice extraction parse failed, using regex fallback: {exc}"
+            )
+
+        # SpendLogger (TOKENBDGT-03) — dual-writes NF (P1); emits on BOTH outcomes
+        try:
+            input_tokens = (
+                response.usage.input_tokens
+                if hasattr(response, "usage")
+                else len(prompt) // 4
+            )
+            output_tokens = (
+                response.usage.output_tokens if hasattr(response, "usage") else 100
+            )
+            cost_usd = (input_tokens * 0.00000025) + (output_tokens * 0.00000125)
+            _get_spend_logger().log(
+                provider="anthropic",
+                model=_HAIKU_MODEL,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost_usd,
+                restaurant_id=None,
+                agent=self.agent_name,
+                task_type="invoice_extraction",
+                choice="invoice:parse_failed" if parse_failed else "invoice:parsed",
+                outcome="partial" if parse_failed else "success",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                correlation_id=getattr(self, "_current_correlation_id", None),
+            )
+        except Exception:
+            pass
+
+        if parse_failed:
+            try:
+                return self._parse_invoice_text(email_body)
+            except Exception:
+                return {}
+        return result
 
     def _compare_invoice_to_order(
         self,

@@ -1,8 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import {
-  hashWineSignature,
   normalizeSignatureText,
+  wineSignatureHashOrNull,
   wineSignatureInputFromPayload,
 } from "./wine-signature";
 import {
@@ -32,6 +32,26 @@ interface WineRow {
   bottle_size_ml?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
+  // Plan §1: derived full descriptive name ("2016 Gravner Ribolla
+  // Friuli-Venezia Giulia"), computed in SQL by wine_display_name() via
+  // trigger. Never a match key — name/normalized_name still are. Optional
+  // for the same reason the provenance fields below are: present only when
+  // the query actually selected it.
+  display_name?: string | null;
+  // N4 (BEVERAGE_CATALOGUE_PLAN.md) / arch §9.3, §10.6 M3: provenance,
+  // carried through so a consumer can tell a recalled fact from a reasoned
+  // default. 76% of the library is `inferred` (a typical profile for the
+  // grape/region, not a fact about THIS bottle) — dropping these at the
+  // mapping boundary is how a flattened view quietly teaches "confident,
+  // wrong, and self-consistent" downstream. Optional because narrower
+  // selects (search, distinct-value lookups) legitimately omit them; only
+  // the detail-level SELECT * populates them, and mapWine() below must not
+  // silently drop what it received.
+  library_tier?: number | null;
+  review_status?: string | null;
+  field_confidences?: Record<string, number> | null;
+  data_enrichment?: { knowledge?: string | null; [k: string]: unknown } | null;
+  enrichment_observed_at?: string | null;
 }
 
 interface WineSubmissionRow {
@@ -58,6 +78,12 @@ export class WinesService {
     return {
       id: row.id,
       name: row.name,
+      // Plan §1: present only when selected (same undefined-vs-null
+      // discipline as the provenance block below). Callers should prefer
+      // this over `name` for anything user-facing — it disambiguates
+      // vintage variants that otherwise render identically (three Château
+      // Pétrus rows all read "Château Pétrus" via `name` alone).
+      displayName: row.display_name ?? undefined,
       producer: row.producer,
       vintage: row.vintage ?? undefined,
       price: row.price_reference ?? 0,
@@ -76,13 +102,52 @@ export class WinesService {
       bottleSizeOz,
       createdAt: row.created_at ?? undefined,
       updatedAt: row.updated_at ?? undefined,
+      // N4: present only when the query selected these columns (row.* is
+      // undefined, not null, for a column that was never asked for) — so a
+      // narrow list projection doesn't advertise provenance it doesn't have,
+      // and a detail projection never loses it in the mapping step.
+      ...(row.library_tier !== undefined ||
+      row.review_status !== undefined ||
+      row.field_confidences !== undefined ||
+      row.data_enrichment !== undefined ||
+      row.enrichment_observed_at !== undefined
+        ? {
+            provenance: {
+              tier: row.library_tier ?? undefined,
+              reviewStatus: row.review_status ?? undefined,
+              // 'known' | 'inferred' | 'unknown' | undefined — see
+              // BEVERAGE_CATALOGUE_ARCHITECTURE.md §9.3 for what each means
+              // and why a consumer must not treat 'inferred' as fact.
+              knowledge: row.data_enrichment?.knowledge ?? undefined,
+              fieldConfidences: row.field_confidences ?? undefined,
+              observedAt: row.enrichment_observed_at ?? undefined,
+            },
+          }
+        : {}),
     };
   }
 
   /**
-   * The denormalised columns the near-match fallback queries on. Derived from
-   * the same reading of the payload as the signature, so a wine cannot match on
-   * one and miss on the other.
+   * The denormalised columns the near-match fallback queries on.
+   *
+   * Derived from the same reading of the payload as the signature, so a wine
+   * cannot match on one and miss on the other. Both now come from
+   * ./wine-signature, which owns the one implementation that
+   * master_wine_library's columns and the SQL mirror are keyed on.
+   *
+   * What used to live in this file was a fourth variant, and it was
+   * incompatible in four separate ways: it stripped a narrower diacritic class,
+   * joined with `.filter(Boolean)` so empty fields collapsed instead of holding
+   * their position, included primary_type and appellation, and used lowercase
+   * "nv". Wines created through this service therefore landed in a key space
+   * that the menu importer and public.wine_signature_hash could never reach \u2014
+   * which is the same class of bug as the primary_type split, in a third
+   * location.
+   *
+   * The hand-rolled `payload?.x || payload?.classification?.x` ladder that
+   * replaced it read only a subset of the spellings this table is actually
+   * written in \u2014 nothing here reached the scan pipeline's `wine_name`, so a
+   * scanned wine normalised to an empty name.
    */
   private buildNormalizedFields(payload: any) {
     const input = wineSignatureInputFromPayload(payload);
@@ -100,7 +165,9 @@ export class WinesService {
   async submitWine(payload: any, restaurantId?: string, submittedBy?: string) {
     const client = this.dbService.getClient();
     const normalizedFields = this.buildNormalizedFields(payload);
-    const signatureHash = hashWineSignature(
+    // Null means "not comparable" and must be stored as null rather than as a
+    // hash of "|||||" \u2014 see wineSignatureHashOrNull.
+    const signatureHash = wineSignatureHashOrNull(
       wineSignatureInputFromPayload(payload),
     );
 
@@ -148,7 +215,7 @@ export class WinesService {
       // submission.signature_hash: rows written by the Python menu-scan
       // pipeline carry a hash from a different algorithm, and trusting a stored
       // value would copy that foreign key format into master_wine_library.
-      const signatureHash = hashWineSignature(
+      const signatureHash = wineSignatureHashOrNull(
         wineSignatureInputFromPayload(payload),
       );
 
@@ -416,7 +483,10 @@ export class WinesService {
     const { data, error } = await client
       .from("master_wine_library")
       .select(
-        "id, wine_id, name, producer, vintage, price_reference, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, created_at, updated_at",
+        // display_name added (plan §1): this is the search/autocomplete
+        // list, exactly where the "same wine, different vintage, reads
+        // identical" complaint was visible.
+        "id, wine_id, name, display_name, producer, vintage, price_reference, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, created_at, updated_at",
       )
       .or(`name.ilike.%${query.text}%,producer.ilike.%${query.text}%`)
       .limit(query.limit || 10);

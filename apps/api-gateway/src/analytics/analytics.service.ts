@@ -54,8 +54,18 @@ export class AnalyticsService {
     const [invRes, rollupRes] = await Promise.allSettled([
       client
         .from("restaurant_inventory")
+        // Column names must match the live schema exactly. PostgREST rejects
+        // the WHOLE query with 42703 on a single unknown column, and the
+        // allSettled + `data || []` below turns that rejection into an empty
+        // inventory rather than an error — so every metric downstream
+        // (inventory value, COGS ratio, turnover, GMROI, reorder science)
+        // silently reported 0/null for every restaurant. There is no
+        // wine_type/unit_price/unit_cost/reorder_point on this table: the
+        // menu price is `menu_price_current`, cost is `last_purchase_price`,
+        // the reorder trigger is `threshold_min`, and the varietal/type
+        // lives on master_wine_library.
         .select(
-          "id, wine_name, wine_type, stock_live, unit_price, unit_cost, threshold_min, reorder_point, master_wine_id",
+          "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, master_wine_library(primary_type)",
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
@@ -75,20 +85,23 @@ export class AnalyticsService {
     // Best available unit cost: lot WAC → unit_cost → 0.6·unit_price fallback.
     return inventory.map((i: any) => {
       const lot = rollup.get(i.id);
+      const unitPrice = Number(i.menu_price_current) || 0;
       const wac =
         lot?.has_invoice_cost && lot?.wac
           ? lot.wac
-          : i.unit_cost || (i.unit_price ? i.unit_price * 0.6 : 0);
+          : Number(i.last_purchase_price) || (unitPrice ? unitPrice * 0.6 : 0);
       const qty = lot?.live_qty ?? i.stock_live ?? 0;
       return {
         id: i.id,
         name: i.wine_name || i.master_wine_id || i.id,
-        type: i.wine_type || "unknown",
+        type: i.master_wine_library?.primary_type || "unknown",
         qty,
         unitCost: wac,
-        unitPrice: i.unit_price || 0,
+        unitPrice,
         thresholdMin: i.threshold_min || 0,
-        reorderPoint: i.reorder_point || 0,
+        // This schema carries a single reorder trigger (threshold_min); there
+        // is no separate reorder_point column.
+        reorderPoint: i.threshold_min || 0,
         masterWineId: i.master_wine_id,
         inventoryValue: qty * wac,
       };
@@ -117,13 +130,20 @@ export class AnalyticsService {
   private async loadConsumption(restaurantId: string, sinceDays = 90) {
     const client = this.dbService.getClient();
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
+    // wine_consumption_log keys on inventory_id — it has no master_wine_id
+    // column, so selecting one 42703s the whole query and silently yields an
+    // empty demand series (zero velocity, zero forecast, no reorder points).
+    // Resolve the wine through the inventory FK instead.
     const { data } = await client
       .from("wine_consumption_log")
-      .select("master_wine_id, quantity, volume_ml, created_at")
+      .select(
+        "inventory_id, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id)",
+      )
       .eq("restaurant_id", restaurantId)
       .gte("created_at", since);
     return (data || []).map((c: any) => ({
-      masterWineId: c.master_wine_id,
+      masterWineId: c.restaurant_inventory?.master_wine_id ?? null,
+      inventoryId: c.inventory_id,
       qty: c.quantity || (c.volume_ml ? c.volume_ml / 750 : 0),
       date: (c.created_at || "").substring(0, 10),
     }));

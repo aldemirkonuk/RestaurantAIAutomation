@@ -10,6 +10,8 @@ export interface Wine {
   id: string
   sku?: string
   name: string
+  /** Full descriptive name, disambiguating vintage variants. Falls back to `name` when absent. */
+  displayName?: string
   producer: string
   vintage: number | null
   price: number

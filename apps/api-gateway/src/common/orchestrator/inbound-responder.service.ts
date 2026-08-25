@@ -1,7 +1,8 @@
 import { Injectable, Logger, Optional } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import axios from "axios";
 import { DatabaseService } from "../../database/database.service";
+import { ModelClientService } from "../model-client/model-client.service";
+import { getCorrelationId } from "../model-client/correlation";
 import { WebsocketGateway } from "../../websocket/websocket.gateway";
 import { EmailClass, TransportSignals, replySkipReason } from "./email-triage";
 import {
@@ -13,7 +14,6 @@ import {
 import { SenderReputationService } from "./sender-reputation.service";
 import { computePriority } from "./priority";
 
-const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 // Claude Haiku 4.5 — fast/cheap, the right tier for this per-reply background call.
 // (Replaces claude-3-5-haiku-20241022, retired 2026-02-19.) For stronger negotiation
 // reasoning, swap to 'claude-opus-4-8' — but that model rejects `temperature`, so drop
@@ -96,6 +96,14 @@ interface InboundContext {
    * quarantine — a suspected-injection email is still refused.
    */
   forceReply?: boolean;
+  /**
+   * Correlation id riding the RabbitMQ message from the Python email agents
+   * (base_agent.py re-injects it on publish). This is the ONE gateway flow
+   * whose NF rows can truthfully join a Python decision_log chain — it used
+   * to be dropped on the floor in handleInboundEmail. HTTP-initiated calls
+   * (manual regenerate) leave it unset and inherit the request-scoped id.
+   */
+  correlationId?: string | null;
 }
 
 interface VendorOffer {
@@ -166,6 +174,7 @@ export class InboundResponderService {
   constructor(
     private readonly configService: ConfigService,
     private readonly databaseService: DatabaseService,
+    private readonly modelClient: ModelClientService,
     private readonly websocketGateway: WebsocketGateway,
     @Optional() private readonly senderReputation?: SenderReputationService,
   ) {}
@@ -262,7 +271,7 @@ export class InboundResponderService {
 
       // ── 1. UNDERSTAND — runs on EVERY inbound (even if paused / draft pending /
       //       autoreply) so the AI always traces the full conversation. ──────────
-      const analysis = await this.runLlm(apiKey, {
+      const analysis = await this.runLlm({
         providerName,
         wineName,
         quantity,
@@ -272,6 +281,8 @@ export class InboundResponderService {
         firstName,
         attachments: ctx.inboundAttachments || [],
         transportSignals: ctx.transportSignals,
+        restaurantId: ctx.restaurantId,
+        correlationId: ctx.correlationId ?? null,
       });
       if (!analysis) {
         this.logger.warn(
@@ -621,24 +632,23 @@ export class InboundResponderService {
   // LLM
   // ===========================================================================
 
-  private async runLlm(
-    apiKey: string,
-    input: {
-      providerName: string;
-      wineName: string;
-      quantity: number;
-      targetPrice: number | null;
-      transcript: string;
-      instruction?: string;
-      firstName?: string;
-      attachments?: Array<{
-        filename: string;
-        mime_type: string;
-        data: string;
-      }>;
-      transportSignals?: TransportSignals;
-    },
-  ): Promise<Analysis | null> {
+  private async runLlm(input: {
+    providerName: string;
+    wineName: string;
+    quantity: number;
+    targetPrice: number | null;
+    transcript: string;
+    instruction?: string;
+    firstName?: string;
+    attachments?: Array<{
+      filename: string;
+      mime_type: string;
+      data: string;
+    }>;
+    transportSignals?: TransportSignals;
+    restaurantId: string;
+    correlationId?: string | null;
+  }): Promise<Analysis | null> {
     const targetLine =
       input.targetPrice != null
         ? `Our target price is $${input.targetPrice.toFixed(2)} per bottle. We do NOT want to pay more than this without manager sign-off.`
@@ -748,31 +758,37 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
     }
 
     try {
-      const headers: Record<string, string> = {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      };
-      if (hasPdf) headers["anthropic-beta"] = "pdfs-2024-09-25";
-
-      const response = await axios.post(
-        ANTHROPIC_API_URL,
-        {
+      // P1 NF-A: routed through the model client. Body and the PDF beta
+      // header pass through VERBATIM — temperature 0.4 and
+      // `anthropic-beta: pdfs-2024-09-25` are load-bearing on this live
+      // vendor-negotiation path. Same 60s budget as the old axios call.
+      const payload: any = await this.modelClient.call({
+        body: {
           model: NEGOTIATION_MODEL,
           max_tokens: 1500,
           temperature: 0.4,
           messages: [{ role: "user", content }],
         },
-        {
-          headers,
-          timeout: 60_000,
+        headers: hasPdf ? { "anthropic-beta": "pdfs-2024-09-25" } : undefined,
+        timeoutMs: 60_000,
+        nf: {
+          // Must match the decision_log agent_name exactly (logDecision below)
+          // so the two tables agree on identity.
+          subjectId: "InboundResponder",
+          taskType: "inbound_email_response",
+          stimulus: "inbound_email",
+          choice: "analysis+draft",
+          restaurantId: input.restaurantId,
+          correlationId: input.correlationId ?? null,
         },
-      );
+      });
 
-      const text: string = response.data?.content?.[0]?.text ?? "";
+      const text: string = payload?.content?.[0]?.text ?? "";
       return this.parseAnalysis(text);
     } catch (error: any) {
-      const detail = error?.response?.data?.error?.message || error?.message;
+      // ModelClientError.message already carries the API error detail the old
+      // axios-shape read (error.response.data.error.message) used to surface.
+      const detail = error?.apiMessage || error?.message;
       this.logger.error(`Responder LLM call failed: ${detail}`);
       return null;
     }
@@ -1142,6 +1158,11 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       await this.databaseService.supabase.from("decision_log").insert({
         agent_name: "InboundResponder",
         restaurant_id: ctx.restaurantId,
+        // Fix for the long-standing null: the column existed but was never
+        // set. RabbitMQ path uses the Python chain's id (ctx); the HTTP
+        // regenerate path falls back to the request-scoped id, so this row
+        // and the NF row of the same call always share a key.
+        correlation_id: ctx.correlationId ?? getCorrelationId(),
         decision_type: "inbound_email_response",
         inputs: {
           order_id: ctx.orderId,

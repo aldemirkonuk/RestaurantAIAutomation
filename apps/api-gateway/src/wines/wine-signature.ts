@@ -23,62 +23,156 @@ import { createHash } from "crypto";
  * "signature_hash", …)` dedup lookup silently missed across paths. A shared
  * module is the only shape that makes that class of drift impossible.
  *
+ * `WineSubmissionsService.normalizeText` / `buildSignature` / `signatureHashFor`
+ * are still the public surface the rest of the app calls; they now delegate
+ * here rather than owning a copy. That indirection is deliberate — the SQL
+ * parity spec pins those method names, and menus.service.ts and wines.service.ts
+ * already call through them.
+ *
+ * The algorithm below is NOT a new one
+ * ------------------------------------
+ * It is the contract `master_wine_library` is already keyed on, mirrored by
+ * `public.wine_normalize_text()` and `public.wine_signature_hash()` and pinned
+ * against live-database fixtures in `wine-submissions.service.spec.ts`.
+ * Changing any of the constants here invalidates every stored hash and
+ * desynchronises the SQL half — do not "improve" them without migrating both
+ * sides and recapturing those fixtures.
+ *
  * Why this is NOT vendor-intel's `hashWineIdentity`
  * -------------------------------------------------
  * That one is deliberately narrower — producer|name|vintage only — because a
  * vendor page states those three and almost never states appellation or grape.
  * See the comment at the top of `../vendor-intel/wine-identity.ts`. The two
- * answer different questions and are kept apart on purpose: this key must
- * distinguish two Chardonnays that differ only in appellation, and that one
- * must match a scraped listing that names no appellation at all.
+ * answer different questions and are kept apart on purpose.
  */
+
+/**
+ * Diacritics to delete rather than turn into a space.
+ *
+ * This is deliberately an explicit class and not `\p{Diacritic}`, because
+ * the same rule has to run in Postgres (public.wine_normalize_text) to key
+ * the same columns, and Postgres regex has no Unicode property classes.
+ * When the two drifted, one library row diverged: Catalan "Xarel·lo"
+ * normalized to "xarello" here and "xarel lo" there, because U+00B7 is a
+ * Diacritic to JS but was not in the SQL class.
+ *
+ * `\p{Diacritic}` covers 659 codepoints this omits, all of them Hebrew,
+ * Arabic, Indic, Thai, Tibetan, Burmese or CJK. Deleting versus spacing only
+ * changes the outcome when the character sits BETWEEN Latin alphanumerics —
+ * a run of non-Latin text collapses to spaces either way — so the Latin and
+ * Greek subset below is the part that can actually alter a wine name.
+ *
+ * Parity with the SQL function is asserted in the spec, not assumed.
+ *
+ * Spelled as `\u`-escaped alternatives rather than one character class. The
+ * literal marks rendered as gibberish — they attach to the `[` and to the
+ * range hyphens — and two adjacent combining-mark ranges also trip ESLint's
+ * no-misleading-character-class. Every alternative matches exactly one
+ * character, so the match set is identical to the class it replaces; the
+ * order below is the order it had.
+ */
+const DIACRITICS = new RegExp(
+  [
+    "[\\u0300-\\u036F]", // combining diacritical marks
+    "[\\u1AB0-\\u1AFF]", // combining diacritical marks extended
+    "[\\u1DC0-\\u1DFF]", // combining diacritical marks supplement
+    "[\\uFE20-\\uFE2F]", // combining half marks
+    "[\\u005E\\u0060\\u00A8\\u00AF\\u00B4\\u00B7\\u00B8]", // ^ ` ¨ ¯ ´ · ¸
+    "[\\u02B0-\\u02FF]", // spacing modifier letters
+    "[\\u0374\\u0375\\u037A\\u0384\\u0385]", // Greek numeral signs and accents
+  ].join("|"),
+  "g",
+);
+
+/**
+ * Trade abbreviations a menu prints, expanded to the word they stand for.
+ *
+ * Measured before this existed: of 27 library producers beginning with an
+ * abbreviable trade word, rewritten the way a menu prints them, ZERO reached
+ * the auto-link floor. "Dom. Faiveley" produced no candidate at all against
+ * "Domaine Faiveley"; "Ten. di Arceno" scored 62 against "Tenuta di Arceno".
+ * Every one of them silently created a duplicate.
+ *
+ * Trigram similarity is the wrong instrument for a prefix truncation --
+ * "dom" and "domaine" share two trigrams out of five however exactly the
+ * rest of the name agrees. Lowering the producer gate far enough to reach 62
+ * would admit "chateau musar" vs "chateau de bligny" at 0.571 and every
+ * other shared-trade-word false positive. So the fix belongs here: these are
+ * the same word, and the normalizer should say so.
+ *
+ * The trailing period is required on every pattern. Bare "dom" is not an
+ * abbreviation -- Dom Perignon is a wine, and expanding it would invent a
+ * producer that does not exist. Multi-token patterns come first so
+ * "az. agr." expands as a unit rather than "az." matching alone.
+ *
+ * Mirrored exactly by public.wine_normalize_text; the spec fails on drift.
+ */
+const ABBREVIATIONS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\baz\.\s*agr\.\s*/g, "azienda agricola "],
+  [/\bdom\.\s*/g, "domaine "],
+  [/\bch\.\s*/g, "chateau "],
+  [/\bcht\.\s*/g, "chateau "],
+  [/\bbod\.\s*/g, "bodegas "],
+  [/\bwgt\.\s*/g, "weingut "],
+  [/\bten\.\s*/g, "tenuta "],
+  [/\bfatt\.\s*/g, "fattoria "],
+  [/\bcant\.\s*/g, "cantina "],
+  [/\bmarch\.\s*/g, "marchesi "],
+  [/\bste\.\s*/g, "sainte "],
+  [/\bst\.\s*/g, "saint "],
+  [/\bmt\.\s*/g, "monte "],
+];
 
 /**
  * Fold a source string down to comparable letters and digits.
  *
- * Identical folding to `normalizeIdentityText` in vendor-intel — the same
- * spelling variations show up in both problems, so the same answer is right in
- * both. It is duplicated rather than imported because the two modules are
- * deliberately independent (see above); sharing the normalizer would be the
- * first step toward sharing the key, which is the thing we do not want.
- *
  * NFD + diacritic strip so "Château" and "Chateau" agree. Punctuation becomes a
  * space rather than being deleted so "Blanc de Blancs" and "Blanc-de-Blancs"
- * agree while "StEmilion" does not silently become a word that never existed.
+ * agree. Trade abbreviations expand before the punctuation pass, because the
+ * period they end on is the thing that identifies them as abbreviations.
+ *
+ * Writes master_wine_library.normalized_name / normalized_producer and the
+ * other normalized_* columns, and is mirrored by public.wine_normalize_text().
  */
 export function normalizeSignatureText(value?: string | null): string {
   if (!value) return "";
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  let s = value.normalize("NFD").replace(DIACRITICS, "").toLowerCase();
+  for (const [pattern, expansion] of ABBREVIATIONS) {
+    s = s.replace(pattern, expansion);
+  }
+  return s.replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 /**
  * Render a vintage to its canonical segment.
  *
- * The old `WineSubmissionsService` version interpolated the raw value, so a
- * payload carrying the string "2019" and one carrying the number 2019 — both
- * of which the DTO permits — produced different hashes for the same bottle.
- * Coercing to a trimmed string closes that.
- *
- * Non-vintage is a real, common answer for Champagne and most sparkling, and it
- * is a different bottle from a vintage-dated one. "nv" is that answer; an empty
+ * "NV" — non-vintage — is a real, common answer for Champagne and most
+ * sparkling, and it is a different bottle from a vintage-dated one. An empty
  * segment would mean "we do not know", which is not the same claim.
+ *
+ * Coercing through `String(...).trim()` closes two ways the same bottle used
+ * to hash twice: a payload carrying the string "2019" versus the number 2019
+ * (both of which CreateWineSubmissionDto permits), and a human who typed "NV"
+ * into the vintage field rather than leaving it blank. The spelling stays
+ * uppercase because that is what public.wine_signature_hash() emits for a NULL
+ * vintage and what every stored hash was computed with.
  */
 function normalizeVintage(value?: string | number | null): string {
-  if (value === null || value === undefined || value === "") return "nv";
+  if (value === null || value === undefined) return "NV";
   const text = String(value).trim();
-  return text === "" ? "nv" : text.toLowerCase();
+  if (text === "" || text.toUpperCase() === "NV") return "NV";
+  return text;
 }
 
 export interface WineSignatureInput {
   name?: string | null;
   producer?: string | null;
   vintage?: string | number | null;
+  /**
+   * Read off payloads and written to normalized_primary_type /
+   * normalized_appellation, but deliberately NOT part of the key — see
+   * SIGNATURE_FIELDS.
+   */
   primaryType?: string | null;
   grapeVariety?: string | null;
   country?: string | null;
@@ -86,16 +180,24 @@ export interface WineSignatureInput {
   appellation?: string | null;
 }
 
-/** Field order of the key. Changing this invalidates every stored hash. */
+/**
+ * Field order of the key. Changing this invalidates every stored hash and
+ * desynchronises public.wine_signature_hash().
+ *
+ * primary_type and appellation are absent on purpose. primary_type used to
+ * occupy a slot and that silently split the key space in two: submitWine()
+ * passed a value for it and resolveOrCreateLibraryWine() did not, so the same
+ * bottle hashed two different ways depending on which door it came through.
+ * Both are derived classifications rather than identity attributes — a menu
+ * prints neither — so leaving them out is what makes the paths agree.
+ */
 const SIGNATURE_FIELDS = [
   "producer",
   "name",
   "vintage",
-  "primaryType",
-  "grapeVariety",
   "country",
   "region",
-  "appellation",
+  "grapeVariety",
 ] as const;
 
 /**
@@ -117,17 +219,31 @@ export function buildWineSignature(input: WineSignatureInput): string {
 }
 
 /**
+ * Hash of the key.
+ *
+ * Total on purpose: this is the function `resolveOrCreateLibraryWine` and the
+ * menu importer call, where the caller has already established that it holds a
+ * wine and needs a key for it. Callers reading an untrusted payload want
+ * `wineSignatureHashOrNull` instead.
+ */
+export function hashWineSignature(input: WineSignatureInput): string {
+  return createHash("sha256").update(buildWineSignature(input)).digest("hex");
+}
+
+/**
  * Hash of the key, or null when there is not enough to identify anything.
  *
  * Requiring a name is the floor. Every other field is a qualifier; a row keyed
- * on `producer||nv|||||` claims that "everything this producer makes, undated"
+ * on `producer||NV|||` claims that "everything this producer makes, undated"
  * is one bottle, and because the column is UNIQUE the second such wine would be
  * rejected outright. Null means "not comparable" — callers must store null
  * rather than a hash of nothing, and must not use it as a lookup key.
  */
-export function hashWineSignature(input: WineSignatureInput): string | null {
+export function wineSignatureHashOrNull(
+  input: WineSignatureInput,
+): string | null {
   if (!normalizeSignatureText(input.name)) return null;
-  return createHash("sha256").update(buildWineSignature(input)).digest("hex");
+  return hashWineSignature(input);
 }
 
 /**
@@ -138,8 +254,11 @@ export function hashWineSignature(input: WineSignatureInput): string | null {
  * camelCase (`primaryType`), the menu-scan pipeline writes snake_case with the
  * name under `wine_name`, and older rows nest classification fields under a
  * `classification` object. Both TypeScript services previously open-coded a
- * partial subset of those fallbacks, so which fields a payload contributed to
- * its own signature depended on which service happened to read it.
+ * partial subset of those fallbacks — and `processPendingSubmissions` simply
+ * cast the row to `CreateWineSubmissionDto` and read `payload.name`, which is
+ * `undefined` for every scan-pipeline row — so which fields a payload
+ * contributed to its own signature depended on which service happened to read
+ * it.
  *
  * Accepting every spelling in one place is what makes the key a property of the
  * wine rather than of the writer.

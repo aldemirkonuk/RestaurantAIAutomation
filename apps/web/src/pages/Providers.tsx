@@ -462,6 +462,47 @@ export function Providers() {
         notes: `Specialties: ${providerData.specialties.join(', ')}`,
       })
       if (providerData.rating > 0 && result?.id) setRatings(prev => ({ ...prev, [result.id]: providerData.rating }))
+
+      // Persist the address as a geocoded primary location.
+      //
+      // A provider's coordinates live in provider_locations, not on the
+      // provider row — listProviders reads them from there to place map pins.
+      // This step used to be missing entirely, so a provider added here was
+      // permanently unpinnable no matter how many times the map re-fitted its
+      // bounds; only re-saving through the edit sidebar (which does sync
+      // locations) ever gave it coordinates.
+      //
+      // Decoupled from the create like the edit path's location sync is: the
+      // provider is already saved, and a location failure must not present as
+      // "failed to add provider".
+      if (result?.id && providerData.address) {
+        const hasCoords =
+          typeof providerData.latitude === 'number' &&
+          typeof providerData.longitude === 'number'
+        try {
+          await createProviderLocation(result.id, {
+            name: 'Main Office',
+            type: 'office',
+            address: providerData.address,
+            isPrimary: true,
+            // Sent only as a complete pair — the DB enforces
+            // (latitude IS NULL) = (longitude IS NULL).
+            ...(hasCoords
+              ? {
+                  latitude: providerData.latitude as number,
+                  longitude: providerData.longitude as number,
+                }
+              : {}),
+          })
+          if (!hasCoords) {
+            toast.info('Provider saved. Pick the address from the dropdown to show it on the map.')
+          }
+        } catch (locErr) {
+          console.error('Provider location create failed:', locErr)
+          toast.warning('Provider saved, but its address could not be mapped.')
+        }
+      }
+
       await dispatchProviderUpdate({
         type: 'added', providerId: result?.id ?? '', providerName: providerData.name,
         data: { contactPerson: `${providerData.contactFirstName} ${providerData.contactLastName}`.trim(), email: providerData.email, phone: providerData.phone, businessType: providerData.primaryBusinessType, specialties: providerData.specialties },
@@ -1408,7 +1449,12 @@ export function Providers() {
         )
       })()}
 
-      <AddProviderModal isOpen={showAddProviderModal} onClose={() => setShowAddProviderModal(false)} onSave={handleAddProvider} />
+      <AddProviderModal
+        isOpen={showAddProviderModal}
+        onClose={() => setShowAddProviderModal(false)}
+        onSave={handleAddProvider}
+        onCatalogueVendorAdded={() => refetch()}
+      />
       <EditProviderModal
         isOpen={!!editingProvider}
         onClose={() => setEditingProvider(null)}
@@ -1418,7 +1464,15 @@ export function Providers() {
           : null
         }
       />
-      <VendorSearchModal open={showVendorSearch} onClose={() => setShowVendorSearch(false)} onProviderAdded={() => refetch()} onAddCustom={() => setShowAddProviderModal(true)} />
+      <VendorSearchModal
+        open={showVendorSearch}
+        onClose={() => setShowVendorSearch(false)}
+        onProviderAdded={() => refetch()}
+        onAddCustom={() => setShowAddProviderModal(true)}
+        addedCatalogueVendorIds={providers
+          .map((p) => p.catalogueVendorId)
+          .filter((id): id is string => !!id)}
+      />
       {showEmailModal && (
         <QuickGmailModal onClose={() => { setShowEmailModal(false); setEmailRecipient('') }} prefilledRecipient={emailRecipient} />
       )}

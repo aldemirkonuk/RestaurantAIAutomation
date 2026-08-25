@@ -45,6 +45,7 @@ import {
 } from "./common/error-tracking";
 import { RateLimitModule, RateLimitGuard } from "./common/rate-limit";
 import { CacheModule } from "./common/cache/cache.module";
+import { ModelClientModule } from "./common/model-client/model-client.module";
 import { TenantGuard } from "./common/tenant/tenant.guard";
 import { OrchestratorModule } from "./common/orchestrator/orchestrator.module";
 import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
@@ -70,6 +71,7 @@ import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
     ErrorTrackingModule, // Global error tracking (Sentry)
     RateLimitModule, // API rate limiting
     CacheModule, // Redis caching layer
+    ModelClientModule, // Single choke point for model calls + NF-A emission (P1)
     OrchestratorModule, // NestJS -> Python bridge (HTTP + RabbitMQ)
     DatabaseModule,
     AuthModule,
@@ -81,7 +83,10 @@ import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
     VendorIntelModule, // Vendor price scraping + multi-source comparison
     UxOptimizerModule, // Self-learning UX agent (observe → propose → gated ship → learn)
     PosHubModule, // MultiPOS ingestion hub (canonical checks → pos_checks)
-    SimposModule, // Fake POS terminal — signed-webhook-only into PosHubModule
+    // Fake POS terminal. Its close() makes THIS server HMAC-sign a webhook into
+    // PosHubModule, which trusts the signature and depletes stock — so an unguarded
+    // simpos route is a confused deputy over real inventory. Dev/demo only.
+    ...(process.env.NODE_ENV !== "production" ? [SimposModule] : []),
     LogsModule, // Correlated read-only timeline across POS / stock / docs / agents
     OneTapActionsModule, // One-tap actions with backend persistence
     ToastModule, // Toast POS API integration

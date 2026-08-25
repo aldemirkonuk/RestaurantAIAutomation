@@ -41,13 +41,13 @@ async def _queue_enrichment_if_needed(
     if library_tier != GovernanceTier.WEB_ENRICHED.value:  # Only Tier 2
         return False
 
+    from core.database import get_supabase_client
+
+    supabase = get_supabase_client()
+    if not supabase:
+        return False
+
     try:
-        from core.database import get_supabase_client
-
-        supabase = get_supabase_client()
-        if not supabase:
-            return False
-
         confidence = wine_data.get("confidence", 0.0)
         enrichment_job = {
             "wine_name": wine_data.get("wine_name", "Unknown"),
@@ -326,13 +326,11 @@ def _get_wine_matcher():
 
     from services.wine_matcher import get_wine_matcher
 
-    supabase = None
-    try:
-        from core.database import get_supabase_client
+    from core.database import get_supabase_client
 
-        supabase = get_supabase_client()
-    except Exception:
-        pass
+    # None is legitimate (no database configured); the callee runs in mock /
+    # degraded mode. An import fault is a wiring bug and must surface.
+    supabase = get_supabase_client()
 
     _wine_matcher = get_wine_matcher(
         supabase_client=supabase,
@@ -472,11 +470,11 @@ async def research_wine(request: WineResearchRequest):
     submitted = False
 
     if enrichment:
-        try:
-            from core.database import get_supabase_client
-            import hashlib
+        from core.database import get_supabase_client
+        import hashlib
 
-            supabase = get_supabase_client()
+        supabase = get_supabase_client()
+        try:
             if supabase:
                 payload = {
                     "name": enrichment.get("name", request.wine_name),
@@ -568,13 +566,11 @@ async def scrape_wine_book(request: BookScrapeRequest):
     """
     from services.wine_book_scraper import get_wine_book_scraper
 
-    supabase = None
-    try:
-        from core.database import get_supabase_client
+    from core.database import get_supabase_client
 
-        supabase = get_supabase_client()
-    except Exception:
-        pass
+    # None is legitimate (no database configured); the callee runs in mock /
+    # degraded mode. An import fault is a wiring bug and must surface.
+    supabase = get_supabase_client()
 
     scraper = get_wine_book_scraper(
         google_api_key=settings.google_api_key,
@@ -1120,13 +1116,11 @@ async def export_training_data(
     """
     from services.training_data_store import get_training_data_store
 
-    supabase = None
-    try:
-        from core.database import get_supabase_client
+    from core.database import get_supabase_client
 
-        supabase = get_supabase_client()
-    except Exception:
-        pass
+    # None is legitimate (no database configured); the callee runs in mock /
+    # degraded mode. An import fault is a wiring bug and must surface.
+    supabase = get_supabase_client()
 
     store = get_training_data_store(
         supabase_client=supabase,
@@ -1155,13 +1149,11 @@ async def training_data_stats():
     """Get statistics about collected training data."""
     from services.training_data_store import get_training_data_store
 
-    supabase = None
-    try:
-        from core.database import get_supabase_client
+    from core.database import get_supabase_client
 
-        supabase = get_supabase_client()
-    except Exception:
-        pass
+    # None is legitimate (no database configured); the callee runs in mock /
+    # degraded mode. An import fault is a wiring bug and must surface.
+    supabase = get_supabase_client()
 
     store = get_training_data_store(
         supabase_client=supabase,

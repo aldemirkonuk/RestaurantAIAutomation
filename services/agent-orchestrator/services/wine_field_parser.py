@@ -12,6 +12,7 @@ Pipeline:
 import json
 import logging
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -571,11 +572,37 @@ class WineFieldParser:
         client, config = llm
 
         try:
+            _t0 = time.perf_counter()
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt["user"],
                 config=config,
             )
+
+            # P1: previously an unlogged model call (dark site)
+            try:
+                from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+                _usage = getattr(response, "usage_metadata", None)
+                _in = getattr(_usage, "prompt_token_count", 0) or 0
+                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+                _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                    getattr(_usage, "thoughts_token_count", 0) or 0
+                )
+                get_spend_logger().log(
+                    provider="google",
+                    model="gemini-2.5-flash",
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=estimate_llm_cost("gemini-2.5-flash", _in, _out),
+                    agent_fallback="wine_field_parser",
+                    task_type="wine_field_parse",
+                    outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
+                )
+            except Exception:
+                pass
+
             result_text = response.text.strip()
 
             # Extract JSON (belt-and-suspenders: Gemini should return raw JSON

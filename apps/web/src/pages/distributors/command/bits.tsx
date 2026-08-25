@@ -206,10 +206,14 @@ export function DistributorCard({
         </div>
       </div>
 
-      {(d.city || d.state) && (
+      {(d.city || d.state || d.full_address) && (
         <div className="mt-1.5 flex items-center gap-1 text-[11px] text-gray-500">
           <MapPin className="h-3 w-3 flex-shrink-0" />
-          <span className="truncate">{[d.city, d.state].filter(Boolean).join(', ')}</span>
+          <span className="truncate">
+            {d.city || d.state
+              ? [d.city, d.state].filter(Boolean).join(', ')
+              : d.full_address}
+          </span>
         </div>
       )}
 

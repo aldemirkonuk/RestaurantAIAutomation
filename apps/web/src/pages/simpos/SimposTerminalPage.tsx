@@ -264,12 +264,12 @@ export function SimposTerminalPage() {
             </div>
 
             <ul className="divide-y divide-gray-800 max-h-56 overflow-y-auto font-mono text-sm">
-              {!check || check.lines.length === 0 ? (
+              {!check || (check.lines?.length ?? 0) === 0 ? (
                 <li className="px-4 py-8 text-center text-xs text-gray-600">
                   No items — pick from the menu below
                 </li>
               ) : (
-                check.lines.map((l) => (
+                (check.lines ?? []).map((l) => (
                   <li
                     key={l.id}
                     className={cn(
@@ -296,11 +296,11 @@ export function SimposTerminalPage() {
 
             <div className="px-4 py-3 border-t border-gray-800 flex items-center justify-between">
               <p className="text-xs text-gray-500">
-                {(check?.lines.filter((l) => l.status === 'active').length ?? 0)} active line(s)
+                {(check?.lines?.filter((l) => l.status === 'active').length ?? 0)} active line(s)
               </p>
               <button
                 onClick={() => void handleOrder()}
-                disabled={busy || !check || check.lines.every((l) => l.status !== 'active')}
+                disabled={busy || !check || (check.lines ?? []).every((l) => l.status !== 'active')}
                 className="flex items-center gap-1.5 h-10 px-5 rounded-xl bg-amber-500 hover:bg-amber-400 text-gray-950 text-sm font-bold disabled:opacity-40"
               >
                 {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}

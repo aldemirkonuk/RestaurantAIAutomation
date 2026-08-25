@@ -2,7 +2,7 @@
   "fixture_version": "1.0.0",
   "generated_by": "python3 -m scripts.docgen backtest",
   "source": "scripts/docgen/errors.py::SCENARIOS",
-  "content_hash": "aa906cf7b1217f2c80921f5f36ba330373aec3a49650da93e04d88cf6057e682",
+  "content_hash": "e82c5c2ee1999ecc01a9b594467af615657dda6e1530320cfcddbf83d5979cd8",
   "verdicts_covered": [
     "matched",
     "overbilled_vs_ship",
@@ -15,7 +15,7 @@
     "unmatched"
   ],
   "row_count": 42,
-  "known_failing_count": 3,
+  "known_failing_count": 0,
   "rows": [
     {
       "scenario": "clean",
@@ -295,10 +295,7 @@
         "creditDue": false,
         "lineMatch": "exact"
       },
-      "knownFailing": {
-        "verdict": "short_shipped",
-        "note": "physical_vs_ship compares billableReceived (billing qty) to shippedQty (physical count); free goods read as transit loss"
-      }
+      "knownFailing": null
     },
     {
       "scenario": "free_goods_with_slip",
@@ -326,10 +323,7 @@
         "creditDue": false,
         "lineMatch": "exact"
       },
-      "knownFailing": {
-        "verdict": "short_shipped",
-        "note": "physical_vs_ship compares billableReceived (billing qty) to shippedQty (physical count); free goods read as transit loss"
-      }
+      "knownFailing": null
     },
     {
       "scenario": "free_goods_with_slip",
@@ -357,10 +351,7 @@
         "creditDue": false,
         "lineMatch": "exact"
       },
-      "knownFailing": {
-        "verdict": "short_shipped",
-        "note": "physical_vs_ship compares billableReceived (billing qty) to shippedQty (physical count); free goods read as transit loss"
-      }
+      "knownFailing": null
     },
     {
       "scenario": "overbilled_vs_ship",

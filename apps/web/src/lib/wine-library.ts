@@ -17,6 +17,7 @@ export function mapApiWineToUiWine(wine: ApiWine): UiWine {
   return {
     id: wine.id,
     name: wine.name || 'Unknown Wine',
+    displayName: wine.displayName || undefined,
     producer: wine.producer || 'Unknown Producer',
     vintage: wine.vintage ?? null,
     price: Number.isFinite(wine.price) ? wine.price : 0,

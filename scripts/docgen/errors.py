@@ -160,12 +160,13 @@ def _free_goods_with_slip(ordered: int, price: float) -> Outcome:
     # counts physical bottles on the truck, free ones included — which is what a
     # real packing slip does.
     #
-    # KNOWN FAILING. `physical_vs_ship` compares `billableReceived` (free goods
-    # netted out, a billing quantity) against `shippedQty` (a physical count),
-    # so every free bottle reads as a bottle lost in transit and the engine
-    # returns `short_shipped` with the summary "N lost between the warehouse and
-    # the door." Verified against the live module. Tracked separately; the
-    # dataset records the intended answer so the fix has something to pass.
+    # Was KNOWN FAILING: physical_vs_ship compared billableReceived (free goods
+    # netted out, a billing quantity) against shippedQty (a physical count), so
+    # every free bottle read as a bottle lost in transit and the engine returned
+    # short_shipped with "N lost between the warehouse and the door." Fixed by
+    # comparing receivedQty (also physical) against shippedQty instead; the
+    # netted quantity stays on physical_vs_bill, the billing axis, where it
+    # belongs.
     free = max(1, ordered // 10)
     return Outcome(
         ordered_qty=ordered,
@@ -179,11 +180,6 @@ def _free_goods_with_slip(ordered: int, price: float) -> Outcome:
         allocated_charges=0.0,
         expected_verdict="matched",
         expected_credit_due=False,
-        known_failing_verdict="short_shipped",
-        known_failing_note=(
-            "physical_vs_ship compares billableReceived (billing qty) to "
-            "shippedQty (physical count); free goods read as transit loss"
-        ),
     )
 
 
