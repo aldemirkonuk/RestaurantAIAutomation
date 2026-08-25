@@ -181,6 +181,11 @@ claim written as a sentence is checked exactly once — the day it is written.
   pair turned out to be the same defect filed twice, on `main`, unnoticed by
   either session. The guard now fails the build on it; when renumbering, move
   the id with **fewer citations** and prefer a gap over a collision.
+- **Never reuse a migration version either.** `schema_migrations` keys on
+  `version`, so two files sharing a `YYYYMMDDHHMMSS_` prefix make `supabase db
+  reset` die on a duplicate key — and it surfaces as *"Fresh database equals
+  remote"*, a message that says **drift** when the truth is a collision. Same
+  guard, same rule: pick a version past everything on `main`.
 - **What this does not catch:** an entry aimed at the wrong target. Nothing
   mechanical catches that — but stating a claim precisely enough that someone
   could *try* to write a check for it is most of the defence.

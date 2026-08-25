@@ -112,6 +112,34 @@ if [ -n "$dupes" ]; then
   exit 1
 fi
 
+# ---------------------------------------------------------------------------
+# Structural check: no two migrations may share a version.
+# ---------------------------------------------------------------------------
+# schema_migrations keys on `version`, so a duplicate makes the second INSERT
+# violate the primary key and `supabase db reset` dies partway through. This
+# happened on 2026-08-25 and surfaced as "Fresh database equals remote" — a
+# failure message that says DRIFT when the truth is a duplicate key. It cost a
+# full CI cycle to read, on a check that was otherwise reporting correctly.
+#
+# Same class as the OD-id collision above: two sessions each pick a number that
+# looks free off the same trunk, and git merges both silently.
+migdupes="$(python3 "$(dirname "$0")/_migration_versions.py" supabase/migrations)"
+mig_status=$?
+if [ "$mig_status" -ne 0 ]; then
+  echo "FAIL — could not check supabase/migrations for duplicate versions (exit $mig_status)"
+  exit 2
+fi
+if [ -n "$migdupes" ]; then
+  echo "== MIGRATION VERSION COLLISION"
+  printf '   %s\n' "$migdupes"
+  echo "   Rename the later one past every version already on main. Safe if it was"
+  echo "   applied out-of-band (never registered under the old version); if it WAS"
+  echo "   registered, use: supabase migration repair --status applied <version>"
+  echo
+  echo "FAIL — two migrations share a version; supabase db reset cannot run."
+  exit 1
+fi
+
 total=0; held=0; broken=0; stale=0
 declare -a BROKEN_MSG=() STALE_MSG=()
 
