@@ -432,16 +432,29 @@ describe("PosMappingReviewService.setSaleUnit — write validation", () => {
     });
   });
 
-  it("rejects a unit that is neither glass nor bottle rather than coercing it", async () => {
+  // Rewritten for ADR 0011, which was decided while this surface was being
+  // built. `sale_unit` is no longer the two-value enum this test was written
+  // against — it is an open human label (half_bottle, magnum, carafe, taster,
+  // flight, …) and `sale_volume_ml` carries the arithmetic. So "bottles" and
+  // "Glass " are now ACCEPTED: they are odd labels, not invalid ones, and
+  // rejecting a restaurant's own vocabulary was never the point. What is still
+  // rejected is input that is malformed rather than merely unusual — a blank
+  // label renders as "mapped" in this very UI while meaning nothing.
+  it("accepts an open label, and still rejects a malformed one", async () => {
     const { service, calls } = makeService({ mappings: [mapping()] });
 
     await expect(
-      service.setSaleUnit(RESTAURANT, "map-1", "Glass " as any),
-    ).rejects.toThrow(/sale_unit must be/);
-    await expect(
-      service.setSaleUnit(RESTAURANT, "map-1", "bottles" as any),
-    ).rejects.toThrow(/sale_unit must be/);
-    expect(calls.upserts).toHaveLength(0);
+      service.setSaleUnit(RESTAURANT, "map-1", "half_bottle" as any),
+    ).resolves.toMatchObject({ ok: true, sale_unit: "half_bottle" });
+    expect(calls.upserts).toHaveLength(1);
+
+    for (const malformed of ["", "   ", "x".repeat(33)]) {
+      await expect(
+        service.setSaleUnit(RESTAURANT, "map-1", malformed as any),
+      ).rejects.toThrow(/sale_unit/);
+    }
+    // Still one — the malformed attempts wrote nothing.
+    expect(calls.upserts).toHaveLength(1);
   });
 
   it("refuses to write a mapping belonging to another restaurant", async () => {

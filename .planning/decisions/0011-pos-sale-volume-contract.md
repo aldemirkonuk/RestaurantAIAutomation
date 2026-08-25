@@ -24,12 +24,26 @@ depletion path read it as `it.sale_unit ?? "bottle"`
 (`pos-hub.service.ts:377`, pre-fix).
 
 On 2026-08-24 we found that `upsertItemMapping` — the **only** writer of the
-column — never included it in the row it upserted. So the fallback was not a
-fallback: **all 92 production mappings are `sale_unit = null`**, every one of
-them is wine carrying an `inventory_id`, and every by-the-glass sale of any of
-them booked a whole 750ml bottle instead of a 150ml pour. Writing the column
-fixed mappings created *from now on*. It did nothing for the 92, which is the
-entire installed base.
+column — never included it in the row it upserted, so every mapping it ever
+created carried `sale_unit = null` and took the fallback. Writing the column
+fixed mappings created *from now on*.
+
+**The live exposure today is zero rows, and the first draft of this ADR got that
+wrong.** It argued from "92 production mappings would over-deplete." They would
+not: all 92 share one `restaurant_id` (`12823c23-…`) that appears in **no** row
+of `restaurants`, and all 92 `inventory_id`s resolve to zero
+`restaurant_inventory` rows. `loadMappings` filters `.eq("restaurant_id", …)`,
+so no live restaurant can select them. They are orphaned rows from a deleted
+tenant. The correction is recorded rather than quietly edited out, because an
+ADR that argues from a false premise is worse than no ADR — it launders a guess
+into a decision.
+
+**The real argument is structural, and it is stronger.** `?? "bottle"` is a
+silent 5× guess on *any* mapping that lacks a unit, and `pos_item_mappings` has
+**no foreign key constraints at all** — nothing prevented the orphan state and
+nothing prevents a live restaurant reaching the same one. This is the same shape
+as the three defects fixed earlier the same day: harmless only because the table
+is effectively empty, and therefore exactly the right moment to fix it.
 
 Fixing the write exposed the real defect, which is the model. A restaurant does
 not sell "a glass" or "a bottle". It sells a 150ml pour, a 60ml taster, a 375ml
@@ -57,14 +71,17 @@ not.
    which is a volume, not a category.
 2. **`sale_volume_ml` as the truth, `sale_unit` as an open reporting label —
    with the `?? "bottle"` default kept** as the last resort. Rejected: the
-   default is the bug. Keeping it means the 92 rows keep over-depleting by 5x
-   after this change lands, and the queue never fills, so nobody ever learns.
+   default is the bug. Keeping it means any unsized mapping keeps over-depleting
+   by 5x after this change lands, and — worse — the queue never fills, so the
+   one signal that would tell anyone the model is incomplete never appears.
 3. **`sale_volume_ml` as the truth, open label, and fail closed** — an
    unresolvable line is queued in `pos_unresolved_lines` and depletes nothing.
    **Chosen.**
-4. **Do nothing.** Costs: the 92 mappings keep booking 750ml per glass. It has
-   corrupted nothing so far for exactly one reason — `pos_checks` held 0 rows
-   until 2026-08-24 — and goes live the moment a real POS connects.
+4. **Do nothing.** Costs: the next mapping created without a unit books 750ml
+   per glass, silently. Nothing has been corrupted so far for two reasons that
+   both expire — `pos_checks` held 0 rows until 2026-08-24, and the only
+   mappings that exist belong to a deleted tenant. Neither is a property of the
+   design; both are properties of the system being empty.
 
 ## Decision
 
@@ -82,7 +99,7 @@ Resolution order in `applyStockEffects`, in full:
 | 1b | …and it exceeds the container it pours from | **queue** — see below |
 | 2 | `sale_unit` = `bottle` | whole-bottle move; the inventory row is not consulted |
 | 3 | `sale_unit` = `glass` and the row has `pour_size_ml` | that pour size, via `p_pour_ml` |
-| 4 | anything else — including all 92 production rows | **queue the line, deplete nothing** |
+| 4 | anything else | **queue the line, deplete nothing** |
 
 Volume-based depletion routes through `record_glass_pour`'s existing
 `p_pour_ml`, passed **explicitly** rather than as `null`, so the millilitres
@@ -118,7 +135,7 @@ populations that need different questions asked of a human:
 
 Without the discriminator the reviewer gets one undifferentiated pile, and the
 second population reads as a mapping failure it is not — at precisely the moment
-the queue fills with all 92 rows. So the migration adds `reason` (NOT NULL
+the queue fills with every unsized mapping at once. So the migration adds `reason` (NOT NULL
 DEFAULT `'unmapped'`, which is correct for every row written before today, that
 having been the only reason then) and `mapped_inventory_id` (what the pipeline
 already **knew**, as distinct from `resolved_inventory_id`, which is what a
@@ -132,7 +149,7 @@ queued".
 
 ### No backfill
 
-The 92 rows stay null. Backfilling `bottle` is the defect; backfilling `glass`
+No backfill. Existing rows stay null. Backfilling `bottle` is the defect; backfilling `glass`
 is the same guess pointed the other way. They queue.
 
 ### The name parser is deliberately not used
@@ -189,7 +206,7 @@ can, and 5x is not a rounding error.
 - **The Toast door is not fixed** and still carries `saleUnit ?? "bottle"`
   (`toast.service.ts:502`). It is a second live depletion path with the same
   defect. Not touched here because closing it changes behaviour for a live
-  integration, which is the founder's call — raised as **OD-64**.
+  integration, which is the founder's call — raised as **OD-66**.
   `resolveSaleVolume()` is exported and pure so that door can adopt this
   contract in one line rather than growing a second implementation of it.
 - **B19 is left in place and it is wrong.** A partial-volume void returns `qty`

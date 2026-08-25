@@ -27,7 +27,10 @@ function makeDb(opts: { mappings?: Row[]; inventory?: Row } = {}) {
         select: () => q,
         eq: () => q,
         in: () => q,
-        maybeSingle: async () => ({ data: opts.inventory ?? null, error: null }),
+        maybeSingle: async () => ({
+          data: opts.inventory ?? null,
+          error: null,
+        }),
         single: async () => ({ data: { id: "map-1" }, error: null }),
       };
       if (table === "restaurant_inventory") {
@@ -44,7 +47,11 @@ function makeDb(opts: { mappings?: Row[]; inventory?: Row } = {}) {
         q.in = async () => ({ data: opts.mappings ?? [], error: null });
         q.upsert = (row: Row) => {
           calls.mappingUpserts.push(row);
-          return { select: () => ({ single: async () => ({ data: row, error: null }) }) };
+          return {
+            select: () => ({
+              single: async () => ({ data: row, error: null }),
+            }),
+          };
         };
       }
       if (table === "restaurant_tables") {
@@ -79,7 +86,10 @@ function makeDb(opts: { mappings?: Row[]; inventory?: Row } = {}) {
     },
   };
 
-  return { db: { getClient: () => client } as unknown as DatabaseService, calls };
+  return {
+    db: { getClient: () => client } as unknown as DatabaseService,
+    calls,
+  };
 }
 
 function makeService(opts: { mappings?: Row[]; inventory?: Row } = {}) {
@@ -101,7 +111,12 @@ const closedCheck = (overrides: Row = {}) => ({
   closedAt: "2026-08-24T19:00:00Z",
   total: 120,
   items: [
-    { name: "Chardonnay by the glass", externalItemId: "item-glass", qty: 1, price: 18 },
+    {
+      name: "Chardonnay by the glass",
+      externalItemId: "item-glass",
+      qty: 1,
+      price: 18,
+    },
   ],
   ...overrides,
 });
@@ -186,7 +201,9 @@ describe("voided is persisted, not just acted on", () => {
   // and stayed revenue forever.
   it("writes voided=true so revenue readers can exclude it", async () => {
     const { service, calls } = makeService({ mappings: [glassMapping] });
-    await service.ingest("r1", "generic_webhook", [closedCheck({ voided: true })]);
+    await service.ingest("r1", "generic_webhook", [
+      closedCheck({ voided: true }),
+    ]);
     expect(calls.checkUpserts[0]).toHaveProperty("voided", true);
   });
 
@@ -247,7 +264,9 @@ describe("the consumption log is as idempotent as the stock write", () => {
     expect(calls.consumptionUpserts[0].row.notes).toBe(
       calls.consumptionUpserts[1].row.notes,
     );
-    expect(calls.consumptionUpserts.every((c) => c.options.ignoreDuplicates)).toBe(true);
+    expect(
+      calls.consumptionUpserts.every((c) => c.options.ignoreDuplicates),
+    ).toBe(true);
   });
 
   // Asserted as a DIFFERENCE, not an absence. "A voided check writes no

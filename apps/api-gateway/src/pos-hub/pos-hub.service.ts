@@ -69,7 +69,8 @@ export function resolveSaleVolume(
   saleUnit: string | null | undefined,
   inv: InventoryVolumes | null,
 ): SaleVolume {
-  const label = typeof saleUnit === "string" ? saleUnit.trim().toLowerCase() : null;
+  const label =
+    typeof saleUnit === "string" ? saleUnit.trim().toLowerCase() : null;
 
   // 1. An explicit volume is the truth and outranks the label. A mapping that
   //    says "glass" and "60ml" sells a 60ml taster, not a 150ml pour.
@@ -95,7 +96,8 @@ export function resolveSaleVolume(
     }
     // Selling exactly one container IS a whole-bottle sale, so it books as one
     // rather than as a pour that happens to empty a bottle.
-    if (inv?.bottleMl != null && ml === inv.bottleMl) return { mode: "whole_bottle" };
+    if (inv?.bottleMl != null && ml === inv.bottleMl)
+      return { mode: "whole_bottle" };
     return { mode: "volume", ml };
   }
 
@@ -110,7 +112,8 @@ export function resolveSaleVolume(
     if (inv?.pourMl == null) {
       return {
         mode: "unresolved",
-        reason: "sale_unit 'glass' but the inventory row carries no pour_size_ml",
+        reason:
+          "sale_unit 'glass' but the inventory row carries no pour_size_ml",
       };
     }
     return { mode: "volume", ml: inv.pourMl };
@@ -521,7 +524,11 @@ export class PosHubService {
         // the column, all 92 production mappings took that branch: every
         // by-the-glass sale booked 750ml instead of 150.
         const inv = inventories.get(it.inventory_id) ?? null;
-        const resolved = resolveSaleVolume(it.sale_volume_ml, it.sale_unit, inv);
+        const resolved = resolveSaleVolume(
+          it.sale_volume_ml,
+          it.sale_unit,
+          inv,
+        );
         if (resolved.mode === "unresolved") {
           // Fail closed, exactly as the unmapped branch above does. This
           // UNDER-depletes — stock reads high until a human works the queue —

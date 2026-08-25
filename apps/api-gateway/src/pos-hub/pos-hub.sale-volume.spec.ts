@@ -43,7 +43,9 @@ function makeDb(opts: { mappings?: Row[]; inventory?: Row[] } = {}) {
         q.upsert = (row: Row) => {
           calls.mappingUpserts.push(row);
           return {
-            select: () => ({ single: async () => ({ data: row, error: null }) }),
+            select: () => ({
+              single: async () => ({ data: row, error: null }),
+            }),
           };
         };
       }
@@ -148,16 +150,19 @@ describe("sale_volume_ml is the truth", () => {
 
   it("routes an arbitrary carafe volume through record_glass_pour's p_pour_ml", async () => {
     const { service, calls } = makeService({
-      mappings: [
-        mapping({ sale_unit: "carafe", sale_volume_ml: 500 }),
-      ],
+      mappings: [mapping({ sale_unit: "carafe", sale_volume_ml: 500 })],
       inventory: [std750],
     });
 
     await service.ingest("r1", "generic_webhook", [
       closedCheck({
         items: [
-          { name: "Caymus Cabernet", externalItemId: "item-1", qty: 2, price: 40 },
+          {
+            name: "Caymus Cabernet",
+            externalItemId: "item-1",
+            qty: 2,
+            price: 40,
+          },
         ],
       }),
     ]);
@@ -242,7 +247,12 @@ describe("an unresolvable sale volume queues and depletes nothing", () => {
     await service.ingest("r1", "generic_webhook", [
       closedCheck({
         items: [
-          { name: "Mystery Cabernet", externalItemId: "item-9", qty: 1, price: 30 },
+          {
+            name: "Mystery Cabernet",
+            externalItemId: "item-9",
+            qty: 1,
+            price: 30,
+          },
         ],
       }),
     ]);
@@ -302,7 +312,13 @@ describe("sale_unit is an open human label", () => {
   it("accepts labels outside glass/bottle when a volume backs them", async () => {
     const { service, calls } = makeService();
 
-    for (const unit of ["half_bottle", "magnum", "carafe", "taster", "flight"]) {
+    for (const unit of [
+      "half_bottle",
+      "magnum",
+      "carafe",
+      "taster",
+      "flight",
+    ]) {
       await service.upsertItemMapping("r1", {
         item_name: `x-${unit}`,
         sale_unit: unit,
@@ -387,7 +403,12 @@ describe("glass and bottle still derive correctly", () => {
     await service.ingest("r1", "generic_webhook", [
       closedCheck({
         items: [
-          { name: "Caymus Cabernet", externalItemId: "item-1", qty: 2, price: 60 },
+          {
+            name: "Caymus Cabernet",
+            externalItemId: "item-1",
+            qty: 2,
+            price: 60,
+          },
         ],
       }),
     ]);

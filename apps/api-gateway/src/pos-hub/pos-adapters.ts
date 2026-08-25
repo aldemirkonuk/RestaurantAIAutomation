@@ -97,15 +97,13 @@ export const squareAdapter: PosAdapter = {
         subtotal: cents(o.net_amounts?.total_money?.amount),
         total: cents(o.total_money?.amount),
         tip: cents(o.total_tip_money?.amount),
-        items: (o.line_items ?? []).map(
-          (li: any): CanonicalItem => ({
-            name: String(li.name ?? "unknown"),
-            externalItemId: li.catalog_object_id ?? null,
-            category: null,
-            qty: num(li.quantity) ?? 1,
-            price: cents(li.base_price_money?.amount) ?? 0,
-          }),
-        ),
+        items: (o.line_items ?? []).map((li: any): CanonicalItem => ({
+          name: String(li.name ?? "unknown"),
+          externalItemId: li.catalog_object_id ?? null,
+          category: null,
+          qty: num(li.quantity) ?? 1,
+          price: cents(li.base_price_money?.amount) ?? 0,
+        })),
         raw: o,
       }));
   },
@@ -143,15 +141,13 @@ export const cloverAdapter: PosAdapter = {
         subtotal: null,
         total: cents(o.total),
         tip: cents(o.tipAmount),
-        items: (o.lineItems?.elements ?? []).map(
-          (li: any): CanonicalItem => ({
-            name: String(li.name ?? "unknown"),
-            externalItemId: li.item?.id ?? null,
-            category: null,
-            qty: num(li.unitQty) ?? 1,
-            price: cents(li.price) ?? 0,
-          }),
-        ),
+        items: (o.lineItems?.elements ?? []).map((li: any): CanonicalItem => ({
+          name: String(li.name ?? "unknown"),
+          externalItemId: li.item?.id ?? null,
+          category: null,
+          qty: num(li.unitQty) ?? 1,
+          price: cents(li.price) ?? 0,
+        })),
         raw: o,
       }));
   },
@@ -187,15 +183,13 @@ export const toastAdapter: PosAdapter = {
         subtotal: num(c.amount),
         total: num(c.totalAmount ?? c.amount),
         tip: num(c.tipAmount),
-        items: (c.selections ?? []).map(
-          (s: any): CanonicalItem => ({
-            name: String(s.displayName ?? s.itemName ?? "unknown"),
-            externalItemId: s.item?.guid ?? null,
-            category: s.salesCategory?.name ?? null,
-            qty: num(s.quantity) ?? 1,
-            price: num(s.price) ?? 0,
-          }),
-        ),
+        items: (c.selections ?? []).map((s: any): CanonicalItem => ({
+          name: String(s.displayName ?? s.itemName ?? "unknown"),
+          externalItemId: s.item?.guid ?? null,
+          category: s.salesCategory?.name ?? null,
+          qty: num(s.quantity) ?? 1,
+          price: num(s.price) ?? 0,
+        })),
         raw: c,
       }));
   },
