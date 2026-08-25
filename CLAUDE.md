@@ -162,6 +162,9 @@ claim written as a sentence is checked exactly once — the day it is written.
   `scripts/check_decision_claims.sh` runs them all and blocks CI. `status`
   drives the expectation: `resolved` means the claim **must** hold, `open` means
   it must **not** hold yet — so a fixed-but-unstruck entry fails the build.
+  `status` describes the **claim**, not the whole entry: an OD can be partly
+  resolved, and OD-56 is — its Python half is fixed while its Node transitives
+  are not.
 - **Verify an entry before acting on it, not after.** Every fix today was
   cheaper than the verification that preceded it, and the verification changed
   what got built more than once. Cite `file:line` or a query result in the
