@@ -109,17 +109,13 @@ class CalendarAgent(BaseAgent):
         )
 
         try:
-            # Build the LLM prompt
-            today = datetime.utcnow().strftime("%Y-%m-%d")
-            prompt = DATE_EXTRACTION_PROMPT.format(
-                conversation=conversation[:3000],  # Truncate very long conversations
-                provider_name=provider_name,
-                today=today,
-            )
-
-            # Call Gemini Pro via the database's LLM helper (or direct API)
+            # The prompt is built INSIDE _call_llm_for_dates, not here, so the
+            # formatted template never enters this scope. See OD-63: the regex
+            # fallback used to be handed `prompt` from exactly this call site.
             extracted_dates = await self._call_llm_for_dates(
-                prompt, restaurant_id=restaurant_id
+                conversation[:3000],  # Truncate very long conversations
+                provider_name=provider_name,
+                restaurant_id=restaurant_id,
             )
 
             if not extracted_dates:
@@ -189,9 +185,31 @@ class CalendarAgent(BaseAgent):
             )
 
     async def _call_llm_for_dates(
-        self, prompt: str, restaurant_id: Optional[str] = None
+        self,
+        conversation: str,
+        provider_name: str = "Unknown Provider",
+        restaurant_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Call Gemini to extract dates, with regex fallback"""
+        """
+        Call Gemini to extract dates from `conversation`, with a regex fallback.
+
+        Takes the RAW conversation text, never the formatted prompt. OD-63: the
+        caller used to build the prompt and pass that here, and the fallback at
+        the bottom then regexed the template itself — which embeds today's date
+        and the two literal example dates 2026-02-15 / 2026-03-01. Every fallback
+        therefore invented at least three dates at confidence 0.6, stamped
+        source="llm_extraction" so they read as genuine extraction.
+
+        Building the prompt in here rather than at the call site is the actual
+        fix: it removes the formatted template from the caller's scope entirely,
+        so there is no longer a wrong string available to pass. Restoring the bug
+        would take a deliberate refactor, not a slip.
+        """
+        prompt = DATE_EXTRACTION_PROMPT.format(
+            conversation=conversation,
+            provider_name=provider_name,
+            today=datetime.utcnow().strftime("%Y-%m-%d"),
+        )
         try:
             # Was the legacy google.generativeai SDK pinned to "gemini-pro" — a
             # model that is retired (404) — and it never called genai.configure(),
@@ -249,11 +267,18 @@ class CalendarAgent(BaseAgent):
                 f"LLM date extraction failed, using regex fallback: {e}"
             )
 
-        # Regex fallback: extract obvious date patterns from the prompt
-        return self._regex_date_extraction(prompt)
+        # Regex fallback: extract obvious date patterns from the CONVERSATION.
+        # Passing `prompt` here was OD-63.
+        return self._regex_date_extraction(conversation)
 
     def _regex_date_extraction(self, text: str) -> List[Dict[str, Any]]:
-        """Fallback: extract dates using regex patterns"""
+        """
+        Fallback: extract dates using regex patterns.
+
+        `text` must be conversation text a vendor actually wrote. Anything we
+        generated ourselves — a prompt, a system message, a rendered template —
+        will match here and be persisted as though a vendor had stated it.
+        """
         results = []
         # ISO dates: 2026-02-15
         for match in re.finditer(r"(\d{4}-\d{2}-\d{2})", text):
