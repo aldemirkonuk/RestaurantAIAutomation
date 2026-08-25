@@ -107,7 +107,9 @@ the Deferred Decisions Log has disagreed with the shipped state of the product. 
 number is **non-zero and unknown** (see Evidence).
 
 **Neural-footprint tie, stated honestly.** Design does not emit `nf_a.*` or `nf_b.*` today
-— nothing does ([[README]] §1, L4 "emits nothing yet"). Two ties are real rather than
+— nothing does ([[README]] §1, L4 "emits nothing yet"). *Corrected 2026-08-25: `nf_a.*`
+is emitted since P1 (all 7 gateway callsites, `model-client.service.ts:413`); `nf_b.*`
+is still unemitted, so the point below holds for Design's own surface.* Two ties are real rather than
 decorative: (1) guest-facing surface *is* the NF-B stimulus field — a dish or wine
 exposure event is only as good as the screen that produced it, so surface design decides
 what `nf_b.stimulus` can even mean; (2) the human-gate pattern — one-tap approve, never

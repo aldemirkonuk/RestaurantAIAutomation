@@ -50,7 +50,8 @@ revocation visible and it stops being free.
 ### M2 — Four metrics, all unmeasurable, and a year of proxies
 
 Every primary metric this department owns starts at *unmeasurable* —
-`cost_per_completed_task` (no cost events on NestJS, no verdict anywhere),
+`cost_per_completed_task` (no cost events on NestJS, no verdict anywhere — *corrected
+2026-08-25: both shipped; the metric is still unmeasurable on coverage, not existence*),
 `harness_overhead_ms` (no instrument), `verified_task_success_rate` (no criteria),
 `event_completeness` (0% on the NestJS surface). Under pressure to report *something*,
 each team substitutes the nearest thing it can read: API calls made, tokens spent, evals

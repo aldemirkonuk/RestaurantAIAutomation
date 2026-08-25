@@ -232,7 +232,15 @@ callsites, so L4 has no single place to attach to. AR-4 is the direct consequenc
 
 → [[model-routing-inference-economics-charter]], [[platform-api-charter]].
 
-### AR-4 · Sev-1 · L4 emits nothing here, and cannot be joined there
+### AR-4 · Sev-1 · L4 emits nothing here, and cannot be joined there — **CLOSED 2026-08-25**
+
+> **Corrected 2026-08-25 (P1).** Both halves below are fixed and the finding is
+> historical: the NestJS side emits `neural_footprint_event` from all seven callsites
+> via `common/model-client` (`model-client.service.ts:413`), and the Python side now
+> carries the join keys — `SpendLogger.log()` takes `agent` and `correlation_id`
+> (`services/agent-orchestrator/services/spend_logger.py:269,276`) and writes the same
+> NF store (`:406`). See `.planning/STATE.md`. What remains open is verdict coverage
+> ([[0017-doneability-verdicts-are-sidecar-claims]]), not emission or joinability.
 
 [[README]] §1 grades L4 *"emits nothing yet."* Verified two ways, and the second is worse
 than the first:
@@ -275,7 +283,10 @@ The comment is honest and the code does what it says. The **architectural** cons
 is that multi-tenant isolation holds only where a second, independent decorator was
 remembered. [[ENDPOINTS]] measures the result: **137 of 448 endpoints carry no
 `JwtAuthGuard`**; after subtracting 32 webhook routes and 11 explicit `@Public()`, **94
-are unguarded by omission** — 39 of them in `analytics` alone.
+are unguarded by omission** — 39 of them in `analytics` alone. *Corrected 2026-08-25:
+stale as a present count — the primary controllers of all six named modules now carry a
+class-level `@UseGuards(JwtAuthGuard)` (`analytics.controller.ts:51` and peers). Not
+recounted route-by-route, so no replacement figure is asserted.*
 
 **This is the shape of defect this function exists to catch, and it is worth being exact
 about the division of labour.** OD-19 and OD-20 already track the *security* question:

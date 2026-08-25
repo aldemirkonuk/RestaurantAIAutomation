@@ -2,7 +2,7 @@
 type: contract
 title: Page Contract
 status: proposed
-updated: 2026-08-24
+updated: 2026-08-25
 links: ["[[PAGE_MAP]]", "[[SCENARIO-CONTRACT]]", "[[TIER-MAP]]", "[[AGENDA]]"]
 ---
 
@@ -17,6 +17,7 @@ links: ["[[PAGE_MAP]]", "[[SCENARIO-CONTRACT]]", "[[TIER-MAP]]", "[[AGENDA]]"]
 
 | § | Section | Holds |
 |---|---|---|
+| 0 | **Surface** *(added 2026-08-25, ADR 0018)* | First section under the H1, always. The page's buttons, one line each: `- **Label** → [[dest-slug]] \`/route\``, or `(modal on this page)`, or `API \`POST /api/v1/…\``, or `external \`https://…\``. Max ~12 bullets, page-body only — global sidebar/topbar chrome is excluded so the graph shows real flows, not chrome. A page with no outbound navigation writes exactly `- (no outbound navigation — dead-end page)`. Outbound page wikilinks are mirrored into frontmatter `links:`. **This section is what the Obsidian graph renders** — 115 page→page edges as of 2026-08-25 |
 | 1 | **Purpose** | What the page is for, in the user's words — and which user (owner / staff / guest / dev) |
 | 2 | **Entry** | How people reach it: nav link, deep link, redirect, cold URL. Cite [PAGE_MAP](../foundation/PAGE_MAP.md) — 24 routes have no inbound link; say so if this is one |
 | 3 | **Files** | Component file + the co-located tree that renders it (`path:line` for the route binding in `App.tsx`) |

@@ -35,7 +35,7 @@ Chrome-free fake POS terminal (decisions C26–C30, `SimposTerminalPage.tsx:1-11
 - Server counterpart: `apps/api-gateway/src/simpos/` (see §8 for its production fate)
 
 ## 4. Endpoints
-All under `/simpos/:restaurantId` (atlas: ENDPOINTS.md:536-550, flagged "11 unguarded" — resolved by PR #32 removing the module in production rather than guarding routes):
+All under `/simpos/:restaurantId` (atlas: ENDPOINTS.md:536-550, flagged "11 unguarded" — that flag is stale twice over: PR #32 removed the module in production, and the routes *are* now guarded too, class-level `JwtAuthGuard` since 2026-08-25 (#55, OD-35), `apps/api-gateway/src/simpos/simpos.controller.ts:54`):
 | Method | Path | Where called |
 |---|---|---|
 | POST | `…/catalog/seed` | `SimposTerminalPage.tsx:59` (on mount, errors swallowed) |

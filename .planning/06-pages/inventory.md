@@ -45,7 +45,8 @@ Eagerly loaded (`apps/web/src/App.tsx:72`).
 
 Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):249 (`inventory`, 18), :236
 (`inventory-ledger`), :552 (`storage-locations`), :378 (`procurement/documents`),
-:389 (`procurement`), :10 (`analytics` ⚠).
+:389 (`procurement`), :10 (`analytics` — atlas's ⚠ is stale; guarded at class level
+since 2026-08-24 (#31), `apps/api-gateway/src/analytics/analytics.controller.ts:51`).
 
 | Method | Path | Call site |
 |---|---|---|

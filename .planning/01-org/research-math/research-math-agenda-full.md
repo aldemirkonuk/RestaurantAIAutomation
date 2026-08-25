@@ -21,7 +21,7 @@ are bad.
 | Metric | State today | What a first reading requires |
 |---|---|---|
 | `nf_a.event_completeness` | **0%** on the NestJS surface (0 hits for `api_spend`/`cost_usd`/`input_tokens` in `apps/api-gateway/src`); partial on Python across two unjoined tables | An event contract with a join key, and one emitting callsite |
-| `nf_a.cost_per_completed_task` | Unmeasurable — no cost events on NestJS, no doneability verdict anywhere | Cost events **and** verdicts sharing one key |
+| `nf_a.cost_per_completed_task` | Unmeasurable — corrected 2026-08-25: cost events ship on NestJS (P1) and one verdict basis exists (`reconciliation_v1`, invoices — ADR 0017); the gap is now coverage, not existence | Cost events **and** verdicts sharing one key |
 | `nf_a.harness_overhead_ms` | Not measured; **no instrument exists** | A wall-clock-minus-model-time probe. This blocks OD-03 |
 | `nf_a.verified_task_success_rate` | Near zero outside the merge-policy gate; doneability criteria asserted nowhere | Written criteria per task type + one golden set with real negatives |
 
@@ -80,7 +80,9 @@ skills or the first overlap, not before (`intelligence.md:504`).
   adds a private table (premortem M5).
 - **There is live unauthorized spend on the founder's key** (OD-20,
   `OPEN-DECISIONS.md:24`) and **nobody can say how much**, because the callsite emits
-  nothing. That is not a security finding this department owns — it is an
+  nothing. *Corrected 2026-08-25: both halves are closed — OD-20 is RESOLVED
+  (`analytics.controller.ts:51` now carries a class-level `@UseGuards(JwtAuthGuard)`)
+  and the callsite emits since P1.* That is not a security finding this department owns — it is an
   instrumentation gap this department owns, discovered by Security.
 - **The protection clause is easiest to honour at founding.** A long-horizon lane
   declared in week one costs nothing; declared after the first slip it reads as an

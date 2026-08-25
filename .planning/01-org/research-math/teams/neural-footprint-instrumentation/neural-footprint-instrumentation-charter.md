@@ -115,7 +115,10 @@ documents — **is not derivable from anything this system writes today**, even 
 Python side where cost *is* logged. Not a design debate. A missing parameter and a missing
 column.
 
-**NEW / zero — the NestJS side emits nothing at all.** Grepping `apps/api-gateway/src` for
+**NEW / zero — the NestJS side emitted nothing at all as of 2026-08-24.** *Corrected
+2026-08-25: superseded by P1 — all 7 gateway callsites now emit
+`neural_footprint_event` via `common/model-client` (`model-client.service.ts:413`).
+See `.planning/STATE.md`.* Grepping `apps/api-gateway/src` for
 `api_spend`, `cost_usd` or `input_tokens` returns **0 hits** (verified 2026-08-24). The
 seven production model callsites in [[harness-model-routing-charter]]'s evidence therefore
 run with **no cost telemetry whatsoever** — including

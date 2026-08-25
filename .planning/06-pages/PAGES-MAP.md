@@ -77,7 +77,8 @@ The founder's tracking mandate lands here: page telemetry rides the NF spine (`s
 > Written by the Surface pass (2026-08-25, three agents, every bullet traced to
 > source). The P2.3 proposal compiles these with the endpoint gaps and
 > `v3.0-TECH-DEBT.md` carry-overs into the founder-approval doc. Until then this
-> feed is the record; nothing here is fixed yet.
+> feed is the record; nothing here is fixed yet. Compiled into the approval doc:
+> [0019-p2-build-scope](../decisions/0019-p2-build-scope.md).
 
 **Live defects — buttons navigating to routes that do not exist:**
 

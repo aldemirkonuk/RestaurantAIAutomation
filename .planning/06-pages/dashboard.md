@@ -59,7 +59,9 @@ from `/admin`, `/get-started`, `/invite/:code`, `/onboarding`, `/register`. Also
 ## 4. Endpoints
 
 All via `apiClient` (base `${VITE_API_GATEWAY_URL}/api/v1`, `services/api/client.ts:51`)
-unless noted. Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):197 (`dashboard`, 8 — **⚠ all unguarded**),
+unless noted. Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):197 (`dashboard`, 8 —
+atlas's **⚠ all unguarded** is stale; guarded at class level since 2026-08-25 (#60),
+`apps/api-gateway/src/dashboard/dashboard.controller.ts:51`),
 :87 (`calendar`), :249 (`inventory`), :389 (`procurement`), :663 (`wines`).
 
 | Method | Path | Call site |
@@ -110,6 +112,8 @@ Page tree: **0** user-visible strings. Reachable-but-shared:
 - `pages/Dashboard.tsx:267` fetches `'/api/v1/calendar/ical-token'` **relative to the SPA
   origin**, bypassing `VITE_API_GATEWAY_URL` — works only where the web host proxies the
   gateway; every other page uses the absolute base (e.g. `pages/Settings.tsx:159`).
-- All 8 `dashboard` endpoints are unguarded ([ENDPOINTS](../foundation/ENDPOINTS.md):197).
+- All 8 `dashboard` endpoints are guarded since 2026-08-25 (#60) — `@UseGuards(JwtAuthGuard)`
+  at class level (`apps/api-gateway/src/dashboard/dashboard.controller.ts:51`); the atlas
+  row ([ENDPOINTS](../foundation/ENDPOINTS.md):197) still reads "unguarded" and is stale.
 - `v3.0-TECH-DEBT.md:502` — dashboard profile card dead-click claim (L102) is *unverified,
   not confirmed*; the one-tap auth hole it fed is closed (`v3.0-TECH-DEBT.md:409`).

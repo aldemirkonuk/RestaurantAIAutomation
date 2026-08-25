@@ -121,7 +121,8 @@ inbound vendor replies) is invisible.
 an anonymous caller to reach `consultants.service.ts:159` calling `claude-opus-4-8` at
 `max_tokens: 4096` — *"unauthorized spend on the founder's key, reachable now."* The
 guard is Security's and Engineering's. **The fact that nobody would see the spend is
-ours.**
+ours.** *Corrected 2026-08-25: both halves have since closed — the guard landed
+(`analytics.controller.ts:51`, OD-20 RESOLVED) and the spend is visible since P1.*
 
 ## Status
 

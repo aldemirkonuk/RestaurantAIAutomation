@@ -74,7 +74,7 @@ health readings that no single team can move alone.
 
 | Metric | Baseline **today**, measured this session |
 |---|---|
-| `analytics.satisfiable_candidate_share` | **25.1%** — `availableCandidates()` returns 144 of 573 types for a restaurant with consumption + orders + inventory and no POS feed. Consumption-only: **38 / 573 = 6.6%** |
+| `analytics.satisfiable_candidate_share` | **25.1%** — `availableCandidates()` returns 144 of 573 types for a restaurant with consumption + orders + inventory and no POS feed. Consumption-only: **38 / 573 = 6.6%**. *Corrected 2026-08-25: still correct as a no-POS conditional, but the POS bridge is built and proven — 66 checks took satisfiable types from 1.4% to **67.4%** ([[POS-BRIDGE-AUDIT]] §A.1)* |
 | `analytics.insight_acceptance_rate` | **Computable but never computed.** Both sides exist: `recommendation_impressions` (denominator) and `recommendation_actions` (numerator). No query joins them |
 | `analytics.kpi_ground_truth_agreement` | **0%, honestly so.** Unmeasurable until `v3.0-TECH-DEBT.md:309` (§44.7, SimPOS) lands. Publishing the 0 is the point |
 | `analytics.metric_claim_divergence_count` | **≥ 2 live divergences** — insight-type count (375 vs 573) and feature count (460 vs 360). See *Evidence* below |
@@ -178,7 +178,11 @@ insufficient evidence, and `insight-catalog.spec.ts:94-101` tests that it does.
 
 ### The known open wounds
 
-- **OD-20 is live.** `analytics.controller.ts` carries **39 routes, zero `@UseGuards`,
+- **OD-20 is live.** *Corrected 2026-08-25: OD-20 is **RESOLVED** —
+  `analytics.controller.ts:51` now carries a class-level `@UseGuards(JwtAuthGuard)`,
+  verified in source. The wound below is closed; the weekly-escalation posture it
+  produced no longer has a subject.*
+  `analytics.controller.ts` carries **39 routes, zero `@UseGuards`,
   zero `@Public`**. Anonymous callers can `PUT /analytics/consultants/:id/toggle`
   (`:516`) then `POST /analytics/consult/:id` (`:531`), reaching
   `consultants.service.ts:159` with `claude-opus-4-8` at `max_tokens: 4096`
@@ -214,7 +218,8 @@ The honest caveat: **AB-3 has the least code and the most work.** Its primary me
 
 - **INTEL-F3** (`intelligence.md:519`) — NF has no `subject_type` for the restaurant operator.
   Blocks `analytics.insight_acceptance_rate` from having a home in the footprint.
-- **OD-20** — analytics spend exposure. Open and urgent (foundation README:341).
+- ~~**OD-20** — analytics spend exposure. Open and urgent (foundation README:341).~~
+  **RESOLVED** (corrected 2026-08-25) — `analytics.controller.ts:51`.
 - **New, raised here (INTEL-F6):** which number is canonical for the insight-type count, and
   what CI assertion pins it? Answer must be a test, not a decision. See
   [[metric-contract-truth-assurance-charter]].

@@ -109,6 +109,13 @@ The department's job is to make the fail-closed shape the default, not to invent
 | **Unguarded by omission — the backlog** | **94** | `analytics` 39, `notifications` 24, `communications` 9, `dashboard` 8, `contacts` 8, `procurement/recurring-orders` 6 |
 | | **448** | |
 
+> **Corrected 2026-08-25.** The 94-row backlog is stale as a *present* count: the
+> primary controller of every one of the six named modules now carries a class-level
+> `@UseGuards(JwtAuthGuard)` — `analytics.controller.ts:51`, `dashboard.controller.ts:51`,
+> and the same on `notifications`, `communications`, `contacts`, `procurement` (verified
+> in source). The backlog has **not been recounted** route-by-route, so no replacement
+> number is asserted here; OD-19 stays open on that basis.
+
 **The denominator has now been stated three ways: 86 → 103 → 94.** The department
 inherits the reconciliation, and it is worth writing down once because it is the argument
 for per-route classification:

@@ -50,7 +50,9 @@ history, and assignment to team members (UX paths NEW-284…NEW-308, header comm
 
 Raw `fetch` against `${VITE_API_GATEWAY_URL}/api/v1/analytics/recommendations`
 (`Recommendations.tsx:54,155`). Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):10
-(`analytics` — **⚠ unguarded**), :565 (`team`).
+(`analytics` — atlas's **⚠ unguarded** is stale; guarded at class level since
+2026-08-24 (#31), `apps/api-gateway/src/analytics/analytics.controller.ts:51`),
+:565 (`team`).
 
 | Method | Path | Call site |
 |---|---|---|

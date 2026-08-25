@@ -94,9 +94,10 @@ SORT department ASC, status ASC
 
 ## Live exposures we do not own but refuse to stand on
 
-- [ ] **OD-20** — 39 routes on `analytics.controller.ts`, zero `@UseGuards`, zero
+- [x] ~~**OD-20** — 39 routes on `analytics.controller.ts`, zero `@UseGuards`, zero
       `@Public`. Includes the consultant toggle (`:516`) and the Opus consult call
-      (`:531`). Owner: [[security-charter]] / [[platform-api-charter]]
+      (`:531`).~~ **RESOLVED 2026-08-25** — class-level `@UseGuards(JwtAuthGuard)` at
+      `analytics.controller.ts:51`. Owner: [[security-charter]] / [[platform-api-charter]]
 - [ ] **§44.7 SimPOS** — blocks `analytics.kpi_ground_truth_agreement`. Owner:
       [[engineering-charter]]
 - [ ] **INTEL-F3** — no `subject_type` for the restaurant operator; blocks

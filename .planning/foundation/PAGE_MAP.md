@@ -2,7 +2,13 @@
 
 > Generated 2026-08-24 from `apps/web/src/App.tsx` + page sources (`navigate()`, `<Link to>`, `href`).
 
-**51 routes** · **39 in-app navigation edges** · 13 route components unresolved (dynamic/inline).
+**51 routes** (re-verified 2026-08-25 — still exact) · ~~39 in-app navigation edges~~ ·
+13 route components unresolved (dynamic/inline).
+
+> **Edges superseded 2026-08-25 (ADR 0018):** the maintained page-to-page graph now
+> lives in the `## Surface` sections of [`06-pages/`](../06-pages/PAGES-MAP.md) —
+> 115 distinct edges, every bullet traced to component source. This file remains the
+> route census and cold-entry list; do not extend its mermaid graph.
 
 Yellow = unauthenticated/public entry points.
 

@@ -84,7 +84,11 @@ the five synthetic variants parse to correct ledger deltas.
   computable without POS but ⛔ **needs POS for depth** — it reads the same
   `wine_consumption_log` series S10 depends on, which only deepens as POS sales flow through
   `recordConsumption`. Per-parse agent economics (cost/verdict per invoice) is 🚧 **signal not
-  built** — NF-A emits nothing in the gateway.
+  built** — NF-A emits nothing in the gateway. *Corrected 2026-08-25: the signal is
+  built. `document-extractor` is one of the 7 emitting callsites, and invoice extraction
+  is the **first** task type carrying a doneability verdict
+  (`outcome_basis: reconciliation_v1`, ADR 0017). Coverage is still ~0% — the signal
+  exists, the volume does not.*
 
 ## 11. Evolution feedback
 Where receivers override the parse tells us where the parser is weak; which insights the

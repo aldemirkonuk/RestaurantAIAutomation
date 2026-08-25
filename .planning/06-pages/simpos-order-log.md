@@ -32,7 +32,7 @@ Full-page debug log over SimPOS's *own* checks — explicitly distinct from the 
 ## 4. Endpoints
 | Method | Path | Where called | Atlas |
 |---|---|---|---|
-| GET | `/simpos/:restaurantId/orders` | `SimposOrderLogPage.tsx:21` → `simpos.ts:95` | ENDPOINTS.md:549 (⚠️ unguarded row — resolved by prod removal, PR #32) |
+| GET | `/simpos/:restaurantId/orders` | `SimposOrderLogPage.tsx:21` → `simpos.ts:95` | ENDPOINTS.md:549 (⚠️ unguarded row is stale — prod removal, PR #32, *and* a class-level `JwtAuthGuard` since 2026-08-25 (#55, OD-35), `apps/api-gateway/src/simpos/simpos.controller.ts:54`) |
 
 ## 5. Signals
 **none.**

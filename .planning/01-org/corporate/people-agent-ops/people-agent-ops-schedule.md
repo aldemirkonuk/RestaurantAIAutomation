@@ -50,7 +50,7 @@ criterion, and a real past instance.
 | `agent-onboarding-gate` | New module in `agents/` | `book_scraper_agent`, `dataset_creator_agent` — `BaseAgent` subclasses with zero call sites today | [[roster-lifecycle-charter]] |
 | `stub-flag-audit` | Daily | `IS_STUB` exists precisely because an event-consuming no-op *"looks healthy from every dashboard"* (`core/orchestrator.py:242-243`) | [[roster-lifecycle-charter]] |
 | `agent-maturity-classify` | Quarterly fleet review | `.planning/PROJECT.md:117` asserts "all Level 0-1" over 24 agents with no per-agent evidence | [[roster-lifecycle-charter]] |
-| `doneability-coverage-report` | Weekly | No verdict exists anywhere; 0% has never been published as a number | [[performance-doneability-charter]] |
+| `doneability-coverage-report` | Weekly | Corrected 2026-08-25: one verdict basis exists (`reconciliation_v1`, invoices — ADR 0017), coverage still ~0%, and it has never been published as a number | [[performance-doneability-charter]] |
 | `agent-cost-attribution-check` | Monthly | `SpendLogger.log()` has had no `agent` parameter since it was written (`spend_logger.py:41-49`) | [[performance-doneability-charter]] |
 | `headcount-reconcile` | Monthly | Four live headcounts — 19, 23, 24, 26 — and no artifact reconciles them | [[roster-lifecycle-charter]] |
 

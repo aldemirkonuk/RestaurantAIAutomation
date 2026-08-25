@@ -500,7 +500,8 @@ follow OD-60.
 **Also hand over — three existing rows are now stale on `origin/main`:** OD-40 is **fixed**
 (`pos-hub.controller.ts:36`), OD-39 is **fixed** (`toast.service.ts:188-215`), OD-35 is
 **partially fixed** (`app.module.ts:89` gates SimPOS out of production; the controller is
-still unguarded in non-prod).
+still unguarded in non-prod). *Corrected 2026-08-25: OD-35 is now **fully** closed —
+`simpos.controller.ts:54` carries a class-level `@UseGuards(JwtAuthGuard)`.*
 
 ---
 

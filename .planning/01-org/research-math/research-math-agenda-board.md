@@ -75,7 +75,7 @@ SORT department ASC
 | Metric | Reading | Owner |
 |---|---|---|
 | `nf_a.event_completeness` | **0%** (NestJS surface) · partial (Python, 2 unjoined tables) | [[neural-footprint-instrumentation-charter]] |
-| `nf_a.cost_per_completed_task` | **unmeasured** — no cost events on NestJS, no verdict anywhere | [[harness-model-routing-charter]] |
+| `nf_a.cost_per_completed_task` | **unmeasured** — corrected 2026-08-25: cost events ship on NestJS (P1) and one verdict basis exists (`reconciliation_v1`, invoices — ADR 0017); still unmeasured because coverage is ~0% | [[harness-model-routing-charter]] |
 | `nf_a.harness_overhead_ms` | **unmeasured** — no instrument exists; blocks OD-03 | [[harness-model-routing-charter]] |
 | `nf_a.verified_task_success_rate` | **unmeasured** — near zero outside the merge-policy gate | [[evaluation-doneability-charter]] |
 | *(gap metric)* verified − self-reported (`base_agent.py:144`) | **unmeasured** — the department's actual product | [[evaluation-doneability-charter]] |

@@ -59,7 +59,8 @@ This is the mechanism [[technology]] §4.2 names, and it is the *enabling condit
 for M1 rather than a separate story. The 30-day anti-sprawl rule asks a question —
 *has this skill fired in the last 30 days?* — that the system today cannot answer
 at all. There is no invocation log, no `skill_id` anywhere, and L4 "emits nothing
-yet" ([[README]] §1). Absent an answer, every staleness review defaults to "keep",
+yet" ([[README]] §1). *Corrected 2026-08-25: L4 emits since P1; `skill_id` and the
+invocation log are still missing, which is enough to keep the failure live.* Absent an answer, every staleness review defaults to "keep",
 because "we do not know" is not grounds for deletion. Twelve months later the rule
 is a paragraph in a README, which is the documented fate of most anti-sprawl rules.
 

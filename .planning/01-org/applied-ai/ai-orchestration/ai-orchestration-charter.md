@@ -98,7 +98,9 @@ survives the copy. Duplication is the worse outcome than either answer
 This department is the primary producer of **NF-A** ([[README]] §4.2) and therefore
 of the metric spine every other department is judged by. That is a dependency worth
 stating: **L4 emits nothing yet** ([[README]] §1), so most numbers below have no
-value, not a bad value.
+value, not a bad value. *Corrected 2026-08-25: L4 emits since P1
+(`model-client.service.ts:413`). What is still near zero is **verdict coverage**,
+not emission ([[0017-doneability-verdicts-are-sidecar-claims]]).*
 
 | Metric | Owner team | Today |
 |---|---|---|

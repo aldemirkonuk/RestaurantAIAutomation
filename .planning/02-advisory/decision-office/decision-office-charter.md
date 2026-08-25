@@ -117,7 +117,9 @@ before the pressure is real.
 No `nf_a.*` / `nf_b.*` metric belongs here. The neural footprint measures agent and
 guest behaviour ([[README|foundation-README]] §4); this office measures the corpus's own
 decision hygiene. Claiming an NF metric would be borrowing credibility from a
-system that emits nothing yet.
+system that emits nothing yet. *Corrected 2026-08-25: the system emits since P1, but
+volume and verdict coverage are still too thin to borrow from — the conclusion holds,
+the stated reason does not.*
 
 ## Evidence today
 

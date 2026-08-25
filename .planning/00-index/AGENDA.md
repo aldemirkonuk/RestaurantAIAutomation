@@ -12,8 +12,10 @@ links: ["[[PLAN]]", "[[HOME]]", "[[OPEN-DECISIONS]]"]
 > that left it stale did not finish. Companion: [[PLAN]] — what gates what.
 >
 > **Design change 2026-08-25:** this file no longer copies register rows. The 08-24
-> version listed OD-54 and OD-56 as blocking a day after both were resolved — prose
-> that duplicates [[OPEN-DECISIONS]] rots against it, so now it points instead.
+> version listed OD-54 as blocking a day after it was resolved (and OD-56 as a
+> dependency-merge task when it had been re-scoped: Python half fixed, Node half
+> still open) — prose that duplicates [[OPEN-DECISIONS]] rots against it, so now
+> it points instead.
 
 **Current milestone: P2 — Web complete + deploy** ([ADR 0018](../decisions/0018-p2-plan-of-record.md)).
 Stage table: [STATE.md](../STATE.md).
@@ -24,7 +26,7 @@ Canonical list: the 🔴 rows of [[OPEN-DECISIONS]]. Headlines only:
 
 | Item | One line |
 |---|---|
-| **P2.3 feature-set approval** | The gap proposal lands after the spine/pages PR; nothing is built ahead of your approval |
+| **P2.3 feature-set approval** | [ADR 0019](../decisions/0019-p2-build-scope.md) is drafted — strike/keep its tables and lock it; nothing is built ahead of that |
 | **OD-73** | 12 tables with RLS **off** and full `anon` DML — including the procurement invoice store and `user_oauth_accounts`; filed 2026-08-25 at your instruction, awaiting the call |
 | OD-72 | The other 142 RLS-on-zero-policy tables — policies, gateway, or RLS off |
 | OD-64/66/67 | Toast-side defect cluster (mirrored voids, second depletion path) |

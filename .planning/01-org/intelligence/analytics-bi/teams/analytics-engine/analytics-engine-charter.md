@@ -75,6 +75,11 @@ This is the honest measure of engine reach and it **names Data as the constraint
 than hiding it** (`intelligence.md:382-387`). Three quarters of the catalogue is
 unreachable today, and no amount of new math changes that.
 
+> **Corrected 2026-08-25.** The constraint has a demonstrated remedy: the POS bridge is
+> built and proven — 66 POS checks moved satisfiable types from **8 (1.4%) to 386
+> (67.4%)** ([[POS-BRIDGE-AUDIT]] §A.1). The rows above remain correct *as conditionals*
+> for a restaurant with no POS feed; they are no longer the ceiling.
+
 ### Secondary
 
 - **`analytics.candidate_type_count` — 573 today.** Never published without the share

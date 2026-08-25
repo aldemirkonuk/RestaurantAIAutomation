@@ -48,7 +48,9 @@ badge (`Sidebar.tsx:409`). Eagerly loaded (`apps/web/src/App.tsx:73`).
 ## 4. Endpoints
 
 Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):389 (`procurement`, 26), :249
-(`inventory`), :461 (`providers`), :663 (`wines`), :10 (`analytics` — ⚠ unguarded).
+(`inventory`), :461 (`providers`), :663 (`wines`), :10 (`analytics` — atlas's ⚠ unguarded
+is stale; guarded at class level since 2026-08-24 (#31),
+`apps/api-gateway/src/analytics/analytics.controller.ts:51`).
 
 | Method | Path | Call site |
 |---|---|---|

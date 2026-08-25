@@ -45,6 +45,7 @@
 |---|---|---|
 | [0012](0012-reports-through-the-gateway.md) | Generated reports read through the gateway, not the browser — RLS-on-with-zero-policies confirmed in production (and on 141 other tables); the missing delete endpoint and three invented columns closed rather than half-ported | 2026-08-25 |
 | [0013](0013-one-commitment-guardrail.md) | One UCC commitment guardrail: TypeScript canon, generated Python module, three independent drift guards. Real counts were 19 / 8 / **3** — a third list existed | 2026-08-25 |
+| [0019](0019-p2-build-scope.md) | **P2 build scope — the founder-approval list**: live defects (2 broken routes), 15 dead-end verdicts, cold-entry audit, tenant-ownership gap; drafted from the Surface graph, awaiting lock | 2026-08-25 |
 
 ## Locked — recorded elsewhere (pre-log)
 

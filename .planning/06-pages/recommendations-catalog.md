@@ -47,8 +47,9 @@ NEW-707…NEW-727, header comment :4-11).
 
 ## 4. Endpoints
 
-One call. Atlas row: [ENDPOINTS](../foundation/ENDPOINTS.md):10 (`analytics` —
-**⚠ unguarded**).
+One call. Atlas row: [ENDPOINTS](../foundation/ENDPOINTS.md):10 (`analytics` — atlas's
+**⚠ unguarded** is stale; guarded at class level since 2026-08-24 (#31),
+`apps/api-gateway/src/analytics/analytics.controller.ts:51`).
 
 | Method | Path | Call site |
 |---|---|---|
@@ -82,4 +83,6 @@ problem lives here ([TIER-MAP](../03-scenarios/TIER-MAP.md):51,108-111).
   forbids: "Never headline a catalogue total … show the
   reachable-for-this-restaurant count (OD-33)". The palette entries repeat the 375
   (`components/command/commands.ts:78,99`).
-- Endpoint unguarded ([ENDPOINTS](../foundation/ENDPOINTS.md):10).
+- Endpoint guarded since 2026-08-24 (#31)
+  (`apps/api-gateway/src/analytics/analytics.controller.ts:51`); the atlas row
+  ([ENDPOINTS](../foundation/ENDPOINTS.md):10) still reads "unguarded" and is stale.

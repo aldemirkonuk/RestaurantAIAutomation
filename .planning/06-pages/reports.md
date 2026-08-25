@@ -45,7 +45,9 @@ In-degree 2 ([PAGE_MAP](../foundation/PAGE_MAP.md):144): from `/` (:64) and
 ## 4. Endpoints
 
 The widest analytics consumer among the 17 core-ops pages. Atlas rows:
-[ENDPOINTS](../foundation/ENDPOINTS.md):10 (`analytics`, 39 — **⚠ all unguarded**),
+[ENDPOINTS](../foundation/ENDPOINTS.md):10 (`analytics`, 39 — atlas's **⚠ all unguarded**
+is stale; guarded at class level since 2026-08-24 (#31),
+`apps/api-gateway/src/analytics/analytics.controller.ts:51`),
 :618 (`user-preferences`), :249 (`inventory`), :389 (`procurement`), :663 (`wines`).
 
 | Method | Path | Call site |
@@ -90,8 +92,10 @@ drift chips, S02/S03 Plus scorecards, S10 Plus days-of-cover. Pro depth (forecas
 
 ## 9. Gaps
 
-- 39 unguarded analytics endpoints serve every number on this page
-  ([ENDPOINTS](../foundation/ENDPOINTS.md):10 — "classify these").
+- The 39 analytics endpoints behind every number on this page are guarded since
+  2026-08-24 (#31) — `@UseGuards(JwtAuthGuard)` at class level
+  (`apps/api-gateway/src/analytics/analytics.controller.ts:51`); the atlas row
+  ([ENDPOINTS](../foundation/ENDPOINTS.md):10 — "classify these") is stale.
 - `Reports.v1.backup.tsx` is registered dead code (`v3.0-TECH-DEBT.md:257`).
 - Analytics truth-suite work is carried-forward unbuilt scope
   (`v3.0-TECH-DEBT.md:322-324`, was Phase 41).

@@ -51,7 +51,9 @@ the vendor who fills the order (external).
   next horizon; classical, explainable, in-process, no Python (`forecasting.ts:1-20,95-147`).
 - **NF-A** — the reorder *proposal* is an agent decision and should emit an NF-A row
   (cost, verdict). It does not: **NF-A emits nothing in the gateway today** — the known L4
-  gap. The proposal is made; its footprint is unrecorded.
+  gap. The proposal is made; its footprint is unrecorded. *Corrected 2026-08-25: the
+  gateway emits since P1. What is still missing here is a **verdict** for this task
+  type — only invoice extraction is graded so far (ADR 0017).*
 
 ## 4. Queries the product must answer
 - "Given this SKU's own demand variance, what is its probability of stocking out before the

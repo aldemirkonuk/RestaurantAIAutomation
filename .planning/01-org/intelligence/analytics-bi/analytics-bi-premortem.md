@@ -113,7 +113,9 @@ richer answers", the model hallucinates a margin figure in front of a customer, 
 credibility cost exceeds everything the deterministic engine earned. The compounding
 factor: `PUT /analytics/consultants/:restaurantId/toggle`
 (`analytics.controller.ts:516`) is one of 39 unguarded routes, so **anyone on the
-internet can flip it too** — OD-20, live today.
+internet can flip it too** — OD-20, live today. *Corrected 2026-08-25: OD-20 is
+RESOLVED (`analytics.controller.ts:51`), so this compounding factor is gone; the
+hallucinated-margin failure below stands on its own.*
 
 **Earliest observable signal.** An `analytics_insight_prefs` row with
 `category = 'consultants'` and `enabled = true` that has been true for longer than one

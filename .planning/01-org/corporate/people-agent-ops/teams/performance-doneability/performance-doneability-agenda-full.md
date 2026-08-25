@@ -22,9 +22,16 @@ and until it is possible, say so precisely and keep saying it.
 there is no doneability verdict anywhere in the repo, and cost cannot be attributed to a
 worker.
 
+> **Corrected 2026-08-25.** Both halves now exist, and the number does not move yet.
+> A verdict shipped for exactly one task type — `reconciliation_v1` on invoice
+> extraction ([[0017-doneability-verdicts-are-sidecar-claims]]) — and cost is
+> attributable to a worker since P1 (`subject_id` on `neural_footprint_event`,
+> `spend_logger.py:269`). Coverage is still ~0% and every other slice is ungraded, so
+> "0%" stands as the opening position; "anywhere" and "cannot" do not.
+
 | Metric | State today | Why |
 |---|---|---|
-| `nf_a.doneability_verdict_coverage` | **0%** | No verdict exists anywhere |
+| `nf_a.doneability_verdict_coverage` | **~0%** | Corrected 2026-08-25: one verdict basis exists (`reconciliation_v1`, invoices — ADR 0017); every other slice is ungraded |
 | `nf_a.verified_task_success_rate` | **Unmeasurable** | `core/base_agent.py:602` records liveness |
 | `nf_a.cost_per_task` | **Not derivable** | `spend_logger.py:41-49` has no `agent` param |
 | `nf_a.cost_per_completed_task` | **Not derivable** | Needs both halves |
