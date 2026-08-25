@@ -161,8 +161,14 @@ export class ReceivingService {
           p_inventory_id: order.inventory_id,
           p_stock_state: "live",
           p_delta: delta,
-          p_transaction_type: "receipt",
-          p_source: "receiving",
+          // "receipt"/"receiving" are not valid inventory_transaction_type /
+          // inventory_transaction_source enum values (see baseline migration
+          // lines 126-153) — the RPC threw on the enum cast and every door
+          // receipt silently booked zero stock while reporting success. The
+          // closest real values are 'purchase' (goods arriving) and 'order'
+          // (sourced from a procurement order).
+          p_transaction_type: "purchase",
+          p_source: "order",
           p_performed_by: input.userId,
           p_reason: `door case count for order ${order.order_number ?? input.orderId}`,
           // No p_unit_cost. Nobody has seen an invoice yet, so the lot lands as

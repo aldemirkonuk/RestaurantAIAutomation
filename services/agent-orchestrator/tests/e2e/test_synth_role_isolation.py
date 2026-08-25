@@ -7,7 +7,6 @@ Never logs JWT / passwords.
 from __future__ import annotations
 
 import os
-from typing import Any
 
 import httpx
 import pytest
@@ -29,7 +28,9 @@ _REQUIRED = (
 def _missing_secrets() -> list[str]:
     missing = [k for k in _REQUIRED if not os.environ.get(k)]
     # Gateway URL: API_GATEWAY_URL or VITE_API_GATEWAY_URL
-    if not (os.environ.get("API_GATEWAY_URL") or os.environ.get("VITE_API_GATEWAY_URL")):
+    if not (
+        os.environ.get("API_GATEWAY_URL") or os.environ.get("VITE_API_GATEWAY_URL")
+    ):
         missing.append("API_GATEWAY_URL|VITE_API_GATEWAY_URL")
     return missing
 

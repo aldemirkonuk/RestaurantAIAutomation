@@ -1,0 +1,16 @@
+{
+ "entries": 4822,
+ "menus": 26,
+ "by_category": {
+  "wine": 3952,
+  "spirit": 733,
+  "beer": 95,
+  "sake": 42
+ },
+ "under_identified": 19,
+ "derived_negative_pairs": 732862,
+ "excluded_extraction_artifacts": 324,
+ "excluded_under_identified_pairs": 7321,
+ "derived_positive_pairs": 12,
+ "label_rule": "same menu + different entry => different products"
+}

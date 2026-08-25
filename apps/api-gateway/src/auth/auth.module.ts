@@ -7,12 +7,14 @@ import { AuthController } from "./auth.controller";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { RolesGuard } from "./guards/roles.guard";
+import { PasswordResetThrottleGuard } from "./guards/password-reset-throttle.guard";
 import { DatabaseModule } from "../database/database.module";
 import { CacheModule } from "../common/cache/cache.module";
 import { TokenBlacklistService } from "./services/token-blacklist.service";
 import { GoogleStrategy } from "./strategies/google.strategy";
 import { MicrosoftStrategy } from "./strategies/microsoft.strategy";
 import { CommunicationsModule } from "../communications/communications.module";
+import { resolveJwtSecret } from "./jwt-secret";
 
 @Module({
   imports: [
@@ -24,9 +26,7 @@ import { CommunicationsModule } from "../communications/communications.module";
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
-        secret:
-          configService.get("JWT_SECRET") ||
-          "your-secret-key-change-in-production",
+        secret: resolveJwtSecret(configService.get("JWT_SECRET")),
         signOptions: { expiresIn: "15m" },
       }),
       inject: [ConfigService],
@@ -38,6 +38,7 @@ import { CommunicationsModule } from "../communications/communications.module";
     JwtStrategy,
     JwtAuthGuard,
     RolesGuard,
+    PasswordResetThrottleGuard,
     TokenBlacklistService,
     // Google OAuth Strategy - conditionally provided at runtime
     {

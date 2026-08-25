@@ -12,7 +12,11 @@ import { WebsocketModule } from "./websocket/websocket.module";
 import { DatabaseModule } from "./database/database.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
+import { VendorPortalModule } from "./vendor-portal/vendor-portal.module";
+import { VendorIntelModule } from "./vendor-intel/vendor-intel.module";
 import { PosHubModule } from "./pos-hub/pos-hub.module";
+import { SimposModule } from "./simpos/simpos.module";
+import { LogsModule } from "./logs/logs.module";
 import { OneTapActionsModule } from "./one-tap-actions/one-tap-actions.module";
 import { ToastModule } from "./toast/toast.module";
 import { EventsModule } from "./events/events.module";
@@ -21,6 +25,7 @@ import { InventoryLedgerModule } from "./inventory-ledger/inventory-ledger.modul
 import { ProvidersModule } from "./providers/providers.module";
 import { CommunicationsModule } from "./communications/communications.module";
 import { SettingsModule } from "./settings/settings.module";
+import { IntegrationsModule } from "./integrations/integrations.module";
 import { WinesModule } from "./wines/wines.module";
 import { StorageLocationsModule } from "./storage-locations/storage-locations.module";
 import { ConversationsModule } from "./conversations/conversations.module";
@@ -40,6 +45,7 @@ import {
 } from "./common/error-tracking";
 import { RateLimitModule, RateLimitGuard } from "./common/rate-limit";
 import { CacheModule } from "./common/cache/cache.module";
+import { ModelClientModule } from "./common/model-client/model-client.module";
 import { TenantGuard } from "./common/tenant/tenant.guard";
 import { OrchestratorModule } from "./common/orchestrator/orchestrator.module";
 import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
@@ -65,6 +71,7 @@ import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
     ErrorTrackingModule, // Global error tracking (Sentry)
     RateLimitModule, // API rate limiting
     CacheModule, // Redis caching layer
+    ModelClientModule, // Single choke point for model calls + NF-A emission (P1)
     OrchestratorModule, // NestJS -> Python bridge (HTTP + RabbitMQ)
     DatabaseModule,
     AuthModule,
@@ -72,8 +79,15 @@ import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
     // Feature modules
     DashboardModule, // Aggregated dashboard endpoint (API Bus pattern)
     AnalyticsModule, // Quantitative analytics engine (finance/stats/risk/forecast)
+    VendorPortalModule, // Public vendor catalogue pages (subdomain-resolved)
+    VendorIntelModule, // Vendor price scraping + multi-source comparison
     UxOptimizerModule, // Self-learning UX agent (observe → propose → gated ship → learn)
     PosHubModule, // MultiPOS ingestion hub (canonical checks → pos_checks)
+    // Fake POS terminal. Its close() makes THIS server HMAC-sign a webhook into
+    // PosHubModule, which trusts the signature and depletes stock — so an unguarded
+    // simpos route is a confused deputy over real inventory. Dev/demo only.
+    ...(process.env.NODE_ENV !== "production" ? [SimposModule] : []),
+    LogsModule, // Correlated read-only timeline across POS / stock / docs / agents
     OneTapActionsModule, // One-tap actions with backend persistence
     ToastModule, // Toast POS API integration
     InventoryModule,
@@ -89,6 +103,7 @@ import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
     CommunicationsModule, // Gmail, SMS, and scheduled communications
     ConversationsModule, // Procurement conversation history, threads, summaries
     SettingsModule, // Restaurant settings and feature flags
+    IntegrationsModule, // Third-party OAuth grants (Drive, Excel) + scope disclosure
     OrganizationsModule, // Multi-tenant org hierarchy (branches, chains)
     RestaurantsModule, // Per-restaurant membership (URA roster + invites)
     TeamModule, // Team ops: schedules, shifts, coverage, labor, certs, performance

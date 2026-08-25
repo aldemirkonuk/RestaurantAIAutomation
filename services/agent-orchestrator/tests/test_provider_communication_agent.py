@@ -316,3 +316,174 @@ async def test_auto_send_gate_returns_true_when_all_conditions_met(agent):
 
     result = await agent._check_auto_send_gate("rest1", "prov1")
     assert result is True
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tests 14-18: Message-bus wiring
+#
+# The agent owned procurement.order.created and could not consume it. Three
+# independent breaks, any one of which alone made the RabbitMQ path dead:
+#
+#   1. __init__ did not accept the orchestrator's factory kwargs, so the agent
+#      raised TypeError on instantiation and never subscribed to anything.
+#   2. process_message read `_routing_key`; MessageBus injects `routing_key`, so
+#      every message fell through to "Unhandled routing key" and was dropped.
+#   3. Only the flat envelope was understood, while ProcurementAgent wraps its
+#      payload under "payload".
+#
+# Only the HTTP fallback worked, and createOrder calls it AND publishes to
+# RabbitMQ — so repairing (2) without a shared guard would have turned one dead
+# path into two live ones drafting the same order twice.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_dispatches_on_the_routing_key_the_bus_actually_injects(agent):
+    """MessageBus setdefaults `routing_key` onto the body — not `_routing_key`."""
+    with patch.object(
+        agent, "_handle_order_created", new_callable=AsyncMock
+    ) as handler:
+        await agent.process_message(
+            {
+                "routing_key": "procurement.order.created",
+                "exchange": "procurement.events",
+                "order_id": "ord-1",
+                "restaurant_id": "rest-1",
+                "provider_id": "prov-1",
+            }
+        )
+
+    handler.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_flat_nestjs_envelope_reaches_the_handler_intact(agent):
+    """procurement.service.ts publishes draftPayload at the top level."""
+    with patch.object(
+        agent, "_handle_order_created", new_callable=AsyncMock
+    ) as handler:
+        await agent.process_message(
+            {
+                "routing_key": "procurement.order.created",
+                "order_id": "ord-flat",
+                "restaurant_id": "rest-1",
+                "provider_id": "prov-1",
+            }
+        )
+
+    assert handler.await_args[0][0]["order_id"] == "ord-flat"
+
+
+@pytest.mark.asyncio
+async def test_wrapped_procurement_agent_envelope_is_unwrapped(agent):
+    """ProcurementAgent publishes {"event_type": ..., "payload": {...}}."""
+    with patch.object(
+        agent, "_handle_order_created", new_callable=AsyncMock
+    ) as handler:
+        await agent.process_message(
+            {
+                "routing_key": "procurement.order.created",
+                "event_type": "ProcurementOrderCreated",
+                "payload": {
+                    "order_id": "ord-wrapped",
+                    "restaurant_id": "rest-1",
+                    "provider_id": "prov-1",
+                },
+            }
+        )
+
+    assert handler.await_args[0][0]["order_id"] == "ord-wrapped"
+
+
+@pytest.mark.asyncio
+async def test_unknown_routing_key_is_still_ignored(agent):
+    """Reading the right key must not turn the agent into a catch-all."""
+    with patch.object(
+        agent, "_handle_order_created", new_callable=AsyncMock
+    ) as handler:
+        await agent.process_message(
+            {"routing_key": "stock.threshold.breached", "order_id": "ord-1"}
+        )
+
+    handler.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_http_and_rabbitmq_for_one_order_produce_one_draft(agent, mock_redis):
+    """createOrder fires triggerDraftHttp AND publishes to RabbitMQ.
+
+    The HTTP fallback calls _handle_order_created directly, past process_message's
+    guard, so the per-order lock has to sit inside the handler and has to come
+    before the rate-limit increment and the manager notification. SET NX PX is the
+    race-safe primitive: it returns the key on first acquire and None thereafter.
+    """
+    acquired = []
+
+    async def set_once(*args, **kwargs):
+        if kwargs.get("nx") and acquired:
+            return None
+        acquired.append(1)
+        return True
+
+    mock_redis.set = AsyncMock(side_effect=set_once)
+
+    payload = {
+        "order_id": "ord-dup",
+        "restaurant_id": "rest-1",
+        "provider_id": "prov-1",
+        "wine_name": "Pommard 1er Cru",
+        "quantity": 4,
+        "target_price_per_bottle": None,
+    }
+    # Same draft text as the happy-path test above: this asserts deduplication,
+    # so the body has to be one the post-draft constraints already let through.
+    mock_haiku_response = MagicMock()
+    mock_haiku_response.content = [
+        MagicMock(
+            text='{"subject": "Price Inquiry: Pommard", "body": "We are interested in 4 cases of wine."}'
+        )
+    ]
+    mock_haiku_response.usage = MagicMock(input_tokens=400, output_tokens=80)
+
+    no_dup_chain = MagicMock()
+    no_dup_chain.execute.return_value = MagicMock(data=[])
+    agent.database.supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.in_.return_value.neq.return_value.limit.return_value = (
+        no_dup_chain
+    )
+
+    with patch(
+        "agents.provider_communication_agent.get_haiku_client"
+    ) as mock_hc, patch.object(
+        agent, "_notify", new_callable=AsyncMock
+    ) as mock_notify, patch.object(
+        agent, "_check_auto_send_gate", new_callable=AsyncMock, return_value=False
+    ), patch.object(
+        agent,
+        "_check_and_increment_rate_limit",
+        new_callable=AsyncMock,
+        return_value=False,
+    ) as mock_rate_limit:
+        mock_hc.return_value.messages.create = AsyncMock(
+            return_value=mock_haiku_response
+        )
+        await agent._handle_order_created(payload)  # RabbitMQ delivery
+        await agent._handle_order_created(payload)  # HTTP fallback, same order
+
+    drafts_ready = [
+        c
+        for c in mock_notify.call_args_list
+        if c[1].get("notification_type") == "draft_ready"
+    ]
+    assert len(drafts_ready) == 1, (
+        "one order must notify the manager once; a second entry path must be "
+        "stopped by the per-order lock before it drafts or notifies"
+    )
+
+    # Position, not just presence. The lock used to sit at step 6, behind the
+    # rate-limit increment, the context build and the constraint checks — so a
+    # second delivery still burned a slot off the restaurant's daily cap and could
+    # fire a second constraint_triggered notification before reaching the lock.
+    assert mock_rate_limit.await_count == 1, (
+        "the per-order lock must come BEFORE the daily rate-limit increment, or a "
+        "duplicate delivery double-counts the cap even when no second draft is sent"
+    )

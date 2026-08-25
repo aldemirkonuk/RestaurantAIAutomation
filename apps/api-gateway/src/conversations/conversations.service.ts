@@ -60,7 +60,9 @@ function resolveDateWindow(options: {
 
   const widen = (start: Date, end: Date) => {
     from = from
-      ? new Date(Math.max(new Date(from).getTime(), start.getTime())).toISOString()
+      ? new Date(
+          Math.max(new Date(from).getTime(), start.getTime()),
+        ).toISOString()
       : start.toISOString();
     to = to
       ? new Date(Math.min(new Date(to).getTime(), end.getTime())).toISOString()
@@ -301,7 +303,14 @@ export class ConversationsService {
     const keys = threads.map((t) => t.thread_key);
 
     if (keys.length === 0) {
-      return { conversations: [], threads: [], total, page, limit, totalPages: 0 };
+      return {
+        conversations: [],
+        threads: [],
+        total,
+        page,
+        limit,
+        totalPages: 0,
+      };
     }
 
     const { data, error } = await this.databaseService.supabase

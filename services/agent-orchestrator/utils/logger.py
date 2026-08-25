@@ -11,27 +11,48 @@ Both modes include: timestamp, level, logger, message, agent_name, correlation_i
 import logging
 import os
 import sys
-import threading
+from contextvars import ContextVar
 from pathlib import Path
+from typing import Optional, Tuple
+
 from pythonjsonlogger import jsonlogger
 
 
-# Thread-local storage for correlation context
-_context = threading.local()
+# Ambient context for correlation (P1 NF instrumentation).
+#
+# Was threading.local(), which is async-UNSAFE: every coroutine on one event-loop
+# thread shared the same storage, so concurrently interleaved message handlers
+# clobbered each other's correlation_id (last-writer-wins). ContextVar values are
+# copied per asyncio task AND per thread, so both runtimes get isolated context.
+_agent_name_var: ContextVar[Optional[str]] = ContextVar("agent_name", default=None)
+_correlation_id_var: ContextVar[Optional[str]] = ContextVar(
+    "correlation_id", default=None
+)
 
 
 def set_log_context(agent_name: str = None, correlation_id: str = None):
-    """Set logging context for the current thread/task."""
+    """Set logging context for the current thread / asyncio task."""
     if agent_name is not None:
-        _context.agent_name = agent_name
+        _agent_name_var.set(agent_name)
     if correlation_id is not None:
-        _context.correlation_id = correlation_id
+        _correlation_id_var.set(correlation_id)
 
 
 def clear_log_context():
     """Clear logging context."""
-    _context.agent_name = None
-    _context.correlation_id = None
+    _agent_name_var.set(None)
+    _correlation_id_var.set(None)
+
+
+def get_log_context() -> Tuple[Optional[str], Optional[str]]:
+    """
+    Return (agent_name, correlation_id) for the current thread / asyncio task.
+
+    Used by SpendLogger (P1) so spend emitted anywhere inside an agent's or a
+    Celery task's call tree is attributed to the right actor and joins
+    decision_log via the same correlation_id.
+    """
+    return _agent_name_var.get(), _correlation_id_var.get()
 
 
 class AgentContextFilter(logging.Filter):
@@ -39,14 +60,10 @@ class AgentContextFilter(logging.Filter):
 
     def filter(self, record):
         record.agent_name = (
-            getattr(_context, "agent_name", None)
-            or getattr(record, "agent_name", None)
-            or ""
+            _agent_name_var.get() or getattr(record, "agent_name", None) or ""
         )
         record.correlation_id = (
-            getattr(_context, "correlation_id", None)
-            or getattr(record, "correlation_id", None)
-            or ""
+            _correlation_id_var.get() or getattr(record, "correlation_id", None) or ""
         )
         return True
 

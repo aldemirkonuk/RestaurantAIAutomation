@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -24,6 +25,8 @@ import {
   Calendar,
   Rocket,
   BookOpen,
+  FileText,
+  ScrollText,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { cn } from '../../lib/utils'
@@ -40,6 +43,8 @@ interface NavItem {
   name: string
   href: string
   icon: React.ElementType
+  /** Shown in the hover tooltip so users know where a link goes before clicking. */
+  description: string
   badge?: number
   children?: { name: string; href: string }[]
 }
@@ -51,42 +56,283 @@ const DocumentsReportsIcon = (props: React.SVGProps<SVGSVGElement>) => (
 )
 
 const mainNavItems: NavItem[] = [
-  { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'Inventory', href: '/inventory', icon: Package },
-  { name: 'Orders', href: '/orders', icon: ShoppingCart },
-  { name: 'Wine Library', href: '/wines', icon: Wine },
+  {
+    name: 'Dashboard',
+    href: '/',
+    icon: LayoutDashboard,
+    description: "Today's KPIs, alerts, and the actions worth doing first.",
+  },
+  {
+    name: 'Inventory',
+    href: '/inventory',
+    icon: Package,
+    description: 'Live and shadow stock, par levels, counts, and the cellar map.',
+  },
+  {
+    name: 'Orders',
+    href: '/orders',
+    icon: ShoppingCart,
+    description: 'Draft, approve, and track purchase orders through delivery.',
+  },
+  {
+    name: 'Wine Library',
+    href: '/wines',
+    icon: Wine,
+    description: 'Your full wine catalog with pricing and tasting details.',
+  },
   // Distributor discovery is a tab inside Providers (/providers?tab=discover)
   // rather than its own nav item — same subject, and the sidebar is already full.
-  { name: 'Providers', href: '/providers', icon: Truck },
-  { name: 'Promotions', href: '/promotions', icon: Tag },
-  { name: 'Reports', href: '/reports', icon: BarChart3 },
+  {
+    name: 'Providers',
+    href: '/providers',
+    icon: Truck,
+    description: 'Suppliers, contacts, and distributor discovery.',
+  },
+  {
+    name: 'Promotions',
+    href: '/promotions',
+    icon: Tag,
+    description: 'Vendor offers pulled from email, plus trusted senders.',
+  },
+  {
+    name: 'Reports',
+    href: '/reports',
+    icon: BarChart3,
+    description: 'Sales, margin, and inventory performance over time.',
+  },
 ]
 
 const secondaryNavItems: NavItem[] = [
-  { name: 'Calendar', href: '/calendar', icon: Calendar },
-  { name: 'Team', href: '/team', icon: Users },
-  { name: 'Communications', href: '/communications', icon: MessageSquare },
-  { name: 'Documents & Reports', href: '/documents-reports', icon: DocumentsReportsIcon },
-  { name: 'Notifications', href: '/notifications', icon: Bell },
+  {
+    name: 'Calendar',
+    href: '/calendar',
+    icon: Calendar,
+    description: 'Deliveries, tastings, and vendor meetings.',
+  },
+  {
+    name: 'Team',
+    href: '/team',
+    icon: Users,
+    description: 'Staff, roles, shifts, and performance.',
+  },
+  {
+    name: 'Communications',
+    href: '/communications',
+    icon: MessageSquare,
+    description: 'Vendor email threads, classified and ready to reply.',
+  },
+  {
+    name: 'Documents & Reports',
+    href: '/documents-reports',
+    icon: DocumentsReportsIcon,
+    description: 'Invoices, receipts, and generated report history.',
+  },
+  {
+    name: 'Receipts & Credits',
+    href: '/receipts',
+    icon: FileText,
+    description: 'Vendor documents to verify, and credit claims to chase.',
+  },
+  {
+    name: 'Logs',
+    href: '/logs',
+    icon: ScrollText,
+    description: 'Correlated timeline across POS, stock, documents, and agents.',
+  },
+  {
+    name: 'Notifications',
+    href: '/notifications',
+    icon: Bell,
+    description: 'Alerts that need a decision, oldest first.',
+  },
 ]
 
 const aiNavItems: NavItem[] = [
-  { name: 'Sommelier AI', href: '/sommelier', icon: Sparkles },
-  { name: 'Wine Agent', href: '/wineagent', icon: Bot },
+  {
+    name: 'Sommelier AI',
+    href: '/sommelier',
+    icon: Sparkles,
+    description: 'Ask about pairings, pricing, and what to reorder.',
+  },
+  {
+    name: 'Wine Agent',
+    href: '/wineagent',
+    icon: Bot,
+    description: 'Hands-off agent for routine inventory and ordering work.',
+  },
 ]
 
 const bottomNavItems: NavItem[] = [
-  { name: 'Profile', href: '/profile', icon: User },
-  { name: 'Settings', href: '/settings', icon: Settings },
-  { name: 'Help & Support', href: '/help', icon: HelpCircle },
+  {
+    name: 'Profile',
+    href: '/profile',
+    icon: User,
+    description: 'Your account, security, and linked sign-in providers.',
+  },
+  {
+    name: 'Settings',
+    href: '/settings',
+    icon: Settings,
+    description: 'Restaurant setup, features, permissions, and integrations.',
+  },
+  {
+    name: 'Help & Support',
+    href: '/help',
+    icon: HelpCircle,
+    description: 'Guides, page tours, and how to reach us.',
+  },
 ]
+
+interface NavTooltipState {
+  title: string
+  description: string
+  badgeLabel: string | null
+  /** Viewport coords of the anchor's right edge / vertical centre. */
+  x: number
+  y: number
+}
+
+const TOOLTIP_HALF_HEIGHT = 34
+
+/**
+ * Hover/focus hint describing where a nav link goes.
+ *
+ * Portalled to the body with fixed positioning because the nav rail scrolls
+ * (`overflow-y-auto`), which clips anything positioned outside it.
+ *
+ * aria-hidden: the link's own aria-label already carries this, so announcing
+ * it twice would be noise.
+ */
+function NavTooltip({ title, description, badgeLabel, x, y }: NavTooltipState) {
+  const top = Math.min(
+    Math.max(y, TOOLTIP_HALF_HEIGHT + 8),
+    window.innerHeight - TOOLTIP_HALF_HEIGHT - 8,
+  )
+
+  return createPortal(
+    <motion.div
+      aria-hidden
+      initial={{ opacity: 0, x: -4 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
+      style={{ top, left: x + 8 }}
+      className="pointer-events-none fixed z-[60] w-56 -translate-y-1/2 rounded-lg border border-gray-200 bg-white p-2.5 shadow-lg"
+    >
+      <div className="flex items-center gap-1.5">
+        <p className="text-[13px] font-semibold text-gray-900">{title}</p>
+        {badgeLabel && (
+          <span className="rounded-full bg-wine-100 px-1.5 text-[10px] font-semibold text-wine-700">
+            {badgeLabel}
+          </span>
+        )}
+      </div>
+      <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500">{description}</p>
+    </motion.div>,
+    document.body,
+  )
+}
+
+interface SidebarNavItemProps {
+  item: NavItem
+  collapsed: boolean
+  pathname: string
+  isActive: boolean
+  badgeCount: number
+  onNavigate: () => void
+  onHover: (anchor: HTMLElement) => void
+  onHoverEnd: () => void
+  onKeyboardFocus: (anchor: HTMLElement) => void
+}
+
+/** Stable module component — must not be declared inside Sidebar or tooltip state remounts links mid-click. */
+function SidebarNavItem({
+  item,
+  collapsed,
+  pathname,
+  isActive,
+  badgeCount,
+  onNavigate,
+  onHover,
+  onHoverEnd,
+  onKeyboardFocus,
+}: SidebarNavItemProps) {
+  const Icon = item.icon
+  const badgeLabel = badgeCount > 99 ? '99+' : badgeCount > 0 ? String(badgeCount) : null
+  const isParentActive =
+    isActive ||
+    (item.children && item.children.some((child) => pathname.startsWith(child.href)))
+
+  return (
+    <NavLink
+      to={item.href}
+      onClick={onNavigate}
+      onMouseEnter={(e) => onHover(e.currentTarget)}
+      onMouseLeave={onHoverEnd}
+      onFocus={(e) => {
+        // Mouse clicks also focus the link; showing the tooltip there remounted
+        // the old inline NavItem and swallowed the first click in collapsed mode.
+        if (e.currentTarget.matches(':focus-visible')) onKeyboardFocus(e.currentTarget)
+      }}
+      onBlur={onHoverEnd}
+      className={cn(
+        'group relative flex items-center rounded-lg transition-colors',
+        collapsed
+          ? 'mx-auto h-10 w-10 justify-center'
+          : 'min-h-[38px] gap-2.5 px-2.5 py-2',
+        isParentActive
+          ? 'border border-wine-100 bg-wine-50 text-wine-700'
+          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+      )}
+      aria-label={badgeLabel ? `${item.name}, ${badgeCount} pending` : item.name}
+      aria-current={isActive ? 'page' : undefined}
+    >
+      <span className="relative flex shrink-0 items-center justify-center">
+        <Icon
+          className={cn(
+            'transition-colors',
+            collapsed ? 'h-[18px] w-[18px]' : 'h-4 w-4',
+            isParentActive ? 'text-wine-600' : 'text-gray-400 group-hover:text-gray-700',
+          )}
+          aria-hidden="true"
+        />
+
+        {collapsed && badgeLabel && (
+          <span
+            className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-wine-500 ring-2 ring-white"
+            aria-hidden
+          />
+        )}
+      </span>
+
+      {!collapsed && (
+        <span className="overflow-hidden whitespace-nowrap text-[13px] font-medium tracking-[-0.01em]">
+          {item.name}
+        </span>
+      )}
+
+      {!collapsed && badgeLabel && (
+        <span
+          className={cn(
+            'absolute right-2.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-semibold',
+            isParentActive
+              ? 'border border-wine-100 bg-white text-wine-600'
+              : 'bg-wine-100 text-wine-600',
+          )}
+          aria-hidden
+        >
+          {badgeLabel}
+        </span>
+      )}
+    </NavLink>
+  )
+}
 
 export function Sidebar() {
   const collapsed = useUIStore((s) => s.sidebarCollapsed)
   const setCollapsed = useUIStore((s) => s.setSidebarCollapsed)
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const setSidebarOpen = useUIStore((s) => s.setSidebarOpen)
-  const [hoveredItem, setHoveredItem] = useState<string | null>(null)
+  const [navTooltip, setNavTooltip] = useState<NavTooltipState | null>(null)
   const [showChecklist, setShowChecklist] = useState(false)
   const checklistButtonRef = useRef<HTMLButtonElement>(null)
   const location = useLocation()
@@ -104,7 +350,46 @@ export function Sidebar() {
   }, [])
   const effectiveCollapsed = isMobile ? false : collapsed
 
+  // Short delay so tooltips don't strobe while the cursor travels down the rail.
+  // Keyboard focus skips the delay — it's a deliberate landing, not a fly-over.
+  const tooltipTimer = useRef<number | null>(null)
+  const clearTooltipTimer = () => {
+    if (tooltipTimer.current !== null) {
+      window.clearTimeout(tooltipTimer.current)
+      tooltipTimer.current = null
+    }
+  }
+  const openTooltip = (
+    anchor: HTMLElement,
+    item: Pick<NavItem, 'name' | 'description'>,
+    badgeLabel: string | null,
+    immediate = false,
+  ) => {
+    clearTooltipTimer()
+    if (isMobile) return
+
+    const show = () => {
+      const rect = anchor.getBoundingClientRect()
+      setNavTooltip({
+        title: item.name,
+        description: item.description,
+        badgeLabel,
+        x: rect.right,
+        y: rect.top + rect.height / 2,
+      })
+    }
+
+    if (immediate) show()
+    else tooltipTimer.current = window.setTimeout(show, 320)
+  }
+  const closeTooltip = () => {
+    clearTooltipTimer()
+    setNavTooltip(null)
+  }
+  useEffect(() => clearTooltipTimer, [])
+
   const closeMobileNav = () => {
+    closeTooltip()
     if (isMobile) setSidebarOpen(false)
   }
 
@@ -137,90 +422,57 @@ export function Sidebar() {
   const showGetStarted = !activationComplete && !checklistDismissed
   const showLearn = activationComplete || checklistDismissed
 
-  const NavItemComponent = ({ item, collapsed }: { item: NavItem; collapsed: boolean }) => {
-    const isActive = location.pathname === item.href
-    const Icon = item.icon
+  const renderNavItem = (item: NavItem) => {
     const badgeCount = item.badge ?? badgeByHref[item.href] ?? 0
-    const badgeLabel = badgeCount > 99 ? '99+' : badgeCount > 0 ? String(badgeCount) : null
-
-    const isParentActive =
-      isActive ||
-      (item.children && item.children.some((child) => location.pathname.startsWith(child.href)))
-
     return (
-      <NavLink
-        to={item.href}
-        onClick={closeMobileNav}
-        onMouseEnter={() => setHoveredItem(item.name)}
-        onMouseLeave={() => setHoveredItem(null)}
-        className={cn(
-          'group relative flex items-center gap-3 px-3 py-2.5 rounded-xl min-h-[44px]',
-          isParentActive
-            ? 'bg-wine-600 text-white shadow-lg shadow-wine-600/30'
-            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-        )}
-        aria-label={item.name}
-        aria-current={isActive ? 'page' : undefined}
-      >
-        <Icon className={cn('w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110', isActive && 'text-white')} aria-hidden="true" />
-        
-        {!collapsed && (
-          <span className="font-medium whitespace-nowrap overflow-hidden">
-            {item.name}
-          </span>
-        )}
-
-        {/* Badge */}
-        {badgeLabel && (
-          <span
-            className={cn(
-              'absolute flex items-center justify-center text-xs font-bold rounded-full min-w-[20px] h-5 px-1.5',
-              collapsed ? 'top-0 right-0' : 'right-3',
-              isActive ? 'bg-white text-wine-600' : 'bg-wine-100 text-wine-600'
-            )}
-            aria-label={`${badgeCount} unread`}
-          >
-            {badgeLabel}
-          </span>
-        )}
-
-        {/* Tooltip for collapsed state */}
-        {collapsed && hoveredItem === item.name && (
-          <div className="absolute left-full ml-3 px-3 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg shadow-xl z-50 whitespace-nowrap">
-            {item.name}
-            {badgeLabel && (
-              <span className="ml-2 px-1.5 py-0.5 bg-wine-500 rounded-full text-xs">
-                {badgeLabel}
-              </span>
-            )}
-          </div>
-        )}
-      </NavLink>
+      <SidebarNavItem
+        key={item.name}
+        item={item}
+        collapsed={effectiveCollapsed}
+        pathname={location.pathname}
+        isActive={location.pathname === item.href}
+        badgeCount={badgeCount}
+        onNavigate={closeMobileNav}
+        onHover={(anchor) => openTooltip(anchor, item, badgeCount > 99 ? '99+' : badgeCount > 0 ? String(badgeCount) : null)}
+        onHoverEnd={closeTooltip}
+        onKeyboardFocus={(anchor) =>
+          openTooltip(anchor, item, badgeCount > 99 ? '99+' : badgeCount > 0 ? String(badgeCount) : null, true)
+        }
+      />
     )
   }
 
   return (
     <motion.aside
       initial={false}
-      animate={{ width: effectiveCollapsed ? 80 : 260 }}
-      transition={{ duration: 0.3, ease: 'easeInOut' }}
+      animate={{ width: effectiveCollapsed ? 72 : 260 }}
+      transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
       className={cn(
         'fixed left-0 top-0 h-screen bg-white border-r border-gray-200 flex flex-col shadow-sm',
         'z-50 md:z-40',
-        'safe-area-pad transition-transform duration-300 ease-in-out',
+        'safe-area-pad transition-transform duration-200 ease-smooth',
         // Mobile drawer: off-canvas unless open
         sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
       )}
     >
       {/* Logo */}
-      <div className="flex items-center justify-between h-16 px-4 border-b border-gray-100">
+      <div
+        className={cn(
+          'flex h-14 items-center border-b border-gray-100',
+          effectiveCollapsed ? 'justify-center px-2' : 'justify-between px-4',
+        )}
+      >
         <NavLink
           to="/"
           onClick={closeMobileNav}
-          className="flex items-center gap-3"
+          className={cn('flex items-center', effectiveCollapsed ? 'justify-center' : 'gap-3')}
           aria-label="WineOps AI home"
         >
-          <BrandMark size={40} alt="" className="shadow-lg" />
+          <BrandMark
+            size={effectiveCollapsed ? 28 : 32}
+            alt=""
+            className="shadow-sm"
+          />
           <AnimatePresence>
             {!effectiveCollapsed && (
               <motion.div
@@ -238,7 +490,12 @@ export function Sidebar() {
       </div>
 
       {/* Main Navigation */}
-      <nav className="flex-1 overflow-y-auto py-4 px-3">
+      <nav
+        className={cn(
+          'flex-1 overflow-y-auto py-3',
+          effectiveCollapsed ? 'px-1.5' : 'px-3',
+        )}
+      >
         {/* Primary Section */}
         <div className="space-y-1">
           {!effectiveCollapsed && (
@@ -248,7 +505,7 @@ export function Sidebar() {
           )}
           {mainNavItems.map((item) => (
             <div key={item.name} className="space-y-1">
-              <NavItemComponent item={item} collapsed={effectiveCollapsed} />
+              {renderNavItem(item)}
               {!effectiveCollapsed && item.children && (
                 <div className="ml-9 space-y-1">
                   {item.children.map((child) => {
@@ -259,8 +516,10 @@ export function Sidebar() {
                         to={child.href}
                         onClick={closeMobileNav}
                         className={cn(
-                          'block text-sm px-3 py-2 rounded-lg transition-all min-h-[44px]',
-                          childActive ? 'bg-wine-50 text-wine-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'
+                          'block min-h-[36px] rounded-lg px-2.5 py-1.5 text-[13px] transition-colors',
+                          childActive
+                            ? 'bg-wine-50 text-wine-700 font-medium'
+                            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800',
                         )}
                       >
                         {child.name}
@@ -274,7 +533,7 @@ export function Sidebar() {
         </div>
 
         {/* Secondary Section */}
-        <div className="mt-8 space-y-1">
+        <div className={cn('space-y-1', effectiveCollapsed ? 'mt-3 border-t border-gray-100 pt-3' : 'mt-8')}>
           {!effectiveCollapsed && (
             <p className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
               Workspace
@@ -282,7 +541,7 @@ export function Sidebar() {
           )}
           {secondaryNavItems.map((item) => (
             <div key={item.name} className="space-y-1">
-              <NavItemComponent item={item} collapsed={effectiveCollapsed} />
+              {renderNavItem(item)}
               {!effectiveCollapsed && item.children && (
                 <div className="ml-9 space-y-1">
                   {item.children.map((child) => {
@@ -293,8 +552,10 @@ export function Sidebar() {
                         to={child.href}
                         onClick={closeMobileNav}
                         className={cn(
-                          'block text-sm px-3 py-2 rounded-lg transition-all min-h-[44px]',
-                          childActive ? 'bg-wine-50 text-wine-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'
+                          'block min-h-[36px] rounded-lg px-2.5 py-1.5 text-[13px] transition-colors',
+                          childActive
+                            ? 'bg-wine-50 text-wine-700 font-medium'
+                            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800',
                         )}
                       >
                         {child.name}
@@ -308,29 +569,31 @@ export function Sidebar() {
         </div>
 
         {/* AI Section */}
-        <div className="mt-8 space-y-1">
+        <div className={cn('space-y-1', effectiveCollapsed ? 'mt-3 border-t border-gray-100 pt-3' : 'mt-8')}>
           {!effectiveCollapsed && (
             <p className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
               AI Assistants
             </p>
           )}
           {aiNavItems.map((item) => (
-            <NavItemComponent key={item.name} item={item} collapsed={effectiveCollapsed} />
+            <div key={item.name}>{renderNavItem(item)}</div>
           ))}
         </div>
 
         {/* Admin Section (if admin/owner) */}
         {user?.role === 'owner' && (
-          <div className="mt-8 space-y-1">
+          <div className={cn('space-y-1', effectiveCollapsed ? 'mt-3 border-t border-gray-100 pt-3' : 'mt-8')}>
             {!effectiveCollapsed && (
               <p className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 Admin
               </p>
             )}
-            <NavItemComponent
-              item={{ name: 'Admin Panel', href: '/admin', icon: Shield }}
-              collapsed={effectiveCollapsed}
-            />
+            {renderNavItem({
+              name: 'Admin Panel',
+              href: '/admin',
+              icon: Shield,
+              description: 'Tenant administration, users, and system controls.',
+            })}
           </div>
         )}
 
@@ -344,14 +607,17 @@ export function Sidebar() {
                 if (!showChecklist) trackGuidance('learn_opened', { mode: 'get-started' })
               }}
               className={cn(
-                'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group text-left',
+                'group flex items-center rounded-lg transition-colors text-left',
+                effectiveCollapsed
+                  ? 'mx-auto h-10 w-10 justify-center'
+                  : 'min-h-[38px] w-full gap-2.5 px-2.5 py-2',
                 showChecklist
-                  ? 'bg-wine-600/10 text-wine-600'
-                  : 'text-gray-600 hover:bg-gray-100',
+                  ? 'bg-wine-50 text-wine-700 border border-wine-100'
+                  : 'text-gray-600 hover:bg-gray-50',
               )}
             >
-              <div className="relative">
-                <Rocket className="w-5 h-5 flex-shrink-0" />
+              <div className="relative flex shrink-0 items-center justify-center">
+                <Rocket className={cn('flex-shrink-0', effectiveCollapsed ? 'h-[18px] w-[18px]' : 'h-4 w-4')} />
                 {completedCount < 4 && (
                   <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-wine-600 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
                     {completedCount}
@@ -359,12 +625,12 @@ export function Sidebar() {
                 )}
               </div>
               {!effectiveCollapsed && (
-                <span className="font-medium text-sm whitespace-nowrap overflow-hidden flex-1">
+                <span className="flex-1 overflow-hidden whitespace-nowrap text-[13px] font-medium tracking-[-0.01em]">
                   Get started
                 </span>
               )}
               {!effectiveCollapsed && (
-                <span className="text-xs text-gray-400">{completedCount}/4</span>
+                <span className="text-[11px] text-gray-400">{completedCount}/4</span>
               )}
             </button>
 
@@ -387,25 +653,29 @@ export function Sidebar() {
       </nav>
 
       {/* Bottom Section */}
-      <div className="border-t border-gray-100 p-3 space-y-1">
+      <div className={cn('border-t border-gray-100 space-y-1', effectiveCollapsed ? 'p-1.5' : 'p-3')}>
         {showLearn && (
           <div className="relative">
             <button
               ref={checklistButtonRef}
+              data-guidance="learn-help"
               onClick={() => {
                 setShowChecklist(!showChecklist)
                 if (!showChecklist) trackGuidance('learn_opened', { mode: 'learn' })
               }}
               className={cn(
-                'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-left',
+                'flex items-center rounded-lg transition-colors text-left',
+                effectiveCollapsed
+                  ? 'mx-auto h-10 w-10 justify-center'
+                  : 'min-h-[38px] w-full gap-2.5 px-2.5 py-2',
                 showChecklist
-                  ? 'bg-wine-600/10 text-wine-600'
-                  : 'text-gray-600 hover:bg-gray-100',
+                  ? 'bg-wine-50 text-wine-700 border border-wine-100'
+                  : 'text-gray-600 hover:bg-gray-50',
               )}
             >
-              <BookOpen className="w-5 h-5 flex-shrink-0" />
+              <BookOpen className={cn('flex-shrink-0', effectiveCollapsed ? 'h-[18px] w-[18px]' : 'h-4 w-4')} />
               {!effectiveCollapsed && (
-                <span className="font-medium whitespace-nowrap overflow-hidden">
+                <span className="overflow-hidden whitespace-nowrap text-[13px] font-medium tracking-[-0.01em]">
                   Learn & Help
                 </span>
               )}
@@ -422,23 +692,26 @@ export function Sidebar() {
             </AnimatePresence>
           </div>
         )}
-        {bottomNavItems.map((item) => (
-          <NavItemComponent key={item.name} item={item} collapsed={effectiveCollapsed} />
-        ))}
+        {bottomNavItems.map((item) => renderNavItem(item))}
 
         {/* Logout */}
         <button
           onClick={logout}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-600 hover:bg-red-50 hover:text-red-600 transition-all duration-200"
+          className={cn(
+            'rounded-lg text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600 flex items-center',
+            effectiveCollapsed
+              ? 'mx-auto h-10 w-10 justify-center'
+              : 'min-h-[38px] w-full gap-2.5 px-2.5 py-2',
+          )}
         >
-          <LogOut className="w-5 h-5 flex-shrink-0" />
+          <LogOut className={cn('flex-shrink-0', effectiveCollapsed ? 'h-[18px] w-[18px]' : 'h-4 w-4')} />
           <AnimatePresence>
             {!effectiveCollapsed && (
               <motion.span
                 initial={{ opacity: 0, width: 0 }}
                 animate={{ opacity: 1, width: 'auto' }}
                 exit={{ opacity: 0, width: 0 }}
-                className="font-medium whitespace-nowrap overflow-hidden"
+                className="overflow-hidden whitespace-nowrap text-[13px] font-medium tracking-[-0.01em]"
               >
                 Log Out
               </motion.span>
@@ -448,14 +721,19 @@ export function Sidebar() {
       </div>
 
       {/* User Profile */}
-      <div className="border-t border-gray-100 p-3">
+      <div className={cn('border-t border-gray-100', effectiveCollapsed ? 'p-1.5' : 'p-3')}>
         <div
           className={cn(
-            'flex items-center gap-3 p-2 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer',
-            effectiveCollapsed && 'justify-center'
+            'flex items-center rounded-xl bg-gray-50 transition-colors cursor-pointer hover:bg-gray-100',
+            effectiveCollapsed ? 'justify-center p-1.5' : 'gap-3 p-2',
           )}
         >
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-wine-400 to-wine-600 flex items-center justify-center text-white font-semibold text-sm shadow-md">
+          <div
+            className={cn(
+              'flex items-center justify-center rounded-full bg-gradient-to-br from-wine-400 to-wine-600 font-semibold text-white shadow-md',
+              effectiveCollapsed ? 'h-8 w-8 text-xs' : 'h-9 w-9 text-sm',
+            )}
+          >
             {user?.name?.charAt(0) || 'U'}
           </div>
           <AnimatePresence>
@@ -479,7 +757,10 @@ export function Sidebar() {
       {/* Collapse Toggle — desktop only */}
       <button
         type="button"
-        onClick={() => setCollapsed(!collapsed)}
+        onClick={() => {
+          closeTooltip()
+          setCollapsed(!collapsed)
+        }}
         className="hidden md:flex absolute -right-3 top-20 w-6 h-6 bg-white border border-gray-200 rounded-full items-center justify-center shadow-md hover:shadow-lg hover:bg-gray-50 transition-all z-50"
       >
         {effectiveCollapsed ? (
@@ -488,6 +769,8 @@ export function Sidebar() {
           <ChevronLeft className="w-4 h-4 text-gray-600" />
         )}
       </button>
+
+      {navTooltip && <NavTooltip {...navTooltip} />}
     </motion.aside>
   )
 }

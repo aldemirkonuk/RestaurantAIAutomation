@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { ModelClientService } from "../../common/model-client/model-client.service";
 import { normalizeUom, toBottles, Uom } from "./document-types";
 import { applyTieOut, ParsedDocument, ParsedLine } from "./parsed-document";
 import { DocType } from "./document-types";
@@ -23,8 +24,6 @@ import { DocType } from "./document-types";
  * total is exactly the one a human should look at first. It costs nothing and
  * needs no second model call.
  */
-
-const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 
 const SYSTEM_PROMPT = `You are reading a beverage distributor's delivery paperwork for a restaurant's back office.
 
@@ -67,7 +66,10 @@ type MediaType =
 export class DocumentExtractorService {
   private readonly logger = new Logger(DocumentExtractorService.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly modelClient: ModelClientService,
+  ) {}
 
   private model(): string {
     return (
@@ -88,6 +90,7 @@ export class DocumentExtractorService {
   async extract(
     base64: string,
     declaredMime?: string | null,
+    restaurantId?: string | null,
   ): Promise<ParsedDocument> {
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
     if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
@@ -114,27 +117,29 @@ export class DocumentExtractorService {
             { type: "text", text: "Classify and extract this document." },
           ];
 
-    const res = await fetch(ANTHROPIC_API_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
+    // P1 NF-A: model client owns transport + emission. This fetch previously
+    // had NO timeout; 120s matches the comparably sized vendor-page extraction
+    // (same model, same 8192-token budget, vision payload). HTTP failures
+    // throw as `Anthropic <status>: <detail>` — the exact message the old
+    // inline throw produced, so callers see nothing new.
+    const payload: any = await this.modelClient.call({
+      body: {
         model: this.model(),
         max_tokens: 8192,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content }],
-      }),
+      },
+      timeoutMs: 120_000,
+      nf: {
+        subjectId: "DocumentExtractor",
+        taskType: "document_extraction",
+        stimulus: "procurement_doc",
+        choice: "parsed_document",
+        restaurantId: restaurantId ?? null,
+        context: { media_type: mediaType },
+      },
     });
 
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      throw new Error(`Anthropic ${res.status}: ${detail.slice(0, 300)}`);
-    }
-
-    const payload: any = await res.json();
     const text =
       (payload.content || []).find((b: any) => b.type === "text")?.text ?? "{}";
 

@@ -38,9 +38,31 @@ export interface Distributor {
   listing_tier: ListingTier
   data_confidence: number | null
   verified_at: string | null
+  /**
+   * Full address string. Catalogue rows break this into city/state/country;
+   * custom providers carry a single flat string that cannot be split reliably.
+   * The card renders this as a fallback when city and state are both null.
+   */
+  full_address?: string | null
 }
 
-export type ListingTier = 'curated' | 'registry' | 'user_submitted'
+/**
+ * curated        human-vetted catalogue entry
+ * registry       unverified permit-database row
+ * user_submitted contributed to the SHARED catalogue, pending vetting
+ * custom         this restaurant's own private provider — never in the shared
+ *                catalogue and never returned by catalogue search
+ *
+ * 'user_submitted' and 'custom' are deliberately distinct. The first describes
+ * provenance of a public row; the second describes ownership scope. Collapsing
+ * them would let a tenant's private vendor list leak the moment
+ * vendor-catalogue.service widens its listing_tier filter beyond 'curated'.
+ */
+export type ListingTier =
+  | 'curated'
+  | 'registry'
+  | 'user_submitted'
+  | 'custom'
 
 export interface DistributorSearchResponse {
   data: Distributor[]

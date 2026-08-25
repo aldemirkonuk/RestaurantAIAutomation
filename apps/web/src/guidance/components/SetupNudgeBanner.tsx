@@ -5,8 +5,17 @@ import { useOnboardingProgress } from '../../hooks/queries/useOnboardingProgress
 import { useAuth } from '../../contexts/AuthContext'
 import { GuidanceStrip } from './GuidanceStrip'
 
+// Same hide-list as WineAgentFab — the nudge would be redundant on the flow
+// that IS the setup, or on unauthenticated screens.
 const HIDDEN_PATHS = ['/get-started', '/login', '/register', '/verify-email', '/onboarding']
 
+/**
+ * Finish-setup nudge: a dismissible, non-blocking banner reminding
+ * owner/manager users to finish activation (menu + threshold) when they've
+ * wandered off to the rest of the app. Escalating-backoff cadence lives in
+ * `isSetupNudgeDue`; the sidebar "Get started" badge is the permanent
+ * fallback once this banner is dismissed forever.
+ */
 export function SetupNudgeBanner() {
   const guidance = useGuidanceOptional()
   const { progress } = useOnboardingProgress()
@@ -28,6 +37,8 @@ export function SetupNudgeBanner() {
 
   useEffect(() => {
     if (shouldShow) guidance?.markSetupNudgeShown()
+    // Only re-fire when visibility flips on — markSetupNudgeShown itself
+    // updates guidance state, which must not retrigger this effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldShow])
 
@@ -37,7 +48,7 @@ export function SetupNudgeBanner() {
     <GuidanceStrip
       data-guidance="setup-nudge-banner"
       ariaLabel="Finish setup"
-      title="Finish setting up WineOps"
+      title="Finish setting up WineOps."
       body="Upload your wine list and set a low-stock threshold to unlock inventory and ordering."
       primaryLabel="Finish setup"
       onPrimary={() => navigate('/get-started')}

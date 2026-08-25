@@ -17,14 +17,14 @@ import {
   Tag,
   Info,
   ChevronDown,
-  ChevronUp,
-} from 'lucide-react'
+  ChevronUp, FileText } from 'lucide-react'
 import { getWineTypeColor } from '../../data/wineData'
 import { WineValidationModal } from './WineValidationModal'
 import {
   scanMenuImage,
   DetectedWine as ServiceDetectedWine,
 } from '../../services/wineDetection'
+import { SCAN_ACCEPT, isScannable, resetFileInput } from '../../lib/uploadAccept'
 
 type DetectedWine = ServiceDetectedWine
 
@@ -102,8 +102,9 @@ export function MenuScannerTab({ onWinesDetected }: MenuScannerTabProps) {
     const file = event.target.files?.[0]
     if (!file) return
 
-    if (!file.type.startsWith('image/')) {
-      alert('Please select an image file')
+    if (!isScannable(file)) {
+      alert(`"${file.name}" is not a photo or PDF. Pick an image or a PDF menu.`)
+      resetFileInput(event.target)
       return
     }
 
@@ -197,7 +198,7 @@ export function MenuScannerTab({ onWinesDetected }: MenuScannerTabProps) {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" />
+      <input ref={fileInputRef} type="file" accept={SCAN_ACCEPT} onChange={handleFileSelect} className="hidden" />
 
       {/* No image uploaded yet */}
       {!previewImage && !isProcessing && detectedWines.length === 0 && (
@@ -272,7 +273,14 @@ export function MenuScannerTab({ onWinesDetected }: MenuScannerTabProps) {
             <div className="flex items-start gap-4">
               {previewImage && (
                 <div className="w-32 h-32 rounded-xl overflow-hidden border-2 border-white shadow-lg flex-shrink-0">
-                  <img src={previewImage} alt="Menu preview" className="w-full h-full object-cover" />
+                  {previewImage.startsWith('data:application/pdf') ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-1 bg-gray-50 text-gray-500">
+                      <FileText className="w-6 h-6" />
+                      <span className="text-[10px] font-medium">PDF menu</span>
+                    </div>
+                  ) : (
+                    <img src={previewImage} alt="Menu preview" className="w-full h-full object-cover" />
+                  )}
                 </div>
               )}
               <div className="flex-1">

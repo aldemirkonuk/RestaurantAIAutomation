@@ -54,39 +54,47 @@ export default meta
 
 type Story = StoryObj<typeof DistributorMap>
 
+/**
+ * Hover/selection state lives in a named component rather than inline in the
+ * story's `render`. Hooks may only be called from a capitalized component or a
+ * `use*` hook — a lowercase `render` function is neither, so calling useState
+ * there trips react-hooks/rules-of-hooks and fails lint.
+ */
+function WithResultsHarness() {
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+
+  return (
+    <div className="grid h-screen grid-cols-[380px_1fr] gap-4 bg-white p-4">
+      <div className="flex flex-col gap-2 overflow-y-auto">
+        {distributors.map((d) => (
+          <DistributorCard
+            key={d.id}
+            d={d}
+            active={d.id === hoveredId || d.id === selectedId}
+            onHover={setHoveredId}
+            onOpen={setSelectedId}
+          />
+        ))}
+      </div>
+      <DistributorMap
+        className="h-full"
+        distributors={distributors}
+        origin={MANHATTAN}
+        originLabel="Manhattan Trattoria"
+        hoveredId={hoveredId}
+        selectedId={selectedId}
+        onHover={setHoveredId}
+        onSelect={setSelectedId}
+        onSearchArea={() => {}}
+      />
+    </div>
+  )
+}
+
 /** The map alongside the result list, with live hover/selection linkage. */
 export const WithResults: Story = {
-  render: () => {
-    const [hoveredId, setHoveredId] = useState<string | null>(null)
-    const [selectedId, setSelectedId] = useState<string | null>(null)
-
-    return (
-      <div className="grid h-screen grid-cols-[380px_1fr] gap-4 bg-white p-4">
-        <div className="flex flex-col gap-2 overflow-y-auto">
-          {distributors.map((d) => (
-            <DistributorCard
-              key={d.id}
-              d={d}
-              active={d.id === hoveredId || d.id === selectedId}
-              onHover={setHoveredId}
-              onOpen={setSelectedId}
-            />
-          ))}
-        </div>
-        <DistributorMap
-          className="h-full"
-          distributors={distributors}
-          origin={MANHATTAN}
-          originLabel="Manhattan Trattoria"
-          hoveredId={hoveredId}
-          selectedId={selectedId}
-          onHover={setHoveredId}
-          onSelect={setSelectedId}
-          onSearchArea={() => {}}
-        />
-      </div>
-    )
-  },
+  render: () => <WithResultsHarness />,
 }
 
 /** Out-of-territory vendors render dimmed rather than being silently dropped. */

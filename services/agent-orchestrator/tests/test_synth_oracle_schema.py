@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
 
 from scripts.synth.ids import SIM_NS, sim_restaurant_id, sim_slug
 from scripts.synth.oracle import (
@@ -18,15 +17,50 @@ from scripts.synth.recipes import load_recipe
 from scripts.synth.snapshots import load_snapshot
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-MIGRATION = (
-    REPO_ROOT
-    / "supabase"
-    / "migrations"
-    / "20260727230000_sim_ground_truth.sql"
-)
+MIGRATIONS_DIR = REPO_ROOT / "supabase" / "migrations"
+
+
+def _schema_sql() -> str:
+    """Every migration concatenated.
+
+    This used to read one hardcoded file, 20260727230000_sim_ground_truth.sql.
+    The schema baseline in adc4131 folded all per-feature migrations into a
+    single dump and deleted that file, so the test failed on a missing path
+    while the schema it was checking was entirely intact.
+    """
+    parts = [
+        p.read_text(encoding="utf-8") for p in sorted(MIGRATIONS_DIR.glob("*.sql"))
+    ]
+    assert parts, f"No migrations found in {MIGRATIONS_DIR}"
+    return "\n".join(parts)
+
+
+def _table_def(table: str) -> str:
+    """Just the CREATE TABLE block for `table`.
+
+    Scoping matters more than it used to. The baseline is ~15k lines holding the
+    whole schema, so a bare `assert "SECURITY DEFINER" in sql` or
+    `assert "profile" in sql` would pass against the surrounding dump even if
+    this table were dropped entirely. Slicing keeps each assertion about the
+    thing it names.
+    """
+    sql = _schema_sql()
+    match = re.search(
+        rf"CREATE TABLE (?:public\.)?{table}\s*\((.*?)\n\);", sql, re.DOTALL
+    )
+    assert match, f"No CREATE TABLE for {table} in any migration"
+    return match.group(1)
+
 
 REQUIRED_FACT_KEYS = {
-    "profile": {"cuisine", "size", "wine_program_depth", "sales_volume", "price_tier", "ordering_rhythm"},
+    "profile": {
+        "cuisine",
+        "size",
+        "wine_program_depth",
+        "sales_volume",
+        "price_tier",
+        "ordering_rhythm",
+    },
     "roster": {"role", "user_id", "email_domain"},
     "sku": {"signature_hash", "name", "producer", "vintage"},
     "menu_price": {"bottle_price", "by_glass_price", "currency"},
@@ -36,16 +70,36 @@ REQUIRED_FACT_KEYS = {
 
 
 def test_migration_file_exists_with_oracle_tables_and_rpc():
-    assert MIGRATION.is_file(), f"Missing migration: {MIGRATION}"
-    sql = MIGRATION.read_text(encoding="utf-8")
-    assert "sim_ground_truth_runs" in sql
-    assert "sim_ground_truth_facts" in sql
-    assert "seed_sim_restaurant" in sql
-    assert "SECURITY DEFINER" in sql
-    # Fact-type CHECK covers all six Phase-41 types
+    sql = _schema_sql()
+
+    # Both oracle tables are defined (the helper raises if either is absent).
+    facts_def = _table_def("sim_ground_truth_facts")
+    _table_def("sim_ground_truth_runs")
+
+    # The seeding RPC exists and runs as definer — scoped to the function so a
+    # SECURITY DEFINER elsewhere in the schema cannot satisfy this.
+    fn = re.search(
+        r"CREATE (?:OR REPLACE )?FUNCTION (?:public\.)?seed_sim_restaurant\b.*?"
+        r"(\$[A-Za-z_]*\$)",
+        sql,
+        re.DOTALL | re.IGNORECASE,
+    )
+    assert fn, "seed_sim_restaurant() is not defined in any migration"
+    assert "SECURITY DEFINER" in sql[fn.start() : fn.end()]
+
+    # Fact-type CHECK covers all six Phase-41 types. Asserted against the facts
+    # table definition, not the whole schema: words like "profile" and "sku"
+    # appear all over a full dump and would pass with the constraint deleted.
     for ft in FACT_TYPES:
-        assert ft in sql
-    assert "ENABLE ROW LEVEL SECURITY" in sql
+        assert ft in facts_def, f"fact_type CHECK is missing {ft!r}"
+
+    # RLS on the oracle tables specifically.
+    for table in ("sim_ground_truth_facts", "sim_ground_truth_runs"):
+        assert re.search(
+            rf"ALTER TABLE (?:ONLY )?(?:public\.)?{table} ENABLE ROW LEVEL SECURITY",
+            sql,
+            re.IGNORECASE,
+        ), f"{table} does not have RLS enabled"
     # No anon/authenticated write policies on oracle tables
     assert not re.search(
         r"CREATE POLICY[^;]*ON\s+sim_ground_truth_(runs|facts)[^;]*"
@@ -79,9 +133,21 @@ def test_build_facts_emits_all_six_types_with_payload_keys():
     snapshot = load_snapshot("bistro")
     restaurant_id = sim_restaurant_id("bistro")
     roster = [
-        {"role": "owner", "user_id": "11111111-1111-1111-1111-111111111111", "email": "owner@wineops.internal"},
-        {"role": "manager", "user_id": "22222222-2222-2222-2222-222222222222", "email": "mgr@wineops.internal"},
-        {"role": "staff", "user_id": "33333333-3333-3333-3333-333333333333", "email": "staff@wineops.internal"},
+        {
+            "role": "owner",
+            "user_id": "11111111-1111-1111-1111-111111111111",
+            "email": "owner@wineops.internal",
+        },
+        {
+            "role": "manager",
+            "user_id": "22222222-2222-2222-2222-222222222222",
+            "email": "mgr@wineops.internal",
+        },
+        {
+            "role": "staff",
+            "user_id": "33333333-3333-3333-3333-333333333333",
+            "email": "staff@wineops.internal",
+        },
     ]
     # opening map: signature_hash -> stock + master wine id
     opening = {}

@@ -60,7 +60,21 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo)
-    
+
+    // Stale deploy chunks (esp. Safari) — one automatic reload before showing the wall.
+    const msg = (error?.message || '').toLowerCase()
+    const isChunkError =
+      msg.includes('importing a module script failed') ||
+      msg.includes('failed to fetch dynamically imported module') ||
+      msg.includes('error loading dynamically imported module') ||
+      msg.includes('loading chunk') ||
+      msg.includes('chunkloaderror')
+    if (isChunkError && !sessionStorage.getItem('chunk_reload')) {
+      sessionStorage.setItem('chunk_reload', '1')
+      window.location.reload()
+      return
+    }
+
     // Capture error in Sentry
     const eventId = errorTracking.captureException(error, {
       componentStack: errorInfo.componentStack,

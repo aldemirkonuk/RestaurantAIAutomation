@@ -4,14 +4,16 @@ Dry run is the default and is genuinely side-effect-free — it opens no socket.
 builds every payload, computes every signature, and reports what it would have
 sent, so the whole encoding path is exercisable with no infrastructure running.
 
-Signing is real. `ToastAdapter.verify_webhook` fails OPEN when no secret is
-configured, so an unsigned simulator would pass and leave the HMAC path untested
-forever. We compute the signature the adapter's own algorithm computes —
-`hmac_sha256(secret, raw_body).hexdigest()`, compared case-insensitively against
-the `Toast-Signature` header — over the EXACT bytes we put on the wire. Re-serialising
-JSON between signing and sending changes spacing and key order and produces a
-valid-looking signature that fails, which is the bug BUG-05 was filed for on the
-receiving side.
+Signing is real for both ingresses this bridge drives. `ToastAdapter
+.verify_webhook` and `PosHubService.verifyWebhookSignature` both fail CLOSED
+when no secret is configured (the former did not always — see decision B16 in
+`hmac_sha256_hex`'s docstring — an earlier version of this file relied on that
+fail-open behaviour, which is exactly the kind of thing that stops being true
+without warning). `assert_signing_configured` refuses `--apply` outright rather
+than let every request in a run 401 silently. Signatures are computed over the
+EXACT bytes put on the wire — re-serialising JSON between signing and sending
+changes spacing and key order and produces a valid-looking signature that fails,
+which is the bug BUG-05 was filed for on the receiving side.
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ import json
 import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Any
@@ -47,11 +50,16 @@ STOCK_PATH = "/api/v1/pos/webhook/toast"
 MAPPINGS_PATH = API_PREFIX + "/pos-hub/mappings/{restaurant_id}"
 
 
-def sign_toast(secret: str, body: bytes) -> str:
-    """Reproduce ToastAdapter.verify_webhook's algorithm exactly.
+def hmac_sha256_hex(secret: str, body: bytes) -> str:
+    """HMAC-SHA256 hex digest, matching both verifiers this bridge signs for.
 
-    That method compares `hmac.new(secret, raw, sha256).hexdigest()` against
-    `signature.lower()`, so a lowercase hex digest is what it expects.
+    `ToastAdapter.verify_webhook` (Python) does `hmac.new(secret, raw,
+    sha256).hexdigest()` and lowercases before comparing. `PosHubService
+    .verifyWebhookSignature` (TypeScript) does `crypto.createHmac("sha256",
+    secret).update(rawBody).digest("hex")` compared via `timingSafeEqual`.
+    Same algorithm, different header and different secret — kept as one
+    function because the two verifiers agreeing on the primitive is the whole
+    reason a single sim can drive both ingresses.
     """
     return hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
@@ -87,19 +95,103 @@ class BridgeConfig:
     analytics_base: str = "http://localhost:3001"
     stock_base: str = "http://localhost:8000"
     toast_secret: str = ""
+    #: HMAC key for X-Pos-Hub-Signature on the analytics/stock-depletion
+    #: ingress. Distinct from toast_secret — different header, different
+    #: verifier (PosHubService vs ToastAdapter), coincidentally the same
+    #: algorithm.
+    pos_hub_secret: str = ""
     timeout: float = 10.0
     #: "both" | "analytics" | "stock"
     ingress: str = "both"
     apply: bool = False
+    #: Required to --apply against a non-loopback analytics_base/stock_base.
+    #:
+    #: INCIDENT, 2026-08-05: a local dev script sourced a scratchpad env file to
+    #: point the orchestrator at local Supabase before running the simulator.
+    #: Between sessions the scratchpad was cleared; `. "$FILE"` on a missing file
+    #: fails SILENTLY in bash (no `set -e` in that shell, and sourcing nothing is
+    #: not an error), so the orchestrator process fell through to `.env`, which
+    #: holds the PRODUCTION Supabase credentials. 311 requests went to
+    #: `exzueerziesmczwlhomd.supabase.co` before it was noticed. The simulator
+    #: itself posted to `localhost:8000` exactly as configured — the leak was in
+    #: a separate, manually-launched process that the simulator had no way to see
+    #: or check. 114 decision_log rows and 53 idempotency_keys rows landed in
+    #: production (no business table — inventory_lots, restaurant_inventory,
+    #: procurement_orders, pos_checks — was touched); all were identified and
+    #: deleted the same session.
+    #:
+    #: This flag is the mitigation on the side that CAN be checked: the HTTP
+    #: target the simulator itself calls. It is not a fix for the class of bug
+    #: above (a downstream process resolving the wrong config), which needs a
+    #: guard in whatever launches that process — see scripts/dev_local_env.sh.
+    allow_remote: bool = False
 
     def wants(self, which: str) -> bool:
         return self.ingress in ("both", which)
+
+    #: Hosts treated as "local" without --allow-remote. IPv6 loopback included
+    #: because `curl -6` and some Docker configurations resolve localhost there.
+    _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
+
+    def assert_targets_are_safe(self) -> None:
+        """Refuse to apply against a non-loopback ingress without explicit opt-in."""
+        if not self.apply or self.allow_remote:
+            return
+        for label, base in (("analytics_base", self.analytics_base), ("stock_base", self.stock_base)):
+            host = urllib.parse.urlparse(base).hostname or ""
+            if host not in self._LOCAL_HOSTS:
+                raise RemoteTargetRefusedError(
+                    f"--apply refused: {label}={base!r} is not localhost. "
+                    "If this is deliberate, pass --allow-remote. If it is not, "
+                    "check what set this value — a config file may have silently "
+                    "failed to load and fallen back to a default pointing at a "
+                    "real deployment (see the 2026-08-05 incident note on this class)."
+                )
+
+    def assert_signing_configured(self) -> None:
+        """Refuse to apply against a fail-closed ingress with no secret.
+
+        Both verifiers reject an unsigned request outright — `PosHubService
+        .verifyWebhookSignature` (decision B17/B28) and, as of decision B16,
+        `ToastAdapter.verify_webhook` too (it used to fail OPEN; a missing
+        secret now gets every request rejected instead of silently accepted).
+        Posting anyway would burn every request in the run on a guaranteed
+        401-equivalent with nothing to show for it. Raising up front turns that
+        into one clear error instead of N confusing failures.
+        """
+        if not self.apply:
+            return
+        if self.wants("analytics") and not self.pos_hub_secret:
+            raise UnsignedApplyRefusedError(
+                "--apply refused: no pos_hub_secret configured (or "
+                "$POS_HUB_WEBHOOK_SECRET), and PosHubService.verifyWebhookSignature "
+                "fails closed without one — every request would be rejected. Pass "
+                "--pos-hub-secret, or run with --ingress stock to skip this side."
+            )
+        if self.wants("stock") and not self.toast_secret:
+            raise UnsignedApplyRefusedError(
+                "--apply refused: no toast_secret configured (or "
+                "$TOAST_WEBHOOK_SECRET), and ToastAdapter.verify_webhook fails "
+                "closed without one (decision B16) — every request would be "
+                "rejected. Pass --toast-secret, or run with --ingress analytics "
+                "to skip this side."
+            )
+
+
+class RemoteTargetRefusedError(RuntimeError):
+    """Raised when --apply would post to a non-loopback host without --allow-remote."""
+
+
+class UnsignedApplyRefusedError(RuntimeError):
+    """Raised when --apply would post to a fail-closed ingress with no secret."""
 
 
 class Bridge:
     """Posts checks through the production ingresses."""
 
     def __init__(self, config: BridgeConfig) -> None:
+        config.assert_targets_are_safe()
+        config.assert_signing_configured()
         self.config = config
         self.analytics = IngressResult(
             ingress="analytics",
@@ -111,6 +203,7 @@ class Bridge:
         )
         self.mappings: IngressResult | None = None
         self._unsigned_warned = False
+        self._analytics_unsigned_warned = False
 
     # -- transport ---------------------------------------------------------
 
@@ -172,6 +265,15 @@ class Bridge:
     # -- per ingress -------------------------------------------------------
 
     def send_analytics(self, check: Check) -> None:
+        """Ingress A — also the single POS door for stock, per the SimPOS
+        testbed plan (decision B13): closed checks deplete here via
+        apply_stock_movement/record_glass_pour, resolved through
+        pos_item_mappings. `PosHubService.verifyWebhookSignature` fails CLOSED
+        when `POS_HUB_WEBHOOK_SECRET` is unset (decision B17/B28) and requires
+        HMAC-SHA256 hex of the raw body in `X-Pos-Hub-Signature` — same shape as
+        Toast's signing, different secret and header name, so it is signed the
+        same way `send_stock` signs for Toast rather than left bare.
+        """
         result = self.analytics
         if not self.config.wants("analytics"):
             result.skipped += 1
@@ -179,12 +281,23 @@ class Bridge:
         # The hub accepts a single check or a list; one per request keeps a failure
         # attributable to a specific check.
         payload = canonical_check(check)
+        body = _encode(payload)
+        headers: dict[str, str] = {}
+        if self.config.pos_hub_secret:
+            headers["X-Pos-Hub-Signature"] = hmac_sha256_hex(self.config.pos_hub_secret, body)
+        elif not self._analytics_unsigned_warned:
+            self._analytics_unsigned_warned = True
+            result.errors.append(
+                "POS_HUB_WEBHOOK_SECRET not set. Dry run only — nothing is sent — but "
+                "note that --apply would refuse to run at all (assert_signing_configured), "
+                "since the hub fails CLOSED without it."
+            )
         if result.sample_payload is None:
             result.sample_payload = payload
         if not self.config.apply:
             result.skipped += 1
             return
-        self._post(result.url, _encode(payload), {}, result)
+        self._post(result.url, body, headers, result)
 
     def send_stock(self, check: Check) -> None:
         result = self.stock
@@ -196,12 +309,13 @@ class Bridge:
         body = _encode(payload)
         headers: dict[str, str] = {}
         if self.config.toast_secret:
-            headers["Toast-Signature"] = sign_toast(self.config.toast_secret, body)
+            headers["Toast-Signature"] = hmac_sha256_hex(self.config.toast_secret, body)
         elif not self._unsigned_warned:
             self._unsigned_warned = True
             result.errors.append(
-                "TOAST_WEBHOOK_SECRET not set — the adapter fails open, so this run "
-                "does NOT exercise signature verification. Set it to test that path."
+                "TOAST_WEBHOOK_SECRET not set. Dry run only — nothing is sent — but "
+                "note that --apply would refuse to run at all (assert_signing_configured), "
+                "since the adapter fails CLOSED without it as of decision B16."
             )
         if result.sample_payload is None:
             result.sample_payload = payload

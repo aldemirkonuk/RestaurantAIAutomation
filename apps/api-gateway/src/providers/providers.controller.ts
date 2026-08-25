@@ -120,6 +120,42 @@ export class ProvidersController {
     }
   }
 
+  // Declared before `@Get(":id")` — Nest matches in declaration order, and
+  // ":id" would otherwise capture "/providers/match" as a provider id.
+  @Get("match")
+  @ApiOperation({
+    summary:
+      "Providers in this restaurant's own list that look like duplicates of the given name/address",
+  })
+  @ApiQuery({ name: "name", required: false })
+  @ApiQuery({ name: "address", required: false })
+  @ApiQuery({
+    name: "excludeId",
+    required: false,
+    description:
+      "Provider being edited, excluded so it does not match itself at 1.0",
+  })
+  @ApiResponse({ status: 200, description: "Ranked duplicate candidates" })
+  async matchProviders(
+    @CurrentUser() user: { id: string; restaurantId: string },
+    @Query("name") name?: string,
+    @Query("address") address?: string,
+    @Query("excludeId") excludeId?: string,
+  ) {
+    try {
+      return await this.providersService.matchProviders(user.restaurantId, {
+        name,
+        address,
+        excludeId,
+      });
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to match providers",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Post("bulk-import")
   @ApiOperation({ summary: "Bulk import providers" })
   @ApiResponse({ status: 201, type: BulkImportResultDto })
@@ -163,6 +199,12 @@ export class ProvidersController {
         user.id,
       );
     } catch (error) {
+      // Deliberate HTTP semantics from the service (409 for an already-added
+      // catalogue vendor, 404 for a missing one, 400 for a bad payload) must
+      // survive. Flattening every failure to 500 made "you already have this
+      // vendor" indistinguishable from a real server fault, so the client
+      // could not tell an expected outcome from a broken one.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to create provider",
         HttpStatus.INTERNAL_SERVER_ERROR,

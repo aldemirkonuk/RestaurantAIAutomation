@@ -136,7 +136,7 @@ export function loadQuickActionsState(): QuickActionsState {
     const parsed = JSON.parse(raw) as Partial<QuickActionsState>
     const base = createDefaultQuickActionsState()
     const hiddenBuiltin = Array.isArray(parsed.hiddenBuiltin) ? parsed.hiddenBuiltin : []
-    let order = Array.isArray(parsed.order) && parsed.order.length > 0 ? [...parsed.order] : [...base.order]
+    const order = Array.isArray(parsed.order) && parsed.order.length > 0 ? [...parsed.order] : [...base.order]
 
     // Migration: append any newly-introduced builtin actions (e.g. Set a Goal,
     // See Insights) that predate this saved state, so upgrades surface them

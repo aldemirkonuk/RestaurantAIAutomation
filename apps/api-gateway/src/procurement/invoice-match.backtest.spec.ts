@@ -1,6 +1,11 @@
 import * as fs from "fs";
 import * as path from "path";
-import { computeMatch, isClaimable, isDiscrepancy, MatchInput } from "./invoice-match";
+import {
+  computeMatch,
+  isClaimable,
+  isDiscrepancy,
+  MatchInput,
+} from "./invoice-match";
 
 /**
  * Backtest: every synthetic-document scenario, run through the real engine.
@@ -191,7 +196,9 @@ describe("invoice-match backtest — synthetic scenario expectations", () => {
     });
 
     it("an agreed free-goods deal with no packing slip never alarms", () => {
-      const rows = fixture.rows.filter((r) => r.scenario === "free_goods_no_slip");
+      const rows = fixture.rows.filter(
+        (r) => r.scenario === "free_goods_no_slip",
+      );
       expect(rows.length).toBeGreaterThan(0);
       for (const row of rows) {
         const result = computeMatch(row.input);
@@ -219,7 +226,9 @@ describe("invoice-match backtest — synthetic scenario expectations", () => {
     });
 
     it("allocated freight lands in cost, not in a price variance", () => {
-      const rows = fixture.rows.filter((r) => r.scenario === "freight_allocated");
+      const rows = fixture.rows.filter(
+        (r) => r.scenario === "freight_allocated",
+      );
       expect(rows.length).toBeGreaterThan(0);
       for (const row of rows) {
         const result = computeMatch(row.input);
@@ -264,7 +273,9 @@ describe("invoice-match backtest — synthetic scenario expectations", () => {
     it("overbilled_vs_ship is the only self-evidenced verdict", () => {
       for (const row of fixture.rows) {
         const result = computeMatch(row.input);
-        expect(result.selfEvidenced).toBe(result.verdict === "overbilled_vs_ship");
+        expect(result.selfEvidenced).toBe(
+          result.verdict === "overbilled_vs_ship",
+        );
       }
     });
   });

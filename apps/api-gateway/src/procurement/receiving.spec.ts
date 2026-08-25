@@ -217,6 +217,83 @@ describe("recordDoorReceipt", () => {
     expect(calls.rpc).toHaveLength(0);
   });
 
+  it("uses transaction_type/source values that apply_stock_movement's enums actually accept", async () => {
+    // Regression guard: 'receipt'/'receiving' are not in inventory_transaction_type
+    // / inventory_transaction_source (baseline migration lines 126-153). The RPC
+    // throws on the enum cast, and the failure was previously swallowed by a
+    // warn-level log — every door receipt booked zero stock while reporting
+    // success. Valid values, from the baseline enums:
+    const VALID_TRANSACTION_TYPES = [
+      "sale",
+      "purchase",
+      "adjustment",
+      "transfer",
+      "waste",
+      "return",
+      "comp",
+      "reconciliation",
+      "initial",
+      "correction",
+    ];
+    const VALID_SOURCES = [
+      "pos",
+      "manual",
+      "order",
+      "mobile_count",
+      "reconciliation",
+      "system",
+      "import",
+      "api",
+    ];
+    const { db, calls } = makeDb({
+      order: {
+        id: "o1",
+        inventory_id: "inv1",
+        quantity: 24,
+        bottles_total: 24,
+        quantity_received: 0,
+      },
+    });
+    await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 24,
+      countedUom: "bottle",
+    });
+
+    expect(calls.rpc[0].args.p_transaction_type).toBeDefined();
+    expect(VALID_TRANSACTION_TYPES).toContain(
+      calls.rpc[0].args.p_transaction_type,
+    );
+    expect(calls.rpc[0].args.p_source).toBeDefined();
+    expect(VALID_SOURCES).toContain(calls.rpc[0].args.p_source);
+  });
+
+  it("actually books stock on a door receipt (delta and inventory target are non-null)", async () => {
+    // The bug this guards: the event row, quantity_received, and
+    // PARTIALLY_RECEIVED status all wrote successfully even when the stock RPC
+    // failed, so the UI looked correct while zero bottles reached the shelf.
+    const { db, calls } = makeDb({
+      order: {
+        id: "o1",
+        inventory_id: "inv1",
+        quantity: 12,
+        bottles_total: 12,
+        quantity_received: 0,
+      },
+    });
+    const result = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 12,
+      countedUom: "bottle",
+    });
+
+    expect(calls.rpc).toHaveLength(1);
+    expect(calls.rpc[0].name).toBe("apply_stock_movement");
+    expect(calls.rpc[0].args.p_inventory_id).toBe("inv1");
+    expect(calls.rpc[0].args.p_delta).toBe(12);
+    expect(result.stockDelta).toBe(12);
+  });
+
   it("leaves the order open rather than completing it on a case count", async () => {
     // Closing here would strand the bottle count that catches the short case.
     const { db, calls } = makeDb({

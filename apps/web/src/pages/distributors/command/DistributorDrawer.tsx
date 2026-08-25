@@ -18,11 +18,13 @@ import { useDistributorDetail } from '../../../hooks/queries/useDistributorQueri
 import { addProviderFromCatalogue } from '../../../services/api/vendors'
 import { queryKeys } from '../../../lib/query-keys'
 import { TYPE_LABEL } from './bits'
-import { cn } from '../../../lib/utils'
+import { providerToVendorDetail, unwrapCustomId } from './customProvider'
+import type { DistributorLocation } from '../../../services/api/distributors'
 
 interface Props {
   distributorId: string | null
   onClose: () => void
+  customProviders?: any[]
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -43,25 +45,60 @@ function Row({ icon: Icon, children }: { icon: React.ElementType; children: Reac
   )
 }
 
-export function DistributorDrawer({ distributorId, onClose }: Props) {
+export function DistributorDrawer({ distributorId, onClose, customProviders = [] }: Props) {
   const isOpen = !!distributorId
-  const { data, isLoading } = useDistributorDetail(distributorId)
+  const isCustom = !!distributorId?.startsWith('custom-')
+  const actualId =
+    distributorId && isCustom ? unwrapCustomId(distributorId) : distributorId
+  const { data, isLoading } = useDistributorDetail(isCustom ? null : actualId)
   const queryClient = useQueryClient()
   const [adding, setAdding] = useState(false)
 
-  const vendor = data?.vendor
+  const customProvider = isCustom
+    ? customProviders.find((p) => p.id === actualId)
+    : null
+
+  // Built from the SAME adapter the map and card list use, so a custom vendor
+  // cannot render one set of fields here and another there. Previously this
+  // block read business_type / contact.phone / address.street — none of which
+  // exist on Provider — and the drawer silently showed blanks.
+  const vendor = isCustom && customProvider
+    ? providerToVendorDetail(customProvider)
+    : data?.vendor
+
   const territories = data?.territories ?? []
-  const locations = data?.locations ?? []
+
+  // Provider stores one flat address string, so there is a single location and
+  // no city/state/zip breakdown. Shaped to match DistributorLocation rather
+  // than inventing a parallel type, so downstream rendering narrows cleanly.
+  const locations: DistributorLocation[] =
+    isCustom && customProvider?.physicalAddress
+      ? [
+          {
+            id: customProvider.id,
+            kind: 'Headquarters',
+            name: customProvider.name,
+            address: customProvider.physicalAddress,
+            city: null,
+            admin_area_code: null,
+            postal_code: null,
+            country: null,
+            latitude: customProvider.latitude ?? null,
+            longitude: customProvider.longitude ?? null,
+            is_primary: true,
+          },
+        ]
+      : (data?.locations ?? [])
   const facetGroups = Object.entries(data?.facets ?? {})
 
   const nationwide = territories.filter((t) => t.admin_area_code === null)
   const specific = territories.filter((t) => t.admin_area_code !== null)
 
   async function handleAdd() {
-    if (!distributorId) return
+    if (!actualId || isCustom) return
     setAdding(true)
     try {
-      await addProviderFromCatalogue(distributorId)
+      await addProviderFromCatalogue(actualId)
       // Reuse the existing catalogue -> provider path so discovery ends in a
       // real relationship rather than a dead end.
       await queryClient.invalidateQueries({ queryKey: queryKeys.providers.all })
@@ -167,6 +204,18 @@ export function DistributorDrawer({ distributorId, onClose }: Props) {
                   </Section>
 
                   <Section title="Where they can sell">
+                    {vendor?.listing_tier === 'curated' && (
+                      <span className="mb-3 inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium tracking-wide text-blue-700 uppercase" title="Details verified by WineOps AI">
+                        <ShieldCheck className="h-3 w-3" />
+                        Verified
+                      </span>
+                    )}
+                    {vendor?.listing_tier === 'custom' && (
+                      <span className="mb-3 inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-medium tracking-wide text-amber-700 uppercase" title="Custom provider added by you">
+                        <ShieldCheck className="h-3 w-3" />
+                        My Provider
+                      </span>
+                    )}
                     {territories.length === 0 && (
                       <p className="text-sm text-gray-400">No licence territory recorded.</p>
                     )}
@@ -202,10 +251,12 @@ export function DistributorDrawer({ distributorId, onClose }: Props) {
                       {locations.map((l) => (
                         <Row key={l.id} icon={Warehouse}>
                           <span className="capitalize">{l.kind}</span>
-                          {(l.city || l.admin_area_code) && (
+                          {(l.city || l.admin_area_code || l.address) && (
                             <span className="text-gray-500">
                               {' — '}
-                              {[l.city, l.admin_area_code].filter(Boolean).join(', ')}
+                              {l.city || l.admin_area_code
+                                ? [l.city, l.admin_area_code].filter(Boolean).join(', ')
+                                : l.address}
                             </span>
                           )}
                         </Row>
@@ -258,20 +309,26 @@ export function DistributorDrawer({ distributorId, onClose }: Props) {
               )}
             </div>
 
-            {vendor && (
-              <div className="border-t border-gray-100 p-4">
+            {vendor && !isCustom && (
+              <div className="border-t border-gray-100 bg-gray-50 px-5 py-4">
                 <button
                   type="button"
                   onClick={handleAdd}
                   disabled={adding}
-                  className={cn(
-                    'flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition',
-                    adding ? 'bg-wine-400' : 'bg-wine-600 hover:bg-wine-700',
-                  )}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-wine-600 py-3 text-sm font-semibold text-white transition hover:bg-wine-700 focus:outline-none focus:ring-2 focus:ring-wine-500 focus:ring-offset-2 disabled:opacity-70"
                 >
-                  {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                  {adding ? 'Adding…' : 'Add as provider'}
+                  {adding ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4" />
+                      Add to my providers
+                    </>
+                  )}
                 </button>
+                <p className="mt-3 text-center text-[11px] text-gray-500">
+                  Adding a distributor creates a local copy for your team to annotate with account numbers and reps.
+                </p>
               </div>
             )}
           </motion.div>

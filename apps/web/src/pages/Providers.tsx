@@ -34,6 +34,10 @@ import {
   addProviderContact,
   updateProviderContact,
   deleteProviderContact,
+  getProviderLocations,
+  createProviderLocation,
+  updateProviderLocation,
+  deleteProviderLocation,
 } from '../services/api/providers'
 import { toast } from 'sonner'
 import { AddProviderModal, NewProviderData } from '../components/providers/AddProviderModal'
@@ -144,7 +148,7 @@ type ProvidersTab = 'mine' | 'discover'
 // Loaded on demand — the map surface pulls in a tile renderer that the roster view
 // has no use for, so it should not be in the Providers bundle.
 const DistributorMapPage = lazy(
-  () => import('./distributors/command/DistributorMapPage'),
+  () => import('./distributors/command/DistributorMapPage').then(m => ({ default: m.DistributorMapPage })),
 )
 
 /**
@@ -257,23 +261,7 @@ export function Providers() {
   const favorites: string[]                          = preferences.providerFavorites ?? []
   const notes: Record<string, ProviderNote>          = (preferences.providerNotes ?? {}) as Record<string, ProviderNote>
 
-  // Local ratings state — updates immediately for snappy UI. Syncs to remote
-  // preferences async. The useEffect seeds from server data on first load /
-  // hard refresh but never overwrites in-session changes.
-  const [ratings, setLocalRatings] = useState<Record<string, number>>(
-    () => (preferences.providerRatings ?? {}) as Record<string, number>,
-  )
-  useEffect(() => {
-    const serverRatings = (preferences.providerRatings ?? {}) as Record<string, number>
-    // Only seed local state when it is still empty (fresh mount / hard refresh)
-    setLocalRatings(prev => {
-      if (Object.keys(prev).length === 0 && Object.keys(serverRatings).length > 0) {
-        return serverRatings
-      }
-      // Merge server ratings in for any provider the local state hasn't touched
-      return { ...serverRatings, ...prev }
-    })
-  }, [preferences.providerRatings])
+  const ratings: Record<string, number> = (preferences.providerRatings ?? {}) as Record<string, number>
 
   const setFavorites = useCallback((updater: (prev: string[]) => string[]) => {
     updatePreferences({ providerFavorites: updater(favorites) })
@@ -284,13 +272,9 @@ export function Providers() {
   }, [notes, updatePreferences])
 
   const setRatings = useCallback((updater: (prev: Record<string, number>) => Record<string, number>) => {
-    setLocalRatings(prev => {
-      const next = updater(prev)
-      // Persist async — never block the UI on this
-      updatePreferences({ providerRatings: next })
-      return next
-    })
-  }, [updatePreferences])
+    // Rely entirely on the optimistic update in useUserPreferences
+    updatePreferences({ providerRatings: updater(ratings) })
+  }, [updatePreferences, ratings])
 
   const { data: providers = [], isLoading, isFetching, error, refetch } = useProviders(restaurantId || '', {
     search: searchQuery,
@@ -406,6 +390,50 @@ export function Providers() {
           : 'Unknown error'
       toast.warning(`Provider saved, but contacts could not be synced. ${reason}`)
     }
+
+    // ── Step 3: sync provider_locations (decoupled — never blocks the save) ─
+    if (data.locations && data.locations.length > 0) {
+      try {
+        const existingDbLocations = await getProviderLocations(providerId)
+        const existingDbIds = new Set(existingDbLocations.map(l => l.id))
+        const currentRealIds = new Set(
+          data.locations.filter(l => !l.id.startsWith('new-loc-') && !l.id.startsWith('primary-location-')).map(l => l.id)
+        )
+
+        // Delete locations the user removed
+        await Promise.all(
+          existingDbLocations
+            .filter(l => !currentRealIds.has(l.id))
+            .map(l => deleteProviderLocation(providerId, l.id))
+        )
+
+        // Create new locations or update existing ones
+        await Promise.all(
+          data.locations.map(loc => {
+            // Coordinates are sent only as a complete pair. The DB enforces
+            // (latitude IS NULL) = (longitude IS NULL), so half a coordinate
+            // is rejected loudly rather than stored as an unplottable row.
+            const hasCoords =
+              typeof loc.latitude === 'number' && typeof loc.longitude === 'number'
+            const payload = {
+              name: loc.name || 'Office',
+              type: loc.type,
+              address: loc.address || '',
+              isPrimary: loc.isPrimary,
+              ...(hasCoords
+                ? { latitude: loc.latitude as number, longitude: loc.longitude as number }
+                : {}),
+            }
+            if (loc.id.startsWith('new-loc-') || loc.id.startsWith('primary-location-') || !existingDbIds.has(loc.id)) {
+              return createProviderLocation(providerId, payload)
+            }
+            return updateProviderLocation(providerId, loc.id, payload)
+          })
+        )
+      } catch (err: any) {
+        console.error('Location sync failed:', err)
+      }
+    }
   }
 
   const handleOpenEmail = (email: string, e?: React.MouseEvent) => {
@@ -422,7 +450,9 @@ export function Providers() {
         primaryBusinessType: (providerData.primaryBusinessType as 'Distributor' | 'Importer' | 'Wholesaler') || 'Distributor',
         phone: providerData.phone, email: providerData.email,
         physicalAddress: providerData.address, restaurantId,
-        contactPerson: providerData.contactPerson, website: providerData.website,
+        contactFirstName: providerData.contactFirstName, 
+        contactLastName: providerData.contactLastName,
+        website: providerData.website,
         accountNumber: providerData.accountNumber,
         winePortfolio: providerData.specialties.join(', '),
         statesOrRegionsServed: providerData.deliveryDays,
@@ -432,9 +462,50 @@ export function Providers() {
         notes: `Specialties: ${providerData.specialties.join(', ')}`,
       })
       if (providerData.rating > 0 && result?.id) setRatings(prev => ({ ...prev, [result.id]: providerData.rating }))
+
+      // Persist the address as a geocoded primary location.
+      //
+      // A provider's coordinates live in provider_locations, not on the
+      // provider row — listProviders reads them from there to place map pins.
+      // This step used to be missing entirely, so a provider added here was
+      // permanently unpinnable no matter how many times the map re-fitted its
+      // bounds; only re-saving through the edit sidebar (which does sync
+      // locations) ever gave it coordinates.
+      //
+      // Decoupled from the create like the edit path's location sync is: the
+      // provider is already saved, and a location failure must not present as
+      // "failed to add provider".
+      if (result?.id && providerData.address) {
+        const hasCoords =
+          typeof providerData.latitude === 'number' &&
+          typeof providerData.longitude === 'number'
+        try {
+          await createProviderLocation(result.id, {
+            name: 'Main Office',
+            type: 'office',
+            address: providerData.address,
+            isPrimary: true,
+            // Sent only as a complete pair — the DB enforces
+            // (latitude IS NULL) = (longitude IS NULL).
+            ...(hasCoords
+              ? {
+                  latitude: providerData.latitude as number,
+                  longitude: providerData.longitude as number,
+                }
+              : {}),
+          })
+          if (!hasCoords) {
+            toast.info('Provider saved. Pick the address from the dropdown to show it on the map.')
+          }
+        } catch (locErr) {
+          console.error('Provider location create failed:', locErr)
+          toast.warning('Provider saved, but its address could not be mapped.')
+        }
+      }
+
       await dispatchProviderUpdate({
         type: 'added', providerId: result?.id ?? '', providerName: providerData.name,
-        data: { contactPerson: providerData.contactPerson, email: providerData.email, phone: providerData.phone, businessType: providerData.primaryBusinessType, specialties: providerData.specialties },
+        data: { contactPerson: `${providerData.contactFirstName} ${providerData.contactLastName}`.trim(), email: providerData.email, phone: providerData.phone, businessType: providerData.primaryBusinessType, specialties: providerData.specialties },
         source: 'providers_page', timestamp: new Date().toISOString(),
       })
     } catch (err) {
@@ -587,7 +658,7 @@ export function Providers() {
             section title under the page title rather than a competing one. Left alone
             deliberately so this tab needs no changes inside the distributor surface. */}
         <Suspense fallback={<div className="px-6 pt-6"><PageSkeleton /></div>}>
-          <DistributorMapPage />
+          <DistributorMapPage customProviders={providers} />
         </Suspense>
       </div>
     )
@@ -984,10 +1055,24 @@ export function Providers() {
 
                       {/* Footer */}
                       <div className="pt-2.5 border-t border-gray-50 flex items-center justify-between">
-                        <div className="flex items-center gap-1 min-w-0 text-xs text-gray-400">
-                          <MapPin className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate">{provider.physicalAddress}</span>
-                        </div>
+                        {provider.physicalAddress && provider.physicalAddress !== 'N/A' ? (
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(provider.physicalAddress)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-1 min-w-0 text-xs text-gray-500 hover:text-wine-600 transition-colors group/addr"
+                            title="Open address in Google Maps"
+                          >
+                            <MapPin className="w-3 h-3 flex-shrink-0 text-wine-500 group-hover/addr:scale-110 transition-transform" />
+                            <span className="truncate hover:underline">{provider.physicalAddress}</span>
+                          </a>
+                        ) : (
+                          <div className="flex items-center gap-1 min-w-0 text-xs text-gray-400">
+                            <MapPin className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">No address on file</span>
+                          </div>
+                        )}
                         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
                           {lastOrderDates[provider.id] && (
                             <span className="flex items-center gap-1 text-xs text-emerald-600">
@@ -1364,7 +1449,12 @@ export function Providers() {
         )
       })()}
 
-      <AddProviderModal isOpen={showAddProviderModal} onClose={() => setShowAddProviderModal(false)} onSave={handleAddProvider} />
+      <AddProviderModal
+        isOpen={showAddProviderModal}
+        onClose={() => setShowAddProviderModal(false)}
+        onSave={handleAddProvider}
+        onCatalogueVendorAdded={() => refetch()}
+      />
       <EditProviderModal
         isOpen={!!editingProvider}
         onClose={() => setEditingProvider(null)}
@@ -1374,7 +1464,15 @@ export function Providers() {
           : null
         }
       />
-      <VendorSearchModal open={showVendorSearch} onClose={() => setShowVendorSearch(false)} onProviderAdded={() => refetch()} onAddCustom={() => setShowAddProviderModal(true)} />
+      <VendorSearchModal
+        open={showVendorSearch}
+        onClose={() => setShowVendorSearch(false)}
+        onProviderAdded={() => refetch()}
+        onAddCustom={() => setShowAddProviderModal(true)}
+        addedCatalogueVendorIds={providers
+          .map((p) => p.catalogueVendorId)
+          .filter((id): id is string => !!id)}
+      />
       {showEmailModal && (
         <QuickGmailModal onClose={() => { setShowEmailModal(false); setEmailRecipient('') }} prefilledRecipient={emailRecipient} />
       )}

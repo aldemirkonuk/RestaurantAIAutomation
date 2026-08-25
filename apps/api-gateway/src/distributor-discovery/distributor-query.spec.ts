@@ -17,7 +17,9 @@ describe("escapeLikeWildcards", () => {
   });
 
   it("leaves ordinary search terms untouched", () => {
-    expect(escapeLikeWildcards("Skurnik Wines & Spirits")).toBe("Skurnik Wines & Spirits");
+    expect(escapeLikeWildcards("Skurnik Wines & Spirits")).toBe(
+      "Skurnik Wines & Spirits",
+    );
   });
 });
 
@@ -28,7 +30,9 @@ describe("parseFacets", () => {
   });
 
   it("groups values of the same kind together", () => {
-    expect(parseFacets(["region:burgundy", "region:rhone", "varietal:pinot-noir"])).toEqual({
+    expect(
+      parseFacets(["region:burgundy", "region:rhone", "varietal:pinot-noir"]),
+    ).toEqual({
       region: ["burgundy", "rhone"],
       varietal: ["pinot-noir"],
     });
@@ -41,7 +45,9 @@ describe("parseFacets", () => {
   });
 
   it("keeps slugs containing hyphens intact", () => {
-    expect(parseFacets(["price_band:under-20"])).toEqual({ price_band: ["under-20"] });
+    expect(parseFacets(["price_band:under-20"])).toEqual({
+      price_band: ["under-20"],
+    });
   });
 
   it("drops malformed entries rather than producing an empty kind", () => {
@@ -51,7 +57,14 @@ describe("parseFacets", () => {
 
 describe("normalizeBbox", () => {
   it("accepts a well-formed viewport", () => {
-    expect(normalizeBbox({ minLng: -74.1, minLat: 40.6, maxLng: -73.9, maxLat: 40.8 })).toEqual({
+    expect(
+      normalizeBbox({
+        minLng: -74.1,
+        minLat: 40.6,
+        maxLng: -73.9,
+        maxLat: 40.8,
+      }),
+    ).toEqual({
       minLng: -74.1,
       minLat: 40.6,
       maxLng: -73.9,
@@ -61,12 +74,23 @@ describe("normalizeBbox", () => {
 
   it("drops a partial bbox instead of half-applying it", () => {
     // A dropped param must not silently narrow the result set.
-    expect(normalizeBbox({ minLng: -74.1, minLat: 40.6, maxLng: -73.9 })).toBeNull();
+    expect(
+      normalizeBbox({ minLng: -74.1, minLat: 40.6, maxLng: -73.9 }),
+    ).toBeNull();
   });
 
   it("rejects a degenerate or inverted box", () => {
-    expect(normalizeBbox({ minLng: -73.9, minLat: 40.6, maxLng: -74.1, maxLat: 40.8 })).toBeNull();
-    expect(normalizeBbox({ minLng: -74, minLat: 40.6, maxLng: -74, maxLat: 40.8 })).toBeNull();
+    expect(
+      normalizeBbox({
+        minLng: -73.9,
+        minLat: 40.6,
+        maxLng: -74.1,
+        maxLat: 40.8,
+      }),
+    ).toBeNull();
+    expect(
+      normalizeBbox({ minLng: -74, minLat: 40.6, maxLng: -74, maxLat: 40.8 }),
+    ).toBeNull();
   });
 });
 
@@ -74,9 +98,24 @@ describe("groupFacetCounts", () => {
   it("groups flat rows by kind", () => {
     expect(
       groupFacetCounts([
-        { facet_kind: "region", facet_slug: "burgundy", facet_value: "Burgundy", vendors: 4 },
-        { facet_kind: "region", facet_slug: "rhone", facet_value: "Rhône", vendors: 2 },
-        { facet_kind: "varietal", facet_slug: "syrah", facet_value: "Syrah", vendors: 1 },
+        {
+          facet_kind: "region",
+          facet_slug: "burgundy",
+          facet_value: "Burgundy",
+          vendors: 4,
+        },
+        {
+          facet_kind: "region",
+          facet_slug: "rhone",
+          facet_value: "Rhône",
+          vendors: 2,
+        },
+        {
+          facet_kind: "varietal",
+          facet_slug: "syrah",
+          facet_value: "Syrah",
+          vendors: 1,
+        },
       ]),
     ).toEqual({
       region: [

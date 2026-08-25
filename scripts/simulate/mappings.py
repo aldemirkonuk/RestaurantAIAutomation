@@ -59,6 +59,13 @@ def wine_mappings(wine_list: WineList) -> Iterator[dict[str, Any]]:
                 "item_name": item.name,
                 "category": item.category,
                 "is_wine": True,
+                # SimPOS decision B36: sale_unit is read from the mapping row and
+                # NEVER inferred from the item name in pos-hub.service.ts. Without
+                # this, every sale — bottle or glass — queues in
+                # pos_unresolved_lines rather than depleting anything, because
+                # `resolveWine` only returns an inventoryId/saleUnit from a
+                # mapping hit (decision B21).
+                "sale_unit": "glass" if by_glass else "bottle",
                 # The sim wine identity. `master_wine_id` is intentionally left
                 # unset: the provisional sim wine rows are created by
                 # scripts/synth's seed under uuid5(sim.wine.<hash>), and asserting
@@ -112,4 +119,13 @@ def to_upsert_body(row: dict[str, Any], *, inventory_id: str | None = None) -> d
     }
     if inventory_id:
         body["inventory_id"] = inventory_id
+    if row.get("sale_unit"):
+        # Forward-compatible: `PosHubService.upsertItemMapping` does not
+        # currently whitelist this key (verified 2026-08-05 — it destructures
+        # source/external_item_id/item_name/category/is_wine/master_wine_id/
+        # inventory_id only, so sale_unit is silently dropped on that path).
+        # Sending it is still correct: it costs nothing today and stops being a
+        # silent gap the moment that whitelist is extended. Direct-SQL seeding
+        # is what actually sets sale_unit locally until then.
+        body["sale_unit"] = row["sale_unit"]
     return body

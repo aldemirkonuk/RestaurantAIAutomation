@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Search, X, SlidersHorizontal, Loader2, Compass, EyeOff, BadgeCheck } from 'lucide-react'
 import { useDistributorsPage, RADIUS_STOPS, RADIUS_MAX_INDEX } from '../useDistributorsPage'
 import { DistributorMap } from './DistributorMap'
@@ -8,6 +8,10 @@ import { RangeSlider } from '../../../components/ui/RangeSlider'
 import { ThemedSelect } from '../../../components/ui/ThemedSelect'
 import type { DistributorType } from '../../../services/api/distributors'
 import { cn } from '../../../lib/utils'
+import type { Provider } from '../../../services/api/providers'
+import { customProvidersAsDistributors } from './customProvider'
+import { useUserPreferences } from '../../../hooks/useUserPreferences'
+import type { BoundsLiteral, MapScope } from './mapCamera'
 
 const TYPES: DistributorType[] = [
   'distributor',
@@ -17,10 +21,68 @@ const TYPES: DistributorType[] = [
   'broker',
 ]
 
-export default function DistributorMapPage() {
+export function DistributorMapPage({ customProviders = [] }: { customProviders?: Provider[] }) {
   const s = useDistributorsPage()
+  // Adapt once per render rather than twice inline; ungeocoded providers are
+  // dropped by the adapter because they cannot be placed on a map.
+  const customDistributors = useMemo(
+    () => customProvidersAsDistributors(customProviders),
+    [customProviders],
+  )
   const searchRef = useRef<HTMLInputElement | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
+
+  const { preferences } = useUserPreferences()
+  const scope = (preferences?.mapDefaultScope ?? 'continent') as MapScope
+
+  // The state filter applies to the restaurant's own providers as well. A
+  // filter that silently exempts some rows is not a filter.
+  const visibleCustom = useMemo(
+    () =>
+      s.states.length
+        ? customDistributors.filter((d) => d.state && s.states.includes(d.state))
+        : customDistributors,
+    [customDistributors, s.states],
+  )
+
+  const mapDistributors = useMemo(
+    () => [...visibleCustom, ...s.distributors],
+    [visibleCustom, s.distributors],
+  )
+
+  // Chips come from both sources, so a state where the user's only vendor is
+  // their own still gets offered.
+  const stateOptions = useMemo(() => {
+    const counts = new Map(s.stateOptions.map((o) => [o.value, o.vendors]))
+    for (const d of customDistributors) {
+      if (d.state) counts.set(d.state, (counts.get(d.state) ?? 0) + 1)
+    }
+    return [...counts.entries()]
+      .map(([value, vendors]) => ({ value, vendors }))
+      .sort((a, b) => b.vendors - a.vendors || a.value.localeCompare(b.value))
+  }, [s.stateOptions, customDistributors])
+
+  /**
+   * The box the state chips fly the map to.
+   *
+   * Derived from the vendors actually in the chosen states rather than from a
+   * geocoded state outline: it needs no extra API call, and framing the
+   * vendors is what the user is filtering for. Null when no state is picked,
+   * which leaves the camera where the user put it.
+   */
+  const focusBounds = useMemo<BoundsLiteral | null>(() => {
+    if (!s.states.length) return null
+    const pts = mapDistributors.filter((d) => d.latitude != null && d.longitude != null)
+    if (!pts.length) return null
+    const lats = pts.map((d) => Number(d.latitude))
+    const lngs = pts.map((d) => Number(d.longitude))
+    return {
+      north: Math.max(...lats),
+      south: Math.min(...lats),
+      east: Math.max(...lngs),
+      west: Math.min(...lngs),
+    }
+  }, [s.states, mapDistributors])
 
   // "/" focuses search, Escape clears selection — mirrors the inventory page.
   useEffect(() => {
@@ -171,6 +233,26 @@ export default function DistributorMapPage() {
           />
         ))}
 
+        {/* State. Sourced from the results themselves rather than a facet
+            endpoint, so it only ever offers states that have vendors in the
+            current search — a chip that returns nothing is worse than no chip. */}
+        {stateOptions.length > 1 && (
+          <>
+            <span className="ml-3 mr-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+              State
+            </span>
+            {stateOptions.slice(0, 10).map((opt) => (
+              <FacetChip
+                key={opt.value}
+                label={opt.value}
+                count={opt.vendors}
+                active={s.states.includes(opt.value)}
+                onClick={() => s.toggleState(opt.value)}
+              />
+            ))}
+          </>
+        )}
+
         {regionFacets.length > 0 && (
           <>
             <span className="ml-3 mr-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
@@ -235,7 +317,7 @@ export default function DistributorMapPage() {
                 <div key={i} className="h-24 animate-pulse rounded-xl border border-gray-100 bg-gray-50" />
               ))}
 
-            {!s.isLoading && s.distributors.length === 0 && (
+            {!s.isLoading && s.distributors.length === 0 && customProviders.length === 0 && (
               <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center">
                 <p className="text-sm font-medium text-gray-600">No distributors match these filters</p>
                 <p className="mt-1 text-xs text-gray-400">
@@ -243,6 +325,18 @@ export default function DistributorMapPage() {
                 </p>
               </div>
             )}
+
+            {/* The restaurant's own providers, adapted once in customProvider.ts
+                so the compiler enforces field completeness in a single place. */}
+            {visibleCustom.map((d) => (
+              <DistributorCard
+                key={d.id}
+                d={d}
+                active={d.id === s.hoveredId || d.id === s.selectedId}
+                onHover={s.setHoveredId}
+                onOpen={s.setSelectedId}
+              />
+            ))}
 
             {s.distributors.map((d) => (
               <DistributorCard
@@ -258,7 +352,9 @@ export default function DistributorMapPage() {
 
         <DistributorMap
           className="h-[calc(100vh-300px)] min-h-[420px] lg:sticky lg:top-4"
-          distributors={s.distributors}
+          distributors={mapDistributors}
+          scope={scope}
+          focusBounds={focusBounds}
           origin={s.origin}
           originLabel={s.origin?.label}
           hoveredId={s.hoveredId}
@@ -269,7 +365,9 @@ export default function DistributorMapPage() {
         />
       </div>
 
-      <DistributorDrawer distributorId={s.selectedId} onClose={() => s.setSelectedId(null)} />
+      <DistributorDrawer distributorId={s.selectedId} onClose={() => s.setSelectedId(null)} customProviders={customProviders} />
     </div>
   )
 }
+
+export default DistributorMapPage

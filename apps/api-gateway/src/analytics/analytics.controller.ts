@@ -8,6 +8,7 @@ import {
   Query,
   HttpException,
   HttpStatus,
+  UseGuards,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -26,6 +27,7 @@ import {
 import { TableAnalyticsService } from "./table-analytics.service";
 import { GoalsService } from "./goals.service";
 import { ConsultantsService } from "./consultants.service";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { InsightSchedulerService } from "./insights/insight-scheduler.service";
 import { Persona } from "./metric-registry";
@@ -42,6 +44,11 @@ import { Persona } from "./metric-registry";
  */
 @ApiTags("analytics")
 @Controller("analytics")
+// Every route here is tenant-scoped and several cost money: POST /consult/:id
+// reaches ConsultantsService -> api.anthropic.com. Without this guard the class
+// was unauthenticated by omission (no @UseGuards, no @Public), so an anonymous
+// caller could flip PUT /consultants/:id/toggle on and drive the paid model.
+@UseGuards(JwtAuthGuard)
 export class AnalyticsController {
   constructor(
     private readonly analyticsService: AnalyticsService,

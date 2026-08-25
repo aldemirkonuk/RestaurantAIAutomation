@@ -35,6 +35,14 @@ DELETE_ORDER: list[str] = [
     # Nothing references pos_checks, so it goes first. Written indirectly by
     # `scripts.simulate --apply` via the POS hub ingress rather than by seed.py.
     "pos_checks",
+    # Same reasoning — nothing references pos_unresolved_lines.
+    "pos_unresolved_lines",
+    # SimPOS testbed tables. Children before parents even though the FKs are
+    # ON DELETE CASCADE/SET NULL — explicit order, not implicit cascade.
+    "simpos_check_lines",
+    "simpos_checks",
+    "simpos_tables",
+    "simpos_catalog",
     "sim_ground_truth_facts",
     "sim_ground_truth_runs",
     "restaurant_inventory",
@@ -254,6 +262,11 @@ def _handler_organizations(
 
 TEARDOWN_HANDLERS: dict[str, Callable[..., None]] = {
     "pos_checks": _handler_by_restaurant("pos_checks"),
+    "pos_unresolved_lines": _handler_by_restaurant("pos_unresolved_lines"),
+    "simpos_check_lines": _handler_by_restaurant("simpos_check_lines"),
+    "simpos_checks": _handler_by_restaurant("simpos_checks"),
+    "simpos_tables": _handler_by_restaurant("simpos_tables"),
+    "simpos_catalog": _handler_by_restaurant("simpos_catalog"),
     "sim_ground_truth_facts": _handler_by_restaurant("sim_ground_truth_facts"),
     "sim_ground_truth_runs": _handler_by_restaurant("sim_ground_truth_runs"),
     "restaurant_inventory": _handler_by_restaurant("restaurant_inventory"),

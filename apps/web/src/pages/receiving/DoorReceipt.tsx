@@ -9,6 +9,7 @@ import {
   watchDoorOutbox,
 } from '../../lib/doorOutbox'
 import { cn } from '../../lib/utils'
+import { SCAN_ACCEPT, resolveMimeType } from '../../lib/uploadAccept'
 
 /**
  * DoorReceipt — what happens when the truck arrives.
@@ -97,7 +98,7 @@ export default function DoorReceipt() {
       const res = await receivingApi.uploadDocument({
         contentBase64: base64,
         filename: file.name,
-        mimeType: file.type,
+        mimeType: resolveMimeType(file),
         orderId,
         source: 'photo',
       })
@@ -174,7 +175,7 @@ export default function DoorReceipt() {
           <input
             ref={fileRef}
             type="file"
-            accept="image/*,application/pdf"
+            accept={SCAN_ACCEPT}
             // Opens the rear camera directly on a phone rather than a file
             // browser — one less tap, and the receiver's hands are full.
             capture="environment"

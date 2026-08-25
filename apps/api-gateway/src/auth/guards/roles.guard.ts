@@ -24,16 +24,19 @@ export class RolesGuard implements CanActivate {
       return false;
     }
 
-    // Owner and Manager are equal (as per requirements)
-    const userRole = user.role as Role;
+    const userRole = user.role ? String(user.role).toLowerCase() : "";
 
-    // If owner/manager required, accept both
+    // If owner/manager required, accept both as well as admin
     if (requiredRoles.includes("owner") || requiredRoles.includes("manager")) {
-      if (userRole === "owner" || userRole === "manager") {
+      if (
+        userRole === "owner" ||
+        userRole === "manager" ||
+        userRole === "admin"
+      ) {
         return true;
       }
     }
 
-    return requiredRoles.some((role) => userRole === role);
+    return requiredRoles.some((role) => userRole === role.toLowerCase());
   }
 }

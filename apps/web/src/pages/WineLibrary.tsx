@@ -1043,7 +1043,7 @@ Redirecting to Orders page...`)
                               />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <p className="font-medium text-gray-900 truncate">{wine.name}</p>
+                              <p className="font-medium text-gray-900 truncate">{wine.displayName || wine.name}</p>
                               <p className="text-xs text-gray-500 truncate">{wine.producer} · {wine.grape}</p>
                             </div>
                           </div>
@@ -1189,17 +1189,6 @@ Redirecting to Orders page...`)
                         }`}
                       />
                     </button>
-                    {/* left-10 leaves room for the selection checkbox at left-3 */}
-                    <div className="absolute top-3 left-10 flex items-center gap-2">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${typeColors.bg} ${typeColors.text}`}>
-                        {normalizeType(wine.type)}
-                      </span>
-                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                        {formatVolume(wine.bottleSizeMl ?? 750, measurementUnit)}
-                      </span>
-                    </div>
-                    
-                    {/* Status Badge */}
                     {status.status !== 'healthy' && (
                       <span className={`absolute bottom-3 left-3 px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-1 ${
                         status.color === 'wine' ? 'bg-wine-600 text-white' :
@@ -1214,9 +1203,22 @@ Redirecting to Orders page...`)
 
                   <div className="p-4">
                     <h3 className="font-semibold text-gray-900 group-hover:text-wine-600 transition-colors truncate">
-                      {wine.name}
+                      {wine.displayName || wine.name}
                     </h3>
-                    <p className="text-sm text-gray-500 mt-0.5">{wine.vintage || 'NV'} · {wine.country}</p>
+                    <p className="text-sm text-gray-500 mt-0.5 flex items-center gap-1.5 min-w-0 flex-wrap">
+                      <span className="truncate">{wine.vintage || 'NV'} · {wine.country}</span>
+                      <span className="text-gray-300 shrink-0" aria-hidden>·</span>
+                      <span className="inline-flex items-center gap-1 shrink-0">
+                        <span
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ backgroundColor: typeColors.accent }}
+                          aria-hidden
+                        />
+                        {normalizeType(wine.type)}
+                      </span>
+                      <span className="text-gray-300 shrink-0" aria-hidden>·</span>
+                      <span className="shrink-0">{formatVolume(wine.bottleSizeMl ?? 750, measurementUnit)}</span>
+                    </p>
 
                     <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
                       <div>

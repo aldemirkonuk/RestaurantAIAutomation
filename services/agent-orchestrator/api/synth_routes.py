@@ -35,7 +35,7 @@ class SynthRequest(BaseModel):
 
 
 def _resolve_ids(archetype: str) -> list[str]:
-    from scripts.synth.recipes import UnknownArchetypeError, list_archetypes
+    from scripts.synth.recipes import list_archetypes
 
     known = list_archetypes()
     if archetype == "all":
@@ -58,9 +58,7 @@ async def synth_generate(
     ids = _resolve_ids(body.archetype)
     if body.apply:
         try:
-            refuse_multi_archetype_apply_unless_ready(
-                archetypes=ids, apply=True
-            )
+            refuse_multi_archetype_apply_unless_ready(archetypes=ids, apply=True)
         except WriteSetTeardownCoverageError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 

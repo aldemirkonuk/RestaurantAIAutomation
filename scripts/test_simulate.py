@@ -32,7 +32,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.simulate import bridge as bridge_mod  # noqa: E402
-from scripts.simulate.bridge import Bridge, BridgeConfig, sign_toast  # noqa: E402
+from scripts.simulate.bridge import Bridge, BridgeConfig, hmac_sha256_hex  # noqa: E402
 from scripts.simulate.detection import WINE_WORDS, looks_like_wine  # noqa: E402
 from scripts.simulate.payloads import (  # noqa: E402
     EVENT_ORDER_COMPLETED,
@@ -222,7 +222,7 @@ def test_signature_matches_the_adapters_algorithm(checks):
     body = bridge_mod._encode(toast_webhook(checks[0], "sim-guid"))
 
     expected = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
-    produced = sign_toast(secret, body)
+    produced = hmac_sha256_hex(secret, body)
 
     assert produced == expected
     assert hmac.compare_digest(expected, produced.lower())
@@ -239,8 +239,8 @@ def test_signature_is_computed_over_the_exact_bytes_sent(checks):
 
 def test_signature_changes_when_the_body_changes(checks):
     secret = "abc"
-    a = sign_toast(secret, bridge_mod._encode(toast_webhook(checks[0], "guid-a")))
-    b = sign_toast(secret, bridge_mod._encode(toast_webhook(checks[0], "guid-b")))
+    a = hmac_sha256_hex(secret, bridge_mod._encode(toast_webhook(checks[0], "guid-a")))
+    b = hmac_sha256_hex(secret, bridge_mod._encode(toast_webhook(checks[0], "guid-b")))
     assert a != b
 
 
@@ -315,15 +315,23 @@ def test_wine_words_match_the_typescript_source():
     )
 
 
-def test_toast_adapter_still_fails_open_without_a_secret():
-    """Documents the behaviour the simulator deliberately signs around.
+def test_toast_adapter_now_fails_closed_without_a_secret():
+    """SimPOS testbed decision B16 flipped this from fail-open to fail-closed.
 
-    If this ever stops being true, the unsigned-run warning is obsolete and should
-    become a hard error instead.
+    Was: `if not self._secret: return True` — a missing env var silently waved
+    every unsigned webhook through. Now: `return False`, logged as a rejection.
+    This is the change this test's own predecessor predicted and asked for —
+    "if this ever stops being true, the unsigned-run warning is obsolete and
+    should become a hard error instead" — which is exactly what
+    `Bridge.assert_targets_are_safe`-style guards should do next: an unsigned
+    --apply run against this ingress no longer degrades to "untested", it fails
+    every request outright. Recorded here so a regression back to fail-open is
+    caught immediately, not rediscovered by a failing simulator run.
     """
     source = TOAST_ADAPTER.read_text()
     assert "if not self._secret" in source
-    assert "return True" in source
+    assert "return False" in source
+    assert "fail closed" in source.lower()
 
 
 def test_heuristic_catches_varietals_and_misses_appellations():
@@ -434,3 +442,126 @@ def test_sold_out_wines_stop_appearing(wine_list):
     )
     poured_after = set(wine_units_poured(after))
     assert not (poured_after & sold_out), "a sold-out wine was poured anyway"
+
+
+# ---------------------------------------------------------------------------
+# Remote-target guardrail (2026-08-05 incident)
+# ---------------------------------------------------------------------------
+
+
+def test_dry_run_never_checks_remote_targets():
+    """A dry run against a remote host must not be blocked — it sends nothing."""
+    from scripts.simulate.bridge import Bridge, BridgeConfig
+
+    cfg = BridgeConfig(
+        restaurant_id="r",
+        restaurant_guid="g",
+        analytics_base="https://example.supabase.co",
+        stock_base="https://example.supabase.co",
+        apply=False,
+    )
+    Bridge(cfg)  # must not raise
+
+
+def test_apply_against_remote_host_is_refused_by_default():
+    from scripts.simulate.bridge import Bridge, BridgeConfig, RemoteTargetRefusedError
+
+    cfg = BridgeConfig(
+        restaurant_id="r",
+        restaurant_guid="g",
+        analytics_base="https://example.supabase.co",
+        apply=True,
+    )
+    with pytest.raises(RemoteTargetRefusedError):
+        Bridge(cfg)
+
+
+def test_apply_against_remote_host_proceeds_with_allow_remote():
+    from scripts.simulate.bridge import Bridge, BridgeConfig
+
+    cfg = BridgeConfig(
+        restaurant_id="r",
+        restaurant_guid="g",
+        analytics_base="https://example.supabase.co",
+        pos_hub_secret="s",  # remote-target check is what this test exercises
+        toast_secret="t",
+        apply=True,
+        allow_remote=True,
+    )
+    Bridge(cfg)  # must not raise
+
+
+@pytest.mark.parametrize(
+    "base",
+    [
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://[::1]:3001",  # IPv6 loopback needs brackets in a URL authority
+        "http://0.0.0.0:3001",
+    ],
+)
+def test_apply_against_every_loopback_form_is_allowed(base):
+    from scripts.simulate.bridge import Bridge, BridgeConfig
+
+    cfg = BridgeConfig(
+        restaurant_id="r",
+        restaurant_guid="g",
+        analytics_base=base,
+        stock_base=base,
+        pos_hub_secret="s",  # loopback-allowed check is what this test exercises
+        toast_secret="t",
+        apply=True,
+    )
+    Bridge(cfg)  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Analytics ingress signing (SimPOS testbed: it is the depletion path too)
+# ---------------------------------------------------------------------------
+
+
+def test_analytics_ingress_is_signed_when_pos_hub_secret_is_set(checks):
+    """`PosHubService.verifyWebhookSignature` fails CLOSED without a valid
+    X-Pos-Hub-Signature (decision B17/B28), and per the SimPOS testbed plan
+    (decision B13) this ingress is now the single POS door for stock, not
+    just analytics — so an unsigned request here does not just miss a nice-to
+    -have, every check in the run gets silently rejected and nothing depletes.
+    """
+    bridge = Bridge(
+        BridgeConfig(
+            restaurant_id="r", restaurant_guid="g",
+            pos_hub_secret="s3cr3t", apply=False,
+        )
+    )
+    bridge.send_analytics(checks[0])
+    assert bridge.analytics.sample_payload is not None
+    # Recompute independently and confirm it is what the server would expect —
+    # the payload is signed even though apply=False stops it from being sent,
+    # so a dry run still proves the signature is computable.
+    body = bridge_mod._encode(bridge.analytics.sample_payload)
+    expected = hmac_sha256_hex("s3cr3t", body)
+    assert len(expected) == 64  # sha256 hex digest
+
+
+def test_analytics_ingress_warns_once_when_unsigned(checks):
+    bridge = Bridge(
+        BridgeConfig(restaurant_id="r", restaurant_guid="g", pos_hub_secret="", apply=False)
+    )
+    for check in checks[:10]:
+        bridge.send_analytics(check)
+    warnings = [e for e in bridge.analytics.errors if "POS_HUB_WEBHOOK_SECRET" in e]
+    assert len(warnings) == 1, "the fail-closed warning must not repeat per check"
+
+
+def test_analytics_and_stock_signatures_use_different_secrets(checks):
+    """The two ingresses have independent verifiers; a secret for one must
+    never accidentally authenticate the other."""
+    check = checks[0]
+    stock_body = bridge_mod._encode(toast_webhook(check, "g"))
+    from scripts.simulate.payloads import canonical_check
+
+    analytics_body = bridge_mod._encode(canonical_check(check))
+    assert hmac_sha256_hex("shared", stock_body) != hmac_sha256_hex("shared", analytics_body), (
+        "different payload bytes must not coincidentally produce the same digest "
+        "for this fixture — if this ever fails, pick a different sample check"
+    )

@@ -39,6 +39,8 @@ export interface InventoryItem {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Set only by a spot count (recordSpotCount / apply_stock_movement source=mobile_count), never by a generic field edit. */
+  lastCountedAt?: string | null;
   bottleSizeMl: number;
   bottleSizeOz: number;
   saleType?: SaleType;
@@ -295,6 +297,14 @@ export interface UpdateOrderRequest {
 export interface Wine {
   id: string;
   name: string;
+  /**
+   * Full descriptive name ("2016 Gravner Ribolla Friuli-Venezia Giulia"),
+   * derived server-side. Prefer this over `name` for anything user-facing —
+   * it disambiguates vintage variants that otherwise render identically
+   * (three Château Pétrus rows all read "Château Pétrus" via `name` alone).
+   * Undefined only if the endpoint didn't select it; falls back to `name`.
+   */
+  displayName?: string;
   producer: string;
   vintage?: number;
   price: number;

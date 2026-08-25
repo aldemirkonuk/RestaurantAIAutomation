@@ -37,7 +37,9 @@ def test_load_recipe_bistro_returns_defaults_and_opening_stock():
     from scripts.synth.recipes import apply_overrides, load_recipe
 
     profile = load_recipe("bistro")
-    defaults = profile.defaults if hasattr(profile, "defaults") else profile.get("defaults")
+    defaults = (
+        profile.defaults if hasattr(profile, "defaults") else profile.get("defaults")
+    )
     opening = (
         profile.opening_stock
         if hasattr(profile, "opening_stock")

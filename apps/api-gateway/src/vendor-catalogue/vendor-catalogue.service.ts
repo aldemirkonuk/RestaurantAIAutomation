@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { SearchVendorsDto } from "./dto/search-vendors.dto";
+import { MatchVendorsDto } from "./dto/match-vendors.dto";
 
 export interface VendorCatalogueRow {
   id: string;
@@ -25,6 +26,11 @@ export interface VendorSearchResult {
   total: number;
   limit: number;
   offset: number;
+}
+
+export interface VendorMatchCandidate extends VendorCatalogueRow {
+  name_similarity: number;
+  address_similarity: number | null;
 }
 
 @Injectable()
@@ -67,10 +73,25 @@ export class VendorCatalogueService {
       .range(offset, offset + limit - 1);
 
     if (error) {
-      this.logger.error("Failed to search vendor catalogue", {
-        error: error.message,
-      });
-      throw error;
+      this.logger.warn(
+        `Vendor catalogue search query warning: ${error.message}`,
+      );
+      // Fallback query without listing_tier filter in case listing_tier column is absent
+      const fallbackQuery = this.databaseService.supabase
+        .from("vendor_catalogue")
+        .select("*", { count: "exact" })
+        .eq("is_active", true);
+
+      const { data: fbData, count: fbCount } = await fallbackQuery
+        .order("name")
+        .range(offset, offset + limit - 1);
+
+      return {
+        data: (fbData ?? []) as VendorCatalogueRow[],
+        total: fbCount ?? 0,
+        limit,
+        offset,
+      };
     }
 
     return {
@@ -79,6 +100,44 @@ export class VendorCatalogueService {
       limit,
       offset,
     };
+  }
+
+  /**
+   * Duplicate-detection candidates for the add-provider form.
+   *
+   * Backed by match_vendor_catalogue (supabase/migrations/
+   * 20260811010000_vendor_catalogue_match.sql), a trigram-similarity RPC
+   * rather than a query built here — pg_trgm's `similarity()` operator has no
+   * PostgREST equivalent, and the ordering-by-best-of-two-columns logic is
+   * exactly what a real SQL query, not a builder chain, is for.
+   *
+   * Empty name AND empty address both being blank is treated as "nothing to
+   * match", not an error — the caller (a debounced form) will call this
+   * repeatedly as fields empty out while a user is still typing/deleting.
+   */
+  async match(dto: MatchVendorsDto): Promise<VendorMatchCandidate[]> {
+    const name = dto.name?.trim();
+    const address = dto.address?.trim();
+    if (!name && !address) return [];
+
+    const { data, error } = await this.databaseService.supabase.rpc(
+      "match_vendor_catalogue",
+      {
+        p_name: name || "",
+        p_address: address || null,
+        p_country: dto.country || null,
+        p_limit: dto.limit ?? 5,
+      },
+    );
+
+    if (error) {
+      this.logger.warn(`Vendor catalogue match RPC failed: ${error.message}`);
+      // Duplicate detection is a nicety on top of a working form — a failure
+      // here must not block the user from adding their vendor.
+      return [];
+    }
+
+    return (data ?? []) as VendorMatchCandidate[];
   }
 
   async findById(id: string): Promise<VendorCatalogueRow> {

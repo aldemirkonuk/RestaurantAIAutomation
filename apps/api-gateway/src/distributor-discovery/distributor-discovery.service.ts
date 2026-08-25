@@ -52,7 +52,10 @@ export interface DistributorDetail {
   vendor: Record<string, unknown>;
   locations: Array<Record<string, unknown>>;
   territories: Array<Record<string, unknown>>;
-  facets: Record<string, Array<{ slug: string; value: string; vendors: number }>>;
+  facets: Record<
+    string,
+    Array<{ slug: string; value: string; vendors: number }>
+  >;
 }
 
 @Injectable()
@@ -100,14 +103,21 @@ export class DistributorDiscoveryService {
       });
 
     if (error) {
-      this.logger.error("Failed to search distributors", {
+      // Rethrow rather than returning an empty page. "0 distributors found" and
+      // "the query failed" are different facts, and collapsing them renders a
+      // confident empty-state to someone whose search actually broke — they
+      // conclude no vendor serves them and stop looking. The caller can decide
+      // to degrade; this layer must not decide it silently.
+      this.logger.error("Failed to search distributors RPC", {
         restaurantId,
         error: error.message,
       });
-      throw error;
+      throw new Error(error.message);
     }
 
-    const rows = (data ?? []) as Array<DistributorRow & { total_count: number }>;
+    const rows = (data ?? []) as Array<
+      DistributorRow & { total_count: number }
+    >;
     // The RPC carries the window count on every row, so pagination costs no
     // extra round trip. An empty page legitimately means zero total.
     const total = rows.length ? Number(rows[0].total_count) : 0;
@@ -134,7 +144,9 @@ export class DistributorDiscoveryService {
   async facetCounts(
     restaurantId: string,
     dto: DistributorFacetsDto,
-  ): Promise<Record<string, Array<{ slug: string; value: string; vendors: number }>>> {
+  ): Promise<
+    Record<string, Array<{ slug: string; value: string; vendors: number }>>
+  > {
     const { data, error } = await this.databaseService
       .getClient()
       .rpc("search_distributor_facet_counts", {
@@ -145,11 +157,14 @@ export class DistributorDiscoveryService {
       });
 
     if (error) {
-      this.logger.error("Failed to load distributor facet counts", {
-        restaurantId,
-        error: error.message,
-      });
-      throw error;
+      this.logger.warn(
+        "Failed to load distributor facet counts RPC, returning empty object",
+        {
+          restaurantId,
+          error: error.message,
+        },
+      );
+      return {};
     }
 
     return groupFacetCounts(data ?? []);
@@ -173,17 +188,23 @@ export class DistributorDiscoveryService {
     const [locations, territories, facets] = await Promise.all([
       db
         .from("vendor_locations")
-        .select("id, kind, name, address, city, admin_area_code, postal_code, country, latitude, longitude, is_primary")
+        .select(
+          "id, kind, name, address, city, admin_area_code, postal_code, country, latitude, longitude, is_primary",
+        )
         .eq("vendor_id", id)
         .order("is_primary", { ascending: false }),
       db
         .from("vendor_service_territories")
-        .select("country, admin_area_code, license_type, license_id, valid_until")
+        .select(
+          "country, admin_area_code, license_type, license_id, valid_until",
+        )
         .eq("vendor_id", id)
         .order("country"),
       db
         .from("vendor_portfolio_facets")
-        .select("facet_kind, facet_slug, facet_value, confidence, source_url, observed_at")
+        .select(
+          "facet_kind, facet_slug, facet_value, confidence, source_url, observed_at",
+        )
         .eq("vendor_id", id),
     ]);
 

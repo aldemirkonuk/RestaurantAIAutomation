@@ -1,6 +1,7 @@
 import { Module, forwardRef } from "@nestjs/common";
 import { InventoryController } from "./inventory.controller";
 import { InventoryService } from "./inventory.service";
+import { PhotoCountService } from "./photo-count.service";
 import { AuthModule } from "../auth/auth.module";
 import { OrchestratorModule } from "../common/orchestrator/orchestrator.module";
 import { NotificationsModule } from "../notifications/notifications.module";
@@ -17,7 +18,7 @@ import { WinesModule } from "../wines/wines.module";
     WinesModule,
   ],
   controllers: [InventoryController],
-  providers: [InventoryService],
+  providers: [InventoryService, PhotoCountService],
   exports: [InventoryService],
 })
 export class InventoryModule {}

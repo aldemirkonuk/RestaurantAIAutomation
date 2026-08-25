@@ -299,14 +299,13 @@ export class OrganizationsService {
     }
 
     // Legacy / org-less restaurants: still list anything the user can access via URA.
-    const { data: uraRows, error: uraErr } =
-      await this.databaseService.supabase
-        .from("user_restaurant_access")
-        .select(
-          "restaurant_id, restaurants(id, name, city, chain_id, restaurant_chains(name))",
-        )
-        .eq("user_id", userId)
-        .eq("is_active", true);
+    const { data: uraRows, error: uraErr } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .select(
+        "restaurant_id, restaurants(id, name, city, chain_id, restaurant_chains(name))",
+      )
+      .eq("user_id", userId)
+      .eq("is_active", true);
 
     if (uraErr) {
       this.logger.error(

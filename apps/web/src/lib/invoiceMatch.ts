@@ -96,7 +96,10 @@ export function computeMatch(input: MatchInput): MatchResult {
   const fullyFulfilled = acceptedQty >= orderedQty
 
   const overbilledVsShip = hasShip && hasInvoice && (invoiceQty as number) > (shippedQty as number)
-  const shortShipped = hasShip && billableReceived < (shippedQty as number)
+  // Physical vs physical. The slip counts bottles on the truck, free ones included, so this
+  // uses receivedQty; netting free goods out of one side only made an agreed 11-for-10 with a
+  // slip counting 11 read as a bottle lost in transit. billableReceived is for the invoice.
+  const shortShipped = hasShip && receivedQty < (shippedQty as number)
 
   let verdict: MatchVerdict
   if (!hasInvoice) verdict = 'unmatched'
@@ -143,8 +146,8 @@ export function computeMatch(input: MatchInput): MatchResult {
           (invoiceQty as number) - billableReceived
         } short.`
       case 'short_shipped':
-        return `Packing slip says ${shippedQty}, only ${billableReceived} arrived — ${
-          (shippedQty as number) - billableReceived
+        return `Packing slip says ${shippedQty}, only ${receivedQty} arrived — ${
+          (shippedQty as number) - receivedQty
         } lost between the warehouse and the door.`
       case 'rejected':
         return `${rejectedQty} of ${receivedQty} rejected on arrival — credit due.`

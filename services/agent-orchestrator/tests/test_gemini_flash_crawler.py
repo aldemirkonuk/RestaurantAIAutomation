@@ -201,7 +201,7 @@ async def test_crawl_calls_gemini_after_html():
         extraction_result = VLMExtractionResult(
             wines=[{"wine_name": "Château Margaux", "vintage": 2018}],
             total_wines=1,
-            model_used="gemini-2.0-flash",
+            model_used="gemini-2.5-flash",
         )
 
         mock_extractor = AsyncMock()
@@ -258,7 +258,7 @@ async def test_crawled_wines_written_to_dataset(tmp_path, monkeypatch):
         extraction_result = VLMExtractionResult(
             wines=[{"wine_name": "Opus One", "vintage": 2019}],
             total_wines=1,
-            model_used="gemini-2.0-flash",
+            model_used="gemini-2.5-flash",
         )
 
         mock_extractor = AsyncMock()
@@ -324,7 +324,7 @@ async def test_duplicate_wine_skipped(tmp_path, monkeypatch):
         extraction_result = VLMExtractionResult(
             wines=[{"wine_name": "Château Pétrus", "vintage": 2015}],
             total_wines=1,
-            model_used="gemini-2.0-flash",
+            model_used="gemini-2.5-flash",
         )
 
         mock_extractor = AsyncMock()
@@ -386,7 +386,7 @@ async def test_non_duplicate_wine_inserted(tmp_path, monkeypatch):
         extraction_result = VLMExtractionResult(
             wines=[{"wine_name": "Hidden Gem Winery", "vintage": 2020}],
             total_wines=1,
-            model_used="gemini-2.0-flash",
+            model_used="gemini-2.5-flash",
         )
 
         mock_extractor = AsyncMock()

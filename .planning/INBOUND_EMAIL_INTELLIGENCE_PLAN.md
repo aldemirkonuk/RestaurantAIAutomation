@@ -1,6 +1,15 @@
 # Inbound Email Intelligence — Comprehensive Plan (v2, audited)
 
-**Status:** Plan only (no code). Rebuilt after a full pipeline audit + premortem.
+**Status:** ⚠️ PHASE 0 SHIPPED — this header said "Plan only (no code)" until
+2026-08-04, when the v3.0 triage checked it. Phase 0 code is merged to `main`
+(formatted in `36c38e0`), not sitting on a branch: `email-triage.ts` (+ spec),
+`inbound-address.service.ts`, `inbound-email.controller.ts`,
+`inbound-responder.service.ts` (+ spec) under
+`apps/api-gateway/src/common/orchestrator/`, and
+`services/agent-orchestrator/tests/test_inbound_email_pipeline.py`.
+
+Phases 1+ remain plan-only. Read the phase headings below for what is genuinely
+outstanding — do not read this document as unbuilt in full.
 **Scope:** Understand, extract, present, notify on *complex* vendor emails — long threads,
 automated/marketing blasts, image/PDF-heavy fine-dining offers, structured commercial terms —
 **without doing anything irrelevant, unsafe, or wrong.**

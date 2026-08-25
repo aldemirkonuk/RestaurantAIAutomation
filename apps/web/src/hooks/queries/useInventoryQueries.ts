@@ -31,6 +31,7 @@ function normalizeInventoryItem(item: any): InventoryItem {
     isActive: item.isActive ?? item.is_active ?? true,
     retailPriceAvg: item.retailPriceAvg ?? item.retail_price_avg ?? undefined,
     markupRatio: item.markupRatio ?? item.markup_ratio ?? undefined,
+    lastCountedAt: item.lastCountedAt ?? item.last_counted_at ?? null,
     wac: item.wac ?? undefined,
     costProvenance: item.costProvenance ?? undefined,
     lotLocationCount: item.lotLocationCount ?? undefined,

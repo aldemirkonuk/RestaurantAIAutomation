@@ -73,7 +73,9 @@ export class DistributorDiscoveryController {
   async facets(
     @CurrentUser() user: { restaurantId: string },
     @Query() dto: DistributorFacetsDto,
-  ): Promise<Record<string, Array<{ slug: string; value: string; vendors: number }>>> {
+  ): Promise<
+    Record<string, Array<{ slug: string; value: string; vendors: number }>>
+  > {
     try {
       return await this.service.facetCounts(user.restaurantId, dto);
     } catch (error) {
@@ -85,7 +87,9 @@ export class DistributorDiscoveryController {
   }
 
   @Get(":id")
-  @ApiOperation({ summary: "Distributor detail with locations, territories and portfolio" })
+  @ApiOperation({
+    summary: "Distributor detail with locations, territories and portfolio",
+  })
   @ApiResponse({ status: 200, description: "Distributor detail" })
   @ApiResponse({ status: 401, description: "Unauthorized" })
   @ApiResponse({ status: 404, description: "Distributor not found" })

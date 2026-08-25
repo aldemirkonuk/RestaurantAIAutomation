@@ -156,7 +156,10 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
         liveStock: item.stockLive || 0,
         shadowStock: item.shadowStock || 0,
         threshold: item.thresholdMin || fallback.threshold || 10,
-        lastCounted: item.updatedAt || null,
+        // Decision E41: measures an actual spot count, not "any field edit"
+        // — stays null until a genuine count exists rather than borrowing
+        // updatedAt, which changes on price/threshold/sale_type edits too.
+        lastCounted: item.lastCountedAt || null,
         isActive: item.isActive ?? true,
         bottleSizeMl: item.bottleSizeMl ?? fallback.bottleSizeMl,
         saleType: item.saleType ?? fallback.saleType,

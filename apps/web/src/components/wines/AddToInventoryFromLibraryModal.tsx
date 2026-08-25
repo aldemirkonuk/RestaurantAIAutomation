@@ -548,7 +548,7 @@ export function AddToInventoryFromLibraryModal({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-semibold text-gray-900 truncate">{wine.name}</h3>
+                    <h3 className="font-semibold text-gray-900 truncate">{wine.displayName || wine.name}</h3>
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${typeColors.bg} ${typeColors.text}`}>
                       {wine.type}
                     </span>

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 ARCHETYPES = [
     "fine-dining",
@@ -66,7 +65,7 @@ def test_all_five_snapshots_match_schema():
 
 def test_priced_sku_ratio_sets_menu_quality():
     """When priced_sku_ratio < 0.9, menu_quality must be partial."""
-    from scripts.synth.snapshots import bootstrap_from_jsonl, compute_menu_quality
+    from scripts.synth.snapshots import compute_menu_quality
 
     # Synthetic rows: 1 priced / 2 total → ratio 0.5 → partial
     rows = [

@@ -20,7 +20,12 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Sequence
 
-from scripts.simulate.bridge import Bridge, BridgeConfig
+from scripts.simulate.bridge import (
+    Bridge,
+    BridgeConfig,
+    RemoteTargetRefusedError,
+    UnsignedApplyRefusedError,
+)
 from scripts.simulate.detection import detection_report
 from scripts.simulate.mappings import build_mappings
 from scripts.simulate.payloads import idempotency_key
@@ -72,8 +77,10 @@ def cmd_run(args: argparse.Namespace) -> int:
         analytics_base=args.analytics_base,
         stock_base=args.stock_base,
         toast_secret=args.toast_secret or os.environ.get("TOAST_WEBHOOK_SECRET", ""),
+        pos_hub_secret=args.pos_hub_secret or os.environ.get("POS_HUB_WEBHOOK_SECRET", ""),
         ingress=args.ingress,
         apply=args.apply,
+        allow_remote=args.allow_remote,
     )
     if config.apply and not args.restaurant:
         raise SystemExit(
@@ -98,7 +105,10 @@ def cmd_run(args: argparse.Namespace) -> int:
                 "DELETE_ORDER and TEARDOWN_HANDLERS first."
             )
 
-    bridge = Bridge(config)
+    try:
+        bridge = Bridge(config)
+    except (RemoteTargetRefusedError, UnsignedApplyRefusedError) as exc:
+        raise SystemExit(str(exc))
 
     if args.seed_mappings:
         # Before any check. resolveWine runs at ingest time, so a mapping that
@@ -275,8 +285,23 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--analytics-base", default="http://localhost:3001")
     r.add_argument("--stock-base", default="http://localhost:8000")
     r.add_argument("--toast-secret", default=None, help="Defaults to $TOAST_WEBHOOK_SECRET")
+    r.add_argument(
+        "--pos-hub-secret",
+        default=None,
+        help="HMAC key for X-Pos-Hub-Signature on the analytics/depletion ingress. Defaults to $POS_HUB_WEBHOOK_SECRET",
+    )
     r.add_argument("--ingress", choices=("both", "analytics", "stock"), default="both")
     r.add_argument("--apply", action="store_true", help="Actually post (default: dry run)")
+    r.add_argument(
+        "--allow-remote",
+        action="store_true",
+        help=(
+            "Required to --apply against a non-localhost --analytics-base/--stock-base. "
+            "See BridgeConfig.assert_targets_are_safe for why this exists (2026-08-05 "
+            "incident: a downstream process silently fell back to production credentials "
+            "when its local config file went missing)."
+        ),
+    )
     r.add_argument(
         "--seed-mappings",
         action="store_true",

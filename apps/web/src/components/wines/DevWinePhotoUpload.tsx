@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Upload, Image as ImageIcon, Trash2, Eye, Download, Camera } from 'lucide-react'
 import { Card, Button } from '../ui'
+import { SCAN_ACCEPT, isScannable } from '../../lib/uploadAccept'
 
 interface WineTestPhoto {
   id: string
@@ -58,7 +59,7 @@ export function DevWinePhotoUpload({ onClose }: DevWinePhotoUploadProps) {
     if (!files) return
 
     Array.from(files).forEach(file => {
-      if (file.type.startsWith('image/')) {
+      if (isScannable(file)) {
         const reader = new FileReader()
         reader.onload = (e) => {
           const newPhoto: WineTestPhoto = {
@@ -166,12 +167,12 @@ export function DevWinePhotoUpload({ onClose }: DevWinePhotoUploadProps) {
                 Drag & Drop Wine Label Photos Here
               </p>
               <p className="text-sm text-gray-500 mb-4">
-                or click to browse (JPG, PNG, WebP)
+                or click to browse (JPG, PNG, WebP, PDF)
               </p>
               <input
                 type="file"
                 multiple
-                accept="image/*"
+                accept={SCAN_ACCEPT}
                 onChange={(e) => handleFileUpload(e.target.files)}
                 className="hidden"
                 id="wine-photo-upload"

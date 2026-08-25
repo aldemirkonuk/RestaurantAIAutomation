@@ -68,6 +68,28 @@ class EventPriority(int, Enum):
     EMERGENCY = 10
 
 
+def coerce_priority(value: int) -> "EventPriority":
+    """Snap an arbitrary int to the nearest defined priority.
+
+    The enum is SPARSE — 1, 5, 7, 9, 10 — while `MessageBus.publish` advertises
+    `priority: int` and callers pass whatever reads naturally. `EventPriority(6)`
+    raises ValueError, so a perfectly ordinary `priority=6` killed the handler:
+    InventoryEngine failed every `stock.evaluated` with "6 is not a valid
+    EventPriority" and no stock ever moved.
+
+    Snapping rather than rejecting, because the caller's intent ("slightly above
+    normal") is clear and there is no useful sense in which that is an error.
+    Ties round down, so 6 becomes NORMAL rather than HIGH — a message should not
+    gain priority through imprecision.
+    """
+    try:
+        return EventPriority(value)
+    except ValueError:
+        members = sorted(EventPriority, key=lambda p: p.value)
+        clamped = max(members[0].value, min(int(value), members[-1].value))
+        return min(members, key=lambda p: (abs(p.value - clamped), p.value))
+
+
 class BaseEvent(BaseModel):
     """Base class for all domain events with full traceability"""
 
@@ -674,7 +696,7 @@ class MessageBus:
             exchange_name,
             routing_key,
             dynamic_event,
-            EventPriority(min(priority, 10)),
+            coerce_priority(priority),
         )
 
     # =========================================================================
@@ -712,6 +734,24 @@ class MessageBus:
 
                     # Parse and process
                     body = json.loads(message.body.decode())
+
+                    # Forward the AMQP routing key and exchange into the payload.
+                    #
+                    # Every BaseAgent subclass dispatches on
+                    # `message.get("routing_key")` — InventoryEngine, BufferManager,
+                    # ProcurementAgent and the rest all branch on it in
+                    # `process_message`. Without this, that key is ALWAYS None,
+                    # every branch falls through to "Unexpected routing key", and
+                    # the whole agent mesh silently routes nothing: messages are
+                    # published, consumed, acked, and dropped.
+                    #
+                    # setdefault, not assignment: a producer that already put an
+                    # explicit routing_key in the body keeps it, so this can only
+                    # add information, never override it.
+                    if isinstance(body, dict):
+                        body.setdefault("routing_key", message.routing_key)
+                        body.setdefault("exchange", exchange_name)
+
                     await callback(body)
 
                     # Mark as processed

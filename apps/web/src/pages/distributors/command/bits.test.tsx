@@ -95,6 +95,11 @@ describe('TierBadge', () => {
     expect(screen.queryByText('Verified')).not.toBeInTheDocument()
   })
 
+  it('labels custom rows as My Provider', () => {
+    render(<TierBadge tier="custom" />)
+    expect(screen.getByText('My Provider')).toBeInTheDocument()
+  })
+
   it('renders nothing for an unrecognised tier', () => {
     const { container } = render(<TierBadge tier="user_submitted" />)
     expect(container).toBeEmptyDOMElement()
@@ -126,5 +131,22 @@ describe('DistributorCard', () => {
   it('carries the id the map uses to scroll it into view', () => {
     render(<DistributorCard d={makeDistributor()} active onHover={vi.fn()} onOpen={vi.fn()} />)
     expect(screen.getByRole('button')).toHaveAttribute('data-distributor-id', 'v1')
+  })
+
+  it('renders full_address fallback when city and state are null', () => {
+    render(
+      <DistributorCard
+        d={makeDistributor({
+          city: null,
+          state: null,
+          full_address: '123 Vineyard Lane, Napa, CA 94558',
+          listing_tier: 'custom',
+        })}
+        active={false}
+        onHover={vi.fn()}
+        onOpen={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('123 Vineyard Lane, Napa, CA 94558')).toBeInTheDocument()
   })
 })

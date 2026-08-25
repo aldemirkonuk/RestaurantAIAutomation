@@ -17,6 +17,7 @@ import axios from "axios";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
 import { InviteDto } from "./dto/invite.dto";
+import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
 
 export interface JwtPayload {
   sub: string; // user_id
@@ -61,14 +62,14 @@ export class AuthService {
     private readonly tokenBlacklistService: TokenBlacklistService,
     private readonly gmailService: GmailService,
   ) {
-    this.jwtSecret =
-      this.configService.get<string>("JWT_SECRET") ||
-      "your-secret-key-change-in-production";
+    this.jwtSecret = resolveJwtSecret(
+      this.configService.get<string>("JWT_SECRET"),
+    );
     this.jwtRefreshSecret =
       this.configService.get<string>("JWT_REFRESH_SECRET") ||
       this.jwtSecret + "-refresh";
 
-    if (this.jwtSecret === "your-secret-key-change-in-production") {
+    if (this.jwtSecret === INSECURE_DEFAULT_JWT_SECRET) {
       this.logger.warn(
         "Using default JWT_SECRET — set a proper secret in production!",
       );
@@ -94,6 +95,25 @@ export class AuthService {
       throw new UnauthorizedException("Invalid credentials");
     }
 
+    if (!user.password_hash) {
+      // oauth_provider records which identity provider actually created this
+      // account (google or microsoft) — do not assume Google. A hotmail.com
+      // address, for example, is just as likely to have signed up via
+      // Microsoft, and telling that user to use Google sign-in sends them
+      // into a flow that can never work for their account.
+      const provider: "google" | "microsoft" | null =
+        user.oauth_provider === "microsoft" ? "microsoft" : "google";
+      const providerLabel = provider === "microsoft" ? "Microsoft" : "Google";
+      throw new UnauthorizedException({
+        message:
+          provider === "google"
+            ? `This account uses ${providerLabel} sign-in. Use the "Sign in with Google" button below.`
+            : `This account uses ${providerLabel} sign-in, which isn't available on this page yet. Use "Forgot password?" below to set a password instead.`,
+        code: "OAUTH_ONLY",
+        provider,
+      });
+    }
+
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password_hash);
     if (!isPasswordValid) {
@@ -116,6 +136,50 @@ export class AuthService {
 
     this.logger.log(`User logged in: ${user.email}`);
 
+    return this.generateTokens(user);
+  }
+
+  /**
+   * Mint a real session for DEV_AUTH_BYPASS_EMAIL, skipping password
+   * verification entirely.
+   *
+   * Every caller-side gate (env, localhost, shared-secret header) is checked
+   * by the controller before this runs — see dev-bypass.util.ts — so this
+   * method only has to answer "does that account exist?" But it re-checks the
+   * env flag itself too, on the theory that a private service method should
+   * never trust that its only caller checked first; a future second caller of
+   * `devBypassLogin()` must not accidentally inherit this endpoint's power
+   * without also inheriting its gate.
+   *
+   * Deliberately reuses `generateTokens` rather than building a token by
+   * hand: the result is indistinguishable from a real login on the wire, so
+   * every other endpoint — refresh, /me, /me/role, tenant scoping — needs no
+   * bypass-awareness of its own.
+   */
+  async devBypassLogin(): Promise<TokenPair> {
+    if (process.env.NODE_ENV === "production" || process.env.DEV_AUTH_BYPASS !== "true") {
+      throw new UnauthorizedException("Dev auth bypass is not enabled");
+    }
+    const email = process.env.DEV_AUTH_BYPASS_EMAIL;
+    if (!email) {
+      throw new UnauthorizedException("DEV_AUTH_BYPASS_EMAIL is not set");
+    }
+
+    const { data: user, error } = await this.databaseService.supabase
+      .from("users")
+      .select("*")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (error || !user) {
+      throw new UnauthorizedException(
+        `Dev auth bypass: no user found for ${email}`,
+      );
+    }
+
+    this.logger.warn(
+      `DEV_AUTH_BYPASS active — issuing a real session for ${email} (localhost only).`,
+    );
     return this.generateTokens(user);
   }
 
@@ -397,6 +461,19 @@ export class AuthService {
         this.configService.get<string>("GOOGLE_CLIENT_ID");
       if (expectedClientId && data.aud !== expectedClientId) {
         throw new UnauthorizedException("Invalid Google token audience");
+      }
+
+      // Accounts are matched by email, so an unverified address would let
+      // anyone who can put a string in a Google profile claim someone else's
+      // WineOps account. tokeninfo returns this as the string "true".
+      if (String(data.email_verified) !== "true") {
+        throw new UnauthorizedException(
+          "Your Google email address is not verified",
+        );
+      }
+
+      if (!data.email) {
+        throw new UnauthorizedException("Google token missing email");
       }
 
       return {
@@ -727,13 +804,24 @@ export class AuthService {
     restaurantId: string,
     dto: InviteDto,
   ): Promise<object> {
-    const { data: user } = await this.databaseService.supabase
-      .from("users")
-      .select("restaurant_id, role")
+    const { data: userAccess } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .select("role")
       .eq("user_id", userId)
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true)
       .maybeSingle();
-    if (!user || user.restaurant_id !== restaurantId) {
-      throw new ForbiddenException("Access denied to this restaurant");
+
+    if (!userAccess) {
+      // Fallback: check users table if user_restaurant_access row isn't present
+      const { data: user } = await this.databaseService.supabase
+        .from("users")
+        .select("restaurant_id, role")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (!user || user.restaurant_id !== restaurantId) {
+        throw new ForbiddenException("Access denied to this restaurant");
+      }
     }
 
     const { data: restaurant } = await this.databaseService.supabase
@@ -1256,11 +1344,23 @@ export class AuthService {
       .single();
 
     if (!user) {
-      // Try to assign to default restaurant so the JWT has a valid restaurantId.
-      // If DEFAULT_RESTAURANT_ID is not set, the user will need to complete onboarding.
       const defaultRestaurantId = this.configService.get<string>(
         "DEFAULT_RESTAURANT_ID",
       );
+
+      // Without a restaurant to join, signing up here would mint an account
+      // that can authenticate but belongs to no tenant — it lands on /no-access
+      // with no way forward, and quietly consumes the email address so the
+      // proper registration flow later reports it as taken. Registration is
+      // where a restaurant gets created or an invite gets redeemed.
+      if (!defaultRestaurantId) {
+        this.logger.warn(
+          `Rejected ${provider} sign-in for unknown email; no account exists`,
+        );
+        throw new UnauthorizedException(
+          "No WineOps account uses that address. Create an account or use your invite code first.",
+        );
+      }
 
       const insertData: Record<string, any> = {
         email,
@@ -1268,11 +1368,8 @@ export class AuthService {
         oauth_provider: provider,
         oauth_id: providerId,
         role: "manager",
+        restaurant_id: defaultRestaurantId,
       };
-
-      if (defaultRestaurantId) {
-        insertData.restaurant_id = defaultRestaurantId;
-      }
 
       const { data: newUser, error } = await this.databaseService.supabase
         .from("users")
@@ -1411,6 +1508,171 @@ export class AuthService {
       this.logger.error(`changePassword failed: ${updateErr.message}`);
       throw new BadRequestException("Failed to update password");
     }
+  }
+
+  /** Minimum seconds between password-reset requests for the same email. */
+  private readonly RESET_REQUEST_COOLDOWN_SECONDS = 60;
+
+  /**
+   * Request a password reset. Always resolves the same way regardless of
+   * whether the email matches an account — enumeration resistance is the
+   * point. The only branch that differs is entirely internal: no row is
+   * inserted and no email is sent for an unknown address, but the caller
+   * cannot observe that from the response or the response time (the lookup
+   * runs either way).
+   *
+   * Per-email throttling lives here as a DB timestamp check, same pattern as
+   * resendVerification() above. Per-IP throttling is a separate, coarser
+   * layer in RequestPasswordResetThrottleGuard (auth.controller.ts) — it
+   * cannot see which email was requested, only where the requests are coming
+   * from, so it catches a burst across many addresses that this per-email
+   * check would wave through one at a time.
+   */
+  async requestPasswordReset(
+    email: string,
+    requestIp: string | null,
+  ): Promise<{ sent: true }> {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const { data: user } = await this.databaseService.supabase
+      .from("users")
+      .select("user_id, name, email")
+      .eq("email", normalizedEmail)
+      .maybeSingle();
+
+    // Always return the same shape. Do not throw NotFound here — that is
+    // exactly the timing/branching oracle enumeration relies on.
+    if (!user) {
+      this.logger.log(
+        `Password reset requested for unknown email (no-op): ${normalizedEmail}`,
+      );
+      return { sent: true };
+    }
+
+    const { data: recent } = await this.databaseService.supabase
+      .from("password_resets")
+      .select("created_at")
+      .eq("email", normalizedEmail)
+      .is("used_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (recent) {
+      const secondsSinceLast =
+        (Date.now() - new Date(recent.created_at).getTime()) / 1000;
+      if (secondsSinceLast < this.RESET_REQUEST_COOLDOWN_SECONDS) {
+        // Still return success. Revealing "please wait" also reveals the
+        // email exists — the whole reason this method is enumeration-safe is
+        // that every branch produces the same response.
+        this.logger.log(
+          `Password reset re-requested within cooldown for ${normalizedEmail} — suppressing duplicate email`,
+        );
+        return { sent: true };
+      }
+    }
+
+    const { data: reset, error: insertErr } =
+      await this.databaseService.supabase
+        .from("password_resets")
+        .insert({
+          user_id: user.user_id,
+          email: normalizedEmail,
+          requested_ip: requestIp,
+        })
+        .select("token")
+        .single();
+
+    if (insertErr || !reset) {
+      this.logger.error(
+        `Failed to create password reset row for ${normalizedEmail}: ${insertErr?.message}`,
+      );
+      // Do not leak the failure to the caller — same reasoning as above.
+      return { sent: true };
+    }
+
+    const frontendUrl =
+      this.configService.get("FRONTEND_URL") ||
+      "https://restaurant-ai-automation-web.vercel.app";
+    const resetUrl = `${frontendUrl}/reset-password?token=${reset.token}`;
+
+    try {
+      const { passwordResetEmailTemplate } =
+        await import("../communications/email-templates");
+      const result = await this.gmailService.sendEmail({
+        to: [normalizedEmail],
+        subject: "Reset your WineOps AI password",
+        html: passwordResetEmailTemplate({ name: user.name, resetUrl }),
+      });
+      if (!result.success) {
+        this.logger.warn(
+          `Password reset email not delivered to ${normalizedEmail}: ${result.error}`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(`Failed to send password reset email: ${err.message}`);
+    }
+
+    return { sent: true };
+  }
+
+  /**
+   * Consume a password-reset token. Single-use: the row is stamped used_at in
+   * the same request that changes the password, and every other still-live
+   * reset row for that user is invalidated alongside it — a stale link from
+   * an earlier request must not remain a live way into the account after a
+   * newer one succeeded.
+   */
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const { data: reset, error } = await this.databaseService.supabase
+      .from("password_resets")
+      .select("id, user_id, expires_at, used_at")
+      .eq("token", token)
+      .maybeSingle();
+
+    if (error || !reset) {
+      throw new BadRequestException("Invalid or expired reset link");
+    }
+
+    if (reset.used_at) {
+      throw new BadRequestException("This reset link has already been used");
+    }
+
+    if (new Date(reset.expires_at).getTime() < Date.now()) {
+      throw new BadRequestException("This reset link has expired");
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, this.SALT_ROUNDS);
+
+    const { error: updateErr } = await this.databaseService.supabase
+      .from("users")
+      .update({ password_hash: passwordHash })
+      .eq("user_id", reset.user_id);
+
+    if (updateErr) {
+      this.logger.error(`resetPassword failed: ${updateErr.message}`);
+      throw new BadRequestException("Failed to update password");
+    }
+
+    const usedAt = new Date().toISOString();
+
+    // Consume this token and any other still-pending reset for the same user
+    // in one statement, so a second unused link from an earlier request
+    // cannot be replayed after this one succeeds.
+    await this.databaseService.supabase
+      .from("password_resets")
+      .update({ used_at: usedAt })
+      .eq("user_id", reset.user_id)
+      .is("used_at", null);
+
+    // Deliberately does not revoke existing sessions. changePassword() above —
+    // the existing, in-app password-change path — does not do this either, and
+    // TokenBlacklistService can only blacklist a token it is handed; nothing in
+    // this codebase tracks the set of tokens issued to a user, so "revoke every
+    // outstanding session" is a real feature this change does not build. If a
+    // reset should force other devices out, that is a follow-up against
+    // TokenBlacklistService, applied consistently to changePassword too — not
+    // a one-off here.
   }
 
   async getLinkedProviders(userId: string): Promise<{

@@ -139,6 +139,17 @@ export function TierBadge({ tier }: { tier: string }) {
       </span>
     )
   }
+  if (tier === 'custom') {
+    return (
+      <span
+        className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-1.5 py-px text-[10px] font-semibold text-amber-700"
+        title="Custom provider added by you"
+      >
+        <ShieldCheck className="h-2.5 w-2.5" />
+        My Provider
+      </span>
+    )
+  }
   if (tier === 'registry') {
     return (
       <span
@@ -195,10 +206,14 @@ export function DistributorCard({
         </div>
       </div>
 
-      {(d.city || d.state) && (
+      {(d.city || d.state || d.full_address) && (
         <div className="mt-1.5 flex items-center gap-1 text-[11px] text-gray-500">
           <MapPin className="h-3 w-3 flex-shrink-0" />
-          <span className="truncate">{[d.city, d.state].filter(Boolean).join(', ')}</span>
+          <span className="truncate">
+            {d.city || d.state
+              ? [d.city, d.state].filter(Boolean).join(', ')
+              : d.full_address}
+          </span>
         </div>
       )}
 

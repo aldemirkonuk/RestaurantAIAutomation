@@ -24,7 +24,7 @@ Phases 1-17 completed (2026-03-30 to 2026-04-08). 90 requirements, all complete.
 - [x] **Phase 18: Infrastructure Foundation** — Build shared infrastructure ALL 24 agents inherit: 6 new PG tables (idempotency_keys, decision_log, outbox, saga_state, event_store, dead_letter_queue) + 6 BaseAgent additions (idempotency mixin, decision logging, structured JSON logging, correlation ID propagation, DLQ on retry exhaustion, saga state helpers) (completed 2026-04-10)
 - [x] **Phase 19: Wave 1 Bug Fixes** — Fix every bug found in the surgical audit across 4 agents: InventoryEngine (race condition, dead code), POSIntegrationAgent (hmac, wine detection, signature verification, refund logic), NotificationAgent (rate limit persistence, batch processor), ReportingAgent (self.db crash, stub reports, PDF export) (completed — absorbed into Phase 20 execution)
 - [x] **Phase 20: Wave 1 Level 4 Hardening** — Bring 4 golden path agents from Level 1.5 to Level 4 using new BaseAgent infrastructure: wire idempotency, decision logging, event sourcing, delivery tracking, and write 50+ integration tests across all 4 agents (completed 2026-04-11)
-- [x] **Phase 21: Golden Path E2E** — Wire the full workflow end-to-end: Toast webhook → POSIntegrationAgent → InventoryEngine → NotificationAgent → ReportingAgent. Integration test with mock Toast data, then real Toast data from friend's restaurant. Chaos testing: kill agents, disconnect RabbitMQ, simulate Supabase outages (completed 2026-04-12)
+- [x] **Phase 21: Golden Path E2E** — Wire the full workflow end-to-end: Toast webhook → POSIntegrationAgent → **BufferManager** → InventoryEngine → NotificationAgent. (ReportingAgent is scheduled/on-demand, not part of this chain — see the corrected criterion #2 below.) Integration test with mock Toast data, then real Toast data from friend's restaurant. Chaos testing: kill agents, disconnect RabbitMQ, simulate Supabase outages (completed 2026-04-12)
 - [x] **Phase 22: Observability & Deployment** — Sentry error tracking, per-agent health dashboard, structured log aggregation, business metrics. Deploy: Vercel (frontend) + Supabase Cloud (DB) + Railway (Python + NestJS) + CloudAMQP (RabbitMQ) + Upstash (Redis). 9/9 agents live. (completed + deployed 2026-04-13)
 
 ## Phase Details
@@ -73,10 +73,10 @@ Plans:
   12. ReportingAgent: PDF export generates actual PDF file via weasyprint
 **Plans:** 4 plans
 Plans:
-- [ ] 19-01-PLAN.md — InventoryEngine: optimistic locking migration + dead code removal (BUG-01, BUG-02)
-- [ ] 19-02-PLAN.md — POSIntegrationAgent: hmac, wine detection, signature, refund fixes (BUG-03..06)
-- [ ] 19-03-PLAN.md — NotificationAgent: Redis rate limits + batch task monitoring (BUG-07, BUG-08)
-- [ ] 19-04-PLAN.md — ReportingAgent: self.db crash, SMS append, real reports, PDF export (BUG-09..12)
+- [x] 19-01-PLAN.md — InventoryEngine: optimistic locking migration + dead code removal (BUG-01, BUG-02)
+- [x] 19-02-PLAN.md — POSIntegrationAgent: hmac, wine detection, signature, refund fixes (BUG-03..06)
+- [x] 19-03-PLAN.md — NotificationAgent: Redis rate limits + batch task monitoring (BUG-07, BUG-08)
+- [x] 19-04-PLAN.md — ReportingAgent: self.db crash, SMS append, real reports, PDF export (BUG-09..12)
 
 ### Phase 20: Wave 1 Level 4 Hardening
 **Goal**: Bring each Wave 1 agent from Level 1.5 to Level 4 using the new BaseAgent infrastructure. Every agent gets idempotency, decision logging, and comprehensive tests.
@@ -106,7 +106,7 @@ Plans:
 **Requirements**: E2E-v2-01, E2E-v2-02, E2E-v2-03, E2E-v2-04, E2E-v2-05, E2E-v2-06
 **Success Criteria** (what must be TRUE):
   1. FastAPI endpoint `POST /api/v1/pos/webhook/toast` receives webhook and routes to POSIntegrationAgent
-  2. RabbitMQ exchanges configured: pos.events → InventoryEngine, stock.events → NotificationAgent + ReportingAgent
+  2. RabbitMQ exchanges configured: pos.events → **BufferManager** → stock.evaluated → InventoryEngine; stock.events → NotificationAgent. ⚠️ **Corrected 2026-07-31:** this read "pos.events → InventoryEngine, stock.events → NotificationAgent + ReportingAgent". Two errors. BufferManager sits between POS and inventory (it batches sales before evaluating stock), and **ReportingAgent never subscribes to stock.events** — reports are scheduled/on-demand, and wiring them to stock events would emit one report per pour. The code was right; the criterion overstated. Pinned by `tests/test_event_topology.py`.
   3. Mock Toast webhook → wine detected → stock decremented → notification sent: end-to-end in < 5 seconds
   4. Real Toast data: historical orders imported, inventory levels match Toast records
   5. Live webhook forwarding (ngrok → local) processes real orders in real-time
@@ -261,7 +261,7 @@ Plans:
 - [x] 27-02-PLAN.md — Backend: vendor catalogue search API + providers CRUD + order guard endpoint (Wave 2) [VENDOR-04..06]
 - [x] 27-03-PLAN.md — Frontend: Providers empty state + VendorSearchModal + catalogue browsing UI (Wave 3) [VENDOR-07..09]
 - [x] 27-04-PLAN.md — Frontend: Branch provider transfer modal + order creation guard popup (Wave 4) [VENDOR-10]
-**UAT**: All 5 tests passed 2026-05-11. Phase complete.
+**UAT**: ⚠️ **Claim corrected 2026-07-31.** This line read "All 5 tests passed 2026-05-11", but `27-HUMAN-UAT.md` has read `status: partial` with all 5 tests `[pending]` since 2026-05-10 — they were never run. Code-level `27-VERIFICATION.md` passed; the five human click-through tests remain outstanding. See v3.0 task 44.4.
 
 ### Phase 30: Calendar Operations Hub
 **Goal**: Make the calendar fully functional and operationally connected. Fix 5 critical bugs (column name mismatch, status enum divergence, color/endTime persistence, unimplemented recurrence scope). Fix dashboard "Add Event" to open the modal in-context. Add iCal subscription feed so operators can subscribe WineOps events directly into Outlook/Apple Calendar/Google Calendar in one URL — zero OAuth, zero friction.
@@ -363,11 +363,11 @@ Plans:
 **Research:** 33-RESEARCH.md — complete (2026-05-14)
 **Plans:** 5 plans
 Plans:
-- [ ] 33-01-PLAN.md — DB schema migration (ALTER user_restaurant_access + indexes + backfill + RLS) + supabase db push [MEMBER-06]
-- [ ] 33-02-PLAN.md — Auth service: fix joinViaInvite dual-path, registerRestaurant URA write, switchRestaurant fine-grained, generateTokens role from URA, GET /me/role + POST /invite/:code/accept [MEMBER-01, 02, 07, 08]
-- [ ] 33-03-PLAN.md — Members CRUD backend: MembersService + MembersController + RestaurantsModule (GET/PATCH/DELETE members, POST addMember, GET/DELETE invites) [MEMBER-03, 04, 05, 10]
-- [ ] 33-04-PLAN.md — Frontend auth + routes: AuthContext activeRole, InviteLanding.tsx, NoAccess.tsx, App.tsx routes [MEMBER-07, 10]
-- [ ] 33-05-PLAN.md — Settings Team tab redesign: per-restaurant member list, role badges, owner role dropdown, remove/leave dialog, pending invites, profile role row [MEMBER-09]
+- [x] 33-01-PLAN.md — DB schema migration (ALTER user_restaurant_access + indexes + backfill + RLS) + supabase db push [MEMBER-06]
+- [x] 33-02-PLAN.md — Auth service: fix joinViaInvite dual-path, registerRestaurant URA write, switchRestaurant fine-grained, generateTokens role from URA, GET /me/role + POST /invite/:code/accept [MEMBER-01, 02, 07, 08]
+- [x] 33-03-PLAN.md — Members CRUD backend: MembersService + MembersController + RestaurantsModule (GET/PATCH/DELETE members, POST addMember, GET/DELETE invites) [MEMBER-03, 04, 05, 10]
+- [x] 33-04-PLAN.md — Frontend auth + routes: AuthContext activeRole, InviteLanding.tsx, NoAccess.tsx, App.tsx routes [MEMBER-07, 10]
+- [x] 33-05-PLAN.md — Settings Team tab redesign: per-restaurant member list, role badges, owner role dropdown, remove/leave dialog, pending invites, profile role row [MEMBER-09]
 
 ---
 
@@ -610,6 +610,8 @@ Plans:
 
 **Sequencing note (2026-07-27):** Waves 2-6 hardening resumes AFTER the Testing Campaign (Phases 36–43) — the synthetic world + scored suites are the foundation the remaining agent hardening builds on.
 
+**Roster note (2026-08-24):** `DatasetCreatorAgent` (Wave 4) and `BookScraperAgent` (Wave 6) were deleted, so the waves below now total 22, not the 24 named at the top of this file. Neither was ever in the orchestrator's class map, and the exchanges they subscribed to — `enrichment.events`, `scan.events`, `training.events` — had no publishers anywhere in the repo; the only producer of `enrichment.book_processed` was BookScraperAgent feeding DatasetCreatorAgent. Hardening either to Level 4 would have hardened an agent that receives nothing. Both capabilities remain live through `api/scan_routes.py` (`POST /book-scrape`, `/training-data/*`), which is where the work belongs if they are ever revived.
+
 After Phases 23-25 complete, expand to remaining agents:
 
 **Wave 2 — Communication Layer (4 agents):**
@@ -621,14 +623,14 @@ After Phases 23-25 complete, expand to remaining agents:
 **Wave 3 — Intelligence Layer (4 agents):**
 - RecurringOrderAgent (388 lines), RFQAgent (736 lines), SommelierAgent (708 lines), MenuAnalyzerAgent (911 lines)
 
-**Wave 4 — Support Layer (4 agents):**
-- CalendarAgent (297 lines), VisualVerificationAgent (1,051 lines), StateInvariantEnforcer (246 lines), DatasetCreatorAgent (275 lines)
+**Wave 4 — Support Layer (3 agents):**
+- CalendarAgent (297 lines), VisualVerificationAgent (1,051 lines), StateInvariantEnforcer (246 lines)
 
 **Wave 5 — Stubs (rebuild from scratch, 5 agents):**
 - GhostInventoryAgent (35 lines), NegotiationPlaybookAgent (34 lines), AutoPilotAgent (34 lines), ShrinkageDetective (33 lines), ComplianceAgent (33 lines)
 
-**Wave 6 — Specialty (3 agents):**
-- InequalityDetector (105 lines), BookScraperAgent (113 lines), POSIntegrationAgent v2 (multi-POS: Square, Clover)
+**Wave 6 — Specialty (2 agents):**
+- InequalityDetector (105 lines), POSIntegrationAgent v2 (multi-POS: Square, Clover)
 
 ---
 

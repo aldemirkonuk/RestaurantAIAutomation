@@ -1,0 +1,20 @@
+{
+  "_comment": [
+    "Manually reviewed corrections to the automatic labels.",
+    "The label rule 'same menu + different entry => different products' is",
+    "right almost always, but extraction occasionally emits one bottle twice.",
+    "Each entry below is a HUMAN judgement with a reason, never a rule-derived",
+    "exclusion -- deriving exclusions from the policy under test would make the",
+    "evaluation circular and worthless.",
+    "Adding an entry requires naming the product and why the two rows are it."
+  ],
+  "mislabeled_negatives": [
+    {
+      "menu": "Roka_Chicago_Beverage_Menu_29August2025",
+      "a": {"producer": "Chartreuse", "name": "Chartreuse - Green"},
+      "b": {"producer": "Chartreuse", "name": "Green Chartreuse"},
+      "verdict": "same product",
+      "reason": "Green Chartreuse, listed twice on one menu with the colour before and after the brand. The automatic artifact filter compares prefixes and so misses a pure token reordering."
+    }
+  ]
+}

@@ -33,7 +33,10 @@ export interface UserPreferences {
     parComplianceTargetPct?: number
     trainingCompletionTargetPct?: number
   }
-  /** Settings → Features → Integrations auth (Excel / Drive) */
+  /**
+   * @deprecated Superseded by integration_oauth_connections server-side. Kept so
+   * previously stored preference blobs still parse; nothing reads it.
+   */
   integrationsAuth?: Partial<
     Record<'excel' | 'google_drive', { connected: boolean; account?: string }>
   >
@@ -51,6 +54,13 @@ export interface UserPreferences {
       description?: string
     }>
   }
+  /**
+   * Settings → Map — how wide the Find-distributors map frames the restaurant
+   * on load. Stored here rather than in localStorage so the choice follows the
+   * user to another browser and to the mobile app, which is what a preference
+   * surfaced in Settings implies.
+   */
+  mapDefaultScope?: 'continent' | 'country' | 'state' | 'city'
   /** Settings → POS — active provider selection */
   posConfig?: {
     activeProvider?: string

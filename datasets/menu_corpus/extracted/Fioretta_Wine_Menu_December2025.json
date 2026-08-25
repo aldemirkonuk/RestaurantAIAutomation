@@ -1,0 +1,1338 @@
+{
+ "menu": "Fioretta_Wine_Menu_December2025.pdf",
+ "pages": 4,
+ "wine_count": 163,
+ "seconds": 83.1,
+ "wines": [
+  {
+   "name": "Barbera",
+   "producer": "Garesio, Gavelli",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Nizza, Piedmont",
+   "bottle_price": 108
+  },
+  {
+   "name": "Barbera",
+   "producer": "Marchesi di Gresy",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Barbera d'Asti, Piedmont",
+   "bottle_price": 64
+  },
+  {
+   "name": "Dolcetto",
+   "producer": "Ceretto",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Piedmont",
+   "bottle_price": 82
+  },
+  {
+   "name": "Sito Moresco",
+   "producer": "Gaja",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Piedmont",
+   "grape_variety": "Nebbiolo/Merlot/Barbera",
+   "bottle_price": 191
+  },
+  {
+   "name": "Nebbiolo/Dolcetto/Barbera",
+   "producer": "G.D. Vajra",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Langhe",
+   "bottle_price": 58
+  },
+  {
+   "name": "Nebbiolo",
+   "producer": "Sottimano",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Langhe, Ita",
+   "bottle_price": 76
+  },
+  {
+   "name": "Trattman",
+   "producer": "Girlan",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Alto Adige",
+   "grape_variety": "Pinot Noir Riserva",
+   "bottle_price": 188
+  },
+  {
+   "name": "Pinot Noir",
+   "producer": "Maso Poli",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Trentino-Alto Adige",
+   "bottle_price": 105
+  },
+  {
+   "name": "Teroldego",
+   "producer": "Foradori",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Trentino-Alto Adige",
+   "bottle_price": 78
+  },
+  {
+   "name": "Valpolicella Ripasso Superiore",
+   "producer": "La Ragose",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Veneto",
+   "grape_variety": "Corvina/Rondinella/Corvinone",
+   "bottle_price": 69
+  },
+  {
+   "name": "Amarone della Valpolicella",
+   "producer": "Fumanelli",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Veneto",
+   "grape_variety": "Corvina/Corvinone/Rondinella",
+   "bottle_price": 215
+  },
+  {
+   "name": "Amarone della Valpolicella Riserva Classico",
+   "producer": "Masi",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Veneto",
+   "grape_variety": "Corvina/Rondinella",
+   "bottle_price": 228
+  },
+  {
+   "name": "Amarone della Valpolicella",
+   "producer": "Masi",
+   "category": "red",
+   "vintage": "2015",
+   "region": "Veneto",
+   "grape_variety": "Corvina/Rondinella/Molinara",
+   "bottle_price": 355
+  },
+  {
+   "name": "Sant 'Urbano",
+   "producer": "Speri",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Veneto",
+   "grape_variety": "Corvina/Rondinella/Molinara",
+   "bottle_price": 196
+  },
+  {
+   "name": "Amarone della Valpolicella Classico",
+   "producer": "Zenato",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Veneto",
+   "grape_variety": "Corvina/Rondinella",
+   "bottle_price": 192
+  },
+  {
+   "name": "Gramolere",
+   "producer": "Alessandria",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Piedmont",
+   "grape_variety": "Nebbiolo",
+   "bottle_price": 232
+  },
+  {
+   "name": "Nebbiolo",
+   "producer": "Ceretto",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Piedmont",
+   "bottle_price": 196
+  },
+  {
+   "name": "Lecinquevine",
+   "producer": "Damilano",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Piedmont",
+   "grape_variety": "Nebbiolo",
+   "bottle_price": 122
+  },
+  {
+   "name": "Albe",
+   "producer": "G.D. Vajra",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Piedmont",
+   "grape_variety": "Nebbiolo",
+   "bottle_price": 120
+  },
+  {
+   "name": "Serralunga d'Alba",
+   "producer": "Massolino",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Piedmont",
+   "grape_variety": "Nebbiolo",
+   "bottle_price": 136
+  },
+  {
+   "name": "Bussia",
+   "producer": "Marrone",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Piedmont",
+   "grape_variety": "Nebbiolo",
+   "bottle_price": 241
+  },
+  {
+   "name": "Nebbiolo",
+   "producer": "Pio Cesare",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Piedmont",
+   "bottle_price": 211
+  },
+  {
+   "name": "Castiglione",
+   "producer": "Vietti",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Piedmont",
+   "grape_variety": "Nebbiolo",
+   "bottle_price": 175
+  },
+  {
+   "name": "Martinenga",
+   "producer": "Marchesi Di Gresy",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Piedmont",
+   "grape_variety": "Nebbiolo",
+   "bottle_price": 161
+  },
+  {
+   "name": "Sori Paitin",
+   "producer": "Paitin",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Piedmont",
+   "grape_variety": "Nebbiolo",
+   "bottle_price": 153
+  },
+  {
+   "name": "Nebbiolo",
+   "producer": "Produttori del Barbaresco",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Piedmont",
+   "bottle_price": 144
+  },
+  {
+   "name": "Basarin",
+   "producer": "Sottimano",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Piedmont",
+   "grape_variety": "Nebbiolo",
+   "bottle_price": 246
+  },
+  {
+   "name": "Sangiovese",
+   "producer": "Carpineto",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Chianti Classico Riserva, Tuscany",
+   "bottle_price": 69
+  },
+  {
+   "name": "Sangiovese",
+   "producer": "Castellare di Catelline",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Chianti Classico, Tuscany",
+   "bottle_price": 78
+  },
+  {
+   "name": "Sangiovese",
+   "producer": "Castello di Volpaia",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Chianti Classico Riserva, Tuscany",
+   "bottle_price": 160
+  },
+  {
+   "name": "Sangiovese",
+   "producer": "Castello di Monsanto",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Chianti Classico Riserva, Tuscany",
+   "bottle_price": 96
+  },
+  {
+   "name": "Sangiovese",
+   "producer": "Pietramaggio",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Chianti Classico Riserva, Tuscany",
+   "bottle_price": 104
+  },
+  {
+   "name": "Chianti Classico Riserva",
+   "producer": "Castello D'Albola",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Tuscany",
+   "bottle_price": 68
+  },
+  {
+   "name": "Tignanello",
+   "producer": "Antinori",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Tuscany",
+   "grape_variety": "Sangiovese/Cab Sauvignon/Cab Franc",
+   "bottle_price": 362
+  },
+  {
+   "name": "Ca'Marcanda, Magari",
+   "producer": "Gaja",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Tuscany",
+   "grape_variety": "Cab Sauvignon, Cab Franc, Petit Verdot",
+   "bottle_price": 249
+  },
+  {
+   "name": "Ca'Marcanda, Promis",
+   "producer": "Gaja",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Tuscany",
+   "grape_variety": "Merlot/Syrah/Sangiovese",
+   "bottle_price": 161
+  },
+  {
+   "name": "Cab Sauvignon/Merlot/Sangiovese",
+   "producer": "Grattamacco",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Tuscany",
+   "bottle_price": 92
+  },
+  {
+   "name": "Silineo Vino Nobile De Montepulciano",
+   "producer": "Fattoria Del Cerro",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Tuscany",
+   "grape_variety": "Sangiovese/Merlot/Colorino",
+   "bottle_price": 67
+  },
+  {
+   "name": "Le Serre Nuove dell'Ornellaia",
+   "producer": "Ornellaia",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Tuscany",
+   "grape_variety": "Merlot/Cab Sauvignon/Cab Franc",
+   "bottle_price": 183
+  },
+  {
+   "name": "Cab Sauvignon/Merlot/Cab Franc",
+   "producer": "Ornellaia",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Tuscany",
+   "bottle_price": 585
+  },
+  {
+   "name": "Aurelio",
+   "producer": "Val delle Rose",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Maremma, Tuscany",
+   "grape_variety": "Merlot/Cab Franc",
+   "bottle_price": 89
+  },
+  {
+   "name": "Sangiovese/Cab Sauvignon/Merlot",
+   "producer": "Urlari PerVale",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Tuscany",
+   "bottle_price": 98
+  },
+  {
+   "name": "Noi4",
+   "producer": "Tenuta Sette Cieli",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Tuscany",
+   "grape_variety": "Cabernet Franc/Cabernet Sauvignon/Merlot",
+   "bottle_price": 144
+  },
+  {
+   "name": "Rosso Dei Notri",
+   "producer": "Tuarita",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Tuscany",
+   "grape_variety": "Sangiovese",
+   "bottle_price": 62
+  },
+  {
+   "name": "Greppone Mazzi",
+   "producer": "Ruffino",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Brunello di Montalcino, Tuscany",
+   "grape_variety": "Sangiovese",
+   "bottle_price": 192
+  },
+  {
+   "name": "Sangiovese",
+   "producer": "Casisano",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Brunello di Montalcino, Tuscany",
+   "bottle_price": 163
+  },
+  {
+   "name": "Sangiovese",
+   "producer": "Avignonesi",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Vino Nobile di Montalcino, Tuscany",
+   "bottle_price": 78
+  },
+  {
+   "name": "Sangiovese",
+   "producer": "Biondi-Santi",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Rosso di Montalcino, Tuscany",
+   "bottle_price": 297
+  },
+  {
+   "name": "White Label",
+   "producer": "Casanova di Neri",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Brunello di Montalcino, Tuscany",
+   "grape_variety": "Sangiovese",
+   "bottle_price": 191
+  },
+  {
+   "name": "Sangiovese",
+   "producer": "Castiglion del Bosco",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Brunello di Montalcino, Tuscany",
+   "bottle_price": 172
+  },
+  {
+   "name": "Sangiovese",
+   "producer": "Campogiovanni",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Brunello di Montalcino, Tuscany",
+   "bottle_price": 205
+  },
+  {
+   "name": "Sangiovese",
+   "producer": "Conti Costanti",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Brunello di Montalcino, Tuscany",
+   "bottle_price": 286
+  },
+  {
+   "name": "Dieci",
+   "producer": "Sasetti Pertimali",
+   "category": "red",
+   "vintage": "2007",
+   "region": "Brunello di Montalcino, Tuscany",
+   "grape_variety": "Sangiovese",
+   "bottle_price": 409
+  },
+  {
+   "name": "Sangiovese",
+   "producer": "Il Poggione",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Brunello di Montalcino, Tuscany",
+   "bottle_price": 188
+  },
+  {
+   "name": "Sangiovese",
+   "producer": "Le Chiuse",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Rosso di Montalcino, Tuscany",
+   "bottle_price": 110
+  },
+  {
+   "name": "Sangiovese",
+   "producer": "San Giorgio",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Brunello di Montalcino, Tuscany",
+   "bottle_price": 169
+  },
+  {
+   "name": "Sangiovese",
+   "producer": "Tenuta La Fuga",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Brunello di Montalcino, Tuscany",
+   "bottle_price": 172
+  },
+  {
+   "name": "Nerello Mascalese",
+   "producer": "Alta Moro",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Etna Rosso, Sicily",
+   "bottle_price": 60
+  },
+  {
+   "name": "Aglianco",
+   "producer": "Feudi San Gregorio",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Taurasi",
+   "bottle_price": 118
+  },
+  {
+   "name": "Ghaia",
+   "producer": "Tascante",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Sicily",
+   "grape_variety": "Nero, Nerello Mascalese",
+   "bottle_price": 64
+  },
+  {
+   "name": "Torcicoda",
+   "producer": "Tormaresca",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Puglia",
+   "grape_variety": "Primitivo",
+   "bottle_price": 76
+  },
+  {
+   "name": "Biferno Rosso",
+   "producer": "RaMitello",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Puglia",
+   "grape_variety": "Montepulciano/Aglianico",
+   "bottle_price": 64
+  },
+  {
+   "name": "Nero",
+   "producer": "Occhipinti",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Sicily",
+   "bottle_price": 105
+  },
+  {
+   "name": "Yountville",
+   "producer": "Casa Piena",
+   "category": "red",
+   "vintage": "2014",
+   "region": "Napa Valley, CA",
+   "bottle_price": 277
+  },
+  {
+   "name": "Stags Leap",
+   "producer": "Cliff Lede",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Napa Valley, CA",
+   "bottle_price": 197
+  },
+  {
+   "name": "Stags Leap",
+   "producer": "Clos du Val",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Napa Valley, CA",
+   "bottle_price": 115
+  },
+  {
+   "name": "Pritchard Hill, Signature",
+   "producer": "Chapellet",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Napa Valley, CA",
+   "bottle_price": 227
+  },
+  {
+   "name": "Stags Leap",
+   "producer": "Chimney Rock",
+   "category": "red",
+   "vintage": "2022",
+   "region": "CA",
+   "bottle_price": 297
+  },
+  {
+   "name": "Red Mountain",
+   "producer": "Col Solare",
+   "category": "red",
+   "vintage": "2019",
+   "region": "WA",
+   "bottle_price": 413
+  },
+  {
+   "name": "Mt. Veeder",
+   "producer": "Darioush",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Napa Valley, CA",
+   "bottle_price": 341
+  },
+  {
+   "name": "Fission",
+   "producer": "Far Mountain",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Moon Mountain, CA",
+   "bottle_price": 138
+  },
+  {
+   "name": "Rutherford",
+   "producer": "Freemark Abbey",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Napa Valley, CA",
+   "bottle_price": 175
+  },
+  {
+   "name": "St. Helena",
+   "producer": "Heitz",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Napa Valley, CA",
+   "bottle_price": 179
+  },
+  {
+   "name": "Iron Corral",
+   "producer": "Hess Collection",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Napa Valley, CA",
+   "bottle_price": 171
+  },
+  {
+   "name": "Stags Leap",
+   "producer": "Iconoclast",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Napa Valley, CA",
+   "bottle_price": 75
+  },
+  {
+   "name": "Alexander Valley",
+   "producer": "Jordan",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Sonoma County, CA",
+   "bottle_price": 140
+  },
+  {
+   "name": "Six Ridges",
+   "producer": "Kenwood",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Alexander Valley, Sonoma, Ca",
+   "bottle_price": 77
+  },
+  {
+   "name": "Mt. Veeder",
+   "producer": "Mt. Veeder",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Napa Valley, CA",
+   "bottle_price": 186
+  },
+  {
+   "name": "Mt. Veeder",
+   "producer": "Mayacamas",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Napa Valley, CA",
+   "bottle_price": 349
+  },
+  {
+   "name": "Napa Valley",
+   "producer": "Napa Cellars",
+   "category": "red",
+   "vintage": "2022",
+   "region": "CA",
+   "bottle_price": 84
+  },
+  {
+   "name": "Quilt Reserve",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Napa Valley, CA",
+   "bottle_price": 206
+  },
+  {
+   "name": "Kith & Kin",
+   "producer": "Round Pond",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Napa Valley, CA",
+   "bottle_price": 105
+  },
+  {
+   "name": "One Point Five",
+   "producer": "Shafer Vineyards",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Stags Leap, Napa Valley, CA",
+   "bottle_price": 311
+  },
+  {
+   "name": "Artemis",
+   "producer": "Stag's Leap Wine Cellars",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Stags Leap, Napa Valley, CA",
+   "bottle_price": 215
+  },
+  {
+   "name": "Rutherford",
+   "producer": "St. Supery",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Napa Valley, CA",
+   "bottle_price": 130
+  },
+  {
+   "name": "Carneros",
+   "producer": "Truchard",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Napa Valley, CA",
+   "bottle_price": 88
+  },
+  {
+   "name": "Cinq Cepages",
+   "producer": "Chateau St. Jean",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Sonoma, CA",
+   "grape_variety": "Cab Sauvignon/Merlot/Cab Franc",
+   "bottle_price": 221
+  },
+  {
+   "name": "Left Bank",
+   "producer": "Neyers",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Napa Valley, CA",
+   "grape_variety": "Cab Sauvignon/Merlot",
+   "bottle_price": 78
+  },
+  {
+   "name": "Overture by Opus One",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Napa Valley, CA",
+   "grape_variety": "Cab Sauvignon/Merlot/Cab Franc",
+   "bottle_price": 375
+  },
+  {
+   "name": "Jayson",
+   "producer": "Pahlmeyer",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Napa Valley, CA",
+   "grape_variety": "Merlot/Cab Sauvignon, Malbec",
+   "bottle_price": 192
+  },
+  {
+   "name": "Old Ghost",
+   "producer": "Klinker Brick",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Lodi, CA",
+   "grape_variety": "Zinfandel",
+   "bottle_price": 108
+  },
+  {
+   "name": "Zinfandel",
+   "producer": "Seghesio",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Sonoma Coast, CA",
+   "bottle_price": 64
+  },
+  {
+   "name": "Geyserville",
+   "producer": "Ridge",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Alexander Valley, CA",
+   "grape_variety": "Zinfandel/Carignane/Petite Syrah",
+   "bottle_price": 144
+  },
+  {
+   "name": "Isosceles",
+   "producer": "Justin",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Paso Robles, CA",
+   "grape_variety": "Cab Sauvignon/Cab Franc/Merlot",
+   "bottle_price": 138
+  },
+  {
+   "name": "Cab Sauvignon/Petit Verdot/Merlot",
+   "producer": "Opus One",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Napa Valley, CA",
+   "bottle_price": 891
+  },
+  {
+   "name": "Inklbot",
+   "producer": "Michael David",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Lodi, CA",
+   "grape_variety": "Petite Sirah",
+   "bottle_price": 79
+  },
+  {
+   "name": "Las Alturas",
+   "producer": "Belle Glos",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Monterey, CA",
+   "bottle_price": 99
+  },
+  {
+   "name": "Single Ridge",
+   "producer": "Bravium",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Mendocino, CA",
+   "bottle_price": 87
+  },
+  {
+   "name": "Mt. Jefferson Cuvee",
+   "producer": "Cristom Vineyards",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Willamette Valley, OR",
+   "bottle_price": 104
+  },
+  {
+   "name": "Russian River Valley",
+   "producer": "Davis Bynum",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Sonoma County, CA",
+   "bottle_price": 76
+  },
+  {
+   "name": "Memorius",
+   "producer": "Domaine de la Cote",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Sta Rita Hills, Santa Barbara, CA",
+   "bottle_price": 226
+  },
+  {
+   "name": "Sea Floored",
+   "producer": "El Pino Club",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Sta Rita Hills, Santa Barbara, CA",
+   "bottle_price": 123
+  },
+  {
+   "name": "Joel Gott",
+   "producer": "Ersol",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Sonoma, CA",
+   "bottle_price": 75
+  },
+  {
+   "name": "Cerise",
+   "producer": "Kosta Browne",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Anderson Valley, Mendocino, CA",
+   "bottle_price": 405
+  },
+  {
+   "name": "The Estate",
+   "producer": "Lonesome Rock",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Willamette Valley, OR",
+   "bottle_price": 158
+  },
+  {
+   "name": "Willamette Valley",
+   "producer": "Lingua Franca",
+   "category": "red",
+   "vintage": "2022",
+   "region": "OR",
+   "bottle_price": 88
+  },
+  {
+   "name": "Anderson Valley",
+   "producer": "Meadow Ranch",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Mendocino, CA",
+   "bottle_price": 95
+  },
+  {
+   "name": "Bush Crispo",
+   "producer": "Ram's Gate",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Russian River Valley, Sonoma County, CA",
+   "bottle_price": 159
+  },
+  {
+   "name": "Willamette Valley",
+   "producer": "Resonance",
+   "category": "red",
+   "vintage": "2022",
+   "region": "OR",
+   "bottle_price": 89
+  },
+  {
+   "name": "Willamette Valley",
+   "producer": "Rex Hill",
+   "category": "red",
+   "vintage": "2022",
+   "region": "OR",
+   "bottle_price": 97
+  },
+  {
+   "name": "Anderson Valley",
+   "producer": "Rhys",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Mendocino, CA",
+   "bottle_price": 65
+  },
+  {
+   "name": "Sta Rita Hills",
+   "producer": "Sea Smoke",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Santa Barbara, CA",
+   "bottle_price": 255
+  },
+  {
+   "name": "Sanford",
+   "producer": "La Rinconada",
+   "category": "red",
+   "vintage": "2018",
+   "region": "Sta Rita Hills, Santa Barbara, Ca",
+   "bottle_price": 179
+  },
+  {
+   "name": "Arneis",
+   "producer": "Bruno Giacosa",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Piedmont",
+   "bottle_price": 108
+  },
+  {
+   "name": "Arneis",
+   "producer": "Ceretto",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Piedmont",
+   "bottle_price": 77
+  },
+  {
+   "name": "Carricante",
+   "producer": "Alta Mora",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Etna Bianco, Sicily",
+   "bottle_price": 76
+  },
+  {
+   "name": "Marna",
+   "producer": "Girlan",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Alto-Adige",
+   "grape_variety": "Chardonnay",
+   "bottle_price": 82
+  },
+  {
+   "name": "Chardonnay",
+   "producer": "Elana Walch",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Alto-Adige",
+   "bottle_price": 68
+  },
+  {
+   "name": "Piodilei",
+   "producer": "Pio Cesare",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Piedmont",
+   "grape_variety": "Chardonnay",
+   "bottle_price": 75
+  },
+  {
+   "name": "Cortese",
+   "producer": "Broglia",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Cortese di Gavi, Piedmont",
+   "bottle_price": 64
+  },
+  {
+   "name": "La Rocca",
+   "producer": "Pieropan",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Garganega, Soave Classico",
+   "bottle_price": 108
+  },
+  {
+   "name": "Gewürztraminer",
+   "producer": "Elena Walch",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Alto-Adige",
+   "bottle_price": 83
+  },
+  {
+   "name": "Negroamaro",
+   "producer": "Tormaresca Calafuria",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Puglia, Ita",
+   "bottle_price": 60
+  },
+  {
+   "name": "Pinot Grigio",
+   "producer": "Terlato",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Friuli-Venezia Giulia",
+   "bottle_price": 62
+  },
+  {
+   "name": "Dessimis",
+   "producer": "Vie de Romans",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Pinot Grigio, Friuli-Venezia Giulia",
+   "bottle_price": 118
+  },
+  {
+   "name": "Turmhof",
+   "producer": "Tiefenbrunner",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Sauvignon Blanc, Alto-Adige",
+   "bottle_price": 72
+  },
+  {
+   "name": "I Frati",
+   "producer": "Ca'dei Frati",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Turbiana, Lombardy",
+   "bottle_price": 61
+  },
+  {
+   "name": "Limizzani",
+   "producer": "Surrau",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Vermentino di Gallura, Sardinia",
+   "bottle_price": 55
+  },
+  {
+   "name": "Ca'Marcanda, Vistamare",
+   "producer": "Gaja",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Tuscany",
+   "grape_variety": "Vermentino/Viognier",
+   "bottle_price": 172
+  },
+  {
+   "name": "Poggio Alle Gazze",
+   "producer": "Ornellaia",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Tuscany",
+   "grape_variety": "Sauvignon Blanc/Vermentino",
+   "bottle_price": 181
+  },
+  {
+   "name": "Pinot Grigio",
+   "producer": "Abbazia di Novacella",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Alto-Adige",
+   "bottle_price": 56
+  },
+  {
+   "name": "Chardonnay",
+   "producer": "Bravium",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Russian River Valley, Ca",
+   "bottle_price": 56
+  },
+  {
+   "name": "Chardonnay",
+   "producer": "Sea Smoke",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Sea Rita Hills, Ca",
+   "bottle_price": 236
+  },
+  {
+   "name": "Cinsault/Grenache",
+   "producer": "Symphonie, Maison Sainte Marguerite",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Cotes de Provence, Fra",
+   "bottle_price": 72
+  },
+  {
+   "name": "Les Noisetiers",
+   "producer": "Kistler",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Chardonnay, Sonoma Coast, Ca",
+   "bottle_price": 163
+  },
+  {
+   "name": "Gemina",
+   "producer": "Massican",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Greco/Falanghina, Ca",
+   "bottle_price": 99
+  },
+  {
+   "name": "Riesling",
+   "producer": "Apassionata",
+   "category": "white",
+   "vintage": "2018",
+   "region": "Chehalem Mountains, Or",
+   "bottle_price": 138
+  },
+  {
+   "name": "Kabinett",
+   "producer": "Selbach Oster",
+   "category": "white",
+   "vintage": "2020",
+   "region": "Riesling, Mosel, Germany",
+   "bottle_price": 68
+  },
+  {
+   "name": "Sauvignon Blanc",
+   "producer": "Cliff Lede",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Stags Leap, Ca",
+   "bottle_price": 98
+  },
+  {
+   "name": "Elevage",
+   "producer": "Chimney Rock",
+   "category": "white",
+   "vintage": "2020",
+   "region": "Sauvignon Blanc, Napa Valley, Ca",
+   "bottle_price": 108
+  },
+  {
+   "name": "Comte Lafond",
+   "producer": "Ladoucette",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Sauvignon Blanc, Sancerre, Fra",
+   "bottle_price": 120
+  },
+  {
+   "name": "Sauvignon Blanc",
+   "producer": "Rutherford Hill",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Napa Valley, Ca",
+   "bottle_price": 88
+  },
+  {
+   "name": "Sauvignon Blanc",
+   "producer": "Sinegal",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Napa Valley, Ca",
+   "bottle_price": 105
+  },
+  {
+   "name": "Chardonnay",
+   "producer": "Protege",
+   "category": "white",
+   "vintage": "2020",
+   "region": "Napa Valley, CA",
+   "bottle_price": 151
+  },
+  {
+   "name": "Cuvage Nebbiolo DAlba Rosę",
+   "producer": "Cuvage",
+   "category": "sparkling",
+   "region": "Spumante, Piedmont",
+   "bottle_price": 91
+  },
+  {
+   "name": "Cuvée Prestige",
+   "producer": "Ca'del Bosco",
+   "category": "sparkling",
+   "region": "Franciacorta, Lombardy",
+   "bottle_price": 112
+  },
+  {
+   "name": "Prosecco",
+   "producer": "Avissi",
+   "category": "sparkling",
+   "region": "Veneto",
+   "bottle_price": 60
+  },
+  {
+   "name": "Brut",
+   "producer": "Poggio Costa",
+   "category": "sparkling",
+   "region": "Prosecco, Veneto",
+   "bottle_price": 60
+  },
+  {
+   "name": "Villa Sandi Valdobbiadene Cartizze Vigneto Rivetta",
+   "producer": "Villa Sandi",
+   "category": "sparkling",
+   "vintage": "2022",
+   "region": "Prosecco, Veneto",
+   "bottle_price": 142
+  },
+  {
+   "name": "Prosecco Rosé",
+   "producer": "Canella Lido",
+   "category": "sparkling",
+   "region": "Veneto",
+   "bottle_price": 72
+  },
+  {
+   "name": "Prosecco Rosé",
+   "producer": "Ruggeri Argeo",
+   "category": "sparkling",
+   "region": "Veneto",
+   "bottle_price": 54
+  },
+  {
+   "name": "Brut Rose",
+   "producer": "Murgo",
+   "category": "sparkling",
+   "vintage": "2020",
+   "region": "Spumante Metodo Classico, Sicily",
+   "bottle_price": 81
+  },
+  {
+   "name": "Brut Rose",
+   "producer": "Laurent Perrier",
+   "category": "sparkling",
+   "region": "Pinot Noir",
+   "bottle_price": 224
+  },
+  {
+   "name": "No.14",
+   "producer": "Ayala",
+   "category": "sparkling",
+   "vintage": "2014",
+   "region": "Brut Rose, Chardonnay/Pinot Noir",
+   "bottle_price": 240
+  },
+  {
+   "name": "Special Cuvée",
+   "producer": "Bollinger",
+   "category": "sparkling",
+   "region": "Pinot Noir/Chardonnay/Meunier",
+   "bottle_price": 188
+  },
+  {
+   "name": "Brut Rosé",
+   "producer": "Billecart-Salmon",
+   "category": "sparkling",
+   "region": "Pinot Noir/Chardonnay/Meunier",
+   "bottle_price": 222
+  },
+  {
+   "name": "Chardonnay/Pinot Noir/Meunier",
+   "producer": "Dom Pérignon",
+   "category": "sparkling",
+   "vintage": "2013",
+   "bottle_price": 685
+  },
+  {
+   "name": "172nd Edition Krug, Grande Cuvée",
+   "category": "sparkling",
+   "region": "Pinot Noir/Chardonnay/Meunier",
+   "bottle_price": 625
+  },
+  {
+   "name": "Cristal",
+   "producer": "Louis Roederer",
+   "category": "sparkling",
+   "vintage": "2014",
+   "region": "Pinot Noir/Chardonnay/Meunier",
+   "bottle_price": 827
+  },
+  {
+   "name": "Chardonnay/Pinot Noir/Meunier",
+   "producer": "Moët",
+   "category": "sparkling",
+   "bottle_price": 185
+  },
+  {
+   "name": "Blanc de Blanc",
+   "producer": "Ruinart",
+   "category": "sparkling",
+   "region": "Chardonnay",
+   "bottle_price": 282
+  },
+  {
+   "name": "Belle Epoque",
+   "producer": "Perrier Jouet",
+   "category": "sparkling",
+   "vintage": "2015",
+   "region": "Chardonnay/Pinot Noir/Meunier",
+   "bottle_price": 929
+  },
+  {
+   "name": "La Grand Dame",
+   "producer": "Veuve Cliquot",
+   "category": "sparkling",
+   "vintage": "2015",
+   "region": "Pinot Noir/Chardonnay",
+   "bottle_price": 538
+  }
+ ]
+}

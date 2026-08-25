@@ -86,25 +86,31 @@ export class InventoryLedgerService {
       throw new BadRequestException("Quantity change cannot be zero");
     }
 
-    // Use the database function for atomic operation
+    // record_inventory_transaction referenced a `live_stock` column that does
+    // not exist on restaurant_inventory and 500'd against the real database
+    // (spine repair, decision A5) — every call now goes through
+    // apply_stock_movement, the single stock write primitive, mirroring the
+    // reconcile path below. order_id/fromLocationId/toLocationId map onto its
+    // p_order_id/p_location_id (transfers are not yet modeled as a single
+    // atomic movement — from/to would need two calls, which is out of scope
+    // for this port and unchanged from the pre-existing gap).
     const { data, error } = await this.databaseService.supabase.rpc(
-      "record_inventory_transaction",
+      "apply_stock_movement",
       {
-        p_restaurant_id: restaurantId,
         p_inventory_id: dto.inventoryId,
-        p_wine_id: dto.wineId,
+        p_stock_state: dto.stockType || StockType.LIVE,
+        p_delta: dto.quantityChange,
         p_transaction_type: dto.transactionType,
         p_source: dto.source,
-        p_quantity_change: dto.quantityChange,
-        p_stock_type: dto.stockType || "live",
+        p_performed_by: userId,
+        p_reason: dto.reason || null,
+        p_unit_cost: dto.unitCost || null,
+        p_location_id: dto.toLocationId || dto.fromLocationId || null,
+        p_order_id: dto.orderId || null,
+        p_idempotency_key: dto.idempotencyKey,
         p_reference_type: dto.referenceType || null,
         p_reference_id: dto.referenceId || null,
         p_pos_transaction_id: dto.posTransactionId || null,
-        p_order_id: dto.orderId || null,
-        p_unit_cost: dto.unitCost || null,
-        p_performed_by: userId,
-        p_performed_by_type: "user",
-        p_reason: dto.reason || null,
         p_notes: dto.notes || null,
         p_metadata: dto.metadata || {},
       },
@@ -119,6 +125,16 @@ export class InventoryLedgerService {
         durationMs: Date.now() - startTime,
       });
       throw error;
+    }
+    if (!data) {
+      // apply_stock_movement returns the EXISTING transaction id on a replayed
+      // idempotency key, and NULL only when p_delta was zero — already
+      // rejected above. A NULL here means this call landed on a prior
+      // transaction whose id we don't have; that is a caller bug (reusing a
+      // key across genuinely different transactions), not a retry.
+      throw new BadRequestException(
+        "apply_stock_movement returned no transaction id",
+      );
     }
 
     // Fetch the created transaction
@@ -486,6 +502,11 @@ export class InventoryLedgerService {
         p_source: "reconciliation",
         p_performed_by: userId,
         p_reason: reason,
+        // Every stock write carries a key now (decision A7). A reconcile is a
+        // one-off correction rather than something retried over flaky
+        // signal, so a per-call timestamped key is sufficient — it only
+        // needs to survive one request, not an offline outbox.
+        p_idempotency_key: `reconcile:${inventoryId}:${Date.now()}`,
       });
 
     if (rpcError || !transactionId) {

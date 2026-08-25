@@ -41,8 +41,11 @@ export class AdvancedAnalyticsService {
     const [invRes, rollupRes] = await Promise.allSettled([
       client
         .from("restaurant_inventory")
+        // Same schema-drift fix as AnalyticsService.loadInventory: a single
+        // unknown column 42703s the whole PostgREST query, and allSettled
+        // swallows it into an empty inventory.
         .select(
-          "id, wine_name, wine_type, stock_live, unit_price, unit_cost, master_wine_id",
+          "id, wine_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, master_wine_library(primary_type)",
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
@@ -58,19 +61,20 @@ export class AdvancedAnalyticsService {
       for (const r of rollupRes.value.data || []) rollup.set(r.inventory_id, r);
     return inventory.map((i: any) => {
       const lot = rollup.get(i.id);
+      const unitPrice = Number(i.menu_price_current) || 0;
       const cost =
         lot?.has_invoice_cost && lot?.wac
           ? lot.wac
-          : i.unit_cost || (i.unit_price ? i.unit_price * 0.6 : 0);
+          : Number(i.last_purchase_price) || (unitPrice ? unitPrice * 0.6 : 0);
       return {
         id: i.id,
         masterWineId: i.master_wine_id,
         name: i.wine_name || i.master_wine_id || i.id,
-        type: i.wine_type || "unknown",
+        type: i.master_wine_library?.primary_type || "unknown",
         qty: lot?.live_qty ?? i.stock_live ?? 0,
         unitCost: cost,
-        unitPrice: i.unit_price || 0,
-        marginPerBottle: (i.unit_price || 0) - cost,
+        unitPrice,
+        marginPerBottle: unitPrice - cost,
       };
     });
   }
@@ -80,11 +84,14 @@ export class AdvancedAnalyticsService {
     const { data } = await this.dbService
       .getClient()
       .from("wine_consumption_log")
-      .select("master_wine_id, quantity, volume_ml, created_at")
+      // No master_wine_id column on this table — resolve via the inventory FK.
+      .select(
+        "inventory_id, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id)",
+      )
       .eq("restaurant_id", restaurantId)
       .gte("created_at", since);
     return (data || []).map((c: any) => ({
-      wineId: c.master_wine_id,
+      wineId: c.restaurant_inventory?.master_wine_id ?? null,
       qty: c.quantity || (c.volume_ml ? c.volume_ml / 750 : 0),
       date: (c.created_at || "").substring(0, 10),
     }));
@@ -302,10 +309,14 @@ export class AdvancedAnalyticsService {
     const client = this.dbService.getClient();
     const { data: inv } = await client
       .from("restaurant_inventory")
-      .select("master_wine_id, wine_type")
+      // Varietal/type lives on master_wine_library, not restaurant_inventory.
+      .select("master_wine_id, master_wine_library(primary_type)")
       .eq("restaurant_id", restaurantId);
     const typeByWine = new Map(
-      (inv || []).map((i: any) => [i.master_wine_id, i.wine_type || "unknown"]),
+      (inv || []).map((i: any) => [
+        i.master_wine_id,
+        i.master_wine_library?.primary_type || "unknown",
+      ]),
     );
     for (const c of consumption) {
       const t = typeByWine.get(c.wineId) || "unknown";

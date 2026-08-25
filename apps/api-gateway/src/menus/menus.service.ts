@@ -23,6 +23,8 @@ interface ResolvedItem {
   masterWineId: string | null;
   matched: boolean;
   libraryTier: number | null;
+  /** Best library-match score, 0-100. See LibraryResolutionResult. */
+  confidence: number | null;
 }
 
 interface InsertedMenuItem {
@@ -71,7 +73,7 @@ export class MenusService {
     // 1. Parse input → WineExtractItem[]
     let items: WineExtractItem[];
     if (dto.method === "scan") {
-      items = await this.scanParser.parse(dto.data.imageBase64!);
+      items = await this.scanParser.parse(dto.data.imageBase64!, restaurantId);
     } else if (dto.method === "csv") {
       items = dto.data.fileBase64
         ? await this.csvParser.parseExcel(dto.data.fileBase64)
@@ -142,7 +144,10 @@ export class MenusService {
     // Manager-added rows are always flagged for review, regardless of match.
     await this.dbService.supabase
       .from("menu_items")
-      .update({ status: "flagged", review_notes: "Manually added during review" })
+      .update({
+        status: "flagged",
+        review_notes: "Manually added during review",
+      })
       .eq("id", reviewItem.menuItemId);
 
     if (reviewItem.submissionId) {
@@ -191,7 +196,9 @@ export class MenusService {
       : dto.newValue;
 
     if (isPrice && Number.isNaN(newValueTyped as number)) {
-      throw new BadRequestException(`Invalid numeric value for ${dto.fieldName}`);
+      throw new BadRequestException(
+        `Invalid numeric value for ${dto.fieldName}`,
+      );
     }
 
     const { error: updateErr } = await this.dbService.supabase
@@ -222,7 +229,10 @@ export class MenusService {
           submission_id: menuItem.submission_id,
           actor_id: userId,
           field_name: dto.fieldName,
-          old_value: oldValue !== null && oldValue !== undefined ? String(oldValue) : null,
+          old_value:
+            oldValue !== null && oldValue !== undefined
+              ? String(oldValue)
+              : null,
           new_value: String(newValueTyped),
           reason: "Manager correction during menu import review",
           promotion_status: "pending",
@@ -236,6 +246,47 @@ export class MenusService {
     }
 
     return { menuItemId, fieldName: dto.fieldName, newValue: dto.newValue };
+  }
+
+  /**
+   * Read path for the interactive menu (decision 39 — the menus module had
+   * no GET at all, which is why no menu page could exist). Returns the
+   * restaurant's active menu with its items, newest first within category.
+   */
+  async getMenu(restaurantId: string): Promise<{
+    menuId: string | null;
+    name: string | null;
+    status: string | null;
+    items: Array<Record<string, unknown>>;
+  }> {
+    const { data: menu, error: menuErr } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id, name, status")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (menuErr) throw new Error(`Failed to load menu: ${menuErr.message}`);
+    if (!menu) return { menuId: null, name: null, status: null, items: [] };
+
+    const { data: items, error: itemsErr } = await this.dbService.supabase
+      .from("menu_items")
+      .select(
+        "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, created_at",
+      )
+      .eq("menu_id", menu.id)
+      .order("category", { ascending: true })
+      .order("name", { ascending: true });
+
+    if (itemsErr)
+      throw new Error(`Failed to load menu items: ${itemsErr.message}`);
+
+    return {
+      menuId: menu.id,
+      name: menu.name,
+      status: menu.status,
+      items: items ?? [],
+    };
   }
 
   // ── Shared pipeline: resolve against the library, insert, seed inventory ──
@@ -253,25 +304,50 @@ export class MenusService {
     // menu_items — wine_library_id and restaurant_inventory.master_wine_id
     // are both FK targets and must point at a real row, not be populated
     // asynchronously after the fact.
-    const resolved: ResolvedItem[] = await Promise.all(
-      items.map(async (item) => {
-        try {
-          const result = await this.wineSubmissions.resolveOrCreateLibraryWine({
-            name: item.name,
-            producer: item.producer,
-            vintage: item.vintage,
-            region: item.region,
-            grapeVariety: item.grape_variety,
-          });
-          return { item, ...result };
-        } catch (err) {
-          this.logger.warn(
-            `Library resolution failed for "${item.name}" (non-fatal): ${err.message}`,
-          );
-          return { item, masterWineId: null, matched: false, libraryTier: null };
-        }
-      }),
-    );
+    //
+    // One batched call, not one per wine. This used to be a bounded-concurrency
+    // loop of individual lookups; against the pooler each round trip is
+    // ~320-380ms and almost none of that is query time. Measured on a real
+    // 182-wine extraction scaled to RL Restaurant's 485 wines, batching took
+    // 183.12s down to 0.91s.
+    //
+    // A whole-batch failure is fatal here on purpose. Per-wine failures were
+    // caught as non-fatal and turned into masterWineId: null, which is how an
+    // import could report success while linking nothing; if the single call
+    // covering every wine fails, the import genuinely cannot proceed and should
+    // say so rather than write a menu of unlinked items.
+    let resolved: ResolvedItem[];
+    try {
+      const results = await this.wineSubmissions.resolveLibraryWinesBatch(
+        items.map((item) => ({
+          name: item.name,
+          producer: item.producer,
+          vintage: item.vintage,
+          region: item.region,
+          grapeVariety: item.grape_variety,
+        })),
+      );
+      resolved = items.map((item, idx) => ({
+        item,
+        masterWineId: results[idx]?.masterWineId ?? null,
+        matched: results[idx]?.matched ?? false,
+        libraryTier: results[idx]?.libraryTier ?? null,
+        confidence: results[idx]?.confidence ?? null,
+      }));
+    } catch (err) {
+      this.logger.error(`Library resolution failed for menu: ${err.message}`);
+      throw new Error(`Menu import failed during library resolution: ${err.message}`);
+    }
+
+    // Unlinked items are the ones a manager has to fix by hand, so say how
+    // many there are rather than leaving it to be discovered in the UI.
+    const unlinked = resolved.filter((r) => !r.masterWineId).length;
+    if (unlinked > 0) {
+      this.logger.error(
+        `Menu import: ${unlinked}/${resolved.length} item(s) could not be ` +
+          `linked to the wine library and will have no inventory row`,
+      );
+    }
 
     const menuItemRows = resolved.map(({ item, masterWineId }, idx) => ({
       menu_id: menuId,
@@ -314,7 +390,10 @@ export class MenusService {
 
     // Seed restaurant_inventory (awaited — previously fire-and-forget into a
     // table named "inventory" that does not exist in this schema).
-    const inventoryMap = await this.addToInventory(insertedMenuItems, restaurantId);
+    const inventoryMap = await this.addToInventory(
+      insertedMenuItems,
+      restaurantId,
+    );
     await this.backfillMenuItemColumn(inventoryMap, "inventory_item_id");
 
     // Provenance trail for governance (awaited, non-fatal on failure so a
@@ -338,7 +417,9 @@ export class MenusService {
       const menuItem = insertedMenuItems[idx];
       return {
         menuItemId: menuItem?.id,
-        submissionId: menuItem ? submissionMap.get(menuItem.id) ?? null : null,
+        submissionId: menuItem
+          ? (submissionMap.get(menuItem.id) ?? null)
+          : null,
         name: r.item.name,
         producer: r.item.producer ?? null,
         category: r.item.category ?? null,
@@ -405,7 +486,14 @@ export class MenusService {
         matched_master_id: r.masterWineId,
         payload: r.item,
         normalized_fields: {
-          normalized_name: r.item.name.toLowerCase().trim(),
+          // Was `name.toLowerCase().trim()`, a third normalizer writing the
+          // same field name as the library's normalized_name but folding
+          // nothing — so "Château Margaux" stayed "château margaux" here and
+          // was "chateau margaux" everywhere else.
+          normalized_name: this.wineSubmissions.normalizeText(r.item.name),
+          normalized_producer: this.wineSubmissions.normalizeText(
+            r.item.producer,
+          ),
           producer: r.item.producer ?? null,
           vintage: r.item.vintage ?? null,
           region: r.item.region ?? null,
@@ -529,7 +617,9 @@ export class MenusService {
     // completed_at for anyone who has now finished all three tasks.
     const { data: rows } = await this.dbService.supabase
       .from("user_onboarding_progress")
-      .select("id, menu_uploaded, vendor_added, team_member_invited, completed_at")
+      .select(
+        "id, menu_uploaded, vendor_added, team_member_invited, completed_at",
+      )
       .eq("restaurant_id", restaurantId);
 
     const toComplete = (rows ?? []).filter(
@@ -617,7 +707,10 @@ export class MenusService {
   ): Promise<{ default_threshold_min: number; threshold_configured: true }> {
     const { error } = await this.dbService.supabase
       .from("restaurants")
-      .update({ default_threshold_min: thresholdMin, threshold_configured: true })
+      .update({
+        default_threshold_min: thresholdMin,
+        threshold_configured: true,
+      })
       .eq("id", restaurantId);
 
     if (error) {

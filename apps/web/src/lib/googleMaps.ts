@@ -44,6 +44,41 @@ export async function ensureMaps(): Promise<{ maps: MapsLib; marker: MarkerLib }
 }
 
 /**
+ * The geocoding library, loaded on demand.
+ *
+ * Separate from `ensureMaps` because only the distributor map's scope framing
+ * needs it: reverse-geocoding the restaurant's coordinates is how we learn
+ * which country, state and city it sits in, and each of those results carries
+ * a `geometry.viewport` that is a far better frame than any bounding box we
+ * could hardcode. Loading it for every caller of `ensureMaps` would pull an
+ * extra library into pages that never geocode anything.
+ */
+/** The library object rather than the bare constructor — mirrors how the maps
+ *  and marker libraries are cached above, and keeps the stored value a plain
+ *  object so its type never collapses under narrowing. */
+type GeocodingLib = { Geocoder: new () => google.maps.Geocoder }
+
+let geocodingLib: GeocodingLib | null = null
+let geocodingPromise: Promise<void> | null = null
+
+export async function ensureGeocoder(): Promise<google.maps.Geocoder> {
+  if (!isMapsConfigured()) throw new Error('VITE_GOOGLE_MAPS_API_KEY not set')
+  if (geocodingLib) return new geocodingLib.Geocoder()
+
+  if (!geocodingPromise) {
+    setOptions({ key: MAPS_API_KEY as string, language: 'en' })
+    geocodingPromise = (importLibrary('geocoding') as Promise<GeocodingLib>).then((lib) => {
+      geocodingLib = lib
+    })
+  }
+
+  await geocodingPromise
+  const lib = geocodingLib as GeocodingLib | null
+  if (!lib) throw new Error('Geocoding library failed to load')
+  return new lib.Geocoder()
+}
+
+/**
  * Turn the raw SDK failure into something a user can act on.
  * Same classification approach as PlacesAutocomplete, which found that the raw
  * messages are opaque about the three problems that actually occur.

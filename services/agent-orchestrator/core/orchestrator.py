@@ -45,6 +45,7 @@ from agents.negotiation_playbook_agent import NegotiationPlaybookAgent
 from agents.auto_pilot_agent import AutoPilotAgent
 from agents.compliance_agent import ComplianceAgent
 from agents.shrinkage_detective_agent import ShrinkageDetectiveAgent
+from agents.drift_agent import DriftAgent
 
 # Phase 24 Agents — inbound email intelligence
 from agents.email_intel_agent import EmailIntelAgent
@@ -193,6 +194,7 @@ class AgentOrchestrator:
             "auto_pilot_agent": AutoPilotAgent,
             "compliance_agent": ComplianceAgent,
             "shrinkage_detective_agent": ShrinkageDetectiveAgent,
+            "drift_agent": DriftAgent,
             # Phase 24 agents — inbound email intelligence.
             #
             # Both were fully implemented and absent from this registry, so nothing
@@ -221,7 +223,9 @@ class AgentOrchestrator:
             f"{len(enabled)} enabled, {len(disabled)} gated off"
         )
         if disabled:
-            logger.info(f"Gated off (no proxy, no subscriptions): {', '.join(sorted(disabled))}")
+            logger.info(
+                f"Gated off (no proxy, no subscriptions): {', '.join(sorted(disabled))}"
+            )
 
     def _create_lazy_proxies(self) -> None:
         """Create lazy proxies for all registered agents (no instantiation)."""
@@ -291,15 +295,20 @@ class AgentOrchestrator:
                 "default_threshold": self.settings.default_threshold_min,
             },
             "provider_conversation_agent": {
+                # Both land inside a Gemini client — extraction_model in this
+                # agent's genai.GenerativeModel, response_model in the one
+                # EmailComposerService builds. They defaulted to llm_primary_model,
+                # a CLAUDE id, so a Claude name was handed to the Gemini SDK on
+                # every boot (OD-57). Extraction-shaped work stays on Gemini.
                 "extraction_model": getattr(
                     self.settings,
                     "provider_convo_extraction_model",
-                    self.settings.llm_primary_model,
+                    self.settings.gemini_model,
                 ),
                 "response_model": getattr(
                     self.settings,
                     "provider_convo_response_model",
-                    self.settings.llm_primary_model,
+                    self.settings.gemini_model,
                 ),
                 "embedding_model": getattr(
                     self.settings,
@@ -357,7 +366,9 @@ class AgentOrchestrator:
                 "mock_mode": self.settings.mock_llm,
             },
             "sommelier_agent": {
-                "llm_model": self.settings.llm_primary_model,
+                # Wine enrichment is extraction-shaped and this agent uses the
+                # Gemini SDK; llm_primary_model is a Claude id (OD-57).
+                "llm_model": self.settings.gemini_model,
                 "google_api_key": self.settings.google_api_key,
                 "mock_mode": self.settings.mock_llm,
             },

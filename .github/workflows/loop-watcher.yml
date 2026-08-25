@@ -1,0 +1,42 @@
+name: Loop watcher
+
+# The corpus defines 482 feedback loops. Five run.
+#
+# Two of the unwatched ones are dated rules that fire on a specific morning and
+# then pass silently: 2026-10-23 (198 agendas hit the 60-day staleness rule at
+# once, because they were generated in one burst and share one `updated` date)
+# and 2026-11-24 (seven units must judge whether they should still exist).
+#
+# Decision Office owns loops for exactly this. Both are `status: proposed` — a
+# rule, an owner and a cadence, with no mechanism. This workflow is the
+# mechanism, and it is deliberately the smallest possible one.
+#
+# It reports. It never edits the corpus: a finding belongs in a unit's
+# questions.md, written by a person or an advisory pass, not by a cron job.
+
+on:
+  schedule:
+    - cron: "0 7 * * 1"      # Monday 07:00 UTC — before the week's work starts
+  pull_request:
+    paths:
+      - ".planning/**"
+      - "scripts/watch_loops.py"
+  workflow_dispatch:
+
+jobs:
+  watch:
+    name: Dated rules and loop activation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report
+        # Never fails a pull request. A dated rule firing is information for a
+        # human, not a reason to block unrelated work.
+        run: python3 scripts/watch_loops.py | tee "$GITHUB_STEP_SUMMARY"
+
+      - name: Annotate anything that has already fired
+        run: |
+          if ! python3 scripts/watch_loops.py --ci > /dev/null; then
+            echo "::warning::A dated rule in .planning has fired. See the job summary."
+          fi

@@ -18,6 +18,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -26,6 +28,7 @@ from core.base_agent import BaseAgent
 from core.notifications import notify_restaurant
 from models.email_intel import EmailClassification, PromoDetails
 from services.model_clients import (
+    get_anthropic_client,
     get_gemini_client,
     get_haiku_client,
     get_haiku_semaphore,
@@ -34,6 +37,41 @@ from services.model_clients import (
 logger = logging.getLogger(__name__)
 
 WINE_EVENT_TYPES = ["tasting", "tasting_event", "high_volume_expected"]
+
+# Taxonomy v2. The v1 three-line definition put every measured classification
+# error in one place: NOISE. Its list ("newsletters, surveys, automated receipts,
+# marketing with no specific offer") omitted most of what actually arrives —
+# office closures, event invitations, greetings, recruitment, range marketing —
+# so those fell through to OPERATIONAL or PROMO. Stating the tests as a
+# stop-at-first-match order and making NOISE the explicit default took
+# gemini-3.5-flash-lite from 92.3% to 100% on the tuned fixture and 80% to 100%
+# on a held-out set written afterwards (54/54 combined).
+#
+# Module-level so scripts/eval_email_classification.py measures the SAME string
+# production sends — an eval with its own copy of the prompt silently stops
+# testing the thing that ships. Keep the `{subject}` / `{body}` placeholders.
+CLASSIFICATION_PROMPT = (
+    "You are an email classifier for a fine-dining restaurant beverage procurement system.\n"
+    "Classify this vendor email as OPERATIONAL, PROMO, or NOISE. Apply these tests in "
+    "order and stop at the first match.\n\n"
+    "1. OPERATIONAL - the email concerns a SPECIFIC transaction or this account's state: "
+    "an order, delivery, invoice, credit note, payment, statement, quote, stock shortage "
+    "or substitution on an order, or a change to this account's terms or contacts. A "
+    "discount already applied to a named order is still OPERATIONAL.\n"
+    "2. PROMO - not the above, and the email makes a CONCRETE commercial offer the reader "
+    "could act on: a discount, a deal, a limited-time or limited-quantity allocation, a "
+    "price special, or an incentive with a stated deadline, price, or quantity limit. A "
+    "general price increase with no offer is OPERATIONAL, not PROMO.\n"
+    "3. NOISE - everything else. This is the default and it is broad: newsletters, blog "
+    "and content pushes, surveys and prize draws, event and tasting invitations (with or "
+    "without a fee), trade-show announcements, office-closure and holiday notices, "
+    "seasonal greetings, recruitment notices, and product-range marketing that names no "
+    "price, discount, deadline, or quantity. Automated acknowledgements that reference no "
+    "specific order are NOISE.\n\n"
+    "Subject: {subject}\n\nBody:\n{body}\n\n"
+    'Respond ONLY with valid JSON: {{"category": "...", "confidence": 0.0-1.0, '
+    '"reasoning": "...", "provider_name": "...", "urgency": "low|medium|high"}}'
+)
 STALE_EMAIL_HOURS = (
     18  # per premortem R-06: skip digest accumulation for emails older than this
 )
@@ -47,17 +85,34 @@ class EmailIntelAgent(BaseAgent):
     as OPERATIONAL, PROMO, or NOISE using Gemini Flash, then routes accordingly.
     """
 
-    def __init__(self, message_bus, database, redis_client=None):
+    def __init__(
+        self,
+        message_bus,
+        database,
+        config: Optional[Dict[str, Any]] = None,
+        redis_client=None,
+        agent_name: str = "email_intel_agent",
+    ):
+        # agent_name and config exist to satisfy the orchestrator's factory, which
+        # builds EVERY agent as (agent_name, message_bus, database, config) — see
+        # AgentOrchestrator._create_lazy_proxies. Registering this agent was the
+        # documented fix for the dead inbound pipeline, but instantiation still
+        # raised TypeError, so it never subscribed.
         super().__init__(
-            agent_name="email_intel_agent",
+            agent_name=agent_name,
             message_bus=message_bus,
             database=database,
-            config={},
+            config=config or {},
         )
-        self.redis = redis_client
+        self._redis_client = redis_client
         # Created in initialize() — MUST be inside a running event loop
         self.haiku_semaphore: Optional[Any] = None
         self._settings: Optional[Settings] = None
+
+    @property
+    def redis(self):
+        """Explicit client if injected (tests), else the one DatabaseClient owns."""
+        return self._redis_client or getattr(self.database, "redis", None)
 
     @property
     def settings(self) -> Settings:
@@ -84,7 +139,9 @@ class EmailIntelAgent(BaseAgent):
     async def initialize(self) -> None:
         # Create haiku_semaphore inside running event loop (AI-SPEC §3 pitfall 4)
         self.haiku_semaphore = get_haiku_semaphore()
-        self.logger.info("EmailIntelAgent initialized — listening on email.inbound.received")
+        self.logger.info(
+            "EmailIntelAgent initialized — listening on email.inbound.received"
+        )
 
     # =========================================================================
     # MESSAGE ENTRY POINT
@@ -152,7 +209,9 @@ class EmailIntelAgent(BaseAgent):
             if is_unknown:
                 await self._notify_unknown_sender(restaurant_id, sender_email, payload)
 
-        classification = await self._classify_email(email_subject, email_body)
+        classification = await self._classify_email(
+            email_subject, email_body, restaurant_id=restaurant_id or None
+        )
 
         await self.log_decision(
             decision_type="email_classification",
@@ -219,21 +278,15 @@ class EmailIntelAgent(BaseAgent):
     # GEMINI FLASH CLASSIFICATION
     # =========================================================================
 
-    async def _classify_email(self, subject: str, body: str) -> EmailClassification:
+    async def _classify_email(
+        self, subject: str, body: str, restaurant_id: Optional[str] = None
+    ) -> EmailClassification:
         from google.genai import types as genai_types
 
         gemini = get_gemini_client()
-        prompt = (
-            "You are an email classifier for a fine-dining restaurant beverage procurement system.\n"
-            "Classify this vendor email as OPERATIONAL, PROMO, or NOISE.\n"
-            "OPERATIONAL = order confirmations, invoices, delivery updates, account notices, supply issues\n"
-            "PROMO = discounts, deals, limited-time offers, allocation announcements, price specials\n"
-            "NOISE = newsletters, surveys, automated receipts, marketing with no specific offer\n\n"
-            f"Subject: {subject}\n\nBody:\n{body}\n\n"
-            'Respond ONLY with valid JSON: {"category": "...", "confidence": 0.0-1.0, '
-            '"reasoning": "...", "provider_name": "...", "urgency": "low|medium|high"}'
-        )
-        response = gemini.models.generate_content(
+        prompt = CLASSIFICATION_PROMPT.format(subject=subject, body=body)
+        _t0 = time.perf_counter()
+        response = gemini.models.generate_content(  # spend logged below (P1)
             model=self.settings.gemini_model,
             contents=prompt,
             config=genai_types.GenerateContentConfig(
@@ -258,9 +311,127 @@ class EmailIntelAgent(BaseAgent):
                 ],
             ),
         )
+        _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+        # P1: previously an unlogged model call (dark site)
+        try:
+            from services.spend_logger import (
+                estimate_llm_cost,
+                get_spend_logger,
+                usage_tokens,
+            )
+
+            _in, _out = usage_tokens(response)  # _out includes thinking tokens
+            get_spend_logger().log(
+                provider="google",
+                model=self.settings.gemini_model,
+                input_tokens=_in,
+                output_tokens=_out,
+                cost_usd=estimate_llm_cost(self.settings.gemini_model, _in, _out),
+                restaurant_id=restaurant_id or None,
+                agent=self.agent_name,
+                task_type="email_classification",
+                outcome="success",  # call-level: response returned
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                correlation_id=getattr(self, "_current_correlation_id", None),
+            )
+        except Exception:
+            pass
+
         raw = response.text or "{}"
         data = json.loads(raw)
-        return EmailClassification(**data)
+        primary = EmailClassification(**data)
+
+        # Escalate only the genuinely uncertain minority. On the 54-case eval the
+        # primary model was 54/54 and never dropped below the threshold, so this
+        # is insurance rather than a cost centre — measured escalation rate 0%.
+        # Sonnet is ~10x the primary's per-token price, which is exactly why the
+        # gate is a floor and not a "when in doubt" default.
+        if primary.confidence >= self.settings.email_intel_escalation_threshold:
+            return primary
+
+        escalated = await self._escalate_classification(
+            subject, body, primary, restaurant_id=restaurant_id or None
+        )
+        return escalated or primary
+
+    async def _escalate_classification(
+        self,
+        subject: str,
+        body: str,
+        primary: EmailClassification,
+        restaurant_id: Optional[str] = None,
+    ) -> Optional[EmailClassification]:
+        """
+        Re-classify a low-confidence email on the escalation model.
+
+        Returns None on any failure so the caller keeps the primary verdict — a
+        degraded classification beats dropping the email, and this path must not
+        become a new way for inbound mail to disappear.
+        """
+        model_id = self.settings.email_intel_escalation_model
+        try:
+            client = get_anthropic_client()
+            _t0 = time.perf_counter()
+            response = await client.messages.create(
+                model=model_id,
+                max_tokens=512,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": CLASSIFICATION_PROMPT.format(
+                            subject=subject, body=body
+                        ),
+                    }
+                ],
+            )
+            text = "".join(b.text for b in response.content if b.type == "text")
+            try:
+                from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+                _in = response.usage.input_tokens or 0
+                _out = response.usage.output_tokens or 0
+                get_spend_logger().log(
+                    provider="anthropic",
+                    model=model_id,
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=estimate_llm_cost(model_id, _in, _out),
+                    restaurant_id=restaurant_id or None,
+                    agent=self.agent_name,
+                    task_type="email_classification_escalation",
+                    outcome="success",
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
+                    correlation_id=getattr(self, "_current_correlation_id", None),
+                    context={"primary_confidence": primary.confidence},
+                )
+            except Exception:
+                pass
+
+            # Sonnet is not constrained to JSON-only output the way the Gemini
+            # call is (response_mime_type has no Anthropic equivalent), so dig
+            # the object out rather than assuming the whole body is JSON.
+            match = re.search(r"\{.*\}", text, re.DOTALL)
+            if not match:
+                self.logger.warning(
+                    "escalation returned no JSON object; keeping primary verdict"
+                )
+                return None
+            result = EmailClassification(**json.loads(match.group()))
+            self.logger.info(
+                "escalated classification",
+                extra={
+                    "primary": primary.category,
+                    "primary_confidence": primary.confidence,
+                    "escalated": result.category,
+                    "escalation_model": model_id,
+                },
+            )
+            return result
+        except Exception as exc:
+            self.logger.warning(
+                "escalation to %s failed, keeping primary verdict: %s", model_id, exc
+            )
+            return None
 
     # =========================================================================
     # PROMO HANDLING: EXTRACT + SCORE + INSERT + DIGEST
@@ -280,7 +451,9 @@ class EmailIntelAgent(BaseAgent):
 
         # Haiku extraction gated by semaphore (AI-SPEC §3, T-24-04-03)
         async with self.haiku_semaphore:
-            details = await self._extract_promo(email_subject, email_body)
+            details = await self._extract_promo(
+                email_subject, email_body, restaurant_id=restaurant_id or None
+            )
 
         # Dedup check: SHA256(vendor_email + product_name + today)
         today_str = date.today().isoformat()
@@ -390,7 +563,9 @@ class EmailIntelAgent(BaseAgent):
     # HAIKU EXTRACTION
     # =========================================================================
 
-    async def _extract_promo(self, subject: str, body: str) -> PromoDetails:
+    async def _extract_promo(
+        self, subject: str, body: str, restaurant_id: Optional[str] = None
+    ) -> PromoDetails:
         haiku = get_haiku_client()
         prompt = (
             "Extract structured deal information from this promotional wine vendor email.\n"
@@ -400,11 +575,35 @@ class EmailIntelAgent(BaseAgent):
             "conditions, confidence (0.0-1.0)\n\n"
             f"Subject: {subject}\n\nBody:\n{body}"
         )
+        _t0 = time.perf_counter()
         response = await haiku.messages.create(
             model=self.settings.haiku_model,
             max_tokens=512,
             messages=[{"role": "user", "content": prompt}],
         )
+
+        # P1: previously an unlogged model call (dark site)
+        try:
+            from services.spend_logger import estimate_llm_cost, get_spend_logger
+
+            _in = response.usage.input_tokens if hasattr(response, "usage") else 0
+            _out = response.usage.output_tokens if hasattr(response, "usage") else 0
+            get_spend_logger().log(
+                provider="anthropic",
+                model=self.settings.haiku_model,
+                input_tokens=_in,
+                output_tokens=_out,
+                cost_usd=estimate_llm_cost(self.settings.haiku_model, _in, _out),
+                restaurant_id=restaurant_id or None,
+                agent=self.agent_name,
+                task_type="promo_extraction",
+                outcome="success",  # call-level: completion returned
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                correlation_id=getattr(self, "_current_correlation_id", None),
+            )
+        except Exception:
+            pass
+
         raw = response.content[0].text if response.content else "{}"
         # Strip markdown code fences if present
         raw = raw.strip()
