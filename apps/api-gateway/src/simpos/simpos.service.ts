@@ -501,7 +501,28 @@ export class SimposService {
       .createHmac("sha256", this.webhookSecret)
       .update(body)
       .digest("hex");
-    const url = `${this.internalApiBaseUrl}/pos-hub/webhook/generic_webhook/${restaurantId}`;
+    // CodeQL flags this as request-forgery (critical) because `restaurantId`
+    // reaches a URL. In practice every caller passes through
+    // `assertSimRestaurant`, whose `.eq("id", …)` lookup rejects anything that
+    // is not a real uuid — but that is action at a distance: it lives in another
+    // method, CodeQL cannot see it, and a future caller reaching this private
+    // method directly would inherit no protection at all.
+    //
+    // So the check is made local. The host still comes from config and cannot be
+    // influenced from here; what this stops is a crafted id steering the PATH to
+    // some other internal endpoint. Encoding alone would not do it — `%2E%2E%2F`
+    // is still traversal to some servers — so the shape is asserted first, and
+    // encoding is belt to that braces.
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        restaurantId,
+      )
+    ) {
+      const msg = `Refusing to send a SimPOS webhook for a non-uuid restaurant id`;
+      this.logger.error(msg);
+      return { ok: false, error: msg };
+    }
+    const url = `${this.internalApiBaseUrl}/pos-hub/webhook/generic_webhook/${encodeURIComponent(restaurantId)}`;
     try {
       await axios.post(url, body, {
         headers: {

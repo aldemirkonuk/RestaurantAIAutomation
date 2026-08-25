@@ -120,8 +120,13 @@ function makeService(initial: Record<string, Row[]> = {}) {
   return { service, tables };
 }
 
-const SIM_RESTAURANT = "sim-rest-1";
-const NON_SIM_RESTAURANT = "real-rest-1";
+// Real uuids, not "sim-rest-1". `restaurants.id` is a uuid column, so the old
+// fixtures described a row that could not exist — and they hid a real gap: the
+// webhook URL builder now asserts the id's shape before interpolating it
+// (CodeQL js/request-forgery, critical), and readable-but-impossible ids made
+// that guard look like a regression rather than a fix.
+const SIM_RESTAURANT = "11111111-1111-4111-8111-111111111111";
+const NON_SIM_RESTAURANT = "22222222-2222-4222-8222-222222222222";
 
 describe("SimposService.assertSimRestaurant (decision C31)", () => {
   it("rejects a restaurant whose slug does not start with sim-", async () => {
