@@ -80,12 +80,23 @@ The founder's tracking mandate lands here: page telemetry rides the NF spine (`s
 > feed is the record; nothing here is fixed yet. Compiled into the approval doc:
 > [0019-p2-build-scope](../decisions/0019-p2-build-scope.md).
 
-**Live defects — buttons navigating to routes that do not exist:**
+**Live defects — buttons navigating to routes that do not exist:** ✅ **all fixed
+2026-08-25 (P2.4, [#67](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/67))**
 
-1. Inventory Command "View ledger" → `/documents?ledger=…` — no `/documents`
-   route exists (the page is `/documents-reports`). `apps/web/src/pages/inventory/command/RowExpansion.tsx:329`.
-2. One-Tap Action Center routes `gmail_send`/`gmail_contextual` actions →
-   `/emails` — no such route (comms live at `/communications`). `apps/web/src/components/notifications/OneTapActionCenter.tsx:131`.
+1. ~~Inventory Command "View ledger" → `/documents?ledger=…`~~ → now
+   `/documents-reports`. The `ledger` param is **dropped, not faked**: that page
+   is keyed by report, not by inventory item. Per-item ledger data does exist
+   (`inventory-ledger.controller.ts:210`) with **no UI rendering it** — a real
+   product gap, filed rather than invented.
+2. ~~One-Tap gmail actions → `/emails`~~ → now `/communications`. No thread id
+   exists on those actions to preselect with.
+3. ~~Notification action-URL picker offered `/documents`~~ (same dead route, so
+   every notification built with it dead-ended) → `/documents-reports`.
+4. ~~`/wines` reorder used `window.location.href`~~ → SPA navigation. This one
+   was **breaking the feature**: `pendingReorder` is deliberately excluded from
+   persistence, so the reload always rehydrated it as null.
+5. Still open: `DocumentsPage.tsx:368` copy-link builds `?doc=<id>` that the
+   page never reads — a shared link silently loses its target.
 
 **Dead-end pages (no outbound page navigation):** pure placeholders —
 [[wine-agent]], [[wineagent-alias]]; modal/API-only surfaces — [[admin]],

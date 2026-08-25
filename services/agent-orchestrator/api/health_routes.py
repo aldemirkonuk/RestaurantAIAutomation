@@ -288,7 +288,10 @@ async def get_system_metrics(_key: str = Depends(verify_admin_key)):
     if orchestrator is None:
         raise HTTPException(status_code=503, detail="Orchestrator not running")
 
-    metrics = orchestrator.get_metrics()
+    # get_metrics is async — without the await this returned a coroutine object,
+    # which then serialised as garbage (and leaked an un-awaited coroutine
+    # warning) instead of metrics.
+    metrics = await orchestrator.get_metrics()
     settings = get_settings()
 
     # Augment with DLQ count from dead_letter_queue table (Phase 18 migration)

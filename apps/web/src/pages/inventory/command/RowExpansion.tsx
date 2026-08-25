@@ -325,8 +325,20 @@ export function RowExpansion({
           Move
         </button>
 
+        {/*
+         * `/documents` is not a route — the documents surface is `/documents-reports`
+         * (App.tsx), so this button was a no-op that fell through to the `*` catch-all
+         * and bounced the user to the dashboard.
+         *
+         * The old `?ledger=<inventoryId>` param is dropped rather than carried over:
+         * DocumentsPage renders generated reports plus classified conversations, and
+         * neither is keyed by an inventory item, so there is nothing on that page for
+         * the id to select. The per-item ledger data does exist server-side
+         * (`GET /inventory-ledger/inventory/:inventoryId/history`) but has no UI yet;
+         * building one is out of scope here.
+         */}
         <button
-          onClick={() => navigate(`/documents?ledger=${inventoryId}`)}
+          onClick={() => navigate('/documents-reports')}
           className="ml-auto text-xs font-semibold text-gray-500 hover:text-gray-700 px-2 py-1.5 rounded-lg hover:bg-gray-100"
         >
           View ledger

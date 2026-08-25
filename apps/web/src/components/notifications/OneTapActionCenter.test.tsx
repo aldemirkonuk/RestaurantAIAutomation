@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen } from '@testing-library/react'
 import { renderWithProviders } from '../../__tests__/utils/test-utils'
-import { OneTapActionCenter } from './OneTapActionCenter'
+import { OneTapActionCenter, openRouteForAction } from './OneTapActionCenter'
 
 vi.mock('../../contexts/RealtimeContext', () => ({
   useRealtime: vi.fn(() => ({})),
@@ -109,5 +109,43 @@ describe('OneTapActionCenter', () => {
     // action title is present as a proxy that the action (with its timestamp)
     // rendered.
     expect(screen.getByText(/Penfolds Grange/i)).toBeInTheDocument()
+  })
+})
+
+describe('openRouteForAction', () => {
+  const action = (over: Partial<Parameters<typeof openRouteForAction>[0]>) =>
+    ({
+      id: 'a1',
+      priority: 'medium',
+      title: 't',
+      subtitle: 's',
+      details: {},
+      timestamp: new Date(),
+      ...over,
+    }) as Parameters<typeof openRouteForAction>[0]
+
+  /**
+   * Regression: gmail actions pointed at `/emails`, which is not a route in
+   * App.tsx, so "Open related page" fell through to the `*` catch-all and
+   * dumped the user on the dashboard. The comms surface is `/communications`.
+   */
+  it('routes gmail actions to the real communications page', () => {
+    expect(openRouteForAction(action({ type: 'gmail_send' }))).toBe('/communications')
+    expect(openRouteForAction(action({ type: 'gmail_contextual' }))).toBe('/communications')
+  })
+
+  it('keeps every route inside the app route table', () => {
+    // Paths that exist as <Route path> entries in App.tsx.
+    const known = ['/', '/inventory', '/orders', '/communications']
+    const types = [
+      'low_stock', 'stock_receipt', 'inequality',
+      'delivery_confirm', 'price_change', 'vintage_sub',
+      'gmail_send', 'gmail_contextual',
+    ] as const
+
+    for (const type of types) {
+      const path = openRouteForAction(action({ type })).split('?')[0]
+      expect(known, `${type} -> ${path}`).toContain(path)
+    }
   })
 })

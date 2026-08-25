@@ -1,6 +1,6 @@
 # 0019 — P2 build scope (the founder-approval list)
 
-- **Status:** Proposed — **nothing below is built until Aldemir locks this**
+- **Status:** Locked (build authorized 2026-08-25) — **with two carve-outs, see Decision**
 - **Date:** 2026-08-25
 - **Decider:** Aldemir (founder) — this document exists to be edited and locked by you
 - **Keywords:** P2.3, build scope, page graph, dead ends, live defects, endpoint gaps, web deploy
@@ -64,7 +64,7 @@ webhooks). What remains proposed:
 
 | # | Gap (verified) | Proposed fix |
 |---|---|---|
-| D1 | **Tenant ownership is not checked behind the JWT.** `analytics.controller.ts:92-111` (and siblings) take `:restaurantId` from the URL under `JwtAuthGuard` only, and the global `TenantGuard` fails open by design — an authenticated user of restaurant A can read restaurant B's numbers | Decide the tenant-authorization pattern ONCE (guard reads `user_restaurant_access`, applied per controller), then sweep; adjacent to OD-72's RLS call, and the two should be decided together |
+| D1 | ✅ **FIXED 2026-08-25 — and this row's original claim was wrong.** It said any authenticated user could read another restaurant's data. Not so: `TenantGuard` compares the JWT's `restaurantId` against param/query/body and throws `ForbiddenException` (`tenant.guard.ts:62`), so a user *with* a tenant was always caught. The real hole was narrower and worse-shaped: a user with **no** `restaurantId` on their session skipped the comparison entirely (`if (!user?.restaurantId) return true`), so a tenantless account could name any restaurant and be let through. Now denied whenever the request names a tenant, while tenantless routes (onboarding, profile, settings) keep working. 6 tests, 2 proven to fail against the old code | Done |
 | D2 | **~9 `@Public()` `test/*` routes on `communications.controller.ts` (lines 305–991) mutate real data in production** — `test/e2e/step2-approve-reorder` approves a real order, `step3-send-vendor-email` sends a real email, no env gate | Gate behind `NODE_ENV !== "production"` like SimPOS, or delete; founder picks |
 | D3 | **`POST /communications/webhooks/gmail` + `/gmail/force-fetch` are `@Public()` with no Pub/Sub OIDC verification** — anyone can trigger a fetch/publish cycle | Verify the Google-signed OIDC token on push requests |
 | D4 | **AdminPanel's orchestrator health call is both mis-pathed and unauthenticated** (`AdminPanel.tsx:215` calls `/health/agents` bare; the real route is `/api/v1/health/agents` and wants `X-Admin-Key`) — it can only ever hit the graceful-error branch, so the admin page has silently never shown live agent health | Fix path + auth together when the admin page is touched in P2.4 |
@@ -82,8 +82,25 @@ webhooks). What remains proposed:
 
 ## Decision
 
-*(Locked by the founder — edit the tables above, then flip Status to Locked
-and record what was struck.)*
+**Authorized by the founder 2026-08-25**: *"complete P2 from start to end,
+deploy full process"*. That instruction locks the build scope; it does not
+license everything in the tables, and two carve-outs are held back
+deliberately rather than assumed:
+
+**HELD — page retirements (section B).** Deleting `/calendar-classic`,
+`/inventory-legacy`, `/wine-agent` and `/wineagent-alias` removes surfaces a
+user may be relying on, and this ADR itself makes each conditional on a parity
+check. Retirement is irreversible in a way the rest of this list is not, so it
+waits for an explicit yes. Everything else in B is additive wiring and is not
+blocked by this.
+
+**HELD — anything requiring a secret the browser must not hold (D4).** If the
+admin health panel needs a server-side proxy, that is a new endpoint and an ops
+change, not a build item.
+
+**BUILT under this authorization:** A1–A4 (live defects), D1–D3 (tenant
+isolation, public test routes, Gmail push verification), and the additive
+wiring in B. Delivered in `feat/p2-4-burndown`.
 
 ## Consequences
 
@@ -97,3 +114,5 @@ of the line item.
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-08-25 | — | Drafted from the Surface findings feed + register; awaiting founder lock |
+| 2026-08-25 | Aldemir | Build authorized ("complete P2 start to end, deploy"); retirements and secret-bearing work held back explicitly |
+| 2026-08-25 | Verification | D1's stated premise was FALSE — TenantGuard already blocked cross-tenant reads; the real hole was the tenantless-session bypass, now closed. Row corrected in place |

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Header } from '../components/layout/Header'
 import {
@@ -255,6 +256,9 @@ const REPORT_FORMAT_MAP: Record<string, ReportFormat> = {
 }
 
 export function Communications() {
+  // SPA navigation for the in-toast "Open" action: a full reload there tore down
+  // the session and is the same class of bug as the /wines reorder flow.
+  const navigate = useNavigate()
   const [selectedTab, setSelectedTab] = useState<'templates' | 'history' | 'scheduled-reports' | 'procurement-history'>('templates')
   // NEW-359/360: the scheduler was wired to console.log even though the
   // /reports/schedule + /reports/generate endpoints already existed.
@@ -312,7 +316,7 @@ export function Communications() {
       // NEW-360/466: generated reports land in Documents.
       toast.success('Report generated', {
         description: 'Filed in Documents & Reports.',
-        action: { label: 'Open', onClick: () => { window.location.href = '/documents-reports' } },
+        action: { label: 'Open', onClick: () => navigate('/documents-reports') },
       })
       return report
     } catch (err: any) {

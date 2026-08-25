@@ -114,7 +114,13 @@ function snoozeActionUntilTomorrow(actionId: string): void {
   }
 }
 
-function openRouteForAction(action: ActionItem): string {
+/**
+ * Maps an action to the in-app route "Open related page" navigates to.
+ *
+ * Exported for tests: every string here must match a real `<Route path>` in
+ * App.tsx or the click silently falls through to the `*` catch-all redirect.
+ */
+export function openRouteForAction(action: ActionItem): string {
   switch (action.type) {
     case 'low_stock':
     case 'stock_receipt':
@@ -128,7 +134,11 @@ function openRouteForAction(action: ActionItem): string {
         : '/orders'
     case 'gmail_send':
     case 'gmail_contextual':
-      return '/emails'
+      // `/emails` is not a route; the comms surface is `/communications`. No id is
+      // passed: `gmail_send` carries only `{ templates }` and `gmail_contextual`
+      // only `{ recipient, subject }`, and Communications has no thread- or
+      // compose-from-query-string entry point to hand them to.
+      return '/communications'
     default:
       return '/'
   }

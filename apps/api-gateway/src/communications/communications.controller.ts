@@ -9,15 +9,23 @@ import {
   Req,
   Res,
   Query,
+  Headers,
   BadRequestException,
+  UnauthorizedException,
   UseGuards,
 } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiResponse } from "@nestjs/swagger";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiHeader,
+} from "@nestjs/swagger";
 import { ConfigService } from "@nestjs/config";
 import { CommunicationsService } from "./communications.service";
 import { GmailService } from "./gmail.service";
 import { SmsService } from "./sms.service";
 import { GmailWatchService } from "./gmail-watch.service";
+import { GmailPushAuthService } from "./gmail-push-auth.service";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
 import { DatabaseService } from "../database/database.service";
 import {
@@ -32,6 +40,7 @@ import {
 } from "./dto/communication.dto";
 import { Public } from "../auth/decorators/public.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { NonProductionGuard } from "./guards/non-production.guard";
 
 @ApiTags("Communications")
 /**
@@ -47,6 +56,16 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
  *
  * Routes that are genuinely public must now say so with @Public(), so intent is
  * recorded rather than inferred from an absent decorator.
+ *
+ * ADR 0019 D2/D3 — 2026-08-25. Two follow-ups on top of OD-20:
+ *  - D2: every `test/*` and `test/e2e/step*` route now carries
+ *    @UseGuards(NonProductionGuard) and no longer carries @Public(). They are
+ *    scaffolding that writes real rows, approves real orders and sends real
+ *    vendor email; in production they 404. See non-production.guard.ts.
+ *  - D3: POST /webhooks/gmail stays @Public() but is now authenticated by a
+ *    Google-signed Pub/Sub OIDC token (GmailPushAuthService, fail-closed).
+ *    /webhooks/gmail/force-fetch is an operator action, not a push, so it lost
+ *    @Public() and falls under the class-level JwtAuthGuard.
  */
 @UseGuards(JwtAuthGuard)
 @Controller("communications")
@@ -62,6 +81,7 @@ export class CommunicationsController {
     private readonly orchestratorService: OrchestratorService,
     private readonly configService: ConfigService,
     private readonly databaseService: DatabaseService,
+    private readonly gmailPushAuthService: GmailPushAuthService,
   ) {
     // Parse comma-separated emails from MANAGER_EMAIL
     const emailConfig = this.configService.get<string>("MANAGER_EMAIL") || "";
@@ -193,6 +213,7 @@ export class CommunicationsController {
   /**
    * TEST ENDPOINT: Simulate low stock alert scenario — sends to MANAGER_EMAIL recipients only.
    */
+  @UseGuards(NonProductionGuard) // D2: sends real email + SMS. Dev/demo only.
   @Post("test/low-stock-alert")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -262,6 +283,7 @@ export class CommunicationsController {
   /**
    * TEST ENDPOINT: Send a simple test email
    */
+  @UseGuards(NonProductionGuard) // D2: sends a real email. Dev/demo only.
   @Post("test/email")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -302,7 +324,9 @@ export class CommunicationsController {
    * TEST ENDPOINT: Send a template email to specified recipients
    * Uses ready-made templates: "test" (simple WineOps test) or "low-stock" (low stock alert with sample data)
    */
-  @Public()
+  // D2: @Public() removed — this sent a real Gmail message to ANY address an
+  // anonymous caller named, i.e. an open relay on our verified sender domain.
+  @UseGuards(NonProductionGuard)
   @Post("test/send-template")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -379,6 +403,7 @@ export class CommunicationsController {
    * 2. Stores outbound message in procurement_conversations
    * 3. Returns the scenario state for monitoring the inbound reply flow
    */
+  @UseGuards(NonProductionGuard) // D2: sends real email + writes procurement_conversations.
   @Post("test/scenario")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -559,7 +584,9 @@ export class CommunicationsController {
    * STEP 1: Trigger a manual stock override that breaches the threshold.
    * This simulates a manager adjusting stock in the inventory page.
    */
-  @Public()
+  // D2: @Public() removed — writes the stock ledger via apply_stock_movement and
+  // rewrites threshold_min on a live inventory row.
+  @UseGuards(NonProductionGuard)
   @Post("test/e2e/step1-trigger-threshold")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -672,7 +699,9 @@ export class CommunicationsController {
    * STEP 2: Approve the reorder (simulates manager clicking "Approve" on an order).
    * Triggers AI to draft a vendor email.
    */
-  @Public()
+  // D2: @Public() removed — approves a real procurement order (status APPROVED,
+  // approved_by "e2e-test-manager") for any order id supplied by the caller.
+  @UseGuards(NonProductionGuard)
   @Post("test/e2e/step2-approve-reorder")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -752,7 +781,9 @@ export class CommunicationsController {
   /**
    * STEP 3: Approve the AI-drafted email and send it to the vendor.
    */
-  @Public()
+  // D2: @Public() removed — publishes conversation.approved, which sends a real
+  // email to a real vendor, with attacker-supplied body via modifiedMessage.
+  @UseGuards(NonProductionGuard)
   @Post("test/e2e/step3-send-vendor-email")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -801,7 +832,12 @@ export class CommunicationsController {
   /**
    * STEP 4: Check inbound emails and thread summary.
    */
-  @Public()
+  // D2: read-only, but NOT harmless — it dumps procurement_conversations
+  // (vendor email bodies, prices, headers) with no tenant filter at all, so an
+  // anonymous caller read every restaurant's vendor correspondence. Guarded and
+  // removed from production rather than merely authenticated, because even an
+  // authenticated single-tenant user must not read across tenants.
+  @UseGuards(NonProductionGuard)
   @Get("test/e2e/step4-check-inbound")
   @ApiOperation({
     summary: "E2E Step 4: Check inbound vendor replies",
@@ -856,7 +892,9 @@ export class CommunicationsController {
   /**
    * STEP 5: Approve order confirmation → AI sends "confirmed, send invoice" email.
    */
-  @Public()
+  // D2: @Public() removed — publishes procurement.conversation_request, so the
+  // AI drafts and sends a real order-confirmation email to a real vendor.
+  @UseGuards(NonProductionGuard)
   @Post("test/e2e/step5-approve-confirmation")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -921,7 +959,9 @@ export class CommunicationsController {
   /**
    * STEP 6: Check final order status.
    */
-  @Public()
+  // D2: read-only, but reads any procurement_orders row by id — order numbers,
+  // negotiated prices and the full conversation trail — with no tenant check.
+  @UseGuards(NonProductionGuard)
   @Get("test/e2e/step6-check-status")
   @ApiOperation({
     summary: "E2E Step 6: Check order status (should be CONFIRMED/ORDERED)",
@@ -987,15 +1027,31 @@ export class CommunicationsController {
    * Called when new emails arrive in the monitored inbox.
    * Fetches new messages and publishes them to RabbitMQ for the EmailParsingAgent.
    */
-  @Public()
+  @Public() // D3: authenticated by a Google-signed OIDC token, not by JWT.
   @Post("/webhooks/gmail")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: "Gmail Pub/Sub push notification webhook",
     description:
-      "Receives push notifications from Google Pub/Sub when new emails arrive. Fetches new messages and routes them to the email parsing agent.",
+      "Receives push notifications from Google Pub/Sub when new emails arrive. Fetches new messages and routes them to the email parsing agent. Requires the Pub/Sub push subscription's Google-signed OIDC token in Authorization; the token's aud must match GMAIL_PUBSUB_AUDIENCE and its email claim must match GMAIL_PUBSUB_SERVICE_ACCOUNT. Fails closed when those are unset.",
   })
-  async handleGmailWebhook(@Body() body: any): Promise<{ status: string }> {
+  @ApiHeader({
+    name: "Authorization",
+    description: "Bearer <Google-signed Pub/Sub OIDC token>",
+    required: true,
+  })
+  async handleGmailWebhook(
+    @Body() body: any,
+    @Headers("authorization") authorization?: string,
+  ): Promise<{ status: string }> {
+    // D3: verify BEFORE any work — an unverified caller must not be able to
+    // make us fetch the inbox and republish it onto email.events.
+    const verified =
+      await this.gmailPushAuthService.verifyPushRequest(authorization);
+    if (!verified) {
+      throw new UnauthorizedException("Gmail push verification failed");
+    }
+
     this.logger.log("Received Gmail push notification");
 
     if (!this.gmailWatchService.isReady()) {
@@ -1144,7 +1200,11 @@ export class CommunicationsController {
    * Bypasses Pub/Sub — directly lists INBOX messages from the last N minutes.
    * Use this to recover missed replies (e.g. after a redeploy reset the historyId).
    */
-  @Public()
+  // D3: @Public() removed. This is an operator recovery action, not a Pub/Sub
+  // push, so it has no OIDC token to present — it falls under the class-level
+  // JwtAuthGuard. The web UI (useForceFetchReplies) already sends a Bearer JWT.
+  // Left reachable in production on purpose: recovering missed vendor replies
+  // after a redeploy resets the historyId is a real production need.
   @Post("/webhooks/gmail/force-fetch")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

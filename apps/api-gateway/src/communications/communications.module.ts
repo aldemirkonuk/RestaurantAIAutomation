@@ -7,6 +7,8 @@ import { CommunicationsController } from "./communications.controller";
 import { ScheduledTasksService } from "./scheduled-tasks.service";
 import { GmailWatchService } from "./gmail-watch.service";
 import { RecipientResolverService } from "./recipient-resolver.service";
+import { GmailPushAuthService } from "./gmail-push-auth.service";
+import { NonProductionGuard } from "./guards/non-production.guard";
 import { WebsocketModule } from "../websocket/websocket.module";
 import { DatabaseModule } from "../database/database.module";
 import { CacheModule } from "../common/cache/cache.module";
@@ -34,6 +36,11 @@ import { AuthModule } from "../auth/auth.module";
     ScheduledTasksService,
     GmailWatchService,
     RecipientResolverService,
+    // ADR 0019 D3 — Google Pub/Sub OIDC verification for the Gmail push webhook.
+    GmailPushAuthService,
+    // ADR 0019 D2 — route-level production kill-switch for the test/* routes.
+    // Registered explicitly so the enhancer resolves from this module's injector.
+    NonProductionGuard,
   ],
   exports: [
     GmailService,

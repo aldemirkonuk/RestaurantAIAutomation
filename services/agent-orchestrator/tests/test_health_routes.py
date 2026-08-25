@@ -7,7 +7,7 @@ with TestClient on httpx 0.28.x (same pattern as test_cors.py, test_analytics_ro
 import pytest
 import httpx
 from fastapi import FastAPI
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 ADMIN_KEY = "test-admin-key-99999"
 
@@ -92,7 +92,10 @@ async def test_metrics_requires_admin_key(health_client):
 
 async def test_metrics_returns_dlq_size_key(health_client):
     mock_orch = MagicMock()
-    mock_orch.get_metrics.return_value = {"agents": {}, "aggregated": {}}
+    # get_metrics is `async def` (core/orchestrator.py). Mocking it as sync
+    # made this test pass against a route that had forgotten to await it —
+    # the mock encoded the bug. AsyncMock matches the real signature.
+    mock_orch.get_metrics = AsyncMock(return_value={"agents": {}, "aggregated": {}})
     mock_settings = MagicMock()
     mock_settings.supabase_client = (
         None  # No DB — triggers except branch (dlq_size = -1)
