@@ -98,6 +98,13 @@ def build_agent_event(
         restaurant_id = None
 
     return {
+        # Minted here rather than read back from the insert (OD-74). The table
+        # defaults to gen_random_uuid(), so this changes nothing about the row —
+        # but it means the id exists BEFORE the write, which is what lets a
+        # caller hold onto it. Reading it back would work too and is what
+        # BaseAgent.log_decision does; minting is chosen because it costs no
+        # RETURNING round-trip on a path that runs on every model call.
+        "id": str(_uuid.uuid4()),
         "subject_type": "agent",
         "subject_id": str(subject_id) if subject_id else "unknown",
         "stimulus": str(stimulus)[:500] if stimulus else "unknown",
@@ -115,14 +122,27 @@ def build_agent_event(
     }
 
 
-def insert_event(supabase, row: Dict[str, Any]) -> bool:
+def insert_event(supabase, row: Dict[str, Any]) -> Optional[str]:
     """
-    Insert one NF row. Never raises; returns False (and counts the drop) on
-    failure so the caller's pipeline is never interrupted by telemetry.
+    Insert one NF row. Never raises.
+
+    Returns the row id on success and None on failure (OD-74). It previously
+    returned a bare bool, which discarded the only handle a later grader could
+    use — so a doneability verdict (ADR 0017) had nothing to attach to on the
+    Python side, covering the gateway's 7 emit points and none of Python's 43.
+    `correlation_id` is not a substitute: several agents emit two rows under one
+    id (e.g. email_intel_agent.py:335 and :404).
+
+    None on failure is the honest contract, and it matches the gateway's
+    NfEventRef settling null on a dropped emit: an id whose row does not exist
+    would produce a verdict grading nothing. The nf_verdict FK is the backstop.
+
+    Truthiness is preserved for existing callers — a uuid string is truthy and
+    None is falsy, so `if insert_event(...)` reads the same as it always did.
     """
     try:
         supabase.table("neural_footprint_event").insert(row).execute()
-        return True
+        return row.get("id")
     except Exception as exc:
         total = record_drop("neural_footprint_event")
         logger.warning(
@@ -131,4 +151,4 @@ def insert_event(supabase, row: Dict[str, Any]) -> bool:
             total,
             exc,
         )
-        return False
+        return None
