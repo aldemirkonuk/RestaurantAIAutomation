@@ -435,7 +435,7 @@ def test_unpriced_model_books_null_cost_not_false_zero():
     assert nf["context"]["cost_basis"] == "unpriced_model"
     # OD-61: api_spend.cost_usd used to be NOT NULL, so the PRIMARY ledger kept
     # the false zero after NF had stopped booking one. The column is nullable as
-    # of 20260825120000_api_spend_cost_usd_nullable.sql and both agree now.
+    # of 20260825160000_api_spend_cost_usd_nullable.sql and both agree now.
     assert rows["api_spend"][0]["cost_usd"] is None
 
 
