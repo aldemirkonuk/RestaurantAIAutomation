@@ -26,7 +26,8 @@ Canonical list: the 🔴 rows of [[OPEN-DECISIONS]]. Headlines only:
 
 | Item | One line |
 |---|---|
-| **P2.3 feature-set approval** | [ADR 0019](../decisions/0019-p2-build-scope.md) is drafted — strike/keep its tables and lock it; nothing is built ahead of that |
+| **Page retirements** | [ADR 0019](../decisions/0019-p2-build-scope.md) §B: retire `/calendar-classic`, `/inventory-legacy`, `/wine-agent`, `/wineagent-alias`? Deletion is irreversible and each needs a parity check, so it waits for your yes. `/inventory-legacy` also hosts a modal posting to a nonexistent endpoint (44.1e) |
+| **Gmail push enforcement** | Verification is built but staged OPEN so the deploy could not kill live inbound email. Set `GMAIL_PUBSUB_AUDIENCE` + `GMAIL_PUBSUB_SERVICE_ACCOUNT` on Railway (values come from the Pub/Sub subscription), then `GMAIL_PUBSUB_REQUIRE_AUTH=true` |
 | **OD-73** | 12 tables with RLS **off** and full `anon` DML — including the procurement invoice store and `user_oauth_accounts`; filed 2026-08-25 at your instruction, awaiting the call |
 | OD-72 | The other 142 RLS-on-zero-policy tables — policies, gateway, or RLS off |
 | OD-64/66/67 | Toast-side defect cluster (mirrored voids, second depletion path) |
@@ -36,13 +37,14 @@ Canonical list: the 🔴 rows of [[OPEN-DECISIONS]]. Headlines only:
 
 | Item | State |
 |---|---|
-| **docs/p2-spine-and-pages** (this branch) | Spine reset + Surface pass over all 51 page notes |
-| Main | PRs #52–#64 merged 2026-08-25; production verified after each (gateway 401s on guarded routes, `nf_verdict` live with RLS, readout views queryable) |
+| Nothing | P2 closed through deploy 2026-08-25 |
+| Main | PRs #52–#67 merged 2026-08-25. Production verified after each: guarded routes 401, `nf_verdict` live with RLS, Toast reads closed, nine public test routes closed, web bundle free of dead-route literals |
 
 ## 🟢 Next actions (no approval needed)
 
-1. **P2.3 proposal compile** — missing pages, dead ends, endpoint gaps, live `v3.0-TECH-DEBT.md` items, into one short doc for the founder.
-2. **OD-75** — move ~10 Python `outcome="success"` emits below the `json.loads` that can fail; stamp `parse_v1`. Bug fix and basis upgrade in one.
+1. **OD-75** — move ~10 Python `outcome="success"` emits below the `json.loads` that can fail; stamp `parse_v1`. Bug fix and doneability-basis upgrade in one.
+2. **`DocumentsPage` `?doc=` deep link** — the copy-link button builds a param the page never reads, so a shared link silently loses its target.
+3. **Per-item inventory ledger view** — `inventory-ledger.controller.ts:210` serves the data and nothing renders it; this is why "View ledger" had to drop its param.
 3. Mechanical register items (OD-30/32/33 cluster) — **verify each against the register before starting**; the 08-25 audit found half-closed entries are the norm, not the exception.
 
 ## 📌 Standing watch

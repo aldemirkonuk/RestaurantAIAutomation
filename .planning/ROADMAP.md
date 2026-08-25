@@ -20,16 +20,16 @@ frame; v-numbers reset at publish (ADR 0005).
 | Org + register (2026-08-24) | One-entity Mudavym, `.planning` org corpus, ADR log, OPEN-DECISIONS + CI claims | [decisions/](decisions/README.md) |
 | P1 (2026-08-25) | Neural Footprint instrumentation: NF-A emitters in both runtimes, readout, doneability verdicts (`nf_verdict`) | ADRs 0006, 0008, 0017; `04-specs/P1-*` |
 
-## Now — P2: Web complete + deploy
+## Now — P2: Web complete + deploy  ·  **all five stages done 2026-08-25**
 
 Goal: the web app feature-complete and deployed, with docs bulletproof first
 and the founder approving the feature set before build. Web only; mobile after.
 
 - [x] **P2.1 Spine reset** — PROJECT / STATE / ROADMAP say one consistent thing (this PR)
 - [x] **P2.2 Page graph** — all 51 page notes carry a Surface section (buttons → `[[destination]]`); the Obsidian graph shows the real interconnection web (this PR)
-- [ ] **P2.3 Gap proposal → founder approval** — missing pages, dead ends, endpoint gaps, live `v3.0-TECH-DEBT.md` carry-overs, compiled into one short proposal; **approval fixes P2's build scope** — nothing is built ahead of it
-- [ ] **P2.4 Build burn-down** — the approved list, one operation per branch, guards green throughout
-- [ ] **P2.5 Deploy** — web fully live on the production stack; rebrand strings (~71) swept when brand direction lands
+- [x] **P2.3 Gap proposal → founder approval** — missing pages, dead ends, endpoint gaps, live `v3.0-TECH-DEBT.md` carry-overs, compiled into one short proposal; **approval fixes P2's build scope** — nothing is built ahead of it
+- [x] **P2.4 Build burn-down** — the approved list, one operation per branch, guards green throughout
+- [x] **P2.5 Deploy** — web fully live on the production stack; rebrand strings (~71) swept when brand direction lands
 
 Standing threads through P2 (not gates, but first-class): neural-footprint
 coverage growth (more task types under `nf_verdict` bases), decision-register
@@ -45,4 +45,4 @@ hygiene (every resolution adds a claim), org loop activation.
 - **Job → model registry** — OD-04, once NF-A evidence can drive roster choices.
 
 ---
-*Last updated: 2026-08-25 — P2 plan of record (ADR 0018).*
+*Last updated: 2026-08-25 — P2 closed through deploy (ADRs 0018, 0019). Two items held for the founder; see STATE.md.*
