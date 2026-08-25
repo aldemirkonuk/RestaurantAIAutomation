@@ -10,6 +10,7 @@ Refactored with:
 """
 
 import asyncio
+import os
 from typing import Dict, Any, Optional, Type
 from datetime import datetime
 
@@ -44,6 +45,11 @@ from agents.negotiation_playbook_agent import NegotiationPlaybookAgent
 from agents.auto_pilot_agent import AutoPilotAgent
 from agents.compliance_agent import ComplianceAgent
 from agents.shrinkage_detective_agent import ShrinkageDetectiveAgent
+from agents.drift_agent import DriftAgent
+
+# Phase 24 Agents — inbound email intelligence
+from agents.email_intel_agent import EmailIntelAgent
+from agents.email_parsing_agent import EmailParsingAgent
 
 # Phase 32 Agents
 from agents.provider_communication_agent import ProviderCommunicationAgent
@@ -93,8 +99,28 @@ class AgentOrchestrator:
 
     @staticmethod
     def _build_feature_flags(settings: Settings) -> Dict[str, bool]:
-        """Extract feature flags from settings for the registry."""
-        flags = {}
+        """
+        Extract feature flags from settings for the registry.
+
+        Two kinds of key end up here:
+
+          FEATURE_*                 named flags declared on an AgentSpec
+          AGENT_<NAME>_ENABLED      the per-agent gate AgentTier.OPTIONAL requires
+
+        The second kind used to be missing entirely. AgentRegistry.is_enabled()
+        looks up `AGENT_{name.upper()}_ENABLED` for every OPTIONAL agent and
+        defaults it to False, so with those keys absent the OPTIONAL tier was
+        unreachable: setting AGENT_GHOST_INVENTORY_AGENT_ENABLED=true in the
+        environment did nothing at all, silently, because nothing read it. The
+        tier was documented as "disabled unless feature flag is set" while there
+        was no flag it would honour.
+
+        Reading them from os.environ here makes the documented switch real. The
+        five OPTIONAL agents are still off by default — they are unimplemented
+        stubs (see agents/planned) and BaseAgent now refuses to start one, so a
+        flag alone will not silently give you an agent that does nothing.
+        """
+        flags: Dict[str, bool] = {}
         if hasattr(settings, "features"):
             features = settings.features
             flags["FEATURE_VISUAL_VERIFICATION"] = getattr(
@@ -106,6 +132,11 @@ class AgentOrchestrator:
                 if hasattr(features, "menu_analyzer_enabled")
                 else False
             )
+
+        for key, value in os.environ.items():
+            if key.startswith("AGENT_") and key.endswith("_ENABLED"):
+                flags[key] = value.strip().lower() in ("1", "true", "yes", "on")
+
         return flags
 
     async def initialize(self) -> None:
@@ -163,13 +194,38 @@ class AgentOrchestrator:
             "auto_pilot_agent": AutoPilotAgent,
             "compliance_agent": ComplianceAgent,
             "shrinkage_detective_agent": ShrinkageDetectiveAgent,
+            "drift_agent": DriftAgent,
+            # Phase 24 agents — inbound email intelligence.
+            #
+            # Both were fully implemented and absent from this registry, so nothing
+            # consumed inbound vendor email at all. Registering them was necessary
+            # but not sufficient: EmailIntelAgent subscribed to email.inbound.raw,
+            # which has zero publishers, and EmailParsingAgent's process_message
+            # took two arguments where BaseAgent passes one. Three defects, each of
+            # which alone would have made the pipeline dead, and the missing
+            # registration hid the other two.
+            "email_intel_agent": EmailIntelAgent,
+            "email_parsing_agent": EmailParsingAgent,
             # Phase 32 agents
             "provider_communication_agent": ProviderCommunicationAgent,
         }
 
         # Register with the new registry (includes tier and dependency info)
         self.registry.register_from_defaults(self.agent_classes)
-        logger.info(f"Registered {self.registry.registered_count} agent classes")
+        # Registered is not the same as running, and reporting only the former
+        # overstates the system. Five of these are OPTIONAL, unimplemented stubs
+        # that get no proxy and never subscribe — a count of 20 read as 20 working
+        # agents, which is how "registered" came to be mistaken for "live".
+        enabled = [n for n in self.agent_classes if self.registry.is_enabled(n)]
+        disabled = [n for n in self.agent_classes if n not in enabled]
+        logger.info(
+            f"Registered {self.registry.registered_count} agent classes; "
+            f"{len(enabled)} enabled, {len(disabled)} gated off"
+        )
+        if disabled:
+            logger.info(
+                f"Gated off (no proxy, no subscriptions): {', '.join(sorted(disabled))}"
+            )
 
     def _create_lazy_proxies(self) -> None:
         """Create lazy proxies for all registered agents (no instantiation)."""
@@ -177,6 +233,20 @@ class AgentOrchestrator:
             if not self.registry.is_enabled(agent_name):
                 logger.info(
                     f"Agent {agent_name} disabled by feature flag - skipping proxy"
+                )
+                continue
+
+            # Refuse to run a stub even when its flag is on. Now that
+            # AGENT_<NAME>_ENABLED is actually read (it previously was not), a
+            # well-meaning operator can switch one of these on and get an agent
+            # that subscribes to real events and silently discards them — which
+            # looks healthy from every dashboard. Failing loudly at boot is the
+            # only version of this that cannot be mistaken for working.
+            if getattr(agent_class, "IS_STUB", False):
+                logger.error(
+                    f"Agent {agent_name} is enabled but is an unimplemented stub — "
+                    f"refusing to start it. Implement process_message() or leave "
+                    f"AGENT_{agent_name.upper()}_ENABLED unset."
                 )
                 continue
 
@@ -225,15 +295,20 @@ class AgentOrchestrator:
                 "default_threshold": self.settings.default_threshold_min,
             },
             "provider_conversation_agent": {
+                # Both land inside a Gemini client — extraction_model in this
+                # agent's genai.GenerativeModel, response_model in the one
+                # EmailComposerService builds. They defaulted to llm_primary_model,
+                # a CLAUDE id, so a Claude name was handed to the Gemini SDK on
+                # every boot (OD-57). Extraction-shaped work stays on Gemini.
                 "extraction_model": getattr(
                     self.settings,
                     "provider_convo_extraction_model",
-                    self.settings.llm_primary_model,
+                    self.settings.gemini_model,
                 ),
                 "response_model": getattr(
                     self.settings,
                     "provider_convo_response_model",
-                    self.settings.llm_primary_model,
+                    self.settings.gemini_model,
                 ),
                 "embedding_model": getattr(
                     self.settings,
@@ -291,7 +366,9 @@ class AgentOrchestrator:
                 "mock_mode": self.settings.mock_llm,
             },
             "sommelier_agent": {
-                "llm_model": self.settings.llm_primary_model,
+                # Wine enrichment is extraction-shaped and this agent uses the
+                # Gemini SDK; llm_primary_model is a Claude id (OD-57).
+                "llm_model": self.settings.gemini_model,
                 "google_api_key": self.settings.google_api_key,
                 "mock_mode": self.settings.mock_llm,
             },

@@ -1,0 +1,277 @@
+{
+ "menu": "Bar_Tutto_Wine_By_Glass_Menu.pdf",
+ "pages": 1,
+ "wine_count": 30,
+ "seconds": 23.1,
+ "wines": [
+  {
+   "name": "Indigenous",
+   "producer": "Indigenous",
+   "category": "sparkling",
+   "vintage": "2023",
+   "region": "Veneto, Italy",
+   "grape_variety": "Prosecco Brut, Glera",
+   "by_glass_price": 14,
+   "bottle_price": 56
+  },
+  {
+   "name": "L'Onesta",
+   "producer": "Cantina F.Ili Carafoli",
+   "category": "sparkling",
+   "region": "Emilia-Romagna, Italy",
+   "grape_variety": "Lambrusco di Sorbara",
+   "by_glass_price": 14,
+   "bottle_price": 56
+  },
+  {
+   "name": "Sampagnino Sulle Bucce",
+   "producer": "Bulli",
+   "category": "sparkling",
+   "region": "Emilia-Romagna, Italy",
+   "grape_variety": "Malvasia, Moscato Giallo, Ortrugo",
+   "by_glass_price": 16,
+   "bottle_price": 64
+  },
+  {
+   "name": "Mai Sentito! Frizzante Bianco",
+   "producer": "La Staffa",
+   "category": "sparkling",
+   "region": "Marche, Italy",
+   "grape_variety": "Verdicchio, Trebbiano",
+   "by_glass_price": 17,
+   "bottle_price": 68
+  },
+  {
+   "name": "Zero Alcohol",
+   "producer": "Domaine Montrose",
+   "category": "sparkling",
+   "vintage": "2023",
+   "region": "Languedoc, France",
+   "grape_variety": "Grenache, Cinsault",
+   "by_glass_price": 15,
+   "bottle_price": 64
+  },
+  {
+   "name": "Vino Bianco",
+   "producer": "Zamo",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Friuli-Venezia Giulia, Italy",
+   "grape_variety": "Friulano, Robolla, Pinot Grigio",
+   "by_glass_price": 15,
+   "bottle_price": 60
+  },
+  {
+   "name": "Pecorino",
+   "producer": "Jasci",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Abruzzo, Italy",
+   "grape_variety": "Pecorino",
+   "by_glass_price": 14,
+   "bottle_price": 56
+  },
+  {
+   "name": "Primo Bianco",
+   "producer": "Cantina Mesa",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Sardinia, Italy",
+   "grape_variety": "Vermentino",
+   "by_glass_price": 14,
+   "bottle_price": 56
+  },
+  {
+   "name": "Via Alpina",
+   "producer": "Via Alpina",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Friuli-Venezia Giulia, Italy",
+   "grape_variety": "Sauvignon Blanc",
+   "by_glass_price": 17,
+   "bottle_price": 68
+  },
+  {
+   "name": "Südtirol",
+   "producer": "Erste & Neue",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Alto Adige, Italy",
+   "grape_variety": "Riesling",
+   "by_glass_price": 16,
+   "bottle_price": 64
+  },
+  {
+   "name": "Naturalmente Bio",
+   "producer": "Caruso e Minini",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Sicily, Italy",
+   "grape_variety": "Catarratto",
+   "by_glass_price": 17,
+   "bottle_price": 68
+  },
+  {
+   "name": "Prima Quercia",
+   "producer": "Cantina Cenci",
+   "category": "skin contact/rosé",
+   "vintage": "2023",
+   "region": "Umbria, Italy",
+   "grape_variety": "Rosato, Merlot",
+   "by_glass_price": 18,
+   "bottle_price": 72
+  },
+  {
+   "name": "Halozan Orange",
+   "producer": "Pullus",
+   "category": "skin contact/rosé",
+   "vintage": "2024",
+   "region": "Starjerska, Slovenia",
+   "grape_variety": "Welschriesling, Muscat",
+   "by_glass_price": 15,
+   "bottle_price": 65
+  },
+  {
+   "name": "Ramato Rosé",
+   "producer": "Attems",
+   "category": "skin contact/rosé",
+   "vintage": "2024",
+   "region": "Friuli-Venezia Giulia, Italy",
+   "grape_variety": "Pinot Grigio",
+   "by_glass_price": 16,
+   "bottle_price": 64
+  },
+  {
+   "name": "Unlitro",
+   "producer": "Ampeleia",
+   "category": "red",
+   "vintage": "2024",
+   "region": "Tuscany, Italy",
+   "grape_variety": "Alicante Nero, Sangiovese, Mourvedre",
+   "bottle_price": 70
+  },
+  {
+   "name": "Rouge de Vallée",
+   "producer": "La Kiuva",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Valle d'Aosta, Italy",
+   "grape_variety": "Nebbiolo",
+   "by_glass_price": 16,
+   "bottle_price": 64
+  },
+  {
+   "name": "Copertino Riserva",
+   "producer": "Copertino",
+   "category": "red",
+   "vintage": "2016",
+   "region": "Puglia, Italy",
+   "grape_variety": "Negroamaro",
+   "by_glass_price": 17,
+   "bottle_price": 68
+  },
+  {
+   "name": "Rosso di Toscana",
+   "producer": "Buondonno",
+   "category": "red",
+   "vintage": "2024",
+   "region": "Tuscany, Italy",
+   "grape_variety": "Sangiovese",
+   "by_glass_price": 17,
+   "bottle_price": 68
+  },
+  {
+   "name": "La Rose",
+   "producer": "Barale Fratelli",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Piedmont, Italy",
+   "grape_variety": "Dolcetto d'Alba",
+   "by_glass_price": 16,
+   "bottle_price": 64
+  },
+  {
+   "name": "Leradici",
+   "producer": "Mauro Molino",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Piedmont, Italy",
+   "grape_variety": "Barbera d'Asti",
+   "by_glass_price": 15,
+   "bottle_price": 60
+  },
+  {
+   "name": "Askos",
+   "producer": "Masseria Li Veli",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Puglia, Italy",
+   "grape_variety": "Susumaniello",
+   "by_glass_price": 20,
+   "bottle_price": 80
+  },
+  {
+   "name": "Miller High Life",
+   "producer": "Miller Brewing Company",
+   "category": "beer",
+   "region": "Milwaukee, Wisconsin",
+   "bottle_price": 7
+  },
+  {
+   "name": "Peroni Nastro Azzuro",
+   "producer": "Peroni",
+   "category": "beer",
+   "region": "Vigevano, Italy",
+   "bottle_price": 9
+  },
+  {
+   "name": "Comiski Park",
+   "producer": "Marz Community Brewing Co.",
+   "category": "beer",
+   "region": "Chicago, Illinois",
+   "bottle_price": 10
+  },
+  {
+   "name": "L'IPPA",
+   "producer": "Baladin",
+   "category": "beer",
+   "region": "Piozzo, Italy",
+   "bottle_price": 13
+  },
+  {
+   "name": "Super Floreale",
+   "producer": "Baladin",
+   "category": "beer",
+   "region": "Piozzo, Italy",
+   "bottle_price": 13
+  },
+  {
+   "name": "Delta Hurricane",
+   "producer": "Horse Thief Hollow Brewing",
+   "category": "beer",
+   "region": "Chicago, Illinois",
+   "bottle_price": 11
+  },
+  {
+   "name": "Semi-Dry Apple Cider",
+   "producer": "Right Bee Cider",
+   "category": "beer",
+   "region": "Chicago, Illinois",
+   "bottle_price": 9
+  },
+  {
+   "name": "Guinness 0.0",
+   "producer": "Guinness",
+   "category": "beer",
+   "region": "Dublin, Ireland",
+   "bottle_price": 10
+  },
+  {
+   "name": "Best Day Brewing Kölsch",
+   "producer": "Best Day Brewing",
+   "category": "beer",
+   "region": "Sausalito, California",
+   "bottle_price": 9
+  }
+ ]
+}

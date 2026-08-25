@@ -3,6 +3,10 @@
 # =====================================
 # Nightly cron (observability) + deploy-triggered blocking gate.
 #
+# TFND-05: Nightly cloud E2E skeleton — do not invent a second prod E2E paradigm (D-24).
+# Phase 42 will add a separate weekly AI eval workflow — do not implement here (D-25).
+# STATUS: schedule-present / capability-unverified until one wave XML lands — do not equate cron with healthy nightly.
+#
 # D-12: Nightly 02:00 UTC — observability only
 # D-13: workflow_dispatch from Vercel deploy hook — blocking gate
 # D-15: Continue-all-waves — all 7 waves run regardless of failures
@@ -70,7 +74,7 @@ jobs:
 
       # -----------------------------------------------------------------------
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: 'pip'

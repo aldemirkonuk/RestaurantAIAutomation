@@ -1,0 +1,205 @@
+import { ToastService } from "./toast.service";
+import { DatabaseService } from "../database/database.service";
+import {
+  ToastWebhookDto,
+  ToastWebhookEventType,
+} from "./dto/toast-webhook.dto";
+
+/**
+ * SimPOS testbed plan — ingress mapping resolution (decisions B21/B22) and
+ * void reversal (B19): the real Toast production depletion path now reads
+ * pos_item_mappings (not the retired toast_item_mappings), never infers
+ * sale unit from the item name, reverses glass voids instead of skipping
+ * them, and queues an unmapped line instead of dropping it.
+ */
+
+type Row = Record<string, any>;
+
+function makeSupabase(opts: { mapping?: Row | null; inventory?: Row | null }) {
+  const calls = {
+    rpc: [] as any[],
+    unresolvedInserts: [] as any[],
+    mappingQueries: [] as any[],
+  };
+
+  const client: any = {
+    from(table: string) {
+      const q: any = {
+        select(cols: string) {
+          if (table === "pos_item_mappings") calls.mappingQueries.push(cols);
+          return q;
+        },
+        eq: () => q,
+        in: () => q,
+        insert(row: Row) {
+          if (table === "pos_unresolved_lines") {
+            calls.unresolvedInserts.push(row);
+            return { error: null };
+          }
+          if (table === "events")
+            return {
+              select: () => ({
+                single: async () => ({ data: { id: "evt-1" }, error: null }),
+              }),
+            };
+          return { error: null };
+        },
+        maybeSingle: async () => {
+          if (table === "restaurants")
+            return { data: { id: "r1" }, error: null };
+          if (table === "pos_item_mappings")
+            return { data: opts.mapping ?? null, error: null };
+          if (table === "restaurant_inventory")
+            return { data: opts.inventory ?? null, error: null };
+          return { data: null, error: null };
+        },
+        single: async () => {
+          if (table === "restaurants")
+            return { data: { id: "r1" }, error: null };
+          return { data: null, error: null };
+        },
+      };
+      return q;
+    },
+    rpc: async (name: string, args: Row) => {
+      calls.rpc.push({ name, args });
+      return { data: "tx-1", error: null };
+    },
+  };
+
+  return { client, calls };
+}
+
+function makeService(opts: { mapping?: Row | null; inventory?: Row | null }) {
+  const { client, calls } = makeSupabase(opts);
+  const configService: any = {
+    get: (key: string, fallback?: any) => {
+      if (key === "TOAST_MOCK_MODE") return true;
+      if (key === "TOAST_WEBHOOK_SECRET") return null;
+      return fallback;
+    },
+  };
+  const cacheService: any = {
+    invalidateByPattern: async () => 0,
+    del: async () => undefined,
+    get: async () => null,
+    set: async () => undefined,
+  };
+  const databaseService = { supabase: client } as unknown as DatabaseService;
+  const service = new ToastService(
+    configService,
+    cacheService,
+    databaseService,
+  );
+  return { service, calls };
+}
+
+function webhookDto(
+  eventType: ToastWebhookEventType,
+  itemOverrides: Row = {},
+): ToastWebhookDto {
+  return {
+    eventId: "evt-1",
+    eventType,
+    restaurantGuid: "toast-rest-1",
+    timestamp: new Date().toISOString(),
+    order: {
+      guid: "order-1",
+      items: [
+        {
+          guid: "item-1",
+          name: "Caymus Cabernet",
+          quantity: 2,
+          unitPrice: 2400,
+          ...itemOverrides,
+        },
+      ],
+    },
+  } as ToastWebhookDto;
+}
+
+describe("ToastService.applyOrderSaleEffects (via processWebhook)", () => {
+  it("resolves via pos_item_mappings (not toast_item_mappings) and depletes a bottle sale", async () => {
+    const { service, calls } = makeService({
+      mapping: {
+        inventory_id: "inv-1",
+        sale_unit: "bottle",
+        item_name: "Caymus Cabernet",
+      },
+    });
+
+    await service.processWebhook(
+      webhookDto(ToastWebhookEventType.ORDER_CLOSED),
+      "{}",
+      null,
+      null,
+    );
+
+    expect(calls.mappingQueries[0]).toContain("inventory_id");
+    expect(calls.rpc).toHaveLength(1);
+    expect(calls.rpc[0].name).toBe("apply_stock_movement");
+    expect(calls.rpc[0].args.p_delta).toBe(-2);
+  });
+
+  it("never infers glass from the item name — only the mapping's sale_unit (B36)", async () => {
+    const { service, calls } = makeService({
+      mapping: {
+        inventory_id: "inv-1",
+        sale_unit: "bottle",
+        item_name: "Caymus Cabernet glass",
+      },
+    });
+
+    await service.processWebhook(
+      webhookDto(ToastWebhookEventType.ORDER_CLOSED, {
+        name: "Caymus Cabernet by the glass",
+      }),
+      "{}",
+      null,
+      null,
+    );
+
+    // sale_unit on the mapping says bottle, so despite "glass" in the name,
+    // it must deplete as a bottle via apply_stock_movement.
+    expect(calls.rpc).toHaveLength(1);
+    expect(calls.rpc[0].name).toBe("apply_stock_movement");
+  });
+
+  it("reverses a glass void via apply_stock_movement instead of skipping it (B19)", async () => {
+    const { service, calls } = makeService({
+      mapping: {
+        inventory_id: "inv-1",
+        sale_unit: "glass",
+        item_name: "Caymus Cabernet",
+      },
+    });
+
+    await service.processWebhook(
+      webhookDto(ToastWebhookEventType.ORDER_VOIDED),
+      "{}",
+      null,
+      null,
+    );
+
+    expect(calls.rpc).toHaveLength(1);
+    expect(calls.rpc[0].name).toBe("apply_stock_movement");
+    expect(calls.rpc[0].args.p_delta).toBe(2);
+    expect(calls.rpc[0].args.p_transaction_type).toBe("return");
+  });
+
+  it("queues an unmapped line in pos_unresolved_lines instead of dropping it (B20)", async () => {
+    const { service, calls } = makeService({ mapping: null, inventory: null });
+
+    await service.processWebhook(
+      webhookDto(ToastWebhookEventType.ORDER_CLOSED),
+      "{}",
+      null,
+      null,
+    );
+
+    expect(calls.rpc).toHaveLength(0);
+    expect(calls.unresolvedInserts).toHaveLength(1);
+    expect(calls.unresolvedInserts[0].source).toBe("toast");
+    expect(calls.unresolvedInserts[0].external_item_id).toBe("item-1");
+  });
+});

@@ -38,6 +38,7 @@ import { useNotifications, useMarkNotificationAsRead, useMarkNotificationAsUnrea
 import { useAuthStore } from '../stores'
 import { OneTapActionCenter } from '../components/notifications/OneTapActionCenter'
 import type { Notification, NotificationType } from '../services/api/notifications'
+import { collapseStackedNotifications } from '../lib/notificationStack'
 
 type NotificationStatus = 'unread' | 'read'
 type NotificationPriority = 'low' | 'medium' | 'high' | 'critical'
@@ -69,6 +70,72 @@ interface CustomOneTapAction {
   createdAt: string
 }
 
+interface NotificationDetailContent {
+  summary: string
+  wines: Array<{
+    wineName: string
+    currentStock: number
+    threshold: number
+    severity: string
+  }>
+  facts: Array<{ label: string; value: string }>
+  nextSteps: string[]
+}
+
+function buildNotificationDetails(notification: Notification): NotificationDetailContent {
+  const meta = notification.metadata ?? {}
+  const winesRaw = Array.isArray(meta.wines) ? meta.wines : []
+  const wines = winesRaw
+    .map((w: Record<string, unknown>) => ({
+      wineName: String(w.wineName ?? w.name ?? 'Unknown wine'),
+      currentStock: Number(w.currentStock ?? w.stock ?? 0),
+      threshold: Number(w.threshold ?? w.par ?? 0),
+      severity: String(w.severity ?? 'low'),
+    }))
+    .slice(0, 25)
+
+  const facts: Array<{ label: string; value: string }> = []
+  if (meta.count != null) facts.push({ label: 'Items below par', value: String(meta.count) })
+  if (meta.criticalCount != null) facts.push({ label: 'Critical', value: String(meta.criticalCount) })
+  if (meta.mode) facts.push({ label: 'Alert mode', value: String(meta.mode) })
+  if (meta.wineName) facts.push({ label: 'Wine', value: String(meta.wineName) })
+  if (meta.provider || meta.provider_name) {
+    facts.push({ label: 'Provider', value: String(meta.provider ?? meta.provider_name) })
+  }
+  if (meta.quantity) facts.push({ label: 'Quantity', value: String(meta.quantity) })
+  if (notification.priority) facts.push({ label: 'Priority', value: notification.priority })
+  if (notification.actionUrl) facts.push({ label: 'Deep link', value: notification.actionUrl })
+
+  let summary = ''
+  let nextSteps: string[] = []
+  switch (notification.type) {
+    case 'inventory_low_stock':
+      summary =
+        wines.length > 0
+          ? `Expanded breakdown of ${wines.length} wine${wines.length === 1 ? '' : 's'} currently below par.`
+          : 'Low-stock alert details. Open Inventory to reorder the affected wines.'
+      nextSteps = [
+        'Review critical wines first (0–near-zero on hand).',
+        'Open Inventory → Low stock filter to place reorders.',
+        'Confirm provider lead times before service peaks.',
+      ]
+      break
+    case 'order_pending':
+      summary = 'Pending order context and suggested follow-ups.'
+      nextSteps = ['Confirm provider quote', 'Check ETA vs service need', 'Approve or revise quantities']
+      break
+    case 'draft_ready':
+      summary = 'An outbound draft is ready for review.'
+      nextSteps = ['Open Review & Approve Draft', 'Edit tone/quantities if needed', 'Send or discard']
+      break
+    default:
+      summary = 'Additional context assembled from this notification’s metadata.'
+      nextSteps = ['Take the primary action below', 'Archive once resolved']
+  }
+
+  return { summary, wines, facts, nextSteps }
+}
+
 export function Notifications() {
   const user = useAuthStore(state => state.user)
   const location = useLocation()
@@ -84,11 +151,16 @@ export function Notifications() {
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const [lastRefresh, setLastRefresh] = useState(new Date())
   const [detailRequestStatus, setDetailRequestStatus] = useState<Record<string, 'idle' | 'sending' | 'sent'>>({})
+  const [detailContentById, setDetailContentById] = useState<Record<string, NotificationDetailContent>>({})
   
-  // Fetch notifications from API
-  const { data: rawNotifications, isLoading: _isLoading, error: _error, refetch } = useNotifications(user?.userId || '', {
-    status: filter === 'all' ? undefined : filter,
-  })
+  // Fetch notifications from API — poll while this page is open so digests stay live
+  const { data: rawNotifications, isLoading: _isLoading, error: _error, refetch, isFetching } = useNotifications(
+    user?.userId || '',
+    {
+      status: filter === 'all' ? undefined : filter,
+    },
+    { refetchInterval: 10_000, staleTime: 5_000 },
+  )
   const notifications: Notification[] = Array.isArray(rawNotifications) ? rawNotifications : []
   const markAsRead = useMarkNotificationAsRead()
   const markAsUnread = useMarkNotificationAsUnread()
@@ -116,18 +188,48 @@ export function Notifications() {
     if (target) setSelectedNotification(target)
   }, [location.state, notifications])
 
-  // Auto-refresh simulation - MOVED BEFORE CONDITIONAL RETURNS
+  // Keep the open detail modal in sync when the list refreshes (live digest updates)
+  useEffect(() => {
+    if (!selectedNotification) return
+    const fresh = notifications.find((n) => n.id === selectedNotification.id)
+    if (!fresh) return
+    if (
+      fresh.message !== selectedNotification.message ||
+      fresh.title !== selectedNotification.title ||
+      fresh.status !== selectedNotification.status ||
+      JSON.stringify(fresh.metadata) !== JSON.stringify(selectedNotification.metadata)
+    ) {
+      setSelectedNotification(fresh)
+    }
+  }, [notifications, selectedNotification])
+
+  // Realtime: WebSocket notification:new → notification_sent (also stock:low)
+  useEffect(() => {
+    const onLive = () => {
+      setLastRefresh(new Date())
+      void refetch()
+    }
+    window.addEventListener('notification_sent', onLive)
+    window.addEventListener('ws:dashboard-invalidate', onLive)
+    return () => {
+      window.removeEventListener('notification_sent', onLive)
+      window.removeEventListener('ws:dashboard-invalidate', onLive)
+    }
+  }, [refetch])
+
+  // Fallback poll (in addition to react-query interval) — updates "Last updated" label
   useEffect(() => {
     const interval = setInterval(() => {
       setLastRefresh(new Date())
-      refetch()
-    }, 60000) // Every minute
+      void refetch()
+    }, 30_000)
     return () => clearInterval(interval)
   }, [refetch])
 
   const filteredNotifications = useMemo(() => {
     const safeNotifications = Array.isArray(notifications) ? notifications : []
-    return safeNotifications.filter(n => {
+    const { items: dedupedNotifications } = collapseStackedNotifications(safeNotifications)
+    return dedupedNotifications.filter(n => {
       const matchesFilter = filter === 'all' || n.status === filter
       const matchesPriority = priorityFilter === 'all' || n.priority === priorityFilter
       const matchesSearch = n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -276,10 +378,14 @@ export function Notifications() {
   }
 
   const handleRequestDetails = (notification: Notification) => {
-    setDetailRequestStatus(prev => ({ ...prev, [notification.id]: 'sending' }))
-    setTimeout(() => {
-      setDetailRequestStatus(prev => ({ ...prev, [notification.id]: 'sent' }))
-    }, 700)
+    setDetailRequestStatus((prev) => ({ ...prev, [notification.id]: 'sending' }))
+    // Expand from persisted metadata (low-stock digests already include the wine list).
+    // Simulated brief load so the button state is visible; no silent no-op.
+    window.setTimeout(() => {
+      const content = buildNotificationDetails(notification)
+      setDetailContentById((prev) => ({ ...prev, [notification.id]: content }))
+      setDetailRequestStatus((prev) => ({ ...prev, [notification.id]: 'sent' }))
+    }, 350)
   }
 
   const getPriorityColor = (priority: NotificationPriority) => {
@@ -505,6 +611,7 @@ export function Notifications() {
               <h1 className="text-3xl font-bold text-gray-900">Notifications & Actions</h1>
               <p className="text-sm text-gray-600">
                 {stats.unread} unread • {stats.starred} starred • Last updated {formatTimestamp(lastRefresh.toISOString())}
+                {isFetching ? ' · refreshing…' : ''}
               </p>
             </div>
           </div>
@@ -1050,19 +1157,82 @@ export function Notifications() {
                   <div className="mt-5 flex flex-col gap-2">
                     <button
                       onClick={() => handleRequestDetails(selectedNotification)}
-                      disabled={detailRequestStatus[selectedNotification.id] === 'sending' || detailRequestStatus[selectedNotification.id] === 'sent'}
+                      disabled={
+                        detailRequestStatus[selectedNotification.id] === 'sending' ||
+                        detailRequestStatus[selectedNotification.id] === 'sent'
+                      }
                       className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <MessageSquare className="w-4 h-4" />
                       {detailRequestStatus[selectedNotification.id] === 'sending'
                         ? 'Requesting details...'
                         : detailRequestStatus[selectedNotification.id] === 'sent'
-                          ? 'Details requested'
+                          ? 'Details ready'
                           : 'Ask for more details'}
                     </button>
                     <p className="text-xs text-gray-500">
                       {getDetailPrompt(selectedNotification.type)}
                     </p>
+
+                    {detailRequestStatus[selectedNotification.id] === 'sending' && (
+                      <div className="mt-2 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500 animate-pulse">
+                        Gathering context…
+                      </div>
+                    )}
+
+                    {detailContentById[selectedNotification.id] && (
+                      <div className="mt-2 rounded-xl border border-wine-100 bg-wine-50/40 p-4 space-y-3">
+                        <p className="text-sm text-gray-800">
+                          {detailContentById[selectedNotification.id].summary}
+                        </p>
+
+                        {detailContentById[selectedNotification.id].facts.length > 0 && (
+                          <dl className="grid grid-cols-2 gap-2 text-xs">
+                            {detailContentById[selectedNotification.id].facts.map((f) => (
+                              <div key={f.label} className="rounded-lg bg-white/80 px-2.5 py-2 border border-gray-100">
+                                <dt className="text-gray-400 uppercase tracking-wide">{f.label}</dt>
+                                <dd className="font-medium text-gray-800 mt-0.5 break-all">{f.value}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        )}
+
+                        {detailContentById[selectedNotification.id].wines.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                              Wines below par
+                            </p>
+                            <ul className="max-h-48 overflow-y-auto divide-y divide-gray-100 rounded-lg border border-gray-100 bg-white">
+                              {detailContentById[selectedNotification.id].wines.map((w, i) => (
+                                <li key={`${w.wineName}-${i}`} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                                  <span className="font-medium text-gray-800 truncate">{w.wineName}</span>
+                                  <span className="shrink-0 text-xs text-gray-500">
+                                    <span className={w.severity === 'critical' ? 'text-rose-600 font-semibold' : ''}>
+                                      {w.currentStock}
+                                    </span>
+                                    /{w.threshold}
+                                    {w.severity === 'critical' ? ' · critical' : ''}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {detailContentById[selectedNotification.id].nextSteps.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
+                              Suggested next steps
+                            </p>
+                            <ol className="list-decimal list-inside space-y-1 text-sm text-gray-700">
+                              {detailContentById[selectedNotification.id].nextSteps.map((step) => (
+                                <li key={step}>{step}</li>
+                              ))}
+                            </ol>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
                 {selectedNotification?.type === 'draft_ready' && selectedNotification.metadata?.conversation_id && (

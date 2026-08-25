@@ -1,0 +1,36 @@
+{
+  "archetype_id": "high-volume-bar",
+  "display_name": "High-Volume Bar",
+  "snapshot": "datasets/sim/menus/high-volume-bar.json",
+  "defaults": {
+    "cuisine": "wine-bar",
+    "size": "large",
+    "wine_program_depth": "broad",
+    "sales_volume": "high",
+    "price_tier": "mid",
+    "ordering_rhythm": "daily"
+  },
+  "opening_stock": {
+    "default_bottles": 24,
+    "min_bottles": 6,
+    "max_bottles": 72,
+    "by_price_tier": {
+      "entry": 36,
+      "mid": 24,
+      "premium": 12
+    },
+    "by_primary_type": {
+      "sparkling": 30,
+      "red": 24,
+      "white": 24,
+      "rose": 18
+    },
+    "threshold_min": 8
+  },
+  "restaurant": {
+    "name": "Sim High-Volume Bar",
+    "timezone": "America/Chicago",
+    "city": "Chicago",
+    "country": "USA"
+  }
+}

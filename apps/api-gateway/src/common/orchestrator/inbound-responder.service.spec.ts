@@ -16,7 +16,13 @@ describe("InboundResponderService (deterministic core)", () => {
 
   beforeEach(() => {
     // Pure-logic methods don't touch the injected deps, so stubs are fine.
-    service = new InboundResponderService({} as any, {} as any, {} as any);
+    // Order: configService, databaseService, modelClient, websocketGateway.
+    service = new InboundResponderService(
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
   });
 
   const baseAnalysis = (overrides: Record<string, any> = {}) => ({
@@ -345,6 +351,7 @@ describe("InboundResponderService (deterministic core)", () => {
       const s = new InboundResponderService(
         {} as any,
         { supabase } as any,
+        {} as any, // modelClient — unused by the deterministic core under test
         {} as any,
       );
       return { s: s as any, captured };

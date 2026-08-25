@@ -272,30 +272,70 @@ export class OrganizationsService {
 
   async getBranchesForUser(userId: string): Promise<RestaurantBranch[]> {
     const orgIds = await this.getUserOrgIdsWithFallback(userId);
+    const byId = new Map<string, RestaurantBranch>();
 
-    if (orgIds.length === 0) return [];
-
-    // Fetch all restaurants belonging to these organizations, with chain info via LEFT JOIN
-    const { data: restaurants, error: restErr } =
-      await this.databaseService.supabase
-        .from("restaurants")
-        .select("id, name, city, chain_id, restaurant_chains(name)")
-        .in("organization_id", orgIds);
-
-    if (restErr || !restaurants) {
-      this.logger.error(
-        `Failed to fetch branches for user ${userId}: ${restErr?.message}`,
-      );
-      return [];
-    }
-
-    return restaurants.map((r: any) => ({
+    const mapRow = (r: any): RestaurantBranch => ({
       id: r.id,
       name: r.name,
       city: r.city ?? null,
       chain_id: r.chain_id ?? null,
       chain_name: r.restaurant_chains?.name ?? null,
-    }));
+    });
+
+    if (orgIds.length > 0) {
+      const { data: restaurants, error: restErr } =
+        await this.databaseService.supabase
+          .from("restaurants")
+          .select("id, name, city, chain_id, restaurant_chains(name)")
+          .in("organization_id", orgIds);
+
+      if (restErr) {
+        this.logger.error(
+          `Failed to fetch branches for user ${userId}: ${restErr.message}`,
+        );
+      } else {
+        for (const r of restaurants ?? []) byId.set(r.id, mapRow(r));
+      }
+    }
+
+    // Legacy / org-less restaurants: still list anything the user can access via URA.
+    const { data: uraRows, error: uraErr } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .select(
+        "restaurant_id, restaurants(id, name, city, chain_id, restaurant_chains(name))",
+      )
+      .eq("user_id", userId)
+      .eq("is_active", true);
+
+    if (uraErr) {
+      this.logger.error(
+        `Failed to fetch URA branches for user ${userId}: ${uraErr.message}`,
+      );
+    } else {
+      for (const row of uraRows ?? []) {
+        const r = (row as any).restaurants;
+        if (r?.id && !byId.has(r.id)) byId.set(r.id, mapRow(r));
+      }
+    }
+
+    // Final fallback: users.restaurant_id (pre-org single-restaurant accounts)
+    if (byId.size === 0) {
+      const { data: user } = await this.databaseService.supabase
+        .from("users")
+        .select("restaurant_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (user?.restaurant_id) {
+        const { data: r } = await this.databaseService.supabase
+          .from("restaurants")
+          .select("id, name, city, chain_id, restaurant_chains(name)")
+          .eq("id", user.restaurant_id)
+          .maybeSingle();
+        if (r) byId.set(r.id, mapRow(r));
+      }
+    }
+
+    return [...byId.values()];
   }
 
   async getChainsForUser(userId: string): Promise<RestaurantChain[]> {

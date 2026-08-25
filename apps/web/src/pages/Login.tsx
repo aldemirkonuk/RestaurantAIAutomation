@@ -1,14 +1,20 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
-import { useAuth } from '../contexts/AuthContext'
+import { useAuth, LoginError } from '../contexts/AuthContext'
 import { Button } from '../components/ui'
-import { Wine, Mail, Lock, AlertCircle, Sparkles } from 'lucide-react'
+import { Mail, Lock, AlertCircle } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { AuthShell, AuthCard } from '../components/brand/AuthShell'
+import { GoogleSignInButton, type GoogleSignInHandle } from '../components/auth/GoogleSignInButton'
+
+const fieldClass =
+  'block w-full pl-11 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 shadow-sm transition-all focus:outline-none focus:border-wine-600 focus:ring-4 focus:ring-wine-600/10 disabled:opacity-60'
 
 export function Login() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { login, error: authError } = useAuth()
+  const { login, error: authError, clearError } = useAuth()
+  const googleRef = useRef<GoogleSignInHandle>(null)
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -22,12 +28,38 @@ export function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    clearError()
+
+    // Auto-direct Gmail addresses straight to Google's chooser — these can
+    // never have a WineOps password, so don't even try one.
+    if (email.toLowerCase().endsWith('@gmail.com') && googleRef.current?.open()) {
+      return
+    }
+
     setLoading(true)
 
     try {
       await login(email, password)
       navigate(from, { replace: true })
     } catch (err: any) {
+      // The backend flags any account with no password (Google- or
+      // Microsoft-provisioned) via a structured { code, provider } — see
+      // auth.service.ts#validateUser. Branch on that, not on the message
+      // text: a hotmail.com address is a Microsoft account just as often as
+      // a Google one, and auto-clicking "Sign in with Google" for a
+      // Microsoft-only account would send the user into a flow that can
+      // never work for them.
+      const isOAuthOnly = err instanceof LoginError && err.code === 'OAUTH_ONLY'
+      if (isOAuthOnly && err.provider === 'google' && googleRef.current?.open()) {
+        // `login()` stashes the raw message in context error state before
+        // throwing — clear it so it never flashes before the redirect fires.
+        clearError()
+        setLoading(false)
+        return
+      }
+      // Microsoft-only accounts have no working sign-in button on this page
+      // yet, so just surface the backend's message as-is — it already
+      // points the user at "Forgot password?" as the working path.
       setError(err.message || 'Login failed')
     } finally {
       setLoading(false)
@@ -35,166 +67,133 @@ export function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-wine-50/30 to-gray-50 px-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
-      >
-        {/* Logo & Title */}
-        <div className="text-center mb-8">
+    <AuthShell title="WineOps AI" subtitle="Sign in to manage your wine inventory">
+      <AuthCard>
+        {(error || authError) && (
           <motion.div
-            initial={{ scale: 0.5, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.1, type: 'spring' }}
-            className="inline-flex items-center justify-center w-16 h-16 bg-wine-600 rounded-2xl mb-4 shadow-lg"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3"
           >
-            <Wine className="w-8 h-8 text-white" />
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" strokeWidth={1.75} />
+            <div>
+              <p className="text-sm font-medium text-red-900">Login Failed</p>
+              <p className="text-sm text-red-700">{error || authError}</p>
+            </div>
           </motion.div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">WineOps AI</h1>
-          <p className="text-gray-600">Sign in to manage your wine inventory</p>
-        </div>
+        )}
 
-        {/* Login Card */}
-        <div className="bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-2xl p-8">
-          {/* Error Alert */}
-          {(error || authError) && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-6 p-4 bg-red-50/80 border border-red-200 rounded-lg flex items-start gap-3"
-            >
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-red-900">Login Failed</p>
-                <p className="text-sm text-red-700">{error || authError}</p>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+              Email Address
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                <Mail className="h-[18px] w-[18px] text-wine-400" strokeWidth={1.75} />
               </div>
-            </motion.div>
-          )}
-
-          {/* Login Form */}
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Email Input */}
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Email Address
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:outline-none focus:ring-2 focus:ring-wine-500 focus:border-transparent transition-all"
-                  placeholder="you@restaurant.com"
-                  disabled={loading}
-                />
-              </div>
+              <input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className={fieldClass}
+                placeholder="you@restaurant.com"
+                disabled={loading}
+              />
             </div>
-
-            {/* Password Input */}
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                Password
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="password"
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:outline-none focus:ring-2 focus:ring-wine-500 focus:border-transparent transition-all"
-                  placeholder="••••••••"
-                  disabled={loading}
-                />
-              </div>
-            </div>
-
-            {/* Remember Me & Forgot Password */}
-            <div className="flex items-center justify-between">
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  className="rounded border-gray-300 text-wine-600 focus:ring-wine-500"
-                />
-                <span className="ml-2 text-sm text-gray-600">Remember me</span>
-              </label>
-              <Link
-                to="/forgot-password"
-                className="text-sm font-medium text-wine-600 hover:text-wine-700 transition-colors"
-              >
-                Forgot password?
-              </Link>
-            </div>
-
-            {/* Submit Button */}
-            <Button
-              type="submit"
-              variant="default"
-              className="w-full h-12 text-base font-semibold"
-              disabled={loading}
-            >
-              {loading ? (
-                <div className="flex items-center justify-center">
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Signing in...
-                </div>
-              ) : (
-                'Sign In'
-              )}
-            </Button>
-
-            {/* Try Demo Button - one-click sign in */}
-            <button
-              type="button"
-              onClick={async () => {
-                setError(null)
-                setLoading(true)
-                try {
-                  await login('demo@gmail.com', 'demo123')
-                  navigate(from, { replace: true })
-                } catch (err: any) {
-                  setError(err.message || 'Demo login failed. Run seed script first.')
-                } finally {
-                  setLoading(false)
-                }
-              }}
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-medium text-wine-600 hover:text-wine-700 hover:bg-wine-50 rounded-lg transition-colors border border-wine-200 disabled:opacity-50"
-            >
-              <Sparkles className="w-4 h-4" />
-              Try Demo (demo@gmail.com)
-            </button>
-          </form>
-
-          {/* Register Link */}
-          <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600">
-              Don't have an account?{' '}
-              <Link
-                to="/register"
-                className="font-medium text-wine-600 hover:text-wine-700 transition-colors"
-              >
-                Create one now
-              </Link>
-            </p>
           </div>
-        </div>
 
-        {/* Footer */}
-        <p className="text-center text-sm text-gray-500 mt-8">
-          © 2026 WineOps AI. All rights reserved.
-        </p>
-      </motion.div>
-    </div>
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+              Password
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                <Lock className="h-[18px] w-[18px] text-wine-400" strokeWidth={1.75} />
+              </div>
+              <input
+                id="password"
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={fieldClass}
+                placeholder="••••••••"
+                disabled={loading}
+              />
+            </div>
+          </div>
+
+          {/*
+            "Remember me" was removed 2026-07-31 (v3.0 task 44.15) and stays
+            removed: it had no `checked`/`onChange`, and binding it would need a
+            variable refresh-token TTL the backend does not have (fixed 7d token,
+            auth.service.ts:378). A bound control that changes nothing is worse
+            than none.
+
+            "Forgot password?" is restored 2026-08-05 (v3.0 task 20). It now has
+            a real destination: /forgot-password -> POST
+            /auth/request-password-reset -> emailed link -> /reset-password ->
+            POST /auth/reset-password. See password-reset.dto.ts and
+            AuthService#requestPasswordReset for the enumeration-resistance
+            reasoning behind the always-succeeds response.
+          */}
+          <div className="flex justify-end -mt-2">
+            <Link
+              to="/forgot-password"
+              className="text-sm font-medium text-wine-600 hover:text-wine-700"
+            >
+              Forgot password?
+            </Link>
+          </div>
+
+          <Button
+            type="submit"
+            variant="default"
+            size="lg"
+            className="w-full"
+            disabled={loading}
+          >
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin" />
+                Signing in...
+              </span>
+            ) : (
+              'Sign In'
+            )}
+          </Button>
+
+          <div className="flex items-center gap-3" aria-hidden>
+            <span className="h-px flex-1 bg-wine-100" />
+            <span className="text-xs font-medium uppercase tracking-wide text-gray-400">or</span>
+            <span className="h-px flex-1 bg-wine-100" />
+          </div>
+
+          <GoogleSignInButton
+            ref={googleRef}
+            enableOneTap
+            disabled={loading}
+            onSuccess={() => navigate(from, { replace: true })}
+            onError={setError}
+          />
+
+        </form>
+
+        <div className="mt-6 text-center">
+          <p className="text-sm text-gray-600">
+            Don&apos;t have an account?{' '}
+            <Link
+              to="/register"
+              className="font-semibold text-wine-600 hover:text-wine-700 transition-colors"
+            >
+              Create one now
+            </Link>
+          </p>
+        </div>
+      </AuthCard>
+    </AuthShell>
   )
 }

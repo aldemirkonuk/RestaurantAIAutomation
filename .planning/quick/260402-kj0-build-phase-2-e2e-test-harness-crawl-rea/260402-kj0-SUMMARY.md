@@ -1,4 +1,5 @@
 ---
+status: complete  # added 2026-07-31: work was done, the field was missing
 quick_task: 260402-kj0
 phase: quick
 plan: 260402-kj0

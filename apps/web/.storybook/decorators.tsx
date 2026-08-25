@@ -25,6 +25,9 @@ const MOCK_USER: User = {
 }
 
 const noop = async () => {}
+// `clearError` is synchronous in AuthContextType, so it needs its own stub
+// rather than reusing the async `noop`.
+const syncNoop = () => {}
 
 /**
  * A fully-populated auth context. We inject the value rather than mounting the
@@ -37,6 +40,7 @@ export const mockAuthValue: AuthContextType = {
   user: MOCK_USER,
   loading: false,
   error: null,
+  clearError: syncNoop,
   activeRestaurantId: MOCK_USER.restaurantId,
   activeRole: 'owner',
   availableRestaurants: [

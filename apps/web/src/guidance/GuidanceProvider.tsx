@@ -22,6 +22,8 @@ import {
 } from './types'
 import { useTourEngine } from './tours/TourEngine'
 import { trackGuidance } from './analytics'
+import { announceGuidance, focusTourHelpButton } from './announce'
+import { TIP_REGISTRY } from './tours/registry'
 
 interface GuidanceContextValue {
   state: GuidanceState
@@ -169,6 +171,8 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
 
   const startTour = useCallback(
     (pageId: PageTourId) => {
+      // Tip strip unmounts when tourRunning flips — move focus before detach.
+      focusTourHelpButton()
       setTourRunning(true)
       patchPage(pageId, { tip: 'completed', tour: 'in_progress' })
       void engineStart(pageId)
@@ -217,6 +221,10 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
       writeSession(s)
       sessionRef.current = s
       trackGuidance('tip_shown', { pageId: tipVisibleFor })
+      const tip = TIP_REGISTRY[tipVisibleFor]
+      if (tip) {
+        announceGuidance(`Page tip: ${tip.title}. ${tip.body}`)
+      }
       setSessionTick((n) => n + 1)
     }
   }, [tipVisibleFor])

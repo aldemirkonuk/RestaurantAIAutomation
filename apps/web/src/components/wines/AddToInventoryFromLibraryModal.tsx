@@ -20,12 +20,14 @@ import { Wine as WineType, getWineTypeColor } from '../../data/wineData'
 import { useAuth } from '../../contexts/AuthContext'
 import { useProviders } from '../../hooks/queries/useProviderQueries'
 import type { Provider } from '../../services/api/providers'
+// data/inventoryData.ts is deliberately NOT imported. It is an in-memory array
+// whose mutators console.log a TODO instead of persisting; routing stock through
+// it is what silently discarded writes while the UI reported success.
 import {
-  checkInventoryDuplicate,
-  addWineToInventory,
-  updateInventoryQuantity,
-} from '../../data/inventoryData'
-import { createInventoryItem } from '../../services/api/inventory'
+  createInventoryItem,
+  getInventory,
+  updateInventoryItem,
+} from '../../services/api/inventory'
 import { useRealtimeDispatch } from '../../contexts/RealtimeContext'
 import { useStorageLocations } from '../../hooks/useStorageLocations'
 import {
@@ -58,6 +60,8 @@ interface DuplicateInfo {
   inventoryId?: string
   currentQuantity?: number
   lastUpdated?: string
+  /** The duplicate check itself failed — distinct from "no duplicate found". */
+  lookupFailed?: boolean
 }
 
 interface LocalProvider {
@@ -170,23 +174,35 @@ export function AddToInventoryFromLibraryModal({
     setLocalProviders(loadLocalProviders())
   }, [])
 
+  /**
+   * Is this wine already in inventory?
+   *
+   * Asks the SERVER. This used to call checkInventoryDuplicate(), which searched a
+   * module-level in-memory array that starts empty on every page load — so it
+   * could only ever find a wine added in the same browser session and never one
+   * actually in inventory. The duplicate prompt therefore almost never appeared,
+   * and the real duplicate went in as a second row.
+   */
   const checkForDuplicate = async () => {
     try {
-      const existingItem = checkInventoryDuplicate(wine.id)
+      const inventory = await getInventory()
+      const existing = inventory.find((i) => i.wineId === wine.id)
 
-      if (existingItem) {
+      if (existing) {
         setDuplicateInfo({
           exists: true,
-          inventoryId: existingItem.inventoryId,
-          currentQuantity: existingItem.quantity,
-          lastUpdated: existingItem.lastUpdated,
+          inventoryId: existing.id,
+          currentQuantity: existing.stockLive ?? 0,
+          lastUpdated: existing.updatedAt,
         })
       } else {
         setDuplicateInfo({ exists: false })
       }
     } catch (error) {
+      // Not finding a duplicate and failing to look are different things. Treating
+      // the failure as "no duplicate" is what silently created second rows.
       console.error('Failed to check for duplicates:', error)
-      setDuplicateInfo({ exists: false })
+      setDuplicateInfo({ exists: false, lookupFailed: true })
     }
   }
 
@@ -228,16 +244,25 @@ export function AddToInventoryFromLibraryModal({
       const locationName = selectedLocationId 
         ? locations.find(l => l.id === selectedLocationId)?.name || ''
         : ''
-      
-      // Quick add with default values
-      const newItem = addWineToInventory(
-        wine,
-        addQuantity,
-        wine.price,
-        wine.provider.name,
-        locationName,
-        ''
-      )
+
+      if (!isUuid(wine.id) || (selectedLocationId && !isUuid(selectedLocationId))) {
+        throw new Error(
+          `"${wine.name}" isn't linked to your wine library yet, so it can't be saved to inventory. ` +
+            `Add it to the library first, then add stock.`,
+        )
+      }
+
+      // Quick add goes through the same API as the full form. It previously called
+      // addWineToInventory() from data/inventoryData.ts, which pushed to an in-memory
+      // array — so "quick" meant "not saved".
+      const newItem = await createInventoryItem({
+        wineId: wine.id,
+        stockLive: addQuantity,
+        costPerBottle: wine.price,
+        storageLocationId: selectedLocationId || undefined,
+        thresholdMin: wine.threshold ? Math.floor(wine.threshold * 0.5) : 6,
+        thresholdMax: wine.threshold || 24,
+      })
       
       // Assign to storage location for cross-page persistence
       if (selectedLocationId) {
@@ -253,7 +278,7 @@ export function AddToInventoryFromLibraryModal({
         source: 'wine_library',
         timestamp: new Date().toISOString(),
         metadata: {
-          inventoryId: newItem.inventoryId,
+          inventoryId: newItem.id,
           costPerBottle: wine.price,
           provider: wine.provider.name,
           storageLocationId: selectedLocationId,
@@ -267,7 +292,7 @@ export function AddToInventoryFromLibraryModal({
       // Set undo state
       setUndoState({
         type: 'add',
-        inventoryId: newItem.inventoryId,
+        inventoryId: newItem.id,
         wineId: wine.id
       })
       
@@ -279,7 +304,11 @@ export function AddToInventoryFromLibraryModal({
       onSuccess(`✅ Synced! ${wine.name} added with ${addQuantity} bottles.${locationName ? ` Location: ${locationName}` : ''}`)
     } catch (error) {
       console.error('Quick add failed:', error)
-      alert('Failed to add wine. Please try again.')
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Failed to add wine. Please try again.',
+      )
     } finally {
       setIsSubmitting(false)
     }
@@ -298,13 +327,25 @@ export function AddToInventoryFromLibraryModal({
       const storageLocationIdIsUuid = !selectedLocationId || isUuid(selectedLocationId)
 
       if (duplicateInfo.exists && duplicateAction === 'add' && duplicateInfo.inventoryId) {
-        // Update existing inventory
-        const updatedItem = updateInventoryQuantity(
-          duplicateInfo.inventoryId,
-          quantity,
-          costPerBottle
-        )
-        
+        // Persist to the database, then announce it.
+        //
+        // This previously called updateInventoryQuantity() from data/inventoryData.ts,
+        // which pushed to an in-memory array and console.logged a TODO. It then
+        // dispatched the realtime event below, so every other page synced to a stock
+        // number that no database row carried and a refresh silently discarded. The
+        // UI agreed with itself, which is why nobody noticed.
+        const newQuantity = duplicateInfo.currentQuantity! + quantity
+        const persisted = await updateInventoryItem(duplicateInfo.inventoryId, {
+          quantity: newQuantity,
+          costPerBottle,
+        } as any)
+
+        const updatedItem = {
+          quantity: Number(
+            (persisted as any)?.quantity ?? (persisted as any)?.stockLive ?? newQuantity,
+          ),
+        }
+
         if (updatedItem) {
           // Dispatch realtime event for cross-page sync
           dispatchInventoryUpdate({
@@ -348,51 +389,17 @@ export function AddToInventoryFromLibraryModal({
           : ''
         
         if (!wineIdIsUuid || !storageLocationIdIsUuid) {
-          // Fall back to local inventory when IDs are not UUIDs
-          const newItem = addWineToInventory(
-            wine,
-            quantity,
-            costPerBottle,
-            selectedProvider,
-            locationName,
-            notes || ''
+          // This wine has no database identity (a static/demo library entry), so the
+          // backend cannot accept it. It used to fall through to the same in-memory
+          // array and then report "added to inventory!" — a second silent-loss path.
+          //
+          // Refuse instead of pretending. A receiver who is told stock was saved and
+          // finds it gone has learned the app lies; one who is told it could not be
+          // saved can do something about it.
+          throw new Error(
+            `"${wine.name}" isn't linked to your wine library yet, so it can't be saved to inventory. ` +
+              `Add it to the library first, then add stock.`,
           )
-
-          if (selectedLocationId) {
-            assignWineToLocation(wine.id, selectedLocationId, quantity)
-          }
-
-          dispatchInventoryUpdate({
-            type: 'add',
-            wineId: wine.id,
-            wineName: wine.name,
-            quantity: quantity,
-            source: 'wine_library',
-            timestamp: new Date().toISOString(),
-            metadata: {
-              inventoryId: newItem.inventoryId,
-              costPerBottle,
-              provider: selectedProvider,
-              storageLocationId: selectedLocationId || undefined,
-              storageLocationName: locationName,
-              notes,
-              bottleSizeMl,
-              saleType,
-              ...(showGlassFields && { pourSizeMl, menuPriceGlass }),
-            }
-          })
-
-          setUndoState({
-            type: 'add',
-            inventoryId: newItem.inventoryId,
-            wineId: wine.id
-          })
-
-          setSuccessMessage(`${wine.name} added to inventory!`)
-          setShowSuccessToast(true)
-          setUndoCountdown(5)
-          onSuccess(`✅ ${wine.name} added to inventory!\n\nQuantity: ${quantity} bottles\nCost: $${costPerBottle}/bottle\nProvider: ${selectedProvider}${locationName ? `\nLocation: ${locationName}` : ''}\nInventory ID: ${newItem.inventoryId}`)
-          return
         }
         
         // Call the backend API to persist to database
@@ -541,7 +548,7 @@ export function AddToInventoryFromLibraryModal({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-semibold text-gray-900 truncate">{wine.name}</h3>
+                    <h3 className="font-semibold text-gray-900 truncate">{wine.displayName || wine.name}</h3>
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${typeColors.bg} ${typeColors.text}`}>
                       {wine.type}
                     </span>

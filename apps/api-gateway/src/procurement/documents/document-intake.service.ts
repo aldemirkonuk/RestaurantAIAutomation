@@ -5,7 +5,9 @@ import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
 import { SourceChannel } from "./document-types";
 import { ParsedDocument } from "./parsed-document";
+import { matchLines, MatchLinesResult } from "./line-matcher";
 import { looksLikeX12, parseX12 } from "./x12";
+import { runWithNewCorrelationId } from "../../common/model-client/correlation";
 
 /**
  * DocumentIntakeService — the single door every vendor document comes through.
@@ -99,8 +101,22 @@ export class DocumentIntakeService {
       if (existing.data?.id)
         return { documentId: existing.data.id, parsed: null, duplicate: true };
 
+      // Decision E47 — the photo and upload channels arrive as a `buffer`
+      // with no `storagePath` of their own (the email channel already has
+      // one, set when rabbitmq-bridge persisted the attachment). Without
+      // this, storage_path lands NULL and the receipts page has nothing to
+      // show beside the extracted lines, and a disputed credit has no
+      // photograph to point a distributor at.
+      const storagePath = await this.persistOriginalBytes(input, sha256, bytes);
+      const resolvedInput: IntakeInput = { ...input, storagePath };
+
       const parsed = await this.route(input, bytes);
-      const documentId = await this.persist(input, sha256, bytes, parsed);
+      const documentId = await this.persist(
+        resolvedInput,
+        sha256,
+        bytes,
+        parsed,
+      );
       return { documentId, parsed, duplicate: false };
     } catch (err: any) {
       this.logger.warn(`ingest failed: ${err?.message}`);
@@ -110,6 +126,59 @@ export class DocumentIntakeService {
         duplicate: false,
         error: err?.message ?? "unknown error",
       };
+    }
+  }
+
+  /**
+   * Persist the original bytes to the private `vendor-attachments` bucket so
+   * a photographed or hand-uploaded document has an image to show beside its
+   * extracted lines, same as the email channel already gets from
+   * rabbitmq-bridge. Content-addressed at
+   * `{restaurantId}/documents/{sha256}/{filename}` — the same bytes ingested
+   * twice (retry, or the same invoice arriving by two channels) land at the
+   * same path, so this is a plain `upsert`, never a growing pile of
+   * duplicates.
+   *
+   * Best-effort: a storage failure must not fail the whole ingest, since the
+   * extraction and the four-way match evidence do not depend on the photo
+   * existing — only the receipts page's side-by-side view does. Skipped
+   * entirely when the caller already resolved a storagePath (email channel)
+   * or when there are no original bytes to store (EDI/SFTP text, which keeps
+   * its full content in `raw_payload` instead).
+   */
+  private async persistOriginalBytes(
+    input: IntakeInput,
+    sha256: string,
+    bytes: Buffer,
+  ): Promise<string | null> {
+    if (input.storagePath) return input.storagePath;
+    if (!input.buffer?.length) return null;
+
+    const safeName = (input.filename || "document")
+      .replace(/[^\w.-]+/g, "_")
+      .slice(0, 120);
+    const path = `${input.restaurantId}/documents/${sha256}/${safeName}`;
+
+    try {
+      const { error } = await this.db
+        .getClient()
+        .storage.from("vendor-attachments")
+        .upload(path, bytes, {
+          contentType: input.mimeType || "application/octet-stream",
+          upsert: true,
+        });
+      if (error) {
+        this.logger.warn(
+          `persistOriginalBytes: upload failed for ${safeName} — ${error.message}`,
+        );
+        return null;
+      }
+      return path;
+    } catch (err: any) {
+      this.logger.warn(
+        `persistOriginalBytes: unexpected failure for ${safeName} — ${err?.message}`,
+      );
+      return null;
     }
   }
 
@@ -149,7 +218,11 @@ export class DocumentIntakeService {
         "No extraction model is configured, so the document was stored unread.",
       );
 
-    return this.extractor.extract(bytes.toString("base64"), input.mimeType);
+    return this.extractor.extract(
+      bytes.toString("base64"),
+      input.mimeType,
+      input.restaurantId,
+    );
   }
 
   private unreadable(reason: string): ParsedDocument {
@@ -308,7 +381,125 @@ export class DocumentIntakeService {
       );
     else await this.autoLink(documentId, input.restaurantId, parsed);
 
+    // Pair lines against what was ordered. Only unambiguous matches are written;
+    // everything else waits for a person. Best-effort — a document is still
+    // useful unmatched, and failing intake over line pairing would lose it.
+    try {
+      await this.matchDocumentLines(documentId, input.restaurantId);
+    } catch (err: any) {
+      this.logger.warn(
+        `line matching failed for document ${documentId}: ${err?.message}`,
+      );
+    }
+
     return documentId;
+  }
+
+  /**
+   * Pair a document's lines with the lines that were ordered.
+   *
+   * Writes `order_line_id` ONLY above the auto threshold — an exact vendor SKU
+   * with no substitution. Everything else comes back as a suggestion for one-tap
+   * confirmation and is deliberately not persisted: a wrong link writes one
+   * wine's invoice price onto another wine's cost lot, nothing looks broken, and
+   * it surfaces months later as unexplained margin drift on two products at once.
+   *
+   * Re-runnable, and a line a human already paired is left alone — so someone who
+   * fixes a mis-paired line and re-runs does not get their correction reverted.
+   */
+  async matchDocumentLines(
+    documentId: string,
+    restaurantId: string,
+  ): Promise<MatchLinesResult> {
+    const empty: MatchLinesResult = {
+      applied: [],
+      suggested: [],
+      unmatchedDocumentLineIds: [],
+      unmatchedOrderLineIds: [],
+    };
+
+    const [{ data: docLines }, { data: links }] = await Promise.all([
+      this.db
+        .getClient()
+        .from("procurement_document_lines")
+        .select(
+          "id, vendor_sku, description, vintage, format_ml, qty_bottles, unit_price, order_line_id",
+        )
+        .eq("document_id", documentId)
+        .eq("restaurant_id", restaurantId),
+      this.db
+        .getClient()
+        .from("procurement_document_links")
+        .select("order_id")
+        .eq("document_id", documentId)
+        .eq("restaurant_id", restaurantId),
+    ]);
+
+    const orderIds = (links ?? []).map((l) => l.order_id);
+    if (!docLines?.length || !orderIds.length) return empty;
+
+    const { data: orderLines } = await this.db
+      .getClient()
+      .from("procurement_order_items")
+      .select(
+        "id, vendor_sku, wine_name, vintage, total_bottles, final_unit_price",
+      )
+      .eq("restaurant_id", restaurantId)
+      .in("order_id", orderIds);
+    if (!orderLines?.length) return empty;
+
+    const openDocLines = docLines.filter((l) => !l.order_line_id);
+    const takenOrderLines = new Set(
+      docLines.map((l) => l.order_line_id).filter(Boolean) as string[],
+    );
+
+    const result = matchLines(
+      openDocLines.map((l) => ({
+        id: l.id,
+        vendorSku: l.vendor_sku,
+        description: l.description,
+        vintage: l.vintage,
+        formatMl: l.format_ml,
+        qtyBottles: Number(l.qty_bottles ?? 0),
+        unitPrice: l.unit_price == null ? null : Number(l.unit_price),
+      })),
+      orderLines
+        .filter((o) => !takenOrderLines.has(o.id))
+        .map((o) => ({
+          id: o.id,
+          vendorSku: o.vendor_sku,
+          description: o.wine_name,
+          vintage: o.vintage,
+          formatMl: null,
+          qtyBottles: Number(o.total_bottles ?? 0),
+          unitPrice:
+            o.final_unit_price == null ? null : Number(o.final_unit_price),
+        })),
+    );
+
+    for (const m of result.applied) {
+      const { error } = await this.db
+        .getClient()
+        .from("procurement_document_lines")
+        .update({
+          order_line_id: m.orderLineId,
+          match_confidence: m.confidence,
+          match_method: m.method,
+        })
+        .eq("id", m.documentLineId)
+        .eq("restaurant_id", restaurantId);
+      if (error)
+        this.logger.warn(
+          `failed to link document line ${m.documentLineId}: ${error.message}`,
+        );
+    }
+
+    if (result.applied.length || result.suggested.length)
+      this.logger.log(
+        `document ${documentId}: ${result.applied.length} lines paired, ${result.suggested.length} awaiting confirmation`,
+      );
+
+    return result;
   }
 
   /**
@@ -428,17 +619,25 @@ export class DocumentIntakeService {
       if (file.error || !file.data) continue;
 
       const buffer = Buffer.from(await file.data.arrayBuffer());
-      const result = await this.ingest({
-        restaurantId: a.restaurant_id,
-        providerId: a.provider_id,
-        orderId: a.order_id,
-        source: "email",
-        buffer,
-        filename: a.filename,
-        mimeType: a.mime_type,
-        sourceRef: `conversation_attachment:${a.id}`,
-        storagePath: a.storage_path,
-      });
+      // One correlation scope PER ATTACHMENT. `ingest` reaches
+      // DocumentExtractorService -> ModelClientService, and a cron has no
+      // request to inherit an id from, so without this the NF row for every
+      // email-sourced extraction lands with correlation_id NULL — which is
+      // most of them, since the HTTP path is manual upload. Per-attachment
+      // rather than per-sweep so one id still means one document.
+      const result = await runWithNewCorrelationId(() =>
+        this.ingest({
+          restaurantId: a.restaurant_id,
+          providerId: a.provider_id,
+          orderId: a.order_id,
+          source: "email",
+          buffer,
+          filename: a.filename,
+          mimeType: a.mime_type,
+          sourceRef: `conversation_attachment:${a.id}`,
+          storagePath: a.storage_path,
+        }),
+      );
       if (result.documentId && !result.duplicate) ingested++;
     }
 

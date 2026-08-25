@@ -12,6 +12,7 @@ import {
 } from '../hooks/queries/usePromotionsQueries'
 import { useNotificationStore } from '../stores'
 import { useAuth } from '../contexts/AuthContext'
+import { RestaurantBranchSwitcher } from '../components/layout/RestaurantBranchSwitcher'
 import { ExportMenu } from '../components/ui/ExportMenu'
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../lib/tableExport'
 import { toast } from 'sonner'
@@ -47,9 +48,12 @@ export default function Promotions() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
-      <div className="flex items-center gap-2 mb-1">
-        <Sparkles className="w-5 h-5 text-wine-700" />
-        <h1 className="text-xl font-bold text-gray-900">Vendor offers &amp; senders</h1>
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
+        <div className="flex items-center gap-2 min-w-0">
+          <Sparkles className="w-5 h-5 text-wine-700 shrink-0" />
+          <h1 className="text-xl font-bold text-gray-900">Vendor offers &amp; senders</h1>
+        </div>
+        <RestaurantBranchSwitcher />
       </div>
       <p className="text-sm text-gray-500 mb-5">
         Offers the AI extracted from vendor email, the senders you trust to skip the spoof quarantine, and cold outreach from vendors you haven’t added yet.

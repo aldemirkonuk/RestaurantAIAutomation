@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -459,6 +460,7 @@ class ClaudeVisionExtractor:
 
         try:
             async with self._get_semaphore():
+                _t0 = time.perf_counter()
                 response = await self._get_client().messages.create(
                     model=MODEL_ID,
                     max_tokens=MAX_TOKENS,
@@ -501,6 +503,15 @@ class ClaudeVisionExtractor:
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 cost_usd=cost_usd,
+                agent_fallback="claude_vision_extractor",
+                task_type="menu_page_extraction",
+                choice=f"wines:{len(parsed.get('wines', []))}",
+                outcome="partial" if parse_error else "success",  # call-level
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                context={
+                    "page_index": page_index,
+                    "parse_error": bool(parse_error),
+                },
             )
         except Exception:
             pass
@@ -594,6 +605,7 @@ class ClaudeVisionExtractor:
 
         try:
             async with self._get_semaphore():
+                _t0 = time.perf_counter()
                 response = await self._get_client().messages.create(
                     model=MODEL_ID,
                     max_tokens=MAX_TOKENS,
@@ -643,6 +655,12 @@ class ClaudeVisionExtractor:
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 cost_usd=cost_usd,
+                agent_fallback="claude_vision_extractor",
+                task_type="pdf_extraction",
+                choice=f"wines:{len(parsed.get('wines', []))}",
+                outcome="partial" if parse_error else "success",  # call-level
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                context={"parse_error": bool(parse_error)},
             )
         except Exception:
             pass

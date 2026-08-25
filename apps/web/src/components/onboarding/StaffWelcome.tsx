@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, Bot, Package, ShoppingCart, Wine } from 'lucide-react'
+import { ArrowRight, Bot, Package, ShoppingCart } from 'lucide-react'
 import { Button } from '../ui/button'
+import { BrandMark } from '../brand/BrandMark'
 
 const STAFF_CARDS = [
   {
@@ -38,7 +39,7 @@ export function StaffWelcome() {
   return (
     <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4 py-16">
       <div className="w-full max-w-lg text-center">
-        <Wine className="w-10 h-10 text-[#722F37] mx-auto mb-4" />
+        <BrandMark size={48} alt="" className="mx-auto mb-4" />
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Welcome to WineOps</h1>
         <p className="text-gray-500 mb-8">
           Your restaurant&apos;s wine list is ready to go — uploaded by your manager. Here&apos;s
@@ -51,10 +52,10 @@ export function StaffWelcome() {
             return (
               <div
                 key={card.id}
-                className="flex items-center gap-4 p-4 rounded-xl border border-gray-200 hover:border-[#722F37]/30 transition-colors bg-white"
+                className="flex items-center gap-4 p-4 rounded-xl border border-gray-200 hover:border-[#9E4249]/30 transition-colors bg-white"
               >
-                <div className="w-10 h-10 rounded-xl bg-[#722F37]/10 flex items-center justify-center flex-shrink-0">
-                  <Icon className="w-5 h-5 text-[#722F37]" />
+                <div className="w-10 h-10 rounded-xl bg-[#9E4249]/10 flex items-center justify-center flex-shrink-0">
+                  <Icon className="w-5 h-5 text-[#9E4249]" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-gray-900 text-sm">{card.title}</p>

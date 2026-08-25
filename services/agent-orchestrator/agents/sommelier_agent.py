@@ -11,9 +11,12 @@ AI-powered wine expertise with:
 
 from typing import Dict, List, Any, Optional
 import json
+import time
 
 from core.base_agent import BaseAgent
 from core.database import MasterWineLibrary
+from services.spend_logger import estimate_llm_cost, get_spend_logger
+from config.settings import get_settings
 
 
 class SommelierAgent(BaseAgent):
@@ -38,7 +41,9 @@ class SommelierAgent(BaseAgent):
         super().__init__(agent_name, message_bus, database, config)
 
         # LLM configuration
-        self.llm_model = config.get("llm_model", "gemini-pro")
+        # gemini-pro is retired (404). Enrichment is extraction-shaped and this
+        # agent uses the Gemini SDK, so it falls back to the Gemini default.
+        self.llm_model = config.get("llm_model", get_settings().gemini_model)
         self.google_api_key = config.get("google_api_key")
         self.mock_mode = config.get("mock_mode", True)
 
@@ -90,7 +95,7 @@ class SommelierAgent(BaseAgent):
 
                 self.genai_client = genai.Client(api_key=self.google_api_key)
                 self.logger.info(
-                    "✓ Gemini client initialized (google-genai SDK, model: gemini-2.0-flash)"
+                    f"✓ Gemini client initialized (google-genai SDK, model: {self.llm_model})"
                 )
             except ImportError:
                 # Fallback to legacy SDK
@@ -192,14 +197,16 @@ class SommelierAgent(BaseAgent):
         payload = message.get("payload", {})
 
         query = payload.get("query", "")
-        payload.get("restaurant_id")
+        restaurant_id = payload.get("restaurant_id")
         conversation_id = payload.get("conversation_id")
 
         self.logger.info(f"Processing wine query: {query[:50]}...")
 
         try:
             # Interpret query with LLM
-            interpretation = await self._interpret_wine_query(query)
+            interpretation = await self._interpret_wine_query(
+                query, restaurant_id=restaurant_id
+            )
 
             # Search wine library
             wines = await self._search_wines(interpretation)
@@ -209,6 +216,7 @@ class SommelierAgent(BaseAgent):
                 query=query,
                 wines=wines,
                 interpretation=interpretation,
+                restaurant_id=restaurant_id,
             )
 
             # Publish response
@@ -402,7 +410,45 @@ class SommelierAgent(BaseAgent):
 
         return suggestions
 
-    async def _interpret_wine_query(self, query: str) -> Dict[str, Any]:
+    def _log_llm_spend(
+        self,
+        response,
+        model: str,
+        task_type: str,
+        duration_ms: Optional[int] = None,
+        restaurant_id: Optional[str] = None,
+    ) -> None:
+        """P1: emit one spend/NF row for a Gemini call (never raises).
+
+        `duration_ms` is measured by the caller around its own model call —
+        timing it here would only measure this helper.
+        """
+        try:
+            _usage = getattr(response, "usage_metadata", None)
+            _in = getattr(_usage, "prompt_token_count", 0) or 0
+            # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+            _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                getattr(_usage, "thoughts_token_count", 0) or 0
+            )
+            get_spend_logger().log(
+                provider="google",
+                model=model,
+                input_tokens=_in,
+                output_tokens=_out,
+                cost_usd=estimate_llm_cost(model, _in, _out),
+                restaurant_id=restaurant_id or None,
+                agent=self.agent_name,
+                task_type=task_type,
+                outcome="success",  # call-level: response returned
+                duration_ms=duration_ms,
+                correlation_id=getattr(self, "_current_correlation_id", None),
+            )
+        except Exception:
+            pass
+
+    async def _interpret_wine_query(
+        self, query: str, restaurant_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Interpret natural language wine query using LLM
         """
@@ -434,8 +480,16 @@ Extract the following (if mentioned):
 
 Respond with valid JSON only."""
 
+            _t0 = time.perf_counter()
             response = self.llm_client.generate_content(
                 prompt, generation_config={"temperature": 0.1}
+            )
+            self._log_llm_spend(  # P1
+                response,
+                self.llm_model,
+                "query_interpretation",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                restaurant_id=restaurant_id,
             )
 
             return json.loads(response.text)
@@ -476,6 +530,7 @@ Respond with valid JSON only."""
         query: str,
         wines: List[MasterWineLibrary],
         interpretation: Dict[str, Any],
+        restaurant_id: Optional[str] = None,
     ) -> str:
         """
         Generate natural language response about wines
@@ -504,8 +559,16 @@ Available wines:
 
 Provide a friendly, knowledgeable response recommending wines from the list. Keep it concise (2-3 sentences)."""
 
+            _t0 = time.perf_counter()
             response = self.llm_client.generate_content(
                 prompt, generation_config={"temperature": 0.7, "max_output_tokens": 150}
+            )
+            self._log_llm_spend(  # P1
+                response,
+                self.llm_model,
+                "wine_response",
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                restaurant_id=restaurant_id,
             )
 
             return response.text.strip()
@@ -602,10 +665,19 @@ Respond with valid JSON only."""
                     tools=[grounding_tool],
                     temperature=0.1,
                 )
+                # one binding for the call and its spend label (OD-57)
+                model_id = get_settings().gemini_model
+                _t0 = time.perf_counter()
                 response = self.genai_client.models.generate_content(
-                    model="gemini-2.0-flash",
+                    model=model_id,
                     contents=prompt,
                     config=config,
+                )
+                self._log_llm_spend(  # P1
+                    response,
+                    model_id,
+                    "wine_enrichment_grounded",
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                 )
                 result_text = response.text.strip()
                 if "```json" in result_text:
@@ -621,8 +693,15 @@ Respond with valid JSON only."""
         # Fallback to legacy SDK
         try:
             if hasattr(self, "llm_client") and self.llm_client:
+                _t0 = time.perf_counter()
                 response = self.llm_client.generate_content(
                     prompt, generation_config={"temperature": 0.1}
+                )
+                self._log_llm_spend(  # P1
+                    response,
+                    self.llm_model,
+                    "wine_enrichment_fallback",
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
                 )
                 result_text = response.text.strip()
                 if "```json" in result_text:

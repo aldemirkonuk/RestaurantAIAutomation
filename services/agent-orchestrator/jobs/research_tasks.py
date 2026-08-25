@@ -50,6 +50,7 @@ import json
 import logging
 import re
 import socket
+import time
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -89,7 +90,7 @@ from services.research_agent_helpers import (
     _cache_key_producer,
 )
 from services.serper_client import serper_search
-from services.spend_logger import get_spend_logger
+from services.spend_logger import estimate_llm_cost, get_spend_logger
 
 logger = logging.getLogger(__name__)
 
@@ -494,6 +495,7 @@ async def _extract_field_candidates(
             import anthropic
 
             client = anthropic.Anthropic(api_key=settings.claude_api_key)
+            _t0 = time.perf_counter()
             response = client.messages.create(
                 model=model_name,
                 max_tokens=1024,
@@ -518,6 +520,11 @@ async def _extract_field_candidates(
                     input_tokens=in_tok,
                     output_tokens=out_tok,
                     cost_usd=cost,
+                    agent="research_agent",
+                    task_type="field_extraction",
+                    outcome="success",  # call-level: completion returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
+                    context={"field": field_name, "model_tier": model_tier},
                 )
             except Exception:
                 pass
@@ -549,6 +556,7 @@ async def _extract_field_candidates(
         flash_model = getattr(
             settings, "research_cascade_flash_model", "gemini-2.5-flash"
         )
+        _t0 = time.perf_counter()
         response = client.models.generate_content(
             model=flash_model,
             contents=prompt,
@@ -564,14 +572,25 @@ async def _extract_field_candidates(
         try:
             usage = getattr(response, "usage_metadata", None)
             in_tok = getattr(usage, "prompt_token_count", 0) or 0
-            out_tok = getattr(usage, "candidates_token_count", 0) or 0
-            cost = (in_tok * 0.075 / 1_000_000) + (out_tok * 0.30 / 1_000_000)
+            # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+            out_tok = (getattr(usage, "candidates_token_count", 0) or 0) + (
+                getattr(usage, "thoughts_token_count", 0) or 0
+            )
+            # Was an inline 0.075/0.30 literal — the retired gemini-2.0-flash rate,
+            # applied to whatever flash_model actually is. Route through the
+            # audited table so one correction fixes every site.
+            cost = estimate_llm_cost(flash_model, in_tok, out_tok)
             spend_logger.log(
                 provider="google",
                 model=flash_model,
                 input_tokens=in_tok,
                 output_tokens=out_tok,
                 cost_usd=cost,
+                agent="research_agent",
+                task_type="field_extraction",
+                outcome="success",  # call-level: completion returned
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                context={"field": field_name, "model_tier": "flash"},
             )
         except Exception as spend_err:
             logger.debug("Gemini spend log failed (non-fatal): %s", spend_err)
@@ -716,9 +735,12 @@ async def _process_record(
         record_cost += serper_cost
 
         search_results: list = []
+        search_ok = True
+        _t0 = time.perf_counter()
         try:
             search_results = await serper_search(query, num_results=5)
         except Exception as exc:
+            search_ok = False
             logger.warning(
                 "Serper search failed for field=%s wine_id=%s: %s",
                 field_name,
@@ -733,6 +755,16 @@ async def _process_record(
                 input_tokens=0,
                 output_tokens=0,
                 cost_usd=serper_cost,
+                agent="research_agent",
+                task_type="field_search",
+                choice=f"search:{len(search_results)}_results",
+                outcome="success" if search_ok else "failure",  # call-level
+                duration_ms=int((time.perf_counter() - _t0) * 1000),
+                context={
+                    "field": field_name,
+                    "wine_id": wine_id,
+                    "results_count": len(search_results),
+                },
             )
         except Exception as spend_err:
             logger.debug("Serper spend log failed (non-fatal): %s", spend_err)
@@ -1002,9 +1034,38 @@ async def _process_record(
             record_cost += settings.serper_cost_per_query
 
             search_results = []
+            search_ok = True
+            _t0 = time.perf_counter()
             try:
                 search_results = await serper_search(query, num_results=5)
             except Exception:
+                search_ok = False
+
+            # P1: this Layer-3 Serper call was previously entirely unlogged —
+            # money left the building with no api_spend row (dark site).
+            try:
+                spend_logger.log(
+                    provider="serper",
+                    model="search",
+                    input_tokens=0,
+                    output_tokens=0,
+                    cost_usd=settings.serper_cost_per_query,
+                    agent="research_agent",
+                    task_type="field_search_reflexion",
+                    choice=f"search:{len(search_results)}_results",
+                    outcome="success" if search_ok else "failure",  # call-level
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
+                    context={
+                        "field": field_name,
+                        "wine_id": wine_id,
+                        "attempt": attempt,
+                        "results_count": len(search_results),
+                    },
+                )
+            except Exception as spend_err:
+                logger.debug("Serper spend log failed (non-fatal): %s", spend_err)
+
+            if not search_ok:
                 break
 
             if not search_results:
@@ -1505,6 +1566,110 @@ def research_agent_task(submission_id: str, dry_run: bool = False) -> None:
         dry_run: If True, all computation runs but no Supabase writes occur (testable).
     """
     asyncio.run(_research_async(submission_id, dry_run))
+
+
+@celery_app.task(name="research.dispatch_batch")
+def research_dispatch_batch_task(batch_size: Optional[int] = None) -> dict:
+    """
+    Celery task: queue research for wines the matcher could not resolve.
+
+    Why this exists
+    ---------------
+    Until now research_agent_task only ran when a human POSTed
+    /api/v1/research/trigger. Nothing dispatched it for wines created by a menu
+    import, so a restaurant could import a 485-wine list and every unmatched
+    bottle sat as a tier-3 stub with primary_type='unknown' forever. This is
+    the missing link between "the importer created a provisional" and "the
+    research agent fills it in".
+
+    Why it does not reuse the endpoint's batch query
+    -----------------------------------------------
+    That query selects any submission with last_research_run_at IS NULL. Since
+    library matching started working, an import creates a submission for every
+    wine including the ones that auto-linked to a fully-populated canonical
+    row, so that query would spend the daily budget re-deriving facts already
+    in the library. Selection lives in
+    public.research_eligible_submissions() instead, which returns only wines
+    still carrying no real data, emptiest first.
+
+    Safety
+    ------
+    - Skips entirely while another research run is in flight, matching the
+      endpoint's T-12-11 guard. Two concurrent runs would race the budget.
+    - Per-record cost ceilings and the daily cap stay where they were, in
+      research_agent_task's own pre-flight — this only decides *which* records
+      are worth offering, never how much may be spent on them.
+    - A broker outage returns a count rather than raising: the next tick
+      re-queries eligibility, so nothing is lost by failing quietly here.
+    """
+    settings = get_settings()
+    if not settings.research_dispatch_enabled:
+        logger.info("research.dispatch_batch: disabled by settings — skipping")
+        return {"queued": 0, "skipped": "disabled"}
+
+    if not settings.supabase_url or not settings.supabase_key:
+        logger.warning("research.dispatch_batch: Supabase not configured — skipping")
+        return {"queued": 0, "skipped": "no_db"}
+    supabase = create_client(settings.supabase_url, settings.supabase_key)
+
+    # Same one-run-at-a-time guard the HTTP trigger enforces (T-12-11).
+    try:
+        running = (
+            supabase.table("research_runs")
+            .select("id", count="exact")
+            .eq("status", "running")
+            .execute()
+        )
+        if (running.count or 0) > 0:
+            logger.info(
+                "research.dispatch_batch: a run is already in progress — skipping"
+            )
+            return {"queued": 0, "skipped": "run_in_progress"}
+    except Exception as exc:
+        logger.warning(
+            "research.dispatch_batch: could not check running status (non-fatal): %s",
+            exc,
+        )
+
+    limit = batch_size or settings.research_dispatch_batch_size
+    try:
+        resp = supabase.rpc(
+            "research_eligible_submissions",
+            {
+                "p_limit": limit,
+                "p_cooldown_days": settings.research_eligibility_cooldown_days,
+            },
+        ).execute()
+        eligible = resp.data or []
+    except Exception as exc:
+        logger.error("research.dispatch_batch: eligibility query failed: %s", exc)
+        return {"queued": 0, "error": str(exc)}
+
+    if not eligible:
+        logger.info("research.dispatch_batch: nothing eligible")
+        return {"queued": 0}
+
+    queued, errors = 0, []
+    for row in eligible:
+        try:
+            research_agent_task.delay(row["submission_id"])
+            queued += 1
+        except Exception as exc:
+            errors.append(str(exc))
+
+    if errors:
+        logger.error(
+            "research.dispatch_batch: %d/%d dispatch(es) failed — first: %s",
+            len(errors),
+            len(eligible),
+            errors[0],
+        )
+    logger.info(
+        "research.dispatch_batch: queued %d of %d eligible record(s)",
+        queued,
+        len(eligible),
+    )
+    return {"queued": queued, "eligible": len(eligible), "errors": len(errors)}
 
 
 @celery_app.task(name="research.daily_budget_check")

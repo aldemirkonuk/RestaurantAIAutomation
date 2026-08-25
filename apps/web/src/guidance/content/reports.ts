@@ -3,7 +3,7 @@ import type { TourDefinition } from '../tours/registry'
 export const reportsTip = {
   pageId: 'reports' as const,
   title: 'Reports',
-  body: 'A customizable dashboard of your revenue, orders, and inventory trends.',
+  body: 'Set the time window, arrange charts, read the canvas, then ask AI about the numbers.',
 }
 
 export const reportsTour: TourDefinition = {
@@ -12,17 +12,26 @@ export const reportsTour: TourDefinition = {
     {
       element: '[data-tour="reports-topbar"]',
       title: 'Time range & export',
-      description: 'Switch time windows, compare periods, or export the current view.',
+      description:
+        'Switch 7D / 30D / 90D, compare periods, or export the data behind the current view.',
+    },
+    {
+      element: '[data-tour="reports-edit-layout"]',
+      title: 'Customize the dashboard',
+      description:
+        'Turn on Edit Layout to add blocks, apply a preset, or reset the canvas to a clean default.',
     },
     {
       element: '[data-tour="reports-canvas"]',
-      title: 'Drag-and-drop dashboard',
-      description: 'Rearrange, resize, or add chart blocks — your layout is saved automatically.',
+      title: 'Your analytics canvas',
+      description:
+        'Drag and resize charts in edit mode. Click a KPI tile for a deeper spotlight panel.',
     },
     {
       element: '[data-tour="reports-ai-pill"]',
       title: 'Ask about your data',
-      description: 'Open the AI command palette (⌘K) to ask questions about revenue, orders, or trends in plain English.',
+      description:
+        'Open the AI command palette (⌘K) to ask about revenue, orders, or trends in plain English.',
     },
   ],
 }

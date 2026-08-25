@@ -1,0 +1,1273 @@
+{
+ "menu": "AVEC_West_Loop_Wine_Bev_List_02_18_2026.pdf",
+ "pages": 2,
+ "wine_count": 153,
+ "seconds": 106.6,
+ "wines": [
+  {
+   "name": "exile Rosé Pétillant",
+   "producer": "Lise et Bertrand Jousset",
+   "category": "sparkling",
+   "vintage": "2024",
+   "region": "Loire, France",
+   "grape_variety": "natural gamay, grolleau",
+   "bottle_price": 70
+  },
+  {
+   "name": "Brut Champagne",
+   "producer": "Robert de Pampignac",
+   "category": "sparkling",
+   "region": "Epernay, Champagne",
+   "grape_variety": "pinot noir, pinot meunier, chardonnay",
+   "bottle_price": 78
+  },
+  {
+   "name": "Réserve Perpétuelle Brut Champagne",
+   "producer": "Philipponnat",
+   "category": "sparkling",
+   "region": "Mareuil-sur-Aÿ, Champagne",
+   "grape_variety": "pinot noir, chardonnay, pinot meunier",
+   "bottle_price": 138
+  },
+  {
+   "name": "Les Quatre Grand Cru Champagne",
+   "producer": "Pertois-Moriset",
+   "category": "sparkling",
+   "region": "Côte des Blancs, Champagne",
+   "grape_variety": "chardonnay",
+   "bottle_price": 150
+  },
+  {
+   "name": "Rosat Reserva",
+   "producer": "AT Roca",
+   "category": "sparkling",
+   "vintage": "2023",
+   "region": "Penedès, Spain",
+   "grape_variety": "macabeo, monastrell",
+   "bottle_price": 65
+  },
+  {
+   "name": "Espumante Bruto Natural",
+   "producer": "Quinta do Poço do Lobo",
+   "category": "sparkling",
+   "vintage": "2022",
+   "region": "Bairrada, Portugal",
+   "grape_variety": "baga",
+   "bottle_price": 91
+  },
+  {
+   "name": "Pet Nat",
+   "producer": "Mylonas Winery",
+   "category": "sparkling",
+   "region": "Attica, Greece",
+   "grape_variety": "savatiano",
+   "bottle_price": 59
+  },
+  {
+   "name": "Etna Rosato",
+   "producer": "Graci",
+   "category": "rosé",
+   "vintage": "2024",
+   "region": "Etna DOC, Sicily, Italy",
+   "grape_variety": "nerello mascalese",
+   "bottle_price": 57
+  },
+  {
+   "name": "Cuvée Tradition",
+   "producer": "Clos Cibonne",
+   "category": "rosé",
+   "vintage": "2023",
+   "region": "Côtes de Provence, France",
+   "grape_variety": "tibouren",
+   "bottle_price": 115
+  },
+  {
+   "name": "Frankovka Rosé",
+   "producer": "Pomalo",
+   "category": "rosé",
+   "vintage": "2024",
+   "region": "Slavonija, Croatia",
+   "grape_variety": "blaufränkisch",
+   "bottle_price": 51
+  },
+  {
+   "name": "Paleokerisio semi-sparkling orange wine",
+   "producer": "Domaine Glinavos",
+   "category": "orange",
+   "vintage": "2022",
+   "region": "Zitsa, Ioannina, Greece",
+   "grape_variety": "debina, vlahiko",
+   "bottle_price": 43
+  },
+  {
+   "name": "vp-Vital",
+   "producer": "COZs",
+   "category": "orange",
+   "vintage": "2022",
+   "region": "Lisboa, Portugal",
+   "grape_variety": "vital",
+   "bottle_price": 92
+  },
+  {
+   "name": "qvevri aged amber wine",
+   "producer": "Kiketi Farm",
+   "category": "orange",
+   "vintage": "2022",
+   "region": "Kakheti, Republic of Georgia",
+   "grape_variety": "mtsvane",
+   "bottle_price": 66
+  },
+  {
+   "name": "Summer Land",
+   "producer": "American Wine Project",
+   "category": "orange",
+   "vintage": "2020",
+   "region": "Mineral Point, WI",
+   "grape_variety": "brianna",
+   "bottle_price": 75
+  },
+  {
+   "name": "Le Petit Clos",
+   "producer": "Jean-Max Roger",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Menetou-Salon",
+   "grape_variety": "sauvignon blanc",
+   "bottle_price": 66
+  },
+  {
+   "name": "Clos de Rougemont",
+   "producer": "Domaine Vigneau-Chevreau",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Vouvray",
+   "grape_variety": "chenin blanc",
+   "bottle_price": 88
+  },
+  {
+   "name": "Domaine Jean Dauvissat",
+   "producer": "Domaine Jean Dauvissat",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Chablis",
+   "grape_variety": "chardonnay",
+   "bottle_price": 104
+  },
+  {
+   "name": "Tradition",
+   "producer": "Domaine d'Eole",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Coteaux d'Aix-en-Provence",
+   "grape_variety": "vermentino, grenache blanc",
+   "bottle_price": 54
+  },
+  {
+   "name": "Auro Blanc de Noirs",
+   "producer": "Château Grand Boise",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Sainte Victoire, Provence",
+   "grape_variety": "grenache noir",
+   "bottle_price": 61
+  },
+  {
+   "name": "Cassis Blanc",
+   "producer": "Clos Sainte Magdeleine",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Cassis, Provence",
+   "grape_variety": "marsanne, ugni blanc, clairette, bourboulenc",
+   "bottle_price": 93
+  },
+  {
+   "name": "Blanc",
+   "producer": "Château Malherbe",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Côtes de Provence",
+   "grape_variety": "rolle, sémillon",
+   "bottle_price": 110
+  },
+  {
+   "name": "H2O Blanc",
+   "producer": "Lampyres",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Vin de France, Roussillon",
+   "grape_variety": "grenache blanc, grenache gris, grenache noir",
+   "bottle_price": 64
+  },
+  {
+   "name": "Verdicchio dei Castelli di Jesi",
+   "producer": "La Staffa",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Marche",
+   "grape_variety": "verdicchio",
+   "bottle_price": 59
+  },
+  {
+   "name": "Anticello",
+   "producer": "Cantina Cenci",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Umbria",
+   "grape_variety": "grechetto",
+   "bottle_price": 61
+  },
+  {
+   "name": "Pecorino",
+   "producer": "Tiberio",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Colline Pescaresi, Abruzzo",
+   "grape_variety": "pecorino",
+   "bottle_price": 76
+  },
+  {
+   "name": "Mozia",
+   "producer": "Tenuta Whitaker",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Sicily",
+   "grape_variety": "grillo",
+   "bottle_price": 60
+  },
+  {
+   "name": "Etna Bianco",
+   "producer": "Alta Mora",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Etna Bianco DOC, Sicily",
+   "grape_variety": "carricante",
+   "bottle_price": 81
+  },
+  {
+   "name": "SP68 Bianco",
+   "producer": "Occhipinti",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Sicily",
+   "grape_variety": "muscat of alexandria, albanello",
+   "bottle_price": 79
+  },
+  {
+   "name": "Coto de Gomariz",
+   "producer": "Coto de Gomariz",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Ribiero, Galicia",
+   "grape_variety": "treixadura, godello, albariño, loureira",
+   "bottle_price": 67
+  },
+  {
+   "name": "Morgadío",
+   "producer": "Morgadío",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Rias Baixas, Galicia",
+   "grape_variety": "albariño",
+   "bottle_price": 64
+  },
+  {
+   "name": "Gran Vino Albariño",
+   "producer": "Pazo Barrantes",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Rias Baixas, Galicia",
+   "grape_variety": "albariño",
+   "bottle_price": 122
+  },
+  {
+   "name": "El Transistor",
+   "producer": "Telmo Rodríguez",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Rueda",
+   "grape_variety": "verdejo",
+   "bottle_price": 59
+  },
+  {
+   "name": "Quinta Apolonia",
+   "producer": "Belondrade",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Rueda",
+   "grape_variety": "verdejo",
+   "bottle_price": 95
+  },
+  {
+   "name": "Las Levantadas",
+   "producer": "Viuda Negra",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Rioja",
+   "grape_variety": "viura, malvasia",
+   "bottle_price": 56
+  },
+  {
+   "name": "Font de la Figuera",
+   "producer": "Clos Figueras",
+   "category": "white",
+   "vintage": "2019",
+   "region": "Priorat",
+   "grape_variety": "viognier, garnacha blanca, chenin blanc",
+   "bottle_price": 110
+  },
+  {
+   "name": "Tajinaste Blanco",
+   "producer": "Tajinaste",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Tenerife, Islas Canarias",
+   "grape_variety": "listan blanco",
+   "bottle_price": 73
+  },
+  {
+   "name": "Malvasía Volcánica",
+   "producer": "Los Bermejos",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Lanzarote, Islas Canarias",
+   "grape_variety": "malvasía",
+   "bottle_price": 83
+  },
+  {
+   "name": "Xisto Ilimitado Branco",
+   "producer": "Luís Seabra Vinhos",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Douro",
+   "grape_variety": "rabigato, gouveio, códega, viosinho",
+   "bottle_price": 78
+  },
+  {
+   "name": "Curtimenta",
+   "producer": "Anselmo Mendes",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Monção e Melgaço",
+   "grape_variety": "alvarinho",
+   "bottle_price": 109
+  },
+  {
+   "name": "Nossa Calcario",
+   "producer": "Filipa Pato",
+   "category": "white",
+   "vintage": "2021",
+   "region": "Bairrada",
+   "grape_variety": "bical",
+   "bottle_price": 84
+  },
+  {
+   "name": "Psarades",
+   "producer": "Lyrarakis",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Crete, Greece",
+   "grape_variety": "dafni",
+   "bottle_price": 55
+  },
+  {
+   "name": "Domaine Sigalas",
+   "producer": "Domaine Sigalas",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Santorini, Greece",
+   "grape_variety": "assyrtiko",
+   "bottle_price": 120
+  },
+  {
+   "name": "Tramonto",
+   "producer": "Alpha Estate",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Amyndeon, Florina, Greece",
+   "grape_variety": "chardonnay",
+   "bottle_price": 85
+  },
+  {
+   "name": "Hariton",
+   "producer": "Haritatos Vineyard",
+   "category": "white",
+   "vintage": "2022",
+   "region": "PGI Slopes of Aenos, Kefalonia, Greece",
+   "grape_variety": "vostilidi kefalonias",
+   "bottle_price": 78
+  },
+  {
+   "name": "Amphora",
+   "producer": "Makarounas",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Letymbou Village, Pafos, Cyprus",
+   "grape_variety": "natural promara",
+   "bottle_price": 68
+  },
+  {
+   "name": "Coteaux du Giennois",
+   "producer": "Clement & Florian Berthier",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Loire",
+   "grape_variety": "pinot noir, gamay",
+   "bottle_price": 59
+  },
+  {
+   "name": "Encore",
+   "producer": "La Folie Lucé",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Saumur-Champigny",
+   "grape_variety": "cabernet franc",
+   "bottle_price": 88
+  },
+  {
+   "name": "Vignes Aux Ânes",
+   "producer": "Domaine Maire & Fils",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Arbois, Jura",
+   "grape_variety": "trousseau",
+   "bottle_price": 60
+  },
+  {
+   "name": "Les Roches",
+   "producer": "Château de Corcelles",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Brouilly, Beaujolais",
+   "grape_variety": "gamay",
+   "bottle_price": 58
+  },
+  {
+   "name": "Bourgogne Rouge",
+   "producer": "Domaine Chevrot",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Burgundy",
+   "grape_variety": "pinot noir",
+   "bottle_price": 95
+  },
+  {
+   "name": "St. Julien-en-St.Alban",
+   "producer": "Éric Texier",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Côtes-du-Rhône",
+   "grape_variety": "natural syrah",
+   "bottle_price": 76
+  },
+  {
+   "name": "Xavier Vignon",
+   "producer": "Xavier Vignon",
+   "category": "red",
+   "vintage": "2019",
+   "region": "Gigondas",
+   "grape_variety": "grenache, mourvèdre",
+   "bottle_price": 82
+  },
+  {
+   "name": "Matassa Rouge",
+   "producer": "Matassa",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Vin de France",
+   "grape_variety": "natural carignan, grenache gris, macabeo",
+   "bottle_price": 112
+  },
+  {
+   "name": "Saint-Jean",
+   "producer": "Le Clos du Serres",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Terrasses du Larzac, Languedoc",
+   "grape_variety": "grenache, syrah, cinsault, mourvèdre",
+   "bottle_price": 70
+  },
+  {
+   "name": "Langhe Nebbiolo",
+   "producer": "Produttori del Barbaresco",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Langhe, Piedmont",
+   "grape_variety": "nebbiolo",
+   "bottle_price": 78
+  },
+  {
+   "name": "Piano di Montevergine",
+   "producer": "Feudi di San Gregorio",
+   "category": "red",
+   "vintage": "2016",
+   "region": "Taurasi Riserva DOCG, Campania",
+   "grape_variety": "aglianico",
+   "bottle_price": 170
+  },
+  {
+   "name": "Perdixi",
+   "producer": "Olianas",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Isola dei Nuraghi, Sardegna",
+   "grape_variety": "bovale, carignano",
+   "bottle_price": 80
+  },
+  {
+   "name": "Nepente di Oliena",
+   "producer": "Cantina Oliena",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Cannonau di Sardegna DOC",
+   "grape_variety": "cannonau",
+   "bottle_price": 68
+  },
+  {
+   "name": "Frappato",
+   "producer": "COS",
+   "category": "red",
+   "vintage": "2024",
+   "region": "Terre Siciliane",
+   "grape_variety": "natural frappato",
+   "bottle_price": 78
+  },
+  {
+   "name": "Susucaru",
+   "producer": "Frank Cornelissen",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Terre Siciliane",
+   "grape_variety": "natural nerello mascalese",
+   "bottle_price": 85
+  },
+  {
+   "name": "Cala Cala Vino Rosso",
+   "producer": "Calabretta",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Etna, Sicily",
+   "grape_variety": "nerello mascalese, nerello cappuccio",
+   "bottle_price": 58
+  },
+  {
+   "name": "Trimarchisa",
+   "producer": "Tornatore",
+   "category": "red",
+   "vintage": "2017",
+   "region": "Castiglione, Etna Rosso, Sicily",
+   "grape_variety": "nerello mascalese, nerello mascalese",
+   "bottle_price": 144
+  },
+  {
+   "name": "Ultreia Saint Jacques",
+   "producer": "Raúl Pérez",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Bierzo",
+   "grape_variety": "mencía, bastardo, garnacha tintorera",
+   "bottle_price": 55
+  },
+  {
+   "name": "Parcela 1.7 Txakoli Tinto",
+   "producer": "Hiruzta",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Getariako Txakolina",
+   "grape_variety": "hondarrabi beltza",
+   "bottle_price": 97
+  },
+  {
+   "name": "Celler Cesca Vicent",
+   "producer": "Celler Cesca Vicent",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Gratallops, Priorat",
+   "grape_variety": "grenache, syrah, cabernet sauvignon",
+   "bottle_price": 80
+  },
+  {
+   "name": "Les Terrasses",
+   "producer": "Alvaro Palacios",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Priorat DOQ",
+   "grape_variety": "garnacha, cariñena",
+   "bottle_price": 128
+  },
+  {
+   "name": "Pas Curtei",
+   "producer": "Alemany i Corrio",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Penedès",
+   "grape_variety": "carinyena, cabernet sauvignon, merlot",
+   "bottle_price": 79
+  },
+  {
+   "name": "Mather Teresina",
+   "producer": "Celler Piñol",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Terra Alta, Catalonia",
+   "grape_variety": "garnacha, cariñena, morenillo",
+   "bottle_price": 170
+  },
+  {
+   "name": "Crianza",
+   "producer": "Faustino Rivero Ulecia",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Rioja",
+   "grape_variety": "tempranillo",
+   "bottle_price": 39
+  },
+  {
+   "name": "Reserva",
+   "producer": "Marqués de Murrieta",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Rioja",
+   "grape_variety": "tempranillo",
+   "bottle_price": 72
+  },
+  {
+   "name": "Reserva",
+   "producer": "Dominio Fournier",
+   "category": "red",
+   "vintage": "2016",
+   "region": "Ribera del Duero",
+   "grape_variety": "tinta del pais",
+   "bottle_price": 112
+  },
+  {
+   "name": "12 Volts",
+   "producer": "4 Kilos",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Mallorca",
+   "grape_variety": "callet, mantonegro, cabernet sauvignon, syrah, merlot",
+   "bottle_price": 82
+  },
+  {
+   "name": "AN/2",
+   "producer": "Anima Negra",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Mallorca, Vi de la Terra Illes Balears",
+   "grape_variety": "callet, mantonegro-fogoneu, syrah",
+   "bottle_price": 88
+  },
+  {
+   "name": "Mentor Grande Reserva",
+   "producer": "Mentor",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Douro",
+   "grape_variety": "touriga nacional, touriga franca, tinta roriz",
+   "bottle_price": 65
+  },
+  {
+   "name": "Brutalis by Vidigal",
+   "producer": "Vidigal",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Vinho Regional Lisboa",
+   "grape_variety": "alicante bouchet, cabernet sauvignon",
+   "bottle_price": 121
+  },
+  {
+   "name": "Chão dos Eremitas",
+   "producer": "Fitapreta by António Maçanita",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Alentejano",
+   "grape_variety": "tinta carvalha",
+   "bottle_price": 172
+  },
+  {
+   "name": "Young Vineyards",
+   "producer": "Domaine Zafeirakis",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Tyrnavos, Greece",
+   "grape_variety": "limniona",
+   "bottle_price": 58
+  },
+  {
+   "name": "En Arhi",
+   "producer": "Makarounas",
+   "category": "red",
+   "vintage": "2024",
+   "region": "Letymbou Village, Pafos, Cyprus",
+   "grape_variety": "natural cabernet franc",
+   "bottle_price": 65
+  },
+  {
+   "name": "Altitudes Rouge",
+   "producer": "Ixsir",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Batroun, Lebanon",
+   "grape_variety": "cabernet sauvignon blend",
+   "bottle_price": 57
+  },
+  {
+   "name": "Kanz",
+   "producer": "Heya Wines",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Batroun, Lebanon",
+   "grape_variety": "natural grenache, syrah",
+   "bottle_price": 88
+  },
+  {
+   "name": "Hochar Pere et Fils",
+   "producer": "Chateau Musar",
+   "category": "red",
+   "vintage": "2020",
+   "region": "Ghazir, Bekaa Valley, Lebanon",
+   "grape_variety": "cinsault, grenache, cabernet",
+   "bottle_price": 95
+  },
+  {
+   "name": "Syrocco by Alain Graillot",
+   "producer": "Alain Graillot",
+   "category": "red",
+   "vintage": "2021",
+   "region": "Zenata, Morocco",
+   "grape_variety": "syrah",
+   "bottle_price": 64
+  },
+  {
+   "name": "Crémant de Loire",
+   "producer": "Monmousseau",
+   "category": "sparkling",
+   "region": "France",
+   "grape_variety": "chenin blanc",
+   "by_glass_price": 15,
+   "bottle_price": 57
+  },
+  {
+   "name": "Inzolita Pét-Nat",
+   "producer": "Marino Abate",
+   "category": "sparkling",
+   "region": "Sicily, Italy",
+   "grape_variety": "inzolia",
+   "by_glass_price": 16,
+   "bottle_price": 60
+  },
+  {
+   "name": "Font Des Pères",
+   "producer": "Font Des Pères",
+   "category": "rosé",
+   "vintage": "2024",
+   "region": "Provence, France",
+   "grape_variety": "mourvèdre, cinsault",
+   "by_glass_price": 12,
+   "bottle_price": 48
+  },
+  {
+   "name": "Binario Orange",
+   "producer": "Navarsotillo",
+   "category": "orange",
+   "vintage": "2023",
+   "region": "Rioja, Spain",
+   "grape_variety": "garnacha blanca",
+   "by_glass_price": 15,
+   "bottle_price": 57
+  },
+  {
+   "name": "Le Chant du Loup",
+   "producer": "Rostaing Tayard",
+   "category": "white",
+   "vintage": "2021",
+   "region": "France",
+   "grape_variety": "chardonnay",
+   "by_glass_price": 17,
+   "bottle_price": 66
+  },
+  {
+   "name": "The Flower and the Bee",
+   "producer": "Coto de Gomariz",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Spain",
+   "grape_variety": "treixadura",
+   "by_glass_price": 16,
+   "bottle_price": 60
+  },
+  {
+   "name": "Can Sumoi",
+   "producer": "Can Sumoi",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Penedès, Spain",
+   "grape_variety": "xarel-lo",
+   "by_glass_price": 16,
+   "bottle_price": 60
+  },
+  {
+   "name": "Vinhas Velhas",
+   "producer": "Luís Pato",
+   "category": "white",
+   "vintage": "2023",
+   "region": "Bairrada, Portugal",
+   "grape_variety": "bical, cerceal",
+   "by_glass_price": 15,
+   "bottle_price": 57
+  },
+  {
+   "name": "The North",
+   "producer": "Kir-Yianni",
+   "category": "white",
+   "vintage": "2024",
+   "region": "Florina, Greece",
+   "grape_variety": "assyrtiko",
+   "by_glass_price": 14,
+   "bottle_price": 54
+  },
+  {
+   "name": "Massaya",
+   "producer": "Massaya",
+   "category": "white",
+   "vintage": "2022",
+   "region": "Beqaa Valley, Lebanon",
+   "grape_variety": "sauvignon blanc, obeïdi",
+   "by_glass_price": 15,
+   "bottle_price": 57
+  },
+  {
+   "name": "Cousin Oscar",
+   "producer": "Rimbert",
+   "category": "red",
+   "region": "Vin de France",
+   "grape_variety": "cinsault, pinot noir",
+   "by_glass_price": 13,
+   "bottle_price": 51
+  },
+  {
+   "name": "Mas des Bressades",
+   "producer": "Mas des Bressades",
+   "category": "red",
+   "vintage": "2022",
+   "region": "France",
+   "grape_variety": "cabernet sauvignon, syrah",
+   "by_glass_price": 14,
+   "bottle_price": 54
+  },
+  {
+   "name": "Kleos",
+   "producer": "Luigi Maffini",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Campania, Italy",
+   "grape_variety": "aglianico",
+   "by_glass_price": 17,
+   "bottle_price": 66
+  },
+  {
+   "name": "Sierra del Toloño",
+   "producer": "Sierra del Toloño",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Rioja Alavesa, Spain",
+   "grape_variety": "tempranillo",
+   "by_glass_price": 17,
+   "bottle_price": 66
+  },
+  {
+   "name": "Impecável",
+   "producer": "Carlos Raposo",
+   "category": "red",
+   "vintage": "2022",
+   "region": "Dão, Portugal",
+   "grape_variety": "touriga nacional",
+   "by_glass_price": 15,
+   "bottle_price": 57
+  },
+  {
+   "name": "Young Vines",
+   "producer": "Thymiopoulos",
+   "category": "red",
+   "vintage": "2023",
+   "region": "Naoussa, Greece",
+   "grape_variety": "xinomavro",
+   "by_glass_price": 14,
+   "bottle_price": 54
+  },
+  {
+   "name": "the last frontier",
+   "producer": "the last frontier",
+   "category": "cocktail",
+   "bottle_price": 17
+  },
+  {
+   "name": "avec g&t",
+   "producer": "avec g&t",
+   "category": "cocktail",
+   "bottle_price": 16
+  },
+  {
+   "name": "mole carré",
+   "producer": "mole carré",
+   "category": "cocktail",
+   "bottle_price": 17
+  },
+  {
+   "name": "bay of biscay",
+   "producer": "bay of biscay",
+   "category": "cocktail",
+   "bottle_price": 17
+  },
+  {
+   "name": "il frutteto",
+   "producer": "il frutteto",
+   "category": "cocktail",
+   "bottle_price": 14
+  },
+  {
+   "name": "bourbon bijou",
+   "producer": "bourbon bijou",
+   "category": "cocktail",
+   "bottle_price": 24
+  },
+  {
+   "name": "apples to apples",
+   "producer": "apples to apples",
+   "category": "zero proof",
+   "bottle_price": 12
+  },
+  {
+   "name": "NONgroni",
+   "producer": "NONgroni",
+   "category": "zero proof",
+   "bottle_price": 12
+  },
+  {
+   "name": "london calling",
+   "producer": "london calling",
+   "category": "zero proof",
+   "bottle_price": 12
+  },
+  {
+   "name": "jolt",
+   "producer": "jolt",
+   "category": "zero proof",
+   "bottle_price": 12
+  },
+  {
+   "name": "Meteor Blanche",
+   "producer": "Brasserie Meteor",
+   "category": "beer",
+   "region": "Hochfelden, Alsace, France",
+   "bottle_price": 8
+  },
+  {
+   "name": "Delirium Tremens",
+   "producer": "Huyghe Brewery",
+   "category": "beer",
+   "region": "Melle, Belgium",
+   "bottle_price": 19
+  },
+  {
+   "name": "Ichnusa non filtrada",
+   "producer": "Birrificio di Assemini",
+   "category": "beer",
+   "region": "Sardegna, Italia",
+   "bottle_price": 16
+  },
+  {
+   "name": "Estrella Galicia lager especial",
+   "producer": "Estrella Galicia",
+   "category": "beer",
+   "region": "Galicia, España",
+   "bottle_price": 8
+  },
+  {
+   "name": "Baltazar hoppy lager",
+   "producer": "Medvedgrad",
+   "category": "beer",
+   "region": "Zagreb, Croatia",
+   "bottle_price": 10
+  },
+  {
+   "name": "Almaza pilsener",
+   "producer": "Brasserie Almaza",
+   "category": "beer",
+   "region": "Jdeideh, Lebanon",
+   "bottle_price": 8
+  },
+  {
+   "name": "Lvivske porter",
+   "producer": "Lvivske",
+   "category": "beer",
+   "region": "Lviv, Ukraine",
+   "bottle_price": 9
+  },
+  {
+   "name": "Dovetail kölsch style ale",
+   "producer": "Dovetail",
+   "category": "beer",
+   "region": "Chicago, Illinois",
+   "bottle_price": 11
+  },
+  {
+   "name": "Sabro Crush hazy ipa",
+   "producer": "Middle Brow",
+   "category": "beer",
+   "region": "Chicago, Illinois",
+   "bottle_price": 11
+  },
+  {
+   "name": "Isastegi sagardo naturala",
+   "producer": "Isastegi",
+   "category": "cider",
+   "region": "Tolosa, Spain",
+   "bottle_price": 14
+  },
+  {
+   "name": "Kriek barrel-aged schaerbeek cherry cider",
+   "producer": "Virtue Cider",
+   "category": "cider",
+   "region": "Fenville, MI",
+   "bottle_price": 42
+  },
+  {
+   "name": "Single Estate, Tequila Reposado",
+   "producer": "Ocho",
+   "category": "agave",
+   "region": "Jalisco",
+   "bottle_price": 19
+  },
+  {
+   "name": "G4, Tequila Reposado",
+   "producer": "G4",
+   "category": "agave",
+   "region": "Los Altos de Jalisco",
+   "bottle_price": 18
+  },
+  {
+   "name": "Mezcal Joven",
+   "producer": "Ilegal",
+   "category": "agave",
+   "region": "Oaxaca",
+   "bottle_price": 15
+  },
+  {
+   "name": "Mezcal Espadin Joven",
+   "producer": "Vago",
+   "category": "agave",
+   "region": "Oaxaca",
+   "bottle_price": 20
+  },
+  {
+   "name": "Mezcal Tobalá Ensamble Joven",
+   "producer": "Vago",
+   "category": "agave",
+   "region": "Oaxaca",
+   "bottle_price": 30
+  },
+  {
+   "name": "Small batch, Bourbon",
+   "producer": "Elijah Craig",
+   "category": "whisk(e)y",
+   "region": "Kentucky",
+   "bottle_price": 16
+  },
+  {
+   "name": "Bourbon",
+   "producer": "Woodford Reserve",
+   "category": "whisk(e)y",
+   "region": "Kentucky",
+   "bottle_price": 18
+  },
+  {
+   "name": "Premium, Bourbon",
+   "producer": "Bull Young",
+   "category": "whisk(e)y",
+   "region": "Indiana",
+   "bottle_price": 19
+  },
+  {
+   "name": "Pappy Van Winkle 12 yr, Bourbon",
+   "producer": "Pappy Van Winkle",
+   "category": "whisk(e)y",
+   "region": "Kentucky",
+   "bottle_price": 60
+  },
+  {
+   "name": "Pappy Van Winkle 15 yr, Bourbon",
+   "producer": "Pappy Van Winkle",
+   "category": "whisk(e)y",
+   "region": "Kentucky",
+   "bottle_price": 80
+  },
+  {
+   "name": "Rye",
+   "producer": "18th Street Distillery",
+   "category": "whisk(e)y",
+   "region": "Indiana",
+   "bottle_price": 16
+  },
+  {
+   "name": "Rittenhouse, Rye",
+   "producer": "Rittenhouse",
+   "category": "whisk(e)y",
+   "region": "Kentucky",
+   "bottle_price": 14
+  },
+  {
+   "name": "Bank Note, Blended Scotch",
+   "producer": "Bank Note",
+   "category": "whisk(e)y",
+   "bottle_price": 14
+  },
+  {
+   "name": "MacCallan 12yr, Highland Single Malt Scotch",
+   "producer": "MacCallan",
+   "category": "whisk(e)y",
+   "bottle_price": 35
+  },
+  {
+   "name": "Craigellachie 13yr, Speyside Single Malt Scotch",
+   "producer": "Craigellachie",
+   "category": "whisk(e)y",
+   "bottle_price": 24
+  },
+  {
+   "name": "Ibar 3yr, Basque Mountain Whisky",
+   "producer": "Atxa",
+   "category": "whisk(e)y",
+   "region": "Spain",
+   "bottle_price": 15
+  },
+  {
+   "name": "Braulio, Aged Amaro",
+   "producer": "Braulio",
+   "category": "amaro",
+   "region": "Lombardy, IT",
+   "bottle_price": 15
+  },
+  {
+   "name": "Cynar, Artichoke Amaro",
+   "producer": "Cynar",
+   "category": "amaro",
+   "region": "Milano, IT",
+   "bottle_price": 15
+  },
+  {
+   "name": "Sfumato, Rhubarb Amaro",
+   "producer": "Sfumato",
+   "category": "amaro",
+   "region": "Trentino, IT",
+   "bottle_price": 13
+  },
+  {
+   "name": "Meletti, Amaro",
+   "producer": "Meletti",
+   "category": "amaro",
+   "region": "Marche, IT",
+   "bottle_price": 11
+  },
+  {
+   "name": "Montenegro, Amaro",
+   "producer": "Montenegro",
+   "category": "amaro",
+   "region": "Bologna, IT",
+   "bottle_price": 15
+  },
+  {
+   "name": "Rucolino Amaro alla Rucola",
+   "producer": "Ischia Sapiro",
+   "category": "amaro",
+   "region": "Campania, IT",
+   "bottle_price": 14
+  },
+  {
+   "name": "Averna, Amaro",
+   "producer": "Averna",
+   "category": "amaro",
+   "region": "Sicily, IT",
+   "bottle_price": 13
+  },
+  {
+   "name": "Calvados",
+   "producer": "Claque Pépin",
+   "category": "brandy",
+   "region": "Calvados, FR",
+   "bottle_price": 12
+  },
+  {
+   "name": "Green Chartreuse",
+   "producer": "Green Chartreuse",
+   "category": "brandy",
+   "region": "Mount Chartreuse, FR",
+   "bottle_price": 25
+  },
+  {
+   "name": "Cognac",
+   "producer": "Maison Surrenne",
+   "category": "brandy",
+   "region": "Cognac, FR",
+   "bottle_price": 17
+  },
+  {
+   "name": "Rhum Vieux Agricole VSOP",
+   "producer": "Mrs. Victoire",
+   "category": "brandy",
+   "region": "Martinique, FR",
+   "bottle_price": 21
+  },
+  {
+   "name": "Tre Soli Tre Grappa di Nebbiolo",
+   "producer": "Berta 2005",
+   "category": "brandy",
+   "vintage": "2005",
+   "region": "Barolo, IT",
+   "bottle_price": 60
+  },
+  {
+   "name": "Mirto",
+   "producer": "Tremontis",
+   "category": "brandy",
+   "region": "Sardegna, IT",
+   "bottle_price": 14
+  },
+  {
+   "name": "Adega Velha 12XO Brandy",
+   "producer": "Quinta da Aveleda",
+   "category": "brandy",
+   "region": "Portugal",
+   "bottle_price": 18
+  },
+  {
+   "name": "Tsipouro",
+   "producer": "Katsaros Family",
+   "category": "brandy",
+   "region": "Tirnavos, GR",
+   "bottle_price": 11
+  },
+  {
+   "name": "Arak",
+   "producer": "Massaya",
+   "category": "brandy",
+   "region": "Beqaa Valley, Lebanon",
+   "bottle_price": 12
+  },
+  {
+   "name": "Estrella Galicia non-alcoholic lager",
+   "producer": "Estrella Galicia",
+   "category": "non-alcoholic",
+   "region": "Galicia, España",
+   "bottle_price": 8
+  },
+  {
+   "name": "Opia non-alcoholic sparkling wine",
+   "producer": "Opia",
+   "category": "non-alcoholic",
+   "region": "Béziers, France",
+   "grape_variety": "chardonnay",
+   "bottle_price": 39
+  }
+ ]
+}

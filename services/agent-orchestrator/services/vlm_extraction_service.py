@@ -19,6 +19,7 @@ import base64
 import json
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -209,14 +210,52 @@ class VLMExtractionService:
             self._initialized = False
 
     def _get_training_store(self):
-        """Lazy-load training data store."""
-        if self._training_store is None:
-            try:
-                from services.training_data_store import get_training_store
+        """Lazy-load training data store.
 
-                self._training_store = get_training_store()
-            except Exception:
-                logger.warning("Training data store not available")
+        Failure modes are kept distinct on purpose:
+          - the module or symbol not resolving is a wiring bug (the store ships
+            in this service) and is logged as an error with a traceback
+          - Supabase not being configured is a legitimate state — the store
+            buffers records in memory, so that is only worth an info line
+        """
+        if self._training_store is not None:
+            return self._training_store
+
+        try:
+            from services.training_data_store import get_training_data_store
+        except ImportError:
+            logger.error(
+                "Training data store could not be imported — VLM training "
+                "capture is disabled. This is a wiring bug, not a missing "
+                "optional dependency.",
+                exc_info=True,
+            )
+            return None
+
+        from core.database import get_supabase_client
+
+        supabase = get_supabase_client()
+        if supabase is None:
+            # Legitimate state in local/mock runs: the store buffers in memory.
+            logger.info(
+                "Training capture running without Supabase; records buffer in memory"
+            )
+
+        try:
+            from config.settings import get_settings
+
+            self._training_store = get_training_data_store(
+                supabase_client=supabase,
+                mock_mode=get_settings().mock_llm,
+            )
+        except Exception:
+            logger.error(
+                "Failed to construct the training data store — VLM training "
+                "capture is disabled",
+                exc_info=True,
+            )
+            return None
+
         return self._training_store
 
     # =========================================================================
@@ -255,6 +294,7 @@ class VLMExtractionService:
         try:
             image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
+            _t0 = time.perf_counter()
             response = self._client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=[
@@ -279,13 +319,25 @@ class VLMExtractionService:
             try:
                 _usage = getattr(response, "usage_metadata", None)
                 _in = getattr(_usage, "prompt_token_count", 0) or 0
-                _out = getattr(_usage, "candidates_token_count", 0) or 0
+                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+                _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                    getattr(_usage, "thoughts_token_count", 0) or 0
+                )
                 get_spend_logger().log(
                     provider="google",
                     model="gemini-2.5-flash",
                     input_tokens=_in,
                     output_tokens=_out,
                     cost_usd=0.001,
+                    agent_fallback="vlm_extraction_service",
+                    task_type="vision_extraction",
+                    choice=f"wines:{result.total_wines}",
+                    outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
+                    context={
+                        "document_type": document_type,
+                        "wines_found": result.total_wines,
+                    },
                 )
             except Exception:
                 pass
@@ -341,6 +393,7 @@ class VLMExtractionService:
             prompt += f"\n\nRestaurant: {restaurant_name}"
 
         try:
+            _t0 = time.perf_counter()
             response = self._client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt,
@@ -348,6 +401,33 @@ class VLMExtractionService:
 
             raw_text = response.text if response.text else ""
             result = self._parse_response(raw_text, "gemini_text")
+
+            # Log spend — non-fatal (P1: this call was previously unlogged)
+            try:
+                _usage = getattr(response, "usage_metadata", None)
+                _in = getattr(_usage, "prompt_token_count", 0) or 0
+                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+                _out = (getattr(_usage, "candidates_token_count", 0) or 0) + (
+                    getattr(_usage, "thoughts_token_count", 0) or 0
+                )
+                get_spend_logger().log(
+                    provider="google",
+                    model="gemini-2.5-flash",
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=0.0001,
+                    agent_fallback="vlm_extraction_service",
+                    task_type="text_extraction",
+                    choice=f"wines:{result.total_wines}",
+                    outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
+                    context={
+                        "document_type": document_type,
+                        "wines_found": result.total_wines,
+                    },
+                )
+            except Exception:
+                pass
 
             # Save to training data
             await self._save_training_data(
@@ -444,7 +524,7 @@ class VLMExtractionService:
             return
 
         try:
-            await store.save_extraction(
+            await store.save_scan_pair(
                 dataset_type=f"vlm_{document_type}",
                 input_data={
                     "method": method,
@@ -453,11 +533,17 @@ class VLMExtractionService:
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
                 output_data={"response": response[:5000]},
-                source=f"vlm_{method}",
+                model_version="gemini-2.5-flash",
                 confidence=0.0,
             )
-        except Exception as e:
-            logger.warning(f"Failed to save training data: {e}")
+        except Exception:
+            # save_scan_pair swallows transient DB errors itself and falls back
+            # to its in-memory buffer, so anything surfacing here is a bug in
+            # this call — log it loudly rather than as a benign warning.
+            logger.error(
+                f"Failed to save VLM training data for vlm_{document_type}",
+                exc_info=True,
+            )
 
 
 # =============================================================================
@@ -510,8 +596,15 @@ Return ONLY valid JSON (no markdown fences):
 class GeminiFlashCrawlerExtractor:
     """
     Async Gemini Flash extractor for the background crawl pipeline.
-    Uses AsyncClient + gemini-2.0-flash (not gemini-2.5-flash).
-    Do NOT use for onboarding (that is ClaudeVisionExtractor).
+    Uses AsyncClient + `MODEL_ID` below. Do NOT use for onboarding (that is
+    ClaudeVisionExtractor).
+
+    This docstring used to read "gemini-2.0-flash (not gemini-2.5-flash)" while
+    MODEL_ID on the very next line said gemini-2.5-flash — it had been wrong, and
+    emphatically so, since the model was changed under it. gemini-2.0-flash is
+    now retired (404) as well, so the sentence named a dead model AND contradicted
+    the code one line away. Naming the constant instead of restating its value is
+    what stops that drifting again.
     """
 
     MODEL_ID = "gemini-2.5-flash"
@@ -534,6 +627,7 @@ class GeminiFlashCrawlerExtractor:
     ) -> VLMExtractionResult:
         try:
             client = self._get_client()
+            _t0 = time.perf_counter()
             response = await client.aio.models.generate_content(
                 model=self.MODEL_ID,
                 contents=CRAWL_TEXT_PROMPT.format(
@@ -547,13 +641,22 @@ class GeminiFlashCrawlerExtractor:
             try:
                 usage = getattr(response, "usage_metadata", None)
                 input_tokens = getattr(usage, "prompt_token_count", 0) or 0
-                output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+                # thinking tokens bill at the output rate — see spend_logger.usage_tokens()
+                output_tokens = (getattr(usage, "candidates_token_count", 0) or 0) + (
+                    getattr(usage, "thoughts_token_count", 0) or 0
+                )
                 get_spend_logger().log(
                     provider="google",
                     model=self.MODEL_ID,
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
                     cost_usd=result.cost_estimate,
+                    agent_fallback="vlm_extraction_service",
+                    task_type="crawl_extraction",
+                    choice=f"wines:{result.total_wines}",
+                    outcome="success",  # call-level: response returned
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
+                    context={"wines_found": result.total_wines},
                 )
             except Exception:
                 pass

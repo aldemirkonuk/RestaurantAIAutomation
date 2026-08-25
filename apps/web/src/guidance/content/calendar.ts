@@ -3,7 +3,7 @@ import type { TourDefinition } from '../tours/registry'
 export const calendarTip = {
   pageId: 'calendar' as const,
   title: 'Calendar',
-  body: 'Track deliveries, tastings, and reminders — and subscribe from your phone.',
+  body: 'Add events, switch views, filter types, then drag on the grid to reschedule.',
 }
 
 export const calendarTour: TourDefinition = {
@@ -11,18 +11,27 @@ export const calendarTour: TourDefinition = {
   steps: [
     {
       element: '[data-tour="calendar-new-event"]',
-      title: 'Add an event',
-      description: 'Deliveries, tastings, meetings, or reminders — click a day or use New Event.',
-    },
-    {
-      element: '[data-tour="calendar-sidebar"]',
-      title: 'Filter by type',
-      description: 'Toggle event types on or off to focus on what matters right now.',
+      title: 'Schedule something',
+      description:
+        'Create tastings, deliveries, meetings, or reminders without leaving the calendar.',
     },
     {
       element: '[data-tour="calendar-view-switcher"]',
-      title: 'Change your view',
-      description: 'Month, week, day, or agenda — switch to whatever fits your shift.',
+      title: 'Change the view',
+      description:
+        'Month, week, day, or agenda — pick the scale that matches how you plan the week.',
+    },
+    {
+      element: '[data-tour="calendar-sidebar"]',
+      title: 'Navigate & filter',
+      description:
+        'Jump dates on the mini calendar and toggle event types to focus on what matters now.',
+    },
+    {
+      element: '[data-tour="calendar-grid"]',
+      title: 'Main calendar',
+      description:
+        'Click a day or slot to create an event; drag to move or resize existing ones.',
     },
   ],
 }

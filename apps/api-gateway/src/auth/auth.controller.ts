@@ -28,7 +28,13 @@ import { UpdateProfileDto } from "./dto/update-profile.dto";
 import { ChangePasswordDto } from "./dto/change-password.dto";
 import { LinkProviderDto } from "./dto/link-provider.dto";
 import { LeaveRestaurantDto } from "./dto/leave-restaurant.dto";
+import {
+  RequestPasswordResetDto,
+  ResetPasswordDto,
+} from "./dto/password-reset.dto";
+import { PasswordResetThrottleGuard } from "./guards/password-reset-throttle.guard";
 import { Request } from "express";
+import { devBypassAllowed } from "./dev-bypass.util";
 
 @Controller("auth")
 export class AuthController {
@@ -48,6 +54,31 @@ export class AuthController {
       success: true,
       ...tokens,
       message: "Login successful",
+    };
+  }
+
+  /**
+   * Mints a real login session for DEV_AUTH_BYPASS_EMAIL, no password.
+   *
+   * Exists purely so localhost testing (manual, or an automated browser tool)
+   * never has to hold or type a real password. Off unless every condition in
+   * `devBypassAllowed` holds — see that function and .env.local for the
+   * switches — and the resulting session is a normal, fully-signed JWT with
+   * no special handling anywhere else: refresh, /me, /me/role, tenant scoping
+   * all work exactly as they do for a password login.
+   */
+  @Public()
+  @Post("dev-bypass-login")
+  @HttpCode(HttpStatus.OK)
+  async devBypassLogin(@Req() req: Request) {
+    if (!devBypassAllowed(req)) {
+      throw new BadRequestException("Dev auth bypass is not available");
+    }
+    const tokens = await this.authService.devBypassLogin();
+    return {
+      success: true,
+      ...tokens,
+      message: "Dev bypass session issued",
     };
   }
 
@@ -136,9 +167,11 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async getProfile(@Req() req: Request & { user: any }) {
     const user = await this.authService.getProfileForUser(req.user.userId);
+    // Prefer JWT-scoped restaurant over users.restaurant_id (branch switch)
+    const restaurantId = req.user.restaurantId ?? user.restaurantId ?? null;
     return {
       success: true,
-      user,
+      user: { ...user, restaurantId },
     };
   }
 
@@ -165,6 +198,46 @@ export class AuthController {
       body.newPassword,
     );
     return { success: true, message: "Password updated" };
+  }
+
+  /**
+   * Request a password reset email. Public — the caller is, by definition,
+   * someone who cannot authenticate right now.
+   *
+   * Always returns the same generic response whether or not the email
+   * matches an account (enumeration resistance — see
+   * AuthService#requestPasswordReset for the reasoning). Per-IP rate limiting
+   * via PasswordResetThrottleGuard; per-email cooldown is enforced inside the
+   * service, where it can see the row history.
+   */
+  @Post("request-password-reset")
+  @Public()
+  @UseGuards(PasswordResetThrottleGuard)
+  @HttpCode(HttpStatus.OK)
+  async requestPasswordReset(
+    @Body() body: RequestPasswordResetDto,
+    @Req() req: Request,
+  ) {
+    await this.authService.requestPasswordReset(body.email, req.ip || null);
+    return {
+      success: true,
+      message:
+        "If an account exists for that email, a password reset link has been sent.",
+    };
+  }
+
+  /**
+   * Consume a password-reset token and set a new password. Public, same
+   * reasoning as request-password-reset — this is how someone regains access
+   * without being logged in. Token validity, expiry and single-use are
+   * enforced in AuthService#resetPassword.
+   */
+  @Post("reset-password")
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(@Body() body: ResetPasswordDto) {
+    await this.authService.resetPassword(body.token, body.newPassword);
+    return { success: true, message: "Password has been reset" };
   }
 
   @Get("me/linked-providers")

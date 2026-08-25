@@ -73,9 +73,6 @@ export const EMPTY_CONVERSATION_FILTERS: ConversationFilterState = {
   page: 1,
 }
 
-/** UI bucket when order_id is null. */
-export type OrderBucket = 'unassigned' | string
-
 const SENTIMENT_SET = new Set<string>(SENTIMENTS)
 
 /**
@@ -121,33 +118,23 @@ export function sentimentLabel(bucket: SentimentBucket): string {
 }
 
 /**
- * Normalize order linkage into a stable group key.
- * Missing order_id → unassigned (mirrors sentiment Unclassified).
+ * Badge for a conversation thread. A thread without an order is not "unassigned" —
+ * it is a real negotiation that has not produced a purchase order yet, which is the
+ * normal state for an inquiry. Label it truthfully.
  */
-export function normalizeOrderKey(
-  orderId: string | null | undefined,
-): OrderBucket {
-  if (orderId == null || !String(orderId).trim()) return 'unassigned'
-  return String(orderId).trim()
-}
-
-export function isUnassignedOrder(key: OrderBucket): boolean {
-  return key === 'unassigned'
-}
-
-export function orderBucketLabel(
+export function threadBadgeLabel(
   orderNumber: string | null | undefined,
-  key: OrderBucket,
 ): string {
-  if (isUnassignedOrder(key)) return 'Unassigned'
-  const num = orderNumber?.trim()
-  return num || 'Order'
+  return orderNumber?.trim() || 'No order yet'
 }
 
-/** Amber for Unassigned; mono gray for real order numbers. */
-export function orderBucketBadgeClass(key: OrderBucket): string {
-  if (isUnassignedOrder(key)) return 'bg-amber-50 text-amber-700'
-  return 'bg-gray-100 text-gray-700 font-mono'
+/** Amber when no order is linked; mono gray for real order numbers. */
+export function threadBadgeClass(
+  orderNumber: string | null | undefined,
+): string {
+  return orderNumber?.trim()
+    ? 'bg-gray-100 text-gray-700 font-mono'
+    : 'bg-amber-50 text-amber-700'
 }
 
 /**

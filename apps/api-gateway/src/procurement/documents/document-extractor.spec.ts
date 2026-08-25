@@ -2,9 +2,13 @@ import { ConfigService } from "@nestjs/config";
 import { DocumentExtractorService } from "./document-extractor.service";
 import { isDocumentLike } from "./document-intake.service";
 
-const svc = new DocumentExtractorService({
-  get: () => undefined,
-} as unknown as ConfigService);
+const svc = new DocumentExtractorService(
+  {
+    get: () => undefined,
+  } as unknown as ConfigService,
+  // modelClient — these tests exercise normalize() only, never the transport.
+  {} as any,
+);
 
 const json = (o: unknown) => JSON.stringify(o);
 

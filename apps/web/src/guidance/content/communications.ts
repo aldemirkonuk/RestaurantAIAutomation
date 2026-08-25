@@ -3,7 +3,7 @@ import type { TourDefinition } from '../tours/registry'
 export const communicationsTip = {
   pageId: 'communications' as const,
   title: 'Communications',
-  body: 'Templates, send history, and scheduled reports — all in one place.',
+  body: 'Pick a workspace, filter by channel, then build or reuse a template.',
 }
 
 export const communicationsTour: TourDefinition = {
@@ -11,13 +11,27 @@ export const communicationsTour: TourDefinition = {
   steps: [
     {
       element: '[data-tour="communications-tabs"]',
-      title: 'Four views',
-      description: 'Templates, send history, scheduled reports, and procurement emails each get their own tab.',
+      title: 'Four workspaces',
+      description:
+        'Switch between Templates, Send History, Scheduled Reports, and Procurement Emails.',
+    },
+    {
+      element: '[data-tour="communications-channels"]',
+      title: 'Filter by channel',
+      description:
+        'Show all templates or only Email or SMS before you create or edit one.',
     },
     {
       element: '[data-tour="communications-new-template"]',
-      title: 'Build a template',
-      description: 'Create reusable email or SMS templates with a drag-and-drop canvas.',
+      title: 'Create a template',
+      description:
+        'Start an email canvas or SMS template with preview — reusable for the next send.',
+    },
+    {
+      element: '[data-tour="communications-template-library"]',
+      title: 'Saved templates',
+      description:
+        'Edit, duplicate, or send from templates you already built.',
     },
   ],
 }

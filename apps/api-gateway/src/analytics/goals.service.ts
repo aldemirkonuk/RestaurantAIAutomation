@@ -324,6 +324,10 @@ export class GoalsService {
           .from("pos_checks")
           .select("total, opened_at, closed_at, items")
           .eq("restaurant_id", restaurantId)
+          // Voided checks are not revenue — see pos_checks.voided. Goal progress
+          // is the most visible of the three readers: it drives the sentences the
+          // hourly sweep shows the owner.
+          .eq("voided", false)
           .gte("opened_at", sinceIso);
         const checks = data || [];
         if (metricKey === "checks") {

@@ -70,9 +70,21 @@ def get_gemini_client() -> "genai.Client":
     return _gemini_client
 
 
+def get_anthropic_client() -> "anthropic.AsyncAnthropic":
+    """
+    Returns the module-level Anthropic async client singleton.
+
+    The client is model-agnostic — the model id is chosen per call — so Haiku
+    extraction and Sonnet classification-escalation share one connection pool.
+    `get_haiku_client` is the original name kept for existing call sites; prefer
+    this one in new code, because the client was never Haiku-specific.
+    """
+    return get_haiku_client()
+
+
 def get_haiku_client() -> "anthropic.AsyncAnthropic":
     """
-    Returns the module-level Haiku async client singleton.
+    Returns the module-level Anthropic async client singleton.
     Uses anthropic.AsyncAnthropic for BaseAgent async context.
     """
     global _haiku_client

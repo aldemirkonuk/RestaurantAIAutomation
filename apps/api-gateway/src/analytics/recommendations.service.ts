@@ -1,8 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
+import * as crypto from "crypto";
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
+import { DatabaseService } from "../database/database.service";
 import {
   RecommendationActionsService,
   RecommendationStatus,
@@ -51,11 +53,12 @@ export class RecommendationsService {
     private readonly insightGenerator: InsightGeneratorService,
     private readonly goalsService: GoalsService,
     private readonly actions: RecommendationActionsService,
+    private readonly dbService: DatabaseService,
   ) {}
 
   async getRecommendations(
     restaurantId: string,
-    opts: { includeHidden?: boolean } = {},
+    opts: { includeHidden?: boolean; surface?: string } = {},
   ): Promise<{
     recommendations: Recommendation[];
     rulesEvaluated: number;
@@ -367,11 +370,48 @@ export class RecommendationsService {
       return b.score - a.score;
     });
 
+    // N2 (BEVERAGE_CATALOGUE_PLAN.md): log what was actually SHOWN, not just
+    // what gets acted on later. recommendation_actions only records the
+    // manager's disposition — with no impressions log, "shown at position 3,
+    // ignored every time" is invisible, and a future learned recommender
+    // would train on conversions alone and reinforce its own priors (arch
+    // §10.6 M1). Fire-and-forget: telemetry must never slow or fail this
+    // response, same posture as the low-stock alert dispatch in pos-hub.
+    void this.logImpressions(restaurantId, visible, opts.surface).catch(
+      () => undefined,
+    );
+
     return {
       recommendations: visible,
       rulesEvaluated,
       generatedAt: new Date().toISOString(),
       stateCounts,
     };
+  }
+
+  private async logImpressions(
+    restaurantId: string,
+    visible: Recommendation[],
+    surface?: string,
+  ): Promise<void> {
+    if (!visible.length) return;
+    const requestId = crypto.randomUUID();
+    const rows = visible.map((r, i) => ({
+      restaurant_id: restaurantId,
+      rule_key: r.ruleKey,
+      category: r.category,
+      urgency: r.urgency,
+      score: r.score,
+      position: i + 1,
+      pinned: !!r.pinned,
+      surface: surface || "recommendations_page",
+      request_id: requestId,
+    }));
+    const { error } = await this.dbService.supabase
+      .from("recommendation_impressions")
+      .insert(rows);
+    if (error) {
+      this.logger.warn(`Impression logging failed: ${error.message}`);
+    }
   }
 }

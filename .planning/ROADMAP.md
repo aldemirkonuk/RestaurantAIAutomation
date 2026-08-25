@@ -24,7 +24,7 @@ Phases 1-17 completed (2026-03-30 to 2026-04-08). 90 requirements, all complete.
 - [x] **Phase 18: Infrastructure Foundation** — Build shared infrastructure ALL 24 agents inherit: 6 new PG tables (idempotency_keys, decision_log, outbox, saga_state, event_store, dead_letter_queue) + 6 BaseAgent additions (idempotency mixin, decision logging, structured JSON logging, correlation ID propagation, DLQ on retry exhaustion, saga state helpers) (completed 2026-04-10)
 - [x] **Phase 19: Wave 1 Bug Fixes** — Fix every bug found in the surgical audit across 4 agents: InventoryEngine (race condition, dead code), POSIntegrationAgent (hmac, wine detection, signature verification, refund logic), NotificationAgent (rate limit persistence, batch processor), ReportingAgent (self.db crash, stub reports, PDF export) (completed — absorbed into Phase 20 execution)
 - [x] **Phase 20: Wave 1 Level 4 Hardening** — Bring 4 golden path agents from Level 1.5 to Level 4 using new BaseAgent infrastructure: wire idempotency, decision logging, event sourcing, delivery tracking, and write 50+ integration tests across all 4 agents (completed 2026-04-11)
-- [x] **Phase 21: Golden Path E2E** — Wire the full workflow end-to-end: Toast webhook → POSIntegrationAgent → InventoryEngine → NotificationAgent → ReportingAgent. Integration test with mock Toast data, then real Toast data from friend's restaurant. Chaos testing: kill agents, disconnect RabbitMQ, simulate Supabase outages (completed 2026-04-12)
+- [x] **Phase 21: Golden Path E2E** — Wire the full workflow end-to-end: Toast webhook → POSIntegrationAgent → **BufferManager** → InventoryEngine → NotificationAgent. (ReportingAgent is scheduled/on-demand, not part of this chain — see the corrected criterion #2 below.) Integration test with mock Toast data, then real Toast data from friend's restaurant. Chaos testing: kill agents, disconnect RabbitMQ, simulate Supabase outages (completed 2026-04-12)
 - [x] **Phase 22: Observability & Deployment** — Sentry error tracking, per-agent health dashboard, structured log aggregation, business metrics. Deploy: Vercel (frontend) + Supabase Cloud (DB) + Railway (Python + NestJS) + CloudAMQP (RabbitMQ) + Upstash (Redis). 9/9 agents live. (completed + deployed 2026-04-13)
 
 ## Phase Details
@@ -73,10 +73,10 @@ Plans:
   12. ReportingAgent: PDF export generates actual PDF file via weasyprint
 **Plans:** 4 plans
 Plans:
-- [ ] 19-01-PLAN.md — InventoryEngine: optimistic locking migration + dead code removal (BUG-01, BUG-02)
-- [ ] 19-02-PLAN.md — POSIntegrationAgent: hmac, wine detection, signature, refund fixes (BUG-03..06)
-- [ ] 19-03-PLAN.md — NotificationAgent: Redis rate limits + batch task monitoring (BUG-07, BUG-08)
-- [ ] 19-04-PLAN.md — ReportingAgent: self.db crash, SMS append, real reports, PDF export (BUG-09..12)
+- [x] 19-01-PLAN.md — InventoryEngine: optimistic locking migration + dead code removal (BUG-01, BUG-02)
+- [x] 19-02-PLAN.md — POSIntegrationAgent: hmac, wine detection, signature, refund fixes (BUG-03..06)
+- [x] 19-03-PLAN.md — NotificationAgent: Redis rate limits + batch task monitoring (BUG-07, BUG-08)
+- [x] 19-04-PLAN.md — ReportingAgent: self.db crash, SMS append, real reports, PDF export (BUG-09..12)
 
 ### Phase 20: Wave 1 Level 4 Hardening
 **Goal**: Bring each Wave 1 agent from Level 1.5 to Level 4 using the new BaseAgent infrastructure. Every agent gets idempotency, decision logging, and comprehensive tests.
@@ -106,7 +106,7 @@ Plans:
 **Requirements**: E2E-v2-01, E2E-v2-02, E2E-v2-03, E2E-v2-04, E2E-v2-05, E2E-v2-06
 **Success Criteria** (what must be TRUE):
   1. FastAPI endpoint `POST /api/v1/pos/webhook/toast` receives webhook and routes to POSIntegrationAgent
-  2. RabbitMQ exchanges configured: pos.events → InventoryEngine, stock.events → NotificationAgent + ReportingAgent
+  2. RabbitMQ exchanges configured: pos.events → **BufferManager** → stock.evaluated → InventoryEngine; stock.events → NotificationAgent. ⚠️ **Corrected 2026-07-31:** this read "pos.events → InventoryEngine, stock.events → NotificationAgent + ReportingAgent". Two errors. BufferManager sits between POS and inventory (it batches sales before evaluating stock), and **ReportingAgent never subscribes to stock.events** — reports are scheduled/on-demand, and wiring them to stock events would emit one report per pour. The code was right; the criterion overstated. Pinned by `tests/test_event_topology.py`.
   3. Mock Toast webhook → wine detected → stock decremented → notification sent: end-to-end in < 5 seconds
   4. Real Toast data: historical orders imported, inventory levels match Toast records
   5. Live webhook forwarding (ngrok → local) processes real orders in real-time
@@ -142,7 +142,7 @@ Plans:
 - [x] 22-04-PLAN.md — NestJS api-gateway health proxy controller + OrchestratorModule update (Wave 1)
 - [x] 22-05-PLAN.md — AdminHealth.tsx + App.tsx route + vercel.json + Railway/Vercel deployment checkpoint (Wave 2)
 
-- [ ] **Phase 23: Gmail Integration & Calendar Reminder Emails** *(DEFERRED — revisit later)* — Wire Gmail OAuth2 (api-gateway `GmailService`) with `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` on Railway. Fix orchestrator SMTP path (`GMAIL_USER/PASSWORD` app-password). Activate calendar reminder emails: CalendarAgent sends reminders at T-7, T-1, T-0 via `email_client.py`. Confirm `scheduled-tasks.service.ts` weekly/daily email reports work end-to-end. Test email pipeline with real credentials. **Status:** Plans 01, 02, 04 complete. Blocked at plan 23-03 (Railway OAuth2 credential gate). Plans 23-03 + 23-06 remain.
+- ~~**Phase 23: Gmail Integration & Calendar Reminder Emails**~~ — **DROPPED 2026-07-28.** Blocked at plan 23-03 on the Railway OAuth2 credential gate since May; plans 01/02/04 shipped, 03 + 06 abandoned. Superseded by the provider-agnostic inbound-email webhook (`PROSPECTS_ATTRIBUTION_ARCHITECTURE.md` Phases 1–3), which is already code-complete and needs only a domain + inbound-parse provider + DNS rather than Gmail OAuth2. Outbound email keeps its working SMTP app-password fallback. **Note:** registering the inbound consumer agents is still required and is tracked as Phase 44.1c — that work was never dependent on Gmail credentials.
 - [x] **Phase 24: Provider Communication Pipeline + Email Intelligence** *(COMPLETE — 2026-05-13)* — `EmailIntelAgent` (Gemini Flash classification → PROMO/OPERATIONAL/NOISE routing → Haiku extraction → urgency scoring + calendar linking + cross-vendor price + Redis digest accumulation). `ProviderConversationAgent` Level 4 (idempotency, DLQ, commitment language guardrail, D-19 context injection, audit trail, manager learning loop). DB schema: `vendor_promotions` Phase 24 columns, `negotiation_facts`, `conversation_embeddings`, digest toggles. Gmail Watch expanded to INBOX+SENT.
   - [x] 24-01-PLAN.md — DB schema foundations + RabbitMQ exchange fix (Wave 1)
   - [x] 24-02-PLAN.md — Gmail Watch SENT expansion + direction detection (Wave 1)
@@ -261,7 +261,7 @@ Plans:
 - [x] 27-02-PLAN.md — Backend: vendor catalogue search API + providers CRUD + order guard endpoint (Wave 2) [VENDOR-04..06]
 - [x] 27-03-PLAN.md — Frontend: Providers empty state + VendorSearchModal + catalogue browsing UI (Wave 3) [VENDOR-07..09]
 - [x] 27-04-PLAN.md — Frontend: Branch provider transfer modal + order creation guard popup (Wave 4) [VENDOR-10]
-**UAT**: All 5 tests passed 2026-05-11. Phase complete.
+**UAT**: ⚠️ **Claim corrected 2026-07-31.** This line read "All 5 tests passed 2026-05-11", but `27-HUMAN-UAT.md` has read `status: partial` with all 5 tests `[pending]` since 2026-05-10 — they were never run. Code-level `27-VERIFICATION.md` passed; the five human click-through tests remain outstanding. See v3.0 task 44.4.
 
 ### Phase 30: Calendar Operations Hub
 **Goal**: Make the calendar fully functional and operationally connected. Fix 5 critical bugs (column name mismatch, status enum divergence, color/endTime persistence, unimplemented recurrence scope). Fix dashboard "Add Event" to open the modal in-context. Add iCal subscription feed so operators can subscribe WineOps events directly into Outlook/Apple Calendar/Google Calendar in one URL — zero OAuth, zero friction.
@@ -363,11 +363,11 @@ Plans:
 **Research:** 33-RESEARCH.md — complete (2026-05-14)
 **Plans:** 5 plans
 Plans:
-- [ ] 33-01-PLAN.md — DB schema migration (ALTER user_restaurant_access + indexes + backfill + RLS) + supabase db push [MEMBER-06]
-- [ ] 33-02-PLAN.md — Auth service: fix joinViaInvite dual-path, registerRestaurant URA write, switchRestaurant fine-grained, generateTokens role from URA, GET /me/role + POST /invite/:code/accept [MEMBER-01, 02, 07, 08]
-- [ ] 33-03-PLAN.md — Members CRUD backend: MembersService + MembersController + RestaurantsModule (GET/PATCH/DELETE members, POST addMember, GET/DELETE invites) [MEMBER-03, 04, 05, 10]
-- [ ] 33-04-PLAN.md — Frontend auth + routes: AuthContext activeRole, InviteLanding.tsx, NoAccess.tsx, App.tsx routes [MEMBER-07, 10]
-- [ ] 33-05-PLAN.md — Settings Team tab redesign: per-restaurant member list, role badges, owner role dropdown, remove/leave dialog, pending invites, profile role row [MEMBER-09]
+- [x] 33-01-PLAN.md — DB schema migration (ALTER user_restaurant_access + indexes + backfill + RLS) + supabase db push [MEMBER-06]
+- [x] 33-02-PLAN.md — Auth service: fix joinViaInvite dual-path, registerRestaurant URA write, switchRestaurant fine-grained, generateTokens role from URA, GET /me/role + POST /invite/:code/accept [MEMBER-01, 02, 07, 08]
+- [x] 33-03-PLAN.md — Members CRUD backend: MembersService + MembersController + RestaurantsModule (GET/PATCH/DELETE members, POST addMember, GET/DELETE invites) [MEMBER-03, 04, 05, 10]
+- [x] 33-04-PLAN.md — Frontend auth + routes: AuthContext activeRole, InviteLanding.tsx, NoAccess.tsx, App.tsx routes [MEMBER-07, 10]
+- [x] 33-05-PLAN.md — Settings Team tab redesign: per-restaurant member list, role badges, owner role dropdown, remove/leave dialog, pending invites, profile role row [MEMBER-09]
 
 ---
 
@@ -444,7 +444,173 @@ Plans:
 
 ---
 
+## Testing Campaign: Synthetic World & Full-System Verification (Phases 36–43)
+
+**Locked 2026-07-27 (3 rounds of user Q&A).** Testing-first foundation: this campaign runs BEFORE Waves 2-6 agent hardening. The synthetic world + test suites become the substrate all future hardening builds on.
+
+**Core idea:** Build a parameterized **synthetic restaurant generator** (menus copied from real web menus — different SKUs, styles, volumes) + a **SimPOS provider** plugged into the existing pos-hub generic abstraction + a **day-by-day accelerated operations simulator** with a web control panel (click menu items to fire orders, start/stop sim, inject chaos). Because the simulator knows ground truth (every order, every stock movement), **analytics and insights can be asserted exactly** — the user's #1 eval priority.
+
+**Locked decisions:**
+- Scope: everything (web, api-gateway, orchestrator, database; mobile deferred)
+- Grouping: 11 broad functionality groups crossing app boundaries (registry in Phase 36)
+- Test types: unit + integration + E2E + structured manual checklists
+- Existing tests: keep and build around (inventory them, don't rework)
+- Depth: breadth-first — every group reaches a scored bar, then deepen
+- Pass bar: **T0–T4 maturity score per functionality group** (mirrors agent Level system)
+- Data: user creates synthetic data; system needs the fake POS connection (SimPOS via pos-hub)
+- AI: real eval suites — golden datasets, scored outputs; priorities: **analytics/insights answers first**, then wine extraction, agent decisions, email intel
+- Environment: cloud stack (Vercel + Railway + Supabase Cloud); SimPOS deployed on Railway
+- Simulated time: accelerated + controllable (pause/step/jump-to-day)
+- CI: GitHub Actions — unit/integration on push, E2E nightly, evals weekly
+- Execution: agent-led; user does manual pathway passes (web all pages, scanner flows, admin) with prepared checklists
+
+**Functionality groups (registry seed — finalized in Phase 36):**
+1. Identity & Access — auth, registration, verification, invites, memberships/roles, orgs/chains/locations, profile, settings
+2. Catalog & Extraction — wine library, submissions, menu import (scan/CSV/manual), extraction pipeline, enrichment, ontology, studio
+3. Inventory Operations — stock, ledger, storage locations, counts/corrections, ghost inventory, shrinkage
+4. POS & Sales Ingestion — pos-hub adapters, webhooks, checks, wine detection, sale→stock pipeline
+5. Procurement & Vendors — providers, vendor catalogue, order lifecycle, RFQ, recurring orders, invoice matching
+6. Communications & Email Intelligence — Gmail, triage, promos, provider conversations, drafts, digests, prospects
+7. Calendar & Scheduling — events, recurrence, iCal, reminders, event-driven procurement signals
+8. Analytics, Reports & Insights — dashboard KPIs, reports, insight catalog, analytic answers, exports
+9. Notifications & Alerts — notification agent, SMS/email/push channels, websocket, one-tap actions, rate limits
+10. AI Assistants & Recommendations — sommelier, recommendations, Ask AI palette
+11. Platform & Agent Infrastructure — BaseAgent guarantees, sagas, DLQ, idempotency, health, observability, admin
+
+- [x] **Phase 36: Testing Foundation & Functionality Registry** — Functionality registry (11 groups, every module/page/agent mapped), T0–T4 scoring rubric, existing-test inventory, TESTING-SCORECARD.md baseline, CI skeleton, synthetic-tenant isolation convention (completed 2026-07-27)
+- [x] **Phase 37: Synthetic Restaurant Engine** — Parameterized restaurant generator; menus sourced from real web menus via existing crawler; seeds cloud Supabase with org/restaurant/team/menu/opening inventory; ground-truth ledger (the oracle) (completed 2026-07-27; verified 2026-07-28 — 12/12)
+> **Phases 38–43 carried into v3.0 as Phase 44 subphases 44.7–44.12** (milestone
+> closed 2026-07-28 with `gaps_found`; zero code existed for any of them). See the
+> "## v3.0 Phases" section below and `.planning/v3.0-TECH-DEBT.md`.
+
+### Phase 36: Testing Foundation & Functionality Registry
+**Goal**: Create the shared skeleton every later testing phase writes into: what the functionality groups are, how coverage is scored, what tests already exist, and where results live. After this phase, "how tested is X?" has a single canonical answer.
+**Depends on**: Nothing (first testing-campaign phase)
+**Requirements**: TFND-01..06
+**Success Criteria** (what must be TRUE):
+  1. `.planning/testing/FUNCTIONALITY-REGISTRY.md` exists: 11 groups, every api-gateway module, web page, orchestrator agent, and database domain mapped to exactly one group
+  2. T0–T4 rubric defined: T0 untested · T1 smoke (happy path runs) · T2 contract (happy + key errors + assertions on outputs) · T3 resilient (idempotency/concurrency/failure modes) · T4 ground-truth verified (asserted against simulator oracle or golden dataset)
+  3. Existing-test inventory complete: every spec/pytest/Playwright file catalogued (group, runs?, passes?) — kept as-is, not reworked
+  4. `.planning/testing/TESTING-SCORECARD.md` initialized with baseline score per group, evidence links
+  5. GitHub Actions: unit + integration suites run on push; nightly E2E workflow scheduled (reuses Phase 25 e2e-prod.yml patterns)
+  6. Synthetic tenant convention locked: `sim-*` restaurant_id prefix, RLS-safe seeding, idempotent teardown (extends Phase 25 `e2e-test-restaurant` pattern)
+**Plans**: 2/3 plans executed
+
+Plans:
+**Wave 1**
+- [x] 36-01-PLAN.md — T0–T4 RUBRIC.md + FUNCTIONALITY-REGISTRY.md (11-group surface map; contested surfaces; Phase 38 reserved `/sim`; full Nest/agent/route verify)
+
+**Wave 2** *(depends on 36-01 — registry/inventory reconcile)*
+- [x] 36-02-PLAN.md — EXISTING-TEST-INVENTORY.md + TESTING-SCORECARD.md baseline (locked slugs; provisional T1?; UX Gaps; CI/E2E honesty)
+
+**Wave 3** *(depends on 36-01 + 36-02)*
+- [x] 36-03-PLAN.md — SYNTHETIC-TENANT.md + CI annotations + operator README + checklists/ naming stub
+
+### Phase 37: Synthetic Restaurant Engine
+**Goal**: A parameterized factory that can produce any restaurant profile on demand — with real-world menus copied from the web — and seed it into the cloud stack with a queryable ground-truth ledger. This is the oracle everything else asserts against.
+**Depends on**: Phase 36 (tenant convention, registry)
+**Requirements**: SYNTH-01..05
+**Success Criteria** (what must be TRUE):
+  1. Generator produces a restaurant from parameters: cuisine, size, wine-program depth, sales volume, price tier, ordering rhythm
+  2. Menus sourced from real web menus (reusing the v1.0 crawler/extraction pipeline) normalized into menu_items + wine list — real SKU diversity, not lorem ipsum
+  3. Generated restaurant fully seeded into cloud Supabase: organization, restaurant, team members (owner/manager/staff), menu, wine inventory with opening stock
+  4. Ground-truth ledger records every generated fact (opening stock, menu prices, team roster) in queryable form (`sim_ground_truth` tables or equivalent)
+  5. ≥ 5 distinct archetypes generated and live: e.g. wine-heavy fine dining, casual bistro, high-volume bar, tiny cafe, Turkish restaurant clone
+**Plans**: 3 plans
+**Progress**: 3/3 plans executed (Complete)
+**Verification**: passed 2026-07-28 — 12/12 must-haves; cloud seed + oracle live (`exzueerziesmczwlhomd`)
+
+Plans:
+**Wave 1**
+- [x] 37-01-PLAN.md — Snapshots + archetype recipes + opening stock + Wave 0 Nyquist scaffolds (SYNTH-01/02/05)
+
+**Wave 2** *(depends on 37-01)*
+- [x] 37-02-PLAN.md — Atomic seed + sim_ground_truth* oracle + Auth personas (SYNTH-03/04)
+
+**Wave 3** *(depends on 37-01 + 37-02)*
+- [x] 37-03-PLAN.md — Teardown write-set gate + CLI/API dry-run/--apply + role isolation (D-11..D-17)
+
+### Phase 38: SimPOS Provider & Operations Simulator
+**Goal**: The fake POS connection the user asked for. A SimPOS provider speaks the pos-hub canonical check contract, an accelerated simulator plays out restaurant days, and a web control panel lets the user fire any order by clicking menu items. The system under test cannot tell it's fake.
+**Depends on**: Phase 37 (restaurants + menus to sell from)
+**Requirements**: SIMPOS-01..07
+**Success Criteria** (what must be TRUE):
+  1. SimPOS registered in `pos-provider.registry` as a first-class provider emitting canonical checks through the standard ingestion pipeline
+  2. Simulator emits realistic order streams from each restaurant's profile distributions (item popularity, daypart rhythm, ticket size) across simulated days
+  3. Simulated clock is accelerated + controllable: configurable speed (e.g. 1 day/minute), pause, step, jump-to-day
+  4. Control panel (web): pick a restaurant → see its menu → click items → order fires through pos-hub within seconds
+  5. Control panel: start/stop/speed controls + chaos injection (order burst, void, refund, duplicate webhook, malformed payload)
+  6. Deployed on Railway; events reach the deployed api-gateway exactly like a real POS integration
+  7. Every emitted event mirrored to the ground-truth ledger (sales oracle for Phase 41)
+**Plans**: TBD (created by `/gsd-plan-phase 38`)
+
+### Phase 39: Breadth Pass A — Core Operations
+**Goal**: Groups 1–4 (Identity & Access, Catalog & Extraction, Inventory Operations, POS & Sales Ingestion) each reach ≥ T2 on the scorecard: automated smoke + contract suites running in CI, driven by synthetic restaurants, plus a manual pathway checklist per group for the user.
+**Depends on**: Phase 38 (synthetic world live)
+**Requirements**: BRD-01..04
+**Success Criteria** (what must be TRUE):
+  1. Identity & Access ≥ T2: register/join/invite/role-switch/multi-location suites green against cloud stack with sim tenants
+  2. Catalog & Extraction ≥ T2: menu import (all 3 methods), library CRUD, submission pipeline suites green
+  3. Inventory Operations ≥ T2: stock movements, ledger integrity, locations, corrections suites green
+  4. POS & Sales Ingestion ≥ T2: SimPOS checks → canonical ingestion → wine detection → stock decrement suites green (incl. duplicate/malformed rejection)
+  5. Scorecard updated with evidence; manual checklists for all 4 groups delivered to `.planning/testing/checklists/`
+**Plans**: TBD (created by `/gsd-plan-phase 39`)
+
+### Phase 40: Breadth Pass B — Business Loops
+**Goal**: Groups 5–7 + 9 (Procurement & Vendors, Communications & Email Intelligence, Calendar & Scheduling, Notifications & Alerts) each reach ≥ T2, same bar as Phase 39.
+**Depends on**: Phase 38 (synthetic world live); can run parallel to Phase 39
+**Requirements**: BRD-05..08
+**Success Criteria** (what must be TRUE):
+  1. Procurement & Vendors ≥ T2: vendor catalogue, order lifecycle (create → approve → deliver), guard rails, recurring orders suites green
+  2. Communications & Email Intelligence ≥ T2: triage routing, promo extraction, draft approval loop, thread linking suites green (LLM calls mocked at contract level here — real evals in Phase 42)
+  3. Calendar & Scheduling ≥ T2: event CRUD, recurrence, iCal feed, reminder scheduling suites green
+  4. Notifications & Alerts ≥ T2: threshold breach → routed notification, rate limits, delivery tracking, one-tap actions suites green
+  5. Scorecard updated; manual checklists for all 4 groups delivered
+**Plans**: TBD (created by `/gsd-plan-phase 40`)
+
+### Phase 41: Analytics & Insights Truth Suite
+**Goal**: The user's #1 priority. Because the simulator knows exactly what happened (every sale, every stock movement, every price), every number the product shows can be asserted EXACTLY. Dashboard KPIs, reports, and analytic answers get compared against the ground-truth oracle — no more "looks plausible."
+**Depends on**: Phase 38 (ground-truth ledger populated by simulated days)
+**Requirements**: TRUTH-01..05
+**Success Criteria** (what must be TRUE):
+  1. After N simulated days, every dashboard KPI (revenue, top sellers, stock on hand, velocity) matches the oracle exactly for sim tenants
+  2. Reports (inventory, sales, PDF exports) match oracle values line-by-line
+  3. Analytic-answer question bank (≥ 25 simple questions: "top seller this week?", "bottles of X left?", "revenue vs last week?") verified against oracle — answers must be numerically exact
+  4. Drift detection: after a full simulated month incl. chaos events, `stock_live` == oracle stock (no silent leakage anywhere in the pipeline)
+  5. Failures emit expected-vs-actual diffs as CI artifacts; Analytics group reaches T4 on the scorecard
+**Plans**: TBD (created by `/gsd-plan-phase 41`)
+
+### Phase 42: AI Eval Suites
+**Goal**: Real evals for the AI components — golden datasets, scored outputs, real API calls on a budget. Mocked-plumbing tests live in Phases 39–40; this phase measures whether the AI is actually good.
+**Depends on**: Phase 37 (synthetic menus double as labeled extraction ground truth)
+**Requirements**: EVAL-AI-01..05
+**Success Criteria** (what must be TRUE):
+  1. Wine extraction golden set: ≥ 30 menus (synthetic + real) with labeled per-field truth; extraction scored per field (name, vintage, price, region, producer); thresholds set from baseline run
+  2. Email intelligence golden set: labeled inbound emails scored on classification (OPERATIONAL/PROMO/NOISE) + promo field extraction accuracy
+  3. Agent decision evals: procurement suggestions and threshold alerts scored against sim scenarios with known-correct answers
+  4. Analytic-answer eval bank from Phase 41 wired into the same eval harness (shared scoring + history)
+  5. Evals run weekly in CI with per-run cost caps and score history tracked; regressions flag on the scorecard; groups 10 + AI parts of 2/6 scored
+**Plans**: TBD (created by `/gsd-plan-phase 42`)
+
+### Phase 43: E2E Journeys, Manual Pathways & Final Scorecard
+**Goal**: Close the loop. Full user journeys run in a real browser against the cloud stack, the user walks the manual pathways with prepared checklists, and the campaign ends with a complete scorecard + prioritized gap backlog.
+**Depends on**: Phases 39–42
+**Requirements**: JRNY-01..05
+**Success Criteria** (what must be TRUE):
+  1. Playwright journeys green against cloud stack: onboard → import menu → see inventory → sim sale → alert → view report; plus login/nav smoke across all web pages
+  2. Scanner flows verified: camera capture path harnessed + manual checklist executed by user
+  3. Admin/health surfaces verified: agent cards, metrics, DLQ visibility against a live chaos injection
+  4. User manual pathway passes complete (web all pages, scanner, admin) with structured feedback captured and triaged into fixes/backlog
+  5. Final TESTING-SCORECARD.md: all 11 groups ≥ T2, Analytics at T4; every sub-T2 gap promoted to a backlog item; campaign retrospective written
+**Plans**: TBD (created by `/gsd-plan-phase 43`)
+
+---
+
 ## Future: Waves 2-6
+
+**Sequencing note (2026-07-27):** Waves 2-6 hardening resumes AFTER the Testing Campaign (Phases 36–43) — the synthetic world + scored suites are the foundation the remaining agent hardening builds on.
+
+**Roster note (2026-08-24):** `DatasetCreatorAgent` (Wave 4) and `BookScraperAgent` (Wave 6) were deleted, so the waves below now total 22, not the 24 named at the top of this file. Neither was ever in the orchestrator's class map, and the exchanges they subscribed to — `enrichment.events`, `scan.events`, `training.events` — had no publishers anywhere in the repo; the only producer of `enrichment.book_processed` was BookScraperAgent feeding DatasetCreatorAgent. Hardening either to Level 4 would have hardened an agent that receives nothing. Both capabilities remain live through `api/scan_routes.py` (`POST /book-scrape`, `/training-data/*`), which is where the work belongs if they are ever revived.
 
 After Phases 23-25 complete, expand to remaining agents:
 
@@ -457,14 +623,14 @@ After Phases 23-25 complete, expand to remaining agents:
 **Wave 3 — Intelligence Layer (4 agents):**
 - RecurringOrderAgent (388 lines), RFQAgent (736 lines), SommelierAgent (708 lines), MenuAnalyzerAgent (911 lines)
 
-**Wave 4 — Support Layer (4 agents):**
-- CalendarAgent (297 lines), VisualVerificationAgent (1,051 lines), StateInvariantEnforcer (246 lines), DatasetCreatorAgent (275 lines)
+**Wave 4 — Support Layer (3 agents):**
+- CalendarAgent (297 lines), VisualVerificationAgent (1,051 lines), StateInvariantEnforcer (246 lines)
 
 **Wave 5 — Stubs (rebuild from scratch, 5 agents):**
 - GhostInventoryAgent (35 lines), NegotiationPlaybookAgent (34 lines), AutoPilotAgent (34 lines), ShrinkageDetective (33 lines), ComplianceAgent (33 lines)
 
-**Wave 6 — Specialty (3 agents):**
-- InequalityDetector (105 lines), BookScraperAgent (113 lines), POSIntegrationAgent v2 (multi-POS: Square, Clover)
+**Wave 6 — Specialty (2 agents):**
+- InequalityDetector (105 lines), POSIntegrationAgent v2 (multi-POS: Square, Clover)
 
 ---
 
@@ -476,7 +642,7 @@ After Phases 23-25 complete, expand to remaining agents:
 **Requirements:** TBD — guest identity/profile model distinct from restaurant membership roles, social handles, dish and restaurant ratings, follows/activity, restaurant discovery, verified visit or reservation/POS linking, **append-only points ledger with derived balance**, share/referral attribution with conversion bonus, provisional→confirmed point states, anti-abuse (self-referral, duplicate-device, rate limits, review quality gate), tiers/badges, opt-in restaurant-funded perks, consent controls, privacy safeguards, and aggregated k-anonymized restaurant audience insights.
 **Design detail:** [FUTURES.md](./FUTURES.md) §7 (profile types, earning rules, integrity rules, MVP cut).
 **UX paths:** `UX_PATHS_CATALOG.md` §W (`NEW-652…NEW-666`) + §AB (`NEW-861…NEW-885`).
-**Plans:** 0 plans
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)
@@ -522,6 +688,66 @@ Plans:
 - [ ] TBD (promote with /gsd-review-backlog when ready)
 
 ---
+
+## v3.0 Phases
+
+**Milestone opened:** 2026-07-28, immediately after closing v2.0 with `gaps_found`
+(8 SATISFIED · 10 PARTIAL · 1 UNSATISFIED · 9 NOT_STARTED of 26 phases).
+
+v3.0 opens with a single consolidation phase. Everything v2.0 left behind — live
+defects, hollow features, schema drift, tracking debt, and the unstarted Testing
+Campaign — is folded into **Phase 44** as subphases so the carry-forward is one
+tracked unit rather than nine orphaned phase numbers.
+
+Full detail, evidence and file references: `.planning/v3.0-TECH-DEBT.md`.
+
+### Phase 44: v2.0 Carry-Forward & Debt Consolidation
+**Goal**: Close every documented-but-incomplete item from v2.0, then finish the
+Testing Campaign. After this phase, "is X done?" has one answer and the registry
+stops claiming work that does not happen.
+**Depends on**: Nothing (v2.0 is closed and archived)
+
+**Track A — live defects (do first; each currently misreports success)**
+- [ ] 44.1a — Close the `one-tap-actions` auth hole: no `@UseGuards` on the controller, `restaurantId` from the URL path, `userId` hardcoded `"system"` *(new finding)*
+- [ ] 44.1b — Fix silent stock loss on wine-library duplicate-add: in-memory `inventoryData.ts` store dispatches a realtime event for a write the DB never received *(new finding)*
+- [ ] 44.1c — Revive inbound email consumption: `EmailIntelAgent`/`EmailParsingAgent` unregistered in the orchestrator + routing key `email.inbound.raw` has zero publishers
+- [ ] 44.1d — Resolve the `notifications` `status` vs `is_read` mismatch (one shape does not match the live schema)
+- [ ] 44.2a — Implement or unregister five registered-but-empty agents: ghost_inventory, auto_pilot, negotiation_playbook, shrinkage_detective, compliance *(new finding)*
+- [ ] 44.2b — Settle the `ReportingAgent` / `stock.events` contradiction (subscribe it, or correct Phase 21's criterion)
+
+**Track B — foundations**
+- [ ] 44.3a — Capture 13 ghost tables into migrations (live in DB, in no migration; blocks building a fresh environment)
+- [ ] 44.3b — Make `approveDraft` atomic (order status + shadow stock + calendar event share no transaction)
+- [ ] 44.3c — `pos_webhook_logs.restaurant_id`; `scheduled_reminders` never written
+- [ ] 44.4 — Verification & tracking reconciliation (missing VERIFICATION for 18/19/20/22/28/35; stale VALIDATION on 25/36; **Phase 33 drift**; **Phase 27/30 UAT contradictions**; ~100 orphaned REQ-IDs)
+- [ ] 44.5 — Delete dead code (InvoiceScannerModal, mobile `invoiceMatch.ts`, `Reports.v1.backup.tsx`, `inventoryData.ts`)
+- [ ] 44.6 — Replace auth-context placeholders (`MGR_001` override ledger; three unimplemented one-tap action bodies)
+
+**Track C — unbuilt v2.0 scope, carried forward**
+- [ ] 44.7 — SimPOS Provider & Operations Simulator *(was Phase 38 — **critical path** for 44.8–44.10)*
+- [ ] 44.8 — Breadth Pass A, Core Operations *(was 39; depends on 44.7)*
+- [ ] 44.9 — Breadth Pass B, Business Loops *(was 40; depends on 44.7)*
+- [ ] 44.10 — Analytics & Insights Truth Suite *(was 41; **stated #1 eval priority**; depends on 44.7)*
+- [ ] 44.11 — AI Eval Suites *(was 42; depends only on Phase 37 which is SATISFIED — **plannable in parallel**)*
+- [ ] 44.12 — E2E Journeys, Manual Pathways & Final Scorecard *(was 43; depends on 44.8–44.11)*
+- [ ] 44.13 — Autonomous Vendor Discovery + Event-Driven Procurement Signals *(was 29, 31; clean boundaries confirmed)*
+
+**Track D — unbuilt plans found outside the phase system**
+- [ ] 44.14 — Triage five unbuilt plans: `ANALYTICS_FEATURE_CATALOG` (947 lines, not built), `INBOUND_EMAIL_INTELLIGENCE_PLAN` (476, plan only), `INVENTORY_SOTA_PLAN` (Phase 0 pending), `PROSPECTS_ATTRIBUTION_ARCHITECTURE` (Phases 1–3 code-complete but **dormant** — gates 44.1c's real value), `SYNTHETIC_DATA_AND_DOCS_PLAN` (in progress, **uncommitted**)
+- [ ] 44.15 — Re-verify `UX_PATHS_CATALOG` **before** working it: 16 dead-button clusters + 9 partial, but the catalog is **stale** (it claims Recommendations actions are unbuilt; they shipped in migration `20260720120000`)
+
+**Success criteria**
+1. No unauthenticated route reaches a write, and no controller derives tenancy from a URL path.
+2. No stock mutation exists that dispatches a success event without a database write.
+3. The orchestrator registry contains no agent whose handler only logs.
+4. A fresh environment can be built from migrations alone.
+5. Every phase marked complete has a VERIFICATION artifact, and no UAT file contradicts the ROADMAP.
+6. All 11 functionality groups score ≥ T2 with the analytics truth suite asserting against the oracle ledger.
+
+---
 *Roadmap created: 2026-04-09 — v2.0 Backend Kitchen Architecture*
 *v1.0 roadmap archived (Phases 1-17, 2026-03-30 to 2026-04-08)*
 *Futures updated: 2026-07-26 — Mudavym brand + beverage/bakery/guest/Ask-AI backlog (see FUTURES.md)*
+*Testing Campaign added: 2026-07-27 — Phases 36–43 (synthetic restaurants, SimPOS simulator, scored breadth passes, analytics truth suite, AI evals)*
+*v2.0 closed: 2026-07-28 — gaps_found; phases 18-37 archived to .planning/archive/v2.0-phases/; Phase 23 dropped; carry-forward consolidated into Phase 44*
+*v3.0 opened: 2026-07-28 — Phase 44 (v2.0 Carry-Forward & Debt Consolidation), 15 subphases across 4 tracks*

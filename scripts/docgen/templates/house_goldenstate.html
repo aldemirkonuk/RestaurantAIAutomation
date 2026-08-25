@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ d.house.name }} — Invoice {{ d.invoice_number }}</title>
+{% include "_reset.html" %}
+<style>
+  /* Golden State: dot-matrix output from a 1990s distribution ERP, on green-bar
+     tractor stock. Ugly and rigidly fixed-width, but internally consistent and
+     it labels everything — a careful extractor should do BETTER here than on a
+     pretty laser invoice, which is the point of including it.
+
+     The trap: freight is already allocated into each line extension, so
+     sum(qty x unit price) will NOT equal the printed amount, and the footer has
+     no freight row to explain the difference. An arithmetic self-check that
+     assumes the naive identity flags every one of these as needs_review. */
+  body { font-family: "Courier New", Courier, monospace; font-size: 7.4pt; color: #14210f; }
+  .sheet { width: 11in; min-height: 8.5in; padding: 0.36in 0.3in; position: relative;
+           background: #fdfdf6; }
+
+  /* Tractor-feed sprocket margins. */
+  .sprockets { position: absolute; top: 0; bottom: 0; width: 0.3in; }
+  .sprockets.l { left: 0; } .sprockets.r { right: 0; }
+  .sprockets i { display: block; width: 7px; height: 7px; border-radius: 50%;
+                 background: #fff; border: 1px solid #c9c9b8; margin: 13px auto; }
+
+  .inner { margin: 0 0.3in; }
+
+  header { margin-top: 14px; }
+  .co { font-size: 11pt; font-weight: 700; letter-spacing: .1em; }
+  .co-sub { font-size: 6.4pt; letter-spacing: .18em; margin-top: 2px; }
+  .hdr-grid { display: flex; justify-content: space-between; align-items: flex-start; }
+  .hdr-right { font-size: 7pt; line-height: 1.7; text-align: left; }
+  .hdr-right .k { display: inline-block; min-width: 96px; }
+
+  .band { border-top: 1px solid #14210f; border-bottom: 1px solid #14210f;
+          margin: 9px 0; padding: 3px 0; font-size: 6.6pt; letter-spacing: .12em;
+          text-align: center; font-weight: 700; }
+
+  .parties { display: flex; gap: 30px; font-size: 7.2pt; line-height: 1.55; margin-bottom: 8px; }
+  .parties .lbl { letter-spacing: .14em; font-weight: 700; font-size: 6.2pt; }
+
+  table.lines { width: 100%; }
+  table.lines th { font-size: 6.1pt; text-align: left; letter-spacing: .04em;
+                   padding: 3px 3px; border-bottom: 1px solid #14210f;
+                   border-top: 1px solid #14210f; white-space: nowrap; }
+  table.lines td { padding: 3px; font-size: 7.2pt; white-space: nowrap; }
+  /* The green bar. Alternating pairs of rows, as the paper came. */
+  table.lines tbody tr:nth-child(4n+1) td,
+  table.lines tbody tr:nth-child(4n+2) td { background: #dcead2; }
+  .desc { white-space: normal; }
+  .upc { font-size: 6.2pt; color: #4a5a42; }
+
+  .tot { margin-top: 10px; margin-left: auto; width: 3.2in; font-size: 7.6pt; }
+  .tot td { padding: 2.5px 6px; }
+  .tot tr.grand td { border-top: 1px solid #14210f; border-bottom: 3px double #14210f;
+                     font-weight: 700; font-size: 9.4pt; padding-top: 5px; }
+
+  .footnote { margin-top: 12px; font-size: 6.2pt; line-height: 1.5; }
+  .runstamp { margin-top: 8px; font-size: 6pt; letter-spacing: .1em; color: #4a5a42; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="synthetic-band">{{ SYNTHETIC_MARK }}</div>
+  <div class="watermark">SYNTHETIC</div>
+
+  <div class="sprockets l">{% for i in range(22) %}<i></i>{% endfor %}</div>
+  <div class="sprockets r">{% for i in range(22) %}<i></i>{% endfor %}</div>
+
+  <div class="inner">
+    <header>
+      <div class="hdr-grid">
+        <div>
+          <div class="co">{{ d.house.name | upper }}</div>
+          <div class="co-sub">{{ d.house.tagline }}</div>
+          <div style="font-size:6.8pt;margin-top:5px;line-height:1.5">
+            {{ d.house.address }}<br>
+            {{ d.house.city_state_zip }}<br>
+            TEL {{ d.house.phone }}
+            {% if d.house.license_no %} &nbsp; LIC {{ d.house.license_no }}{% endif %}
+          </div>
+        </div>
+        <div class="hdr-right">
+          <div><span class="k">INVOICE NUMBER</span>{{ d.invoice_number }}</div>
+          <div><span class="k">INVOICE DATE</span>{{ d.invoice_date | fmtdate(d.house.date_format) }}</div>
+          <div><span class="k">CUSTOMER PO</span>{{ d.po_number }}{% if d.secondary_po_number %} + {{ d.secondary_po_number }}{% endif %}</div>
+          <div><span class="k">SHIP DATE</span>{{ d.ship_date | fmtdate(d.house.date_format) }}</div>
+          <div><span class="k">DELIVERY DATE</span>{{ d.delivery_date | fmtdate(d.house.date_format) }}</div>
+          <div><span class="k">TERMS</span>{{ d.terms | upper }}</div>
+          <div><span class="k">PAGE</span>1 OF 1</div>
+        </div>
+      </div>
+    </header>
+
+    <div class="band">*** INVOICE — LICENSED WHOLESALER TO LICENSED RETAILER ***</div>
+
+    <div class="parties">
+      <div>
+        <div class="lbl">SOLD TO</div>
+        {{ d.restaurant_name | upper }}<br>
+        {{ d.restaurant_address | upper }}<br>
+        {{ d.restaurant_city_state_zip | upper }}<br>
+        LICENSE {{ d.restaurant_license_no }}
+      </div>
+      <div>
+        <div class="lbl">SHIP TO</div>
+        {{ d.restaurant_name | upper }}<br>
+        {{ d.restaurant_address | upper }}<br>
+        {{ d.restaurant_city_state_zip | upper }}
+      </div>
+      <div>
+        <div class="lbl">DELIVERY</div>
+        DRIVER {{ d.driver_name | upper }}<br>
+        RECEIVED BY {{ d.signed_by | upper }}<br>
+        ROUTE 41 &nbsp; STOP 07
+      </div>
+    </div>
+
+    <table class="lines">
+      <thead>
+        <tr>
+          <th style="width:24px">LN</th>
+          <th style="width:62px">ITEM-NO</th>
+          <th style="width:86px">UPC</th>
+          <th>DESCRIPTION</th>
+          <th style="width:36px" class="ctr">VINT</th>
+          <th style="width:34px" class="ctr">SIZE</th>
+          <th style="width:26px" class="ctr">UM</th>
+          <th style="width:34px" class="num">QTY-SHP</th>
+          <th style="width:22px" class="ctr">FG</th>
+          <th style="width:48px" class="num">UNIT-PRC</th>
+          <th style="width:58px" class="num">EXTENDED</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in billed_lines %}
+        <tr>
+          <td class="num">{{ "%03d" | format(l.line_no) }}</td>
+          <td>{{ l.vendor_sku }}</td>
+          <td class="upc">{{ l.upc | dash }}</td>
+          <td class="desc">{{ l.wine_name | upper_if(true) | truncate_at(d.house.description_max_chars) }}</td>
+          <td class="ctr">{{ l.invoiced_vintage | dash }}</td>
+          <td class="ctr">{{ l.bottle_size | upper }}</td>
+          <td class="ctr">{{ "CS" if l.invoice_loose_bottles == 0 else "EA" }}</td>
+          <td class="num">{{ l.invoice_full_cases if l.invoice_loose_bottles == 0 else l.outcome.invoice_qty }}</td>
+          <td class="ctr">{{ "Y" if l.outcome.free_goods_qty else "" }}</td>
+          <td class="num">{{ l.outcome.invoice_unit_price | money }}</td>
+          {# Freight is already inside this number. Nothing on the page says so. #}
+          <td class="num">{{ l.extension() | money }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <table class="tot">
+      <tr><td>MERCHANDISE + DELIVERY</td><td class="num">{{ d.subtotal() | money }}</td></tr>
+      {% if d.split_case_fees() %}<tr><td>SPLIT CASE HANDLING</td><td class="num">{{ d.split_case_fees() | money }}</td></tr>{% endif %}
+      <tr class="grand"><td>TOTAL DUE</td><td class="num">{{ d.total() | money }}</td></tr>
+    </table>
+
+    <div class="footnote">
+      DELIVERY CHARGES ARE PRORATED ACROSS LINE ITEMS AND INCLUDED IN THE EXTENDED
+      AMOUNT SHOWN. CLAIMS FOR SHORTAGE OR DAMAGE MUST BE FILED WITHIN 48 HOURS
+      CITING THE INVOICE NUMBER ABOVE. PAYMENT TERMS ARE GOVERNED BY APPLICABLE
+      STATE CREDIT LAW FOR ALCOHOLIC BEVERAGES. REMIT TO {{ d.house.name | upper }},
+      {{ d.house.address | upper }}, {{ d.house.city_state_zip | upper }}.
+      A/R {{ d.house.ar_email | upper }} {{ d.house.ar_phone }}.
+    </div>
+
+    <div class="runstamp">
+      RUN {{ generated_on | fmtdate("%Y-%m-%d") }} &nbsp; JOB AR410-INVPRT &nbsp; SEQ {{ d.delivery_id | upper }}
+    </div>
+  </div>
+</div>
+</body>
+</html>

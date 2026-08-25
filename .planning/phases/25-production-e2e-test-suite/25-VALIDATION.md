@@ -2,7 +2,13 @@
 phase: 25
 slug: production-e2e-test-suite
 status: draft
-nyquist_compliant: false
+nyquist_compliant: false  # STALE — superseded by 25-VERIFICATION.md 2026-05-05
+superseded_by: "25-VERIFICATION.md"
+superseded_note: "12/12 must-haves verified (status: human_needed — only human-only checks remain). This frontmatter reflects the state at the
+  time of the validation pass and was never refreshed after verification closed the
+  gaps. Left as-is rather than flipped to true: a validation document should record
+  what its own pass found, and rewriting it to match a later verdict would erase the
+  fact that a gap existed. The pointer is the fix, not the value."
 wave_0_complete: false
 created: 2026-05-01
 ---

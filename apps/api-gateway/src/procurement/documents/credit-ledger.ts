@@ -1,4 +1,4 @@
-import { MatchResult, MatchVerdict } from "../invoice-match";
+import { isClaimable, MatchResult, MatchVerdict } from "../invoice-match";
 
 /**
  * credit-ledger — the state machine behind a vendor credit claim, and the only
@@ -126,8 +126,17 @@ export function transition(
   return { ok: true, next: { state: input.to } };
 }
 
-/** Verdicts that justify asking a distributor for money back. */
+/**
+ * Verdicts that justify asking a distributor for money back.
+ *
+ * Which verdicts are claimable is decided ONCE, by isClaimable in invoice-match.
+ * This function only names the reason. Restating the list here would give the
+ * codebase two answers to "can we claim on this?", and the two would drift —
+ * ending with either a claim raised on an unfinished delivery, or a real
+ * overbill silently never claimed.
+ */
 export function reasonForVerdict(verdict: MatchVerdict): CreditReason | null {
+  if (!isClaimable(verdict)) return null;
   switch (verdict) {
     case "overbilled_vs_ship":
       return "overbilled_vs_ship";
@@ -139,11 +148,8 @@ export function reasonForVerdict(verdict: MatchVerdict): CreditReason | null {
       return "damaged";
     case "price_variance":
       return "price_variance";
-    // `partial` and `unmatched` are states of paperwork still in flight, not
-    // vendor errors. Raising a claim on them puts a restaurant in front of its
-    // distributor asking for money over an invoice that has not arrived.
     default:
-      return null;
+      return "other";
   }
 }
 

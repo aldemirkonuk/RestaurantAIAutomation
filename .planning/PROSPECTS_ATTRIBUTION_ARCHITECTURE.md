@@ -1,6 +1,22 @@
 # Prospects Attribution — SOTA Architecture Decision & Phased Plan
 
-Status: Approved (2026-07-08). Direction: true multi-tenant SaaS, dedicated-domain inbound,
+Status: ✅ BUILT AND WIRED, DORMANT BY CONFIG (verified 2026-08-04 by the v3.0 triage).
+This is the one plan of the five whose header was not misleading — but "Approved"
+undersold it. `ProspectsController` and `InboundEmailController` are both registered in
+`orchestrator.module.ts:25-26`, so the routes are live now.
+
+Nothing is left to build. The feature is gated on `INBOUND_EMAIL_DOMAIN`: unset, every
+method of `InboundAddressService` returns null and the legacy single-mailbox path is
+untouched. Activating it is an **ops task, not a build task** — register a domain, point
+MX at the provider, set `INBOUND_EMAIL_DOMAIN` / `INBOUND_EMAIL_PROVIDER` /
+`INBOUND_WEBHOOK_SECRET`.
+
+The webhook itself is fail-closed: with no `INBOUND_WEBHOOK_SECRET` configured it refuses
+every request rather than accepting them. One hardening left: it also accepts the secret
+as `?secret=`, which puts it in access logs, proxy logs and browser history — prefer the
+`x-inbound-secret` header and consider dropping the query fallback once no provider needs it.
+
+Original direction: true multi-tenant SaaS, dedicated-domain inbound,
 full per-tenant RLS, promote fixes now, all UX gaps addressed. Deliverable: plan + Phase 0 build.
 
 Backing analyses:

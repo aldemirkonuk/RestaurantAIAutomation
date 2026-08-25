@@ -748,25 +748,46 @@ class BaseAgent(ABC):
         reasoning: str,
         confidence: float = 1.0,
         restaurant_id: Optional[str] = None,
-    ) -> None:
-        """Persist an agent decision to the decision_log table."""
+    ) -> Optional[str]:
+        """Persist an agent decision to the decision_log table.
+
+        Returns the inserted row id when PostgREST returns a representation,
+        otherwise None. Callers that need the FK (e.g. drift_findings) should
+        tolerate a missing id — the decision row is still the source of truth.
+        """
         try:
-            self.database.supabase.table("decision_log").insert(
-                {
-                    "agent_name": self.agent_name,
-                    "decision_type": decision_type,
-                    "inputs": inputs,
-                    "reasoning": (
-                        {"text": reasoning} if isinstance(reasoning, str) else reasoning
-                    ),
-                    "output": output,
-                    "confidence": confidence,
-                    "correlation_id": self._current_correlation_id,
-                    "restaurant_id": restaurant_id,
-                }
-            ).execute()
+            result = (
+                self.database.supabase.table("decision_log").insert(
+                    {
+                        "agent_name": self.agent_name,
+                        "decision_type": decision_type,
+                        "inputs": inputs,
+                        "reasoning": (
+                            {"text": reasoning}
+                            if isinstance(reasoning, str)
+                            else reasoning
+                        ),
+                        "output": output,
+                        "confidence": confidence,
+                        "correlation_id": self._current_correlation_id,
+                        "restaurant_id": restaurant_id,
+                    }
+                )
+                # NO .select() here. supabase-py >= 2.x returns the inserted
+                # representation from .execute() already; chaining .select()
+                # onto the insert builder raises AttributeError
+                # ("'SyncQueryRequestBuilder' object has no attribute 'select'"),
+                # which this method's except-block swallowed. Result: decision_log
+                # took ZERO writes and every neural_footprint_event.correlation_id
+                # joined to nothing. Verified against supabase-py 2.28.0.
+                .execute()
+            )
+            if result.data and len(result.data) > 0:
+                return result.data[0].get("id")
+            return None
         except Exception as e:
             self.logger.warning(f"Failed to log decision: {e}")
+            return None
 
     # =========================================================================
     # DEAD LETTER QUEUE (INFRA-05)

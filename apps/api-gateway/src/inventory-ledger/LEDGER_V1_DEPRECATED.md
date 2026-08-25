@@ -1,21 +1,32 @@
-# ⚠️ inventory-ledger (v1) is QUARANTINED — do not wire to production
+# inventory-ledger — repaired 2026-08-05 (SimPOS testbed plan, spine repair)
 
-**Status:** disabled behind `LEDGER_V1_ENABLED` (default OFF) as of Phase 1 · 1.4 (D4).
-**Why:** this module is written against a schema that does not exist.
+**Status:** live. The `LEDGER_V1_ENABLED` quarantine flag has been removed.
 
-## The defects (verified)
-- `inventory-ledger.service.ts` reads `restaurant_inventory.live_stock` (`.select("live_stock")`, ~L453/L461). The **real column is `stock_live`.** Every reconcile/read here 500s against the real DB.
-- The ledger RPC `record_inventory_transaction` (`services/database/migrations/005_*.sql`) resolves the stock column to `'live_stock'` and the auto-logging trigger (`006_*.sql`) inserts `NEW.wine_id` — but `restaurant_inventory` has **`master_wine_id`**, not `wine_id`.
-- The unit tests mocked `{ live_stock: 10 }` (the ghost column), so the suite was **green while production would fail**. Those tests are now `describe.skip` with a reason (`__tests__/inventory-ledger.service.spec.ts`).
-- The web app has **zero callers** of `/inventory-ledger` — reconcile/override go through `PATCH /inventory` → `stock_live` directly. So this ledger is not the system of record today.
+## What was wrong (history)
 
-## What replaces it
-Phase 2 ports a **corrected** ledger into the LIVE `supabase/migrations/` tree:
-`stock_live` + `master_wine_id`, delta-based writes, version CAS, idempotency keys, lot references.
-All stock writes route through it; direct `UPDATE stock_live` is forbidden.
+- `inventory-ledger.service.ts` read `restaurant_inventory.live_stock`
+  (`.select("live_stock")`) — the real column is `stock_live`. Every
+  reconcile/read 500'd against the real DB.
+- The ledger RPC `record_inventory_transaction` resolved the stock column to
+  `'live_stock'` and its auto-logging trigger inserted `NEW.wine_id`, but
+  `restaurant_inventory` has `master_wine_id`, not `wine_id`.
+- The unit tests mocked `{ live_stock: 10 }` (the ghost column), so the suite
+  was green while production would fail.
+- The web app had zero callers of `/inventory-ledger` — reconcile/override
+  went through `PATCH /inventory` → `stock_live` directly, so this ledger was
+  not the system of record.
 
-See **`.planning/INVENTORY_SOTA_PLAN.md` §6b (ledger port) and §9A (quarantine).**
+## What replaced it
 
-## To re-enable temporarily (not recommended)
-Set `LEDGER_V1_ENABLED=true`. The write endpoints will attempt the ghost-column path and fail
-against the real schema. Only useful for local schema experiments.
+`InventoryLedgerService.createTransaction` and `.reconcileInventory` now call
+`apply_stock_movement` — the single stock write primitive shared with the
+receiving door flow, POS ingress, spot counting, and manual overrides.
+`stock_live`/`shadow_stock` are projections of `inventory_lots`, owned by
+`project_stock_from_lots`, and are never written directly anywhere in the
+codebase (`scripts/check_no_direct_stock_writes.sh` enforces this in CI).
+`idempotencyKey` is mandatory on `POST /inventory-ledger/transactions`, and
+`StockType.RESERVED` has been removed — only `live`/`shadow` are valid states,
+matching what `apply_stock_movement` accepts.
+
+`record_inventory_transaction` has been dropped from the database; nothing
+calls it.

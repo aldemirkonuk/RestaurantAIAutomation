@@ -377,9 +377,14 @@ def _hydrate_queue_rows(supabase, rows: list[dict]) -> list[dict]:
                 uid = role_row["user_id"]
                 # Prefer certified_contributor if a user has multiple active roles —
                 # it is the only role with trust progress to show.
-                if uid not in role_by_actor or role_row["role"] == "certified_contributor":
+                if (
+                    uid not in role_by_actor
+                    or role_row["role"] == "certified_contributor"
+                ):
                     role_by_actor[uid] = role_row["role"]
-                    trust_by_actor[uid] = role_row.get("consecutive_approved_overrides") or 0
+                    trust_by_actor[uid] = (
+                        role_row.get("consecutive_approved_overrides") or 0
+                    )
         except Exception as exc:
             logger.warning("_hydrate_queue_rows: role lookup failed: %s", exc)
 

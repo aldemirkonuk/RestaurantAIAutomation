@@ -36,6 +36,13 @@ export interface VendorSearchResponse {
   offset: number
 }
 
+export interface VendorMatchCandidate extends VendorCatalogueEntry {
+  /** Trigram similarity 0..1 on name. Always present. */
+  name_similarity: number
+  /** Trigram similarity 0..1 on address, or null when either side has none to compare. */
+  address_similarity: number | null
+}
+
 export interface CustomProviderData {
   name: string
   type?: string
@@ -68,6 +75,34 @@ export async function searchVendorCatalogue(
     `/vendor-catalogue/search?${params.toString()}`,
   )
   return response.data.data
+}
+
+/**
+ * Duplicate-detection candidates for the add-provider form: curated
+ * catalogue vendors whose name or address plausibly matches what the user
+ * has typed so far. See match_vendor_catalogue in
+ * supabase/migrations/20260811010000_vendor_catalogue_match.sql for the
+ * trigram-similarity scoring — this is a nicety on top of a working form, so
+ * a failure here resolves to an empty array rather than throwing.
+ */
+export async function matchVendorCatalogue(
+  name: string,
+  address?: string,
+  country?: string,
+): Promise<VendorMatchCandidate[]> {
+  const params = new URLSearchParams()
+  if (name) params.append('name', name)
+  if (address) params.append('address', address)
+  if (country) params.append('country', country)
+
+  try {
+    const response = await apiClient.get<VendorMatchCandidate[]>(
+      `/vendor-catalogue/match?${params.toString()}`,
+    )
+    return response.data
+  } catch {
+    return []
+  }
 }
 
 /**

@@ -1,0 +1,202 @@
+{
+ "menu": "Apolonia_Chicago_Menu.pdf",
+ "pages": 2,
+ "wine_count": 28,
+ "seconds": 18.9,
+ "wines": [
+  {
+   "name": "Prosecco",
+   "producer": "NV Valdobbiadene",
+   "category": "sparkling",
+   "region": "Italy",
+   "by_glass_price": 17
+  },
+  {
+   "name": "Moscato",
+   "producer": "AV rizzi",
+   "category": "sparkling",
+   "region": "Italy",
+   "by_glass_price": 16
+  },
+  {
+   "name": "Brut Réserve",
+   "producer": "NV charles heidsieck",
+   "category": "sparkling",
+   "region": "France",
+   "by_glass_price": 29
+  },
+  {
+   "name": "Grand Cru Rosé 'Ambonnay'",
+   "producer": "charles orban",
+   "category": "sparkling",
+   "region": "France",
+   "by_glass_price": 29
+  },
+  {
+   "name": "Rose 'Pinuaga'",
+   "producer": "2022 bodegas y viñedos",
+   "category": "rosé & orange",
+   "region": "Spain",
+   "by_glass_price": 13
+  },
+  {
+   "name": "Gagliuppo 'Cirò'",
+   "producer": "2023 cataldo calabretta",
+   "category": "rosé & orange",
+   "region": "Italy",
+   "by_glass_price": 15
+  },
+  {
+   "name": "Vermentino",
+   "producer": "2023 monte rio",
+   "category": "rosé & orange",
+   "region": "California",
+   "by_glass_price": 16
+  },
+  {
+   "name": "Muscadet",
+   "producer": "2018 la loupterie",
+   "category": "white",
+   "region": "France",
+   "by_glass_price": 13
+  },
+  {
+   "name": "Albariño",
+   "producer": "2025 lugar de besada",
+   "category": "white",
+   "region": "Spain",
+   "by_glass_price": 13
+  },
+  {
+   "name": "Riesling 'Spätleses'",
+   "producer": "2023 georg gustav huff",
+   "category": "white",
+   "region": "Germany",
+   "by_glass_price": 15
+  },
+  {
+   "name": "Grüner Veltliner",
+   "producer": "2024 malat",
+   "category": "white",
+   "region": "Austria",
+   "by_glass_price": 14
+  },
+  {
+   "name": "Sauvignon Blanc",
+   "producer": "2022 domaine de justices",
+   "category": "white",
+   "region": "France",
+   "by_glass_price": 14
+  },
+  {
+   "name": "Chardonnay 'Gran Terroir'",
+   "producer": "2022 zorzal",
+   "category": "white",
+   "region": "Argentina",
+   "by_glass_price": 15
+  },
+  {
+   "name": "White Blend 'Lucette'",
+   "producer": "2020 turner pageot",
+   "category": "white",
+   "region": "France",
+   "by_glass_price": 14
+  },
+  {
+   "name": "Gamay Noir",
+   "producer": "2022 maison l'envoyé",
+   "category": "red",
+   "region": "France",
+   "by_glass_price": 16
+  },
+  {
+   "name": "Sangiovese",
+   "producer": "2'2024 gioventu",
+   "category": "red",
+   "region": "Italy",
+   "by_glass_price": 15
+  },
+  {
+   "name": "Pinot Noir 'Klee'",
+   "producer": "2023 roots",
+   "category": "red",
+   "region": "Oregon",
+   "by_glass_price": 16
+  },
+  {
+   "name": "Bobal 'Clos Lojen'",
+   "producer": "2022 bodegas ponce",
+   "category": "red",
+   "region": "Spain",
+   "by_glass_price": 12
+  },
+  {
+   "name": "Cabernet Franc 'Chinon'",
+   "producer": "2022 terres bioiques",
+   "category": "red",
+   "region": "France",
+   "by_glass_price": 14
+  },
+  {
+   "name": "Cabernet Sauvignon",
+   "producer": "2021 tapiz",
+   "category": "red",
+   "region": "Argentina",
+   "by_glass_price": 16
+  },
+  {
+   "name": "Malbec",
+   "producer": "2022 alhambra",
+   "category": "red",
+   "region": "Argentina",
+   "by_glass_price": 16
+  },
+  {
+   "name": "Torino Bianco",
+   "producer": "Torino Bianco",
+   "category": "vermouth",
+   "region": "Italy",
+   "by_glass_price": 14
+  },
+  {
+   "name": "Vermouth Bianco",
+   "producer": "alessio",
+   "category": "vermouth",
+   "region": "Italy",
+   "by_glass_price": 14
+  },
+  {
+   "name": "Vermut Rojo",
+   "producer": "navazos palazzo",
+   "category": "vermouth",
+   "region": "Spain",
+   "by_glass_price": 14
+  },
+  {
+   "name": "Floral No. Five",
+   "producer": "matthiasson",
+   "category": "vermouth",
+   "region": "California",
+   "by_glass_price": 12
+  },
+  {
+   "name": "Vino Chinato",
+   "producer": "antica",
+   "category": "vermouth",
+   "region": "Italy",
+   "by_glass_price": 14
+  },
+  {
+   "name": "Apolonia Mimosa",
+   "producer": "Apolonia Mimosa",
+   "category": "cocktail",
+   "by_glass_price": 13
+  },
+  {
+   "name": "Bloody Mary",
+   "producer": "Bloody Mary",
+   "category": "cocktail",
+   "by_glass_price": 13
+  }
+ ]
+}

@@ -1,0 +1,1197 @@
+{
+  "fixture_version": "1.0.0",
+  "generated_by": "python3 -m scripts.docgen backtest",
+  "source": "scripts/docgen/errors.py::SCENARIOS",
+  "content_hash": "e82c5c2ee1999ecc01a9b594467af615657dda6e1530320cfcddbf83d5979cd8",
+  "verdicts_covered": [
+    "matched",
+    "overbilled_vs_ship",
+    "partial",
+    "price_variance",
+    "qty_over",
+    "qty_short",
+    "rejected",
+    "short_shipped",
+    "unmatched"
+  ],
+  "row_count": 42,
+  "known_failing_count": 0,
+  "rows": [
+    {
+      "scenario": "clean",
+      "label": "Clean delivery",
+      "story": "Everything matches.",
+      "profile": {
+        "ordered": 24,
+        "price": 22.0
+      },
+      "input": {
+        "orderedQty": 24,
+        "poUnitPrice": 22.0,
+        "shippedQty": 24,
+        "invoiceQty": 24,
+        "invoiceUnitPrice": 22.0,
+        "acceptedQty": 24,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 24
+      },
+      "expect": {
+        "verdict": "matched",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "clean",
+      "label": "Clean delivery",
+      "story": "Everything matches.",
+      "profile": {
+        "ordered": 120,
+        "price": 14.5
+      },
+      "input": {
+        "orderedQty": 120,
+        "poUnitPrice": 14.5,
+        "shippedQty": 120,
+        "invoiceQty": 120,
+        "invoiceUnitPrice": 14.5,
+        "acceptedQty": 120,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 120
+      },
+      "expect": {
+        "verdict": "matched",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "clean",
+      "label": "Clean delivery",
+      "story": "Everything matches.",
+      "profile": {
+        "ordered": 6,
+        "price": 78.0
+      },
+      "input": {
+        "orderedQty": 6,
+        "poUnitPrice": 78.0,
+        "shippedQty": 6,
+        "invoiceQty": 6,
+        "invoiceUnitPrice": 78.0,
+        "acceptedQty": 6,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 6
+      },
+      "expect": {
+        "verdict": "matched",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "split_case",
+      "label": "Split case",
+      "story": "Ordered in cases, invoiced in bottles, counted in cases. Must not alarm.",
+      "profile": {
+        "ordered": 24,
+        "price": 22.0
+      },
+      "input": {
+        "orderedQty": 24,
+        "poUnitPrice": 22.0,
+        "shippedQty": 24,
+        "invoiceQty": 24,
+        "invoiceUnitPrice": 22.0,
+        "acceptedQty": 24,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 24
+      },
+      "expect": {
+        "verdict": "matched",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "split_case",
+      "label": "Split case",
+      "story": "Ordered in cases, invoiced in bottles, counted in cases. Must not alarm.",
+      "profile": {
+        "ordered": 120,
+        "price": 14.5
+      },
+      "input": {
+        "orderedQty": 120,
+        "poUnitPrice": 14.5,
+        "shippedQty": 120,
+        "invoiceQty": 120,
+        "invoiceUnitPrice": 14.5,
+        "acceptedQty": 120,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 120
+      },
+      "expect": {
+        "verdict": "matched",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "split_case",
+      "label": "Split case",
+      "story": "Ordered in cases, invoiced in bottles, counted in cases. Must not alarm.",
+      "profile": {
+        "ordered": 6,
+        "price": 78.0
+      },
+      "input": {
+        "orderedQty": 6,
+        "poUnitPrice": 78.0,
+        "shippedQty": 6,
+        "invoiceQty": 6,
+        "invoiceUnitPrice": 78.0,
+        "acceptedQty": 6,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 6
+      },
+      "expect": {
+        "verdict": "matched",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "free_goods_no_slip",
+      "label": "Free goods, no packing slip",
+      "story": "Agreed 11-for-10 from a house that sends no slip. Must not alarm.",
+      "profile": {
+        "ordered": 24,
+        "price": 22.0
+      },
+      "input": {
+        "orderedQty": 24,
+        "poUnitPrice": 22.0,
+        "shippedQty": null,
+        "invoiceQty": 24,
+        "invoiceUnitPrice": 22.0,
+        "acceptedQty": 26,
+        "rejectedQty": 0,
+        "freeGoodsQty": 2,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 26
+      },
+      "expect": {
+        "verdict": "matched",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "free_goods_no_slip",
+      "label": "Free goods, no packing slip",
+      "story": "Agreed 11-for-10 from a house that sends no slip. Must not alarm.",
+      "profile": {
+        "ordered": 120,
+        "price": 14.5
+      },
+      "input": {
+        "orderedQty": 120,
+        "poUnitPrice": 14.5,
+        "shippedQty": null,
+        "invoiceQty": 120,
+        "invoiceUnitPrice": 14.5,
+        "acceptedQty": 132,
+        "rejectedQty": 0,
+        "freeGoodsQty": 12,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 132
+      },
+      "expect": {
+        "verdict": "matched",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "free_goods_no_slip",
+      "label": "Free goods, no packing slip",
+      "story": "Agreed 11-for-10 from a house that sends no slip. Must not alarm.",
+      "profile": {
+        "ordered": 6,
+        "price": 78.0
+      },
+      "input": {
+        "orderedQty": 6,
+        "poUnitPrice": 78.0,
+        "shippedQty": null,
+        "invoiceQty": 6,
+        "invoiceUnitPrice": 78.0,
+        "acceptedQty": 7,
+        "rejectedQty": 0,
+        "freeGoodsQty": 1,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 7
+      },
+      "expect": {
+        "verdict": "matched",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "free_goods_with_slip",
+      "label": "Free goods, slip present",
+      "story": "Same deal, slip counts the free bottle. Must not alarm. Currently does.",
+      "profile": {
+        "ordered": 24,
+        "price": 22.0
+      },
+      "input": {
+        "orderedQty": 24,
+        "poUnitPrice": 22.0,
+        "shippedQty": 26,
+        "invoiceQty": 24,
+        "invoiceUnitPrice": 22.0,
+        "acceptedQty": 26,
+        "rejectedQty": 0,
+        "freeGoodsQty": 2,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 26
+      },
+      "expect": {
+        "verdict": "matched",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "free_goods_with_slip",
+      "label": "Free goods, slip present",
+      "story": "Same deal, slip counts the free bottle. Must not alarm. Currently does.",
+      "profile": {
+        "ordered": 120,
+        "price": 14.5
+      },
+      "input": {
+        "orderedQty": 120,
+        "poUnitPrice": 14.5,
+        "shippedQty": 132,
+        "invoiceQty": 120,
+        "invoiceUnitPrice": 14.5,
+        "acceptedQty": 132,
+        "rejectedQty": 0,
+        "freeGoodsQty": 12,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 132
+      },
+      "expect": {
+        "verdict": "matched",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "free_goods_with_slip",
+      "label": "Free goods, slip present",
+      "story": "Same deal, slip counts the free bottle. Must not alarm. Currently does.",
+      "profile": {
+        "ordered": 6,
+        "price": 78.0
+      },
+      "input": {
+        "orderedQty": 6,
+        "poUnitPrice": 78.0,
+        "shippedQty": 7,
+        "invoiceQty": 6,
+        "invoiceUnitPrice": 78.0,
+        "acceptedQty": 7,
+        "rejectedQty": 0,
+        "freeGoodsQty": 1,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 7
+      },
+      "expect": {
+        "verdict": "matched",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "overbilled_vs_ship",
+      "label": "Overbilled vs their own slip",
+      "story": "Slip says 22 shipped, invoice bills 24. Self-evidenced; credit due.",
+      "profile": {
+        "ordered": 24,
+        "price": 22.0
+      },
+      "input": {
+        "orderedQty": 24,
+        "poUnitPrice": 22.0,
+        "shippedQty": 22,
+        "invoiceQty": 24,
+        "invoiceUnitPrice": 22.0,
+        "acceptedQty": 22,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 22
+      },
+      "expect": {
+        "verdict": "overbilled_vs_ship",
+        "creditDue": true,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "overbilled_vs_ship",
+      "label": "Overbilled vs their own slip",
+      "story": "Slip says 22 shipped, invoice bills 24. Self-evidenced; credit due.",
+      "profile": {
+        "ordered": 120,
+        "price": 14.5
+      },
+      "input": {
+        "orderedQty": 120,
+        "poUnitPrice": 14.5,
+        "shippedQty": 110,
+        "invoiceQty": 120,
+        "invoiceUnitPrice": 14.5,
+        "acceptedQty": 110,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 110
+      },
+      "expect": {
+        "verdict": "overbilled_vs_ship",
+        "creditDue": true,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "overbilled_vs_ship",
+      "label": "Overbilled vs their own slip",
+      "story": "Slip says 22 shipped, invoice bills 24. Self-evidenced; credit due.",
+      "profile": {
+        "ordered": 6,
+        "price": 78.0
+      },
+      "input": {
+        "orderedQty": 6,
+        "poUnitPrice": 78.0,
+        "shippedQty": 4,
+        "invoiceQty": 6,
+        "invoiceUnitPrice": 78.0,
+        "acceptedQty": 4,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 4
+      },
+      "expect": {
+        "verdict": "overbilled_vs_ship",
+        "creditDue": true,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "price_creep",
+      "label": "Silent price increase",
+      "story": "Billed above the agreed price with no notice.",
+      "profile": {
+        "ordered": 24,
+        "price": 22.0
+      },
+      "input": {
+        "orderedQty": 24,
+        "poUnitPrice": 22.0,
+        "shippedQty": 24,
+        "invoiceQty": 24,
+        "invoiceUnitPrice": 24.67,
+        "acceptedQty": 24,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 24
+      },
+      "expect": {
+        "verdict": "price_variance",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "price_creep",
+      "label": "Silent price increase",
+      "story": "Billed above the agreed price with no notice.",
+      "profile": {
+        "ordered": 120,
+        "price": 14.5
+      },
+      "input": {
+        "orderedQty": 120,
+        "poUnitPrice": 14.5,
+        "shippedQty": 120,
+        "invoiceQty": 120,
+        "invoiceUnitPrice": 16.35,
+        "acceptedQty": 120,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 120
+      },
+      "expect": {
+        "verdict": "price_variance",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "price_creep",
+      "label": "Silent price increase",
+      "story": "Billed above the agreed price with no notice.",
+      "profile": {
+        "ordered": 6,
+        "price": 78.0
+      },
+      "input": {
+        "orderedQty": 6,
+        "poUnitPrice": 78.0,
+        "shippedQty": 6,
+        "invoiceQty": 6,
+        "invoiceUnitPrice": 86.83,
+        "acceptedQty": 6,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 6
+      },
+      "expect": {
+        "verdict": "price_variance",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "short_shipped_honest",
+      "label": "Short shipped, billed honestly",
+      "story": "Slip says 24, 22 arrived, billed 22. Carrier problem, not billing.",
+      "profile": {
+        "ordered": 24,
+        "price": 22.0
+      },
+      "input": {
+        "orderedQty": 24,
+        "poUnitPrice": 22.0,
+        "shippedQty": 24,
+        "invoiceQty": 22,
+        "invoiceUnitPrice": 22.0,
+        "acceptedQty": 22,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 22
+      },
+      "expect": {
+        "verdict": "short_shipped",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "short_shipped_honest",
+      "label": "Short shipped, billed honestly",
+      "story": "Slip says 24, 22 arrived, billed 22. Carrier problem, not billing.",
+      "profile": {
+        "ordered": 120,
+        "price": 14.5
+      },
+      "input": {
+        "orderedQty": 120,
+        "poUnitPrice": 14.5,
+        "shippedQty": 120,
+        "invoiceQty": 110,
+        "invoiceUnitPrice": 14.5,
+        "acceptedQty": 110,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 110
+      },
+      "expect": {
+        "verdict": "short_shipped",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "short_shipped_honest",
+      "label": "Short shipped, billed honestly",
+      "story": "Slip says 24, 22 arrived, billed 22. Carrier problem, not billing.",
+      "profile": {
+        "ordered": 6,
+        "price": 78.0
+      },
+      "input": {
+        "orderedQty": 6,
+        "poUnitPrice": 78.0,
+        "shippedQty": 6,
+        "invoiceQty": 5,
+        "invoiceUnitPrice": 78.0,
+        "acceptedQty": 5,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 5
+      },
+      "expect": {
+        "verdict": "short_shipped",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "qty_short",
+      "label": "Billed for goods that never arrived",
+      "story": "Full order billed, fewer bottles delivered. Credit due.",
+      "profile": {
+        "ordered": 24,
+        "price": 22.0
+      },
+      "input": {
+        "orderedQty": 24,
+        "poUnitPrice": 22.0,
+        "shippedQty": 24,
+        "invoiceQty": 24,
+        "invoiceUnitPrice": 22.0,
+        "acceptedQty": 21,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 21
+      },
+      "expect": {
+        "verdict": "qty_short",
+        "creditDue": true,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "qty_short",
+      "label": "Billed for goods that never arrived",
+      "story": "Full order billed, fewer bottles delivered. Credit due.",
+      "profile": {
+        "ordered": 120,
+        "price": 14.5
+      },
+      "input": {
+        "orderedQty": 120,
+        "poUnitPrice": 14.5,
+        "shippedQty": 120,
+        "invoiceQty": 120,
+        "invoiceUnitPrice": 14.5,
+        "acceptedQty": 105,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 105
+      },
+      "expect": {
+        "verdict": "qty_short",
+        "creditDue": true,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "qty_short",
+      "label": "Billed for goods that never arrived",
+      "story": "Full order billed, fewer bottles delivered. Credit due.",
+      "profile": {
+        "ordered": 6,
+        "price": 78.0
+      },
+      "input": {
+        "orderedQty": 6,
+        "poUnitPrice": 78.0,
+        "shippedQty": 6,
+        "invoiceQty": 6,
+        "invoiceUnitPrice": 78.0,
+        "acceptedQty": 5,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 5
+      },
+      "expect": {
+        "verdict": "qty_short",
+        "creditDue": true,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "qty_over",
+      "label": "Over-delivered, not an agreed deal",
+      "story": "More arrived than billed, no free-goods marking anywhere.",
+      "profile": {
+        "ordered": 24,
+        "price": 22.0
+      },
+      "input": {
+        "orderedQty": 24,
+        "poUnitPrice": 22.0,
+        "shippedQty": 26,
+        "invoiceQty": 24,
+        "invoiceUnitPrice": 22.0,
+        "acceptedQty": 26,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 26
+      },
+      "expect": {
+        "verdict": "qty_over",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "qty_over",
+      "label": "Over-delivered, not an agreed deal",
+      "story": "More arrived than billed, no free-goods marking anywhere.",
+      "profile": {
+        "ordered": 120,
+        "price": 14.5
+      },
+      "input": {
+        "orderedQty": 120,
+        "poUnitPrice": 14.5,
+        "shippedQty": 130,
+        "invoiceQty": 120,
+        "invoiceUnitPrice": 14.5,
+        "acceptedQty": 130,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 130
+      },
+      "expect": {
+        "verdict": "qty_over",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "qty_over",
+      "label": "Over-delivered, not an agreed deal",
+      "story": "More arrived than billed, no free-goods marking anywhere.",
+      "profile": {
+        "ordered": 6,
+        "price": 78.0
+      },
+      "input": {
+        "orderedQty": 6,
+        "poUnitPrice": 78.0,
+        "shippedQty": 7,
+        "invoiceQty": 6,
+        "invoiceUnitPrice": 78.0,
+        "acceptedQty": 7,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 7
+      },
+      "expect": {
+        "verdict": "qty_over",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "damaged",
+      "label": "Breakage on arrival",
+      "story": "All shipped units arrived, some broken, billed in full. Credit due.",
+      "profile": {
+        "ordered": 24,
+        "price": 22.0
+      },
+      "input": {
+        "orderedQty": 24,
+        "poUnitPrice": 22.0,
+        "shippedQty": 24,
+        "invoiceQty": 24,
+        "invoiceUnitPrice": 22.0,
+        "acceptedQty": 22,
+        "rejectedQty": 2,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 22
+      },
+      "expect": {
+        "verdict": "rejected",
+        "creditDue": true,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "damaged",
+      "label": "Breakage on arrival",
+      "story": "All shipped units arrived, some broken, billed in full. Credit due.",
+      "profile": {
+        "ordered": 120,
+        "price": 14.5
+      },
+      "input": {
+        "orderedQty": 120,
+        "poUnitPrice": 14.5,
+        "shippedQty": 120,
+        "invoiceQty": 120,
+        "invoiceUnitPrice": 14.5,
+        "acceptedQty": 110,
+        "rejectedQty": 10,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 110
+      },
+      "expect": {
+        "verdict": "rejected",
+        "creditDue": true,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "damaged",
+      "label": "Breakage on arrival",
+      "story": "All shipped units arrived, some broken, billed in full. Credit due.",
+      "profile": {
+        "ordered": 6,
+        "price": 78.0
+      },
+      "input": {
+        "orderedQty": 6,
+        "poUnitPrice": 78.0,
+        "shippedQty": 6,
+        "invoiceQty": 6,
+        "invoiceUnitPrice": 78.0,
+        "acceptedQty": 5,
+        "rejectedQty": 1,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 5
+      },
+      "expect": {
+        "verdict": "rejected",
+        "creditDue": true,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "partial_backorder",
+      "label": "Partial shipment, balance allocated",
+      "story": "Half shipped and billed; the order stays open for the balance.",
+      "profile": {
+        "ordered": 24,
+        "price": 22.0
+      },
+      "input": {
+        "orderedQty": 24,
+        "poUnitPrice": 22.0,
+        "shippedQty": 12,
+        "invoiceQty": 12,
+        "invoiceUnitPrice": 22.0,
+        "acceptedQty": 12,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 12
+      },
+      "expect": {
+        "verdict": "partial",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "partial_backorder",
+      "label": "Partial shipment, balance allocated",
+      "story": "Half shipped and billed; the order stays open for the balance.",
+      "profile": {
+        "ordered": 120,
+        "price": 14.5
+      },
+      "input": {
+        "orderedQty": 120,
+        "poUnitPrice": 14.5,
+        "shippedQty": 60,
+        "invoiceQty": 60,
+        "invoiceUnitPrice": 14.5,
+        "acceptedQty": 60,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 60
+      },
+      "expect": {
+        "verdict": "partial",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "partial_backorder",
+      "label": "Partial shipment, balance allocated",
+      "story": "Half shipped and billed; the order stays open for the balance.",
+      "profile": {
+        "ordered": 6,
+        "price": 78.0
+      },
+      "input": {
+        "orderedQty": 6,
+        "poUnitPrice": 78.0,
+        "shippedQty": 3,
+        "invoiceQty": 3,
+        "invoiceUnitPrice": 78.0,
+        "acceptedQty": 3,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 3
+      },
+      "expect": {
+        "verdict": "partial",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "no_invoice_yet",
+      "label": "Goods arrived, invoice has not",
+      "story": "Must read unmatched. Silence is not agreement.",
+      "profile": {
+        "ordered": 24,
+        "price": 22.0
+      },
+      "input": {
+        "orderedQty": 24,
+        "poUnitPrice": 22.0,
+        "shippedQty": 24,
+        "invoiceQty": null,
+        "invoiceUnitPrice": null,
+        "acceptedQty": 24,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 24
+      },
+      "expect": {
+        "verdict": "unmatched",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "no_invoice_yet",
+      "label": "Goods arrived, invoice has not",
+      "story": "Must read unmatched. Silence is not agreement.",
+      "profile": {
+        "ordered": 120,
+        "price": 14.5
+      },
+      "input": {
+        "orderedQty": 120,
+        "poUnitPrice": 14.5,
+        "shippedQty": 120,
+        "invoiceQty": null,
+        "invoiceUnitPrice": null,
+        "acceptedQty": 120,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 120
+      },
+      "expect": {
+        "verdict": "unmatched",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "no_invoice_yet",
+      "label": "Goods arrived, invoice has not",
+      "story": "Must read unmatched. Silence is not agreement.",
+      "profile": {
+        "ordered": 6,
+        "price": 78.0
+      },
+      "input": {
+        "orderedQty": 6,
+        "poUnitPrice": 78.0,
+        "shippedQty": 6,
+        "invoiceQty": null,
+        "invoiceUnitPrice": null,
+        "acceptedQty": 6,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 6
+      },
+      "expect": {
+        "verdict": "unmatched",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "vintage_substitution",
+      "label": "Vintage substituted",
+      "story": "Arithmetic is perfect; they shipped the wrong year.",
+      "profile": {
+        "ordered": 24,
+        "price": 22.0
+      },
+      "input": {
+        "orderedQty": 24,
+        "poUnitPrice": 22.0,
+        "shippedQty": 24,
+        "invoiceQty": 24,
+        "invoiceUnitPrice": 22.0,
+        "acceptedQty": 24,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 24
+      },
+      "expect": {
+        "verdict": "matched",
+        "creditDue": false,
+        "lineMatch": "substitution"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "vintage_substitution",
+      "label": "Vintage substituted",
+      "story": "Arithmetic is perfect; they shipped the wrong year.",
+      "profile": {
+        "ordered": 120,
+        "price": 14.5
+      },
+      "input": {
+        "orderedQty": 120,
+        "poUnitPrice": 14.5,
+        "shippedQty": 120,
+        "invoiceQty": 120,
+        "invoiceUnitPrice": 14.5,
+        "acceptedQty": 120,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 120
+      },
+      "expect": {
+        "verdict": "matched",
+        "creditDue": false,
+        "lineMatch": "substitution"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "vintage_substitution",
+      "label": "Vintage substituted",
+      "story": "Arithmetic is perfect; they shipped the wrong year.",
+      "profile": {
+        "ordered": 6,
+        "price": 78.0
+      },
+      "input": {
+        "orderedQty": 6,
+        "poUnitPrice": 78.0,
+        "shippedQty": 6,
+        "invoiceQty": 6,
+        "invoiceUnitPrice": 78.0,
+        "acceptedQty": 6,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 0.0,
+        "priceOverrideReason": null,
+        "stockedQty": 6
+      },
+      "expect": {
+        "verdict": "matched",
+        "creditDue": false,
+        "lineMatch": "substitution"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "freight_allocated",
+      "label": "Freight folded into the line",
+      "story": "Line totals will not tie out to qty x price. Must not be needs_review.",
+      "profile": {
+        "ordered": 24,
+        "price": 22.0
+      },
+      "input": {
+        "orderedQty": 24,
+        "poUnitPrice": 22.0,
+        "shippedQty": 24,
+        "invoiceQty": 24,
+        "invoiceUnitPrice": 22.0,
+        "acceptedQty": 24,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 10.08,
+        "priceOverrideReason": null,
+        "stockedQty": 24
+      },
+      "expect": {
+        "verdict": "matched",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "freight_allocated",
+      "label": "Freight folded into the line",
+      "story": "Line totals will not tie out to qty x price. Must not be needs_review.",
+      "profile": {
+        "ordered": 120,
+        "price": 14.5
+      },
+      "input": {
+        "orderedQty": 120,
+        "poUnitPrice": 14.5,
+        "shippedQty": 120,
+        "invoiceQty": 120,
+        "invoiceUnitPrice": 14.5,
+        "acceptedQty": 120,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 50.4,
+        "priceOverrideReason": null,
+        "stockedQty": 120
+      },
+      "expect": {
+        "verdict": "matched",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    },
+    {
+      "scenario": "freight_allocated",
+      "label": "Freight folded into the line",
+      "story": "Line totals will not tie out to qty x price. Must not be needs_review.",
+      "profile": {
+        "ordered": 6,
+        "price": 78.0
+      },
+      "input": {
+        "orderedQty": 6,
+        "poUnitPrice": 78.0,
+        "shippedQty": 6,
+        "invoiceQty": 6,
+        "invoiceUnitPrice": 78.0,
+        "acceptedQty": 6,
+        "rejectedQty": 0,
+        "freeGoodsQty": 0,
+        "allocatedCharges": 2.52,
+        "priceOverrideReason": null,
+        "stockedQty": 6
+      },
+      "expect": {
+        "verdict": "matched",
+        "creditDue": false,
+        "lineMatch": "exact"
+      },
+      "knownFailing": null
+    }
+  ]
+}

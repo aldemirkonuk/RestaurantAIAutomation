@@ -1,8 +1,26 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { IsInt, IsOptional, IsString, Max, Min } from "class-validator";
-import { Type } from "class-transformer";
+import {
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from "class-validator";
+import { Transform, Type } from "class-transformer";
 
 export class SearchVendorsDto {
+  @ApiPropertyOptional({
+    description:
+      "Include unverified rows ingested from official permit registries. " +
+      "Defaults to false so this endpoint returns only human-curated vendors.",
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === "true" || value === "1")
+  includeRegistry?: boolean;
+
   @ApiPropertyOptional({
     description: "Search term for vendor name or specialties",
   })

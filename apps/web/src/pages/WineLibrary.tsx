@@ -50,13 +50,26 @@ import { formatVolume } from '../utils/volumeUtils'
 import { useUIStore, useRestaurantSettingsStore } from '../stores'
 import { useWineLibraryPage } from './wine-library/useWineLibraryPage'
 
+/**
+ * Market price vs. the library's own reference price, as a percentage.
+ *
+ * The Inventory page compares market against what the restaurant actually paid
+ * (WAC); the library has no purchase history, so the reference price is the only
+ * honest baseline here. Null whenever either side is missing — a 0% delta and
+ * "no data" must not look the same.
+ */
+const marketDeltaVsReference = (wine: WineType): number | null => {
+  if (!wine.marketPrice || !wine.price) return null
+  return ((wine.marketPrice - wine.price) / wine.price) * 100
+}
+
 const getStockStatus = (wine: WineType) => {
   const stock = wine.liveStock || 0
   const threshold = wine.threshold
   const ratio = stock / threshold
 
-  if (stock === 0) return { status: 'out', label: 'Out of Stock', color: 'rose', priority: 4 }
-  if (ratio <= 0.25) return { status: 'critical', label: 'Critical', color: 'rose', priority: 3 }
+  if (stock === 0) return { status: 'out', label: 'Out of Stock', color: 'wine', priority: 4 }
+  if (ratio <= 0.25) return { status: 'critical', label: 'Critical', color: 'wine', priority: 3 }
   if (ratio <= 0.5) return { status: 'low', label: 'Low Stock', color: 'amber', priority: 2 }
   if (ratio <= 1) return { status: 'warning', label: 'Below Min', color: 'yellow', priority: 1 }
   return { status: 'healthy', label: 'In Stock', color: 'emerald', priority: 0 }
@@ -439,10 +452,13 @@ Redirecting to Orders page...`)
       { header: 'Alcohol %', value: (w) => w.alcohol },
       { header: 'Aromas', value: (w) => (w.aromas ?? []).join('; ') },
       { header: 'Flavors', value: (w) => (w.flavors ?? []).join('; ') },
+      // Stock is only real for wines this restaurant actually carries; a derived
+      // "Stock Status" label would export "Out of Stock" for every catalog wine,
+      // so it is deliberately absent. Inventory owns that export.
       { header: 'Current Stock', value: (w) => w.liveStock ?? 0 },
       { header: 'Threshold', value: (w) => w.threshold },
-      { header: 'Stock Status', value: (w) => getStockStatus(w).label },
       { header: 'Price ($)', value: (w) => w.price },
+      { header: 'Market Price ($)', value: (w) => w.marketPrice ?? '' },
       { header: 'Provider Name', value: (w) => w.provider?.name ?? '' },
       { header: 'Provider Phone', value: (w) => w.provider?.phone ?? '' },
       { header: 'Provider Email', value: (w) => w.provider?.email ?? '' },
@@ -547,7 +563,7 @@ Redirecting to Orders page...`)
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-6 p-4 bg-gradient-to-r from-red-600 to-rose-600 rounded-xl shadow-lg"
+            className="mb-6 p-4 bg-gradient-to-r from-wine-600 to-wine-800 rounded-xl shadow-lg"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -837,8 +853,7 @@ Redirecting to Orders page...`)
                 { field: 'country' as const, label: 'Country' },
                 { field: 'vintage' as const, label: 'Year' },
                 { field: 'price' as const, label: 'Price' },
-                { field: 'stock' as const, label: 'Stock' },
-                { field: 'status' as const, label: 'Status' },
+                { field: 'market' as const, label: 'Market' },
               ].map((option) => (
                 <button
                   key={option.field}
@@ -862,11 +877,11 @@ Redirecting to Orders page...`)
         {/* Wine List View - With Year, Country, Vintage columns - Horizontally Scrollable */}
         {/* Bulk action bar (NEW-200/201/250) */}
         {bulkSelectedWines.size > 0 && (
-          <div className="sticky top-2 z-20 flex items-center justify-between gap-3 mb-4 px-4 py-2.5 bg-gray-900 text-white rounded-xl shadow-lg">
+          <div className="sticky top-2 z-20 flex items-center justify-between gap-3 mb-4 px-4 py-2.5 bg-wine-900 text-white rounded-xl shadow-lg">
             <span className="text-sm font-semibold">
               {bulkSelectedWines.size} selected
               {bulkSelectedWines.size < filteredWines.length && (
-                <button onClick={toggleSelectAllFiltered} className="ml-3 text-xs font-medium text-amber-300 hover:text-amber-200">
+                <button onClick={toggleSelectAllFiltered} className="ml-3 text-xs font-medium text-white/70 hover:text-white underline decoration-white/40 hover:decoration-white underline-offset-2 transition-colors">
                   Select all {filteredWines.length}
                 </button>
               )}
@@ -883,7 +898,7 @@ Redirecting to Orders page...`)
                 onExport={bulkExportSelected}
                 title="Export selected wines"
               />
-              <button onClick={bulkRemoveFromLibrary} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-rose-500/80 hover:bg-rose-500 rounded-lg">
+              <button onClick={bulkRemoveFromLibrary} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-wine-600/90 hover:bg-wine-600 rounded-lg">
                 <Trash2 className="w-3.5 h-3.5" /> Remove
               </button>
               <button onClick={clearWineSelection} className="p-1.5 hover:bg-white/20 rounded-lg" aria-label="Clear selection">
@@ -971,14 +986,9 @@ Redirecting to Orders page...`)
                         Price <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
                       </button>
                     </th>
-                    <th className="px-4 py-4 text-left w-[130px]">
-                      <button onClick={() => handleSort('stock')} className="flex items-center gap-1 text-sm font-semibold text-gray-900">
-                        Stock <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
-                      </button>
-                    </th>
-                    <th className="px-4 py-4 text-left w-[140px]">
-                      <button onClick={() => handleSort('status')} className="flex items-center gap-1 text-sm font-semibold text-gray-900">
-                        Status <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
+                    <th className="px-4 py-4 text-right w-[140px]">
+                      <button onClick={() => handleSort('market')} className="flex items-center gap-1 ml-auto text-sm font-semibold text-gray-900">
+                        Market Price <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
                       </button>
                     </th>
                     <th className="px-4 py-4 text-center w-[160px] text-sm font-semibold text-gray-900">Action</th>
@@ -988,6 +998,7 @@ Redirecting to Orders page...`)
                   {pagedWines.map((wine) => {
                     const typeColors = getWineTypeColor(wine.type)
                     const status = getStockStatus(wine)
+                    const marketDelta = marketDeltaVsReference(wine)
                     const hasRecurring = savedPreferences[wine.id]?.saveAsRecurring
                     
                     return (
@@ -1032,7 +1043,7 @@ Redirecting to Orders page...`)
                               />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <p className="font-medium text-gray-900 truncate">{wine.name}</p>
+                              <p className="font-medium text-gray-900 truncate">{wine.displayName || wine.name}</p>
                               <p className="text-xs text-gray-500 truncate">{wine.producer} · {wine.grape}</p>
                             </div>
                           </div>
@@ -1060,27 +1071,27 @@ Redirecting to Orders page...`)
                         <td className="px-4 py-3 w-[150px] text-sm text-gray-700 whitespace-nowrap">{wine.country}</td>
                         <td className="px-4 py-3 w-[100px] text-sm font-medium text-gray-900 whitespace-nowrap">{wine.vintage || 'NV'}</td>
                         <td className="px-4 py-3 w-[120px] font-medium text-gray-900 whitespace-nowrap">${wine.price}</td>
-                        <td className="px-4 py-3 w-[130px]">
-                          <div className="flex items-center gap-2 whitespace-nowrap">
-                            <span className="font-medium text-gray-900">{wine.liveStock || 0}</span>
-                            <span className="text-xs text-gray-400">/ {wine.threshold}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 w-[140px]">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
-                            status.color === 'emerald' ? 'bg-emerald-100 text-emerald-700' :
-                            status.color === 'yellow' ? 'bg-yellow-100 text-yellow-700' :
-                            status.color === 'amber' ? 'bg-amber-100 text-amber-700' :
-                            'bg-rose-100 text-rose-700'
-                          }`}>
-                            {status.label}
-                          </span>
+                        <td className="px-4 py-3 w-[140px] text-right whitespace-nowrap">
+                          {wine.marketPrice == null ? (
+                            <span className="font-mono text-xs text-gray-300">—</span>
+                          ) : (
+                            <div className="flex flex-col items-end leading-tight">
+                              <span className="font-mono text-xs font-semibold text-gray-900">
+                                ${wine.marketPrice.toFixed(2)}
+                              </span>
+                              {marketDelta != null && (
+                                <span className={`font-mono text-[11px] font-bold ${marketDelta >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                  {marketDelta > 0 ? '+' : ''}{marketDelta.toFixed(0)}%
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3 w-[240px]">
                           <div className="flex items-center gap-2">
                             <button
                               onClick={(e) => handleAddToInventory(wine, e)}
-                              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap bg-blue-100 text-blue-700 hover:bg-blue-200"
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap bg-blue-50 text-blue-700 hover:bg-blue-100"
                               title="Add to Inventory"
                             >
                               <Package className="w-4 h-4 flex-shrink-0" />
@@ -1091,9 +1102,8 @@ Redirecting to Orders page...`)
                               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
                                 status.status === 'healthy'
                                   ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                  : status.status === 'critical' || status.status === 'out'
-                                    ? 'bg-rose-600 text-white hover:bg-rose-700 shadow-lg shadow-rose-600/30 animate-pulse'
-                                    : 'bg-wine-600 text-white hover:bg-wine-700 shadow-lg shadow-wine-600/30'
+                                  : 'bg-wine-600 text-white hover:bg-wine-700 shadow-lg shadow-wine-600/30' +
+                                    (status.status === 'critical' || status.status === 'out' ? ' animate-pulse' : '')
                               }`}
                             >
                               <ShoppingCart className="w-4 h-4 flex-shrink-0" />
@@ -1102,7 +1112,7 @@ Redirecting to Orders page...`)
                             </button>
                             <button
                               onClick={(e) => handleRemoveFromLibrary(wine, e)}
-                              className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                              className="p-2 text-danger-600 hover:bg-danger-50 rounded-lg transition-colors"
                               title="Remove from Library"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -1179,21 +1189,10 @@ Redirecting to Orders page...`)
                         }`}
                       />
                     </button>
-                    {/* left-10 leaves room for the selection checkbox at left-3 */}
-                    <div className="absolute top-3 left-10 flex items-center gap-2">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${typeColors.bg} ${typeColors.text}`}>
-                        {normalizeType(wine.type)}
-                      </span>
-                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                        {formatVolume(wine.bottleSizeMl ?? 750, measurementUnit)}
-                      </span>
-                    </div>
-                    
-                    {/* Status Badge */}
                     {status.status !== 'healthy' && (
                       <span className={`absolute bottom-3 left-3 px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-1 ${
-                        status.color === 'rose' ? 'bg-rose-500 text-white' :
-                        status.color === 'amber' ? 'bg-amber-500 text-white' :
+                        status.color === 'wine' ? 'bg-wine-600 text-white' :
+                        status.color === 'amber' ? 'bg-warning-500 text-white' :
                         'bg-yellow-400 text-yellow-900'
                       }`}>
                         <AlertTriangle className="w-3 h-3" />
@@ -1204,9 +1203,22 @@ Redirecting to Orders page...`)
 
                   <div className="p-4">
                     <h3 className="font-semibold text-gray-900 group-hover:text-wine-600 transition-colors truncate">
-                      {wine.name}
+                      {wine.displayName || wine.name}
                     </h3>
-                    <p className="text-sm text-gray-500 mt-0.5">{wine.vintage || 'NV'} · {wine.country}</p>
+                    <p className="text-sm text-gray-500 mt-0.5 flex items-center gap-1.5 min-w-0 flex-wrap">
+                      <span className="truncate">{wine.vintage || 'NV'} · {wine.country}</span>
+                      <span className="text-gray-300 shrink-0" aria-hidden>·</span>
+                      <span className="inline-flex items-center gap-1 shrink-0">
+                        <span
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ backgroundColor: typeColors.accent }}
+                          aria-hidden
+                        />
+                        {normalizeType(wine.type)}
+                      </span>
+                      <span className="text-gray-300 shrink-0" aria-hidden>·</span>
+                      <span className="shrink-0">{formatVolume(wine.bottleSizeMl ?? 750, measurementUnit)}</span>
+                    </p>
 
                     <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
                       <div>
@@ -1216,7 +1228,7 @@ Redirecting to Orders page...`)
                       <div className="flex items-center gap-2">
                         <button
                           onClick={(e) => handleAddToInventory(wine, e)}
-                          className="p-2.5 rounded-xl transition-all bg-blue-100 text-blue-700 hover:bg-blue-200"
+                          className="p-2.5 rounded-xl transition-all bg-blue-50 text-blue-700 hover:bg-blue-100"
                           title="Add to Inventory"
                         >
                           <Package className="w-5 h-5" />
@@ -1226,9 +1238,8 @@ Redirecting to Orders page...`)
                           className={`p-2.5 rounded-xl transition-all ${
                             status.status === 'healthy'
                               ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                              : status.status === 'critical' || status.status === 'out'
-                                ? 'bg-rose-600 text-white hover:bg-rose-700 animate-pulse'
-                                : 'bg-wine-600 text-white hover:bg-wine-700'
+                              : 'bg-wine-600 text-white hover:bg-wine-700 shadow-lg shadow-wine-600/30' +
+                                (status.status === 'critical' || status.status === 'out' ? ' animate-pulse' : '')
                           }`}
                         >
                           <ShoppingCart className="w-5 h-5" />
@@ -1344,8 +1355,8 @@ Redirecting to Orders page...`)
                           <p className="text-xs text-gray-500">Stock / Threshold</p>
                           <p className={`text-sm font-medium ${
                             (selectedWine.liveStock || 0) <= selectedWine.threshold
-                              ? 'text-rose-600'
-                              : 'text-emerald-600'
+                              ? 'text-wine-600'
+                              : 'text-success-600'
                           }`}>
                             {selectedWine.liveStock ?? 'N/A'} / {selectedWine.threshold}
                           </p>
@@ -1442,7 +1453,7 @@ Redirecting to Orders page...`)
                           setSelectedWine(null)
                           handleRemoveFromLibrary(wine)
                         }}
-                        className="w-full px-4 py-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm font-medium"
+                        className="w-full px-4 py-2 text-wine-600 hover:bg-wine-50 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm font-medium"
                       >
                         <Trash2 className="w-4 h-4" />
                         Remove from Library
@@ -1502,8 +1513,8 @@ Redirecting to Orders page...`)
                       <div className="flex items-center gap-2 mt-1">
                         <span className={`text-sm font-medium ${
                           (reorderModal.wine.liveStock || 0) <= reorderModal.wine.threshold
-                            ? 'text-rose-600'
-                            : 'text-emerald-600'
+                            ? 'text-wine-600'
+                            : 'text-success-600'
                         }`}>
                           {reorderModal.wine.liveStock} in stock
                         </span>

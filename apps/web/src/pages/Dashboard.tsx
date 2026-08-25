@@ -468,7 +468,10 @@ export function Dashboard() {
         </div>
 
         {/* One-Tap Actions (2/3) + Quick Actions (1/3) - ABOVE CALENDAR */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div
+          className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+          data-tour="dashboard-actions"
+        >
           {/* One-Tap Action Center - 2/3 */}
           <motion.div variants={itemVariants} className="lg:col-span-2">
             <OneTapActionCenter />
@@ -891,6 +894,7 @@ export function Dashboard() {
           <motion.div
             variants={itemVariants}
             className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
+            data-tour="dashboard-orders"
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <div>

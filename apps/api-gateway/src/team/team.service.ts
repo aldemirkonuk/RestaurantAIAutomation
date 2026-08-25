@@ -40,6 +40,8 @@ export class TeamService {
     restaurantId: string,
     required?: "owner" | "manager",
   ): Promise<{ role: Role }> {
+    let accessRole: string | null = null;
+
     const { data: access } = await this.sb
       .from("user_restaurant_access")
       .select("role")
@@ -48,10 +50,24 @@ export class TeamService {
       .eq("is_active", true)
       .maybeSingle();
 
-    if (!access)
+    if (access) {
+      accessRole = access.role;
+    } else {
+      const { data: user } = await this.sb
+        .from("users")
+        .select("restaurant_id, role")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (user && user.restaurant_id === restaurantId) {
+        accessRole = user.role || "staff";
+      }
+    }
+
+    if (!accessRole)
       throw new ForbiddenException("Access denied to this restaurant");
 
-    const role = access.role as Role;
+    const role = accessRole as Role;
     if (required === "owner" && role !== "owner")
       throw new ForbiddenException("Only owners can perform this action");
     if (required === "manager" && role === "staff")
@@ -317,6 +333,45 @@ export class TeamService {
     memberId: string,
   ): Promise<void> {
     await this.assertAccess(userId, restaurantId, "manager");
+
+    // Fetch the member to get their user_id and check their role.
+    const { data: member } = await this.sb
+      .from("team_members")
+      .select("user_id")
+      .eq("id", memberId)
+      .eq("restaurant_id", restaurantId)
+      .single();
+
+    // If member has a linked user, check their access role — owners cannot be removed.
+    if (member?.user_id) {
+      const { data: access } = await this.sb
+        .from("user_restaurant_access")
+        .select("role")
+        .eq("user_id", member.user_id)
+        .eq("restaurant_id", restaurantId)
+        .single();
+
+      if (access?.role === "owner") {
+        const { count } = await this.sb
+          .from("user_restaurant_access")
+          .select("*", { count: "exact", head: true })
+          .eq("restaurant_id", restaurantId)
+          .eq("role", "owner");
+
+        if (count && count <= 1) {
+          throw new ForbiddenException("Cannot remove the last owner of the restaurant.");
+        }
+      }
+
+      // Remove from user_restaurant_access so they lose access and are not backfilled.
+      await this.sb
+        .from("user_restaurant_access")
+        .delete()
+        .eq("user_id", member.user_id)
+        .eq("restaurant_id", restaurantId);
+    }
+
+    // Remove from team_members roster.
     const { error } = await this.sb
       .from("team_members")
       .delete()

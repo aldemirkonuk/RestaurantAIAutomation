@@ -14,7 +14,14 @@ class Settings:
     """Application settings loaded from environment variables."""
 
     def __init__(self):
-        self.claude_api_key: Optional[str] = os.getenv("CLAUDE_API_KEY")
+        # ANTHROPIC_API_KEY is the SDK's own conventional name and is what this
+        # deployment actually sets; reading only CLAUDE_API_KEY left this None and
+        # logged "Haiku calls will fail" on every boot. Calls still worked because
+        # the SDK falls back to ANTHROPIC_API_KEY itself — accurate config beats
+        # relying on that, and a misleading warning trains people to ignore logs.
+        self.claude_api_key: Optional[str] = os.getenv("CLAUDE_API_KEY") or os.getenv(
+            "ANTHROPIC_API_KEY"
+        )
         self.supabase_url: Optional[str] = os.getenv("SUPABASE_URL")
         self.supabase_key: Optional[str] = (
             os.getenv("SUPABASE_SERVICE_KEY")
@@ -74,6 +81,21 @@ class Settings:
         self.research_eligibility_cooldown_days: int = int(
             os.getenv("RESEARCH_ELIGIBILITY_COOLDOWN_DAYS", "7")
         )
+        # Automatic dispatch of research for wines the library matcher could
+        # not resolve. Off by default and opt-in per environment: turning it on
+        # starts recurring, billable outbound web searches, which is a spend
+        # decision rather than a deployment detail. The budget ceilings above
+        # still apply once it is on — this only decides whether anything is
+        # offered to the agent without a human pressing the trigger.
+        self.research_dispatch_enabled: bool = (
+            os.getenv("RESEARCH_DISPATCH_ENABLED", "false").lower() == "true"
+        )
+        # 20/hour against a $0.04/record ceiling is at most $19.20/day, which
+        # the $5.00 daily cap truncates to ~125 records — so the cap, not this
+        # number, is what bounds spend. This bounds the burst.
+        self.research_dispatch_batch_size: int = int(
+            os.getenv("RESEARCH_DISPATCH_BATCH_SIZE", "20")
+        )
         self.research_fetch_verify_enabled: bool = (
             os.getenv("RESEARCH_FETCH_VERIFY_ENABLED", "true").lower() == "true"
         )
@@ -84,8 +106,10 @@ class Settings:
         self.research_cascade_flash_model: str = os.getenv(
             "RESEARCH_CASCADE_FLASH_MODEL", "gemini-2.5-flash"
         )
+        # claude-sonnet-4-20250514 was RETIRED — verified 404 against the live API
+        # on 2026-08-24, same class of dead default as gemini-2.0-flash (ADR 0010).
         self.research_cascade_sonnet_model: str = os.getenv(
-            "RESEARCH_CASCADE_SONNET_MODEL", "claude-sonnet-4-20250514"
+            "RESEARCH_CASCADE_SONNET_MODEL", "claude-sonnet-5"
         )
         # Phase 12.1: Entity cache (D-04)
         self.redis_url: Optional[str] = os.getenv("REDIS_URL")
@@ -152,7 +176,19 @@ class Settings:
         self.llm_temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.1"))
 
         # Phase 24: Email intelligence model selection (model_clients.py)
-        self.gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+        # gemini-2.0-flash was SHUT DOWN 2026-06-01; the old default 404'd on every
+        # call and dead-lettered all inbound mail. Replaced per ADR 0010.
+        self.gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+        # Classification escalation (ADR 0010). The primary model scored 54/54 on
+        # the eval set and never fell below this floor, so escalation is a safety
+        # net for genuinely ambiguous mail, not a routine second opinion — the
+        # escalation model costs roughly 10x per token.
+        self.email_intel_escalation_model: str = os.getenv(
+            "EMAIL_INTEL_ESCALATION_MODEL", "claude-sonnet-5"
+        )
+        self.email_intel_escalation_threshold: float = float(
+            os.getenv("EMAIL_INTEL_ESCALATION_THRESHOLD", "0.70")
+        )
         self.haiku_model: str = os.getenv("HAIKU_MODEL", "claude-haiku-4-5-20251001")
         # Phase 24: ProviderConversationAgent Level 4 feature flag (COMMS-07, R-11)
         # Default=False — canary rollout per D-05. Set PROV_AGENT_LEVEL4_ENABLED=true to enable.

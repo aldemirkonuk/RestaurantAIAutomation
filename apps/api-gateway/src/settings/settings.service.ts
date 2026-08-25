@@ -150,7 +150,18 @@ export class SettingsService {
       enable_check_scanning: true,
       enable_auction_purchases: true,
       enable_profit_margin_tracking: true,
-      enable_guest_crm: true,
+      // Guest CRM stays OFF by default, for the same reason as
+      // enable_ai_autonomous_send above: it is the one flag here whose "on"
+      // makes a promise about a *person*. Settings.tsx renders it as "Track
+      // guest preferences and wine history", and until 2026-08-20 it defaulted
+      // true while no guest entity existed anywhere in the schema — every
+      // restaurant shown an on-by-default tracking claim backed by nothing,
+      // and no record of what any guest had been told. The schema now exists
+      // (20260819000000, register A14), which makes the default matter more,
+      // not less: capture must begin by a restaurant's deliberate act, because
+      // consent is per guest and versioned and someone has to have decided
+      // what the notice says.
+      enable_guest_crm: false,
       enable_wine_pairing_ai: true,
       enable_compliance_autopilot: true,
       enable_shrinkage_detective: true,

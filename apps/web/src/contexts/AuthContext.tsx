@@ -3,10 +3,41 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { errorTracking } from '../lib/error-tracking'
 import { useAuthStore } from '../stores'
 
+/**
+ * Thrown by `login()` for backend auth failures. `code`/`provider` carry the
+ * structured fields the API sends for OAuth-only accounts (see
+ * auth.service.ts#validateUser) — e.g. `{ code: 'OAUTH_ONLY', provider:
+ * 'microsoft' }` — so callers can branch on the real provider instead of
+ * pattern-matching the human-readable message text.
+ */
+export class LoginError extends Error {
+  constructor(
+    message: string,
+    public code?: string,
+    public provider?: 'google' | 'microsoft',
+  ) {
+    super(message)
+    this.name = 'LoginError'
+  }
+}
+
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 8000,
+  timeout: 20000,
+})
+
+/** Always stamp the latest token — defaults alone race with login / refresh. */
+api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  const token = localStorage.getItem('accessToken')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  const restaurantId = localStorage.getItem('activeRestaurantId')
+  if (restaurantId) {
+    config.headers['X-Restaurant-Id'] = restaurantId
+  }
+  return config
 })
 
 export interface User {
@@ -54,6 +85,7 @@ export interface AuthContextType {
   user: User | null
   loading: boolean
   error: string | null
+  clearError: () => void
   activeRestaurantId: string | null
   /** Role at the active branch from user_restaurant_access; null if unknown */
   activeRole: 'owner' | 'manager' | 'staff' | null
@@ -152,6 +184,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [activeRestaurantId, setActiveRestaurantIdState] = useState<string | null>(null)
   const [availableRestaurants, setAvailableRestaurants] = useState<RestaurantBranch[]>([])
   const [activeRole, setActiveRole] = useState<'owner' | 'manager' | 'staff' | null>(null)
+  const branchFetchSeq = React.useRef(0)
 
   // Configure axios defaults
   useEffect(() => {
@@ -195,13 +228,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Extract studio roles from the JWT itself (app_metadata.roles) — avoids cross-service call
         const token = localStorage.getItem('accessToken')
         let studioRoles: ('developer' | 'certified_contributor' | 'review_admin')[] = []
+        let jwtRestaurantId: string | undefined
         if (token) {
           try {
             const payload = JSON.parse(atob(token.split('.')[1]))
             studioRoles = payload?.app_metadata?.roles ?? []
+            if (payload?.restaurantId && isUuid(payload.restaurantId)) {
+              jwtRestaurantId = payload.restaurantId
+            }
           } catch { /* malformed token — no studio roles */ }
         }
-        setUser({ ...response.data.user, studioRoles })
+        setUser({
+          ...response.data.user,
+          studioRoles,
+          restaurantId: response.data.user.restaurantId || jwtRestaurantId || '',
+        })
       } catch (err) {
         console.error('Failed to load user:', err)
         // Clear invalid tokens
@@ -218,45 +259,100 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Centralized branch fetch — reused by initial load and refreshBranches()
   // IMPORTANT: preserves activeRestaurantId via the validSaved check below.
   // Do NOT reset activeRestaurantId on refresh — the validSaved check handles it correctly.
-  const fetchAndSetBranches = useCallback(async (userId: string) => {
+  const fetchAndSetBranches = useCallback(async (fallbackRestaurantId?: string) => {
+    const requestId = ++branchFetchSeq.current
+    const resolveJwtRestaurantId = (): string | null => {
+      try {
+        const token = localStorage.getItem('accessToken')
+        if (!token) return null
+        const payload = JSON.parse(atob(token.split('.')[1]))
+        const rid = payload?.restaurantId as string | undefined
+        return rid && isUuid(rid) ? rid : null
+      } catch {
+        return null
+      }
+    }
+
+    const readCachedBranches = (): RestaurantBranch[] => {
+      try {
+        const raw = localStorage.getItem('availableRestaurants')
+        if (!raw) return []
+        const parsed = JSON.parse(raw)
+        if (!Array.isArray(parsed)) return []
+        return parsed.filter(
+          (b: RestaurantBranch) => b && typeof b.id === 'string' && isUuid(b.id),
+        )
+      } catch {
+        return []
+      }
+    }
+
+    const applyBranches = (branches: RestaurantBranch[]) => {
+      if (requestId !== branchFetchSeq.current) return
+      setAvailableRestaurants(branches)
+      localStorage.setItem('availableRestaurants', JSON.stringify(branches))
+
+      const savedId = localStorage.getItem('activeRestaurantId')
+      const validSaved = savedId && branches.some((b) => b.id === savedId)
+      const resolvedActive = validSaved ? savedId : branches[0].id
+
+      setActiveRestaurantIdState(resolvedActive)
+      localStorage.setItem('activeRestaurantId', resolvedActive)
+      api.defaults.headers.common['X-Restaurant-Id'] = resolvedActive
+      useAuthStore.getState().setActiveRestaurantId(resolvedActive)
+    }
+
     try {
       const response = await api.get('/api/v1/organizations/branches')
-      const branches: RestaurantBranch[] = response.data
+      if (requestId !== branchFetchSeq.current) return
+
+      const raw = response.data
+      const branches: RestaurantBranch[] = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.data)
+          ? raw.data
+          : []
+
       if (branches.length > 0) {
-        setAvailableRestaurants(branches)
-        localStorage.setItem('availableRestaurants', JSON.stringify(branches))
-
-        // Restore previously selected branch from localStorage if it's still valid
-        const savedId = localStorage.getItem('activeRestaurantId')
-        const validSaved = savedId && branches.some((b) => b.id === savedId)
-        const resolvedActive = validSaved ? savedId : branches[0].id
-
-        setActiveRestaurantIdState(resolvedActive)
-        localStorage.setItem('activeRestaurantId', resolvedActive)
-        api.defaults.headers.common['X-Restaurant-Id'] = resolvedActive
-        // Keep Zustand store in sync so components reading useAuthStore get the value immediately
-        useAuthStore.getState().setActiveRestaurantId(resolvedActive)
+        applyBranches(branches)
         return
       }
     } catch (err) {
       console.warn('Failed to fetch branches, falling back to single restaurant:', err)
     }
 
-    // Fallback: pre-org user or API error — use userId's restaurant directly
-    const fallbackBranch: RestaurantBranch = {
-      id: userId,
-      name: 'My Restaurant',
-      city: null,
-      chain_id: null,
-      chain_name: null,
+    if (requestId !== branchFetchSeq.current) return
+
+    // Prefer a previously fetched multi-location list over inventing a single stub.
+    const cached = readCachedBranches()
+    if (cached.length > 1) {
+      applyBranches(cached)
+      return
     }
-    setAvailableRestaurants([fallbackBranch])
-    localStorage.setItem('availableRestaurants', JSON.stringify([fallbackBranch]))
-    setActiveRestaurantIdState(userId)
-    localStorage.setItem('activeRestaurantId', userId)
-    api.defaults.headers.common['X-Restaurant-Id'] = userId
-    // Keep Zustand store in sync (fallback path)
-    useAuthStore.getState().setActiveRestaurantId(userId)
+
+    // Fallback: org-less / legacy user — NEVER use userId as restaurantId
+    const savedId = localStorage.getItem('activeRestaurantId')
+    const candidate =
+      (fallbackRestaurantId && isUuid(fallbackRestaurantId) ? fallbackRestaurantId : null) ||
+      resolveJwtRestaurantId() ||
+      (savedId && isUuid(savedId) ? savedId : null) ||
+      cached[0]?.id ||
+      null
+
+    if (!candidate) {
+      console.warn('No restaurant context available for branch fallback')
+      return
+    }
+
+    const fallbackBranch: RestaurantBranch =
+      cached.find((b) => b.id === candidate) ?? {
+        id: candidate,
+        name: 'My Restaurant',
+        city: null,
+        chain_id: null,
+        chain_name: null,
+      }
+    applyBranches([fallbackBranch])
   }, [])
 
   useEffect(() => {
@@ -295,7 +391,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Public refresh — can be called after chain/location changes to update the branch switcher
   const refreshBranches = useCallback(async () => {
     if (!user?.userId) return
-    await fetchAndSetBranches(user.userId)
+    await fetchAndSetBranches(user.restaurantId)
   }, [user, fetchAndSetBranches])
 
   // Sync restaurant context when user changes
@@ -361,7 +457,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ? 'Cannot reach server. Start the API Gateway: cd apps/api-gateway && pnpm start:dev'
         : (err?.response?.data?.message || err?.message || 'Login failed.')
       setError(message)
-      throw new Error(message)
+      // Preserve the structured { code, provider } the backend sends for
+      // OAuth-only accounts — callers (Login.tsx) branch on `provider` to
+      // decide which sign-in flow to redirect into. Don't make them
+      // regex-parse the human-readable `message` for that.
+      throw new LoginError(message, err?.response?.data?.code, err?.response?.data?.provider)
     } finally {
       setLoading(false)
     }
@@ -523,10 +623,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [logout])
 
+  const clearError = useCallback(() => setError(null), [])
+
   const value: AuthContextType = {
     user,
     loading,
     error,
+    clearError,
     activeRestaurantId,
     activeRole,
     availableRestaurants,

@@ -1,6 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
+import {
+  ModelClientError,
+  ModelClientService,
+} from "../common/model-client/model-client.service";
 import { AnalyticsService } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 
@@ -25,7 +29,6 @@ import { InsightGeneratorService } from "./insights/insight-generator.service";
 @Injectable()
 export class ConsultantsService {
   private readonly logger = new Logger(ConsultantsService.name);
-  private static readonly API_URL = "https://api.anthropic.com/v1/messages";
   private static readonly TOGGLE_CATEGORY = "consultants";
 
   static readonly PERSONAS: Record<string, string> = {
@@ -42,6 +45,7 @@ export class ConsultantsService {
   constructor(
     private readonly dbService: DatabaseService,
     private readonly configService: ConfigService,
+    private readonly modelClient: ModelClientService,
     private readonly analyticsService: AnalyticsService,
     private readonly insightGenerator: InsightGeneratorService,
   ) {}
@@ -156,14 +160,12 @@ Each claim ≤ 2 sentences. each why_it_matters ≤ 2 sentences. each suggested_
       "claude-opus-4-8";
 
     try {
-      const res = await fetch(ConsultantsService.API_URL, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
+      // P1 NF-A: routed through the model client. This fetch previously had
+      // NO timeout on an Opus call with adaptive thinking — the slowest call
+      // in the gateway. 300s is deliberate headroom for deep-thinking Opus
+      // over a large evidence pack; before this it was unbounded.
+      const payload: any = await this.modelClient.call({
+        body: {
           model,
           max_tokens: 4096,
           thinking: { type: "adaptive" },
@@ -174,16 +176,17 @@ Each claim ≤ 2 sentences. each why_it_matters ≤ 2 sentences. each suggested_
               content: `Evidence pack (authoritative; do not contradict):\n${JSON.stringify(evidence)}\n\nTask: Produce 3–8 weighted claims for the ${personaKey} lens.`,
             },
           ],
-        }),
+        },
+        timeoutMs: 300_000,
+        nf: {
+          subjectId: "AnalyticsConsultant",
+          taskType: "consultant_analysis",
+          stimulus: "evidence_pack",
+          choice: "weighted_claims",
+          restaurantId,
+          context: { persona: personaKey },
+        },
       });
-      if (!res.ok) {
-        const text = await res.text();
-        this.logger.error(
-          `Consultant API error ${res.status}: ${text.slice(0, 300)}`,
-        );
-        return { enabled: true, error: `Model API error ${res.status}` };
-      }
-      const payload: any = await res.json();
       if (payload.stop_reason === "refusal") {
         return { enabled: true, error: "Model declined the request" };
       }
@@ -210,6 +213,12 @@ Each claim ≤ 2 sentences. each why_it_matters ≤ 2 sentences. each suggested_
         generatedAt: new Date().toISOString(),
       };
     } catch (err: any) {
+      // Preserve the pre-wrapper contract: an HTTP-status failure returns the
+      // same `Model API error <status>` payload the old non-OK branch built.
+      if (err instanceof ModelClientError && err.status != null) {
+        this.logger.error(`Consultant API error ${err.status}: ${err.message}`);
+        return { enabled: true, error: `Model API error ${err.status}` };
+      }
       this.logger.error(`Consultant call failed: ${err?.message}`);
       return { enabled: true, error: err?.message || "Consultant call failed" };
     }

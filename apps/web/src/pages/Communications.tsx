@@ -408,7 +408,7 @@ export function Communications() {
 
           {/* Channel switcher + New button */}
           <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-1 p-1 bg-white border border-gray-200 rounded-xl shadow-sm">
+            <div className="flex items-center gap-1 p-1 bg-white border border-gray-200 rounded-xl shadow-sm" data-tour="communications-channels">
               {([
                 { key: 'all',   label: 'All Templates', Icon: LayoutTemplate },
                 { key: 'email', label: 'Email',          Icon: Mail },
@@ -473,6 +473,7 @@ export function Communications() {
 
           {/* Email cards */}
           {showEmail && (
+            <div data-tour="communications-template-library">
             <SavedTemplates
               key={emailRefreshKey}
               onEditTemplate={handleEditEmailTemplate}
@@ -481,10 +482,12 @@ export function Communications() {
               onUseTemplate={handleEditEmailTemplate}
               onNewTemplate={handleNewEmailTemplate}
             />
+            </div>
           )}
 
           {/* SMS cards */}
           {showSMS && (
+            <div data-tour={showEmail ? undefined : 'communications-template-library'}>
             <SavedSMSTemplates
               key={smsRefreshKey}
               onEditTemplate={handleEditSMSTemplate}
@@ -492,6 +495,7 @@ export function Communications() {
               onDeleteTemplate={() => setSmsRefreshKey(k => k + 1)}
               onNewTemplate={handleNewSMSTemplate}
             />
+            </div>
           )}
         </div>
       )}

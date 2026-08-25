@@ -267,41 +267,41 @@
 - [x] **INFRA-02**: BaseAgent provides `log_decision()` method — persists agent decisions to `decision_log` table with agent_name, decision_type, inputs, reasoning, output, confidence, correlation_id, restaurant_id.
 - [x] **INFRA-03**: Structured JSON logging — all agent logs emitted as JSON with timestamp, level, logger, message, agent_name, correlation_id. `JSONFormatter` class in utils/logger.py.
 - [x] **INFRA-04**: Distributed tracing — correlation_id extracted from incoming messages, propagated to all outgoing publishes. `self._current_correlation_id` set before every `process_message` call.
-- [ ] **INFRA-05**: Dead letter queue — after all retries exhausted, `_send_to_dlq()` persists failed message to `dead_letter_queue` table with agent_name, original exchange/routing_key, message body, error, retry_count.
-- [ ] **INFRA-06**: Saga state helpers — `start_saga(saga_type, context, deadline_minutes)`, `advance_saga(saga_id, step, compensation)`, `complete_saga(saga_id)`, `compensate_saga(saga_id, error)`. Backed by `saga_state` PG table.
-- [ ] **INFRA-07**: Transactional outbox table — `outbox` table (event_type, exchange, routing_key, payload, published boolean). Background publisher worker polls unpublished rows and dispatches to RabbitMQ.
-- [ ] **INFRA-08**: Event store table — append-only `event_store` table (aggregate_type, aggregate_id, event_type, payload, sequence_number, correlation_id). Unique constraint on (aggregate_type, aggregate_id, sequence_number).
+- [x] **INFRA-05**: Dead letter queue — after all retries exhausted, `_send_to_dlq()` persists failed message to `dead_letter_queue` table with agent_name, original exchange/routing_key, message body, error, retry_count.
+- [x] **INFRA-06**: Saga state helpers — `start_saga(saga_type, context, deadline_minutes)`, `advance_saga(saga_id, step, compensation)`, `complete_saga(saga_id)`, `compensate_saga(saga_id, error)`. Backed by `saga_state` PG table.
+- [x] **INFRA-07**: Transactional outbox table — `outbox` table (event_type, exchange, routing_key, payload, published boolean). Background publisher worker polls unpublished rows and dispatches to RabbitMQ.
+- [x] **INFRA-08**: Event store table — append-only `event_store` table (aggregate_type, aggregate_id, event_type, payload, sequence_number, correlation_id). Unique constraint on (aggregate_type, aggregate_id, sequence_number).
 
 ### Infrastructure — Database Tables (Phase 18)
 
-- [ ] **INFRA-DB-01**: `idempotency_keys` table created via Supabase migration — message_id (PK), agent_name, processed_at, result (JSONB), expires_at (default NOW + 24h). Index on expires_at for cleanup.
-- [ ] **INFRA-DB-02**: `decision_log` table created — id (UUID PK), agent_name, decision_type, inputs (JSONB), reasoning (JSONB), output (JSONB), confidence (FLOAT), correlation_id, restaurant_id (FK), created_at. Indexes on (agent_name, created_at DESC) and (correlation_id).
-- [ ] **INFRA-DB-03**: `outbox` table created — id (BIGSERIAL PK), event_type, exchange, routing_key, payload (JSONB), published (BOOLEAN default FALSE), created_at, published_at. Partial index on (published, created_at) WHERE published = FALSE.
-- [ ] **INFRA-DB-04**: `saga_state` table created — saga_id (UUID PK), saga_type, current_step, status (default 'IN_PROGRESS'), context (JSONB), compensations (JSONB array), started_at, updated_at, deadline_at, error. Index on (status, saga_type).
-- [ ] **INFRA-DB-05**: `event_store` table created — event_id (UUID PK), aggregate_type, aggregate_id (UUID), event_type, payload (JSONB), sequence_number (BIGINT), correlation_id, created_at. Unique on (aggregate_type, aggregate_id, sequence_number). Index on (aggregate_type, aggregate_id, sequence_number).
-- [ ] **INFRA-DB-06**: `dead_letter_queue` table created — id (BIGSERIAL PK), agent_name, original_exchange, original_routing_key, message (JSONB), error, retry_count (INT), created_at, resolved_at, resolved_by.
+- [x] **INFRA-DB-01**: `idempotency_keys` table created via Supabase migration — message_id (PK), agent_name, processed_at, result (JSONB), expires_at (default NOW + 24h). Index on expires_at for cleanup.
+- [x] **INFRA-DB-02**: `decision_log` table created — id (UUID PK), agent_name, decision_type, inputs (JSONB), reasoning (JSONB), output (JSONB), confidence (FLOAT), correlation_id, restaurant_id (FK), created_at. Indexes on (agent_name, created_at DESC) and (correlation_id).
+- [x] **INFRA-DB-03**: `outbox` table created — id (BIGSERIAL PK), event_type, exchange, routing_key, payload (JSONB), published (BOOLEAN default FALSE), created_at, published_at. Partial index on (published, created_at) WHERE published = FALSE.
+- [x] **INFRA-DB-04**: `saga_state` table created — saga_id (UUID PK), saga_type, current_step, status (default 'IN_PROGRESS'), context (JSONB), compensations (JSONB array), started_at, updated_at, deadline_at, error. Index on (status, saga_type).
+- [x] **INFRA-DB-05**: `event_store` table created — event_id (UUID PK), aggregate_type, aggregate_id (UUID), event_type, payload (JSONB), sequence_number (BIGINT), correlation_id, created_at. Unique on (aggregate_type, aggregate_id, sequence_number). Index on (aggregate_type, aggregate_id, sequence_number).
+- [x] **INFRA-DB-06**: `dead_letter_queue` table created — id (BIGSERIAL PK), agent_name, original_exchange, original_routing_key, message (JSONB), error, retry_count (INT), created_at, resolved_at, resolved_by.
 
 ### Bug Fixes — Wave 1 Agents (Phase 19)
 
-- [ ] **BUG-01**: InventoryEngine race condition fixed — `update_inventory_stock` uses optimistic locking with `WHERE version = expected_version` and `SET version = version + 1`. Retry on conflict.
-- [ ] **BUG-02**: InventoryEngine dead code removed — `update_queue` and `batch_size` deleted from __init__.
-- [ ] **BUG-03**: POSIntegrationAgent `hmac.new` replaced with `hmac.HMAC` (deprecated API fix).
-- [ ] **BUG-04**: POSIntegrationAgent wine detection upgraded — Toast menu category matching replaces keyword-only detection. Fallback to keyword for uncategorized items.
-- [ ] **BUG-05**: POSIntegrationAgent signature verification fixed — uses raw payload bytes, not re-serialized `json.dumps(webhook_data)`.
-- [ ] **BUG-06**: POSIntegrationAgent refund logic separated from void logic — refunds handle partial amounts and credit tracking.
-- [ ] **BUG-07**: NotificationAgent rate limit counters persisted in Redis — `INCR wineops:ratelimit:{restaurant_id}:{channel}:hour` with TTL 3600. Survives restarts.
-- [ ] **BUG-08**: NotificationAgent batch processor task reference stored — `self._batch_task = asyncio.create_task(...)` and monitored in health check.
-- [ ] **BUG-09**: ReportingAgent `self.db` → `self.database` fix — prevents runtime crash on report generation.
-- [ ] **BUG-10**: ReportingAgent SMS `channels_used.append("sms")` moved inside if-block — cosmetic fix for accurate reporting.
-- [ ] **BUG-11**: ReportingAgent real inventory + sales reports implemented — queries actual inventory data with stock levels, thresholds, wine details; aggregates pos_webhook_logs for sales.
-- [ ] **BUG-12**: ReportingAgent PDF export implemented — HTML template → PDF via weasyprint with restaurant branding.
+- [x] **BUG-01**: InventoryEngine race condition fixed — `update_inventory_stock` uses optimistic locking with `WHERE version = expected_version` and `SET version = version + 1`. Retry on conflict.
+- [x] **BUG-02**: InventoryEngine dead code removed — `update_queue` and `batch_size` deleted from __init__.
+- [x] **BUG-03**: POSIntegrationAgent `hmac.new` replaced with `hmac.HMAC` (deprecated API fix).
+- [x] **BUG-04**: POSIntegrationAgent wine detection upgraded — Toast menu category matching replaces keyword-only detection. Fallback to keyword for uncategorized items.
+- [x] **BUG-05**: POSIntegrationAgent signature verification fixed — uses raw payload bytes, not re-serialized `json.dumps(webhook_data)`.
+- [x] **BUG-06**: POSIntegrationAgent refund logic separated from void logic — refunds handle partial amounts and credit tracking.
+- [x] **BUG-07**: NotificationAgent rate limit counters persisted in Redis — `INCR wineops:ratelimit:{restaurant_id}:{channel}:hour` with TTL 3600. Survives restarts.
+- [x] **BUG-08**: NotificationAgent batch processor task reference stored — `self._batch_task = asyncio.create_task(...)` and monitored in health check.
+- [x] **BUG-09**: ReportingAgent `self.db` → `self.database` fix — prevents runtime crash on report generation.
+- [x] **BUG-10**: ReportingAgent SMS `channels_used.append("sms")` moved inside if-block — cosmetic fix for accurate reporting.
+- [x] **BUG-11**: ReportingAgent real inventory + sales reports implemented — queries actual inventory data with stock levels, thresholds, wine details; aggregates pos_webhook_logs for sales.
+- [x] **BUG-12**: ReportingAgent PDF export implemented — HTML template → PDF via weasyprint with restaurant branding.
 
 ### Hardening — Wave 1 Level 4 (Phase 20)
 
-- [ ] **HARD-01**: InventoryEngine at Level 4 — idempotency via BaseAgent, decision logging for every stock state change, event sourcing (aggregate_type='inventory'), optimistic locking. 15+ integration tests: happy path, idempotency, concurrent updates, delivery, manual correction, edge cases.
-- [ ] **HARD-02**: POSIntegrationAgent at Level 4 — webhook deduplication by (order_guid + event_type), idempotency via BaseAgent, decision logging for wine matching, Toast API polling fallback as saga. 15+ integration tests: webhook happy path, duplicate, non-wine, signature, wine matching, polling fallback.
-- [ ] **HARD-03**: NotificationAgent at Level 4 — delivery tracking table (notification_deliveries), idempotency by event_id, batch processor health monitoring, DLQ for failed notifications. 10+ integration tests: alert routing, rate limiting, delivery tracking, idempotency, channel fallback.
-- [ ] **HARD-04**: ReportingAgent at Level 4 — idempotency keyed by (restaurant_id + report_type + date), decision logging, real report generation, PDF export via weasyprint. 10+ integration tests: scheduled reports, on-demand, idempotency, timezone, PDF output.
+- [x] **HARD-01**: InventoryEngine at Level 4 — idempotency via BaseAgent, decision logging for every stock state change, event sourcing (aggregate_type='inventory'), optimistic locking. 15+ integration tests: happy path, idempotency, concurrent updates, delivery, manual correction, edge cases.
+- [x] **HARD-02**: POSIntegrationAgent at Level 4 — webhook deduplication by (order_guid + event_type), idempotency via BaseAgent, decision logging for wine matching, Toast API polling fallback as saga. 15+ integration tests: webhook happy path, duplicate, non-wine, signature, wine matching, polling fallback.
+- [x] **HARD-03**: NotificationAgent at Level 4 — delivery tracking table (notification_deliveries), idempotency by event_id, batch processor health monitoring, DLQ for failed notifications. 10+ integration tests: alert routing, rate limiting, delivery tracking, idempotency, channel fallback.
+- [x] **HARD-04**: ReportingAgent at Level 4 — idempotency keyed by (restaurant_id + report_type + date), decision logging, real report generation, PDF export via weasyprint. 10+ integration tests: scheduled reports, on-demand, idempotency, timezone, PDF output.
 
 ### Golden Path E2E (Phase 21)
 
@@ -317,7 +317,7 @@
 - [x] **OBS-01**: Sentry SDK integrated — `sentry_sdk.init()` in main.py with `traces_sample_rate=0.1`. Per-agent Sentry tags. Alert rules: error rate > 5%, response time > 10s.
 - [x] **OBS-02**: Per-agent health dashboard — `GET /api/v1/health/agents` returns all agent health statuses. `GET /api/v1/health/agents/{name}` returns detailed metrics. React admin page at /admin/health.
 - [x] **OBS-03**: Structured JSON log aggregation — all agents emit JSON logs, viewable via `GET /api/v1/metrics` with messages processed, error rates, DLQ size, active sagas, circuit breaker states.
-- [x] **OBS-04**: Business metrics tracked — stock updates/second, notification delivery rate, report generation time, webhook processing latency.
+- [x] **OBS-04**: Business metrics tracked — stock updates/second, notification delivery rate, report generation time, webhook processing latency. Built 2026-08-04 as the `business` block of `GET /api/v1/metrics` (`services/agent-orchestrator/api/health_routes.py`), sourced from `inventory_events`, `notification_deliveries`, `generated_reports.generation_time_ms` and `sales_events.created_at→processed_at`. Each metric degrades independently and reports `null` (never `0`) when unread, so a failed query cannot be mistaken for a quiet business. **Verification:** `tests/test_business_metrics.py` — **14 passed** under pytest (179s), plus the same assertions re-run standalone. See `VENV_TRAP.md`: the run took 3 minutes and succeeded only because `venv/bin/pytest` in this checkout silently execs an interpreter from a *different copy of this repo*.
 
 ### Deployment (Phase 22)
 
@@ -343,6 +343,85 @@
 - [ ] **TEST-PROD-11**: Nightly cron at `0 2 * * *` UTC triggers `e2e-prod.yml` (observability-only mode). Production deploys trigger the same workflow via Vercel deploy hook → GitHub Actions `workflow_dispatch` (blocking mode: failure → Sentry `deploy-gate: true` tag + PR comment if `pr_number` input is provided).
 - [ ] **TEST-PROD-12**: All test writes use `restaurant_id: "e2e-test-restaurant"` (permanent anchor). Records created with deterministic `e2e-*` IDs and Supabase upserts for idempotency. Session teardown deletes all rows matching `restaurant_id = 'e2e-test-restaurant' AND id LIKE 'e2e-%'` (except the anchor record itself). Teardown failures reported to Sentry with tag `e2e-orphan: true` — teardown errors NEVER raise exceptions or fail tests.
 
+## Testing Campaign Requirements (Phases 36–43)
+
+**Defined:** 2026-07-27 — locked via 3 rounds of user Q&A. Testing-first foundation before Waves 2-6.
+
+### Testing Foundation (Phase 36)
+
+- [x] **TFND-01**: `.planning/testing/FUNCTIONALITY-REGISTRY.md` maps every api-gateway module, web page, orchestrator agent, and database domain to exactly one of 11 functionality groups
+- [x] **TFND-02**: T0–T4 coverage rubric defined (T0 untested → T4 ground-truth/golden-set verified), mirroring the agent Level system
+- [x] **TFND-03**: Existing-test inventory: every spec/pytest/Playwright file catalogued (group, runs?, passes?) — kept as-is, built around
+- [x] **TFND-04**: `.planning/testing/TESTING-SCORECARD.md` initialized with baseline score + evidence per group
+- [x] **TFND-05**: GitHub Actions: unit + integration on push, E2E nightly (extends Phase 25 e2e-prod.yml patterns)
+- [x] **TFND-06**: Synthetic tenant isolation: `sim-*` restaurant_id convention, RLS-safe seeding, idempotent teardown
+
+### Synthetic Restaurant Engine (Phase 37)
+
+- [x] **SYNTH-01**: Parameterized generator: cuisine, size, wine-program depth, sales volume, price tier, ordering rhythm → full restaurant profile
+- [x] **SYNTH-02**: Menus sourced from real web menus (reuse v1.0 crawler/extraction) — real SKU diversity across archetypes
+- [x] **SYNTH-03**: Generated restaurant seeded into cloud Supabase: org, restaurant, team (owner/manager/staff), menu, opening inventory
+- [x] **SYNTH-04**: Ground-truth ledger records every generated fact in queryable form — the oracle for analytics assertions
+- [x] **SYNTH-05**: ≥ 5 distinct archetypes live (fine dining, bistro, high-volume bar, cafe, Turkish restaurant clone)
+
+### SimPOS Provider & Simulator (Phase 38)
+
+- [ ] **SIMPOS-01**: SimPOS registered in pos-hub provider registry, emitting canonical checks through the standard ingestion pipeline
+- [ ] **SIMPOS-02**: Simulator emits realistic order streams from restaurant profile distributions across simulated days
+- [ ] **SIMPOS-03**: Accelerated controllable clock: configurable speed, pause, step, jump-to-day
+- [ ] **SIMPOS-04**: Control panel: pick restaurant → view menu → click items → order fires through pos-hub
+- [ ] **SIMPOS-05**: Control panel: start/stop/speed + chaos injection (burst, void, refund, duplicate, malformed)
+- [ ] **SIMPOS-06**: Deployed on Railway; events reach deployed api-gateway like a real POS
+- [ ] **SIMPOS-07**: Every emitted event mirrored to the ground-truth ledger
+
+### Breadth Passes (Phases 39–40)
+
+- [ ] **BRD-01**: Identity & Access ≥ T2 — automated suites + manual checklist
+- [ ] **BRD-02**: Catalog & Extraction ≥ T2 — automated suites + manual checklist
+- [ ] **BRD-03**: Inventory Operations ≥ T2 — automated suites + manual checklist
+- [ ] **BRD-04**: POS & Sales Ingestion ≥ T2 — automated suites + manual checklist
+- [ ] **BRD-05**: Procurement & Vendors ≥ T2 — automated suites + manual checklist
+- [ ] **BRD-06**: Communications & Email Intelligence ≥ T2 — automated suites (LLM mocked) + manual checklist
+- [ ] **BRD-07**: Calendar & Scheduling ≥ T2 — automated suites + manual checklist
+- [ ] **BRD-08**: Notifications & Alerts ≥ T2 — automated suites + manual checklist
+
+### Analytics & Insights Truth Suite (Phase 41)
+
+- [ ] **TRUTH-01**: Every dashboard KPI matches the ground-truth oracle exactly for sim tenants after N simulated days
+- [ ] **TRUTH-02**: Reports (inventory, sales, PDF exports) match oracle line-by-line
+- [ ] **TRUTH-03**: Analytic-answer question bank (≥ 25 questions) verified numerically exact against oracle
+- [ ] **TRUTH-04**: Drift detection: full simulated month incl. chaos → `stock_live` == oracle stock (zero silent leakage)
+- [ ] **TRUTH-05**: Failures emit expected-vs-actual diffs as CI artifacts; Analytics group reaches T4
+
+### AI Eval Suites (Phase 42)
+
+- [ ] **EVAL-AI-01**: Wine extraction golden set (≥ 30 labeled menus) scored per field; thresholds set from baseline
+- [ ] **EVAL-AI-02**: Email intelligence golden set scored on classification + promo extraction accuracy
+- [ ] **EVAL-AI-03**: Agent decision evals (procurement suggestions, threshold alerts) scored against sim scenarios with known answers
+- [ ] **EVAL-AI-04**: Analytic-answer eval bank shares the eval harness (unified scoring + history)
+- [ ] **EVAL-AI-05**: Weekly CI eval runs with cost caps + score history; regressions flag the scorecard
+
+### E2E Journeys & Final Scorecard (Phase 43)
+
+- [ ] **JRNY-01**: Playwright journeys green on cloud stack: onboard → menu import → inventory → sim sale → alert → report + all-pages nav smoke
+- [ ] **JRNY-02**: Scanner flows harnessed + manual checklist executed by user
+- [ ] **JRNY-03**: Admin/health surfaces verified against live chaos injection
+- [ ] **JRNY-04**: User manual pathway passes (web, scanner, admin) captured with structured feedback + triage
+- [ ] **JRNY-05**: Final scorecard: all 11 groups ≥ T2, Analytics T4; sub-T2 gaps promoted to backlog
+
+**Coverage (Testing Campaign):**
+- Foundation (Phase 36): 6 — TFND-01..06
+- Synthetic engine (Phase 37): 5 — SYNTH-01..05
+- SimPOS + simulator (Phase 38): 7 — SIMPOS-01..07
+- Breadth passes (Phases 39–40): 8 — BRD-01..08
+- Truth suite (Phase 41): 5 — TRUTH-01..05
+- AI evals (Phase 42): 5 — EVAL-AI-01..05
+- Journeys + scorecard (Phase 43): 5 — JRNY-01..05
+- Campaign total: 41 requirements mapped to 8 phases
+- Unmapped: 0 ✓
+
+---
+
 **Coverage (v2.0):**
 - Infrastructure (Phase 18): 14 requirements — INFRA-01..08, INFRA-DB-01..06
 - Bug fixes (Phase 19): 12 requirements — BUG-01..12
@@ -355,4 +434,4 @@
 
 ---
 *Requirements defined: 2026-04-01*
-*Last updated: 2026-05-01 — Phase 25 TEST-PROD-01..12 added (12 new requirements)*
+*Last updated: 2026-07-27 — Testing Campaign TFND/SYNTH/SIMPOS/BRD/TRUTH/EVAL-AI/JRNY added (41 new requirements, Phases 36–43)*

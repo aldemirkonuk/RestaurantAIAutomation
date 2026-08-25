@@ -1,0 +1,36 @@
+{
+  "archetype_id": "turkish-clone",
+  "display_name": "Turkish Restaurant Clone",
+  "snapshot": "datasets/sim/menus/turkish-clone.json",
+  "defaults": {
+    "cuisine": "turkish-greek",
+    "size": "medium",
+    "wine_program_depth": "focused",
+    "sales_volume": "medium",
+    "price_tier": "mid",
+    "ordering_rhythm": "twice_weekly"
+  },
+  "opening_stock": {
+    "default_bottles": 10,
+    "min_bottles": 2,
+    "max_bottles": 30,
+    "by_price_tier": {
+      "entry": 18,
+      "mid": 10,
+      "premium": 4
+    },
+    "by_primary_type": {
+      "sparkling": 8,
+      "red": 12,
+      "white": 12,
+      "rose": 8
+    },
+    "threshold_min": 4
+  },
+  "restaurant": {
+    "name": "Sim Turkish Clone",
+    "timezone": "America/Chicago",
+    "city": "Chicago",
+    "country": "USA"
+  }
+}

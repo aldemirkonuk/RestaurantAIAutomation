@@ -11,6 +11,7 @@ import {
   Wine,
   Plus,
   Loader2,
+  Check,
 } from 'lucide-react'
 import type { VendorCatalogueEntry } from '../../services/api/vendors'
 
@@ -82,9 +83,15 @@ function buildLocation(vendor: VendorCatalogueEntry): string {
 export interface VendorCatalogueCardProps {
   vendor: VendorCatalogueEntry
   onAdd: (vendor: VendorCatalogueEntry) => Promise<void>
+  /**
+   * Already in this restaurant's providers. Shown as a state rather than an
+   * enabled button — the server rejects a second add with 409, and a button
+   * that always fails is worse than no button.
+   */
+  alreadyAdded?: boolean
 }
 
-export function VendorCatalogueCard({ vendor, onAdd }: VendorCatalogueCardProps) {
+export function VendorCatalogueCard({ vendor, onAdd, alreadyAdded = false }: VendorCatalogueCardProps) {
   const [adding, setAdding] = useState(false)
 
   const handleAdd = async () => {
@@ -159,19 +166,26 @@ export function VendorCatalogueCard({ vendor, onAdd }: VendorCatalogueCardProps)
           </div>
         </div>
 
-        {/* Right: Add button */}
-        <button
-          onClick={handleAdd}
-          disabled={adding}
-          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-wine-600 text-white text-xs font-medium rounded-lg hover:bg-wine-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-sm shadow-wine-600/20"
-        >
-          {adding ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <Plus className="w-3.5 h-3.5" />
-          )}
-          {adding ? 'Adding…' : 'Add to My Providers'}
-        </button>
+        {/* Right: Add button, or an "already added" state */}
+        {alreadyAdded ? (
+          <span className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-lg">
+            <Check className="w-3.5 h-3.5" />
+            In your providers
+          </span>
+        ) : (
+          <button
+            onClick={handleAdd}
+            disabled={adding}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-wine-600 text-white text-xs font-medium rounded-lg hover:bg-wine-700 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-sm shadow-wine-600/20"
+          >
+            {adding ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Plus className="w-3.5 h-3.5" />
+            )}
+            {adding ? 'Adding…' : 'Add to My Providers'}
+          </button>
+        )}
       </div>
     </motion.div>
   )
