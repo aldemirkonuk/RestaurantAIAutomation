@@ -63,6 +63,36 @@ export class ModelClientError extends Error {
   }
 }
 
+/**
+ * A handle on the NF row a call is about to write, for callers that can grade
+ * their own work AFTER the fact (OD-59).
+ *
+ * Why a promise and not a return value: emission is deliberately
+ * fire-and-forget (see `emit`), so when `call()` resolves, the insert may not
+ * have run yet. Returning the id would mean awaiting the insert on the user
+ * path — exactly the coupling the emitter was built to avoid.
+ *
+ * `id` ALWAYS settles, including when the emit is dropped, in which case it
+ * resolves `null`. A verdict writer awaiting a ref that never settled would
+ * leak a pending promise per call.
+ */
+export class NfEventRef {
+  private settleFn!: (id: string | null) => void;
+  private settled = false;
+
+  /** The row id once written, or null if the emit was dropped. Never rejects. */
+  readonly id: Promise<string | null> = new Promise((resolve) => {
+    this.settleFn = resolve;
+  });
+
+  /** @internal — only ModelClientService settles a ref. */
+  settle(id: string | null): void {
+    if (this.settled) return; // a second settle must not throw
+    this.settled = true;
+    this.settleFn(id);
+  }
+}
+
 export interface NfMeta {
   /**
    * Agent identity in the existing decision_log `agent_name` style —
@@ -85,6 +115,11 @@ export interface NfMeta {
   correlationId?: string | null;
   /** Extra keys merged into the context jsonb (persona, url, chunk index...). */
   context?: Record<string, unknown>;
+  /**
+   * Supply a ref to receive this call's NF row id, for sites that grade their
+   * own output once it has been parsed (OD-59). Omit it and nothing changes.
+   */
+  eventRef?: NfEventRef;
 }
 
 export interface ModelCallOptions {
@@ -282,12 +317,17 @@ export class ModelClientService {
   ): void {
     // The `void` convention is enforced HERE rather than at call sites so no
     // site can forget it — emission latency never rides a user path.
-    void this.persistNfEvent(nf, call).catch((err: any) => {
-      this.nfDropCount++;
-      this.logger.warn(
-        `neural_footprint_event emit failed (${this.nfDropCount} dropped since boot): ${err?.message ?? err}`,
-      );
-    });
+    void this.persistNfEvent(nf, call)
+      .catch((err: any) => {
+        this.nfDropCount++;
+        this.logger.warn(
+          `neural_footprint_event emit failed (${this.nfDropCount} dropped since boot): ${err?.message ?? err}`,
+        );
+      })
+      // A dropped emit still settles the ref, with null. Without this, a site
+      // awaiting `ref.id` to write a verdict would hang forever on exactly the
+      // rows that failed — a leak that grows with the failure it is hiding.
+      .finally(() => nf.eventRef?.settle(null));
   }
 
   private async persistNfEvent(
@@ -366,7 +406,10 @@ export class ModelClientService {
       ...(nf.context ?? {}),
     };
 
-    const { error } = await this.databaseService.supabase
+    // `.select("id")` only when a caller asked for the id — an unconditional
+    // RETURNING would add a round-trip cost to all 9 emitting sites to serve
+    // the one that grades itself.
+    const insert = this.databaseService.supabase
       .from("neural_footprint_event")
       .insert({
         subject_type: "agent",
@@ -388,7 +431,18 @@ export class ModelClientService {
         correlation_id: nf.correlationId ?? getCorrelationId(),
         restaurant_id: nf.restaurantId ?? null,
       });
+
+    if (!nf.eventRef) {
+      const { error } = await insert;
+      if (error) throw new Error(error.message);
+      return;
+    }
+
+    const { data, error } = await insert.select("id").single();
     if (error) throw new Error(error.message);
+    // Settling before the caller's grader runs is the whole point; a row that
+    // wrote but returned no id settles null rather than pretending.
+    nf.eventRef.settle((data as { id?: string } | null)?.id ?? null);
   }
 
   /**
@@ -427,7 +481,10 @@ export class ModelClientService {
     waitMs += Math.floor(Math.random() * waitMs); // full jitter, 1x–2x
     const retryAfterSec = Number(retryAfterHeader);
     if (retryAfterHeader && Number.isFinite(retryAfterSec)) {
-      waitMs = Math.max(waitMs, Math.min(retryAfterSec * 1000, RETRY_AFTER_CAP_MS));
+      waitMs = Math.max(
+        waitMs,
+        Math.min(retryAfterSec * 1000, RETRY_AFTER_CAP_MS),
+      );
     }
     await new Promise((r) => setTimeout(r, waitMs));
   }
@@ -495,7 +552,8 @@ export class ModelClientService {
   private async tierFor(restaurantId?: string | null): Promise<string | null> {
     if (!restaurantId) return null;
     const cached = this.tierCache.get(restaurantId);
-    if (cached && Date.now() - cached.at < TIER_CACHE_TTL_MS) return cached.tier;
+    if (cached && Date.now() - cached.at < TIER_CACHE_TTL_MS)
+      return cached.tier;
     try {
       const { data, error } = await this.databaseService.supabase
         .from("restaurants")
@@ -516,7 +574,8 @@ function resolvePricing(
   model: string,
 ): { input: number; output: number } | null {
   if (!model) return null;
-  if (MODEL_PRICING_USD_PER_MTOK[model]) return MODEL_PRICING_USD_PER_MTOK[model];
+  if (MODEL_PRICING_USD_PER_MTOK[model])
+    return MODEL_PRICING_USD_PER_MTOK[model];
   for (const key of Object.keys(MODEL_PRICING_USD_PER_MTOK)) {
     if (model.startsWith(`${key}-`)) return MODEL_PRICING_USD_PER_MTOK[key];
   }

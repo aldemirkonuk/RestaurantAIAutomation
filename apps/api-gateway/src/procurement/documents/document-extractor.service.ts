@@ -1,8 +1,16 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { ModelClientService } from "../../common/model-client/model-client.service";
+import {
+  ModelClientService,
+  NfEventRef,
+} from "../../common/model-client/model-client.service";
+import { NfVerdictService } from "../../common/model-client/nf-verdict.service";
 import { normalizeUom, toBottles, Uom } from "./document-types";
 import { applyTieOut, ParsedDocument, ParsedLine } from "./parsed-document";
+import {
+  reconciliationVerdict,
+  RECONCILIATION_BASIS,
+} from "./reconciliation-verdict";
 import { DocType } from "./document-types";
 
 /**
@@ -69,6 +77,7 @@ export class DocumentExtractorService {
   constructor(
     private readonly configService: ConfigService,
     private readonly modelClient: ModelClientService,
+    private readonly nfVerdicts: NfVerdictService,
   ) {}
 
   private model(): string {
@@ -122,6 +131,11 @@ export class DocumentExtractorService {
     // (same model, same 8192-token budget, vision payload). HTTP failures
     // throw as `Anthropic <status>: <detail>` — the exact message the old
     // inline throw produced, so callers see nothing new.
+    // OD-59: this call grades itself. The ref carries the NF row id back once
+    // the (fire-and-forget) emit lands, so the verdict below can attach to it
+    // without the extraction ever waiting on the instrument.
+    const eventRef = new NfEventRef();
+
     const payload: any = await this.modelClient.call({
       body: {
         model: this.model(),
@@ -137,13 +151,24 @@ export class DocumentExtractorService {
         choice: "parsed_document",
         restaurantId: restaurantId ?? null,
         context: { media_type: mediaType },
+        eventRef,
       },
     });
 
     const text =
       (payload.content || []).find((b: any) => b.type === "text")?.text ?? "{}";
 
-    return this.normalize(text, this.model());
+    const doc = this.normalize(text, this.model());
+
+    // The tie-out is already computed by `normalize`; this only carries it into
+    // the footprint as a task-level verdict. `null` means this grader has no
+    // standing to judge (not an invoice) — no row, and the event reads as
+    // ungraded rather than as a pass.
+    const verdict = reconciliationVerdict(doc);
+    if (verdict)
+      this.nfVerdicts.record(eventRef, RECONCILIATION_BASIS, verdict);
+
+    return doc;
   }
 
   /**

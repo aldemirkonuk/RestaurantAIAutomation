@@ -94,13 +94,20 @@ export function moneyEquals(a: number, b: number, toleranceCents = 1): boolean {
 }
 
 /**
- * Fill in computedLinesTotal / tieOutDelta / tiesOut.
- *
  * Tolerance is one cent per line rather than a flat cent: vendors round per line
  * and the rounding accumulates, so a 40-line invoice can legitimately be off by
  * a few cents while a 2-line one cannot. A flat tolerance would either cry wolf
  * on long invoices or wave through real errors on short ones.
+ *
+ * Exported because the `reconciliation_v1` doneability verdict (OD-59) records
+ * the tolerance it judged against as evidence. Two copies of this rule would
+ * drift, and the verdict would then cite a threshold it did not actually use.
  */
+export function tieOutToleranceCents(lineCount: number): number {
+  return Math.max(1, lineCount);
+}
+
+/** Fill in computedLinesTotal / tieOutDelta / tiesOut. */
 export function applyTieOut(doc: ParsedDocument): ParsedDocument {
   const lineSum = doc.lines.reduce((acc, l) => {
     const lt =
@@ -134,7 +141,7 @@ export function applyTieOut(doc: ParsedDocument): ParsedDocument {
 
   const expected = computedLinesTotal + charges;
   const delta = Math.round((doc.total - expected) * 100) / 100;
-  const toleranceCents = Math.max(1, doc.lines.length);
+  const toleranceCents = tieOutToleranceCents(doc.lines.length);
   const tiesOut = Math.abs(Math.round(delta * 100)) <= toleranceCents;
 
   return {

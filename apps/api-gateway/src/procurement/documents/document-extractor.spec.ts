@@ -8,6 +8,9 @@ const svc = new DocumentExtractorService(
   } as unknown as ConfigService,
   // modelClient — these tests exercise normalize() only, never the transport.
   {} as any,
+  // nfVerdicts — likewise unreached: the verdict is written by extract(), not
+  // normalize(). reconciliation-verdict.spec.ts covers the grading rule itself.
+  {} as any,
 );
 
 const json = (o: unknown) => JSON.stringify(o);

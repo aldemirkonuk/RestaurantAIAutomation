@@ -131,8 +131,14 @@ The columns are unused, not wrong — that was the accepted trade in choosing C.
 nobody had to assemble by hand — the same standard the corpus applies to every other loop.
 
 > **Scored 2026-08-24.** The gate is met: `python3 scripts/nf_readout.py` prints cost per
-> agent per task type from live rows, with its sample size and window, and refuses to
-> report below 30 events. The one unticked box is unticked for two reasons that are not
+> agent per task type from live rows, with its sample size and window, and labels
+> anything below 30 events `INSUFFICIENT VOLUME`.
+>
+> **Corrected 2026-08-25 (OD-59 readout audit):** this previously read "refuses to report
+> below 30 events". It does not refuse — it prints the full table under the banner and
+> exits **0** (`scripts/nf_readout.py:187-194`, `:232-233`). Only `events == 0` withholds a
+> number, and only `--require-volume` changes the exit code. A caller that trusted the word
+> "refuses" would have piped a smoke-test figure into a report unchallenged. The one unticked box is unticked for two reasons that are not
 > instrumentation — nothing in the codebase grades completion, and the `ANTHROPIC_API_KEY`
 > has no credit, so the runtime cannot make the calls the readout would measure. Both are
 > recorded in [[P1-BUILD-LOG]] Part II §13 rather than absorbed into a tick.
