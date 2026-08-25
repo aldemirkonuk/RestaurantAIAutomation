@@ -44,7 +44,7 @@ structlog==24.1.0
 # Security
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-cryptography==49.0.0
+cryptography==50.0.0
 
 # HTTP clients
 httpx>=0.28.1
