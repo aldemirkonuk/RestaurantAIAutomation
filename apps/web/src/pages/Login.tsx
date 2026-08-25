@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth, LoginError } from '../contexts/AuthContext'
 import { Button } from '../components/ui'
-import { Mail, Lock, AlertCircle } from 'lucide-react'
+import { Mail, Lock } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 import { GoogleSignInButton, type GoogleSignInHandle } from '../components/auth/GoogleSignInButton'
@@ -20,6 +20,16 @@ export function Login() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const rawError = error || authError || null
+  const invalidCredentialsError = !!rawError && /(invalid|credentials|email|password|401|unauthorized)/i.test(rawError)
+  const errorMessage = invalidCredentialsError
+    ? 'Invalid email or password. Please check your credentials and try again.'
+    : rawError
+
+  const fieldErrorClass = invalidCredentialsError
+    ? 'border-wine-300/90 bg-wine-50/30 focus:border-wine-500 focus:ring-wine-500/15'
+    : ''
 
   const searchParams = new URLSearchParams(location.search)
   const redirectQuery = searchParams.get('redirect')
@@ -69,20 +79,6 @@ export function Login() {
   return (
     <AuthShell title="WineOps AI" subtitle="Sign in to manage your wine inventory">
       <AuthCard>
-        {(error || authError) && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3"
-          >
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" strokeWidth={1.75} />
-            <div>
-              <p className="text-sm font-medium text-red-900">Login Failed</p>
-              <p className="text-sm text-red-700">{error || authError}</p>
-            </div>
-          </motion.div>
-        )}
-
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
@@ -97,8 +93,11 @@ export function Login() {
                 type="email"
                 required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className={fieldClass}
+                onChange={(e) => {
+                  setEmail(e.target.value)
+                  if (error) setError(null)
+                }}
+                className={`${fieldClass} ${fieldErrorClass}`}
                 placeholder="you@restaurant.com"
                 disabled={loading}
               />
@@ -118,12 +117,35 @@ export function Login() {
                 type="password"
                 required
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className={fieldClass}
+                onChange={(e) => {
+                  setPassword(e.target.value)
+                  if (error) setError(null)
+                }}
+                className={`${fieldClass} ${fieldErrorClass}`}
                 placeholder="••••••••"
                 disabled={loading}
+                aria-invalid={!!errorMessage}
+                aria-describedby={errorMessage ? 'login-error' : undefined}
               />
             </div>
+            {errorMessage && (
+              <motion.p
+                id="login-error"
+                key={errorMessage}
+                initial={{ opacity: 0, y: -3 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                className="mt-2 flex items-start gap-2 text-[13px] leading-5 text-[#8B6363]"
+                role="alert"
+                aria-live="polite"
+              >
+                <span
+                  className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-wine-500/80"
+                  aria-hidden
+                />
+                {errorMessage}
+              </motion.p>
+            )}
           </div>
 
           {/*
