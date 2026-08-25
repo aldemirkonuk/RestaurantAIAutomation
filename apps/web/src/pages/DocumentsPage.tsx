@@ -49,20 +49,70 @@ interface Report {
   tags?: string[]
 }
 
+/**
+ * `generated_reports.report_type` is a domain enum (inventory_summary, …) while this
+ * page's `ReportType` mixes cadence and domain. The old mapper cast one to the other
+ * and defaulted to 'monthly' only when the value was empty, so a real row produced
+ * `type: 'inventory_summary'` — a key `reportTypeConfig` does not have, and
+ * `typeConfig.icon` below then throws. Mapping explicitly keeps the lookup total.
+ */
+const REPORT_TYPE_FROM_DB: Record<string, ReportType> = {
+  inventory_summary: 'inventory',
+  sales_analysis: 'sales',
+  financial_summary: 'financial',
+  procurement_history: 'monthly',
+  compliance_report: 'monthly',
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+  financial: 'financial',
+  inventory: 'inventory',
+  sales: 'sales',
+}
+
+/** `status` on the table is pending/completed; this page speaks sent/draft/archived. */
+const REPORT_STATUS_FROM_DB: Record<string, ReportStatus> = {
+  completed: 'sent',
+  sent: 'sent',
+  pending: 'draft',
+  draft: 'draft',
+  failed: 'draft',
+  archived: 'archived',
+}
+
+function formatPeriod(r: GeneratedReport): string {
+  if (r.periodStart && r.periodEnd) {
+    const start = new Date(r.periodStart)
+    const end = new Date(r.periodEnd)
+    return start.toLocaleDateString() === end.toLocaleDateString()
+      ? start.toLocaleDateString()
+      : `${start.toLocaleDateString()} – ${end.toLocaleDateString()}`
+  }
+  const created = r.createdAt ? new Date(r.createdAt) : new Date()
+  return created.toLocaleString('default', { month: 'long', year: 'numeric' })
+}
+
+/**
+ * OD-45: maps the gateway's ReportResponseDto onto this page's view model.
+ *
+ * The previous version read `metadata.title`, `metadata.sentTo`, `metadata.fileSize`,
+ * `metadata.tags` and `file_url` — none of which are columns on `generated_reports`,
+ * so they were permanently undefined. Only fields with a real column behind them are
+ * populated now; `sentTo`, `fileSize` and `tags` have no source and stay empty rather
+ * than pretending to have one.
+ */
 function mapGeneratedReportToUi(r: GeneratedReport): Report {
-  const meta = r.metadata ?? {}
+  const createdAt = r.createdAt ?? new Date().toISOString()
   return {
     id: r.id,
-    title: meta.title || `${r.report_type || 'Report'} — ${new Date(r.created_at).toLocaleDateString()}`,
-    type: (r.report_type?.toLowerCase() as ReportType) || 'monthly',
-    status: (meta.status as ReportStatus) || 'sent',
-    sentAt: r.created_at,
-    sentTo: meta.sentTo || [],
-    period: meta.period || new Date(r.created_at).toLocaleString('default', { month: 'long', year: 'numeric' }),
-    fileUrl: r.file_url ?? undefined,
-    fileSize: meta.fileSize,
-    description: meta.description,
-    tags: meta.tags,
+    title: r.title || `Report — ${new Date(createdAt).toLocaleDateString()}`,
+    type: REPORT_TYPE_FROM_DB[r.reportType?.toLowerCase() ?? ''] ?? 'monthly',
+    status: REPORT_STATUS_FROM_DB[r.status?.toLowerCase() ?? ''] ?? 'sent',
+    sentAt: createdAt,
+    sentTo: [],
+    period: formatPeriod(r),
+    fileUrl: r.pdfUrl ?? r.excelUrl ?? r.csvUrl ?? undefined,
+    description: r.summary ?? undefined,
   }
 }
 

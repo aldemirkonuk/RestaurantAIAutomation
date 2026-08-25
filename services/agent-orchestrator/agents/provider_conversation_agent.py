@@ -37,6 +37,7 @@ from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 
+from core.commitment_patterns import contains_commitment_language
 from core.base_agent import BaseAgent
 from utils.logger import setup_logger
 from services.email_composer_service import EmailComposerService
@@ -119,16 +120,17 @@ RULES:
 
 Generate the message:"""
 
-COMMITMENT_PATTERNS = [
-    r"\bwill take\b",
-    r"\bwould like to order\b",
-    r"\bplease confirm our order\b",
-    r"\bwe'?ll proceed with\b",
-    r"\bwe accept\b",
-    r"\bconfirm \d+ cases?\b",
-    r"\blet'?s go ahead\b",
-    r"\bsending payment\b",
-]
+# AI-SPEC §6 UCC contract-formation guardrail (OD-44).
+#
+# COMMITMENT_PATTERNS used to be a hand-maintained list here. It had drifted to 8
+# patterns while the TypeScript gateway carried 19 — and this runtime is the one
+# that actually auto-sends (see ``_scarcity_auto_reply``), so the weaker guardrail
+# sat on the side that could bind the restaurant to a purchase.
+#
+# It is now imported (top of file) from a GENERATED module whose canon is
+# apps/api-gateway/src/common/orchestrator/commitment-patterns.ts. To change the
+# guardrail, edit that file and run scripts/sync_commitment_patterns.py.
+# CI fails on drift; tests/test_commitment_patterns_sync.py fails on drift too.
 
 SUMMARY_PROMPT = """Summarize this conversation session in exactly 3 lines:
 Line 1: What was discussed
@@ -2037,9 +2039,14 @@ class ProviderConversationAgent(BaseAgent):
 
         AI-SPEC §6 guardrail: matches patterns that could constitute a purchase commitment
         (UCC contract formation risk). Drafts matching this must never auto-send.
+
+        The pattern set is shared with the TypeScript gateway (OD-44) — see
+        core/commitment_patterns.py. Matching is case-insensitive there, which is
+        why the text is no longer lower-cased here: `re.IGNORECASE` mirrors the
+        JavaScript `/i` flag exactly, including for the accented multilingual
+        patterns where `str.lower()` and `/i` can disagree.
         """
-        text_lower = draft_text.lower()
-        return any(re.search(p, text_lower) for p in COMMITMENT_PATTERNS)
+        return contains_commitment_language(draft_text)
 
     async def record_correction(
         self,
