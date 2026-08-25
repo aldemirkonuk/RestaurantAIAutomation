@@ -74,8 +74,17 @@ export const DEFAULT_GUIDANCE_STATE: GuidanceState = {
 export function isSetupNudgeDue(nudge: SetupNudgeState, now: number = Date.now()): boolean {
   if (nudge.dismissed_forever) return false
   if (!nudge.last_shown_at) return true
-  const intervalDays = nudge.session_count < 3 ? 0 : nudge.session_count < 6 ? 3 : 7
+
+  // "Later" clicks earn escalating quiet periods (1d → 3d → 7d).
+  const laterBackoffDays =
+    nudge.snooze_count <= 0 ? 0 : nudge.snooze_count === 1 ? 1 : nudge.snooze_count === 2 ? 3 : 7
+
+  // Passive cadence after repeated sessions without finishing setup.
+  const cadenceDays = nudge.session_count < 3 ? 0 : nudge.session_count < 6 ? 3 : 7
+
+  const intervalDays = Math.max(laterBackoffDays, cadenceDays)
   if (intervalDays === 0) return true
+
   const elapsedMs = now - new Date(nudge.last_shown_at).getTime()
   return elapsedMs >= intervalDays * 24 * 60 * 60 * 1000
 }
