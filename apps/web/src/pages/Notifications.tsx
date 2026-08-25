@@ -1459,8 +1459,9 @@ export function Notifications() {
                         />
                       </div>
                       <div className="flex flex-wrap gap-1.5">
-                        {/* '/documents' was offered here and is not a route — every notification
-                            built with it dead-ended on the catch-all. */}
+                        {/* This picker used to offer a bare documents path that is not a route,
+                            so every notification built with it dead-ended on the
+                            catch-all. Keep these values in sync with App.tsx. */}
                         {['/inventory', '/orders', '/reports', '/wines', '/providers', '/calendar', '/documents-reports'].map((url) => (
                           <button
                             key={url}
