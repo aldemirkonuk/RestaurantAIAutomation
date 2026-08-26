@@ -76,17 +76,34 @@ on all three studio pages.
 
 ## 9. Gaps
 - ~~**Routing gap (candidate defect, not in `v3.0-TECH-DEBT.md`)**~~ — **confirmed and
-  half closed 2026-08-26** ([ADR 0021](../decisions/0021-studio-invites-are-self-service.md)).
+  closed 2026-08-26** ([ADR 0021](../decisions/0021-studio-invites-are-self-service.md)).
   The diagnosis was right: the components assume the Vite `/api` proxy targets
   FastAPI:8000 (`CommandBar.tsx:29-30`, `MetricsDashboard.tsx:23`, `FieldCell.tsx:68`),
   but `apps/web/vite.config.ts:24-28` proxies `/api` → `http://localhost:4000` (NestJS)
   and production rewrites `/api/*` to the Railway **gateway** (`vercel.json:8-10`).
   `StudioProxyController` now forwards `/api/v1/studio/*` to the orchestrator with the
-  caller's own Bearer token, so the four `studio/*` calls in §4 resolve. **Still open
-  (OD-83):** `POST /api/v1/onboarding/extract` has no route anywhere in the gateway, so
-  the PDF/photo ingestion path still 404s. Note the new operational coupling — the
-  gateway signs with `JWT_SECRET` and the orchestrator verifies with
-  `SUPABASE_JWT_SECRET`, so those must hold the same value or every studio call 401s.
+  caller's own Bearer token, so the four `studio/*` calls in §4 resolve. **The ingestion
+  path resolves too:** `OnboardingProxyController` serves `POST /onboarding/extract`
+  (`common/orchestrator/onboarding-proxy.controller.ts:34,40`), is registered at
+  `orchestrator.module.ts:36`, and sits under the `api/v1` global prefix (`main.ts:77`) —
+  so `/api/v1/onboarding/extract` is a real gateway route, forwarded with a 5-minute
+  timeout for base64 PDFs (`orchestrator.service.ts:127-151`) to the orchestrator's own
+  `@router.post("/extract")` (`services/agent-orchestrator/api/onboarding_routes.py`,
+  mounted at `main.py:142`) — cited by symbol, not by line: that decorator was at `:222`
+  when this was written and moved to `:226` when the log-injection sweep (#79) landed a
+  few hours later, which is the exact failure mode this entry is about.
+  Note the operational coupling — the gateway signs with `JWT_SECRET` and the orchestrator
+  verifies with `SUPABASE_JWT_SECRET`, so those must hold the same value or every studio
+  call 401s.
+  - **Correction (2026-08-26).** This paragraph read *"still open (OD-83): `POST
+    /api/v1/onboarding/extract` has no route anywhere in the gateway"*. That was false the
+    day it was written: the same PR (#73, `cc10c228`) that added `StudioProxyController`
+    added the extract route in the same commit. The id was stale too — that OD-83 was a
+    pre-rebase filing renumbered to [OD-88](../decisions/OPEN-DECISIONS.md), whose row
+    already records this part as gone; the OD-83 now in the register is an unrelated,
+    resolved entry (`/receiving` nav, calendar subscription, reminder toggle). No new OD
+    was opened, because there is no defect left to file. The route is now claim-checked
+    under `ADR-0021` in [`CLAIMS.jsonl`](../decisions/CLAIMS.jsonl) so it cannot rot back.
 - Manual-seed sessions silently degrade to a local `local-<ts>` id when the API fails
   (`CommandBar.tsx:122`) — records then exist only in browser memory.
 - This is the **richest enrichment surface among the wine pages**: 14 record columns
