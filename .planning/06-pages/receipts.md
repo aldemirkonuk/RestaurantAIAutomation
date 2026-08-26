@@ -138,7 +138,7 @@ Unused by the page: `POST /procurement/documents` (manual upload, `:53-96`),
 |---|---|---|
 | `procurement_documents` (email channel) | `@Cron("*/5 * * * *")` sweep over `conversation_attachments` → `DocumentExtractorService` → `ModelClientService` (`document-intake.service.ts:581-645`) | **Yes.** Its input depends on the Gmail push path, which carries live traffic |
 | `conversation_attachments` | `rabbitmq-bridge.service.ts:882` on inbound mail | Yes |
-| Same, via the provider-agnostic webhook | `POST /webhooks/inbound-email` (`inbound-email.controller.ts:92`) | **Dormant** — `INBOUND_EMAIL_DOMAIN` unset (OD-78 note). The Gmail path covers it today; this is the multi-tenant replacement |
+| Same, via the provider-agnostic webhook | `POST /webhooks/inbound-email` (`inbound-email.controller.ts:92`) | **Dormant** — `INBOUND_EMAIL_DOMAIN` unset (`inbound-email.controller.ts:61-65`). The Gmail path covers it today; this is the multi-tenant replacement |
 | `procurement_documents` (door channel) | `POST /procurement/documents` from `/receiving-door` | Yes |
 | `procurement_credits` | `openCreditClaim` on invoice match (`procurement.service.ts:1104-1132`); `receiving.service.ts:325` reads them for the manager queue | Yes |
 

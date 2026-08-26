@@ -34,7 +34,7 @@ NEW-707…NEW-727, header comment :4-11).
 
 - From `/recommendations` (`Recommendations.tsx:560`;
   [PAGE_MAP](../foundation/PAGE_MAP.md):88).
-- Command palette ×2 (`components/command/commands.ts:78,99`).
+- Command palette ×2 (`components/command/commands.ts:84,105`).
 - Contextual-insight "browse" links on Orders/Inventory
   (`components/insights/ContextualInsights.tsx:244`) and Reports' seating panel
   (`components/reports/organisms/SeatingDensityPanel.tsx:571,604`).
@@ -83,7 +83,7 @@ problem lives here ([TIER-MAP](../03-scenarios/TIER-MAP.md):51,108-111).
   POS — the exact labelling failure [TIER-MAP](../03-scenarios/TIER-MAP.md):108-111
   forbids: "Never headline a catalogue total … show the
   reachable-for-this-restaurant count (OD-33)". The palette entries repeat the 375
-  (`components/command/commands.ts:78,99`).
+  (`components/command/commands.ts:84,105`).
 - Endpoint guarded since 2026-08-24 (#31)
   (`apps/api-gateway/src/analytics/analytics.controller.ts:51`); the atlas row
   ([ENDPOINTS](../foundation/ENDPOINTS.md):10) still reads "unguarded" and is stale.
@@ -99,7 +99,7 @@ the page renders "Couldn't load the catalog." and nothing else.
 | The controller has required a bearer token since 2026-08-24 (#31), and the JWT strategy is header-only — no cookie extractor, and the fetch sets no `credentials`. | `analytics.controller.ts:44-51`; `auth/strategies/jwt.strategy.ts:11` |
 | **Failure path:** `.then(r => (r.ok ? r.json() : null))` → `null` → `if (!body) return` → `catalog` stays `null` → the page renders its "Couldn't load the catalog" branch. The `.catch(() => {})` swallows anything else. | `InsightCatalog.tsx:103-118`; error branch `:322` |
 | The dev bypass cannot help — it needs an `X-Dev-Bypass` secret header this fetch never sends. Broken in every environment. | `auth/dev-bypass.util.ts:33-45` |
-| **§9's headline-number finding needs correcting.** The *page* is honest: it renders `{catalog.total} types` from the API's live `INSIGHT_CANDIDATES.length`, and a coverage meter splitting that into "computable now" vs "blocked on missing data" — exactly the OD-33 discipline TIER-MAP:108-111 demands. The hardcoded **375** survives only in a source comment (`:2`) and, **user-visibly, in two command-palette entries**. | honest render `InsightCatalog.tsx:264,277,293`; server total `insights/insight-generator.service.ts:58-60` → `insight-catalog.ts:547`; stale literal `components/command/commands.ts:78,99` ("Browse all 375 insight types") |
+| **§9's headline-number finding needs correcting.** The *page* is honest: it renders `{catalog.total} types` from the API's live `INSIGHT_CANDIDATES.length`, and a coverage meter splitting that into "computable now" vs "blocked on missing data" — exactly the OD-33 discipline TIER-MAP:108-111 demands. The hardcoded **375** survives only in a source comment (`:2`) and, **user-visibly, in two command-palette entries**. | honest render `InsightCatalog.tsx:265,278`; server total `insights/insight-generator.service.ts:58-60` → `insight-catalog.ts:547`; stale literal `components/command/commands.ts:84,105` ("Browse all 375 insight types") |
 | The catalogue itself is generated, not hand-listed — dimension × measure × comparator with pruning — so any hardcoded total is wrong by construction. | `insight-catalog.ts:503-540` |
 
 ## 11. Data flow

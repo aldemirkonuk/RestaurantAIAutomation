@@ -133,7 +133,7 @@ The nine `@Public` communications test routes named in the P3 brief are confirme
 | Surface | Producer | Live? |
 |---|---|---|
 | Classified threads | Gmail Pub/Sub push → `communications.controller.ts:1030-1180` publishes `email.inbound.received` → `RabbitMqBridgeService.handleInboundEmail` (`rabbitmq-bridge.service.ts:224-228,528`) inserts `procurement_conversations`; `InboundResponderService` writes `detected_sentiment`/`detected_intent` (`inbound-responder.service.ts:300,520`) | **Yes** — a live Gmail watch carries production traffic (OD-78) |
-| Same, provider-agnostic path | `POST /webhooks/inbound-email` (`common/orchestrator/inbound-email.controller.ts:92`) | **Dormant** — gated on `INBOUND_EMAIL_DOMAIN` + `INBOUND_WEBHOOK_SECRET`, both unset (OD-78 verification note, 2026-08-25) |
+| Same, provider-agnostic path | `POST /webhooks/inbound-email` (`common/orchestrator/inbound-email.controller.ts:92`) | **Dormant** — gated on `INBOUND_EMAIL_DOMAIN` + `INBOUND_WEBHOOK_SECRET`, both unset (`inbound-email.controller.ts:61-65`) |
 | Procurement history | `provider_communication_agent` outbound drafts, `AgentTier.CORE` since the Phase-32 fix (`services/agent-orchestrator/core/agent_registry.py:132-146`) | Yes |
 | Report archive | **none** — see §10 | No |
 | Templates | Manual authoring on this page | Yes |
