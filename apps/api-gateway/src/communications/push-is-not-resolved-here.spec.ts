@@ -135,10 +135,13 @@ function makeResolver(tables: Record<string, Row[]> = POPULATED) {
           ? "+15550000000"
           : undefined,
   };
-  const service = new RecipientResolverService(config as any, {
-    getClient: () => client,
-    supabase: client,
-  } as any);
+  const service = new RecipientResolverService(
+    config as any,
+    {
+      getClient: () => client,
+      supabase: client,
+    } as any,
+  );
   const errors: string[] = [];
   jest
     .spyOn((service as any).logger, "error")
