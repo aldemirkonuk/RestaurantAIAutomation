@@ -1,3 +1,16 @@
+> **SUPERSEDED 2026-08-26 by [ADR 0027](../decisions/0027-push-recipients-are-not-resolved-here.md)
+> and [`HANDOFF-od-95.md`](HANDOFF-od-95.md).**
+>
+> §5 and §6 were applied in #96 and are spent. **§4's recommendation — "repoint
+> at `notification_preferences.push_subscription`, then rename" — is wrong and
+> must not be acted on:** that column's only writer upserts
+> `onConflict: "user_id"` while the table's only unique index is
+> `(restaurant_id, user_id)`, so the write returns 42P10 and the column can
+> never hold a value. The resolver's push branch was **deleted** instead.
+>
+> §1–3 are kept because they are the implementation record of #94, which ADR
+> 0027 cites rather than reproduces. Read nothing else here as current.
+
 # HANDOFF — `push_subscriptions`: the table should NOT be created
 
 **Branch:** `fix/push-subs-observable` · **Date:** 2026-08-26
