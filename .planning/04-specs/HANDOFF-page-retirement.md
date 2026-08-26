@@ -123,12 +123,14 @@ applying.
 
 Both baselined against `origin/main` @ `63c2bccd` in a clean worktree.
 
-1. **`OneTapActionCenter.test.tsx` is flaky.** *"puts the card back and reports the
-   error when the server refuses"* failed once on this branch and passed on a rerun;
-   `origin/main` ran 369/369 green, and the same file passed 15/15 in isolation. The
-   assertion is `findByText(/Vendor counter-offer/i)` after an optimistic-removal
-   rollback — a rollback race, not a route change. A flaky rollback test is worse than
-   a failing one: it is guarding a correctness property that must never regress.
+1. ~~**`OneTapActionCenter.test.tsx` is flaky.**~~ **Already fixed on `main` while this
+   branch was in flight — `daa68396` (#100), filed as OD-96.** Recorded anyway because
+   the two sessions found it independently within the hour and neither saw the other:
+   *"puts the card back and reports the error when the server refuses"* failed once
+   here and passed on rerun, while `origin/main` @ `63c2bccd` ran 369/369 green and the
+   file passed 15/15 in isolation. The cause was a node captured across an `await`
+   boundary that `AnimatePresence` then detached — not the missing node the failure
+   message implied. **No action needed.**
 2. **`e2e/studio-flow.spec.ts:5` "login page renders correctly" fails on `main`.**
    `getByLabel('Password')` finds nothing. Reproduced on `origin/main` before this
    branch existed. Note `e2e/navigation.spec.ts:57` already works around the same
