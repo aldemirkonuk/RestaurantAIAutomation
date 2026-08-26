@@ -70,6 +70,34 @@ describe("OrchestratorService.proxyStudio path validation", () => {
     },
   );
 
+  describe("getAgentHealthByName", () => {
+    let get: jest.Mock;
+
+    beforeEach(() => {
+      get = jest.fn().mockResolvedValue({ data: { healthy: true } });
+      (service as any).httpClient = { get };
+    });
+
+    it("looks up a legitimate agent name", async () => {
+      await service.getAgentHealthByName("wine-matcher");
+      expect(get.mock.calls[0][0]).toBe("/api/v1/health/agents/wine-matcher");
+    });
+
+    it.each([
+      // Express decodes route params, so this is what the method actually receives.
+      "../../agents/execute",
+      "..%2f..%2fagents",
+      "..",
+      "a/b",
+    ])("refuses %s without issuing a request", async (bad) => {
+      await expect(service.getAgentHealthByName(bad)).rejects.toThrow(
+        "Invalid agent name",
+      );
+      // The point: X-Admin-Key never leaves the gateway on an escaped path.
+      expect(get).not.toHaveBeenCalled();
+    });
+  });
+
   it("returns 503 rather than a bad request when the orchestrator URL is unset", async () => {
     const unconfigured = new OrchestratorService({
       get: (_k: string, fallback?: string) => fallback ?? undefined,

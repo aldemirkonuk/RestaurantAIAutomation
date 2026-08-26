@@ -23,6 +23,8 @@ from typing import Optional
 from fastapi import Header, HTTPException
 from pydantic import BaseModel, Field
 
+from services.log_safety import sanitize_for_log
+
 logger = logging.getLogger(__name__)
 
 
@@ -204,19 +206,19 @@ def normalize_email(value: Optional[str]) -> str:
     return value.strip().casefold() if isinstance(value, str) else ""
 
 
-def sanitize_for_log(value: object, max_len: int = 128) -> str:
-    """
-    Make a request-derived value safe to put in a log line (CodeQL py/log-injection).
-
-    Claims like `sub` reach us inside a signature-verified JWT, so only our own issuer can
-    set them — but "signed" is not "structured": a newline in a claim would let one log
-    entry forge additional ones, and log forgery is exactly what an audit trail must not
-    allow. Escaping is cheaper than reasoning about every issuer forever.
-    """
-    text = str(value)
-    return (
-        text.replace("\\", "\\\\").replace("\r", "\\r").replace("\n", "\\n")[:max_len]
-    )
+# Re-exported so existing studio call sites keep their import. The definition moved to
+# services/log_safety.py once onboarding_routes needed it too — a generic log helper does
+# not belong in the studio promotion module.
+__all__ = [
+    "require_studio_role",
+    "require_authenticated_user",
+    "normalize_email",
+    "sanitize_for_log",
+    "OverrideRequest",
+    "ApprovalDecision",
+    "InviteRequest",
+    "RedeemRequest",
+]
 
 
 # =============================================================================

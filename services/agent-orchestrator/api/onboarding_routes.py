@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from api.auth import require_admin_or_studio
+from services.log_safety import sanitize_for_log
 from services.claude_vision_extractor import (
     ClaudeExtractionResult,
     get_claude_vision_extractor,
@@ -87,8 +88,12 @@ def _preflight_cap_check(supabase, cap_key: str) -> float:
             return sum(row.get("cost_usd", 0.0) or 0.0 for row in resp.data)
         return 0.0
     except Exception as exc:
+        # cap_key derives from the request (restaurant id) — escaped so it cannot
+        # forge a second log entry (CodeQL py/log-injection).
         logger.error(
-            "preflight_cap_check failed for %s — failing CLOSED: %s", cap_key, exc
+            "preflight_cap_check failed for %s — failing CLOSED: %s",
+            sanitize_for_log(cap_key),
+            exc,
         )
         raise CapLedgerUnavailable(str(exc)) from exc
 
@@ -124,8 +129,11 @@ def _resolve_cap_key(caller: dict, supabase, requested_restaurant_id: str) -> st
             .execute()
         )
     except Exception as exc:
+        # subject is a JWT claim: verified, but verified is not newline-free.
         logger.error(
-            "cap key lookup failed for user %s — failing CLOSED: %s", subject, exc
+            "cap key lookup failed for user %s — failing CLOSED: %s",
+            sanitize_for_log(subject),
+            exc,
         )
         raise CapLedgerUnavailable(str(exc)) from exc
 
@@ -296,7 +304,9 @@ async def extract_menu_scan(
                 request.images, restaurant_id=cap_key
             )
     except RuntimeError as e:
-        logger.error(f"All pages failed for restaurant {cap_key}: {e}")
+        logger.error(
+            "All pages failed for restaurant %s: %s", sanitize_for_log(cap_key), e
+        )
         raise HTTPException(status_code=503, detail=str(e))
 
     # Persist to Supabase (client already fetched and proven non-None above).

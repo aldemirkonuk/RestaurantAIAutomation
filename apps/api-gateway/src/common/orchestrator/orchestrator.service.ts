@@ -1,27 +1,25 @@
-import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import axios, { AxiosInstance } from "axios";
 import * as amqplib from "amqplib";
+import {
+  isSafePathSegment,
+  isSafeRelativePath,
+} from "../http/safe-path";
 
 /**
- * Segments the studio proxy will forward. An allowlist rather than a denylist: every real
- * studio path is slash-separated words and UUIDs (`queue`, `invite/redeem`,
- * `contributors/<uuid>/revoke`, `me/roles`), so anything else is not a studio path and
- * there is no reason to guess at which encodings of `..` to strip.
- *
- * Rejects, among others: `..` segments (path escape), `%2f` (encoded slash — `%` is not in
- * the class), `\` (Windows-style separator), `:` and `//` (absolute/scheme-relative URLs),
- * and leading slashes.
+ * Studio wildcard paths are slash-separated words and UUIDs (`queue`, `invite/redeem`,
+ * `contributors/<uuid>/revoke`, `me/roles`). Shares its rules with every other outbound
+ * URL interpolation in the gateway — see `common/http/safe-path.ts` for why these are
+ * allowlists rather than sanitisers.
  */
-const SAFE_STUDIO_SEGMENT = /^[A-Za-z0-9._~-]+$/;
-
 export function isSafeStudioSubPath(subPath: string): boolean {
-  if (typeof subPath !== "string" || subPath.length === 0) return false;
-  if (subPath.length > 512) return false;
-  const segments = subPath.split("/");
-  return segments.every(
-    (seg) => seg !== ".." && seg !== "." && SAFE_STUDIO_SEGMENT.test(seg),
-  );
+  return isSafeRelativePath(subPath);
 }
 
 @Injectable()
@@ -199,7 +197,24 @@ export class OrchestratorService implements OnModuleDestroy {
     return response.data;
   }
 
+  /**
+   * CodeQL js/request-forgery, open since 2026-07-08.
+   *
+   * `name` arrives from `@Get("agents/:name")`. Express decodes route params, so `%2f`
+   * becomes a real slash *after* routing matched — `..%2f..%2fagents%2fexecute` decodes to
+   * `../../agents/execute` and the URL resolves to `<orchestrator>/api/v1/agents/execute`.
+   *
+   * This one is worse than the studio proxy's equivalent was: `getAdminHeaders()` attaches
+   * X-Admin-Key, so an escaped request carries the server-to-server admin credential rather
+   * than the caller's own token.
+   */
   async getAgentHealthByName(name: string): Promise<any> {
+    if (!isSafePathSegment(name)) {
+      this.logger.warn(
+        `Rejected agent health lookup for unsafe name: ${JSON.stringify(name).slice(0, 200)}`,
+      );
+      throw new BadRequestException("Invalid agent name");
+    }
     const response = await this.httpClient.get(
       `/api/v1/health/agents/${name}`,
       {
