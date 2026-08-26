@@ -188,7 +188,9 @@ class InviteRequest(BaseModel):
     """
 
     role: str = Field(..., pattern="^(developer|certified_contributor|review_admin)$")
-    target_email: str = Field(..., min_length=3, max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    target_email: str = Field(
+        ..., min_length=3, max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+    )
 
 
 class RedeemRequest(BaseModel):
