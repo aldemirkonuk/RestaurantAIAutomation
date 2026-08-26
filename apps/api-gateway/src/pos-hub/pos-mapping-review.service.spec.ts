@@ -290,7 +290,10 @@ describe("PosMappingReviewService.listNeedingSaleUnit — read shape", () => {
     });
 
     const res = await service.listNeedingSaleUnit(RESTAURANT);
-    const row = res.items[0] as Record<string, unknown>;
+    // Through `unknown`: SaleUnitReviewRow has no index signature, so the
+    // direct cast is a type error once specs are checked (OD-97). The
+    // assertion below is about absent keys, which is what this shape is for.
+    const row = res.items[0] as unknown as Record<string, unknown>;
 
     // An $18 line against a $90 bottle is a glass — but that is the human's
     // read, not this service's. B36: no inferred unit reaches the response
