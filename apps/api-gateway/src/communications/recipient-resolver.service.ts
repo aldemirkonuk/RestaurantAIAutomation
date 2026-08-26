@@ -16,10 +16,60 @@ export type RecipientRole =
   | "customer";
 export type NotificationChannel = "email" | "sms" | "push";
 
+/**
+ * The push-subscription source could not be read AT ALL — as opposed to "this
+ * user has no device registered", which is an empty array.
+ *
+ * Keeping those two apart is the entire point of this class. Conflating them is
+ * what kept the defect invisible: `push_subscriptions` does not exist in
+ * production (PostgREST answers `404 PGRST205` to the service-role key,
+ * verified 2026-08-26), and the previous implementation reported that as
+ * "nobody has a device" for every user, on every notification, forever, without
+ * logging a single line.
+ */
+export class PushSubscriptionSourceError extends Error {
+  constructor(
+    readonly table: string,
+    readonly userId: string,
+    readonly cause: unknown,
+  ) {
+    super(
+      `Could not read push subscriptions for user ${userId} from "${table}": ` +
+        describeSourceFailure(cause),
+    );
+    this.name = "PushSubscriptionSourceError";
+  }
+}
+
+/** Render a supabase-js error object (or a thrown value) as one log-safe line. */
+function describeSourceFailure(cause: unknown): string {
+  if (cause && typeof cause === "object") {
+    const e = cause as { code?: string; message?: string; details?: string };
+    if (e.code || e.message) {
+      return [e.code && `[${e.code}]`, e.message, e.details]
+        .filter(Boolean)
+        .join(" ");
+    }
+  }
+  return String(cause);
+}
+
 export interface ResolvedRecipients {
   emails: string[];
   phones: string[];
   pushSubscriptionIds: string[];
+  /**
+   * Set when the push channel was requested but its source could not be read.
+   *
+   * Absent means "we looked, and this is the answer". Present means "we could
+   * not look, and `pushSubscriptionIds` is not an answer" — an empty array here
+   * is a placeholder, not a fact about the world.
+   *
+   * Callers that asked ONLY for push never see this field: they get a thrown
+   * `PushSubscriptionSourceError` instead, because for them there is nothing
+   * left to degrade to.
+   */
+  pushUnavailable?: string;
 }
 
 export interface RecipientQuery {
@@ -47,6 +97,29 @@ export interface RecipientQuery {
 
 @Injectable()
 export class RecipientResolverService {
+  /**
+   * The table this resolver reads push subscriptions from.
+   *
+   * It does not exist in production, and it has no writer anywhere in this
+   * repo. Web push here is real but stores its subscriptions somewhere else:
+   * `POST /notifications/push/subscribe` → `NotificationsService
+   * .registerPushSubscription` upserts the browser's `PushSubscription` into
+   * `notification_preferences.push_subscription` (jsonb), and the sender
+   * `NotificationsService.sendWebPush` reads it back from there. So this
+   * constant names a storage model that was abandoned before the current
+   * production baseline.
+   *
+   * Deliberately NOT repointed at `notification_preferences.push_subscription`
+   * in this change: that would alter what `pushSubscriptionIds` contains
+   * (subscription ids → push endpoints), and it is a design decision rather
+   * than a defect fix. Filed for the founder in
+   * `.planning/04-specs/HANDOFF-push-subscriptions.md`.
+   *
+   * Named as a constant so the failure logs below say which table, and so the
+   * one place it is read is greppable.
+   */
+  static readonly PUSH_SUBSCRIPTION_TABLE = "push_subscriptions";
+
   private readonly logger = new Logger(RecipientResolverService.name);
   private defaultEmail: string;
   private defaultRestaurantId: string | null;
@@ -137,8 +210,44 @@ export class RecipientResolverService {
           const wantsPush =
             !prefs || this.checkChannelPreference(prefs, "push");
           if (wantsPush) {
-            const subs = await this.getPushSubscriptions(client, user.user_id);
-            result.pushSubscriptionIds.push(...subs);
+            try {
+              const subs = await this.getPushSubscriptions(
+                client,
+                user.user_id,
+              );
+              result.pushSubscriptionIds.push(...subs);
+            } catch (err) {
+              if (!(err instanceof PushSubscriptionSourceError)) throw err;
+
+              /**
+               * Deliberate split, and the reason for it:
+               *
+               * - Push was the ONLY channel asked for → rethrow. There is
+               *   nothing to degrade to, and returning an empty recipient list
+               *   would be exactly the lie this fix exists to remove: the
+               *   caller would record a successful send to nobody.
+               * - Push was one of several channels → degrade, but loudly.
+               *   Throwing here would take email and SMS down with it, because
+               *   the outer catch collapses to `fallbackOrEmpty` and discards
+               *   every address already resolved — turning an undelivered push
+               *   into an undelivered invoice. The failure is logged at ERROR
+               *   and carried out of the function on `pushUnavailable`.
+               */
+              if (channels.length === 1 && channels[0] === "push") throw err;
+
+              // Once per resolve, not once per user: the failure is a property
+              // of the source, and N identical ERROR lines per notification
+              // would bury it rather than surface it.
+              if (!result.pushUnavailable) {
+                result.pushUnavailable = err.message;
+                this.logger.error(
+                  `PUSH_SUBSCRIPTIONS_UNREADABLE restaurant=${query.restaurantId} ` +
+                    `user=${user.user_id} table=${err.table} — ${describeSourceFailure(err.cause)}. ` +
+                    "Push recipients for this notification are unknown, not empty; " +
+                    "the other channels were still resolved.",
+                );
+              }
+            }
           }
         }
       }
@@ -169,13 +278,27 @@ export class RecipientResolverService {
         ).emails;
       }
     } catch (error) {
+      // A push-only caller gets the failure, not a fabricated empty list. The
+      // env fallback would be worse than useless here: it answers with email
+      // addresses to a caller that asked for devices.
+      if (error instanceof PushSubscriptionSourceError) {
+        this.logger.error(
+          `PUSH_SUBSCRIPTIONS_UNREADABLE restaurant=${query.restaurantId} ` +
+            `user=${error.userId} table=${error.table} — ${describeSourceFailure(error.cause)}. ` +
+            "Push was the only channel requested, so there is nothing to fall back to.",
+        );
+        throw error;
+      }
       this.logger.error(`Failed to resolve recipients: ${error}`);
       return fallbackOrEmpty(`recipient lookup failed: ${error}`);
     }
 
     this.logger.debug(
       `Resolved recipients for restaurant ${query.restaurantId}: ` +
-        `${result.emails.length} emails, ${result.phones.length} phones, ${result.pushSubscriptionIds.length} push`,
+        `${result.emails.length} emails, ${result.phones.length} phones, ` +
+        (result.pushUnavailable
+          ? "push UNRESOLVED (source unreadable)"
+          : `${result.pushSubscriptionIds.length} push`),
     );
 
     return result;
@@ -270,16 +393,33 @@ export class RecipientResolverService {
     client: any,
     userId: string,
   ): Promise<string[]> {
-    try {
-      const { data, error } = await client
-        .from("push_subscriptions")
-        .select("id")
-        .eq("user_id", userId);
+    const table = RecipientResolverService.PUSH_SUBSCRIPTION_TABLE;
+    let data: any;
+    let error: any;
 
-      return (data || []).map((s: any) => s.id);
-    } catch {
-      return [];
+    try {
+      ({ data, error } = await client
+        .from(table)
+        .select("id")
+        .eq("user_id", userId));
+    } catch (thrown) {
+      // Reached only if the client was configured with `.throwOnError()` or the
+      // builder itself blew up. Same meaning as an error result, same handling.
+      throw new PushSubscriptionSourceError(table, userId, thrown);
     }
+
+    // supabase-js does NOT throw on a PostgREST error by default: it RESOLVES
+    // with `{ data: null, error }`. postgrest-js `PostgrestBuilder.ts:82` sets
+    // `shouldThrowOnError = false`, and `:529` gates its only `throw` on that
+    // flag; `:366` additionally converts fetch/DNS failures into an error
+    // result rather than a rejection. So the `catch {}` that used to be here
+    // was unreachable in every failure mode, `error` was destructured and
+    // discarded, and `data || []` turned a 404 into "this user has no devices".
+    if (error) {
+      throw new PushSubscriptionSourceError(table, userId, error);
+    }
+
+    return (data || []).map((s: any) => s.id);
   }
 
   /**
