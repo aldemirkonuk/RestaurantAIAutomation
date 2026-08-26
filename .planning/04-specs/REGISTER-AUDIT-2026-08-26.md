@@ -76,7 +76,7 @@
 | OD-80 | **WRONG** (the blocker is gone) | The calendar retirement **has landed on `main`** — `pages/Calendar.tsx` and `EntityAutocomplete.tsx` no longer exist, so nothing blocks the cleanup. |
 | OD-88 | HOLDS (citation off by one) | Autouse session fixture is at `conftest_prod.py:218`, `prod_supabase` skips at `:199-203`, `prod_e2e` marker exists at `pytest.ini:12`. |
 | OD-89 | HOLDS | Verified exactly: two `writeFileSync`, boot-time write at `main.ts:154-156`, and `grep -c sale-unit openapi.json` → **0** against three live routes. |
-| OD-91 | **WRONG** | A `staff` role **does** exist; "6 of 10 restaurants have only `owner`" is wrong — **6 of 10 have no users at all**; and 3 restaurants were **soft-deleted today**. |
+| OD-91 | **WRONG** | A `staff` role **does** exist; "6 of 10 restaurants have only `owner`" is wrong — **6 of 10 have no users at all**; and all 10 are active (3 were soft-deleted at 10:00Z and **restored at 10:26Z** on the founder's instruction). |
 | OD-92 | HOLDS | 10 `@Cron`s, **8** pinned to `America/New_York`; `restaurants.timezone` holds exactly the 3 claimed values. |
 | OD-81 *(in Resolved)* | **WRONG** | "`scheduled_reports` has zero readers" — it has **three** call sites, and the table **does not exist in production**. Row is also malformed. |
 | OD-61/62/63/82/83/84/85 | STALE — **already fixed** | Duplicate Open rows; removed by `493fe3fa` mid-audit. No action. |
@@ -134,7 +134,7 @@ currently unverifiable from this repo.
 
 **The entry claims** "No flag rows exist", "production has **no `staff` role at
 all**", "**6 of 10 restaurants have only `owner`**", and (inherited from OD-87)
-that all 10 are `is_active = true` with none soft-deleted.
+that all 10 are `is_active = true` with none soft-deleted — which, after a soft-delete and a restore on 2026-08-26, is **true again** as of 10:26Z.
 
 **Evidence** (production, 2026-08-26):
 
@@ -143,9 +143,11 @@ that all 10 are `is_active = true` with none soft-deleted.
   (one of three `sim-*@wineops.internal` accounts created 2026-07-27, all unattached).
 - Users group onto only **4** restaurant ids. So **6 of 10 restaurants have zero
   users**, 2 have `owner` only, 2 have `manager` + `owner`.
-- `restaurants` → 10 rows, but **3 are soft-deleted** (`is_active = false`,
-  `deleted_at = 2026-08-26T10:00:02Z`): *Gullit's Tavern*, *Yaren's Fine Dine*, and
-  the duplicate *Meyhouse Palo Alto*.
+- `restaurants` → 10 rows, **all active, none soft-deleted**. *Gullit's Tavern*,
+  *Yaren's Fine Dine* and the duplicate *Meyhouse Palo Alto* were soft-deleted at
+  `2026-08-26T10:00:02Z` and **restored at 10:26Z** when the founder said to keep
+  them. This audit was written against the window in between; the register entry's
+  original claim stands. `is_active` still distinguishes nothing.
 - `restaurant_feature_flags` → **1 row**, not zero: `self_evolution`
   (`enabled = false`) on the default restaurant, created 2026-03-04. There is no
   `scheduled_communications` row, which is what the entry actually depends on.
@@ -162,9 +164,9 @@ role list, the mitigation the entry floats, fixes nothing for those six.
 > serves `DEFAULT_RESTAURANT_ID` ∪ restaurants flagged `scheduled_communications`.
 > **No `scheduled_communications` flag row exists** (the table holds exactly one row,
 > a `self_evolution` flag on the default restaurant), so behaviour is unchanged.
-> **Production shape, re-measured 2026-08-26:** 10 restaurants, of which **3 are now
-> soft-deleted** — `is_active`/`deleted_at` have started to mean something. Of the
-> remaining 7, **6 restaurants have no user rows at all** and therefore resolve zero
+> **Production shape, re-measured 2026-08-26:** 10 restaurants, **all active** — a
+> soft-delete of 3 was reverted the same hour, so `is_active` still separates
+> nothing. **6 of the 10 have no user rows at all** and therefore resolve zero
 > recipients regardless of the role list; 2 carry `owner` only and 2 carry
 > `manager` + `owner`. A `staff` role **does** exist, but only on
 > `sim-staff@wineops.internal`, which has `restaurant_id = NULL` — so no tenant has
