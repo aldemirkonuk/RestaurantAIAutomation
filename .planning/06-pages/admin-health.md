@@ -5,6 +5,7 @@ slug: admin-health
 component: apps/web/src/pages/AdminHealth.tsx
 audience: dev
 tier: core
+archetype: list+detail # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
 maturity: partial
@@ -24,6 +25,13 @@ links: ["[[PAGE-CONTRACT]]", "[[admin]]"]
 
 ## 1. Purpose
 Live agent-health board: card grid of orchestrator agents (status, version, capabilities), polled every 30s (`AdminHealth.tsx:63-67`), with a healthy/unhealthy filter (NEW-549) and a per-agent drill-down sheet showing the raw JSON health payload (NEW-548 — "GET /health/agents/:name already existed but nothing called it", `AdminHealth.tsx:69`). Keyboard: `r` refreshes, `Esc` closes the sheet (NEW-553, `AdminHealth.tsx:84-95`). The sheet states plainly that restart control is not exposed (`AdminHealth.tsx:252`).
+
+## 1a. Features
+- See every orchestrator agent as a live health card (status, version, capabilities), refreshed every 30s
+- Filter agents to healthy / unhealthy
+- Drill into one agent — a sheet shows its raw JSON health payload
+- Keyboard: `r` refreshes, `Esc` closes the sheet
+- 🚧 No restart control — the sheet says so explicitly
 
 ## 2. Entry
 **No inbound in-app link** — cold URL only, confirmed by [PAGE_MAP](../foundation/PAGE_MAP.md) entry-points list. Not linked even from `/admin`'s Agents tab.

@@ -5,11 +5,12 @@ slug: inventory
 component: apps/web/src/pages/inventory/command/InventoryCommandPage.tsx
 audience: staff
 tier: core
+archetype: command # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[orders]]"]
 ---
 
@@ -28,6 +29,17 @@ table, row-expand detail, attention rail, cellar map view, receiving verificatio
 adjustable locations" (`InventoryCommandPage.tsx:1-5`). The working stock page for
 staff and managers: live vs shadow stock, spot counts, receiving verification as a
 pinned task (not a popup), menu-scan intake, and per-branch views.
+
+## 1a. Features
+- 9-column live stock table; expand a row for detail: live vs shadow stock, par/reorder bar, velocity, busy-hours heatmap, order history, manual entry (🚧 market-price columns render "—" until price enrichment exists)
+- Attention rail surfacing low stock first
+- Spot counts with an offline-safe outbox (counts queue and sync when back online)
+- Receiving verification as a pinned task, not a popup — verify a delivery against its documents
+- Cellar map view of storage zones
+- Scan a menu/wine list photo to add wines
+- Add and remove wines; manage storage locations
+- Switch branches and see another branch's stock
+- Contextual insights rail (analytics engine)
 
 ## 2. Entry
 

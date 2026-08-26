@@ -5,6 +5,7 @@ slug: dev-sandbox
 component: apps/web/src/pages/DevSandbox.tsx
 audience: dev
 tier: core
+archetype: dev # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 5
 maturity: complete
@@ -23,6 +24,14 @@ links: ["[[PAGE-CONTRACT]]"]
 
 ## 1. Purpose
 Manual test bench for frontend-only behaviors: fire each toast variant, simulate POS sales and stock changes (live/shadow), trigger threshold alerts, dispatch realtime events (`dispatchInventoryUpdate`, `dispatchCalendarEvent` via `RealtimeContext`, `DevSandbox.tsx:87`), enqueue OneTap actions, and inspect/clear the app's `wineops_*` localStorage keys (`DevSandbox.tsx:440-457`).
+
+## 1a. Features *(dev test bench — frontend-only, no backend calls)*
+- Fire every toast variant to check styling
+- Simulate POS sales and stock changes (live and shadow)
+- Trigger threshold alerts
+- Dispatch realtime events (inventory update, calendar event) into the running UI
+- Enqueue One-Tap actions
+- Inspect and clear the app's local-storage keys
 
 ## 2. Entry
 **No inbound in-app link** — cold URL only, per [PAGE_MAP](../foundation/PAGE_MAP.md) entry-points list and grep (no component links to `/dev-sandbox`).

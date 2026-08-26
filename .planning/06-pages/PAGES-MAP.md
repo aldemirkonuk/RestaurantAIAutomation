@@ -1,12 +1,12 @@
 ---
 type: moc
 title: Pages Map
-updated: 2026-08-25
+updated: 2026-08-26
 ---
 
 # Pages Map — the ecosystem layer
 
-> **46 pages documented** against [[PAGE-CONTRACT]] (was 50; `/wine-agent`,
+> **47 pages documented** against [[PAGE-CONTRACT]] (was 50; `/wine-agent`,
 > `/wineagent`, `/inventory-legacy` and `/calendar-classic` retired 2026-08-26,
 > ADR 0019 §B). Generated summary — regenerate by hand-count or script; Dataview
 > query below is live.
@@ -21,60 +21,78 @@ the interconnection map the founder asked for. 13 pages have no outbound page
 navigation (see findings feed below) — the two retired placeholders came off that
 list without being wired.
 
-**Instrumented pages: 0 full · 2 partial · 46 none.**
+**§1a Features (2026-08-26, founder mandate):** every page note now carries a
+`## 1a. Features` list — what the page presents to the user, in plain product
+language, one bullet per capability. Broken or dark features are marked, never
+omitted. This is the founder-readable layer over the `path:line` evidence in
+§3–§9; keep it current in the same session that changes what a page does
+([[PAGE-CONTRACT]] §1a).
+
+**Archetype column (proposed 2026-08-26, founder to adjust — OD-106):** the first
+co-design step of the design foundation is a shared vocabulary for what *kind* of
+page each route is. Seven product archetypes — `command` (dense operational
+workspace) · `list+detail` (browse + inspect) · `canvas` (block-composed overview)
+· `form` (sectioned config/wizard) · `calendar` · `chat` · `document` (editorial
+reading) — plus structural buckets `focused` (chrome-free task/auth flow),
+`redirect`, and `dev` (fixtures). Tally: list+detail 16 · focused 10 · form 5 · command 4 · redirect 3 · dev 3 · canvas 2 · document 2 · calendar 1 · chat 1. Each note's `archetype:`
+frontmatter is the source of truth; this table is the view. **Documentation only** —
+[[DESIGN-FOUNDATION]] holds the plan and no design work starts until the founder
+reopens OD-106.
+
+**Instrumented pages: 0 full · 2 partial · 45 none.**
 The founder's tracking mandate lands here: page telemetry rides the NF spine (`subject_type: operator`, ADR 0008), and today it is dark — `uxSignals` ships gated off with zero page importers, and 11 `data-ux-key` markers wait for a reporter.
 
 **User-visible WineOps strings across pages: ~71** (shared chrome counted once) — the per-page slice of the rebrand surface, execution held pending brand direction.
 
-| Route | Doc | Audience | Tier | Signals | Rebrand |
-|---|---|---|---|---|---|
-| `/admin/health` | [[admin-health]] | dev | core | none | 0 |
-| `/admin` | [[admin]] | owner | core | none | 0 |
-| `/authorize/:integrationId` | [[authorize-integration]] | owner | core | none | 3 |
-| `/calendar` | [[calendar]] | owner | core | none | 0 |
-| `/communications` | [[communications]] | owner | core | none | 3 |
-| `/credits` | [[credits]] | owner | core | none | 0 |
-| `/` | [[dashboard]] | owner | core | none | 0 |
-| `/dev-sandbox` | [[dev-sandbox]] | dev | core | none | 5 |
-| `/distributors` | [[distributors]] | owner | core | none | 0 |
-| `/documents-reports` | [[documents-reports]] | owner | core | none | 0 |
-| `/forgot-password` | [[forgot-password]] | public | public | none | 4 |
-| `/get-started` | [[get-started]] | owner | core | partial | 5 |
-| `/help` | [[help]] | owner | core | partial | 4 |
-| `/inventory` | [[inventory]] | staff | core | none | 0 |
-| `/invite/:code` | [[invite-landing]] | public | public | none | 3 |
-| `/login` | [[login]] | public | public | none | 3 |
-| `/logs` | [[logs]] | owner | core | none | 0 |
-| `/no-access` | [[no-access]] | public | public | none | 2 |
-| `/notifications` | [[notifications]] | owner | core | none | 0 |
-| `/onboarding` | [[onboarding]] | owner | core | none | 2 |
-| `/orders` | [[orders]] | owner | core | none | 4 |
-| `/privacy` | [[privacy]] | public | public | none | 4 |
-| `/profile` | [[profile]] | owner | core | none | 2 |
-| `/promotions` | [[promotions]] | owner | core | none | 0 |
-| `/providers` | [[providers]] | owner | core | none | 0 |
-| `/receipts` | [[receipts]] | owner | core | none | 0 |
-| `/receiving/:orderId/door` | [[receiving-door]] | staff | core | none | 0 |
-| `/receiving` | [[receiving]] | staff | core | none | 0 |
-| `/recommendations/catalog` | [[recommendations-catalog]] | owner | plus | none | 0 |
-| `/recommendations` | [[recommendations]] | owner | plus | none | 0 |
-| `/register` | [[register]] | public | public | none | 3 |
-| `/reports` | [[reports]] | owner | plus | none | 2 |
-| `/reset-password` | [[reset-password]] | public | public | none | 5 |
-| `/services` | [[services]] | owner | core | none | 0 |
-| `/settings` | [[settings]] | owner | core | none | 8 |
-| `/simpos/:restaurantId/orders` | [[simpos-order-log]] | dev | public | none | 0 |
-| `/simpos/:restaurantId` | [[simpos-terminal]] | dev | public | none | 3 |
-| `/sommelier` | [[sommelier]] | owner | core | none | 0 |
-| `/studio/certify` | [[studio-certify]] | dev | core | none | 1 |
-| `/studio/invite/:token` | [[studio-invite-redeem]] | dev | core | none | 1 |
-| `/studio/queue` | [[studio-queue]] | dev | core | none | 1 |
-| `/studio` | [[studio]] | dev | core | none | 1 |
-| `/team` | [[team]] | staff | core | none | 0 |
-| `/vendor-prices` | [[vendor-prices]] | owner | plus | none | 0 |
-| `/v/:slug` | [[vendor-public-page]] | public | public | none | 0 |
-| `/verify-email` | [[verify-email]] | public | public | none | 3 |
-| `/wines` | [[wines]] | owner | core | none | 0 |
+| Route | Doc | Audience | Tier | Archetype | Signals | Rebrand |
+|---|---|---|---|---|---|---|
+| `/` | [[dashboard]] | owner | core | canvas | none | 0 |
+| `/admin` | [[admin]] | owner | core | form | none | 0 |
+| `/admin/health` | [[admin-health]] | dev | core | list+detail | none | 0 |
+| `/authorize/:integrationId` | [[authorize-integration]] | owner | core | focused | none | 3 |
+| `/calendar` | [[calendar]] | owner | core | calendar | none | 0 |
+| `/communications` | [[communications]] | owner | core | list+detail | none | 3 |
+| `/credits` | [[credits]] | owner | core | redirect | none | 0 |
+| `/dev-sandbox` | [[dev-sandbox]] | dev | core | dev | none | 5 |
+| `/distributors` | [[distributors]] | owner | core | redirect | none | 0 |
+| `/documents-reports` | [[documents-reports]] | owner | core | list+detail | none | 0 |
+| `/forgot-password` | [[forgot-password]] | public | public | focused | none | 4 |
+| `/get-started` | [[get-started]] | owner | core | form | partial | 5 |
+| `/help` | [[help]] | owner | core | document | partial | 4 |
+| `/inventory` | [[inventory]] | staff | core | command | none | 0 |
+| `/invite/:code` | [[invite-landing]] | public | public | focused | none | 3 |
+| `/login` | [[login]] | public | public | focused | none | 3 |
+| `/logs` | [[logs]] | owner | core | list+detail | none | 0 |
+| `/no-access` | [[no-access]] | public | public | focused | none | 2 |
+| `/notifications` | [[notifications]] | owner | core | list+detail | none | 0 |
+| `/onboarding` | [[onboarding]] | owner | core | focused | none | 2 |
+| `/orders` | [[orders]] | owner | core | command | none | 4 |
+| `/privacy` | [[privacy]] | public | public | document | none | 4 |
+| `/profile` | [[profile]] | owner | core | form | none | 2 |
+| `/promotions` | [[promotions]] | owner | core | list+detail | none | 0 |
+| `/providers` | [[providers]] | owner | core | list+detail | none | 0 |
+| `/receipts` | [[receipts]] | owner | core | list+detail | none | 0 |
+| `/receiving` | [[receiving]] | staff | core | list+detail | none | 0 |
+| `/receiving/:orderId/door` | [[receiving-door]] | staff | core | focused | none | 0 |
+| `/recommendations` | [[recommendations]] | owner | plus | list+detail | none | 0 |
+| `/recommendations/catalog` | [[recommendations-catalog]] | owner | plus | list+detail | none | 0 |
+| `/register` | [[register]] | public | public | form | none | 3 |
+| `/reports` | [[reports]] | owner | plus | canvas | none | 2 |
+| `/reset-password` | [[reset-password]] | public | public | focused | none | 5 |
+| `/services` | [[services]] | owner | core | redirect | none | 0 |
+| `/settings` | [[settings]] | owner | core | form | none | 8 |
+| `/simpos/:restaurantId` | [[simpos-terminal]] | dev | public | dev | none | 3 |
+| `/simpos/:restaurantId/orders` | [[simpos-order-log]] | dev | public | dev | none | 0 |
+| `/sommelier` | [[sommelier]] | owner | core | chat | none | 0 |
+| `/studio` | [[studio]] | dev | core | command | none | 1 |
+| `/studio/certify` | [[studio-certify]] | dev | core | list+detail | none | 1 |
+| `/studio/invite/:token` | [[studio-invite-redeem]] | dev | core | focused | none | 1 |
+| `/studio/queue` | [[studio-queue]] | dev | core | list+detail | none | 1 |
+| `/team` | [[team]] | staff | core | command | none | 0 |
+| `/v/:slug` | [[vendor-public-page]] | public | public | list+detail | none | 0 |
+| `/vendor-prices` | [[vendor-prices]] | owner | plus | list+detail | none | 0 |
+| `/verify-email` | [[verify-email]] | public | public | focused | none | 3 |
+| `/wines` | [[wines]] | owner | core | list+detail | none | 0 |
 
 **Retired 2026-08-26 (ADR 0019 §B):** `/wine-agent` and `/wineagent` — one inline
 `PlaceholderPage` under two spellings, zero buttons, zero endpoints. Their notes
@@ -135,7 +153,7 @@ a missing connection, and the proposal decides which.
 ## Live query
 
 ```dataview
-TABLE route, audience, tier, signals_today, rebrand_strings
+TABLE route, audience, tier, archetype, signals_today, rebrand_strings
 FROM "06-pages"
 WHERE type = "page"
 SORT route ASC

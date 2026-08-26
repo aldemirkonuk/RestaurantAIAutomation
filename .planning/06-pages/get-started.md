@@ -5,6 +5,7 @@ slug: get-started
 component: apps/web/src/pages/GetStarted.tsx
 audience: owner
 tier: core
+archetype: form # proposed 2026-08-26 (OD-106)
 signals_today: partial
 rebrand_strings: 5
 maturity: partial
@@ -30,6 +31,14 @@ links: ["[[PAGE-CONTRACT]]", "[[onboarding]]", "[[verify-email]]", "[[dashboard]
 
 ## 1. Purpose
 The live activation surface: **Activate** tab (import your wine list via Scan Photo / Upload File / Manual Entry → review screen → one-time low-stock threshold step) and **Use the app** tab (seven guide cards into the main surfaces + Wine Agent explainer). "Activated" = menu + threshold (`GetStarted.tsx:239-240`). Staff get a separate read-only welcome with no upload/threshold/invite steps (`GetStarted.tsx:217-221` → `StaffWelcome`).
+
+## 1a. Features
+- **Activate** tab: import your wine list three ways — scan a photo, upload a file, or enter manually
+- Review screen for the extracted items: edit lines, add missing ones
+- One-time low-stock threshold step (skipped once configured)
+- **Use the app** tab: seven guide cards into the main surfaces + a Wine Agent explainer
+- Staff see a separate read-only welcome (no upload/threshold/invite steps)
+- Deep links open a specific tab or import method (`?tab=`, `?method=`)
 
 ## 2. Entry
 - `/verify-email` success → here unless a menu already exists (`VerifyEmail.tsx:50`)
