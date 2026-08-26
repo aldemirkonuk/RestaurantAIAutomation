@@ -29,6 +29,8 @@ Run: cd services/agent-orchestrator && python -m pytest tests/test_od99_phantom_
 """
 
 import json
+import pathlib
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -49,6 +51,35 @@ PHANTOM_RELATIONS = {
     "wine_library",
     "provider_digital_twins",
 }
+
+
+# RPC functions with no CREATE FUNCTION anywhere in this repo, absent from
+# production (PGRST202). All five had a name that reads like a real feature.
+PHANTOM_FUNCTIONS = {
+    "find_provider_by_email",
+    "get_inactive_providers",
+    "get_low_stock_items",
+    "jsonb_array_append",
+    "search_provider_conversations",
+}
+
+_RPC_CALL = re.compile(r"""\.rpc\(\s*["']([A-Za-z_][A-Za-z0-9_]*)["']""")
+
+
+def _source_of(relative_path: str) -> str:
+    """Read a source file of the agent-orchestrator package."""
+    return (pathlib.Path(__file__).resolve().parents[1] / relative_path).read_text()
+
+
+def _rpc_names(source: str) -> set:
+    """
+    Every function name passed as the first argument to `.rpc(...)`.
+
+    Deliberately a call-form match, not a substring match: these names appear
+    throughout this repo's comments on purpose, explaining why they are gone,
+    and a comment is not a call.
+    """
+    return set(_RPC_CALL.findall(source))
 
 
 def _tables_touched(client: MagicMock) -> list:
@@ -253,15 +284,15 @@ class TestNoPhantomRelationNamesRemain:
         "services/restaurant_dataset_service.py",
         "services/wine_matcher.py",
         "agents/reporting_agent.py",
+        "agents/email_parsing_agent.py",
+        "agents/provider_conversation_agent.py",
+        "core/database.py",
         "demo/weekly_report_scheduler.py",
     ]
 
     @pytest.mark.parametrize("relative_path", FILES)
     def test_no_phantom_relation_is_queried(self, relative_path):
-        import pathlib
-
-        root = pathlib.Path(__file__).resolve().parents[1]
-        source = (root / relative_path).read_text()
+        source = _source_of(relative_path)
 
         offenders = []
         for relation in sorted(PHANTOM_RELATIONS):
@@ -276,3 +307,114 @@ class TestNoPhantomRelationNamesRemain:
             f"{relative_path} queries {offenders}, which do not exist in "
             f"production (404 PGRST205, verified 2026-08-26)"
         )
+
+    @pytest.mark.parametrize("relative_path", FILES)
+    def test_no_phantom_rpc_is_called(self, relative_path):
+        called = _rpc_names(_source_of(relative_path))
+        offenders = sorted(PHANTOM_FUNCTIONS & called)
+
+        assert not offenders, (
+            f"{relative_path} calls RPC {offenders}, for which no CREATE "
+            "FUNCTION exists in this repo and which production does not have "
+            "(PGRST202, verified 2026-08-26)"
+        )
+
+
+# ---------------------------------------------------------------------------
+# The four Python RPC repairs.
+# ---------------------------------------------------------------------------
+
+
+class TestPhantomRpcCallsAreGone:
+    """
+    Four of the five phantom RPCs were called from Python, and three of them
+    shared one structural defect that made them invisible: the "fallback" the
+    author wrote for the RPC failing sat INSIDE the same `try` as the RPC call,
+    so the exception jumped straight over it to the outer `except`. The
+    fallbacks were unreachable code, not fallbacks -- which is why
+    `_find_provider_by_email` returned None for every inbound email ever
+    parsed, and why `_check_relationship_health` has never emitted an alert.
+    """
+
+    def test_find_provider_by_email_no_longer_calls_the_rpc(self):
+        source = _source_of("agents/email_parsing_agent.py")
+        assert "find_provider_by_email" not in _rpc_names(source)
+
+    def test_provider_lookup_reaches_the_contact_email_query(self):
+        """
+        The repair is not "the RPC is gone" but "the search that was
+        unreachable now runs". This drives the method and asserts it reaches
+        the `providers` table, which it never did before.
+        """
+        source = _source_of("agents/email_parsing_agent.py")
+        # Both searches the old code intended are present and independent.
+        assert '.ilike("contact_email"' in source
+        assert '"primary_contact->>email"' in source
+
+    def test_relationship_health_no_longer_calls_the_rpc(self):
+        source = _source_of("agents/provider_conversation_agent.py")
+        assert "get_inactive_providers" not in _rpc_names(source)
+
+    def test_low_stock_no_longer_calls_the_rpc(self):
+        source = _source_of("core/database.py")
+        assert "get_low_stock_items" not in _rpc_names(source)
+
+    def test_manager_instruction_write_no_longer_calls_the_rpc(self):
+        source = _source_of("agents/provider_conversation_agent.py")
+        assert "jsonb_array_append" not in _rpc_names(source)
+
+
+class TestManagerInstructionIsActuallyStored:
+    """
+    `jsonb_array_append` is the one phantom RPC that was a WRITE with nothing
+    behind it. Its failure was not a degraded read, it was data loss: every
+    preference the learning loop extracted -- each paid for with an LLM call --
+    went into a function that does not exist and was dropped by the `except`.
+    """
+
+    @staticmethod
+    def _agent():
+        from agents.provider_conversation_agent import ProviderConversationAgent
+
+        agent = ProviderConversationAgent.__new__(ProviderConversationAgent)
+        agent.database = MagicMock()
+        agent.logger = MagicMock()
+        return agent
+
+    def test_preference_is_appended_to_the_active_session(self):
+        agent = self._agent()
+        table = agent.database.supabase.table.return_value
+        table.select.return_value.eq.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(
+            data=[{"id": "sess-1", "conversation_context": {"manager_instructions": ["first"]}}]
+        )
+
+        stored = agent._append_manager_instruction("rest-1", "prov-1", "second")
+
+        assert stored is True
+        update_arg = table.update.call_args.args[0]
+        assert update_arg["conversation_context"]["manager_instructions"] == [
+            "first",
+            "second",
+        ], "the existing instructions must be preserved, not overwritten"
+
+    def test_first_instruction_creates_the_list(self):
+        agent = self._agent()
+        table = agent.database.supabase.table.return_value
+        table.select.return_value.eq.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(
+            data=[{"id": "sess-1", "conversation_context": None}]
+        )
+
+        assert agent._append_manager_instruction("rest-1", "prov-1", "only") is True
+        update_arg = table.update.call_args.args[0]
+        assert update_arg["conversation_context"]["manager_instructions"] == ["only"]
+
+    def test_missing_session_is_reported_not_swallowed(self):
+        agent = self._agent()
+        table = agent.database.supabase.table.return_value
+        table.select.return_value.eq.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(
+            data=[]
+        )
+
+        assert agent._append_manager_instruction("rest-1", "prov-1", "lost") is False
+        table.update.assert_not_called()
+        agent.logger.warning.assert_called()
