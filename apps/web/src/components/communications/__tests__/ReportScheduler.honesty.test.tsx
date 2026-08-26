@@ -19,6 +19,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { ReportScheduler } from '../ReportScheduler'
 
 vi.mock('../../../contexts/RealtimeContext', () => ({
@@ -42,9 +43,21 @@ describe('ReportScheduler — ADR 0020', () => {
     ).toBeDisabled()
   })
 
-  it('never shows the in-flight "Generating..." state', () => {
-    render(<ReportScheduler />)
-    expect(screen.queryByText(/Generating\.\.\./i)).not.toBeInTheDocument()
+  /*
+   * This one replaced a weaker assertion that the "Generating..." label is
+   * absent. That assertion passed against the pre-fix component too — the label
+   * only appears mid-flight — so it could not have caught the regression it
+   * existed to catch. Clicking is the discriminator: on the old code the click
+   * reached `onGenerateNow` and posted a report row.
+   */
+  it('cannot be clicked into calling onGenerateNow', async () => {
+    const onGenerateNow = vi.fn()
+    const user = userEvent.setup()
+    render(<ReportScheduler onGenerateNow={onGenerateNow} />)
+
+    await user.click(screen.getByRole('button', { name: /Generate Now/i }))
+
+    expect(onGenerateNow).not.toHaveBeenCalled()
   })
 
   it('states up front that generation and delivery are not built', () => {
