@@ -113,23 +113,27 @@ The department's job is to make the fail-closed shape the default, not to invent
 > primary controller of every one of the six named modules now carries a class-level
 > `@UseGuards(JwtAuthGuard)` — `analytics.controller.ts:51`, `dashboard.controller.ts:51`,
 > and the same on `notifications`, `communications`, `contacts`, `procurement` (verified
-> in source). The backlog has **not been recounted** route-by-route, so no replacement
-> number is asserted here; OD-19 stays open on that basis.
+> in source). **Recounted 2026-08-26** in OD-19 (`OPEN-DECISIONS.md:31`): **459** route
+> decorators across the 47 non-spec controllers, of which **40** sit on the five
+> controllers carrying no class-level `@UseGuards`. OD-19 stays open to enumerate those 40
+> and confirm each is public by intent.
 
-**The denominator has now been stated three ways: 86 → 103 → 94.** The department
+**The denominator has now been stated four ways: 86 → 103 → 94 → 40.** The department
 inherits the reconciliation, and it is worth writing down once because it is the argument
 for per-route classification:
 
 - **86** — [[README]] and OD-19 as originally written.
 - **103** — `intelligence.md:211-216`, summing `ENDPOINTS.md`'s per-module *header* counts.
-- **94** — current, verified row-by-row against `ENDPOINTS.md` and now canonical in
-  `OPEN-DECISIONS.md:23`.
+- **94** — verified row-by-row against `ENDPOINTS.md`, and canonical until 2026-08-26.
+- **40** — current. The re-measure struck the 94 arithmetic as describing "a codebase two
+  guard-sweeps ago" and counts routes on class-unguarded controllers instead
+  (OD-19, `OPEN-DECISIONS.md:31`).
 
 The 103 figure counted `communications` at its module total of **18** when only **9** of
 those rows are unguarded by omission (nine carry `@Public()`), and placed `vendor-portal`'s
 2 routes in the webhook bucket. 103 − 9 = 94. **The correction was not arithmetic; it was
-that per-module labels do not survive contact with the routes underneath them.** Every
-number above is the count of ⚠️ and 🌐 rows, not of module headers.
+that per-module labels do not survive contact with the routes underneath them.** Each of
+the first three numbers above is the count of ⚠️ and 🌐 rows, not of module headers.
 
 ## The worked example — what this department catches
 

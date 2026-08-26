@@ -106,12 +106,13 @@ land.
 - [ ] Count the baseline: 7 callsites, 2 bypass files, 1 diverged invariant
 - [ ] Census #1 — *"every model call is metered"*
 - [ ] Import-boundary check in CI, shaped like `check_schema_parity.sh`
+- [ ] AR-4 fix — no longer blocked; the NF column contract is settled on Path C
+      (OD-11, `OPEN-DECISIONS.md:121`)
 
 ## Blocked
 
 - [ ] Sweep one *(blocked: AR-0 — where does a finding land?)*
 - [ ] Finding-age clock *(blocked: AR-0, and the 42-day rule is unadopted)*
-- [ ] AR-4 fix *(blocked: OD-11, the NF column contract)*
 
 ## Open forks on this board
 
@@ -123,7 +124,7 @@ land.
       [[decision-office-charter]]. Binding? Relates directly to **OD-26**
 - [ ] **Who owns the layer map?** An interface owned by the reviewed party is not an interface
 - [ ] **The evaluation seam** — **TECH-F3** ([[FORK-REGISTRY]]); originally numbered **OD-21**
-      at `technology.md:845`, colliding with the real OD-21 (`OPEN-DECISIONS.md:25`, locked).
+      at `technology.md:845`, colliding with the real OD-21 (`OPEN-DECISIONS.md:132`, locked).
       ID now issued. Read here as an
       **L4 ownership question**; instruction on record stands: **merge, never duplicate**
 - [ ] **Scope, both directions** — too wide (three divisions, ~40 teams, no build

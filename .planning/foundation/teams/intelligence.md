@@ -202,9 +202,10 @@ SEC-3 is different in kind and should exist from day one regardless.
 
 ### Correction the department inherits on day one
 
-`foundation README.md:34-36` and `OPEN-DECISIONS.md:26` (OD-19) both say **"~86"**
-non-webhook endpoints lack `JwtAuthGuard` and that webhook modules account for **≈51**
-routes. Summing `ENDPOINTS.md`'s own per-module ⚠️ counts gives different numbers:
+The corpus circulates **"~86"** non-webhook endpoints lacking `JwtAuthGuard` and **≈51**
+webhook routes (`technology.md:257`), while `foundation README.md:33-37` and
+OD-19 (`OPEN-DECISIONS.md:31`) put those two at **94** and **32**. Summing `ENDPOINTS.md`'s
+own per-module ⚠️ counts gives a third pair of numbers:
 
 | Class | Modules | Routes |
 |---|---|---|
@@ -214,6 +215,12 @@ routes. Summing `ENDPOINTS.md`'s own per-module ⚠️ counts gives different nu
 
 **The backlog is 103, not 86.** Correcting OD-19 is the first deliverable, because a
 classification task that starts from the wrong denominator cannot report completion.
+
+> **Superseded 2026-08-26.** OD-19 was re-measured against the current tree and its
+> `137 − 32 − 11 = 94` arithmetic struck: **459** route decorators, **40** routes on the
+> five controllers carrying no class-level `@UseGuards`, most of them public by intent.
+> The denominator this section corrects is two guard-sweeps old. `ENDPOINTS.md` has
+> **not** had the same correction and is still the stale atlas the row names.
 
 ### SEC-1 · Access Control & Tenant Isolation
 
@@ -518,7 +525,7 @@ To be added to [`OPEN-DECISIONS.md`](../../decisions/OPEN-DECISIONS.md).
 
 | ID | Fork | Why it matters |
 |---|---|---|
-| **INTEL-F1** | **OD-19's denominator is wrong.** README:36 and OD-19 say "~86" non-webhook unguarded endpoints; summing `ENDPOINTS.md`'s own per-module counts gives **103** (webhook-labelled: 34, not ≈51). Correct OD-19, or explain the 17. | A classification task cannot report completion against a wrong denominator. |
+| **INTEL-F1** | **OD-19's denominator is wrong.** The corpus says "~86" non-webhook unguarded endpoints where README:37 and OD-19 said **94**; summing `ENDPOINTS.md`'s own per-module counts gives **103** (webhook-labelled: 34, not ≈51). Correct OD-19, or explain the 17. **Overtaken 2026-08-26:** OD-19 re-measured to **40**, `ENDPOINTS.md` not corrected with it (§ *Correction the department inherits*). | A classification task cannot report completion against a wrong denominator. |
 | **INTEL-F2** | **`vendor-portal` is misclassified** as a webhook module needing signature verification (`ENDPOINTS.md:656`); it is two public `GET`-by-slug content routes (`vendor-portal.controller.ts:16-43`). Does OD-19 classify **per route** rather than per module? | The per-module labels prescribed the wrong control once already. |
 | **INTEL-F3** | **NF has no `subject_type` for the restaurant operator.** `foundation §4.4` allows `agent | guest | bio`, but the strongest human-preference signal already collected — recommendation act/dismiss/snooze — is neither. Add `operator`, or route it outside NF? | Blocks AB-2's primary metric from having a home; interacts directly with OD-11. |
 | **INTEL-F4** | **Do SEC-1 and SEC-2 start merged?** This document recommends one team with two charters until the endpoint campaign ships. Founder call. | Determines whether the org's largest live security campaign has one owner or a handoff. |

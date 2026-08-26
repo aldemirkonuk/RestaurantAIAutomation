@@ -189,3 +189,106 @@ the founder's call whether to act on it — recorded here rather than acted on.
 - The corpus loses ~469 duplicate files, if §8.3 is answered yes.
 - Dossier **prose** remains unguarded. Nothing here changes that, and pretending
   otherwise would repeat the mistake this ADR exists to correct.
+
+---
+
+## 10. Amendment, 2026-08-26 — a line anchor has a shelf life of hours
+
+Added by `docs/adr0025-prose-corrections`. This section records two things the ADR
+did not price: what the pairing rule costs to *keep* green, and what the sweep it
+forces turns up on the way.
+
+### 10.1 The enforcement landed elsewhere, deliberately
+
+§6.2's checker ships in [#110](https://github.com/aldemirkonuk/RestaurantAIAutomation/pull/110)
+as `scripts/check_citation_pairing.py`. A second implementation was built in parallel
+in this worktree — same rule, different name — and was **discarded rather than merged**:
+two checkers enforcing one rule is the duplication §4 and `CLAUDE.md` §4 exist to
+prevent, and neither was better enough to justify the other's removal. The cost of
+finding out was one wasted branch; the cost of *not* finding out would have been a
+silent double-guard, which is the same class of failure as the OD-id collisions in
+`CLAUDE.md` §5b. **Check the open PRs before building a guard.**
+
+### 10.2 The measurement §3 missed
+
+§3 reports "74 citations, 23 id-paired, **0 of 23 agree**" and reads the unpaired
+remainder as merely unchecked. Re-measured across all of `.planning/`:
+
+| Measure | Value |
+|---|---|
+| Register anchors in the corpus | **78** |
+| …carrying an id within 120 chars, so mechanically checkable | 35 |
+| …carrying a line and **no id** | **43** |
+| …of those 43, pointing into the register's **preamble block quote**, not at any row | **26** |
+
+So the unpaired half is not unchecked — it is *demonstrably wrong*, and more wrong
+than the paired half. The honest headline is **75 of 78 anchors wrong**, not 0 of 23.
+That is why §6.1 was enforced as blocking rather than left advisory.
+
+### 10.3 What this actually costs, measured twice in one hour
+
+A line anchor into the register is invalidated by **any** concurrent merge that
+inserts a row above it. This is not hypothetical; it happened twice while this
+amendment was being written:
+
+- Sweep A anchored OD-21 at `:127`, correct against the register at `c6e0477a`
+  (98 rows). PR #107 merged five new Open rows; OD-21 moved to `:132` and
+  **31 anchors on #110 went red** — caught by #110's own check, which is the rule
+  working as designed.
+- This branch then rebased onto `9e2dfdaf` and **17 of its own anchors** shifted by
+  the same +5. They were re-pointed mechanically before commit.
+
+The register took **57 commits in August** and five rows in forty minutes. Every PR
+that adds a decision row turns every other open PR's citations red.
+
+**This reopens §4's rejection of id-only anchors.** That rejection rests on "a
+renumbered id still resolves" — but the pairing rule *already checks the id*, so
+that failure mode is closed by §6.2 regardless of what the second anchor is. The
+line is now the only half that rots, and it rots on every merge. A stable second
+anchor (the row's heading text, or a `<a id>` the register carries itself) would be
+diffable *and* immune to insertion. **Not proposed here** — that is a decision, and
+§0.1 says it is not made until it is written. Filed so the next session does not
+have to rediscover the cost.
+
+### 10.4 What the sweep found in the prose
+
+The anchors are the cheap half. Checking each citing sentence against the row it
+names turned up claims that were wrong regardless of where they pointed — defect
+class #2, which §6.4 says no locator can catch. The corrections in this PR:
+
+| Document | The prose said | The register says |
+|---|---|---|
+| `harness-model-routing-agenda-full.md` | "**OD-20 is open and urgent** — an unguarded route drives paid Opus calls" | OD-20 ✅ closed by PR #31 on 2026-08-24 |
+| `model-routing-inference-economics-agenda-full.md` | "Locked pricing is $20–50/mo" | OD-23: "it called $20–50/mo **locked** — **no ADR records any pricing**" |
+| `ai-orchestration-charter.md` + 3 more | "OD-04 is explicitly downstream of OD-03" | OD-04's row no longer names OD-03 as blocker; its unblocker is now a job→model registry |
+| `knowledge-documentation-charter.md` | five "open forks", incl. OD-08/OD-14/OD-21/OD-22 | four of the five sit in the **Resolved** table |
+| `security-charter.md` | "the backlog has **not** been recounted"; 94 canonical | OD-19 re-measured 2026-08-26: the 94 arithmetic is struck, the figure is **40** |
+| `architecture-review-charter.md`, `-agenda-board.md` | AR-4 "blocked: OD-11"; OD-20 open | both resolved; the founder dependency is gone |
+| `OD-59-READOUT-AUDIT.md`, `OD-59-PYTHON-AUDIT.md` | two sentences quoted verbatim "from" the OD-59 row | that row was rewritten wholesale by `426984b3`; neither quote exists in the register any more |
+| `intelligence.md` | "OD-19 and `foundation README.md:34-36` both say ~86 / ≈51" | neither ever said that; both said 94 / 32 |
+| `design-charter.md` | "OD-23 (\$20k MRR)" | that is the claim OD-23 exists to retract |
+| `product-vision-loops.md` | "3 forks, all with colliding OD ids" | resolved — renumbered PROD-F1/F2/F5 |
+
+Ten documents, ~12 corrections. **None of them would have been found by the checker**,
+and none would have been found without it either: the checker is what made someone
+re-read the sentence. That is the argument for the sweep, and it is not an argument
+the checker can make for itself.
+
+### 10.5 Left open, named rather than fixed
+
+- `product-vision-charter.md:135-139` cites the register as bare `(:24)`…`(:27)` with
+  no `OPEN-DECISIONS.md:` prefix. **The checker's regex cannot see these**, and they
+  are wrong. A prefix-less anchor is a hole in §6.2, not an exemption from it.
+- The "~86 / ≈51" endpoint figures are load-bearing in ~14 further documents, all now
+  downstream of an OD-19 that says **40**. `foundation/ENDPOINTS.md` is stale on the
+  same point, which OD-19's own row states.
+- The AR-0 seven-vs-eight-artifact cascade: OD-41 resolved it, three architecture-review
+  documents still treat it as the open blocker in five places. None carries a register
+  anchor, so nothing mechanical will surface it.
+- **Two anchors in this very file are still wrong, and are left wrong on purpose.**
+  §2's defect-#3 row exhibits a broken anchor as evidence (repairing it deletes the
+  finding, so it needs an exemption marker, not a fix), and §6.1's own example cites
+  OD-88 at a line that is no longer its row — the rule's illustration fails the rule.
+  Both are pre-existing on `main` and both sit inside the edit range #110 is holding;
+  fixing them here would conflict with it for no gain. Named so that "the ADR is
+  clean" is not inferred from this PR.

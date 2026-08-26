@@ -188,7 +188,10 @@ someone grepped for it.
 - **Product division team layer** (**PROD-F1**; product.md §6, proposed as "OD-20") — 17 teams as
   proposed, or the reduced set in §5.3? Design is 4 of the 17.
 - ✅ **ID collision resolved by [[decision-office-charter]].** `product.md:858-862`
-  proposed IDs OD-20 through OD-24, but `decisions/OPEN-DECISIONS.md:24-27` already
-  assigns OD-20 (analytics spend), OD-21 (Obsidian workflow), OD-22 (tooling library),
-  OD-23 (\$20k MRR) — four of the five were taken. The forks above now carry
-  **PROD-F1…PROD-F5** ([[FORK-REGISTRY]]) and should be cited by ID.
+  proposed IDs OD-20 through OD-24, but the register already assigns
+  OD-20 (analytics spend, `decisions/OPEN-DECISIONS.md:105`),
+  OD-21 (Obsidian workflow, `decisions/OPEN-DECISIONS.md:132`),
+  OD-22 (tooling library, `decisions/OPEN-DECISIONS.md:115`) and
+  OD-23 (revenue target, unverified, `decisions/OPEN-DECISIONS.md:32`) — four of the five
+  were taken. The forks above now carry **PROD-F1…PROD-F5** ([[FORK-REGISTRY]]) and should
+  be cited by ID.
