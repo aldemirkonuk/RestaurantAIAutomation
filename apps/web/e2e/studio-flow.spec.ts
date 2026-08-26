@@ -2,12 +2,24 @@ import { test, expect } from '@playwright/test'
 import { mockAuthState } from './auth.setup'
 
 test.describe('Studio Flow', () => {
-  test('login page renders correctly', async ({ page }) => {
+  // Identity-first sign-in (ADR 0024) made this two steps: the page asks who
+  // you are, then shows the methods that identity actually has. Password is
+  // rendered only at step 2, after POST /auth/sign-in-methods answers — so
+  // asserting it on first paint, as this test used to, now fails correctly.
+  //
+  // E2E runs with no gateway behind the vite proxy, so step 2 is not reachable
+  // here. Asserting step 1 honestly beats mocking a backend to keep a stale
+  // assertion alive.
+  test('login page renders step one: identify yourself', async ({ page }) => {
     await page.goto('/login')
     await expect(page.getByRole('heading', { name: 'WineOps AI' })).toBeVisible()
     await expect(page.getByLabel('Email Address')).toBeVisible()
-    await expect(page.getByLabel('Password')).toBeVisible()
-    await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /continue/i })).toBeVisible()
+
+    // The password field must NOT be present yet. This is the assertion that
+    // would catch a regression back to the one-step form, where a domain
+    // heuristic decided your provider for you.
+    await expect(page.getByLabel('Password')).toHaveCount(0)
   })
 
   test('unauthenticated user redirected from /studio to /login', async ({ page }) => {
