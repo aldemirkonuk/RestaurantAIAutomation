@@ -1059,6 +1059,10 @@ export function Register() {
 
               {/* Cuisine Type */}
               <div className="mb-0" role="group" aria-labelledby="restaurant-cuisine-label">
+                {/* eslint-disable-next-line jsx-a11y/label-has-associated-control --
+                    group label for the CuisinePicker composite: associated via the
+                    wrapper's role="group" + aria-labelledby, which the rule cannot see.
+                    An htmlFor at the trigger would overwrite its accessible name. */}
                 <label id="restaurant-cuisine-label" className="block text-sm font-medium text-gray-700 mb-1">
                   Cuisine Type <span className="text-gray-400 font-normal text-xs">(optional)</span>
                 </label>
