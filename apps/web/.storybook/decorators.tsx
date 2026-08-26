@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from '../src/contexts/ThemeContext'
 import { ToastProvider } from '../src/contexts/ToastContext'
 import { AuthContext, type AuthContextType, type User } from '../src/contexts/AuthContext'
+import { fallbackSignInMethods } from '../src/lib/identityProviders'
 
 /**
  * Storybook's stand-in for the provider stack App.tsx mounts.
@@ -66,6 +67,9 @@ export const mockAuthValue: AuthContextType = {
   joinViaInvite: noop,
   loginWithGoogle: noop,
   loginWithMicrosoft: noop,
+  // Storybook has no gateway, so this resolves the way the real client does
+  // when the call fails: the standard set, flagged `assumed`. See ADR 0024.
+  resolveSignInMethods: async (email: string) => fallbackSignInMethods(email),
   logout: noop,
   refreshToken: noop,
   refreshBranches: noop,

@@ -36,6 +36,7 @@
 | [0017](0017-doneability-verdicts-are-sidecar-claims.md) | Doneability verdicts are sidecar claims (`nf_verdict`, one row per event+basis), never edits to the event; first grader `reconciliation_v1` on invoices only; coverage view ships with the verdict | 2026-08-25 |
 | [0018](0018-p2-plan-of-record.md) | P2 plan of record — milestone `P2 — Web complete + deploy`; spine reset; Surface page graph; existing-first then founder-approved proposal | 2026-08-25 |
 | [0020](0020-no-fabricated-answers.md) | **A surface with no data says so; it never invents one** — fabricated analysis deleted rather than labelled, actions that cannot complete refuse out loud, an error never renders as emptiness, a mislabelled number is a fabrication. Generalised from 7 broken / 8 hollow pages | 2026-08-26 |
+| [0024](0024-identity-first-signin.md) | **Sign-in reveals the methods an identity actually has** — email first, then the methods resolved from `password_hash` + `user_oauth_accounts`; one provider registry; `validateUser` stops guessing "Google" (wrong for 4 of 4 password-less production accounts); enumeration made deliberate and rate-limited, with `requestPasswordReset` explicitly untouched. Applies ADR 0020 to auth | 2026-08-26 |
 
 ## Proposed — implemented, awaiting a founder lock
 
@@ -47,7 +48,9 @@
 | [0012](0012-reports-through-the-gateway.md) | Generated reports read through the gateway, not the browser — RLS-on-with-zero-policies confirmed in production (and on 141 other tables); the missing delete endpoint and three invented columns closed rather than half-ported | 2026-08-25 |
 | [0013](0013-one-commitment-guardrail.md) | One UCC commitment guardrail: TypeScript canon, generated Python module, three independent drift guards. Real counts were 19 / 8 / **3** — a third list existed | 2026-08-25 |
 | [0019](0019-p2-build-scope.md) | **P2 build scope — the founder-approval list**: live defects (2 broken routes), 15 dead-end verdicts, cold-entry audit, tenant-ownership gap; drafted from the Surface graph, awaiting lock | 2026-08-25 |
-| [0020](0020-studio-invites-are-self-service.md) | **Studio invites are redeemed by the invitee, bound to the invited address** — the role gate made redemption impossible for everyone it was for; `target_email` was written and never read, so removing the gate alone would have opened a privilege-escalation path; and nothing served `/api/v1/studio/*` in either environment | 2026-08-26 |
+| [0021](0021-studio-invites-are-self-service.md) | **Studio invites are redeemed by the invitee, bound to the invited address** — the role gate made redemption impossible for everyone it was for; `target_email` was written and never read, so removing the gate alone would have opened a privilege-escalation path; and nothing served `/api/v1/studio/*` in either environment | 2026-08-26 |
+| [0022](0022-scheduled-jobs-serve-opted-in-tenants.md) | Scheduled jobs iterate opted-in tenants and never borrow another tenant's recipients | 2026-08-26 |
+| [0023](0023-email-verification-is-enforced.md) | Email verification is enforced, and enforced on the server | 2026-08-26 |
 
 ## Locked — recorded elsewhere (pre-log)
 

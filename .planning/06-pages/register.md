@@ -62,7 +62,7 @@ Wine-domain copy that is rebrand-adjacent but not the literal string: "start man
 - No feature flags.
 
 ## 9. Gaps
-- No Google/OAuth sign-*up* path — `GoogleSignInButton` exists on `/login` only; a new user who wants Google must register with a password first, then link (Profile → Linked accounts).
+- No Google/OAuth sign-*up* path — `GoogleSignInButton` exists on `/login` only; a new user who wants Google must register with a password first, then link (Profile → Linked accounts). Since ADR 0024 the provider set is declared in one place (`apps/api-gateway/src/auth/identity-providers.ts`), so a future sign-up path should read from that registry rather than hard-code buttons.
 - The relative-path invite fetch (`Register.tsx:157`) breaks if the SPA is served from an origin with no `/api` rewrite (works on Vercel, not on a bare static host) — inconsistent with `InviteLanding.tsx:38` which uses `API_URL`.
 
 ---
@@ -126,6 +126,6 @@ Secondary gaps:
 1. **Fix `POST /auth/join`** — verify the password (or reject existing accounts and route them to the signed-in accept path, `auth.controller.ts:321-335`) before returning tokens. Blocks nothing; nothing should ship ahead of it. (§10)
 2. Insert a `user_onboarding_progress` row in `joinViaInvite`, matching Path B (`auth.service.ts:634-642`).
 3. Normalise email to lower-case at every write and read (`:599`, `:1186`, `:91`) — one migration plus three call sites. (See [[forgot-password]] §10.)
-4. Decide `check-email`: keep the oracle, or replace it with a post-submit 400. *Blocked:* founder call — it is a genuine registration-UX/leak trade-off, not a bug.
+4. Decide `check-email`: keep the oracle, or replace it with a post-submit 400. *Still a founder call* — but no longer wide open. **ADR 0024** (2026-08-26) made enumeration deliberate on the *sign-in* route: `/login` now reveals which methods an address has, and the argument there was that `check-email` and `POST /auth/register`'s "Email already registered" already leak existence anyway. That settles the direction (revealing is accepted) without settling this endpoint's shape — what remains is whether `check-email` should move to the POST-with-body form ADR 0024 chose, so the address stays out of URLs and logs. Cheaper now: it is a shape change, not a policy fight.
 5. Unify the invite-preview fetch on `API_URL` (`Register.tsx:157`).
 6. Add funnel signals — path choice, step advance, abandonment. *Blocked:* no sink (see [[get-started]] §11).

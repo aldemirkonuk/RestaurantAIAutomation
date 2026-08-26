@@ -18,6 +18,48 @@ import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
 import { InviteDto } from "./dto/invite.dto";
 import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
+import {
+  IDENTITY_PROVIDERS,
+  IdentityProviderDescriptor,
+  IdentityProviderId,
+  defaultSignInMethods,
+  getIdentityProvider,
+  isKnownIdentityProviderId,
+  sortForDisplay,
+} from "./identity-providers";
+
+/**
+ * What `POST /auth/sign-in-methods` answers: the ways this identity can
+ * actually get in, sourced from facts rather than inference.
+ */
+export interface SignInMethodsResult {
+  /** The address as resolved (trimmed, lower-cased). */
+  email: string;
+  /** Methods usable right now. Empty means exactly that — see `noSignInMethod`. */
+  methods: IdentityProviderDescriptor[];
+  /**
+   * Providers genuinely linked to *this identity* that it cannot use here —
+   * a Microsoft-linked account, say, while Microsoft has no button. Each
+   * carries its `disabledReason`. Usually empty; when it is not, the page must
+   * say so rather than quietly showing a shorter list, because "a method
+   * silently missing" is how the fabricated Google message looked plausible.
+   */
+  unavailable: IdentityProviderDescriptor[];
+  /**
+   * The whole registry, every provider this product declares, usable or not.
+   * Not rendered by default — two permanent "coming soon" rows on every sign-in
+   * is noise, not honesty. It ships so that turning them on is a one-line flag
+   * in the page rather than a new endpoint field.
+   */
+  declared: IdentityProviderDescriptor[];
+  /**
+   * True only when the address resolves to a real account that has no password
+   * and no linked provider — the `aldemirkonuk@hotmail.com` case. Never true
+   * for an address we do not recognise: claiming "this account has none" about
+   * an account that does not exist would be its own fabrication.
+   */
+  noSignInMethod: boolean;
+}
 
 export interface JwtPayload {
   sub: string; // user_id
@@ -52,6 +94,12 @@ export interface RegisterData {
   restaurantId: string;
   role: "owner" | "manager" | "staff";
   phone?: string;
+}
+
+/** "Google", "Google and Microsoft", "Google, Microsoft and Apple". */
+function formatList(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
 @Injectable()
@@ -102,21 +150,58 @@ export class AuthService {
     }
 
     if (!user.password_hash) {
-      // oauth_provider records which identity provider actually created this
-      // account (google or microsoft) — do not assume Google. A hotmail.com
-      // address, for example, is just as likely to have signed up via
-      // Microsoft, and telling that user to use Google sign-in sends them
-      // into a flow that can never work for their account.
-      const provider: "google" | "microsoft" | null =
-        user.oauth_provider === "microsoft" ? "microsoft" : "google";
-      const providerLabel = provider === "microsoft" ? "Microsoft" : "Google";
+      // Say what is TRUE about this account, or say nothing about it.
+      //
+      // This used to read `user.oauth_provider === "microsoft" ? "microsoft"
+      // : "google"`, i.e. "assume Google unless told otherwise". In production
+      // on 2026-08-26 that assumption was wrong for every account it fired on:
+      // all four password-less users had `oauth_provider` NULL and zero rows
+      // in `user_oauth_accounts`, so all four were told "This account uses
+      // Google sign-in" — a guess dressed as a fact, pointing at a flow that
+      // could never work for them. ADR 0020 forbids exactly that; ADR 0024
+      // replaces it with the two honest answers below.
+      //
+      // `oauth_provider` is not the source of truth here and never was: it is
+      // NULL for 9 of 10 production users, including the one user who does
+      // have a linked Google account with a row in user_oauth_accounts.
+      // `resolveLinkedProviderIds` reads the rows and treats the column only
+      // as a legacy hint.
+      const linked = await this.resolveLinkedProviderIds(user.user_id);
+
+      if (linked.length === 0) {
+        throw new UnauthorizedException({
+          message:
+            'This account doesn\'t have a sign-in method set up yet. Use "Forgot password?" below to set a password.',
+          code: "NO_SIGNIN_METHOD",
+        });
+      }
+
+      const descriptors = sortForDisplay(
+        linked
+          .map((id) => getIdentityProvider(id))
+          .filter((p): p is IdentityProviderDescriptor => !!p),
+      );
+      const labels = descriptors.map((p) => p.label);
+      const usable = descriptors.filter((p) => p.enabled);
+
       throw new UnauthorizedException({
         message:
-          provider === "google"
-            ? `This account uses ${providerLabel} sign-in. Use the "Sign in with Google" button below.`
-            : `This account uses ${providerLabel} sign-in, which isn't available on this page yet. Use "Forgot password?" below to set a password instead.`,
+          usable.length > 0
+            ? `This account signs in with ${formatList(labels)}. Use the ${formatList(
+                usable.map((p) => `"Sign in with ${p.label}"`),
+              )} button below.`
+            : `This account signs in with ${formatList(
+                labels,
+              )}, which isn't available on this page yet. Use "Forgot password?" below to set a password instead.`,
         code: "OAUTH_ONLY",
-        provider,
+        // Plural is the real shape — an account can have several linked
+        // providers, and getLinkedProviders has always been able to return
+        // two. `provider` stays alongside it so the existing web client
+        // (AuthContext's LoginError, Login.tsx's redirect) keeps working
+        // unchanged; it is the first *usable* provider, falling back to the
+        // first linked one.
+        providers: linked,
+        provider: usable[0]?.id ?? linked[0],
       });
     }
 
@@ -1718,33 +1803,133 @@ export class AuthService {
     // a one-off here.
   }
 
-  async getLinkedProviders(userId: string): Promise<{
-    google: boolean;
-    microsoft: boolean;
-  }> {
+  /**
+   * The providers actually linked to a user, as registry ids.
+   *
+   * `user_oauth_accounts` is the source of truth — one row per linked account.
+   * `users.oauth_provider` is a **legacy hint only** and is consulted just when
+   * there are no rows at all: it is NULL for 9 of the 10 production users as of
+   * 2026-08-26, including the single user who genuinely does have a linked
+   * Google account. Treating that column as the answer is what produced the
+   * fabricated "This account uses Google sign-in" message (ADR 0024).
+   *
+   * Unknown provider strings are dropped rather than passed through, so a stray
+   * row can never make the login page offer a method that does not exist.
+   */
+  async resolveLinkedProviderIds(
+    userId: string,
+  ): Promise<IdentityProviderId[]> {
     const { data: rows } = await this.databaseService.supabase
       .from("user_oauth_accounts")
       .select("provider")
       .eq("user_id", userId);
 
-    const set = new Set(
-      (rows ?? []).map((r: { provider: string }) => r.provider),
-    );
+    const set = new Set<IdentityProviderId>();
+    for (const row of (rows ?? []) as { provider: string }[]) {
+      if (isKnownIdentityProviderId(row.provider)) set.add(row.provider);
+    }
 
-    // Legacy fallback
+    // Legacy fallback — see the note above on why this is a hint, not a fact.
     if (set.size === 0) {
       const { data: user } = await this.databaseService.supabase
         .from("users")
         .select("oauth_provider")
         .eq("user_id", userId)
         .maybeSingle();
-      if (user?.oauth_provider === "google") set.add("google");
-      if (user?.oauth_provider === "microsoft") set.add("microsoft");
+      const legacy = user?.oauth_provider;
+      if (typeof legacy === "string" && isKnownIdentityProviderId(legacy)) {
+        set.add(legacy);
+      }
     }
 
+    return sortForDisplay(
+      [...set]
+        .map((id) => getIdentityProvider(id))
+        .filter((p): p is IdentityProviderDescriptor => !!p),
+    ).map((p) => p.id);
+  }
+
+  /**
+   * Boolean shape kept for existing callers (`GET /auth/me`, link/unlink).
+   * Delegates so provider names live in exactly one place — the registry.
+   */
+  async getLinkedProviders(userId: string): Promise<{
+    google: boolean;
+    microsoft: boolean;
+  }> {
+    const linked = new Set(await this.resolveLinkedProviderIds(userId));
     return {
-      google: set.has("google"),
-      microsoft: set.has("microsoft"),
+      google: linked.has("google"),
+      microsoft: linked.has("microsoft"),
+    };
+  }
+
+  /**
+   * Identity-first sign-in: given an email, which methods does this identity
+   * actually have? Sourced from `password_hash` and `user_oauth_accounts`, not
+   * from guesswork and never from the address's domain.
+   *
+   * Three outcomes, each honest about a different thing:
+   *
+   *   1. Account with methods  -> exactly those methods.
+   *   2. Account with none     -> `methods: []`, `noSignInMethod: true`. True,
+   *      and the only thing this endpoint confirms that `GET /auth/check-email`
+   *      does not already. That population is precisely who this change exists
+   *      to unbreak.
+   *   3. No such account       -> the standard enabled set, indistinguishable
+   *      from a fully-provisioned account. Says nothing about the address, and
+   *      the user falls through to the existing "Invalid credentials".
+   *
+   * On enumeration: revealing is a deliberate choice, not an accident (ADR
+   * 0024). The leak already exists — `GET /auth/check-email` is `@Public()` and
+   * answers `available: true/false` to anyone, and `POST /auth/register`
+   * replies "Email already registered". This makes it intentional, narrower in
+   * shape, and rate-limited. `requestPasswordReset` stays enumeration-safe and
+   * is untouched.
+   */
+  async resolveSignInMethods(email: string): Promise<SignInMethodsResult> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const declared = sortForDisplay([...IDENTITY_PROVIDERS]);
+
+    const { data: user } = await this.databaseService.supabase
+      .from("users")
+      .select("user_id, password_hash")
+      .eq("email", normalizedEmail)
+      .maybeSingle();
+
+    if (!user) {
+      return {
+        email: normalizedEmail,
+        methods: defaultSignInMethods(),
+        unavailable: [],
+        declared,
+        noSignInMethod: false,
+      };
+    }
+
+    const ids: IdentityProviderId[] = [];
+    if (user.password_hash) ids.push("password");
+    ids.push(...(await this.resolveLinkedProviderIds(user.user_id)));
+
+    // A linked provider that is declared-but-disabled is linked-but-unusable:
+    // it belongs in `unavailable` (where it carries its reason), not in
+    // `methods`, which is the set the user can act on right now.
+    const descriptors = sortForDisplay(
+      ids
+        .map((id) => getIdentityProvider(id))
+        .filter((p): p is IdentityProviderDescriptor => !!p),
+    );
+
+    return {
+      email: normalizedEmail,
+      methods: descriptors.filter((p) => p.enabled),
+      unavailable: descriptors.filter((p) => !p.enabled),
+      declared,
+      // Keyed on *linked at all*, not on *usable*: an account with a linked
+      // Microsoft identity does have a sign-in method, it just has none this
+      // page can drive yet. Telling that user "you have no sign-in method"
+      // would be false.
+      noSignInMethod: descriptors.length === 0,
     };
   }
 

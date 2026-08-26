@@ -34,6 +34,8 @@ import {
   ResetPasswordDto,
 } from "./dto/password-reset.dto";
 import { PasswordResetThrottleGuard } from "./guards/password-reset-throttle.guard";
+import { SignInMethodsDto } from "./dto/sign-in-methods.dto";
+import { RateLimit } from "../common/rate-limit";
 import { Request } from "express";
 import { devBypassAllowed } from "./dev-bypass.util";
 
@@ -464,5 +466,28 @@ export class AuthController {
       available: !exists,
       email: query.email,
     };
+  }
+
+  /**
+   * Identity-first sign-in: which methods does this identity actually have?
+   *
+   * Public by necessity — the caller has not signed in yet, that being the
+   * point. POST rather than GET so the address stays out of URLs, access logs
+   * and proxy caches (`check-email` above predates that rule).
+   *
+   * Rate-limited to 10 per 10 minutes per IP via the existing `@RateLimit`
+   * decorator on the global `RateLimitGuard` (app.module.ts). That is tighter
+   * than the 10-per-60s default every `/auth/` route already gets, because
+   * this endpoint answers a question about an address a stranger supplied.
+   * Enumeration-revealing here is deliberate and argued in ADR 0024; it does
+   * not extend to `request-password-reset`, which stays enumeration-safe.
+   */
+  @Post("sign-in-methods")
+  @Public()
+  @RateLimit({ limit: 10, windowSeconds: 600, keyPrefix: "sign-in-methods" })
+  @HttpCode(HttpStatus.OK)
+  async signInMethods(@Body() body: SignInMethodsDto) {
+    const result = await this.authService.resolveSignInMethods(body.email);
+    return { success: true, ...result };
   }
 }

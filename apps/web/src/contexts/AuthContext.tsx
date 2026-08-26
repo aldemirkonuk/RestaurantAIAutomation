@@ -2,6 +2,10 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { errorTracking } from '../lib/error-tracking'
 import { useAuthStore } from '../stores'
+import {
+  fallbackSignInMethods,
+  type SignInMethodsResult,
+} from '../lib/identityProviders'
 
 /**
  * Thrown by `login()` for backend auth failures. `code`/`provider` carry the
@@ -97,6 +101,13 @@ export interface AuthContextType {
   joinViaInvite: (data: JoinViaInviteData) => Promise<void>
   loginWithGoogle: (token: string) => Promise<void>
   loginWithMicrosoft: (token: string) => Promise<void>
+  /**
+   * Identity-first sign-in: ask the gateway which methods this address
+   * actually has. Never throws — an unreachable gateway resolves to
+   * `fallbackSignInMethods()` (marked `assumed`) so the page degrades to the
+   * form it had before rather than locking the user out. See ADR 0024.
+   */
+  resolveSignInMethods: (email: string) => Promise<SignInMethodsResult>
   logout: () => Promise<void>
   refreshToken: () => Promise<void>
   refreshBranches: () => Promise<void>
@@ -531,6 +542,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  const resolveSignInMethods = useCallback(
+    async (email: string): Promise<SignInMethodsResult> => {
+      const normalized = email.trim().toLowerCase()
+      try {
+        const response = await api.post('/api/v1/auth/sign-in-methods', {
+          email: normalized,
+        })
+        const { methods, unavailable, declared, noSignInMethod } = response.data
+        // Trust the server's shape, but never let a malformed payload render
+        // an empty page: an unusable response is the same situation as an
+        // unreachable one.
+        if (!Array.isArray(methods)) return fallbackSignInMethods(normalized)
+        return {
+          email: response.data.email ?? normalized,
+          methods,
+          unavailable: Array.isArray(unavailable) ? unavailable : [],
+          declared: Array.isArray(declared) ? declared : [],
+          noSignInMethod: noSignInMethod === true,
+        }
+      } catch {
+        // Deliberately swallowed. A 429, a 500 or a dead gateway must not
+        // strand someone on a page that used to work — they get the standard
+        // form and the existing "Invalid credentials" path.
+        return fallbackSignInMethods(normalized)
+      }
+    },
+    [],
+  )
+
   const loginWithGoogle = useCallback(async (token: string) => {
     try {
       setError(null)
@@ -638,6 +678,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     joinViaInvite,
     loginWithGoogle,
     loginWithMicrosoft,
+    resolveSignInMethods,
     logout,
     refreshToken: refreshTokenFn,
     refreshBranches,
