@@ -18,6 +18,7 @@ import {
   eventPrepTemplate,
   customReminderTemplate,
   onboardingEmailTemplate,
+  studioInviteEmailTemplate,
   type LowStockAlertData,
   type WeeklyReportData,
   type DailySummaryData,
@@ -720,6 +721,32 @@ This is an automated alert from WineOps AI.
     return this.sendEmail({
       to: [data.to],
       subject: `Welcome to WineOps AI — ${data.restaurantName} is ready 🍷`,
+      html,
+    });
+  }
+
+  /**
+   * Send a studio invite (ADR 0020).
+   *
+   * The invite URL is assembled here and never returned to the inviting admin's browser,
+   * so the token exists in exactly two places: the database and the invitee's inbox.
+   */
+  async sendStudioInviteEmail(data: {
+    to: string;
+    roleLabel: string;
+    inviteUrl: string;
+    expiresOn: string;
+  }): Promise<EmailResult> {
+    const html = studioInviteEmailTemplate({
+      roleLabel: data.roleLabel,
+      inviteUrl: data.inviteUrl,
+      expiresOn: data.expiresOn,
+      invitedEmail: data.to,
+    });
+
+    return this.sendEmail({
+      to: [data.to],
+      subject: `You've been invited to WineOps Studio as ${data.roleLabel}`,
       html,
     });
   }

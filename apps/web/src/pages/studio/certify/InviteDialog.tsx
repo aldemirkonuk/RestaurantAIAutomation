@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { motion } from 'framer-motion'
-import { AlertTriangle, Check, Copy, X } from 'lucide-react'
+import { AlertTriangle, Check, Copy, Mail, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { format, addDays } from 'date-fns'
 import { Button } from '../../../components/ui/button'
@@ -13,56 +13,92 @@ interface InviteDialogProps {
   onClose: () => void
 }
 
+interface SendInviteResponse {
+  sent?: boolean
+  email?: string
+  role?: string
+  expires_at?: string
+  /** Present only when the invite was minted but delivery failed — a recovery path. */
+  invite_url?: string
+  delivery_error?: string
+}
+
+/**
+ * The invite is SENT, not handed back as a link (ADR 0021).
+ *
+ * OD-82 removed the old `${APP_URL}/studio/invite/${token}` link because the route did not
+ * exist and `redeem_invite` required a studio role the invitee cannot hold. Both halves are
+ * now fixed: the route exists, and redemption is bound to the invited email instead of a
+ * pre-existing role. So the link is back — but it goes out by email from the gateway rather
+ * than through this dialog, and the token never reaches this browser, which also means it
+ * cannot be pasted into the wrong window.
+ *
+ * The one exception is a delivery failure: the invite row exists by then, so the server
+ * returns the URL so the admin can still hand it over rather than orphaning the invite.
+ */
 export function InviteDialog({ open, onClose }: InviteDialogProps) {
   const [role, setRole] = useState<'certified_contributor' | 'developer' | 'review_admin'>('certified_contributor')
   const [targetEmail, setTargetEmail] = useState('')
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [generatedToken, setGeneratedToken] = useState<string | null>(null)
+  const [isSending, setIsSending] = useState(false)
+  const [sentTo, setSentTo] = useState<string | null>(null)
   const [expiresAt, setExpiresAt] = useState<string | null>(null)
+  const [fallbackUrl, setFallbackUrl] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
-  // OD-82: this used to render `${APP_URL}/studio/invite/${token}` and offer it as a
-  // shareable link. That URL has no route in App.tsx and no page behind it, and the
-  // backend it would have called cannot work for its intended audience:
-  // POST /api/v1/studio/invite/redeem is gated by
-  // require_studio_role("developer", "certified_contributor", "review_admin")
-  // (services/agent-orchestrator/api/studio_routes.py:517-521), so only someone who
-  // already holds a studio role can redeem an invite that exists to grant one.
-  // The dead link is removed rather than reimplemented; the token itself is real
-  // (POST /studio/invite does insert into invite_tokens) so it is shown as a token.
+  // The address is not a label — the server binds redemption to it (ADR 0021), so an invite
+  // cannot be minted without one and a typo here means the invite is unredeemable.
+  const emailIsValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(targetEmail.trim())
 
-  const handleGenerate = async () => {
-    setIsGenerating(true)
+  const handleSend = async () => {
+    setIsSending(true)
+    setFallbackUrl(null)
     try {
-      // Orchestrator, not the gateway — see studioApi.ts. Throws on any non-2xx.
-      const data = await studioJsonRequest<{ token?: string; expires_at?: string }>(
+      // Throws on any non-2xx, so a failed mint can never render as a sent invite.
+      const data = await studioJsonRequest<SendInviteResponse>(
         '/api/v1/studio/invite',
         'POST',
-        { role, target_email: targetEmail || null },
+        { role, target_email: targetEmail.trim() },
       )
-      setGeneratedToken(data.token ?? null)
+
+      const recipient = data.email ?? targetEmail.trim()
+      setSentTo(recipient)
       setExpiresAt(data.expires_at ?? null)
+
+      if (data.sent === false) {
+        // Minted but not delivered — show the link so the admin can still hand it over.
+        setFallbackUrl(data.invite_url ?? null)
+        toast.error('Invite created, but the email could not be sent.', {
+          description: (data.delivery_error ?? '').slice(0, 160),
+        })
+      } else {
+        toast.success(`Invite sent to ${recipient}`)
+      }
     } catch (err) {
-      toast.error('Invite generation failed', { description: studioErrorMessage(err).slice(0, 160) })
+      toast.error('Invite failed', { description: studioErrorMessage(err).slice(0, 160) })
     } finally {
-      setIsGenerating(false)
+      setIsSending(false)
     }
   }
 
   const handleCopy = () => {
-    if (!generatedToken) return
-    navigator.clipboard.writeText(generatedToken)
+    if (!fallbackUrl) return
+    navigator.clipboard.writeText(fallbackUrl)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
 
   const handleClose = () => {
-    setGeneratedToken(null)
+    setSentTo(null)
     setTargetEmail('')
     setRole('certified_contributor')
+    setFallbackUrl(null)
     setCopied(false)
     onClose()
   }
+
+  const expiryLabel = expiresAt
+    ? format(new Date(expiresAt), 'MMM d, yyyy')
+    : addDays(new Date(), 7).toDateString()
 
   return (
     <Dialog.Root open={open} onOpenChange={(open) => !open && handleClose()}>
@@ -79,17 +115,22 @@ export function InviteDialog({ open, onClose }: InviteDialogProps) {
           >
             <div className="flex items-center justify-between mb-4">
               <Dialog.Title className="text-lg font-semibold text-slate-900">
-                {generatedToken ? 'Invite token generated' : 'Invite a Certified Contributor'}
+                {sentTo
+                  ? fallbackUrl
+                    ? 'Invite created — not sent'
+                    : 'Invite sent'
+                  : 'Invite a Certified Contributor'}
               </Dialog.Title>
               <button onClick={handleClose} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {!generatedToken ? (
+            {!sentTo ? (
               <>
                 <Dialog.Description className="text-sm text-slate-500 mb-5">
-                  A single-use invite token will be generated. It expires in 7 days.
+                  We'll email a single-use invite to the address below. It expires in 7 days
+                  and can only be accepted by the account registered to that address.
                 </Dialog.Description>
                 <div className="space-y-4">
                   <div>
@@ -99,7 +140,12 @@ export function InviteDialog({ open, onClose }: InviteDialogProps) {
                       value={targetEmail}
                       onChange={(e) => setTargetEmail(e.target.value)}
                       placeholder="contributor@example.com"
+                      required
                     />
+                    <p className="text-xs text-slate-400 mt-1">
+                      Must match an existing Mudavym account — the invite grants a studio role, it
+                      does not create an account.
+                    </p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
@@ -118,22 +164,27 @@ export function InviteDialog({ open, onClose }: InviteDialogProps) {
                 <div className="flex items-center justify-end gap-3 mt-6">
                   <Button variant="ghost" onClick={handleClose}>Cancel</Button>
                   <Button
-                    onClick={handleGenerate}
-                    disabled={isGenerating}
+                    onClick={handleSend}
+                    disabled={isSending || !emailIsValid}
                     className="bg-wine-600 text-white hover:bg-wine-700"
                   >
-                    {isGenerating ? 'Generating...' : 'Generate Invite Link'}
+                    <Mail className="w-4 h-4" />
+                    {isSending ? 'Sending...' : 'Send invite'}
                   </Button>
                 </div>
               </>
-            ) : (
+            ) : fallbackUrl ? (
               <>
-                <p className="text-sm text-slate-500 mb-4">
-                  Single-use token, expires{' '}
-                  {expiresAt ? format(new Date(expiresAt), 'MMM d, yyyy') : addDays(new Date(), 7).toDateString()}.
-                </p>
-                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-3">
-                  <span className="flex-1 text-sm font-mono text-slate-700 truncate">{generatedToken}</span>
+                <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-amber-800">
+                    The invite for <span className="font-medium">{sentTo}</span> was created, but
+                    we couldn't email it. Send them this link yourself — it expires {expiryLabel}{' '}
+                    and works once.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-4">
+                  <span className="flex-1 text-sm font-mono text-slate-700 truncate">{fallbackUrl}</span>
                   <button
                     onClick={handleCopy}
                     className="flex items-center gap-1 border border-slate-200 rounded-lg px-3 py-2 text-sm hover:bg-slate-100 transition-colors flex-shrink-0"
@@ -142,14 +193,20 @@ export function InviteDialog({ open, onClose }: InviteDialogProps) {
                     {copied ? 'Copied' : 'Copy'}
                   </button>
                 </div>
-                <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-800">
-                    There is no self-service redemption yet. The redeem endpoint requires a
-                    studio role the invitee does not have, so sending this to a new contributor
-                    will not work — an existing developer or review admin has to grant the role.
-                  </p>
+                <div className="flex justify-end">
+                  <Button onClick={handleClose}>Done</Button>
                 </div>
+              </>
+            ) : (
+              <>
+                <div className="w-14 h-14 mb-5 bg-emerald-100 rounded-2xl flex items-center justify-center">
+                  <Check className="w-7 h-7 text-emerald-600" />
+                </div>
+                <p className="text-sm text-slate-500 mb-6">
+                  We emailed the invite to{' '}
+                  <span className="font-medium text-slate-700">{sentTo}</span>. It expires{' '}
+                  {expiryLabel} and can only be accepted from that account.
+                </p>
                 <div className="flex justify-end">
                   <Button onClick={handleClose}>Done</Button>
                 </div>

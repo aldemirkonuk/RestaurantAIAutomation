@@ -200,6 +200,208 @@ class TestPostInvite:
         assert "token" in body
 
 
+# ─── POST /invite/redeem — ADR 0021 ──────────────────────────────────────────
+#
+# These live here rather than in tests/e2e/test_studio_pipeline.py because the whole
+# tests/e2e/ subtree is skipped unless SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set
+# (a session-scoped autouse teardown fixture requires them: conftest_prod.py:217). The
+# studio pipeline tests are mock-only and therefore never actually ran locally or in CI
+# without those secrets. The invite behaviour is load-bearing enough to need coverage that
+# runs unconditionally. Filed as OD-83.
+
+INVITEE_JWT_PAYLOAD = {
+    "sub": "user-invitee-001",
+    "email": "invitee@example.com",
+    "app_metadata": {"roles": []},
+}
+
+INVITE_TARGET_EMAIL = "invitee@example.com"
+
+
+def _make_invite_mocks(
+    *,
+    target_email: str = INVITE_TARGET_EMAIL,
+    used_at=None,
+    expires_at: str = "2099-01-01T00:00:00Z",
+    claim_succeeds: bool = True,
+    existing_roles=None,
+    token_found: bool = True,
+):
+    """Supabase mocks shaped to redeem_invite's exact call chain."""
+    invite_mock = MagicMock()
+    invite_mock.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = (
+        {
+            "id": "tok-001",
+            "token": "tok-value",
+            "role": "certified_contributor",
+            "target_email": target_email,
+            "expires_at": expires_at,
+            "used_at": used_at,
+            "created_by": "user-admin-001",
+        }
+        if token_found
+        else None
+    )
+    invite_mock.update.return_value.eq.return_value.is_.return_value.execute.return_value.data = (
+        [{"id": "tok-001"}] if claim_succeeds else []
+    )
+
+    user_roles_mock = MagicMock()
+    user_roles_mock.select.return_value.eq.return_value.eq.return_value.is_.return_value.execute.return_value.data = (
+        existing_roles or []
+    )
+
+    sb = MagicMock()
+    sb.table.side_effect = lambda name: {
+        "invite_tokens": invite_mock,
+        "user_roles": user_roles_mock,
+    }.get(name, MagicMock())
+    return sb, invite_mock, user_roles_mock
+
+
+def _redeem(test_client, sb, payload, token="tok-value"):
+    with patch("config.settings.get_settings", return_value=_make_settings()), patch(
+        "api.studio_routes._get_supabase", return_value=sb
+    ), patch("services.override_service._get_supabase", return_value=sb):
+        return test_client.post(
+            "/api/v1/studio/invite/redeem",
+            json={"token": token},
+            headers=_auth(payload),
+        )
+
+
+class TestRedeemInvite:
+    def test_roleless_invitee_can_redeem(self, test_client: TestClient):
+        """The regression this ADR fixes: an invitee has no studio role, by definition."""
+        sb, _, user_roles_mock = _make_invite_mocks()
+        resp = _redeem(test_client, sb, INVITEE_JWT_PAYLOAD)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["role_granted"] == "certified_contributor"
+        assert user_roles_mock.insert.call_count == 1
+
+    def test_email_mismatch_returns_403_and_does_not_burn_token(
+        self, test_client: TestClient
+    ):
+        """A forwarded token grants nothing to the wrong account (T-13-13)."""
+        sb, invite_mock, user_roles_mock = _make_invite_mocks()
+        # DEVELOPER_JWT_PAYLOAD's email is dev@example.com, not the invited address.
+        resp = _redeem(test_client, sb, DEVELOPER_JWT_PAYLOAD)
+        assert resp.status_code == 403, resp.text
+        assert invite_mock.update.call_count == 0
+        assert user_roles_mock.insert.call_count == 0
+
+    def test_token_with_no_target_email_is_unredeemable(self, test_client: TestClient):
+        """Rows minted before ADR 0021 have no binding, so they fail closed rather than open."""
+        sb, invite_mock, _ = _make_invite_mocks(target_email=None)
+        resp = _redeem(test_client, sb, INVITEE_JWT_PAYLOAD)
+        assert resp.status_code == 403, resp.text
+        assert invite_mock.update.call_count == 0
+
+    def test_email_match_is_case_and_whitespace_insensitive(
+        self, test_client: TestClient
+    ):
+        """Address comparison must not reject on casing an identity provider chose."""
+        sb, _, _ = _make_invite_mocks(target_email="  Invitee@Example.COM ")
+        resp = _redeem(test_client, sb, INVITEE_JWT_PAYLOAD)
+        assert resp.status_code == 200, resp.text
+
+    def test_already_used_token_returns_409(self, test_client: TestClient):
+        sb, _, user_roles_mock = _make_invite_mocks(used_at="2026-01-01T00:00:00Z")
+        resp = _redeem(test_client, sb, INVITEE_JWT_PAYLOAD)
+        assert resp.status_code == 409, resp.text
+        assert user_roles_mock.insert.call_count == 0
+
+    def test_expired_token_returns_410(self, test_client: TestClient):
+        sb, _, _ = _make_invite_mocks(expires_at="2020-01-01T00:00:00Z")
+        resp = _redeem(test_client, sb, INVITEE_JWT_PAYLOAD)
+        assert resp.status_code == 410, resp.text
+
+    def test_unknown_token_returns_404(self, test_client: TestClient):
+        sb, _, _ = _make_invite_mocks(token_found=False)
+        resp = _redeem(test_client, sb, INVITEE_JWT_PAYLOAD)
+        assert resp.status_code == 404, resp.text
+
+    def test_lost_claim_race_returns_409_without_granting(
+        self, test_client: TestClient
+    ):
+        """The conditional UPDATE, not the earlier read, is what enforces single-use."""
+        sb, _, user_roles_mock = _make_invite_mocks(claim_succeeds=False)
+        resp = _redeem(test_client, sb, INVITEE_JWT_PAYLOAD)
+        assert resp.status_code == 409, resp.text
+        assert user_roles_mock.insert.call_count == 0
+
+    def test_already_held_role_returns_409_without_burning_token(
+        self, test_client: TestClient
+    ):
+        sb, invite_mock, _ = _make_invite_mocks(
+            existing_roles=[{"role": "certified_contributor"}]
+        )
+        resp = _redeem(test_client, sb, INVITEE_JWT_PAYLOAD)
+        assert resp.status_code == 409, resp.text
+        assert invite_mock.update.call_count == 0
+
+    def test_failed_grant_releases_the_claim(self, test_client: TestClient):
+        """A burned token with no role granted would strand the invitee with no recourse."""
+        sb, invite_mock, user_roles_mock = _make_invite_mocks()
+        user_roles_mock.insert.return_value.execute.side_effect = RuntimeError("boom")
+        resp = _redeem(test_client, sb, INVITEE_JWT_PAYLOAD)
+        assert resp.status_code == 503, resp.text
+        # Two updates: the claim, then the compensating release.
+        assert invite_mock.update.call_count == 2
+        assert invite_mock.update.call_args_list[1][0][0] == {
+            "used_at": None,
+            "used_by": None,
+        }
+
+    def test_missing_bearer_token_returns_401(self, test_client: TestClient):
+        """Authenticated-only still means authenticated — the gate did not simply vanish."""
+        sb, _, _ = _make_invite_mocks()
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch("api.studio_routes._get_supabase", return_value=sb):
+            resp = test_client.post(
+                "/api/v1/studio/invite/redeem", json={"token": "tok-value"}
+            )
+        assert resp.status_code == 401, resp.text
+
+    def test_forged_token_returns_401(self, test_client: TestClient):
+        """Signature verification survives the removal of the role check (T-13-07)."""
+        sb, _, _ = _make_invite_mocks()
+        forged = _make_jwt(INVITEE_JWT_PAYLOAD, secret="not-the-real-secret")
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch("api.studio_routes._get_supabase", return_value=sb):
+            resp = test_client.post(
+                "/api/v1/studio/invite/redeem",
+                json={"token": "tok-value"},
+                headers={"Authorization": f"Bearer {forged}"},
+            )
+        assert resp.status_code == 401, resp.text
+
+
+class TestInviteRequiresTargetEmail:
+    def test_mint_without_target_email_returns_422(self, test_client: TestClient):
+        """An unbound token would be a bearer capability for a role — ADR 0021 forbids minting one."""
+        with patch("config.settings.get_settings", return_value=_make_settings()):
+            resp = test_client.post(
+                "/api/v1/studio/invite",
+                json={"role": "review_admin"},
+                headers=_auth(REVIEW_ADMIN_JWT_PAYLOAD),
+            )
+        assert resp.status_code == 422, resp.text
+
+    def test_mint_with_malformed_target_email_returns_422(
+        self, test_client: TestClient
+    ):
+        with patch("config.settings.get_settings", return_value=_make_settings()):
+            resp = test_client.post(
+                "/api/v1/studio/invite",
+                json={"role": "developer", "target_email": "not-an-address"},
+                headers=_auth(REVIEW_ADMIN_JWT_PAYLOAD),
+            )
+        assert resp.status_code == 422, resp.text
+
+
 # ─── PATCH /queue/{id} — decision endpoint ───────────────────────────────────
 
 
