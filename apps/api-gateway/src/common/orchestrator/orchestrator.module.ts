@@ -17,6 +17,7 @@ import {
 } from "./health-proxy.controller";
 import { StudioProxyController } from "./studio-proxy.controller";
 import { StudioInviteController } from "./studio-invite.controller";
+import { OnboardingProxyController } from "./onboarding-proxy.controller";
 import { CommunicationsModule } from "../../communications/communications.module";
 
 @Module({
@@ -32,6 +33,7 @@ import { CommunicationsModule } from "../../communications/communications.module
     // `studio` prefix would otherwise swallow POST /studio/invite and skip the email.
     StudioInviteController,
     StudioProxyController,
+    OnboardingProxyController,
     SenderTrustController,
     ProspectsController,
     InboundEmailController,
