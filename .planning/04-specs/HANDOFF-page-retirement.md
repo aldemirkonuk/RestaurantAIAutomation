@@ -86,7 +86,7 @@ Verify with `cd apps/web && npx tsc --noEmit && npx vitest run && bash scripts/c
 
 ## 2. OD-83(b) — confirmed, and confirmed closed
 
-The register already marks OD-83 ✅ Resolved (`OPEN-DECISIONS.md:90`). This session
+The register already marks OD-83 ✅ Resolved (`OPEN-DECISIONS.md:91`). This session
 re-derived it independently rather than trusting that, because it was handed to us as
 an open "known loss":
 
@@ -160,9 +160,17 @@ Both baselined against `origin/main` @ `63c2bccd` in a clean worktree.
    The unlabelled-input defect `navigation.spec.ts:58` describes is real, but it is on
    **`/register`**, a different page: `Register.tsx` uses bare `<label>` with no
    `htmlFor` and inputs with no `id` at every field (`:525`, `:540`, `:608`, `:624`,
-   `:702`, `:717`, `:785`, `:801`, and ~14 more). That is a genuine WCAG 1.3.1 / 4.1.2
-   failure and is **not fixed** — filed as its own item rather than folded in here,
-   since it is ~22 fields on a page this branch did not touch.
+   `:702`, `:717`, `:785`, `:801`, and ~14 more). That was a genuine WCAG 1.3.1 / 4.1.2
+   failure — ~~not fixed~~ **fixed 2026-08-26 on `fix/register-label-associations`**:
+   all 17 labels associated (16 `htmlFor`/`id` pairs, flow-prefixed so the create/join
+   flows can never collide; 1 group label for the CuisinePicker composite via
+   `role="group"`/`aria-labelledby`), the label-less invite-code input given
+   `aria-label="Invite Code"`, and `CountryCombobox`/`PlacesAutocomplete` given an
+   `id` pass-through so their labels land on the inner inputs. `navigation.spec.ts`
+   now asserts through `getByLabel` — the workaround comment is gone and the test
+   guards the association. The sweep behind it found the same class app-wide
+   (318 unassociated labels, 48 files, no a11y lint anywhere): filed as **OD-105**,
+   and resolved the same day — founder call: allowlist-ratchet guard, `jsx-a11y/label-has-associated-control` as `error` with the 47-file backlog allowlisted in `.eslintrc.cjs`.
 
 ---
 

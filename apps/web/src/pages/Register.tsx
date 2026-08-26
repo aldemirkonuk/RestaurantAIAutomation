@@ -352,7 +352,9 @@ export function Register() {
         </div>
         <div className="relative">
           <input
+            id="invite-code"
             type="text"
+            aria-label="Invite Code"
             value={inviteCode}
             onChange={(e) => setInviteCode(e.target.value.toUpperCase().slice(0, 8))}
             className={[
@@ -522,10 +524,11 @@ export function Register() {
       <div className="space-y-4">
         {/* Full Name */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+          <label htmlFor="join-name" className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
           <div className="relative">
             <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
+              id="join-name"
               type="text"
               value={joinName}
               onChange={(e) => setJoinName(e.target.value)}
@@ -537,10 +540,11 @@ export function Register() {
 
         {/* Email with availability check */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+          <label htmlFor="join-email" className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
+              id="join-email"
               type="email"
               value={joinEmail}
               onChange={(e) => {
@@ -605,10 +609,11 @@ export function Register() {
 
         {/* Password */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+          <label htmlFor="join-password" className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
+              id="join-password"
               type="password"
               value={joinPassword}
               onChange={(e) => setJoinPassword(e.target.value)}
@@ -621,10 +626,11 @@ export function Register() {
 
         {/* Confirm Password */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password *</label>
+          <label htmlFor="join-confirm-password" className="block text-sm font-medium text-gray-700 mb-1">Confirm Password *</label>
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
+              id="join-confirm-password"
               type="password"
               value={joinConfirm}
               onChange={(e) => setJoinConfirm(e.target.value)}
@@ -699,10 +705,11 @@ export function Register() {
       <div className="space-y-4">
         {/* Full Name */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+          <label htmlFor="create-name" className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
           <div className="relative">
             <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
+              id="create-name"
               type="text"
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
@@ -714,10 +721,11 @@ export function Register() {
 
         {/* Email with availability check */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+          <label htmlFor="create-email" className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
+              id="create-email"
               type="email"
               value={createEmail}
               onChange={(e) => {
@@ -782,10 +790,11 @@ export function Register() {
 
         {/* Password */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+          <label htmlFor="create-password" className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
+              id="create-password"
               type="password"
               value={createPassword}
               onChange={(e) => setCreatePassword(e.target.value)}
@@ -798,10 +807,11 @@ export function Register() {
 
         {/* Confirm Password */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password *</label>
+          <label htmlFor="create-confirm-password" className="block text-sm font-medium text-gray-700 mb-1">Confirm Password *</label>
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
+              id="create-confirm-password"
               type="password"
               value={createConfirm}
               onChange={(e) => setCreateConfirm(e.target.value)}
@@ -1030,12 +1040,13 @@ export function Register() {
 
               {/* Restaurant Name */}
               <div className="mb-[18px]">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="restaurant-name" className="block text-sm font-medium text-gray-700 mb-1">
                   Restaurant Name <span className="text-wine-600">*</span>
                 </label>
                 <div className="relative">
                   <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
+                    id="restaurant-name"
                     type="text"
                     value={restaurantName}
                     onChange={(e) => setRestaurantName(e.target.value)}
@@ -1047,8 +1058,12 @@ export function Register() {
               </div>
 
               {/* Cuisine Type */}
-              <div className="mb-0">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+              <div className="mb-0" role="group" aria-labelledby="restaurant-cuisine-label">
+                {/* eslint-disable-next-line jsx-a11y/label-has-associated-control --
+                    group label for the CuisinePicker composite: associated via the
+                    wrapper's role="group" + aria-labelledby, which the rule cannot see.
+                    An htmlFor at the trigger would overwrite its accessible name. */}
+                <label id="restaurant-cuisine-label" className="block text-sm font-medium text-gray-700 mb-1">
                   Cuisine Type <span className="text-gray-400 font-normal text-xs">(optional)</span>
                 </label>
                 <CuisinePicker value={cuisineType} onChange={setCuisineType} />
@@ -1090,8 +1105,8 @@ export function Register() {
 
               {/* Country */}
               <div className="mb-[18px]">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Country <span className="text-wine-600">*</span></label>
-                <CountryCombobox value={country} onChange={setCountry} />
+                <label htmlFor="restaurant-country" className="block text-sm font-medium text-gray-700 mb-1">Country <span className="text-wine-600">*</span></label>
+                <CountryCombobox id="restaurant-country" value={country} onChange={setCountry} />
                 {!countryReady && (
                   <p className="text-xs text-gray-400 mt-1">Enter your country to continue filling in the address</p>
                 )}
@@ -1099,10 +1114,11 @@ export function Register() {
 
               {/* Street Address — Google Places Autocomplete */}
               <div className="mb-[18px]">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="restaurant-address" className="block text-sm font-medium text-gray-700 mb-1">
                   Street Address <span className="text-wine-600">*</span>
                 </label>
                 <PlacesAutocomplete
+                  id="restaurant-address"
                   country={country}
                   value={address}
                   onChange={setAddress}
@@ -1122,8 +1138,9 @@ export function Register() {
               {/* City + State */}
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">City <span className="text-wine-600">*</span></label>
+                  <label htmlFor="restaurant-city" className="block text-sm font-medium text-gray-700 mb-1">City <span className="text-wine-600">*</span></label>
                   <input
+                    id="restaurant-city"
                     type="text"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
@@ -1132,8 +1149,9 @@ export function Register() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{countryLocale.stateLabel}</label>
+                  <label htmlFor="restaurant-state" className="block text-sm font-medium text-gray-700 mb-1">{countryLocale.stateLabel}</label>
                   <input
+                    id="restaurant-state"
                     type="text"
                     value={stateProvince}
                     onChange={(e) => setStateProvince(e.target.value)}
@@ -1146,8 +1164,9 @@ export function Register() {
               {/* ZIP + Neighborhood */}
               <div className="grid grid-cols-2 gap-3 mb-0">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{countryLocale.postalLabel}</label>
+                  <label htmlFor="restaurant-postal-code" className="block text-sm font-medium text-gray-700 mb-1">{countryLocale.postalLabel}</label>
                   <input
+                    id="restaurant-postal-code"
                     type="text"
                     value={postalCode}
                     onChange={(e) => setPostalCode(e.target.value)}
@@ -1156,11 +1175,12 @@ export function Register() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="restaurant-neighborhood" className="block text-sm font-medium text-gray-700 mb-1">
                     {countryLocale.areaLabel}
                     <span className="text-gray-400 font-normal ml-1 text-xs">(optional)</span>
                   </label>
                   <input
+                    id="restaurant-neighborhood"
                     type="text"
                     value={neighborhood}
                     onChange={(e) => setNeighborhood(e.target.value)}
@@ -1206,10 +1226,11 @@ export function Register() {
 
               {/* Phone */}
               <div className="mb-0">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="restaurant-phone" className="block text-sm font-medium text-gray-700 mb-1">
                   Phone Number <span className="text-gray-400 font-normal text-xs">(optional)</span>
                 </label>
                 <PhoneNumberInput
+                  id="restaurant-phone"
                   value={phone}
                   onChange={setPhone}
                   countryHint={country}
