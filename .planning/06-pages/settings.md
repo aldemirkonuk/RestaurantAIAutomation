@@ -107,7 +107,7 @@ Layout chrome per dashboard.md §7.
 - Raw-`fetch`-with-manual-token pattern (§4) bypasses `apiClient` interceptors —
   same inconsistency as dashboard.md §9.
 - Phase 30 iCal: "no external calendar client has ever confirmed the feed
-  subscribes" (`v3.0-TECH-DEBT.md:243-245`) — the copy at `Settings.tsx:170`
+  subscribes" (`v3.0-TECH-DEBT.md:346-348`) — the copy at `Settings.tsx:170`
   promises Outlook/Apple/Google regardless.
 - ServicesPermissions describes telemetry ("find the screens that slow people
   down") that does not run (§5) — consent UI ahead of the capability.
@@ -120,7 +120,7 @@ The Features section **was** the largest single block of dead controls in the
 product. It is not there any more, and the paragraph that described it was wrong
 about *why* it was dead.
 
-**Corrected 2026-08-26 (OD-86, `OPEN-DECISIONS.md:78`).** This dossier claimed the
+**Corrected 2026-08-26 (OD-86, `OPEN-DECISIONS.md:82`).** This dossier claimed the
 page renders 22 toggles that "write a real row via `PUT /settings/feature-flags`",
 and that one of them, `enable_ai_negotiation`, "genuinely stops the autonomous
 responder". Both halves were false, and the audit found the failure to be a layer
@@ -145,7 +145,7 @@ Two further hollow surfaces:
 | Surface | Evidence |
 |---|---|
 | Services & permissions consent | Toggles persist (`ServicesPermissions.tsx:143-149` → `updatePreferences({servicePermissions})` → `PATCH /users/:id/preferences`), but `servicePermissions` is **read only by the component that writes it** — grep finds it in `ServicesPermissions.tsx:110,126,148` and the type at `hooks/useUserPreferences.ts:27`, nowhere else. `privacy_analytics` ("report how you move through the app", `:31`) governs `lib/uxSignals.ts`, which is dark unless `VITE_UX_OPTIMIZER === "true"` (`uxSignals.ts:15`) and has no callers. §5's observation, confirmed with the read side |
-| iCal subscribe | `Settings.tsx:170` promises Outlook/Apple/Google. `v3.0-TECH-DEBT.md:243-245` records that no client has ever been observed to subscribe. **A concrete suspect, found here:** the feed sets `Content-Disposition: attachment; filename="wineops-calendar.ics"` (`calendar/calendar.controller.ts:601-604`), which tells a browser and most calendar clients to *download a file* rather than *subscribe to a feed*. Not proven — nobody has tested it — but it is the first thing to try |
+| iCal subscribe | `Settings.tsx:170` promises Outlook/Apple/Google. `v3.0-TECH-DEBT.md:346-348` records that no client has ever been observed to subscribe. **A concrete suspect, found here:** the feed sets `Content-Disposition: attachment; filename="wineops-calendar.ics"` (`calendar/calendar.controller.ts:601-604`), which tells a browser and most calendar clients to *download a file* rather than *subscribe to a feed*. Not proven — nobody has tested it — but it is the first thing to try |
 
 Real on this page: members/invites, chains and locations, POS provider connection,
 notification preferences (honoured by the senders via `getEffectiveCategoryMode`,
@@ -204,7 +204,7 @@ that flipping something changed something.
 |---|---|---|
 | Loading | Partial | `CalendarSubscriptionSection` tracks `loading` (`Settings.tsx:145`); the flags and member fetches do not |
 | Empty | Partial | Missing-flags row falls back to all-defaults (`settings.service.ts:25-27`) rather than an empty state — reasonable |
-| Error | Partial | Write failures toast. **Read failures no longer render defaults** — `settings.service.ts:28-36` raises rather than swallowing, because "an autonomy dial reading OFF when the truth is that we could not find out" is [ADR 0020](../decisions/0020-no-fabricated-answers.md)'s exact prohibition. A *missing row* still legitimately answers with registry defaults |
+| Error | Partial | Write failures toast. **Read failures no longer render defaults** — `settings.service.ts:46-52` raises rather than swallowing (rationale comment `:29-37`), because "an autonomy dial reading OFF when the truth is that we could not find out" is [ADR 0020](../decisions/0020-no-fabricated-answers.md)'s exact prohibition. A *missing row* still legitimately answers with registry defaults |
 | Permission-denied | **No** | Non-managers see an "ask a manager" view client-side; there is no 403 branch when the server refuses (`organizations.service.ts:116-118` throws `ForbiddenException`) |
 
 **Where the UI misleads**
@@ -216,7 +216,7 @@ that flipping something changed something.
    **Fixed** — `enable_ai_autonomous_send` ships in `AiAutonomySection`
    (`Settings.tsx:27,1299`).
 3. Consent copy describes telemetry that does not run (§5, §10).
-4. Missing-flags-row answers with **registry defaults** (`settings.service.ts:31-32`,
+4. Missing-flags-row answers with **registry defaults** (`settings.service.ts:32-33`,
    `defaultActiveFlags()` at `:137`) — still worth knowing, but no longer the "every
    capability enabled" surface this dossier described, since the gate-less flags no
    longer render as controls at all (§10).
@@ -234,7 +234,7 @@ that flipping something changed something.
    `components/settings/AiAutonomySection.test.tsx`.
 3. **Test the iCal feed against a real client** and try dropping
    `Content-Disposition: attachment` (`calendar.controller.ts:601-604`). Cheapest
-   possible resolution of `v3.0-TECH-DEBT.md:243-245`; today the copy promises what
+   possible resolution of `v3.0-TECH-DEBT.md:346-348`; today the copy promises what
    nobody has verified.
 4. **Warn before regenerating the iCal token** — it silently breaks every existing
    subscription (`calendar.controller.ts:624`).
