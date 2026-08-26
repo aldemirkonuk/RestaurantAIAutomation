@@ -25,6 +25,27 @@ from services.plivo_client import PlivoSMSClient
 from services.email_client import EmailClient
 from services.push_notification_service import PushNotificationService
 
+#: The table this agent reads push subscriptions from.
+#:
+#: It does NOT exist in production -- PostgREST answers ``404 PGRST205 / Could
+#: not find the table 'public.push_subscriptions' in the schema cache`` (curl,
+#: 2026-08-26), and nothing in this repo writes to it. Web push here is real but
+#: stores subscriptions elsewhere: the API gateway's
+#: ``POST /notifications/push/subscribe`` upserts the browser's
+#: ``PushSubscription`` into ``notification_preferences.push_subscription``.
+#: See ``.planning/04-specs/HANDOFF-push-subscriptions.md``.
+PUSH_SUBSCRIPTION_TABLE = "push_subscriptions"
+
+
+class PushSubscriptionSourceError(RuntimeError):
+    """The push-subscription source could not be read at all.
+
+    Deliberately distinct from "this manager has no device registered", which
+    is an empty list. Reporting the first as the second is what let a missing
+    table look like an ordinary quiet day, on every notification, with nothing
+    downstream able to tell the difference.
+    """
+
 
 class NotificationAgent(BaseAgent):
     """
@@ -540,7 +561,7 @@ Please try again or add items to inventory manually.""",
 
         if "push" in channels:
             # Get push subscriptions
-            subscriptions = await self._get_push_subscriptions(manager["id"])
+            subscriptions = await self._push_targets(manager["id"], results)
             for sub in subscriptions:
                 result = await self.push_service.send_low_stock_notification(
                     subscription_or_token=sub["subscription_data"],
@@ -621,7 +642,7 @@ Please try again or add items to inventory manually.""",
 
         # Push notification (PRIORITY - for one-tap approval)
         if "push" in channels:
-            subscriptions = await self._get_push_subscriptions(manager["id"])
+            subscriptions = await self._push_targets(manager["id"], results)
             for sub in subscriptions:
                 result = await self.push_service.send_approval_notification(
                     subscription_or_token=sub["subscription_data"],
@@ -707,7 +728,7 @@ Please try again or add items to inventory manually.""",
         results = []
 
         if "push" in channels:
-            subscriptions = await self._get_push_subscriptions(manager["id"])
+            subscriptions = await self._push_targets(manager["id"], results)
             for sub in subscriptions:
                 result = await self.push_service.send_push_notification(
                     user_id=manager.get("id"),
@@ -778,7 +799,7 @@ Please try again or add items to inventory manually.""",
             results.append(("sms", result))
 
         if "push" in channels:
-            subscriptions = await self._get_push_subscriptions(manager["id"])
+            subscriptions = await self._push_targets(manager["id"], results)
             for sub in subscriptions:
                 result = await self.push_service.send_push_notification(
                     user_id=manager.get("id"),
@@ -842,7 +863,7 @@ Please try again or add items to inventory manually.""",
             )
             results.append(("sms", result))
 
-        subscriptions = await self._get_push_subscriptions(manager["id"])
+        subscriptions = await self._push_targets(manager["id"], results)
         for sub in subscriptions:
             result = await self.push_service.send_push_notification(
                 user_id=manager.get("id"),
@@ -902,7 +923,7 @@ Please try again or add items to inventory manually.""",
             )
             results.append(("sms", result))
 
-        subscriptions = await self._get_push_subscriptions(manager["id"])
+        subscriptions = await self._push_targets(manager["id"], results)
         for sub in subscriptions:
             result = await self.push_service.send_push_notification(
                 user_id=manager.get("id"),
@@ -1004,7 +1025,7 @@ Please try again or add items to inventory manually.""",
         results.append(("email", result))
 
         # Push notification that report is ready
-        subscriptions = await self._get_push_subscriptions(manager["id"])
+        subscriptions = await self._push_targets(manager["id"], results)
         for sub in subscriptions:
             result = await self.push_service.send_push_notification(
                 user_id=manager.get("id"),
@@ -1573,19 +1594,69 @@ Please try again or add items to inventory manually.""",
             return {}
 
     async def _get_push_subscriptions(self, manager_id: str) -> List[Dict[str, Any]]:
-        """Get all push subscriptions for manager"""
+        """Get all push subscriptions for a manager.
+
+        Returns an empty list ONLY when the manager genuinely has no registered
+        device. Raises :class:`PushSubscriptionSourceError` when the source
+        could not be read at all -- postgrest-py raises ``APIError`` on any
+        non-2xx response (``postgrest/_sync/request_builder.py:78``), so a
+        missing table, a revoked grant and a network failure all arrive here
+        rather than in ``response.data``.
+
+        The previous version swallowed all three into ``return []``. It logged,
+        which is more than its TypeScript twin did, but every caller read the
+        result as "nobody to notify", appended nothing to ``results``, and
+        ``_log_notification`` then persisted a notification whose push leg was
+        simply absent -- and whose ``success`` was computed over the legs that
+        remained, so it recorded as a success.
+        """
         try:
             response = (
-                self.database.supabase.table("push_subscriptions")
+                self.database.supabase.table(PUSH_SUBSCRIPTION_TABLE)
                 .select("*")
                 .eq("user_id", manager_id)
                 .eq("active", True)
                 .execute()
             )
-
-            return response.data or []
         except Exception as e:
-            self.logger.error(f"Failed to get push subscriptions: {e}")
+            raise PushSubscriptionSourceError(
+                f"could not read {PUSH_SUBSCRIPTION_TABLE} for manager "
+                f"{manager_id}: {e}"
+            ) from e
+
+        return response.data or []
+
+    async def _push_targets(
+        self, manager_id: str, results: List[tuple]
+    ) -> List[Dict[str, Any]]:
+        """Push targets for a manager, degrading loudly if they cannot be read.
+
+        Deliberate choice, and it matches ``RecipientResolverService`` on the
+        gateway side: an unreadable push source must not abort a notification
+        whose SMS and email legs already succeeded -- but it must not vanish
+        either. The failure is logged at ERROR under the greppable marker
+        ``PUSH_SUBSCRIPTIONS_UNREADABLE`` AND appended to ``results``, so
+        ``_log_notification`` persists a failed push leg instead of an absent
+        one and its ``success`` computation turns false.
+        """
+        try:
+            return await self._get_push_subscriptions(manager_id)
+        except PushSubscriptionSourceError as exc:
+            self.logger.error(
+                f"PUSH_SUBSCRIPTIONS_UNREADABLE manager={manager_id} "
+                f"table={PUSH_SUBSCRIPTION_TABLE} -- {exc}. Push targets are "
+                "unknown, not empty; the other channels were still attempted."
+            )
+            results.append(
+                (
+                    "push",
+                    {
+                        "success": False,
+                        "error": str(exc),
+                        "source_unreadable": True,
+                    },
+                )
+            )
             return []
 
     async def _log_notification(
