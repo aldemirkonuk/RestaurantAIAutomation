@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import axios from 'axios'
 import { Mail, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { motion } from 'framer-motion'
@@ -12,7 +12,13 @@ const fieldClass =
   'block w-full pl-11 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 shadow-sm transition-all focus:outline-none focus:border-wine-600 focus:ring-4 focus:ring-wine-600/10 disabled:opacity-60'
 
 export function ForgotPassword() {
-  const [email, setEmail] = useState('')
+  // /login hands the address over when it sends someone here to set a first
+  // password (ADR 0024) — retyping it is friction with no purpose. Nothing is
+  // revealed by the prefill: this endpoint answers identically for every
+  // address, known or not, and that stays true.
+  const location = useLocation()
+  const prefilledEmail = new URLSearchParams(location.search).get('email') ?? ''
+  const [email, setEmail] = useState(prefilledEmail)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
