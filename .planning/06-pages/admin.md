@@ -5,7 +5,7 @@ slug: admin
 component: apps/web/src/pages/AdminPanel.tsx
 audience: owner
 tier: core
-archetype: form # proposed 2026-08-26 (OD-79)
+archetype: form # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
 maturity: partial

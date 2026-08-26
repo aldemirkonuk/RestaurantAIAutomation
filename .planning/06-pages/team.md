@@ -5,7 +5,7 @@ slug: team
 component: apps/web/src/pages/team/command/TeamCommandPage.tsx
 audience: staff
 tier: core
-archetype: command # proposed 2026-08-26 (OD-79)
+archetype: command # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
 maturity: complete

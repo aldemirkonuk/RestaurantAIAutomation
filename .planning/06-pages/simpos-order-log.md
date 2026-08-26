@@ -5,7 +5,7 @@ slug: simpos-order-log
 component: apps/web/src/pages/simpos/SimposOrderLogPage.tsx
 audience: dev
 tier: public
-archetype: dev # proposed 2026-08-26 (OD-79)
+archetype: dev # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
 maturity: partial

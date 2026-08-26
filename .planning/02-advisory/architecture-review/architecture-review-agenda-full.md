@@ -175,7 +175,7 @@ not a task.
    it should be written.
 6. **The evaluation seam and its colliding ID.** `teams/technology.md:845` numbers the
    [[agent-evaluation-gates-charter]] ↔ [[evaluation-doneability-charter]] overlap
-   **OD-21**, which is already taken (`OPEN-DECISIONS.md:133`, Obsidian workflow, locked).
+   **OD-21**, which is already taken (`OPEN-DECISIONS.md:134`, Obsidian workflow, locked).
    [[decision-office-charter]] reissued it as **TECH-F3** ([[FORK-REGISTRY]]), so it can
    now enter the log. Structurally this function reads the
    seam as an **L4 ownership question**, and endorses the instruction already on record:

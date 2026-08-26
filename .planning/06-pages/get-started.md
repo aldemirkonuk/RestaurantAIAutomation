@@ -5,7 +5,7 @@ slug: get-started
 component: apps/web/src/pages/GetStarted.tsx
 audience: owner
 tier: core
-archetype: form # proposed 2026-08-26 (OD-79)
+archetype: form # proposed 2026-08-26 (OD-106)
 signals_today: partial
 rebrand_strings: 5
 maturity: partial

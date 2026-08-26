@@ -5,7 +5,7 @@ slug: services
 component: none (inline <Navigate> redirect)
 audience: owner
 tier: core
-archetype: redirect # proposed 2026-08-26 (OD-79)
+archetype: redirect # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
 maturity: complete

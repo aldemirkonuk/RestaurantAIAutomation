@@ -74,7 +74,7 @@ faster than a boundary document.
 - **The majority of production model traffic is outside the harness OD-03 is about.**
   Fork INTEL-F5 (`intelligence.md:521`) asks whether those seven callsites are even in scope.
   If they are not, OD-03 governs a minority of calls and its title should say so.
-- **OD-20 is open and urgent** (`OPEN-DECISIONS.md:106`): an unguarded route drives paid
+- **OD-20 is open and urgent** (`OPEN-DECISIONS.md:107`): an unguarded route drives paid
   Opus calls. Security can close the route; only this team plus
   [[neural-footprint-instrumentation-charter]] can say what it cost.
 - **`benchmark_haiku_vs_sonnet.py` already exists and was run once.** The evidence culture

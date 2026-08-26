@@ -28,12 +28,19 @@ See [FUTURES.md](./FUTURES.md). Summary:
 
 **Ask AI:** global entry that **creates allowlisted actions** (draft PO, vendor email, calendar, inventory drafts, nav) with human confirm — eases complexity as the product expands. See FUTURES.md §8.
 
-## Current Milestone: P2 — Web complete + deploy
+## Current Milestone: P3 — Grade, then scale
 
-Locked 2026-08-25, [ADR 0018](decisions/0018-p2-plan-of-record.md). Docs
-bulletproof first; the founder approves the feature set before build; then the
-web app feature-complete and deployed. Stages and position: [STATE.md](STATE.md).
-Order of operations: [ROADMAP.md](ROADMAP.md).
+Locked 2026-08-26, [ADR 0029](decisions/0029-p3-plan-of-record.md). Make the
+instrument tell the truth about whether AI work *succeeded* — today the gateway
+emits 7 task types and 1 carries a real verdict — then scale on top of it. One
+gate (P3.0 doneability coverage), two lanes running alongside it (mobile parity,
+backend-kitchen expansion), two stages behind it (Ask AI, model registry), and
+NF-B guests **held** on OD-05/OD-07 rather than queued. Stages and position:
+[STATE.md](STATE.md). Order of operations: [ROADMAP.md](ROADMAP.md).
+
+**P2 — Web complete + deploy** closed 2026-08-26 ([ADR 0018](decisions/0018-p2-plan-of-record.md),
+[0019](decisions/0019-p2-build-scope.md)): five stages deployed and verified, both
+held items resolved.
 
 Prior milestones: v1.0 complete (2026-04-08); v2.0 closed `gaps_found`
 (2026-07-28, [audit](archive/v2.0-MILESTONE-AUDIT.md)) — its unfinished work is
@@ -106,4 +113,4 @@ and decisions only, so the two can never disagree about what is current.
 | No full OCR on live frames | Too slow/expensive; shutter-only OCR | Locked 2026-07-27 — target stack |
 
 ---
-*Last updated: 2026-08-25 — current milestone set to P2 (ADR 0018); state moved to STATE.md as the single source.*
+*Last updated: 2026-08-26 — current milestone set to P3 (ADR 0029); P2 closed. State stays in STATE.md as the single source.*

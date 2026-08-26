@@ -5,7 +5,7 @@ slug: simpos-terminal
 component: apps/web/src/pages/simpos/SimposTerminalPage.tsx
 audience: dev
 tier: public
-archetype: dev # proposed 2026-08-26 (OD-79)
+archetype: dev # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 3
 maturity: partial

@@ -5,7 +5,7 @@ slug: studio
 component: apps/web/src/pages/studio/Studio.tsx
 audience: dev
 tier: core
-archetype: command # proposed 2026-08-26 (OD-79)
+archetype: command # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 1
 maturity: broken
