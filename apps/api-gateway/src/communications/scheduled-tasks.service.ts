@@ -129,7 +129,6 @@ export class ScheduledTasksService implements OnModuleInit {
           opts.channels.includes("sms") && this.managerPhone
             ? [this.managerPhone]
             : [],
-        pushSubscriptionIds: [],
       };
     }
 

@@ -19,8 +19,9 @@ falls back to a default, and nothing goes red:
   restaurant_inbound_addresses applied by some other route, so it EXISTS.
                                Proof that "it is in an archive" is not a
                                reliable signal in either direction.
-  push_subscriptions           recipient-resolver.service.ts -- `catch { return
-                               [] }`, so push resolves zero recipients forever.
+  push_subscriptions           notification_agent.py -- the gateway's reader was
+                               DELETED rather than repointed (ADR 0027); the
+                               Python one still queries it.
   integration_oauth_connections/_states
                                Drive/Excel OAuth completes at Google, then fails
                                on the write.
@@ -193,10 +194,12 @@ KNOWN_MISSING: dict[str, str] = {
     ),
     "push_subscriptions": (
         "[A prod:no] supabase/migrations_archive/20260208024921_baseline_schema.sql. "
-        "recipient-resolver.service.ts:275 catches and returns [], so push notifications "
-        "resolve zero recipients forever. A concurrent session owned the fix on "
-        "2026-08-26; when its migration lands, the ratchet below fails and this line "
-        "is deleted. That is the intended handshake, not a collision."
+        "DO NOT CREATE IT -- ADR 0027 / OD-95 settled that this is an abandoned storage "
+        "model, not a missing table, and creating it would produce a permanently-empty "
+        "second store beside the real one. The gateway's reader "
+        "(recipient-resolver.service.ts) was DELETED on 2026-08-26; the entry stays alive "
+        "only because notification_agent.py:1615 still queries it. This line is deleted "
+        "when that reader is dealt with -- not when a migration lands."
     ),
     "notification_logs": (
         "[A prod:no] supabase/migrations_archive/20260208024921_baseline_schema.sql. "
@@ -273,17 +276,14 @@ KNOWN_MISSING_FUNCTIONS: dict[str, str] = {
 # is a per-hierarchy guess that would report a wrong table name confidently.
 # Measuring the hole and leaving it open beats plastering it with something that
 # can be wrong in silence.
-# 2026-08-26, raised 24 -> 25 for ONE site, named rather than absorbed:
-#   apps/api-gateway/src/communications/recipient-resolver.service.ts:402
-#     const table = RecipientResolverService.PUSH_SUBSCRIPTION_TABLE;
-#     ... .from(table)
-# The name is a static class constant, not a runtime value -- it was hoisted
-# into a local so PushSubscriptionSourceError can name the table it failed on
-# (#94). The relation itself is still covered: `push_subscriptions` is on the
-# debt list from the Python call site, so this changes no verdict either.
-# Resolving `const x = Class.CONST` is a real gap in the extractor rather than
-# an unknowable, and is the cheapest next thing to close if the count creeps.
-DYNAMIC_CEILING = 25
+# 2026-08-26, raised 24 -> 25 for ONE site in recipient-resolver.service.ts
+# (`const table = RecipientResolverService.PUSH_SUBSCRIPTION_TABLE`), then
+# LOWERED 25 -> 24 the same day when ADR 0027 / OD-95 deleted that read
+# outright rather than repointing it. Measured at 24 after the deletion.
+# Resolving `const x = Class.CONST` remains a real gap in the extractor rather
+# than an unknowable, and is the cheapest next thing to close if the count
+# creeps again.
+DYNAMIC_CEILING = 24
 
 
 # ---------------------------------------------------------------------------
