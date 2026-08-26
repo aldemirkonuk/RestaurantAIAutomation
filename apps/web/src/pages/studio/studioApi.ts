@@ -1,40 +1,41 @@
 /**
- * Studio API client (OD-82)
- * =========================
- * The studio talks to the **Python agent-orchestrator** (services/agent-orchestrator,
- * FastAPI, port 8000) — never to the NestJS gateway (port 4000).
+ * Studio API client (OD-82, then ADR 0021)
+ * ========================================
+ * The studio talks to the orchestrator **through the NestJS gateway**, on relative paths.
  *
- * Do NOT route these calls through `services/api/client.ts`. That axios client is
- * pointed at the gateway, and the gateway has no studio module (`@Controller("studio"`
- * has zero hits in apps/api-gateway/src), so every studio path 404s there. A bare
- * relative `fetch('/api/v1/studio/…')` shares that fate: `apps/web/vite.config.ts`
- * proxies `/api` → `localhost:4000`, and `vercel.json` rewrites `/api` → the Railway
- * gateway. That routing gap is what took all three studio pages down — the comments
- * in the old call sites claiming "Vite proxy routes /api → FastAPI (port 8000)" were
- * simply wrong.
+ * This module originally pointed straight at the orchestrator on
+ * `VITE_AGENT_ORCHESTRATOR_URL`, because at the time the gateway genuinely had no studio
+ * module and every relative `/api/v1/studio/…` 404'd there. That diagnosis was right and
+ * the direct base URL fixed it. In parallel, a second pass closed the same gap the other
+ * way — by giving the gateway a studio proxy — and the founder chose the gateway
+ * (ADR 0021). Reasons, briefly: it is what ADR 0012 already decided for this codebase; it
+ * keeps one origin and one auth boundary, so no CORS and no orchestrator URL shipped into
+ * the browser bundle; and the invite send has to be gateway-side regardless, because that
+ * is where the mail credentials live — so the gateway was in this path either way.
  *
- * Base URL: `VITE_AGENT_ORCHESTRATOR_URL`, the same var `CommandBar` was given and
- * that `components/scanner/CameraCapture.tsx` and `services/wineDetection.ts` already
- * use. The fallback is the local FastAPI port rather than `''`: CommandBar's `|| ''`
- * fell straight back to the broken relative path, so its "fix" only held when the env
- * var happened to be set — and `VITE_AGENT_ORCHESTRATOR_URL` is not in `env.example`.
- * (CameraCapture's intermediate `|| VITE_API_GATEWAY_URL` step is deliberately not
- * copied — that one points at the 4000 gateway and is the same misdirection again.)
+ * What did NOT change, and is the valuable part of the original fix: every call still goes
+ * through `studioRequest`, which throws on any non-2xx. That is what stopped a 404 being
+ * reported to the operator as a successful revoke.
  *
- * Auth: `Authorization: Bearer <accessToken>` from localStorage. The orchestrator's
- * studio routes are gated by `require_studio_role()`
- * (services/agent-orchestrator/services/override_service.py:34) which verifies the JWT
- * and checks `user_roles`. They do **not** accept `X-Admin-Key` — only
- * `/api/v1/onboarding/extract` does (`api/auth.py:46` `require_admin_or_studio`), and
- * it accepts a Bearer token too. So a browser can authenticate to every endpoint this
- * module calls.
+ * Routing: `apps/web/vite.config.ts` proxies `/api` → gateway :4000 in dev, and
+ * `vercel.json` rewrites `/api` → the Railway gateway in prod. The gateway forwards
+ * `/api/v1/studio/*` (`common/orchestrator/studio-proxy.controller.ts`) and
+ * `/api/v1/onboarding/extract` (`onboarding-proxy.controller.ts`) to the orchestrator,
+ * passing the caller's own bearer token through.
+ *
+ * Auth: `Authorization: Bearer <accessToken>` from localStorage. The gateway's
+ * JwtAuthGuard validates it, then the orchestrator re-verifies the same token and does the
+ * per-endpoint role check (`services/override_service.py:34`). This requires the gateway's
+ * `JWT_SECRET` and the orchestrator's `SUPABASE_JWT_SECRET` to hold the same value —
+ * verified equal in production (both hash to `641ddc1b5254`).
  */
 
-/** Orchestrator origin. Empty-string-safe: a trailing slash in the env var is trimmed. */
-export const STUDIO_API_BASE: string = (
-  (import.meta.env?.VITE_AGENT_ORCHESTRATOR_URL as string | undefined) ||
-  'http://localhost:8000'
-).replace(/\/+$/, '')
+/**
+ * Empty: studio calls are relative, so they follow the same `/api` proxy/rewrite as the
+ * rest of the app and land on the gateway. Deliberately not an env var — a configurable
+ * origin here is what allowed the browser to be pointed at the wrong service.
+ */
+export const STUDIO_API_BASE: string = ''
 
 export function studioAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem('accessToken')
@@ -66,9 +67,9 @@ export async function readStudioError(resp: Response): Promise<string> {
       case 403:
         return 'Your account does not hold the studio role this action requires (403).'
       case 404:
-        return `Studio endpoint not found (404) at ${STUDIO_API_BASE} — check VITE_AGENT_ORCHESTRATOR_URL.`
+        return 'Studio endpoint not found (404) — the gateway is not forwarding this studio path to the orchestrator.'
       case 503:
-        return 'Studio service unavailable (503). Ensure the agent-orchestrator (FastAPI, port 8000) is running.'
+        return 'Studio service unavailable (503). Check that the orchestrator is up and AGENT_ORCHESTRATOR_URL is set on the gateway.'
       default:
         return `HTTP ${resp.status}`
     }

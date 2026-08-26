@@ -10,7 +10,8 @@ Endpoints:
   GET    /api/v1/studio/queue                             — Pending approval queue (review_admin only)
   PATCH  /api/v1/studio/queue/{override_id}               — Approve or reject override
   POST   /api/v1/studio/invite                            — Generate invite token (review_admin only)
-  POST   /api/v1/studio/invite/redeem                     — Redeem invite token (any authenticated user)
+  POST   /api/v1/studio/invite/redeem                     — Redeem invite token (any authenticated user,
+                                                            must match the invite's target_email)
   GET    /api/v1/studio/metrics                           — Manual-authoring KPIs (DEVUI-09)
   GET    /api/v1/studio/me/roles                          — Current user's studio roles (no role restriction)
   GET    /api/v1/studio/contributors                      — List certified contributors (review_admin only)
@@ -19,10 +20,13 @@ Endpoints:
   PATCH  /api/v1/studio/contributors/{user_id}/disable    — Disable contributor (alias for revoke)
 
 Security:
-  T-13-07: JWT verified via require_studio_role() in every endpoint
+  T-13-07: JWT verified in every endpoint (require_studio_role, or require_authenticated_user
+           on /invite/redeem where the invite itself is the authorization — ADR 0021)
   T-13-10: Invite token brute-force: token is UUID (128-bit) — 10^38 combinations
   T-13-11: Reason bypass: validated server-side via DB old_confidence check, not client input
   T-13-12: Session leakage: actor_id == user["sub"] OR role in (review_admin, developer)
+  T-13-13: Invite misdelivery: redemption is bound to the invite's target_email, so a token
+           that leaks or is forwarded cannot grant a role to whoever holds it (ADR 0021)
 """
 
 import logging
@@ -35,6 +39,8 @@ from pydantic import BaseModel
 
 from services.override_service import (
     require_studio_role,
+    require_authenticated_user,
+    normalize_email,
     OverrideRequest,
     ApprovalDecision,
     InviteRequest,
@@ -485,7 +491,11 @@ def create_invite(
     body: InviteRequest,
     user: dict = Depends(require_studio_role("review_admin")),
 ):
-    """POST /api/v1/studio/invite — generate single-use invite token (review_admin only) (DEVUI-07, D-03)."""
+    """
+    POST /api/v1/studio/invite — generate single-use invite token (review_admin only) (DEVUI-07, D-03).
+    target_email is required and is what redeem_invite binds the grant to (ADR 0021) — the
+    token is a capability to claim *that* address's invite, not a bearer capability.
+    """
     supabase = _get_supabase()
     if not supabase:
         raise HTTPException(status_code=503, detail="Database not available")
@@ -516,13 +526,17 @@ def create_invite(
 @studio_router.post("/invite/redeem")
 def redeem_invite(
     body: RedeemRequest,
-    user: dict = Depends(
-        require_studio_role("developer", "certified_contributor", "review_admin")
-    ),
+    user: dict = Depends(require_authenticated_user()),
 ):
     """
-    POST /api/v1/studio/invite/redeem — consume invite token, grant role (D-03, D-04).
-    Single-use: returns 409 if already used. Returns 410 if expired.
+    POST /api/v1/studio/invite/redeem — consume invite token, grant role (D-03, D-04, ADR 0021).
+
+    Authorization is the invite, not a pre-existing role: an invitee holds no studio role —
+    that is what is being granted — so this endpoint requires only a verified JWT. The grant
+    is bound to the invite's target_email, which the redeeming account must match. Without
+    that binding "any authenticated user" would mean any restaurant account on the platform.
+
+    Single-use: 409 if already used or already held. 410 if expired. 403 on email mismatch.
     Token in POST body, never in query string (Pitfall 2 from RESEARCH.md).
     """
     supabase = _get_supabase()
@@ -545,22 +559,69 @@ def redeem_invite(
         if datetime.now(timezone.utc) > expires:
             raise HTTPException(status_code=410, detail="Invite token has expired")
 
-        # Mark token used
-        supabase.table("invite_tokens").update(
-            {
-                "used_at": datetime.now(timezone.utc).isoformat(),
-                "used_by": user["sub"],
-            }
-        ).eq("id", tok["id"]).execute()
+        # Bind the grant to the invited address. Fail closed: a token minted without a
+        # target_email (rows predating ADR 0021) or a JWT carrying no email is not redeemable.
+        invited = normalize_email(tok.get("target_email"))
+        caller = normalize_email(user.get("email"))
+        if not invited or not caller or invited != caller:
+            logger.warning(
+                "redeem_invite rejected: token=%s invited_set=%s caller_set=%s match=False",
+                tok["id"],
+                bool(invited),
+                bool(caller),
+            )
+            raise HTTPException(
+                status_code=403,
+                detail="This invite was issued to a different email address.",
+            )
+
+        # Already holds the role — don't burn the token on a no-op.
+        existing = (
+            supabase.table("user_roles")
+            .select("role")
+            .eq("user_id", user["sub"])
+            .eq("role", tok["role"])
+            .is_("revoked_at", "null")
+            .execute()
+        )
+        if existing.data:
+            raise HTTPException(
+                status_code=409, detail=f"You already hold the '{tok['role']}' role"
+            )
+
+        # Claim the token atomically: the used_at IS NULL predicate is what makes this
+        # single-use under concurrency. The read above can go stale between check and write,
+        # so the write itself must be the one that decides. No rows back = lost the race.
+        claim = (
+            supabase.table("invite_tokens")
+            .update(
+                {
+                    "used_at": datetime.now(timezone.utc).isoformat(),
+                    "used_by": user["sub"],
+                }
+            )
+            .eq("id", tok["id"])
+            .is_("used_at", "null")
+            .execute()
+        )
+        if not claim.data:
+            raise HTTPException(status_code=409, detail="Invite token already used")
 
         # Insert role — D-04: granted_by = token creator, not self
-        supabase.table("user_roles").insert(
-            {
-                "user_id": user["sub"],
-                "role": tok["role"],
-                "granted_by": tok["created_by"],
-            }
-        ).execute()
+        try:
+            supabase.table("user_roles").insert(
+                {
+                    "user_id": user["sub"],
+                    "role": tok["role"],
+                    "granted_by": tok["created_by"],
+                }
+            ).execute()
+        except Exception:
+            # Release the claim so a failed grant does not silently consume the invite.
+            supabase.table("invite_tokens").update(
+                {"used_at": None, "used_by": None}
+            ).eq("id", tok["id"]).execute()
+            raise
 
         logger.info("Redeemed invite for user=%s role=%s", user["sub"], tok["role"])
         return {

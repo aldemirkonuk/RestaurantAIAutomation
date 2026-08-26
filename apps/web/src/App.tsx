@@ -115,6 +115,7 @@ const DevSandbox = lazyWithRefresh(() => import('./pages/DevSandbox'))
 const Studio = lazyWithRefresh(() => import('./pages/studio/Studio'))
 const StudioApprovalQueue = lazyWithRefresh(() => import('./pages/studio/StudioApprovalQueue'))
 const StudioCertify = lazyWithRefresh(() => import('./pages/studio/StudioCertify'))
+const StudioInviteRedeem = lazyWithRefresh(() => import('./pages/studio/StudioInviteRedeem'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -184,6 +185,20 @@ function App() {
                   element={
                     <ProtectedRoute requiredStudioRole={['developer', 'review_admin']}>
                       <StudioCertify />
+                    </ProtectedRoute>
+                  }
+                />
+                {/*
+                  Authenticated but deliberately NOT studio-role gated (ADR 0020): the
+                  invitee has no studio role yet — granting one is what this page does.
+                  A logged-out invitee is bounced to /login, which returns them here via
+                  location.state.from (Login.tsx:36,53), so the token survives the detour.
+                */}
+                <Route
+                  path="/studio/invite/:token"
+                  element={
+                    <ProtectedRoute>
+                      <StudioInviteRedeem />
                     </ProtectedRoute>
                   }
                 />

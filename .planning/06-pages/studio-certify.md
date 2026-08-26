@@ -7,7 +7,7 @@ audience: dev
 tier: core
 signals_today: none
 rebrand_strings: 1
-maturity: broken
+maturity: partial
 status: documented
 updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[studio]]", "[[studio-queue]]"]
@@ -59,8 +59,9 @@ Outside the tier axis — internal admin for the S06/S17 data-supply chain.
 Studio role gate (§2); Bearer token from localStorage (`StudioCertify.tsx:10-13`).
 
 ## 9. Gaps
-- Same **/api routing gap** as [[studio]] §9 — all four calls should 404 against the
-  gateway as proxied/rewritten today.
+- ~~Same **/api routing gap** as [[studio]] §9~~ — **closed for this page 2026-08-26**
+  ([ADR 0021](../decisions/0021-studio-invites-are-self-service.md)): `StudioProxyController`
+  forwards `/api/v1/studio/*`, so all four §4 calls now resolve.
 - `handleRevoke`/`handleToggleEnable` don't check the response status
   (`StudioCertify.tsx:32-46`) — a failed PATCH still invalidates the query and looks
   like success (the "reachable code that does nothing" failure mode named at
@@ -180,3 +181,28 @@ invite must actually be redeemable.
    — the invite token *is* the credential. *Blocked: this is a security posture change
    (who may redeem, and under what rate limit) and belongs in an ADR before it ships.*
 6. Count only non-revoked rows in the subtitle (`:54`).
+
+---
+
+## 14. Update — 2026-08-26, [ADR 0021](../decisions/0021-studio-invites-are-self-service.md)
+
+§10's verdict was accurate when written and is now out of date. Recording the delta rather
+than rewriting it, so the diagnosis stays readable next to what it caused.
+
+- **The four 404s are gone.** The founder chose the gateway proxy over the direct-to-orchestrator
+  base URL, so `studioApi.ts` resolves relative paths and `StudioProxyController` forwards
+  `/api/v1/studio/*`. §13.1's "prefix all four calls with the orchestrator base" is superseded:
+  the prefix is the gateway, not port 8000.
+- **§10's fourth and fifth points are fixed, not just routed around.** `/studio/invite/:token`
+  now exists ([[studio-invite-redeem]]), and `redeem_invite` no longer requires a studio role —
+  it binds the grant to the invited email instead. The invite flow that was "unshippable as
+  specified" is shippable.
+- **The invite is now sent, not copied.** §12's "copyable invite link that redirects to the
+  dashboard" is gone: the gateway emails the invite and the token never reaches this browser.
+  The copy affordance survives only as a fallback when delivery fails, since the row exists by
+  then and would otherwise be orphaned.
+- **Still true:** §10's `isError` gap. The roster still has no error branch, so a failed load
+  renders as an empty roster. Unchanged by ADR 0021 — the calls now succeed, but the misleading
+  empty state is still what a future failure will look like. §13.3 stands.
+
+Maturity moves **broken → working-with-one-known-gap**; the frontmatter is updated to match.

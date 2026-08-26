@@ -79,6 +79,85 @@ export class OrchestratorService implements OnModuleDestroy {
     return { "X-Admin-Key": key };
   }
 
+  /**
+   * Forward a studio request to the orchestrator, preserving the caller's own Bearer token.
+   *
+   * Studio endpoints authorize per-user against `app_metadata.roles`, which generateTokens()
+   * already embeds for this exact consumer (auth.service.ts:393-395). So this passes the
+   * token through rather than substituting the admin key: swapping in a service credential
+   * would erase the identity the orchestrator authorizes on and make every caller an admin.
+   *
+   * Returns { status, data } instead of throwing, so the controller can relay the
+   * orchestrator's own status codes — redeem_invite's 403/404/409/410 each mean something
+   * specific to the user and must not collapse into a 500.
+   */
+  /**
+   * Forward POST /onboarding/extract to the orchestrator (ADR 0021).
+   *
+   * Separate from proxyStudio because the shared client's defaults are wrong for it in
+   * two ways, both of which would surface as a confusing failure rather than a clear one:
+   *
+   *  - **Timeout.** The shared client allows 15s. Extraction runs a wine list through
+   *    Claude Vision or a Gemini crawl and routinely takes minutes, so it would abort
+   *    mid-flight and read as a flaky orchestrator. 5 minutes here, which is longer than
+   *    any observed extraction and still bounded.
+   *  - **Body size.** A native PDF arrives base64-encoded; main.ts accepts up to
+   *    MAX_REQUEST_BODY_SIZE (15mb default). axios must be told to match, or it rejects
+   *    the larger uploads itself before they ever leave the gateway.
+   */
+  async proxyOnboardingExtract(
+    authorization: string | undefined,
+    body: unknown,
+  ): Promise<{ status: number; data: any }> {
+    if (!this.orchestratorConfigured) {
+      this.logger.error(
+        "AGENT_ORCHESTRATOR_URL is not set — onboarding extraction cannot be served",
+      );
+      return {
+        status: 503,
+        data: { message: "Extraction service is not configured" },
+      };
+    }
+    const response = await this.httpClient.request({
+      method: "POST",
+      url: "/api/v1/onboarding/extract",
+      data: body,
+      headers: authorization ? { Authorization: authorization } : {},
+      timeout: 300_000,
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+      validateStatus: () => true,
+    });
+    return { status: response.status, data: response.data };
+  }
+
+  async proxyStudio(
+    method: string,
+    subPath: string,
+    authorization: string | undefined,
+    body: unknown,
+    query: Record<string, any>,
+  ): Promise<{ status: number; data: any }> {
+    if (!this.orchestratorConfigured) {
+      this.logger.error(
+        "AGENT_ORCHESTRATOR_URL not configured — studio requests cannot be served",
+      );
+      return {
+        status: 503,
+        data: { message: "Studio service is not configured" },
+      };
+    }
+    const response = await this.httpClient.request({
+      method: method as any,
+      url: `/api/v1/studio/${subPath}`,
+      data: body,
+      params: query,
+      headers: authorization ? { Authorization: authorization } : {},
+      validateStatus: () => true,
+    });
+    return { status: response.status, data: response.data };
+  }
+
   async getAgentHealthAll(): Promise<any> {
     const response = await this.httpClient.get("/api/v1/health/agents", {
       headers: this.getAdminHeaders(),

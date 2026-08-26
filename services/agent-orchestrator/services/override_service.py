@@ -31,6 +31,62 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 
+def _decode_studio_jwt(authorization: Optional[str]) -> dict:
+    """
+    Verify a Bearer JWT and return its payload. Raises 401/503 — never returns unverified.
+
+    Shared by require_studio_role() and require_authenticated_user() so there is exactly one
+    place that decides whether a caller is who they say they are. The token is issued by the
+    NestJS gateway (`apps/api-gateway/src/auth/auth.service.ts:435`), which signs with
+    JWT_SECRET and embeds `app_metadata.roles` for exactly this consumer; that value must
+    therefore equal SUPABASE_JWT_SECRET here or every studio call 401s. See ADR 0021.
+    """
+    import jwt as pyjwt  # PyJWT>=2.8.0
+    from config.settings import get_settings
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing Bearer token")
+    token = authorization.removeprefix("Bearer ")
+    secret = get_settings().supabase_jwt_secret
+    if not secret:
+        logger.error(
+            "SUPABASE_JWT_SECRET not configured — studio endpoints cannot authenticate"
+        )
+        raise HTTPException(status_code=503, detail="Auth configuration error")
+    try:
+        return pyjwt.decode(
+            token,
+            secret,
+            algorithms=["HS256"],
+            options={"verify_aud": False},  # Supabase JWTs use anon key as audience
+        )
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except pyjwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}")
+
+
+def require_authenticated_user():
+    """
+    FastAPI dependency factory — verifies the Bearer JWT and returns the payload, with no
+    role requirement at all.
+
+    This exists for endpoints whose authorization comes from something other than a
+    pre-existing role. The only such endpoint today is POST /invite/redeem: an invitee has
+    no studio role by definition — that is what the invite grants — so gating redemption on
+    a studio role made the flow unusable by anyone it was meant for (ADR 0021).
+
+    Authorization for those endpoints must come from elsewhere; redeem_invite binds it to
+    the invite's target_email. "Authenticated" here means any account on the platform,
+    including every restaurant user, so it is never sufficient on its own.
+    """
+
+    def _check(authorization: Optional[str] = Header(None)) -> dict:
+        return _decode_studio_jwt(authorization)
+
+    return _check
+
+
 def require_studio_role(*required_roles: str):
     """
     FastAPI dependency factory — returns a callable suitable for Depends().
@@ -50,29 +106,7 @@ def require_studio_role(*required_roles: str):
     """
 
     def _check(authorization: Optional[str] = Header(None)) -> dict:
-        import jwt as pyjwt  # PyJWT>=2.8.0
-        from config.settings import get_settings
-
-        if not authorization or not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Missing Bearer token")
-        token = authorization.removeprefix("Bearer ")
-        secret = get_settings().supabase_jwt_secret
-        if not secret:
-            logger.error(
-                "SUPABASE_JWT_SECRET not configured — studio endpoints cannot authenticate"
-            )
-            raise HTTPException(status_code=503, detail="Auth configuration error")
-        try:
-            payload = pyjwt.decode(
-                token,
-                secret,
-                algorithms=["HS256"],
-                options={"verify_aud": False},  # Supabase JWTs use anon key as audience
-            )
-        except pyjwt.ExpiredSignatureError:
-            raise HTTPException(status_code=401, detail="Token expired")
-        except pyjwt.PyJWTError as exc:
-            raise HTTPException(status_code=401, detail=f"Invalid token: {exc}")
+        payload = _decode_studio_jwt(authorization)
 
         # Tier 1: JWT app_metadata.roles (populated by Supabase JWT hook if configured)
         app_meta = payload.get("app_metadata", {})
@@ -144,16 +178,30 @@ class ApprovalDecision(BaseModel):
 
 
 class InviteRequest(BaseModel):
-    """POST /api/v1/studio/invite request body."""
+    """
+    POST /api/v1/studio/invite request body.
+
+    target_email is REQUIRED (ADR 0021). It was optional and written but never read, so the
+    token alone authorized the grant — anyone it reached could claim the role, up to and
+    including review_admin. redeem_invite now checks the redeeming JWT's email against it,
+    which only works if minting cannot produce an unbound token.
+    """
 
     role: str = Field(..., pattern="^(developer|certified_contributor|review_admin)$")
-    target_email: Optional[str] = None
+    target_email: str = Field(
+        ..., min_length=3, max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+    )
 
 
 class RedeemRequest(BaseModel):
     """POST /api/v1/studio/invite/redeem request body. Token in body, never query string (Pitfall 2)."""
 
     token: str  # UUID string of the invite token
+
+
+def normalize_email(value: Optional[str]) -> str:
+    """Casefold + strip for comparison. Returns "" for None so callers fail closed on absence."""
+    return value.strip().casefold() if isinstance(value, str) else ""
 
 
 # =============================================================================
