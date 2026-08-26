@@ -129,8 +129,6 @@ MIN_SCANNED = 50
 # was not the one the service was written against.
 # ---------------------------------------------------------------------------
 SOLE_DEFINITION_DEBT: dict[str, str] = {
-    "integration_oauth_connections": "supabase/migrations_archive/20260730120000_integration_oauth_connections.sql",
-    "integration_oauth_states": "supabase/migrations_archive/20260730120000_integration_oauth_connections.sql",
     "notification_logs": "supabase/migrations_archive/20260208024921_baseline_schema.sql",
     "pos_webhook_logs": "supabase/migrations_archive/20260208024921_baseline_schema.sql",
     "provider_important_dates": "supabase/migrations_archive/20260208024921_baseline_schema.sql",

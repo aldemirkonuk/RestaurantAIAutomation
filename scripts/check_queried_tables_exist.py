@@ -216,19 +216,6 @@ KNOWN_MISSING: dict[str, str] = {
         "services/database/migrations_archive/008_providers_and_reports.sql. "
         "providers.service.ts:589 inserts a rating that is discarded."
     ),
-    # ---- B: in production, in no live migration. A rebuild loses these ----
-    "integration_oauth_connections": (
-        "[B prod:yes] supabase/migrations_archive/20260730120000_integration_oauth_connections.sql. "
-        "Present in production on 2026-08-26 but defined by no migration in "
-        "supabase/migrations/ -- applied by some route the repo does not record, exactly "
-        "like restaurant_inbound_addresses. The fix is on branch "
-        "fix/integration-oauth-tables (20260826170000_integration_oauth_tables.sql), not "
-        "yet on main; when it merges, the ratchet fails and this line is deleted."
-    ),
-    "integration_oauth_states": (
-        "[B prod:yes] supabase/migrations_archive/20260730120000_integration_oauth_connections.sql. "
-        "Same as above, same fix branch."
-    ),
     # ---- C: defined nowhere in this repository ----
     "inventory_stock": (
         "[C prod:no] Defined in no migration anywhere in this repo. "
@@ -286,7 +273,17 @@ KNOWN_MISSING_FUNCTIONS: dict[str, str] = {
 # is a per-hierarchy guess that would report a wrong table name confidently.
 # Measuring the hole and leaving it open beats plastering it with something that
 # can be wrong in silence.
-DYNAMIC_CEILING = 24
+# 2026-08-26, raised 24 -> 25 for ONE site, named rather than absorbed:
+#   apps/api-gateway/src/communications/recipient-resolver.service.ts:402
+#     const table = RecipientResolverService.PUSH_SUBSCRIPTION_TABLE;
+#     ... .from(table)
+# The name is a static class constant, not a runtime value -- it was hoisted
+# into a local so PushSubscriptionSourceError can name the table it failed on
+# (#94). The relation itself is still covered: `push_subscriptions` is on the
+# debt list from the Python call site, so this changes no verdict either.
+# Resolving `const x = Class.CONST` is a real gap in the extractor rather than
+# an unknowable, and is the cheapest next thing to close if the count creeps.
+DYNAMIC_CEILING = 25
 
 
 # ---------------------------------------------------------------------------
