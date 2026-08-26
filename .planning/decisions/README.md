@@ -51,6 +51,7 @@
 | [0021](0021-studio-invites-are-self-service.md) | **Studio invites are redeemed by the invitee, bound to the invited address** — the role gate made redemption impossible for everyone it was for; `target_email` was written and never read, so removing the gate alone would have opened a privilege-escalation path; and nothing served `/api/v1/studio/*` in either environment | 2026-08-26 |
 | [0022](0022-scheduled-jobs-serve-opted-in-tenants.md) | Scheduled jobs iterate opted-in tenants and never borrow another tenant's recipients | 2026-08-26 |
 | [0023](0023-email-verification-is-enforced.md) | Email verification is enforced, and enforced on the server | 2026-08-26 |
+| [0026](0026-schema-has-one-home.md) | **Schema has one home, and CI compares it against the code** — five instances in a day of a migration archived, never applied, and queried anyway. `Fresh database equals remote` was green *because* both sides were wrong the same way, and `baseline_from_production` made that blindness total. Two guards add the third corner (what the code queries); 14 relations + 5 rpc functions + 8 sole-definitions recorded as shrink-only debt; blind spot measured at 24/1377 sites. **0025 left as a gap** — three id collisions happened this day | 2026-08-26 |
 
 ## Locked — recorded elsewhere (pre-log)
 
