@@ -163,6 +163,59 @@ jobs:
           echo "::notice::A register that lists fixed things is one people stop reading, which is how a critical SSRF sat unread."
           echo "::notice::Exit 2 means the guard could not check what it claims to. That is a failure, not a skip."
 
+  # Does the schema the code queries actually exist, and does it live where it
+  # will be applied?
+  #
+  # Added 2026-08-26 after five instances of one defect in a single day. In each,
+  # a migration that CREATEs a table lives outside supabase/migrations/ -- in
+  # supabase/migrations_archive/ or services/database/migrations_archive/, which
+  # `supabase db push` has never read -- so it was never applied, production
+  # silently lacks the table, and the code queries it anyway. PostgREST answers
+  # PGRST205, the caller falls back to a default or swallows the error, and
+  # nothing goes red. scheduled_reports has failed 100% of its inserts since the
+  # baseline; push_subscriptions resolves zero recipients behind `catch { return
+  # [] }`; enable_ai_negotiation could not be turned OFF because the failed read
+  # defaulted to "enabled".
+  #
+  # schema-parity.yml cannot see any of this. It compares a database against a
+  # database, and for all five tables BOTH sides are equally wrong -- local does
+  # not create the table because the migration is archived, production does not
+  # have it because it was never applied. The diff is empty and the job is green
+  # BECAUSE the two agree. It also has no notion of application code at all.
+  # 20260805000000_baseline_from_production.sql made that blindness total: it
+  # captured production as it stood, so anything unapplied by then vanished from
+  # the repo's own idea of the schema.
+  #
+  # These two guards add the corner nothing was comparing -- what the CODE
+  # queries -- and the rule that schema has one home. Both block, like
+  # loop-contract and model-call-ledger, and both exit 2 rather than green when
+  # they cannot check what they claim to. Stdlib Python, no install step,
+  # seconds to run, and no secret: the hermetic arm compares code against
+  # supabase/migrations/. The arm that needs the database lives in
+  # schema-parity.yml, where the connection secret already is.
+  schema-code-parity:
+    name: Code queries only schema that exists
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Every relation the code queries is declared by supabase/migrations
+        run: ./scripts/check_queried_tables_exist.py
+
+      - name: Schema lives in exactly one place
+        run: ./scripts/check_migrations_single_home.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::The code queries a relation supabase/migrations does not define, or a migration was written somewhere it will never be applied."
+          echo "::notice::If an archive directory already defines it, THAT is the defect: move the CREATE into supabase/migrations/ under a version past everything on main, and push it."
+          echo "::notice::Do not copy the archived file blindly. restaurant_feature_flags had two definitions, 7 columns and 22, and the applied one was not the one the service was written against."
+          echo "::notice::Do NOT add the relation to KNOWN_MISSING or SOLE_DEFINITION_DEBT. Both lists are shrink-only; they record what was already broken when the guards landed."
+          echo "::notice::'is on the debt list but supabase/migrations now declares it' means someone FIXED it — delete that line. That is the handshake, not a collision."
+          echo "::notice::Exit 2 means the guard could not check what it claims to (a root moved, or the SQL/call-site patterns rotted). That is a failure, not a skip."
+
   # Does the gateway's dependency graph actually resolve?
   #
   # Added 2026-08-24 after the api-gateway crash-looped in production on the P1
@@ -449,6 +502,7 @@ jobs:
         build,
         decision-claims,
         gateway-boot,
+        schema-code-parity,
         test-typescript,
         test-e2e,
         test-python,

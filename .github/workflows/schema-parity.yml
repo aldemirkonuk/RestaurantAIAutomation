@@ -52,6 +52,15 @@ jobs:
         uses: supabase/setup-cli@v1
         with:
           version: latest
+        env:
+          # 2026-08-26: this step failed on a GitHub API rate limit. The action
+          # resolves and downloads a release through the API, and an
+          # unauthenticated runner gets 60 requests an hour shared across every
+          # job on the host. GITHUB_TOKEN raises that to 1000. One line, no new
+          # secret — the token is issued to the workflow automatically.
+          # NOT VERIFIED against a live rate limit; it removes the known cause
+          # rather than being proven to fix the observed failure.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Start local stack
         run: supabase start
@@ -79,6 +88,56 @@ jobs:
           echo "::notice::as a migration, then: supabase migration repair --status applied <version>"
           echo "::notice::Columns/functions only in LOCAL are unpushed — run: supabase db push"
           echo "::notice::Background: .planning/SCHEMA_DRIFT_INVENTORY.txt"
+
+  # The arm of the schema-code guard that needs a database.
+  #
+  # ci.yml's `schema-code-parity` job runs the hermetic half on every pull
+  # request: does supabase/migrations/ DECLARE everything the code queries. That
+  # needs no secret and so runs on forks too. It cannot answer the other
+  # question -- was production ever GIVEN those migrations -- and that is the
+  # question the five 2026-08-26 instances actually failed. This job asks it,
+  # here rather than in ci.yml because this is the workflow that already holds
+  # the connection string and the fork guard, and because a daily run is what
+  # catches drift introduced outside a pull request.
+  #
+  # It also reports the disagreement that IS the defect class: a relation the
+  # code queries that production HAS and no live migration declares. Those work
+  # today and vanish from any database rebuilt from this repository.
+  # integration_oauth_connections and _states are exactly that on 2026-08-26.
+  #
+  # Read-only. The guard opens the session with set_session(readonly=True) and
+  # never prints the DSN.
+  queried-tables-exist-in-production:
+    name: Code queries only relations production has
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install psycopg2
+        run: pip install psycopg2-binary
+
+      - name: Compare the code's relations against production
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_POOLER_URL || secrets.SUPABASE_POOLER_CONNECTION_STRING || secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
+        run: |
+          ./scripts/check_db_reachable.sh
+          ./scripts/check_queried_tables_exist.py --against-production
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::If the log says 'Network is unreachable', this is CONNECTIVITY, not drift — see scripts/check_db_reachable.sh."
+          echo "::notice::Otherwise the code calls a relation or function production does not have, and every such call is failing at runtime right now."
+          echo "::notice::If supabase/migrations/ DOES define it, the migration was never pushed: supabase db push."
+          echo "::notice::If it does not, see the sibling failure in ci.yml's schema-code-parity job — the CREATE is probably sitting in an archive directory."
 
   # Premortem audit finding (2026-08-18, decision #1): beverage_identity_key
   # (SQL, runs in production) and residual_key (Python, what
