@@ -1,10 +1,18 @@
 # ADR 0025 — Citations must disagree loudly
 
-- **Status:** Proposed — needs the founder's lock (§0.1)
-- **Date:** 2026-08-26
-- **Supersedes:** nothing. **Retires:** see §7 — this ADR names its own retirement.
+- **Status:** **Locked** — all three §8 questions answered by the founder 2026-08-26.
+- **Date:** 2026-08-26 (proposed and locked the same day)
+- **Supersedes:** nothing. **Retires:** 469 archive files — see §7, now executed.
 - **Related:** [0016](0016-ledgers-must-express-unknown.md) (dated-source rule),
   [0020](0020-no-fabricated-answers.md), `CLAUDE.md` §5b (claims must be re-checkable)
+
+**What the founder decided, 2026-08-26:**
+
+| § | Question | Answer | Where it lives now |
+|---|---|---|---|
+| 6 | The pairing rule | **Locked** | `scripts/check_citation_pairing.py`, wired into the `decision-claims` CI job |
+| 5 | Strict mode for unrunnable claims | **Ship now**, not bundled | `scripts/check_decision_claims.sh` |
+| 7 | The 469 archive twins | **Delete** | done; 53 non-identical files kept |
 
 ---
 
@@ -24,7 +32,7 @@ Three defects found by hand on 2026-08-26, then measured across the corpus.
 |---|---|---|
 | 1 | `studio.md` claimed a gateway route did not exist. It was added by the **same commit** that wrote the claim; production returns 401, not 404. | The OD id it cited had been renumbered on rebase. **The citation still resolved** — to a different, closed decision. |
 | 2 | `settings.md` §10/§12/§13 still describe 22 dead toggles and say `enable_ai_autonomous_send` has no UI. OD-86 shipped both. | Every `file:line` in the paragraph resolved. The **prose** was what lied. |
-| 3 | `privacy.md:59` anchors OD-27 at `OPEN-DECISIONS.md:27,74` → OD-05 and OD-81. | The anchor was **never** correct, and nothing ever re-read it. |
+| 3 | `privacy.md:59` anchors OD-27 at `OPEN-DECISIONS.md:27,74` → OD-05 and OD-81. <!-- cite-example: this row quotes a defect; the anchors are wrong on purpose --> | The anchor was **never** correct, and nothing ever re-read it. |
 
 Each failed differently, and no single mechanism catches all three. That is the
 finding — not "add a checker".
@@ -42,9 +50,15 @@ All re-derived in this worktree; commands in
 | …that also name an OD id next to the line | 23 |
 | …where the line and the id **agree** | **0 of 23** |
 | Register length (it is small — locating is not the problem) | 128 lines |
+| **Re-derived at lock time** (`origin/main` = `4c6eb6d2`, five PRs later) | **78** citations, **36** unanchored, **38** id-paired, **0 of 38** agreeing |
 | Locators in `.planning/06-pages/` alone | 1,892 |
 | Citations broken by one 6-line insert into `commands.ts` (`39abb348`) | all of them, still broken at HEAD |
 | `OPEN-DECISIONS.md` — citations in, commits since Aug 1 | 74 in · **57 of 255 commits (22%)** |
+
+The last row is the same measurement taken again at lock time rather than copied
+forward (§5b). The extraction is wider — it pairs a locator with the nearest id
+anywhere on its line, not only one immediately before it, and it scans source
+files too — which is why 23 became 38. **The headline is unchanged: still zero.**
 
 **Read the first three rows together.** Line anchors into the register are
 *100% wrong* — and that is the good news, because it is *measurable*. An id alone
@@ -92,7 +106,24 @@ See §5. It survived attack and costs one line.
 
 ## 5. Adopted — Layer 0: a claim that cannot run is a FAILURE
 
-`scripts/check_decision_claims.sh:149`:
+> **SHIPPED 2026-08-26.** Founder answered §8.2 "ship now", not bundled.
+> `scripts/check_decision_claims.sh` now captures stderr and fails at exit 2 on
+> exit 126/127 or a cannot-run signature, whatever the claim's own exit code
+> says — and rejects any `verify` containing `2>`, because a claim that muzzles
+> itself defeats the classification. **Cost on arrival: 0 of 94 claims**, not
+> the 1 of 68 measured below; the OD-78 instance had already been repointed by
+> `fix/dossier-rot-sweep`, exactly as the note at the end of this section
+> predicted. One claim changed: OD-93 lost the `2>&1` from `>/dev/null 2>&1`.
+>
+> **Four cannot-run states were run against the guard before it was changed,
+> not assumed.** Malformed JSON already exited 2 and was left alone. The other
+> three all passed and turned the whole run green: an `open` claim grepping a
+> missing file (grep exit 2), a `resolved` claim whose leading `!` inverts a
+> missing-file error into exit 0, and an `open` claim whose command does not
+> exist (exit 127). All three now exit 2. The negation case is why exit status
+> alone cannot carry this rule.
+
+`scripts/check_decision_claims.sh:149` as it stood when this was written:
 
 ```bash
 if bash -c "$verify" >/dev/null 2>&1; then holds="yes"; else holds="no"; fi
@@ -133,8 +164,29 @@ built to catch.
 
 ## 6. Adopted — the pairing rule
 
+> **LOCKED and SHIPPED 2026-08-26.** Founder answered §8.1 "lock".
+> `scripts/check_citation_pairing.py`, wired as a second step of the
+> `decision-claims` job in `.github/workflows/ci.yml`. It enforces **both** rules
+> below, not only rule 2: a pair-only check is routed around by dropping the id,
+> which is the same "gate that exempts half the corpus" objection §4 uses to
+> reject symbol anchors. Exit 2 — never 0 — when the register is missing, parses
+> to fewer than 50 rows, or the scan finds fewer than 20 citations.
+>
+> **The checker this ADR called "already written" did not exist in the tree.** It
+> lived only in the transcript of the session that produced the 0-of-23 figure,
+> which is an instance of the failure this ADR is about. It has been rewritten as
+> a file.
+>
+> **74 citations were repointed** to satisfy it. Three are not fixed: two in
+> `06-pages/privacy.md` and one in `06-pages/settings.md`, owned by a concurrent
+> branch. They sit on `PAIRING_DEBT` in the checker, with their correct anchors,
+> and in `.planning/04-specs/HANDOFF-adr-0025.md`. That list is a two-PR handoff
+> and shrinks to nothing; it is **not** a permanent debt ratchet, and unlike
+> `KNOWN_MISSING` a stale entry there is a notice rather than a red build,
+> because the whole point is that another PR is fixing those lines right now.
+
 1. A citation into a decision document carries **both** the id and the line:
-   `OD-88 (OPEN-DECISIONS.md:63)`. Neither alone is admissible.
+   `OD-88 (OPEN-DECISIONS.md:56)`. Neither alone is admissible.
 2. CI parses each pair, reads that line, and **fails if the row's id is not the
    cited id**. Renumber → caught. Row moves → caught. Both → caught.
 3. Source citations stay as they are, with the symbol preferred where one exists
@@ -143,8 +195,10 @@ built to catch.
    catch defect #2 — every anchor in it resolved. A quarter of dossier assertions
    state an *absence*, which no line-checker can verify at all.
 
-The checker is ~15 lines and already written (§3 produced the 0-of-23 figure with
-it). It is hermetic, needs no network, and runs in well under a second.
+~~The checker is ~15 lines and already written (§3 produced the 0-of-23 figure with
+it).~~ — **struck 2026-08-26: it was not written, it was transcript.** The real
+one is `scripts/check_citation_pairing.py`. It is hermetic, stdlib-only, needs no
+network, and runs in well under a second on the whole repository.
 
 **What this does not solve, stated plainly:** it does not make prose true. Defect
 #2 — a dossier describing shipped work as outstanding — passes every mechanism in
@@ -164,28 +218,76 @@ a live file — 6.4 MB of the 6.9 MB archive.** Retire-to-write has been satisfi
 twins retires 469 documents against the 2 added here and costs nothing: every byte
 is still present at the live path, and in git history regardless.
 
-That is a bigger finding than the citation rot it was discovered beside, and it is
-the founder's call whether to act on it — recorded here rather than acted on.
+~~That is a bigger finding than the citation rot it was discovered beside, and it is
+the founder's call whether to act on it — recorded here rather than acted on.~~
+
+> **DONE 2026-08-26.** Founder answered §8.3 "delete".
+>
+> The count was **re-derived, not trusted**: every file under `.planning/archive/`
+> hashed with SHA-256 and matched against a hash of the whole live tree at
+> `origin/main` = `4c6eb6d2`, five PRs after the original measurement. It
+> reproduced exactly — **522 archive files, 469 with a byte-identical twin at a
+> live path today, 53 without; 6.4 MB of 6.9 MB.** The 469 are deleted in their
+> own commit so the deletion can be reverted without touching the guards. The 53
+> are untouched, including `ROADMAP-pre-P2-20260825.md` and
+> `STATE-pre-P2-20260825.md`, which are the only archive files anything else
+> cites (ADR 0018).
+>
+> Nothing is lost: every deleted byte is still at its live path and in history —
+> verified by re-hashing one twin out of `git show HEAD^:<path>` after the delete.
+>
+> Retire-to-write is now paid several hundred times over: 469 retired against the
+> 4 files this decision has added (itself, its evidence note, the checker, the
+> handoff).
 
 ---
 
-## 8. Open questions for the founder
+## 8. Answered — 2026-08-26
 
-1. **Lock or reject** the pairing rule (§6). It makes 23 existing citations fail
-   immediately; they are all genuinely wrong, but someone must fix them.
-2. **Strict mode (§5)** — ship now as a one-line change plus the OD-78 fix, or
-   bundle it with §6?
-3. **The 469 archive twins** — delete, or leave and drop the retire-to-write rule
-   as unenforced? It currently scores ~1.2% (4 deletions against 347 additions in
-   48 hours), which is a rule in name only.
+All three were put to the founder and all three came back the same day.
+
+**1. The pairing rule (§6) — LOCKED.** Re-measured at lock time it was 74
+citations to fix, not 23: the enforced rule covers unanchored locators as well as
+disagreeing pairs, and the wider extraction found more of both. **74 were fixed in
+this branch.** Three were not, and the reason is scheduling, not judgement — a
+concurrent branch owns the six page dossiers, and two branches rewriting the same
+lines produces a conflict rather than a fix. Those three are named in
+`.planning/04-specs/HANDOFF-adr-0025.md` with their correct anchors and carried on
+the checker's `PAIRING_DEBT` so main stays green whichever PR lands first.
+
+**2. Strict mode (§5) — SHIPPED NOW,** unbundled. It cost 0 build failures rather
+than the 1 predicted, because the predicted instance had already been fixed
+elsewhere. The measurement that mattered was not the cost but the *behaviour*:
+three of the four cannot-run states were certifying themselves, including one on a
+security claim.
+
+**3. The 469 archive twins — DELETED.** Re-derived rather than trusted, and the
+figure reproduced exactly at 469 of 522. See §7.
+
+**What was NOT decided here, and stays open.** The escape hatch this guard needs —
+a document that quotes a broken citation in order to explain it, as §2 row 3 of
+this ADR does — is implemented as a `cite-example` marker with a hard ceiling of
+two uses. That ceiling is a judgement made by a session, not a founder call. If
+the corpus ever legitimately needs a third, raising it is a decision someone
+should take deliberately rather than a number that drifts.
 
 ---
 
 ## 9. Consequences
 
 - Every decision citation gets two anchors; writing one costs a few seconds more.
-- One CI job gains a check that fails 23 times on day one.
-- `CLAIMS.jsonl` gains a real contract: an unrunnable claim stops the build.
-- The corpus loses ~469 duplicate files, if §8.3 is answered yes.
+- The `decision-claims` job gained a second step. It failed **74 times** on day
+  one, not 23 — every one of them a real defect, all 74 fixed here.
+- `CLAIMS.jsonl` gained a real contract: an unrunnable claim stops the build, and
+  a claim may no longer suppress its own stderr.
+- The corpus lost 469 duplicate files and 6.4 MB.
+- **A second shrink-only list now exists** (`PAIRING_DEBT`), and it is deliberately
+  softer than `KNOWN_MISSING`: a stale entry is a notice, not a failure. That
+  softness is a real cost, and it is bounded only by someone emptying the list once
+  the concurrent branch merges. If it is still there in a week, it has become the
+  thing it was built to avoid.
 - Dossier **prose** remains unguarded. Nothing here changes that, and pretending
-  otherwise would repeat the mistake this ADR exists to correct.
+  otherwise would repeat the mistake this ADR exists to correct. One live instance
+  was found while fixing anchors and is recorded in the handoff: `security-charter.md`
+  says the 94-endpoint figure is "canonical in" OD-19, and OD-19 now says 40. Every
+  anchor in that sentence resolves. It is defect #2, still unsolved, by design.

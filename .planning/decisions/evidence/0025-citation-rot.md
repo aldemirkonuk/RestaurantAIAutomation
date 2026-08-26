@@ -141,3 +141,89 @@ Recorded because §5b says a number nobody re-checks is the failure mode itself:
   OD-72's `src/lib/supabase.ts` sits inside a `grep -v` filter, not as a file operand,
   and `apps/web/src/lib/supabase.ts` exists. The true figure is **1**. The regex that
   produced the error is the same technique the ADR rejects for enforcement.
+
+---
+
+## 8. Re-derived at lock time — 2026-08-26, `origin/main` = `4c6eb6d2`
+
+Everything above was measured at `5ca9ce70`. Five PRs merged after that, so §5b says
+re-measure rather than carry the numbers forward. All four figures were re-earned in
+a clean worktree.
+
+### 8.1 The pairing figure survived, wider than before
+
+```
+$ ./scripts/check_citation_pairing.py     # before any fix
+== Citation pairing: 78 register citations checked against 98 rows
+== UNANCHORED (36)   — a register locator with no id beside it
+== DISAGREEING (38)  — the id and the line name different rows
+```
+
+23 became 38 because the enforced extraction is wider than the one that produced the
+headline: it pairs a locator with the nearest id **anywhere** on its line (within 120
+characters), not only one immediately preceding it, and it scans source files as well
+as `.planning/`. **Agreeing: still 0.** The direction and the magnitude both held.
+
+The 36 unanchored are not a new finding, they are the other half of §6.1 — a locator
+carrying no id at all. Enforcing only the pairs would leave a check anyone can route
+around by deleting three characters.
+
+### 8.2 Strict mode's cost fell from 1 to 0
+
+```
+94 claims, stripping each claim's own 2>/dev/null before running:
+   COULD NOT RUN: 0 of 94
+```
+
+The one instance the ADR measured (OD-78 grepping `.env.example`) was repointed by
+`fix/dossier-rot-sweep` before this landed — the ADR's own note said it would be.
+
+**The four states, run against the guard before it was changed.** This is the
+measurement that mattered, not the cost:
+
+| Planted claim | Verify exits | Guard said |
+|---|---|---|
+| malformed JSON | — | `FAIL … malformed lines`, **exit 2** |
+| `open`, `grep -q FOO no/such/file.ts` | 2 | `95 checked, 95 holding` · `PASS`, **exit 0** |
+| `resolved`, `! grep -q X no/such/routes.py` | **0** | `96 checked, 96 holding` · `PASS`, **exit 0** |
+| `open`, `definitely_not_a_command --check` | 127 | `PASS`, **exit 0** |
+
+Three of four certified themselves. After the change all three exit 2, and malformed
+still exits 2. Note the third: the negation turns the missing file into success, which
+is why exit status alone cannot carry this rule and stderr has to be read.
+
+### 8.3 Archive twins reproduced exactly
+
+SHA-256 of every file under `.planning/archive/`, matched against a SHA-256 index of
+the entire live tree (repo minus `.git` and `archive/`):
+
+```
+archive files: 522
+byte-identical twins of a live path: 469
+non-identical remainder: 53
+archive bytes: 6.9 MB; twin bytes: 6.4 MB
+```
+
+**469 of 522 — the same number, five PRs later.** One twin verified end to end:
+
+```
+$ shasum -a 256 .planning/archive/v2.0-MILESTONE-AUDIT.md .planning/v2.0-MILESTONE-AUDIT.md
+36f9b714…  .planning/archive/v2.0-MILESTONE-AUDIT.md
+36f9b714…  .planning/v2.0-MILESTONE-AUDIT.md
+$ git show HEAD^:.planning/archive/v2.0-MILESTONE-AUDIT.md | shasum -a 256   # after deleting
+36f9b714…
+```
+
+Nothing was deleted whose bytes are not still at a live path and in history.
+
+### 8.4 Each guard was proven able to fail
+
+A guard nobody has seen go red is a guess. Both were planted against:
+
+```
+pairing  · wrong id      -> DISAGREEING (1), exit 1;  removed -> exit 0
+pairing  · bare locator  -> UNANCHORED (1),  exit 1;  removed -> exit 0
+pairing  · register hidden        -> "is missing; this guard has nothing to check", exit 2
+pairing  · row pattern broken     -> "parsed to only 0 decision rows (floor 50)",   exit 2
+claims   · all four states above, before and after the change
+```
