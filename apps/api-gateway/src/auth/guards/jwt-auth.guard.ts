@@ -6,8 +6,10 @@ import {
 import { AuthGuard } from "@nestjs/passport";
 import { Reflector } from "@nestjs/core";
 import { IS_PUBLIC_KEY } from "../decorators/public.decorator";
+import { ALLOW_UNVERIFIED_KEY } from "../decorators/allow-unverified.decorator";
 import { TokenBlacklistService } from "../services/token-blacklist.service";
 import { assertTenantMatch } from "../../common/tenant/assert-tenant-match";
+import { assertEmailVerified } from "../assert-email-verified";
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard("jwt") {
@@ -56,6 +58,14 @@ export class JwtAuthGuard extends AuthGuard("jwt") {
       // This is the first line at which the answer is knowable. The block that
       // used to sit here computed two UUID regexes and discarded both results.
       assertTenantMatch(request);
+
+      // Email verification runs here for the same reason (OD-79). It used to
+      // exist only in the browser, comparing a field the API never sent.
+      const allowUnverified = this.reflector.getAllAndOverride<boolean>(
+        ALLOW_UNVERIFIED_KEY,
+        [context.getHandler(), context.getClass()],
+      );
+      assertEmailVerified(request, allowUnverified === true);
     }
     return canActivate;
   }
