@@ -178,7 +178,7 @@ jobs:
           echo "::notice::COULD NOT RUN means a claim's verify command never executed — a missing file, a renamed symbol, a typo. Repoint it or strike it; it is not a skip."
           echo "::notice::A claim may not redirect its own stderr. Strict mode reads stderr to tell 'ran and disagreed' from 'never ran', and a muzzled claim certifies itself."
           echo "::notice::DISAGREEING means a citation's OD id and its OPEN-DECISIONS.md line name different rows. The guard prints the line the id is actually on — use that one."
-          echo "::notice::UNANCHORED means a bare OPEN-DECISIONS.md:N with no id beside it. ADR 0025 §6 requires both: write OD-88 (OPEN-DECISIONS.md:56)."
+          echo "::notice::UNANCHORED means a bare OPEN-DECISIONS.md:N with no id beside it. ADR 0025 §6 requires both: write OD-88 (OPEN-DECISIONS.md:55)."
           echo "::notice::Do NOT add a citation to PAIRING_DEBT. That list is a two-PR handoff for six page dossiers owned by a concurrent branch, and it only ever shrinks."
           echo "::notice::Exit 2 means the guard could not check what it claims to. That is a failure, not a skip."
 
