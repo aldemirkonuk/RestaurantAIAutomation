@@ -45,6 +45,38 @@ jobs:
           echo "::notice::The permitted values are read from §5.1's own table — fix the block, or amend the table if the contract itself is wrong."
           echo "::notice::If the index is merely stale: run 'python3 scripts/build_loop_index.py' and commit the result."
 
+  # CLAUDE.md §4's retire-to-write rule was satisfied by copying: closing a
+  # milestone wrote every finished phase into .planning/archive/vN.0-phases/ and
+  # left the original in .planning/phases/. On 2026-08-26 that had made 469 of
+  # 522 archive files byte-identical twins of a live file — 89.8% of the archive,
+  # 6.4 MB of 6.9 MB. Nothing had been retired; the corpus had doubled, and a
+  # reader had two candidate sources with no rule saying which was current.
+  #
+  # Three pairs had already drifted, the live side carrying edits the archive
+  # never got. So the failure mode is not merely bloat: it is two versions of one
+  # document, diverging quietly, with the cleanup that "obviously" deletes the
+  # duplicates destroying the newer one. ADR 0026 records the sweep; this job is
+  # what keeps it swept, because the next milestone close re-creates the whole
+  # problem in a single command and nobody re-measures a corpus that looks tidy.
+  #
+  # Like loop-contract, this blocks. Stdlib only, no install step, seconds to run.
+  planning-single-home:
+    name: Planning documents have one home
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Guard against a planning document living in two places
+        run: python3 scripts/check_planning_single_home.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::A closed-milestone document is in both .planning/{phases,quick}/ and .planning/archive/vN.0-*/."
+          echo "::notice::The archive copy is canonical. Delete the live one — unless the guard says DRIFTED, in which case the live copy is newer: promote its content into the archive first, then delete it."
+          echo "::notice::Exit 2 means the guard could not check what it claims to (archive missing, emptied, or relaid out). That is a failure, not a skip: see the NEVER VACUOUS section in scripts/check_planning_single_home.py."
+
   # OD-44. The UCC contract-formation guardrail exists in two runtimes that ship as
   # separate containers. They were two hand-written lists under a comment claiming
   # they were "ported verbatim" — TypeScript carried 19 patterns, Python carried 8,

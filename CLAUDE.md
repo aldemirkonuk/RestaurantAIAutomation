@@ -128,6 +128,12 @@ restructured** — that work is proposed but undecided (see
   one to retire, merge, or supersede. The initial 693-doc org generation is exempt;
   everything after it is not. Rationale: the corpus had eleven documents naming *split*
   triggers and three naming *merge* triggers — structures only ratcheted upward.
+- **One home per document (ADR 0028).** Retiring means *moving*, never copying.
+  `.planning/archive/vN.0-{phases,quick}/` is canonical for closed milestones;
+  `.planning/{phases,quick}/` holds the current milestone only. Copying instead of
+  moving is how retire-to-write got satisfied 469 times without retiring anything,
+  and eleven of those pairs had already drifted apart. CI blocks on it —
+  `scripts/check_planning_single_home.py`.
 
 ---
 
