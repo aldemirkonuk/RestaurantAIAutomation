@@ -54,6 +54,12 @@ interface ReportSchedulerProps {
   onGenerateNow?: (reportType: string, format: string) => void
   /** Saved schedules from GET /reports/schedules (NEW-359). */
   schedules?: ScheduledReportSummary[]
+  /**
+   * Why the list above is empty, when it is empty because the read FAILED
+   * rather than because there is nothing (ADR 0020). An empty array and a
+   * broken endpoint must not draw the same.
+   */
+  schedulesError?: string | null
   onDeleteSchedule?: (id: string) => void
 }
 
@@ -134,7 +140,7 @@ const iconMap: Record<string, React.ElementType> = {
   Truck,
 }
 
-export function ReportScheduler({ onSchedule, onGenerateNow, schedules = [], onDeleteSchedule }: ReportSchedulerProps) {
+export function ReportScheduler({ onSchedule, onGenerateNow, schedules = [], schedulesError = null, onDeleteSchedule }: ReportSchedulerProps) {
   // Auto-detect timezone
   const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
   const matchedTimezone = TIMEZONES.find(tz => tz.value === detectedTimezone)?.value || 'America/New_York'
@@ -536,8 +542,28 @@ export function ReportScheduler({ onSchedule, onGenerateNow, schedules = [], onD
             Save Preferences
           </Button>
 
+          {/*
+            ADR 0020: a failed read must not draw as "you have none". This block
+            is shown INSTEAD of the list, and says the list is unknown rather
+            than empty.
+
+            Not hypothetical: `public.scheduled_reports` does not exist in the
+            production database (verified 2026-08-26 — it lives only in
+            `supabase/migrations_archive/20260208024921_baseline_schema.sql:408`,
+            which was never applied), so `GET /reports/schedules` fails every
+            time and this is the only branch a real user reaches.
+          */}
+          {schedulesError && (
+            <div className="mt-5 pt-4 border-t border-gray-100">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-amber-600 mb-1">
+                Saved schedules — could not be read
+              </p>
+              <p className="text-xs text-slate-600">{schedulesError}</p>
+            </div>
+          )}
+
           {/* Saved schedules from the server (NEW-359) */}
-          {schedules.length > 0 && (
+          {!schedulesError && schedules.length > 0 && (
             <div className="mt-5 pt-4 border-t border-gray-100">
               {/*
                 ADR 0020: called "Active" until OD-81. Nothing reads
