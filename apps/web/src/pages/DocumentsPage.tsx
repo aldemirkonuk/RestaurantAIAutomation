@@ -26,6 +26,7 @@ import {
   Send,
   LayoutGrid,
   Home,
+  Info,
 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { useCalendarEventsSubscription, useReportSubscription, ReportEventPayload } from '../contexts/RealtimeContext'
@@ -114,6 +115,32 @@ function mapGeneratedReportToUi(r: GeneratedReport): Report {
     fileUrl: r.pdfUrl ?? r.excelUrl ?? r.csvUrl ?? undefined,
     description: r.summary ?? undefined,
   }
+}
+
+/**
+ * OD-81 / ADR 0020 — a control that can only ever fail must not look live.
+ *
+ * Every row on this page comes from `generated_reports`, and the only writer of
+ * that table is `POST /reports/generate`
+ * (`apps/api-gateway/src/reports/reports.service.ts:42-71`), which inserts
+ * `status: "pending"` and leaves `pdf_url` / `excel_url` / `csv_url` NULL.
+ * Nothing in the repo — gateway, agent-orchestrator, self-evolution, a Supabase
+ * edge function or any scheduled job — ever renders a file or advances that
+ * status, so `fileUrl` is structurally always undefined and View / Download /
+ * Print could only ever pop `alert("No file available")`.
+ *
+ * Those alerts are gone. The buttons are disabled and say why. The condition is
+ * still computed per row rather than hard-coded to `false`, so the day a real
+ * generator lands and starts filling `pdf_url`, the controls come back on their
+ * own with no change here.
+ */
+export const NO_REPORT_FILE_REASON =
+  'Report file generation is not built yet — this entry has no file to open.'
+
+export function reportFileUnavailableReason(
+  report: Pick<Report, 'fileUrl'>,
+): string | null {
+  return report.fileUrl ? null : NO_REPORT_FILE_REASON
 }
 
 const reportTypeConfig = {
@@ -315,11 +342,10 @@ export function DocumentsPage() {
   }
 
   const handleDownload = (report: Report) => {
-    if (report.fileUrl) {
-      window.open(report.fileUrl, '_blank')
-    } else {
-      alert(`No file available for ${report.title}`)
-    }
+    // Guarded rather than alerting: the button that reaches this is disabled
+    // when there is no file, so this is a backstop, not a user-facing path.
+    if (!report.fileUrl) return
+    window.open(report.fileUrl, '_blank')
   }
 
   const handleDelete = (reportId: string) => {
@@ -330,8 +356,8 @@ export function DocumentsPage() {
 
   /** NEW-449: open a real preview instead of a placeholder. */
   const handleView = (report: Report) => {
-    if (report.fileUrl) setPreviewReport(report)
-    else alert(`No file available to preview for ${report.title}`)
+    if (!report.fileUrl) return
+    setPreviewReport(report)
   }
 
   /** NEW-450: compose an email with the document linked. */
@@ -354,10 +380,7 @@ export function DocumentsPage() {
    * than silently failing on a blocked iframe.
    */
   const handlePrint = (report: Report) => {
-    if (!report.fileUrl) {
-      alert(`No file available to print for ${report.title}`)
-      return
-    }
+    if (!report.fileUrl) return
     const w = window.open(report.fileUrl, '_blank')
     if (w) {
       w.addEventListener('load', () => { try { w.print() } catch { /* cross-origin: user prints manually */ } })
@@ -505,6 +528,23 @@ export function DocumentsPage() {
         {/* Reports Tab */}
         {activeTab === 'reports' && (
           <>
+        {/*
+          OD-81 / ADR 0020. Stated once, up front, rather than letting the user
+          find out by clicking. Shown only while entries genuinely have no file,
+          so it disappears by itself once a generator starts filling `pdf_url`.
+        */}
+        {apiReports.some((r) => !r.fileUrl) && (
+          <div className="mb-6 flex items-start gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+            <Info className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-gray-600 leading-relaxed">
+              Report file generation is not built yet — nothing in the platform
+              produces a PDF, spreadsheet or download. The entries below are the
+              requests on record; View, Download and Print stay disabled until
+              there is a real file behind them.
+            </p>
+          </div>
+        )}
+
         {/* Toolbar */}
         <div className="mb-6 space-y-4">
           {/* Breadcrumb for Folder View */}
@@ -862,15 +902,26 @@ export function DocumentsPage() {
                     <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
                       <button
                         onClick={(e) => { e.stopPropagation(); handleView(report) }}
-                        className="flex-1 px-3 py-2 bg-wine-600 text-white rounded-lg hover:bg-wine-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
+                        disabled={!report.fileUrl}
+                        title={reportFileUnavailableReason(report) ?? 'View'}
+                        className={
+                          report.fileUrl
+                            ? 'flex-1 px-3 py-2 bg-wine-600 text-white rounded-lg hover:bg-wine-700 transition-colors flex items-center justify-center gap-2 text-sm font-medium'
+                            : 'flex-1 px-3 py-2 bg-gray-100 text-gray-400 rounded-lg cursor-not-allowed flex items-center justify-center gap-2 text-sm font-medium'
+                        }
                       >
                         <Eye className="w-4 h-4" />
                         View
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); handleDownload(report) }}
-                        title="Download"
-                        className="p-2 text-gray-400 hover:text-wine-600 hover:bg-wine-50 rounded-lg transition-colors"
+                        disabled={!report.fileUrl}
+                        title={reportFileUnavailableReason(report) ?? 'Download'}
+                        className={
+                          report.fileUrl
+                            ? 'p-2 text-gray-400 hover:text-wine-600 hover:bg-wine-50 rounded-lg transition-colors'
+                            : 'p-2 text-gray-300 cursor-not-allowed rounded-lg'
+                        }
                       >
                         <Download className="w-4 h-4" />
                       </button>
@@ -883,8 +934,13 @@ export function DocumentsPage() {
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); handlePrint(report) }}
-                        title="Print"
-                        className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        disabled={!report.fileUrl}
+                        title={reportFileUnavailableReason(report) ?? 'Print'}
+                        className={
+                          report.fileUrl
+                            ? 'p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors'
+                            : 'p-2 text-gray-300 cursor-not-allowed rounded-lg'
+                        }
                       >
                         <Printer className="w-4 h-4" />
                       </button>
@@ -949,24 +1005,34 @@ export function DocumentsPage() {
         {docMenu && (() => {
           const report = sortedReports.find(r => r.id === docMenu.id)
           if (!report) return null
-          const Item = ({ label, danger, onClick }: { label: string; danger?: boolean; onClick: () => void }) => (
+          const Item = ({ label, danger, disabled, title, onClick }: { label: string; danger?: boolean; disabled?: boolean; title?: string; onClick: () => void }) => (
             <button
               onClick={onClick}
-              className={`w-full text-left px-3 py-1.5 text-sm rounded-lg hover:bg-gray-50 ${danger ? 'text-rose-600' : 'text-gray-700'}`}
+              disabled={disabled}
+              title={title}
+              className={`w-full text-left px-3 py-1.5 text-sm rounded-lg ${
+                disabled
+                  ? 'text-gray-300 cursor-not-allowed'
+                  : `hover:bg-gray-50 ${danger ? 'text-rose-600' : 'text-gray-700'}`
+              }`}
             >
               {label}
             </button>
           )
+          // ADR 0020: the file-backed entries of this menu go grey with a reason
+          // instead of firing an action that cannot succeed. Email and Copy link
+          // stay live — both degrade honestly without a file.
+          const noFile = reportFileUnavailableReason(report)
           return (
             <div
               className="fixed z-[80] w-48 bg-white border border-gray-200 rounded-xl shadow-xl p-1"
               style={{ top: Math.min(docMenu.y, window.innerHeight - 250), left: Math.min(docMenu.x, window.innerWidth - 210) }}
               onClick={(e) => e.stopPropagation()}
             >
-              <Item label="View" onClick={() => { handleView(report); setDocMenu(null) }} />
-              <Item label="Download" onClick={() => { handleDownload(report); setDocMenu(null) }} />
+              <Item label="View" disabled={!!noFile} title={noFile ?? undefined} onClick={() => { handleView(report); setDocMenu(null) }} />
+              <Item label="Download" disabled={!!noFile} title={noFile ?? undefined} onClick={() => { handleDownload(report); setDocMenu(null) }} />
               <Item label="Email" onClick={() => { handleEmail(report); setDocMenu(null) }} />
-              <Item label="Print" onClick={() => { handlePrint(report); setDocMenu(null) }} />
+              <Item label="Print" disabled={!!noFile} title={noFile ?? undefined} onClick={() => { handlePrint(report); setDocMenu(null) }} />
               <Item label="Copy link" onClick={() => { handleCopyLink(report); setDocMenu(null) }} />
               <Item label="Delete" danger onClick={() => { setDocMenu(null); handleDelete(report.id) }} />
             </div>

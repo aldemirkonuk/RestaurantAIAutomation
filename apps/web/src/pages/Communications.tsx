@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Header } from '../components/layout/Header'
 import {
@@ -18,11 +17,9 @@ import { SavedSMSTemplates, SavedSMSTemplate } from '../components/documents/Sav
 import { ReportScheduler } from '../components/communications/ReportScheduler'
 import {
   scheduleReport,
-  generateReport,
   listReportSchedules,
   deleteReportSchedule,
   type ReportType,
-  type ReportFormat,
   type ScheduledReport,
 } from '../services/api/reports'
 import {
@@ -250,18 +247,19 @@ const REPORT_TYPE_MAP: Record<string, ReportType> = {
   procurement: 'procurement_history',
   compliance: 'compliance_report',
 }
-/** The backend renders pdf/excel/csv only — sheets/drive have no server format. */
-const REPORT_FORMAT_MAP: Record<string, ReportFormat> = {
-  pdf: 'pdf', excel: 'excel', csv: 'csv', sheets: 'csv', drive: 'pdf',
-}
+/*
+ * `REPORT_FORMAT_MAP` was removed with `handleGenerateReportNow` (see below). Its
+ * comment claimed "the backend renders pdf/excel/csv" — the backend renders
+ * nothing; it stores a format string on a row no renderer ever reads.
+ */
 
 export function Communications() {
-  // SPA navigation for the in-toast "Open" action: a full reload there tore down
-  // the session and is the same class of bug as the /wines reorder flow.
-  const navigate = useNavigate()
+  // `useNavigate` went with the deleted "Open" toast action — it existed only to
+  // send the user to a Documents entry that had no file.
   const [selectedTab, setSelectedTab] = useState<'templates' | 'history' | 'scheduled-reports' | 'procurement-history'>('templates')
-  // NEW-359/360: the scheduler was wired to console.log even though the
-  // /reports/schedule + /reports/generate endpoints already existed.
+  // NEW-359: the scheduler was wired to console.log even though the
+  // /reports/schedule endpoint already existed. Schedules are saved and listed;
+  // they are never executed (nothing reads `next_run_at`).
   const [schedules, setSchedules] = useState<ScheduledReport[]>([])
 
   const refreshSchedules = useCallback(async () => {
@@ -295,34 +293,36 @@ export function Communications() {
           quietHoursEnd: config.quietHoursEnd,
         },
       })
-      toast.success('Report schedule saved')
+      // ADR 0020: the row really is saved, so "saved" is true — but nothing in
+      // the repo reads `scheduled_reports.next_run_at`, so no report will be
+      // produced or delivered on it. The description says so rather than letting
+      // "saved" imply a delivery that will never arrive.
+      toast.success('Report schedule saved', {
+        description:
+          'Recorded only — report generation and delivery are not built yet, so nothing will be sent on this schedule.',
+      })
       await refreshSchedules()
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Could not save the schedule')
     }
   }, [refreshSchedules])
 
-  const handleGenerateReportNow = useCallback(async (reportType: string, format: string) => {
-    try {
-      const end = new Date()
-      const start = new Date(end.getTime() - 30 * 86_400_000)
-      const report = await generateReport({
-        reportType: REPORT_TYPE_MAP[reportType] ?? 'inventory_summary',
-        title: `${reportType} report — ${end.toLocaleDateString()}`,
-        periodStart: start.toISOString().slice(0, 10),
-        periodEnd: end.toISOString().slice(0, 10),
-        format: REPORT_FORMAT_MAP[format] ?? 'pdf',
-      })
-      // NEW-360/466: generated reports land in Documents.
-      toast.success('Report generated', {
-        description: 'Filed in Documents & Reports.',
-        action: { label: 'Open', onClick: () => navigate('/documents-reports') },
-      })
-      return report
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Could not generate the report')
-    }
-  }, [])
+  /*
+   * OD-81 / ADR 0020 — `handleGenerateReportNow` was DELETED, not relabelled.
+   *
+   * It called `POST /reports/generate`, which inserts a `generated_reports` row
+   * with `status: "pending"` and NULL `pdf_url` / `excel_url` / `csv_url`
+   * (`apps/api-gateway/src/reports/reports.service.ts:42-71` — the only writer of
+   * that table in the repo). Nothing anywhere renders a file or advances that
+   * status. The handler then raised `toast.success('Report generated', {
+   * description: 'Filed in Documents & Reports.' })` with an Open action that
+   * took the user to a Documents page where the new row had no file at all.
+   *
+   * Two untrue statements — that a report was generated, and that it was filed —
+   * plus a button that manufactured unopenable rows. `Generate Now` is now
+   * disabled in ReportScheduler with the reason on it, so there is nothing left
+   * to call this.
+   */
 
   const handleDeleteSchedule = useCallback(async (id: string) => {
     try {
@@ -514,9 +514,10 @@ export function Communications() {
       {/* ── Scheduled Reports tab ── */}
       {selectedTab === 'scheduled-reports' && (
         <div className="p-6">
+          {/* No `onGenerateNow`: there is nothing to generate. See the ADR 0020
+              note above `handleScheduleReport`. */}
           <ReportScheduler
             onSchedule={handleScheduleReport}
-            onGenerateNow={handleGenerateReportNow}
             schedules={schedules}
             onDeleteSchedule={handleDeleteSchedule}
           />
