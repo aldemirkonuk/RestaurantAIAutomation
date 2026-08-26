@@ -29,13 +29,13 @@
  * THE TRAP THIS FILE IS BUILT AGAINST: `pushSubscriptionIds` never once held a
  * value, so an assertion that it is empty passes against the broken code too.
  * Every test below was therefore checked against a revert of the deletion, and
- * the ones that must fail there are marked `[REVERT-FAILS]`. The unmarked ones
- * are deliberate both-states guards: they are what stops "delete the whole
- * service" from passing this suite.
+ * the ones that must fail there are marked `[REVERT-FAILS]` — all six were
+ * observed failing. The unmarked ones are deliberate both-states guards: they
+ * passed against the revert too, which is what stops "delete the whole
+ * service" from satisfying this suite.
  */
 
 import { RecipientResolverService } from "./recipient-resolver.service";
-import type { NotificationChannel } from "./recipient-resolver.service";
 
 type Row = Record<string, any>;
 
@@ -228,18 +228,39 @@ describe("RecipientResolverService — push is not resolved here", () => {
     expect(Object.keys(result).sort()).toEqual(["emails", "phones"]);
   });
 
-  it("[REVERT-FAILS] `push` is not an assignable channel", () => {
-    // Enforced by `tsc --noEmit`, NOT by jest: ts-jest runs with
-    // `isolatedModules: true`, so it transpiles without type-checking and this
-    // body is a no-op at runtime. If `"push"` is added back to
-    // NotificationChannel the directive becomes an unused-@ts-expect-error and
-    // the gateway stops compiling — which is the strongest available form of
-    // "this surface cannot work, and says so" (ADR 0020).
-    const channels: NotificationChannel[] = [
-      // @ts-expect-error "push" must not be a resolvable channel
-      "push",
-    ];
-    expect(channels).toEqual(["push"]);
+  it("[REVERT-FAILS] `push` is not a member of the NotificationChannel union", () => {
+    // Asserted against the SOURCE TEXT, not the type system, and that is a
+    // deliberate downgrade rather than laziness.
+    //
+    // The obvious version of this test is `const c: NotificationChannel[] =
+    // [/* @ts-expect-error */ "push"]`. It was written that way first, and it
+    // is enforced by NOTHING here: ts-jest runs with `isolatedModules: true`
+    // so jest transpiles without type-checking, and `tsconfig.json:24`
+    // excludes `**/*.spec.ts` so `tsc --noEmit` never sees the file either. It
+    // passed identically against a full revert of this change — a test that
+    // structurally cannot report failure, which is the exact defect this
+    // repo keeps finding.
+    //
+    // (That exclusion is a real gap well beyond this change: no spec file in
+    // the gateway is type-checked by anything. Reported, not fixed here.)
+    //
+    // A string match on the declaration does fail on revert, so that is what
+    // this asserts. It is coarse; it is also machinery that works.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const fs = require("fs");
+    const path = require("path");
+    const source: string = fs.readFileSync(
+      path.resolve(__dirname, "recipient-resolver.service.ts"),
+      "utf8",
+    );
+
+    const declaration = source.match(
+      /export type NotificationChannel = [^;]+;/,
+    );
+    expect(declaration).not.toBeNull();
+    expect(declaration![0]).toBe(
+      'export type NotificationChannel = "email" | "sms";',
+    );
   });
 
   // ---- both-states guards: these must pass before AND after the deletion ----
