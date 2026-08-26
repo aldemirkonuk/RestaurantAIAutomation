@@ -19,11 +19,26 @@ import {
   DollarSign,
   TrendingUp,
   Truck,
+  Info,
 } from 'lucide-react'
 import { Card, Button } from '../ui'
 import { ReportTypeModal } from './ReportTypeModal'
 import { REPORT_TYPES, getDefaultTemplateForReport } from '../../data/reportDefaults'
 import { useRealtimeDispatch } from '../../contexts/RealtimeContext'
+
+/**
+ * OD-81 / ADR 0020 — one sentence, used by both the disabled button's tooltip
+ * and the banner, so the two can never drift apart.
+ *
+ * Verified 2026-08-26 at `origin/main` 443f159d: `POST /reports/generate`
+ * (`apps/api-gateway/src/reports/reports.service.ts:42-71`) is the only writer of
+ * `generated_reports` in the entire repo — gateway, agent-orchestrator,
+ * self-evolution, migrations and edge functions all searched — and it inserts
+ * `status: "pending"` with NULL `pdf_url` / `excel_url` / `csv_url`. Nothing
+ * updates that row. Delete this constant when a generator exists.
+ */
+export const REPORT_GENERATION_UNAVAILABLE =
+  'Report generation is not built yet — nothing produces a PDF, spreadsheet or email.'
 
 interface ScheduledReportSummary {
   id: string
@@ -142,7 +157,6 @@ export function ReportScheduler({ onSchedule, onGenerateNow, schedules = [], onD
     reportType: 'comprehensive',
   })
 
-  const [isGenerating, setIsGenerating] = useState(false)
   const [showReportTypeModal, setShowReportTypeModal] = useState(false)
   const [customMonthlyDay, setCustomMonthlyDay] = useState<number>(1)
   const [showCustomDay, setShowCustomDay] = useState(false)
@@ -211,13 +225,14 @@ export function ReportScheduler({ onSchedule, onGenerateNow, schedules = [], onD
     }
   }
 
+  /**
+   * Kept, and kept unreachable: the button that calls it is disabled while no
+   * generator exists (ADR 0020). `onGenerateNow` is no longer passed by
+   * `Communications.tsx`, so even if the button were re-enabled by mistake this
+   * is a no-op rather than a row nobody can open.
+   */
   const handleGenerateNow = async () => {
-    setIsGenerating(true)
-    try {
-      await onGenerateNow?.(config.reportType, config.format)
-    } finally {
-      setIsGenerating(false)
-    }
+    await onGenerateNow?.(config.reportType, config.format)
   }
 
   const toggleWeeklyDay = (day: number) => {
@@ -249,13 +264,35 @@ export function ReportScheduler({ onSchedule, onGenerateNow, schedules = [], onD
         <div>
           <h3 className="text-lg font-semibold text-slate-900">Report Scheduling</h3>
           <p className="text-sm text-slate-500 mt-1">
-            Configure automatic report generation and delivery
+            Record when reports should run. Generation and delivery are not built
+            yet, so nothing is produced or sent.
           </p>
         </div>
-        <Button onClick={handleGenerateNow} disabled={isGenerating}>
+        {/*
+          OD-81 / ADR 0020. This used to call `POST /reports/generate` and then
+          announce "Report generated — filed in Documents & Reports". That
+          endpoint only inserts a `generated_reports` row with `status:
+          "pending"` and NULL file urls; no renderer exists, so the claim was
+          false and the row was unopenable. Disabled with the reason on it rather
+          than removed — the feature is wanted, it just does not exist yet.
+        */}
+        <Button
+          onClick={handleGenerateNow}
+          disabled
+          title={REPORT_GENERATION_UNAVAILABLE}
+        >
           <Play className="w-4 h-4 mr-2" />
-          {isGenerating ? 'Generating...' : 'Generate Now'}
+          Generate Now
         </Button>
+      </div>
+
+      <div className="flex items-start gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+        <Info className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />
+        <p className="text-sm text-slate-600 leading-relaxed">
+          {REPORT_GENERATION_UNAVAILABLE} A schedule saved here is stored and
+          listed below, but nothing reads it — no report will be generated,
+          emailed or filed on it.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -502,8 +539,14 @@ export function ReportScheduler({ onSchedule, onGenerateNow, schedules = [], onD
           {/* Saved schedules from the server (NEW-359) */}
           {schedules.length > 0 && (
             <div className="mt-5 pt-4 border-t border-gray-100">
+              {/*
+                ADR 0020: called "Active" until OD-81. Nothing reads
+                `scheduled_reports.next_run_at` — `scheduleReport` never even
+                writes it — so no schedule here is active in any sense. "Saved"
+                is what they are.
+              */}
               <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">
-                Active schedules ({schedules.length})
+                Saved schedules ({schedules.length}) · not running
               </p>
               <ul className="space-y-1.5">
                 {schedules.map((sch) => (
