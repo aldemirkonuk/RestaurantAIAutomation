@@ -5,7 +5,7 @@ slug: studio-queue
 component: apps/web/src/pages/studio/StudioApprovalQueue.tsx
 audience: dev
 tier: core
-archetype: list+detail # proposed 2026-08-26 (OD-79)
+archetype: list+detail # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 1
 maturity: broken

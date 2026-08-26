@@ -12,7 +12,7 @@ links: ["[[PAGE-CONTRACT]]", "[[PAGES-MAP]]", "[[OPEN-DECISIONS]]"]
 > liked it at the time … each is very different from one another." Before anything
 > is rebuilt, document what a shared design/sketch/foundation would look like so
 > every page carries the same design understanding. **Do not build anything yet.**
-> The founder will co-design the direction; the fork is registered as **OD-79**.
+> The founder will co-design the direction; the fork is registered as **OD-106**.
 >
 > *Retire-to-write (CLAUDE.md §4): this document supersedes the "Design Direction"
 > header of [`sketches/MANIFEST.md`](../sketches/MANIFEST.md) as the home of
@@ -102,7 +102,7 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
 6. **Motion signature** — adopt/reject the 043–046 specs per moment.
 7. **Density, responsiveness, accessibility baselines.**
 
-## 4. Candidate directions (fork — founder call, OD-79)
+## 4. Candidate directions (fork — founder call, OD-106)
 
 - **A. Command-surface first.** Ratify the 037/038 lineage as the default
   archetype; retrofit list pages toward it. Cheapest coherence — two flagship pages
@@ -124,4 +124,4 @@ Sketch-first (the existing `gsd-sketch` flow): one sketch series per §3 item,
 founder picks winners, each ratified choice lands as a short spec doc in this
 directory and an ADR when it locks. Per-page migration notes then go into each
 page doc; the §1a Features lists are the inventory of what must survive any
-redesign. Until OD-79: **document, never build.**
+redesign. Until OD-106: **document, never build.**

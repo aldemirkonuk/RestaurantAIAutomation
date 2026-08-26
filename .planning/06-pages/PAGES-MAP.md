@@ -28,7 +28,7 @@ omitted. This is the founder-readable layer over the `path:line` evidence in
 §3–§9; keep it current in the same session that changes what a page does
 ([[PAGE-CONTRACT]] §1a).
 
-**Archetype column (proposed 2026-08-26, founder to adjust — OD-79):** the first
+**Archetype column (proposed 2026-08-26, founder to adjust — OD-106):** the first
 co-design step of the design foundation is a shared vocabulary for what *kind* of
 page each route is. Seven product archetypes — `command` (dense operational
 workspace) · `list+detail` (browse + inspect) · `canvas` (block-composed overview)
@@ -37,7 +37,7 @@ reading) — plus structural buckets `focused` (chrome-free task/auth flow),
 `redirect`, and `dev` (fixtures). Tally: list+detail 16 · focused 10 · form 5 · command 4 · redirect 3 · dev 3 · canvas 2 · document 2 · calendar 1 · chat 1. Each note's `archetype:`
 frontmatter is the source of truth; this table is the view. **Documentation only** —
 [[DESIGN-FOUNDATION]] holds the plan and no design work starts until the founder
-reopens OD-79.
+reopens OD-106.
 
 **Instrumented pages: 0 full · 2 partial · 45 none.**
 The founder's tracking mandate lands here: page telemetry rides the NF spine (`subject_type: operator`, ADR 0008), and today it is dark — `uxSignals` ships gated off with zero page importers, and 11 `data-ux-key` markers wait for a reporter.

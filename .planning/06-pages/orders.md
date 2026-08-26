@@ -5,7 +5,7 @@ slug: orders
 component: apps/web/src/pages/Orders.tsx
 audience: owner
 tier: core
-archetype: command # proposed 2026-08-26 (OD-79)
+archetype: command # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 4
 maturity: partial

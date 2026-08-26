@@ -5,7 +5,8 @@
 > [archive/STATE-pre-P2-20260825.md](archive/STATE-pre-P2-20260825.md).
 > If this file and any other doc disagree about what is current, fix the other doc.
 
-**Current milestone: P2 — Web complete + deploy.**
+**Current milestone: P3 — Grade, then scale** ([ADR 0029](decisions/0029-p3-plan-of-record.md)).
+**P2 closed 2026-08-26** — all five stages deployed and verified, both held items resolved.
 **Read order:** [PROJECT.md](PROJECT.md) → [decisions/README.md](decisions/README.md) → this file → [ROADMAP.md](ROADMAP.md).
 
 ## What is live in production (2026-08-25)
@@ -35,7 +36,7 @@
   each with a Surface section (buttons → destination wikilinks) forming the
   Obsidian page graph.
 
-## P2 position
+## P2 position — closed 2026-08-26
 
 | Stage | Status |
 |---|---|
@@ -83,7 +84,30 @@
    `GMAIL_PUBSUB_REQUIRE_AUTH=true`. Until then the gateway logs an error per
    unverified push and counts them.
 
-**Next action:** P3 selection (ROADMAP candidates), or the two held items above.
+## P3 position
+
+| Stage | Gate | Status |
+|---|---|---|
+| **P3.0 Doneability coverage** | *is* the gate | not started |
+| **P3.A Mobile parity** | none — runs alongside | not started |
+| **P3.B Backend-kitchen expansion** (beverages first) | none — runs alongside | not started |
+| **P3.C Ask AI** | behind P3.0 | blocked by design |
+| **P3.D Job → model registry** (OD-04) | behind P3.0 + traffic | blocked by design |
+| **NF-B guests** | — | **held** — blocked on OD-05/OD-07, not on work |
+
+**The one number this milestone exists to fix,** measured 2026-08-26: the gateway
+emits **7** task types and **1** carries a real verdict (`document_extraction` on
+`reconciliation_v1`, `document-extractor.service.ts:169`). The other six stamp
+`outcome_basis: "call_level_v0"` at `model-client.service.ts:387` — *"the HTTP
+request returned 200."* On the Python side OD-75 moved 12 sites to `parse_v1`.
+
+**Next action:** P3.0, starting from `04-specs/OD-59-VERDICT-CENSUS.md` §4 rows
+2–9 (synchronous, Trivial/Low, graders already running and simply not reaching
+the footprint). P3.A and P3.B may start at the same time; P3.C and P3.D may not.
+
+**Page layer:** 47 route notes in `06-pages/`, each carrying Surface + §1a
+Features + the §10–13 dossier + `archetype:` — both the graph and the
+founder-readable layer are CI-claimed (ADR-0018 claims in `CLAIMS.jsonl`).
 
 ## Standing constraints
 
@@ -93,4 +117,4 @@
 - Real data, never mock-only; docs bulletproof before features (ADR 0018).
 
 ---
-*Last updated: 2026-08-25 — P2 complete through deploy; two items held for the founder.*
+*Last updated: 2026-08-26 — P2 closed (both held items resolved); P3 opened under ADR 0029.*

@@ -5,7 +5,7 @@ slug: vendor-public-page
 component: apps/web/src/pages/VendorPortal.tsx
 audience: public
 tier: public
-archetype: list+detail # proposed 2026-08-26 (OD-79)
+archetype: list+detail # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
 maturity: partial

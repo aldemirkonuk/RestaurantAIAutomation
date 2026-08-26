@@ -5,7 +5,7 @@ slug: recommendations
 component: apps/web/src/pages/Recommendations.tsx
 audience: owner
 tier: plus
-archetype: list+detail # proposed 2026-08-26 (OD-79)
+archetype: list+detail # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
 maturity: broken

@@ -5,7 +5,7 @@ slug: verify-email
 component: apps/web/src/pages/VerifyEmail.tsx
 audience: public
 tier: public
-archetype: focused # proposed 2026-08-26 (OD-79)
+archetype: focused # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 3
 maturity: partial

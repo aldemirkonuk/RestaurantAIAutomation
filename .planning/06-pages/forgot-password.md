@@ -5,7 +5,7 @@ slug: forgot-password
 component: apps/web/src/pages/ForgotPassword.tsx
 audience: public
 tier: public
-archetype: focused # proposed 2026-08-26 (OD-79)
+archetype: focused # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 4
 maturity: partial

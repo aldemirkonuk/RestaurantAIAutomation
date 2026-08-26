@@ -5,7 +5,7 @@ slug: help
 component: apps/web/src/pages/Help.tsx
 audience: owner
 tier: core
-archetype: document # proposed 2026-08-26 (OD-79)
+archetype: document # proposed 2026-08-26 (OD-106)
 signals_today: partial
 rebrand_strings: 4
 maturity: partial

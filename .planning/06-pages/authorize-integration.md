@@ -5,7 +5,7 @@ slug: authorize-integration
 component: apps/web/src/pages/AuthorizeIntegration.tsx
 audience: owner
 tier: core
-archetype: focused # proposed 2026-08-26 (OD-79)
+archetype: focused # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 3
 maturity: complete
