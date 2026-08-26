@@ -225,9 +225,29 @@ jobs:
       - name: Schema lives in exactly one place
         run: ./scripts/check_migrations_single_home.py
 
+      # OD-72/OD-73 ratchet, added 2026-08-26. Both were closed by one-time
+      # sweeps, and the class came back the NEXT DAY: OD-73's row records
+      # "0 public tables remain RLS-off", verified against the live database,
+      # and roughly two hours later `20260826175836_evidence_gate_v1.sql`
+      # created three more with no RLS, no policy, no GRANT and no REVOKE.
+      #
+      # The session that remembered was overwritten by the one after it, inside
+      # an hour. That is what a sweep without a ratchet buys. This step is the
+      # ratchet: every public table a migration creates must reach RLS-enabled
+      # and anon/authenticated-revoked somewhere in the migration set.
+      #
+      # `if: !cancelled()` so it reports even when a step above already failed —
+      # a guard hidden behind another guard is not a guard.
+      - name: Every public table a migration creates is locked down
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_new_tables_are_locked_down.py
+
       - name: Explain a failure
         if: failure()
         run: |
+          echo "::notice::RLS NEVER ENABLED means a migration creates a public table that no migration ever puts RLS on. Add it in the CREATING migration -- unless that migration has already shipped to production, in which case a follow-up is the only fix that reaches both production and a fresh build."
+          echo "::notice::anon/authenticated STILL GRANTED means a table is client-reachable over PostgREST. The OD-72 default-privileges ratchet covers tables created after 20260825210000; an explicit GRANT after that undoes it."
+          echo "::notice::Do NOT add a table to DEBT to make this pass. That list is shrink-only and MAX_DEBT only ever goes down."
           echo "::notice::The code queries a relation supabase/migrations does not define, or a migration was written somewhere it will never be applied."
           echo "::notice::If an archive directory already defines it, THAT is the defect: move the CREATE into supabase/migrations/ under a version past everything on main, and push it."
           echo "::notice::Do not copy the archived file blindly. restaurant_feature_flags had two definitions, 7 columns and 22, and the applied one was not the one the service was written against."
