@@ -71,7 +71,15 @@ template carries the vars — it is the tripwire for this entry.
 
 ---
 
-## OD-79 — Email verification is decorative
+## OD-79 — Email verification is decorative — ✅ CLOSED 2026-08-26
+
+**Resolved: enforced.** Founder chose enforce over deleting the pretence, on
+measurement — 10 accounts, 4 unverified, all seed or personal, zero customers.
+See [[0022-email-verification-is-enforced]]. One correction to the diagnosis
+below: the strategy is at `auth/strategies/jwt.strategy.ts`, and the field was
+never missing — `generateTokens` signed it into every token all along, and it
+was discarded twice on the way out. The section is kept as written for the
+record.
 
 **Not a console task. Straight code work, and it is a real hole.**
 

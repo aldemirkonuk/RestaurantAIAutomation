@@ -7,7 +7,7 @@ audience: public
 tier: public
 signals_today: none
 rebrand_strings: 3
-maturity: hollow
+maturity: partial
 status: documented
 updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[register]]", "[[get-started]]", "[[login]]", "[[dashboard]]"]
@@ -70,13 +70,15 @@ Public; gate between registration and every Core scenario (OD-48).
 
 The write is genuine: `POST /auth/verify-email` stamps `email_verifications.verified_at`, flips `users.email_verified`, and re-mints tokens (`auth.service.ts:1257-1287`), with distinct rejections for unknown / already-used / expired tokens (`:1264-1271`).
 
-**The gate is dead, on both sides.**
+**The gate is live on both sides as of 2026-08-26** — see [[0022-email-verification-is-enforced]] and OD-79. What follows is the diagnosis that produced the fix, kept because the failure shape recurs.
 
-*Client.* The only enforcement in the SPA is `ProtectedRoute.tsx:42` — `if (user?.emailVerified === false)`. Nothing ever sets that field. `GET /auth/me` does not return it: `getProfileForUser` selects and returns exactly `userId, email, name, phone, role, restaurantId, hasPassword, linkedProviders` (`auth.service.ts:1409-1430`), and the controller adds only `restaurantId` (`auth.controller.ts:166-176`). A repo-wide grep for `emailVerified` in `apps/web/src` returns three hits and no writer: the optional type field (`AuthContext.tsx:49`), this read (`ProtectedRoute.tsx:42`), and a comment (`VerifyEmail.tsx:43`). So `user.emailVerified` is always `undefined`, `undefined === false` is `false`, and the redirect never fires.
+*Client, before.* The only enforcement in the SPA was `ProtectedRoute.tsx:42` — `if (user?.emailVerified === false)`. Nothing ever set that field. `GET /auth/me` did not return it: `getProfileForUser` selected and returned exactly `userId, email, name, phone, role, restaurantId, hasPassword, linkedProviders`, and the controller added only `restaurantId`. `AuthContext` populates `user` from `/auth/me` and nowhere else — seven call sites, none of which decode the JWT. So `user.emailVerified` was always `undefined`, `undefined === false` is `false`, and the redirect never fired.
 
-*Server.* Nothing checks it either. `JwtStrategy#validate` returns `{userId, email, name, role, restaurantId}` (`jwt.strategy.ts:33-39`) — `emailVerified` is in the signed payload (`auth.service.ts:431`) but is dropped before it reaches `request.user`, and no guard reads it.
+*Server, before.* Nothing checked it either. `JwtStrategy#validate` returned `{userId, email, name, role, restaurantId}` (`auth/strategies/jwt.strategy.ts:33-39`) — `emailVerified` was in the signed payload but was dropped before it reached `request.user`, so no guard could have read it even if one had existed.
 
-Net effect: an unverified Path-B owner holds a fully privileged session. They land here only because `Register.tsx:932` navigates them here; typing `/` goes straight to the dashboard, and calling the API directly was never gated at all. §2's claim that this page "guards the whole dashboard" is **stale** — that is the §9 verdict this dossier revises.
+*Now.* `getProfileForUser` returns `emailVerified` and `JwtStrategy#validate` carries it, both **from the database column rather than the token claim** — a token is a snapshot from issue time, so a user who verifies mid-session would otherwise stay locked out for the remaining 15 minutes. `assertEmailVerified` runs inside `JwtAuthGuard` immediately after passport populates `request.user`, beside `assertTenantMatch` and for the same reason: a global `APP_GUARD` executes before there is a user to inspect and would have been inert. It fails **closed** on a missing field. Six routes carry `@AllowUnverified` so a blocked session can still discover why it is blocked, resend, and leave.
+
+Net effect, before: an unverified Path-B owner held a fully privileged session, and calling the API directly was never gated at all. §2's claim that this page "guards the whole dashboard" was **stale then and is accurate now**.
 
 ## 11. Data flow
 
@@ -124,9 +126,9 @@ A column written by one endpoint and read by nothing is exactly the "data with n
 
 ## 13. Roadmap
 
-1. **Make the gate real, server-side.** Put `emailVerified` on `request.user` in `jwt.strategy.ts:33-39` and enforce it in a guard on write-bearing controllers. Client-only gating cannot work — the API was always open.
-2. **Repair the client gate meanwhile:** return `email_verified` from `getProfileForUser` (`auth.service.ts:1421-1430`) so `ProtectedRoute.tsx:42` stops comparing `undefined` to `false`. One-line server change, immediate effect.
-3. Make the mock-sender fallback fail loudly, or report `{sent:false}` so `VerifyEmail.tsx:85` can tell the truth.
+1. ~~**Make the gate real, server-side.**~~ **DONE 2026-08-26** — `assertEmailVerified` in `JwtAuthGuard`, fails closed, six `@AllowUnverified` routes. [[0022-email-verification-is-enforced]].
+2. ~~**Repair the client gate.**~~ **DONE 2026-08-26** — `getProfileForUser` and `JwtStrategy#validate` both return it, sourced from the DB column.
+3. Make the mock-sender fallback fail loudly, or report `{sent:false}` so `VerifyEmail.tsx:85` can tell the truth. **Now higher stakes than when it was written:** with the gate live, a silently mocked verification email is the difference between a slow signup and a locked-out account. `gmail.service.ts:80-85` returns early when `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` are absent. Production has them, so this is a staging/local hazard today — but it is one deploy setting away from being a production one.
 4. Fail startup when `FRONTEND_URL` is unset instead of falling back to a hard-coded Vercel host (`auth.service.ts:703-706`) — same posture `jwt-secret.ts` now takes for `JWT_SECRET`.
 5. Move to the shared axios client (`:31-38`).
 6. Track verify success/failure/resend (§5 is `none`). *Blocked:* no sink.
