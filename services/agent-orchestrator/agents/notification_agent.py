@@ -1635,9 +1635,16 @@ Please try again or add items to inventory manually.""",
         gateway side: an unreadable push source must not abort a notification
         whose SMS and email legs already succeeded -- but it must not vanish
         either. The failure is logged at ERROR under the greppable marker
-        ``PUSH_SUBSCRIPTIONS_UNREADABLE`` AND appended to ``results``, so
-        ``_log_notification`` persists a failed push leg instead of an absent
-        one and its ``success`` computation turns false.
+        ``PUSH_SUBSCRIPTIONS_UNREADABLE`` AND appended to ``results``, which is
+        what ``_log_notification`` turns into the row's ``success`` flag.
+
+        Caveat, stated rather than assumed: ``notification_logs`` is ALSO
+        missing from production (404 PGRST205, curl, 2026-08-26), so the
+        appended leg does not reach a database today -- ``_log_notification``
+        swallows its own insert failure. The ERROR line is therefore the
+        observable that actually works right now; the ``results`` leg is
+        correct-by-construction for when that second table lands. Both are
+        recorded in ``.planning/04-specs/HANDOFF-push-subscriptions.md``.
         """
         try:
             return await self._get_push_subscriptions(manager_id)
