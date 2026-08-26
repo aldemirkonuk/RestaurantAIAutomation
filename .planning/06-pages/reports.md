@@ -151,7 +151,7 @@ All analytics calls are raw `fetch` against `VITE_API_GATEWAY_URL`
 | POS-dependent depth | Toast/SimPOS ingestion → `pos_checks` (memory: pos-bridge-state — bridge proven, 1.4%→67.4% of insights) | Yes where a POS is connected; 429/573 insight types need `checks` (TIER-MAP:91-93) |
 | Layout | This page's own preference writes | Yes |
 | Command-palette answers | **none — fabricated in the browser** | No |
-| Generated reports | **none** — and the generator here does not even attempt one; the only `generated_reports` writer is `/communications` (see documents-reports.md §10) | No |
+| Generated reports | **none** — and the generator here does not even attempt one. ~~the only `generated_reports` writer is `/communications`~~ → as of 2026-08-26 (OD-81) `/communications` no longer calls it either: the "Generate Now" handler was deleted for claiming success it did not have. `POST /reports/generate` remains the table's only writer in the repo, with **no caller in the product**. Scoping for a real generator: [[OD-81-REPORT-GENERATOR-SCOPING]] | No |
 
 ### Writes
 

@@ -103,20 +103,29 @@ dashboard.md §7.
 This is a document archive in which no document has a file. Every row it lists
 comes from `generated_reports`, and the only writer of that table inserts
 `status:"pending"` with `pdf_url`/`excel_url`/`csv_url` NULL
-(`apps/api-gateway/src/reports/reports.service.ts:42-67`); nothing in the repo ever
-completes a row or attaches a file (grep for the table name returns this service and
-migrations only). `mapGeneratedReportToUi` therefore always produces
-`fileUrl: undefined` (`DocumentsPage.tsx:100-113`), which means **every** action on
-the Reports tab takes its failure branch:
+(`apps/api-gateway/src/reports/reports.service.ts:42-71`); nothing in the repo ever
+completes a row or attaches a file. **Re-verified whole-repo 2026-08-26 (OD-81):**
+no `UPDATE` on `generated_reports` exists anywhere — gateway, `agent-orchestrator`
+(Python reads it once, `health_routes.py:165`), `self-evolution`, both
+`migrations_archive/` folders, and there is no `supabase/functions/` directory.
+Production holds **0 rows**. `mapGeneratedReportToUi` therefore always produces
+`fileUrl: undefined` (`DocumentsPage.tsx:100-113`).
 
-| Button | Line | What actually happens |
-|---|---|---|
-| View | `DocumentsPage.tsx:332-335` | `alert("No file available to preview for …")` |
-| Download | `:317-323` | `alert("No file available for …")` |
-| Print | `:357-366` | `alert("No file available to print for …")` |
-| Email | `:339-352` | `mailto:` body reads "(No file attached yet.)" |
-| Copy link | `:367-369` | Falls back to `…/documents-reports?doc=<id>` — **a link this page never reads.** No `useSearchParams`, no `doc` param handler anywhere in the 1,012-line file (verified by grep) |
-| Delete / batch delete | `:325-329`, `:404-411` | Real — `DELETE /reports/:id`, scoped by `restaurant_id` |
+**The dead controls were fixed 2026-08-26 (OD-81).** The three `alert()` branches
+below are gone; those controls are now disabled and carry the reason, a banner
+states the condition once up front, and the disable is computed per row from
+`reportFileUnavailableReason(report)` rather than hard-coded — so they re-enable
+by themselves the day a generator fills `pdf_url`. The table records what the
+failure branch *was*:
+
+| Button | Line (pre-fix) | What used to happen | Now |
+|---|---|---|---|
+| View | `DocumentsPage.tsx:332-335` | `alert("No file available to preview for …")` | disabled + reason |
+| Download | `:317-323` | `alert("No file available for …")` | disabled + reason |
+| Print | `:357-366` | `alert("No file available to print for …")` | disabled + reason |
+| Email | `:339-352` | `mailto:` body reads "(No file attached yet.)" | unchanged — already honest |
+| Copy link | `:367-369` | Falls back to `…/documents-reports?doc=<id>` — **a link this page never reads.** No `useSearchParams`, no `doc` param handler anywhere in the file (verified by grep) | unchanged — still an open defect, see below |
+| Delete / batch delete | `:325-329`, `:404-411` | Real — `DELETE /reports/:id`, scoped by `restaurant_id` | unchanged — real |
 
 Two further fabrications: the Communication-History tab badge is fed by `commStats`,
 which hardcodes `emailCount: 0, smsCount: 0` and renders `commStats.total` — the
@@ -149,8 +158,8 @@ same reason.
 
 | Data | Producer | Live? |
 |---|---|---|
-| Report rows | `POST /reports/generate` from `/communications` only (`Communications.tsx:305`) | Rows: yes. Files: **no producer exists** |
-| Report files | **none** | — |
+| Report rows | ~~`POST /reports/generate` from `/communications`~~ — **no producer at all as of 2026-08-26 (OD-81)**: that call site was deleted with the lying "Generate Now" handler, and `/reports` Generate was already disabled. The endpoint still exists and is still the table's only writer; nothing in the product calls it | Rows: **no** (production: 0 rows) |
+| Report files | **none** — verified whole-repo, no `UPDATE` on `generated_reports` exists; no reports Storage bucket exists (production has one bucket, `vendor-attachments`) | — |
 | Conversation history | Gmail push → `email.inbound.received` → `rabbitmq-bridge.service.ts:528` → `procurement_conversations`; sentiment/intent from `inbound-responder.service.ts:300,520` | Yes (live Gmail watch, OD-78) |
 | Realtime toasts | `useReportSubscription` / `useCalendarEventsSubscription` (`DocumentsPage.tsx:157-187`) | Yes — but they only announce the same empty rows |
 
