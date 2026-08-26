@@ -169,6 +169,9 @@ jobs:
       - name: Every register citation names the row it points at
         run: ./scripts/check_citation_pairing.py
 
+      - name: The --fix path still refuses what it must refuse
+        run: ./scripts/check_citation_pairing.py --self-test
+
       - name: Every OD id names a register row
         run: ./scripts/check_od_ids_exist.py
 
