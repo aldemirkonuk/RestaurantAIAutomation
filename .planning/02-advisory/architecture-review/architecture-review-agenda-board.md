@@ -123,7 +123,7 @@ land.
       [[decision-office-charter]]. Binding? Relates directly to **OD-26**
 - [ ] **Who owns the layer map?** An interface owned by the reviewed party is not an interface
 - [ ] **The evaluation seam** — **TECH-F3** ([[FORK-REGISTRY]]); originally numbered **OD-21**
-      at `technology.md:845`, colliding with the real OD-21 (`OPEN-DECISIONS.md:25`, locked).
+      at `technology.md:845`, colliding with the real OD-21 (`OPEN-DECISIONS.md:127`, locked).
       ID now issued. Read here as an
       **L4 ownership question**; instruction on record stands: **merge, never duplicate**
 - [ ] **Scope, both directions** — too wide (three divisions, ~40 teams, no build

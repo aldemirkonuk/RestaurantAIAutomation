@@ -102,7 +102,7 @@ blank — a blank cell reads as zero and zero reads as fine.
 - [ ] **Commissioning authority** — can [[ux-path-burn-down-charter]] commission the
       endpoints its deferred rows need? Unanswered → the largest team cannot function
 - [x] **Fork ID collision resolved** — `product.md:858-862` proposed OD-20…OD-24 while
-      OD-20…OD-23 were already issued in `decisions/OPEN-DECISIONS.md:24-27`; renamespaced
+      OD-20…OD-23 were already issued in the register; renamespaced
       to **PROD-F1…PROD-F5** ([[FORK-REGISTRY]])
 - [ ] **The count correction** — "760 paths" appears in [[engineering-premortem]] M5 and
       in founder notes. It is **910**

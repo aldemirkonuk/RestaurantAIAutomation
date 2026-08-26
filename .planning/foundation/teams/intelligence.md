@@ -202,7 +202,7 @@ SEC-3 is different in kind and should exist from day one regardless.
 
 ### Correction the department inherits on day one
 
-`foundation README.md:34-36` and `OPEN-DECISIONS.md:26` (OD-19) both say **"~86"**
+`foundation README.md:34-36` and `OPEN-DECISIONS.md:31` (OD-19) both say **"~86"**
 non-webhook endpoints lack `JwtAuthGuard` and that webhook modules account for **≈51**
 routes. Summing `ENDPOINTS.md`'s own per-module ⚠️ counts gives different numbers:
 

@@ -123,7 +123,7 @@ for per-route classification:
 - **86** — [[README]] and OD-19 as originally written.
 - **103** — `intelligence.md:211-216`, summing `ENDPOINTS.md`'s per-module *header* counts.
 - **94** — current, verified row-by-row against `ENDPOINTS.md` and now canonical in
-  `OPEN-DECISIONS.md:23`.
+  `OD-19 (OPEN-DECISIONS.md:31)`.
 
 The 103 figure counted `communications` at its module total of **18** when only **9** of
 those rows are unguarded by omission (nine carry `@Public()`), and placed `vendor-portal`'s

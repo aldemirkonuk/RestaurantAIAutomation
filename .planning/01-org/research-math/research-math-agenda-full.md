@@ -57,7 +57,7 @@ symmetric across the three teams.
    [[evaluation-doneability-charter]], committed **before** RM-1's bake-off produces any
    result, per the author≠auditor rule.
 5. **Weeks 4–8 — build the overhead instrument, then run the bake-off.** OD-03 may not be
-   scheduled before `harness_overhead_ms` has a first reading. `OPEN-DECISIONS.md:14`
+   scheduled before `harness_overhead_ms` has a first reading. `OD-03 (OPEN-DECISIONS.md:25)`
    already forbids a pick from repute; this makes the prohibition mechanical.
 6. **Continuous — publish the gap.** `nf_a.verified_task_success_rate` beside
    `base_agent.py:144`'s self-reported rate, every close-time. The gap is the
@@ -78,8 +78,8 @@ skills or the first overlap, not before (`intelligence.md:504`).
   minority of production model traffic until fork INTEL-F5 is answered
   (`intelligence.md:521`); OD-11 gates every NF implementation and each week of delay
   adds a private table (premortem M5).
-- **There is live unauthorized spend on the founder's key** (OD-20,
-  `OPEN-DECISIONS.md:24`) and **nobody can say how much**, because the callsite emits
+- **There is live unauthorized spend on the founder's key**
+  (`OD-20, OPEN-DECISIONS.md:100`) and **nobody can say how much**, because the callsite emits
   nothing. *Corrected 2026-08-25: both halves are closed — OD-20 is RESOLVED
   (`analytics.controller.ts:51` now carries a class-level `@UseGuards(JwtAuthGuard)`)
   and the callsite emits since P1.* That is not a security finding this department owns — it is an

@@ -148,7 +148,7 @@ stale-claim measurement, no `.claude/skills/` directory (the only project skill 
 `.agents/skills/railway-config/`, while 99 `schedule.md` files assert skills live in
 `.claude/skills/`).
 
-**Open forks touching this department:** OD-01 (`OPEN-DECISIONS.md:13`), OD-08 (folded into
+**Open forks touching this department:** OD-01 (`OPEN-DECISIONS.md:24`), OD-08 (folded into
 OD-21), OD-14 (root `SKILLS.md`), OD-21 (vault workflow), OD-22 (tooling library).
 
 ⚠️ **A register contradiction this department found in its own foundation.**
