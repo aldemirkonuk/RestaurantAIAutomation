@@ -20,6 +20,7 @@ import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { RolesGuard } from "./guards/roles.guard";
 import { Roles } from "./decorators/roles.decorator";
 import { Public } from "./decorators/public.decorator";
+import { AllowUnverified } from "./decorators/allow-unverified.decorator";
 import { CheckEmailDto } from "./dto/check-email.dto";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
@@ -145,6 +146,7 @@ export class AuthController {
    */
   @Post("logout")
   @UseGuards(JwtAuthGuard)
+  @AllowUnverified() // leaving must never require verifying first
   async logout(
     @Req() req: Request & { user: any },
     @Headers("authorization") authorization?: string,
@@ -165,6 +167,10 @@ export class AuthController {
    */
   @Get("me")
   @UseGuards(JwtAuthGuard)
+  // The web client populates `user` from here and nowhere else. Gate this and
+  // an unverified session cannot discover that it is unverified — it just
+  // fails to load, which is indistinguishable from a broken login.
+  @AllowUnverified()
   async getProfile(@Req() req: Request & { user: any }) {
     const user = await this.authService.getProfileForUser(req.user.userId);
     // Prefer JWT-scoped restaurant over users.restaurant_id (branch switch)
@@ -297,6 +303,7 @@ export class AuthController {
 
   @Delete("me")
   @UseGuards(JwtAuthGuard)
+  @AllowUnverified() // deleting an account you cannot verify must stay possible
   async deleteAccount(@Req() req: Request & { user: any }) {
     await this.authService.deleteAccount(req.user.userId);
     return { success: true, message: "Account deleted" };
@@ -304,6 +311,7 @@ export class AuthController {
 
   @Get("me/role")
   @UseGuards(JwtAuthGuard)
+  @AllowUnverified() // AuthContext fetches this alongside /auth/me on boot
   async getMyRole(
     @Req() req: Request & { user: any },
     @Query("restaurantId") restaurantId?: string,
@@ -339,6 +347,7 @@ export class AuthController {
    */
   @Get("verify")
   @UseGuards(JwtAuthGuard)
+  @AllowUnverified() // answers "is this token live?", not "may you use the app?"
   async verifyToken() {
     return {
       success: true,
@@ -417,6 +426,7 @@ export class AuthController {
    */
   @Post("resend-verification")
   @UseGuards(JwtAuthGuard)
+  @AllowUnverified() // the escape hatch itself; gating it would be a trap
   async resendVerification(@Req() req: Request & { user: any }) {
     const result = await this.authService.resendVerification(
       req.user.userId,
