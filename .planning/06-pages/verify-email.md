@@ -66,7 +66,7 @@ Public; gate between registration and every Core scenario (OD-48).
 
 ## 10. Maturity
 
-**hollow.** The page performs a real write. The gate it exists to enforce does not exist.
+**partial** (was **hollow** until 2026-08-26). The page always performed a real write; the gate it exists to enforce did not exist in either layer. It does now. What keeps it from **complete** is §5 — verification success, failure and resend are still untracked — and the mock-sender fallback in §8, which now has teeth: with the gate live, a silently mocked verification email is the difference between a slow signup and a locked-out account.
 
 The write is genuine: `POST /auth/verify-email` stamps `email_verifications.verified_at`, flips `users.email_verified`, and re-mints tokens (`auth.service.ts:1257-1287`), with distinct rejections for unknown / already-used / expired tokens (`:1264-1271`).
 
@@ -101,7 +101,7 @@ The page sends the access token on verify as a bonus header but the server ignor
 | Table | Write | Downstream reaction |
 |---|---|---|
 | `email_verifications.verified_at` | `auth.service.ts:1273-1276` | makes the token single-use (`:1265-1266`) |
-| `users.email_verified` | `→ true` (`:1278-1283`) | **nothing reads it** — see §10 |
+| `users.email_verified` | `→ true` (`:1278-1283`) | read by `getProfileForUser` (`/auth/me`) and `JwtStrategy#validate`, and enforced by `assertEmailVerified` inside `JwtAuthGuard`. **Nothing read it before 2026-08-26** — see §10 |
 | localStorage tokens | `VerifyEmail.tsx:44-45` | replaces the session in place |
 | resend counters | `resend_count`, `last_resent_at` (`auth.service.ts:1315-1321`) | server-side 1/min limit |
 
