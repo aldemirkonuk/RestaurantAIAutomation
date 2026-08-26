@@ -9,11 +9,11 @@ links: ["[[0020-no-fabricated-answers]]", "[[OPEN-DECISIONS]]", "[[OD-77-81-SESS
 
 # 0023 — Email verification is enforced, and enforced on the server
 
-- **Status:** Proposed — closes [OD-79](OPEN-DECISIONS.md)
+- **Status:** Proposed — closes [OD-106](OPEN-DECISIONS.md)
 - **Date:** 2026-08-26
 - **Decider:** Aldemir (founder) — chose *enforce* over *delete the pretence* on 2026-08-26
 - **Keywords:** auth, email verification, guard ordering, fail closed, ProtectedRoute, JwtAuthGuard, allowlist
-- **Links:** [OD-79](OPEN-DECISIONS.md), [0020](0020-no-fabricated-answers.md)
+- **Links:** [OD-106](OPEN-DECISIONS.md), [0020](0020-no-fabricated-answers.md)
 
 ## Context
 

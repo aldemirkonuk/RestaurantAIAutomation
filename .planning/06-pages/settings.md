@@ -5,11 +5,12 @@ slug: settings
 component: apps/web/src/pages/Settings.tsx
 audience: owner
 tier: core
+archetype: form # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 8
 maturity: hollow
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[profile]]", "[[help]]", "[[privacy]]", "[[authorize-integration]]"]
 ---
 
@@ -35,6 +36,19 @@ locations, measurement, map, features, pos, calendar — spanning member/invite
 management, service permissions, sender identity, notification prefs, multi-location
 chains, units, storage map, per-restaurant feature flags, POS connection, and the
 iCal subscribe URL.
+
+## 1a. Features
+Ten sections, each deep-linkable via `?tab=`:
+- **Team**: members and invites — change roles, remove members, revoke invites, invite dialog; labor & goals settings
+- **Services**: service permissions / access grants (email, web, privacy)
+- **Email**: sender identity settings
+- **Notifications**: channel and batching preferences
+- **Locations**: multi-location chains — create, assign, edit
+- **Measurement**: units
+- **Map**: storage map
+- **Features**: per-restaurant feature flags
+- **POS**: connect a POS provider, see connection status
+- **Calendar**: iCal subscribe URL + regenerate token
 
 ## 2. Entry
 
@@ -120,7 +134,7 @@ The Features section **was** the largest single block of dead controls in the
 product. It is not there any more, and the paragraph that described it was wrong
 about *why* it was dead.
 
-**Corrected 2026-08-26 (OD-86, `OPEN-DECISIONS.md:88`).** This dossier claimed the
+**Corrected 2026-08-26 (OD-86, `OPEN-DECISIONS.md:89`).** This dossier claimed the
 page renders 22 toggles that "write a real row via `PUT /settings/feature-flags`",
 and that one of them, `enable_ai_negotiation`, "genuinely stops the autonomous
 responder". Both halves were false, and the audit found the failure to be a layer

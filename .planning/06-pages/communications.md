@@ -5,11 +5,12 @@ slug: communications
 component: apps/web/src/pages/Communications.tsx
 audience: owner
 tier: core
+archetype: list+detail # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 3
 maturity: hollow
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[documents-reports]]"]
 ---
 
@@ -29,6 +30,13 @@ links: ["[[PAGE-CONTRACT]]", "[[documents-reports]]"]
 templates), **Send History** (classified vendor conversation threads), **Scheduled
 Reports** (recurring report delivery), and **Procurement History** (Phase 34
 outbound-email audit trail, labelled by `outbound_email_type`).
+
+## 1a. Features
+- **Templates** tab: build Gmail and SMS templates; save and reuse them (🚧 saved client-side, not cross-device)
+- **Send History** tab: browse classified vendor conversation threads; regenerate a thread's AI summary
+- **Scheduled Reports** tab: create, list and delete recurring report schedules (🚧 the send itself is feature-flagged off server-side — no mailer)
+- **Procurement History** tab: audit trail of outbound procurement emails, labelled by type
+- Filter by channel: all / email / SMS
 
 ## 2. Entry
 

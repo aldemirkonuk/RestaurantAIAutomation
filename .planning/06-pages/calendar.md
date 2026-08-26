@@ -5,11 +5,12 @@ slug: calendar
 component: apps/web/src/pages/CalendarModular.tsx
 audience: owner
 tier: core
+archetype: calendar # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
@@ -29,6 +30,16 @@ views, drag-move/resize, click-slot-to-create, true event editing, RRULE recurre
 multi-channel reminders, and meeting-memo capture … Previously built but unrouted"
 (`CalendarModular.tsx:1-9`). Deliveries, tastings and vendor meetings for the
 operator (`Sidebar.tsx:110`).
+
+## 1a. Features
+- See deliveries, tastings and vendor meetings in Month / Week / Day / Agenda views
+- Drag to move or resize an event; click an empty slot to create one
+- Full event editing with recurring events (RRULE)
+- Create and manage custom event types (server-backed)
+- Multi-channel reminders per event
+- Capture a meeting memo after a meeting
+- Link events to vendors
+- "Add calendar event" from the command palette deep-links straight into the create modal
 
 ## 2. Entry
 

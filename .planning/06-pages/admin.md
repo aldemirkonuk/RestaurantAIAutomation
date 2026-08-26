@@ -5,6 +5,7 @@ slug: admin
 component: apps/web/src/pages/AdminPanel.tsx
 audience: owner
 tier: core
+archetype: form # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
 maturity: partial
@@ -25,6 +26,13 @@ links: ["[[PAGE-CONTRACT]]", "[[admin-health]]"]
 
 ## 1. Purpose
 "Admin Settings" — four tabs (General / Agents / Notifications / Integrations, `AdminPanel.tsx:423-428`). General shows infra-provider health (Supabase, Gemini, Claude, plus hard-coded RabbitMQ/Redis rows, `AdminPanel.tsx:255-259`) and restaurant knobs (buffer window, default threshold, three feature toggles). Agents shows orchestrator metrics per agent. Two honesty fixes are load-bearing here: **Save persists to localStorage only** and the toast says so — there is no admin-config endpoint (NEW-544, `AdminPanel.tsx:373-388`); **Restart isn't wired** — the button re-checks live health and says restart needs an orchestrator control endpoint that doesn't exist (NEW-545, `AdminPanel.tsx:392-420`).
+
+## 1a. Features
+- Four tabs: General / Agents / Notifications / Integrations
+- See infra-provider health (Supabase, Gemini, Claude; RabbitMQ/Redis rows are decorative)
+- Tune restaurant knobs: buffer window, default threshold, three feature toggles (🚧 saves to this device only — no server endpoint)
+- See per-agent orchestrator metrics
+- 🚧 Restart button re-checks health only; real restart endpoint doesn't exist
 
 ## 2. Entry
 Sidebar "Admin Panel" under an Admin section rendered only for `user?.role === 'owner'` (`Sidebar.tsx:582-597`). The route is *also* role-gated now — `requiredRole="owner"` at `App.tsx:290` (see §9). Not in PAGE_MAP's no-inbound list — the sidebar edge is the inbound link.

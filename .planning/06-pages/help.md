@@ -5,6 +5,7 @@ slug: help
 component: apps/web/src/pages/Help.tsx
 audience: owner
 tier: core
+archetype: document # proposed 2026-08-26 (OD-106)
 signals_today: partial
 rebrand_strings: 4
 maturity: partial
@@ -29,6 +30,11 @@ Recovery hub: support channels (email + Slack), 4 FAQ stubs, and jump-off cards 
 Learn/tours, the Get Started guide, Services & permissions, and the Wine Agent
 (`Help.tsx:41-44` — "recovery entry for Learn, Get Started, Services, Wine Agent,
 plus P0 support channels").
+
+## 1a. Features
+- Contact support: email and Slack channel links
+- FAQ accordion (4 entries today)
+- Jump-off cards: Learn/tours, the Get Started guide, Services & permissions, the Wine Agent
 
 ## 2. Entry
 Sidebar bottom nav (`components/layout/Sidebar.tsx:176-180`); Settings links here
