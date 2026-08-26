@@ -5,11 +5,12 @@ slug: orders
 component: apps/web/src/pages/Orders.tsx
 audience: owner
 tier: core
+archetype: command # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 4
 maturity: partial
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[providers]]"]
 ---
 
@@ -32,6 +33,17 @@ delivery, plus the AI vendor-email layer — one-tap approval of AI-drafted repl
 active conversation threads, deal proposals, and delivered-order booking into
 inventory. Sidebar tooltip: "Draft, approve, and track purchase orders through
 delivery" (`apps/web/src/components/layout/Sidebar.tsx:75`).
+
+## 1a. Features
+- See the purchase-order list with filters and per-order status through delivery (draft → approved → delivered)
+- Create an order: pick a vendor, build the item list, submit — then approve, edit, or cancel it
+- Book a delivered order into inventory in one step
+- AI vendor-email layer: one-tap approve an AI-drafted reply, write a manual reply, pause the AI, cancel a scheduled send
+- See active vendor conversation threads and open the chat/message thread drawer per conversation
+- Deal proposals extracted from vendor mail: confirm or dismiss
+- View conversation attachments (invoices, price lists)
+- Contextual insights rail; table export; pending-order count badge in the sidebar
+- Live updates while the page is open (realtime order events)
 
 ## 2. Entry
 

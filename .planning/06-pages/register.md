@@ -5,6 +5,7 @@ slug: register
 component: apps/web/src/pages/Register.tsx
 audience: public
 tier: public
+archetype: form # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 3
 maturity: partial
@@ -23,6 +24,13 @@ links: ["[[PAGE-CONTRACT]]", "[[login]]", "[[invite-landing]]", "[[verify-email]
 
 ## 1. Purpose
 Two-path account creation: **Path A "Join Your Team"** — enter an 8-character invite code and create a staff/manager account under an existing restaurant; **Path B "Open a Restaurant"** — create an owner account plus the restaurant record (identity/location/contact in a 3-section rail form). Path B ends at `/verify-email`; Path A lands straight on the dashboard ("No email verification needed", `Register.tsx:196`).
+
+## 1a. Features
+- **Path A "Join Your Team"**: enter an 8-character invite code (validated live as you type) and create a staff/manager account — lands straight on the dashboard
+- **Path B "Open a Restaurant"**: create an owner account plus the restaurant record in a 3-section rail form (identity / location / contact), with address autocomplete, phone input, cuisine picker — ends at email verification
+- Live "email already in use" check while typing
+- Deep links pre-route the path: `?invite=CODE`, `?type=join|new`
+- 🚧 No Google sign-*up* — OAuth exists on `/login` only
 
 ## 2. Entry
 - `/login` → "Create one now" (`Login.tsx:188-193`)

@@ -5,11 +5,12 @@ slug: logs
 component: apps/web/src/pages/LogsTimelinePage.tsx
 audience: owner
 tier: core
+archetype: list+detail # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[simpos-order-log]]"]
 ---
 
@@ -21,6 +22,12 @@ links: ["[[PAGE-CONTRACT]]", "[[simpos-order-log]]"]
 
 ## 1. Purpose
 Read-only correlated timeline for the active restaurant across six sources: POS checks, agent decisions, stock movements, procurement documents, audit log, and (when filtered) the event store (`LogsTimelinePage.tsx:1-3,14-20`). Filter by correlation id via `?correlationId=` or the search box; clicking any event's correlation id pivots the whole timeline onto that thread (`LogsTimelinePage.tsx:171-179`). This is the "show your working" surface for anything an agent did to inventory.
+
+## 1a. Features
+- Read-only correlated timeline across six sources: POS checks, agent decisions, stock movements, procurement documents, audit log, event store
+- Search or deep-link by correlation id (`?correlationId=`)
+- Click any event's correlation id to pivot the whole timeline onto that thread
+- 🚧 No pagination (first 100 events only); errors render like an empty timeline
 
 ## 2. Entry
 Sidebar "Logs" entry (`Sidebar.tsx:136-141`) — **[PAGE_MAP](../foundation/PAGE_MAP.md) lists `/logs` as having no inbound link; that is stale**, the sidebar link exists. Deep-linkable with `?correlationId=` (the intended cross-page pivot from notifications/documents).
