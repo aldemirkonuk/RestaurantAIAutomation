@@ -169,8 +169,8 @@ Both baselined against `origin/main` @ `63c2bccd` in a clean worktree.
    `id` pass-through so their labels land on the inner inputs. `navigation.spec.ts`
    now asserts through `getByLabel` — the workaround comment is gone and the test
    guards the association. The sweep behind it found the same class app-wide
-   (318 unassociated labels, 48 files, no a11y lint anywhere): filed as **OD-105**
-   with a resolved claim for `/register` and an `open` claim for the guard.
+   (318 unassociated labels, 48 files, no a11y lint anywhere): filed as **OD-105**,
+   and resolved the same day — founder call: allowlist-ratchet guard, `jsx-a11y/label-has-associated-control` as `error` with the 47-file backlog allowlisted in `.eslintrc.cjs`.
 
 ---
 
