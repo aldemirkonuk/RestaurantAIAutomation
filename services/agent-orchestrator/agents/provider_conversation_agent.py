@@ -2142,9 +2142,7 @@ class ProviderConversationAgent(BaseAgent):
 
             preference = response.content[0].text.strip() if response.content else ""
             if preference:
-                self._append_manager_instruction(
-                    restaurant_id, provider_id, preference
-                )
+                self._append_manager_instruction(restaurant_id, provider_id, preference)
         except Exception as e:
             self.logger.warning(f"Learning loop preference extraction failed: {e}")
 
