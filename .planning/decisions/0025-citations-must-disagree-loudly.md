@@ -319,21 +319,32 @@ finding out was one wasted branch; the cost of *not* finding out would have been
 silent double-guard, which is the same class of failure as the OD-id collisions in
 `CLAUDE.md` §5b. **Check the open PRs before building a guard.**
 
-### 10.2 The measurement §3 missed
+### 10.2 What the unpaired half turned out to be
 
-§3 reports "74 citations, 23 id-paired, **0 of 23 agree**" and reads the unpaired
-remainder as merely unchecked. Re-measured across all of `.planning/`:
+§3's original row reads "74 citations, 23 id-paired, **0 of 23 agree**" and treats
+the unpaired remainder as merely *unchecked*. It is not. Measured independently in
+a second worktree, over `.planning/` only, pairing an id **within 120 characters
+before** the locator:
 
 | Measure | Value |
 |---|---|
-| Register anchors in the corpus | **78** |
+| Register anchors in `.planning/` | **78** |
 | …carrying an id within 120 chars, so mechanically checkable | 35 |
 | …carrying a line and **no id** | **43** |
-| …of those 43, pointing into the register's **preamble block quote**, not at any row | **26** |
+| …of those 43, landing on the register's **preamble block quote**, not on any row | **26** |
 
-So the unpaired half is not unchecked — it is *demonstrably wrong*, and more wrong
-than the paired half. The honest headline is **75 of 78 anchors wrong**, not 0 of 23.
-That is why §6.1 was enforced as blocking rather than left advisory.
+**On the split, this disagrees with §3's re-derived row (38 paired / 36 unanchored)
+and §3 is the one to quote.** The two extractions differ by design: §3 pairs with
+the nearest id *anywhere* on the line and scans source files too, so it classifies
+more locators as paired. Both agree on the total (78) and on the headline (zero
+agreeing), and neither split changes any decision here. Recorded rather than
+silently reconciled, because two numbers quietly disagreeing inside one ADR is the
+failure this ADR exists to make loud.
+
+The finding that survives either split is the **26**: those anchors are not
+unchecked, they are *demonstrably wrong* — they resolve to prose in the register's
+header, not to a decision. That is the evidence for enforcing §6.1 as blocking
+rather than advisory, and it is independent of where the paired/unpaired line falls.
 
 ### 10.3 What this actually costs, measured twice in one hour
 

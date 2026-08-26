@@ -54,11 +54,12 @@ test.describe('Navigation Guards', () => {
       timeout: 10000,
     })
     await page.getByText('Open a Restaurant').first().click()
-    // Create flow step 1 ("Your Account") exposes email + password inputs
-    // (type-based; the inputs carry no ids or associated labels).
-    await expect(page.locator('input[type="email"]').first()).toBeVisible({
-      timeout: 10000,
-    })
-    await expect(page.locator('input[type="password"]').first()).toBeVisible()
+    // Create flow step 1 ("Your Account") inputs are reachable through their
+    // associated labels (htmlFor/id) — this test guards that association.
+    await expect(page.getByLabel('Full Name')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByLabel('Email')).toBeVisible()
+    // Anchored regex: a bare 'Password' substring would also match "Confirm Password *"
+    await expect(page.getByLabel(/^Password \*$/)).toBeVisible()
+    await expect(page.getByLabel('Confirm Password')).toBeVisible()
   })
 })
