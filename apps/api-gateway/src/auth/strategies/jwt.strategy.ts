@@ -30,12 +30,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         ? payload.restaurantId
         : user.restaurant_id;
 
+    // OD-79: sourced from the database row, not `payload.emailVerified`.
+    // Tokens are signed with the flag as it was at issue time, so a user who
+    // verified after their last login would still carry `false` for 15
+    // minutes. The row is authoritative; the token is a snapshot.
     return {
       userId: user.user_id,
       email: user.email,
       name: user.name,
       role: user.role ?? payload.role,
       restaurantId,
+      emailVerified: user.email_verified ?? false,
     };
   }
 }

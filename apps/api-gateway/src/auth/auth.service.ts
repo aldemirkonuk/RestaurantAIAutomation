@@ -25,6 +25,12 @@ export interface JwtPayload {
   role: "owner" | "manager" | "staff";
   /** Present on all tokens issued by this API; omit on very old tokens */
   restaurantId?: string;
+  /**
+   * Signed into every token by `generateTokens`, but was never declared here
+   * and never read back out — see OD-79. Consumers should prefer the database
+   * column; this is a snapshot from issue time.
+   */
+  emailVerified?: boolean;
   iat?: number;
   exp?: number;
 }
@@ -1437,7 +1443,7 @@ export class AuthService {
     const { data: user, error } = await this.databaseService.supabase
       .from("users")
       .select(
-        "user_id, email, name, phone, role, password_hash, oauth_provider, restaurant_id",
+        "user_id, email, name, phone, role, password_hash, oauth_provider, restaurant_id, email_verified",
       )
       .eq("user_id", userId)
       .single();
@@ -1457,6 +1463,13 @@ export class AuthService {
       restaurantId: user.restaurant_id ?? null,
       hasPassword: !!user.password_hash,
       linkedProviders,
+      // OD-79: the single web reader (ProtectedRoute) compares
+      // `user?.emailVerified === false`, and AuthContext populates `user`
+      // only from this endpoint — never by decoding the JWT. Omitting the
+      // field made that comparison `undefined === false`, so the gate could
+      // not fire. Read from the column, not the token: `verifyEmail` updates
+      // the row, and a token issued before that would still say false.
+      emailVerified: user.email_verified ?? false,
     };
   }
 
