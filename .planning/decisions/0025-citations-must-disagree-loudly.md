@@ -117,6 +117,12 @@ Two live instances:
 **Cost of the fix, measured:** strict mode breaks **exactly 1 of 68** claims —
 OD-78, the one nobody has been checking. This is not a noise generator.
 
+> **Note on the OD-78 example.** `fix/dossier-rot-sweep` repoints that one claim at
+> the templates that exist, so once it merges `CLAIMS.jsonl:25` no longer names
+> `.env.example`. That fixes the *instance*; it does not touch the blindness
+> described above, which is what this section proposes to fix. The instance is
+> quoted here as it stood when measured — the structural defect outlives it.
+
 Note the trap found while measuring: classifying by stderr returns **0 of 68**,
 because the only broken claim carries its own `2>/dev/null`. Only 2 of 68 claims
 self-silence, and one of them is the broken one. **The fix must therefore strip or
