@@ -70,7 +70,7 @@ Public; gate between registration and every Core scenario (OD-48).
 
 The write is genuine: `POST /auth/verify-email` stamps `email_verifications.verified_at`, flips `users.email_verified`, and re-mints tokens (`auth.service.ts:1257-1287`), with distinct rejections for unknown / already-used / expired tokens (`:1264-1271`).
 
-**The gate is live on both sides as of 2026-08-26** — see [[0022-email-verification-is-enforced]] and OD-79. What follows is the diagnosis that produced the fix, kept because the failure shape recurs.
+**The gate is live on both sides as of 2026-08-26** — see [[0023-email-verification-is-enforced]] and OD-79. What follows is the diagnosis that produced the fix, kept because the failure shape recurs.
 
 *Client, before.* The only enforcement in the SPA was `ProtectedRoute.tsx:42` — `if (user?.emailVerified === false)`. Nothing ever set that field. `GET /auth/me` did not return it: `getProfileForUser` selected and returned exactly `userId, email, name, phone, role, restaurantId, hasPassword, linkedProviders`, and the controller added only `restaurantId`. `AuthContext` populates `user` from `/auth/me` and nowhere else — seven call sites, none of which decode the JWT. So `user.emailVerified` was always `undefined`, `undefined === false` is `false`, and the redirect never fired.
 
@@ -126,7 +126,7 @@ A column written by one endpoint and read by nothing is exactly the "data with n
 
 ## 13. Roadmap
 
-1. ~~**Make the gate real, server-side.**~~ **DONE 2026-08-26** — `assertEmailVerified` in `JwtAuthGuard`, fails closed, six `@AllowUnverified` routes. [[0022-email-verification-is-enforced]].
+1. ~~**Make the gate real, server-side.**~~ **DONE 2026-08-26** — `assertEmailVerified` in `JwtAuthGuard`, fails closed, six `@AllowUnverified` routes. [[0023-email-verification-is-enforced]].
 2. ~~**Repair the client gate.**~~ **DONE 2026-08-26** — `getProfileForUser` and `JwtStrategy#validate` both return it, sourced from the DB column.
 3. Make the mock-sender fallback fail loudly, or report `{sent:false}` so `VerifyEmail.tsx:85` can tell the truth. **Now higher stakes than when it was written:** with the gate live, a silently mocked verification email is the difference between a slow signup and a locked-out account. `gmail.service.ts:80-85` returns early when `GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN` are absent. Production has them, so this is a staging/local hazard today — but it is one deploy setting away from being a production one.
 4. Fail startup when `FRONTEND_URL` is unset instead of falling back to a hard-coded Vercel host (`auth.service.ts:703-706`) — same posture `jwt-secret.ts` now takes for `JWT_SECRET`.
