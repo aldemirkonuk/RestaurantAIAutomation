@@ -20,6 +20,7 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
+from services.log_safety import sanitize_for_log
 from services.text_normalizer import get_normalizer
 from config.settings import get_settings
 
@@ -314,7 +315,8 @@ class WineMatcher:
             )
         except asyncio.TimeoutError:
             logger.warning(
-                f"AI enrichment timed out for '{wine_name}' — returning null enrichment"
+                "AI enrichment timed out for '%s' — returning null enrichment",
+                sanitize_for_log(wine_name),
             )
             enrichment = None
 

@@ -39,6 +39,7 @@ import aiohttp
 
 from services.vlm_extraction_service import get_gemini_crawler_extractor
 from services.claude_vision_extractor import get_claude_vision_extractor
+from services.log_safety import sanitize_for_log
 
 try:
     from playwright.async_api import async_playwright
@@ -302,8 +303,10 @@ class WebCrawlerService:
                                 non_dupes, restaurant_name, website_url, result=result
                             )
                         logger.info(
-                            f"Crawled {restaurant_name}: {len(extraction.wines)} wines found, "
-                            f"{len(extraction.wines) - len(non_dupes)} duplicates skipped"
+                            "Crawled %s: %d wines found, %d duplicates skipped",
+                            sanitize_for_log(restaurant_name),
+                            len(extraction.wines),
+                            len(extraction.wines) - len(non_dupes),
                         )
                     elif await self._is_image_menu(page):
                         await self._handle_image_menu(
@@ -313,7 +316,9 @@ class WebCrawlerService:
             except Exception as e:
                 result.error = str(e)
                 result.content_type = ContentType.ERROR
-                logger.error(f"Crawl failed for {website_url}: {e}")
+                logger.error(
+                    "Crawl failed for %s: %s", sanitize_for_log(website_url), e
+                )
 
             finally:
                 await browser.close()
@@ -583,8 +588,12 @@ class WebCrawlerService:
                     result.wines.append(record)
                 count += 1
 
+        # out_file.name embeds restaurant_name via `slug`, so it carries the same taint.
         logger.info(
-            f"Persisted {count} crawled wines for {restaurant_name} to {out_file.name}"
+            "Persisted %d crawled wines for %s to %s",
+            count,
+            sanitize_for_log(restaurant_name),
+            sanitize_for_log(out_file.name),
         )
 
     # =========================================================================
@@ -774,7 +783,9 @@ class WebCrawlerService:
         """
         chunks = await self._take_viewport_chunks(page)
         if not chunks:
-            logger.warning(f"No viewport chunks captured for {restaurant_name}")
+            logger.warning(
+                "No viewport chunks captured for %s", sanitize_for_log(restaurant_name)
+            )
             return
 
         # extract_menu() requires List[str] (base64 strings), NOT bytes
@@ -784,7 +795,11 @@ class WebCrawlerService:
         try:
             extraction = await extractor.extract_menu(b64_pages)
         except RuntimeError as e:
-            logger.error(f"Image menu extraction failed for {restaurant_name}: {e}")
+            logger.error(
+                "Image menu extraction failed for %s: %s",
+                sanitize_for_log(restaurant_name),
+                e,
+            )
             return
 
         if extraction.wines:
@@ -802,8 +817,10 @@ class WebCrawlerService:
                     result=result,
                 )
             logger.info(
-                f"Image menu {restaurant_name}: {len(extraction.wines)} wines extracted, "
-                f"{len(extraction.wines) - len(non_dupes)} dupes skipped"
+                "Image menu %s: %d wines extracted, %d dupes skipped",
+                sanitize_for_log(restaurant_name),
+                len(extraction.wines),
+                len(extraction.wines) - len(non_dupes),
             )
 
         result.image_menu_detected = True
@@ -823,7 +840,11 @@ class WebCrawlerService:
         try:
             extraction = await extractor.extract_pdf(result.pdf_bytes)
         except Exception as e:
-            logger.error(f"PDF vision extraction failed for {restaurant_name}: {e}")
+            logger.error(
+                "PDF vision extraction failed for %s: %s",
+                sanitize_for_log(restaurant_name),
+                e,
+            )
             return
 
         if extraction.wines:
@@ -841,8 +862,10 @@ class WebCrawlerService:
                     result=result,
                 )
             logger.info(
-                f"PDF vision {restaurant_name}: {len(extraction.wines)} wines extracted, "
-                f"{len(extraction.wines) - len(non_dupes)} dupes skipped"
+                "PDF vision %s: %d wines extracted, %d dupes skipped",
+                sanitize_for_log(restaurant_name),
+                len(extraction.wines),
+                len(extraction.wines) - len(non_dupes),
             )
 
         result.image_menu_detected = True

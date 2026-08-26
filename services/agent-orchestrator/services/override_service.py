@@ -136,9 +136,11 @@ def require_studio_role(*required_roles: str):
                         return payload
                     jwt_roles = db_roles  # show accurate roles in error message
                 except Exception as exc:
+                    # user_id is the JWT `sub` claim. A verified signature proves who set
+                    # the claim, not that it is free of newlines — escape before logging.
                     logger.warning(
                         "require_studio_role: DB role fallback failed for %s: %s",
-                        user_id,
+                        sanitize_for_log(user_id),
                         exc,
                     )
 
@@ -260,7 +262,9 @@ def _get_user_studio_roles(supabase, user_id: str) -> list:
         )
         return resp.data or []
     except Exception as exc:
-        logger.error("_get_user_studio_roles failed for %s: %s", user_id, exc)
+        logger.error(
+            "_get_user_studio_roles failed for %s: %s", sanitize_for_log(user_id), exc
+        )
         return []
 
 
@@ -296,9 +300,11 @@ def _apply_override_to_submission(
             raise ValueError(f"Submission {submission_id} not found")
         existing_fc = (resp.data or {}).get("field_confidence") or {}
     except Exception as exc:
+        # submission_id / field_name / actor_id all arrive from the request (OverrideRequest
+        # body, or the JWT `sub` for actor_id) — see api/studio_routes.py:263 and :456.
         logger.error(
             "_apply_override_to_submission: fetch submission %s failed: %s",
-            submission_id,
+            sanitize_for_log(submission_id),
             exc,
         )
         raise
@@ -313,9 +319,9 @@ def _apply_override_to_submission(
     ).eq("id", submission_id).execute()
     logger.info(
         "Applied override to submission %s field=%s by actor=%s",
-        submission_id,
-        field_name,
-        actor_id,
+        sanitize_for_log(submission_id),
+        sanitize_for_log(field_name),
+        sanitize_for_log(actor_id),
     )
 
 
@@ -358,8 +364,11 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
             .execute()
         )
         if not resp.data:
+            # submission_id is caller-supplied from the request body (studio_routes.py:283)
+            # or from the stored override row it originally wrote.
             logger.warning(
-                "_maybe_promote_submission: submission %s not found", submission_id
+                "_maybe_promote_submission: submission %s not found",
+                sanitize_for_log(submission_id),
             )
             return False
 
@@ -367,7 +376,7 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
         if submission.get("status") != "pending_review":
             logger.debug(
                 "_maybe_promote_submission: submission %s not in pending_review (status=%s)",
-                submission_id,
+                sanitize_for_log(submission_id),
                 submission.get("status"),
             )
             return False
@@ -385,7 +394,7 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
             logger.debug(
                 "_maybe_promote_submission: %d pending fields remain for %s",
                 remaining_pending,
-                submission_id,
+                sanitize_for_log(submission_id),
             )
             return False
 
@@ -394,7 +403,7 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
         if should_auto_block(fc):
             logger.debug(
                 "_maybe_promote_submission: submission %s is auto_blocked",
-                submission_id,
+                sanitize_for_log(submission_id),
             )
             return False
 
@@ -439,12 +448,16 @@ def _maybe_promote_submission(supabase, submission_id: str) -> bool:
 
         logger.info(
             "_maybe_promote_submission: promoted submission %s → master_wine_library",
-            submission_id,
+            sanitize_for_log(submission_id),
         )
         return True
 
     except Exception as exc:
-        logger.error("_maybe_promote_submission: failed for %s: %s", submission_id, exc)
+        logger.error(
+            "_maybe_promote_submission: failed for %s: %s",
+            sanitize_for_log(submission_id),
+            exc,
+        )
         return False
 
 
@@ -484,7 +497,7 @@ def check_and_update_trust(
                 ).eq("user_id", user_id).eq("role", "certified_contributor").execute()
                 logger.info(
                     "User %s earned auto_promote status (threshold=%d)",
-                    user_id,
+                    sanitize_for_log(user_id),
                     threshold,
                 )
         else:
@@ -492,7 +505,11 @@ def check_and_update_trust(
             supabase.table("user_roles").update(
                 {"consecutive_approved_overrides": 0}
             ).eq("user_id", user_id).eq("role", "certified_contributor").execute()
-            logger.info("User %s trust streak reset (rejection)", user_id)
+            logger.info(
+                "User %s trust streak reset (rejection)", sanitize_for_log(user_id)
+            )
     except Exception as exc:
-        logger.error("check_and_update_trust failed for %s: %s", user_id, exc)
+        logger.error(
+            "check_and_update_trust failed for %s: %s", sanitize_for_log(user_id), exc
+        )
         raise

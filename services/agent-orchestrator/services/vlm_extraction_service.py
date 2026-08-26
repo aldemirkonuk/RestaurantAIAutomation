@@ -26,6 +26,7 @@ from typing import Any, Dict, List, Optional
 from google import genai as _genai
 from pydantic import BaseModel, Field
 
+from services.log_safety import sanitize_for_log
 from services.spend_logger import get_spend_logger
 
 logger = logging.getLogger(__name__)
@@ -541,7 +542,8 @@ class VLMExtractionService:
             # to its in-memory buffer, so anything surfacing here is a bug in
             # this call — log it loudly rather than as a benign warning.
             logger.error(
-                f"Failed to save VLM training data for vlm_{document_type}",
+                "Failed to save VLM training data for vlm_%s",
+                sanitize_for_log(document_type),
                 exc_info=True,
             )
 

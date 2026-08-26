@@ -22,6 +22,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
+from services.log_safety import sanitize_for_log
+
 logger = logging.getLogger(__name__)
 
 research_router = APIRouter(prefix="/api/v1/research", tags=["research"])
@@ -633,7 +635,13 @@ def trigger_research(body: TriggerRequest, _token: str = Depends(verify_admin_to
             queued += 1
         except Exception as exc:
             dispatch_errors.append(str(exc))
-            logger.error("trigger_research: dispatch failed for %s: %s", sid, exc)
+            # In single-record mode sid is body.submission_id verbatim — an
+            # unvalidated caller string, so escape it before it reaches the log.
+            logger.error(
+                "trigger_research: dispatch failed for %s: %s",
+                sanitize_for_log(sid),
+                exc,
+            )
 
     if queued == 0 and dispatch_errors:
         raise HTTPException(

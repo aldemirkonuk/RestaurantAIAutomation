@@ -23,6 +23,7 @@ import time
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from config.settings import get_settings
+from services.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +105,11 @@ class WineBookScraper:
                 "source": str,
             }
         """
-        logger.info(f"Processing PDF: {source_name} ({len(pdf_bytes)} bytes)")
+        logger.info(
+            "Processing PDF: %s (%d bytes)",
+            sanitize_for_log(source_name),
+            len(pdf_bytes),
+        )
 
         # Step 1: Extract pages
         pages = self._extract_pages(pdf_bytes)

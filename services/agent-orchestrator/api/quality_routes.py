@@ -26,6 +26,7 @@ from services.field_confidence import (
     should_auto_block,
     JSONB_ENRICHMENT_KEYS,
 )
+from services.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -284,8 +285,8 @@ def patch_review_queue(
             except Exception as exc:
                 logger.warning(
                     "field_review_queue update failed for %s.%s: %s",
-                    submission_id,
-                    field_name,
+                    sanitize_for_log(submission_id),
+                    sanitize_for_log(field_name),
                     exc,
                 )
 
@@ -320,8 +321,8 @@ def patch_review_queue(
             except Exception as exc:
                 logger.warning(
                     "field_review_queue approval update failed for %s.%s: %s",
-                    submission_id,
-                    field_name,
+                    sanitize_for_log(submission_id),
+                    sanitize_for_log(field_name),
                     exc,
                 )
 
@@ -333,7 +334,11 @@ def patch_review_queue(
             }
         ).eq("id", submission_id).execute()
     except Exception as exc:
-        logger.error("field_confidence update failed for %s: %s", submission_id, exc)
+        logger.error(
+            "field_confidence update failed for %s: %s",
+            sanitize_for_log(submission_id),
+            exc,
+        )
         raise HTTPException(
             status_code=503, detail=f"Failed to update field_confidence: {exc}"
         )
@@ -397,7 +402,9 @@ def patch_review_queue(
             promoted = True
         except Exception as exc:
             logger.error(
-                "master_wine_library promotion failed for %s: %s", submission_id, exc
+                "master_wine_library promotion failed for %s: %s",
+                sanitize_for_log(submission_id),
+                exc,
             )
             raise HTTPException(
                 status_code=503,
@@ -416,7 +423,11 @@ def patch_review_queue(
             }
         ).eq("id", submission_id).execute()
     except Exception as exc:
-        logger.error("submission status update failed for %s: %s", submission_id, exc)
+        logger.error(
+            "submission status update failed for %s: %s",
+            sanitize_for_log(submission_id),
+            exc,
+        )
         raise HTTPException(
             status_code=503, detail=f"Failed to update submission status: {exc}"
         )

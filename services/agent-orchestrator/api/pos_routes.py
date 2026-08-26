@@ -15,6 +15,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 
 from config.settings import get_settings
 from core.pos_provider import POSProvider
+from services.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -72,14 +73,19 @@ async def pos_webhook(
     try:
         webhook_data = _json.loads(raw_payload)
     except _json.JSONDecodeError as exc:
-        logger.warning("Malformed JSON in %s webhook: %s", provider, exc)
+        # `provider` is checked against the registry above, but escape it anyway so the
+        # log stays safe if that guard ever loosens.
+        logger.warning(
+            "Malformed JSON in %s webhook: %s", sanitize_for_log(provider), exc
+        )
         raise HTTPException(status_code=422, detail=f"Invalid JSON: {exc}")
 
     # Verify webhook signature via adapter
     is_valid = await adapter.verify_webhook(raw_payload, toast_signature or "")
     if not is_valid:
         logger.warning(
-            "Webhook signature verification failed for provider '%s'", provider
+            "Webhook signature verification failed for provider '%s'",
+            sanitize_for_log(provider),
         )
         raise HTTPException(
             status_code=401, detail="Webhook signature verification failed"
@@ -89,7 +95,9 @@ async def pos_webhook(
     try:
         event = await adapter.normalize_event(webhook_data)
     except Exception as exc:
-        logger.error("Failed to normalize %s webhook event: %s", provider, exc)
+        logger.error(
+            "Failed to normalize %s webhook event: %s", sanitize_for_log(provider), exc
+        )
         raise HTTPException(
             status_code=422, detail=f"Event normalization failed: {exc}"
         )
@@ -109,7 +117,11 @@ async def pos_webhook(
     try:
         result = await agent.process_pos_event(event)
     except Exception as exc:
-        logger.exception("Unexpected error processing %s webhook: %s", provider, exc)
+        logger.exception(
+            "Unexpected error processing %s webhook: %s",
+            sanitize_for_log(provider),
+            exc,
+        )
         raise HTTPException(
             status_code=500, detail="Internal error processing POS event"
         )

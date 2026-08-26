@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from api.auth import verify_admin_key
+from services.log_safety import sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -441,9 +442,12 @@ async def get_wine_timeline(
             if row.get("signature_hash")
         ]
     except Exception as exc:
+        # The uuid.UUID() guard above is not a newline barrier: int(hex, 16)
+        # strips surrounding whitespace, so e.g. "\n" + 31 hex chars parses and
+        # the original path param — newline intact — is what gets logged here.
         logger.warning(
             "get_wine_timeline: could not resolve signature_hashes for %s: %s",
-            wine_id,
+            sanitize_for_log(wine_id),
             exc,
         )
 
