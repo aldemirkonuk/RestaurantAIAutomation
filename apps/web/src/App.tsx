@@ -266,6 +266,12 @@ function App() {
                 >
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/inventory" element={<InventoryCommandPage />} />
+                  {/* `/inventory-legacy` is retired (ADR 0019 §B). It redirects
+                      rather than 404s because every capability it had was ported
+                      onto `/inventory` first — a bookmark lands somewhere that can
+                      still do the job. Without this it fell to the catch-all and
+                      landed on the Dashboard, which reads as a broken app. */}
+                  <Route path="/inventory-legacy" element={<Navigate to="/inventory" replace />} />
                   <Route path="/orders" element={<Orders />} />
                   {/* One event, three renderings, chosen by role — see ReceivingHome. */}
                   <Route path="/receiving" element={<ReceivingHome />} />
@@ -287,6 +293,10 @@ function App() {
                   <Route path="/promotions" element={<Promotions />} />
                   <Route path="/team" element={<TeamCommandPage />} />
                   <Route path="/calendar" element={<CalendarModular />} />
+                  {/* Same reasoning as `/inventory-legacy` above: `/calendar-classic`
+                      is retired (ADR 0019 §B) and its one exclusive — reminders that
+                      actually fire — was ported onto `/calendar` first. */}
+                  <Route path="/calendar-classic" element={<Navigate to="/calendar" replace />} />
                   <Route path="/communications" element={<Communications />} />
                   <Route path="/documents-reports" element={<DocumentsPage />} />
                   <Route path="/receipts" element={<ReceiptsPage />} />
