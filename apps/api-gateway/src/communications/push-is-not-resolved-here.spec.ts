@@ -35,6 +35,8 @@
  * service" from satisfying this suite.
  */
 
+import * as fs from "fs";
+import * as path from "path";
 import { RecipientResolverService } from "./recipient-resolver.service";
 
 type Row = Record<string, any>;
@@ -249,9 +251,6 @@ describe("RecipientResolverService — push is not resolved here", () => {
     //
     // A string match on the declaration does fail on revert, so that is what
     // this asserts. It is coarse; it is also machinery that works.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const fs = require("fs");
-    const path = require("path");
     const source: string = fs.readFileSync(
       path.resolve(__dirname, "recipient-resolver.service.ts"),
       "utf8",
@@ -315,9 +314,6 @@ describe("the resolver's source holds no reader of an abandoned push store", () 
     // The Python orchestrator still queries the table and is deliberately out
     // of scope here — see ADR 0027 §Consequences. `scripts/
     // check_queried_tables_exist.py` is the repo-wide ratchet that covers it.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const fs = require("fs");
-    const path = require("path");
     const source = fs.readFileSync(
       path.resolve(__dirname, "recipient-resolver.service.ts"),
       "utf8",
