@@ -6,7 +6,7 @@ team: schema-migrations
 status: provisional
 metrics: [schema.days_since_hand_applied_ddl, schema.parity_job_green_streak]
 updated: 2026-08-24
-links: ["[[schema-migrations-charter]]", "[[schema-migrations-premortem]]", "[[schema-migrations-agenda-board]]", "[[schema-migrations-loops]]", "[[engineering-agenda-full]]", "[[state-integrity-invariants-charter|sre-state-integrity]]", "[[inventory-ledger-charter]]", "[[SCHEMA_DRIFT_INVENTORY]]"]
+links: ["[[schema-migrations-charter]]", "[[schema-migrations-premortem]]", "[[schema-migrations-agenda-board]]", "[[schema-migrations-loops]]", "[[engineering-agenda-full]]", "[[state-integrity-invariants-charter|sre-state-integrity]]", "[[inventory-ledger-charter]]", "`../../../../SCHEMA_DRIFT_INVENTORY.txt`"]
 ---
 
 # Schema & Migrations — Full Agenda

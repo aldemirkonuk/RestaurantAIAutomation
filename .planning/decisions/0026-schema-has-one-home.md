@@ -4,7 +4,7 @@ id: 0026
 title: Schema has one home, and CI compares it against the code
 status: proposed
 updated: 2026-08-26
-links: ["[[0013-migration-ledger-reconciliation]]", "[[OPEN-DECISIONS]]", "[[HANDOFF-schema-guard]]"]
+links: ["[[0031-migration-ledger-reconciliation]]", "[[OPEN-DECISIONS]]", "[[HANDOFF-schema-guard]]"]
 ---
 
 # 0026 — Schema has one home, and CI compares it against the code

@@ -6,7 +6,7 @@ team: schema-migrations
 status: provisional
 metrics: []
 updated: 2026-08-24
-links: ["[[schema-migrations-charter]]", "[[schema-migrations-loops]]", "[[engineering-schedule]]", "[[state-integrity-invariants-charter|sre-state-integrity]]", "[[skills-charter]]", "[[SCHEMA_DRIFT_INVENTORY]]"]
+links: ["[[schema-migrations-charter]]", "[[schema-migrations-loops]]", "[[engineering-schedule]]", "[[state-integrity-invariants-charter|sre-state-integrity]]", "[[skills-charter]]", "`../../../../SCHEMA_DRIFT_INVENTORY.txt`"]
 ---
 
 # Schema & Migrations — Schedule & Skills
