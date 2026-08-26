@@ -406,6 +406,12 @@ PY_CONST_RE = re.compile(
 )
 
 # `.from(` / `.table(` / `.from_(` / `.rpc(` with whatever argument.
+#
+# The argument itself may not span lines, but the `\s*` after `\(` does consume
+# a newline, so `.rpc(\n  "apply_stock_movement",` IS matched. Verified against
+# all 24 multi-line call sites in the tree on 2026-08-26: 0 missed. That check
+# matters because a miss here would NOT show up in the dynamic-site count -- it
+# would be a silent hole, which is the exact failure mode this guard exists for.
 TS_FROM_RE = re.compile(r"\.from\s*\(\s*([^)\n]*?)\s*[,)]")
 TS_RPC_RE = re.compile(r"\.rpc\s*\(\s*([^,)\n]*?)\s*[,)]")
 PY_TABLE_RE = re.compile(r"\.(?:table|from_)\s*\(\s*([^)\n]*?)\s*[,)]")
@@ -418,6 +424,11 @@ PY_RPC_RE = re.compile(r"\.rpc\s*\(\s*([^,)\n]*?)\s*[,)]")
 # Matched against a whitespace-COLLAPSED lookback, not a whitespace-STRIPPED
 # one: stripping turns `return Buffer` into `returnBuffer`, which kills the
 # `\b` and lets every Buffer.from() through as a table name.
+#
+# This filter skips 152 sites, and a WRONG skip would be invisible. Audited
+# 2026-08-26: 0 of the 152 takes a table-shaped string literal -- every one is
+# Array.from(iterable). Storage buckets are additionally rejected by
+# TABLE_LITERAL_RE, since this codebase's buckets are hyphenated.
 NOT_A_TABLE_RECEIVER_RE = re.compile(
     r"(?:\bArray|\bBuffer|\bObject|\bString|\bNumber|\b\w*Array|\bstorage)\s*$"
 )

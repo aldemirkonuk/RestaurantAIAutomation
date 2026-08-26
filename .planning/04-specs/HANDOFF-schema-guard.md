@@ -160,22 +160,48 @@ call sites is a rotted pattern, a root with neither is legitimately empty).
 6. **`build_const_maps(files, root, lang)`** took a `root` argument it never
    used. Dropped.
 
-## 8. Not verified — stated plainly
+## 8. Adversarial audit of the extraction
 
-- **CI has not run.** The workflows parse (`yaml.safe_load` on both) and both
-  guards were run locally at the exact commands the jobs invoke, but no GitHub
-  Actions run has executed them. In particular the production arm's
-  `pip install psycopg2-binary` + `check_db_reachable.sh` sequence is unproven on
-  a runner.
-- **The `GITHUB_TOKEN` fix for the Supabase CLI rate limit is unproven.** It
-  removes the known cause — an unauthenticated runner gets 60 API requests an
+Two ways the extractor could miss call sites *without* them showing up in the
+24-site dynamic count — a silent hole, which is the failure mode this whole
+branch exists to prevent. Both were checked directly; both are clean.
+
+**Multi-line calls.** `TS_FROM_RE` forbids a newline *inside* the argument, so
+`.rpc(\n  "apply_stock_movement",` looked like it would be missed. It is not:
+the `\s*` after `\(` consumes the newline. Verified by name against the
+extracted set — `generate_recurring_events`, `tenant_isolation_report`,
+`apply_stock_movement`, `get_inventory_balance_at`,
+`search_provider_conversations`, `match_restaurant_providers`,
+`match_vendor_catalogue`, all 7 present. **24 multi-line sites, 0 missed.**
+
+**The `Array.from` / `.storage.from` receiver filter.** It skips 152 sites, and
+a wrong skip would be invisible. Checked every one: **0 of the 152 takes a
+table-shaped string literal** — they are all `Array.from(iterable)` /
+`Array.from({length})`. Storage buckets are additionally rejected by
+`TABLE_LITERAL_RE` because they are hyphenated (`vendor-attachments`,
+`menu-scans`). One residual: a bucket named in pure snake_case *and* reached
+without a `.storage` receiver within 80 characters would be read as a table.
+None exists today (`documents` is not in the queried set).
+
+## 9. Not verified — stated plainly
+
+- **CI has run and both new jobs pass** (PR #95): `Code queries only schema that
+  exists` ✅ and `Code queries only relations production has` ✅. The second one
+  passing settles two things that were unverified when this file was first
+  written: `pip install psycopg2-binary` + `check_db_reachable.sh` works on a
+  runner, and the CI secret does have `information_schema` visibility.
+- **The `GITHUB_TOKEN` fix for the Supabase CLI rate limit is still unproven.**
+  It removes the known cause — an unauthenticated runner gets 60 API requests an
   hour shared across the host, the token raises it to 1000 — but reproducing the
   rate limit to prove it was not attempted.
-- **The production measurement used the founder's local `.env` pooler DSN**, not
-  a CI secret. Read-only session (`set_session(readonly=True)`), no writes, DSN
-  never printed. Whether the CI secret has the same visibility into
-  `information_schema` is not verified.
+- **The local production measurement used the founder's `.env` pooler DSN.**
+  Read-only session (`set_session(readonly=True)`), no writes, DSN never printed.
+  The CI run above used the repository secret instead and agreed.
 - **The 251 "superseded" reconciliations in check 2 were not individually
   audited.** They are counted, not inspected; the guard asserts only that the
   live directory also declares those names, not that the two definitions agree.
   Column-level disagreement among them is exactly what §2's OD-⟨next⟩ is about.
+- **`strip_ts_comments` blanks any line beginning with `*`.** That is for JSDoc
+  continuation lines. A line-initial `*` in a wrapped arithmetic expression would
+  also be blanked, losing a call site. No such line exists today; the failure
+  direction is a miss, not a false accusation.
