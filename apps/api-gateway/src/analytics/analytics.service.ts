@@ -22,6 +22,31 @@ import { METRIC_REGISTRY, MetricDefinition, Persona } from "./metric-registry";
  * consumption × unit_price and clearly labelled `basis` in the payload so the
  * UI never presents an approximation as a booked figure.
  */
+/**
+ * One wine's measured POS sales over a window. A `null` here always means "we
+ * have no record", never "zero" — see `getPosConsumptionBreakdown`.
+ */
+export interface PosConsumptionRow {
+  inventoryId: string | null;
+  wineName: string;
+  bottlesSold: number;
+  /** Summed `total_revenue` of bottle lines; null when none carried a price. */
+  bottleRevenue: number | null;
+  bottleVolumeMl: number;
+  /** Measured ml per bottle sold; null when nothing was sold by the bottle. */
+  avgBottleMl: number | null;
+  /** False when at least one bottle line had no price — the total understates. */
+  bottleRevenueComplete: boolean;
+  glassesSold: number;
+  glassRevenue: number | null;
+  glassVolumeMl: number;
+  /** Measured pour size; null when nothing was sold by the glass. */
+  avgPourMl: number | null;
+  glassRevenueComplete: boolean;
+  /** `restaurant_inventory.last_purchase_price`; null blocks margin honestly. */
+  costPerBottle: number | null;
+}
+
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
@@ -170,6 +195,140 @@ export class AnalyticsService {
       values.push(byDay.get(day) || 0);
     }
     return { dates, values };
+  }
+
+  // =========================================================================
+  // POS consumption breakdown (OD-85)
+  // =========================================================================
+
+  /**
+   * Per-wine bottle/glass sales over a closed day range, for the Reports page's
+   * "Wine Consumption Analytics" section — which shipped with its data source
+   * hard-coded to `[]`.
+   *
+   * Every figure is a SUM of what `wine_consumption_log` actually recorded, not
+   * `quantity × some price`: a wine sold at a happy-hour price and a list price
+   * in the same window has two real revenues, and multiplying by one of them
+   * would invent a third. `pos-hub.service.ts` writes these rows (volume_ml,
+   * total_revenue) as each check lands.
+   *
+   * Nulls are load-bearing. `bottleRevenue: null` means no line carried a price,
+   * which is not the same as $0; `costPerBottle: null` means the margin column
+   * cannot be computed at all, which is not the same as a 100% margin.
+   */
+  async getPosConsumptionBreakdown(
+    restaurantId: string,
+    fromDate: string,
+    toDate: string,
+  ): Promise<PosConsumptionRow[]> {
+    const client = this.dbService.getClient();
+    // `created_at` (not `recorded_at`) is what pos-hub writes through and what
+    // loadConsumption above already filters on — keep the two consistent.
+    const { data, error } = await client
+      .from("wine_consumption_log")
+      .select(
+        "inventory_id, wine_name, consumption_type, quantity, volume_ml, total_revenue, restaurant_inventory(wine_name, last_purchase_price)",
+      )
+      .eq("restaurant_id", restaurantId)
+      .gte("created_at", `${fromDate}T00:00:00Z`)
+      .lte("created_at", `${toDate}T23:59:59.999Z`);
+    if (error) throw new Error(error.message);
+
+    type Acc = PosConsumptionRow & {
+      bottleRevenueRows: number;
+      bottleRows: number;
+      glassRevenueRows: number;
+      glassRows: number;
+      bottleRevenueRaw: number;
+      glassRevenueRaw: number;
+    };
+    const byWine = new Map<string, Acc>();
+
+    for (const row of data || []) {
+      const inv: any = (row as any).restaurant_inventory ?? null;
+      const wineName =
+        (row as any).wine_name || inv?.wine_name || "Unnamed wine";
+      const key = (row as any).inventory_id || wineName;
+      let acc = byWine.get(key);
+      if (!acc) {
+        acc = {
+          inventoryId: (row as any).inventory_id ?? null,
+          wineName,
+          bottlesSold: 0,
+          bottleRevenue: null,
+          bottleVolumeMl: 0,
+          avgBottleMl: null,
+          bottleRevenueComplete: true,
+          glassesSold: 0,
+          glassRevenue: null,
+          glassVolumeMl: 0,
+          avgPourMl: null,
+          glassRevenueComplete: true,
+          costPerBottle:
+            inv?.last_purchase_price == null
+              ? null
+              : Number(inv.last_purchase_price),
+          bottleRevenueRows: 0,
+          bottleRows: 0,
+          glassRevenueRows: 0,
+          glassRows: 0,
+          bottleRevenueRaw: 0,
+          glassRevenueRaw: 0,
+        };
+        byWine.set(key, acc);
+      }
+
+      const qty = Number((row as any).quantity) || 0;
+      const ml = Number((row as any).volume_ml) || 0;
+      const revenue = (row as any).total_revenue;
+      const hasRevenue = revenue != null && !Number.isNaN(Number(revenue));
+
+      if ((row as any).consumption_type === "glass") {
+        acc.glassesSold += qty;
+        acc.glassVolumeMl += ml;
+        acc.glassRows += 1;
+        if (hasRevenue) {
+          acc.glassRevenueRaw += Number(revenue);
+          acc.glassRevenueRows += 1;
+        }
+      } else {
+        acc.bottlesSold += qty;
+        acc.bottleVolumeMl += ml;
+        acc.bottleRows += 1;
+        if (hasRevenue) {
+          acc.bottleRevenueRaw += Number(revenue);
+          acc.bottleRevenueRows += 1;
+        }
+      }
+    }
+
+    return Array.from(byWine.values()).map((a) => {
+      const {
+        bottleRevenueRows,
+        bottleRows,
+        glassRevenueRows,
+        glassRows,
+        bottleRevenueRaw,
+        glassRevenueRaw,
+        ...row
+      } = a;
+      row.bottleRevenue = bottleRevenueRows > 0 ? bottleRevenueRaw : null;
+      row.bottleRevenueComplete =
+        bottleRows === 0 || bottleRevenueRows === bottleRows;
+      row.glassRevenue = glassRevenueRows > 0 ? glassRevenueRaw : null;
+      row.glassRevenueComplete =
+        glassRows === 0 || glassRevenueRows === glassRows;
+      // Measured average, not the 750ml/150ml assumption the UI used to make.
+      row.avgBottleMl =
+        row.bottlesSold > 0
+          ? Math.round(row.bottleVolumeMl / row.bottlesSold)
+          : null;
+      row.avgPourMl =
+        row.glassesSold > 0
+          ? Math.round(row.glassVolumeMl / row.glassesSold)
+          : null;
+      return row;
+    });
   }
 
   // =========================================================================

@@ -14,6 +14,10 @@ import { InsightGeneratorService } from "./insights/insight-generator.service";
  *
  * Supported metric keys (v1): wine_revenue, bottles_sold, purchase_spend,
  * checks, avg_check, wine_attach_rate.
+ *
+ * `pos_revenue` is computed by the same query but is deliberately NOT in
+ * SUPPORTED_METRICS: it exists for `getPosRevenueWindow` (OD-85), and offering
+ * it as a goal target is a separate product decision nobody has made.
  */
 @Injectable()
 export class GoalsService {
@@ -280,15 +284,28 @@ export class GoalsService {
     return current;
   }
 
+  /**
+   * @param untilDate optional inclusive end of the window (YYYY-MM-DD). Goal
+   *   progress leaves it off — a goal runs to "now" — but the POS revenue
+   *   endpoint needs a closed range so a chart's x-axis matches its total.
+   */
   private async computeMetricWithSeries(
     restaurantId: string,
     metricKey: string,
     sinceDate: string,
-  ): Promise<{ current: number; dailySeries: number[] }> {
+    untilDate?: string,
+  ): Promise<{
+    current: number;
+    dailySeries: number[];
+    dailyDates: string[];
+    rowCount: number;
+  }> {
     const client = this.dbService.getClient();
     const sinceIso = `${sinceDate}T00:00:00Z`;
+    const untilIso = untilDate ? `${untilDate}T23:59:59.999Z` : null;
 
     const daily = new Map<string, number>();
+    let rowCount = 0;
     const add = (date: string, v: number) => {
       if (!date) return;
       daily.set(date, (daily.get(date) || 0) + v);
@@ -296,31 +313,41 @@ export class GoalsService {
 
     try {
       if (metricKey === "purchase_spend") {
-        const { data } = await client
+        let q = client
           .from("procurement_orders")
           .select("total_cost, final_price, delivered_at, created_at, status")
           .eq("restaurant_id", restaurantId)
           .eq("status", "delivered")
           .gte("delivered_at", sinceIso);
+        if (untilIso) q = q.lte("delivered_at", untilIso);
+        const { data } = await q;
+        rowCount = (data || []).length;
         for (const o of data || [])
           add(
             (o.delivered_at || o.created_at || "").substring(0, 10),
             o.total_cost || o.final_price || 0,
           );
       } else if (metricKey === "bottles_sold") {
-        const { data } = await client
+        let q = client
           .from("wine_consumption_log")
           .select("quantity, volume_ml, created_at")
           .eq("restaurant_id", restaurantId)
           .gte("created_at", sinceIso);
+        if (untilIso) q = q.lte("created_at", untilIso);
+        const { data } = await q;
+        rowCount = (data || []).length;
         for (const c of data || [])
           add(
             (c.created_at || "").substring(0, 10),
             c.quantity || (c.volume_ml ? c.volume_ml / 750 : 0),
           );
       } else {
-        // Check-based metrics (wine_revenue, checks, avg_check, attach rate).
-        const { data } = await client
+        // Check-based metrics (pos_revenue, wine_revenue, checks, avg_check,
+        // attach rate). One query serves all of them on purpose: OD-85 asked
+        // for POS revenue on four web surfaces, and a second hand-written sum
+        // of `pos_checks` would be free to drift from the one goal progress
+        // already trusts.
+        let q = client
           .from("pos_checks")
           .select("total, opened_at, closed_at, items")
           .eq("restaurant_id", restaurantId)
@@ -329,8 +356,20 @@ export class GoalsService {
           // hourly sweep shows the owner.
           .eq("voided", false)
           .gte("opened_at", sinceIso);
+        if (untilIso) q = q.lte("opened_at", untilIso);
+        const { data } = await q;
         const checks = data || [];
-        if (metricKey === "checks") {
+        rowCount = checks.length;
+        if (metricKey === "pos_revenue") {
+          // The whole check total — the tender the restaurant actually booked,
+          // which is the denominator a COGS ratio needs. `wine_revenue` below
+          // deliberately sums only itemised wine lines and is NOT a substitute.
+          for (const c of checks)
+            add(
+              (c.closed_at || c.opened_at || "").substring(0, 10),
+              Number(c.total) || 0,
+            );
+        } else if (metricKey === "checks") {
           for (const c of checks)
             add((c.closed_at || c.opened_at || "").substring(0, 10), 1);
         } else if (metricKey === "avg_check") {
@@ -341,6 +380,8 @@ export class GoalsService {
           return {
             current: checks.length ? total / checks.length : 0,
             dailySeries: [],
+            dailyDates: [],
+            rowCount: checks.length,
           };
         } else if (metricKey === "wine_attach_rate") {
           const withWine = checks.filter((c: any) =>
@@ -351,6 +392,8 @@ export class GoalsService {
           return {
             current: checks.length ? withWine / checks.length : 0,
             dailySeries: [],
+            dailyDates: [],
+            rowCount: checks.length,
           };
         } else {
           // wine_revenue: sum of wine items when itemized; whole check total
@@ -374,6 +417,101 @@ export class GoalsService {
     const dates = Array.from(daily.keys()).sort();
     const dailySeries = dates.map((d) => daily.get(d) || 0);
     const current = dailySeries.reduce((a, b) => a + b, 0);
-    return { current, dailySeries };
+    return { current, dailySeries, dailyDates: dates, rowCount };
   }
+
+  // ==========================================================================
+  // POS-backed sales revenue (OD-85)
+  // ==========================================================================
+
+  /**
+   * Has this restaurant EVER had a POS check land?
+   *
+   * Deliberately unwindowed and deliberately not filtered on `voided`: the
+   * question is "is a POS wired to this tenant", not "did they sell anything
+   * this month". Without it, a connected-but-quiet week and a restaurant with
+   * no POS at all would both read as `0`, and only one of those is true.
+   *
+   * Errors are NOT swallowed. `computeMetricWithSeries` catches and returns 0,
+   * which is the pattern that lets a broken query masquerade as "no sales";
+   * here a failure must reach the caller so the UI can say "couldn't load"
+   * rather than "no POS connected".
+   */
+  private async hasPosHistory(restaurantId: string): Promise<boolean> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("pos_checks")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .limit(1);
+    if (error) throw new Error(error.message);
+    return (data || []).length > 0;
+  }
+
+  /**
+   * Sales revenue booked through the POS over a closed day range.
+   *
+   * `revenue`/`checkCount` are `null` — never `0` — when no POS is connected.
+   * Every consumer of this payload renders an empty state off `posConnected`,
+   * because a zero here would be a claim about the restaurant's trading rather
+   * than a statement about our data (ADR 0020).
+   */
+  async getPosRevenueWindow(
+    restaurantId: string,
+    days = 30,
+  ): Promise<PosRevenueWindow> {
+    const span = Math.min(Math.max(Math.trunc(days) || 30, 1), 365);
+    const end = new Date();
+    const start = new Date(end.getTime() - (span - 1) * 86400000);
+    const from = start.toISOString().substring(0, 10);
+    const to = end.toISOString().substring(0, 10);
+
+    if (!(await this.hasPosHistory(restaurantId))) {
+      return {
+        restaurantId,
+        from,
+        to,
+        days: span,
+        posConnected: false,
+        revenue: null,
+        checkCount: null,
+        dailySeries: [],
+      };
+    }
+
+    const { current, dailySeries, dailyDates, rowCount } =
+      await this.computeMetricWithSeries(restaurantId, "pos_revenue", from, to);
+
+    return {
+      restaurantId,
+      from,
+      to,
+      days: span,
+      posConnected: true,
+      revenue: current,
+      checkCount: rowCount,
+      dailySeries: dailyDates.map((date, i) => ({
+        date,
+        revenue: dailySeries[i] ?? 0,
+      })),
+    };
+  }
+}
+
+/** Sales revenue for one restaurant over one closed day range. */
+export interface PosRevenueWindow {
+  restaurantId: string;
+  /** Inclusive first day of the window, YYYY-MM-DD. */
+  from: string;
+  /** Inclusive last day of the window, YYYY-MM-DD. */
+  to: string;
+  days: number;
+  /** False when this restaurant has never had a POS check. */
+  posConnected: boolean;
+  /** Sum of non-voided `pos_checks.total`. `null` when `posConnected` is false. */
+  revenue: number | null;
+  /** Non-voided checks in the window. `null` when `posConnected` is false. */
+  checkCount: number | null;
+  /** Sparse — only days that actually had revenue appear. */
+  dailySeries: Array<{ date: string; revenue: number }>;
 }

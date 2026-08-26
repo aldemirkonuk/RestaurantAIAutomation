@@ -30,7 +30,9 @@ import { AICommandPalette, AICommandPill } from '../components/reports/organisms
 import { MonthlyReconciliation } from '../components/reports/organisms/MonthlyReconciliation'
 import { PeriodCompareBar } from '../components/reports/molecules/PeriodCompareBar'
 import { formatMoney } from '../lib/utils'
-import { formatVolume, costPerGlass, glassMarginPercent, bottlesToVolume, getGlassesPerBottle } from '../utils/volumeUtils'
+// `bottlesToVolume` is gone on purpose: bottle volume is now the MEASURED
+// `volume_ml` the POS recorded, not bottles × an assumed 750ml.
+import { formatVolume, costPerGlass, glassMarginPercent, getGlassesPerBottle } from '../utils/volumeUtils'
 import { useRestaurantSettingsStore } from '../stores/restaurantSettingsStore'
 import {
   loadLayout,
@@ -41,6 +43,7 @@ import {
   serializeDashboardBlocks,
 } from '../lib/reports'
 import { useUserPreferences } from '../hooks/useUserPreferences'
+import { getPosRevenue, NO_POS_REVENUE, type PosRevenueWindow } from '../services/api/analytics'
 import type { LayoutConfig } from '../lib/reports/types'
 import type { WineTypeDistribution, TopWine, PurchaseMetrics, CheckScan } from '../components/reports/molecules'
 
@@ -186,7 +189,8 @@ const generateMetrics = (
 
 
 export function Reports() {
-  const { user: _user } = useAuth()
+  const { user } = useAuth()
+  const restaurantId = user?.restaurantId
   const { measurementUnit } = useRestaurantSettingsStore()
   const { dispatchReportEvent } = useRealtimeDispatch()
 
@@ -198,6 +202,19 @@ export function Reports() {
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('30d')
   const [loading, setLoading] = useState(true)
   const [exportSuccess, setExportSuccess] = useState<string | null>(null)
+
+  // ── Real POS sales revenue (OD-85) ──────────────────────────────────
+  // Everything else on this page is PURCHASE data (procurement_orders) — money
+  // the restaurant pays out. This is the only sales figure on the page, and it
+  // unblocks four surfaces that previously had nothing to read: the COGS ratio,
+  // Wine Consumption Analytics, the labour overlay and the channel donut.
+  //
+  // `posRevenue: null` is load-bearing. A restaurant with no POS has no revenue
+  // DATA — it did not sell $0 — so every consumer branches on `posConnected`
+  // and shows an empty state (ADR 0020). `posError` is kept distinct so a failed
+  // request never masquerades as "no POS connected".
+  const [pos, setPos] = useState<PosRevenueWindow>(NO_POS_REVENUE)
+  const [posError, setPosError] = useState<string | null>(null)
 
   // ── Legacy layout state (for sections - read-only) ──────────────────
   const [layout] = useState<LayoutConfig>(() => {
@@ -422,29 +439,41 @@ export function Reports() {
   }, [wineTypeTotals])
 
   // ── Consumption Analytics ────────────────────────────────────────────
-  // Will come from wine_consumption_log API when POS is connected
-  const consumptionData = useMemo(() => [], [])
-  const hasConsumptionData = consumptionData.length > 0
+  // Real rows from `wine_consumption_log` via GET /analytics/pos-revenue —
+  // this was hard-coded to `[]` until OD-85, which is why the section only ever
+  // rendered its "connect your POS" state even for restaurants that had one.
+  const consumptionData = pos.consumption
+  const hasConsumptionData = pos.posConnected && consumptionData.length > 0
 
-  const bottleConsumptionRows = useMemo(() => consumptionData.filter((d: any) => d.bottlesSold > 0), [consumptionData])
-  const glassConsumptionRows = useMemo(() => consumptionData.filter((d: any) => d.glassesSold > 0), [consumptionData])
+  const bottleConsumptionRows = useMemo(() => consumptionData.filter((d) => d.bottlesSold > 0), [consumptionData])
+  const glassConsumptionRows = useMemo(() => consumptionData.filter((d) => d.glassesSold > 0), [consumptionData])
 
   const consumptionTotals = useMemo(() => {
-    if (!hasConsumptionData) {
-      return { totalBottlesSold: 0, totalBottleRevenue: 0, totalBottleVolumeMl: 0, totalGlassesSold: 0, totalGlassRevenue: 0, totalGlassBottleEquiv: 0 }
+    // Every figure is a SUM of what was recorded, not quantity × a single
+    // price: a wine poured at two prices in the window has two real revenues,
+    // and multiplying by one of them would invent a third. `null` revenues
+    // (lines the POS gave us no price for) are skipped, never counted as $0.
+    const sum = (fn: (d: (typeof consumptionData)[number]) => number | null) =>
+      consumptionData.reduce((s, d) => s + (fn(d) ?? 0), 0)
+
+    return {
+      totalBottlesSold: sum((d) => d.bottlesSold),
+      totalBottleRevenue: sum((d) => d.bottleRevenue),
+      totalBottleVolumeMl: sum((d) => d.bottleVolumeMl),
+      totalGlassesSold: sum((d) => d.glassesSold),
+      totalGlassRevenue: sum((d) => d.glassRevenue),
+      // Measured volumes, so a 500ml carafe counts as 500ml rather than as
+      // "one glass" of an assumed 150ml pour.
+      totalGlassBottleEquiv: consumptionData.reduce((s, d) => {
+        if (!d.glassVolumeMl || !d.avgBottleMl) return s
+        return s + d.glassVolumeMl / d.avgBottleMl
+      }, 0),
+      /** True when at least one sale had no price attached — totals understate. */
+      revenueIncomplete: consumptionData.some(
+        (d) => !d.bottleRevenueComplete || !d.glassRevenueComplete,
+      ),
     }
-    const totalBottlesSold = consumptionData.reduce((s: number, d: any) => s + (d.bottlesSold || 0), 0)
-    const totalBottleRevenue = consumptionData.reduce((s: number, d: any) => s + ((d.bottlesSold || 0) * (d.bottlePrice || 0)), 0)
-    const totalBottleVolumeMl = consumptionData.reduce((s: number, d: any) => s + bottlesToVolume(d.bottlesSold || 0, d.bottleSizeMl || 750), 0)
-    const totalGlassesSold = consumptionData.reduce((s: number, d: any) => s + (d.glassesSold || 0), 0)
-    const totalGlassRevenue = consumptionData.reduce((s: number, d: any) => s + ((d.glassesSold || 0) * (d.glassPrice || 0)), 0)
-    const totalGlassBottleEquiv = consumptionData.reduce((s: number, d: any) => {
-      if (!d.glassesSold || d.glassesSold === 0) return s
-      const gpb = getGlassesPerBottle(d.bottleSizeMl || 750, d.pourSizeMl || 150)
-      return s + (gpb > 0 ? d.glassesSold / gpb : 0)
-    }, 0)
-    return { totalBottlesSold, totalBottleRevenue, totalBottleVolumeMl, totalGlassesSold, totalGlassRevenue, totalGlassBottleEquiv }
-  }, [consumptionData, hasConsumptionData])
+  }, [consumptionData])
 
   // Get KPI value based on key
   const getKPIValue = useCallback((key: string): { value: string | number; change: number; changeType: 'increase' | 'decrease' } => {
@@ -497,6 +526,50 @@ export function Reports() {
     const timer = setTimeout(() => setLoading(false), 500)
     return () => clearTimeout(timer)
   }, [timeRange])
+
+  // Fetch real POS sales revenue for the selected window. Goes through the
+  // shared axios client, never `fetch`: /analytics/* is behind a class-level
+  // JwtAuthGuard and a bare fetch sends no bearer token (see
+  // src/__tests__/no-raw-gateway-fetch.test.ts).
+  useEffect(() => {
+    if (!restaurantId) {
+      setPos(NO_POS_REVENUE)
+      return
+    }
+    let cancelled = false
+    const days = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90
+    getPosRevenue(restaurantId, days)
+      .then((data) => {
+        if (cancelled) return
+        setPos(data)
+        setPosError(null)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        // Do NOT fall back to a zero. A failed request and a restaurant with no
+        // POS look identical to the reader otherwise, and only one of them is
+        // something they can act on.
+        setPos(NO_POS_REVENUE)
+        setPosError(e instanceof Error ? e.message : 'Could not load sales revenue')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [restaurantId, timeRange])
+
+  /**
+   * POS revenue per day, keyed by the same short label `purchaseDayData` uses,
+   * so the labour overlay can plot both series on one axis.
+   */
+  const posRevenueByDate = useMemo(() => {
+    const byLabel: Record<string, number> = {}
+    for (const point of pos.dailySeries) {
+      const [y, m, d] = point.date.split('-').map(Number)
+      if (!y || !m || !d) continue
+      byLabel[formatShortDate(new Date(y, m - 1, d))] = point.revenue
+    }
+    return byLabel
+  }, [pos.dailySeries])
 
   // ── Dashboard block handlers ────────────────────────────────────────
 
@@ -576,14 +649,15 @@ export function Reports() {
           </div>
         )}
 
-        {/* posRevenue is null: this page has no POS revenue feed, so the COGS
-            ratio stays blank rather than dividing procurement spend by itself. */}
+        {/* Real sales revenue from `pos_checks` (OD-85). Still null when no POS
+            is connected, and the tile then says so rather than dividing
+            procurement spend by itself and always printing ~100%. */}
         {sectionId === 'dataTable' && (
           <DataTablesSection
             dailyData={purchaseDayData}
             purchaseData={purchaseData}
             purchaseMetrics={purchaseMetrics}
-            posRevenue={null}
+            posRevenue={pos.posConnected ? pos.revenue : null}
             checkScans={checkScans}
             expandedSections={expandedSections}
             onToggle={handleSectionToggle}
@@ -631,6 +705,12 @@ export function Reports() {
                         bottles: ${consumptionTotals.totalBottleRevenue.toLocaleString()} + glasses: $
                         {consumptionTotals.totalGlassRevenue.toLocaleString()}
                       </p>
+                      {consumptionTotals.revenueIncomplete && (
+                        <p className="text-[11px] text-amber-600 mt-1 leading-tight">
+                          Some sales reached us without a price — this is a floor,
+                          not the full figure
+                        </p>
+                      )}
                     </div>
                   </div>
                   {bottleConsumptionRows.length > 0 && (
@@ -648,16 +728,20 @@ export function Reports() {
                             </tr>
                           </thead>
                           <tbody>
-                            {bottleConsumptionRows.map((d: any) => (
+                            {bottleConsumptionRows.map((d) => (
                               <tr key={d.wineName} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                                 <td className="py-2.5 px-3 font-medium text-gray-900">{d.wineName}</td>
-                                <td className="py-2.5 px-3 text-gray-600">{formatVolume(d.bottleSizeMl, measurementUnit)}</td>
+                                <td className="py-2.5 px-3 text-gray-600">
+                                  {d.avgBottleMl == null ? '—' : formatVolume(d.avgBottleMl, measurementUnit)}
+                                </td>
                                 <td className="py-2.5 px-3 text-right text-gray-900">{d.bottlesSold}</td>
+                                {/* Summed real revenue. `—` means the POS sent no
+                                    price for these lines, which is not $0. */}
                                 <td className="py-2.5 px-3 text-right text-gray-900">
-                                  ${((d.bottlesSold || 0) * (d.bottlePrice || 0)).toLocaleString()}
+                                  {d.bottleRevenue == null ? '—' : `$${d.bottleRevenue.toLocaleString()}`}
                                 </td>
                                 <td className="py-2.5 px-3 text-right text-gray-600">
-                                  {formatVolume(bottlesToVolume(d.bottlesSold || 0, d.bottleSizeMl || 750), measurementUnit)}
+                                  {formatVolume(d.bottleVolumeMl, measurementUnit)}
                                 </td>
                               </tr>
                             ))}
@@ -695,33 +779,67 @@ export function Reports() {
                             </tr>
                           </thead>
                           <tbody>
-                            {glassConsumptionRows.map((d: any) => {
-                              const gpb = getGlassesPerBottle(d.bottleSizeMl || 750, d.pourSizeMl || 150)
-                              const cpg = costPerGlass(d.costPerBottle || 0, gpb)
-                              const margin = glassMarginPercent(cpg, d.glassPrice || 0)
-                              const bottleEquiv = gpb > 0 ? ((d.glassesSold || 0) / gpb).toFixed(1) : '0'
+                            {glassConsumptionRows.map((d) => {
+                              // Cost and margin are only computable when the
+                              // inventory row records a purchase price AND the
+                              // POS priced the pours. Missing either renders `—`:
+                              // a $0 cost would otherwise print a 100% margin,
+                              // which is the most flattering possible lie.
+                              const gpb =
+                                d.avgBottleMl && d.avgPourMl
+                                  ? getGlassesPerBottle(d.avgBottleMl, d.avgPourMl)
+                                  : 0
+                              const cpg =
+                                d.costPerBottle != null && gpb > 0
+                                  ? costPerGlass(d.costPerBottle, gpb)
+                                  : null
+                              const revenuePerGlass =
+                                d.glassRevenue != null && d.glassesSold > 0
+                                  ? d.glassRevenue / d.glassesSold
+                                  : null
+                              const margin =
+                                cpg != null && revenuePerGlass != null
+                                  ? glassMarginPercent(cpg, revenuePerGlass)
+                                  : null
+                              const bottleEquiv =
+                                d.avgBottleMl && d.avgBottleMl > 0
+                                  ? (d.glassVolumeMl / d.avgBottleMl).toFixed(1)
+                                  : '—'
                               return (
                                 <tr key={d.wineName} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                                   <td className="py-2.5 px-3 font-medium text-gray-900">{d.wineName}</td>
-                                  <td className="py-2.5 px-3 text-gray-600">{formatVolume(d.pourSizeMl || 150, measurementUnit)}</td>
+                                  <td className="py-2.5 px-3 text-gray-600">
+                                    {d.avgPourMl == null ? '—' : formatVolume(d.avgPourMl, measurementUnit)}
+                                  </td>
                                   <td className="py-2.5 px-3 text-right text-gray-900">{d.glassesSold}</td>
                                   <td className="py-2.5 px-3 text-right text-gray-900">
-                                    ${((d.glassesSold || 0) * (d.glassPrice || 0)).toLocaleString()}
+                                    {d.glassRevenue == null ? '—' : `$${d.glassRevenue.toLocaleString()}`}
                                   </td>
                                   <td className="py-2.5 px-3 text-right text-gray-600">{bottleEquiv}</td>
-                                  <td className="py-2.5 px-3 text-right text-gray-600">${cpg.toFixed(2)}</td>
+                                  <td className="py-2.5 px-3 text-right text-gray-600">
+                                    {cpg == null ? '—' : `$${cpg.toFixed(2)}`}
+                                  </td>
                                   <td className="py-2.5 px-3 text-right">
-                                    <span
-                                      className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                                        margin >= 70
-                                          ? 'bg-emerald-100 text-emerald-700'
-                                          : margin >= 50
-                                            ? 'bg-amber-100 text-amber-700'
-                                            : 'bg-red-100 text-red-700'
-                                      }`}
-                                    >
-                                      {margin.toFixed(1)}%
-                                    </span>
+                                    {margin == null ? (
+                                      <span
+                                        className="text-gray-400"
+                                        title="Needs a recorded purchase cost and a priced pour"
+                                      >
+                                        —
+                                      </span>
+                                    ) : (
+                                      <span
+                                        className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                                          margin >= 70
+                                            ? 'bg-emerald-100 text-emerald-700'
+                                            : margin >= 50
+                                              ? 'bg-amber-100 text-amber-700'
+                                              : 'bg-red-100 text-red-700'
+                                        }`}
+                                      >
+                                        {margin.toFixed(1)}%
+                                      </span>
+                                    )}
                                   </td>
                                 </tr>
                               )
@@ -747,25 +865,43 @@ export function Reports() {
                     </div>
                   )}
                 </div>
+              ) : posError ? (
+                /* A failed request is NOT "no POS connected". Telling a
+                   connected restaurant to go configure a POS it already has
+                   would send it down the wrong path entirely. */
+                <div className="flex flex-col items-center justify-center py-12 px-4">
+                  <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mb-4">
+                    <AlertTriangle className="w-8 h-8 text-amber-600" />
+                  </div>
+                  <h4 className="text-lg font-semibold text-gray-900 mb-2">
+                    Couldn&apos;t load sales data
+                  </h4>
+                  <p className="text-sm text-gray-500 text-center max-w-md">{posError}</p>
+                </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-12 px-4">
                   <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4">
                     <Wine className="w-8 h-8 text-purple-600" />
                   </div>
                   <h4 className="text-lg font-semibold text-gray-900 mb-2">
-                    Connect your POS system to see wine consumption analytics
+                    {pos.posConnected
+                      ? 'No wine sales recorded in this period'
+                      : 'Connect your POS system to see wine consumption analytics'}
                   </h4>
                   <p className="text-sm text-gray-500 text-center max-w-md mb-6">
-                    Once connected, you&apos;ll see detailed analytics including bottles sold, glasses sold, revenue breakdown, and margin
-                    analysis per wine.
+                    {pos.posConnected
+                      ? 'Your POS is connected and reporting, but no wine sales landed in the selected date range. Try a longer range.'
+                      : "Once connected, you'll see detailed analytics including bottles sold, glasses sold, revenue breakdown, and margin analysis per wine."}
                   </p>
-                  <Link
-                    to="/settings?tab=pos"
-                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition-colors"
-                  >
-                    <Settings className="w-4 h-4" />
-                    Configure POS
-                  </Link>
+                  {!pos.posConnected && (
+                    <Link
+                      to="/settings?tab=pos"
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition-colors"
+                    >
+                      <Settings className="w-4 h-4" />
+                      Configure POS
+                    </Link>
+                  )}
                 </div>
               )}
             </div>
@@ -877,6 +1013,9 @@ export function Reports() {
           spotlightedKPI={spotlightedKPI}
           totalOrders={metrics.totalOrders}
           totalSpend={metrics.totalSpend}
+          posRevenue={pos.posConnected ? pos.revenue : null}
+          posConnected={pos.posConnected}
+          posRevenueByDate={posRevenueByDate}
         />
         </div>
 

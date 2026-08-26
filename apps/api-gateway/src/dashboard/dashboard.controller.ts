@@ -101,14 +101,18 @@ export class DashboardController {
   }
 
   /**
-   * Get calendar-revenue data for a specific month
-   * Joins calendar events with procurement orders to show daily revenue overlays
+   * Per-day procurement figures for a specific month.
+   *
+   * The route name `calendar-revenue` is frozen, but nothing here is revenue:
+   * `daily[].procurement_spend` and `monthly_procurement_spend` are sums of
+   * delivered `procurement_orders` — money paid to vendors. Joined with
+   * calendar events for the day overlays.
    */
   @Get("calendar-revenue/:restaurantId")
   @ApiOperation({
-    summary: "Get calendar-revenue data for a given month",
+    summary: "Get per-day vendor spend and calendar events for a given month",
     description:
-      "Returns per-day data with revenue from delivered orders and calendar events for the requested month.",
+      "Returns per-day vendor SPEND (`procurement_spend`, summed from delivered procurement orders — money out, not sales revenue) plus calendar events for the requested month. The `calendar-revenue` path name is a legacy misnomer kept for compatibility.",
   })
   @ApiParam({ name: "restaurantId", description: "Restaurant UUID" })
   @ApiQuery({
@@ -121,7 +125,10 @@ export class DashboardController {
     required: false,
     description: "Month 1-12 (defaults to current)",
   })
-  @ApiResponse({ status: 200, description: "Calendar revenue data" })
+  @ApiResponse({
+    status: 200,
+    description: "Per-day vendor spend and calendar events",
+  })
   async getCalendarRevenue(
     @Param("restaurantId") restaurantId: string,
     @Query("year") yearStr?: string,
@@ -239,8 +246,9 @@ export class DashboardController {
 
   @Get("sales-chart/:restaurantId")
   @ApiOperation({
-    summary: "Get sales chart data",
-    description: "Time-series data for revenue, bottles, and glasses.",
+    summary: "Get the procurement-spend time series",
+    description:
+      "Time-series data for vendor SPEND (`procurementSpend`, summed from delivered procurement orders — money out, not sales revenue), bottles delivered, and glasses poured. The `sales-chart` path name is a legacy misnomer kept for compatibility.",
   })
   @ApiParam({ name: "restaurantId", description: "Restaurant UUID" })
   @ApiQuery({
@@ -251,7 +259,7 @@ export class DashboardController {
   })
   @ApiResponse({
     status: 200,
-    description: "Sales chart data",
+    description: "Procurement-spend time series",
     type: [SalesChartPointDto],
   })
   async getSalesChart(

@@ -625,7 +625,7 @@ export class ScheduledTasksService implements OnModuleInit {
 
       const totalBottles =
         inventory?.reduce((sum, item) => sum + (item.stock_live || 0), 0) || 0;
-      const totalValue = totalBottles * 50; // Rough estimate
+      const totalValue = this.valueInventory(inventory);
 
       const recipients = await this.recipientResolver.resolveRecipients({
         restaurantId: this.defaultRestaurantId,
@@ -987,7 +987,93 @@ export class ScheduledTasksService implements OnModuleInit {
   }
 
   /**
-   * Get weekly report data from database
+   * Value on-hand stock at what it actually cost.
+   *
+   * Both the weekly report and the Monday audit reminder used to mail the
+   * bottle count multiplied by an invented flat $50, which made a cellar of
+   * house red and a cellar of grand cru report the same figure. Rows with no price on
+   * file contribute bottles but no value, so the total UNDERSTATES a partially
+   * priced inventory. That is a different and far safer error than a made-up
+   * unit price, and it moves toward the truth as costs get recorded.
+   */
+  private valueInventory(
+    inventory: Array<Record<string, any>> | null | undefined,
+  ): number {
+    return (
+      inventory?.reduce((sum, item) => {
+        const unit =
+          item.last_purchase_price ??
+          item.custom_price ??
+          item.negotiated_price;
+        if (unit == null) return sum;
+        const price = Number(unit);
+        if (!Number.isFinite(price)) return sum;
+        return sum + price * (item.stock_live || 0);
+      }, 0) || 0
+    );
+  }
+
+  /**
+   * Real top sellers for the last 7 days, from `wine_consumption_log`.
+   *
+   * Only lines that recorded a `total_revenue` are counted — into BOTH `sold`
+   * and `revenue`. The email prints the two side by side, so they have to
+   * describe the same set of sales: five bottles next to $90 of revenue reads
+   * as three bottles given away. A wine with no priced line at all does not
+   * appear, and if nothing is priced the whole section disappears (the template
+   * drops it on an empty array).
+   *
+   * Never throws: a failure here must not cost the manager the rest of the
+   * report, and an empty list is the honest answer to "we could not read it".
+   */
+  private async getWeeklyTopSellers(
+    restaurantId: string,
+  ): Promise<Array<{ name: string; sold: number; revenue: number }>> {
+    try {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      const { data, error } = await this.databaseService
+        .getClient()
+        .from("wine_consumption_log")
+        .select("wine_name, quantity, total_revenue")
+        .eq("restaurant_id", restaurantId)
+        .gte("created_at", sevenDaysAgo.toISOString());
+      if (error) throw new Error(error.message);
+
+      const byWine = new Map<string, { sold: number; revenue: number }>();
+      for (const row of data || []) {
+        if (row.total_revenue == null) continue;
+        const revenue = Number(row.total_revenue);
+        if (!Number.isFinite(revenue)) continue;
+        const name = row.wine_name || "Unnamed wine";
+        const acc = byWine.get(name) || { sold: 0, revenue: 0 };
+        acc.sold += Number(row.quantity) || 0;
+        acc.revenue += revenue;
+        byWine.set(name, acc);
+      }
+
+      return Array.from(byWine.entries())
+        .map(([name, v]) => ({ name, sold: v.sold, revenue: v.revenue }))
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 5);
+    } catch (error: any) {
+      this.logger.warn(
+        `Weekly top sellers unavailable (section omitted): ${error?.message}`,
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Get weekly report data from database.
+   *
+   * ADR 0020 — every figure below is read, never assumed. This method used to
+   * hard-code a top-sellers table and value inventory at a flat $50/bottle, and
+   * both went out over email under the restaurant's own name where the reader
+   * had no way to tell them from measured numbers. When the data is missing the
+   * section is now ABSENT: the template omits Top Sellers and the low-stock
+   * table on an empty array, which is a truthful email.
    */
   private async getWeeklyReportData(): Promise<{
     totalBottles: number;
@@ -1002,63 +1088,59 @@ export class ScheduledTasksService implements OnModuleInit {
       messageCount: number;
     }>;
   }> {
-    // Try to get actual data from database, fallback to mock
-    try {
-      if (this.defaultRestaurantId) {
-        const inventory = await this.databaseService.getRestaurantInventory(
-          this.defaultRestaurantId,
-        );
-        const lowStockItems = await this.databaseService.getLowStockItems(
-          this.defaultRestaurantId,
-        );
-
-        const totalBottles =
-          inventory?.reduce((sum, item) => sum + (item.stock_live || 0), 0) ||
-          0;
-
-        // Fetch recent conversation summaries (last 7 days)
-        const conversationSummaries =
-          await this.getRecentConversationSummaries();
-
-        return {
-          totalBottles,
-          lowStockCount: lowStockItems?.length || 0,
-          totalValue: totalBottles * 50, // Rough estimate
-          topSellers: [
-            { name: "Chateau Margaux 2015", sold: 15, revenue: 4500 },
-            { name: "Opus One 2019", sold: 12, revenue: 3540 },
-            { name: "Dom Perignon 2012", sold: 10, revenue: 2500 },
-          ],
-          lowStockItems:
-            lowStockItems?.slice(0, 5).map((item) => ({
-              name: item.wine_name || "Unknown Wine",
-              current: item.stock_live || 0,
-              threshold: item.threshold_min || 10,
-            })) || [],
-          conversationSummaries,
-        };
-      }
-    } catch (error) {
-      this.logger.warn("Failed to get data from database, using mock data");
-    }
-
-    // Mock data for testing
-    return {
-      totalBottles: 1247,
-      lowStockCount: 12,
-      totalValue: 42850,
-      topSellers: [
-        { name: "Chateau Margaux 2015", sold: 15, revenue: 4500 },
-        { name: "Opus One 2019", sold: 12, revenue: 3540 },
-        { name: "Dom Perignon 2012", sold: 10, revenue: 2500 },
-      ],
-      lowStockItems: [
-        { name: "Chateau Margaux 2015", current: 2, threshold: 12 },
-        { name: "Opus One 2019", current: 5, threshold: 8 },
-        { name: "Caymus Cabernet", current: 7, threshold: 10 },
-      ],
+    /** Nothing measured, nothing claimed. */
+    const nothingToReport = {
+      totalBottles: 0,
+      lowStockCount: 0,
+      totalValue: 0,
+      topSellers: [],
+      lowStockItems: [],
       conversationSummaries: [],
     };
+
+    if (!this.defaultRestaurantId) return nothingToReport;
+
+    try {
+      const inventory = await this.databaseService.getRestaurantInventory(
+        this.defaultRestaurantId,
+      );
+      const lowStockItems = await this.databaseService.getLowStockItems(
+        this.defaultRestaurantId,
+      );
+
+      const totalBottles =
+        inventory?.reduce((sum, item) => sum + (item.stock_live || 0), 0) || 0;
+
+      const totalValue = this.valueInventory(inventory);
+
+      const [topSellers, conversationSummaries] = await Promise.all([
+        this.getWeeklyTopSellers(this.defaultRestaurantId),
+        this.getRecentConversationSummaries(),
+      ]);
+
+      return {
+        totalBottles,
+        lowStockCount: lowStockItems?.length || 0,
+        totalValue,
+        topSellers,
+        lowStockItems:
+          lowStockItems?.slice(0, 5).map((item) => ({
+            name: item.wine_name || "Unknown Wine",
+            current: item.stock_live || 0,
+            threshold: item.threshold_min || 10,
+          })) || [],
+        conversationSummaries,
+      };
+    } catch (error: any) {
+      // Previously this fell through to a fixture (1,247 bottles, $42,850,
+      // three named wines) and mailed it. A blank report is a worse email and
+      // a true one.
+      this.logger.error(
+        `Weekly report data unavailable — sending an empty report rather than ` +
+          `placeholder figures: ${error?.message}`,
+      );
+      return nothingToReport;
+    }
   }
 
   /**

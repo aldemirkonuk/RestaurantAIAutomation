@@ -1,9 +1,24 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import {
   FeatureFlagsDto,
   UpdateFeatureFlagsDto,
 } from "./dto/feature-flags.dto";
+import {
+  ACTIVE_FEATURE_FLAGS,
+  ACTIVE_FEATURE_FLAG_KEYS,
+  FEATURE_FLAGS_TABLE,
+  SETTINGS_ROW_FLAG_NAME,
+  defaultActiveFlags,
+  isActiveFeatureFlag,
+} from "./feature-flag-registry";
+
+const ACTIVE_COLUMNS = ACTIVE_FEATURE_FLAG_KEYS.join(", ");
 
 @Injectable()
 export class SettingsService {
@@ -12,161 +27,119 @@ export class SettingsService {
   constructor(private readonly databaseService: DatabaseService) {}
 
   /**
-   * Get feature flags for a restaurant
+   * Read the restaurant's settings row.
+   *
+   * No row means "never configured", which is a real state and answers with the
+   * registry defaults. A read ERROR is not that state, and is raised rather
+   * than swallowed: silently returning defaults would show a manager an
+   * autonomy dial reading OFF when the truth is that we could not find out
+   * (ADR 0020 — an error must never render as emptiness).
    */
   async getFeatureFlags(restaurantId: string): Promise<FeatureFlagsDto> {
     const { data, error } = await this.databaseService.client
-      .from("restaurant_feature_flags")
-      .select("*")
+      .from(FEATURE_FLAGS_TABLE)
+      .select(ACTIVE_COLUMNS)
       .eq("restaurant_id", restaurantId)
-      .single();
+      .eq("flag_name", SETTINGS_ROW_FLAG_NAME)
+      .maybeSingle();
 
     if (error) {
-      if (error.code === "PGRST116") {
-        // No flags found, return defaults (all enabled)
-        return this.getDefaultFeatureFlags();
-      }
       this.logger.error(
-        `Error fetching feature flags: ${error.message}`,
-        error,
+        `Error fetching feature flags for ${restaurantId}: ${(error as { message?: string }).message}`,
       );
-      throw new Error(`Failed to fetch feature flags: ${error.message}`);
+      throw new InternalServerErrorException(
+        "Could not read your feature settings.",
+      );
     }
 
-    // Remove id, restaurant_id, created_at, updated_at from response
-    const { id, restaurant_id, created_at, updated_at, ...flags } = data;
-
-    return flags as FeatureFlagsDto;
+    return this.normalize(data as unknown as Record<string, unknown> | null);
   }
 
   /**
-   * Update feature flags for a restaurant
+   * Write the restaurant's settings row.
+   *
+   * Only keys in the registry are forwarded. The previous implementation
+   * forwarded every DTO key straight to PostgREST, and since none of those 22
+   * columns exist, the statement failed and the user saw "Failed to save
+   * settings" with no explanation of which of their 22 switches was at fault
+   * (the answer being: all of them).
    */
   async updateFeatureFlags(
     restaurantId: string,
     updateDto: UpdateFeatureFlagsDto,
   ): Promise<FeatureFlagsDto> {
-    // Check if flags exist
-    const { data: existing } = await this.databaseService.client
-      .from("restaurant_feature_flags")
-      .select("id")
-      .eq("restaurant_id", restaurantId)
+    const patch: Record<string, boolean> = {};
+    for (const key of ACTIVE_FEATURE_FLAG_KEYS) {
+      const value = (updateDto as Record<string, unknown>)[key];
+      if (typeof value === "boolean") patch[key] = value;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      throw new BadRequestException(
+        `No settable feature flag in the request. Settable flags: ${ACTIVE_FEATURE_FLAG_KEYS.join(", ")}.`,
+      );
+    }
+
+    const { data, error } = await this.databaseService.client
+      .from(FEATURE_FLAGS_TABLE)
+      .upsert(
+        {
+          restaurant_id: restaurantId,
+          flag_name: SETTINGS_ROW_FLAG_NAME,
+          ...patch,
+        },
+        { onConflict: "restaurant_id,flag_name" },
+      )
+      .select(ACTIVE_COLUMNS)
       .single();
 
-    if (existing) {
-      // Update existing flags
-      const { data, error } = await this.databaseService.client
-        .from("restaurant_feature_flags")
-        .update(updateDto)
-        .eq("restaurant_id", restaurantId)
-        .select()
-        .single();
-
-      if (error) {
-        this.logger.error(
-          `Error updating feature flags: ${error.message}`,
-          error,
-        );
-        throw new Error(`Failed to update feature flags: ${error.message}`);
-      }
-
-      const { id, restaurant_id, created_at, updated_at, ...flags } = data;
-
-      return flags as FeatureFlagsDto;
-    } else {
-      // Create new flags with defaults + updates
-      const defaultFlags = this.getDefaultFeatureFlags();
-      const newFlags = {
-        restaurant_id: restaurantId,
-        ...defaultFlags,
-        ...updateDto,
-      };
-
-      const { data, error } = await this.databaseService.client
-        .from("restaurant_feature_flags")
-        .insert(newFlags)
-        .select()
-        .single();
-
-      if (error) {
-        this.logger.error(
-          `Error creating feature flags: ${error.message}`,
-          error,
-        );
-        throw new Error(`Failed to create feature flags: ${error.message}`);
-      }
-
-      const { id, restaurant_id, created_at, updated_at, ...flags } = data;
-
-      return flags as FeatureFlagsDto;
+    if (error) {
+      this.logger.error(
+        `Error saving feature flags for ${restaurantId}: ${(error as { message?: string }).message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not save your feature settings. Nothing was changed.",
+      );
     }
+
+    return this.normalize(data as unknown as Record<string, unknown> | null);
   }
 
   /**
-   * Check if a specific feature is enabled for a restaurant
+   * Answer for one named flag.
+   *
+   * `active: false` is the important half. This used to call a
+   * `get_restaurant_feature_flag()` RPC that exists in no applied migration,
+   * and returned TRUE whenever the call errored — so every dead flag, and every
+   * misspelling, answered "enabled: true".
    */
   async isFeatureEnabled(
     restaurantId: string,
     featureName: string,
-  ): Promise<boolean> {
-    const { data, error } = await this.databaseService.client.rpc(
-      "get_restaurant_feature_flag",
-      {
-        p_restaurant_id: restaurantId,
-        p_feature_name: featureName,
-      },
-    );
-
-    if (error) {
-      this.logger.error(`Error checking feature flag: ${error.message}`, error);
-      // Default to enabled if check fails
-      return true;
+  ): Promise<{ enabled: boolean; active: boolean }> {
+    if (!isActiveFeatureFlag(featureName)) {
+      return { enabled: false, active: false };
     }
-
-    return data ?? true;
+    const flags = await this.getFeatureFlags(restaurantId);
+    return {
+      enabled:
+        (flags as unknown as Record<string, boolean>)[featureName] === true,
+      active: true,
+    };
   }
 
   /**
-   * Get default feature flags (all enabled)
+   * Coerce a row (or its absence) into definite booleans. Anything that is not
+   * literally `true`/`false` in the column falls back to the registry default,
+   * so a NULL can never be read as "on".
    */
-  private getDefaultFeatureFlags(): FeatureFlagsDto {
-    return {
-      enable_inventory_storage_locations: true,
-      enable_auto_procurement: true,
-      enable_visual_verification: true,
-      enable_predictive_analytics: true,
-      enable_ai_negotiation: true,
-      // Autonomous auto-send stays OFF by default — manager approves every reply
-      // until they explicitly flip this on per restaurant.
-      enable_ai_autonomous_send: false,
-      enable_sommelier_ai: true,
-      enable_voice_agent: true,
-      enable_menu_analyzer: true,
-      enable_calendar_sync: true,
-      enable_whatsapp_business: true,
-      enable_quickbooks_sync: true,
-      enable_recurring_orders: true,
-      enable_invoice_scanning: true,
-      enable_check_scanning: true,
-      enable_auction_purchases: true,
-      enable_profit_margin_tracking: true,
-      // Guest CRM stays OFF by default, for the same reason as
-      // enable_ai_autonomous_send above: it is the one flag here whose "on"
-      // makes a promise about a *person*. Settings.tsx renders it as "Track
-      // guest preferences and wine history", and until 2026-08-20 it defaulted
-      // true while no guest entity existed anywhere in the schema — every
-      // restaurant shown an on-by-default tracking claim backed by nothing,
-      // and no record of what any guest had been told. The schema now exists
-      // (20260819000000, register A14), which makes the default matter more,
-      // not less: capture must begin by a restaurant's deliberate act, because
-      // consent is per guest and versioned and someone has to have decided
-      // what the notice says.
-      enable_guest_crm: false,
-      enable_wine_pairing_ai: true,
-      enable_compliance_autopilot: true,
-      enable_shrinkage_detective: true,
-      enable_staff_training_simulator: true,
-      enable_pour_cost_optimizer: true,
-    };
+  private normalize(row: Record<string, unknown> | null): FeatureFlagsDto {
+    const defaults = defaultActiveFlags();
+    const out: Record<string, boolean> = {};
+    for (const spec of ACTIVE_FEATURE_FLAGS) {
+      const value = row?.[spec.key];
+      out[spec.key] = typeof value === "boolean" ? value : defaults[spec.key];
+    }
+    return out as unknown as FeatureFlagsDto;
   }
 }

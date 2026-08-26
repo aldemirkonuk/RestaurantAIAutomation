@@ -190,9 +190,25 @@ export class AlertDto {
 // SALES CHART
 // ============================================================================
 
+/**
+ * One bucket of the `GET /dashboard/sales-chart/:id` series.
+ *
+ * The route name is frozen (it is a published path), but the money in here is
+ * NOT sales. `procurementSpend` is summed from delivered
+ * `procurement_orders.total_cost` — money the restaurant PAYS its vendors. The
+ * field used to be called `revenue`, which inverted the sign of the number for
+ * every consumer that plotted it. `glasses` comes from `wine_consumption_log`.
+ * Real sales revenue lives in `pos_checks` and is not read by this endpoint.
+ */
 export class SalesChartPointDto {
   @ApiProperty() date: string;
-  @ApiProperty() revenue: number;
+
+  @ApiProperty({
+    description:
+      "Vendor spend on orders delivered in this bucket. NOT sales revenue.",
+  })
+  procurementSpend: number;
+
   @ApiProperty() bottles: number;
   @ApiProperty() glasses: number;
 }
