@@ -19,6 +19,11 @@ Run: cd services/agent-orchestrator && python -m pytest tests/test_wine_matcher.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import sys
+
+import google
+from types import ModuleType
+
 import pytest
 
 from services.wine_matcher import WineMatcher
@@ -63,14 +68,49 @@ async def _run_grounded(text: str, spend: MagicMock):
 
 
 async def _run_fallback(text: str, spend: MagicMock):
-    """Drive the non-grounded fallback with a canned answer."""
+    """
+    Drive the non-grounded fallback with a canned answer.
+
+    The stub is injected into `sys.modules` rather than patched onto
+    `google.generativeai`, because `wine_matcher` does `import
+    google.generativeai as genai` INSIDE the function and the legacy SDK is not
+    installed in CI — `patch("google.generativeai.configure")` therefore raised
+    `AttributeError: module 'google' has no attribute 'generativeai'` there
+    while passing locally, where the package happens to exist. Injecting the
+    module satisfies the in-function import on either machine.
+    """
     matcher = _matcher()
     model = MagicMock()
     model.generate_content.return_value = _gemini_returning(text)
 
-    with patch("google.generativeai.configure"), patch(
-        "google.generativeai.GenerativeModel", return_value=model
-    ), patch("services.spend_logger.get_spend_logger", return_value=spend):
+    fake_genai = ModuleType("google.generativeai")
+    fake_genai.configure = MagicMock()
+    fake_genai.GenerativeModel = MagicMock(return_value=model)
+
+    # `_ai_enrichment_fallback` wraps its whole body in a try/except that
+    # returns None, so ANY incidental failure inside it looks like "the model
+    # returned nothing" rather than an error. `get_settings()` is a cached
+    # singleton other tests mutate, so it is stubbed here too — without this the
+    # test passes alone and fails in the full suite, which is precisely how the
+    # CI-only failure presented.
+    settings = MagicMock()
+    settings.gemini_model = "gemini-3.5-flash-lite"
+
+    # BOTH the sys.modules entry and the attribute on the `google` package are
+    # needed, and each covers a different machine:
+    #   * CI never installs the legacy SDK, so `getattr(google, "generativeai")`
+    #     raises and only the sys.modules entry can satisfy the import
+    #     (create=True is what allows patching an attribute that is absent).
+    #   * Locally the package IS installed, and once any earlier test imports
+    #     it, `import google.generativeai as genai` reads the attribute off the
+    #     parent package and ignores sys.modules entirely — which made this test
+    #     fire a REAL network request ("400 API key not valid") and fail only in
+    #     the full suite, never alone.
+    with patch.dict(sys.modules, {"google.generativeai": fake_genai}), patch.object(
+        google, "generativeai", fake_genai, create=True
+    ), patch("services.wine_matcher.get_settings", return_value=settings), patch(
+        "services.spend_logger.get_spend_logger", return_value=spend
+    ):
         return await matcher._ai_enrichment_fallback(
             "Château Test", "Test Estate", 2015
         )
