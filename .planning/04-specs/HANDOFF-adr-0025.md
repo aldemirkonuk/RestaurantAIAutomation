@@ -22,34 +22,36 @@ deleted under ADR 0025 §7.
 
 ---
 
-## 1. The three citations, and what each should say
+## 1. The whole fix is two steps, and no line number below needs to be trusted
 
-Line numbers are from the register as it stood at `origin/main` = `4c6eb6d2` on
-2026-08-26. **Re-run the checker before applying** — it prints the correct line for
-every id, and the register moves under almost a quarter of all commits.
+```
+1. delete the two PAIRING_DEBT entries from scripts/check_citation_pairing.py
+2. ./scripts/check_citation_pairing.py --fix
+```
 
-| # | File | Cites | Anchored at register line | That line is | Correct line |
+`--fix` reads the register and repoints them. It deliberately skips anything on
+`PAIRING_DEBT`, which is why step 1 comes first.
+
+**Do not hand-write the line numbers.** They were stale between being written into
+this file and being pushed: `#107` merged, added five register rows, and moved
+every anchor below them. That is the thesis of ADR 0025 arriving inside its own
+handoff note, and it is exactly why `--fix` exists.
+
+| # | File | Cites | Was anchored at | Which is | Why it is still wrong |
 |---|---|---|---|---|---|
-| 1 | `06-pages/privacy.md:59` | OD-27 | 123 | OD-28 | **125** |
-| 2 | `06-pages/privacy.md:129` | OD-27 | 123 | OD-28 | **125** |
-| 3 | `06-pages/settings.md:123` | OD-86 | 78 | OD-81 | **82** |
+| 1 | `06-pages/privacy.md:59` | OD-27 | 123, then 125 | OD-28, then a shifted row | **defect #3 in ADR 0025 §2** — 123 was never correct; PR #106 repointed it to 125 and `#107` moved it again |
+| 2 | `06-pages/privacy.md:129` | OD-27 | same | same | same paragraph, second citation |
+| 3 | `06-pages/settings.md:123` | OD-86 | 78, then 82 | OD-81, then a shifted row | same shape |
 
-Rows 1 and 2 are **defect #3 in ADR 0025 §2** — the anchor pair that was never
-correct, and the reason the ADR exists. Fixing them closes the example that
-motivated the rule.
+Row 1 is the citation the whole ADR was written about. Fixing it closes the
+motivating example.
 
-Write them in the canonical form, id first:
+If you do edit by hand, the canonical form is id first — `OD-27
+(OPEN-DECISIONS.md:N)`. Any form works as long as the id sits within 120 characters
+of the locator on the **same line**; inside an existing parenthesis, `OD-27,
+OPEN-DECISIONS.md:N` reads better than nesting a second one.
 
-```
-OD-27 (.planning/decisions/OPEN-DECISIONS.md:125)
-OD-86 (OPEN-DECISIONS.md:82)
-```
-
-Any form works as long as the id sits within 120 characters of the locator on the
-**same line** — `OD-27, OPEN-DECISIONS.md:125` inside an existing parenthesis reads
-better than nesting a second one.
-
-## 2. Then delete the debt entries
+## 2. The debt entries
 
 `PAIRING_DEBT` in `scripts/check_citation_pairing.py` has two keys:
 
@@ -58,8 +60,8 @@ better than nesting a second one.
 .planning/06-pages/settings.md::OD-86
 ```
 
-Once the citations are fixed, **delete both lines and the block comment above
-them.** The checker will print a `PRUNE ME` notice until you do.
+**Delete both lines and the block comment above them.** The checker prints a
+`PRUNE ME` notice until you do.
 
 That notice does **not** fail the build, and that is deliberate: this list exists
 so two PRs can land in either order without turning main red. It is the one place

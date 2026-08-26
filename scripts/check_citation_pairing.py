@@ -60,12 +60,30 @@ Every "found nothing" path is a FAILURE, not a pass:
 Exit 0 = clean. Exit 1 = broken citations (printed). Exit 2 = the guard could not check
 what it claims to, which is a failure, not a skip.
 
+--fix
+-----
+`./scripts/check_citation_pairing.py --fix` repoints every DISAGREEING citation onto the
+row its id actually occupies, then re-checks.
+
+This is not a convenience, it is what makes the rule livable. A single row inserted into
+the register shifts every anchor below it, so ANY commit that touches OPEN-DECISIONS.md
+invalidates citations in documents it never opened -- and 22% of commits since Aug 1
+touched it. Measured on this branch: rebasing onto a `main` five rows longer turned 0
+failures into 27, none of them anyone's mistake.
+
+So the maintenance rule is: **if your commit adds or removes a register row, run --fix and
+commit the result with it.** One command, seconds, no judgement.
+
+--fix cannot repair UNANCHORED citations. Only a person knows which decision a bare
+locator meant, and guessing would be the fabrication ADR 0020 forbids. Those still fail.
+
 Stdlib only, no third-party imports: this runs in the decision-claims job, which installs
 nothing.
 """
 
 from __future__ import annotations
 
+import argparse
 import pathlib
 import re
 import sys
@@ -132,16 +150,22 @@ CITE_EXAMPLE_MAX = 2
 # That softness is a cost, and it is bounded by emptying the list: once both PRs are on
 # main, delete every line below and this comment with them. An entry that outlives the
 # handoff is debt nobody agreed to.
+#
+# CLEARING IT IS TWO STEPS: delete the entries, then run `--fix`. Nothing needs to be
+# hand-edited, and no line number in these notes needs to be trusted -- --fix reads the
+# register. That is deliberate: the anchors named here were already stale once between
+# writing them and pushing them.
 # ---------------------------------------------------------------------------
 PAIRING_DEBT: dict[str, str] = {
     ".planning/06-pages/privacy.md::OD-27": (
-        "privacy.md:59 and :129 both anchor OD-27 at OPEN-DECISIONS.md:123, which is "
-        "OD-28. This is defect #3 in ADR 0025 §2 -- the anchor was never correct. "
-        "Correct anchor as of 2026-08-26: OPEN-DECISIONS.md:125."
+        "privacy.md:59 anchors OD-27 at a row that is not OD-27. Originally defect #3 in "
+        "ADR 0025 §2 (anchored at 123 = OD-28, never correct); PR #106 repointed it and "
+        "the next register insert moved it again, which is the whole thesis. "
+        "TO FIX: delete this line and run --fix."
     ),
     ".planning/06-pages/settings.md::OD-86": (
-        "settings.md:123 anchors OD-86 at OPEN-DECISIONS.md:78, which is OD-81. "
-        "Correct anchor as of 2026-08-26: OPEN-DECISIONS.md:82."
+        "settings.md:123 anchors OD-86 at a row that is not OD-86, for the same reason. "
+        "TO FIX: delete this line and run --fix."
     ),
 }
 
@@ -210,8 +234,64 @@ def pair_for(line: str, m: re.Match) -> str | None:
     return best[1] if best else None
 
 
+def repoint(rows: dict[int, str]) -> int:
+    """Rewrite every DISAGREEING citation onto the row its id occupies. Returns the count.
+
+    Only the line NUMBER changes, and only where an id is already present and names a real
+    register row. Unanchored locators, `cite-example` lines and PAIRING_DEBT entries are
+    left exactly as they are -- see the module docstring for why guessing is not on offer.
+    """
+    homes: dict[str, list[int]] = {}
+    for n, rid in sorted(rows.items()):
+        homes.setdefault(rid, []).append(n)
+
+    fixed = 0
+    for rel, text in scan_files():
+        lines = text.splitlines(keepends=True)
+        touched = False
+        for i, line in enumerate(lines):
+            if CITE_EXAMPLE in line:
+                continue
+            hits = list(LOCATOR.finditer(line))
+            if not hits:
+                continue
+            out, last = [], 0
+            for m in hits:
+                cited = pair_for(line, m)
+                nums = [int(x) for x in re.split(r"\s*[,-]\s*", m.group(1))]
+                if cited is None or cited in [rows.get(n) for n in nums]:
+                    continue
+                if f"{rel}::{cited}" in PAIRING_DEBT or cited not in homes:
+                    continue
+                out.append(line[last:m.start(1)])
+                out.append(str(homes[cited][0]))
+                last = m.end(1)
+                fixed += 1
+                touched = True
+                print(f"   fixed {rel}:{i + 1}  {cited} -> OPEN-DECISIONS.md:{homes[cited][0]}")
+            if out:
+                out.append(line[last:])
+                lines[i] = "".join(out)
+        if touched:
+            (ROOT / rel).write_text("".join(lines), encoding="utf-8")
+    return fixed
+
+
 def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--fix",
+        action="store_true",
+        help="repoint disagreeing citations onto the row their id occupies, then re-check",
+    )
+    args = ap.parse_args()
+
     rows = load_register()
+
+    if args.fix:
+        print("== Repointing citations whose id and line disagree")
+        n = repoint(rows)
+        print(f"   {n} rewritten\n")
 
     unanchored: list[tuple[str, int, str, str]] = []
     disagreeing: list[tuple[str, int, str, str, list[int], list[str | None]]] = []

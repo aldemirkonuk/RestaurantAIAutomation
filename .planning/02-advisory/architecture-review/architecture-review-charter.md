@@ -332,7 +332,7 @@ rebuild from the source of truth, diff against reality, exit non-zero.
   operations) vs [[evaluation-doneability-charter]] / [[research-math-charter]]
   (Research & Math, methodology). Numbered **OD-21** at `teams/technology.md:845`, which
   **collided** with the real OD-21 (Obsidian structural workflow,
-  `OD-21 (OPEN-DECISIONS.md:127)`, already locked); now **TECH-F3** ([[FORK-REGISTRY]]). This function's position: the seam is a
+  `OD-21 (OPEN-DECISIONS.md:132)`, already locked); now **TECH-F3** ([[FORK-REGISTRY]]). This function's position: the seam is a
   **layer-ownership question about L4**, it is exactly the kind of overlap that resolves
   into duplication if left alone, and the instruction already on record is the right one —
   **if the line fails, merge; never duplicate.** We do not pick which side absorbs the

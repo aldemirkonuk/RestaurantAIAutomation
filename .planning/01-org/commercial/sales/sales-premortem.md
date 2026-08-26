@@ -152,7 +152,7 @@ single bounce — and it is checkable with a grep, not a metric.
 
 [OD-09](../../../decisions/OPEN-DECISIONS.md) records the founder overruling the
 recommendation to merge Sales into [[growth-charter]]
-(`OD-09, .planning/decisions/OPEN-DECISIONS.md:104`). That overrule stands. The risk it creates is
+(`OD-09, .planning/decisions/OPEN-DECISIONS.md:109`). That overrule stands. The risk it creates is
 specific and worth naming: **one of the two teams is dormant by construction** —
 [[outbound-engine-charter]]'s own primary metric is "dormant until the list un-defers"
 ([[commercial]] §3). A dormant team with seven documents and no forcing function does not
