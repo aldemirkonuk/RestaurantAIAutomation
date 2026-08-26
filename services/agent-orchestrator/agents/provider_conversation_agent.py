@@ -2142,20 +2142,77 @@ class ProviderConversationAgent(BaseAgent):
 
             preference = response.content[0].text.strip() if response.content else ""
             if preference:
-                # Append to conversation_context.manager_instructions[] on active session
-                self.database.supabase.rpc(
-                    "jsonb_array_append",
-                    {
-                        "table_name": "provider_conversation_sessions",
-                        "column_name": "conversation_context",
-                        "key": "manager_instructions",
-                        "value": preference,
-                        "restaurant_id": restaurant_id,
-                        "provider_id": provider_id,
-                    },
-                ).execute()
+                self._append_manager_instruction(
+                    restaurant_id, provider_id, preference
+                )
         except Exception as e:
             self.logger.warning(f"Learning loop preference extraction failed: {e}")
+
+    def _append_manager_instruction(
+        self, restaurant_id: str, provider_id: str, preference: str
+    ) -> bool:
+        """
+        Append one learned preference to the active session's
+        `conversation_context.manager_instructions[]`.
+
+        OD-99: this used to be a single RPC call to a function named
+        `jsonb_array_append`. No CREATE FUNCTION for it exists in this repo and
+        production does not have it (PGRST202, verified 2026-08-26). Unlike
+        the other four phantom RPCs, this one is a WRITE with no fallback
+        behind it, so the failure was not a degraded read -- it was data loss.
+        Every preference the learning loop has ever extracted (each one paid
+        for with an LLM call, logged as spend on the line above) was thrown
+        away by the `except` that logged "Learning loop preference extraction
+        failed" and moved on.
+
+        A generic append-into-any-table-and-column function was never a good
+        shape anyway -- a SQL function taking a table name as a string is an
+        injection surface and cannot be typed. The append is done here instead
+        as an explicit read-modify-write against the one row it was always
+        aimed at.
+
+        Not atomic: two concurrent appends to the same session can lose one.
+        That is a real limitation and it is stated rather than papered over --
+        but it is strictly better than the previous behaviour, which lost
+        100% of them. Returns True when a row was updated.
+        """
+        try:
+            sessions = (
+                self.database.supabase.table("provider_conversation_sessions")
+                .select("id, conversation_context")
+                .eq("restaurant_id", restaurant_id)
+                .eq("provider_id", provider_id)
+                .eq("status", "active")
+                .order("last_message_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if not sessions.data:
+                self.logger.warning(
+                    "No active session for provider %s; manager instruction "
+                    "not stored: %r",
+                    provider_id,
+                    preference,
+                )
+                return False
+
+            session = sessions.data[0]
+            context = session.get("conversation_context") or {}
+            if not isinstance(context, dict):
+                context = {}
+            instructions = context.get("manager_instructions")
+            if not isinstance(instructions, list):
+                instructions = []
+            instructions.append(preference)
+            context["manager_instructions"] = instructions
+
+            self.database.supabase.table("provider_conversation_sessions").update(
+                {"conversation_context": context}
+            ).eq("id", session["id"]).execute()
+            return True
+        except Exception as e:
+            self.logger.warning(f"Failed to store manager instruction: {e}")
+            return False
 
     # =========================================================================
     # 8. THREAD SUMMARIZER
@@ -2971,52 +3028,64 @@ class ProviderConversationAgent(BaseAgent):
                 continue
 
     async def _check_relationship_health(self) -> None:
-        """Alert when providers haven't been contacted recently."""
+        """
+        Alert when providers haven't been contacted recently.
+
+        OD-99: this called an RPC named `get_inactive_providers` first. No
+        CREATE FUNCTION for it exists anywhere in this repository and
+        production does not have it (PGRST202, verified 2026-08-26), so the
+        call raised -- and the block commented "Fallback if RPC doesn't exist"
+        sat inside the same `try`, so the exception jumped over it to the
+        `except` at the bottom, which logs and returns. The fallback was
+        unreachable, and this check has never emitted a single alert.
+
+        The RPC call is gone and the direct query is now the body, so the
+        alerts it was written to send will start being sent. That is a real
+        behaviour change on a path that has been dormant since it was
+        written -- flagged for the founder as OD-103 rather than shipped
+        quietly, because "an alert nobody has ever received starts arriving"
+        deserves to be a decision. It remains bounded exactly as written: at
+        most 20 providers per pass, only `is_active` ones, only those with no
+        session since the cutoff.
+        """
         try:
             cutoff = (
                 datetime.utcnow() - timedelta(days=self.relationship_alert_days)
             ).isoformat()
 
-            # Find providers with no recent sessions
-            result = self.database.supabase.rpc(
-                "get_inactive_providers",
-                {"cutoff_date": cutoff},
-            ).execute()
+            # Providers with no session since the cutoff.
+            result = (
+                self.database.supabase.table("providers")
+                .select("id, name, restaurant_id")
+                .eq("is_active", True)
+                .execute()
+            )
 
-            # Fallback if RPC doesn't exist: query directly
-            if not result.data:
-                result = (
-                    self.database.supabase.table("providers")
-                    .select("id, name, restaurant_id")
-                    .eq("is_active", True)
+            for provider in (result.data or [])[:20]:
+                sessions = (
+                    self.database.supabase.table("provider_conversation_sessions")
+                    .select("id")
+                    .eq("provider_id", provider["id"])
+                    .gte("created_at", cutoff)
+                    .limit(1)
                     .execute()
                 )
 
-                for provider in (result.data or [])[:20]:
-                    sessions = (
-                        self.database.supabase.table("provider_conversation_sessions")
-                        .select("id")
-                        .eq("provider_id", provider["id"])
-                        .gte("created_at", cutoff)
-                        .limit(1)
-                        .execute()
-                    )
-
-                    if not sessions.data:
-                        await self.publish(
-                            exchange_name="notification.events",
-                            routing_key="notification.relationship_health_alert",
-                            message_body={
-                                "event_type": "RelationshipHealthAlert",
-                                "payload": {
-                                    "restaurant_id": provider.get("restaurant_id"),
-                                    "title": f"No recent contact: {provider.get('name', 'Provider')}",
-                                    "message": f"No conversations in {self.relationship_alert_days} days. Consider reaching out.",
-                                    "urgency": "low",
-                                    "provider_id": provider["id"],
-                                },
+                if not sessions.data:
+                    await self.publish(
+                        exchange_name="notification.events",
+                        routing_key="notification.relationship_health_alert",
+                        message_body={
+                            "event_type": "RelationshipHealthAlert",
+                            "payload": {
+                                "restaurant_id": provider.get("restaurant_id"),
+                                "title": f"No recent contact: {provider.get('name', 'Provider')}",
+                                "message": f"No conversations in {self.relationship_alert_days} days. Consider reaching out.",
+                                "urgency": "low",
+                                "provider_id": provider["id"],
                             },
-                        )
+                        },
+                    )
 
         except Exception as e:
             self.logger.error(f"Error checking relationship health: {e}")

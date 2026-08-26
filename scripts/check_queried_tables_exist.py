@@ -220,38 +220,48 @@ KNOWN_MISSING: dict[str, str] = {
         "providers.service.ts:589 inserts a rating that is discarded."
     ),
     # ---- C: defined nowhere in this repository ----
-    "inventory_stock": (
-        "[C prod:no] Defined in no migration anywhere in this repo. "
-        "reporting_agent.py:406 selects id, wine_name, stock_live, threshold_min from it. "
-        "Probably meant restaurant_inventory."
-    ),
-    "managers": (
-        "[C prod:no] Defined nowhere. demo/weekly_report_scheduler.py:82 selects * from it."
-    ),
-    "provider_digital_twins": (
-        "[C prod:no] Defined nowhere. email_composer_service.py:398,550."
-    ),
-    "reports": (
-        "[C prod:no] Defined nowhere. dashboard.service.ts:208 reads the most recent row to "
-        "render a dashboard card. The card has never had data."
-    ),
-    "restaurant_wine_menus": ("[C prod:no] Defined nowhere. restaurant_dataset_service.py:328."),
-    "wine_library": (
-        "[C prod:no] Defined nowhere. wine_matcher.py:410. The real table is "
-        "master_wine_library; this looks like a name that was never renamed."
-    ),
+    #
+    # ALL SIX class-C entries were closed on 2026-08-26 under OD-99 / ADR 0028,
+    # and the ratchet is doing its job: each line below was deleted only after
+    # the last call site naming it was gone. Recorded here so the next session
+    # does not re-derive the verdicts (they are not all the same verdict):
+    #
+    #   reports                -> REPOINTED to generated_reports, which exists.
+    #                             dashboard.service.ts. + ADR 0020 honesty:
+    #                             ReportSummaryDto.unavailable separates a
+    #                             failed read from an empty archive.
+    #   inventory_stock        -> REPOINTED to restaurant_inventory, which
+    #                             carries every column under the same names.
+    #                             reporting_agent.py. Its test asserted the
+    #                             phantom name and was repointed with it.
+    #   managers               -> REPOINTED to manager_report_profiles, which
+    #                             is what generated_reports.profile_id points
+    #                             at. demo/weekly_report_scheduler.py.
+    #   provider_digital_twins -> DELETED. The real store is provider_knowledge
+    #                             (category='relationship'), which
+    #                             ProviderConversationAgent already reads.
+    #   restaurant_wine_menus  -> DELETED. The push_subscriptions shape: the
+    #                             JSONL files are the store every reader reads.
+    #   wine_library           -> DELETED with its whole match phase, which had
+    #                             never returned a candidate. Which table it
+    #                             should have been is OD-102, not a default.
 }
 
 # Functions reached via .rpc(). Same ratchet, same rules.
-# All five are class C: no CREATE FUNCTION for them exists anywhere in the repo,
-# and production does not have them either (measured 2026-08-26).
-KNOWN_MISSING_FUNCTIONS: dict[str, str] = {
-    "find_provider_by_email": "[C prod:no] email_parsing_agent.py:663.",
-    "get_inactive_providers": "[C prod:no] provider_conversation_agent.py:2981.",
-    "get_low_stock_items": "[C prod:no] core/database.py:945.",
-    "jsonb_array_append": "[C prod:no] provider_conversation_agent.py:2146.",
-    "search_provider_conversations": "[C prod:no] provider-intelligence.service.ts:273.",
-}
+#
+# Emptied 2026-08-26 under OD-99 / ADR 0028. All five were class C -- no
+# CREATE FUNCTION anywhere in the repo, absent from production (PGRST202) --
+# and three shared a defect worth remembering: the fallback each author wrote
+# for "the RPC isn't there" sat INSIDE the same try as the RPC call, so the
+# exception jumped over it. They were unreachable code that made the call
+# sites read as defensive. find_provider_by_email and get_inactive_providers
+# now run the searches that were unreachable; get_low_stock_items' fallback
+# became the body; jsonb_array_append (a WRITE, so its failure was data loss,
+# not a degraded read) became an explicit read-modify-write;
+# search_provider_conversations' reachable ilike fallback became the body.
+#
+# An empty dict is the correct end state of a shrink-only list, not a bug.
+KNOWN_MISSING_FUNCTIONS: dict[str, str] = {}
 
 # ---------------------------------------------------------------------------
 # DYNAMIC_CEILING -- the measured size of the blind spot.

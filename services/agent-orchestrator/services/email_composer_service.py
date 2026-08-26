@@ -389,26 +389,31 @@ class EmailComposerService:
         provider_id: str,
         conversation_history: List[Dict[str, Any]],
     ) -> StyleProfile:
-        """Load cached style profile or analyze from conversation history."""
+        """
+        Analyze a provider's style from conversation history.
+
+        OD-99: this used to first read a cache out of `provider_digital_twins`.
+        That table is declared by no migration in this repository and returns
+        404 PGRST205 in production (verified 2026-08-26), so the read raised on
+        every call, was swallowed by `logger.debug`, and control fell through
+        to `_analyze_style` -- which is the only path that has ever executed.
+        Deleting the read is therefore behaviour-preserving by construction.
+
+        It was deleted rather than backed by a new table because the real store
+        already exists and is not this one: `provider_knowledge`
+        (category='relationship', subcategory='communication_style') is what
+        `ProviderConversationAgent._load_style_profile` reads, and what its
+        `_load_digital_twin` reads -- the digital twin is `provider_knowledge`.
+        Creating `provider_digital_twins` would have built a second, rival
+        store for a concept that already has one (ADR 0027 / OD-95).
+
+        Wiring this composer *into* `provider_knowledge` is a real feature and
+        a founder decision, not a repair -- that store carries `confidence` and
+        `verified` columns, and what an LLM-guessed style profile should claim
+        for those is not something to default. Filed as OD-101.
+        """
         if not provider_id:
             return StyleProfile()
-
-        try:
-            result = (
-                self.database.supabase.table("provider_digital_twins")
-                .select("communication_style")
-                .eq("provider_id", provider_id)
-                .limit(1)
-                .execute()
-            )
-
-            if result.data and result.data[0].get("communication_style"):
-                cached = result.data[0]["communication_style"]
-                if isinstance(cached, str):
-                    cached = json.loads(cached)
-                return StyleProfile.from_dict(cached)
-        except Exception as e:
-            logger.debug(f"No cached style for {provider_id}: {e}")
 
         if conversation_history:
             return await self._analyze_style(provider_id, conversation_history)
@@ -489,9 +494,11 @@ class EmailComposerService:
             json_match = re.search(r"\{[\s\S]*\}", text)
             if json_match:
                 parsed = json.loads(json_match.group())
-                style = StyleProfile.from_dict(parsed)
-                await self._cache_style(provider_id, parsed)
-                return style
+                # OD-99: the result used to be written to `provider_digital_twins`
+                # here. That table does not exist, so the upsert raised and was
+                # swallowed on every call -- nothing was ever cached. See
+                # `_load_or_analyze_style` for why it was deleted, not created.
+                return StyleProfile.from_dict(parsed)
         except Exception as e:
             logger.error(f"LLM style analysis failed: {e}")
 
@@ -543,20 +550,6 @@ class EmailComposerService:
                 ["formal", "business"] if is_formal else ["professional", "friendly"]
             ),
         )
-
-    async def _cache_style(self, provider_id: str, style_data: Dict) -> None:
-        """Cache analyzed style in provider_digital_twins."""
-        try:
-            self.database.supabase.table("provider_digital_twins").upsert(
-                {
-                    "provider_id": provider_id,
-                    "communication_style": json.dumps(style_data),
-                    "style_analyzed_at": datetime.utcnow().isoformat(),
-                },
-                on_conflict="provider_id",
-            ).execute()
-        except Exception as e:
-            logger.debug(f"Failed to cache style: {e}")
 
     # =========================================================================
     # LLM BODY GENERATION

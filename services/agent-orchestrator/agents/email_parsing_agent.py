@@ -657,28 +657,57 @@ Respond with ONLY valid JSON:
         return None
 
     async def _find_provider_by_email(self, email: str) -> Optional[str]:
-        """Find provider ID by contact email"""
-        try:
-            # Search in primary_contact JSONB
-            result = await self.db.supabase.rpc(
-                "find_provider_by_email", {"search_email": email}
-            ).execute()
-            if result.data:
-                return result.data[0].get("id")
+        """
+        Find provider ID by contact email.
 
-            # Fallback: search contact_email column directly
+        OD-99: this used to call an RPC named `find_provider_by_email` first.
+        No CREATE FUNCTION for it exists anywhere in this repository and
+        production does not have it (PGRST202, verified 2026-08-26), so the
+        call raised -- and because the "Fallback: search contact_email column
+        directly" block sat inside the SAME `try`, the exception jumped
+        straight over it to `except: return None`. The fallback was not a
+        fallback; it was unreachable code, and this method has returned None
+        for every inbound email ever parsed. Nothing upstream could tell that
+        apart from "no provider matches this address".
+
+        Both searches are expressible without an RPC, so both now run, each in
+        its own `try` so that one failing cannot silently cancel the other:
+
+          1. `contact_email` -- the plain column, matched case-insensitively.
+          2. `primary_contact->>email` -- the JSONB the RPC was named for.
+        """
+        if not email:
+            return None
+
+        normalized = email.strip().lower()
+
+        try:
             result = (
                 await self.db.supabase.table("providers")
                 .select("id, contact_email")
-                .ilike("contact_email", email)
+                .ilike("contact_email", normalized)
                 .limit(1)
                 .execute()
             )
             if result.data:
                 return result.data[0].get("id")
-            return None
-        except Exception:
-            return None
+        except Exception as exc:
+            self.logger.warning(f"provider lookup by contact_email failed: {exc}")
+
+        try:
+            result = (
+                await self.db.supabase.table("providers")
+                .select("id")
+                .eq("primary_contact->>email", normalized)
+                .limit(1)
+                .execute()
+            )
+            if result.data:
+                return result.data[0].get("id")
+        except Exception as exc:
+            self.logger.warning(f"provider lookup by primary_contact failed: {exc}")
+
+        return None
 
     async def _find_thread_for_order(self, order_id: str) -> Optional[str]:
         """Find existing thread_id for an order"""

@@ -267,32 +267,45 @@ export class ProviderIntelligenceService {
     return data || [];
   }
 
+  /**
+   * Search a provider's conversation history.
+   *
+   * OD-99. This used to call an RPC named `search_provider_conversations`
+   * first, described in its own comment as "vector similarity search". No
+   * CREATE FUNCTION for it exists anywhere in this repository and production
+   * does not have it (PGRST202, verified 2026-08-26), so the call has failed
+   * on every request and the `catch` below it has been the implementation
+   * since the day it was written.
+   *
+   * The RPC call is deleted and the substring search promoted to the body:
+   * same results, one fewer failed round trip per search, and no exception on
+   * the happy path. This is honestly a substring search now and is no longer
+   * dressed as a semantic one.
+   *
+   * `conversation_embeddings` really does exist and really does carry
+   * embeddings, so a genuine vector search IS buildable here -- it is a
+   * feature to build, not a repair to make, and it is filed as OD-104 rather
+   * than left implied by a call to a function nobody wrote.
+   */
   async searchConversationMemory(providerId: string, query: string) {
-    // Uses the Supabase RPC for vector similarity search
-    try {
-      const { data, error } = await this.databaseService.supabase.rpc(
-        "search_provider_conversations",
-        {
-          search_provider_id: providerId,
-          search_query: query,
-          match_count: 20,
-        },
-      );
+    const { data, error } = await this.databaseService.supabase
+      .from("conversation_embeddings")
+      .select("id, message_text, role, channel, importance_score, created_at")
+      .eq("provider_id", providerId)
+      .ilike("message_text", `%${query}%`)
+      .order("created_at", { ascending: false })
+      .limit(20);
 
-      if (error) throw error;
-      return data || [];
-    } catch {
-      // Fallback: text search
-      const { data } = await this.databaseService.supabase
-        .from("conversation_embeddings")
-        .select("id, message_text, role, channel, importance_score, created_at")
-        .eq("provider_id", providerId)
-        .ilike("message_text", `%${query}%`)
-        .order("created_at", { ascending: false })
-        .limit(20);
-
-      return data || [];
+    if (error) {
+      // ADR 0020: a failed search is not an empty result set.
+      this.logger.error("Conversation memory search failed", {
+        providerId,
+        error: error.message,
+      });
+      throw error;
     }
+
+    return data || [];
   }
 
   // =========================================================================

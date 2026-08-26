@@ -925,36 +925,29 @@ class InventoryRepository(BaseRepository[InventoryItem]):
         self,
         restaurant_id: str,
     ) -> List[InventoryItem]:
-        """Get items below threshold - optimized query"""
+        """
+        Get items below their reorder threshold.
+
+        OD-99: this used to make two queries before the one that worked, and
+        both were dead.
+
+        The first passed a *query builder object* as the value of
+        `.lt("stock_live", ...)` -- PostgREST cannot compare two columns that
+        way, so it received a stringified builder -- and then discarded its own
+        result by reassigning `response` on the very next statement. The second
+        called an RPC named `get_low_stock_items`, for which no CREATE FUNCTION
+        exists anywhere in this repository and which production does not have
+        (PGRST202, verified 2026-08-26). It raised `APIError` on every call.
+
+        So the `except APIError` fallback below was never a fallback: it was
+        the implementation, and the only code here that has ever returned a
+        row. It is now simply the body. Same results, two fewer round trips,
+        and no exception on the happy path.
+        """
         self.queries_executed += 1
 
-        try:
-            # Use view for optimized query
-            response = (
-                self.supabase.table("restaurant_inventory")
-                .select("*, master_wine_library(name)")
-                .eq("restaurant_id", restaurant_id)
-                .lt(
-                    "stock_live",
-                    self.supabase.table("restaurant_inventory").select("threshold_min"),
-                )
-                .execute()
-            )
-
-            # Fallback to raw query if view doesn't exist
-            response = self.supabase.rpc(
-                "get_low_stock_items", {"p_restaurant_id": restaurant_id}
-            ).execute()
-
-            if response.data:
-                return [InventoryItem.model_validate(item) for item in response.data]
-
-            return []
-
-        except APIError:
-            # Fallback: fetch all and filter
-            all_items = await self.get_by_restaurant(restaurant_id)
-            return [item for item in all_items if item.stock_live < item.threshold_min]
+        all_items = await self.get_by_restaurant(restaurant_id)
+        return [item for item in all_items if item.stock_live < item.threshold_min]
 
     async def update_stock(
         self,
