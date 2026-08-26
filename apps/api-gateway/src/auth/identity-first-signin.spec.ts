@@ -1,3 +1,5 @@
+import * as fs from "fs";
+import * as path from "path";
 import { Reflector } from "@nestjs/core";
 import { UnauthorizedException } from "@nestjs/common";
 import { AuthService } from "./auth.service";
@@ -503,9 +505,6 @@ describe("the provider registry is the only place provider names live", () => {
   });
 
   it("no provider name is inferred from users.oauth_provider in auth.service.ts", () => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const fs = require("fs") as typeof import("fs");
-    const path = require("path") as typeof import("path");
     const raw = fs.readFileSync(path.join(__dirname, "auth.service.ts"), "utf8");
 
     // Comments are stripped FIRST. A grep for a removed pattern matches the
