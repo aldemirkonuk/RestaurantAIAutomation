@@ -159,7 +159,11 @@ def get_session_timeline(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("get_session_timeline failed for %s: %s", session_id, exc)
+        logger.error(
+            "get_session_timeline failed for %s: %s",
+            sanitize_for_log(session_id),
+            exc,
+        )
         raise HTTPException(status_code=503, detail="Database query failed")
 
 
@@ -204,7 +208,9 @@ def submit_override(
         raise
     except Exception as exc:
         logger.error(
-            "submit_override: fetch submission %s failed: %s", body.submission_id, exc
+            "submit_override: fetch submission %s failed: %s",
+            sanitize_for_log(body.submission_id),
+            exc,
         )
         raise HTTPException(status_code=503, detail="Failed to fetch submission")
 
@@ -869,10 +875,17 @@ def revoke_contributor(
         supabase.table("user_roles").update(
             {"revoked_at": datetime.now(timezone.utc).isoformat()}
         ).eq("user_id", user_id).eq("role", "certified_contributor").execute()
-        logger.info("review_admin %s revoked contributor %s", user["sub"], user_id)
+        # Both are request-derived — sub is a JWT claim, user_id is the path param.
+        logger.info(
+            "review_admin %s revoked contributor %s",
+            sanitize_for_log(user["sub"]),
+            sanitize_for_log(user_id),
+        )
         return {"revoked": True, "user_id": user_id}
     except Exception as exc:
-        logger.error("revoke_contributor failed for %s: %s", user_id, exc)
+        logger.error(
+            "revoke_contributor failed for %s: %s", sanitize_for_log(user_id), exc
+        )
         raise HTTPException(status_code=503, detail="Revoke failed")
 
 
@@ -890,10 +903,16 @@ def enable_contributor(
         supabase.table("user_roles").update({"revoked_at": None}).eq(
             "user_id", user_id
         ).eq("role", "certified_contributor").execute()
-        logger.info("review_admin %s enabled contributor %s", user["sub"], user_id)
+        logger.info(
+            "review_admin %s enabled contributor %s",
+            sanitize_for_log(user["sub"]),
+            sanitize_for_log(user_id),
+        )
         return {"enabled": True, "user_id": user_id}
     except Exception as exc:
-        logger.error("enable_contributor failed for %s: %s", user_id, exc)
+        logger.error(
+            "enable_contributor failed for %s: %s", sanitize_for_log(user_id), exc
+        )
         raise HTTPException(status_code=503, detail="Enable failed")
 
 
@@ -1080,11 +1099,12 @@ def promote_to_library(
             exc,
         )
 
+    # new_id is not wrapped: it is the master_wine_library uuid PK, server-generated.
     logger.info(
         "promote_to_library: promoted submission %s → wine %s by %s",
-        body.submission_id,
+        sanitize_for_log(body.submission_id),
         new_id,
-        promoted_by,
+        sanitize_for_log(promoted_by),
     )
     return {"status": "promoted", "wine_id": new_id, "name": str(wine_name).strip()}
 
@@ -1106,8 +1126,14 @@ def disable_contributor(
         supabase.table("user_roles").update(
             {"revoked_at": datetime.now(timezone.utc).isoformat()}
         ).eq("user_id", user_id).eq("role", "certified_contributor").execute()
-        logger.info("review_admin %s disabled contributor %s", user["sub"], user_id)
+        logger.info(
+            "review_admin %s disabled contributor %s",
+            sanitize_for_log(user["sub"]),
+            sanitize_for_log(user_id),
+        )
         return {"disabled": True, "user_id": user_id}
     except Exception as exc:
-        logger.error("disable_contributor failed for %s: %s", user_id, exc)
+        logger.error(
+            "disable_contributor failed for %s: %s", sanitize_for_log(user_id), exc
+        )
         raise HTTPException(status_code=503, detail="Disable failed")

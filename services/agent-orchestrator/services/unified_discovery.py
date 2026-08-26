@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from services.log_safety import sanitize_for_log
+
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -218,7 +220,9 @@ class UnifiedDiscoveryService:
                 continue
 
             else:
-                logger.warning(f"Unknown discovery source: {source}")
+                # `source` is a caller-supplied string (request body `sources`), and this
+                # is the branch reached precisely when it matched none of the known values.
+                logger.warning("Unknown discovery source: %s", sanitize_for_log(source))
 
         # --- Cross-source dedup ---
         deduped = self._deduplicate(all_restaurants)

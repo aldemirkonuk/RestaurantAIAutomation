@@ -23,6 +23,8 @@ import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
+from services.log_safety import sanitize_for_log
+
 logger = logging.getLogger(__name__)
 
 
@@ -90,8 +92,11 @@ class TrainingDataStore:
         if self.mock_mode or not self.supabase:
             # Buffer in memory
             self._buffer.append(record)
+            # dataset_type reaches here from the request body (scan_routes document_type).
             logger.debug(
-                f"Training data buffered (mock/no-db): {dataset_type}, buffer size: {len(self._buffer)}"
+                "Training data buffered (mock/no-db): %s, buffer size: %d",
+                sanitize_for_log(dataset_type),
+                len(self._buffer),
             )
             return f"buffered_{len(self._buffer)}"
 
@@ -99,7 +104,11 @@ class TrainingDataStore:
             result = self.supabase.table("training_datasets").insert(record).execute()
             if result.data:
                 record_id = result.data[0].get("id")
-                logger.info(f"Training data saved: {dataset_type} (id: {record_id})")
+                logger.info(
+                    "Training data saved: %s (id: %s)",
+                    sanitize_for_log(dataset_type),
+                    record_id,
+                )
                 return record_id
         except Exception as e:
             logger.warning(f"Failed to save training data: {e}")

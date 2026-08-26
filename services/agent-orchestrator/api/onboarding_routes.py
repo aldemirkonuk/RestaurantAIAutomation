@@ -178,8 +178,12 @@ def _send_cap_alert_email(restaurant_id: str, spend: float) -> None:
             server.sendmail(
                 settings.gmail_user, settings.manager_email, msg.as_string()
             )
+        # Called with cap_key, which is request.restaurant_id verbatim on the
+        # admin-key path — same taint as the other two sites in this module.
         logger.info(
-            "Cap alert email sent for restaurant %s (spend=%.4f)", restaurant_id, spend
+            "Cap alert email sent for restaurant %s (spend=%.4f)",
+            sanitize_for_log(restaurant_id),
+            spend,
         )
     except Exception as exc:
         logger.warning("Failed to send cap alert email: %s", exc)
