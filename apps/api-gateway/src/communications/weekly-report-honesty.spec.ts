@@ -72,13 +72,21 @@ async function makeService(opts: {
     databaseService as any,
     {} as any,
     {} as any,
+    // OD-87 / ADR 0022 — the tenant enumerator. `getWeeklyReportData` is called
+    // directly below with an explicit restaurant id, so it is never consulted
+    // here; it exists to satisfy the constructor.
+    {} as any,
   );
   await service.onModuleInit();
   return service;
 }
 
+/**
+ * OD-87 / ADR 0022 — the report is now built per restaurant, so the id is an
+ * argument rather than a field read off the service.
+ */
 const weekly = (s: ScheduledTasksService) =>
-  (s as any).getWeeklyReportData() as Promise<any>;
+  (s as any).getWeeklyReportData("rest-1") as Promise<any>;
 
 describe("weekly manager email — no fabricated figures", () => {
   it("carries no demo wine names or demo totals anywhere in the source", () => {
