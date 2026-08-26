@@ -1409,6 +1409,17 @@ export class AuthService {
 
   /**
    * Resend verification email — rate-limited to 1 per minute via resend_count.
+   *
+   * A missing `email_verifications` row means "never issued", not "not
+   * allowed". This used to throw `No pending verification found`, which made
+   * the endpoint refuse exactly the accounts that most needed it: anyone whose
+   * row was never created, was pruned, or predates the verification flow.
+   *
+   * That became a lockout the moment enforcement went live (ADR 0023). The
+   * gate bounces an unverified user to `/verify-email`, whose only control is
+   * this endpoint — so for an account with no row, every door was shut at
+   * once. Measured on production 2026-08-26: of three unverified accounts, two
+   * had no row and could not have got back in.
    */
   async resendVerification(
     userId: string,
@@ -1423,7 +1434,33 @@ export class AuthService {
       .limit(1)
       .maybeSingle();
 
-    if (!verif) throw new BadRequestException("No pending verification found");
+    if (!verif) {
+      // No pending row. Before minting one, check the most recent row of ANY
+      // status — otherwise "no pending row" would be an unlimited send button
+      // for an already-verified account, which is the cooldown's whole point.
+      const { data: recent } = await this.databaseService.supabase
+        .from("email_verifications")
+        .select("created_at, last_resent_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (recent) {
+        const lastActivity = new Date(
+          recent.last_resent_at ?? recent.created_at,
+        ).getTime();
+        if ((Date.now() - lastActivity) / 1000 < 60) {
+          throw new BadRequestException(
+            "Please wait 1 minute before resending",
+          );
+        }
+      }
+
+      // queueEmailVerification inserts the row and sends in one step.
+      await this.queueEmailVerification(userId, email);
+      return { sent: true };
+    }
 
     if (verif.last_resent_at) {
       const secondsSinceLast =
