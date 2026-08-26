@@ -71,13 +71,19 @@ claims to check (see NEVER VACUOUS).
 
 WHAT IT DOES NOT CATCH -- read this before trusting it
 ------------------------------------------------------
-1. COLUMNS. This works at relation granularity: table, view, RPC function.
-   `restaurant_feature_flags` existed; its COLUMNS were wrong. Nothing here
-   would have caught that, and the honest reason is that the failing calls read
-   and wrote column sets assembled at runtime -- there was no literal column
-   list to check. That instance is caught by the other half of this guard,
-   scripts/check_migrations_single_home.py, which fires because an archived
-   file defines a table the code still queries.
+1. COLUMNS -- and so NOT the restaurant_feature_flags instance. This works at
+   relation granularity: table, view, RPC function. That table EXISTS, in
+   supabase/migrations/ and in production; what differed was its shape.
+   Production is EAV (`flag_name` varchar + `enabled` boolean) and the archived
+   definition in services/database/migrations_archive/011_add_restaurant_feature_flags.sql
+   is 22 `enable_*` boolean columns -- two different data models under one name.
+   This arm is silent on it and so is check 2 of the sibling guard, because the
+   live directory does declare the table.
+   A column-level check was built and measured on 2026-08-26 (see the ADR):
+   restaurant_feature_flags ranks FIRST at +22 archive-only columns, so the
+   signal is real. It is reported, not enforced -- see the CENSUS in
+   scripts/check_migrations_single_home.py and the open question in
+   .planning/04-specs/HANDOFF-schema-guard.md.
 2. DYNAMIC TABLE NAMES. `.from(someVariable)` cannot be resolved by reading one
    file. Simple module-level `const NAME = "literal"` IS resolved (that is how
    `.from(FEATURE_FLAGS_TABLE)` is covered). Everything else is counted,
@@ -177,10 +183,85 @@ MIN_DECLARED = 150
 #   C  PHANTOM    defined nowhere in this repository at all. The code queries a
 #                 table nobody ever wrote a migration for.
 # ---------------------------------------------------------------------------
-KNOWN_MISSING: dict[str, str] = {}
+KNOWN_MISSING: dict[str, str] = {
+    # ---- A: archived migration, never applied. prod:no -> broken right now ----
+    "scheduled_reports": (
+        "[A prod:no] supabase/migrations_archive/20260208024921_baseline_schema.sql and "
+        "services/database/migrations_archive/008_providers_and_reports.sql. "
+        "reports.service.ts:165,185,208 insert and list; both have failed 100% of the "
+        "time, silently. Unowned as of 2026-08-26."
+    ),
+    "push_subscriptions": (
+        "[A prod:no] supabase/migrations_archive/20260208024921_baseline_schema.sql. "
+        "recipient-resolver.service.ts:275 catches and returns [], so push notifications "
+        "resolve zero recipients forever. A concurrent session owned the fix on "
+        "2026-08-26; when its migration lands, the ratchet below fails and this line "
+        "is deleted. That is the intended handshake, not a collision."
+    ),
+    "notification_logs": (
+        "[A prod:no] supabase/migrations_archive/20260208024921_baseline_schema.sql. "
+        "notification_agent.py:1602 inserts every notification it sends into a table that "
+        "does not exist. The delivery log has been empty since the baseline."
+    ),
+    "pos_webhook_logs": (
+        "[A prod:no] supabase/migrations_archive/20260208024921_baseline_schema.sql. "
+        "pos_integration_agent.py:951 writes it, reporting_agent.py:503 reads it."
+    ),
+    "provider_important_dates": (
+        "[A prod:no] supabase/migrations_archive/20260208024921_baseline_schema.sql. "
+        "calendar_agent.py:139,380."
+    ),
+    "provider_ratings": (
+        "[A prod:no] supabase/migrations_archive/20260208024921_baseline_schema.sql and "
+        "services/database/migrations_archive/008_providers_and_reports.sql. "
+        "providers.service.ts:589 inserts a rating that is discarded."
+    ),
+    # ---- B: in production, in no live migration. A rebuild loses these ----
+    "integration_oauth_connections": (
+        "[B prod:yes] supabase/migrations_archive/20260730120000_integration_oauth_connections.sql. "
+        "Present in production on 2026-08-26 but defined by no migration in "
+        "supabase/migrations/ -- applied by some route the repo does not record, exactly "
+        "like restaurant_inbound_addresses. The fix is on branch "
+        "fix/integration-oauth-tables (20260826170000_integration_oauth_tables.sql), not "
+        "yet on main; when it merges, the ratchet fails and this line is deleted."
+    ),
+    "integration_oauth_states": (
+        "[B prod:yes] supabase/migrations_archive/20260730120000_integration_oauth_connections.sql. "
+        "Same as above, same fix branch."
+    ),
+    # ---- C: defined nowhere in this repository ----
+    "inventory_stock": (
+        "[C prod:no] Defined in no migration anywhere in this repo. "
+        "reporting_agent.py:406 selects id, wine_name, stock_live, threshold_min from it. "
+        "Probably meant restaurant_inventory."
+    ),
+    "managers": (
+        "[C prod:no] Defined nowhere. demo/weekly_report_scheduler.py:82 selects * from it."
+    ),
+    "provider_digital_twins": (
+        "[C prod:no] Defined nowhere. email_composer_service.py:398,550."
+    ),
+    "reports": (
+        "[C prod:no] Defined nowhere. dashboard.service.ts:208 reads the most recent row to "
+        "render a dashboard card. The card has never had data."
+    ),
+    "restaurant_wine_menus": ("[C prod:no] Defined nowhere. restaurant_dataset_service.py:328."),
+    "wine_library": (
+        "[C prod:no] Defined nowhere. wine_matcher.py:410. The real table is "
+        "master_wine_library; this looks like a name that was never renamed."
+    ),
+}
 
 # Functions reached via .rpc(). Same ratchet, same rules.
-KNOWN_MISSING_FUNCTIONS: dict[str, str] = {}
+# All five are class C: no CREATE FUNCTION for them exists anywhere in the repo,
+# and production does not have them either (measured 2026-08-26).
+KNOWN_MISSING_FUNCTIONS: dict[str, str] = {
+    "find_provider_by_email": "[C prod:no] email_parsing_agent.py:663.",
+    "get_inactive_providers": "[C prod:no] provider_conversation_agent.py:2981.",
+    "get_low_stock_items": "[C prod:no] core/database.py:945.",
+    "jsonb_array_append": "[C prod:no] provider_conversation_agent.py:2146.",
+    "search_provider_conversations": "[C prod:no] provider-intelligence.service.ts:273.",
+}
 
 # ---------------------------------------------------------------------------
 # DYNAMIC_CEILING -- the measured size of the blind spot.
@@ -191,7 +272,21 @@ KNOWN_MISSING_FUNCTIONS: dict[str, str] = {}
 # always fine. Raising it needs a comment here saying which call site was added
 # and why it could not be a literal.
 # ---------------------------------------------------------------------------
-DYNAMIC_CEILING = 0
+# MEASURED 2026-08-26: 24 of 1377 call sites (1.7%). All 24 are in
+# services/agent-orchestrator/core/database.py -- a generic repository whose
+# subclasses pass the table name to `super().__init__(supabase, "<literal>")`,
+# plus a ContactRepository that sets `self.table` / `self.addresses_table`.
+#
+# Resolving them was measured rather than assumed, and deliberately NOT done.
+# Behind those 24 sites are 11 distinct table names; 9 of the 11 are already in
+# the queried set from literal call sites elsewhere, and the 2 that are not
+# (rfq_requests, unit_conversions) are both declared by supabase/migrations/.
+# So the entire blind spot changes no verdict today, and the resolution logic it
+# would take -- reading a second positional argument out of a super() call --
+# is a per-hierarchy guess that would report a wrong table name confidently.
+# Measuring the hole and leaving it open beats plastering it with something that
+# can be wrong in silence.
+DYNAMIC_CEILING = 24
 
 
 # ---------------------------------------------------------------------------
@@ -610,12 +705,14 @@ def report_missing(
     if debt:
         print()
         print("   KNOWN DEBT -- broken today, tracked, not approved:")
+        # One line each. The full reason lives next to the entry in KNOWN_MISSING;
+        # reprinting it on every green run is how a log trains people to skip it.
+        # NEW findings below get the full per-call-site treatment instead.
         for t in debt:
-            print(f"     {t}")
-            print(f"       {known[t]}")
-            for s in ex.sites:
-                if s.resolved == t and s.kind == kind:
-                    print(f"       queried at {s.path}:{s.line}")
+            sites = [s for s in ex.sites if s.resolved == t and s.kind == kind]
+            first = f"{sites[0].path}:{sites[0].line}" if sites else "?"
+            more = f" (+{len(sites) - 1} more)" if len(sites) > 1 else ""
+            print(f"     {t:32s} {known[t].split(']')[0] + ']':14s} {first}{more}")
 
     if new:
         fail = 1
