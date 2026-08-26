@@ -207,3 +207,67 @@ describe('CalendarPage reminders', () => {
     confirmSpy.mockRestore()
   })
 })
+
+/**
+ * The email channel is a control with nothing behind it.
+ *
+ * Nothing server-side can send a calendar reminder email: there is no `@Cron` in
+ * the calendar module, `reminder_enabled` / `reminder_days_before` are written and
+ * echoed back but gate no send, and `reminder_sent` has no writer anywhere in the
+ * repo. The one cron that emails off `calendar_events`
+ * (`scheduled-tasks.service.ts:670 sendEventPrepReminders`) is a fixed
+ * two-days-out sweep for a single `DEFAULT_RESTAURANT_ID` tenant that ignores all
+ * three columns and mails every manager and staff member rather than the person
+ * who set the reminder.
+ *
+ * Per ADR 0020 a control that cannot work is disabled and explained, never left
+ * looking functional — an offered email reminder that silently never arrives is
+ * worse than no email reminder, because the user stops watching for the delivery.
+ */
+describe('CalendarPage reminder channels', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    state.events = []
+    vi.clearAllMocks()
+  })
+
+  it('offers in-app, which is the channel that actually fires', async () => {
+    const user = userEvent.setup()
+    renderCalendar()
+    await openCreateModal(user)
+
+    const inApp = screen.getByRole('button', { name: /in-app/i })
+    expect(inApp).toBeEnabled()
+  })
+
+  it('disables the email channel and says why', async () => {
+    const user = userEvent.setup()
+    renderCalendar()
+    await openCreateModal(user)
+
+    const email = screen.getByRole('button', { name: /email/i })
+    expect(email).toBeDisabled()
+    // The reason has to be readable, not just implied by a grey button.
+    expect(email).toHaveAccessibleDescription(/no.*(server|email reminder)/i)
+  })
+
+  it('never shows email as an enabled channel on the default reminder', async () => {
+    const user = userEvent.setup()
+    renderCalendar()
+    await openCreateModal(user)
+
+    const email = screen.getByRole('button', { name: /email/i })
+    expect(email).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('cannot be switched on by clicking it', async () => {
+    const user = userEvent.setup()
+    renderCalendar()
+    await openCreateModal(user)
+
+    const email = screen.getByRole('button', { name: /email/i })
+    await user.click(email)
+
+    expect(email).toHaveAttribute('aria-pressed', 'false')
+  })
+})

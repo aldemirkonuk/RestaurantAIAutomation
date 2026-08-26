@@ -24,6 +24,7 @@ import {
   FeatureFlagsDto,
   UpdateFeatureFlagsDto,
   CheckFeatureFlagDto,
+  FeatureFlagCheckResultDto,
 } from "./dto/feature-flags.dto";
 
 @ApiTags("settings")
@@ -71,32 +72,25 @@ export class SettingsController {
   @Post("feature-flags/check")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: "Check if a specific feature is enabled",
-    description: "Checks if a specific feature is enabled for a restaurant",
+    summary: "Check one feature flag",
+    description:
+      "Returns `enabled` alongside `active`. `active: false` means no code reads this flag, so `enabled` describes nothing and must not be shown as a setting.",
   })
   @ApiResponse({
     status: 200,
     description: "Feature flag check result",
-    schema: {
-      type: "object",
-      properties: {
-        enabled: { type: "boolean" },
-        feature_name: { type: "string" },
-        restaurant_id: { type: "string" },
-      },
-    },
+    type: FeatureFlagCheckResultDto,
   })
-  async checkFeatureFlag(@Body() checkDto: CheckFeatureFlagDto): Promise<{
-    enabled: boolean;
-    feature_name: string;
-    restaurant_id: string;
-  }> {
-    const enabled = await this.settingsService.isFeatureEnabled(
+  async checkFeatureFlag(
+    @Body() checkDto: CheckFeatureFlagDto,
+  ): Promise<FeatureFlagCheckResultDto> {
+    const { enabled, active } = await this.settingsService.isFeatureEnabled(
       checkDto.restaurant_id,
       checkDto.feature_name,
     );
     return {
       enabled,
+      active,
       feature_name: checkDto.feature_name,
       restaurant_id: checkDto.restaurant_id,
     };

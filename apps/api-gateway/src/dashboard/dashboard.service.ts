@@ -386,8 +386,12 @@ export class DashboardService {
   }
 
   /**
-   * Get calendar-revenue data per day for a given month
-   * Joins calendar_events with procurement_orders
+   * Per-day figures behind `GET /dashboard/calendar-revenue/:id`. The route
+   * name is frozen; the payload is not revenue. `daily[].procurement_spend` and
+   * `monthly_procurement_spend` are summed from delivered `procurement_orders`
+   * — money paid to vendors, not money earned. `bottles_sold` counts bottles
+   * DELIVERED by vendors, for the same reason. Joins `calendar_events` for the
+   * day overlays. Sales revenue lives in `pos_checks` and is not read here.
    */
   async getCalendarRevenue(
     restaurantId: string,
@@ -437,7 +441,7 @@ export class DashboardService {
           (o) => o.delivered_at && o.delivered_at.startsWith(dateStr),
         );
 
-        const revenue = dayOrders.reduce(
+        const procurementSpend = dayOrders.reduce(
           (sum, o) => sum + (o.total_cost || o.final_price || 0),
           0,
         );
@@ -448,7 +452,7 @@ export class DashboardService {
 
         dailyData.push({
           date: dateStr,
-          revenue,
+          procurement_spend: procurementSpend,
           bottles_sold: bottlesSold,
           events: dayEvents,
           order_count: dayOrders.length,
@@ -460,7 +464,10 @@ export class DashboardService {
         month,
         restaurant_id: restaurantId,
         daily: dailyData,
-        monthly_total: dailyData.reduce((sum, d) => sum + d.revenue, 0),
+        monthly_procurement_spend: dailyData.reduce(
+          (sum, d) => sum + d.procurement_spend,
+          0,
+        ),
         monthly_bottles: dailyData.reduce((sum, d) => sum + d.bottles_sold, 0),
       };
     } catch (error) {
@@ -764,6 +771,13 @@ export class DashboardService {
   // SALES CHART
   // ==========================================================================
 
+  /**
+   * Time series behind `GET /dashboard/sales-chart/:id`. The route name is
+   * frozen; the payload is not sales. Each point's `procurementSpend` is summed
+   * from delivered `procurement_orders.total_cost` — vendor invoices, money
+   * out. `glasses` is a `wine_consumption_log` count. Sales revenue lives in
+   * `pos_checks`, which this method does not read.
+   */
   async getSalesChart(
     restaurantId: string,
     period: "day" | "week" | "month" | "year" = "month",
@@ -823,17 +837,17 @@ export class DashboardService {
 
       const buckets = new Map<
         string,
-        { revenue: number; bottles: number; glasses: number }
+        { procurementSpend: number; bottles: number; glasses: number }
       >();
 
       for (const o of orders) {
         const dateKey = groupFn(o.delivered_at || o.created_at);
         const existing = buckets.get(dateKey) || {
-          revenue: 0,
+          procurementSpend: 0,
           bottles: 0,
           glasses: 0,
         };
-        existing.revenue += o.total_cost || o.final_price || 0;
+        existing.procurementSpend += o.total_cost || o.final_price || 0;
         existing.bottles += o.bottles_total || o.quantity || 0;
         buckets.set(dateKey, existing);
       }
@@ -841,7 +855,7 @@ export class DashboardService {
       for (const c of consumption) {
         const dateKey = groupFn(c.created_at);
         const existing = buckets.get(dateKey) || {
-          revenue: 0,
+          procurementSpend: 0,
           bottles: 0,
           glasses: 0,
         };
@@ -853,7 +867,7 @@ export class DashboardService {
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([date, data]) => ({
           date,
-          revenue: data.revenue,
+          procurementSpend: data.procurementSpend,
           bottles: data.bottles,
           glasses: data.glasses,
         }));

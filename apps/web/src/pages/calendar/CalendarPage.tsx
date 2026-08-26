@@ -30,6 +30,7 @@ import {
   useDeleteCalendarEvent,
 } from '../../hooks/queries'
 import { useAuth } from '../../contexts/AuthContext'
+import { useCalendarEventsSubscription } from '../../contexts/RealtimeContext'
 import type { EventType as ApiEventType, RecurringConfig } from '../../services/api/calendar'
 import {
   scheduleReminder,
@@ -148,6 +149,23 @@ export default function CalendarPage() {
     navigateDate,
     goToToday,
   } = useCalendarPage()
+
+  /**
+   * Live refresh — restored from `/calendar-classic` (ADR 0019 §B retired the page
+   * and took this with it, which was a genuine reduction, not a simplification).
+   *
+   * `dispatchCalendarEvent` (RealtimeContext) fires a `calendar_event_change`
+   * window event whenever anything else in the app moves a calendar row — the
+   * calendar agent booking a delivery, an order confirming an ETA. Without this the
+   * page only reflected its own mutations, so a calendar left open on a pass showed
+   * a schedule that had already changed. Refetch rather than patch local state: the
+   * payload is a change notice, and the server owns recurrence expansion.
+   */
+  useCalendarEventsSubscription(
+    useCallback(() => {
+      void refetch()
+    }, [refetch])
+  )
 
   // Mutations
   const createEvent = useCreateCalendarEvent()

@@ -3,29 +3,10 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Settings as SettingsIcon,
-  Save,
   RefreshCw,
-  Package,
   Ruler,
-  Eye,
-  Brain,
-  MessageSquare,
   Calendar,
-  FileText,
-  DollarSign,
   Users,
-  Wine,
-  Shield,
-  TrendingDown,
-  GraduationCap,
-  Calculator,
-  ShoppingCart,
-  Receipt,
-  Gavel,
-  Sparkles,
-  Mic,
-  Image,
-  CreditCard,
   Building2,
   Pencil,
   Search,
@@ -39,7 +20,11 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Header } from '../components/layout/Header';
-import { settingsApi, FeatureFlags, UpdateFeatureFlagsRequest } from '../services/api/settings';
+import {
+  INACTIVE_FEATURES,
+  type InactiveFeature,
+} from '../components/settings/inactiveFeatures';
+import { AiAutonomySection } from '../components/settings/AiAutonomySection';
 import { useRestaurantSettingsStore } from '../stores';
 import { InviteTeamDialog } from '../components/team/InviteTeamDialog';
 import { TeamLaborSettings } from '../components/team/TeamLaborSettings';
@@ -93,40 +78,25 @@ const SECTION_LABELS: Record<SectionId, string> = {
   calendar: 'Calendar',
 };
 
-// ─── Feature flag definitions ─────────────────────────────────────────────────
-
-interface FeatureFlagItem {
-  key: keyof FeatureFlags;
-  label: string;
-  description: string;
-  icon: React.ComponentType<{ className?: string }>;
-  category: 'inventory' | 'procurement' | 'ai' | 'integrations' | 'analytics' | 'operations';
-}
-
-const featureFlags: FeatureFlagItem[] = [
-  { key: 'enable_inventory_storage_locations', label: 'Inventory Storage Locations', description: 'Track and manage wine storage locations (Cell A, Cell B, etc.)', icon: Package, category: 'inventory' },
-  { key: 'enable_invoice_scanning', label: 'Invoice Scanning', description: 'Scan invoices with OCR to automatically update inventory', icon: FileText, category: 'inventory' },
-  { key: 'enable_check_scanning', label: 'Check Scanning', description: 'Scan digital checks for profit margin analysis', icon: Receipt, category: 'inventory' },
-  { key: 'enable_auto_procurement', label: 'Auto Procurement', description: 'Automatically initiate orders when stock is low', icon: ShoppingCart, category: 'procurement' },
-  { key: 'enable_recurring_orders', label: 'Recurring Orders', description: 'Schedule automatic recurring orders', icon: Calendar, category: 'procurement' },
-  { key: 'enable_auction_purchases', label: 'Auction Purchases', description: 'Track wines purchased through auctions', icon: Gavel, category: 'procurement' },
-  { key: 'enable_ai_negotiation', label: 'AI Negotiation', description: 'AI-powered supplier negotiation', icon: MessageSquare, category: 'ai' },
-  { key: 'enable_sommelier_ai', label: 'Sommelier AI', description: 'AI sommelier for wine recommendations', icon: Wine, category: 'ai' },
-  { key: 'enable_voice_agent', label: 'Voice Agent', description: 'Hands-free voice commands for inventory updates', icon: Mic, category: 'ai' },
-  { key: 'enable_menu_analyzer', label: 'Menu Analyzer', description: 'Analyze menu photos to add wines to inventory', icon: Image, category: 'ai' },
-  { key: 'enable_wine_pairing_ai', label: 'Wine Pairing AI', description: 'AI-powered food and wine pairing recommendations', icon: Sparkles, category: 'ai' },
-  { key: 'enable_calendar_sync', label: 'Calendar Sync', description: 'Sync with Google Calendar for events and reminders', icon: Calendar, category: 'integrations' },
-  { key: 'enable_whatsapp_business', label: 'WhatsApp Business', description: 'Communicate with suppliers via WhatsApp', icon: MessageSquare, category: 'integrations' },
-  { key: 'enable_quickbooks_sync', label: 'QuickBooks Sync', description: 'Sync financial data with QuickBooks', icon: CreditCard, category: 'integrations' },
-  { key: 'enable_predictive_analytics', label: 'Predictive Analytics', description: 'Forecast demand and optimize inventory levels', icon: Brain, category: 'analytics' },
-  { key: 'enable_profit_margin_tracking', label: 'Profit Margin Tracking', description: 'Track profit margins and financial performance', icon: DollarSign, category: 'analytics' },
-  { key: 'enable_pour_cost_optimizer', label: 'Pour Cost Optimizer', description: 'Optimize pour costs and pricing', icon: Calculator, category: 'analytics' },
-  { key: 'enable_visual_verification', label: 'Visual Verification', description: 'YOLOv8 label recognition and invoice OCR', icon: Eye, category: 'operations' },
-  { key: 'enable_guest_crm', label: 'Guest CRM', description: 'Track guest preferences and wine history', icon: Users, category: 'operations' },
-  { key: 'enable_compliance_autopilot', label: 'Compliance Autopilot', description: 'Automatic regulatory compliance tracking', icon: Shield, category: 'operations' },
-  { key: 'enable_shrinkage_detective', label: 'Shrinkage Detective', description: 'AI-powered loss prevention and anomaly detection', icon: TrendingDown, category: 'operations' },
-  { key: 'enable_staff_training_simulator', label: 'Staff Training Simulator', description: 'AI-powered wine education and training', icon: GraduationCap, category: 'operations' },
-];
+// ─── Features ─────────────────────────────────────────────────────────────────
+//
+// This page used to render 22 switches (`featureFlags`, removed here). The
+// OD-86 audit on 2026-08-26 grepped every one of the 22 flag names across
+// apps/api-gateway/src, apps/web/src, apps/mobile/src and
+// services/agent-orchestrator: exactly one, `enable_ai_negotiation`, was read
+// by any code. The other 21 changed nothing, anywhere — and the columns they
+// wrote to had never existed in the database either, so the save had been
+// failing for all 22 regardless.
+//
+// What replaces them:
+//   • the two flags real code branches on now live in <AiAutonomySection />,
+//     including `enable_ai_autonomous_send`, which decides whether AI email
+//     goes to a vendor with no human approval and had no control at all;
+//   • eleven capabilities that exist but have no per-restaurant gate are listed
+//     in INACTIVE_FEATURES with no switch, so the gap stays visible;
+//   • ten flags naming features that do not exist were deleted — the list and
+//     the evidence for each is in
+//     apps/api-gateway/src/settings/feature-flag-registry.ts.
 
 const categoryLabels: Record<string, string> = {
   inventory: 'Inventory',
@@ -685,11 +655,6 @@ function TreeLocationRow({
 
 export default function Settings() {
   const { user, activeRestaurantId, activeRole, availableRestaurants, refreshBranches } = useAuth();
-  const [flags, setFlags] = useState<FeatureFlags | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
-  const [localFlags, setLocalFlags] = useState<FeatureFlags | null>(null);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const teamInviteAnchorRef = useRef<HTMLButtonElement>(null);
   const [showAddLocation, setShowAddLocation] = useState(false);
@@ -851,61 +816,19 @@ export default function Settings() {
   }, [user?.role]);
 
   useEffect(() => { setLocationsList(availableRestaurants); }, [availableRestaurants]);
-  useEffect(() => { loadFeatureFlags(); }, []);
 
-  const loadFeatureFlags = async () => {
-    try {
-      setLoading(true);
-      const data = await settingsApi.getFeatureFlags();
-      setFlags(data);
-      setLocalFlags(data);
-      setHasChanges(false);
-    } catch {
-      toast.error('Failed to load settings');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleToggle = (key: keyof FeatureFlags) => {
-    if (!localFlags) return;
-    const updated = { ...localFlags, [key]: !localFlags[key] };
-    setLocalFlags(updated);
-    setHasChanges(JSON.stringify(updated) !== JSON.stringify(flags));
-  };
-
-  const handleSave = async () => {
-    if (!localFlags || !flags) return;
-    try {
-      setSaving(true);
-      const updates: UpdateFeatureFlagsRequest = {};
-      (Object.keys(localFlags) as Array<keyof FeatureFlags>).forEach((key) => {
-        if (localFlags[key] !== flags[key]) updates[key] = localFlags[key];
-      });
-      const updated = await settingsApi.updateFeatureFlags(updates);
-      setFlags(updated);
-      setLocalFlags(updated);
-      setHasChanges(false);
-      toast.success('Settings saved');
-    } catch {
-      toast.error('Failed to save settings');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleReset = () => {
-    if (flags) { setLocalFlags({ ...flags }); setHasChanges(false); }
-  };
-
+  // The live AI switches load and save inside <AiAutonomySection />, each write
+  // confirmed by the server. The page no longer holds a pending-changes buffer:
+  // an autonomy dial should not sit in an unsaved state, and the other rows
+  // below are not settings at all.
   const q = flagSearch.toLowerCase();
-  const groupedFlags = featureFlags
+  const groupedInactive = INACTIVE_FEATURES
     .filter((f) => !q || f.label.toLowerCase().includes(q) || f.description.toLowerCase().includes(q))
-    .reduce((acc, flag) => {
-      if (!acc[flag.category]) acc[flag.category] = [];
-      acc[flag.category].push(flag);
+    .reduce((acc, feature) => {
+      if (!acc[feature.category]) acc[feature.category] = [];
+      acc[feature.category].push(feature);
       return acc;
-    }, {} as Record<string, FeatureFlagItem[]>);
+    }, {} as Record<string, InactiveFeature[]>);
 
   const chainsWithCounts = chainsList.map((chain) => ({
     ...chain,
@@ -921,17 +844,6 @@ export default function Settings() {
 
   const formatRoleLabel = (role: string) =>
     role ? role.charAt(0).toUpperCase() + role.slice(1) : '';
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <RefreshCw className="w-6 h-6 animate-spin text-wine-500 mx-auto mb-3" />
-          <p className="text-sm text-slate-400">Loading settings…</p>
-        </div>
-      </div>
-    );
-  }
 
   // Staff (waiter) — restaurant ops Settings are manager/owner only
   const isStaffOnly = effectiveRole === 'staff';
@@ -994,40 +906,6 @@ export default function Settings() {
       </div>
 
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 space-y-4">
-
-        {/* Unsaved changes bar */}
-        <AnimatePresence>
-          {hasChanges && (
-            <motion.div
-              initial={{ opacity: 0, y: -12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.18 }}
-              className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-3.5 flex items-center justify-between"
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="w-1.5 h-1.5 bg-wine-500 rounded-full animate-pulse" />
-                <p className="text-sm text-gray-700">Unsaved changes</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleReset}
-                  className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  Reset
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="px-4 py-1.5 text-sm font-medium text-white bg-wine-600 hover:bg-wine-700 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5"
-                >
-                  {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  Save
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         {/* ── Team ── */}
         <div id="team" className="scroll-mt-32 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -1415,8 +1293,19 @@ export default function Settings() {
           <MapDefaultViewSection />
         </div>
 
-        {/* ── Feature Flags ── */}
+        {/* ── Features ── */}
         <div id="features" className="scroll-mt-32 space-y-3">
+          {/* The two switches that actually govern something. */}
+          <AiAutonomySection />
+
+          {/* Connected accounts — real OAuth state, not a flag. */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="px-6 py-3.5 border-b border-gray-50">
+              <h2 className="text-sm font-semibold text-gray-800">Connected accounts</h2>
+            </div>
+            <IntegrationsAuth />
+          </div>
+
           {/* Search bar */}
           <div className="relative">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300 pointer-events-none" />
@@ -1436,77 +1325,57 @@ export default function Settings() {
             )}
           </div>
 
-          {Object.keys(groupedFlags).length === 0 && (
+          {/* Everything below has no per-restaurant switch. It is shown WITHOUT a
+              control rather than with one that does nothing — ADR 0020. */}
+          <div className="flex items-start gap-3 px-4 py-3.5 bg-slate-100 rounded-2xl border border-slate-200">
+            <SettingsIcon className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+            <p className="text-xs text-slate-600">
+              These features have no per-restaurant switch. They are on for everyone who
+              can reach them, so there is nothing here to turn off — a switch would have
+              changed nothing.
+            </p>
+          </div>
+
+          {Object.keys(groupedInactive).length === 0 && (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-8 text-center">
               <p className="text-sm text-gray-400">No features match &ldquo;{flagSearch}&rdquo;</p>
             </div>
           )}
 
-          {Object.entries(groupedFlags).map(([category, items]) => {
-            const flagEnabled = items.filter((f) => localFlags?.[f.key]).length;
-            const authExtra = category === 'integrations' ? 2 : 0;
-            const enabledCount = flagEnabled; // auth rows tracked separately in IntegrationsAuth
-            const totalCount = items.length + authExtra;
-            return (
-              <motion.div
-                key={category}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
-              >
-                <div className="px-6 py-3.5 border-b border-gray-50 flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-gray-800">
-                    {categoryLabels[category as keyof typeof categoryLabels]}
-                  </h2>
-                  <span className={cn(
-                    'text-xs px-2 py-0.5 rounded-full font-medium',
-                    enabledCount > 0 ? 'bg-wine-50 text-wine-600' : 'bg-gray-100 text-gray-400',
-                  )}>
-                    {enabledCount}/{totalCount} on
-                  </span>
-                </div>
+          {Object.entries(groupedInactive).map(([category, items]) => (
+            <motion.div
+              key={category}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
+            >
+              <div className="px-6 py-3.5 border-b border-gray-50">
+                <h2 className="text-sm font-semibold text-gray-800">
+                  {categoryLabels[category as keyof typeof categoryLabels]}
+                </h2>
+              </div>
 
-                <div className="divide-y divide-gray-50">
-                  {items.map((item) => {
-                    const Icon = item.icon;
-                    const isEnabled = localFlags?.[item.key] ?? false;
-                    return (
-                      <div
-                        key={item.key}
-                        className="px-6 py-3.5 flex items-center gap-4 hover:bg-gray-50/60 transition-colors cursor-pointer"
-                        onClick={() => handleToggle(item.key)}
-                      >
-                        <div className={cn(
-                          'w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors',
-                          isEnabled ? 'bg-wine-50 text-wine-500' : 'bg-gray-50 text-gray-300',
-                        )}>
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-800">{item.label}</p>
-                          <p className="text-xs text-gray-400 mt-0.5 truncate">{item.description}</p>
-                        </div>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleToggle(item.key); }}
-                          aria-label={isEnabled ? 'Disable' : 'Enable'}
-                          className={cn(
-                            'relative inline-flex h-5 w-9 items-center rounded-full shrink-0 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-wine-500 focus:ring-offset-2',
-                            isEnabled ? 'bg-wine-500' : 'bg-gray-200',
-                          )}
-                        >
-                          <span className={cn(
-                            'inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform duration-200',
-                            isEnabled ? 'translate-x-4' : 'translate-x-0.5',
-                          )} />
-                        </button>
+              <div className="divide-y divide-gray-50">
+                {items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <div key={item.label} className="px-6 py-3.5 flex items-center gap-4">
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-gray-50 text-gray-300">
+                        <Icon className="w-4 h-4" />
                       </div>
-                    );
-                  })}
-                </div>
-                {category === 'integrations' && <IntegrationsAuth />}
-              </motion.div>
-            );
-          })}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">{item.label}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{item.description}</p>
+                      </div>
+                      <span className="text-[10px] font-medium uppercase tracking-wide px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 shrink-0">
+                        No switch
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          ))}
         </div>
 
         {/* ── POS ── */}

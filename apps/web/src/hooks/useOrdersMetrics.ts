@@ -84,12 +84,8 @@ interface OrderMetrics {
     date: string
     orders: number
     bottles: number
-    /**
-     * Vendor spend for the day, NOT revenue. The name is retained only because
-     * `pages/dashboard/useDashboardPage.ts` types this shape structurally and
-     * that file is owned elsewhere; rename both together.
-     */
-    revenue: number
+    /** Money paid to vendors that day, summed from `totalPrice`. Not revenue. */
+    spend: number
   }>
 }
 
@@ -303,7 +299,7 @@ export function useOrdersMetrics() {
         date: dateStr,
         orders: dayOrders.length,
         bottles: dayOrders.reduce((sum, o) => sum + o.quantity, 0),
-        revenue: dayOrders.reduce((sum, o) => sum + o.totalPrice, 0),
+        spend: dayOrders.reduce((sum, o) => sum + o.totalPrice, 0),
       })
     }
 

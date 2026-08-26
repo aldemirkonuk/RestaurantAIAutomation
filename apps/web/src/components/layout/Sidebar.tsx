@@ -26,6 +26,7 @@ import {
   BookOpen,
   FileText,
   ScrollText,
+  PackageCheck,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { cn } from '../../lib/utils'
@@ -72,6 +73,19 @@ const mainNavItems: NavItem[] = [
     href: '/orders',
     icon: ShoppingCart,
     description: 'Draft, approve, and track purchase orders through delivery.',
+  },
+  // Between Orders and Inventory because that is where the delivery physically
+  // lands: the goods were asked for, they arrive at the door, then they are on
+  // the shelf. `/receiving` is the S02 golden path and had no nav entry at all —
+  // the only way in was an Orders row, which is the wrong end of the flow for a
+  // porter holding a phone next to a driver who will not wait. `PackageCheck`
+  // pairs with Inventory's `Package` (same goods, one step earlier) and stays
+  // clear of `Truck`, which Providers already owns.
+  {
+    name: 'Receiving',
+    href: '/receiving',
+    icon: PackageCheck,
+    description: 'Check a delivery in at the door and catch short cases.',
   },
   {
     name: 'Wine Library',

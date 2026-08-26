@@ -32,7 +32,9 @@ export interface CalendarEvent {
 export type CalendarFilterType = 'all' | 'delivery' | 'order' | 'meeting' | 'inventory' | 'tasting' | 'reminder' | 'recurring' | 'custom'
 
 export interface DayData {
-  revenue: number
+  /** Vendor procurement SPEND for the day. Named and labelled as spend
+   * since 2026-08-26 (OD-84) — it was rendered as "Total Revenue". */
+  spend: number
   bottles: number
   avgPrice: number
   byType: { red: number; white: number; sparkling: number; rose: number; dessert: number }
@@ -96,20 +98,26 @@ function generateRemindersFromRealData(
   return reminders
 }
 
-const generateCalendarSalesData = (baseDate: Date, eventsByDate: Record<string, CalendarEvent[]>, orderDailyData?: Array<{ date: string; orders: number; bottles: number; revenue: number }>) => {
+/**
+ * Per-day figures for the dashboard calendar. `spend` is vendor procurement
+ * spend — either `dailyOrderData[].spend` from `useOrdersMetrics`, or
+ * `daily[].procurement_spend` from the frozen `calendar-revenue` endpoint.
+ * Both are money out. Nothing on this page reads POS sales.
+ */
+const generateCalendarSalesData = (baseDate: Date, eventsByDate: Record<string, CalendarEvent[]>, orderDailyData?: Array<{ date: string; orders: number; bottles: number; spend: number }>) => {
   const data: { [key: string]: DayData } = {}
   const m = baseDate.getMonth()
   const y = baseDate.getFullYear()
-  const realDataByDate = new Map<string, { orders: number; bottles: number; revenue: number }>()
+  const realDataByDate = new Map<string, { orders: number; bottles: number; spend: number }>()
   if (orderDailyData) orderDailyData.forEach(d => realDataByDate.set(d.date, d))
   for (let day = 1; day <= 31; day++) {
     const date = new Date(y, m, day)
     if (date.getMonth() !== m) break
     const dateStr = date.toISOString().split('T')[0]
     const realData = realDataByDate.get(dateStr)
-    const revenue = realData?.revenue ?? 0
+    const spend = realData?.spend ?? 0
     const bottles = realData?.bottles ?? 0
-    data[dateStr] = { revenue, bottles, avgPrice: bottles > 0 ? Math.round(revenue / bottles) : 0, byType: { red: 0, white: 0, sparkling: 0, rose: 0, dessert: 0 }, topSeller: '', orders: realData?.orders ?? 0, events: eventsByDate[dateStr] || [] }
+    data[dateStr] = { spend, bottles, avgPrice: bottles > 0 ? Math.round(spend / bottles) : 0, byType: { red: 0, white: 0, sparkling: 0, rose: 0, dessert: 0 }, topSeller: '', orders: realData?.orders ?? 0, events: eventsByDate[dateStr] || [] }
   }
   return data
 }
@@ -122,7 +130,10 @@ export function useDashboardPage() {
   const [calendarFilterType, setCalendarFilterType] = useState<CalendarFilterType>('all')
   const [calendarSearchQuery, setCalendarSearchQuery] = useState('')
   const [selectedDay, setSelectedDay] = useState<{ date: string; data: DayData } | null>(null)
-  const [calendarRevenueData, setCalendarRevenueData] = useState<Array<{ date: string; orders: number; bottles: number; revenue: number }>>([])
+  // Vendor spend per day from the (misnamed) `calendar-revenue` endpoint. Shares
+  // the shape of `useOrdersMetrics().dailyOrderData` because both feed
+  // `generateCalendarSalesData`; the two must stay structurally identical.
+  const [calendarSpendData, setCalendarSpendData] = useState<Array<{ date: string; orders: number; bottles: number; spend: number }>>([])
   
   const restaurantId = useAuthStore(state => state.activeRestaurantId)
   const { metrics: orderMetrics } = useOrdersMetrics()
@@ -165,7 +176,7 @@ export function useDashboardPage() {
     return map
   }, [filteredCalendarEvents])
   
-  const calendarSalesData = useMemo(() => generateCalendarSalesData(calendarMonth, eventsByDate, calendarRevenueData.length > 0 ? calendarRevenueData : orderMetrics?.dailyOrderData), [calendarMonth, eventsByDate, calendarRevenueData, orderMetrics?.dailyOrderData])
+  const calendarSalesData = useMemo(() => generateCalendarSalesData(calendarMonth, eventsByDate, calendarSpendData.length > 0 ? calendarSpendData : orderMetrics?.dailyOrderData), [calendarMonth, eventsByDate, calendarSpendData, orderMetrics?.dailyOrderData])
   const formatCurrency = (v: number) => formatMoney(v, 'compact')
   const formatNumber = (v: number) => fmtNumber(v)
   
@@ -226,18 +237,18 @@ export function useDashboardPage() {
   
   useEffect(() => {
     if (!restaurantId) return
-    const fetchCalendarRevenue = async () => {
+    const fetchCalendarSpend = async () => {
       try {
         const { getCalendarRevenue } = await import('../../services/api/dashboard')
         const data = await getCalendarRevenue(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, restaurantId)
         if (data?.daily?.length > 0) {
-          setCalendarRevenueData(data.daily.map(d => ({ date: d.date, orders: d.order_count, bottles: d.bottles_sold, revenue: d.revenue })))
+          setCalendarSpendData(data.daily.map(d => ({ date: d.date, orders: d.order_count, bottles: d.bottles_sold, spend: d.procurement_spend })))
         }
       } catch {
-        /* calendar revenue optional — dashboard still renders without it */
+        /* calendar spend optional — dashboard still renders without it */
       }
     }
-    fetchCalendarRevenue()
+    fetchCalendarSpend()
   }, [calendarMonth, restaurantId])
   
   useEffect(() => {
@@ -248,7 +259,7 @@ export function useDashboardPage() {
   
   const handleDayClick = useCallback((dateStr: string, dayData: DayData | undefined) => {
     const empty: DayData = {
-      revenue: 0,
+      spend: 0,
       bottles: 0,
       avgPrice: 0,
       byType: { red: 0, white: 0, sparkling: 0, rose: 0, dessert: 0 },

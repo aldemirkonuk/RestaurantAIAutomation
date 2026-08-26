@@ -615,6 +615,60 @@ export class AnalyticsController {
     return this.advanced.getWine360(restaurantId, masterWineId);
   }
 
+  // ==========================================================================
+  // POS-backed sales revenue (OD-85)
+  // ==========================================================================
+
+  @Get("pos-revenue/:restaurantId")
+  @ApiOperation({
+    summary: "Sales revenue booked through the POS, over a day range",
+    description:
+      "Sum of non-voided `pos_checks.total` plus the per-wine bottle/glass breakdown for the same window. " +
+      "`posConnected: false` means this restaurant has never had a POS check land — `revenue` and `checkCount` " +
+      "are then `null`, NOT `0`, and every consumer must render an empty state rather than a figure. " +
+      "Reuses the same query goal progress runs on, so the two can never disagree.",
+  })
+  @ApiQuery({
+    name: "days",
+    required: false,
+    description: "Window length in days (1–365, default 30).",
+  })
+  @ApiResponse({ status: 200, description: "POS revenue window" })
+  async getPosRevenue(
+    @Param("restaurantId") restaurantId: string,
+    @Query("days") days?: string,
+  ) {
+    const parsed = Number.parseInt(days ?? "", 10);
+    const span = Number.isFinite(parsed)
+      ? Math.min(Math.max(parsed, 1), 365)
+      : 30;
+    try {
+      const window = await this.goalsService.getPosRevenueWindow(
+        restaurantId,
+        span,
+      );
+      // Skipped entirely when no POS is wired: there is nothing to break down,
+      // and issuing the query anyway would only make "no POS" cost two round
+      // trips to discover.
+      const consumption = window.posConnected
+        ? await this.analyticsService.getPosConsumptionBreakdown(
+            restaurantId,
+            window.from,
+            window.to,
+          )
+        : [];
+      return { ...window, consumption };
+    } catch (error) {
+      // Deliberately a 500 rather than an empty payload: "we could not load
+      // this" and "you have no POS" are different sentences, and the UI shows
+      // different things for each.
+      throw new HttpException(
+        error.message || "Failed to load POS revenue",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Get("overview/:restaurantId")
   @ApiOperation({
     summary: "Full overview (combination of all endpoints)",

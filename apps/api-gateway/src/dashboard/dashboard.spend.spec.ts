@@ -163,4 +163,35 @@ describe("DashboardService — procurement spend is not revenue", () => {
     expect(stats).not.toHaveProperty("weekSales");
     expect(stats).not.toHaveProperty("monthSales");
   });
+
+  // The `sales-chart` route name is frozen — it is a published path — so the
+  // payload is the only place the truth can be told. Every point's money field
+  // is a `procurement_orders.total_cost` sum.
+  it("returns the sales-chart series keyed on procurementSpend, never revenue", async () => {
+    const points: any[] = await service.getSalesChart("r1", "year");
+
+    expect(points.length).toBeGreaterThan(0);
+    for (const point of points) {
+      expect(point).toHaveProperty("procurementSpend");
+      expect(point).not.toHaveProperty("revenue");
+    }
+    expect(points.map((p) => [p.date, p.procurementSpend])).toEqual([
+      ["2026-07", 1000],
+      ["2026-08", 250],
+    ]);
+  });
+
+  // Same for `calendar-revenue`: frozen route, honest payload.
+  it("returns calendar figures as procurement_spend, never revenue", async () => {
+    const result: any = await service.getCalendarRevenue("r1", 2026, 8);
+
+    const offenders = allKeys(result).filter((k) => /revenue/i.test(k));
+    expect(offenders).toEqual([]);
+    expect(result).toHaveProperty("monthly_procurement_spend", 250);
+    expect(result).not.toHaveProperty("monthly_total");
+
+    const spendDay = result.daily.find((d: any) => d.date === "2026-08-09");
+    expect(spendDay.procurement_spend).toBe(250);
+    expect(spendDay).not.toHaveProperty("revenue");
+  });
 });

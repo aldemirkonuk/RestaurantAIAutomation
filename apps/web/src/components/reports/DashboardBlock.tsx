@@ -45,6 +45,15 @@ interface DashboardBlockProps {
   totalOrders?: number
   /** Total vendor spend across the window. */
   totalSpend?: number
+  /**
+   * Real sales revenue for the window from `pos_checks`. `null` means we have
+   * no POS data — never "no sales". Charts branch on `posConnected` and show an
+   * empty state instead of a figure (OD-85, ADR 0020).
+   */
+  posRevenue?: number | null
+  posConnected?: boolean
+  /** Real POS revenue per day, keyed by the same short label as purchaseDayData. */
+  posRevenueByDate?: Record<string, number>
 }
 
 // ── Table column definitions per data source ───────────────────────────
@@ -132,6 +141,9 @@ function renderChart(
   topWines: TopWine[],
   totalOrders = 0,
   totalSpend = 0,
+  posRevenue: number | null = null,
+  posConnected = false,
+  posRevenueByDate: Record<string, number> = {},
 ) {
   const { chartType, dataSource } = block
 
@@ -143,15 +155,22 @@ function renderChart(
   if (chartType === 'channel-donut' || dataSource === 'channelMix') {
     return (
       <ChannelDonutChart
-        wineTypeDistribution={wineTypeDistribution}
-        totalSpend={totalSpend}
+        posRevenue={posRevenue}
+        posConnected={posConnected}
         className="h-full"
       />
     )
   }
 
   if (chartType === 'labor-overlay' || dataSource === 'laborRevenue') {
-    return <LaborSpendOverlay purchaseDayData={purchaseDayData} className="h-full" />
+    return (
+      <LaborSpendOverlay
+        purchaseDayData={purchaseDayData}
+        posRevenueByDate={posRevenueByDate}
+        posConnected={posConnected}
+        className="h-full"
+      />
+    )
   }
 
   if (chartType === 'funnel' || dataSource === 'orderFunnel') {
@@ -306,6 +325,9 @@ export function DashboardBlock({
   spotlightedKPI,
   totalOrders = 0,
   totalSpend = 0,
+  posRevenue = null,
+  posConnected = false,
+  posRevenueByDate = {},
 }: DashboardBlockProps) {
   const [showConfig, setShowConfig] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
@@ -446,7 +468,17 @@ export function DashboardBlock({
           />
         ) : (
           <div className="h-full min-h-[120px]">
-            {renderChart(block, purchaseDayData, wineTypeDistribution, topWines, totalOrders, totalSpend)}
+            {renderChart(
+              block,
+              purchaseDayData,
+              wineTypeDistribution,
+              topWines,
+              totalOrders,
+              totalSpend,
+              posRevenue,
+              posConnected,
+              posRevenueByDate,
+            )}
           </div>
         )}
       </div>

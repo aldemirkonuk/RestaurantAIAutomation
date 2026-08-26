@@ -13,6 +13,7 @@ import {
 } from "./commercial-terms";
 import { SenderReputationService } from "./sender-reputation.service";
 import { computePriority } from "./priority";
+import { SETTINGS_ROW_FLAG_NAME } from "../../settings/feature-flag-registry";
 // AI-SPEC §6 UCC contract-formation guardrail. Single source of truth for both
 // runtimes (OD-44) — the Python orchestrator's copy is generated from it by
 // scripts/sync_commitment_patterns.py. Edit commitment-patterns.ts, never a copy.
@@ -927,13 +928,23 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
   // HELPERS
   // ===========================================================================
 
-  /** Read enable_ai_negotiation; default ON when no flags row exists. */
+  /**
+   * Read enable_ai_negotiation; default ON when no settings row exists.
+   *
+   * The `flag_name` filter is load-bearing. `restaurant_feature_flags` is an
+   * EAV table that also holds rows written by other subsystems (self-evolution
+   * writes one per restaurant), so filtering on restaurant_id alone makes
+   * `.maybeSingle()` fail as soon as a restaurant has two rows — and the
+   * failure lands on the fallback, which is why this gate has effectively been
+   * stuck ON. See settings/feature-flag-registry.ts.
+   */
   private async isNegotiationEnabled(restaurantId: string): Promise<boolean> {
     try {
       const { data, error } = await this.databaseService.supabase
         .from("restaurant_feature_flags")
         .select("enable_ai_negotiation")
         .eq("restaurant_id", restaurantId)
+        .eq("flag_name", SETTINGS_ROW_FLAG_NAME)
         .maybeSingle();
       if (error || !data) return true; // no row -> defaults enabled
       return (data as any).enable_ai_negotiation !== false;
@@ -942,7 +953,13 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
     }
   }
 
-  /** Read enable_ai_autonomous_send; default OFF unless explicitly enabled. */
+  /**
+   * Read enable_ai_autonomous_send; default OFF unless explicitly enabled.
+   *
+   * Fails closed on every uncertain path — no row, read error, thrown client.
+   * Sending a vendor an email the manager never saw is not recoverable, so the
+   * only value that turns this on is a literal stored `true`.
+   */
   private async isAutonomousSendEnabled(
     restaurantId: string,
   ): Promise<boolean> {
@@ -951,6 +968,7 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
         .from("restaurant_feature_flags")
         .select("enable_ai_autonomous_send")
         .eq("restaurant_id", restaurantId)
+        .eq("flag_name", SETTINGS_ROW_FLAG_NAME)
         .maybeSingle();
       if (error || !data) return false; // default OFF — manager approves until flipped on
       return (data as any).enable_ai_autonomous_send === true;

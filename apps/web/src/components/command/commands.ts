@@ -14,6 +14,7 @@ import {
   Home,
   Boxes,
   ShoppingCart,
+  PackageCheck,
   Wine,
   Truck,
   Tag,
@@ -70,6 +71,11 @@ const NAVIGATION: Command[] = [
   { id: "nav-dashboard", title: "Dashboard", section: "Navigation", icon: Home, href: "/", shortcut: "g d", keywords: "home overview" },
   { id: "nav-inventory", title: "Inventory", section: "Navigation", icon: Boxes, href: "/inventory", shortcut: "g i", keywords: "stock cellar bottles par" },
   { id: "nav-orders", title: "Orders", section: "Navigation", icon: ShoppingCart, href: "/orders", shortcut: "g o", keywords: "procurement po purchase" },
+  // No `g` shortcut: every free letter that reads as "receiving" is already bound
+  // (r=Reports), and inventing a binding is a UX decision nobody made. Registering
+  // it here also gives `/receiving` a ROUTE_LABELS entry, which is what stops the
+  // breadcrumb rendering the raw segment.
+  { id: "nav-receiving", title: "Receiving", section: "Navigation", icon: PackageCheck, href: "/receiving", keywords: "delivery deliveries door goods in receive truck arrived packing slip" },
   { id: "nav-wines", title: "Wine Library", section: "Navigation", icon: Wine, href: "/wines", shortcut: "g w", keywords: "catalog bottles list" },
   { id: "nav-providers", title: "Providers", section: "Navigation", icon: Truck, href: "/providers", shortcut: "g p", keywords: "vendors suppliers distributors" },
   { id: "nav-promotions", title: "Promotions", section: "Navigation", icon: Tag, href: "/promotions", keywords: "offers deals prospects" },
