@@ -283,3 +283,65 @@ describe("ToastService webhook signature enforcement in production", () => {
     expect(res.status).not.toBe("error");
   });
 });
+
+/**
+ * CodeQL js/request-forgery, open since 2026-07-08.
+ *
+ * getMenu/getOrder interpolate a route param into the outbound orchestrator URL. Express
+ * decodes route params, so `%2f` becomes a real slash after routing has matched and
+ * `..%2f..%2f…` escapes the /toast/ prefix into the internal service.
+ */
+describe("Toast id validation (SSRF)", () => {
+  function nonMockService() {
+    const configService: any = {
+      // Mock mode short-circuits before the HTTP call, so the guard must be proven with
+      // it OFF — otherwise the test passes for the wrong reason.
+      get: (key: string, fallback?: any) =>
+        key === "TOAST_MOCK_MODE" ? false : fallback,
+    };
+    const cacheService: any = {
+      get: async () => null,
+      set: async () => undefined,
+      del: async () => undefined,
+      invalidateByPattern: async () => 0,
+    };
+    const service = new ToastService(
+      configService,
+      cacheService,
+      { supabase: {} } as unknown as DatabaseService,
+    );
+    const get = jest.fn();
+    (service as any).httpClient = { get };
+    return { service, get };
+  }
+
+  it.each([
+    "../../agents/execute",
+    "..%2f..%2fagents",
+    "..",
+    "a/b",
+    "http://evil.com",
+  ])("getMenu refuses %s without issuing a request", async (bad) => {
+    const { service, get } = nonMockService();
+    await expect(service.getMenu(bad)).rejects.toThrow("Invalid menu id");
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it.each(["../../agents/execute", "..", "a/b"])(
+    "getOrder refuses %s without issuing a request",
+    async (bad) => {
+      const { service, get } = nonMockService();
+      await expect(service.getOrder(bad)).rejects.toThrow("Invalid order id");
+      expect(get).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still fetches a legitimate GUID", async () => {
+    const { service, get } = nonMockService();
+    get.mockResolvedValue({ data: { guid: "abc" } });
+    await service.getMenu("3f2504e0-4f89-11d3-9a0c-0305e82c3301");
+    expect(get.mock.calls[0][0]).toBe(
+      "/api/v1/toast/menus/3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+    );
+  });
+});

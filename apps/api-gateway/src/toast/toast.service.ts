@@ -10,6 +10,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import * as crypto from "crypto";
 import axios, { AxiosInstance } from "axios";
+import { isSafePathSegment } from "../common/http/safe-path";
 import { CacheService } from "../common/cache/cache.service";
 import { DatabaseService } from "../database/database.service";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
@@ -755,6 +756,17 @@ export class ToastService {
    * Get a single menu by ID
    */
   async getMenu(menuId: string): Promise<ToastMenuDto> {
+    // CodeQL js/request-forgery (open since 2026-07-08). menuId comes from
+    // @Param("menuId") and is interpolated into the outbound URL below; Express decodes
+    // params, so `%2f` becomes a real slash and `..%2f..%2f…` escapes the /toast/ prefix
+    // into the internal orchestrator. Validated before it can reach the template — and
+    // before the cache key, so a hostile id cannot poison the cache either.
+    if (!isSafePathSegment(menuId)) {
+      this.logger.warn(
+        `Rejected menu lookup for unsafe id: ${JSON.stringify(menuId).slice(0, 200)}`,
+      );
+      throw new HttpException("Invalid menu id", HttpStatus.BAD_REQUEST);
+    }
     this.logger.log(`Fetching menu: ${menuId}`);
 
     if (this.mockMode) {
@@ -848,6 +860,13 @@ export class ToastService {
    * Get order by ID
    */
   async getOrder(orderId: string): Promise<ToastOrderResponseDto> {
+    // Same defect and same reasoning as getMenu above (CodeQL js/request-forgery).
+    if (!isSafePathSegment(orderId)) {
+      this.logger.warn(
+        `Rejected order lookup for unsafe id: ${JSON.stringify(orderId).slice(0, 200)}`,
+      );
+      throw new HttpException("Invalid order id", HttpStatus.BAD_REQUEST);
+    }
     this.logger.log(`Fetching order: ${orderId}`);
 
     if (this.mockMode) {
