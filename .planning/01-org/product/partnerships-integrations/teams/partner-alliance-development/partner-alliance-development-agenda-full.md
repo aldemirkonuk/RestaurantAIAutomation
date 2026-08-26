@@ -41,7 +41,7 @@ position and it is why the first deliverables are all artifacts rather than agre
 
 OD-07 asks whether to *"build the guest consumer experience independently vs explore
 collaboration"*, and notes it *"determines whether guest-app work is product or partnership
-groundwork"* (`OPEN-DECISIONS.md:18`). Its stated unblocker is *"Founder call after guest MVP
+groundwork"* (`OD-07, OPEN-DECISIONS.md:29`). Its stated unblocker is *"Founder call after guest MVP
 scope exists (FUTURES.md §7.5)."*
 
 **This team does not answer it.** It makes it answerable, and it protects the option in the
@@ -115,7 +115,7 @@ the Decision Office.
 ## Questions for the founder
 
 1. **OD-07 timing.** Should the option memo be written **now**, or after guest MVP scope
-   exists as `OPEN-DECISIONS.md:18` suggests? This agenda argues *now*, because the memo is
+   exists as `OD-07 (OPEN-DECISIONS.md:29)` suggests? This agenda argues *now*, because the memo is
    what keeps the option from decaying while scope is being defined. That argument is offered,
    not assumed.
 2. **The no-outreach-without-a-named-venue precondition.** It means this team may report zero

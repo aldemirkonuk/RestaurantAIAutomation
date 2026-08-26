@@ -118,9 +118,9 @@ Step 1 is a day of work and closes the largest blind spot in the department.
 2. **What is the cost ceiling per restaurant per month?** Cost-per-task is only
    actionable against a target, and `[[unit-economics-pricing-charter|fin-unit-economics-pricing]]` needs the same
    number from the other direction. Locked pricing is $20–50/mo
-   (`OPEN-DECISIONS.md:25`, OD-23 context) — what share of that may be inference?
+   (`OPEN-DECISIONS.md:32`, OD-23 context) — what share of that may be inference?
 3. **OD-04 — the external model roster** (Kimi/Moonshot, DeepSeek, etc.) is explicitly
-   downstream of OD-03 (`OPEN-DECISIONS.md:15`). Confirm we should not evaluate
+   downstream of OD-03 (`OPEN-DECISIONS.md:25`). Confirm we should not evaluate
    non-Anthropic models until the harness fork closes. We think that ordering is right
    and want it stated, not assumed.
 4. **`ux-optimizer.service.ts:250` pins a dated model snapshot** while six siblings pin

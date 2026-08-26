@@ -261,8 +261,8 @@ under any threaded/gevent pool.
 ## Q6 — `base_agent.py`, OD-52, and where agent-level emission hooks in
 
 **The constraint.** `core/base_agent.py` has zero LLM integration — it is
-RabbitMQ/saga/DLQ/idempotency infrastructure (OD-52,
-`.planning/decisions/OPEN-DECISIONS.md:46`). A BaseAgent lifecycle hook or
+RabbitMQ/saga/DLQ/idempotency infrastructure
+(`OD-52, .planning/decisions/OPEN-DECISIONS.md:41`). A BaseAgent lifecycle hook or
 middleware **cannot observe token usage it never sees**; option (a) below is
 rejected on that evidence, not on taste.
 

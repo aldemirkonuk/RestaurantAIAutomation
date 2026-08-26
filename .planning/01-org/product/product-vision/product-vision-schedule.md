@@ -46,7 +46,7 @@ speculative skills.
 | `action-allowlist-review` | T2 | Any diff touching the Ask AI allowlist file or a new AI entry surface | Diff has a typed schema, a refusal test, and an audit row; otherwise it fails | `/wine-agent` and `/wineagent` shipped as two duplicate placeholders (`App.tsx:293-294`) — divergence already happened once with no gate |
 | `inbound-gate-conformance` | T3 | A confidence constant or approval component is added under `procurement/documents/` or `communications/` | Every gate reads the shared contract; a second threshold constant fails the check | Three inbound modules already ship independently (`document-extractor.service.ts`, `gmail-watch.service.ts`, `recurring-orders.controller.ts`) with no shared standard |
 | `pos-input-audit` | T3 | Monthly, or when `pos-provider.registry.ts` changes | A table of provider → fields emitted, with `table_id`/`server_name`/kitchen-ready explicitly marked | `server_name`, `covers`, `table_id`, `total` were found 0-of-47 only because someone grepped the migration by hand |
-| `open-decision-digest` | T2 | Daily | Every open decision has an owner, an age, and a named unblocker; ones without are listed first | `teams/product.md` §6 filed five forks under IDs already in use (OPEN-DECISIONS.md:24-27) — the register drifted because nothing read it daily |
+| `open-decision-digest` | T2 | Daily | Every open decision has an owner, an age, and a named unblocker; ones without are listed first | `teams/product.md` §6 filed five forks under IDs already in use (OD-20…OD-23) — the register drifted because nothing read it daily |
 
 **Deliberately not proposed:** a `sketch-to-spec` or `ux-path-burn-down` skill — those
 belong to [[design-charter]]'s teams, not here. And no skill that automates route deletion:
