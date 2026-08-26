@@ -263,7 +263,6 @@ function makeScheduledTasks(opts: {
         `manager@${restaurantId}.test`,
       ],
       phones: [],
-      pushSubscriptionIds: [],
     })),
   };
 
