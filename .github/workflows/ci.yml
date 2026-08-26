@@ -155,12 +155,28 @@ jobs:
       - name: Re-verify every executable claim
         run: ./scripts/check_decision_claims.sh
 
+      # ADR 0025 §6.2, landed 2026-08-26. A citation into the register carries two
+      # anchors -- the id and the line -- precisely so a machine can diff them.
+      # Neither is reliable alone: an id renumbers and still resolves (OD-83 -> OD-88
+      # hid a defect for a day), and a line anchor moves every time a row above it
+      # grows. When this checker was written, 0 of 75 anchors into the register
+      # resolved to the decision they named, and 26 pointed into the register's
+      # preamble rather than at any row.
+      #
+      # `if: !cancelled()` on purpose: this must report even when the claims step
+      # above has already failed. A guard hidden behind another guard is not a guard.
+      - name: Re-verify every decision citation
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_decision_citations.py --strict-pairing
+
       - name: Explain a failure
         if: failure()
         run: |
           echo "::notice::REGRESSED means a decision this repo considers settled has come undone."
           echo "::notice::STALE means an entry is listed as open but its claim already verifies — strike it off."
           echo "::notice::A register that lists fixed things is one people stop reading, which is how a critical SSRF sat unread."
+          echo "::notice::MISMATCH means a citation's id and line name different decisions — fix the LINE: grep OPEN-DECISIONS.md for the id."
+          echo "::notice::UNPAIRED means a citation names a line and no id. A lone line anchor cannot be diffed against anything, so it rots in silence. Write OD-NN (OPEN-DECISIONS.md:LINE)."
           echo "::notice::Exit 2 means the guard could not check what it claims to. That is a failure, not a skip."
 
   # Does the schema the code queries actually exist, and does it live where it

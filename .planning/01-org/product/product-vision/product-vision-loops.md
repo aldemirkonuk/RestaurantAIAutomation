@@ -148,7 +148,7 @@ inputs_from: [decision-office, red-team, architecture-review]
 outputs_to: [decision-office, founder]
 close_time: daily
 status: proposed
-baseline: "3 department forks pending, all with colliding OD ids (teams/product.md §6 vs OPEN-DECISIONS.md:24-27)"
+baseline: "3 department forks pending, all first minted under ids the register already holds — OD-20 (OPEN-DECISIONS.md:100), OD-21 (OPEN-DECISIONS.md:127), OD-24 (OPEN-DECISIONS.md:121) — since renumbered PROD-F1/F2/F5 (teams/product.md §6)"
 ```
 
 Foundation [[README]] §6 assigns the **daily open-decision digest** to this department. It

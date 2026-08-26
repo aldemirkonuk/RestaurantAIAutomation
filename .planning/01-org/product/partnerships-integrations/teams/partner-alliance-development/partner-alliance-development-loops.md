@@ -88,8 +88,8 @@ guest commits, this loop files a **decision-by-drift finding** with
 That is the whole mechanism. A staleness loop with no consequence is the thing it exists to
 prevent.
 
-**What this loop does not do:** decide OD-07. That is the founder's
-(`OPEN-DECISIONS.md:18`).
+**What this loop does not do:** decide OD-07 (`OPEN-DECISIONS.md:29`). That is the
+founder's.
 
 ---
 

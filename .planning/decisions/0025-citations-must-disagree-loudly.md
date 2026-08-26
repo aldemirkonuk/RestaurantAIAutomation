@@ -24,7 +24,7 @@ Three defects found by hand on 2026-08-26, then measured across the corpus.
 |---|---|---|
 | 1 | `studio.md` claimed a gateway route did not exist. It was added by the **same commit** that wrote the claim; production returns 401, not 404. | The OD id it cited had been renumbered on rebase. **The citation still resolved** — to a different, closed decision. |
 | 2 | `settings.md` §10/§12/§13 still describe 22 dead toggles and say `enable_ai_autonomous_send` has no UI. OD-86 shipped both. | Every `file:line` in the paragraph resolved. The **prose** was what lied. |
-| 3 | `privacy.md:59` anchors OD-27 at `OPEN-DECISIONS.md:27,74` → OD-05 and OD-81. | The anchor was **never** correct, and nothing ever re-read it. |
+| 3 | `privacy.md:59` anchors OD-27 at `OPEN-DECISIONS.md:27,74`; **as measured on 2026-08-26** those two lines held OD-05 and OD-81. <!-- cite-exempt: exhibits the broken anchor as evidence — repairing it would delete the finding --> | The anchor was **never** correct, and nothing ever re-read it. |
 
 Each failed differently, and no single mechanism catches all three. That is the
 finding — not "add a checker".
@@ -134,7 +134,7 @@ built to catch.
 ## 6. Adopted — the pairing rule
 
 1. A citation into a decision document carries **both** the id and the line:
-   `OD-88 (OPEN-DECISIONS.md:63)`. Neither alone is admissible.
+   `OD-88 (OPEN-DECISIONS.md:56)`. Neither alone is admissible.
 2. CI parses each pair, reads that line, and **fails if the row's id is not the
    cited id**. Renumber → caught. Row moves → caught. Both → caught.
 3. Source citations stay as they are, with the symbol preferred where one exists
@@ -143,8 +143,9 @@ built to catch.
    catch defect #2 — every anchor in it resolved. A quarter of dossier assertions
    state an *absence*, which no line-checker can verify at all.
 
-The checker is ~15 lines and already written (§3 produced the 0-of-23 figure with
-it). It is hermetic, needs no network, and runs in well under a second.
+> **Landed 2026-08-26** as `scripts/check_decision_citations.py`, blocking in CI.
+> The claim above that "the checker is ~15 lines and already written" was wrong on
+> both counts — see §10, which records what it actually took and what it found.
 
 **What this does not solve, stated plainly:** it does not make prose true. Defect
 #2 — a dossier describing shipped work as outstanding — passes every mechanism in
@@ -171,10 +172,15 @@ the founder's call whether to act on it — recorded here rather than acted on.
 
 ## 8. Open questions for the founder
 
-1. **Lock or reject** the pairing rule (§6). It makes 23 existing citations fail
-   immediately; they are all genuinely wrong, but someone must fix them.
+1. ~~**Lock or reject** the pairing rule (§6). It makes 23 existing citations fail
+   immediately; they are all genuinely wrong, but someone must fix them.~~
+   **Answered 2026-08-26 — founder chose the full sweep**, including §6.1 (both
+   anchors mandatory) as a blocking check, not the advisory fallback that was
+   offered. It made **75** citations fail, not 23; see §10. The ADR itself stays
+   **Proposed** until locked — this answers the enforcement question, not §0.1.
 2. **Strict mode (§5)** — ship now as a one-line change plus the OD-78 fix, or
-   bundle it with §6?
+   bundle it with §6? **Still open.** §10 lands §6 only; `check_decision_claims.sh:149`
+   still reads any non-zero exit from an `open` claim as passing.
 3. **The 469 archive twins** — delete, or leave and drop the retire-to-write rule
    as unenforced? It currently scores ~1.2% (4 deletions against 347 additions in
    48 hours), which is a rule in name only.

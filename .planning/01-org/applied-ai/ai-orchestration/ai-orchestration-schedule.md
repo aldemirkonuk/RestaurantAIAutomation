@@ -33,7 +33,7 @@ writing itself. Every other job on this list is subject to the rule as written.
 
 ### The one-shot job, because a date is the whole point
 
-`OPEN-DECISIONS.md:14` gives OD-03 a method (*"a scoped bake-off on this repo's actual
+OD-03 (`OPEN-DECISIONS.md:25`) gives a method (*"a scoped bake-off on this repo's actual
 workloads. No pick from repute"*) and no date.
 [[ai-orchestration-premortem]] #1 is that fork staying open by ordinary gravity while
 `core/base_agent.py` accumulates work that a later decision throws away. Putting the

@@ -449,8 +449,8 @@ reachable from the public API. Verified by execution (§1.2). Convenient for OD-
 — but the docs currently describe a stricter emitter than the one that ships.
 
 **7.2 OD-59's own opener rationale does not hold as a pairing.**
-`OPEN-DECISIONS.md:55` proposes opening with `invoice_extraction` and justifies the
-volume with "the dominant real path (`@Cron */5` email sweep)". Those are two
+OD-59 (`OPEN-DECISIONS.md:91`) proposed opening with `invoice_extraction` and justified
+the volume with "the dominant real path (`@Cron */5` email sweep)". Those are two
 different runtimes. The cron is gateway-side —
 `procurement/documents/document-intake.service.ts:581`,
 `@Cron("*/5 * * * *", { name: "procurement-document-intake-sweep" })` — and its
@@ -462,6 +462,10 @@ Since the readout partitions on `context->>'task_type'`
 (`20260824153600_nf_a_readout.sql:102,109`), a `reconciliation_v1` slice scoped to
 `task_type = 'invoice_extraction'` selects **only** the Python path and misses the
 gateway volume entirely. Either the opener or the volume claim has to give.
+
+*Since resolved: the volume claim gave. The row has been rewritten as ✅ Resolved and no
+longer carries the sentence quoted above — it now records this finding as its own premise
+(b), and OD-59 closed on `document_extraction` rather than on the proposed opener.*
 
 **7.3 The gateway holds a far stronger invoice ground truth than Python does.**
 `apps/api-gateway/src/procurement/invoice-match.ts` reconciles four documents

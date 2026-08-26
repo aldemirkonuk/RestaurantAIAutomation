@@ -67,8 +67,8 @@ graph TD
   D -->|no| WAIT[Hold. Firewall stays up:<br/>no guest artifact may assume the partnership.]
 ```
 
-**This team never traverses to a decision.** The founder holds OD-07
-(`OPEN-DECISIONS.md:18`). What this team holds is the obligation to make the drift visible —
+**This team never traverses to a decision.** The founder holds
+OD-07 (`OPEN-DECISIONS.md:29`). What this team holds is the obligation to make the drift visible —
 which is why node D produces an escalation rather than a nudge.
 
 ## Decision rights
