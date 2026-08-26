@@ -37,6 +37,44 @@
 # NEVER VACUOUS: a claim whose command cannot run is a FAILURE, not a skip.
 # Exit 2 is reserved for "this guard could not check what it says it checks".
 #
+# STRICT MODE (ADR 0025 §5, locked by the founder 2026-08-26)
+# -----------------------------------------------------------
+# The line above was a promise this file did not keep. Until 2026-08-26 the runner
+# was `if bash -c "$verify"; then holds=yes; else holds=no; fi`, and for a claim
+# with `status: open` — where NOT holding is what passes — a missing file, a typo,
+# a renamed symbol and a deleted file were all indistinguishable from "the bug is
+# still present". Four states were measured against this file before it changed:
+#
+#   malformed JSON                            -> exit 2 already. The only one that
+#                                                was honouring the contract.
+#   open claim, verify greps a missing file   -> grep exits 2, counted as HOLDING,
+#                                                whole run PASS, exit 0.
+#   resolved claim, `! grep ... <missing>`    -> the negation turns grep's error
+#                                                into exit 0, counted as HOLDING,
+#                                                exit 0. That shape guards a
+#                                                SECURITY claim in this repo:
+#                                                rename the file and it is green
+#                                                forever.
+#   open claim, command not found             -> exit 127, counted as HOLDING,
+#                                                exit 0.
+#
+# So three of the four cannot-run states certified themselves. Now: stderr is
+# captured, and exit 126/127 or a cannot-run signature on stderr is a FAILURE
+# (exit 2) regardless of the exit code the claim reports.
+#
+# Exit status alone cannot carry this. A negated command inverts its own failure,
+# which is exactly how the security claim above stayed green. Only stderr
+# distinguishes "ran and disagreed" from "never ran".
+#
+# Which is why a claim MAY NOT SUPPRESS ITS OWN STDERR. The one broken claim found
+# when this was measured carried its own `2>/dev/null`, so classifying by stderr
+# without banning suppression finds 0 of 68 — it certifies the exact claim it was
+# built to catch. Any `2>` in a verify command is rejected at parse time.
+#
+# Cost when it shipped: 0 of 94 claims. Not a noise generator — the one instance
+# ADR 0025 measured (OD-78 grepping a `.env.example` that has never existed in
+# this repo) had already been repointed by `fix/dossier-rot-sweep`.
+#
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || { echo "FAIL — cannot reach repo root"; exit 2; }
@@ -49,8 +87,9 @@ command -v python3 >/dev/null 2>&1 || { echo "FAIL — python3 unavailable"; exi
 # Parse once, emit a tab-separated plan. A malformed line is a hard failure:
 # silently skipping it is how a claim stops being checked without anyone noticing.
 PLAN="$(python3 - "$CLAIMS" <<'PY'
-import json, sys
+import json, re, sys
 bad = 0
+muzzled = 0
 rows = []
 for n, line in enumerate(open(sys.argv[1]), 1):
     line = line.strip()
@@ -67,9 +106,16 @@ for n, line in enumerate(open(sys.argv[1]), 1):
         print(f"MALFORMED\t{n}\t{o.get('id','?')} missing {missing}", file=sys.stderr); bad = 1; continue
     if o["status"] not in ("open", "resolved"):
         print(f"MALFORMED\t{n}\t{o['id']} status must be open|resolved, got {o['status']!r}", file=sys.stderr); bad = 1; continue
+    # Strict mode reads stderr to tell "ran and disagreed" from "never ran". A claim
+    # that redirects its own stderr blinds that, and the ONE broken claim found when
+    # this was measured did exactly that.
+    if re.search(r"2\s*>", o["verify"]):
+        print(f"MUZZLED\t{n}\t{o['id']} redirects stderr: {o['verify']}", file=sys.stderr); muzzled = 1; continue
     rows.append("\t".join([o["id"], o["status"], o["verify"], o["claim"]]))
 if bad:
     sys.exit(3)
+if muzzled:
+    sys.exit(5)
 if not rows:
     print("EMPTY", file=sys.stderr); sys.exit(4)
 print("\n".join(rows))
@@ -78,6 +124,10 @@ PY
 case $? in
   3) echo "FAIL — $CLAIMS has malformed lines (see above). A claim that cannot be parsed is not being checked."; exit 2 ;;
   4) echo "FAIL — $CLAIMS parsed to zero claims. A guard with nothing to check must not report success."; exit 2 ;;
+  5) echo "FAIL — a claim suppresses its own stderr (see above). Strict mode reads stderr to"
+     echo "       tell 'ran and disagreed' from 'never ran'; a muzzled claim certifies itself."
+     echo "       Drop the '2>' redirect. Ordinary noise is fine — only stderr is inspected,"
+     echo "       and only for cannot-run signatures."; exit 2 ;;
 esac
 
 # ---------------------------------------------------------------------------
@@ -140,13 +190,31 @@ if [ -n "$migdupes" ]; then
   exit 1
 fi
 
-total=0; held=0; broken=0; stale=0
-declare -a BROKEN_MSG=() STALE_MSG=()
+total=0; held=0; broken=0; stale=0; unrunnable=0
+declare -a BROKEN_MSG=() STALE_MSG=() UNRUNNABLE_MSG=()
+
+# The signatures of "this command never got as far as answering the question".
+# Deliberately narrow: a claim is free to print anything it likes on stderr, and only
+# these patterns — plus exit 126/127 — are read as cannot-run.
+CANNOT_RUN='No such file or directory|command not found|cannot open|Is a directory|Permission denied|No such device or address'
 
 while IFS=$'\t' read -r id status verify claim; do
   [ -z "${id:-}" ] && continue
   total=$((total + 1))
-  if bash -c "$verify" >/dev/null 2>&1; then holds="yes"; else holds="no"; fi
+
+  # stdout discarded, stderr captured. The order matters: `2>&1` first points stderr at
+  # the substitution, THEN `>/dev/null` moves stdout away from it.
+  err="$(bash -c "$verify" 2>&1 >/dev/null)"; rc=$?
+
+  if [ "$rc" -eq 127 ] || [ "$rc" -eq 126 ] || printf '%s' "$err" | grep -qE "$CANNOT_RUN"; then
+    unrunnable=$((unrunnable + 1))
+    UNRUNNABLE_MSG+=("$id (exit $rc) — ${err%%$'\n'*}")
+    UNRUNNABLE_MSG+=("      claim: $claim")
+    UNRUNNABLE_MSG+=("      verify: $verify")
+    continue
+  fi
+
+  if [ "$rc" -eq 0 ]; then holds="yes"; else holds="no"; fi
 
   # `status` alone decides what SHOULD be true:
   #   resolved -> the claim must hold. Not holding = the fix came undone.
@@ -161,6 +229,20 @@ while IFS=$'\t' read -r id status verify claim; do
 done <<< "$PLAN"
 
 echo "== Decision claims: $total checked, $held holding"
+
+if [ "$unrunnable" -gt 0 ]; then
+  echo
+  echo "== COULD NOT RUN ($unrunnable) — the guard never found out whether these hold"
+  printf '   %s\n' "${UNRUNNABLE_MSG[@]}"
+  echo
+  echo "   This is NOT a skip. Before ADR 0025 §5 these counted as holding and the run"
+  echo "   went green: for an open claim, 'the command failed' and 'the bug is still"
+  echo "   there' were the same observation. Repoint the command at what exists, or"
+  echo "   strike the claim — but do not let it sit here reporting on nothing."
+  echo
+  echo "FAIL — a claim's verify command could not run."
+  exit 2
+fi
 
 if [ "$broken" -gt 0 ]; then
   echo
