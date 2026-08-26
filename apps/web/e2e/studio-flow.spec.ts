@@ -6,8 +6,13 @@ test.describe('Studio Flow', () => {
     await page.goto('/login')
     await expect(page.getByRole('heading', { name: 'WineOps AI' })).toBeVisible()
     await expect(page.getByLabel('Email Address')).toBeVisible()
-    await expect(page.getByLabel('Password')).toBeVisible()
-    await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible()
+
+    // Identity-first sign-in (ADR 0024): the first step collects the email only.
+    // The password field renders behind `showPassword`, which is derived from the
+    // methods the resolved identity actually has (`Login.tsx:134,259`), so asserting
+    // it here is asserting the pre-0024 single-step form.
+    await expect(page.getByRole('button', { name: /continue/i })).toBeVisible()
+    await expect(page.getByLabel('Password')).toBeHidden()
   })
 
   test('unauthenticated user redirected from /studio to /login', async ({ page }) => {
