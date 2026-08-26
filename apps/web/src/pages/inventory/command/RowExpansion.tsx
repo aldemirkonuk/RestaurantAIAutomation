@@ -13,6 +13,8 @@ import type { StorageLocation } from '../../../hooks/useStorageLocations'
 import { useNotificationStore } from '../../../stores'
 import { ThemedSelect } from '../../../components/ui/ThemedSelect'
 import { MultiLocationCell } from '../../../components/inventory/MultiLocationCell'
+import { formatVolume } from '../../../utils/volumeUtils'
+import { useRestaurantSettingsStore } from '../../../stores/restaurantSettingsStore'
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
 import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, HoursHeatmap, runwayDays } from './bits'
@@ -58,6 +60,10 @@ export function RowExpansion({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useNotificationStore()
+  // Volumes render in the unit the restaurant chose in Settings. `/inventory-legacy`
+  // honoured this setting and `/inventory` did not, so retiring that page silently
+  // pinned an oz restaurant back to ml. Restored with the retirement (ADR 0019 §B).
+  const measurementUnit = useRestaurantSettingsStore((s) => s.measurementUnit)
   const inventoryId = item.inventoryId || ''
 
   const [delta, setDelta] = useState(0)
@@ -146,7 +152,7 @@ export function RowExpansion({
         {[
           ['Grape', item.grape || 'Unknown'],
           ['Region', item.region || 'Unknown'],
-          ['Format', `${item.bottleSizeMl ?? 750} ml`],
+          ['Format', formatVolume(item.bottleSizeMl ?? 750, measurementUnit)],
           ['Vintage', item.vintage || 'NV'],
         ].map(([k, v]) => (
           <div key={k as string} className="text-[11px] text-gray-400">
@@ -218,7 +224,7 @@ export function RowExpansion({
             </span>
           }
         >
-          <KV k={`Market avg (${item.bottleSizeMl ?? 750}ml)`} v={fmtMoneyExact(item.marketPrice)} />
+          <KV k={`Market avg (${formatVolume(item.bottleSizeMl ?? 750, measurementUnit)})`} v={fmtMoneyExact(item.marketPrice)} />
           <KV k="You paid (WAC)" v={fmtMoneyExact(paid)} />
           <KV
             k="Delta"

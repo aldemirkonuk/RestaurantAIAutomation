@@ -30,6 +30,8 @@ import { ThemedSelect } from '../../../components/ui/ThemedSelect'
 import { ExportMenu } from '../../../components/ui/ExportMenu'
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport'
 import { classifyStock } from '../../../lib/inventoryStatus'
+import { formatVolume } from '../../../utils/volumeUtils'
+import { useRestaurantSettingsStore } from '../../../stores/restaurantSettingsStore'
 import { cn } from '../../../lib/utils'
 import { RestaurantBranchSwitcher } from '../../../components/layout/RestaurantBranchSwitcher'
 import { useAuth } from '../../../contexts/AuthContext'
@@ -87,6 +89,9 @@ export function InventoryCommandPage() {
     inventory, filteredInventory, stats, refetchInventory, updateInventoryItem,
   } = page
 
+  // See RowExpansion: the retired `/inventory-legacy` honoured the Settings
+  // measurement unit and this page did not (ADR 0019 §B).
+  const measurementUnit = useRestaurantSettingsStore((s) => s.measurementUnit)
   const { locations, setLocations, mappings, assignWineToLocation } = useStorageLocations()
   const { availableRestaurants, refreshBranches } = useAuth()
   const multiLocation = availableRestaurants.length > 1
@@ -331,7 +336,10 @@ export function InventoryCommandPage() {
       { header: 'Producer', value: (i) => i.producer ?? '' },
       { header: 'Vintage', value: (i) => i.vintage ?? '' },
       { header: 'Type', value: (i) => i.type ?? '' },
-      { header: 'Bottle size', value: (i) => (i.bottleSizeMl ? `${i.bottleSizeMl}ml` : '') },
+      {
+        header: 'Bottle size',
+        value: (i) => (i.bottleSizeMl ? formatVolume(i.bottleSizeMl, measurementUnit) : ''),
+      },
       { header: 'System qty (live)', value: (i) => i.liveStock ?? 0 },
       { header: 'System qty (shadow)', value: (i) => i.shadowStock ?? 0 },
       { header: 'Par', value: (i) => i.threshold },
@@ -361,7 +369,7 @@ export function InventoryCommandPage() {
       { header: 'Observation', value: (i) => countObservation(i) },
     ],
     // countObservation closes over helpers; recreate when inventory shape changes
-    [locations],
+    [locations, measurementUnit],
   )
 
   const runInventoryExport = useCallback(
