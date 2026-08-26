@@ -10,6 +10,9 @@ updated: 2026-08-25
 > `/wineagent`, `/inventory-legacy` and `/calendar-classic` retired 2026-08-26,
 > ADR 0019 §B). Generated summary — regenerate by hand-count or script; Dataview
 > query below is live.
+>
+> The four deleted dossiers are superseded by **[[RETIRED]]** — what came down, what
+> replaced it, what was ported, and why the two real pages redirect rather than 404.
 
 **Surface graph (2026-08-25, ADR 0018):** every note now opens with a `## Surface`
 section — the page's buttons, one line each, wikilinked to where they go. **115
@@ -113,7 +116,9 @@ surfaces — [[admin]], [[admin-health]], [[calendar]],
 (`/inventory-legacy` was on this list; **retired 2026-08-26** once its two parity
 blockers were ported onto [[inventory]] — ADR 0019 §B-parity. `/calendar-classic`
 likewise: **retired 2026-08-26** once its one blocker — reminders that actually
-fire — was ported onto [[calendar]].)
+fire — was ported onto [[calendar]]. Both old paths now **redirect** to their
+replacements rather than falling to the `*` catch-all; full parity tables and the
+redirect reasoning in [[RETIRED]].)
 A dead end is not automatically wrong — but each is either a deliberate leaf or
 a missing connection, and the proposal decides which.
 
