@@ -3,6 +3,27 @@ import { ConfigService } from "@nestjs/config";
 import axios, { AxiosInstance } from "axios";
 import * as amqplib from "amqplib";
 
+/**
+ * Segments the studio proxy will forward. An allowlist rather than a denylist: every real
+ * studio path is slash-separated words and UUIDs (`queue`, `invite/redeem`,
+ * `contributors/<uuid>/revoke`, `me/roles`), so anything else is not a studio path and
+ * there is no reason to guess at which encodings of `..` to strip.
+ *
+ * Rejects, among others: `..` segments (path escape), `%2f` (encoded slash — `%` is not in
+ * the class), `\` (Windows-style separator), `:` and `//` (absolute/scheme-relative URLs),
+ * and leading slashes.
+ */
+const SAFE_STUDIO_SEGMENT = /^[A-Za-z0-9._~-]+$/;
+
+export function isSafeStudioSubPath(subPath: string): boolean {
+  if (typeof subPath !== "string" || subPath.length === 0) return false;
+  if (subPath.length > 512) return false;
+  const segments = subPath.split("/");
+  return segments.every(
+    (seg) => seg !== ".." && seg !== "." && SAFE_STUDIO_SEGMENT.test(seg),
+  );
+}
+
 @Injectable()
 export class OrchestratorService implements OnModuleDestroy {
   private readonly logger = new Logger(OrchestratorService.name);
@@ -146,6 +167,19 @@ export class OrchestratorService implements OnModuleDestroy {
         status: 503,
         data: { message: "Studio service is not configured" },
       };
+    }
+    // The wildcard segment is caller-controlled and is interpolated into the outbound URL,
+    // so it must be constrained to something that can only be a studio path. Without this,
+    // `a/../../../agents/execute` resolves to `<orchestrator>/api/agents/execute` — outside
+    // the /studio/ prefix, carrying the caller's own bearer token. The guard on this route
+    // admits ANY logged-in user (JwtAuthGuard + TenantBypass, no role check, because the
+    // role check belongs to the orchestrator), so unconstrained it is a generic
+    // authenticated reverse proxy into the orchestrator for every restaurant account.
+    if (!isSafeStudioSubPath(subPath)) {
+      this.logger.warn(
+        `Rejected studio proxy path: ${JSON.stringify(subPath).slice(0, 200)}`,
+      );
+      return { status: 400, data: { message: "Invalid studio path" } };
     }
     const response = await this.httpClient.request({
       method: method as any,

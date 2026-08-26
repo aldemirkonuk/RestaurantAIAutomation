@@ -41,6 +41,7 @@ from services.override_service import (
     require_studio_role,
     require_authenticated_user,
     normalize_email,
+    sanitize_for_log,
     OverrideRequest,
     ApprovalDecision,
     InviteRequest,
@@ -623,7 +624,14 @@ def redeem_invite(
             ).eq("id", tok["id"]).execute()
             raise
 
-        logger.info("Redeemed invite for user=%s role=%s", user["sub"], tok["role"])
+        # sub comes from the request's JWT, so it is escaped before it reaches the log —
+        # a newline in a claim could otherwise forge a second entry (CodeQL py/log-injection).
+        # role is not: it is the DB column, constrained by invite_tokens_role_check.
+        logger.info(
+            "Redeemed invite for user=%s role=%s",
+            sanitize_for_log(user["sub"]),
+            tok["role"],
+        )
         return {
             "role_granted": tok["role"],
             "message": f"Role '{tok['role']}' granted successfully",

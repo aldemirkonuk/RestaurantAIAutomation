@@ -204,6 +204,21 @@ def normalize_email(value: Optional[str]) -> str:
     return value.strip().casefold() if isinstance(value, str) else ""
 
 
+def sanitize_for_log(value: object, max_len: int = 128) -> str:
+    """
+    Make a request-derived value safe to put in a log line (CodeQL py/log-injection).
+
+    Claims like `sub` reach us inside a signature-verified JWT, so only our own issuer can
+    set them — but "signed" is not "structured": a newline in a claim would let one log
+    entry forge additional ones, and log forgery is exactly what an audit trail must not
+    allow. Escaping is cheaper than reasoning about every issuer forever.
+    """
+    text = str(value)
+    return (
+        text.replace("\\", "\\\\").replace("\r", "\\r").replace("\n", "\\n")[:max_len]
+    )
+
+
 # =============================================================================
 # HELPERS
 # =============================================================================

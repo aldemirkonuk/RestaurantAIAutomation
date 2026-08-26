@@ -8,7 +8,46 @@
  */
 import { HttpException } from "@nestjs/common";
 import { StudioProxyController } from "./studio-proxy.controller";
-import { OrchestratorService } from "./orchestrator.service";
+import {
+  OrchestratorService,
+  isSafeStudioSubPath,
+} from "./orchestrator.service";
+
+describe("isSafeStudioSubPath", () => {
+  it.each([
+    "queue",
+    "metrics",
+    "invite/redeem",
+    "me/roles",
+    "sessions/3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+    "contributors/3f2504e0-4f89-11d3-9a0c-0305e82c3301/revoke",
+  ])("allows the real studio path %s", (p) => {
+    expect(isSafeStudioSubPath(p)).toBe(true);
+  });
+
+  it.each([
+    // The one that matters: resolves to <orchestrator>/api/agents/execute, outside the
+    // /studio/ prefix, carrying the caller's own token.
+    ["a/../../../agents/execute", "escapes the studio prefix"],
+    ["../../admin", "parent traversal"],
+    ["..", "bare parent"],
+    ["a/./b", "current-dir segment"],
+    ["..%2f..%2fadmin", "percent-encoded slash"],
+    ["a\\..\\b", "backslash separator"],
+    ["//evil.com/x", "scheme-relative URL"],
+    ["http://evil.com/x", "absolute URL"],
+    ["/queue", "leading slash"],
+    ["a//b", "empty segment"],
+    ["", "empty path"],
+    ["a b", "whitespace"],
+  ])("rejects %s (%s)", (p) => {
+    expect(isSafeStudioSubPath(p)).toBe(false);
+  });
+
+  it("rejects an over-long path", () => {
+    expect(isSafeStudioSubPath("a".repeat(513))).toBe(false);
+  });
+});
 
 describe("StudioProxyController", () => {
   let controller: StudioProxyController;
