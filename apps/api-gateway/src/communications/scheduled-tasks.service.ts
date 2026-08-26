@@ -6,6 +6,13 @@ import { DatabaseService } from "../database/database.service";
 import { GmailService } from "./gmail.service";
 import type { EmailResult } from "./gmail.service";
 import { RecipientResolverService } from "./recipient-resolver.service";
+import type {
+  NotificationChannel,
+  RecipientRole,
+  ResolvedRecipients,
+} from "./recipient-resolver.service";
+import { ScheduledTenantsService } from "./scheduled-tenants.service";
+import type { ScheduledTenant } from "./scheduled-tenants.service";
 
 /**
  * Pure function — exported for direct use in tests without NestJS DI.
@@ -54,12 +61,24 @@ export function computeNextFireAt(
   return next;
 }
 
+/**
+ * OD-87 / ADR 0022 — every job in this file runs once per tenant.
+ *
+ * Each cron used to gate on a single `DEFAULT_RESTAURANT_ID` env var, so every
+ * restaurant except that one silently received no email, SMS or notification.
+ * The jobs now iterate `ScheduledTenantsService.runPerTenant`, which enumerates
+ * the opted-in restaurants, isolates one tenant's failure from the rest, and
+ * logs a {succeeded, failed} summary per run.
+ *
+ * MANAGER_EMAIL / MANAGER_PHONE remain, because they still describe exactly one
+ * restaurant: the legacy default. They are never applied to any other tenant —
+ * see `recipientsFor`.
+ */
 @Injectable()
 export class ScheduledTasksService implements OnModuleInit {
   private readonly logger = new Logger(ScheduledTasksService.name);
   private managerPhone: string | null = null;
   private managerEmails: string[] = [];
-  private defaultRestaurantId: string | null = null;
 
   constructor(
     private readonly configService: ConfigService,
@@ -67,6 +86,7 @@ export class ScheduledTasksService implements OnModuleInit {
     private readonly databaseService: DatabaseService,
     private readonly gmailService: GmailService,
     private readonly recipientResolver: RecipientResolverService,
+    private readonly tenants: ScheduledTenantsService,
   ) {}
 
   async onModuleInit() {
@@ -76,12 +96,49 @@ export class ScheduledTasksService implements OnModuleInit {
       .split(",")
       .map((e) => e.trim())
       .filter((e) => e);
-    this.defaultRestaurantId =
-      this.configService.get<string>("DEFAULT_RESTAURANT_ID") || null;
 
     this.logger.log("Scheduled tasks service initialized");
     this.logger.log(`Manager Emails: ${this.managerEmails.join(", ")}`);
     this.logger.log(`Manager Phone: ${this.managerPhone || "Not configured"}`);
+  }
+
+  /**
+   * Recipients for one tenant — the single place where "who gets this" is
+   * decided, so the legacy carve-out exists once instead of in nine jobs.
+   *
+   * `legacyEnv` marks the two jobs that historically read MANAGER_EMAIL /
+   * MANAGER_PHONE directly rather than going through the resolver (the daily SMS
+   * summary and the weekly email report). For the legacy tenant those jobs keep
+   * reading exactly those env vars, so that restaurant's recipient list does not
+   * move by a single address as part of a multi-tenancy fix. Every other tenant
+   * — and every other job — resolves against its own members, with the env
+   * fallback disabled so nothing can spill across the tenant boundary.
+   */
+  private async recipientsFor(
+    tenant: ScheduledTenant,
+    opts: {
+      roles: RecipientRole[];
+      channels: NotificationChannel[];
+      legacyEnv?: boolean;
+    },
+  ): Promise<ResolvedRecipients> {
+    if (tenant.isLegacyDefault && opts.legacyEnv) {
+      return {
+        emails: opts.channels.includes("email") ? this.managerEmails : [],
+        phones:
+          opts.channels.includes("sms") && this.managerPhone
+            ? [this.managerPhone]
+            : [],
+        pushSubscriptionIds: [],
+      };
+    }
+
+    return this.recipientResolver.resolveRecipients({
+      restaurantId: tenant.id,
+      roles: opts.roles,
+      channels: opts.channels,
+      allowDefaultFallback: tenant.isLegacyDefault,
+    });
   }
 
   /**
@@ -129,31 +186,31 @@ export class ScheduledTasksService implements OnModuleInit {
     timeZone: "America/New_York",
   })
   async sendDailySMSSummary() {
-    if (!this.managerPhone) {
-      this.logger.log(
-        "Daily SMS summary skipped: MANAGER_PHONE not configured",
-      );
-      return;
-    }
-
-    this.logger.log("Starting daily SMS summary task...");
-
-    try {
-      // Get summary data from database
-      const summaryData = await this.getDailySummaryData();
-
-      await this.communicationsService.sendDailySummary({
-        recipientPhone: this.managerPhone,
-        restaurantName: summaryData.restaurantName,
-        lowStockCount: summaryData.lowStockCount,
-        pendingOrders: summaryData.pendingOrders,
-        deliveriesToday: summaryData.deliveriesToday,
+    await this.tenants.runPerTenant("daily-sms-summary", async (tenant) => {
+      const { phones } = await this.recipientsFor(tenant, {
+        roles: ["manager"],
+        channels: ["sms"],
+        legacyEnv: true,
       });
+      if (phones.length === 0) {
+        this.logger.log(
+          `Daily SMS summary skipped for ${tenant.name}: no phone recipients`,
+        );
+        return;
+      }
 
-      this.logger.log("Daily SMS summary sent successfully");
-    } catch (error) {
-      this.logger.error("Failed to send daily SMS summary:", error);
-    }
+      const summaryData = await this.getDailySummaryData(tenant.id);
+
+      for (const phone of phones) {
+        await this.communicationsService.sendDailySummary({
+          recipientPhone: phone,
+          restaurantName: tenant.name,
+          lowStockCount: summaryData.lowStockCount,
+          pendingOrders: summaryData.pendingOrders,
+          deliveriesToday: summaryData.deliveriesToday,
+        });
+      }
+    });
   }
 
   /**
@@ -164,37 +221,40 @@ export class ScheduledTasksService implements OnModuleInit {
     timeZone: "America/New_York",
   })
   async sendWeeklyEmailReport() {
-    if (this.managerEmails.length === 0 || !this.defaultRestaurantId) {
-      this.logger.log(
-        "Weekly email report skipped: MANAGER_EMAIL or DEFAULT_RESTAURANT_ID not configured",
+    await this.tenants.runPerTenant("weekly-email-report", async (tenant) => {
+      const reportsMode = await this.getEffectiveCategoryMode(
+        tenant.id,
+        "reports",
       );
-      return;
-    }
-
-    this.logger.log("Starting weekly email report task...");
-
-    const reportsMode = await this.getEffectiveCategoryMode(
-      this.defaultRestaurantId!,
-      "reports",
-    );
-    if (!reportsMode.enabled) {
-      this.logger.log("Weekly report skipped: reports notifications off");
-      return;
-    }
-
-    try {
-      // Get weekly report data from database
-      const reportData = await this.getWeeklyReportData();
-
-      if (reportsMode.email) {
-        await this.communicationsService.sendWeeklyReport({
-          recipientEmails: this.managerEmails,
-          restaurantId: this.defaultRestaurantId,
-          reportData,
-        });
+      if (!reportsMode.enabled) {
+        this.logger.log(
+          `Weekly report skipped for ${tenant.name}: reports notifications off`,
+        );
+        return;
       }
 
-      await this.persistRestaurantNotification(this.defaultRestaurantId!, {
+      const reportData = await this.getWeeklyReportData(tenant.id);
+
+      if (reportsMode.email) {
+        const { emails } = await this.recipientsFor(tenant, {
+          roles: ["manager"],
+          channels: ["email"],
+          legacyEnv: true,
+        });
+        if (emails.length > 0) {
+          await this.communicationsService.sendWeeklyReport({
+            recipientEmails: emails,
+            restaurantId: tenant.id,
+            reportData,
+          });
+        } else {
+          this.logger.log(
+            `Weekly report email skipped for ${tenant.name}: no email recipients`,
+          );
+        }
+      }
+
+      await this.persistRestaurantNotification(tenant.id, {
         type: "report",
         title: "📊 Weekly report ready",
         message: `${reportData.lowStockCount} low-stock · ${reportData.totalBottles} bottles on hand. Tap to view the full weekly report.`,
@@ -206,13 +266,7 @@ export class ScheduledTasksService implements OnModuleInit {
           totalBottles: reportData.totalBottles,
         },
       });
-
-      this.logger.log(
-        `Weekly email report sent successfully to: ${this.managerEmails.join(", ")}`,
-      );
-    } catch (error) {
-      this.logger.error("Failed to send weekly email report:", error);
-    }
+    });
   }
 
   /**
@@ -223,48 +277,45 @@ export class ScheduledTasksService implements OnModuleInit {
    * back-compat only.
    */
   async sendMiddayLowStockReport() {
-    if (this.managerEmails.length === 0) {
-      this.logger.log(
-        "Midday low stock report skipped: MANAGER_EMAIL not configured",
-      );
-      return;
-    }
+    await this.tenants.runPerTenant(
+      "midday-low-stock-report",
+      async (tenant) => {
+        const recipients = await this.recipientsFor(tenant, {
+          roles: ["manager"],
+          channels: ["email", "sms"],
+          legacyEnv: true,
+        });
+        if (recipients.emails.length === 0) {
+          this.logger.log(
+            `Midday low stock report skipped for ${tenant.name}: no email recipients`,
+          );
+          return;
+        }
 
-    this.logger.log("Starting midday low stock report task...");
+        const lowStockItems = await this.getLowStockItems(tenant.id);
+        if (lowStockItems.length === 0) return;
 
-    try {
-      const lowStockItems = await this.getLowStockItems();
+        for (const item of lowStockItems) {
+          await this.communicationsService.sendLowStockAlert(
+            {
+              wineName: item.wineName,
+              wineId: item.wineId,
+              currentStock: item.currentStock,
+              threshold: item.threshold,
+              restaurantId: tenant.id,
+            },
+            {
+              emails: recipients.emails,
+              phones: recipients.phones.length ? recipients.phones : undefined,
+            },
+          );
+        }
 
-      if (lowStockItems.length === 0) {
-        this.logger.log("No low stock items found - skipping midday report");
-        return;
-      }
-
-      // Send alert for each low stock item
-      for (const item of lowStockItems) {
-        const recipients = {
-          emails: this.managerEmails,
-          phones: this.managerPhone ? [this.managerPhone] : undefined,
-        };
-
-        await this.communicationsService.sendLowStockAlert(
-          {
-            wineName: item.wineName,
-            wineId: item.wineId,
-            currentStock: item.currentStock,
-            threshold: item.threshold,
-            restaurantId: this.defaultRestaurantId || "default",
-          },
-          recipients,
+        this.logger.log(
+          `Midday low stock report for ${tenant.name}: alerted on ${lowStockItems.length} items.`,
         );
-      }
-
-      this.logger.log(
-        `Midday low stock report sent to ${this.managerEmails.join(", ")}. Alerted on ${lowStockItems.length} items.`,
-      );
-    } catch (error) {
-      this.logger.error("Failed to send midday low stock report:", error);
-    }
+      },
+    );
   }
 
   /**
@@ -272,57 +323,45 @@ export class ScheduledTasksService implements OnModuleInit {
    * Use midday report (sendMiddayLowStockReport) or trigger manually when needed.
    */
   async checkLowStockAlerts() {
-    if (!this.defaultRestaurantId) {
-      return;
-    }
-
-    if (this.managerEmails.length === 0) {
-      this.logger.log("Low stock check skipped: MANAGER_EMAIL not configured");
-      return;
-    }
-
-    this.logger.log("Checking for low stock items...");
-
-    try {
-      const inventory = await this.databaseService.getRestaurantInventory(
-        this.defaultRestaurantId,
-      );
-      if (!inventory?.length) {
-        this.logger.log("Low stock check skipped: no inventory for restaurant");
+    await this.tenants.runPerTenant("low-stock-alerts", async (tenant) => {
+      const recipients = await this.recipientsFor(tenant, {
+        roles: ["manager"],
+        channels: ["email", "sms"],
+        legacyEnv: true,
+      });
+      if (recipients.emails.length === 0) {
+        this.logger.log(
+          `Low stock check skipped for ${tenant.name}: no email recipients`,
+        );
         return;
       }
 
-      const lowStockItems = await this.getLowStockItems();
+      const inventory = await this.databaseService.getRestaurantInventory(
+        tenant.id,
+      );
+      if (!inventory?.length) return;
+
+      const lowStockItems = await this.getLowStockItems(tenant.id);
 
       for (const item of lowStockItems) {
         // Only alert for critical items (50% below threshold)
         if (item.currentStock <= item.threshold * 0.5) {
-          this.logger.log(`Critical stock alert for: ${item.wineName}`);
-
-          const recipients = {
-            emails: this.managerEmails,
-            phones: this.managerPhone ? [this.managerPhone] : undefined,
-          };
-
           await this.communicationsService.sendLowStockAlert(
             {
               wineName: item.wineName,
               wineId: item.wineId,
               currentStock: item.currentStock,
               threshold: item.threshold,
-              restaurantId: this.defaultRestaurantId,
+              restaurantId: tenant.id,
             },
-            recipients,
+            {
+              emails: recipients.emails,
+              phones: recipients.phones.length ? recipients.phones : undefined,
+            },
           );
         }
       }
-
-      this.logger.log(
-        `Low stock check completed. Found ${lowStockItems.length} low stock items.`,
-      );
-    } catch (error) {
-      this.logger.error("Failed to check low stock alerts:", error);
-    }
+    });
   }
 
   // ==========================================================================
@@ -338,90 +377,71 @@ export class ScheduledTasksService implements OnModuleInit {
     timeZone: "America/New_York",
   })
   async sendRecurringOrderReminders() {
-    if (!this.defaultRestaurantId) {
-      this.logger.log(
-        "Recurring order reminder skipped: DEFAULT_RESTAURANT_ID not configured",
-      );
-      return;
-    }
+    await this.tenants.runPerTenant(
+      "recurring-order-reminder",
+      async (tenant) => {
+        const ordersMode = await this.getEffectiveCategoryMode(
+          tenant.id,
+          "orders",
+        );
+        if (!ordersMode.enabled) return;
 
-    this.logger.log("Checking for upcoming recurring orders...");
+        const client = this.databaseService.getClient();
+        const twoDaysFromNow = new Date();
+        twoDaysFromNow.setDate(twoDaysFromNow.getDate() + 2);
+        const twoDaysStr = twoDaysFromNow.toISOString().split("T")[0];
 
-    const ordersMode = await this.getEffectiveCategoryMode(
-      this.defaultRestaurantId!,
-      "orders",
-    );
-    if (!ordersMode.enabled) {
-      this.logger.log(
-        "Recurring order reminders skipped: orders notifications off",
-      );
-      return;
-    }
+        // Query recurring orders scheduled within 2 days
+        const { data: orders } = await client
+          .from("procurement_orders")
+          .select("*, providers(name)")
+          .eq("restaurant_id", tenant.id)
+          .eq("status", "RECURRING")
+          .lte("next_order_date", twoDaysStr)
+          .order("next_order_date", { ascending: true });
 
-    try {
-      const client = this.databaseService.getClient();
-      const twoDaysFromNow = new Date();
-      twoDaysFromNow.setDate(twoDaysFromNow.getDate() + 2);
-      const twoDaysStr = twoDaysFromNow.toISOString().split("T")[0];
+        if (!orders || orders.length === 0) return;
 
-      // Query recurring orders scheduled within 2 days
-      const { data: orders } = await client
-        .from("procurement_orders")
-        .select("*, providers(name)")
-        .eq("restaurant_id", this.defaultRestaurantId)
-        .eq("status", "RECURRING")
-        .lte("next_order_date", twoDaysStr)
-        .order("next_order_date", { ascending: true });
-
-      if (!orders || orders.length === 0) {
-        this.logger.log("No upcoming recurring orders found");
-        return;
-      }
-
-      const recipients = await this.recipientResolver.resolveRecipients({
-        restaurantId: this.defaultRestaurantId,
-        roles: ["manager"],
-        channels: ["email"],
-      });
-
-      for (const order of orders) {
-        if (!ordersMode.email) continue;
-        await this.gmailService.sendRecurringOrderReminder({
-          to: recipients.emails,
-          restaurantName: "WineOps Restaurant",
-          orderName: order.wine_name || "Recurring Order",
-          providerName: order.providers?.name || "Unknown Provider",
-          scheduledDate: order.next_order_date || twoDaysStr,
-          items: [
-            {
-              name: order.wine_name || "Wine",
-              quantity: order.quantity || 0,
-              unitPrice: order.target_price_per_bottle || 0,
-            },
-          ],
-          totalAmount:
-            (order.quantity || 0) * (order.target_price_per_bottle || 0),
-          frequency: order.recurrence_frequency || "monthly",
+        const recipients = await this.recipientsFor(tenant, {
+          roles: ["manager"],
+          channels: ["email"],
         });
-      }
 
-      await this.persistRestaurantNotification(this.defaultRestaurantId!, {
-        type: "order_pending",
-        title: `🔁 ${orders.length} recurring order${orders.length === 1 ? "" : "s"} due soon`,
-        message: orders
-          .map((o) => o.wine_name || "Order")
-          .slice(0, 5)
-          .join(", "),
-        actionUrl: "/orders?tab=recurring",
-        actionLabel: "Review Orders",
-        groupKey: `recurring_order:${twoDaysStr}`,
-        metadata: { count: orders.length },
-      });
+        for (const order of orders) {
+          if (!ordersMode.email || recipients.emails.length === 0) continue;
+          await this.gmailService.sendRecurringOrderReminder({
+            to: recipients.emails,
+            restaurantName: tenant.name,
+            orderName: order.wine_name || "Recurring Order",
+            providerName: order.providers?.name || "Unknown Provider",
+            scheduledDate: order.next_order_date || twoDaysStr,
+            items: [
+              {
+                name: order.wine_name || "Wine",
+                quantity: order.quantity || 0,
+                unitPrice: order.target_price_per_bottle || 0,
+              },
+            ],
+            totalAmount:
+              (order.quantity || 0) * (order.target_price_per_bottle || 0),
+            frequency: order.recurrence_frequency || "monthly",
+          });
+        }
 
-      this.logger.log(`Sent ${orders.length} recurring order reminders`);
-    } catch (error) {
-      this.logger.error("Failed to send recurring order reminders:", error);
-    }
+        await this.persistRestaurantNotification(tenant.id, {
+          type: "order_pending",
+          title: `🔁 ${orders.length} recurring order${orders.length === 1 ? "" : "s"} due soon`,
+          message: orders
+            .map((o) => o.wine_name || "Order")
+            .slice(0, 5)
+            .join(", "),
+          actionUrl: "/orders?tab=recurring",
+          actionLabel: "Review Orders",
+          groupKey: `recurring_order:${twoDaysStr}`,
+          metadata: { count: orders.length },
+        });
+      },
+    );
   }
 
   /**
@@ -433,81 +453,69 @@ export class ScheduledTasksService implements OnModuleInit {
     timeZone: "America/New_York",
   })
   async sendDeliveryETANotifications() {
-    if (!this.defaultRestaurantId) return;
+    await this.tenants.runPerTenant(
+      "delivery-eta-notification",
+      async (tenant) => {
+        const ordersMode = await this.getEffectiveCategoryMode(
+          tenant.id,
+          "orders",
+        );
+        if (!ordersMode.enabled) return;
 
-    this.logger.log("Checking for upcoming deliveries...");
+        const client = this.databaseService.getClient();
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowStr = tomorrow.toISOString().split("T")[0];
 
-    const ordersMode = await this.getEffectiveCategoryMode(
-      this.defaultRestaurantId!,
-      "orders",
-    );
-    if (!ordersMode.enabled) {
-      this.logger.log("Delivery ETA skipped: orders notifications off");
-      return;
-    }
+        // Query orders with delivery expected tomorrow
+        const { data: deliveries } = await client
+          .from("procurement_orders")
+          .select("*, providers(name)")
+          .eq("restaurant_id", tenant.id)
+          .in("status", ["CONFIRMED", "SHIPPED", "IN_TRANSIT"])
+          .lte("expected_delivery_date", tomorrowStr + "T23:59:59")
+          .gte("expected_delivery_date", tomorrowStr + "T00:00:00");
 
-    try {
-      const client = this.databaseService.getClient();
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const tomorrowStr = tomorrow.toISOString().split("T")[0];
+        if (!deliveries || deliveries.length === 0) return;
 
-      // Query orders with delivery expected tomorrow
-      const { data: deliveries } = await client
-        .from("procurement_orders")
-        .select("*, providers(name)")
-        .eq("restaurant_id", this.defaultRestaurantId)
-        .in("status", ["CONFIRMED", "SHIPPED", "IN_TRANSIT"])
-        .lte("expected_delivery_date", tomorrowStr + "T23:59:59")
-        .gte("expected_delivery_date", tomorrowStr + "T00:00:00");
-
-      if (!deliveries || deliveries.length === 0) {
-        this.logger.log("No deliveries expected tomorrow");
-        return;
-      }
-
-      const recipients = await this.recipientResolver.resolveRecipients({
-        restaurantId: this.defaultRestaurantId,
-        roles: ["manager", "staff"],
-        channels: ["email"],
-      });
-
-      for (const delivery of deliveries) {
-        if (!ordersMode.email) continue;
-        await this.gmailService.sendDeliveryETANotification({
-          to: recipients.emails,
-          restaurantName: "WineOps Restaurant",
-          orderId:
-            delivery.order_number || delivery.id?.substring(0, 8) || "N/A",
-          providerName: delivery.providers?.name || "Unknown Provider",
-          expectedDate: delivery.expected_delivery_date || tomorrowStr,
-          items: [
-            {
-              name: delivery.wine_name || "Wine",
-              quantity: delivery.quantity || 0,
-            },
-          ],
-          totalItems: delivery.quantity || 0,
+        const recipients = await this.recipientsFor(tenant, {
+          roles: ["manager", "staff"],
+          channels: ["email"],
         });
-      }
 
-      await this.persistRestaurantNotification(this.defaultRestaurantId!, {
-        type: "delivery_scheduled",
-        title: `📦 ${deliveries.length} deliver${deliveries.length === 1 ? "y" : "ies"} arriving tomorrow`,
-        message: deliveries
-          .map((d) => d.wine_name || "Wine")
-          .slice(0, 5)
-          .join(", "),
-        actionUrl: "/orders",
-        actionLabel: "View Orders",
-        groupKey: `delivery_eta:${tomorrowStr}`,
-        metadata: { count: deliveries.length },
-      });
+        for (const delivery of deliveries) {
+          if (!ordersMode.email || recipients.emails.length === 0) continue;
+          await this.gmailService.sendDeliveryETANotification({
+            to: recipients.emails,
+            restaurantName: tenant.name,
+            orderId:
+              delivery.order_number || delivery.id?.substring(0, 8) || "N/A",
+            providerName: delivery.providers?.name || "Unknown Provider",
+            expectedDate: delivery.expected_delivery_date || tomorrowStr,
+            items: [
+              {
+                name: delivery.wine_name || "Wine",
+                quantity: delivery.quantity || 0,
+              },
+            ],
+            totalItems: delivery.quantity || 0,
+          });
+        }
 
-      this.logger.log(`Sent ${deliveries.length} delivery ETA notifications`);
-    } catch (error) {
-      this.logger.error("Failed to send delivery ETA notifications:", error);
-    }
+        await this.persistRestaurantNotification(tenant.id, {
+          type: "delivery_scheduled",
+          title: `📦 ${deliveries.length} deliver${deliveries.length === 1 ? "y" : "ies"} arriving tomorrow`,
+          message: deliveries
+            .map((d) => d.wine_name || "Wine")
+            .slice(0, 5)
+            .join(", "),
+          actionUrl: "/orders",
+          actionLabel: "View Orders",
+          groupKey: `delivery_eta:${tomorrowStr}`,
+          metadata: { count: deliveries.length },
+        });
+      },
+    );
   }
 
   /**
@@ -519,20 +527,13 @@ export class ScheduledTasksService implements OnModuleInit {
     timeZone: "America/New_York",
   })
   async sendPaymentDueReminders() {
-    if (!this.defaultRestaurantId) return;
+    await this.tenants.runPerTenant("payment-due-reminder", async (tenant) => {
+      const ordersMode = await this.getEffectiveCategoryMode(
+        tenant.id,
+        "orders",
+      );
+      if (!ordersMode.enabled) return;
 
-    this.logger.log("Checking for upcoming payment deadlines...");
-
-    const ordersMode = await this.getEffectiveCategoryMode(
-      this.defaultRestaurantId!,
-      "orders",
-    );
-    if (!ordersMode.enabled) {
-      this.logger.log("Payment reminders skipped: orders notifications off");
-      return;
-    }
-
-    try {
       const client = this.databaseService.getClient();
       const now = new Date();
       const threeDaysFromNow = new Date();
@@ -542,25 +543,21 @@ export class ScheduledTasksService implements OnModuleInit {
       const { data: invoices } = await client
         .from("procurement_orders")
         .select("*, providers(name)")
-        .eq("restaurant_id", this.defaultRestaurantId)
+        .eq("restaurant_id", tenant.id)
         .in("status", ["DELIVERED", "INVOICED"])
         .not("payment_due_date", "is", null)
         .lte("payment_due_date", threeDaysFromNow.toISOString())
         .gte("payment_due_date", now.toISOString());
 
-      if (!invoices || invoices.length === 0) {
-        this.logger.log("No upcoming payment deadlines");
-        return;
-      }
+      if (!invoices || invoices.length === 0) return;
 
-      const recipients = await this.recipientResolver.resolveRecipients({
-        restaurantId: this.defaultRestaurantId,
+      const recipients = await this.recipientsFor(tenant, {
         roles: ["manager"],
         channels: ["email"],
       });
 
       for (const invoice of invoices) {
-        if (!ordersMode.email) continue;
+        if (!ordersMode.email || recipients.emails.length === 0) continue;
         const dueDate = new Date(invoice.payment_due_date);
         const daysUntilDue = Math.ceil(
           (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
@@ -568,7 +565,7 @@ export class ScheduledTasksService implements OnModuleInit {
 
         await this.gmailService.sendPaymentDueReminder({
           to: recipients.emails,
-          restaurantName: "WineOps Restaurant",
+          restaurantName: tenant.name,
           invoiceNumber:
             invoice.order_number || invoice.id?.substring(0, 8) || "N/A",
           providerName: invoice.providers?.name || "Unknown Provider",
@@ -583,7 +580,7 @@ export class ScheduledTasksService implements OnModuleInit {
         });
       }
 
-      await this.persistRestaurantNotification(this.defaultRestaurantId!, {
+      await this.persistRestaurantNotification(tenant.id, {
         type: "payment_due",
         title: `💳 ${invoices.length} payment${invoices.length === 1 ? "" : "s"} due soon`,
         message: `${invoices.length} invoice${invoices.length === 1 ? "" : "s"} due within 3 days. Tap to review.`,
@@ -593,11 +590,7 @@ export class ScheduledTasksService implements OnModuleInit {
         groupKey: `payment_due:${now.toISOString().slice(0, 10)}`,
         metadata: { count: invoices.length },
       });
-
-      this.logger.log(`Sent ${invoices.length} payment due reminders`);
-    } catch (error) {
-      this.logger.error("Failed to send payment due reminders:", error);
-    }
+    });
   }
 
   /**
@@ -608,55 +601,49 @@ export class ScheduledTasksService implements OnModuleInit {
     timeZone: "America/New_York",
   })
   async sendInventoryAuditReminder() {
-    if (!this.defaultRestaurantId) return;
+    await this.tenants.runPerTenant(
+      "inventory-audit-reminder",
+      async (tenant) => {
+        const recipients = await this.recipientsFor(tenant, {
+          roles: ["manager", "staff"],
+          channels: ["email"],
+        });
+        if (recipients.emails.length === 0) return;
 
-    this.logger.log("Sending weekly inventory audit reminder...");
+        // Get inventory summary
+        const inventory = await this.databaseService.getRestaurantInventory(
+          tenant.id,
+        );
+        const lowStockItems = await this.databaseService.getLowStockItems(
+          tenant.id,
+        );
 
-    try {
-      const client = this.databaseService.getClient();
+        const totalBottles =
+          inventory?.reduce((sum, item) => sum + (item.stock_live || 0), 0) ||
+          0;
+        const totalValue = this.valueInventory(inventory);
 
-      // Get inventory summary
-      const inventory = await this.databaseService.getRestaurantInventory(
-        this.defaultRestaurantId,
-      );
-      const lowStockItems = await this.databaseService.getLowStockItems(
-        this.defaultRestaurantId,
-      );
+        const scheduledDate = new Date();
+        // Schedule audit for the upcoming Wednesday
+        scheduledDate.setDate(scheduledDate.getDate() + 2);
 
-      const totalBottles =
-        inventory?.reduce((sum, item) => sum + (item.stock_live || 0), 0) || 0;
-      const totalValue = this.valueInventory(inventory);
-
-      const recipients = await this.recipientResolver.resolveRecipients({
-        restaurantId: this.defaultRestaurantId,
-        roles: ["manager", "staff"],
-        channels: ["email"],
-      });
-
-      const scheduledDate = new Date();
-      // Schedule audit for the upcoming Wednesday
-      scheduledDate.setDate(scheduledDate.getDate() + 2);
-
-      await this.gmailService.sendInventoryAuditReminder({
-        to: recipients.emails,
-        restaurantName: "WineOps Restaurant",
-        scheduledDate,
-        scheduledTime: "10:00 AM",
-        totalBottles,
-        totalValue,
-        discrepancyCount: lowStockItems?.length || 0,
-        focusAreas:
-          lowStockItems?.slice(0, 3).map((item) => ({
-            area: item.wine_name || "Unknown Wine",
-            reason: `Current stock (${item.stock_live || 0}) is below threshold (${item.threshold_min || 10})`,
-          })) || [],
-        notes: "Please count all bottles and compare with system records.",
-      });
-
-      this.logger.log("Inventory audit reminder sent");
-    } catch (error) {
-      this.logger.error("Failed to send inventory audit reminder:", error);
-    }
+        await this.gmailService.sendInventoryAuditReminder({
+          to: recipients.emails,
+          restaurantName: tenant.name,
+          scheduledDate,
+          scheduledTime: "10:00 AM",
+          totalBottles,
+          totalValue,
+          discrepancyCount: lowStockItems?.length || 0,
+          focusAreas:
+            lowStockItems?.slice(0, 3).map((item) => ({
+              area: item.wine_name || "Unknown Wine",
+              reason: `Current stock (${item.stock_live || 0}) is below threshold (${item.threshold_min || 10})`,
+            })) || [],
+          notes: "Please count all bottles and compare with system records.",
+        });
+      },
+    );
   }
 
   /**
@@ -668,11 +655,7 @@ export class ScheduledTasksService implements OnModuleInit {
     timeZone: "America/New_York",
   })
   async sendEventPrepReminders() {
-    if (!this.defaultRestaurantId) return;
-
-    this.logger.log("Checking for upcoming events...");
-
-    try {
+    await this.tenants.runPerTenant("event-prep-check", async (tenant) => {
       const client = this.databaseService.getClient();
       const twoDaysFromNow = new Date();
       twoDaysFromNow.setDate(twoDaysFromNow.getDate() + 2);
@@ -682,25 +665,22 @@ export class ScheduledTasksService implements OnModuleInit {
       const { data: events } = await client
         .from("calendar_events")
         .select("*")
-        .eq("restaurant_id", this.defaultRestaurantId)
+        .eq("restaurant_id", tenant.id)
         .gte("event_date", targetDate + "T00:00:00")
         .lte("event_date", targetDate + "T23:59:59");
 
-      if (!events || events.length === 0) {
-        this.logger.log("No events in 2 days");
-        return;
-      }
+      if (!events || events.length === 0) return;
 
-      const recipients = await this.recipientResolver.resolveRecipients({
-        restaurantId: this.defaultRestaurantId,
+      const recipients = await this.recipientsFor(tenant, {
         roles: ["manager", "staff"],
         channels: ["email"],
       });
+      if (recipients.emails.length === 0) return;
 
       for (const event of events) {
         await this.gmailService.sendEventPrepReminder({
           to: recipients.emails,
-          restaurantName: "WineOps Restaurant",
+          restaurantName: tenant.name,
           eventName: event.title || event.name || "Upcoming Event",
           eventDate: event.event_date || targetDate,
           eventTime: event.event_time,
@@ -710,11 +690,7 @@ export class ScheduledTasksService implements OnModuleInit {
           specialRequests: event.special_requests || event.notes,
         });
       }
-
-      this.logger.log(`Sent ${events.length} event preparation reminders`);
-    } catch (error) {
-      this.logger.error("Failed to send event prep reminders:", error);
-    }
+    });
   }
 
   /**
@@ -728,144 +704,163 @@ export class ScheduledTasksService implements OnModuleInit {
     name: "custom-reminders-check",
   })
   async processCustomReminders() {
-    if (!this.defaultRestaurantId) return;
+    await this.tenants.runPerTenant(
+      "custom-reminders-check",
+      async (tenant) => {
+        const client = this.databaseService.getClient();
+        const now = new Date();
 
-    try {
-      const client = this.databaseService.getClient();
-      const now = new Date();
+        // Scoped to this tenant. The query used to run ONCE, unfiltered, and then
+        // gate every reminder it found on `DEFAULT_RESTAURANT_ID`'s inventory and
+        // fall back to `DEFAULT_RESTAURANT_ID`'s manager email — so a second
+        // restaurant's reminder was decided by the first restaurant's stock and
+        // mailed to the first restaurant's manager. `custom_reminders` is empty in
+        // production (verified 2026-08-26), so nothing has been misdelivered yet.
+        const { data: reminders } = await client
+          .from("custom_reminders")
+          .select("*")
+          .eq("restaurant_id", tenant.id)
+          .eq("is_active", true)
+          .lte("next_fire_at", now.toISOString())
+          .order("next_fire_at", { ascending: true })
+          .limit(20);
 
-      const { data: reminders } = await client
-        .from("custom_reminders")
-        .select("*")
-        .eq("is_active", true)
-        .lte("next_fire_at", now.toISOString())
-        .order("next_fire_at", { ascending: true })
-        .limit(20);
+        if (!reminders || reminders.length === 0) return;
 
-      if (!reminders || reminders.length === 0) return;
-
-      for (const reminder of reminders) {
-        const invTypes = new Set(["low_stock", "inventory", "inventory_audit"]);
-        if (invTypes.has(String(reminder.reminder_type || "").toLowerCase())) {
-          const inventoryRows =
-            await this.databaseService.getRestaurantInventory(
-              this.defaultRestaurantId,
-            );
-          if (!inventoryRows?.length) {
-            this.logger.log(
-              `Custom reminder "${reminder.title}" (${reminder.id}) skipped: no inventory rows (${reminder.reminder_type})`,
-            );
-            if (reminder.is_recurring && reminder.schedule_cron) {
-              const nextFire = this.computeNextFireAt(
-                reminder.schedule_cron,
-                now,
+        for (const reminder of reminders) {
+          const invTypes = new Set([
+            "low_stock",
+            "inventory",
+            "inventory_audit",
+          ]);
+          if (
+            invTypes.has(String(reminder.reminder_type || "").toLowerCase())
+          ) {
+            const inventoryRows =
+              await this.databaseService.getRestaurantInventory(tenant.id);
+            if (!inventoryRows?.length) {
+              this.logger.log(
+                `Custom reminder "${reminder.title}" (${reminder.id}) skipped: no inventory rows (${reminder.reminder_type})`,
               );
-              await client
-                .from("custom_reminders")
-                .update({
-                  last_fired_at: now.toISOString(),
-                  next_fire_at: nextFire.toISOString(),
-                })
-                .eq("id", reminder.id);
-            } else {
-              await client
-                .from("custom_reminders")
-                .update({ last_fired_at: now.toISOString(), is_active: false })
-                .eq("id", reminder.id);
+              if (reminder.is_recurring && reminder.schedule_cron) {
+                const nextFire = this.computeNextFireAt(
+                  reminder.schedule_cron,
+                  now,
+                );
+                await client
+                  .from("custom_reminders")
+                  .update({
+                    last_fired_at: now.toISOString(),
+                    next_fire_at: nextFire.toISOString(),
+                  })
+                  .eq("id", reminder.id);
+              } else {
+                await client
+                  .from("custom_reminders")
+                  .update({
+                    last_fired_at: now.toISOString(),
+                    is_active: false,
+                  })
+                  .eq("id", reminder.id);
+              }
+              continue;
             }
-            continue;
           }
-        }
 
-        // Resolve email recipients
-        let emails = reminder.recipient_emails || [];
-        if (emails.length === 0 && reminder.recipient_roles?.length > 0) {
-          const recipients = await this.recipientResolver.resolveRecipients({
-            restaurantId: reminder.restaurant_id || this.defaultRestaurantId,
-            roles: reminder.recipient_roles,
-            channels: ["email"],
-          });
-          emails = recipients.emails;
-        }
-        if (emails.length === 0) {
-          emails = this.managerEmails;
-        }
-
-        // 1. Send email (skip when no recipients — avoids Gmail errors / surprise fallback)
-        let emailResult: EmailResult = { success: false };
-        if (emails.length > 0) {
-          emailResult = await this.gmailService.sendCustomReminder({
-            to: emails,
-            restaurantName: "WineOps Restaurant",
-            title: reminder.title,
-            description: reminder.description || "",
-            reminderType: reminder.reminder_type || "custom",
-            scheduledDate: reminder.next_fire_at,
-            priority: reminder.metadata?.priority || "medium",
-            actionItems: reminder.metadata?.action_items || [],
-            isRecurring: reminder.is_recurring,
-            recurrencePattern: reminder.schedule_cron,
-          });
-        } else {
-          this.logger.log(
-            `Custom reminder "${reminder.title}" (${reminder.id}): no email recipients — in-app notification only`,
-          );
-        }
-
-        // 2. Write a notifications row (so it appears in the in-app inbox)
-        const notifUserId = reminder.created_by || null;
-        if (notifUserId) {
-          try {
-            await client.from("notifications").insert({
-              user_id: notifUserId,
-              recipient_id: notifUserId,
-              notification_type: "custom_reminder",
-              channels: ["in_app"],
-              restaurant_id: reminder.restaurant_id || this.defaultRestaurantId,
-              type: "custom_reminder",
-              title: reminder.title,
-              message: reminder.description || reminder.title,
-              priority: reminder.metadata?.priority || "medium",
-              status: "unread",
-              action_url: "/notifications",
-              action_label: "View Reminder",
-              metadata: {
-                reminder_id: reminder.id,
-                reminder_type: reminder.reminder_type,
-                email_sent: emailResult.success,
-                email_message_id: emailResult.messageId,
-              },
-              created_at: now.toISOString(),
+          // Resolve email recipients
+          let emails: string[] = reminder.recipient_emails || [];
+          if (emails.length === 0 && reminder.recipient_roles?.length > 0) {
+            const recipients = await this.recipientsFor(tenant, {
+              roles: reminder.recipient_roles,
+              channels: ["email"],
             });
-          } catch (notifErr) {
-            this.logger.warn(
-              `Could not write notifications row for reminder ${reminder.id}: ${notifErr?.message}`,
+            emails = recipients.emails;
+          }
+          if (emails.length === 0 && tenant.isLegacyDefault) {
+            // Only the legacy tenant may fall back to the global env address —
+            // for anyone else that address belongs to a different restaurant.
+            emails = this.managerEmails;
+          }
+
+          // 1. Send email (skip when no recipients — avoids Gmail errors / surprise fallback)
+          let emailResult: EmailResult = { success: false };
+          if (emails.length > 0) {
+            emailResult = await this.gmailService.sendCustomReminder({
+              to: emails,
+              restaurantName: tenant.name,
+              title: reminder.title,
+              description: reminder.description || "",
+              reminderType: reminder.reminder_type || "custom",
+              scheduledDate: reminder.next_fire_at,
+              priority: reminder.metadata?.priority || "medium",
+              actionItems: reminder.metadata?.action_items || [],
+              isRecurring: reminder.is_recurring,
+              recurrencePattern: reminder.schedule_cron,
+            });
+          } else {
+            this.logger.log(
+              `Custom reminder "${reminder.title}" (${reminder.id}): no email recipients — in-app notification only`,
             );
           }
+
+          // 2. Write a notifications row (so it appears in the in-app inbox)
+          const notifUserId = reminder.created_by || null;
+          if (notifUserId) {
+            try {
+              await client.from("notifications").insert({
+                user_id: notifUserId,
+                recipient_id: notifUserId,
+                notification_type: "custom_reminder",
+                channels: ["in_app"],
+                restaurant_id: tenant.id,
+                type: "custom_reminder",
+                title: reminder.title,
+                message: reminder.description || reminder.title,
+                priority: reminder.metadata?.priority || "medium",
+                status: "unread",
+                action_url: "/notifications",
+                action_label: "View Reminder",
+                metadata: {
+                  reminder_id: reminder.id,
+                  reminder_type: reminder.reminder_type,
+                  email_sent: emailResult.success,
+                  email_message_id: emailResult.messageId,
+                },
+                created_at: now.toISOString(),
+              });
+            } catch (notifErr) {
+              this.logger.warn(
+                `Could not write notifications row for reminder ${reminder.id}: ${notifErr?.message}`,
+              );
+            }
+          }
+
+          // 3. Advance or deactivate
+          if (reminder.is_recurring && reminder.schedule_cron) {
+            const nextFire = this.computeNextFireAt(
+              reminder.schedule_cron,
+              now,
+            );
+            await client
+              .from("custom_reminders")
+              .update({
+                last_fired_at: now.toISOString(),
+                next_fire_at: nextFire.toISOString(),
+              })
+              .eq("id", reminder.id);
+          } else {
+            await client
+              .from("custom_reminders")
+              .update({ last_fired_at: now.toISOString(), is_active: false })
+              .eq("id", reminder.id);
+          }
         }
 
-        // 3. Advance or deactivate
-        if (reminder.is_recurring && reminder.schedule_cron) {
-          const nextFire = this.computeNextFireAt(reminder.schedule_cron, now);
-          await client
-            .from("custom_reminders")
-            .update({
-              last_fired_at: now.toISOString(),
-              next_fire_at: nextFire.toISOString(),
-            })
-            .eq("id", reminder.id);
-        } else {
-          await client
-            .from("custom_reminders")
-            .update({ last_fired_at: now.toISOString(), is_active: false })
-            .eq("id", reminder.id);
-        }
-      }
-
-      this.logger.log(`Processed ${reminders.length} custom reminders`);
-    } catch (error) {
-      this.logger.error("Failed to process custom reminders:", error);
-    }
+        this.logger.log(
+          `Processed ${reminders.length} custom reminders for ${tenant.name}`,
+        );
+      },
+    );
   }
 
   /**
@@ -947,42 +942,31 @@ export class ScheduledTasksService implements OnModuleInit {
   }
 
   /**
-   * Get daily summary data from database
+   * Daily summary figures for one restaurant.
+   *
+   * ADR 0020 — this used to swallow a database failure and return a fixture
+   * (5 low-stock, 3 pending orders, 1 delivery), which was then SMSed to the
+   * manager as fact. The same fabrication was removed from the weekly email
+   * under OD-85; the SMS path was missed. It now throws, so the tenant is
+   * counted `failed` in the run summary and nobody is texted a number nobody
+   * measured.
    */
-  private async getDailySummaryData(): Promise<{
-    restaurantName: string;
+  private async getDailySummaryData(restaurantId: string): Promise<{
     lowStockCount: number;
     pendingOrders: number;
     deliveriesToday: number;
   }> {
-    // Try to get actual data from database, fallback to mock
-    try {
-      if (this.defaultRestaurantId) {
-        const lowStockItems = await this.databaseService.getLowStockItems(
-          this.defaultRestaurantId,
-        );
-        const pendingOrders = await this.databaseService.getProcurementOrders(
-          this.defaultRestaurantId,
-          "pending",
-        );
+    const lowStockItems =
+      await this.databaseService.getLowStockItems(restaurantId);
+    const pendingOrders = await this.databaseService.getProcurementOrders(
+      restaurantId,
+      "pending",
+    );
 
-        return {
-          restaurantName: "WineOps Restaurant",
-          lowStockCount: lowStockItems?.length || 0,
-          pendingOrders: pendingOrders?.length || 0,
-          deliveriesToday: 0, // Would need to query deliveries table
-        };
-      }
-    } catch (error) {
-      this.logger.warn("Failed to get data from database, using mock data");
-    }
-
-    // Mock data for testing
     return {
-      restaurantName: "WineOps Restaurant",
-      lowStockCount: 5,
-      pendingOrders: 3,
-      deliveriesToday: 1,
+      lowStockCount: lowStockItems?.length || 0,
+      pendingOrders: pendingOrders?.length || 0,
+      deliveriesToday: 0, // Would need to query deliveries table
     };
   }
 
@@ -1075,7 +1059,7 @@ export class ScheduledTasksService implements OnModuleInit {
    * section is now ABSENT: the template omits Top Sellers and the low-stock
    * table on an empty array, which is a truthful email.
    */
-  private async getWeeklyReportData(): Promise<{
+  private async getWeeklyReportData(restaurantId: string): Promise<{
     totalBottles: number;
     lowStockCount: number;
     totalValue: number;
@@ -1098,15 +1082,11 @@ export class ScheduledTasksService implements OnModuleInit {
       conversationSummaries: [],
     };
 
-    if (!this.defaultRestaurantId) return nothingToReport;
-
     try {
-      const inventory = await this.databaseService.getRestaurantInventory(
-        this.defaultRestaurantId,
-      );
-      const lowStockItems = await this.databaseService.getLowStockItems(
-        this.defaultRestaurantId,
-      );
+      const inventory =
+        await this.databaseService.getRestaurantInventory(restaurantId);
+      const lowStockItems =
+        await this.databaseService.getLowStockItems(restaurantId);
 
       const totalBottles =
         inventory?.reduce((sum, item) => sum + (item.stock_live || 0), 0) || 0;
@@ -1114,8 +1094,8 @@ export class ScheduledTasksService implements OnModuleInit {
       const totalValue = this.valueInventory(inventory);
 
       const [topSellers, conversationSummaries] = await Promise.all([
-        this.getWeeklyTopSellers(this.defaultRestaurantId),
-        this.getRecentConversationSummaries(),
+        this.getWeeklyTopSellers(restaurantId),
+        this.getRecentConversationSummaries(restaurantId),
       ]);
 
       return {
@@ -1147,7 +1127,7 @@ export class ScheduledTasksService implements OnModuleInit {
    * Fetch recent conversation summaries for the weekly report
    * Groups by provider and includes the latest message summary
    */
-  private async getRecentConversationSummaries(): Promise<
+  private async getRecentConversationSummaries(restaurantId: string): Promise<
     Array<{
       provider: string;
       summary: string;
@@ -1156,8 +1136,6 @@ export class ScheduledTasksService implements OnModuleInit {
     }>
   > {
     try {
-      if (!this.defaultRestaurantId) return [];
-
       const client = this.databaseService.getClient();
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -1167,7 +1145,7 @@ export class ScheduledTasksService implements OnModuleInit {
         .select(
           "id, provider_id, direction, channel, detected_intent, detected_sentiment, delivery_status, message_body, subject, created_at",
         )
-        .eq("restaurant_id", this.defaultRestaurantId)
+        .eq("restaurant_id", restaurantId)
         .gte("created_at", sevenDaysAgo.toISOString())
         .order("created_at", { ascending: false })
         .limit(50);
@@ -1240,7 +1218,7 @@ export class ScheduledTasksService implements OnModuleInit {
   /**
    * Get low stock items from database
    */
-  private async getLowStockItems(): Promise<
+  private async getLowStockItems(restaurantId: string): Promise<
     Array<{
       wineId: string;
       wineName: string;
@@ -1249,23 +1227,20 @@ export class ScheduledTasksService implements OnModuleInit {
     }>
   > {
     try {
-      if (this.defaultRestaurantId) {
-        const items = await this.databaseService.getLowStockItems(
-          this.defaultRestaurantId,
-        );
+      const items = await this.databaseService.getLowStockItems(restaurantId);
 
-        return (items || []).map((item) => ({
-          wineId: item.id,
-          wineName: item.wine_name || "Unknown Wine",
-          currentStock: item.stock_live || 0,
-          threshold: item.threshold_min || 10,
-        }));
-      }
+      return (items || []).map((item) => ({
+        wineId: item.id,
+        wineName: item.wine_name || "Unknown Wine",
+        currentStock: item.stock_live || 0,
+        threshold: item.threshold_min || 10,
+      }));
     } catch (error) {
-      this.logger.warn("Failed to get low stock items from database");
+      this.logger.warn(
+        `Failed to get low stock items for restaurant ${restaurantId}`,
+      );
+      return [];
     }
-
-    return [];
   }
 
   /**

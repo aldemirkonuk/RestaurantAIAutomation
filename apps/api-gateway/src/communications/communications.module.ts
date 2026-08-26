@@ -7,6 +7,7 @@ import { CommunicationsController } from "./communications.controller";
 import { ScheduledTasksService } from "./scheduled-tasks.service";
 import { GmailWatchService } from "./gmail-watch.service";
 import { RecipientResolverService } from "./recipient-resolver.service";
+import { ScheduledTenantsService } from "./scheduled-tenants.service";
 import { GmailPushAuthService } from "./gmail-push-auth.service";
 import { NonProductionGuard } from "./guards/non-production.guard";
 import { WebsocketModule } from "../websocket/websocket.module";
@@ -36,6 +37,8 @@ import { AuthModule } from "../auth/auth.module";
     ScheduledTasksService,
     GmailWatchService,
     RecipientResolverService,
+    // ADR 0022 / OD-87 — enumerates which restaurants the crons serve.
+    ScheduledTenantsService,
     // ADR 0019 D3 — Google Pub/Sub OIDC verification for the Gmail push webhook.
     GmailPushAuthService,
     // ADR 0019 D2 — route-level production kill-switch for the test/* routes.
@@ -49,6 +52,7 @@ import { AuthModule } from "../auth/auth.module";
     ScheduledTasksService,
     GmailWatchService,
     RecipientResolverService,
+    ScheduledTenantsService,
   ],
 })
 export class CommunicationsModule {}

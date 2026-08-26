@@ -152,7 +152,7 @@ The 10-second poll and the detail-panel resync are implemented as documented.
 | Vendor reply / draft ready | Gmail push → `email.inbound.received` → `rabbitmq-bridge.service.ts:528` → `InboundResponderService.analyzeAndDraftReply` → notification rows `inbound-responder.service.ts:1287` | Yes (live Gmail watch, OD-78) |
 | Schedule published / acknowledged, broadcast | `team/schedule.service.ts:254,484`; `team/team.controller.ts:350` | Yes |
 | Order approval, delivery, price | `procurement.service.ts:1062,1368` | Yes |
-| Weekly report ready, delivery ETA, payment due, audit, event prep, custom reminders | Eight `@Cron`s in `communications/scheduled-tasks.service.ts:127,162,336,431,517,606,666,727` | **Single-tenant** — every one returns early unless `DEFAULT_RESTAURANT_ID` is set (`:78-79`, e.g. `:167,:731`), and sends to `MANAGER_EMAIL`. These are not per-restaurant features |
+| Weekly report ready, delivery ETA, payment due, audit, event prep, custom reminders | Eight tenant-scoped `@Cron`s in `communications/scheduled-tasks.service.ts:184,219,375,451,525,599,652,702` (a ninth, `:150`, is the global tenant-isolation RPC) | **Per-tenant since 2026-08-26** (OD-87 / [ADR 0022](../decisions/0022-scheduled-jobs-serve-opted-in-tenants.md)) — each iterates `ScheduledTenantsService.runPerTenant`, isolating per-tenant failures. But enumeration is **explicit opt-in** and no restaurant has opted in, so in practice this still serves exactly the `DEFAULT_RESTAURANT_ID` restaurant, which still takes its recipients from `MANAGER_EMAIL`. Whether that stays opt-in is **OD-91** |
 | Agent-side writes | Historically silent-failing until 44.1d (`v3.0-TECH-DEBT.md:95-131`) | Fixed |
 
 ### Writes
@@ -192,8 +192,14 @@ resolvable without leaving the row.
    guarded (`one-tap-actions.controller.ts:64`, `POST /` at :138). This is wiring,
    not new backend.
 3. **Move snoozes server-side** onto the same module (`:246` cancel, `:118` pending).
-4. **Make the eight scheduled crons per-restaurant** rather than
-   `DEFAULT_RESTAURANT_ID` (`scheduled-tasks.service.ts:78-79`). Today one restaurant
-   gets reminders and the rest get none, with no UI saying so.
+4. ~~**Make the eight scheduled crons per-restaurant**~~ — **done 2026-08-26**
+   (OD-87 / [ADR 0022](../decisions/0022-scheduled-jobs-serve-opted-in-tenants.md)).
+   All eight now iterate `ScheduledTenantsService.runPerTenant`, with per-tenant
+   failure isolation and a `SCHEDULED_JOB_SUMMARY` line per run. **Still true:
+   "the rest get none, with no UI saying so"** — enumeration is explicit opt-in
+   via `restaurant_feature_flags(flag_name = 'scheduled_communications')`, there
+   are no flag rows, and nothing on this page surfaces which restaurants are
+   opted in. That surface is unbuilt; whether it should exist at all depends on
+   OD-91.
 5. Loading skeleton for the first fetch.
 6. Rebrand `QuickGmailModal` previews (§7).
