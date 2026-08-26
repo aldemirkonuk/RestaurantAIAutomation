@@ -29,6 +29,22 @@
 - **Security closed this week:** 13 controllers guarded (OD-20 cluster),
   SSRF guard on user-supplied URLs, JWT secret hard-fails, scan-parser page
   cap. Verified live: unauthenticated `dashboard/stats` now 401.
+- **Studio + SSRF/log-injection hardening (2026-08-26, PRs #73/#75/#78/#79/#84):**
+  the studio invite flow works end to end for the first time — redemption no longer
+  requires a studio role the invitee cannot hold, is bound to the invited email, is
+  single-use under concurrency, and is *sent by the gateway* rather than handed back as a
+  link ([ADR 0021](decisions/0021-studio-invites-are-self-service.md)). Two routing
+  approaches collided mid-flight; the founder chose the gateway proxy, so `studioApi.ts`
+  resolves relative paths and the gateway forwards `/api/v1/studio/*` and
+  `/api/v1/onboarding/extract`. Security, measured by CodeQL on `main`:
+  **`js/request-forgery` 3 → 0** (the worst carried `X-Admin-Key` out of the health
+  prefix and had been open since 2026-07-08) and **`py/log-injection` 57 → 3**, the three
+  survivors being verified false positives awaiting dismissal (OD-90, OD-93). New guards:
+  `common/http/safe-path.ts` (one allowlist for every outbound URL interpolation) and
+  `scripts/check_log_sanitizer_usage.py` (an `ast` pass that fails when a sanitised string
+  reaches a numeric format spec, and exits 2 rather than 0 if it scans nothing).
+  **Method note worth keeping:** the alert counts were twice under-reported from an
+  unpaginated first page — once hiding a live hole in new code. Paginate, then count.
 - **POS bridge:** built and proven POS-agnostic (Toast first adapter);
   sale-volume contract + referential integrity migrations applied.
 - **Page layer:** 51 routes documented in `06-pages/` (9-section contract),
