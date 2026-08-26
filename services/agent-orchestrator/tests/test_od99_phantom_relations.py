@@ -124,8 +124,7 @@ class TestProviderDigitalTwinsIsGone:
 
         touched = _tables_touched(composer.database.supabase)
         assert touched == [], (
-            "_load_or_analyze_style must not read any table; it queried "
-            f"{touched}"
+            "_load_or_analyze_style must not read any table; it queried " f"{touched}"
         )
 
     @pytest.mark.asyncio
@@ -258,12 +257,12 @@ class TestWineLibraryPhaseIsGone:
             )
 
         touched = _tables_touched(client)
-        assert "wine_library" not in touched, (
-            f"wine_library 404s in production; tables touched were {touched}"
-        )
-        assert result.get("phase_reached") != "user_library", (
-            "user_library was never a reachable phase"
-        )
+        assert (
+            "wine_library" not in touched
+        ), f"wine_library 404s in production; tables touched were {touched}"
+        assert (
+            result.get("phase_reached") != "user_library"
+        ), "user_library was never a reachable phase"
 
 
 # ---------------------------------------------------------------------------
@@ -385,7 +384,12 @@ class TestManagerInstructionIsActuallyStored:
         agent = self._agent()
         table = agent.database.supabase.table.return_value
         table.select.return_value.eq.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(
-            data=[{"id": "sess-1", "conversation_context": {"manager_instructions": ["first"]}}]
+            data=[
+                {
+                    "id": "sess-1",
+                    "conversation_context": {"manager_instructions": ["first"]},
+                }
+            ]
         )
 
         stored = agent._append_manager_instruction("rest-1", "prov-1", "second")

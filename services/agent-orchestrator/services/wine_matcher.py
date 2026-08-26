@@ -402,7 +402,6 @@ class WineMatcher:
             logger.warning(f"ilike search failed: {e}")
             return []
 
-
     # ---- Phase 2: Scoring ----
 
     def _score_candidates(
