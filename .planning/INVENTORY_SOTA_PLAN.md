@@ -2,9 +2,10 @@
 
 > **Status:** ⚠️ PHASE 1 IS PARTLY LIVE — this header said "Phase 0 pending" until
 > 2026-08-04, when the v3.0 triage checked it. `/inventory` no longer serves the
-> page this plan was written against: `App.tsx:201` routes it to
-> `pages/inventory/command/InventoryCommandPage.tsx`, and the old page is parked at
-> `/inventory-legacy` (`App.tsx:202`), which nothing links to.
+> page this plan was written against: `App.tsx` routes it to
+> `pages/inventory/command/InventoryCommandPage.tsx`. The old page was parked at
+> `/inventory-legacy` and is **deleted** (2026-08-26, ADR 0019 §B-parity) — its two
+> exclusive capabilities were ported onto the command page first.
 >
 > Phases 2 and 3 (§6, §7) remain unstarted and are the real carry-forward.
 > **Phase 0's "verify ground truth" step is still worth running** — but run it

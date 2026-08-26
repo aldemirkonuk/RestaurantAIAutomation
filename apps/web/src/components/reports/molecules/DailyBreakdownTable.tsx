@@ -1,6 +1,7 @@
 /**
  * DailyBreakdownTable - Molecule Component
- * Data table with wine type visualization
+ * Daily PURCHASE-order breakdown with wine type visualization. The money column
+ * is vendor spend from `procurement_orders`, not sales revenue.
  */
 
 import { BarChart3 } from 'lucide-react'
@@ -9,7 +10,8 @@ import { CollapsibleSection, WineTypeBar, WineTypeData } from '../atoms'
 interface DailyData extends WineTypeData {
   date: string
   fullDate: string
-  revenue: number
+  /** Vendor spend for the day (procurement_orders), not sales revenue. */
+  spend: number
   orders: number
   bottles: number
   avgOrderValue: number
@@ -31,7 +33,7 @@ export function DailyBreakdownTable({
   return (
     <CollapsibleSection
       title="Daily Breakdown"
-      subtitle="Detailed daily sales data"
+      subtitle="Detailed daily purchasing data"
       icon={BarChart3}
       isOpen={isOpen}
       onToggle={onToggle}
@@ -42,7 +44,7 @@ export function DailyBreakdownTable({
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50">
               <th className="text-left py-3 px-4 text-sm font-semibold text-gray-900">Date</th>
-              <th className="text-right py-3 px-4 text-sm font-semibold text-gray-900">Revenue</th>
+              <th className="text-right py-3 px-4 text-sm font-semibold text-gray-900">Vendor Spend</th>
               <th className="text-right py-3 px-4 text-sm font-semibold text-gray-900 min-w-[120px]">
                 <div className="flex items-center justify-end gap-2">
                   <span>Orders Volume</span>
@@ -64,7 +66,7 @@ export function DailyBreakdownTable({
               <tr key={day.fullDate} className="hover:bg-gray-50">
                 <td className="py-3 px-4 text-sm text-gray-900 font-medium">{day.date}</td>
                 <td className="py-3 px-4 text-sm font-semibold text-gray-900 text-right">
-                  ${day.revenue.toLocaleString()}
+                  ${day.spend.toLocaleString()}
                 </td>
                 <td className="py-3 px-4">
                   <div className="flex items-center justify-end gap-2">

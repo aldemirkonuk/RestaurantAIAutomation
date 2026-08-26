@@ -7,31 +7,21 @@ import { QueueItem } from './queue/QueueRow'
 import { Badge } from '../../components/ui/badge'
 import { EmptyState } from '../../components/ui/empty-state'
 import { Skeleton } from '../../components/ui/loading-skeleton'
+import { studioRequest, studioJsonRequest, studioErrorMessage } from './studioApi'
 
-function getAuthHeaders(): Record<string, string> {
-  const token = localStorage.getItem('accessToken')
-  return token ? { Authorization: `Bearer ${token}` } : {}
+// Orchestrator, not the gateway — a relative /api/v1/studio/* path resolves to the
+// NestJS gateway, which has no studio module, so both of these 404'd. See studioApi.ts.
+function fetchQueue(): Promise<{ queue: QueueItem[]; total: number }> {
+  return studioRequest<{ queue: QueueItem[]; total: number }>('/api/v1/studio/queue')
 }
 
-async function fetchQueue(): Promise<{ queue: QueueItem[]; total: number }> {
-  const resp = await fetch(`/api/v1/studio/queue`, { headers: getAuthHeaders() })
-  if (!resp.ok) throw new Error('Failed to load queue')
-  return resp.json()
-}
-
-async function decideOverride(id: string, decision: 'approved' | 'rejected', note?: string) {
-  const resp = await fetch(`/api/v1/studio/queue/${id}`, {
-    method: 'PATCH',
-    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ decision, note }),
-  })
-  if (!resp.ok) throw new Error('Decision failed')
-  return resp.json()
+function decideOverride(id: string, decision: 'approved' | 'rejected', note?: string) {
+  return studioJsonRequest(`/api/v1/studio/queue/${encodeURIComponent(id)}`, 'PATCH', { decision, note })
 }
 
 export default function StudioApprovalQueue() {
   const queryClient = useQueryClient()
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['studio-queue'],
     queryFn: fetchQueue,
     refetchInterval: 30_000,
@@ -44,11 +34,15 @@ export default function StudioApprovalQueue() {
       queryClient.invalidateQueries({ queryKey: ['studio-queue'] })
       toast.success(decision === 'approved' ? 'Override approved' : 'Override rejected')
     },
-    onError: () => toast.error('Decision failed. Please try again.'),
+    // studioJsonRequest throws on any non-2xx, so this is the only path a failed
+    // decision can take — the success toast above cannot fire for a 404/403.
+    onError: (err) => toast.error('Decision failed', { description: studioErrorMessage(err).slice(0, 160) }),
   })
 
   const handleDecide = async (id: string, decision: 'approved' | 'rejected', note?: string) => {
-    await mutation.mutateAsync({ id, decision, note })
+    // Swallow the rejection after onError has toasted: QueueRow awaits this and has no
+    // catch of its own, so re-throwing would only surface as an unhandled rejection.
+    await mutation.mutateAsync({ id, decision, note }).catch(() => undefined)
   }
 
   const pending = data?.total ?? 0
@@ -59,7 +53,14 @@ export default function StudioApprovalQueue() {
         <div className="mb-6">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-semibold text-slate-900">Override Approval Queue</h1>
-            {pending > 0 ? (
+            {/* A green "All clear" was rendered whenever `total` was absent — including
+                when the fetch had failed. A dead endpoint must never read as an empty
+                queue, so the success badge requires a loaded, non-erroring response. */}
+            {isError ? (
+              <Badge variant="destructive">Queue unavailable</Badge>
+            ) : isLoading ? (
+              <Badge variant="secondary">Loading…</Badge>
+            ) : pending > 0 ? (
               <Badge variant="warning">{pending} pending</Badge>
             ) : (
               <Badge variant="success">All clear</Badge>
@@ -76,7 +77,7 @@ export default function StudioApprovalQueue() {
           </div>
         ) : isError ? (
           <div className="text-center py-16 text-sm text-red-600">
-            Could not load the approval queue.{' '}
+            Could not load the approval queue — {studioErrorMessage(error)}{' '}
             <button onClick={() => queryClient.invalidateQueries({ queryKey: ['studio-queue'] })}
                     className="underline hover:no-underline">Refresh</button>
           </div>

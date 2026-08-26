@@ -97,11 +97,23 @@ async def lifespan(app: FastAPI):
     logger.info("Agent shutdown complete.")
 
 
+# ── Interactive docs are non-production only ──────────────────────────────────
+# /docs, /redoc and /openapi.json were publicly reachable on the Railway host,
+# enumerating every route of a service that bills the Anthropic account. In
+# production the built-in mounts are removed and replaced (below, once
+# verify_admin_key is importable) with X-Admin-Key-gated equivalents, so an
+# operator can still `curl -H "X-Admin-Key: …" /openapi.json` while an anonymous
+# visitor gets 401 instead of a map of the API.
+_DOCS_PUBLIC = _environment.strip().lower() not in ("production", "prod")
+
 app = FastAPI(
     title="WineOps Agent Orchestrator",
     description="Orchestrates AI agents for restaurant wine management.",
     version="2.0.0",
     lifespan=lifespan,
+    docs_url="/docs" if _DOCS_PUBLIC else None,
+    redoc_url="/redoc" if _DOCS_PUBLIC else None,
+    openapi_url="/openapi.json" if _DOCS_PUBLIC else None,
 )
 
 # ── CORS middleware — defense-in-depth for local dev and direct access (INFRA-01) ──
@@ -163,3 +175,27 @@ app.include_router(procurement_router)
 from api.synth_routes import router as synth_router  # noqa: E402
 
 app.include_router(synth_router)
+
+# ── Admin-gated docs in production ────────────────────────────────────────────
+# Registered here, after health_routes has been imported, so the one canonical
+# X-Admin-Key dependency is reused rather than duplicated.
+#
+# Note: Swagger UI at /docs fetches /openapi.json from the browser and cannot
+# attach the header, so in production /docs renders but cannot load its schema.
+# That is intended — the schema is the sensitive artefact, and it stays
+# retrievable via curl with the key.
+if not _DOCS_PUBLIC:
+    from fastapi import Depends  # noqa: E402
+    from fastapi.openapi.docs import get_swagger_ui_html  # noqa: E402
+
+    from api.health_routes import verify_admin_key  # noqa: E402
+
+    @app.get("/openapi.json", include_in_schema=False)
+    async def _protected_openapi(_key: str = Depends(verify_admin_key)):
+        """OpenAPI schema — production requires X-Admin-Key."""
+        return app.openapi()
+
+    @app.get("/docs", include_in_schema=False)
+    async def _protected_docs(_key: str = Depends(verify_admin_key)):
+        """Swagger UI — production requires X-Admin-Key."""
+        return get_swagger_ui_html(openapi_url="/openapi.json", title=app.title)

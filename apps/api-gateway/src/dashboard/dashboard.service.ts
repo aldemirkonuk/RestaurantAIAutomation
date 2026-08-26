@@ -12,7 +12,7 @@ import {
   NotificationSummaryDto,
   ReportSummaryDto,
   CalendarSummaryDto,
-  RevenueSummaryDto,
+  ProcurementSpendSummaryDto,
   ServiceErrorDto,
 } from "./dto/dashboard-summary.dto";
 
@@ -50,7 +50,7 @@ export class DashboardService {
       this.getNotificationsSummary(restaurantId),
       this.getReportsSummary(restaurantId),
       this.getCalendarSummary(restaurantId),
-      this.getRevenueSummary(restaurantId),
+      this.getProcurementSpendSummary(restaurantId),
     ]);
 
     // Process results with graceful degradation
@@ -68,7 +68,10 @@ export class DashboardService {
       results[4],
       "calendar",
     );
-    const revenue = this.handleResult<RevenueSummaryDto>(results[5], "revenue");
+    const procurementSpend = this.handleResult<ProcurementSpendSummaryDto>(
+      results[5],
+      "procurementSpend",
+    );
 
     // Collect any errors
     const errors = this.collectErrors(results, [
@@ -77,7 +80,7 @@ export class DashboardService {
       "notifications",
       "reports",
       "calendar",
-      "revenue",
+      "procurementSpend",
     ]);
 
     const duration = Date.now() - startTime;
@@ -91,7 +94,7 @@ export class DashboardService {
       notifications,
       reports,
       calendar,
-      revenue,
+      procurementSpend,
       errors,
       timestamp: new Date().toISOString(),
       allServicesHealthy: errors.length === 0,
@@ -280,11 +283,20 @@ export class DashboardService {
   }
 
   /**
-   * Get revenue summary from delivered procurement orders
+   * Total the restaurant paid its vendors for orders that were delivered.
+   *
+   * `procurement_orders.total_cost` is a vendor invoice line: money OUT. This
+   * method previously published the same sums as `totalRevenue` /
+   * `monthlyRevenue` / `revenueByMonth`, so the dashboard's headline number
+   * reported cost as income and every "revenue up" reading actually meant the
+   * restaurant had spent more. The query is unchanged; only the claim is.
+   *
+   * Sales revenue is not derivable here — it lives in `pos_checks`, which this
+   * service does not query.
    */
-  private async getRevenueSummary(
+  private async getProcurementSpendSummary(
     restaurantId: string,
-  ): Promise<RevenueSummaryDto> {
+  ): Promise<ProcurementSpendSummaryDto> {
     const client = this.dbService.getClient();
 
     try {
@@ -298,19 +310,19 @@ export class DashboardService {
         .eq("status", "delivered");
 
       if (error) {
-        this.logger.warn(`Revenue query error: ${error.message}`);
+        this.logger.warn(`Procurement spend query error: ${error.message}`);
         return {
-          totalRevenue: 0,
-          monthlyRevenue: 0,
+          totalProcurementSpend: 0,
+          monthlyProcurementSpend: 0,
           totalBottlesDelivered: 0,
-          revenueByMonth: [],
+          spendByMonth: [],
         };
       }
 
       const orders = delivered || [];
 
-      // Total revenue
-      const totalRevenue = orders.reduce(
+      // Total paid to vendors
+      const totalProcurementSpend = orders.reduce(
         (sum, o) => sum + (o.total_cost || o.final_price || 0),
         0,
       );
@@ -319,56 +331,56 @@ export class DashboardService {
         0,
       );
 
-      // Monthly revenue
+      // Paid to vendors this calendar month
       const now = new Date();
       const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      const monthlyRevenue = orders
+      const monthlyProcurementSpend = orders
         .filter((o) => {
           const orderDate = o.delivered_at || o.created_at;
           return orderDate && orderDate.startsWith(currentMonth);
         })
         .reduce((sum, o) => sum + (o.total_cost || o.final_price || 0), 0);
 
-      // Revenue by month (last 12 months)
-      const revenueByMonth: {
+      // Spend by month (last 12 months)
+      const spendByMonth: {
         month: string;
-        revenue: number;
+        spend: number;
         bottles: number;
       }[] = [];
-      const monthMap = new Map<string, { revenue: number; bottles: number }>();
+      const monthMap = new Map<string, { spend: number; bottles: number }>();
 
       for (const o of orders) {
         const orderDate = o.delivered_at || o.created_at;
         if (!orderDate) continue;
         const month = orderDate.substring(0, 7); // YYYY-MM
-        const existing = monthMap.get(month) || { revenue: 0, bottles: 0 };
-        existing.revenue += o.total_cost || o.final_price || 0;
+        const existing = monthMap.get(month) || { spend: 0, bottles: 0 };
+        existing.spend += o.total_cost || o.final_price || 0;
         existing.bottles += o.bottles_total || o.quantity || 0;
         monthMap.set(month, existing);
       }
 
       // Sort by month and take last 12
       for (const [month, data] of Array.from(monthMap.entries()).sort()) {
-        revenueByMonth.push({
+        spendByMonth.push({
           month,
-          revenue: data.revenue,
+          spend: data.spend,
           bottles: data.bottles,
         });
       }
 
       return {
-        totalRevenue,
-        monthlyRevenue,
+        totalProcurementSpend,
+        monthlyProcurementSpend,
         totalBottlesDelivered,
-        revenueByMonth: revenueByMonth.slice(-12),
+        spendByMonth: spendByMonth.slice(-12),
       };
     } catch (error) {
-      this.logger.warn(`Revenue fetch failed: ${error.message}`);
+      this.logger.warn(`Procurement spend fetch failed: ${error.message}`);
       return {
-        totalRevenue: 0,
-        monthlyRevenue: 0,
+        totalProcurementSpend: 0,
+        monthlyProcurementSpend: 0,
         totalBottlesDelivered: 0,
-        revenueByMonth: [],
+        spendByMonth: [],
       };
     }
   }
@@ -526,7 +538,11 @@ export class DashboardService {
         .toISOString()
         .split("T")[0];
 
-      const salesFrom = (items: any[], since: string) =>
+      // Sums vendor invoices on delivered procurement orders. This was named
+      // `salesFrom` and published as todaySales/weekSales/monthSales, which the
+      // web dashboard rendered as "Total Revenue" — the exact opposite of what
+      // the number is. Nothing here is a sale.
+      const spendSince = (items: any[], since: string) =>
         items
           .filter((o) => o.created_at && o.created_at >= since)
           .reduce((sum, o) => sum + (o.total_cost || o.final_price || 0), 0);
@@ -540,9 +556,9 @@ export class DashboardService {
         totalVolumeOz,
         lowStockItems,
         pendingOrders,
-        todaySales: salesFrom(deliveredOrders, todayStr),
-        weekSales: salesFrom(deliveredOrders, weekAgo),
-        monthSales: salesFrom(deliveredOrders, monthAgo),
+        todayProcurementSpend: spendSince(deliveredOrders, todayStr),
+        weekProcurementSpend: spendSince(deliveredOrders, weekAgo),
+        monthProcurementSpend: spendSince(deliveredOrders, monthAgo),
       };
     } catch (error) {
       this.logger.error(`Stats fetch failed: ${error.message}`);

@@ -5,8 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
+import { apiClient, getErrorMessage } from '../services/api/client'
 
 export interface EngineInsight {
   ruleKey: string
@@ -102,7 +101,7 @@ export function useEngineInsights(opts?: { categories?: string[]; limit?: number
 
   const [insights, setInsights] = useState<EngineInsight[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [hasData, setHasData] = useState<boolean | null>(null)
   const mounted = useRef(true)
 
@@ -123,30 +122,34 @@ export function useEngineInsights(opts?: { categories?: string[]; limit?: number
           setInsights(hit.insights)
           setHasData(hit.hasData)
           setLoading(false)
-          setError(false)
+          setError(null)
           return
         }
       }
 
       setLoading(true)
-      setError(false)
+      setError(null)
       try {
-        const base = `${API_URL}/api/v1/analytics`
+        const base = '/analytics'
         const qs = new URLSearchParams()
         if (recompute) qs.set('refresh', 'true')
         else qs.set('limit', String(limit))
         if (categoriesKey) qs.set('categories', categoriesKey)
 
-        const [insRes, dispRes] = await Promise.all([
-          fetch(`${base}/insights/${restaurantId}?${qs.toString()}`),
-          fetch(`${base}/recommendations/${restaurantId}/actions?status=all`),
+        // allSettled, not all: the disposition call failing must not blank the
+        // insight list (fetch never rejected on 4xx — axios does).
+        const [insRes, dispRes] = await Promise.allSettled([
+          apiClient.get<any>(`${base}/insights/${restaurantId}?${qs.toString()}`),
+          apiClient.get<any>(
+            `${base}/recommendations/${restaurantId}/actions?status=all`,
+          ),
         ])
 
         const hidden = new Set<string>()
         const pinnedSet = new Set<string>()
-        if (dispRes.ok) {
+        if (dispRes.status === 'fulfilled') {
           const now = Date.now()
-          const items: any[] = (await dispRes.json()).items ?? []
+          const items: any[] = dispRes.value.data?.items ?? []
           for (const it of items) {
             if (!String(it.ruleKey ?? '').startsWith('insight:')) continue
             if (it.pinned) pinnedSet.add(it.ruleKey)
@@ -160,8 +163,8 @@ export function useEngineInsights(opts?: { categories?: string[]; limit?: number
           }
         }
 
-        if (!insRes.ok) throw new Error('insights fetch failed')
-        const body = await insRes.json()
+        if (insRes.status === 'rejected') throw insRes.reason
+        const body = insRes.value.data ?? {}
         const rows: any[] = body.insights ?? []
         const mapped = mapRows(rows, pinnedSet, hidden)
         const nextHasData = Array.isArray(body.availability)
@@ -172,9 +175,9 @@ export function useEngineInsights(opts?: { categories?: string[]; limit?: number
         if (!mounted.current) return
         setInsights(mapped)
         setHasData(nextHasData)
-      } catch {
+      } catch (e) {
         if (!mounted.current) return
-        setError(true)
+        setError(getErrorMessage(e))
         setInsights([])
       } finally {
         if (mounted.current) setLoading(false)

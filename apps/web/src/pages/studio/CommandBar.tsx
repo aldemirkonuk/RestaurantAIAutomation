@@ -3,10 +3,21 @@ import { motion } from 'framer-motion'
 import { Link2, FileText, Globe, Loader2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '../../contexts/AuthContext'
-import { useStudioSessionStore } from '../../stores/useStudioSessionStore'
+import { useStudioSessionStore, WineRecord } from '../../stores/useStudioSessionStore'
 import { SCAN_ACCEPT, isScannable, isPdfFile, resetFileInput } from '../../lib/uploadAccept'
+import { studioJsonRequest, studioErrorMessage } from './studioApi'
 
 type IngestionType = 'pdf' | 'url' | 'manual' | null
+
+interface StudioSessionResponse {
+  session?: { id?: string | null } | null
+}
+
+interface ExtractResponse {
+  wines?: Record<string, unknown>[]
+  scan_session_id?: string | null
+  total_wines?: number
+}
 
 function detectIngestionType(value: string, hasPdfFile: boolean): IngestionType {
   if (hasPdfFile) return 'pdf'
@@ -26,27 +37,17 @@ export function CommandBar() {
   const detectedType = detectIngestionType(inputValue, pendingFile !== null)
   const canIngest = !isExtracting && detectedType !== null
 
-  // All studio/onboarding API calls go through Vite proxy → FastAPI (port 8000)
-  // Using relative URLs avoids the VITE_API_GATEWAY_URL=4000 (NestJS) misdirection
   // Studio's endpoints live in the PYTHON orchestrator (services/agent-orchestrator/
-  // main.py, with tests), not in the NestJS gateway. A relative path here goes through
-  // the Vite/Vercel proxy to the gateway, which has no /studio or /onboarding module —
-  // so every studio call 404'd in dev and prod despite a working backend existing.
-  // Same env var CameraCapture already uses.
-  const studioFetch = async (path: string, body: object) => {
-    const token = localStorage.getItem('accessToken')
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
-    const base = import.meta.env?.VITE_AGENT_ORCHESTRATOR_URL || ''
-    const resp = await fetch(`${base}${path}`, { method: 'POST', headers, body: JSON.stringify(body) })
-    if (!resp.ok) {
-      const errData = await resp.json().catch(() => ({}))
-      throw new Error(errData.detail || `HTTP ${resp.status}`)
-    }
-    return resp.json()
-  }
+  // main.py), not in the NestJS gateway. `studioPost` (studioApi.ts) targets the
+  // orchestrator and throws on any non-2xx; the base-URL rationale lives there.
+  const studioPost = <T,>(path: string, body: object) => studioJsonRequest<T>(path, 'POST', body)
+
+  // The store holds `sessionId: string | null` but types its setter `(sessionId: string, …)`.
+  // A missing id genuinely means "no session" — Studio.tsx keys its empty state off it — so
+  // keep passing null through rather than inventing an id. (Widening the setter belongs in
+  // stores/useStudioSessionStore.ts, not here.)
+  const applySession = (id: string | null, scanSessionId: string | null) =>
+    setSession(id as string, scanSessionId)
 
   const handleIngest = async (overrideType?: unknown) => {
     // When called from button onClick, overrideType is a MouseEvent — ignore it
@@ -63,7 +64,7 @@ export function CommandBar() {
           reader.readAsDataURL(pendingFile)
         })
         const asPdf = isPdfFile(pendingFile)
-        const sessData = await studioFetch('/api/v1/studio/sessions', {
+        const sessData = await studioPost<StudioSessionResponse>('/api/v1/studio/sessions', {
           source_type: asPdf ? 'pdf_upload' : 'image_upload',
           source_ref: pendingFile.name,
         })
@@ -73,7 +74,7 @@ export function CommandBar() {
         // path) or `images` (list of page base64) — send whichever matches
         // the file actually picked, rather than forcing everything down the
         // PDF branch.
-        const extractData = await studioFetch('/api/v1/onboarding/extract', {
+        const extractData = await studioPost<ExtractResponse>('/api/v1/onboarding/extract', {
           restaurant_id: user?.restaurantId ?? 'studio',
           ...(asPdf ? { pdf_base64: fileBase64 } : { images: [fileBase64] }),
         })
@@ -101,9 +102,11 @@ export function CommandBar() {
             }
           }
           flat.field_confidence = fc
-          return flat
+          // Built key-by-key from an untyped payload, so the shape cannot be proven
+          // structurally — the column list in WineRecordsTable is what actually reads it.
+          return flat as unknown as WineRecord
         })
-        setSession(sessionId, extractData.scan_session_id ?? null)
+        applySession(sessionId, extractData.scan_session_id ?? null)
         setRecords(wines)
         try {
           localStorage.setItem('wineops_last_extraction', JSON.stringify({
@@ -114,19 +117,24 @@ export function CommandBar() {
         toast.success('Extraction complete', { description: `${extractData.total_wines ?? 0} wines extracted` })
 
       } else if (type === 'url') {
-        const sessData = await studioFetch('/api/v1/studio/sessions', {
+        const sessData = await studioPost<StudioSessionResponse>('/api/v1/studio/sessions', {
           source_type: 'url_crawl', source_ref: inputValue.trim(),
         })
-        setSession(sessData.session?.id ?? null, null)
+        applySession(sessData.session?.id ?? null, null)
         setRecords([])
-        toast.info('Crawl queued', { description: 'URL crawler started — records will appear as they are extracted.' })
+        // POST /studio/sessions only inserts an onboarding_sessions row — it starts no
+        // crawl (api/studio_routes.py:66-99), and the scan router that owns the crawler
+        // is not mounted in main.py. Say what actually happened, not what was planned.
+        toast.info('Source recorded', {
+          description: 'The URL was saved to this session. Automatic crawling is not wired up yet — add records manually below.',
+        })
 
       } else if (type === 'manual') {
         const wineName = (overrideType ? '' : inputValue.trim()) || null
-        const sessData = await studioFetch('/api/v1/studio/sessions', {
+        const sessData = await studioPost<StudioSessionResponse>('/api/v1/studio/sessions', {
           source_type: 'manual_seed', source_ref: wineName ?? 'empty',
-        }).catch(() => ({ session: { id: `local-${Date.now()}` } }))
-        setSession(sessData.session?.id ?? `local-${Date.now()}`, null)
+        }).catch(() => ({ session: { id: `local-${Date.now()}` } }) as StudioSessionResponse)
+        applySession(sessData.session?.id ?? `local-${Date.now()}`, null)
         setRecords([{
           id: 'new-1', submission_id: crypto.randomUUID(),
           wine_name: wineName, vintage: null, producer: null, region: null, country: null,
@@ -138,8 +146,9 @@ export function CommandBar() {
         toast.success('Empty record ready', { description: 'Click any cell to start filling in wine details.' })
       }
     } catch (err) {
-      setExtractionError(String(err))
-      toast.error('Ingestion failed', { description: String(err) })
+      const message = studioErrorMessage(err)
+      setExtractionError(message)
+      toast.error('Ingestion failed', { description: message.slice(0, 200) })
     } finally {
       setIsExtracting(false)
     }

@@ -75,6 +75,41 @@ export default function ReceivingHome() {
 /* ---------------------------------------------------------------- staff --- */
 
 /**
+ * The statuses that actually mean "placed with the vendor, not yet received".
+ *
+ * Read from `ProcurementOrderStatus` in
+ * `apps/api-gateway/src/procurement/dto/procurement.dto.ts:15`. There is no `SENT` member —
+ * `SENT` is a *conversation* status (an outbound email that has gone out), not an order status,
+ * and this page used to ask for it. `OrderFilterDto.status` is `@IsEnum(ProcurementOrderStatus)`
+ * behind a global `forbidNonWhitelisted` ValidationPipe (`main.ts:69`), so that request was
+ * rejected 400 on every load and the page rendered the rejection as "nothing is out for delivery".
+ *
+ * `CONFIRMED` and `IN_TRANSIT` are exactly the pair the rest of the app collapses into its
+ * "ordered" bucket (`Orders.tsx:73-75`) — the order is with the vendor and has not arrived.
+ * Two members are deliberately left out:
+ *   APPROVED            the deal is agreed but not yet placed, so nothing can be at the door
+ *                       (inbound-responder.service.ts:1103).
+ *   PARTIALLY_RECEIVED  the status the door flow itself writes on success
+ *                       (receiving.service.ts:190) — listing it would offer the receiver a
+ *                       delivery they have already booked.
+ */
+const IN_FLIGHT_STATUSES = ['CONFIRMED', 'IN_TRANSIT'] as const
+
+/**
+ * One row of `GET /procurement/orders`, which returns `OrderListResponseDto`
+ * (`procurement.dto.ts:395`) — `{ orders, total, page, limit, hasMore }`. Not `items`.
+ */
+interface OpenOrder {
+  id: string
+  orderNumber?: string | null
+  quantity?: number | null
+  wineName?: string | null
+  requestedAt?: string | null
+  /** Not in `OrderResponseDto` today; read defensively so a later addition just works. */
+  providerName?: string | null
+}
+
+/**
  * "Which one are you receiving?" and nothing else.
  *
  * Big rows because this is used one-handed at a door. No money, no verdicts, no history — a
@@ -82,13 +117,32 @@ export default function ReceivingHome() {
  */
 function StaffView() {
   const navigate = useNavigate()
-  const { data: orders = [], isLoading } = useQuery({
-    queryKey: ['receiving-open-orders'],
+  const {
+    data: orders = [],
+    isLoading,
+    isError,
+    refetch,
+    isFetching,
+  } = useQuery({
+    queryKey: ['receiving-open-orders', ...IN_FLIGHT_STATUSES],
     queryFn: async () => {
-      const { data } = await apiClient.get('/procurement/orders', {
-        params: { status: 'SENT', limit: 25 },
-      })
-      return (data?.items ?? data ?? []) as any[]
+      // `OrderFilterDto.status` is a single enum, not an array, and the service does a plain
+      // `.eq("status", …)` (procurement.service.ts:468) — so asking for both means two requests.
+      // They are disjoint by construction (an order holds one status), so the merge cannot
+      // duplicate a row.
+      const pages = await Promise.all(
+        IN_FLIGHT_STATUSES.map(async (status) => {
+          const { data } = await apiClient.get('/procurement/orders', {
+            params: { status, limit: 25 },
+          })
+          return (data?.orders ?? []) as OpenOrder[]
+        }),
+      )
+      // Each request comes back newest-first on its own; concatenating them would group by
+      // status instead, putting an older CONFIRMED order above the delivery that just landed.
+      return pages
+        .flat()
+        .sort((a, b) => (b.requestedAt ?? '').localeCompare(a.requestedAt ?? ''))
     },
   })
 
@@ -99,7 +153,39 @@ function StaffView() {
 
       {isLoading && <p className="mt-8 text-sm text-gray-400">Loading…</p>}
 
-      {!isLoading && orders.length === 0 && (
+      {/*
+        A failed fetch must never render as an empty list. "Nothing is out for delivery" is a
+        reassuring sentence, and a receiver who reads it walks away from the door and books the
+        delivery on paper — so a broken call quietly costs the delivery it was meant to capture.
+        It says what is wrong, offers the retry, and names the paper fallback, because the person
+        reading it is standing next to a driver who is not going to wait.
+      */}
+      {isError && (
+        <div
+          role="alert"
+          className="mt-8 rounded-xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-900"
+        >
+          <p className="flex items-start gap-2 font-semibold">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            Could not load today's deliveries.
+          </p>
+          <p className="mt-2 text-rose-800">
+            This is not the same as having none — there may well be a truck outside. Write the
+            delivery down and tell a manager if this does not clear.
+          </p>
+          <button
+            type="button"
+            data-ux-key="receiving:staff-retry"
+            onClick={() => void refetch()}
+            disabled={isFetching}
+            className="mt-4 min-h-[44px] px-5 rounded-xl bg-rose-600 text-white font-semibold active:bg-rose-700 disabled:opacity-70"
+          >
+            {isFetching ? 'Trying…' : 'Try again'}
+          </button>
+        </div>
+      )}
+
+      {!isLoading && !isError && orders.length === 0 && (
         <div className="mt-8 rounded-xl border border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
           Nothing is out for delivery right now.
         </div>
@@ -116,7 +202,10 @@ function StaffView() {
           >
             <div className="min-w-0">
               <p className="font-semibold text-gray-900 truncate">
-                {o.providerName || o.provider?.name || 'Delivery'}
+                {/* `OrderResponseDto` carries `wineName` but no vendor name (mapOrderRow,
+                    procurement.service.ts:1535) — without the wine fallback every row reads
+                    "Delivery" and there is nothing to tell two trucks apart. */}
+                {o.providerName || o.wineName || 'Delivery'}
               </p>
               <p className="text-xs text-gray-500 truncate">
                 {o.orderNumber || o.id?.slice(0, 8)}

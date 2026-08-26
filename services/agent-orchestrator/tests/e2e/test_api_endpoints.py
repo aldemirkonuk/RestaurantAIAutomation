@@ -451,10 +451,10 @@ class TestResearchAPI:
         assert tier_mix["B"] == 50.0
         assert tier_mix["C"] == 0.0
 
-    def test_research_trigger_requires_admin_key(self, test_client):
+    def test_research_trigger_requires_admin_key(self, test_client, anon_client):
         """POST /research/trigger: missing key → 401, wrong key → 401, correct key → 200."""
-        # No X-Admin-Key header → 401
-        r1 = test_client.post("/api/v1/research/trigger", json={"batch_size": 1})
+        # No X-Admin-Key header at all → 401 (anon_client sends no credentials)
+        r1 = anon_client.post("/api/v1/research/trigger", json={"batch_size": 1})
         assert r1.status_code == 401, r1.text
 
         # Wrong key → 401

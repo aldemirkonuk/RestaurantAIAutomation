@@ -224,42 +224,56 @@ class HaikuEnrichmentService:
             messages=[{"role": "user", "content": prompt}],
         )
 
-        # Log spend — non-fatal.
-        # P1 fix: wine_id is NOT a restaurant_id — it now rides in context.
+        _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+
+        # OD-75: this site raises ValueError on a non-JSON answer, so simply
+        # moving the emit below the parse would drop the row on exactly the
+        # path worth recording. `finally` keeps the spend AND grades it: the
+        # tokens were billed either way, but a prose answer enriched no wine.
+        _outcome = "partial"
         try:
-            _in = response.usage.input_tokens
-            _out = response.usage.output_tokens
-            _cost = (_in * 0.80 / 1_000_000) + (_out * 4.00 / 1_000_000)
-            get_spend_logger().log(
-                provider="anthropic",
-                model=self.MODEL,
-                input_tokens=_in,
-                output_tokens=_out,
-                cost_usd=_cost,
-                restaurant_id=None,
-                agent_fallback="haiku_enrichment_service",
-                task_type="wine_enrichment",
-                outcome="success",  # call-level: completion returned
-                duration_ms=int((time.perf_counter() - _t0) * 1000),
-                context={"wine_id": str(wine_id)},
-            )
-        except Exception:
-            pass
+            raw = response.content[0].text.strip()
 
-        raw = response.content[0].text.strip()
+            # Strip markdown code fences if present
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
 
-        # Strip markdown code fences if present
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError as e:
-            raise ValueError(
-                f"Haiku returned non-JSON for wine {wine_id}: {raw!r}"
-            ) from e
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError as e:
+                raise ValueError(
+                    f"Haiku returned non-JSON for wine {wine_id}: {raw!r}"
+                ) from e
+            _outcome = "success"
+        finally:
+            # Log spend — non-fatal.
+            # P1 fix: wine_id is NOT a restaurant_id — it now rides in context.
+            try:
+                _in = response.usage.input_tokens
+                _out = response.usage.output_tokens
+                _cost = (_in * 0.80 / 1_000_000) + (_out * 4.00 / 1_000_000)
+                get_spend_logger().log(
+                    provider="anthropic",
+                    model=self.MODEL,
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=_cost,
+                    restaurant_id=None,
+                    agent_fallback="haiku_enrichment_service",
+                    task_type="wine_enrichment",
+                    choice=f"enrichment:{_outcome}",
+                    outcome=_outcome,
+                    duration_ms=_elapsed_ms,
+                    context={
+                        "wine_id": str(wine_id),
+                        "outcome_basis": "parse_v1",
+                        "parse_failed": _outcome != "success",
+                    },
+                )
+            except Exception:
+                pass
 
         # Build field_confidence from scalar fields with nested {value, confidence, source}
         fc: Dict[str, Dict[str, Any]] = {}

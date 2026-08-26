@@ -131,8 +131,8 @@ A **UX path** here = a concrete user interaction or journey expressed as **trigg
 > ---
 >
 > **A third failure mode, beyond staleness: the subject moved.** L136 describes an
-> inventory page with no sorting or selection. That is true of `/inventory-legacy`
-> — but `/inventory` now serves `InventoryCommandPage`, which has both. The entry
+> inventory page with no sorting or selection. That was true of `/inventory-legacy`
+> (retired 2026-08-26) — but `/inventory` serves `InventoryCommandPage`, which has both. The entry
 > was never re-pointed when the route changed, so it is simultaneously accurate
 > about a page nobody visits and wrong about the one they do. **The catalogue
 > contains no scoping note naming which inventory page it means.** Check the route,
@@ -161,7 +161,7 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 ## 1. Global shell — Sidebar (`components/layout/Sidebar.tsx`)
 
-- ✅ Navigate to any section via nav links: Dashboard `/`, Inventory `/inventory`, Orders `/orders`, Wine Library `/wines`, Providers `/providers`, Promotions `/promotions`, Reports `/reports`, Calendar `/calendar`, Team `/team`, Communications `/communications`, Documents & Reports `/documents-reports`, Notifications `/notifications`, Sommelier AI `/sommelier`, Wine Agent `/wine-agent` (placeholder), Admin `/admin` (owner only), Settings `/settings`, Help `/help` (placeholder).
+- ✅ Navigate to any section via nav links: Dashboard `/`, Inventory `/inventory`, Orders `/orders`, Wine Library `/wines`, Providers `/providers`, Promotions `/promotions`, Reports `/reports`, Calendar `/calendar`, Team `/team`, Communications `/communications`, Documents & Reports `/documents-reports`, Notifications `/notifications`, Sommelier AI `/sommelier`, Admin `/admin` (owner only), Settings `/settings`, Help `/help` (placeholder).
 - ✅ Collapse / expand the rail (chevron); collapsed state shows hover tooltips.
 - ✅ Open the "Get started" onboarding checklist popover (rocket icon) with completion counter; dismiss it ("Don't show again").
 - ✅ Log out (bottom button).
@@ -199,8 +199,8 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 - ✅ Row expansion actions: reconcile shadow→live, "Draft PO" → `/orders`, manual adjust (delta + reason + apply), transfer stock between locations, "View ledger".
 - ✅ Cellar Map: select a zone, "Open in table" (applies location filter), "Manage locations".
 - ✅ Receiving Workspace: three-way match (ordered/invoiced/received), price override + reason, rejected qty + reason, unlisted extras, notes, dynamic submit.
-- ❌ No multi-select, no bulk actions, no column-header sorting, no keyboard nav, no right-click menu, no KPI drill-through. Location filter only exposes first 4 locations.  `[✅ STALE 2026-07-31 — DESCRIBES THE WRONG PAGE: /inventory now serves InventoryCommandPage, which has column sorting (:627 SORTABLE_COL/applySort), selection (:607), and keydown handling. This entry matches /inventory-legacy, which nothing links to.]`
-- Legacy `pages/Inventory.tsx` still exists with checkboxes + a bulk bar whose buttons have **no handlers**, per-row Pour/Active toggle/Edit/Reconcile/Remove, sortable columns; QR generator is a disabled "coming soon".
+- ❌ No multi-select, no bulk actions, no column-header sorting, no keyboard nav, no right-click menu, no KPI drill-through. Location filter only exposes first 4 locations.  `[✅ STALE 2026-07-31 — DESCRIBES THE WRONG PAGE: /inventory now serves InventoryCommandPage, which has column sorting (:627 SORTABLE_COL/applySort), selection (:607), and keydown handling. This entry matched /inventory-legacy, retired 2026-08-26.]`
+- ~~Legacy `pages/Inventory.tsx` still exists with checkboxes + a bulk bar whose buttons have **no handlers**, per-row Pour/Active toggle/Edit/Reconcile/Remove, sortable columns; QR generator is a disabled "coming soon".~~ **Deleted 2026-08-26** (ADR 0019 §B-parity). Pour and the active toggle were ported onto `/inventory` (row expansion / row context menu); the handler-less bulk bar, the fake "Reset All Stock" and the disabled QR panel were not.
 
 ## 5. Orders (`pages/Orders.tsx`, route `/orders`)
 
@@ -267,7 +267,7 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 - ✅ Sidebar: selected-date events, "+" create, This Month stats, Coming Up (clickable).
 - ✅ Event details modal: status `<select>` update, delete. ❌ "Edit" button is a no-op.  `[⏳ appears to hold 2026-07-31]`
 - ✅ Create Event modal: title with entity auto-tagging, event-type grid (+ custom types), date/time (masked inputs, validation), location, description, color, reminders (incl. custom), recurrence (freq/DOW/DOM/end-condition).
-- ✅ A richer modular calendar (`pages/calendar/*`) with **Week/Day views, drag-move/resize, click-slot-to-create, true event editing, RRULE preview, multi-channel reminders, meeting-memo capture** is now **routed at `/calendar`** (2026-07-20, via `pages/CalendarModular.tsx`; classic page at `/calendar-classic`). See §K.
+- ✅ A richer modular calendar (`pages/calendar/*`) with **Week/Day views, drag-move/resize, click-slot-to-create, true event editing, RRULE preview, multi-channel reminders, meeting-memo capture** is now **routed at `/calendar`** (2026-07-20, via `pages/CalendarModular.tsx`). See §K. The classic page was retired 2026-08-26 (ADR 0019 §B-parity) — everything above this line describes it and is historical.
 
 ## 13. Reports (`pages/Reports.tsx`, route `/reports`)
 
@@ -953,7 +953,7 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 
 > **Shipped 2026-07-20 (calendar batch):** the fully-built modular calendar
 > (`pages/calendar/*`) is now **routed** at `/calendar` via
-> `pages/CalendarModular.tsx` (classic page preserved at `/calendar-classic`).
+> `pages/CalendarModular.tsx` (the classic page was retired 2026-08-26, ADR 0019 §B).
 > Ships NEW-384 (Week), NEW-385 (Day), NEW-386 (drag-move), NEW-387 (drag-resize),
 > NEW-388 (click empty slot → create), NEW-389 (Edit opens edit mode), NEW-390
 > (true update of all fields), NEW-391 (recurrence), NEW-392 (reminders), NEW-393
@@ -1455,7 +1455,12 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 | NEW-642 | `Click` | Mobile settings: notification channel toggles parity with web. |
 | NEW-643 | `Long` | Swipe (or long-press menu) on supply row → Mark Ordered / Archive. |
 
-## V. Placeholders to ship (`/wine-agent`, `/help`) (`NEW-644 … NEW-651`)
+## V. Placeholders to ship (`/help`; Wine Agent has no route) (`NEW-644 … NEW-651`)
+
+> **2026-08-26:** the `/wine-agent` and `/wineagent` placeholder routes are **retired**
+> (ADR 0019 §B) — they rendered an under-construction page with nothing behind it.
+> NEW-644…646 stay open as product ambition; when a real Wine Agent ships it needs a
+> new route, and today every "Wine Agent" launcher opens `/sommelier`.
 
 | # | Trigger | Path → Outcome |
 |---|---------|----------------|

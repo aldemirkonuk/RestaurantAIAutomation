@@ -7,8 +7,9 @@ audience: dev
 tier: core
 signals_today: none
 rebrand_strings: 1
+maturity: broken
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[studio-queue]]", "[[studio-certify]]", "[[wines]]"]
 ---
 
@@ -88,3 +89,129 @@ on all three studio pages.
   including grape_variety, color, sweetness, tasting_notes, description
   (`WineRecordsTable.tsx:10-23`) with per-field confidence badges (`FieldCell.tsx:24-33`)
   — none of which `/wines` surfaces (see [[wines]] §9).
+
+---
+
+## 10. Maturity — **broken**
+
+**Ingestion reaches a real backend; nothing you do to the result does.** The routing
+gap in §9 was fixed for exactly one component and left in place for the other four.
+
+- **Fixed:** `CommandBar` now bases its calls on the orchestrator, not the gateway —
+  `const base = import.meta.env?.VITE_AGENT_ORCHESTRATOR_URL || ''` (`CommandBar.tsx:42`,
+  used by the shared `studioFetch` at `:36-49`). So `POST /api/v1/studio/sessions`
+  (`:66,117,126`) and `POST /api/v1/onboarding/extract` (`:76`) land on FastAPI **when
+  that env var is set**; unset, `base` is `''` and both fall back to the same broken
+  relative path.
+- **Not fixed:** every other studio call is still a bare relative fetch —
+  promote `WineRecordsTable.tsx:41`, override `FieldCell.tsx:89`, metrics
+  `MetricsDashboard.tsx:25`. Relative `/api/v1/...` goes to the NestJS gateway in both
+  environments (`apps/web/vite.config.ts:24-27` → `localhost:4000`;
+  `vercel.json:7-10` → the Railway gateway). The gateway mounts everything under
+  `api/v1` (`apps/api-gateway/src/main.ts:77`) and has **no studio controller** — grep
+  `@Controller("studio"` across `apps/api-gateway/src`: zero hits. Those three 404.
+- Net effect: **you can extract a wine list and you cannot promote it or correct a
+  field.** The two actions the page exists for are the two that fail.
+- The URL branch is **hollow on top of that**: it toasts "URL crawler started — records
+  will appear as they are extracted" (`CommandBar.tsx:122`), but `create_session`
+  only inserts a row into `onboarding_sessions` (`studio_routes.py:66-99`) — it starts
+  no crawl, and nothing on the page ever polls for records. Worse, the crawler has no
+  HTTP entry point at all: `scan_routes.py`'s main router (`/api/v1/scan`,
+  `scan_routes.py:79`) is **never mounted** — `main.py:46` imports only
+  `router_preview` from that module, and `main.py:130-165` lists every router that is.
+- The metrics strip reports **fabricated zeros**: on a failed fetch `data` is undefined
+  and each card renders `?? 0` (`MetricsDashboard.tsx:41,47,53,59`) with no error
+  branch — "Total Overrides 0 / Pending Queue 0" is what a dead endpoint looks like.
+- `MetricsDashboard.tsx:24` still carries the belief that caused all of this:
+  *"Use relative URL — Vite proxy routes /api → FastAPI (port 8000)"*. It does not
+  (`vite.config.ts:24-27`).
+
+## 11. Data flow
+
+**Calls out**
+
+| Method | Path | Auth | Server | Returns / today |
+|---|---|---|---|---|
+| POST | `{VITE_AGENT_ORCHESTRATOR_URL}/api/v1/studio/sessions` | Bearer from `localStorage` (`CommandBar.tsx:37`); server verifies the Supabase JWT + studio role (`services/override_service.py:34-79`) | `api/studio_routes.py:66` | `{session}` row in `onboarding_sessions`. **Works** when the env var is set |
+| POST | `{VITE_AGENT_ORCHESTRATOR_URL}/api/v1/onboarding/extract` | **none — the route has no `Depends`** (`api/onboarding_routes.py:148-149`) | `api/onboarding_routes.py:32,148` | `{scan_session_id, total_wines, total_cost_usd, wines[], page_errors}`; HTTP 207 on partial (`:370-372`), 402 over cap (`:173-182`) |
+| POST | `/api/v1/studio/overrides` (relative) | Bearer | `studio_routes.py:161` — real, role-aware, D-07 reason gate at `:203-209` | **404s at the gateway** |
+| POST | `/api/v1/studio/promote` (relative) | Bearer | `studio_routes.py:833`, 409 + `X-Existing-Wine-Id` on dedup (`:923-928`) | **404s at the gateway** |
+| GET | `/api/v1/studio/metrics` (relative, 60 s poll) | Bearer | `studio_routes.py:579` | **404s at the gateway** → four zeros |
+
+**Fed by — the extraction stack, as it actually runs**
+
+| Stage | Where | Reaches this page? |
+|---|---|---|
+| **Claude Vision** — `claude-haiku-4-5-20251001`, parallel pages, native-PDF or image branch | `services/claude_vision_extractor.py:42,448,544,596`; called at `onboarding_routes.py:185-202` | **Yes** — this is the only producer the UI shows |
+| **Per-field confidence + 3-tier routing** (accept ≥ 0.8, review 0.5–0.8, reject < 0.5; auto-block when > 50 % of fields are rejected) | `services/field_confidence.py:76-81,153,230`; applied `onboarding_routes.py:231-242` | **Yes** — drives the badges (`FieldCell.tsx:24-33`) and the amber row tint (`WineRecordsTable.tsx:123-133`) |
+| **Mid-confidence review rows** → `field_review_queue` | `onboarding_routes.py:278-304` | **No** — written, never rendered anywhere in the studio UI |
+| **Haiku enrichment** (`claude-haiku-4-5-20251001`) for wines missing region/country/grape | queued `onboarding_routes.py:306-323` → `jobs/haiku_tasks.py:37`; service `services/haiku_enrichment_service.py:47,57` | **No** — async, and the page holds its records in a Zustand store with no refetch |
+| **Web verification** → **ontology validation** (region↔country, grape↔appellation, vintage plausibility, colour↔grape, with autofills) | `jobs/haiku_tasks.py:128-143` → `jobs/web_verify_tasks.py:416-418` → `jobs/ontology_tasks.py:41` → `services/ontology_validation_service.py:86,527` | **No** |
+| **Critic scores** (Vivino ×20, Jancis ×5, WA/WS/Decanter passthrough, weighted composite) + markup | `jobs/ontology_tasks.py:124-126` → `jobs/score_tasks.py:66` → `services/critic_score_service.py:65,81,268` | **No** |
+| **Daily threshold calibration** from human review accuracy | `jobs/celery_app.py:112-117` | **No** |
+| **Gemini Flash crawler** (`gemini-2.5-flash`) | `services/web_crawler.py:285-290,546` via `services/vlm_extraction_service.get_gemini_crawler_extractor`; entry points are `jobs/tasks.py:462` and `jobs/recrawl_tasks.py` only | **No** — and unreachable from this page (§10) despite the UI captioning it (`CommandBar.tsx:230`) |
+
+**Writes**
+
+- `onboarding_sessions` (one row per ingest, `studio_routes.py:80-93`).
+- `master_wine_library_submissions` — one row per extracted wine, `status:'pending_review'`,
+  `auto_blocked`, `field_confidence` JSONB (`onboarding_routes.py:256-271`); the insert
+  response's UUID is stamped back onto the record as `submission_id` (`:275-276`) and is
+  what promote/override key off.
+- `field_review_queue` (`onboarding_routes.py:281-295`); `api_spend` via the cost preflight
+  (`:57-78`).
+- Downstream: the Celery chain above (haiku → web-verify → ontology → critic/dataset), and
+  on a successful promote, `master_wine_library` — the row `/wines` and every matcher read.
+- `localStorage.wineops_last_extraction` (`CommandBar.tsx:109-113`) — local convenience only.
+
+## 12. Design intent
+
+**Should be:** the one place a contributor turns a wine list into trustworthy library
+rows — extract, see how sure the machine is per field, correct what is wrong with a
+reason, and promote. Correction and promotion are the product; extraction is the input.
+
+| State | Implemented? | Evidence |
+|---|---|---|
+| Empty | **yes**, and good — "No records in this session / Paste a URL or drop a PDF…" (`Studio.tsx:19-27`) | |
+| Loading | **yes** — skeleton rows (`WineRecordsTable.tsx:82-92`), `Ingesting…` spinner (`CommandBar.tsx:223`), metric skeletons (`MetricsDashboard.tsx:43`) | |
+| Error | **partial** — ingest failures surface honestly (`CommandBar.tsx:140-143`, `setExtractionError` + toast); promote failures show a red "Failed" chip that self-clears in 3 s (`WineRecordsTable.tsx:53-56`); **metrics have no error state at all** | |
+| Permission-denied | **yes** — route-level "Studio Access Required" card (`ProtectedRoute.tsx:105-124`) | |
+
+**Where the UI misleads**
+
+1. **Four zeros that mean "endpoint dead"** (`MetricsDashboard.tsx:41-61`) — the exact
+   fabricated-zero failure the contract names.
+2. **"URL crawler started"** for a crawl that is never started (`CommandBar.tsx:122`;
+   `studio_routes.py:66-99`), on a page that captions the input *"will use Gemini Flash
+   crawler"* (`:230`).
+3. **Manual seed degrades silently to `local-<ts>`** on API failure
+   (`CommandBar.tsx:128-129`) — the record exists only in browser memory, and the toast
+   says "Empty record ready".
+4. **Promote is enabled on wine-name alone** (`canPromote`, `WineRecordsTable.tsx:127`),
+   so a row that will 404 looks actionable.
+5. The permission-denied card and the header both say **"WineOps Studio"**
+   (`ProtectedRoute.tsx:114`, `StudioLayout.tsx:33`) — §7 counts one; there are two.
+
+## 13. Roadmap
+
+1. **Route promote / override / metrics the way `CommandBar` already routes** — the
+   one-line `base` prefix from `CommandBar.tsx:42` applied at `WineRecordsTable.tsx:41`,
+   `FieldCell.tsx:89`, `MetricsDashboard.tsx:25`. Restores the page's two core actions.
+   Correct the false comment at `MetricsDashboard.tsx:24`.
+2. **Decide the studio transport once** — env-var-to-orchestrator (today's half-fix) vs a
+   gateway `/studio` proxy like `common/orchestrator/health-proxy.controller.ts`.
+   *Blocked: founder decision.* The proxy option also fixes #3 for free.
+3. **Authenticate `POST /api/v1/onboarding/extract`** (`onboarding_routes.py:148-149`).
+   It is unauthenticated, spends Anthropic credit, and its only brake is a $2.00 cap
+   (`:35`) keyed on a **caller-supplied** `restaurant_id` (`:135,172`) — rotate the id,
+   rotate the cap. Studio itself sends the literal `'studio'` when the user has no
+   restaurant (`CommandBar.tsx:77`), so all studio extraction shares one $2 budget.
+4. **Give metrics an error state** so a dead endpoint stops reading as a quiet week.
+5. **Make the URL branch honest** — either wire an ingest path to the crawler (needs the
+   unmounted `/api/v1/scan` router, `main.py:46`) or replace the toast with "URL ingestion
+   is not wired yet". *Blocked on nothing; #5b is a five-minute fix.*
+6. **Surface the enrichment the pipeline already produces** — ontology failures, critic
+   composite, haiku fills, `field_review_queue` rows. All five stages write to the DB and
+   none reach the reviewer (§11), which is the largest unexploited asset on this page.
+7. Refetch records after promote/override so the table reflects server truth rather than
+   the optimistic local patch at `WineRecordsTable.tsx:65-80`.

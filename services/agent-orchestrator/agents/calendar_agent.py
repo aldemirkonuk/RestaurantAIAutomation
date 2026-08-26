@@ -227,7 +227,28 @@ class CalendarAgent(BaseAgent):
                 contents=prompt,
             )
 
-            # P1: previously an unlogged model call (dark site)
+            _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+
+            # OD-75: parse BEFORE logging spend. A model that answers in prose
+            # produces no dates at all, and grading that `success` made the
+            # regex-fallback path — the one that used to invent dates (OD-63) —
+            # indistinguishable from a real extraction in NF.
+            _dates: Optional[List[Dict[str, Any]]] = None
+            _parse_failed = False
+            try:
+                text = (response.text or "").strip() if response else ""
+                # Extract JSON array from response (LLM may wrap in markdown)
+                json_match = re.search(r"\[.*\]", text, re.DOTALL)
+                if json_match:
+                    _dates = json.loads(json_match.group())
+                else:
+                    _parse_failed = True
+            except (json.JSONDecodeError, ValueError, AttributeError) as exc:
+                _parse_failed = True
+                self.logger.warning(f"LLM date extraction parse failed: {exc}")
+
+            # P1: previously an unlogged model call (dark site).
+            # Emitted on BOTH paths — the tokens were spent before the parse ran.
             try:
                 from services.spend_logger import (
                     estimate_llm_cost,
@@ -245,20 +266,20 @@ class CalendarAgent(BaseAgent):
                     restaurant_id=restaurant_id or None,
                     agent=self.agent_name,
                     task_type="date_extraction",
-                    outcome="success",  # call-level: response returned
-                    duration_ms=int((time.perf_counter() - _t0) * 1000),
+                    choice=("dates:parse_failed" if _parse_failed else "dates:parsed"),
+                    outcome="partial" if _parse_failed else "success",
+                    duration_ms=_elapsed_ms,
                     correlation_id=getattr(self, "_current_correlation_id", None),
+                    context={
+                        "outcome_basis": "parse_v1",
+                        "parse_failed": _parse_failed,
+                    },
                 )
             except Exception:
                 pass
 
-            if response and response.text:
-                # Parse JSON from LLM response
-                text = response.text.strip()
-                # Extract JSON array from response (LLM may wrap in markdown)
-                json_match = re.search(r"\[.*\]", text, re.DOTALL)
-                if json_match:
-                    return json.loads(json_match.group())
+            if _dates is not None:
+                return _dates
 
         except ImportError:
             self.logger.debug("google-genai not installed, using regex fallback")

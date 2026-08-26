@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Button } from '../ui/button'
 import { cn } from '../../lib/utils'
 import type { RestaurantBranch } from '../../contexts/AuthContext'
+import { apiClient, getErrorMessage } from '../../services/api/client'
 
 export interface Chain {
   id: string
@@ -21,7 +22,6 @@ interface EditLocationChainDialogProps {
   onSaved: () => void
 }
 
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
 export function EditLocationChainDialog({
   branch,
@@ -62,24 +62,15 @@ export function EditLocationChainDialog({
     }
     setIsSubmitting(true)
     try {
-      const token = localStorage.getItem('accessToken')
-      const resp = await fetch(`${API_URL}/api/v1/organizations/locations/${branch.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          chainId: selectedChainId || null,
-          name: locationName.trim() !== branch.name ? locationName.trim() : undefined,
-          city: city.trim() !== (branch.city ?? '') ? (city.trim() || null) : undefined,
-        }),
+      await apiClient.patch(`/organizations/locations/${branch.id}`, {
+        chainId: selectedChainId || null,
+        name: locationName.trim() !== branch.name ? locationName.trim() : undefined,
+        city: city.trim() !== (branch.city ?? '') ? (city.trim() || null) : undefined,
       })
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}))
-        throw new Error((data as { message?: string }).message || 'Failed to update location')
-      }
       toast.success(`${locationName.trim()} updated`)
       onSaved()
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update — please try again')
+      toast.error(getErrorMessage(err))
     } finally {
       setIsSubmitting(false)
     }

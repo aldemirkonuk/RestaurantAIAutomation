@@ -8,7 +8,7 @@
  * - No autonomous purchasing without manager approval
  */
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   AlertTriangle,
@@ -42,7 +42,12 @@ import { useContextMenu } from '../../hooks/useContextMenu'
 import { getWineTypeColor, Wine as WineType } from '../../data/wineData'
 import { QuickGmailModal } from '../emails/QuickGmailModal'
 import { useRealtimeDispatch } from '../../contexts/RealtimeContext'
-import { getOrdersNeedingApproval, getOrders } from '../../services/api/orders'
+import { getOrdersNeedingApproval, getOrders, markOrderDelivered } from '../../services/api/orders'
+import {
+  getOneTapActions,
+  executeOneTapAction,
+  cancelOneTapAction,
+} from '../../services/api/dashboard'
 import type { Order, OrderStatus } from '../../services/api/types'
 import { useAuthStore } from '../../stores'
 import { useWines } from '../../hooks/queries'
@@ -58,6 +63,57 @@ export interface ActionItem {
   wine?: WineType
   details: Record<string, any>
   timestamp: Date
+  /**
+   * `'server'` means `id` is a real `one_tap_actions` row UUID and the card can
+   * be executed or cancelled through `/one-tap-actions/:id/{execute,cancel}`.
+   * Everything else is derived client-side from inventory/orders/localStorage
+   * and has no server row behind it — approving such a card cannot be recorded
+   * anywhere, which is why `commitApproval` refuses rather than pretending.
+   */
+  source?: 'server' | 'derived'
+}
+
+/**
+ * Server action types the card bodies know how to render. `custom` is a valid
+ * gateway type but has no branch below, so it would render a header with an
+ * empty expansion; it is filtered out rather than shown as a dead card.
+ */
+const RENDERABLE_SERVER_TYPES = new Set<ActionItem['type']>([
+  'low_stock',
+  'price_change',
+  'delivery_confirm',
+  'inequality',
+  'vintage_sub',
+  'stock_receipt',
+  'gmail_send',
+  'gmail_contextual',
+])
+
+/**
+ * Raised when a card promises an effect the backend has no way to perform.
+ * Distinguished from a network failure so the UI can say "this cannot be done
+ * from here" rather than "try again".
+ */
+class UnsupportedActionError extends Error {}
+
+/** Gateway priorities include `low`, which this UI does not have a tier for. */
+function toUiPriority(priority: unknown): ActionItem['priority'] {
+  return priority === 'critical' || priority === 'high' ? priority : 'medium'
+}
+
+/** Map a `one_tap_actions` row (OneTapActionResponseDto) onto a card. */
+function mapServerAction(row: any): ActionItem | null {
+  if (!row?.id || !RENDERABLE_SERVER_TYPES.has(row.actionType)) return null
+  return {
+    id: row.id,
+    type: row.actionType,
+    priority: toUiPriority(row.priority),
+    title: row.title || 'Action',
+    subtitle: row.description || '',
+    details: row.metadata || {},
+    timestamp: new Date(row.createdAt || Date.now()),
+    source: 'server',
+  }
 }
 
 // Helper function to add a new action (can be called from anywhere)
@@ -414,49 +470,83 @@ export function OneTapActionCenter() {
   const restaurantId = useAuthStore(state => state.activeRestaurantId)
   
   // Realtime dispatch for cross-page sync
-  const { dispatchInventoryUpdate, dispatchOrderUpdate } = useRealtimeDispatch()
+  // `dispatchOrderUpdate` was used to announce an order that had never been
+  // created — it broadcast a fabricated `ORD-<timestamp>` id to every listening
+  // page. Nothing here creates orders any more, so nothing announces them.
+  const { dispatchInventoryUpdate } = useRealtimeDispatch()
 
-  // Fetch orders from API and regenerate actions
+  // The poll effect below must not key off `libraryWines` / `lowStockItems`
+  // directly: both are rebuilt on every render (`mapApiWinesToUiWines(...)` and
+  // `lowStockQuery.data || []` each return a fresh array), so an effect that
+  // depends on their identity re-subscribes every render, and its own
+  // `setActions` — which always produces a new array — schedules the next
+  // render. That is an unbounded fetch loop, not a 60-second poll. Depend on
+  // stable primitives derived from the data; read the data itself off refs.
+  const winesRef = useRef(libraryWines)
+  winesRef.current = libraryWines
+  const lowStockRef = useRef(lowStockItems)
+  lowStockRef.current = lowStockItems
+  const winesKey = libraryWines.length
+  const lowStockKey = useMemo(
+    () => lowStockItems.map((i: any) => `${i.wineId}:${i.stockLive}:${i.shadowStock ?? 0}`).join('|'),
+    [lowStockItems],
+  )
+
+  // Fetch orders and server-side one-tap actions, then regenerate the list.
+  //
+  // `getOneTapActions` had no callers anywhere in the app, so the gateway's
+  // `one_tap_actions` rows were invisible and the only cards on screen were the
+  // ones this component derived locally. Those derived cards have no server row,
+  // which is why approving them could not be recorded — see `commitApproval`.
   useEffect(() => {
     if (!restaurantId) return
-    
+
     const fetchOrders = async () => {
       setOrdersLoading(true)
       try {
-        // Fetch both pending orders and recent in-transit orders
-        const [pendingOrders, allOrders] = await Promise.all([
+        // Fetch pending orders, recent in-transit orders, and server actions
+        const [pendingOrders, allOrders, serverRows] = await Promise.all([
           getOrdersNeedingApproval(restaurantId).catch(() => [] as Order[]),
-          getOrders({ status: 'ordered' as OrderStatus }, restaurantId).catch(() => [] as Order[])
+          getOrders({ status: 'ordered' as OrderStatus }, restaurantId).catch(() => [] as Order[]),
+          getOneTapActions(restaurantId).catch(() => [] as any[]),
         ])
-        
+
         // Combine and dedupe
         const combinedOrders = [...pendingOrders, ...allOrders]
         const uniqueOrders = combinedOrders.filter(
           (order, index, self) => self.findIndex(o => o.id === order.id) === index
         )
-        
+
+        const serverActions = (serverRows || [])
+          .filter((row: any) => row?.status === 'pending' || row?.status === 'in_progress')
+          .map(mapServerAction)
+          .filter((a): a is ActionItem => a !== null)
+
         // Always regenerate from real data — this also clears any duplicated entries
         // that may have accumulated in localStorage across sessions.
-        const newActions = generateRealActions(libraryWines, lowStockItems, uniqueOrders)
+        const derivedActions = generateRealActions(winesRef.current, lowStockRef.current, uniqueOrders)
+        const newActions = [...serverActions, ...derivedActions]
         setActions(prev => {
           const autoIds = new Set(newActions.map(a => a.id))
-          const userCreatedActions = prev.filter(a => !autoIds.has(a.id))
+          // Drop stale server cards: a row the server no longer lists as open
+          // was executed or cancelled elsewhere and must not linger here.
+          const userCreatedActions = prev.filter(a => !autoIds.has(a.id) && a.source !== 'server')
           return [...newActions, ...userCreatedActions].slice(0, MAX_PERSISTED_ACTIONS)
         })
       } catch (error) {
-        console.warn('[OneTapActions] Failed to fetch orders from API:', error)
+        console.warn('[OneTapActions] Failed to fetch actions from API:', error)
         // Keep using existing actions (localStorage fallback already happened)
       } finally {
         setOrdersLoading(false)
       }
     }
-    
+
     fetchOrders()
-    
+
     // Refresh every 60 seconds
     const interval = setInterval(fetchOrders, 60000)
     return () => clearInterval(interval)
-  }, [restaurantId, libraryWines, lowStockItems])
+  }, [restaurantId, winesKey, lowStockKey])
   
   // **NEW: Efficiency Features**
   const [selectedActions, setSelectedActions] = useState<Set<string>>(new Set())
@@ -538,158 +628,145 @@ export function OneTapActionCenter() {
     }
   }
 
-  const handleApprove = async (action: ActionItem) => {
-    setProcessingAction(action.id)
-    
-    try {
-      // Real effects based on action type
-      switch (action.type) {
-        case 'stock_receipt':
-          // Move shadow stock to live stock
-          if (action.wine) {
-            dispatchInventoryUpdate({
-              type: 'stock_change',
-              wineId: action.wine.id,
-              wineName: action.wine.name,
-              quantity: action.details.quantity,
-              source: 'reconciliation',
-              timestamp: new Date().toISOString(),
-              metadata: {
-                stockType: 'live',
-                action: 'shadow_to_live',
-                orderId: action.details.orderId,
-                cost: action.details.cost,
-                provider: action.details.supplier
-              }
-            })
-            
-            // Clear shadow stock for this wine
-            try {
-              const shadowData = localStorage.getItem(SHADOW_STOCK_KEY)
-              if (shadowData) {
-                const shadow = JSON.parse(shadowData)
-                delete shadow[action.wine.id]
-                localStorage.setItem(SHADOW_STOCK_KEY, JSON.stringify(shadow))
-              }
-            } catch {
-    /* ignore localStorage read failures */
+  /** Put an optimistically-removed card back, preserving list order rules. */
+  const restoreAction = (action: ActionItem) => {
+    setActions(prev =>
+      prev.some(a => a.id === action.id) ? prev : [action, ...prev].slice(0, MAX_PERSISTED_ACTIONS)
+    )
   }
-          }
-          break
-          
-        case 'low_stock':
-          // Create a reorder - dispatch order created event
-          if (action.wine) {
-            dispatchOrderUpdate({
-              type: 'created',
-              orderId: `ORD-${Date.now()}`,
-              wineId: action.wine.id,
-              quantity: action.details.suggestedOrder,
-              providerId: action.wine.provider.name,
-              timestamp: new Date().toISOString()
-            })
-            
-            // Store in orders history
-            try {
-              const ordersData = localStorage.getItem(PENDING_ORDERS_KEY)
-              const orders = ordersData ? JSON.parse(ordersData) : []
-              orders.unshift({
-                id: `ORD-${Date.now()}`,
-                wineId: action.wine.id,
-                wineName: action.wine.name,
-                quantity: action.details.suggestedOrder,
-                unitPrice: action.wine.price,
-                totalPrice: action.details.estimatedPrice,
-                providerId: action.wine.provider.name,
-                providerName: action.wine.provider.name,
-                status: 'pending',
-                createdAt: new Date().toISOString(),
-                wineType: action.wine.type
-              })
-              localStorage.setItem(PENDING_ORDERS_KEY, JSON.stringify(orders))
-            } catch {
-    /* ignore localStorage read failures */
+
+  const failureMessage = (error: unknown, fallback: string) => {
+    const status = (error as { response?: { status?: number } })?.response?.status
+    if (status === 401 || status === 403) return 'Your session no longer has access to this action.'
+    if (status === 404) return 'That action no longer exists on the server.'
+    return (error as Error)?.message || fallback
   }
-          }
-          break
-          
-        case 'delivery_confirm':
-          // Mark order as delivered, add to shadow stock
-          if (action.wine) {
-            dispatchInventoryUpdate({
-              type: 'stock_change',
-              wineId: action.wine.id,
-              wineName: action.wine.name,
-              quantity: action.details.expectedQty,
-              source: 'order_delivery',
-              timestamp: new Date().toISOString(),
-              metadata: {
-                stockType: 'shadow',
-                cost: action.details.negotiatedPrice,
-                provider: action.details.supplier
-              }
-            })
-          }
-          break
-          
-        case 'price_change':
-          // Accept the new price - update order
-          console.log('Price accepted:', action.details.counterPrice)
-          break
-          
-        case 'inequality':
-          // Acknowledge inequality and schedule physical count
-          console.log('Inequality acknowledged, scheduling count')
-          break
-          
-        case 'vintage_sub':
-          // Accept vintage substitution
-          console.log('Vintage substitution accepted')
-          break
+
+  /**
+   * Perform the approval against the server and report what actually happened.
+   *
+   * Every branch here either calls a real endpoint or throws. There is no path
+   * that returns success without a server write — the previous implementation
+   * had exactly that, fabricating `ORD-<timestamp>` ids into localStorage and
+   * resolving a 300ms timer, so the card vanished and the user believed an order
+   * had been placed when nothing had left the browser.
+   */
+  const commitApproval = async (action: ActionItem): Promise<string> => {
+    // Cards backed by a real `one_tap_actions` row: the gateway records the
+    // execution against the authenticated user and broadcasts it.
+    if (action.source === 'server') {
+      await executeOneTapAction(action.id, restaurantId || undefined)
+      return 'Action executed'
+    }
+
+    // Locally-derived delivery cards carry the real procurement order id
+    // (`details.orderId` is only set on the branch fed by the orders API), so
+    // confirming receipt maps onto POST /procurement/orders/:id/deliver.
+    if (action.type === 'delivery_confirm' && typeof action.details?.orderId === 'string' && action.details.orderId) {
+      await markOrderDelivered(action.details.orderId, undefined, restaurantId || undefined)
+      if (action.wine) {
+        dispatchInventoryUpdate({
+          type: 'stock_change',
+          wineId: action.wine.id,
+          wineName: action.wine.name,
+          quantity: action.details.expectedQty,
+          source: 'order_delivery',
+          timestamp: new Date().toISOString(),
+          metadata: {
+            stockType: 'shadow',
+            orderId: action.details.orderId,
+            cost: action.details.negotiatedPrice,
+            provider: action.details.supplier,
+          },
+        })
       }
-      
-      // Small delay for visual feedback
-      await new Promise(resolve => setTimeout(resolve, 300))
-      
-      // Remove action from list
-      setActions(prev => prev.filter(a => a.id !== action.id))
-      
+      return 'Delivery confirmed'
+    }
+
+    // Everything below is derived client-side and has no endpoint that performs
+    // what the button says, so refusing is the honest outcome.
+    //
+    // `low_stock` would need POST /procurement/orders, which requires a
+    // `providerId` and a real `unitPrice`. Neither exists on this card: the UI
+    // wine's `provider` is a name-only object synthesised from the static
+    // `providerData` list when the record has no `provider_info`, and
+    // `details.estimatedPrice` is derived from that same synthetic price.
+    //
+    // `stock_receipt` is generated purely from the `wineops_shadow_stock`
+    // localStorage key, so there is no server-side lot to move; the real
+    // shadow-to-live path is POST /procurement/orders/:id/verify-receipt, which
+    // needs an invoice and lives in Receiving.
+    if (action.type === 'low_stock') {
+      throw new UnsupportedActionError(
+        'Reorders cannot be placed from here — this card carries no vendor id or agreed price. Create the order in Orders.'
+      )
+    }
+    if (action.type === 'stock_receipt') {
+      throw new UnsupportedActionError(
+        'Moving shadow stock to live stock is a receiving step — do it in Receiving so the invoice is matched.'
+      )
+    }
+    throw new UnsupportedActionError('This action has no server-side counterpart yet.')
+  }
+
+  /**
+   * Cancel/dismiss. Server-backed cards are cancelled on the server so the
+   * rejection is auditable; derived cards are only ever a local dismissal and
+   * say so, rather than implying something was sent to a vendor.
+   */
+  const commitRejection = async (action: ActionItem): Promise<string> => {
+    if (action.source === 'server') {
+      await cancelOneTapAction(action.id, restaurantId || undefined)
+      return 'Action cancelled'
+    }
+    if (action.type === 'delivery_confirm') {
+      throw new UnsupportedActionError(
+        'There is no endpoint that reports a delivery problem. Open the order and record the discrepancy in Receiving.'
+      )
+    }
+    return 'Dismissed here — nothing was sent'
+  }
+
+  const runAction = async (
+    action: ActionItem,
+    commit: (a: ActionItem) => Promise<string>,
+    fallbackError: string,
+  ) => {
+    if (processingAction) return
+    setProcessingAction(action.id)
+    // Optimistic: the card goes immediately, and comes straight back if the
+    // server refuses. A failed call must never look like a success.
+    setActions(prev => prev.filter(a => a.id !== action.id))
+
+    try {
+      const message = await commit(action)
+      toast.success(message)
     } catch (error) {
-      console.error('Error processing action:', error)
+      restoreAction(action)
+      if (error instanceof UnsupportedActionError) {
+        toast.error(error.message)
+      } else {
+        console.error('[OneTapActions] action failed:', error)
+        toast.error(failureMessage(error, fallbackError))
+      }
     } finally {
       setProcessingAction(null)
     }
   }
 
-  const handleReject = async (action: ActionItem) => {
-    setProcessingAction(action.id)
-    
-    try {
-      // Real effects for rejection based on action type
-      switch (action.type) {
-        case 'low_stock':
-          // Mark as acknowledged but don't reorder
-          console.log('Reorder rejected for:', action.wine?.name)
-          break
-          
-        case 'delivery_confirm':
-          // Reject delivery - needs investigation
-          console.log('Delivery rejected, flagging for investigation')
-          break
-          
-        case 'price_change':
-          // Reject price - continue negotiation
-          console.log('Price rejected, continuing negotiation')
-          break
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 200))
-      setActions(prev => prev.filter(a => a.id !== action.id))
-      
-    } finally {
-      setProcessingAction(null)
+  const handleApprove = (action: ActionItem) => {
+    // A Gmail card is a launcher, not an approval — its "tick" opens the
+    // composer. It must not be routed through the server-commit path, which
+    // would (correctly) refuse it.
+    if (action.type === 'gmail_send' || action.type === 'gmail_contextual') {
+      handleGmailAction(action)
+      return Promise.resolve()
     }
+    return runAction(action, commitApproval, 'Could not complete that action.')
   }
+
+  const handleReject = (action: ActionItem) =>
+    runAction(action, commitRejection, 'Could not dismiss that action.')
 
   const handleGmailAction = (action: ActionItem) => {
     if (action.type === 'gmail_send') {
@@ -705,13 +782,32 @@ export function OneTapActionCenter() {
     }
   }
 
-  const handleStockCorrection = async (action: ActionItem, _correction: number) => {
-    setProcessingAction(action.id)
-    await new Promise(resolve => setTimeout(resolve, 800))
-    setActions(prev => prev.filter(a => a.id !== action.id))
-    setProcessingAction(null)
-    // In real app: update inventory with correction
-  }
+  /**
+   * "+6 bottles" / "+1 case" on an inequality card.
+   *
+   * A server-backed card records the chosen correction as the action's
+   * `execution_result`, which is what `ExecuteActionDto.result` is for. Note
+   * this does NOT move stock — the gateway's `triggerWorkflow` is a log line for
+   * every action type — so the toast says "recorded", not "applied".
+   *
+   * A derived card has nowhere to record it at all and is refused.
+   */
+  const handleStockCorrection = (action: ActionItem, correction: number) =>
+    runAction(
+      action,
+      async (a) => {
+        if (a.source !== 'server') {
+          throw new UnsupportedActionError(
+            'This count correction has no server record to write to. Adjust the count in Inventory.'
+          )
+        }
+        await executeOneTapAction(a.id, restaurantId || undefined, {
+          correctionBottles: correction,
+        })
+        return `Correction of +${correction} recorded`
+      },
+      'Could not record that correction.',
+    )
 
   const formatTimeAgo = (date: Date) => {
     const mins = Math.floor((Date.now() - date.getTime()) / 60000)
@@ -743,17 +839,45 @@ export function OneTapActionCenter() {
   }, [actions, priorityFilter, typeFilter, snoozedIds])
 
   // **NEW: Batch Actions**
+  //
+  // This used to sleep 1500ms and then delete every selected card, which was the
+  // single-card fabrication multiplied by the selection size. It now approves
+  // each card through the same server path and reports the real split; cards
+  // that failed stay on screen.
   const handleBatchApprove = async () => {
-    if (selectedActions.size === 0) return
+    if (selectedActions.size === 0 || processingAction) return
     setProcessingAction('batch')
-    
-    // Simulate batch processing
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    
-    setActions(prev => prev.filter(a => !selectedActions.has(a.id)))
-    setSelectedActions(new Set())
+
+    const targets = actions.filter(a => selectedActions.has(a.id))
+    const succeeded: string[] = []
+    const failures: string[] = []
+
+    for (const action of targets) {
+      try {
+        await commitApproval(action)
+        succeeded.push(action.id)
+      } catch (error) {
+        failures.push(
+          error instanceof UnsupportedActionError
+            ? `${action.title}: ${error.message}`
+            : `${action.title}: ${failureMessage(error, 'failed')}`,
+        )
+      }
+    }
+
+    // Only the cards the server actually accepted leave the list.
+    setActions(prev => prev.filter(a => !succeeded.includes(a.id)))
+    setSelectedActions(new Set(failures.length > 0 ? targets.filter(t => !succeeded.includes(t.id)).map(t => t.id) : []))
     setProcessingAction(null)
-    setBatchMode(false)
+    if (failures.length === 0) {
+      setBatchMode(false)
+      toast.success(`${succeeded.length} action${succeeded.length === 1 ? '' : 's'} executed`)
+    } else {
+      if (succeeded.length > 0) toast.success(`${succeeded.length} executed`)
+      toast.error(
+        failures.length === 1 ? failures[0] : `${failures.length} could not be completed — see the remaining cards`,
+      )
+    }
   }
 
   const toggleActionSelection = (actionId: string) => {
@@ -1146,18 +1270,20 @@ export function OneTapActionCenter() {
                       {!isExpanded && !isProcessing && (
                         <div className="flex items-center gap-2">
                           <button
+                            aria-label={`Approve: ${action.title}`}
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleApprove(action)
+                              void handleApprove(action)
                             }}
                             className="p-2 bg-emerald-100 text-emerald-600 rounded-lg hover:bg-emerald-200 transition-colors"
                           >
                             <Check className="w-5 h-5" />
                           </button>
                           <button
+                            aria-label={`Dismiss: ${action.title}`}
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleReject(action)
+                              void handleReject(action)
                             }}
                             className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
                           >

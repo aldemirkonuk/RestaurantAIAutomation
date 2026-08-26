@@ -61,8 +61,7 @@ import {
 } from '../utils/volumeUtils';
 import { cn } from '../lib/utils';
 import { ServicesPermissions } from '../components/settings/ServicesPermissions';
-
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000';
+import { apiClient, getErrorMessage } from '../services/api/client';
 
 interface TeamMemberRow {
   user_id: string;
@@ -143,6 +142,7 @@ const categoryLabels: Record<string, string> = {
 function CalendarSubscriptionSection() {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tokenError, setTokenError] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
 
   const fullFeedUrl = token
@@ -154,16 +154,13 @@ function CalendarSubscriptionSection() {
   }, []);
 
   async function fetchToken() {
+    setTokenError(null);
     try {
-      const accessToken = localStorage.getItem('accessToken');
-      const res = await fetch(`${API_URL}/api/v1/calendar/ical-token`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (!res.ok) throw new Error('Failed to fetch token');
-      const data = await res.json();
+      const { data } = await apiClient.get<{ token: string }>('/calendar/ical-token');
       setToken(data.token);
-    } catch {
-      // silently fail — show empty state
+    } catch (e) {
+      // Silently showing the empty state read as "no feed configured".
+      setTokenError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -173,13 +170,9 @@ function CalendarSubscriptionSection() {
     if (!confirm('Regenerating the token will break all existing calendar subscriptions. Continue?')) return;
     setRegenerating(true);
     try {
-      const accessToken = localStorage.getItem('accessToken');
-      const res = await fetch(`${API_URL}/api/v1/calendar/ical-token/regenerate`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (!res.ok) throw new Error('Failed to regenerate token');
-      const data = await res.json();
+      const { data } = await apiClient.post<{ token: string }>(
+        '/calendar/ical-token/regenerate',
+      );
       setToken(data.token);
       toast.success('Token regenerated. Update your calendar subscription URL.');
     } catch {
@@ -206,6 +199,17 @@ function CalendarSubscriptionSection() {
       <p className="text-sm text-gray-600">
         Subscribe to your WineOps calendar in Outlook, Apple Calendar, or Google Calendar using the URL below. No login required — the URL includes a secure token.
       </p>
+      {tokenError && (
+        <div className="text-sm text-red-700">
+          Couldn't load your subscription URL — {tokenError}
+          <button
+            onClick={() => void fetchToken()}
+            className="ml-1 font-medium underline hover:no-underline"
+          >
+            Retry
+          </button>
+        </div>
+      )}
       {fullFeedUrl && (
         <div className="flex items-center gap-2">
           <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700 font-mono truncate">
@@ -512,13 +516,9 @@ function ChainTreeNode({ chain, locationCount, onRenamed, onDeleted }: ChainTree
     if (!draftName.trim() || draftName.trim() === chain.name) { setRenaming(false); return; }
     setSaving(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      const resp = await fetch(`${API_URL}/api/v1/organizations/chains/${chain.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ name: draftName.trim() }),
+      await apiClient.patch(`/organizations/chains/${chain.id}`, {
+        name: draftName.trim(),
       });
-      if (!resp.ok) throw new Error();
       onRenamed(chain.id, draftName.trim());
       toast.success('Chain renamed');
     } catch {
@@ -533,12 +533,7 @@ function ChainTreeNode({ chain, locationCount, onRenamed, onDeleted }: ChainTree
   const handleDelete = async () => {
     setSaving(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      const resp = await fetch(`${API_URL}/api/v1/organizations/chains/${chain.id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!resp.ok) throw new Error();
+      await apiClient.delete(`/organizations/chains/${chain.id}`);
       onDeleted(chain.id);
       toast.success(`"${chain.name}" deleted`);
     } catch {
@@ -761,31 +756,28 @@ export default function Settings() {
       setPendingInvites([]);
       return;
     }
-    const token = localStorage.getItem('accessToken');
-    if (!token) return;
+    if (!localStorage.getItem('accessToken')) return;
     setTeamLoading(true);
     try {
-      const headers = { Authorization: `Bearer ${token}` };
-      const memRes = await fetch(
-        `${API_URL}/api/v1/restaurants/${activeRestaurantId}/members`,
-        { headers },
+      const { data: members } = await apiClient.get(
+        `/restaurants/${activeRestaurantId}/members`,
       );
-      const members = memRes.ok ? await memRes.json() : [];
       setTeamMembers(Array.isArray(members) ? members : []);
 
       const canSeeInvites = effectiveRole === 'owner' || effectiveRole === 'manager';
       if (canSeeInvites) {
-        const invRes = await fetch(
-          `${API_URL}/api/v1/restaurants/${activeRestaurantId}/invites`,
-          { headers },
+        const { data: invites } = await apiClient.get(
+          `/restaurants/${activeRestaurantId}/invites`,
         );
-        const invites = invRes.ok ? await invRes.json() : [];
         setPendingInvites(Array.isArray(invites) ? invites : []);
       } else {
         setPendingInvites([]);
       }
-    } catch {
-      toast.error('Failed to load team');
+    } catch (e) {
+      // Previously a failed members call fell through to an empty roster.
+      setTeamMembers([]);
+      setPendingInvites([]);
+      toast.error(`Failed to load team — ${getErrorMessage(e)}`);
     } finally {
       setTeamLoading(false);
     }
@@ -801,27 +793,15 @@ export default function Settings() {
   ) => {
     if (!activeRestaurantId) return;
     try {
-      const token = localStorage.getItem('accessToken');
-      const resp = await fetch(
-        `${API_URL}/api/v1/restaurants/${activeRestaurantId}/members/${memberUserId}`,
-        {
-          method: 'PATCH',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ role: newRole }),
-        },
+      await apiClient.patch(
+        `/restaurants/${activeRestaurantId}/members/${memberUserId}`,
+        { role: newRole },
       );
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        throw new Error(data.message || 'Could not update role');
-      }
       toast.success('Role updated');
       await loadTeam();
       await refreshBranches();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not update role');
+      toast.error(getErrorMessage(e));
     }
   };
 
@@ -838,51 +818,36 @@ export default function Settings() {
       return;
     }
     try {
-      const token = localStorage.getItem('accessToken');
-      const resp = await fetch(
-        `${API_URL}/api/v1/restaurants/${activeRestaurantId}/members/${memberUserId}`,
-        { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
+      await apiClient.delete(
+        `/restaurants/${activeRestaurantId}/members/${memberUserId}`,
       );
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        throw new Error(data.message || 'Could not remove member');
-      }
       toast.success(isSelf ? 'You left this restaurant' : 'Member removed');
       await loadTeam();
       await refreshBranches();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not remove member');
+      toast.error(getErrorMessage(e));
     }
   };
 
   const handleRevokeInvite = async (code: string) => {
     if (!activeRestaurantId || !confirm('Revoke this invite link?')) return;
     try {
-      const token = localStorage.getItem('accessToken');
-      const resp = await fetch(
-        `${API_URL}/api/v1/restaurants/${activeRestaurantId}/invites/${encodeURIComponent(code)}`,
-        { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
+      await apiClient.delete(
+        `/restaurants/${activeRestaurantId}/invites/${encodeURIComponent(code)}`,
       );
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        throw new Error(data.message || 'Could not revoke invite');
-      }
       toast.success('Invite revoked');
       await loadTeam();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not revoke invite');
+      toast.error(getErrorMessage(e));
     }
   };
 
   useEffect(() => {
     if (user?.role !== 'owner') return;
-    const token = localStorage.getItem('accessToken');
-    fetch(`${API_URL}/api/v1/organizations/chains`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.ok ? r.json() : [])
-      .then((data) => setChainsList(Array.isArray(data) ? data.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })) : []))
-      .catch(() => {});
+    apiClient
+      .get('/organizations/chains')
+      .then(({ data }) => setChainsList(Array.isArray(data) ? data.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })) : []))
+      .catch((e) => toast.error(`Couldn't load chains — ${getErrorMessage(e)}`));
   }, [user?.role]);
 
   useEffect(() => { setLocationsList(availableRestaurants); }, [availableRestaurants]);

@@ -104,7 +104,7 @@ mechanism-level trace the neural-footprint definition asks for.
 ### Two rows converged all the way to code — the pipeline works
 
 - **038** `inventory-command` → *IMPLEMENTED — `apps/web/src/pages/inventory/command/`*
-  (route `/inventory`, legacy at `/inventory-legacy`)
+  (route `/inventory`; the legacy page was retired 2026-08-26)
 - **052** `wineops-document` → *IMPLEMENTED (document) —
   `scripts/docgen/templates/wineops_document.html`*; role views not built
 

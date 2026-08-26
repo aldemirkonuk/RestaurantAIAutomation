@@ -1,6 +1,11 @@
 /**
  * useOrdersMetrics Hook
- * Aggregates order data for reports and dashboards
+ * Aggregates PURCHASE-order data for reports and dashboards.
+ *
+ * Every money figure in here is procurement spend — what the restaurant PAYS
+ * its vendors, read from `procurement_orders` via `ordersApi`. It is not sales
+ * revenue and must never be labelled as such: sales revenue lives in
+ * `pos_checks` and is not fetched by this hook.
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
@@ -42,8 +47,11 @@ interface OrderMetrics {
   // Time-based metrics
   ordersThisMonth: number
   ordersLastMonth: number
-  revenueThisMonth: number
-  revenueLastMonth: number
+  /** Money paid to vendors this calendar month (procurement spend, not revenue). */
+  spendThisMonth: number
+  /** Money paid to vendors last calendar month (procurement spend, not revenue). */
+  spendLastMonth: number
+  /** Month-over-month change in vendor SPEND. Positive means costs rose. */
   monthOverMonthGrowth: number
   
   // Wine type distribution
@@ -76,6 +84,11 @@ interface OrderMetrics {
     date: string
     orders: number
     bottles: number
+    /**
+     * Vendor spend for the day, NOT revenue. The name is retained only because
+     * `pages/dashboard/useDashboardPage.ts` types this shape structurally and
+     * that file is owned elsewhere; rename both together.
+     */
     revenue: number
   }>
 }
@@ -223,10 +236,10 @@ export function useOrdersMetrics() {
     // Time-based metrics
     const ordersThisMonth = thisMonthOrders.length
     const ordersLastMonth = lastMonthOrders.length
-    const revenueThisMonth = thisMonthOrders.reduce((sum, o) => sum + o.totalPrice, 0)
-    const revenueLastMonth = lastMonthOrders.reduce((sum, o) => sum + o.totalPrice, 0)
-    const monthOverMonthGrowth = revenueLastMonth > 0 
-      ? ((revenueThisMonth - revenueLastMonth) / revenueLastMonth) * 100 
+    const spendThisMonth = thisMonthOrders.reduce((sum, o) => sum + o.totalPrice, 0)
+    const spendLastMonth = lastMonthOrders.reduce((sum, o) => sum + o.totalPrice, 0)
+    const monthOverMonthGrowth = spendLastMonth > 0
+      ? ((spendThisMonth - spendLastMonth) / spendLastMonth) * 100
       : 0
 
     // Wine type distribution
@@ -305,8 +318,8 @@ export function useOrdersMetrics() {
       cancelledOrders,
       ordersThisMonth,
       ordersLastMonth,
-      revenueThisMonth,
-      revenueLastMonth,
+      spendThisMonth,
+      spendLastMonth,
       monthOverMonthGrowth,
       ordersByWineType,
       topOrderedWines,

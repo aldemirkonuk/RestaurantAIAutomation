@@ -83,9 +83,7 @@ function InsightTile({
 }
 
 export function HeadlineInsightsBar({ onSeeDetails, className = '' }: HeadlineInsightsBarProps) {
-  const { insights, loading, error } = useEngineInsights({ limit: 12 })
-
-  if (error) return null
+  const { insights, loading, error, refresh } = useEngineInsights({ limit: 12 })
 
   const top = insights.slice(0, 3)
   const hero = top[0]
@@ -125,6 +123,19 @@ export function HeadlineInsightsBar({ onSeeDetails, className = '' }: HeadlineIn
           <div className="h-12 bg-gray-100 rounded-lg animate-pulse hidden lg:block" />
           <div className="h-12 bg-gray-100 rounded-lg animate-pulse hidden lg:block" />
         </div>
+      ) : error ? (
+        /* The bar used to vanish entirely on failure, which read as "nothing
+           to say" rather than "we couldn't ask". */
+        <p className="text-sm text-red-700">
+          Couldn't load insights — {error}
+          <button
+            type="button"
+            onClick={() => void refresh(false)}
+            className="ml-1 font-medium underline hover:no-underline"
+          >
+            Retry
+          </button>
+        </p>
       ) : !hero ? (
         <p className="text-sm text-gray-500">
           No standout patterns yet — conclusions appear as sales, pours, and orders add up.

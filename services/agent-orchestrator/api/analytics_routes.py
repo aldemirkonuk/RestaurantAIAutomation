@@ -20,8 +20,10 @@ import uuid
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from api.auth import verify_admin_key
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +74,10 @@ def _get_supabase():
 
 
 @router.get("/wine/{wine_id}/scores", response_model=WineScoresResponse)
-async def get_wine_scores(wine_id: str) -> WineScoresResponse:
+async def get_wine_scores(
+    wine_id: str,
+    _key: str = Depends(verify_admin_key),
+) -> WineScoresResponse:
     """
     CRIT-07: Return aggregated critic scores, composite score, retail price, and
     per-restaurant markup ratios for a wine.
@@ -213,6 +218,7 @@ _PERIOD_MAP = {"30d": 30, "60d": 60, "90d": 90}
 async def get_trends(
     metro: Optional[str] = None,
     period: str = "90d",
+    _key: str = Depends(verify_admin_key),
 ) -> TrendsResponse:
     """
     TEMP-07: Return velocity-ranked trending wines.
@@ -380,7 +386,10 @@ async def get_trends(
 
 
 @router.get("/wine/{wine_id}/timeline", response_model=WineTimelineResponse)
-async def get_wine_timeline(wine_id: str) -> WineTimelineResponse:
+async def get_wine_timeline(
+    wine_id: str,
+    _key: str = Depends(verify_admin_key),
+) -> WineTimelineResponse:
     """
     TEMP-08: Return full temporal lifecycle of a wine across all restaurants.
 

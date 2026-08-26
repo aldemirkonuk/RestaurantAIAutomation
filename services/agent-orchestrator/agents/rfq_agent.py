@@ -460,8 +460,25 @@ Respond with valid JSON only."""
                 messages=[{"role": "user", "content": prompt}],
             )
             text = "".join(b.text for b in response.content if b.type == "text")
+            _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
 
-            # P1: previously an unlogged model call (dark site)
+            # OD-75: the parse runs FIRST so the outcome can report whether the
+            # completion was usable. Logging above it graded prose as a completed
+            # task — `success` on a row that only proved the call returned 200.
+            #
+            # Anthropic has no response_mime_type, so JSON can arrive wrapped in
+            # prose; a parse failure degrades to the regex fallback below.
+            _parsed: Optional[Dict[str, Any]] = None
+            _parse_failed = False
+            try:
+                _m = re.search(r"\{.*\}", text, re.DOTALL)
+                _parsed = json.loads(_m.group() if _m else text)
+            except (json.JSONDecodeError, ValueError) as exc:
+                _parse_failed = True
+                self.logger.warning(f"RFQ response parse failed: {exc}")
+
+            # P1: previously an unlogged model call (dark site).
+            # Emitted on BOTH paths — the tokens were spent before the parse ran.
             try:
                 from services.spend_logger import estimate_llm_cost, get_spend_logger
 
@@ -475,17 +492,21 @@ Respond with valid JSON only."""
                     cost_usd=estimate_llm_cost(self.llm_model, _in, _out),
                     agent=self.agent_name,
                     task_type="rfq_response_parse",
-                    outcome="success",  # call-level: response returned
-                    duration_ms=int((time.perf_counter() - _t0) * 1000),
+                    choice="quote:parse_failed" if _parse_failed else "quote:parsed",
+                    outcome="partial" if _parse_failed else "success",
+                    duration_ms=_elapsed_ms,
                     correlation_id=getattr(self, "_current_correlation_id", None),
+                    context={
+                        "outcome_basis": "parse_v1",
+                        "parse_failed": _parse_failed,
+                    },
                 )
             except Exception:
                 pass
 
-            # Anthropic has no response_mime_type, so JSON can arrive wrapped in
-            # prose; the caller's except falls back to regex parsing.
-            _m = re.search(r"\{.*\}", text, re.DOTALL)
-            return json.loads(_m.group() if _m else text)
+            if _parse_failed:
+                return self._fallback_parse_response(response_text)
+            return _parsed
 
         except Exception as e:
             self.logger.error(f"LLM parsing failed: {e}")

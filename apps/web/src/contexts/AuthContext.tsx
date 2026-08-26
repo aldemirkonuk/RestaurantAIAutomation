@@ -369,12 +369,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false
     void (async () => {
       try {
-        const resp = await fetch(
-          `${API_URL}/api/v1/auth/me/role?restaurantId=${encodeURIComponent(tid)}`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        )
-        if (!resp.ok || cancelled) return
-        const data = await resp.json()
+        const { data } = await api.get('/api/v1/auth/me/role', {
+          params: { restaurantId: tid },
+        })
+        if (cancelled) return
         const r = data.role as string | null | undefined
         if (!cancelled && r && ['owner', 'manager', 'staff'].includes(r)) {
           setActiveRole(r as 'owner' | 'manager' | 'staff')

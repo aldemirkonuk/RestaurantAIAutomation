@@ -58,11 +58,25 @@
 
 **Held, needing the founder — the only P2 items not done:**
 
-1. **Page retirements** (ADR 0019 §B): `/calendar-classic`, `/inventory-legacy`,
-   `/wine-agent`, `/wineagent-alias`. Deletion is irreversible and each was
-   made conditional on a parity check, so it waits for an explicit yes.
-   `/inventory-legacy` also still hosts `InvoiceScannerModal`, which posts to
-   an endpoint that does not exist (44.1e) — retiring the page closes that too.
+1. ~~**Page retirements** (ADR 0019 §B)~~ — **resolved 2026-08-26.**
+   `/wine-agent` and `/wineagent` are **retired** (routes, inline
+   `PlaceholderPage`, sidebar item and both page notes deleted; mobile deep-links
+   repointed at `/sommelier`). The parity check the founder attached found working
+   capabilities that existed only on the two legacy pages, so neither was deleted
+   on that pass. `/inventory-legacy` was then **retired 2026-08-26**: Auto-Locate,
+   `MultiLocationCell`'s source-selected transfer, by-the-glass pour, the
+   active/inactive toggle and the realtime inventory subscription were ported onto
+   `/inventory` first, then the route, `pages/Inventory.tsx` and the orphaned
+   `ManualOverrideModal.tsx` were deleted. `/calendar-classic` was **retired
+   2026-08-26** the same way: its one blocker — the only reminders in the product
+   that actually fire — was ported onto `/calendar` first (`syncEventReminders`
+   feeds the same localStorage queue `startReminderScheduler` drains, because the
+   calendar API has no reminder endpoint and nothing server-side reads
+   `reminder_enabled`), then the route, `pages/Calendar.tsx` and the orphaned
+   `NewEventTypeModal.tsx` / `EntityAutocomplete.tsx` were deleted.
+   Details: [ADR 0019](decisions/0019-p2-build-scope.md) §B-parity.
+   The old note that `/inventory-legacy` hosted `InvoiceScannerModal` was **stale**
+   — that component was deleted in `e5402d67` and 44.1e is already closed.
 2. **Gmail push verification** is built but staged open. Set
    `GMAIL_PUBSUB_AUDIENCE` + `GMAIL_PUBSUB_SERVICE_ACCOUNT` on Railway (values
    come from the Pub/Sub subscription — nobody can invent them), then

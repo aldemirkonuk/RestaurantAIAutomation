@@ -7,6 +7,7 @@ audience: owner
 tier: core
 signals_today: none
 rebrand_strings: 0
+maturity: hollow
 status: documented
 updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[reports]]", "[[inventory]]", "[[orders]]", "[[calendar]]", "[[wines]]"]
@@ -117,3 +118,94 @@ Page tree: **0** user-visible strings. Reachable-but-shared:
   row ([ENDPOINTS](../foundation/ENDPOINTS.md):197) still reads "unguarded" and is stale.
 - `v3.0-TECH-DEBT.md:502` — dashboard profile card dead-click claim (L102) is *unverified,
   not confirmed*; the one-tap auth hole it fed is closed (`v3.0-TECH-DEBT.md:409`).
+
+## 10. Maturity
+
+**hollow.**
+
+The read side is genuine — every KPI, alert and activity row is a live Supabase query
+(`dashboard.service.ts:464-556,654-749,854+`). The *action* side is not, and the action
+side is what the page claims to be for ("the actions worth doing first", Sidebar.tsx:63).
+
+| Evidence | `path:line` |
+|---|---|
+| **One-Tap approve writes nothing to the server.** `handleApprove` is a `switch` over action types whose entire effect is a local event dispatch plus a `localStorage` mutation. `low_stock` fabricates an order id `ORD-${Date.now()}` and pushes it into `localStorage`; `stock_receipt` deletes a `localStorage` shadow key; `price_change`, `inequality`, `vintage_sub` are `console.log` only. Then a 300 ms `setTimeout` supplies "visual feedback" and the card is removed. | `components/notifications/OneTapActionCenter.tsx:541-662` |
+| **Reject is entirely `console.log`.** Three cases, three log lines, no call. | `OneTapActionCenter.tsx:664-684` |
+| **The real one-tap backend is built and unconsumed.** `one-tap-actions` is a fully guarded NestJS module with audited execution and WebSocket sync; the web client wraps it (`getOneTapActions`, `executeOneTapAction`) and **no component calls either function** — the only references are the barrel re-export. | `apps/api-gateway/src/one-tap-actions/one-tap-actions.controller.ts:36-50`; `services/api/dashboard.ts:161,183`; `services/api/index.ts:84-85` (sole importers) |
+| **"Total Revenue" is purchase spend.** `totalRevenue`, `todaySales`, `weekSales`, `monthSales` and the sales chart's `revenue` all sum `procurement_orders.total_cost` of **delivered POs** — money paid *out* to distributors — and render under "Total Revenue" / "Revenue Breakdown". `pos_checks` (real sales) is never read by this service. | service `dashboard.service.ts:285-330,529-533,785-792`; labels `pages/Dashboard.tsx:1125,1155,1456` |
+| Guarded, and the §9 note is correct — class-level `JwtAuthGuard` since #60. | `dashboard.controller.ts:51` |
+
+## 11. Data flow
+
+### Calls out
+
+| Method · Path | Auth | Gateway controller | Returns |
+|---|---|---|---|
+| GET `/dashboard/stats/:rid` | JWT (class) | `dashboard.controller.ts:151` → `dashboard.service.ts:464` | wines, bottles, volume, lowStockItems, pendingOrders, today/week/month "sales" (= PO cost) |
+| GET `/dashboard/activity/:rid` | JWT | `:180` → `:557` | merged feed of `procurement_orders`, `events`, `restaurant_inventory` |
+| GET `/dashboard/alerts/:rid` | JWT | `:216` → `:654` | rows from `v_low_stock_items`, `procurement_orders`, `restaurant_inventory` |
+| GET `/dashboard/sales-chart/:rid` | JWT | `:240` → `:751` | buckets of delivered-PO cost + `wine_consumption_log` glasses |
+| GET `/dashboard/calendar-revenue/:rid` | JWT | `:107` → `:380` | per-day join of `calendar_events` × delivered POs |
+| GET `/calendar/events`, `/wines`, `/inventory/:id`(+`/low-stock`,`/summary`), `/procurement/orders/pending` | JWT via `apiClient` | see [[inventory]] §11, [[orders]] §11 | overlay data |
+| GET `/api/v1/calendar/ical-token` | JWT, **raw `fetch` relative to the SPA origin** | `calendar` module | `{ token }`; the copied URL is then built from `window.location.origin`, so on any host that is not the gateway the subscription URL is wrong as well as the request |
+
+### Fed by
+
+| Producer | Mechanism | `path:line` |
+|---|---|---|
+| Purchase orders (the "revenue" number) | manual entry on [[orders]] + `markDelivered` | `procurement.service.ts:903-1038` |
+| `wine_consumption_log` (glasses) | **POS webhook only** — mirrored from a depleting POS sale | `pos-hub/pos-hub.service.ts:685,752` |
+| `v_low_stock_items` | view over `restaurant_inventory`; alert side-effects from the 2-min edge sweep | `notifications/low-stock-alerts.service.ts:85` |
+| `calendar_events` | manual entry + the calendar agent | `services/agent-orchestrator/agents/calendar_agent.py` |
+| One-Tap action feed | **no producer — derived client-side** from wines/inventory/orders and cached in `localStorage` | `OneTapActionCenter.tsx:425-458` |
+
+**Finding:** the One-Tap Action Center's data has no producer and its writes have no
+sink. A restaurant with no POS also has no `wine_consumption_log` producer, so the
+glasses series is structurally empty until pos-hub is connected.
+
+### Writes
+
+| Write | Lands in | Downstream |
+|---|---|---|
+| Approve / reject a one-tap action | `localStorage` (`wineops_*`, `OneTapActionCenter.tsx:80-83`) | nothing — per-browser, invisible to teammates, lost on cache clear |
+| Add important date | `calendar_events` via the calendar modal | calendar strip, `/calendar` |
+| Quick Gmail send | `communications` module | vendor thread on [[orders]] |
+
+## 12. Design intent
+
+**Should be:** the one screen an owner opens first — what happened, what is wrong, and
+the two or three actions worth doing before service, each of which actually happens.
+
+| State | Handled? | Evidence |
+|---|---|---|
+| loading | ✅ | `useDashboardData` loading flags |
+| empty | ⚠️ partial | KPI tiles render `0`/`$0` rather than "no data yet" — indistinguishable from a real zero |
+| error | ❌ | no error branch on the KPI path; a failed stats call renders zeros |
+| permission-denied | ❌ | single owner-shaped layout; no role gate (contrast [[receiving]], which does this properly) |
+
+**Where the UI misleads**
+
+1. **"Total Revenue" is money spent, not money earned** (§10). An owner reading this
+   card is reading their wine *purchasing* and being told it is revenue.
+2. **One-tap success is theatrical** — the card disappears after a 300 ms delay with no
+   request in flight (`OneTapActionCenter.tsx:652-655`). The user has been told an order
+   was placed and a receipt was booked; neither happened.
+3. **Fabricated zeros**: a stats failure and a genuinely empty restaurant render
+   identically.
+
+## 13. Roadmap
+
+1. **Point One-Tap at the server module it already has** — swap `handleApprove`/
+   `handleReject` onto `executeOneTapAction` (`services/api/dashboard.ts:183`) and the
+   feed onto `getOneTapActions`. Highest value on the page: it converts the flagship
+   panel from theatre to fact and deletes three `localStorage` stores. *Blocker: none —
+   the controller, DTOs and WebSocket sync all exist.*
+2. **Rename or re-source the Revenue KPI.** Either label it "Purchasing" (one-line,
+   honest) or read `pos_checks` for actual sales. *Blocker: real revenue needs a POS
+   connection; the label fix does not, and should not wait for it.*
+3. Add an error state to the KPI row so a failed `/dashboard/stats` stops rendering `$0`.
+4. Fix `Dashboard.tsx:267` to use `apiClient` and build the iCal URL from
+   `VITE_API_GATEWAY_URL`, not `window.location.origin` (§9, §11).
+5. Distinguish empty-restaurant from zero — "no orders yet" beats `$0`.
+6. Turn on the uxSignals reporter for this page (§5) once the actions are real; measuring
+   taps on buttons that do nothing measures nothing.

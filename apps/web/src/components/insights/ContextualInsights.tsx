@@ -25,8 +25,7 @@ import {
   Layers,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
-
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:4000";
+import { apiClient, getErrorMessage } from "../../services/api/client";
 
 export type InsightHost = "inventory" | "orders" | "providers";
 
@@ -101,10 +100,10 @@ export function ContextualInsights({
   const { user } = useAuth();
   const restaurantId = user?.restaurantId;
   const cfg = HOST_CONFIG[host];
-  const base = `${API_URL}/api/v1/analytics`;
 
   const [insights, setInsights] = useState<Insight[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(defaultOpen);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [undo, setUndo] = useState<string | null>(null);
@@ -113,19 +112,24 @@ export function ContextualInsights({
   const load = useCallback(async () => {
     if (!restaurantId) return;
     setLoading(true);
+    setError(null);
     try {
-      const [insRes, dispRes] = await Promise.all([
-        fetch(
-          `${base}/insights/${restaurantId}?categories=${cfg.categories.join(",")}&limit=20`,
+      // allSettled, not all: the disposition call failing must not blank the
+      // insight list (fetch never rejected on 4xx — axios does).
+      const [insRes, dispRes] = await Promise.allSettled([
+        apiClient.get(
+          `/analytics/insights/${restaurantId}?categories=${cfg.categories.join(",")}&limit=20`,
         ),
-        fetch(`${base}/recommendations/${restaurantId}/actions?status=all`),
+        apiClient.get(
+          `/analytics/recommendations/${restaurantId}/actions?status=all`,
+        ),
       ]);
 
       const hidden = new Set<string>();
       const pinnedSet = new Set<string>();
-      if (dispRes.ok) {
+      if (dispRes.status === "fulfilled") {
         const now = Date.now();
-        const items: any[] = (await dispRes.json()).items ?? [];
+        const items: any[] = dispRes.value.data?.items ?? [];
         for (const it of items) {
           if (!String(it.ruleKey ?? "").startsWith("insight:")) continue;
           if (it.pinned) pinnedSet.add(it.ruleKey);
@@ -138,8 +142,12 @@ export function ContextualInsights({
         }
       }
 
-      if (insRes.ok) {
-        const body = await insRes.json();
+      if (insRes.status === "rejected") {
+        // Never imply "no insights" when we simply could not ask.
+        throw insRes.reason;
+      }
+      {
+        const body = insRes.value.data ?? {};
         const rows: any[] = body.insights ?? [];
         setAvailable(rows.length > 0 || body.source === "stored");
         let mapped = rows
@@ -175,12 +183,13 @@ export function ContextualInsights({
         );
         setInsights(mapped.slice(0, entityKey ? 4 : 8));
       }
-    } catch {
-      /* additive panel — fail quiet */
+    } catch (e) {
+      setInsights([]);
+      setError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
-  }, [restaurantId, base, cfg.categories, entityKey, entityLabel]);
+  }, [restaurantId, cfg.categories, entityKey, entityLabel]);
 
   useEffect(() => {
     load();
@@ -189,10 +198,8 @@ export function ContextualInsights({
   const action = useCallback(
     async (ins: Insight, patch: Record<string, unknown>) => {
       if (!restaurantId) return;
-      await fetch(`${base}/recommendations/${restaurantId}/action`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+      await apiClient
+        .post(`/analytics/recommendations/${restaurantId}/action`, {
           ruleKey: ins.ruleKey,
           ...patch,
           snapshot: {
@@ -200,10 +207,10 @@ export function ContextualInsights({
             recommendation: ins.sentence,
             category: ins.category,
           },
-        }),
-      }).catch(() => {});
+        })
+        .catch(() => {});
     },
-    [restaurantId, base],
+    [restaurantId],
   );
 
   const dismiss = async (ins: Insight) => {
@@ -214,11 +221,12 @@ export function ContextualInsights({
 
   const restore = async (ruleKey: string) => {
     setUndo(null);
-    await fetch(`${base}/recommendations/${restaurantId}/action`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ruleKey, status: "active" }),
-    }).catch(() => {});
+    await apiClient
+      .post(`/analytics/recommendations/${restaurantId}/action`, {
+        ruleKey,
+        status: "active",
+      })
+      .catch(() => {});
     load();
   };
 
@@ -281,6 +289,17 @@ export function ContextualInsights({
               {[0, 1].map((i) => (
                 <div key={i} className="h-4 bg-gray-100 rounded animate-pulse" style={{ width: `${85 - i * 20}%` }} />
               ))}
+            </div>
+          ) : error ? (
+            /* A failed request must never read as "you have no insights". */
+            <div className="py-3 text-sm text-red-700">
+              Couldn't load insights — {error}
+              <button
+                onClick={() => void load()}
+                className="ml-1 font-medium underline hover:no-underline"
+              >
+                Retry
+              </button>
             </div>
           ) : insights.length === 0 ? (
             /* Taught empty state (NEW-760) — never a blank panel */

@@ -6,15 +6,19 @@ updated: 2026-08-25
 
 # Pages Map — the ecosystem layer
 
-> **50 pages documented** against [[PAGE-CONTRACT]]. Generated summary — regenerate by hand-count or script; Dataview query below is live.
+> **46 pages documented** against [[PAGE-CONTRACT]] (was 50; `/wine-agent`,
+> `/wineagent`, `/inventory-legacy` and `/calendar-classic` retired 2026-08-26,
+> ADR 0019 §B). Generated summary — regenerate by hand-count or script; Dataview
+> query below is live.
 
 **Surface graph (2026-08-25, ADR 0018):** every note now opens with a `## Surface`
 section — the page's buttons, one line each, wikilinked to where they go. **115
-distinct page→page edges** across 50 notes; the Obsidian graph over this folder is
-the interconnection map the founder asked for. 15 pages have no outbound page
-navigation (see findings feed below).
+distinct page→page edges** across the notes; the Obsidian graph over this folder is
+the interconnection map the founder asked for. 13 pages have no outbound page
+navigation (see findings feed below) — the two retired placeholders came off that
+list without being wired.
 
-**Instrumented pages: 0 full · 2 partial · 48 none.**
+**Instrumented pages: 0 full · 2 partial · 46 none.**
 The founder's tracking mandate lands here: page telemetry rides the NF spine (`subject_type: operator`, ADR 0008), and today it is dark — `uxSignals` ships gated off with zero page importers, and 11 `data-ux-key` markers wait for a reporter.
 
 **User-visible WineOps strings across pages: ~71** (shared chrome counted once) — the per-page slice of the rebrand surface, execution held pending brand direction.
@@ -24,7 +28,6 @@ The founder's tracking mandate lands here: page telemetry rides the NF spine (`s
 | `/admin/health` | [[admin-health]] | dev | core | none | 0 |
 | `/admin` | [[admin]] | owner | core | none | 0 |
 | `/authorize/:integrationId` | [[authorize-integration]] | owner | core | none | 3 |
-| `/calendar-classic` | [[calendar-classic]] | owner | core | none | 0 |
 | `/calendar` | [[calendar]] | owner | core | none | 0 |
 | `/communications` | [[communications]] | owner | core | none | 3 |
 | `/credits` | [[credits]] | owner | core | none | 0 |
@@ -35,7 +38,6 @@ The founder's tracking mandate lands here: page telemetry rides the NF spine (`s
 | `/forgot-password` | [[forgot-password]] | public | public | none | 4 |
 | `/get-started` | [[get-started]] | owner | core | partial | 5 |
 | `/help` | [[help]] | owner | core | partial | 4 |
-| `/inventory-legacy` | [[inventory-legacy]] | staff | core | none | 0 |
 | `/inventory` | [[inventory]] | staff | core | none | 0 |
 | `/invite/:code` | [[invite-landing]] | public | public | none | 3 |
 | `/login` | [[login]] | public | public | none | 3 |
@@ -68,9 +70,13 @@ The founder's tracking mandate lands here: page telemetry rides the NF spine (`s
 | `/vendor-prices` | [[vendor-prices]] | owner | plus | none | 0 |
 | `/v/:slug` | [[vendor-public-page]] | public | public | none | 0 |
 | `/verify-email` | [[verify-email]] | public | public | none | 3 |
-| `/wine-agent` | [[wine-agent]] | owner | core | none | 0 |
-| `/wineagent` | [[wineagent-alias]] | owner | core | none | 0 |
 | `/wines` | [[wines]] | owner | core | none | 0 |
+
+**Retired 2026-08-26 (ADR 0019 §B):** `/wine-agent` and `/wineagent` — one inline
+`PlaceholderPage` under two spellings, zero buttons, zero endpoints. Their notes
+are deleted rather than archived: the pages had no behaviour to preserve a record
+of. The sidebar "Wine Agent" item is gone; the Wine Agent FAB, Help card and Learn
+panel already opened [[sommelier]] and are unchanged.
 
 ## Surface findings feed — raw material for the P2.3 proposal
 
@@ -98,11 +104,15 @@ The founder's tracking mandate lands here: page telemetry rides the NF spine (`s
 5. Still open: `DocumentsPage.tsx:368` copy-link builds `?doc=<id>` that the
    page never reads — a shared link silently loses its target.
 
-**Dead-end pages (no outbound page navigation):** pure placeholders —
-[[wine-agent]], [[wineagent-alias]]; modal/API-only surfaces — [[admin]],
-[[admin-health]], [[calendar]], [[calendar-classic]], [[dev-sandbox]],
-[[documents-reports]], [[inventory-legacy]], [[logs]], [[receipts]],
-[[sommelier]], [[team]], [[vendor-prices]], [[vendor-public-page]].
+**Dead-end pages (no outbound page navigation):** the two pure placeholders
+(`/wine-agent`, `/wineagent`) are **retired**; the remaining 11 are modal/API-only
+surfaces — [[admin]], [[admin-health]], [[calendar]],
+[[dev-sandbox]], [[documents-reports]], [[logs]],
+[[receipts]], [[sommelier]], [[team]], [[vendor-prices]], [[vendor-public-page]].
+(`/inventory-legacy` was on this list; **retired 2026-08-26** once its two parity
+blockers were ported onto [[inventory]] — ADR 0019 §B-parity. `/calendar-classic`
+likewise: **retired 2026-08-26** once its one blocker — reminders that actually
+fire — was ported onto [[calendar]].)
 A dead end is not automatically wrong — but each is either a deliberate leaf or
 a missing connection, and the proposal decides which.
 

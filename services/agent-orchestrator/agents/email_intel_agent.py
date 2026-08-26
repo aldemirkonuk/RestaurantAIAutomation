@@ -312,34 +312,47 @@ class EmailIntelAgent(BaseAgent):
             ),
         )
         _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
-        # P1: previously an unlogged model call (dark site)
+
+        # OD-75: the parse decides the outcome, so the emit sits in a `finally`
+        # BELOW it. json.loads here raises into the caller, which is exactly why
+        # the emit cannot simply move down: the spend row is owed whether or not
+        # the model returned JSON. `finally` writes it once on both paths.
+        _outcome = "partial"  # call returned, output not usable — until proven
         try:
-            from services.spend_logger import (
-                estimate_llm_cost,
-                get_spend_logger,
-                usage_tokens,
-            )
+            raw = response.text or "{}"
+            data = json.loads(raw)
+            primary = EmailClassification(**data)
+            _outcome = "success"
+        finally:
+            # P1: previously an unlogged model call (dark site)
+            try:
+                from services.spend_logger import (
+                    estimate_llm_cost,
+                    get_spend_logger,
+                    usage_tokens,
+                )
 
-            _in, _out = usage_tokens(response)  # _out includes thinking tokens
-            get_spend_logger().log(
-                provider="google",
-                model=self.settings.gemini_model,
-                input_tokens=_in,
-                output_tokens=_out,
-                cost_usd=estimate_llm_cost(self.settings.gemini_model, _in, _out),
-                restaurant_id=restaurant_id or None,
-                agent=self.agent_name,
-                task_type="email_classification",
-                outcome="success",  # call-level: response returned
-                duration_ms=int((time.perf_counter() - _t0) * 1000),
-                correlation_id=getattr(self, "_current_correlation_id", None),
-            )
-        except Exception:
-            pass
-
-        raw = response.text or "{}"
-        data = json.loads(raw)
-        primary = EmailClassification(**data)
+                _in, _out = usage_tokens(response)  # _out includes thinking tokens
+                get_spend_logger().log(
+                    provider="google",
+                    model=self.settings.gemini_model,
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=estimate_llm_cost(self.settings.gemini_model, _in, _out),
+                    restaurant_id=restaurant_id or None,
+                    agent=self.agent_name,
+                    task_type="email_classification",
+                    choice=f"classification:{_outcome}",
+                    outcome=_outcome,
+                    duration_ms=_elapsed_ms,
+                    correlation_id=getattr(self, "_current_correlation_id", None),
+                    context={
+                        "outcome_basis": "parse_v1",
+                        "parse_failed": _outcome != "success",
+                    },
+                )
+            except Exception:
+                pass
 
         # Escalate only the genuinely uncertain minority. On the 54-case eval the
         # primary model was 54/54 and never dropped below the threshold, so this
@@ -385,6 +398,33 @@ class EmailIntelAgent(BaseAgent):
                 ],
             )
             text = "".join(b.text for b in response.content if b.type == "text")
+            _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+
+            # OD-75: same defect as _classify_email — this site was NOT in the
+            # reported list but grades identically. Escalation is the ~10x model,
+            # so a prose answer here is the most expensive way to record a
+            # completed task that produced nothing.
+            #
+            # Sonnet is not constrained to JSON-only output the way the Gemini
+            # call is (response_mime_type has no Anthropic equivalent), so dig
+            # the object out rather than assuming the whole body is JSON.
+            _result: Optional[EmailClassification] = None
+            _parse_failed = False
+            try:
+                match = re.search(r"\{.*\}", text, re.DOTALL)
+                if match:
+                    _result = EmailClassification(**json.loads(match.group()))
+                else:
+                    _parse_failed = True
+                    self.logger.warning(
+                        "escalation returned no JSON object; keeping primary verdict"
+                    )
+            except (json.JSONDecodeError, ValueError, TypeError) as exc:
+                _parse_failed = True
+                self.logger.warning(
+                    "escalation JSON parse failed, keeping primary verdict: %s", exc
+                )
+
             try:
                 from services.spend_logger import estimate_llm_cost, get_spend_logger
 
@@ -399,24 +439,26 @@ class EmailIntelAgent(BaseAgent):
                     restaurant_id=restaurant_id or None,
                     agent=self.agent_name,
                     task_type="email_classification_escalation",
-                    outcome="success",
-                    duration_ms=int((time.perf_counter() - _t0) * 1000),
+                    choice=(
+                        "escalation:parse_failed"
+                        if _parse_failed
+                        else "escalation:parsed"
+                    ),
+                    outcome="partial" if _parse_failed else "success",
+                    duration_ms=_elapsed_ms,
                     correlation_id=getattr(self, "_current_correlation_id", None),
-                    context={"primary_confidence": primary.confidence},
+                    context={
+                        "primary_confidence": primary.confidence,
+                        "outcome_basis": "parse_v1",
+                        "parse_failed": _parse_failed,
+                    },
                 )
             except Exception:
                 pass
 
-            # Sonnet is not constrained to JSON-only output the way the Gemini
-            # call is (response_mime_type has no Anthropic equivalent), so dig
-            # the object out rather than assuming the whole body is JSON.
-            match = re.search(r"\{.*\}", text, re.DOTALL)
-            if not match:
-                self.logger.warning(
-                    "escalation returned no JSON object; keeping primary verdict"
-                )
+            if _result is None:
                 return None
-            result = EmailClassification(**json.loads(match.group()))
+            result = _result
             self.logger.info(
                 "escalated classification",
                 extra={
@@ -582,37 +624,53 @@ class EmailIntelAgent(BaseAgent):
             messages=[{"role": "user", "content": prompt}],
         )
 
-        # P1: previously an unlogged model call (dark site)
+        _elapsed_ms = int((time.perf_counter() - _t0) * 1000)
+
+        # OD-75: outcome follows the parse, and the parse raises into the caller
+        # (_handle_promo), so the emit lives in a `finally` — the row is owed on
+        # both paths and must be written exactly once. Fence-stripping is inside
+        # the try too: `raw.split("```")[1]` can IndexError on a half-fenced
+        # answer, which would otherwise skip the emit entirely.
+        _outcome = "partial"
         try:
-            from services.spend_logger import estimate_llm_cost, get_spend_logger
+            raw = response.content[0].text if response.content else "{}"
+            raw = raw.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            data = json.loads(raw.strip())
+            details = PromoDetails(**data)
+            _outcome = "success"
+        finally:
+            # P1: previously an unlogged model call (dark site)
+            try:
+                from services.spend_logger import estimate_llm_cost, get_spend_logger
 
-            _in = response.usage.input_tokens if hasattr(response, "usage") else 0
-            _out = response.usage.output_tokens if hasattr(response, "usage") else 0
-            get_spend_logger().log(
-                provider="anthropic",
-                model=self.settings.haiku_model,
-                input_tokens=_in,
-                output_tokens=_out,
-                cost_usd=estimate_llm_cost(self.settings.haiku_model, _in, _out),
-                restaurant_id=restaurant_id or None,
-                agent=self.agent_name,
-                task_type="promo_extraction",
-                outcome="success",  # call-level: completion returned
-                duration_ms=int((time.perf_counter() - _t0) * 1000),
-                correlation_id=getattr(self, "_current_correlation_id", None),
-            )
-        except Exception:
-            pass
+                _in = response.usage.input_tokens if hasattr(response, "usage") else 0
+                _out = response.usage.output_tokens if hasattr(response, "usage") else 0
+                get_spend_logger().log(
+                    provider="anthropic",
+                    model=self.settings.haiku_model,
+                    input_tokens=_in,
+                    output_tokens=_out,
+                    cost_usd=estimate_llm_cost(self.settings.haiku_model, _in, _out),
+                    restaurant_id=restaurant_id or None,
+                    agent=self.agent_name,
+                    task_type="promo_extraction",
+                    choice=f"promo:{_outcome}",
+                    outcome=_outcome,
+                    duration_ms=_elapsed_ms,
+                    correlation_id=getattr(self, "_current_correlation_id", None),
+                    context={
+                        "outcome_basis": "parse_v1",
+                        "parse_failed": _outcome != "success",
+                    },
+                )
+            except Exception:
+                pass
 
-        raw = response.content[0].text if response.content else "{}"
-        # Strip markdown code fences if present
-        raw = raw.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        data = json.loads(raw.strip())
-        return PromoDetails(**data)
+        return details
 
     # =========================================================================
     # HELPERS

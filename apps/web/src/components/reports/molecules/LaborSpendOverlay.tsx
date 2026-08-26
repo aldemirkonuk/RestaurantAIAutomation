@@ -1,28 +1,33 @@
 /**
- * LaborRevenueOverlay — dual-line chart comparing revenue vs. labour cost.
- * Labour is estimated at ~28% of revenue when real data isn't available.
+ * LaborSpendOverlay — dual-line chart comparing vendor SPEND vs. labour cost.
+ *
+ * The money series comes from `procurement_orders` (what the restaurant pays
+ * its vendors), not from POS sales. Labour is a crude estimate at ~28% of that
+ * spend, so treat this as a cost-side comparison only. A true labour-vs-revenue
+ * chart needs `pos_checks` and is not wired yet.
  */
 
 import { LineChart } from '@tremor/react'
 import { formatMoney } from '../../../lib/utils'
 
-interface SalesDay {
+interface PurchaseDay {
   date: string
-  revenue: number
+  /** Vendor spend for the day (procurement_orders), not sales revenue. */
+  spend: number
 }
 
 interface Props {
-  salesData: SalesDay[]
+  purchaseDayData: PurchaseDay[]
   className?: string
 }
 
 const LABOR_RATIO = 0.28
 
-export function LaborRevenueOverlay({ salesData, className = '' }: Props) {
-  const data = salesData.map((d) => ({
+export function LaborSpendOverlay({ purchaseDayData, className = '' }: Props) {
+  const data = purchaseDayData.map((d) => ({
     date: d.date,
-    Revenue: d.revenue,
-    Labor: Math.round(d.revenue * LABOR_RATIO),
+    'Vendor Spend': d.spend,
+    Labor: Math.round(d.spend * LABOR_RATIO),
   }))
 
   if (!data.length) {
@@ -38,7 +43,7 @@ export function LaborRevenueOverlay({ salesData, className = '' }: Props) {
       <div className="flex items-center gap-4 mb-1 px-1">
         <span className="flex items-center gap-1 text-[11px] text-gray-500">
           <span className="inline-block w-5 h-0.5 bg-wine-600 rounded" />
-          Revenue
+          Vendor Spend
         </span>
         <span className="flex items-center gap-1 text-[11px] text-gray-500">
           <span className="inline-block w-5 h-0.5 bg-amber-400 rounded" style={{ borderTop: '2px dashed #fbbf24' }} />
@@ -48,7 +53,7 @@ export function LaborRevenueOverlay({ salesData, className = '' }: Props) {
       <LineChart
         data={data}
         index="date"
-        categories={['Revenue', 'Labor']}
+        categories={['Vendor Spend', 'Labor']}
         colors={['rose', 'amber']}
         valueFormatter={(v) => formatMoney(v, 'compact')}
         showLegend={false}

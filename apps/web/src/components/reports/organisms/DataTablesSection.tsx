@@ -1,6 +1,7 @@
 /**
  * DataTablesSection - Organism Component
- * Container for all collapsible tables
+ * Container for all collapsible tables. The daily and purchase tables are both
+ * fed from `procurement_orders` (vendor spend), not from POS sales.
  */
 
 import { DailyBreakdownTable, PurchasedWinesTable, CheckScannerSection } from '../molecules'
@@ -16,7 +17,8 @@ interface DataTablesSectionProps {
   dailyData: DailyData[]
   purchaseData: PurchaseData[]
   purchaseMetrics: PurchaseMetrics
-  totalRevenue: number
+  /** Sales revenue from `pos_checks` for COGS ratio; null when no POS feed. */
+  posRevenue?: number | null
   checkScans: CheckScan[]
   expandedSections: ExpandedSections
   onToggle: (section: keyof ExpandedSections) => void
@@ -28,7 +30,7 @@ export function DataTablesSection({
   dailyData,
   purchaseData,
   purchaseMetrics,
-  totalRevenue,
+  posRevenue = null,
   checkScans,
   expandedSections,
   onToggle,
@@ -46,7 +48,7 @@ export function DataTablesSection({
       <PurchasedWinesTable
         purchaseData={purchaseData}
         metrics={purchaseMetrics}
-        totalRevenue={totalRevenue}
+        posRevenue={posRevenue}
         isOpen={expandedSections.purchasedWines}
         onToggle={() => onToggle('purchasedWines')}
       />

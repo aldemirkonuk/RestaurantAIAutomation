@@ -227,8 +227,8 @@ export function LearnPanel({
           <button
             type="button"
             onClick={() => {
-              // /wineagent is still a placeholder (App.tsx) — Sommelier AI
-              // is the real inventory & ordering help surface today.
+              // Sommelier AI is the inventory & ordering help surface. The old
+              // `/wineagent` placeholder route is retired (ADR 0019 §B).
               navigate('/sommelier')
               onClose()
             }}

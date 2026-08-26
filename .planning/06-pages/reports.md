@@ -7,6 +7,7 @@ audience: owner
 tier: plus
 signals_today: none
 rebrand_strings: 2
+maturity: hollow
 status: documented
 updated: 2026-08-25
 links: ["[[PAGE-CONTRACT]]", "[[settings]]", "[[orders]]", "[[inventory]]", "[[team]]", "[[promotions]]", "[[recommendations]]", "[[recommendations-catalog]]"]
@@ -99,3 +100,99 @@ drift chips, S02/S03 Plus scorecards, S10 Plus days-of-cover. Pro depth (forecas
 - `Reports.v1.backup.tsx` is registered dead code (`v3.0-TECH-DEBT.md:257`).
 - Analytics truth-suite work is carried-forward unbuilt scope
   (`v3.0-TECH-DEBT.md:322-324`, was Phase 41).
+
+## 10. Maturity
+
+**hollow** — and this is the worst finding in the communication/config cluster.
+
+The analytics engine behind most of this page is real (memory: analytics-engine; 87
+tests; `EngineInsightsPanel` reads live `/analytics/insights/:rid`). Two blocks
+mounted alongside it are not, and neither announces itself:
+
+| Block | Line | What it does |
+|---|---|---|
+| **AI Command Palette** (⌘K, mounted `Reports.tsx:950`) | `components/reports/organisms/AICommandPalette.tsx:59` calls `generateMockAnswer(text, timeRange)`, defined `:212-231` | Returns **hand-written fake analysis with invented numbers**, keyed off substrings of the question. Ask about Tuesday and it replies "Tuesday's revenue was ~18% below weekly average… fewer covers during the 7–9 PM window". Ask about stock: "Barolo, Sangiovese will hit the reorder threshold in ~6 days". Ask about margin: "Prosecco (+72%), house Pinot Noir (+64%)". None of it touches the restaurant's data. The only marker is a source comment, `:210` |
+| **Report Generator** | `Reports.tsx:759-766` | `onGenerate={(templateId, options) => { console.log('Generating report:', templateId, options) }}` — the handler is a `console.log`. No request, no row, no toast |
+
+The placeholder-metrics banner (`Reports.tsx:790-808`) is the honest counter-example:
+when `totalRevenue === 0 && totalOrders === 0` it says so in words and links to
+`/settings?tab=pos`. It is the model the two blocks above should follow.
+
+Also confirmed on this page: the guard fix §9 records is real —
+`analytics.controller.ts:51` carries class-level `@UseGuards(JwtAuthGuard)`, so the
+atlas's "all unguarded" row is stale. `Reports.v1.backup.tsx` still ships
+(`v3.0-TECH-DEBT.md:257`).
+
+## 11. Data flow
+
+### Calls out
+
+| Method | Path | Auth | Gateway controller | Returns |
+|---|---|---|---|---|
+| GET | `/analytics/insights/:rid` (+`?refresh=true`) | JWT (class, `analytics/analytics.controller.ts:51`) | same file | Generated insights (347-type generator) |
+| GET/POST | `/analytics/goals/:rid` | JWT | `analytics.controller.ts` | Goals + progress |
+| GET/POST | `/analytics/recommendations/:rid/actions`, `…/action` | JWT | `analytics.controller.ts` | Server-side hide/pin disposition |
+| GET | `/analytics/table-performance/:rid` | JWT | `analytics.controller.ts` | Seating density |
+| GET/PATCH | `/users/:userId/preferences` | JWT | `user-preferences` module | Canvas layout + block set |
+| GET | `/inventory/:rid` family | JWT | `inventory` module | Stock for the inventory blocks |
+| GET | `/procurement/orders` | JWT | `procurement.controller.ts` | Order metrics |
+| GET | `/wines?ids=` | JWT | `wines` module | Names for ids |
+| — | **AI Command Palette** | — | **none** | No request is made (`AICommandPalette.tsx:59`) |
+| — | **Report Generator** | — | **none** | `console.log` (`Reports.tsx:761`) |
+
+All analytics calls are raw `fetch` against `VITE_API_GATEWAY_URL`
+(`EngineInsightsPanel.tsx:27,147`), not `apiClient`.
+
+### Fed by
+
+| Data | Producer | Live? |
+|---|---|---|
+| Insights | `@Cron(EVERY_HOUR)` insight scheduler (`analytics/insights/insight-scheduler.service.ts:42`) + on-demand `?refresh=true` | Yes |
+| POS-dependent depth | Toast/SimPOS ingestion → `pos_checks` (memory: pos-bridge-state — bridge proven, 1.4%→67.4% of insights) | Yes where a POS is connected; 429/573 insight types need `checks` (TIER-MAP:91-93) |
+| Layout | This page's own preference writes | Yes |
+| Command-palette answers | **none — fabricated in the browser** | No |
+| Generated reports | **none** — and the generator here does not even attempt one; the only `generated_reports` writer is `/communications` (see documents-reports.md §10) | No |
+
+### Writes
+
+| Write | Downstream reaction |
+|---|---|
+| `PATCH /users/:id/preferences` | Canvas layout persists per user across devices (`Reports.tsx:187,466`) |
+| `POST /analytics/recommendations/:rid/action` | Manager disposition (hide/pin) persists server-side and suppresses the insight for everyone (`EngineInsightsPanel.tsx:163-170,281,309`) |
+| `POST /analytics/goals/:rid` | Goal appears in the goals block and in insight generation |
+| Command palette / report generator | **none** |
+
+## 12. Design intent
+
+**Should be:** the understand layer — what happened, why, and the one thing to do
+about it, with a visible line back to the data.
+
+| State | Handled? | Evidence |
+|---|---|---|
+| Loading | Yes | Full-page spinner `Reports.tsx:774-784` |
+| Empty | **Yes, and well** | The POS banner names the condition instead of drawing zeros (`:790-808`) |
+| Error | Partial | Panels degrade to empty; no page-level error surface |
+| Permission-denied | **No** | No 403 branch; guarded server-side since #31 |
+
+**Where the UI misleads**
+
+1. The palette is the sharpest case of fabrication in the product: plausible,
+   specific, numeric advice about a restaurant whose data it never read. A ⌘K pill
+   invites exactly the trusting use it cannot support.
+2. "Generate" in the report-generator block gives no error and no result.
+3. Export filename/title still say WineOps (`Reports.tsx:530-531`, §7).
+
+## 13. Roadmap
+
+1. **Disable the AI Command Palette until it queries the engine.** Deleting
+   `generateMockAnswer` (`AICommandPalette.tsx:212-231`) and showing "not yet
+   available" is strictly better than shipping it. Do this before anything else on
+   this page — it is a correctness and trust defect, not a gap.
+2. **Wire or remove the report generator** (`Reports.tsx:759-766`). Blocked on the
+   same missing report-artifact decision as communications.md item 1.
+3. Then wire the palette for real against `/analytics/insights/:rid` — the engine
+   already produces template sentences (memory: analytics-engine).
+4. Page-level error surface for the analytics fetches.
+5. Delete `pages/Reports.v1.backup.tsx` (`v3.0-TECH-DEBT.md:257`).
+6. Analytics truth suite — carried-forward unbuilt scope (`v3.0-TECH-DEBT.md:322-324`).
+7. Rebrand export artifacts (§7).

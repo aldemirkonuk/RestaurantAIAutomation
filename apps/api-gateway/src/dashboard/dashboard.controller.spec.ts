@@ -61,9 +61,9 @@ describe("DashboardController", () => {
         totalVolumeOz: 12680,
         lowStockItems: 5,
         pendingOrders: 3,
-        todaySales: 1250.5,
-        weekSales: 8750.0,
-        monthSales: 35000.0,
+        todayProcurementSpend: 1250.5,
+        weekProcurementSpend: 8750.0,
+        monthProcurementSpend: 35000.0,
       };
 
       mockDashboardService.getStats.mockResolvedValue(expectedResponse);

@@ -60,10 +60,17 @@ const DEFAULT_SECTIONS = [
   { id: 'checkScanner', type: 'checkScanner' as const, visible: true, expanded: false },
 ]
 
-type SalesDay = {
+/**
+ * One day of PURCHASE-order activity. Every figure here is sourced from
+ * `procurement_orders` (via useOrdersMetrics/ordersApi) — money the restaurant
+ * PAYS its vendors. `spend` is not sales revenue; sales revenue lives in
+ * `pos_checks` and is not read anywhere on this page.
+ */
+type PurchaseDay = {
   date: string
   fullDate: string
-  revenue: number
+  /** Vendor spend for the day (sum of purchase-order totals). */
+  spend: number
   orders: number
   bottles: number
   avgOrderValue: number
@@ -77,10 +84,10 @@ type SalesDay = {
 const formatShortDate = (date: Date) =>
   date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 
-const createEmptySalesDay = (date: Date): SalesDay => ({
+const createEmptyPurchaseDay = (date: Date): PurchaseDay => ({
   date: formatShortDate(date),
   fullDate: date.toISOString().split('T')[0],
-  revenue: 0,
+  spend: 0,
   orders: 0,
   bottles: 0,
   avgOrderValue: 0,
@@ -104,31 +111,33 @@ function getDefaultMenuPrice(costPrice: number): number {
 
 // Generate metrics
 const generateMetrics = (
-  data: SalesDay[],
+  data: PurchaseDay[],
   inventoryData?: { inventory: any[]; summary: any },
   orderData?: {
     totalOrders: number
     totalOrderValue: number
     totalBottlesOrdered: number
     avgOrderValue: number
-    revenueThisMonth: number
+    spendThisMonth: number
     monthOverMonthGrowth: number
     ordersByWineType: { red: number; white: number; sparkling: number; rose: number; dessert: number }
   },
 ) => {
-  const totalRevenue = orderData?.totalOrderValue || data.reduce((sum, d) => sum + d.revenue, 0)
+  const totalSpend = orderData?.totalOrderValue || data.reduce((sum, d) => sum + d.spend, 0)
   const totalOrders = orderData?.totalOrders || data.reduce((sum, d) => sum + d.orders, 0)
   const totalBottles = orderData?.totalBottlesOrdered || data.reduce((sum, d) => sum + d.bottles, 0)
-  const avgOrderValue = orderData?.avgOrderValue || (totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0)
+  const avgOrderValue = orderData?.avgOrderValue || (totalOrders > 0 ? Math.round(totalSpend / totalOrders) : 0)
 
-  let revenueChange: number
+  // Month-over-month change in vendor spend. A positive value means the
+  // restaurant paid its vendors MORE, which is a cost increase, not growth.
+  let spendChange: number
   if (orderData) {
-    revenueChange = orderData.monthOverMonthGrowth
+    spendChange = orderData.monthOverMonthGrowth
   } else {
     const midpoint = Math.floor(data.length / 2)
-    const firstHalf = data.slice(0, midpoint).reduce((sum, d) => sum + d.revenue, 0)
-    const secondHalf = data.slice(midpoint).reduce((sum, d) => sum + d.revenue, 0)
-    revenueChange = firstHalf > 0 ? parseFloat(((secondHalf - firstHalf) / firstHalf * 100).toFixed(1)) : 0
+    const firstHalf = data.slice(0, midpoint).reduce((sum, d) => sum + d.spend, 0)
+    const secondHalf = data.slice(midpoint).reduce((sum, d) => sum + d.spend, 0)
+    spendChange = firstHalf > 0 ? parseFloat(((secondHalf - firstHalf) / firstHalf * 100).toFixed(1)) : 0
   }
 
   let totalCost: number
@@ -161,11 +170,11 @@ const generateMetrics = (
   const profitValue = totalMenuValue - totalCost
 
   return {
-    totalRevenue,
+    totalSpend,
     totalOrders,
     totalBottles,
     avgOrderValue,
-    revenueChange,
+    spendChange,
     inventoryValue: Math.round(inventoryValue),
     profitMargin: parseFloat(profitMargin.toFixed(1)),
     profitValue: Math.round(profitValue),
@@ -290,15 +299,16 @@ export function Reports() {
     })
   }, [_ordersHistory, inventoryById, wineTypeById])
 
-  // Generate data based on time range using real orders
-  const salesData = useMemo(() => {
+  // Bucket real PURCHASE orders by day. Every money figure below is vendor
+  // spend from `procurement_orders`, never POS sales revenue.
+  const purchaseDayData = useMemo(() => {
     const days = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90
     const now = new Date()
-    const buckets = new Map<string, SalesDay>()
+    const buckets = new Map<string, PurchaseDay>()
     for (let i = days - 1; i >= 0; i--) {
       const date = new Date(now)
       date.setDate(date.getDate() - i)
-      const day = createEmptySalesDay(date)
+      const day = createEmptyPurchaseDay(date)
       buckets.set(day.fullDate, day)
     }
 
@@ -308,7 +318,7 @@ export function Reports() {
       const day = buckets.get(orderDate)!
       day.orders += 1
       day.bottles += order.quantity
-      day.revenue += order.totalPrice
+      day.spend += order.totalPrice
       if (order.wineType) {
         day[order.wineType] += order.quantity
       }
@@ -316,16 +326,16 @@ export function Reports() {
 
     const result = Array.from(buckets.values())
     result.forEach((day) => {
-      day.avgOrderValue = day.orders > 0 ? Math.round(day.revenue / day.orders) : 0
+      day.avgOrderValue = day.orders > 0 ? Math.round(day.spend / day.orders) : 0
     })
     return result
   }, [ordersWithType, timeRange])
 
   const purchaseData = useMemo(() => {
-    return salesData.map((day) => ({
+    return purchaseDayData.map((day) => ({
       date: day.date,
       fullDate: day.fullDate,
-      totalCost: day.revenue,
+      totalCost: day.spend,
       totalBottles: day.bottles,
       orderCount: day.orders,
       red: day.red,
@@ -334,29 +344,29 @@ export function Reports() {
       rose: day.rose,
       dessert: day.dessert,
     }))
-  }, [salesData])
+  }, [purchaseDayData])
 
   const wineTypeTotals = useMemo(() => ({
-    red: salesData.reduce((sum, d) => sum + d.red, 0),
-    white: salesData.reduce((sum, d) => sum + d.white, 0),
-    sparkling: salesData.reduce((sum, d) => sum + d.sparkling, 0),
-    rose: salesData.reduce((sum, d) => sum + d.rose, 0),
-    dessert: salesData.reduce((sum, d) => sum + d.dessert, 0),
-  }), [salesData])
+    red: purchaseDayData.reduce((sum, d) => sum + d.red, 0),
+    white: purchaseDayData.reduce((sum, d) => sum + d.white, 0),
+    sparkling: purchaseDayData.reduce((sum, d) => sum + d.sparkling, 0),
+    rose: purchaseDayData.reduce((sum, d) => sum + d.rose, 0),
+    dessert: purchaseDayData.reduce((sum, d) => sum + d.dessert, 0),
+  }), [purchaseDayData])
 
   const metrics = useMemo(() => generateMetrics(
-    salesData,
+    purchaseDayData,
     { inventory, summary: inventorySummary },
     orderMetrics ? {
       totalOrders: orderMetrics.totalOrders,
       totalOrderValue: orderMetrics.totalOrderValue,
       totalBottlesOrdered: orderMetrics.totalBottlesOrdered,
       avgOrderValue: orderMetrics.avgOrderValue,
-      revenueThisMonth: orderMetrics.revenueThisMonth,
+      spendThisMonth: orderMetrics.spendThisMonth,
       monthOverMonthGrowth: orderMetrics.monthOverMonthGrowth,
       ordersByWineType: wineTypeTotals,
     } : undefined,
-  ), [salesData, inventory, inventorySummary, orderMetrics, wineTypeTotals])
+  ), [purchaseDayData, inventory, inventorySummary, orderMetrics, wineTypeTotals])
 
   const purchaseMetrics: PurchaseMetrics = useMemo(() => {
     const totalSpent = purchaseData.reduce((sum, p) => sum + p.totalCost, 0)
@@ -440,8 +450,11 @@ export function Reports() {
   const getKPIValue = useCallback((key: string): { value: string | number; change: number; changeType: 'increase' | 'decrease' } => {
     // All change values are 0 until real historical comparison data is available from POS
     switch (key) {
+      // NOTE: the key string 'revenue' is a persisted layout key (saved into
+      // user preferences as DashboardBlock.dataSource) and is frozen for
+      // backwards compatibility. The VALUE it returns is vendor spend.
       case 'revenue':
-        return { value: metrics.totalRevenue > 0 ? formatMoney(metrics.totalRevenue, 'compact') : '--', change: metrics.revenueChange, changeType: metrics.revenueChange >= 0 ? 'increase' : 'decrease' }
+        return { value: metrics.totalSpend > 0 ? formatMoney(metrics.totalSpend, 'compact') : '--', change: metrics.spendChange, changeType: metrics.spendChange >= 0 ? 'increase' : 'decrease' }
       case 'orders':
         return { value: metrics.totalOrders > 0 ? metrics.totalOrders : '--', change: 0, changeType: 'increase' as const }
       case 'bottles':
@@ -509,9 +522,9 @@ export function Reports() {
     const reportId = `rpt-${Date.now()}`
     const timestamp = new Date().toISOString()
 
-    const columns: TableExportColumn<(typeof salesData)[number]>[] = [
+    const columns: TableExportColumn<(typeof purchaseDayData)[number]>[] = [
       { header: 'Date', value: (d) => d.date },
-      { header: 'Revenue', value: (d) => d.revenue },
+      { header: 'Vendor Spend', value: (d) => d.spend },
       { header: 'Orders', value: (d) => d.orders },
       { header: 'Bottles', value: (d) => d.bottles },
       { header: 'Avg Order', value: (d) => d.avgOrderValue },
@@ -525,10 +538,10 @@ export function Reports() {
     try {
       await exportTable({
         format,
-        rows: salesData,
+        rows: purchaseDayData,
         columns,
-        filename: `wineops-report-${timeRange}-${new Date().toISOString().slice(0, 10)}`,
-        title: `WineOps AI Report · ${timeRange}`,
+        filename: `wineops-purchasing-report-${timeRange}-${new Date().toISOString().slice(0, 10)}`,
+        title: `WineOps AI Purchasing Report · ${timeRange}`,
       })
       setExportSuccess(format)
       setTimeout(() => setExportSuccess(null), 3000)
@@ -539,11 +552,11 @@ export function Reports() {
     await dispatchReportEvent({
       type: 'generated',
       reportId,
-      reportType: 'sales-summary',
+      reportType: 'purchasing-summary',
       format: format === 'excel' || format === 'pdf' || format === 'csv' ? format : 'csv',
       timestamp,
     })
-  }, [salesData, timeRange, dispatchReportEvent])
+  }, [purchaseDayData, timeRange, dispatchReportEvent])
 
   // Section toggle handler
   const handleSectionToggle = useCallback((section: string) => {
@@ -563,12 +576,14 @@ export function Reports() {
           </div>
         )}
 
+        {/* posRevenue is null: this page has no POS revenue feed, so the COGS
+            ratio stays blank rather than dividing procurement spend by itself. */}
         {sectionId === 'dataTable' && (
           <DataTablesSection
-            dailyData={salesData}
+            dailyData={purchaseDayData}
             purchaseData={purchaseData}
             purchaseMetrics={purchaseMetrics}
-            totalRevenue={metrics.totalRevenue}
+            posRevenue={null}
             checkScans={checkScans}
             expandedSections={expandedSections}
             onToggle={handleSectionToggle}
@@ -757,14 +772,13 @@ export function Reports() {
           </div>
         )}
 
+        {/* No onGenerate handler: POST /reports/generate only inserts a
+            `status: "pending"` row with NULL pdf/excel/csv urls and nothing in
+            the codebase ever fills them in, so wiring the button would just
+            manufacture records the archive cannot open. ReportGenerator states
+            that plainly instead. */}
         {sectionId === 'reportGenerator' && (
-          <ReportGenerator
-            onGenerate={(templateId, options) => {
-              console.log('Generating report:', templateId, options)
-            }}
-            salesData={salesData}
-            metrics={metrics}
-          />
+          <ReportGenerator purchaseDayData={purchaseDayData} metrics={metrics} />
         )}
       </>
     )
@@ -788,15 +802,17 @@ export function Reports() {
       <Header title="Reports & Analytics" subtitle="Track your wine operations performance" />
 
       <div className="p-6 space-y-6">
-        {/* POS Connectivity Indicator */}
-        {metrics.totalRevenue === 0 && metrics.totalOrders === 0 && (
+        {/* Purchasing-data indicator. NOTE: this page charts vendor spend from
+            purchase orders only — it never reads POS sales. The banner is gated
+            on purchasing data, so it says nothing about POS connectivity. */}
+        {metrics.totalSpend === 0 && metrics.totalOrders === 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-amber-900">POS Not Connected</p>
+              <p className="text-sm font-semibold text-amber-900">No purchasing data yet</p>
               <p className="text-xs text-amber-700">
-                No sales data available. Connect your Toast POS system in Settings to see real revenue and order data.
-                Currently showing placeholder metrics.
+                These charts track vendor spend from your purchase orders, not sales. Place or import
+                orders to populate them. Sales revenue needs a connected POS and is not shown here.
               </p>
             </div>
             <a
@@ -809,7 +825,7 @@ export function Reports() {
         )}
 
         {/* Plain-language AI insights (above controls) */}
-        {(metrics.totalRevenue > 0 || metrics.totalOrders > 0) && (
+        {(metrics.totalSpend > 0 || metrics.totalOrders > 0) && (
           <HeadlineInsightsBar
             onSeeDetails={() => {
               const el = document.getElementById('engine-insights')
@@ -829,7 +845,7 @@ export function Reports() {
           onOpenArrange={() => setIsEditMode(true)}
           onExport={handleExport}
           exportSuccess={exportSuccess}
-          exportCount={salesData.length}
+          exportCount={purchaseDayData.length}
           showComparison={showComparison}
           onToggleComparison={() => setShowComparison((v) => !v)}
         />
@@ -852,7 +868,7 @@ export function Reports() {
           blocks={dashboardBlocks}
           isEditMode={isEditMode}
           onBlocksChange={handleBlocksChange}
-          salesData={salesData}
+          purchaseDayData={purchaseDayData}
           wineTypeDistribution={wineTypeDistribution}
           topWines={topWines}
           timeRange={timeRange}
@@ -860,19 +876,19 @@ export function Reports() {
           onKPIClick={(kpiKey) => setSpotlightedKPI(prev => prev === kpiKey ? null : kpiKey)}
           spotlightedKPI={spotlightedKPI}
           totalOrders={metrics.totalOrders}
-          totalRevenue={metrics.totalRevenue}
+          totalSpend={metrics.totalSpend}
         />
         </div>
 
         {/* Period Comparison Bar (optional, below canvas) */}
-        {showComparison && salesData.length > 0 && (
+        {showComparison && purchaseDayData.length > 0 && (
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-              Period Comparison — Revenue
+              Period Comparison — Vendor Spend
             </p>
             <PeriodCompareBar
-              currentData={salesData.map((d) => ({ date: d.date, value: d.revenue }))}
-              metric="revenue"
+              currentData={purchaseDayData.map((d) => ({ date: d.date, value: d.spend }))}
+              metric="spend"
             />
           </div>
         )}
@@ -881,9 +897,9 @@ export function Reports() {
         <KPISpotlightView
           kpiKey={spotlightedKPI || 'revenue'}
           title={spotlightedKPI ? {
-            revenue: 'Total Revenue',
-            orders: 'Total Orders',
-            bottles: 'Bottles Sold',
+            revenue: 'Vendor Spend',
+            orders: 'Purchase Orders',
+            bottles: 'Bottles Purchased',
             avgOrder: 'Average Order Value',
             inventoryValue: 'Inventory Value',
             profitMargin: 'Profit Margin',
@@ -892,9 +908,9 @@ export function Reports() {
           currentValue={spotlightedKPI ? getKPIValue(spotlightedKPI).value : 0}
           isOpen={!!spotlightedKPI}
           onClose={() => setSpotlightedKPI(null)}
-          salesData={salesData.map(d => ({
+          purchaseDayData={purchaseDayData.map(d => ({
             date: d.date,
-            revenue: d.revenue,
+            spend: d.spend,
             orders: d.orders ?? 0,
             bottles: d.bottles,
             avgOrderValue: (d as any).avgOrderValue ?? 0,
@@ -947,10 +963,11 @@ export function Reports() {
       </div>
 
       {/* AI Command Palette (global overlay) */}
+      {/* Searches the engine's real insight feed; it takes no time-range prop
+          because /analytics/insights computes its own windows. */}
       <AICommandPalette
         isOpen={showAIPalette}
         onClose={() => setShowAIPalette(false)}
-        timeRange={timeRange}
       />
 
       {/* Floating ⌘K pill — always visible */}

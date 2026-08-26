@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { ArrowUpRight, CheckCircle2, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { WineRecord, useStudioSessionStore } from '../../stores/useStudioSessionStore'
 import { Skeleton } from '../../components/ui/loading-skeleton'
 import { FieldCell } from './FieldCell'
 import { canPromote } from '../../lib/wine-format-mapper'
+import { studioFetch, readStudioError, studioErrorMessage } from './studioApi'
 
 // D-06: fixed column order — never reorder
 const COLUMN_ORDER: { key: keyof WineRecord; label: string; minWidth: number }[] = [
@@ -36,14 +38,18 @@ export function WineRecordsTable({ records, isLoading }: WineRecordsTableProps) 
   const handlePromote = async (record: WineRecord) => {
     const id = record.id
     setPromoteStates((prev) => ({ ...prev, [id]: 'loading' }))
-    const token = localStorage.getItem('accessToken')
+    const fail = (message: string) => {
+      setPromoteStates((prev) => ({ ...prev, [id]: 'error' }))
+      setTimeout(() => setPromoteStates((prev) => ({ ...prev, [id]: 'idle' })), 3000)
+      // The row-level "Failed" pill says nothing about why. Surface the server's reason
+      // — a 401/403 from the studio role gate reads very differently from a 503.
+      toast.error('Promote failed', { description: message.slice(0, 160) })
+    }
     try {
-      const resp = await fetch('/api/v1/studio/promote', {
+      // Orchestrator, not the gateway (studioApi.ts). Raw response here because 409 is a
+      // meaningful outcome (already in the library), not an error.
+      const resp = await studioFetch('/api/v1/studio/promote', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
         body: JSON.stringify({ submission_id: record.submission_id }),
       })
       if (resp.status === 409) {
@@ -51,14 +57,15 @@ export function WineRecordsTable({ records, isLoading }: WineRecordsTableProps) 
         return
       }
       if (!resp.ok) {
-        setPromoteStates((prev) => ({ ...prev, [id]: 'error' }))
-        setTimeout(() => setPromoteStates((prev) => ({ ...prev, [id]: 'idle' })), 3000)
+        fail(await readStudioError(resp))
         return
       }
       setPromoteStates((prev) => ({ ...prev, [id]: 'promoted' }))
-    } catch {
-      setPromoteStates((prev) => ({ ...prev, [id]: 'error' }))
-      setTimeout(() => setPromoteStates((prev) => ({ ...prev, [id]: 'idle' })), 3000)
+      toast.success('Promoted to Wine Library', {
+        description: record.wine_name ? String(record.wine_name) : undefined,
+      })
+    } catch (err) {
+      fail(studioErrorMessage(err))
     }
   }
 

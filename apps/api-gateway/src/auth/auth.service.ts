@@ -157,7 +157,10 @@ export class AuthService {
    * bypass-awareness of its own.
    */
   async devBypassLogin(): Promise<TokenPair> {
-    if (process.env.NODE_ENV === "production" || process.env.DEV_AUTH_BYPASS !== "true") {
+    if (
+      process.env.NODE_ENV === "production" ||
+      process.env.DEV_AUTH_BYPASS !== "true"
+    ) {
       throw new UnauthorizedException("Dev auth bypass is not enabled");
     }
     const email = process.env.DEV_AUTH_BYPASS_EMAIL;
@@ -1174,6 +1177,33 @@ export class AuthService {
           .update({ used_at: null, used_by_email: null })
           .eq("id", invite.id);
         throw new ConflictException("already_member");
+      }
+
+      // ACCOUNT TAKEOVER, closed 2026-08-26.
+      //
+      // This branch used to run `user = existingUser` and fall straight through
+      // to generateTokens() below. `JoinViaInviteDto` requires a password, but
+      // it was consumed ONLY by the new-user branch — so when the email matched
+      // an existing account, nothing verified anything, and the route (which is
+      // @Public) returned a working token pair for that account.
+      //
+      // The attacker is not exotic: any invited staff member could enter the
+      // owner's email instead of their own and walk away with the owner's
+      // session. One unused invite code plus a known email address.
+      //
+      // Joining an ADDITIONAL restaurant with an existing account is a real
+      // flow, so it is kept — it now costs the account's own password.
+      const passwordMatches =
+        typeof existingUser.password_hash === "string" &&
+        existingUser.password_hash.length > 0 &&
+        (await bcrypt.compare(dto.password ?? "", existingUser.password_hash));
+
+      if (!passwordMatches) {
+        // Deliberately identical to the credential error used elsewhere, and
+        // deliberately NOT "that account exists, wrong password" — this is a
+        // @Public route, so a distinguishable message would turn it into an
+        // account-existence oracle for any invite holder.
+        throw new UnauthorizedException("Invalid credentials");
       }
 
       user = existingUser;

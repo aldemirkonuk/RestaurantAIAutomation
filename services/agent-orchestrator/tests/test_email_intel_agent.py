@@ -14,9 +14,11 @@ Tests cover:
 """
 
 import asyncio
+import json
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 from agents.email_intel_agent import EmailIntelAgent
 from models.email_intel import EmailClassification, PromoDetails
@@ -555,3 +557,104 @@ async def test_escalation_returns_none_when_no_json_present():
             await agent._escalate_classification("s", "b", MagicMock(confidence=0.2))
             is None
         )
+
+
+# ---------------------------------------------------------------------------
+# OD-75: outcome must reflect the PARSE, not just the HTTP call
+# ---------------------------------------------------------------------------
+
+
+def _gemini_returning_raw(text: str):
+    resp = MagicMock()
+    resp.text = text
+    resp.usage_metadata.prompt_token_count = 400
+    resp.usage_metadata.candidates_token_count = 60
+    resp.usage_metadata.thoughts_token_count = 20
+    client = MagicMock()
+    client.models.generate_content.return_value = resp
+    return client
+
+
+async def test_classification_prose_answer_records_partial_not_success():
+    """
+    OD-75: json.loads here raises into the caller, so the emit sits in a
+    `finally` below the parse. A prose answer classified nothing — it must
+    record 'partial' on the parse_v1 basis, and the spend row must still be
+    written exactly once because the tokens were billed before the parse.
+    """
+    agent = _agent()
+    spend = MagicMock()
+    with patch(
+        "agents.email_intel_agent.get_gemini_client",
+        return_value=_gemini_returning_raw("Sure! This looks like a promotion."),
+    ), patch("services.spend_logger.get_spend_logger", return_value=spend):
+        with pytest.raises(json.JSONDecodeError):
+            await agent._classify_email("s", "b")
+
+    assert spend.log.call_count == 1
+    kwargs = spend.log.call_args.kwargs
+    assert kwargs["outcome"] == "partial"
+    assert kwargs["outcome"] != "success"
+    assert kwargs["context"]["outcome_basis"] == "parse_v1"
+    assert kwargs["context"]["parse_failed"] is True
+    assert kwargs["output_tokens"] == 80  # thinking tokens bill as output
+
+
+async def test_classification_json_answer_records_success_on_parse_basis():
+    """OD-75: the parsed path keeps 'success', now on the parse_v1 basis."""
+    agent = _agent()
+    spend = MagicMock()
+    with patch(
+        "agents.email_intel_agent.get_gemini_client",
+        return_value=_gemini_returning("PROMO", 0.95),
+    ), patch("services.spend_logger.get_spend_logger", return_value=spend):
+        result = await agent._classify_email("s", "b")
+
+    assert result.category == "PROMO"
+    assert spend.log.call_count == 1
+    kwargs = spend.log.call_args.kwargs
+    assert kwargs["outcome"] == "success"
+    assert kwargs["context"]["outcome_basis"] == "parse_v1"
+    assert kwargs["context"]["parse_failed"] is False
+
+
+async def test_escalation_without_json_records_partial_not_success():
+    """
+    OD-75: this site was NOT in the reported list but carries the same defect,
+    and it runs on the ~10x escalation model — the most expensive way to book a
+    completed task that produced nothing. The primary verdict still survives.
+    """
+    agent = _agent()
+    spend = MagicMock()
+    with patch(
+        "agents.email_intel_agent.get_anthropic_client",
+        return_value=_anthropic_returning("I am unable to classify this."),
+    ), patch("services.spend_logger.get_spend_logger", return_value=spend):
+        result = await agent._escalate_classification(
+            "s", "b", MagicMock(confidence=0.2)
+        )
+
+    assert result is None
+    assert spend.log.call_count == 1
+    kwargs = spend.log.call_args.kwargs
+    assert kwargs["outcome"] == "partial"
+    assert kwargs["context"]["outcome_basis"] == "parse_v1"
+    assert kwargs["context"]["parse_failed"] is True
+
+
+async def test_promo_extraction_prose_answer_records_partial_not_success():
+    """OD-75: _extract_promo raises on prose; the row is still owed, graded partial."""
+    agent = _agent()
+    spend = MagicMock()
+    haiku = _anthropic_returning("Happy to help with that deal!")
+    with patch("agents.email_intel_agent.get_haiku_client", return_value=haiku), patch(
+        "services.spend_logger.get_spend_logger", return_value=spend
+    ):
+        with pytest.raises(json.JSONDecodeError):
+            await agent._extract_promo("subject", "body")
+
+    assert spend.log.call_count == 1
+    kwargs = spend.log.call_args.kwargs
+    assert kwargs["outcome"] == "partial"
+    assert kwargs["context"]["outcome_basis"] == "parse_v1"
+    assert kwargs["context"]["parse_failed"] is True

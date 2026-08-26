@@ -102,7 +102,7 @@ def _percentile_50(values: List[float]) -> float:
 
 
 @research_router.get("/metrics", response_model=ResearchMetricsResponse)
-def get_research_metrics():
+def get_research_metrics(_token: str = Depends(verify_admin_token)):
     """
     GET /api/v1/research/metrics
 
@@ -345,7 +345,11 @@ def get_research_metrics():
 
 
 @research_router.get("/runs")
-def get_research_runs(limit: int = 20, offset: int = 0):
+def get_research_runs(
+    limit: int = 20,
+    offset: int = 0,
+    _token: str = Depends(verify_admin_token),
+):
     """
     GET /api/v1/research/runs
 
@@ -393,7 +397,11 @@ def get_research_runs(limit: int = 20, offset: int = 0):
 
 
 @research_router.get("/conflicts")
-def get_research_conflicts(limit: int = 20, offset: int = 0):
+def get_research_conflicts(
+    limit: int = 20,
+    offset: int = 0,
+    _token: str = Depends(verify_admin_token),
+):
     """
     GET /api/v1/research/conflicts
 
@@ -473,6 +481,7 @@ def get_research_challenges(
     status: str = "open",
     limit: int = 20,
     offset: int = 0,
+    _token: str = Depends(verify_admin_token),
 ):
     """
     GET /api/v1/research/challenges

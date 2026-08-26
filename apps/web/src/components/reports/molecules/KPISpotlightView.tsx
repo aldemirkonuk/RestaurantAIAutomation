@@ -35,11 +35,12 @@ interface KPISpotlightViewProps {
   currentValue: string | number
   isOpen: boolean
   onClose: () => void
-  salesData: SalesDataPoint[]
+  purchaseDayData: PurchaseDayPoint[]
   wineTypeTotals: { red: number; white: number; sparkling: number; rose: number; dessert: number }
   topWines: { name: string; value: number }[]
   metrics: {
-    totalRevenue: number
+    /** Total vendor spend (procurement_orders), not sales revenue. */
+    totalSpend: number
     totalOrders: number
     totalBottles: number
     avgOrderValue: number
@@ -48,9 +49,13 @@ interface KPISpotlightViewProps {
   }
 }
 
-interface SalesDataPoint {
+/**
+ * One day of PURCHASE-order activity. `spend` is money paid to vendors
+ * (procurement_orders); this view never reads POS sales revenue.
+ */
+interface PurchaseDayPoint {
   date: string
-  revenue: number
+  spend: number
   orders: number
   bottles: number
   avgOrderValue: number
@@ -104,7 +109,7 @@ const KPI_TAB_CONFIGS: Record<string, SpotlightTab[]> = {
 
 // ─── Heatmap Calendar Sub-component ────────────────────────────────────
 
-function HeatmapCalendar({ data, valueKey }: { data: SalesDataPoint[]; valueKey: 'revenue' | 'bottles' | 'orders' }) {
+function HeatmapCalendar({ data, valueKey }: { data: PurchaseDayPoint[]; valueKey: 'spend' | 'bottles' | 'orders' }) {
   const maxVal = Math.max(...data.map(d => (d as any)[valueKey] || 0), 1)
 
   const getIntensity = (val: number) => {
@@ -116,7 +121,7 @@ function HeatmapCalendar({ data, valueKey }: { data: SalesDataPoint[]; valueKey:
     return 'bg-wine-200'
   }
 
-  const weeks: SalesDataPoint[][] = []
+  const weeks: PurchaseDayPoint[][] = []
   for (let i = 0; i < data.length; i += 7) {
     weeks.push(data.slice(i, i + 7))
   }
@@ -127,7 +132,7 @@ function HeatmapCalendar({ data, valueKey }: { data: SalesDataPoint[]; valueKey:
     return (
       <EmptyStateCard
         title="No Activity Data"
-        description="Connect your POS system to see sales intensity by day."
+        description="Purchasing intensity appears here once orders are recorded."
       />
     )
   }
@@ -141,7 +146,7 @@ function HeatmapCalendar({ data, valueKey }: { data: SalesDataPoint[]; valueKey:
               <div
                 key={di}
                 className={`w-4 h-4 rounded-sm ${getIntensity((day as any)[valueKey] || 0)} transition-colors`}
-                title={`${day.date}: ${valueKey === 'revenue' ? formatMoney((day as any)[valueKey], 'full') : (day as any)[valueKey]}`}
+                title={`${day.date}: ${valueKey === 'spend' ? formatMoney((day as any)[valueKey], 'full') : (day as any)[valueKey]}`}
               />
             ))}
           </div>
@@ -203,7 +208,7 @@ function StatsRow({ stats }: { stats: { label: string; value: string; trend?: 'u
 
 // ─── Wine Type Donut ───────────────────────────────────────────────────
 
-function WineTypeDonut({ totals, mode }: { totals: Record<string, number>; mode: 'revenue' | 'bottles' }) {
+function WineTypeDonut({ totals, mode }: { totals: Record<string, number>; mode: 'spend' | 'bottles' }) {
   const data = [
     { name: 'Red', value: totals.red || 0 },
     { name: 'White', value: totals.white || 0 },
@@ -213,7 +218,7 @@ function WineTypeDonut({ totals, mode }: { totals: Record<string, number>; mode:
   ].filter(d => d.value > 0)
 
   if (data.length === 0) {
-    return <EmptyStateCard title="No Category Data" description="Sales data by wine type will appear here once POS is connected." />
+    return <EmptyStateCard title="No Category Data" description="Purchasing by wine type appears here once orders are recorded." />
   }
 
   return (
@@ -224,7 +229,7 @@ function WineTypeDonut({ totals, mode }: { totals: Record<string, number>; mode:
         index="name"
         colors={['rose', 'amber', 'yellow', 'pink', 'purple']}
         className="w-48 h-48"
-        valueFormatter={mode === 'revenue' ? (v) => formatMoney(v, 'compact') : (v) => formatNumber(v, 'compact')}
+        valueFormatter={mode === 'spend' ? (v) => formatMoney(v, 'compact') : (v) => formatNumber(v, 'compact')}
       />
       <div className="space-y-2">
         {data.map((d, i) => (
@@ -234,7 +239,7 @@ function WineTypeDonut({ totals, mode }: { totals: Record<string, number>; mode:
             }`} />
             <span className="text-gray-600">{d.name}</span>
             <span className="font-semibold text-gray-900 ml-auto">
-              {mode === 'revenue' ? formatMoney(d.value, 'compact') : formatNumber(d.value)}
+              {mode === 'spend' ? formatMoney(d.value, 'compact') : formatNumber(d.value)}
             </span>
           </div>
         ))}
@@ -251,7 +256,7 @@ export function KPISpotlightView({
   currentValue: _currentValue,
   isOpen,
   onClose,
-  salesData,
+  purchaseDayData,
   wineTypeTotals,
   topWines,
   metrics: _metrics,
@@ -261,13 +266,15 @@ export function KPISpotlightView({
 
   // Computed stats per KPI
   const statsRow = useMemo(() => {
-    const vals = salesData.map(d => {
+    // NOTE: 'revenue' is a frozen persisted layout key; the value it selects
+    // is vendor spend.
+    const vals = purchaseDayData.map(d => {
       switch (kpiKey) {
-        case 'revenue': return d.revenue
+        case 'revenue': return d.spend
         case 'orders': return d.orders
         case 'bottles': return d.bottles
         case 'avgOrder': return d.avgOrderValue
-        default: return d.revenue
+        default: return d.spend
       }
     }).filter(v => v > 0)
 
@@ -286,23 +293,23 @@ export function KPISpotlightView({
       { label: 'Worst Day', value: fmt(worst), trend: 'down' as const },
       { label: 'Total', value: fmt(sum), trend: null },
     ]
-  }, [salesData, kpiKey])
+  }, [purchaseDayData, kpiKey])
 
-  const hasData = salesData.some(d => d.revenue > 0 || d.orders > 0 || d.bottles > 0)
+  const hasData = purchaseDayData.some(d => d.spend > 0 || d.orders > 0 || d.bottles > 0)
 
   // Chart data key mapping
-  const chartValueKey = kpiKey === 'revenue' ? 'revenue'
+  const chartValueKey = kpiKey === 'revenue' ? 'spend'
     : kpiKey === 'orders' ? 'orders'
     : kpiKey === 'bottles' ? 'bottles'
     : kpiKey === 'avgOrder' ? 'avgOrderValue'
-    : 'revenue'
+    : 'spend'
 
   const isCurrency = kpiKey === 'revenue' || kpiKey === 'avgOrder' || kpiKey === 'inventoryValue' || kpiKey === 'purchaseCost'
 
   const handleExport = async (format: TableExportFormat) => {
-    const columns: TableExportColumn<(typeof salesData)[number]>[] = [
+    const columns: TableExportColumn<(typeof purchaseDayData)[number]>[] = [
       { header: 'Date', value: (d) => d.date },
-      { header: 'Revenue', value: (d) => d.revenue },
+      { header: 'Vendor Spend', value: (d) => d.spend },
       { header: 'Orders', value: (d) => d.orders },
       { header: 'Bottles', value: (d) => d.bottles },
       { header: 'Avg Order', value: (d) => d.avgOrderValue },
@@ -315,7 +322,7 @@ export function KPISpotlightView({
     try {
       await exportTable({
         format,
-        rows: salesData,
+        rows: purchaseDayData,
         columns,
         filename: `wineops-${kpiKey}-${new Date().toISOString().split('T')[0]}`,
         title: `KPI · ${kpiKey}`,
@@ -330,10 +337,10 @@ export function KPISpotlightView({
 
   const renderOverview = () => {
     if (!hasData) {
-      return <EmptyStateCard title="No Data Available" description="Connect your POS system in Settings to see real data for this metric." />
+      return <EmptyStateCard title="No Data Available" description="This metric fills in once purchase orders are recorded." />
     }
 
-    const chartData = salesData.map(d => ({
+    const chartData = purchaseDayData.map(d => ({
       date: d.date,
       [chartValueKey]: (d as any)[chartValueKey] ?? 0,
     }))
@@ -362,15 +369,15 @@ export function KPISpotlightView({
   const renderHeatmap = () => (
     <div className="space-y-4">
       <h4 className="text-sm font-medium text-gray-700">
-        {kpiKey === 'bottles' ? 'Bottles Sold' : 'Revenue'} Intensity by Day
+        {kpiKey === 'bottles' ? 'Bottles Purchased' : 'Vendor Spend'} Intensity by Day
       </h4>
-      <HeatmapCalendar data={salesData} valueKey={kpiKey === 'bottles' ? 'bottles' : 'revenue'} />
+      <HeatmapCalendar data={purchaseDayData} valueKey={kpiKey === 'bottles' ? 'bottles' : 'spend'} />
     </div>
   )
 
   const renderByType = () => (
     <div className="space-y-6">
-      <WineTypeDonut totals={wineTypeTotals} mode={kpiKey === 'bottles' ? 'bottles' : 'revenue'} />
+      <WineTypeDonut totals={wineTypeTotals} mode={kpiKey === 'bottles' ? 'bottles' : 'spend'} />
       {topWines.length > 0 && (
         <div>
           <h4 className="text-sm font-medium text-gray-700 mb-3">Top Performers</h4>
@@ -400,13 +407,13 @@ export function KPISpotlightView({
   }
 
   const renderDistribution = () => {
-    if (!hasData) return <EmptyStateCard title="No Distribution Data" description="Order value distribution will appear when POS data is available." />
+    if (!hasData) return <EmptyStateCard title="No Distribution Data" description="Order value distribution appears once purchase orders are recorded." />
     return (
       <div className="space-y-6">
         {statsRow && <StatsRow stats={statsRow} />}
         <div className="h-64">
           <BarChart
-            data={salesData.filter(d => d.avgOrderValue > 0).map(d => ({ date: d.date, 'Avg Value': d.avgOrderValue }))}
+            data={purchaseDayData.filter(d => d.avgOrderValue > 0).map(d => ({ date: d.date, 'Avg Value': d.avgOrderValue }))}
             index="date"
             categories={['Avg Value']}
             colors={['rose']}
@@ -468,7 +475,7 @@ export function KPISpotlightView({
       <ExportMenu
         variant="wine"
         label="Export"
-        count={salesData.length}
+        count={purchaseDayData.length}
         onExport={handleExport}
         title="Export this KPI's data"
       />

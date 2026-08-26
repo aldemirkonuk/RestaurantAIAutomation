@@ -30,8 +30,7 @@ import { Breadcrumbs } from "../components/layout/Breadcrumbs";
 import { ExportMenu } from "../components/ui/ExportMenu";
 import { exportTable, type TableExportColumn, type TableExportFormat } from "../lib/tableExport";
 import { toast as sonnerToast } from "sonner";
-
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:4000";
+import { apiClient, getErrorMessage } from "../services/api/client";
 
 interface Candidate {
   key: string;
@@ -90,6 +89,7 @@ export default function InsightCatalog() {
 
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [dim, setDim] = useState<string>(searchParams.get("dim") || "overall");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<Set<string>>(new Set());
@@ -99,9 +99,10 @@ export default function InsightCatalog() {
 
   useEffect(() => {
     const params = restaurantId ? `?restaurantId=${restaurantId}` : "";
-    fetch(`${API_URL}/api/v1/analytics/insight-catalog/types${params}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((body) => {
+    setError(null);
+    apiClient
+      .get<Catalog>(`/analytics/insight-catalog/types${params}`)
+      .then(({ data: body }) => {
         if (!body) return;
         setCatalog(body);
         // Deep-link (?type=): jump to that cell's dimension.
@@ -111,7 +112,7 @@ export default function InsightCatalog() {
           if (c) setDim(c.dimension);
         }
       })
-      .catch(() => {})
+      .catch((e) => setError(getErrorMessage(e)))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
@@ -319,7 +320,7 @@ export default function InsightCatalog() {
           <div className="h-64 bg-white rounded-2xl border border-gray-200 animate-pulse" />
         ) : !catalog ? (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-sm text-red-700">
-            Couldn't load the catalog.
+            Couldn't load the catalog{error ? ` — ${error}` : "."}
           </div>
         ) : search.trim() ? (
           /* Global search results across every dimension */
