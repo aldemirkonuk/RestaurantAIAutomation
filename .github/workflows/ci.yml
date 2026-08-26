@@ -145,6 +145,17 @@ jobs:
   # written as commands in .planning/decisions/CLAIMS.jsonl, and this runs them.
   # Blocks, like the other guards, and exits 2 rather than green when it cannot
   # check what it claims to.
+  #
+  # Second step added 2026-08-26 with ADR 0025 §6. Same subject -- the decision
+  # register -- so it shares this job rather than opening another required check:
+  # both steps read .planning/decisions/, both are stdlib-only and hermetic, and a
+  # citation defect and a claim defect want to be read side by side. That is the
+  # same reason schema-code-parity carries two scripts in one job.
+  #
+  # The pairing check is the answer to a measurement, not a hunch: of the register
+  # citations in this corpus that named both an id and a line, ZERO agreed. An id
+  # alone renumbers and keeps resolving; a line alone moves under any of the 57
+  # commits that touched OPEN-DECISIONS.md since Aug 1. Only the pair fails loudly.
   decision-claims:
     name: Decision register matches reality
     runs-on: ubuntu-latest
@@ -155,12 +166,20 @@ jobs:
       - name: Re-verify every executable claim
         run: ./scripts/check_decision_claims.sh
 
+      - name: Every register citation names the row it points at
+        run: ./scripts/check_citation_pairing.py
+
       - name: Explain a failure
         if: failure()
         run: |
           echo "::notice::REGRESSED means a decision this repo considers settled has come undone."
           echo "::notice::STALE means an entry is listed as open but its claim already verifies — strike it off."
           echo "::notice::A register that lists fixed things is one people stop reading, which is how a critical SSRF sat unread."
+          echo "::notice::COULD NOT RUN means a claim's verify command never executed — a missing file, a renamed symbol, a typo. Repoint it or strike it; it is not a skip."
+          echo "::notice::A claim may not redirect its own stderr. Strict mode reads stderr to tell 'ran and disagreed' from 'never ran', and a muzzled claim certifies itself."
+          echo "::notice::DISAGREEING means a citation's OD id and its OPEN-DECISIONS.md line name different rows. The guard prints the line the id is actually on — use that one."
+          echo "::notice::UNANCHORED means a bare OPEN-DECISIONS.md:N with no id beside it. ADR 0025 §6 requires both: write OD-88 (OPEN-DECISIONS.md:55)."
+          echo "::notice::Do NOT add a citation to PAIRING_DEBT. That list is a two-PR handoff for six page dossiers owned by a concurrent branch, and it only ever shrinks."
           echo "::notice::Exit 2 means the guard could not check what it claims to. That is a failure, not a skip."
 
   # Does the schema the code queries actually exist, and does it live where it

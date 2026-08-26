@@ -97,7 +97,7 @@ SORT department ASC
 
 ## Non-preemptible lane — slipping any of these is a founder decision, recorded
 
-- [ ] OD-03 bake-off on this repo's own workloads — *no pick from repute* (`OPEN-DECISIONS.md:14`)
+- [ ] OD-03 bake-off on this repo's own workloads — *no pick from repute* (`OPEN-DECISIONS.md:25`)
 - [ ] Golden sets with real negatives, for three task types
 - [ ] NF-A backfill to a joinable event
 

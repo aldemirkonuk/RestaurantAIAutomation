@@ -11,7 +11,7 @@ links: ["[[../06-pages/RETIRED|RETIRED]]", "[[../decisions/0019-p2-build-scope|A
 Written by the `feat/retire-legacy-pages` session. Three agents ran in parallel and
 `OPEN-DECISIONS.md` / `CLAIMS.jsonl` were owned exclusively by another one, so
 everything below that belongs in the register is recorded here instead of applied.
-**Nothing in this file has been written to the register.**
+~~**Nothing in this file has been written to the register.**~~ **§1 was applied 2026-08-26 on `fix/od-80-dead-code`; §5.2 was already fixed on `main` by #98 — see the status lines under each.**
 
 The retirement itself, its parity tables and the redirect decision are in
 [`.planning/06-pages/RETIRED.md`](../06-pages/RETIRED.md). This file is only the
@@ -20,6 +20,13 @@ register delta.
 ---
 
 ## 1. OD-80 is unblocked — apply the cleanup **and** flip both claims together
+
+> **APPLIED 2026-08-26** on `fix/od-80-dead-code`. Both halves plus both `CLAIMS.jsonl`
+> flips landed in one commit; OD-80 moved to the Resolved table. Verified:
+> `tsc --noEmit` 0 errors, `vitest run` 369/369 in 48 files, claims guard
+> **94 checked, 94 holding**. The atomicity requirement was proven, not assumed —
+> re-opening just the two claims on the fixed tree makes the guard exit 1 with
+> *"STALE (2) — listed as open, but already true"*.
 
 OD-80 says it is *"Blocked on branch, not on a decision… no part of this can land
 `tsc`-green on any branch where `Calendar.tsx` still exists."* **That condition is
@@ -64,8 +71,8 @@ first or the line numbers shift.
 
 ⚠️ `pages/calendar/CalendarPage.tsx:43` declares its **own local** `EVENT_TYPE_COLORS`
 — a different constant with a different shape (`Record<string,string>` vs an array of
-`{name,value}`), not an import. It must survive; six call sites depend on it
-(`:187, :216, :630, :667, :678, :688, :696`).
+`{name,value}`), not an import. It must survive; ~~six~~ **seven** call sites depend on
+it (`:187, :216, :630, :667, :678, :688, :696` — the list was right, the count was not).
 
 ### Claim flips that must ride the same commit
 
@@ -79,7 +86,7 @@ Verify with `cd apps/web && npx tsc --noEmit && npx vitest run && bash scripts/c
 
 ## 2. OD-83(b) — confirmed, and confirmed closed
 
-The register already marks OD-83 ✅ Resolved (`OPEN-DECISIONS.md:83`). This session
+The register already marks OD-83 ✅ Resolved (`OPEN-DECISIONS.md:90`). This session
 re-derived it independently rather than trusting that, because it was handed to us as
 an open "known loss":
 
@@ -131,13 +138,31 @@ Both baselined against `origin/main` @ `63c2bccd` in a clean worktree.
    file passed 15/15 in isolation. The cause was a node captured across an `await`
    boundary that `AnimatePresence` then detached — not the missing node the failure
    message implied. **No action needed.**
-2. **`e2e/studio-flow.spec.ts:5` "login page renders correctly" fails on `main`.**
+2. ~~**`e2e/studio-flow.spec.ts:5` "login page renders correctly" fails on `main`.**~~ **Fixed on `main` by `73e43131` (#98) — and the diagnosis below is wrong; see the correction after this item.**
    `getByLabel('Password')` finds nothing. Reproduced on `origin/main` before this
    branch existed. Note `e2e/navigation.spec.ts:57` already works around the same
    thing on `/register` with `input[type="password"]`, commenting that the inputs
    "carry no ids or associated labels" — so the login page likely has the same
    unlabelled-input problem and the fix is probably an accessibility fix, not a test
    fix.
+
+   **Correction, 2026-08-26.** The a11y hypothesis is false *for `/login`*. `Login.tsx`
+   pairs `<label htmlFor="email">`/`id="email"` (`:176`, `:184`) and
+   `<label htmlFor="password">`/`id="password"` (`:262`, `:270`) — the labels are
+   properly associated and `getByLabel` resolves them. `getByLabel('Password')` found
+   nothing because the field **is not rendered at step 1**: it sits behind
+   `{showPassword && (…)}` (`Login.tsx:259`), which identity-first sign-in (ADR 0024)
+   gates on `POST /auth/sign-in-methods`, and e2e runs with no gateway behind the vite
+   proxy. #98 rewrote the test as *"login page renders step one: identify yourself"* and
+   inverted the assertion to `toHaveCount(0)`, which now guards against a regression to
+   the one-step form. **No further action on `/login`.**
+
+   The unlabelled-input defect `navigation.spec.ts:58` describes is real, but it is on
+   **`/register`**, a different page: `Register.tsx` uses bare `<label>` with no
+   `htmlFor` and inputs with no `id` at every field (`:525`, `:540`, `:608`, `:624`,
+   `:702`, `:717`, `:785`, `:801`, and ~14 more). That is a genuine WCAG 1.3.1 / 4.1.2
+   failure and is **not fixed** — filed as its own item rather than folded in here,
+   since it is ~22 fields on a page this branch did not touch.
 
 ---
 
