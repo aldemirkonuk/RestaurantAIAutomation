@@ -41,6 +41,15 @@ CERTIFIED_CONTRIBUTOR_PAYLOAD = {
     "email": "contributor@e2e-test.com",
     "app_metadata": {"roles": ["certified_contributor"]},
 }
+# The realistic invitee (ADR 0021): a signed-in account holding NO studio role, which is
+# precisely who an invite exists for. Redemption used to require a role the invitee could
+# not have, so this payload is the one the old gate made impossible.
+INVITEE_PAYLOAD = {
+    "sub": "invitee-e2e-001",
+    "email": "newcontributor@e2e-test.com",
+    "app_metadata": {"roles": []},
+}
+INVITE_TARGET_EMAIL = "newcontributor@e2e-test.com"
 
 SESSION_ID = "sess-e2e-pipe-001"
 SUBMISSION_ID = "sub-e2e-pipe-001"
@@ -407,12 +416,19 @@ class TestStudioOverridePipeline:
         assert body["pending_queue"] == 1
         assert body["auto_promoted"] == 1
 
-    def test_invite_create_and_redeem_flow(self, test_client):
-        """Admin creates invite → developer redeems → role_granted='certified_contributor'."""
-        token_val = "test-invite-token-e2e-uuid"
-        future_expiry = (datetime.now(timezone.utc) + timedelta(days=7)).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
+    @staticmethod
+    def _invite_mocks(
+        token_val: str,
+        target_email: str = INVITE_TARGET_EMAIL,
+        expiry: str = None,
+        used_at=None,
+        claim_succeeds: bool = True,
+        existing_roles: list = None,
+    ):
+        """Build invite_tokens + user_roles mocks matching redeem_invite's call chain."""
+        future_expiry = expiry or (
+            datetime.now(timezone.utc) + timedelta(days=7)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         invite_mock = MagicMock()
         invite_mock.insert.return_value.execute.return_value.data = [
@@ -426,43 +442,127 @@ class TestStudioOverridePipeline:
             "token": token_val,
             "role": "certified_contributor",
             "expires_at": future_expiry,
-            "used_at": None,
+            "used_at": used_at,
+            "target_email": target_email,
             "created_by": "admin-e2e-001",
             "id": "tok-e2e-001",
         }
+        # The conditional claim: .update(...).eq("id", ...).is_("used_at", "null").execute()
+        invite_mock.update.return_value.eq.return_value.is_.return_value.execute.return_value.data = (
+            [{"id": "tok-e2e-001"}] if claim_succeeds else []
+        )
 
         user_roles_mock = MagicMock()
+        user_roles_mock.select.return_value.eq.return_value.eq.return_value.is_.return_value.execute.return_value.data = (
+            existing_roles or []
+        )
+        return invite_mock, user_roles_mock
+
+    def test_invite_create_and_redeem_flow(self, test_client):
+        """Admin creates invite → the ROLELESS invitee redeems it → role granted (ADR 0021)."""
+        token_val = "test-invite-token-e2e-uuid"
+        invite_mock, user_roles_mock = self._invite_mocks(token_val)
 
         sb = _build_supabase(
-            {
-                "invite_tokens": invite_mock,
-                "user_roles": user_roles_mock,
-            }
+            {"invite_tokens": invite_mock, "user_roles": user_roles_mock}
         )
         admin_auth = {"Authorization": f"Bearer {_make_jwt(ADMIN_PAYLOAD)}"}
-        dev_auth = {"Authorization": f"Bearer {_make_jwt(DEVELOPER_PAYLOAD)}"}
+        invitee_auth = {"Authorization": f"Bearer {_make_jwt(INVITEE_PAYLOAD)}"}
 
         with patch(
             "config.settings.get_settings", return_value=_make_settings()
-        ), patch("api.studio_routes._get_supabase", return_value=sb):
+        ), patch("api.studio_routes._get_supabase", return_value=sb), patch(
+            "services.override_service._get_supabase", return_value=sb
+        ):
 
             # Admin creates invite
             create_resp = test_client.post(
                 "/api/v1/studio/invite",
                 json={
                     "role": "certified_contributor",
-                    "target_email": "new@example.com",
+                    "target_email": INVITE_TARGET_EMAIL,
                 },
                 headers=admin_auth,
             )
             assert create_resp.status_code == 200, create_resp.text
             assert create_resp.json()["token"] == token_val
 
-            # Developer redeems invite (developer is in the allowed roles list for /invite/redeem)
+            # The invitee — no studio role at all — redeems. This is the case the old
+            # require_studio_role gate made impossible.
             redeem_resp = test_client.post(
                 "/api/v1/studio/invite/redeem",
                 json={"token": token_val},
-                headers=dev_auth,
+                headers=invitee_auth,
             )
             assert redeem_resp.status_code == 200, redeem_resp.text
             assert redeem_resp.json()["role_granted"] == "certified_contributor"
+
+    def test_redeem_by_wrong_email_is_rejected(self, test_client):
+        """A token that reaches the wrong account grants nothing (T-13-13, ADR 0021)."""
+        token_val = "test-invite-token-e2e-mismatch"
+        invite_mock, user_roles_mock = self._invite_mocks(token_val)
+        sb = _build_supabase(
+            {"invite_tokens": invite_mock, "user_roles": user_roles_mock}
+        )
+        # DEVELOPER_PAYLOAD's email is developer@e2e-test.com — not the invited address.
+        wrong_auth = {"Authorization": f"Bearer {_make_jwt(DEVELOPER_PAYLOAD)}"}
+
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch("api.studio_routes._get_supabase", return_value=sb), patch(
+            "services.override_service._get_supabase", return_value=sb
+        ):
+            resp = test_client.post(
+                "/api/v1/studio/invite/redeem",
+                json={"token": token_val},
+                headers=wrong_auth,
+            )
+
+        assert resp.status_code == 403, resp.text
+        # The token must remain unclaimed — a rejected redemption cannot burn the invite.
+        assert invite_mock.update.call_count == 0
+
+    def test_redeem_losing_the_claim_race_returns_409(self, test_client):
+        """Two concurrent redemptions: the one whose conditional UPDATE matches no row loses."""
+        token_val = "test-invite-token-e2e-race"
+        invite_mock, user_roles_mock = self._invite_mocks(
+            token_val, claim_succeeds=False
+        )
+        sb = _build_supabase(
+            {"invite_tokens": invite_mock, "user_roles": user_roles_mock}
+        )
+        invitee_auth = {"Authorization": f"Bearer {_make_jwt(INVITEE_PAYLOAD)}"}
+
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch("api.studio_routes._get_supabase", return_value=sb), patch(
+            "services.override_service._get_supabase", return_value=sb
+        ):
+            resp = test_client.post(
+                "/api/v1/studio/invite/redeem",
+                json={"token": token_val},
+                headers=invitee_auth,
+            )
+
+        assert resp.status_code == 409, resp.text
+        # The loser must not have inserted a role.
+        assert user_roles_mock.insert.call_count == 0
+
+    def test_invite_without_target_email_is_rejected_at_mint(self, test_client):
+        """target_email is required, so an unbound (bearer-capability) token cannot exist."""
+        invite_mock, user_roles_mock = self._invite_mocks("unused")
+        sb = _build_supabase(
+            {"invite_tokens": invite_mock, "user_roles": user_roles_mock}
+        )
+        admin_auth = {"Authorization": f"Bearer {_make_jwt(ADMIN_PAYLOAD)}"}
+
+        with patch(
+            "config.settings.get_settings", return_value=_make_settings()
+        ), patch("api.studio_routes._get_supabase", return_value=sb):
+            resp = test_client.post(
+                "/api/v1/studio/invite",
+                json={"role": "review_admin"},
+                headers=admin_auth,
+            )
+
+        assert resp.status_code == 422, resp.text

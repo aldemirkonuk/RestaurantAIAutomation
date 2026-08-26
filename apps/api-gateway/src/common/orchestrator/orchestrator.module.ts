@@ -15,12 +15,23 @@ import {
   HealthProxyController,
   MetricsProxyController,
 } from "./health-proxy.controller";
+import { StudioProxyController } from "./studio-proxy.controller";
+import { StudioInviteController } from "./studio-invite.controller";
+import { CommunicationsModule } from "../../communications/communications.module";
 
 @Module({
-  imports: [WebsocketModule, forwardRef(() => AuthModule)],
+  imports: [
+    WebsocketModule,
+    forwardRef(() => AuthModule),
+    forwardRef(() => CommunicationsModule),
+  ],
   controllers: [
     HealthProxyController,
     MetricsProxyController,
+    // MUST precede StudioProxyController: that controller's @Post("*") on the same
+    // `studio` prefix would otherwise swallow POST /studio/invite and skip the email.
+    StudioInviteController,
+    StudioProxyController,
     SenderTrustController,
     ProspectsController,
     InboundEmailController,

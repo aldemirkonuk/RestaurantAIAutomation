@@ -79,6 +79,45 @@ export class OrchestratorService implements OnModuleDestroy {
     return { "X-Admin-Key": key };
   }
 
+  /**
+   * Forward a studio request to the orchestrator, preserving the caller's own Bearer token.
+   *
+   * Studio endpoints authorize per-user against `app_metadata.roles`, which generateTokens()
+   * already embeds for this exact consumer (auth.service.ts:393-395). So this passes the
+   * token through rather than substituting the admin key: swapping in a service credential
+   * would erase the identity the orchestrator authorizes on and make every caller an admin.
+   *
+   * Returns { status, data } instead of throwing, so the controller can relay the
+   * orchestrator's own status codes — redeem_invite's 403/404/409/410 each mean something
+   * specific to the user and must not collapse into a 500.
+   */
+  async proxyStudio(
+    method: string,
+    subPath: string,
+    authorization: string | undefined,
+    body: unknown,
+    query: Record<string, any>,
+  ): Promise<{ status: number; data: any }> {
+    if (!this.orchestratorConfigured) {
+      this.logger.error(
+        "AGENT_ORCHESTRATOR_URL not configured — studio requests cannot be served",
+      );
+      return {
+        status: 503,
+        data: { message: "Studio service is not configured" },
+      };
+    }
+    const response = await this.httpClient.request({
+      method: method as any,
+      url: `/api/v1/studio/${subPath}`,
+      data: body,
+      params: query,
+      headers: authorization ? { Authorization: authorization } : {},
+      validateStatus: () => true,
+    });
+    return { status: response.status, data: response.data };
+  }
+
   async getAgentHealthAll(): Promise<any> {
     const response = await this.httpClient.get("/api/v1/health/agents", {
       headers: this.getAdminHeaders(),

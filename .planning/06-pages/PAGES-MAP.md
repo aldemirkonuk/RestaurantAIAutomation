@@ -64,6 +64,7 @@ The founder's tracking mandate lands here: page telemetry rides the NF spine (`s
 | `/simpos/:restaurantId` | [[simpos-terminal]] | dev | public | none | 3 |
 | `/sommelier` | [[sommelier]] | owner | core | none | 0 |
 | `/studio/certify` | [[studio-certify]] | dev | core | none | 1 |
+| `/studio/invite/:token` | [[studio-invite-redeem]] | dev | core | none | 1 |
 | `/studio/queue` | [[studio-queue]] | dev | core | none | 1 |
 | `/studio` | [[studio]] | dev | core | none | 1 |
 | `/team` | [[team]] | staff | core | none | 0 |

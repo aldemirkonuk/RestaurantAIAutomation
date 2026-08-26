@@ -75,14 +75,18 @@ on all three studio pages.
   (`FieldCell.tsx:58-59`)
 
 ## 9. Gaps
-- **Routing gap (candidate defect, not in `v3.0-TECH-DEBT.md`)**: the components assume
-  the Vite `/api` proxy targets FastAPI:8000 (`CommandBar.tsx:29-30`,
-  `MetricsDashboard.tsx:23`, `FieldCell.tsx:68`), but `apps/web/vite.config.ts:24-28`
-  proxies `/api` → `http://localhost:4000` (NestJS), and production rewrites `/api/*`
-  to the Railway **gateway** (`vercel.json:8-10`). The gateway has no studio or
-  onboarding-extract module and no forwarding proxy (only health:
-  `common/orchestrator/health-proxy.controller.ts`). As configured, every §4 call
-  should 404 in both dev and prod.
+- ~~**Routing gap (candidate defect, not in `v3.0-TECH-DEBT.md`)**~~ — **confirmed and
+  half closed 2026-08-26** ([ADR 0021](../decisions/0021-studio-invites-are-self-service.md)).
+  The diagnosis was right: the components assume the Vite `/api` proxy targets
+  FastAPI:8000 (`CommandBar.tsx:29-30`, `MetricsDashboard.tsx:23`, `FieldCell.tsx:68`),
+  but `apps/web/vite.config.ts:24-28` proxies `/api` → `http://localhost:4000` (NestJS)
+  and production rewrites `/api/*` to the Railway **gateway** (`vercel.json:8-10`).
+  `StudioProxyController` now forwards `/api/v1/studio/*` to the orchestrator with the
+  caller's own Bearer token, so the four `studio/*` calls in §4 resolve. **Still open
+  (OD-83):** `POST /api/v1/onboarding/extract` has no route anywhere in the gateway, so
+  the PDF/photo ingestion path still 404s. Note the new operational coupling — the
+  gateway signs with `JWT_SECRET` and the orchestrator verifies with
+  `SUPABASE_JWT_SECRET`, so those must hold the same value or every studio call 401s.
 - Manual-seed sessions silently degrade to a local `local-<ts>` id when the API fails
   (`CommandBar.tsx:122`) — records then exist only in browser memory.
 - This is the **richest enrichment surface among the wine pages**: 14 record columns
