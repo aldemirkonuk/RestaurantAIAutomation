@@ -379,6 +379,44 @@ class TestRedeemInvite:
         assert resp.status_code == 401, resp.text
 
 
+class TestLogSanitization:
+    """CodeQL py/log-injection (alert 884): `sub` reaches the log from the request's JWT."""
+
+    def test_newlines_cannot_forge_a_second_log_entry(self):
+        from services.override_service import sanitize_for_log
+
+        forged = "victim\nINFO:root:Redeemed invite for user=attacker role=review_admin"
+        cleaned = sanitize_for_log(forged)
+
+        assert "\n" not in cleaned
+        assert "\r" not in cleaned
+        assert cleaned.startswith("victim\\n")
+
+    def test_caps_length_and_survives_non_strings(self):
+        from services.override_service import sanitize_for_log
+
+        assert len(sanitize_for_log("a" * 500)) == 128
+        assert sanitize_for_log(None) == "None"
+
+    def test_redeem_logs_a_sanitized_subject(self, test_client: TestClient, caplog):
+        """The success path logs the JWT subject — it must arrive escaped."""
+        import logging
+
+        sb, _, _ = _make_invite_mocks()
+        payload = {
+            "sub": "evil\nINFO:root:forged entry",
+            "email": INVITE_TARGET_EMAIL,
+            "app_metadata": {"roles": []},
+        }
+        with caplog.at_level(logging.INFO):
+            resp = _redeem(test_client, sb, payload)
+
+        assert resp.status_code == 200, resp.text
+        redeemed = [r for r in caplog.records if "Redeemed invite" in r.getMessage()]
+        assert redeemed, "expected a redemption log line"
+        assert "\n" not in redeemed[0].getMessage()
+
+
 class TestInviteRequiresTargetEmail:
     def test_mint_without_target_email_returns_422(self, test_client: TestClient):
         """An unbound token would be a bearer capability for a role — ADR 0021 forbids minting one."""
