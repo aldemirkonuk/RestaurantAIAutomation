@@ -128,10 +128,15 @@ Still collected and discarded:
 | `multiDay` / `eventDateEnd`, and `recurring` on **edit** | Absent from the update branch (`CalendarPage.tsx:253-270`); present on create (`:284`) | Editing a multi-day or recurring event silently flattens it |
 
 The `custom_reminders` table that `@Cron("*/15 * * * *")` does fire
-(`communications/scheduled-tasks.service.ts:727-880`) is a **different** table with
+(`communications/scheduled-tasks.service.ts`) is a **different** table with
 no UI anywhere in the web app — grep finds zero references outside the gateway and
-its tests — and it is gated on `DEFAULT_RESTAURANT_ID` (`:731`), so it serves one
-restaurant.
+its tests. It is **no longer gated on `DEFAULT_RESTAURANT_ID`**: as of 2026-08-26
+(OD-87 / [ADR 0022](../decisions/0022-scheduled-jobs-serve-opted-in-tenants.md)) it
+runs per opted-in tenant and queries `custom_reminders` scoped to that tenant.
+That fixed a real cross-tenant defect in passing — the query used to run once,
+unfiltered, and then gate every row it found on the *default* restaurant's
+inventory and mail the *default* restaurant's manager. The table is empty in
+production (verified 2026-08-26), so nothing was ever misdelivered.
 
 ## 11. Data flow
 

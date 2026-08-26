@@ -27,6 +27,22 @@ export interface RecipientQuery {
   roles: RecipientRole[];
   channels?: NotificationChannel[];
   providerId?: string; // For provider-specific notifications
+  /**
+   * Allow falling back to the global MANAGER_EMAIL / MANAGER_PHONE env vars when
+   * this restaurant resolves to no recipients of its own.
+   *
+   * Defaults to `true`, which is the historical behaviour every existing caller
+   * relies on. Multi-tenant callers MUST pass `false` for any restaurant other
+   * than `DEFAULT_RESTAURANT_ID` (OD-87 / ADR 0022): those env vars name ONE
+   * restaurant's manager, so falling back sends restaurant B's operational data
+   * to restaurant A's inbox.
+   *
+   * This is not hypothetical. Verified in production on 2026-08-26: 6 of 10
+   * restaurants have only an `owner` row in `user_restaurant_access` and no
+   * `manager`, while the scheduled jobs ask for `["manager"]` — so those six
+   * resolve to zero users and hit this fallback every time.
+   */
+  allowDefaultFallback?: boolean;
 }
 
 @Injectable()
@@ -55,6 +71,23 @@ export class RecipientResolverService {
     };
 
     const channels = query.channels || ["email", "sms", "push"];
+    const allowDefaultFallback = query.allowDefaultFallback !== false;
+
+    /**
+     * The env-var fallback, or nothing when this caller has forbidden it.
+     * Silence is logged at WARN rather than dropped: a restaurant receiving no
+     * notifications is precisely the failure OD-87 was, and it must be visible
+     * in the logs instead of being inferred from an empty inbox.
+     */
+    const fallbackOrEmpty = (why: string): ResolvedRecipients => {
+      if (allowDefaultFallback) return this.getDefaultRecipients(channels);
+      this.logger.warn(
+        `RECIPIENTS_NONE restaurant=${query.restaurantId} roles=${query.roles.join(",")} — ` +
+          `${why}. The global MANAGER_EMAIL/MANAGER_PHONE fallback is disabled for this ` +
+          "restaurant because it belongs to another tenant; sending nothing.",
+      );
+      return { emails: [], phones: [], pushSubscriptionIds: [] };
+    };
 
     try {
       const client = this.databaseService.getClient();
@@ -67,10 +100,7 @@ export class RecipientResolverService {
       );
 
       if (userIds.length === 0) {
-        this.logger.debug(
-          `No users found for restaurant ${query.restaurantId} with roles ${query.roles.join(", ")}. Using defaults.`,
-        );
-        return this.getDefaultRecipients(channels);
+        return fallbackOrEmpty("no user holds one of those roles here");
       }
 
       // 2. Get notification preferences for these users
@@ -134,15 +164,13 @@ export class RecipientResolverService {
 
       // Fallback: if no emails found, use defaults
       if (result.emails.length === 0 && channels.includes("email")) {
-        this.logger.debug(
-          "No email recipients resolved, falling back to defaults",
-        );
-        const defaults = this.getDefaultRecipients(["email"]);
-        result.emails = defaults.emails;
+        result.emails = fallbackOrEmpty(
+          "matching users have no email address or have opted out of email",
+        ).emails;
       }
     } catch (error) {
       this.logger.error(`Failed to resolve recipients: ${error}`);
-      return this.getDefaultRecipients(channels);
+      return fallbackOrEmpty(`recipient lookup failed: ${error}`);
     }
 
     this.logger.debug(
