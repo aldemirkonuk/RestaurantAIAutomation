@@ -140,4 +140,84 @@ describe("DashboardService", () => {
       );
     });
   });
+
+  /**
+   * OD-99. `getReportsSummary` used to select from a table called `reports`.
+   * No migration in this repository declares it and production does not have
+   * it (`to_regclass('public.reports')` is NULL, 2026-08-26) — so PostgREST
+   * answered PGRST205 on every call and the service turned that into
+   * `{latest: null, lastGeneratedAt: null}`, which is byte-identical to "the
+   * archive is empty". The failure was therefore unobservable from the day it
+   * was written.
+   *
+   * These three tests pin the two halves of the repair, and the third exists
+   * to stop the second from being satisfied by always claiming failure:
+   *   1. the read targets `generated_reports` (the table that exists)
+   *   2. a failed read reports itself (ADR 0020) rather than looking empty
+   *   3. a genuinely empty archive still looks empty, not broken
+   */
+  describe("getReportsSummary — OD-99 phantom `reports` table", () => {
+    const restaurantId = "test-restaurant-id";
+
+    /** Records every table name passed to `.from()` on the mock client. */
+    function clientReturning(result: { data: any[] | null; error: any }) {
+      const tables: string[] = [];
+      const client = {
+        from: jest.fn((table: string) => {
+          tables.push(table);
+          return {
+            select: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                order: jest.fn().mockReturnValue({
+                  limit: jest.fn().mockResolvedValue(result),
+                }),
+              }),
+            }),
+          };
+        }),
+      };
+      return { client, tables };
+    }
+
+    it("reads `generated_reports`, never the phantom `reports`", async () => {
+      const { client, tables } = clientReturning({ data: [], error: null });
+      mockDatabaseService.getClient.mockReturnValue(client);
+
+      await service.getDashboardSummary(restaurantId);
+
+      expect(tables).toContain("generated_reports");
+      expect(tables).not.toContain("reports");
+    });
+
+    it("does not render a failed read as an empty archive (ADR 0020)", async () => {
+      const { client } = clientReturning({
+        data: null,
+        error: {
+          code: "PGRST205",
+          message:
+            "Could not find the table 'public.reports' in the schema cache",
+        },
+      });
+      mockDatabaseService.getClient.mockReturnValue(client);
+
+      const result = await service.getDashboardSummary(restaurantId);
+
+      expect(result.reports).not.toBeNull();
+      expect(result.reports.latest).toBeNull();
+      // The whole point: a caller can tell this apart from an empty archive.
+      expect(result.reports.unavailable).toEqual(expect.any(String));
+      expect(result.reports.unavailable).toContain("PGRST205");
+    });
+
+    it("still renders a genuinely empty archive as empty, not as broken", async () => {
+      const { client } = clientReturning({ data: [], error: null });
+      mockDatabaseService.getClient.mockReturnValue(client);
+
+      const result = await service.getDashboardSummary(restaurantId);
+
+      expect(result.reports.latest).toBeNull();
+      expect(result.reports.lastGeneratedAt).toBeNull();
+      expect(result.reports.unavailable).toBeNull();
+    });
+  });
 });

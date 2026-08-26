@@ -205,32 +205,44 @@ export class DashboardService {
 
     try {
       const { data: reports, error } = await client
-        .from("reports")
-        .select("*")
+        .from("generated_reports")
+        .select(
+          "id, restaurant_id, report_type, title, summary, status, " +
+            "report_period_start, report_period_end, created_at",
+        )
         .eq("restaurant_id", restaurantId)
         .order("created_at", { ascending: false })
         .limit(1);
 
       if (error) {
-        // If reports table doesn't exist or error, return null
+        // ADR 0020: a read that did not answer is NOT emptiness. Say so, and
+        // carry the PostgREST code — `PGRST205` is precisely the "this table
+        // does not exist" signal that went unnoticed here for months.
         this.logger.warn(`Reports query error: ${error.message}`);
+        const code = error.code ? ` [${error.code}]` : "";
         return {
           latest: null,
           lastGeneratedAt: null,
+          unavailable: `The report archive could not be read${code}: ${error.message}`,
         };
       }
 
-      const latest = reports?.[0] || null;
+      // supabase-js cannot infer a row type from a column list built by
+      // concatenation, so name the two fields this block actually reads.
+      const latest =
+        (reports?.[0] as { created_at?: string } | undefined) ?? null;
 
       return {
         latest,
         lastGeneratedAt: latest?.created_at || null,
+        unavailable: null,
       };
     } catch (error) {
       this.logger.warn(`Reports fetch failed: ${error.message}`);
       return {
         latest: null,
         lastGeneratedAt: null,
+        unavailable: `The report archive could not be read: ${error.message}`,
       };
     }
   }

@@ -39,12 +39,46 @@ export class NotificationSummaryDto {
   unreadCount: number;
 }
 
+/**
+ * The most recent row of `generated_reports` for a restaurant.
+ *
+ * OD-99. This used to be read from a table called `reports`, which is declared
+ * by no migration in this repository and does not exist in production —
+ * PostgREST answered `PGRST205` on every single call and the service swallowed
+ * it into `{latest: null, lastGeneratedAt: null}`. That is indistinguishable
+ * from "no reports yet", so the failure was invisible from the moment it was
+ * written. The real archive is `generated_reports`, whose columns
+ * (`restaurant_id`, `created_at`, `report_type`, `title`, `status`, …) are an
+ * exact fit for what this block reports.
+ *
+ * `unavailable` exists because ADR 0020 forbids rendering a failed read as an
+ * empty one. Three distinguishable states:
+ *   - `latest` set                          -> a report exists
+ *   - `latest` null, `unavailable` null     -> the read answered, and the
+ *                                              archive is genuinely empty
+ *   - `unavailable` set                     -> the read did not answer; the
+ *                                              string says why
+ *
+ * The archive being empty is itself expected today and is NOT a defect of this
+ * block: `generated_reports` holds 0 rows in production because report
+ * generation has no producer (OD-81) — `POST /reports/generate` inserts a
+ * `status: "pending"` row and nothing ever advances it.
+ */
 export class ReportSummaryDto {
   @ApiPropertyOptional({ description: "Latest report" })
   latest: any | null;
 
   @ApiPropertyOptional({ description: "Last generated date" })
   lastGeneratedAt: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      "Non-null when the report archive could not be read. A null `latest` " +
+      "with a null `unavailable` means the archive is genuinely empty; a " +
+      "null `latest` with this set means the query failed and the caller " +
+      "must not render it as emptiness (ADR 0020).",
+  })
+  unavailable: string | null;
 }
 
 export class CalendarSummaryDto {
