@@ -9,6 +9,24 @@
 .env.local
 .env.*.local
 
+# Google service-account keys. A real one (wineops-vertex-ai-*.json) sat
+# untracked at the repo root on 2026-08-26 with no rule matching it, in a
+# checkout several sessions share — one `git add -A` would have published a
+# private key to a PUBLIC repository. It never entered history (checked across
+# all refs), so nothing leaked; this closes the door before it does.
+# Patterns rather than one filename, because the next key will be named
+# something else.
+*-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].json
+*service-account*.json
+*serviceaccount*.json
+*-credentials.json
+gcp-*.json
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
 # Dependencies
 node_modules/
 
