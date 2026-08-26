@@ -18,11 +18,14 @@ links: ["[[0013-migration-ledger-reconciliation]]", "[[OPEN-DECISIONS]]", "[[HAN
   `.github/workflows/ci.yml` (`schema-code-parity`),
   `.github/workflows/schema-parity.yml`, `supabase/SCHEMA_DRIFT.md`
 
-> **Number.** 0024 is the highest ADR anywhere in this repository or any of the
-> eleven concurrent worktrees, checked 2026-08-26. This takes **0026**, leaving
-> 0025 as a gap. Three numbering collisions happened today — 0022 twice, OD-90
-> twice — every one of them because concurrent sessions each took "the next free
-> number" from the same trunk. CLAUDE.md §5b: prefer a gap over a collision.
+> **Number.** 0024 is the highest ADR on `main` and in git history. This takes
+> **0026**, skipping 0025 — and that was not superstition. Three numbering
+> collisions happened today (0022 twice, OD-90 twice), every one because
+> concurrent sessions each took "the next free number" from the same trunk, so
+> CLAUDE.md §5b's *prefer a gap over a collision* was applied deliberately.
+> Re-checked after writing: **a concurrent worktree is holding an uncommitted
+> `0025-citations-must-disagree-loudly.md`.** Taking "the next free number" would
+> have made it four collisions in one day.
 
 ## Context
 
