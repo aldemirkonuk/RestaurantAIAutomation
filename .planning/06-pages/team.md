@@ -5,11 +5,12 @@ slug: team
 component: apps/web/src/pages/team/command/TeamCommandPage.tsx
 audience: staff
 tier: core
+archetype: command # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 maturity: complete
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
@@ -36,6 +37,19 @@ Manager side: week grid, schedule create/copy/publish, shifts with callouts and
 cover offers, certifications, coverage-rule templates, sales ingest, performance
 panel, broadcast, shift import/export. Staff side: my week, acknowledge schedule,
 take cover, request time off.
+
+## 1a. Features
+Manager Shift Desk (owner/manager):
+- Week grid with schedule create, copy-week, publish
+- Shifts with callouts, cover offers, and assignment
+- Certifications; coverage-rule templates; time-off management
+- Sales ingest + per-member performance panel
+- Broadcast a message to the team; shift import/export
+- Invite team members; switch branches
+
+My Shifts (staff, read-only):
+- See my week; acknowledge the published schedule
+- Take an open cover; request time off
 
 ## 2. Entry
 

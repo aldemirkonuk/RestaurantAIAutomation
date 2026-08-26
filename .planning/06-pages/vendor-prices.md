@@ -5,11 +5,12 @@ slug: vendor-prices
 component: apps/web/src/pages/VendorPriceCompare.tsx
 audience: owner
 tier: plus
+archetype: list+detail # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 maturity: hollow
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[providers]]", "[[wines]]"]
 ---
 
@@ -27,6 +28,13 @@ Pick a wine, see every vendor's observed price side by side with source provenan
 (invoice / catalogue / quote / rep message / social / manual — `VendorPriceCompare.tsx:28-44`)
 and 7/30/90-day trend chips, and record a manually observed price. The S08 price-drift
 surface.
+
+## 1a. Features
+- Pick a wine → every vendor's observed price side by side
+- Source provenance per price: invoice / catalogue / quote / rep message / social / manual
+- 7/30/90-day trend chips; "No comparable data" rendered honestly, never 0%
+- Record a manually observed price
+- 🚧 Unreachable by navigation — no page links here (§9)
 
 ## 2. Entry
 **No inbound in-app link** (`PAGE_MAP.md` entry-point list) — cold URL only. TIER-MAP

@@ -5,11 +5,12 @@ slug: recommendations-catalog
 component: apps/web/src/pages/InsightCatalog.tsx
 audience: owner
 tier: plus
+archetype: list+detail # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 maturity: broken
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[recommendations]]", "[[settings]]"]
 ---
 
@@ -29,6 +30,14 @@ dimension × measure × comparator grid with per-cell detail (description,
 requirements, example), readiness/blocked states with what's-missing, fuzzy search,
 category filter, coverage meter, `?type=` deep links, and JSON/CSV export (UX paths
 NEW-707…NEW-727, header comment :4-11).
+
+## 1a. Features
+- Browse the full insight-type space as a dimension × measure × comparator grid
+- Per-cell detail: description, requirements, example
+- Readiness/blocked states showing what's missing for *this* restaurant
+- Fuzzy search, category filter, coverage meter
+- Shareable `?type=` deep links; JSON/CSV export
+- 🚧 Headline says "375 types" while the enumerated space is 573 (§9 — OD-33)
 
 ## 2. Entry
 

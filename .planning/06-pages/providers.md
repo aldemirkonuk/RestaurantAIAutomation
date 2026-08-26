@@ -5,11 +5,12 @@ slug: providers
 component: apps/web/src/pages/Providers.tsx
 audience: owner
 tier: core
+archetype: list+detail # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[distributors]]", "[[promotions]]", "[[vendor-prices]]", "[[orders]]"]
 ---
 
@@ -29,6 +30,16 @@ links: ["[[PAGE-CONTRACT]]", "[[distributors]]", "[[promotions]]", "[[vendor-pri
 Owner/manager vendor hub with two tabs (`Providers.tsx:146`): **mine** — the
 restaurant's vendor roster with contacts, locations, orders, intelligence panels and
 export; **discover** — the U.S. distributor catalogue on a map, one-tap add (S13).
+
+## 1a. Features
+- **Mine** tab: your vendor roster — add, edit, delete vendors; manage each vendor's contacts and locations
+- Vendor intelligence panels: knowledge, promotions, conversation memory, sentiment
+- Email a vendor from the page (Quick Gmail modal)
+- See each vendor's orders
+- Search the vendor catalogue and add a vendor with one tap (duplicates detected)
+- **Discover** tab: the U.S. distributor catalogue on a map with facet filters and one-tap add
+- Export; contextual insights rail
+- 🚧 No link to `/vendor-prices` price comparison — that page is unreachable from here (§9)
 
 ## 2. Entry
 Sidebar item (`components/layout/Sidebar.tsx:87`). `/distributors` redirects here with

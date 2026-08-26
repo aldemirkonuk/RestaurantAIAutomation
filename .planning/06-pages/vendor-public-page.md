@@ -5,6 +5,7 @@ slug: vendor-public-page
 component: apps/web/src/pages/VendorPortal.tsx
 audience: public
 tier: public
+archetype: list+detail # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 maturity: partial
@@ -26,6 +27,12 @@ A vendor's published wine catalogue for *their* customers: searchable, sortable
 (name / price-per-750ml / vintage) listing table with contact details. Double duty by
 design: "read back by our own ingester as an api_catalog observation rather than a
 website_scrape — which is the whole reason to host it" (`VendorPortal.tsx:40-48`).
+
+## 1a. Features *(public, no account needed)*
+- A vendor's published wine catalogue: searchable, sortable by name / price-per-750ml / vintage
+- Vendor contact details
+- Unpriced listings sort last ("absent is not cheapest"); prices normalized per-750ml
+- SEO structured data injected for search engines (🚧 client-side only — JS-less crawlers see an empty shell)
 
 ## 2. Entry — the Growth story
 **The app's only real public content route.** No auth, no tenant, no inbound in-app

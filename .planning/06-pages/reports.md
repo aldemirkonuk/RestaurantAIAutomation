@@ -5,11 +5,12 @@ slug: reports
 component: apps/web/src/pages/Reports.tsx
 audience: owner
 tier: plus
+archetype: canvas # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 2
 maturity: hollow
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[settings]]", "[[orders]]", "[[inventory]]", "[[team]]", "[[promotions]]", "[[recommendations]]", "[[recommendations-catalog]]"]
 ---
 
@@ -30,6 +31,14 @@ layer in one page: KPI spotlight, headline insights bar, the analytics-engine
 insights panel (347-type generator output with act/hide/pin), seating density,
 monthly reconciliation, period compare, report generator, and per-user layout
 persistence.
+
+## 1a. Features
+- Notion-style dashboard canvas: drag/resize blocks with inline configuration; your layout persists per user
+- KPI spotlight and headline insights bar
+- Engine insights panel (analytics-engine output) with act / hide / pin and goals
+- Seating density panel; monthly reconciliation; period compare
+- Data tables section; AI command palette
+- Generate and export a report (lands in the `/documents-reports` archive)
 
 ## 2. Entry
 

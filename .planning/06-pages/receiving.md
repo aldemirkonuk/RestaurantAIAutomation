@@ -5,11 +5,12 @@ slug: receiving
 component: apps/web/src/pages/receiving/ReceivingHome.tsx
 audience: staff
 tier: core
+archetype: list+detail # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 maturity: broken
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[orders]]"]
 ---
 
@@ -28,6 +29,13 @@ flow, **with no prices**; managers see *what needs a decision, worst money first
 owners see one number — money that actually came back. Role is resolved
 deterministically from auth (`ReceivingHome.tsx:66-71`); unrecognised roles fall to
 the cost-free staff view on purpose.
+
+## 1a. Features
+One event, three renderings by role:
+- **Staff**: pick which delivery you're receiving → the door flow; no prices shown
+- **Manager**: the decision queue, worst money first
+- **Owner**: one number — money that actually came back (recovered credits)
+- 🚧 Nothing links here yet; the page is reachable by typed URL only (§9)
 
 ## 2. Entry
 

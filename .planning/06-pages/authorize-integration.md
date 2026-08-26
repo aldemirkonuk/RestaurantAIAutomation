@@ -5,6 +5,7 @@ slug: authorize-integration
 component: apps/web/src/pages/AuthorizeIntegration.tsx
 audience: owner
 tier: core
+archetype: focused # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 3
 maturity: complete
@@ -22,6 +23,12 @@ links: ["[[PAGE-CONTRACT]]", "[[settings]]"]
 
 ## 1. Purpose
 Our-vocabulary consent screen shown *before* handing the user to Google/Microsoft OAuth: states what the grant will be used for and what we deliberately do not ask for, so the provider's screen "confirms a decision the user has already understood" (`AuthorizeIntegration.tsx:27-35`). Valid ids are hard-coded: `google_drive`, `excel` (`AuthorizeIntegration.tsx:21`). Allow performs a full `window.location.assign` to the provider URL (`:83-85`); Cancel returns to a sanitized same-site `returnPath` (defaults `/settings`, `:46-51`).
+
+## 1a. Features
+- Read a plain-language consent screen before the Google/Microsoft OAuth hand-off: what the grant is used for, and what we deliberately do not ask for
+- Allow → continue to the provider's own permission screen
+- Cancel → return to where you came from (Settings by default)
+- "Not available yet" state when this deployment doesn't offer the integration
 
 ## 2. Entry
 **No inbound in-app link found by PAGE_MAP** (it is on the entry-points list, and among the "unresolved route components" whose outbound edges are untraced). In practice reached programmatically from Settings → Integrations flows carrying `?returnPath=`. Deliberately outside `DashboardLayout` so nothing offers "ways to wander off mid-grant" (`App.tsx:231-236`).

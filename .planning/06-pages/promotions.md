@@ -5,11 +5,12 @@ slug: promotions
 component: apps/web/src/pages/Promotions.tsx
 audience: owner
 tier: core
+archetype: list+detail # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[providers]]", "[[orders]]"]
 ---
 
@@ -27,6 +28,12 @@ Three tabs (`Promotions.tsx:20`): **Offers** — promotions the AI extracted fro
 email; **Trusted senders** — sender reputation + trust toggles that skip the spoof
 quarantine; **Prospects** — cold outreach from vendors not yet added, with
 promote/dismiss/restore. Page subtitle states exactly this (`Promotions.tsx:58-60`).
+
+## 1a. Features
+- **Offers** tab: promotions the AI extracted from vendor email; dismiss with an undo window (🚧 dismissal is per-device only; supply pipeline still in shadow mode, so empty is the expected state)
+- **Trusted senders** tab: sender reputation + trust toggles that skip the spoof quarantine
+- **Prospects** tab: cold outreach from vendors you haven't added — promote, dismiss, restore; view attachments
+- Keyboard 1/2/3 switches tabs; export menu; multi-branch prospect fetch
 
 ## 2. Entry
 Sidebar item (`components/layout/Sidebar.tsx:93`). PAGE_MAP's entry-point list claims

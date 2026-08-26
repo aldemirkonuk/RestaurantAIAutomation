@@ -5,11 +5,12 @@ slug: documents-reports
 component: apps/web/src/pages/DocumentsPage.tsx
 audience: owner
 tier: core
+archetype: list+detail # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 maturity: hollow
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
@@ -31,6 +32,11 @@ links: ["[[PAGE-CONTRACT]]"]
 (`DocumentsPage.tsx:99`): **reports** — the generated-report archive (view, copy
 deep link, delete), live-updating as new reports land; **history** — the classified
 vendor conversation list shared with `/communications`.
+
+## 1a. Features
+- **Reports** tab: the generated-report archive — open a report, copy a share deep link, delete; new reports appear live as they land
+- **History** tab: classified vendor conversation list (same component as `/communications`)
+- Share links (`?doc=`) open the page with that document selected
 
 ## 2. Entry
 

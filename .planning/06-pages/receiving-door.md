@@ -5,11 +5,12 @@ slug: receiving-door
 component: apps/web/src/pages/receiving/DoorReceipt.tsx
 audience: staff
 tier: core
+archetype: focused # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[orders]]"]
 ---
 
@@ -28,6 +29,11 @@ one-handed flow asking exactly three things — a photo of the paper the driver 
 over, how many boxes, was anything obviously broken. **No prices anywhere** and no
 "does this match the order?" — the count and four-way match happen later at a desk.
 Designed for a porter on a sidewalk with a phone at 12% and no signal in the walk-in.
+
+## 1a. Features
+- Full-screen, one-handed door flow asking exactly three things: photo of the paper the driver handed over, how many boxes, was anything obviously broken
+- Works offline — submissions queue in an outbox and sync later, nothing is lost in the walk-in
+- No prices anywhere by design; the count and match happen later at a desk
 
 ## 2. Entry
 

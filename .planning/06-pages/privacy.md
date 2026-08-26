@@ -5,6 +5,7 @@ slug: privacy
 component: apps/web/src/pages/Privacy.tsx
 audience: public
 tier: public
+archetype: document # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 4
 maturity: complete
@@ -26,6 +27,11 @@ Plain-language privacy notice "written to match what the code actually does rath
 than boilerplate" (`Privacy.tsx:5-12`): cookies, Google sign-in, connected
 integrations, product analytics, partner sharing, plus a "Your controls" block linking
 Settings and Profile. Public — readable before you have an account.
+
+## 1a. Features
+- Plain-language privacy notice matching what the code does: cookies, Google sign-in, connected integrations, product analytics, partner sharing
+- "Your controls" block linking Settings and Profile
+- Readable without an account
 
 ## 2. Entry
 Public route (`App.tsx:156-158`: "linked from the auth screens and the consent page,

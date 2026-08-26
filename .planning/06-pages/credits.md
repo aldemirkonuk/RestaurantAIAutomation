@@ -5,11 +5,12 @@ slug: credits
 component: none (inline <Navigate> redirect)
 audience: owner
 tier: core
+archetype: redirect # proposed 2026-08-26 (OD-79)
 signals_today: none
 rebrand_strings: 0
 maturity: complete
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[receipts]]"]
 ---
 
@@ -22,6 +23,9 @@ links: ["[[PAGE-CONTRACT]]", "[[receipts]]"]
 ## 1. Purpose
 Compatibility route. Vendor credit claims (short/damaged deliveries → credit ledger)
 live as a tab on the Receipts page; this path preserves the old standalone URL.
+
+## 1a. Features
+none — redirect. The credit-claim features live on [[receipts]] §1a (credits tab).
 
 ## 2. Entry
 No inbound in-app link (`PAGE_MAP.md` entry-point list). Cold URL/bookmarks only.
