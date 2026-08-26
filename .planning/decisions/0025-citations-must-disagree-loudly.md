@@ -249,11 +249,14 @@ All three were put to the founder and all three came back the same day.
 **1. The pairing rule (§6) — LOCKED.** Re-measured at lock time it was 74
 citations to fix, not 23: the enforced rule covers unanchored locators as well as
 disagreeing pairs, and the wider extraction found more of both. **74 were fixed in
-this branch.** Three were not, and the reason is scheduling, not judgement — a
-concurrent branch owns the six page dossiers, and two branches rewriting the same
-lines produces a conflict rather than a fix. Those three are named in
-`.planning/04-specs/HANDOFF-adr-0025.md` with their correct anchors and carried on
-the checker's `PAIRING_DEBT` so main stays green whichever PR lands first.
+this branch.** Three more were initially deferred as `PAIRING_DEBT` — a concurrent
+branch owned the six page dossiers at the time, and two branches rewriting the
+same lines produces a conflict rather than a fix. By the time this branch was
+rebased for merge, #106 had landed and closed that ownership; re-checked, no open
+PR touched those two files, so the debt was closed rather than carried: **all 76
+are fixed, `PAIRING_DEBT` is empty.** `.planning/04-specs/HANDOFF-adr-0025.md`
+keeps the record of what was deferred and why, for the next time this shape
+recurs.
 
 **2. Strict mode (§5) — SHIPPED NOW,** unbundled. It cost 0 build failures rather
 than the 1 predicted, because the predicted instance had already been fixed

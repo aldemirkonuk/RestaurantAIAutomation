@@ -129,17 +129,6 @@ CITE_EXAMPLE = "cite-example"
 CITE_EXAMPLE_MAX = 2
 
 # ---------------------------------------------------------------------------
-# PAIRING_DEBT -- a two-PR handoff list, NOT a permanent debt ratchet.
-#
-# These citations are wrong and known to be wrong. They are not fixed here because a
-# concurrent branch owns those files (`.planning/06-pages/communications.md`,
-# `notifications.md`, `privacy.md`, `receipts.md`, `recommendations-catalog.md`,
-# `settings.md`) and two branches editing the same lines produces a conflict, not a fix.
-# `.planning/04-specs/HANDOFF-adr-0025.md` carries the full list and the correct anchors.
-#
-# Keyed by "<path>::<OD id>" rather than by line, so the entry survives the file being
-# edited around it.
-#
 # HOW THIS DIFFERS FROM KNOWN_MISSING in scripts/check_queried_tables_exist.py, and why:
 # that list is enforced in BOTH directions -- an entry that starts passing fails the build
 # until someone prunes it. That is right for a permanent ratchet and wrong here. The whole
@@ -156,18 +145,13 @@ CITE_EXAMPLE_MAX = 2
 # register. That is deliberate: the anchors named here were already stale once between
 # writing them and pushing them.
 # ---------------------------------------------------------------------------
-PAIRING_DEBT: dict[str, str] = {
-    ".planning/06-pages/privacy.md::OD-27": (
-        "privacy.md:59 anchors OD-27 at a row that is not OD-27. Originally defect #3 in "
-        "ADR 0025 §2 (anchored at 123 = OD-28, never correct); PR #106 repointed it and "
-        "the next register insert moved it again, which is the whole thesis. "
-        "TO FIX: delete this line and run --fix."
-    ),
-    ".planning/06-pages/settings.md::OD-86": (
-        "settings.md:123 anchors OD-86 at a row that is not OD-86, for the same reason. "
-        "TO FIX: delete this line and run --fix."
-    ),
-}
+# PAIRING_DEBT was a two-PR handoff list, not a permanent ratchet: two of its two
+# entries (privacy.md::OD-27, settings.md::OD-86) are now empty -- no open PR
+# still owns the six page dossiers named in ADR 0025's handoff, so both were
+# fixed by --fix directly rather than deferred. Left as an empty dict, not
+# deleted, so the next genuine handoff has a place to land without re-deriving
+# this shape.
+PAIRING_DEBT: dict[str, str] = {}
 
 
 def die(msg: str) -> None:
