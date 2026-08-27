@@ -12,6 +12,9 @@ import { OrchestratorService } from "../common/orchestrator/orchestrator.service
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
 import { PhotoCountService } from "./photo-count.service";
+import { NfEventRef } from "../common/model-client/model-client.service";
+import { NfVerdictService } from "../common/model-client/nf-verdict.service";
+import { HUMAN_COUNT_BASIS, humanCountVerdict } from "./photo-count-verdict";
 import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
@@ -48,6 +51,12 @@ export class InventoryService {
     @Optional()
     @Inject(PhotoCountService)
     private readonly photoCountService?: PhotoCountService,
+    // Optional for the same reason as the rest: the unit specs construct this
+    // service with a DatabaseService alone, and the grading path is not what
+    // they exercise.
+    @Optional()
+    @Inject(NfVerdictService)
+    private readonly nfVerdicts?: NfVerdictService,
   ) {}
 
   private mapInventoryItem(
@@ -391,6 +400,15 @@ export class InventoryService {
       );
     }
 
+    // OD-59 / P3.0: the count just committed is ground truth for whatever the
+    // photo-count model last suggested for this item. Fire-and-forget and after
+    // the stock write, so a stumbling instrument cannot turn a count that
+    // succeeded into an error the staff member sees.
+    void this.gradePhotoCountSuggestion(
+      inventoryId,
+      Math.round(Number(dto.countedQty)),
+    );
+
     const [row, rollup, locations] = await Promise.all([
       client
         .from("restaurant_inventory")
@@ -457,7 +475,122 @@ export class InventoryService {
       (item as any)?.master_wine_library?.name ||
       "this wine";
 
-    return this.photoCountService.estimate(imageBase64, wineName, restaurantId);
+    // OD-59 / P3.0: record what the model suggested so the count a human commits
+    // minutes later can grade it. This is NOT a stock write — the E46 posture is
+    // unchanged and `restaurant_inventory` stays the only place a quantity means
+    // anything. It is the join that never existed: until now the suggestion went
+    // to the browser and was forgotten, so the model's answer and the truth
+    // lived at different times and could never be compared.
+    const eventRef = new NfEventRef();
+    const estimate = await this.photoCountService.estimate(
+      imageBase64,
+      wineName,
+      restaurantId,
+      eventRef,
+    );
+
+    // Fire-and-forget, and deliberately: a suggestion that cannot be recorded
+    // must not fail the count the staff member is standing there doing. The
+    // instrument never breaks the thing it measures.
+    void this.recordPhotoCountSuggestion(
+      eventRef,
+      restaurantId,
+      inventoryId,
+      estimate,
+    );
+
+    return estimate;
+  }
+
+  private async recordPhotoCountSuggestion(
+    eventRef: NfEventRef,
+    restaurantId: string,
+    inventoryId: string,
+    estimate: { suggestedQty: number | null; confidence: string },
+  ): Promise<void> {
+    try {
+      // The emit is fire-and-forget, so the row id arrives late — or never, if
+      // the emit was dropped, in which case the ref settles null and this
+      // suggestion simply cannot be graded. Recording it anyway keeps the count
+      // of ungraded suggestions honest.
+      const eventId = await eventRef.id;
+      const { error } = await this.dbService
+        .getClient()
+        .from("photo_count_suggestions")
+        .insert({
+          event_id: eventId,
+          restaurant_id: restaurantId,
+          inventory_id: inventoryId,
+          suggested_qty: estimate.suggestedQty,
+          confidence: estimate.confidence,
+        });
+      if (error) {
+        this.logger.warn(
+          `Photo-count suggestion not recorded (${inventoryId}): ${error.message}`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `Photo-count suggestion not recorded (${inventoryId}): ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  /**
+   * Grade the most recent unmatched photo-count suggestion for this item
+   * against the number a human just committed (OD-59, `human_count_v1`).
+   *
+   * The only grader in the gateway that compares a model's answer to ground
+   * truth from the world rather than to the model's own output.
+   *
+   * Never throws and never blocks the count: called after the stock write has
+   * already succeeded, and every failure inside is a warn. A count that
+   * succeeded must not be reported as failed because the instrument stumbled.
+   */
+  private async gradePhotoCountSuggestion(
+    inventoryId: string,
+    countedQty: number,
+  ): Promise<void> {
+    if (!this.nfVerdicts) return;
+    try {
+      const client = this.dbService.getClient();
+      const { data: suggestion, error } = await client
+        .from("photo_count_suggestions")
+        .select("id, event_id, suggested_qty, confidence")
+        .eq("inventory_id", inventoryId)
+        .is("graded_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error || !suggestion) return;
+
+      // No event id means the emit was dropped: there is no row to attach a
+      // verdict to. Close the suggestion out anyway so it stops appearing in
+      // the pending queue forever.
+      if (suggestion.event_id) {
+        this.nfVerdicts.recordForEvent(
+          suggestion.event_id,
+          HUMAN_COUNT_BASIS,
+          humanCountVerdict({
+            suggestedQty: suggestion.suggested_qty ?? null,
+            countedQty,
+            confidence: suggestion.confidence ?? null,
+          }),
+        );
+      }
+
+      await client
+        .from("photo_count_suggestions")
+        .update({
+          graded_at: new Date().toISOString(),
+          counted_qty: countedQty,
+        })
+        .eq("id", suggestion.id);
+    } catch (err: any) {
+      this.logger.warn(
+        `Photo-count re-grade skipped for ${inventoryId}: ${err?.message ?? err}`,
+      );
+    }
   }
 
   async getLowStockItems(restaurantId: string) {

@@ -63,6 +63,28 @@ export class NfVerdictService {
     });
   }
 
+  /**
+   * Grade an event whose id is ALREADY known — a deferred re-grade, minutes or
+   * days after the call (OD-59, P3.0).
+   *
+   * `record()` exists for the synchronous case, where the grader runs on the
+   * return path and the row id has not arrived yet. A deferred grader read the
+   * id out of a table and has no ref to wait on. It must not fabricate one:
+   * `NfEventRef.settle` is internal to `ModelClientService` precisely so that
+   * "the emit landed" stays a claim only the emitter can make.
+   *
+   * Same failure posture as `record()`: a warn and a drop counter, never an
+   * exception on a path a person is standing in front of.
+   */
+  recordForEvent(eventId: string, basis: string, verdict: NfVerdict): void {
+    void this.write(eventId, basis, verdict).catch((err: any) => {
+      this.dropCount++;
+      this.logger.warn(
+        `nf_verdict write failed (${this.dropCount} dropped since boot): ${err?.message ?? err}`,
+      );
+    });
+  }
+
   private async persist(
     ref: NfEventRef,
     basis: string,
@@ -72,7 +94,14 @@ export class NfVerdictService {
     // The emit was dropped, so there is no row to grade. Writing an orphan
     // verdict would inflate coverage with rows that grade nothing.
     if (!eventId) return;
+    await this.write(eventId, basis, verdict);
+  }
 
+  private async write(
+    eventId: string,
+    basis: string,
+    verdict: NfVerdict,
+  ): Promise<void> {
     const { error } = await this.databaseService.supabase
       .from("nf_verdict")
       .upsert(

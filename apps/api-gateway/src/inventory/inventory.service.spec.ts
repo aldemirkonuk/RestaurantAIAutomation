@@ -286,6 +286,9 @@ describe("InventoryService", () => {
         // P1 NF-A: restaurantId now rides along so the emitted footprint row
         // is tenant-attributed.
         "rest-1",
+        // OD-59 / P3.0: a handle on that footprint row, so the suggestion can
+        // be graded against the count a human commits later.
+        expect.anything(),
       );
       expect(result).toEqual({
         suggestedQty: 7,
@@ -296,7 +299,13 @@ describe("InventoryService", () => {
       expect(mockRpc).not.toHaveBeenCalled();
     });
 
-    it("never writes to the database — it is a read-only vision call", async () => {
+    it("never writes STOCK — the E46 posture is unchanged by the OD-59 grading", async () => {
+      // This assertion used to read "never writes to the database". That is no
+      // longer true and, more importantly, it would now pass VACUOUSLY: the
+      // suggestion insert waits on the NF row id, which never settles in a unit
+      // test with no model client, so the write simply never runs and the old
+      // assertion would keep going green while the code wrote. The claim worth
+      // protecting was always the narrower one — no stock moves.
       mockEstimate.mockResolvedValueOnce({
         suggestedQty: null,
         confidence: "low",
@@ -305,8 +314,43 @@ describe("InventoryService", () => {
 
       await service.estimateCountFromPhoto("rest-1", "inv-1", "abc123");
 
-      expect(mockSupabaseChain.insert).not.toHaveBeenCalled();
+      expect(mockRpc).not.toHaveBeenCalled();
       expect(mockSupabaseChain.update).not.toHaveBeenCalled();
+    });
+
+    it("records the suggestion once the footprint row id arrives", async () => {
+      // Settle the ref the way ModelClientService would, so the deferred insert
+      // actually runs instead of hanging on an unsettled promise.
+      mockMaybeSingle.mockResolvedValueOnce({
+        data: { wine_name: "Château Pétrus", master_wine_library: null },
+        error: null,
+      });
+      mockEstimate.mockImplementationOnce(
+        async (
+          _img: string,
+          _name: string,
+          _rid: string,
+          ref: { settle: (id: string | null) => void },
+        ) => {
+          ref.settle("event-1");
+          return { suggestedQty: 7, confidence: "medium", note: "7 bottles." };
+        },
+      );
+
+      await service.estimateCountFromPhoto("rest-1", "inv-1", "abc123");
+      // The insert is fire-and-forget behind an awaited promise; let it land.
+      await new Promise((r) => setImmediate(r));
+
+      expect(mockSupabaseChain.insert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event_id: "event-1",
+          restaurant_id: "rest-1",
+          inventory_id: "inv-1",
+          suggested_qty: 7,
+          confidence: "medium",
+        }),
+      );
+      // Still no stock movement — the whole point of E46.
       expect(mockRpc).not.toHaveBeenCalled();
     });
   });
