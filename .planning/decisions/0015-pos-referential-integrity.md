@@ -14,7 +14,7 @@ links: []
 - **Decider:** Aldemir (founder) — *"work OD 71"*
 - **Keywords:** pos, foreign key, referential integrity, cascade, set null, OD-71, orphans
 - **Links:** `supabase/migrations/20260825140000_pos_referential_integrity.sql`,
-  [[0011-pos-sale-volume-contract]], ADR 0012 (`inventory_id` FK) and ADR 0014
+  [[0011-pos-sale-volume-contract]], [[0030-pos-mapping-inventory-integrity]] (`inventory_id` FK) and [[0014-proposal-candidate-set-null]]
   (`candidate_inventory_id` SET NULL), both landed by a parallel session
 
 > **Numbering note.** This is 0015, not 0012–0014: those are held by an in-flight
@@ -22,6 +22,15 @@ links: []
 > collision — three OD-id collisions happened on 2026-08-24/25 because sessions
 > each took "the next free number" from the same trunk, and git merges duplicate
 > ids silently because the surrounding text differs.
+
+
+> **Citation repair 2026-08-27.** This ADR was written against **ADR 0012** and
+> **ADR 0014**; both files were then lost from `main` (a squash-merge dropped
+> them) and **0012** was later spent on a different decision. The two are restored
+> as **[0030](0030-pos-mapping-inventory-integrity.md)** and
+> **[0014](0014-proposal-candidate-set-null.md)**, and the citations above now
+> point at them. Nothing in the reasoning changed — the four references had been
+> naming a decision about *reports through the gateway* for two days.
 
 ## Context
 
@@ -32,7 +41,7 @@ POS tables from `SYNTH_WRITE_SET`, so `synth teardown` deleted the tenant and it
 inventory and left the matcher output behind. **The database had no way to
 object.**
 
-ADR 0012 closed `inventory_id` and ADR 0014 closed `candidate_inventory_id`,
+[ADR 0030](0030-pos-mapping-inventory-integrity.md) closed `inventory_id` and [ADR 0014](0014-proposal-candidate-set-null.md) closed `candidate_inventory_id`,
 explicitly leaving the rest as OD-71. This closes OD-71: ten columns across the
 four `pos_*` tables.
 
@@ -51,7 +60,7 @@ shortfall. Nobody would have found it from either side.
    delete a working mapping because a catalogue entry was merged, and cascading
    `resolved_by` would let an account deletion erase queue history.
 3. **Add the FKs with delete behaviour derived from the existing schema, and
-   ADR 0014's rule as the tie-break.** **Chosen.**
+   [ADR 0014](0014-proposal-candidate-set-null.md)'s rule as the tie-break.** **Chosen.**
 
 ## Decision
 
@@ -65,7 +74,7 @@ across the 224 existing public FKs:
 | `→ master_wine_library` | split (8/7/4) — no convention | **SET NULL** ×2, by the rule below |
 | `→ restaurant_inventory` | split (5/7/1) — no convention | **SET NULL** ×2, by the rule below |
 
-Where the census was genuinely split, the tie-break is ADR 0014's rule:
+Where the census was genuinely split, the tie-break is [ADR 0014](0014-proposal-candidate-set-null.md)'s rule:
 **a claim dies with its target; a question outlives its answer.**
 
 - `master_wine_id` and `candidate_master_wine_id` assert *"this POS item **is**

@@ -14,7 +14,7 @@ links: ["[[HOME]]", "[[AGENDA]]", "[[PLAN]]", "[[ORG-MAP]]", "[[GLOSSARY]]"]
 
 ## 1. The ADR log
 
-28 ADRs on file — **20 locked**, 8 proposed — spanning 2026-08-24 to 2026-08-26. Generated from the ADR headers, not hand-maintained: the 2026-08-24 version of this table listed eight and stayed at eight while the log tripled, which is the failure this whole layer exists to prevent.
+31 ADRs on file — **23 locked**, 8 proposed. Generated from the ADR headers, not hand-maintained: the 2026-08-24 version of this table listed eight and stayed at eight while the log tripled, which is the failure this whole layer exists to prevent.
 
 | # | Subject | Status | Date |
 |---|---|---|---|
@@ -31,6 +31,7 @@ links: ["[[HOME]]", "[[AGENDA]]", "[[PLAN]]", "[[ORG-MAP]]", "[[GLOSSARY]]"]
 | [0011](../decisions/0011-pos-sale-volume-contract.md) | A POS sale removes a volume, not a unit: `sale_volume_ml` and fail-closed depletion | **Locked** | 2026-08-25 |
 | [0012](../decisions/0012-reports-through-the-gateway.md) | The browser stops reading `generated_reports`; the gateway that owns it answers instead | Proposed | 2026-08-25 |
 | [0013](../decisions/0013-one-commitment-guardrail.md) | The UCC commitment guardrail has one canon; every other copy is generated and CI-checked | Proposed | 2026-08-25 |
+| [0014](../decisions/0014-proposal-candidate-set-null.md) | A proposal keeps its question when it loses its candidate | **Locked** | 2026-08-25 |
 | [0015](../decisions/0015-pos-referential-integrity.md) | The remaining ten POS reference columns get foreign keys | **Locked** | 2026-08-25 |
 | [0016](../decisions/0016-ledgers-must-express-unknown.md) | Ledgers express "unknown"; rates carry a dated source | **Locked** | 2026-08-25 |
 | [0017](../decisions/0017-doneability-verdicts-are-sidecar-claims.md) | Doneability verdicts are sidecar claims, never edits to the event | **Locked** | 2026-08-25 |
@@ -46,25 +47,36 @@ links: ["[[HOME]]", "[[AGENDA]]", "[[PLAN]]", "[[ORG-MAP]]", "[[GLOSSARY]]"]
 | [0027](../decisions/0027-push-recipients-are-not-resolved-here.md) | Delete the resolver's push branch; push recipients are user ids, not devices | Proposed | 2026-08-26 |
 | [0028](../decisions/0028-phantom-relations-repoint-or-delete.md) | A phantom relation is repointed or deleted, never created | Proposed | 2026-08-26 |
 | [0029](../decisions/0029-p3-plan-of-record.md) | P3 plan of record: grade before you scale, and parallel only where nothing is assumed | **Locked** | 2026-08-26 |
+| [0030](../decisions/0030-pos-mapping-inventory-integrity.md) | Delete orphaned POS mappings, and make the database refuse new ones | **Locked** | 2026-08-25 |
+| [0031](../decisions/0031-migration-ledger-reconciliation.md) | Reconcile the migration ledger in both directions, and check it that way | **Locked** | 2026-08-25 |
 
-> 🔴 **Three ADR files are missing from `main`, and two of their numbers were reused.**
-> Found 2026-08-26 while regenerating this table. `0012-pos-mapping-inventory-integrity`,
-> `0013-migration-ledger-reconciliation` and `0014-proposal-candidate-set-null` were all
-> written and locked on 2026-08-25 (commits `32aa26c3`, `a874a68a`, `6780db35` — none of
-> which is an ancestor of `main`). On `main` today, **0012** is *reports-through-the-gateway*
-> and **0013** is *one-commitment-guardrail* — different decisions that took the same
-> numbers — and **0014** is vacant.
+> ✅ **Three lost ADR files, restored 2026-08-27.** Found 2026-08-26 while regenerating
+> this table. `0012-pos-mapping-inventory-integrity`, `0013-migration-ledger-reconciliation`
+> and `0014-proposal-candidate-set-null` were written and locked on 2026-08-25 (commits
+> `32aa26c3`, `a874a68a`, `6780db35`) and then dropped by a squash-merge — none of those
+> commits is an ancestor of `main` — while concurrent sessions spent **0012** on
+> *reports-through-the-gateway* and **0013** on *one-commitment-guardrail*.
 >
-> They are still cited: [0015](../decisions/0015-pos-referential-integrity.md) names ADR
-> 0012 and ADR 0014 four times as the decisions it builds on, [0026](../decisions/0026-schema-has-one-home.md)
-> carries a `[[0013-migration-ledger-reconciliation]]` link that resolves to nothing, and
-> OD-71 cites ADR 0014's rule as its tie-break. **The decisions were implemented** — the
-> migrations and guards they describe are live; only the records are gone.
+> **The decisions were implemented** — their migrations and guards are live in production.
+> Only the records were gone, which is the harder loss: the rationale and the rejected
+> alternatives are the half CLAUDE.md §0.2 says matters as much as the outcome.
 >
-> This is the ADR-number-collision class the register memory warns about, and here it did
-> not merely confuse a citation: a squash-merge dropped three locked decision records.
-> All three are recovered verbatim from the object store and held pending a founder call
-> on renumbering (they cannot go back at 0012/0013 — those are occupied).
+> Recovered verbatim from the object store and restored at
+> **[0030](../decisions/0030-pos-mapping-inventory-integrity.md)**,
+> **[0031](../decisions/0031-migration-ledger-reconciliation.md)** and
+> **[0014](../decisions/0014-proposal-candidate-set-null.md)** (0014's own number was still
+> vacant). Each carries a header note recording the original number. Inbound citations
+> repaired: ADR 0015's four references had been naming *reports through the gateway* for two
+> days, and ADR 0026's `[[0013-migration-ledger-reconciliation]]` link resolved to nothing.
+>
+> Two of the restored ADRs also cited register ids — 68, 69, 70 — whose numbers have since
+> been reused or vacated. Those are described in words rather than cited, because a number
+> that resolves to the wrong decision is worse than no number.
+>
+> **This is the ADR-number-collision class, and here it deleted three locked decisions**
+> rather than merely confusing a citation. `scripts/check_od_ids_exist.py` now blocks the
+> register half of it in CI; the ADR half is still guarded only by looking before you
+> allocate.
 
 **Two ADR headers are stale** (0004, 0006): both still advertise an open fork that has since
 been resolved. A reader who trusts the header will believe a settled question is open. Fixing

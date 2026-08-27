@@ -374,6 +374,33 @@ diffable *and* immune to insertion. **Not proposed here** — that is a decision
 §0.1 says it is not made until it is written. Filed so the next session does not
 have to rediscover the cost.
 
+> **Answered 2026-08-27, and the answer is no.** Filed as a question so evidence
+> could settle it; it did, within a day, and against the idea.
+>
+> Two failures landed that a better anchor format cannot reach, because neither
+> carried a line anchor to improve:
+>
+> - **OD-79 cited across 58 references in 52 files**, all naming the *resolved*
+>   email-verification decision. The fork doing the citing had no register row at
+>   all. A bare `(OD-79)` in frontmatter is not a citation under §6, so the pairing
+>   rule never saw it. Filed as OD-106; `scripts/check_od_ids_exist.py` now blocks
+>   the *names-nothing* half and says in its own docstring that it cannot catch
+>   *names-the-wrong-thing*.
+> - **An ADR-number collision deleted three locked decisions.** Squash-merge
+>   dropped the files; concurrent sessions then spent 0012 and 0013 on different
+>   decisions, and ADR 0015's four citations resolved to the wrong decision for two
+>   days. Restored as 0030/0031/0014.
+>
+> Meanwhile the cost this section prices turned out to be **tooling-shaped, not
+> format-shaped**: `check_citation_pairing.py --fix` reduced a 27-anchor shift to a
+> non-event, and repointed 15 on this branch in one command. The tax is real and it
+> is paid by a script.
+>
+> So the distribution of real failures is *single-anchor and no-anchor references*,
+> not drifting line anchors — and the answer was a second guard plus "file the
+> register row before citing it", not a better anchor. §4's rejection of id-only
+> anchors **stands**. Recorded by the author of the question, conceding it.
+
 ### 10.4 What the sweep found in the prose
 
 The anchors are the cheap half. Checking each citing sentence against the row it
