@@ -3,6 +3,8 @@
  * global keyboard system. Rendered once inside the authenticated layout.
  *
  *  ⌘K / Ctrl+K   toggle the command palette (NEW-001)
+ *  ⌘⇧K          toggle the Ask AI bar (P3.C, FUTURES §8) — dispatched as an
+ *               event so this file owns the binding without owning the surface
  *  ?             open the shortcut sheet (NEW-008)
  *  g then <key>  Gmail-style go-to nav (NEW-009 / NEW-677 / NEW-678)
  *
@@ -26,6 +28,7 @@ import { CommandPalette } from "./CommandPalette";
 import { ShortcutsSheet } from "./ShortcutsSheet";
 import { RecentlyViewed } from "./RecentlyViewed";
 import { GOTO_MAP, routeLabel } from "./commands";
+import { ASK_AI_OPEN_EVENT } from "../askai/events";
 import { recordView } from "./recents-store";
 
 /** localStorage key for the default landing route (NEW-518 / NEW-681). */
@@ -107,7 +110,19 @@ export function CommandProvider({ children }: { children: ReactNode }) {
     const onCapture = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       const key = e.key.toLowerCase();
-      if (key === "k") {
+      if (key === "k" && e.shiftKey) {
+        // ⌘⇧K — Ask AI (P3.C, FUTURES §8). Registered HERE, in the same switch
+        // as ⌘K, because this file owns the global keyboard system: a second
+        // capture listener elsewhere would race this one and the winner would
+        // depend on mount order. The bar itself lives behind an event so this
+        // file does not have to import it.
+        e.preventDefault();
+        e.stopPropagation();
+        setPaletteOpen(false);
+        setShortcutsOpen(false);
+        setRecentOpen(false);
+        window.dispatchEvent(new CustomEvent(ASK_AI_OPEN_EVENT));
+      } else if (key === "k") {
         e.preventDefault();
         e.stopPropagation();
         setPaletteOpen((o) => !o);
