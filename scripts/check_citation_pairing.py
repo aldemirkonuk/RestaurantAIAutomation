@@ -77,6 +77,18 @@ commit the result with it.** One command, seconds, no judgement.
 --fix cannot repair UNANCHORED citations. Only a person knows which decision a bare
 locator meant, and guessing would be the fabrication ADR 0020 forbids. Those still fail.
 
+--fix REFUSES on a tree that still holds merge-conflict markers (exit 2). It rewrites
+anchors in place and cannot tell a conflict block from resolved text, so it would edit
+one side of a merge nobody has chosen. Reported 2026-08-27 by the session it happened
+to, whose `git merge --abort` then failed with its stderr swallowed -- so the tree only
+LOOKED discarded. The refusal lives inside repoint(), not at the CLI, so no caller can
+route around it.
+
+--self-test proves both of the invariants that would otherwise fail silently: a
+`cite-example` citation survives --fix (repairing one deletes the finding it
+illustrates), and a conflicted tree is refused and left byte-identical. It runs against
+a synthetic tree, so it cannot be made to pass by the corpus happening to be clean.
+
 Stdlib only, no third-party imports: this runs in the decision-claims job, which installs
 nothing.
 """
@@ -102,7 +114,11 @@ MIN_LOCATORS = 20
 PAIR_WINDOW = 120
 
 TEXT_SUFFIXES = {".md", ".ts", ".tsx", ".js", ".py", ".sh", ".yml", ".yaml", ".jsonl", ".json", ".sql"}
-SKIP_PARTS = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".next", "coverage"}
+# `.obsidian` holds vendored plugin bundles, not corpus. Excluding it is not tidiness:
+# `.obsidian/plugins/obsidian-git/main.js` is a bundled *git* client, so it contains
+# literal conflict-marker strings — which made the --fix conflict check below refuse
+# on every clean tree until this line existed.
+SKIP_PARTS = {".git", ".obsidian", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".next", "coverage"}
 
 # This file is the guard, not the corpus. Its docstring shows the canonical form and its
 # handoff notes necessarily name anchors that are wrong -- that is the subject matter, not
@@ -183,6 +199,50 @@ def load_register() -> dict[int, str]:
     return rows
 
 
+# ---------------------------------------------------------------------------
+# --fix REFUSES TO RUN ON A TREE THAT STILL HAS CONFLICT MARKERS.
+#
+# Reported 2026-08-27 by the session that hit it: `--fix` was run on a working tree
+# where four files still held merge markers. It will happily rewrite an anchor INSIDE
+# a conflict block -- on either side of it -- producing a "resolution" nobody chose.
+# Worse, the `git merge --abort` reached for afterwards failed with its stderr
+# suppressed, so the tree looked discarded and was not.
+#
+# The check is a marker scan rather than `git diff --diff-filter=U` precisely because of
+# that second half: git's own view of the tree was the thing that lied. Markers are the
+# ground truth, need no subprocess, and work in a tree that is not a git checkout at all.
+# ---------------------------------------------------------------------------
+CONFLICT_PREFIXES = ("<<<<<<< ", ">>>>>>> ")
+
+
+class ConflictedTree(Exception):
+    """Raised by repoint() when the tree still carries merge markers."""
+
+    def __init__(self, files: list[str]) -> None:
+        super().__init__("working tree has unresolved conflict markers")
+        self.files = files
+
+
+def conflicted_files() -> list[str]:
+    """Files in scan range that still carry merge-conflict markers.
+
+    Both an opening AND a closing marker are required. One alone is something a file
+    can legitimately contain — documentation about merges, a bundled diff tool — and a
+    check that refuses on a clean tree is a check people learn to pass with a flag.
+    """
+    hits = []
+    for rel, text in scan_files():
+        opened = closed = False
+        for line in text.splitlines():
+            if line.startswith("<<<<<<< "):
+                opened = True
+            elif line.startswith(">>>>>>> "):
+                closed = True
+        if opened and closed:
+            hits.append(rel)
+    return hits
+
+
 def scan_files():
     for path in sorted(ROOT.rglob("*")):
         if not path.is_file() or path.is_symlink():
@@ -225,6 +285,12 @@ def repoint(rows: dict[int, str]) -> int:
     register row. Unanchored locators, `cite-example` lines and PAIRING_DEBT entries are
     left exactly as they are -- see the module docstring for why guessing is not on offer.
     """
+    blocked = conflicted_files()
+    if blocked:
+        # Inside repoint() rather than only at the CLI, so no future caller can route
+        # around it. The self-test asserts on this function directly for that reason.
+        raise ConflictedTree(blocked)
+
     homes: dict[str, list[int]] = {}
     for n, rid in sorted(rows.items()):
         homes.setdefault(rid, []).append(n)
@@ -261,6 +327,94 @@ def repoint(rows: dict[int, str]) -> int:
     return fixed
 
 
+# ---------------------------------------------------------------------------
+# --self-test
+#
+# Both invariants below fail SILENTLY if they regress: --fix would either edit a
+# conflict block, or repair a citation that is deliberately broken and thereby delete
+# the finding it illustrates. Neither shows up as a crash or a red build, which is why
+# they are asserted here rather than trusted.
+#
+# It runs against a synthetic tree, so it needs no repository state and cannot be made
+# to pass by the corpus happening to be clean today.
+# ---------------------------------------------------------------------------
+def self_test() -> int:
+    import tempfile
+
+    global ROOT
+    real_root = ROOT
+    failures: list[str] = []
+
+    def build(tmp: pathlib.Path) -> None:
+        reg = tmp / REGISTER_REL
+        reg.parent.mkdir(parents=True, exist_ok=True)
+        # Header lines shift the rows, so OD-N does NOT sit on line N -- a register where
+        # id and line number coincide would let a broken repoint look correct.
+        rows = ["# Open decisions", "", "| ID | Question |", "|---|---|"]
+        rows += [f"| OD-{i} | row {i} |" for i in range(1, 61)]
+        reg.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    def line_of(tmp: pathlib.Path, oid: str) -> int:
+        for n, line in enumerate(
+            (tmp / REGISTER_REL).read_text(encoding="utf-8").splitlines(), 1
+        ):
+            if line.startswith(f"| {oid} "):
+                return n
+        raise AssertionError(f"{oid} not in synthetic register")
+
+    # -- 1. --fix must not touch a cite-example line -------------------------------
+    with tempfile.TemporaryDirectory() as d:
+        tmp = pathlib.Path(d)
+        ROOT = tmp
+        build(tmp)
+        doc = tmp / "doc.md"
+        frozen = "The defect read `OD-7 (OPEN-DECISIONS.md:999)`. <!-- cite-example -->\n"
+        movable = "See OD-7 (OPEN-DECISIONS.md:999) for the rule.\n"
+        doc.write_text(frozen + movable, encoding="utf-8")
+        repoint(load_register())
+        after = doc.read_text(encoding="utf-8").splitlines()
+        want = line_of(tmp, "OD-7")
+        if after[0] != frozen.rstrip("\n"):
+            failures.append("cite-example line was rewritten by --fix")
+        if f"OPEN-DECISIONS.md:{want}" not in after[1]:
+            failures.append("ordinary citation was NOT repointed by --fix")
+
+    # -- 2. --fix must refuse a tree carrying conflict markers ---------------------
+    with tempfile.TemporaryDirectory() as d:
+        tmp = pathlib.Path(d)
+        ROOT = tmp
+        build(tmp)
+        doc = tmp / "doc.md"
+        before = (
+            "<<<<<<< HEAD\n"
+            "See OD-7 (OPEN-DECISIONS.md:999).\n"
+            "=======\n"
+            "See OD-7 (OPEN-DECISIONS.md:998).\n"
+            ">>>>>>> other\n"
+        )
+        doc.write_text(before, encoding="utf-8")
+        if not conflicted_files():
+            failures.append("conflict markers were not detected")
+        try:
+            repoint(load_register())
+            failures.append("repoint() ran on a conflicted tree instead of refusing")
+        except ConflictedTree:
+            pass
+        if doc.read_text(encoding="utf-8") != before:
+            failures.append("repoint() edited inside a conflict block")
+
+    ROOT = real_root
+    print("== --fix self-test: 2 invariants")
+    if failures:
+        for f in failures:
+            print(f"   FAIL — {f}")
+        return 1
+    print("   cite-example citations survive --fix, ordinary ones are repointed")
+    print("   conflict markers are detected and the tree is left alone")
+    print("PASS")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
@@ -268,13 +422,36 @@ def main() -> int:
         action="store_true",
         help="repoint disagreeing citations onto the row their id occupies, then re-check",
     )
+    ap.add_argument(
+        "--self-test",
+        action="store_true",
+        help="prove the two --fix invariants against a synthetic tree, then exit",
+    )
     args = ap.parse_args()
+
+    if args.self_test:
+        return self_test()
 
     rows = load_register()
 
     if args.fix:
         print("== Repointing citations whose id and line disagree")
-        n = repoint(rows)
+        try:
+            n = repoint(rows)
+        except ConflictedTree as exc:
+            print("\n== CANNOT FIX — the working tree still has conflict markers")
+            for rel in exc.files[:10]:
+                print(f"   {rel}")
+            if len(exc.files) > 10:
+                print(f"   … and {len(exc.files) - 10} more")
+            print(
+                "\n   --fix rewrites anchors in place and cannot tell a conflict block\n"
+                "   from resolved text — it would edit one side of a merge nobody has\n"
+                "   chosen yet. Finish the resolution, then run it.\n"
+                "   (And check the resolution landed: a `git merge --abort` that fails\n"
+                "   with its stderr swallowed leaves a tree that only looks discarded.)"
+            )
+            return 2
         print(f"   {n} rewritten\n")
 
     unanchored: list[tuple[str, int, str, str]] = []
