@@ -61,11 +61,25 @@ EXEMPT: dict[str, str] = {
     "profile_extraction": "vendor profile fields have no oracle to check against (census §3.11)",
     "book_text_extraction": "reference-book OCR has no ground truth in the tree (census §3.11)",
     "book_vision_extraction": "as above, vision path (census §3.11)",
-    # ---- deferred: the truth exists but needs a join that does not exist yet
-    "field_extraction": "ontology_v1 needs a wine_id join to run_ontology_validation — deferred (census §4 row 12)",
-    "vision_extraction": "same ontology_v1 join (census §4 row 12)",
-    "text_extraction": "same ontology_v1 join (census §4 row 12)",
-    "crawl_extraction": "same ontology_v1 join (census §4 row 12)",
+    # ---- ontology_v1 is UNREACHABLE here, and not for want of plumbing.
+    # The census filed these as "deferred: needs a wine_id join". Checked site by
+    # site 2026-08-27, four are blocked on CAUSALITY, not scheduling: the wine is
+    # the OUTPUT of the call, so there is no wine_id at call time to thread. The
+    # other three extract MANY wines per call, so a per-wine verdict has no
+    # single event to attach to and choosing one would be a fabrication.
+    # `wine_enrichment` IS graded on ontology_v1 — it enriches a wine that
+    # already exists, which is exactly why it can be. See
+    # services/ontology_verdict.py.
+    #
+    # Only `field_extraction` needs an entry: the other six already carry
+    # `parse_v1` from OD-75, so they are graded — just not as WELL as ontology_v1
+    # would grade them, and this list is not the place to record that. The guard
+    # rejects an exemption for something already graded, which is how these three
+    # came off again after I first wrote them in.
+    "field_extraction": "the wine does not exist yet — wine_id is this call's output, not an input",
+    "vision_extraction": "one call extracts many wines — no single wine_id to attach a per-wine verdict to",
+    "text_extraction": "one call extracts many wines — as above",
+    "crawl_extraction": "one call extracts many wines — as above",
     "invoice_extraction": "ground truth exists but on a disjoint path that emits no NF row (census §3.9)",
     # ---- a defect, not a rubric: named so it is not mistaken for one
     "embedding": "dimension-only check today, and a silent hash fallback means failure is UNOBSERVABLE — fix the missing failure emit before grading (census §3.10)",
@@ -143,7 +157,11 @@ def main() -> int:
             if name.endswith(".ts") and not name.endswith(".spec.ts"):
                 all_types |= set(
                     TS_TASK_TYPE.findall(
-                        open(os.path.join(dirpath, name), encoding="utf-8", errors="ignore").read()
+                        open(
+                            os.path.join(dirpath, name),
+                            encoding="utf-8",
+                            errors="ignore",
+                        ).read()
                     )
                 )
     for dirpath, _dirs, files in os.walk(PYTHON_ROOT):
@@ -152,7 +170,9 @@ def main() -> int:
         for name in files:
             if not name.endswith(".py"):
                 continue
-            text = open(os.path.join(dirpath, name), encoding="utf-8", errors="ignore").read()
+            text = open(
+                os.path.join(dirpath, name), encoding="utf-8", errors="ignore"
+            ).read()
             all_types |= set(re.findall(r'task_type\s*=\s*"([a-z_0-9]+)"', text))
 
     failures = {t: v for t, v in {**gateway, **python}.items() if t not in EXEMPT}
@@ -171,7 +191,9 @@ def main() -> int:
     if dead:
         print("\n== DEAD EXEMPTIONS — these task types no longer emit anywhere")
         for t in dead:
-            print(f"   {t}  — delete the entry; a list nobody prunes is a list nobody reads")
+            print(
+                f"   {t}  — delete the entry; a list nobody prunes is a list nobody reads"
+            )
 
     if redundant:
         print("\n== REDUNDANT EXEMPTIONS — these ARE graded now")
