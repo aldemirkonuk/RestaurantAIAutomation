@@ -108,6 +108,17 @@ eventually chosen must reconcile two surfaces instead of one. Mitigated, not
 eliminated, by the `archetype:` map: it was written web-first *mobile-aware*, so
 the page→archetype mapping ports even when the visual language changes.
 
+**Scope settled 2026-08-27, and it was a real fork.** First measurement put
+mobile at **8.9%** of the web feature set — 19.5 of 219 §1a features across the
+47 page notes, counting a partial as a half. But 34 of those are `audience: dev`
+(studio, simpos, admin, sandbox) and 31 are `public` (login, register, invites,
+legal), and mobile has never attempted either: **staff 21% · owner 10% ·
+public 3% · dev 0%.** Scoping both out would put the denominator at 154 and
+today's parity at 16% — a third smaller stage for the same work. The founder
+chose **all 219: full parity, no carve-outs** (filed as OD-108, retroactively — the answer reached this ADR before the question reached the register, which is its own finding and is recorded there). P3.A's number is therefore always
+out of 219, and a later reading that quotes 154 is quoting a scope that was
+considered and rejected. Census: `04-specs/P3A-MOBILE-PARITY-GAP.md`.
+
 **P3.B — Backend-kitchen expansion, beverages first *(alongside)*.** FUTURES
 staging: full beverages → bakery → rest of kitchen, wine remaining the
 extraction quality bar. It is placed alongside rather than behind P3.0
@@ -161,7 +172,7 @@ cannot pass yet is a to-do wearing a guard's clothes.
 | Stage | Closes when |
 |---|---|
 | P3.0 | no emit site stamps `call_level_v0` without an entry in the named human-rubric exemption list, and `nf_a_verdict_coverage` reports > 0 for every non-exempt gateway task type |
-| P3.A | the mobile app renders the P2-approved feature set, verified on a simulator, not asserted |
+| P3.A | the mobile app renders the P2-approved feature set, verified on a simulator, not asserted. **Unmet as of 2026-08-27 and shipped anyway — see OD-109.** The app has never been run: managed Expo, no `ios/`, CocoaPods absent. A build and 37 unit tests are not rendering, and P3.A cannot be called done on that evidence |
 | P3.B | beverage extraction runs on the same graded basis as wine, with the verdict reaching the footprint |
 | P3.C | no Ask AI action can execute without a recorded human confirm — a guard, not a code-review habit |
 | P3.D | the roster choice cites `nf_a_cost_per_verified_task`, and the loop refuses to close on cost-per-call alone |

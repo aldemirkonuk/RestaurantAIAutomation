@@ -42,6 +42,8 @@ merely unscheduled, when four of them are blocked on causality.
 import logging
 from typing import Any, Dict
 
+from services.neural_footprint import record_drop
+
 logger = logging.getLogger(__name__)
 
 ONTOLOGY_BASIS = "ontology_v1"
@@ -113,7 +115,15 @@ def grade_wine_extractions(
             supabase.table("neural_footprint_event")
             .select("id")
             .eq("context->>wine_id", str(wine_id))
-            .in_("task_type", list(GRADABLE_TASK_TYPES))
+            # `task_type` is NOT a column — `spend_logger.py:395` writes it into
+            # `context`, and `nf_a_verdict_coverage` reads it back as
+            # `e.context->>'task_type'`. Filtering the bare name made PostgREST
+            # reject the request with `column does not exist`; the surrounding
+            # try/except then swallowed it as a warning, so this grader wrote
+            # ZERO verdicts while reporting nothing wrong. Found 2026-08-27
+            # while building the beverage twin of this function, which had
+            # copied the same line.
+            .in_("context->>task_type", list(GRADABLE_TASK_TYPES))
             .order("occurred_at", desc=True)
             .limit(20)
             .execute()
@@ -136,4 +146,12 @@ def grade_wine_extractions(
             wine_id,
             exc,
         )
+        # COUNTABLE, not merely logged. A `logger.warning` is exactly what hid
+        # the `task_type` column defect for hours: the grader ran, failed every
+        # time, and the only trace was a line nobody greps. `record_drop` puts
+        # the failure in the same ledger NF emit drops use, so "this grader is
+        # silently broken" becomes a number someone can read instead of a
+        # string someone must notice. Still non-fatal — an instrument must not
+        # kill the Celery task it measures.
+        record_drop("ontology_v1")
     return written

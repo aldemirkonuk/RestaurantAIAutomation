@@ -46,7 +46,7 @@ Sequence:
    whether they worked.
 
 **Why not run OD-01 first, even though it is the biggest problem.** OD-01 is a founder
-decision that has not been made (`OD-01, OPEN-DECISIONS.md:71`). Steps 1–3 are entirely
+decision that has not been made (`OD-01, OPEN-DECISIONS.md:73`). Steps 1–3 are entirely
 independent of which shape the founder picks and are not invalidated by any answer. Doing
 them first buys measurement while waiting, rather than waiting idle.
 

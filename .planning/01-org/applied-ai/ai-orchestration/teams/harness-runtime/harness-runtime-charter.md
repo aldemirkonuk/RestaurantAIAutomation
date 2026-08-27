@@ -101,7 +101,7 @@ the contract exists to protect.
 
 ## The fork that hangs over this team — OD-03
 
-`OD-03 (OPEN-DECISIONS.md:24)` leaves the orchestration base open between
+`OD-03 (OPEN-DECISIONS.md:26)` leaves the orchestration base open between
 `NousResearch/hermes-agent`, `deepseek-ai/deepseek-harness`, and extending in-house
 `core/base_agent.py`, with the resolution path *"a scoped bake-off on this repo's
 actual workloads. No pick from repute."*
