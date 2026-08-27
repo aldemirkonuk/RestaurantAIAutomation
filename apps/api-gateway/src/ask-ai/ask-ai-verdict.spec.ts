@@ -1,4 +1,8 @@
-import { confirmationVerdict, proposalVerdict } from "./ask-ai-verdict";
+import {
+  confirmationVerdict,
+  editVerdict,
+  proposalVerdict,
+} from "./ask-ai-verdict";
 
 describe("proposalVerdict", () => {
   const base = {
@@ -66,5 +70,43 @@ describe("confirmationVerdict — the honest, deferred verdict", () => {
     });
     expect(v.outcome).toBe("partial");
     expect(v.evidence?.failure_reason).toBe("no active vendors");
+  });
+});
+
+describe("an edited acceptance must not score as the model being right", () => {
+  it("downgrades confirmation to partial when the operator edited first", () => {
+    // The whole reason `executed_payload` exists. Crediting the model with a
+    // human's correction makes confirmation_v1 describe the pair of them.
+    const clean = confirmationVerdict({ outcome: "executed", edited: false });
+    const edited = confirmationVerdict({ outcome: "executed", edited: true });
+    expect(clean.outcome).toBe("success");
+    expect(edited.outcome).toBe("partial");
+    expect(edited.evidence?.edited).toBe(true);
+  });
+
+  it("still records a discard as failure whether or not editing was offered", () => {
+    expect(confirmationVerdict({ outcome: "discarded" }).outcome).toBe(
+      "failure",
+    );
+  });
+
+  it("names which fields changed, so a drift is answerable from the ledger", () => {
+    const v = editVerdict(
+      { inventoryId: "a", providerId: "b", quantity: 12 },
+      { inventoryId: "a", providerId: "b", quantity: 6 },
+    );
+    expect(v.outcome).toBe("partial");
+    expect(v.evidence?.changed_fields).toEqual(["quantity"]);
+    expect((v.evidence?.changes as any).quantity).toEqual({ from: 12, to: 6 });
+  });
+
+  it("reports no changed fields when the payloads match", () => {
+    const same = { inventoryId: "a", quantity: 6 };
+    expect(editVerdict(same, { ...same }).evidence?.changed_fields).toEqual([]);
+  });
+
+  it("catches a field the operator added or removed, not just changed", () => {
+    const v = editVerdict({ quantity: 6 }, { quantity: 6, unitType: "case" });
+    expect(v.evidence?.changed_fields).toEqual(["unitType"]);
   });
 });

@@ -3,6 +3,7 @@ import { NfVerdict } from "../common/model-client/nf-verdict.service";
 export {
   PROPOSAL_BASIS,
   CONFIRMATION_BASIS,
+  EDIT_BASIS,
 } from "../common/model-client/verdict-bases";
 
 /**
@@ -71,14 +72,23 @@ export function confirmationVerdict(input: {
   outcome: "executed" | "discarded" | "failed";
   executionRef?: string | null;
   failureReason?: string | null;
+  /** True when the operator changed the payload before confirming. */
+  edited?: boolean;
 }): NfVerdict {
   const evidence: Record<string, unknown> = {
     resolution: input.outcome,
+    edited: Boolean(input.edited),
     ...(input.executionRef ? { execution_ref: input.executionRef } : {}),
     ...(input.failureReason ? { failure_reason: input.failureReason } : {}),
   };
 
-  if (input.outcome === "executed") return { outcome: "success", evidence };
+  if (input.outcome === "executed") {
+    // An EDITED acceptance is `partial`, never `success`. The proposal was good
+    // enough to keep rather than discard — a real signal — but crediting the
+    // model with the operator's correction would make this number describe the
+    // pair of them rather than the model. `edit_v1` carries what changed.
+    return { outcome: input.edited ? "partial" : "success", evidence };
+  }
 
   // A confirmed action whose EXECUTOR failed is not the model's miss. It is
   // still not a completed task, so it is not `success` — `partial` says the
@@ -86,4 +96,36 @@ export function confirmationVerdict(input: {
   if (input.outcome === "failed") return { outcome: "partial", evidence };
 
   return { outcome: "failure", evidence };
+}
+
+/**
+ * What the operator changed before confirming (`edit_v1`).
+ *
+ * Not a pass/fail on the model — it is the shape of the miss, which is the more
+ * useful thing. `partial` throughout, deliberately: an edited proposal was
+ * neither right nor useless, and forcing it to one of those would throw away the
+ * only signal that says WHERE the model is drifting.
+ *
+ * The changed fields are named, and the before/after values carried, so "it
+ * always gets the vendor right and the quantity wrong" is answerable from the
+ * ledger rather than from anyone's impression.
+ */
+export function editVerdict(
+  proposed: Record<string, unknown>,
+  executed: Record<string, unknown>,
+): NfVerdict {
+  const keys = new Set([...Object.keys(proposed), ...Object.keys(executed)]);
+  const changed: Record<string, { from: unknown; to: unknown }> = {};
+  for (const k of keys) {
+    if (JSON.stringify(proposed[k]) !== JSON.stringify(executed[k])) {
+      changed[k] = { from: proposed[k], to: executed[k] };
+    }
+  }
+  return {
+    outcome: "partial",
+    evidence: {
+      changed_fields: Object.keys(changed).sort(),
+      changes: changed,
+    },
+  };
 }

@@ -17,8 +17,10 @@ import { AskAiAction, validateAction } from "./ask-ai-actions";
 import { ProposalCandidates, checkActionGrounded } from "./ask-ai-grounding";
 import {
   CONFIRMATION_BASIS,
+  EDIT_BASIS,
   PROPOSAL_BASIS,
   confirmationVerdict,
+  editVerdict,
   proposalVerdict,
 } from "./ask-ai-verdict";
 
@@ -372,7 +374,25 @@ export class AskAiService {
    * winner and the loser gets "already handled" rather than a second purchase
    * order. That is the idempotency mechanism; the row itself is the key.
    */
-  async confirm(restaurantId: string, userId: string, actionId: string) {
+  /**
+   * Confirm and execute, optionally with the operator's edits.
+   *
+   * `editedPayload` is a NEW INPUT PATH and is treated as one. It is run
+   * through the SAME allowlist (`validateAction`) and the SAME grounding check
+   * (`checkActionGrounded`) as a model proposal — because an editable field is
+   * an id-injection hole the moment it is trusted, and the fact that a human
+   * typed it is not a security property. A human can paste a uuid.
+   *
+   * Grounding is re-derived from the CURRENT candidate set rather than the one
+   * captured at propose time: stock and vendors change, and the question is
+   * whether this action is valid to run NOW.
+   */
+  async confirm(
+    restaurantId: string,
+    userId: string,
+    actionId: string,
+    editedPayload?: Record<string, unknown>,
+  ) {
     const client = this.databaseService.getClient();
 
     const { data: claimed, error: claimErr } = await client
@@ -402,22 +422,63 @@ export class AskAiService {
       );
     }
 
+    // Validate the edit BEFORE executing, and roll the claim back if it fails —
+    // otherwise a rejected edit would leave the row stuck at `confirmed` with
+    // nothing executed and no way to retry.
+    let executedPayload: Record<string, unknown> | null = null;
+    if (editedPayload) {
+      const check = await this.validateEdit(
+        restaurantId,
+        claimed,
+        editedPayload,
+      );
+      if (!check.ok) {
+        await client
+          .from("ai_proposed_actions")
+          .update({
+            status: "proposed",
+            confirmed_by: null,
+            confirmed_at: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", actionId);
+        throw new BadRequestException(check.reason);
+      }
+      executedPayload = check.payload;
+    }
+
+    const effective = executedPayload
+      ? { ...claimed, payload: executedPayload }
+      : claimed;
+    const edited = executedPayload !== null;
+
     try {
-      const executionRef = await this.execute(restaurantId, userId, claimed);
+      const executionRef = await this.execute(restaurantId, userId, effective);
       await client
         .from("ai_proposed_actions")
         .update({
           status: "executed",
           executed_at: new Date().toISOString(),
           execution_ref: executionRef,
+          ...(executedPayload ? { executed_payload: executedPayload } : {}),
           updated_at: new Date().toISOString(),
         })
         .eq("id", actionId);
       this.gradeResolution(claimed.nf_event_id, {
         outcome: "executed",
         executionRef,
+        edited,
       });
-      return { executed: true, actionId, executionRef };
+      if (executedPayload && claimed.nf_event_id) {
+        // The shape of the miss, recorded beside the confirmation rather than
+        // folded into it.
+        this.nfVerdicts.recordForEvent(
+          claimed.nf_event_id,
+          EDIT_BASIS,
+          editVerdict(claimed.payload ?? {}, executedPayload),
+        );
+      }
+      return { executed: true, actionId, executionRef, edited };
     } catch (err: any) {
       const reason = String(err?.message ?? err).slice(0, 300);
       await client
@@ -431,6 +492,7 @@ export class AskAiService {
       this.gradeResolution(claimed.nf_event_id, {
         outcome: "failed",
         failureReason: reason,
+        edited,
       });
       this.logger.error(`Ask AI execution failed for ${actionId}: ${reason}`);
       throw err;
@@ -476,6 +538,69 @@ export class AskAiService {
       CONFIRMATION_BASIS,
       confirmationVerdict(input),
     );
+  }
+
+  /**
+   * Re-validate an operator's edit through the same gates a model proposal
+   * passes. Returns the normalised payload, or the reason it was refused.
+   */
+  private async validateEdit(
+    restaurantId: string,
+    row: any,
+    editedPayload: Record<string, unknown>,
+    // Flat, not a discriminated union — the THIRD time OD-107 has forced this
+    // in one feature. `strictNullChecks: false` means a boolean discriminant
+    // does not narrow, so the union form is a compile error on every field
+    // access. Recorded there; worked around here.
+  ): Promise<{
+    ok: boolean;
+    payload?: Record<string, unknown>;
+    reason?: string;
+  }> {
+    const candidate = {
+      family: row.family,
+      actionType: row.action_type,
+      payload: editedPayload,
+    };
+
+    const validation = validateAction(candidate);
+    if (!validation.ok || !validation.action) {
+      return {
+        ok: false,
+        reason: validation.reason ?? "That edit is not a valid action.",
+      };
+    }
+
+    // The family and action type are NOT editable. Allowing them to change
+    // would turn "edit the quantity" into "swap this for a different action
+    // that a human already confirmed", which is the confirm gate defeated by
+    // its own convenience feature.
+    if (
+      validation.action.family !== row.family ||
+      validation.action.actionType !== row.action_type
+    ) {
+      return {
+        ok: false,
+        reason: "An edit cannot change what kind of action this is.",
+      };
+    }
+
+    const { candidates } = await this.loadCandidates(restaurantId);
+    const grounding = checkActionGrounded(validation.action, candidates);
+    if (!grounding.grounded) {
+      this.logger.warn(
+        `Ask AI edit referenced ungrounded ids [${(grounding.ungrounded ?? []).join(", ")}] for restaurant ${restaurantId}`,
+      );
+      return {
+        ok: false,
+        reason: grounding.reason ?? "Unknown item, vendor or order.",
+      };
+    }
+
+    return {
+      ok: true,
+      payload: validation.action.payload as Record<string, unknown>,
+    };
   }
 
   /**
