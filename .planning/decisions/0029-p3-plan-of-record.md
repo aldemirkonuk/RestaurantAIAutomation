@@ -108,6 +108,17 @@ eventually chosen must reconcile two surfaces instead of one. Mitigated, not
 eliminated, by the `archetype:` map: it was written web-first *mobile-aware*, so
 the page→archetype mapping ports even when the visual language changes.
 
+**Scope settled 2026-08-27, and it was a real fork.** First measurement put
+mobile at **8.9%** of the web feature set — 19.5 of 219 §1a features across the
+47 page notes, counting a partial as a half. But 34 of those are `audience: dev`
+(studio, simpos, admin, sandbox) and 31 are `public` (login, register, invites,
+legal), and mobile has never attempted either: **staff 21% · owner 10% ·
+public 3% · dev 0%.** Scoping both out would put the denominator at 154 and
+today's parity at 16% — a third smaller stage for the same work. The founder
+chose **all 219: full parity, no carve-outs.** P3.A's number is therefore always
+out of 219, and a later reading that quotes 154 is quoting a scope that was
+considered and rejected. Census: `04-specs/P3A-MOBILE-PARITY-GAP.md`.
+
 **P3.B — Backend-kitchen expansion, beverages first *(alongside)*.** FUTURES
 staging: full beverages → bakery → rest of kitchen, wine remaining the
 extraction quality bar. It is placed alongside rather than behind P3.0

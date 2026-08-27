@@ -310,10 +310,28 @@ updates and the code did not deliver them.
    banner opened the app to wherever it had been left. Cold-start taps
    (`getLastNotificationResponseAsync`) were not handled at all.
 
-**One more, unfixed and worth naming:** `apps/mobile` appears **nowhere** in
-`.github/workflows/ci.yml`. Nothing typechecks or lints it on a PR. Three of the
-four defects above are exactly the class a typecheck cannot catch and a reviewer
-does not notice — an export with no importer.
+**One more, and the first version of this paragraph was wrong — corrected
+2026-08-27.** It said `apps/mobile` appears nowhere in
+`.github/workflows/ci.yml` and that nothing typechecks it on a PR. The first
+half is literally true and the conclusion is not: the package name does not
+appear in the workflow, but **turbo reaches it anyway.** `turbo run typecheck
+--dry=json` lists `@wineops/mobile`, and CI's *Lint TypeScript* job runs
+`pnpm run type-check` → `turbo run typecheck`. Mobile has been typechecked on
+every PR.
+
+**The real defect is narrower and worse.** `apps/mobile`'s test script was
+
+    "test": "echo \"(no mobile unit tests configured)\" && exit 0"
+
+turbo ran it on every CI run and it reported success **by construction**. The
+package was not missing from the board — it was on the board, green, and
+exercising nothing. That is the repo's signature shape again: machinery that
+cannot report failure. Three of the four defects above are an export with no
+importer, which a typecheck genuinely cannot catch and only a test would have.
+
+Closed by `scripts/check_test_scripts_are_real.py`, which fails any declared
+`test` script that only echoes and exits — proven against this branch's parent,
+where it names `apps/mobile` and exits 1.
 
 ---
 
@@ -413,8 +431,9 @@ Recorded, **not** built (they are outside `apps/mobile/**`).
    route as unregistered — mobile deep-links to the web page
    (`apps/mobile/app/wine-agent.tsx:74`) because there is nothing to call. This
    is P3.C territory, behind the P3.0 gate.
-5. **`apps/mobile` is absent from CI** (`.github/workflows/ci.yml`). Out of
-   bounds for this session; it is the cheapest thing anyone could add next.
+5. ~~**`apps/mobile` is absent from CI.**~~ **Corrected 2026-08-27 — it is
+   not.** turbo covers it for both `typecheck` and `test`. What was absent was a
+   test script that could fail; see §3. Guarded now.
 
 ---
 

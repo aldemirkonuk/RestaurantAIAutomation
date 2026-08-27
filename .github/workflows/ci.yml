@@ -335,6 +335,9 @@ jobs:
       - name: Type check
         run: pnpm run type-check
 
+      - name: Every declared test script can actually fail
+        run: ./scripts/check_test_scripts_are_real.py
+
       - name: Guard against direct stock_live/shadow_stock writes
         run: ./scripts/check_no_direct_stock_writes.sh
 
