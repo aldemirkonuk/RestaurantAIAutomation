@@ -67,6 +67,13 @@ measured what that costs: *"`Weller 107` is a proof, `Macallan 12` is an age"* �
 one token shape, four meanings. Only an explicit unit ("12 yr", "16 year old")
 counts.
 
+And what a rule may read is not uniform, because a NAME is weaker evidence than
+a DECLARED TYPE. `_NAME_UNSAFE_CATEGORIES` and `check_protected_origin` carry
+the three real bottles that forced the distinction — `Port Charlotte 10`,
+`Glenfiddich 15 Solera Sherry Cask`, `Balvenie Cognac Cask Finish` — each of
+which an earlier, name-reading draft marked CRITICAL. None was a data error;
+all three were this module guessing from a proper noun.
+
 WINE ROWS ARE NOT GRADED HERE
 -----------------------------
 `applies_to_row()` returns False when the row carries a grape, an appellation or
@@ -81,10 +88,53 @@ from typing import Any, Dict, List, Optional, Tuple
 
 BEVERAGE_ONTOLOGY_BASIS = "beverage_ontology_v1"
 
-#: Absolute physical bounds. Above 96% is past the azeotrope of ethanol/water at
-#: atmospheric pressure — not a strong spirit, a bad number.
-_ABV_FLOOR = 0.0
+#: Above 96% is past the ethanol/water azeotrope at atmospheric pressure — not a
+#: strong spirit, a bad number.
 _ABV_CEILING = 96.0
+
+#: Fields that DECLARE a type, as opposed to naming a product. These are the
+#: same signals, in the same order, that `wine_classify_beverage_kind` uses in
+#: `20260817060000_beverage_kind_classification.sql`.
+#:
+#: `producer` and `description` are on NEITHER list and are read by no rule.
+#: Producer names are proper nouns that collide with category tokens — `Port
+#: Ellen` and `Bourbon Brothers` are real distilleries — and `description` is
+#: free prose, where "finished in sherry casks" appears constantly.
+_CLASSIFYING_FIELDS = (
+    "primary_type",
+    "beverage_type",
+    "menu_category",
+)
+
+#: Categories that a bottle's NAME may not assert — only a declared type may.
+#:
+#: The first draft let names assert anything. Working real products through it
+#: found the systematic defeater: **every fortified-wine token doubles as a cask
+#: name or a place name**, and cask-finish naming is ubiquitous in spirits.
+#: Three genuine bottles, all of which a name-reading version failed:
+#:
+#:   * `Port Charlotte 10` — Bruichladdich, ~50% ABV. "port" bands it at
+#:     15-24% and fails it.
+#:   * `Port Ellen 1983` — a closed Islay distillery, ~55% ABV. Same.
+#:   * `Glenfiddich 15 Solera Sherry Cask` — "sherry" names the cask, not the
+#:     drink.
+#:
+#: The exclusion is one category rather than a hand-tuned token allowlist,
+#: because the reason is structural: this whole category's vocabulary is
+#: borrowed by the cask trade. Everything else a name can say — "single malt",
+#: "IPA", "lager", "gin" — is a style, not a place, and stays usable, which is
+#: what keeps the rule firing on rows whose only text is a name.
+#:
+#: `protected_origin` goes further and reads no name at all: cask-finish naming
+#: defeats every designation token, not merely the fortified ones — "Cognac Cask
+#: Finish" on a Scotch would demand France.
+_NAME_UNSAFE_CATEGORIES = frozenset({"fortified_wine"})
+
+#: The age-statement rule reads the NAME instead, and is the one rule that
+#: safely can: its token must carry an explicit unit ("16 year old"), so it
+#: disambiguates itself rather than relying on the field it came from. A number
+#: in a menu section header is not a bottle's age, hence name fields only.
+_NAME_FIELDS = ("name", "display_name")
 
 #: US proof is exactly twice ABV (27 CFR 5.1). Labels round, so a discrepancy
 #: under this many proof points is rounding, not an error.
@@ -462,18 +512,30 @@ def check_abv_proof_consistency(abv_pct: Any, proof: Any) -> CheckResult:
     )
 
 
-def check_abv_category_plausibility(text: Optional[str], abv_pct: Any) -> CheckResult:
+def check_abv_category_plausibility(
+    text: Optional[str], abv_pct: Any, name_text: Optional[str] = None
+) -> CheckResult:
     """ABV must sit inside the band for a category the row's own text names.
 
-    Skips unless exactly one category is detected: "Sherry Cask Islay Single
-    Malt" names two, and picking one of them would be a guess. Guessing is how a
+    `text` is the row's DECLARED type (`_CLASSIFYING_FIELDS`) and may assert any
+    category. `name_text` is the bottle's name and may assert any category
+    EXCEPT `fortified_wine` — see `_NAME_UNSAFE_CATEGORIES`.
+
+    Skips unless exactly one category survives: "Sherry Cask Islay Single Malt"
+    names two, and picking one of them would be a guess. Guessing is how a
     grader manufactures false positives.
     """
     abv = _as_float(abv_pct)
     if abv is None:
         return _SKIPPED
 
-    categories = [c for c in detect_categories(text or "") if c in _CATEGORY_ABV_BANDS]
+    detected = set(detect_categories(text or ""))
+    detected |= {
+        c
+        for c in detect_categories(name_text or "")
+        if c not in _NAME_UNSAFE_CATEGORIES
+    }
+    categories = [c for c in _CATEGORY_ABV_BANDS if c in detected]
 
     # `non_alcoholic` is a QUALIFIER, not a competing category — "Zero Proof
     # Gin", "Alcohol-Free Lager" and "Dealcoholized Riesling" all name a base
@@ -648,27 +710,23 @@ def run_beverage_ontology_checks(fields: Dict[str, Any]) -> Dict[str, Any]:
     volume_ml), so this runs over extraction output today and over catalogue
     rows when the beverage catalogue has a writer. Recognised keys:
 
-        name, display_name, producer, description, primary_type,
-        beverage_type, menu_category   -> the text the category and designation
-                                          rules read
+        primary_type, beverage_type, menu_category   -> declared type; may
+                                          assert any category
+        name, display_name             -> the bottle's name; may assert a
+                                          category except `fortified_wine`, and
+                                          may never assert a designation
         alcohol_pct | abv_pct          -> ABV
+        country                        -> the designation rule
         proof, age_years, volume_ml    -> the columns that exist on `beverages`
+
+    `producer` and `description` are read by NOTHING here, deliberately — see
+    `_CLASSIFYING_FIELDS` and `_NAME_UNSAFE_CATEGORIES`.
 
     Returns a dict, not a pydantic model, because it is written straight into
     `nf_verdict.evidence` as jsonb.
     """
-    text = " ".join(
-        str(fields.get(key) or "")
-        for key in (
-            "name",
-            "display_name",
-            "producer",
-            "primary_type",
-            "beverage_type",
-            "menu_category",
-            "description",
-        )
-    ).strip()
+    text = " ".join(str(fields.get(key) or "") for key in _CLASSIFYING_FIELDS).strip()
+    name_text = " ".join(str(fields.get(key) or "") for key in _NAME_FIELDS).strip()
 
     abv = fields.get("alcohol_pct")
     if abv is None:
@@ -676,11 +734,11 @@ def run_beverage_ontology_checks(fields: Dict[str, Any]) -> Dict[str, Any]:
 
     results: List[Tuple[str, CheckResult]] = [
         ("abv_proof", check_abv_proof_consistency(abv, fields.get("proof"))),
-        ("abv_category", check_abv_category_plausibility(text, abv)),
+        ("abv_category", check_abv_category_plausibility(text, abv, name_text)),
         ("protected_origin", check_protected_origin(text, fields.get("country"))),
         (
             "age_statement",
-            check_age_statement_consistency(text, fields.get("age_years")),
+            check_age_statement_consistency(name_text, fields.get("age_years")),
         ),
         ("volume_unit", check_volume_plausibility(fields.get("volume_ml"))),
     ]

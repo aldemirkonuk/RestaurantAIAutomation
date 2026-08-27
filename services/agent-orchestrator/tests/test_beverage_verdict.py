@@ -163,9 +163,14 @@ class TestGrading:
         assert supabase.verdicts == []
 
     def test_a_violating_spirit_is_graded_failure(self):
+        # `menu_category` is a DECLARED type, so it may assert the designation.
+        # A name may not — cask-finish naming defeats every designation token.
         supabase = _Supabase(
             submission=_submission(
-                name="Kentucky Straight Bourbon", country="Japan", alcohol_pct=45.0
+                name="Blanton's Single Barrel",
+                menu_category="Bourbon",
+                country="Japan",
+                alcohol_pct=45.0,
             ),
             events=[{"id": _EVENT_ID}],
         )
@@ -197,7 +202,10 @@ class TestGrading:
     def test_evidence_names_which_rules_ran_and_which_did_not(self):
         supabase = _Supabase(
             submission=_submission(
-                name="Kentucky Straight Bourbon", country="USA", alcohol_pct=45.0
+                name="Blanton's Single Barrel",
+                menu_category="Bourbon",
+                country="USA",
+                alcohol_pct=45.0,
             ),
             events=[{"id": _EVENT_ID}],
         )

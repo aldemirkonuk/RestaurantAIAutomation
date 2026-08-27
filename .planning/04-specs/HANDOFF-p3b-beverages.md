@@ -126,7 +126,7 @@ schema change. No new model call sites, so
 | `services/beverage_verdict.py` *(new)* | `beverage_ontology_verdict()` + `grade_beverage_extractions()`, writing basis `beverage_ontology_v1` as an `(event_id, basis)` sidecar |
 | `jobs/ontology_tasks.py` | Wires the beverage grader into the existing deferred rail, beside `ontology_v1` |
 | `services/ontology_verdict.py` | The §3 one-line fix |
-| `tests/test_beverage_ontology.py` *(new)* | 50 tests |
+| `tests/test_beverage_ontology.py` *(new)* | 61 tests |
 | `tests/test_beverage_verdict.py` *(new)* | 17 tests, including the §3 regression lock |
 
 ### 4.1 The rules, and why each is admissible
@@ -141,13 +141,35 @@ The bar is the one `ontology_v1` set: provable with no human in the loop.
 | `age_statement` | A bottle whose name says "16 year old" while `age_years` says 12 contradicts itself | critical |
 | `volume_unit` | A 0.75 ml bottle is a unit error | warning |
 
-Three design choices that a later reader will otherwise want to undo:
+Four design choices that a later reader will otherwise want to undo:
 
 - **Every rule is self-grounding.** None reads a classification column. The
   first draft keyed the ABV band on `beverage_kind`, which would have been a
   second home for the classifier `20260817060000_beverage_kind_classification.sql`
   already owns in PL/pgSQL. Each rule now fires only on positive evidence in the
   row's own text plus the number it needs.
+- **A name is weaker evidence than a declared type**, and the rules treat it so.
+  The second draft let a bottle's *name* assert any category. Working real
+  products through it found a systematic defeater — **every fortified-wine token
+  doubles as a cask name or a place name**, and cask-finish naming is everywhere
+  in spirits. Three genuine bottles the name-reading draft marked CRITICAL:
+
+  | Bottle | What it actually is | What the draft did |
+  |---|---|---|
+  | `Port Charlotte 10` | Bruichladdich Islay malt, ~50% | "port" → banded 15-24%, failed |
+  | `Glenfiddich 15 Solera Sherry Cask` | Scottish, 40% | "sherry" → demanded Spain, failed |
+  | `Balvenie Cognac Cask Finish` | Scottish | "cognac" → demanded France, failed |
+
+  None was a data error; all three were the module guessing from a proper noun.
+  So: a **declared type** (`primary_type` / `beverage_type` / `menu_category`)
+  may assert anything; a **name** may assert any category *except*
+  `fortified_wine`, and may never assert a designation. `producer` and
+  `description` are read by no rule at all — `Port Ellen` is a real distillery,
+  and "finished in sherry casks" is in half the tasting notes in the corpus.
+  The carve-out is deliberately one *category*, not a hand-tuned token
+  allowlist, because the reason is structural. Styles a name can safely
+  assert — "single malt", "IPA", "gin" — stay usable, which is what keeps the
+  rule firing on rows whose only text is a name.
 - **Bare integers are never read as ages.** `BEVERAGE_CATALOGUE_ARCHITECTURE.md:190`
   measured what that costs: *"`Weller 107` is a proof, `Macallan 12` is an age"*.
   Only an explicit unit counts.
@@ -171,9 +193,17 @@ what a second basis is for.
 `BEVERAGE_CATALOGUE_ARCHITECTURE.md:122` measured discriminator coverage on
 spirit rows at **13% age, 10% cask, 0% proof, 0% volume**. Enrichment writes
 `alcohol_pct` (`haiku_enrichment_service.py:74`) but not `proof`, `age_years`
-or `volume_ml`, so on today's data the rules that can usually run are
-`abv_category` and `protected_origin`, and many rows will come back
-`null`/untestable.
+or `volume_ml`, so `abv_proof`, `age_statement` and `volume_unit` cannot run on
+submissions data at all today — they exist for `public.beverages`, whose
+columns they name, once it has a writer.
+
+That leaves `abv_category` (which does fire from a name, for the safe styles)
+and `protected_origin`, which needs a **declared** type. `primary_type` is the
+only declared-type field enrichment writes, and
+`20260817060000_beverage_kind_classification.sql`'s header records that it *"has
+only ever held wine-style values in this schema"* — so `protected_origin` will
+be near-dormant until extraction emits a beverage type or `menu_category` is
+carried onto the submission. Many rows will come back `null`/untestable.
 
 That is the point. Today those rows return `success`. After this they return
 "nothing could be checked", which is true, and coverage rises as extraction
@@ -226,8 +256,14 @@ a test asserts directly and a grep-based guard could only approximate.
 - **§2 not fixed** — §5, and the reason is scope, stated rather than hidden.
 - **No migration, nothing applied to production.** Nothing here needs one.
 - **Not verified against production data.** No live query was run, so the *rate*
-  at which each rule fires on the real corpus is unknown. Every number in this
-  document is from the tree or from a local test run.
+  at which each rule fires on the real corpus is unknown, and the false-positive
+  argument in §4.1 is made against named real products reasoned through by hand,
+  not against a labelled corpus. §4.3 says which rules are structurally dormant
+  today and why; what is *not* known is how often the live ones bite.
+- **`menu_category` is not carried onto a submission today.** The rules read it
+  if present, because `public.beverages` and the SQL classifier both use it, but
+  nothing currently writes it into `master_wine_library_submissions`. Plumbing
+  it through is cheap and is the highest-yield next step for `protected_origin`.
 - **The `LOOKBACK_HOURS = 24` constant in `ontology_verdict.py` is still dead**
   — declared, documented, never used in the query. Noticed, left alone: it is
   wine-path, and it is cosmetic next to §2 and §3.

@@ -306,13 +306,14 @@ class TestCountingIsHonest:
     def test_checks_total_counts_only_rules_that_ran(self):
         result = run_beverage_ontology_checks(
             {
-                "name": "Kentucky Straight Bourbon",
+                "name": "Blanton's Single Barrel",
+                "menu_category": "Bourbon",
                 "country": "USA",
-                "alcohol_pct": 45.0,
+                "alcohol_pct": 46.5,
             }
         )
-        # abv_category (bourbon + abv) and protected_origin (bourbon + country)
-        # can run; proof, age_years and volume_ml are absent.
+        # abv_category (declared type + abv) and protected_origin (declared type
+        # + country) can run; proof, age_years and volume_ml are absent.
         assert result["checks_total"] == 2
         assert sorted(result["checks_applied"]) == ["abv_category", "protected_origin"]
         assert sorted(result["checks_skipped"]) == [
@@ -324,19 +325,127 @@ class TestCountingIsHonest:
     def test_a_real_violation_is_counted_and_described(self):
         result = run_beverage_ontology_checks(
             {
-                "name": "Kentucky Straight Bourbon",
+                "name": "Blanton's Single Barrel",
+                "beverage_type": "bourbon",
                 "country": "Japan",
-                "alcohol_pct": 45.0,
+                "alcohol_pct": 46.5,
             }
         )
         assert result["checks_failed"] == 1
         assert result["failures"][0]["check"] == "protected_origin"
 
+    # ---- Real products that a name-reading version of these rules failed. ----
+    # Each is a genuine bottle. Each would have been marked CRITICAL by a rule
+    # that classified from the name, which is why `_CLASSIFYING_FIELDS` holds
+    # only type declarations.
+
+    def test_port_charlotte_is_not_banded_as_a_fortified_wine(self):
+        # Bruichladdich's Port Charlotte 10 is a ~50% Islay single malt. "port"
+        # in the name would band it at 15-24% and fail it.
+        result = run_beverage_ontology_checks(
+            {"name": "Port Charlotte 10", "alcohol_pct": 50.0}
+        )
+        assert result["checks_failed"] == 0
+        assert "abv_category" in result["checks_skipped"]
+
+    def test_a_sherry_cask_scotch_is_not_failed_as_spanish(self):
+        # Glenfiddich 15 Solera Sherry Cask is Scottish. "sherry" in the name
+        # would demand ES and fail a GB row.
+        result = run_beverage_ontology_checks(
+            {
+                "name": "Glenfiddich 15 Solera Sherry Cask",
+                "beverage_type": "whisky",
+                "country": "Scotland",
+                "alcohol_pct": 40.0,
+            }
+        )
+        assert result["checks_failed"] == 0
+
+    def test_bourbon_vanilla_is_not_failed_as_kentuckian(self):
+        # Bourbon vanilla is named for Réunion, not Kentucky.
+        result = run_beverage_ontology_checks(
+            {"name": "Bourbon Vanilla Liqueur", "country": "Mexico"}
+        )
+        assert result["checks_failed"] == 0
+
+    def test_a_producer_name_never_classifies_the_bottle(self):
+        # Port Ellen is a real Islay distillery, and `producer` is not read at
+        # all — not even as a tiebreaker.
+        result = run_beverage_ontology_checks(
+            {"name": "Port Ellen 1983", "producer": "Port Ellen", "alcohol_pct": 55.0}
+        )
+        assert result["checks_failed"] == 0
+        assert "abv_category" in result["checks_skipped"]
+
+    def test_a_tasting_note_never_classifies_the_bottle(self):
+        # Free prose is not evidence a hard rule may use.
+        result = run_beverage_ontology_checks(
+            {
+                "name": "Glenfiddich",
+                "description": "Finished in sherry casks, notes of port and fig",
+                "alcohol_pct": 46.0,
+            }
+        )
+        assert result["checks_failed"] == 0
+
+    def test_the_menu_section_does_classify(self):
+        # The section header is restaurant-authored structure and a type
+        # declaration — the same signal `wine_classify_beverage_kind` uses at
+        # precedence 2. A 12% "beer" is inside the band and must not fail.
+        result = run_beverage_ontology_checks(
+            {"name": "Founders KBS", "menu_category": "Beer", "alcohol_pct": 12.0}
+        )
+        assert "abv_category" in result["checks_applied"]
+        assert result["checks_failed"] == 0
+
+    def test_a_name_alone_still_bands_an_unambiguous_style(self):
+        # The carve-out is one category, not the whole name. "gin" is a style,
+        # not a place or a cask, so a row whose only text is its name is still
+        # covered — which is what stops the rule from never firing.
+        result = run_beverage_ontology_checks(
+            {"name": "Tanqueray London Dry Gin", "alcohol_pct": 47.3}
+        )
+        assert "abv_category" in result["checks_applied"]
+        assert result["checks_failed"] == 0
+
+    def test_a_name_alone_catches_a_mis_attached_abv(self):
+        result = run_beverage_ontology_checks(
+            {"name": "Tanqueray London Dry Gin", "alcohol_pct": 4.73}
+        )
+        assert result["checks_failed"] == 1
+        assert result["failures"][0]["check"] == "abv_category"
+
+    def test_a_declared_fortified_wine_is_still_banded(self):
+        # The carve-out is about the NAME. A declared type may assert it.
+        result = run_beverage_ontology_checks(
+            {"name": "Graham's 20 Year", "menu_category": "Port", "alcohol_pct": 45.0}
+        )
+        assert result["checks_failed"] == 1
+        assert result["failures"][0]["check"] == "abv_category"
+
+    def test_a_name_may_never_assert_a_designation(self):
+        # Cask-finish naming defeats every designation token, not only the
+        # fortified ones: "Cognac Cask Finish" on a Scotch would demand France.
+        result = run_beverage_ontology_checks(
+            {"name": "Balvenie Cognac Cask Finish", "country": "Scotland"}
+        )
+        assert "protected_origin" in result["checks_skipped"]
+        assert result["checks_failed"] == 0
+
+    def test_a_declared_beer_at_spirit_strength_still_fails(self):
+        # Coverage was traded away, not correctness: where a type IS declared,
+        # the rule bites.
+        result = run_beverage_ontology_checks(
+            {"name": "House Lager", "menu_category": "Beer", "alcohol_pct": 88.0}
+        )
+        assert result["checks_failed"] == 1
+        assert result["failures"][0]["check"] == "abv_category"
+
     def test_abv_pct_is_read_when_alcohol_pct_is_absent(self):
         # `alcohol_pct` is the enrichment field name; `abv_pct` is the
         # `public.beverages` column. One reader must serve both sources.
         result = run_beverage_ontology_checks(
-            {"name": "Islay Single Malt", "abv_pct": 46.0}
+            {"name": "Lagavulin 16", "beverage_type": "single malt", "abv_pct": 46.0}
         )
         assert "abv_category" in result["checks_applied"]
 
