@@ -42,6 +42,8 @@ merely unscheduled, when four of them are blocked on causality.
 import logging
 from typing import Any, Dict
 
+from services.neural_footprint import record_drop
+
 logger = logging.getLogger(__name__)
 
 ONTOLOGY_BASIS = "ontology_v1"
@@ -144,4 +146,12 @@ def grade_wine_extractions(
             wine_id,
             exc,
         )
+        # COUNTABLE, not merely logged. A `logger.warning` is exactly what hid
+        # the `task_type` column defect for hours: the grader ran, failed every
+        # time, and the only trace was a line nobody greps. `record_drop` puts
+        # the failure in the same ledger NF emit drops use, so "this grader is
+        # silently broken" becomes a number someone can read instead of a
+        # string someone must notice. Still non-fatal — an instrument must not
+        # kill the Celery task it measures.
+        record_drop("ontology_v1")
     return written

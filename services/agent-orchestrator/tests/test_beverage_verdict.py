@@ -7,8 +7,6 @@ QUERY that was built as well as on the verdict, which is how the JSON-path
 regression below is locked.
 """
 
-from unittest.mock import MagicMock
-
 from services.beverage_ontology import BEVERAGE_ONTOLOGY_BASIS
 from services.beverage_verdict import (
     beverage_ontology_verdict,
@@ -223,33 +221,26 @@ class TestGrading:
         assert grade_beverage_extractions(supabase, _WINE_ID) == 0
         assert supabase.verdicts == []
 
-    def test_a_fetch_failure_is_swallowed_not_raised(self):
-        # The instrument must never kill the validation run it rides on.
-        supabase = MagicMock()
-        supabase.table.side_effect = RuntimeError("supabase down")
-        assert grade_beverage_extractions(supabase, _WINE_ID) == 0
+    def test_a_fetch_failure_is_swallowed_but_COUNTED(self):
+        """
+        Swallowing is right — an instrument must not kill the Celery task it
+        measures. Swallowing SILENTLY is not: a `logger.warning` is exactly what
+        hid the `task_type` column defect for hours, during which the grader ran,
+        failed every time, and wrote nothing.
 
+        So the contract is: still returns 0, still does not raise, AND the
+        failure lands in the drop ledger where it can be counted.
+        """
+        from services.neural_footprint import get_drop_counts
 
-# ---------------------------------------------------------------------------
-# The regression that made `ontology_v1` a silent no-op
-# ---------------------------------------------------------------------------
+        class _Boom:
+            def table(self, *_a, **_k):
+                raise RuntimeError("boom")
 
-
-class TestTaskTypeFilterIsAJsonPath:
-    """`task_type` has never been a column on `neural_footprint_event`.
-
-    The table defines id / subject_type / subject_id / stimulus / context /
-    internal_state / choice / outcome / cost_usd / tokens / duration_ms /
-    correlation_id / restaurant_id / occurred_at and nothing else
-    (`20260824141116_neural_footprint_event.sql`). `spend_logger.py:395` writes
-    the task type INTO `context`, and `nf_a_verdict_coverage` reads it back as
-    `e.context->>'task_type'`.
-
-    `ontology_verdict.grade_wine_extractions` filtered the bare name, so
-    PostgREST rejected the request and the surrounding try/except logged it as a
-    non-fatal warning — the grader wrote zero verdicts and reported nothing
-    wrong. Both graders are locked here so the shape cannot regress.
-    """
+        before = dict(get_drop_counts()).get("beverage_ontology_v1", 0)
+        assert grade_beverage_extractions(_Boom(), "wine-1") == 0
+        after = dict(get_drop_counts()).get("beverage_ontology_v1", 0)
+        assert after == before + 1, "a swallowed failure must still be countable"
 
     def _task_type_filters(self, supabase):
         return [

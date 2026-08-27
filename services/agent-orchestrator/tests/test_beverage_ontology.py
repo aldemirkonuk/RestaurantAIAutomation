@@ -463,3 +463,60 @@ class TestAppliesToRow:
         # "NV" appears on sparkling wine and on nothing else this oracle grades;
         # it is not a four-digit year, so it must not be treated as one.
         assert applies_to_row({"name": "Solera Sherry", "vintage": "NV"}) is True
+
+
+class TestGrapeBasedSpiritsAreNotWine:
+    """
+    An adversarial audit produced the row that fell through BOTH graders:
+
+        {"name": "Hennessy VS", "beverage_type": "cognac", "country": "Japan",
+         "alcohol_pct": 40.0, "grape_variety": "Ugni Blanc"}
+
+    `applies_to_row` declined it on `grape_variety` alone, so no beverage
+    verdict was written — while the checks on that same row return
+    `protected_origin` CRITICAL. A Japanese Cognac is the textbook violation the
+    rule exists for, and it was invisible to both graders at once.
+    """
+
+    def test_a_japanese_cognac_is_graded_not_declined(self):
+        row = {
+            "name": "Hennessy VS",
+            "beverage_type": "cognac",
+            "country": "Japan",
+            "alcohol_pct": 40.0,
+            "grape_variety": "Ugni Blanc",
+        }
+        assert applies_to_row(row) is True
+        result = run_beverage_ontology_checks(row)
+        assert result["checks_failed"] >= 1
+        assert any(f["check"] == "protected_origin" for f in result["failures"])
+
+    def test_every_grape_based_spirit_outranks_the_grape_signal(self):
+        for declared in ("cognac", "armagnac", "grappa", "pisco", "brandy"):
+            row = {"beverage_type": declared, "grape_variety": "Ugni Blanc"}
+            assert applies_to_row(row) is True, f"{declared} should be graded here"
+
+    def test_real_wine_still_belongs_to_the_wine_oracle(self):
+        assert (
+            applies_to_row(
+                {
+                    "name": "Ch. Margaux",
+                    "grape_variety": "Cabernet",
+                    "appellation": "Margaux",
+                }
+            )
+            is False
+        )
+
+    def test_fortified_wine_and_vermouth_stay_with_wine(self):
+        # Deliberately NOT claimed: port and vermouth genuinely are wine-based,
+        # and taking them would be the opposite mistake.
+        for declared in ("port", "vermouth", "sherry"):
+            row = {"beverage_type": declared, "grape_variety": "Touriga"}
+            assert applies_to_row(row) is False, f"{declared} is wine's to grade"
+
+    def test_a_name_alone_cannot_claim_the_row(self):
+        # Only a DECLARED type outranks the grape signal — names are unreliable
+        # (`_NAME_UNSAFE_CATEGORIES` exists for exactly that reason).
+        row = {"name": "Bourbon Barrel Chardonnay", "grape_variety": "Chardonnay"}
+        assert applies_to_row(row) is False

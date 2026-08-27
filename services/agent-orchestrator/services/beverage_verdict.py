@@ -41,6 +41,8 @@ from services.beverage_ontology import (
 )
 from services.ontology_verdict import GRADABLE_TASK_TYPES
 
+from services.neural_footprint import record_drop
+
 logger = logging.getLogger(__name__)
 
 #: Keys read out of a submission. `alcohol_pct` is what the enrichment service
@@ -163,8 +165,15 @@ def grade_beverage_extractions(supabase, wine_id: str) -> Optional[int]:
             wine_id,
             exc,
         )
+        # COUNTABLE, not merely logged. A `logger.warning` is exactly what hid
+        # the `task_type` column defect for hours: the grader ran, failed every
+        # time, and the only trace was a line nobody greps. `record_drop` puts
+        # the failure in the same ledger NF emit drops use, so "this grader is
+        # silently broken" becomes a number someone can read instead of a
+        # string someone must notice. Still non-fatal — an instrument must not
+        # kill the Celery task it measures.
+        record_drop("beverage_ontology_v1")
         return 0
-
     row = getattr(response, "data", None)
     if not row:
         logger.info("beverage_ontology_v1: wine_id=%s not found", wine_id)
@@ -221,4 +230,12 @@ def grade_beverage_extractions(supabase, wine_id: str) -> Optional[int]:
             wine_id,
             exc,
         )
+        # COUNTABLE, not merely logged. A `logger.warning` is exactly what hid
+        # the `task_type` column defect for hours: the grader ran, failed every
+        # time, and the only trace was a line nobody greps. `record_drop` puts
+        # the failure in the same ledger NF emit drops use, so "this grader is
+        # silently broken" becomes a number someone can read instead of a
+        # string someone must notice. Still non-fatal — an instrument must not
+        # kill the Celery task it measures.
+        record_drop("beverage_ontology_v1")
     return written

@@ -680,6 +680,29 @@ def check_volume_plausibility(volume_ml: Any) -> CheckResult:
     )
 
 
+#: Declared categories that are made FROM grapes and are not wine. A grape
+#: variety on one of these is not evidence of wine — it is evidence of the
+#: base material.
+#:
+#: Added 2026-08-27 after an adversarial audit produced the exact row that fell
+#: through BOTH graders:
+#:
+#:     {"name": "Hennessy VS", "beverage_type": "cognac", "country": "Japan",
+#:      "alcohol_pct": 40.0, "grape_variety": "Ugni Blanc"}
+#:
+#: `applies_to_row` declined it on `grape_variety` alone, so no beverage verdict
+#: was written — while `run_beverage_ontology_checks` on the same row returns
+#: `protected_origin` CRITICAL, `found='JP'`. A Japanese Cognac is the textbook
+#: violation this rule exists for, and it was invisible: the beverage oracle
+#: declined, and the wine oracle graded it `success` from a constant
+#: `checks_total`. Two graders, one bottle, zero real checks.
+#:
+#: `fortified_wine` and `vermouth` are deliberately NOT here. Port and vermouth
+#: genuinely are wine-based, the wine rules can say something about them, and
+#: claiming them for the beverage oracle would be the opposite mistake.
+_GRAPE_BASED_NON_WINE = frozenset({"spirit", "liqueur"})
+
+
 def applies_to_row(fields: Dict[str, Any]) -> bool:
     """False when the WINE oracle can examine this row.
 
@@ -688,7 +711,20 @@ def applies_to_row(fields: Dict[str, Any]) -> bool:
     untestable one: an untestable row still counts as graded in
     `nf_a_verdict_coverage`, so emitting one for every wine would inflate the
     only number that currently tells the truth about coverage.
+
+    **A DECLARED spirit or liqueur outranks the grape signal.** Cognac,
+    Armagnac, Grappa and Pisco are grape-based and are not wine — all four
+    resolve to `spirit` in this file's own token table. Only a declared type
+    counts here, never the bottle's name: `_NAME_UNSAFE_CATEGORIES` exists
+    because cask-finish naming makes names unreliable, and the same caution
+    applies to a decision about which grader owns a row.
     """
+    declared = " ".join(
+        str(fields.get(key) or "") for key in _CLASSIFYING_FIELDS
+    ).strip()
+    if _GRAPE_BASED_NON_WINE.intersection(detect_categories(declared)):
+        return True
+
     for field in _WINE_ONLY_FIELDS:
         if normalize_text(fields.get(field)):
             return False
