@@ -74,3 +74,43 @@ export const GROUNDING_BASIS = "grounding_v1";
  * verdict is knowable only once a person acts.
  */
 export const HUMAN_COUNT_BASIS = "human_count_v1";
+
+/**
+ * The model proposed a VALID, allowlisted action from ids it was actually given.
+ *
+ * Ask AI's grader (P3.C). Two things have to hold, and the second is the one
+ * that matters: the proposal validated against the action contract, AND every
+ * id in it came from the candidate set the prompt supplied. A uuid the model
+ * invented is well-formed and points at nothing — or worse, at another
+ * restaurant's row.
+ *
+ * Still not correctness: it does not prove the operator meant this action. That
+ * is what the confirm gate is for, and `confirmation_v1` — whether a human
+ * accepted the proposal — is the honest deferred verdict on this task type.
+ */
+export const PROPOSAL_BASIS = "proposal_v1";
+
+/**
+ * A human accepted the proposal and it executed.
+ *
+ * Deferred: knowable only when someone acts. This is the real measure of
+ * whether Ask AI is useful — a proposal stream nobody confirms is a feature
+ * that is running, not working.
+ */
+export const CONFIRMATION_BASIS = "confirmation_v1";
+
+/**
+ * The operator accepted the proposal, but changed it first.
+ *
+ * A separate basis, not a flavour of `confirmation_v1`, and the reason is
+ * measurement rather than tidiness: folding an edited acceptance into the
+ * confirmation score would credit the model with the human's correction. A
+ * grader that cannot tell *"the model was right"* from *"a person made it
+ * right"* is measuring nothing.
+ *
+ * `confirmation_v1` still gets a row for an edited acceptance — as `partial`,
+ * because the proposal WAS accepted, just not as proposed. `edit_v1` carries
+ * what changed. Between them the two answer a question neither could alone:
+ * how close is the model getting, and on which field does it miss?
+ */
+export const EDIT_BASIS = "edit_v1";

@@ -24,6 +24,8 @@ import {
 } from "@/lib/queryClient";
 import { useOutbox } from "@/state/outbox";
 import { useSession } from "@/state/session";
+import { connectSocket, disconnectSocket } from "@/lib/socket";
+import { attachPushListeners } from "@/lib/push";
 import { color } from "@/design/tokens";
 import { GuidanceProvider } from "@/guidance/GuidanceProvider";
 import { TourSheet } from "@/guidance/TourSheet";
@@ -52,6 +54,45 @@ function useAuthRouting() {
   }, [status, segments, router]);
 }
 
+/**
+ * The live pipe follows the session, not the mount: it opens once the session
+ * is usable (signed in *and* past the biometric gate) and closes on sign-out
+ * or lock, so a locked phone holds no authenticated socket. A token refresh
+ * re-handshakes, because the gateway derives room membership from the token
+ * at connect time and never re-derives it.
+ */
+function useLiveChannel() {
+  const status = useSession((s) => s.status);
+  const token = useSession((s) => s.accessToken);
+
+  useEffect(() => {
+    if (status === "signedIn" && token) {
+      connectSocket(token);
+    } else {
+      disconnectSocket();
+    }
+  }, [status, token]);
+
+  useEffect(() => () => disconnectSocket(), []);
+}
+
+/**
+ * Push taps deep-link. Without this the listeners in `lib/push.ts` were never
+ * attached at all, so a tapped banner only opened the app to wherever it had
+ * been left.
+ */
+function usePushRouting() {
+  const router = useRouter();
+  const status = useSession((s) => s.status);
+
+  useEffect(() => {
+    if (status !== "signedIn") return;
+    return attachPushListeners((route) => {
+      router.push(route as any);
+    });
+  }, [status, router]);
+}
+
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
@@ -64,6 +105,8 @@ export default function RootLayout() {
 
   const status = useSession((s) => s.status);
   useAuthRouting();
+  useLiveChannel();
+  usePushRouting();
 
   useEffect(() => {
     useSession.getState().hydrate();
@@ -115,6 +158,10 @@ export default function RootLayout() {
               />
               <Stack.Screen
                 name="help"
+                options={{ presentation: "modal", animation: "slide_from_bottom" }}
+              />
+              <Stack.Screen
+                name="notifications"
                 options={{ presentation: "modal", animation: "slide_from_bottom" }}
               />
               <Stack.Screen
