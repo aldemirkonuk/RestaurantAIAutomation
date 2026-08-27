@@ -53,7 +53,7 @@ qualification) — deliberately *without* the target list, which is founder-defe
 The department exists by explicit founder decision. [OD-09](../../../decisions/OPEN-DECISIONS.md)
 records that Claude recommended merging Sales into [[growth-charter]] at v0 and the
 **founder overruled it**, choosing ambition over solo-founder capacity
-(`OD-09, .planning/decisions/OPEN-DECISIONS.md:111`). That overrule is respected here. The
+(`OD-09, .planning/decisions/OPEN-DECISIONS.md:115`). That overrule is respected here. The
 capacity question it raises is not buried — it is argued in [[sales-agenda-full]]
 §Questions for the founder and priced in [[sales-premortem]] M5.
 

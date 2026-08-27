@@ -420,7 +420,10 @@ export class ProviderIntelligenceService {
     const { data: providers, error: pErr } = await query;
     if (pErr) throw pErr;
 
-    const result = [];
+    // Typed, because a bare `[]` infers `never[]` and every push is then an
+    // error under strictNullChecks — the array shape here is heterogeneous by
+    // design (provider fields plus computed aggregates).
+    const result: Record<string, any>[] = [];
     for (const provider of providers || []) {
       const [promos, sentiment, knowledge] = await Promise.all([
         this.databaseService.supabase

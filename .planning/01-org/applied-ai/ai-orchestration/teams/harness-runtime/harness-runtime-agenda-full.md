@@ -73,7 +73,7 @@ Concretely, three candidates to narrow now because they pay under every outcome:
 
 ### 5. Run the bake-off
 
-Scoped to this repo's actual workloads, per `OD-03 (OPEN-DECISIONS.md:24)`. Its inputs are
+Scoped to this repo's actual workloads, per `OD-03 (OPEN-DECISIONS.md:26)`. Its inputs are
 items 1–2 above: harness overhead cannot be compared without cost and retry
 instrumentation. Running it earlier produces a preference rather than evidence — which
 is exactly the *"pick from repute"* the decision log forbids.
@@ -108,7 +108,7 @@ Steps 1–3 have no blockers and no dependency on the fork's outcome.
    a scheduled purchaser needs no idempotency?** All three are acceptable. Leaving it
    undiscussed is not; it currently has passing tests and zero harness guarantees.
 2. **A date for the OD-03 bake-off.** The method is settled
-   (`OD-03, OPEN-DECISIONS.md:24`); the date is not, and [[harness-runtime-premortem]] #1 is
+   (`OD-03, OPEN-DECISIONS.md:26`); the date is not, and [[harness-runtime-premortem]] #1 is
    entirely about the missing date rather than the missing answer.
 3. **Does `database.py` (2,046 lines) belong in the harness contract?** It is a third
    of `core/` and the piece a harness migration would most painfully have to port.
