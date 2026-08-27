@@ -253,9 +253,8 @@ Out of MVP / gated harder: mass deletes, changing billing, granting permissions,
 | **This file** | Canonical futures vision + taxonomy + sequencing |
 | `.planning/PROJECT.md` | Product identity + current milestone; points here for expansion |
 | `.planning/07-reference/INVENTORY_SOTA_PLAN.md` §13 | Inventory UX/schema implications of Mudavym expansion |
-| `md/06-planning/FEATURE_ROADMAP.md` | Feature backlog entries aligned to stages |
+| `.planning/07-reference/FEATURE_ROADMAP.md` | Feature backlog entries aligned to stages |
 | `.planning/ROADMAP.md` Backlog | Promoteable 999.x phases when ready to schedule |
-| `md/PROJECT_ANALYSIS_AND_CHAT_CONTEXT.md` | Catalog extensibility notes aligned to taxonomy |
 | `.planning/07-reference/UX_PATHS_CATALOG.md` §W + §AB + §AC | Guest paths + Ask AI action-creation paths |
 | `SCANNING_PIPELINE_SETUP.md` | Live camera + OCR stack target (RF-DETR → PaddleOCR → Gemini) |
 
