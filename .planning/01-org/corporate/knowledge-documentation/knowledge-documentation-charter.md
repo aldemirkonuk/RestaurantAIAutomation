@@ -156,8 +156,8 @@ OD-22 (tooling library) have all since been resolved.
 [[OBSIDIAN_VAULT]]:3 states *"**LOCKED** 2026-08-24 (OD-21)"*, while
 `OPEN-DECISIONS.md` at the time still listed **OD-21 and OD-08 in the Open table**. A
 document claimed a decision was closed; the register that is canonical for decisions said
-it was open. The register has since moved both into Resolved — OD-21 (`OPEN-DECISIONS.md:134`)
-locked the Obsidian structure, and OD-08 (`OPEN-DECISIONS.md:133`) was folded into it — so
+it was open. The register has since moved both into Resolved — OD-21 (`OPEN-DECISIONS.md:135`)
+locked the Obsidian structure, and OD-08 (`OPEN-DECISIONS.md:134`) was folded into it — so
 the document was right and the register was behind. Per
 [`CLAUDE.md`](../../../CLAUDE.md) §0.1 the register is still what decides; it now agrees.
 Raised to [[decision-office-charter]]; tracked as the first entry in

@@ -87,7 +87,7 @@ maintaining a golden set the other also maintains, RM-2 files the merge proposal
 Defending scope here is a failure mode we are choosing not to have.
 
 *(ID note: `technology.md` originally numbered this seam "OD-21", colliding with the
-global OD-21 — Obsidian workflow — at `OPEN-DECISIONS.md:134`. [[decision-office-charter]]
+global OD-21 — Obsidian workflow — at `OPEN-DECISIONS.md:135`. [[decision-office-charter]]
 reconciled it: the seam is **TECH-F3** ([[FORK-REGISTRY]]).)*
 
 ## Metrics it moves
