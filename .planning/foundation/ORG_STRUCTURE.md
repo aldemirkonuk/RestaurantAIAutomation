@@ -203,4 +203,4 @@ qualify; that number moves by building the loop, never by relabelling it.
 
 | ID | Fork |
 |---|---|
-| OD-18 | Division count: 5, or split Technology into Platform + Applied AI? **Deferred pending team-layer evidence.** (§2) |
+| OD-18 | Division count — **resolved by [ADR 0007](../decisions/0007-org-structure.md) the day it was filed** (split taken: Platform + Applied AI; register Resolved table, moved 2026-08-27). This deferral note had outlived the decision. (§2) |

@@ -45,6 +45,8 @@ These were set on 2026-08-24 and override convenience every time.
 | `supabase/` | Migrations + schema — source of truth for DB shape |
 | `.planning/` | Planning corpus (see §4) |
 | `.planning/decisions/` | **ADRs + the open-decision register** |
+| `.planning/00-index/DESIGN-MAP.html` | Generated design map (ADR 0033) + `DESIGN-MAP-CLUSTERS.html` (coupling lens) — open in a browser; regenerate with `scripts/generate_design_atlas.py`, never hand-edit |
+| `md/` | Retired (ADR 0032) — only 5 schema-debt `.sql` files remain, awaiting the ADR 0026 lane |
 | `datasets/`, `scripts/` | Data corpora and one-off tooling |
 
 **Doc entry points, in reading order:** `.planning/PROJECT.md` (identity + current
