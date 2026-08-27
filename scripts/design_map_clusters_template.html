@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mudavym Cluster Map</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #faf9f7; --ink: #2a2724; --muted: #8a857e; --hair: #e5e1da; --card: #ffffff;
+    --model: oklch(0.58 0.13 10); --service: oklch(0.58 0.13 170);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); overflow: hidden;
+         font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif; }
+  .mono { font-family: 'IBM Plex Mono', 'Courier New', monospace; }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 24px;
+           border-bottom: 1px solid var(--hair); background: var(--card);
+           position: relative; z-index: 6; }
+  header h1 { font-size: 16px; font-weight: 600; margin: 0; }
+  header .hint { font-size: 12px; color: var(--muted); }
+  header .clear { margin-left: auto; font-size: 12px; color: #a16207; cursor: pointer; display: none; }
+  #viewport { position: relative; width: 100vw; height: calc(100vh - 53px); overflow: hidden; cursor: grab; }
+  #viewport.dragging { cursor: grabbing; }
+  #world { position: absolute; transform-origin: 0 0; }
+  #edgesvg { position: absolute; left: 0; top: 0; pointer-events: none; }
+  #edgesvg path { pointer-events: stroke; cursor: pointer; }
+  .box { position: absolute; width: 340px; background: var(--card); border: 1px solid var(--hair);
+         border-radius: 10px; border-top: 4px solid var(--hair); padding: 14px 16px;
+         display: flex; flex-direction: column; gap: 8px; cursor: pointer;
+         transition: opacity 0.15s, box-shadow 0.15s; }
+  .box:hover { box-shadow: 0 6px 22px rgba(42,39,36,0.12); }
+  .box.dim { opacity: 0.25; }
+  .box h2 { margin: 0; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .box .nums { font-size: 11px; color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip { font-size: 10.5px; border: 1px solid var(--hair); border-radius: 3px; padding: 2px 7px; background: var(--paper); }
+  .badge { font-size: 9.5px; background: var(--model); color: #fff; border-radius: 8px; padding: 1px 7px; font-weight: 600; }
+  #panel { position: absolute; right: 0; top: 53px; bottom: 0; width: 380px; background: var(--card);
+           border-left: 1px solid var(--hair); padding: 18px 20px; overflow: auto; z-index: 5;
+           transform: translateX(100%); transition: transform 0.18s; }
+  #panel.open { transform: translateX(0); }
+  #panel h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+  #panel .sub { font-size: 11.5px; color: var(--muted); margin-bottom: 12px; }
+  #panel .row { display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid #f0ede7; font-size: 12px; }
+  #panel .close { float: right; cursor: pointer; color: var(--muted); font-size: 13px; }
+  footer { position: absolute; left: 0; bottom: 0; right: 0; padding: 10px 24px; font-size: 10.5px;
+           color: var(--muted); background: linear-gradient(transparent, var(--paper) 40%); pointer-events: none; z-index: 4; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Mudavym Cluster Map</h1>
+  <span class="hint">One surface, every domain — edge thickness = shared data objects. Click an edge for the overlap; click a box to isolate its edges; drag to pan, wheel to zoom.</span>
+  <span class="clear" id="clear">clear focus</span>
+</header>
+<div id="viewport">
+  <div id="world">
+    <svg id="edgesvg" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+</div>
+<div id="panel"></div>
+<footer>Generated view of .planning/00-index/atlas-graph.json (ADR 0033) — the drill-down companion is DESIGN-MAP.html. Regenerate with scripts/generate_design_atlas.py; never hand-edit.</footer>
+<script>
+const DATA = /*__ATLAS_DATA__*/null;
+const G = DATA.graph, OV = DATA.overlay;
+const byId = {}; G.nodes.forEach(n => byId[n.id] = n);
+const out = {};
+G.edges.forEach(e => (out[e.from] = out[e.from] || []).push(e));
+const badges = {};
+(OV.badges || []).forEach(b => (badges[b.node] = badges[b.node] || []).push(b));
+
+// ---- domain assignment (same rules as the atlas)
+const domains = (OV.domains || []).map(d => ({ ...d, members: new Set() }));
+const domOf = {};
+function assign(nid, dom) { if (!domOf[nid]) { domOf[nid] = dom.id; dom.members.add(nid); } }
+domains.forEach(d => {
+  (d.match.pages || []).forEach(r => byId['page:' + r] && assign('page:' + r, d));
+  (d.match.modules || []).forEach(m => byId['svc:' + m] && assign('svc:' + m, d));
+  (d.match.agents || []).forEach(a => byId['agent:' + a] && assign('agent:' + a, d));
+});
+const un = { id: '_unassigned', name: 'Unassigned', hue: 60, members: new Set(), match: {} };
+G.nodes.forEach(n => {
+  if (['page','service','agent'].includes(n.kind) && !domOf[n.id]) assign(n.id, un);
+});
+if (un.members.size) domains.push(un);
+G.nodes.forEach(n => {
+  if (n.kind === 'feature' && domOf[n.page]) assign(n.id, domains.find(d => d.id === domOf[n.page]));
+  if (n.kind === 'endpoint') { const svc = (out[n.id] || []).find(e => e.kind === 'handled_by');
+    if (svc && domOf[svc.to]) assign(n.id, domains.find(d => d.id === domOf[svc.to])); }
+});
+
+// ---- per-domain data sets and pairwise shared objects
+const domData = {};
+domains.forEach(d => {
+  const set = new Set();
+  d.members.forEach(id => (out[id] || []).forEach(e => {
+    const t = byId[e.to];
+    if (t && (t.kind === 'table' || t.kind === 'rpc')) set.add(t.id);
+  }));
+  domData[d.id] = set;
+});
+const pairs = [];
+for (let i = 0; i < domains.length; i++) for (let j = i + 1; j < domains.length; j++) {
+  const a = domains[i], b = domains[j];
+  const shared = [...domData[a.id]].filter(x => domData[b.id].has(x));
+  if (shared.length >= 3) pairs.push({ a: a.id, b: b.id, shared });
+}
+pairs.sort((x, y) => y.shared.length - x.shared.length);
+
+// ---- layout: circle for n domains (spatial, no hierarchy)
+const world = document.getElementById('world');
+const svg = document.getElementById('edgesvg');
+const N = domains.length;
+const R = 210 + N * 42, CX = R + 260, CY = R + 160;
+const pos = {};
+domains.forEach((d, i) => {
+  const ang = -Math.PI / 2 + i * 2 * Math.PI / N;
+  pos[d.id] = { x: CX + R * Math.cos(ang), y: CY + R * 0.72 * Math.sin(ang) };
+});
+const W = CX * 2, H = CY * 2;
+world.style.width = W + 'px'; world.style.height = H + 'px';
+svg.setAttribute('width', W); svg.setAttribute('height', H);
+svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function stats(d) {
+  const m = [...d.members].map(id => byId[id]);
+  const c = k => m.filter(n => n.kind === k).length;
+  const nb = [...d.members].reduce((s, id) => s + (badges[id] || []).length, 0);
+  return { fn: c('feature'), pg: c('page'), ep: c('endpoint'), svc: c('service') + c('agent'), data: domData[d.id].size, badges: nb };
+}
+
+domains.forEach(d => {
+  const s = stats(d);
+  const svcChips = [...d.members].map(id => byId[id]).filter(n => n.kind === 'service' || n.kind === 'agent')
+    .slice(0, 4).map(n => `<span class="chip mono">${esc(n.label)}</span>`).join('');
+  const el = document.createElement('div');
+  el.className = 'box'; el.id = 'box-' + d.id;
+  el.style.left = (pos[d.id].x - 170) + 'px';
+  el.style.top = (pos[d.id].y - 70) + 'px';
+  el.style.borderTopColor = `oklch(0.62 0.12 ${d.hue})`;
+  el.innerHTML = `<h2>${esc(d.name)} ${s.badges ? `<span class="badge">${s.badges}</span>` : ''}</h2>
+    <div class="nums">${s.fn} functions · ${s.pg} pages · ${s.ep} endpoints · ${s.svc} services/agents · ${s.data} data objects</div>
+    <div class="chips">${svcChips}</div>`;
+  el.onclick = ev => { ev.stopPropagation(); focusDomain(d.id); };
+  world.appendChild(el);
+});
+
+// ---- edges
+const panel = document.getElementById('panel');
+function edgePath(p) {
+  const A = pos[p.a], B = pos[p.b];
+  const mx = (A.x + B.x) / 2 + (CY - (A.y + B.y) / 2) * 0.18;
+  const my = (A.y + B.y) / 2 + ((A.x + B.x) / 2 - CX) * 0.10;
+  return `M ${A.x} ${A.y} Q ${mx} ${my} ${B.x} ${B.y}`;
+}
+const maxW = pairs.length ? pairs[0].shared.length : 1;
+pairs.forEach((p, i) => {
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', edgePath(p));
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', 'oklch(0.55 0.10 10)');
+  path.setAttribute('stroke-opacity', '0.35');
+  path.setAttribute('stroke-width', 1.5 + 7 * (p.shared.length / maxW));
+  path.setAttribute('stroke-linecap', 'round');
+  path.dataset.i = i; path.id = 'edge-' + i;
+  path.addEventListener('click', ev => { ev.stopPropagation(); showPair(p); });
+  svg.appendChild(path);
+  const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  const A = pos[p.a], B = pos[p.b];
+  t.setAttribute('x', (A.x + B.x) / 2); t.setAttribute('y', (A.y + B.y) / 2 - 6);
+  t.setAttribute('text-anchor', 'middle');
+  t.setAttribute('font-size', '11'); t.setAttribute('fill', 'oklch(0.45 0.10 10)');
+  t.setAttribute('font-family', 'IBM Plex Sans, sans-serif'); t.setAttribute('font-weight', '600');
+  t.textContent = p.shared.length;
+  if (p.shared.length >= 6) svg.appendChild(t);
+});
+
+function domName(id) { const d = domains.find(x => x.id === id); return d ? d.name : id; }
+function showPair(p) {
+  panel.innerHTML = `<span class="close" id="pclose">✕ close</span>
+    <h3>${esc(domName(p.a))} ↔ ${esc(domName(p.b))}</h3>
+    <div class="sub">${p.shared.length} shared data objects — a change to any of them touches both domains</div>` +
+    p.shared.sort().map(id => `<div class="row"><span class="mono" style="background:var(--ink);color:var(--paper);border-radius:3px;padding:2px 7px;font-size:11px">${esc(byId[id].label)}</span>${(badges[id]||[]).map(b=>`<span class="badge">${esc(b.label)}</span>`).join('')}</div>`).join('');
+  panel.classList.add('open');
+  document.getElementById('pclose').onclick = () => panel.classList.remove('open');
+}
+function focusDomain(did) {
+  document.querySelectorAll('.box').forEach(b => b.classList.toggle('dim', b.id !== 'box-' + did));
+  pairs.forEach((p, i) => {
+    const on = p.a === did || p.b === did;
+    const e = document.getElementById('edge-' + i);
+    e.setAttribute('stroke-opacity', on ? '0.7' : '0.06');
+  });
+  const rel = pairs.filter(p => p.a === did || p.b === did);
+  panel.innerHTML = `<span class="close" id="pclose">✕ close</span>
+    <h3>${esc(domName(did))}</h3>
+    <div class="sub">${rel.length} cross-domain couplings, heaviest first</div>` +
+    rel.map(p => { const other = p.a === did ? p.b : p.a;
+      return `<div class="row" style="cursor:pointer" data-a="${esc(p.a)}" data-b="${esc(p.b)}"><strong>${esc(domName(other))}</strong><span style="margin-left:auto" class="mono">${p.shared.length} shared</span></div>`; }).join('');
+  panel.classList.add('open');
+  document.getElementById('pclose').onclick = () => clearFocus();
+  [...panel.querySelectorAll('[data-a]')].forEach(r => r.onclick = () =>
+    showPair(pairs.find(p => p.a === r.dataset.a && p.b === r.dataset.b)));
+  document.getElementById('clear').style.display = 'inline';
+}
+function clearFocus() {
+  document.querySelectorAll('.box').forEach(b => b.classList.remove('dim'));
+  pairs.forEach((p, i) => document.getElementById('edge-' + i).setAttribute('stroke-opacity', '0.35'));
+  panel.classList.remove('open');
+  document.getElementById('clear').style.display = 'none';
+}
+document.getElementById('clear').onclick = clearFocus;
+document.addEventListener('keydown', e => { if (e.key === 'Escape') clearFocus(); });
+
+// ---- pan / zoom
+const vp = document.getElementById('viewport');
+let scale = 0.4, tx = 20, ty = 20;
+function apply() { world.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`; }
+function fit() {
+  scale = Math.min((vp.clientWidth - 40) / W, (vp.clientHeight - 40) / H);
+  if (!isFinite(scale) || scale <= 0.02) scale = 0.4;
+  tx = (vp.clientWidth - W * scale) / 2; ty = (vp.clientHeight - H * scale) / 2;
+  apply();
+}
+apply(); requestAnimationFrame(fit); window.addEventListener('load', fit);
+let drag = null;
+vp.addEventListener('mousedown', e => { drag = { x: e.clientX - tx, y: e.clientY - ty }; vp.classList.add('dragging'); });
+window.addEventListener('mousemove', e => { if (drag) { tx = e.clientX - drag.x; ty = e.clientY - drag.y; apply(); } });
+window.addEventListener('mouseup', () => { drag = null; vp.classList.remove('dragging'); });
+vp.addEventListener('wheel', e => {
+  e.preventDefault();
+  const f = e.deltaY < 0 ? 1.1 : 0.9;
+  const nx = e.clientX - (e.clientX - tx) * f, ny = e.clientY - (e.clientY - ty) * f;
+  scale *= f; tx = nx; ty = ny; apply();
+}, { passive: false });
+vp.addEventListener('click', () => clearFocus());
+</script>
+</body>
+</html>
