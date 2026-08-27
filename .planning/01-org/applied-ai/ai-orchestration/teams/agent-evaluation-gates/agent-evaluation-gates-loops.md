@@ -134,7 +134,7 @@ close_time_note: "on second occurrence — not a cadence"
 status: proposed
 threshold: "1 = coordination miss. 2 = the methodology/operations line has failed."
 resolution: "Merge this team into research-and-math. NEVER build it in both places. technology.md:406, technology.md:845."
-blocker: "Resolved — the fork is TECH-F3 (02-advisory/decision-office/FORK-REGISTRY.md). technology.md:845 originally numbered it OD-21, which OPEN-DECISIONS.md:134 already spends on the Obsidian structural workflow. A fork that cannot be cited cannot be closed."
+blocker: "Resolved — the fork is TECH-F3 (02-advisory/decision-office/FORK-REGISTRY.md). technology.md:845 originally numbered it OD-21, which OPEN-DECISIONS.md:138 already spends on the Obsidian structural workflow. A fork that cannot be cited cannot be closed."
 ```
 
 ---
