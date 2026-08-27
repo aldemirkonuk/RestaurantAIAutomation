@@ -68,18 +68,28 @@ export interface VendorDraftAction {
 
 export type AskAiAction = ReorderAction | VendorDraftAction;
 
-/** A proposal that did not validate, and the reason, for the user and the log. */
-export interface ActionRejection {
-  ok: false;
-  reason: string;
+/**
+ * The result of validating one proposal.
+ *
+ * FLAT, not a discriminated union, and that is a workaround rather than a
+ * preference. `apps/api-gateway/tsconfig.json` sets `strictNullChecks: false`,
+ * under which TypeScript does NOT narrow a union on a boolean literal
+ * discriminant — `if (!v.ok)` leaves the full union and every field access on
+ * the narrowed side is a compile error. The `{ok: true, action} | {ok: false,
+ * reason}` shape is the better model and cannot be used here.
+ *
+ * Worth knowing beyond this file: the same setting means discriminated-union
+ * narrowing silently does not work anywhere in the gateway, so code that READS
+ * as type-safe may not be. Filed for the register rather than fixed in passing —
+ * flipping that flag repo-wide is its own decision with its own blast radius.
+ */
+export interface ActionValidation {
+  ok: boolean;
+  /** Present when `ok`. */
+  action?: AskAiAction;
+  /** Present when not `ok`. Always set — a refusal with no reason is a dead end. */
+  reason?: string;
 }
-
-export interface ActionAccepted {
-  ok: true;
-  action: AskAiAction;
-}
-
-export type ActionValidation = ActionAccepted | ActionRejection;
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

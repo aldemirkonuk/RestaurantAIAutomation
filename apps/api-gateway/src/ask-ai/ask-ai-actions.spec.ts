@@ -1,16 +1,4 @@
-import {
-  ActionRejection,
-  MAX_REORDER_QUANTITY,
-  validateAction,
-} from "./ask-ai-actions";
-
-/**
- * The gateway compiles with `strictNullChecks: false`, under which TypeScript
- * does NOT narrow a discriminated union on a boolean literal — `if (!v.ok)`
- * leaves `v` as the full union. Asserting on the whole object instead of
- * reaching through a narrow is both compilable here and a stronger claim.
- */
-const rejection = (v: unknown) => v as ActionRejection;
+import { MAX_REORDER_QUANTITY, validateAction } from "./ask-ai-actions";
 
 const INV = "11111111-1111-4111-8111-111111111111";
 const PROV = "22222222-2222-4222-8222-222222222222";
@@ -47,7 +35,7 @@ describe("validateAction — the allowlist has to be mechanical", () => {
       payload: { inventoryId: INV, quantity: 6 },
     });
     expect(v.ok).toBe(false);
-    expect(rejection(v).reason).toContain("allowlisted action family");
+    expect(v.reason).toContain("allowlisted action family");
   });
 
   it("rejects an unknown action inside an allowed family", () => {
@@ -79,7 +67,7 @@ describe("validateAction — the allowlist has to be mechanical", () => {
     // implausible human intent.
     const v = validateAction(reorder({ quantity: MAX_REORDER_QUANTITY + 1 }));
     expect(v.ok).toBe(false);
-    expect(rejection(v).reason).toContain("Orders page");
+    expect(v.reason).toContain("Orders page");
   });
 
   it("accepts exactly the cap", () => {
@@ -95,8 +83,7 @@ describe("validateAction — the allowlist has to be mechanical", () => {
   it("drops an empty unitType instead of storing it", () => {
     const v = validateAction(reorder({ unitType: "   " }));
     expect(v.ok).toBe(true);
-    expect(rejection(v)).not.toHaveProperty("action.payload.unitType");
-    expect((v as any).action.payload).not.toHaveProperty("unitType");
+    expect(v.action?.payload).not.toHaveProperty("unitType");
   });
 
   it("rejects a vendor draft with no instruction", () => {
@@ -124,7 +111,7 @@ describe("validateAction — the allowlist has to be mechanical", () => {
     ];
     for (const r of rejections) {
       expect(r.ok).toBe(false);
-      expect(rejection(r).reason.length).toBeGreaterThan(10);
+      expect((r.reason ?? "").length).toBeGreaterThan(10);
     }
   });
 });
