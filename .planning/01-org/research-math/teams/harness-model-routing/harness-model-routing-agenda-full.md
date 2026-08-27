@@ -75,7 +75,7 @@ faster than a boundary document.
   Fork INTEL-F5 (`intelligence.md:521`) asks whether those seven callsites are even in scope.
   If they are not, OD-03 governs a minority of calls and its title should say so.
 - **OD-20 is closed, and the spend it drove was never measured**
-  (OD-20, `OPEN-DECISIONS.md:110`): the unguarded route that drove paid Opus calls was
+  (OD-20, `OPEN-DECISIONS.md:111`): the unguarded route that drove paid Opus calls was
   shut by PR #31 on 2026-08-24. Security closed the route; only this team plus
   [[neural-footprint-instrumentation-charter]] can say what it cost while it was open.
 - **`benchmark_haiku_vs_sonnet.py` already exists and was run once.** The evidence culture

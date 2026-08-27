@@ -88,7 +88,7 @@ survives the copy. Duplication is the worse outcome than either answer
 (`technology.md:845`).
 
 > ✅ **ID collision resolved — this fork is `TECH-F3`.** `technology.md:845` originally
-> numbered it **OD-21**, but `.planning/decisions/OPEN-DECISIONS.md:137` already uses
+> numbered it **OD-21**, but `.planning/decisions/OPEN-DECISIONS.md:138` already uses
 > **OD-21** for the Obsidian structural workflow (locked in [[OBSIDIAN_VAULT]]). The
 > Decision Office renamespaced the evaluation-seam fork to **TECH-F3**
 > ([[FORK-REGISTRY]]). Raised in [[ai-orchestration-agenda-full]] §Questions.
@@ -189,12 +189,12 @@ measurement layer above it missing entirely.
 - **OD-03 — the harness choice is open.** `NousResearch/hermes-agent` vs
   `deepseek-ai/deepseek-harness` vs extending in-house
   `services/agent-orchestrator/core/base_agent.py`
-  (OD-03, `.planning/decisions/OPEN-DECISIONS.md:26`). **This charter does not pick one.**
+  (OD-03, `.planning/decisions/OPEN-DECISIONS.md:27`). **This charter does not pick one.**
   The resolution path named in the decision log is *"a scoped bake-off on this repo's
   actual workloads. No pick from repute"* — and this department owns running it. See
   [[ai-orchestration-directive]] §The harness fork.
 - **OD-04 — external model roster.** No longer stated as downstream of OD-03: the row's
-  unblocker is now a **job → model registry** (OD-04, `OPEN-DECISIONS.md:27`).
+  unblocker is now a **job → model registry** (OD-04, `OPEN-DECISIONS.md:28`).
   → [[model-routing-inference-economics-charter]].
 - **The evaluation seam** (**TECH-F3**; numbered OD-21 in `technology.md:845`, collision noted
   above) — methodology vs. operations, or one team in Intelligence.

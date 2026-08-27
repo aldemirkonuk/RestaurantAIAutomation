@@ -148,8 +148,10 @@ describe("CalendarController", () => {
     it("should update event type", async () => {
       const expectedResponse: EventTypeResponseDto = {
         id: eventTypeId,
-        name: updateDto.name,
-        color: updateDto.color,
+        // The DTO's fields are optional (it is a PATCH shape); this fixture
+        // always supplies them, so the response type's required fields hold.
+        name: updateDto.name!,
+        color: updateDto.color!,
         icon: "star",
         isDefault: false,
       };

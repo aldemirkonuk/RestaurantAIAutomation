@@ -28,17 +28,18 @@ export interface ProposalCandidates {
 }
 
 /**
- * Flat rather than a discriminated union, for the same reason as
- * `ActionValidation` — see the note there. `strictNullChecks: false` in the
- * gateway's tsconfig means a boolean discriminant does not narrow.
+ * A discriminated union again, restored with `strictNullChecks` (OD-107). It
+ * shipped flat because a boolean discriminant did not narrow with the flag off.
  */
-export interface GroundingResult {
-  grounded: boolean;
-  /** Present when not grounded. Vague on purpose; the detail is in `ungrounded`. */
-  reason?: string;
-  /** Which ids were not in the candidate set — for the log, not the user. */
-  ungrounded?: string[];
-}
+export type GroundingResult =
+  | { grounded: true }
+  | {
+      grounded: false;
+      /** Vague on purpose; the detail is in `ungrounded`. */
+      reason: string;
+      /** Which ids were not in the candidate set — for the log, not the user. */
+      ungrounded: string[];
+    };
 
 export function checkActionGrounded(
   action: AskAiAction,

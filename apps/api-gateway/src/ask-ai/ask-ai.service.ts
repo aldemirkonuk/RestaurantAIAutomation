@@ -548,15 +548,12 @@ export class AskAiService {
     restaurantId: string,
     row: any,
     editedPayload: Record<string, unknown>,
-    // Flat, not a discriminated union — the THIRD time OD-107 has forced this
-    // in one feature. `strictNullChecks: false` means a boolean discriminant
-    // does not narrow, so the union form is a compile error on every field
-    // access. Recorded there; worked around here.
-  ): Promise<{
-    ok: boolean;
-    payload?: Record<string, unknown>;
-    reason?: string;
-  }> {
+    // A discriminated union, restored when OD-107 turned `strictNullChecks` on.
+    // This was the third of three flattenings the flag forced in this feature.
+  ): Promise<
+    | { ok: true; payload: Record<string, unknown> }
+    | { ok: false; reason: string }
+  > {
     const candidate = {
       family: row.family,
       actionType: row.action_type,
@@ -564,11 +561,8 @@ export class AskAiService {
     };
 
     const validation = validateAction(candidate);
-    if (!validation.ok || !validation.action) {
-      return {
-        ok: false,
-        reason: validation.reason ?? "That edit is not a valid action.",
-      };
+    if (!validation.ok) {
+      return { ok: false, reason: validation.reason };
     }
 
     // The family and action type are NOT editable. Allowing them to change
