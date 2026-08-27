@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mudavym Atlas</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #faf9f7; --ink: #2a2724; --muted: #8a857e; --hair: #e5e1da; --card: #ffffff;
+    --feature: oklch(0.58 0.13 75); --page: oklch(0.58 0.13 300); --endpoint: oklch(0.58 0.13 245);
+    --service: oklch(0.58 0.13 170); --data: #2a2724; --model: oklch(0.58 0.13 10);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+         font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif; }
+  .mono { font-family: 'IBM Plex Mono', 'Courier New', monospace; }
+  header { display: flex; align-items: center; gap: 18px; padding: 16px 28px;
+           border-bottom: 1px solid var(--hair); background: var(--card);
+           position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+  header h1 { font-size: 16px; font-weight: 600; margin: 0; white-space: nowrap; }
+  #crumbs { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  #crumbs a { color: #a16207; text-decoration: none; cursor: pointer; }
+  #crumbs a:hover { color: #854d0e; text-decoration: underline; }
+  #search { margin-left: auto; position: relative; }
+  #search input { font: 13px 'IBM Plex Sans', sans-serif; padding: 7px 12px; width: 300px; max-width: 60vw;
+                  border: 1px solid var(--hair); border-radius: 4px; background: var(--paper); color: var(--ink); }
+  #results { position: absolute; right: 0; top: 38px; width: 420px; max-width: 90vw; max-height: 50vh; overflow: auto;
+             background: var(--card); border: 1px solid var(--hair); border-radius: 6px;
+             box-shadow: 0 6px 24px rgba(42,39,36,0.12); display: none; }
+  #results div { padding: 8px 12px; font-size: 12.5px; cursor: pointer; display: flex; gap: 8px; align-items: baseline; }
+  #results div:hover { background: var(--paper); }
+  main { padding: 24px 28px 60px; max-width: 1500px; margin: 0 auto; }
+  .kind { font-size: 9.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase;
+          border-radius: 8px; padding: 1px 8px; color: #fff; flex-shrink: 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+  .tile { background: var(--card); border: 1px solid var(--hair); border-radius: 8px; padding: 16px 18px;
+          cursor: pointer; display: flex; flex-direction: column; gap: 8px; border-top: 3px solid var(--hair); }
+  .tile:hover { box-shadow: 0 4px 18px rgba(42,39,36,0.10); }
+  .tile h2 { margin: 0; font-size: 15px; font-weight: 600; }
+  .tile .nums { font-size: 11.5px; color: var(--muted); }
+  .badge { font-size: 10px; background: var(--model); color: #fff; border-radius: 8px;
+           padding: 1px 8px; font-weight: 600; }
+  .okdot { width: 8px; height: 8px; border-radius: 50%; background: var(--service); display: inline-block; }
+  section { margin-top: 26px; }
+  section > h3 { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+                 color: var(--muted); border-bottom: 2px solid var(--hair); padding-bottom: 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { font-size: 12px; background: var(--card); border: 1px solid var(--hair); border-radius: 4px;
+          padding: 5px 10px; cursor: pointer; display: inline-flex; gap: 7px; align-items: center; }
+  .chip:hover { border-color: var(--muted); }
+  .chip .sub { color: var(--muted); font-size: 10.5px; }
+  .list { display: flex; flex-direction: column; gap: 6px; }
+  .rowitem { background: var(--card); border: 1px solid var(--hair); border-radius: 4px;
+             padding: 9px 13px; font-size: 13px; cursor: pointer; display: flex; gap: 10px; align-items: center; }
+  .rowitem:hover { border-color: var(--muted); }
+  .stage { background: var(--card); border: 1px solid var(--hair); border-radius: 6px; padding: 14px 16px;
+           display: flex; flex-direction: column; gap: 8px; }
+  .vline { width: 2px; height: 16px; background: #d6d1c8; margin-left: 30px; }
+  .basis { font-size: 10px; color: var(--muted); font-style: italic; }
+  .shared { font-size: 10px; background: var(--model); color: #fff; border-radius: 8px; padding: 1px 7px; font-weight: 600; }
+  .note { background: oklch(0.97 0.02 75); border: 1px solid oklch(0.87 0.05 75); border-radius: 6px;
+          padding: 12px 16px; font-size: 12.5px; line-height: 1.55; }
+  .muted { color: var(--muted); }
+  footer { padding: 18px 28px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--hair); }
+  a.pathref { color: #a16207; text-decoration: none; } a.pathref:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Mudavym Atlas</h1>
+  <div id="crumbs"></div>
+  <div id="search"><input id="q" type="search" placeholder="Search functions, pages, endpoints, tables…" autocomplete="off"><div id="results"></div></div>
+</header>
+<main id="main"></main>
+<footer id="foot"></footer>
+<script>
+const DATA = /*__ATLAS_DATA__*/null;
+const G = DATA.graph, OV = DATA.overlay;
+const KIND_COLOR = { feature: 'var(--feature)', page: 'var(--page)', endpoint: 'var(--endpoint)',
+  service: 'var(--service)', agent: 'var(--service)', table: 'var(--data)', rpc: 'var(--data)',
+  model_task: 'var(--model)', domain: 'var(--muted)' };
+
+const byId = {};
+G.nodes.forEach(n => byId[n.id] = n);
+(OV.extra_nodes || []).forEach(n => { n.overlay = true; byId[n.id] = n; G.nodes.push(n); });
+const edges = G.edges.concat((OV.extra_edges || []).map(e => ({ ...e, basis: 'overlay' })));
+const out = {}, inn = {};
+edges.forEach(e => { (out[e.from] = out[e.from] || []).push(e); (inn[e.to] = inn[e.to] || []).push(e); });
+const badges = {};
+(OV.badges || []).forEach(b => (badges[b.node] = badges[b.node] || []).push(b));
+
+// ---- domain assignment: overlay match rules; endpoints/features/tables inherit
+const domains = (OV.domains || []).map(d => ({ ...d, members: new Set() }));
+const domOf = {};
+function assign(nid, dom) { if (!domOf[nid]) { domOf[nid] = dom.id; dom.members.add(nid); } }
+domains.forEach(d => {
+  (d.match.pages || []).forEach(r => byId['page:' + r] && assign('page:' + r, d));
+  (d.match.modules || []).forEach(m => byId['svc:' + m] && assign('svc:' + m, d));
+  (d.match.agents || []).forEach(a => byId['agent:' + a] && assign('agent:' + a, d));
+});
+const un = { id: '_unassigned', name: 'Unassigned', hue: 60, members: new Set(), match: {} };
+G.nodes.forEach(n => {
+  if (n.kind === 'page' && !domOf[n.id]) assign(n.id, un);
+  if ((n.kind === 'service' || n.kind === 'agent') && !domOf[n.id]) assign(n.id, un);
+});
+if (un.members.size) domains.push(un);
+// features + endpoints inherit
+G.nodes.forEach(n => {
+  if (n.kind === 'feature' && domOf[n.page]) assign(n.id, domains.find(d => d.id === domOf[n.page]));
+  if (n.kind === 'endpoint') { const svc = (out[n.id] || []).find(e => e.kind === 'handled_by');
+    if (svc && domOf[svc.to]) assign(n.id, domains.find(d => d.id === domOf[svc.to])); }
+});
+// tables/rpcs/tasks: touched-by domains (can be many = shared)
+const touch = {};
+edges.forEach(e => {
+  const t = byId[e.to];
+  if (t && ['table', 'rpc', 'model_task'].includes(t.kind) && domOf[e.from]) {
+    (touch[e.to] = touch[e.to] || new Set()).add(domOf[e.from]);
+  }
+});
+
+function domainStats(d) {
+  const m = [...d.members].map(id => byId[id]);
+  const count = k => m.filter(n => n.kind === k).length;
+  const dataIds = new Set();
+  m.forEach(n => (out[n.id] || []).forEach(e => { const t = byId[e.to];
+    if (t && (t.kind === 'table' || t.kind === 'rpc')) dataIds.add(t.id); }));
+  const nBadges = [...d.members].reduce((s, id) => s + (badges[id] || []).length, 0)
+    + [...dataIds].reduce((s, id) => s + (badges[id] || []).length, 0);
+  return { features: count('feature'), pages: count('page'), endpoints: count('endpoint'),
+           services: count('service'), agents: count('agent'), data: dataIds.size, badges: nBadges };
+}
+
+// ---- rendering helpers
+const $ = sel => document.querySelector(sel);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function kindTag(k) { return `<span class="kind" style="background:${KIND_COLOR[k] || 'var(--muted)'}">${k.replace('_', ' ')}</span>`; }
+function badgeHtml(id) { return (badges[id] || []).map(b => `<span class="badge" title="${esc(b.ref || '')}">${esc(b.label)}</span>`).join(' '); }
+function sharedHtml(id) { const t = touch[id]; return (t && t.size > 1) ? `<span class="shared">shared ×${t.size}</span>` : ''; }
+
+let state = { view: 'city' };
+function go(s) { state = s; render(); window.scrollTo(0, 0); }
+
+function crumbs(parts) {
+  $('#crumbs').innerHTML = parts.map((p, i) =>
+    i < parts.length - 1 ? `<a data-i="${i}">${esc(p.label)}</a><span>›</span>` : `<span style="color:var(--ink)">${esc(p.label)}</span>`
+  ).join('');
+  [...$('#crumbs').querySelectorAll('a')].forEach(a =>
+    a.onclick = () => parts[+a.dataset.i].go());
+}
+
+// ---- Z1: city
+function renderCity() {
+  crumbs([{ label: 'All domains' }]);
+  const c = G.counts;
+  let html = `<div class="note" style="margin-bottom:20px">${esc((OV.notes || [])[0] ? OV.notes[0].text : '')}
+    <span class="muted"> · ${c.features} features · ${c.pages} pages · ${c.endpoints} endpoints · ${c.services} services · ${c.agents} agents · ${c.tables} tables · ${c.model_tasks} model tasks</span></div>`;
+  html += '<div class="grid">';
+  domains.forEach(d => {
+    const s = domainStats(d);
+    html += `<div class="tile" data-d="${d.id}" style="border-top-color: oklch(0.62 0.12 ${d.hue})">
+      <h2>${esc(d.name)}</h2>
+      <div class="nums">${s.features} functions · ${s.pages} pages · ${s.endpoints} endpoints</div>
+      <div class="nums">${s.services} services · ${s.agents} agents · ${s.data} data objects</div>
+      <div>${s.badges ? `<span class="badge">${s.badges} open defect${s.badges > 1 ? 's' : ''}</span>` : '<span class="okdot"></span> <span class="nums">no flagged defects</span>'}</div>
+    </div>`;
+  });
+  html += '</div>';
+  // shared infrastructure strip
+  const shared = Object.entries(touch).filter(([, s]) => s.size > 1)
+    .sort((a, b) => b[1].size - a[1].size).slice(0, 12);
+  if (shared.length) {
+    html += `<section><h3>Shared infrastructure — blast radius</h3><div class="chips">` +
+      shared.map(([id, s]) => `<span class="chip mono" data-n="${esc(id)}">${esc(byId[id].label)} <span class="sub">×${s.size} domains</span>${badgeHtml(id)}</span>`).join('') +
+      '</div></section>';
+  }
+  $('#main').innerHTML = html;
+  [...document.querySelectorAll('.tile')].forEach(t => t.onclick = () => go({ view: 'domain', d: t.dataset.d }));
+  [...document.querySelectorAll('[data-n]')].forEach(t => t.onclick = () => go({ view: 'node', id: t.dataset.n }));
+}
+
+// ---- Z2: domain
+function renderDomain(did) {
+  const d = domains.find(x => x.id === did); if (!d) return renderCity();
+  crumbs([{ label: 'All domains', go: () => go({ view: 'city' }) }, { label: d.name }]);
+  const m = [...d.members].map(id => byId[id]);
+  const feats = m.filter(n => n.kind === 'feature');
+  const pages = m.filter(n => n.kind === 'page');
+  const eps = m.filter(n => n.kind === 'endpoint');
+  const svcs = m.filter(n => n.kind === 'service' || n.kind === 'agent');
+  const dataIds = new Set(); const taskIds = new Set();
+  m.forEach(n => (out[n.id] || []).forEach(e => { const t = byId[e.to];
+    if (t && (t.kind === 'table' || t.kind === 'rpc')) dataIds.add(t.id);
+    if (t && t.kind === 'model_task') taskIds.add(t.id); }));
+  let html = '';
+  const allBadges = [...d.members, ...dataIds].flatMap(id => (badges[id] || []).map(b => ({ ...b, id })));
+  if (allBadges.length) html += `<div class="note" style="margin-bottom:16px"><strong>Open defects here:</strong> ` +
+    allBadges.map(b => `<span class="badge">${esc(b.label)}</span> <span class="mono" style="font-size:11px">${esc(byId[b.id].label)}</span> <span class="muted">${esc(b.note || '')}</span>`).join(' · ') + '</div>';
+  html += `<section><h3>Functions · ${feats.length}</h3><div class="list">` +
+    feats.map(f => `<div class="rowitem" data-n="${esc(f.id)}"><span class="kind" style="background:var(--feature)">fn</span>${esc(f.label)}<span class="muted mono" style="font-size:11px;margin-left:auto">${esc(byId[f.page].label)}</span></div>`).join('') +
+    (feats.length ? '' : '<div class="muted" style="font-size:12.5px">No §1a feature lists matched — headless or undocumented.</div>') + '</div></section>';
+  html += `<section><h3>Pages · ${pages.length}</h3><div class="chips">` +
+    pages.map(p => `<span class="chip mono" data-n="${esc(p.id)}">${esc(p.label)}${p.archetype ? ` <span class="sub">${esc(p.archetype)}</span>` : ''}</span>`).join('') + '</div></section>';
+  html += `<section><h3>Endpoints · ${eps.length}</h3><div class="chips">` +
+    eps.map(e => `<span class="chip mono" data-n="${esc(e.id)}" style="font-size:11px">${esc(e.label)}${e.public ? ' <span class="sub">public</span>' : (e.auth ? '' : ' <span class="badge">no guard</span>')}${badgeHtml(e.id)}</span>`).join('') + '</div></section>';
+  html += `<section><h3>Services &amp; agents · ${svcs.length}</h3><div class="chips">` +
+    svcs.map(s => `<span class="chip mono" data-n="${esc(s.id)}">${esc(s.label)} <span class="sub">${esc(s.runtime || '')}</span>${badgeHtml(s.id)}</span>`).join('') + '</div></section>';
+  html += `<section><h3>Data &amp; model · ${dataIds.size + taskIds.size}</h3><div class="chips">` +
+    [...dataIds].sort().map(id => `<span class="chip mono" data-n="${esc(id)}" style="background:var(--ink);color:var(--paper)">${esc(byId[id].label)}</span>${sharedHtml(id)}${badgeHtml(id)}`).join(' ') +
+    [...taskIds].sort().map(id => `<span class="chip mono" data-n="${esc(id)}" style="border-color:var(--model)">${esc(byId[id].label)} <span class="sub">AI task</span></span>`).join(' ') + '</div></section>';
+  $('#main').innerHTML = html;
+  [...document.querySelectorAll('[data-n]')].forEach(t => t.onclick = () => {
+    const n = byId[t.dataset.n];
+    if (n.kind === 'feature' || n.kind === 'page') go({ view: 'chain', id: n.id, from: did });
+    else go({ view: 'node', id: n.id, from: did });
+  });
+}
+
+// ---- Z3: chain
+function chainFor(nid) {
+  const n = byId[nid];
+  const page = n.kind === 'feature' ? byId[n.page] : n;
+  const feat = n.kind === 'feature' ? n : null;
+  const eps = (out[page.id] || []).filter(e => e.kind === 'calls').map(e => ({ ep: byId[e.to], basis: e.basis }));
+  const svcIds = new Set(); eps.forEach(({ ep }) => (out[ep.id] || []).forEach(e => e.kind === 'handled_by' && svcIds.add(e.to)));
+  const dataIds = new Set(); const taskIds = new Set();
+  svcIds.forEach(id => (out[id] || []).forEach(e => { const t = byId[e.to];
+    if (t && (t.kind === 'table' || t.kind === 'rpc')) dataIds.add(t.id);
+    if (t && t.kind === 'model_task') taskIds.add(t.id); }));
+  return { feat, page, eps, svcIds: [...svcIds], dataIds: [...dataIds].sort(), taskIds: [...taskIds].sort() };
+}
+function renderChain(nid, fromDomain) {
+  const c = chainFor(nid);
+  const d = domains.find(x => x.id === (fromDomain || domOf[c.page.id]));
+  crumbs([{ label: 'All domains', go: () => go({ view: 'city' }) },
+          { label: d ? d.name : '…', go: () => go({ view: 'domain', d: d && d.id }) },
+          { label: c.feat ? c.feat.label.slice(0, 60) : c.page.label }]);
+  let html = '';
+  if (c.feat) html += `<div class="stage" style="border-left:none"><div style="display:flex;gap:10px;align-items:center">${kindTag('feature')}<strong>${esc(c.feat.label)}</strong></div><div class="basis">derived: 06-pages §1a — feature-level endpoint mapping rides the page below</div></div><div class="vline"></div>`;
+  html += `<div class="stage"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">${kindTag('page')}<span class="mono">${esc(c.page.label)}</span>${c.page.archetype ? `<span class="chip" style="cursor:default">${esc(c.page.archetype)}</span>` : ''}${badgeHtml(c.page.id)}</div>
+    <div class="basis mono">${esc(c.page.doc || '')}${c.page.component ? ' · ' + esc(c.page.component) : ''}</div></div><div class="vline"></div>`;
+  html += `<div class="stage"><div style="display:flex;gap:10px;align-items:center">${kindTag('endpoint')}<strong>${c.eps.length} endpoint${c.eps.length === 1 ? '' : 's'} called</strong></div><div class="chips">` +
+    (c.eps.length ? c.eps.map(({ ep, basis }) => `<span class="chip mono" data-n="${esc(ep.id)}" style="font-size:11px">${esc(ep.label)}${badgeHtml(ep.id)}<span class="sub">${esc(basis.replace('derived:api-layer:', 'via api/'))}</span></span>`).join('')
+      : '<span class="muted" style="font-size:12px">none derived — headless page, webhook-driven, or the api-layer scan found no import</span>') + '</div></div><div class="vline"></div>';
+  html += `<div class="stage"><div style="display:flex;gap:10px;align-items:center">${kindTag('service')}<strong>Handled by</strong></div><div class="chips">` +
+    (c.svcIds.length ? c.svcIds.map(id => `<span class="chip mono" data-n="${esc(id)}">${esc(byId[id].label)}${badgeHtml(id)}</span>`).join('') : '<span class="muted" style="font-size:12px">—</span>') + '</div></div><div class="vline"></div>';
+  html += `<div class="stage"><div style="display:flex;gap:10px;align-items:center">${kindTag('table')}<strong>Data &amp; model touched</strong> <span class="basis">by those services — superset of this one chain</span></div><div class="chips">` +
+    c.dataIds.map(id => `<span class="chip mono" style="background:var(--ink);color:var(--paper)" data-n="${esc(id)}">${esc(byId[id].label)}</span>${sharedHtml(id)}${badgeHtml(id)}`).join(' ') +
+    c.taskIds.map(id => `<span class="chip mono" data-n="${esc(id)}" style="border-color:var(--model)">${esc(byId[id].label)} <span class="sub">AI task</span></span>`).join(' ') + '</div></div>';
+  $('#main').innerHTML = html;
+  [...document.querySelectorAll('[data-n]')].forEach(t => t.onclick = () => go({ view: 'node', id: t.dataset.n, from: fromDomain }));
+}
+
+// ---- node view (table/service/agent/endpoint/task): blast radius both ways
+function renderNode(nid, fromDomain) {
+  const n = byId[nid]; if (!n) return renderCity();
+  const d = domains.find(x => x.id === (fromDomain || domOf[nid]));
+  crumbs([{ label: 'All domains', go: () => go({ view: 'city' }) },
+          ...(d ? [{ label: d.name, go: () => go({ view: 'domain', d: d.id }) }] : []),
+          { label: n.label }]);
+  const usedBy = (inn[nid] || []).map(e => ({ n: byId[e.from], e }));
+  const uses = (out[nid] || []).map(e => ({ n: byId[e.to], e }));
+  let html = `<div class="stage"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">${kindTag(n.kind)}<strong class="mono">${esc(n.label)}</strong>${badgeHtml(nid)}${sharedHtml(nid)}</div>` +
+    (n.file || n.doc ? `<div class="basis mono">${esc(n.file || '')} ${esc(n.doc || '')}</div>` : '') +
+    ((badges[nid] || []).map(b => `<div style="font-size:12.5px"><span class="badge">${esc(b.label)}</span> ${esc(b.note || '')} <span class="muted mono" style="font-size:11px">${esc(b.ref || '')}</span></div>`).join('')) + '</div>';
+  if (usedBy.length) html += `<section><h3>Used by · ${usedBy.length}</h3><div class="chips">` +
+    usedBy.map(({ n: x, e }) => `<span class="chip mono" data-n="${esc(x.id)}">${esc(x.label)} <span class="sub">${esc(e.kind)}</span></span>`).join('') + '</div></section>';
+  if (uses.length) html += `<section><h3>Depends on · ${uses.length}</h3><div class="chips">` +
+    uses.map(({ n: x, e }) => `<span class="chip mono" data-n="${esc(x.id)}">${esc(x.label)} <span class="sub">${esc(e.kind)}</span></span>`).join('') + '</div></section>';
+  $('#main').innerHTML = html;
+  [...document.querySelectorAll('[data-n]')].forEach(t => t.onclick = () => {
+    const x = byId[t.dataset.n];
+    if (x.kind === 'feature' || x.kind === 'page') go({ view: 'chain', id: x.id, from: fromDomain });
+    else go({ view: 'node', id: x.id, from: fromDomain });
+  });
+}
+
+function render() {
+  if (state.view === 'domain') renderDomain(state.d);
+  else if (state.view === 'chain') renderChain(state.id, state.from);
+  else if (state.view === 'node') renderNode(state.id, state.from);
+  else renderCity();
+}
+
+// ---- search
+const idx = G.nodes.map(n => ({ id: n.id, kind: n.kind, label: n.label, l: n.label.toLowerCase() }));
+$('#q').addEventListener('input', () => {
+  const q = $('#q').value.trim().toLowerCase(); const R = $('#results');
+  if (q.length < 2) { R.style.display = 'none'; return; }
+  const hits = idx.filter(n => n.l.includes(q)).slice(0, 30);
+  R.innerHTML = hits.map(h => `<div data-n="${esc(h.id)}">${kindTag(h.kind)}<span>${esc(h.label)}</span></div>`).join('') || '<div class="muted">no match</div>';
+  R.style.display = 'block';
+  [...R.querySelectorAll('[data-n]')].forEach(t => t.onclick = () => {
+    R.style.display = 'none'; $('#q').value = '';
+    const n = byId[t.dataset.n];
+    if (n.kind === 'feature' || n.kind === 'page') go({ view: 'chain', id: n.id });
+    else go({ view: 'node', id: n.id });
+  });
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    $('#results').style.display = 'none';
+    if (state.view === 'chain' || state.view === 'node') go(state.from ? { view: 'domain', d: state.from } : { view: 'city' });
+    else if (state.view === 'domain') go({ view: 'city' });
+  }
+});
+document.addEventListener('click', e => { if (!$('#search').contains(e.target)) $('#results').style.display = 'none'; });
+
+$('#foot').textContent = `Generated by scripts/generate_design_atlas.py — the committed graph is .planning/00-index/atlas-graph.json; the curated overlay (.planning/00-index/atlas-overlay.json) is additive-only and can never override it (ADR 0033). Regenerate rather than hand-edit.`;
+render();
+</script>
+</body>
+</html>

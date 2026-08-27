@@ -43,6 +43,9 @@ plan of record — that is `PROJECT.md` → `STATE.md` → `ROADMAP.md`.
 <<<<<<< HEAD
 =======
 <<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> origin/main
 >>>>>>> origin/main
 >>>>>>> origin/main
 | [FEATURE_ROADMAP.md](FEATURE_ROADMAP.md) | Mudavym feature backlog aligned to expansion stages (was `md/06-planning/`) — cited by FUTURES §7 | Reference |
@@ -54,7 +57,10 @@ plan of record — that is `PROJECT.md` → `STATE.md` → `ROADMAP.md`.
 =======
 <<<<<<< HEAD
 =======
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> origin/main
 >>>>>>> origin/main
 >>>>>>> origin/main
 >>>>>>> origin/main
