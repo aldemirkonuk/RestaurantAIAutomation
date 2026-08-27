@@ -130,7 +130,7 @@ buttons.
 ## Standing rules for this session
 
 - **Verify before acting.** Every line number above was true on 2026-08-26 and
-  this corpus drifts within days. See [[decision-register-rots]] in memory.
+  this corpus drifts within days. See the `decision-register-rots` memory.
 - **Prove a test fails before trusting it** (revert, run, restore).
 - Commit with explicit paths (`git commit -- <paths>`) — the checkout is
   shared, and `git commit` otherwise takes the whole index.
