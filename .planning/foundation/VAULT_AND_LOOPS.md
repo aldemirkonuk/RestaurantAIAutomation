@@ -37,7 +37,7 @@ You land in `00-index/`:
 └─ (legacy corpus)    28 top-level docs — untouched; OD-01 handles the clean slate
 ```
 
-**99 units × 8 artifacts = 792 documents.** Deepest path is
+**100 units × 9 artifacts = 900 documents** *(re-measured 2026-08-27; was 99 × 8 — one team and the `agent-stack` artifact, ADR 0034, were added since)*. Deepest path is
 `01-org/platform/engineering/teams/schema-migrations/schema-migrations-charter.md`.
 
 ### The one convention that matters
@@ -75,8 +75,8 @@ team: schema-migrations
 status: exists | partial | new | provisional
 ```
 
-Obsidian's graph view and Graphify cluster on `type` + `division`, so 792 documents read
-as **seven clusters plus an advisory ring**, not 792 equal dots.
+Obsidian's graph view and Graphify cluster on `type` + `division`, so 900 documents read
+as **seven clusters plus an advisory ring**, not 900 equal dots.
 
 ---
 
@@ -164,7 +164,7 @@ They are pre-existing CI-shaped checks — `check_schema_parity.sh` and friends 
 existed before this session. Nothing generated on 2026-08-24 runs yet. **The org is
 designed, not operating.**
 
-> **Read the corpus as a plan, not as capability.** 792 documents describe what the
+> **Read the corpus as a plan, not as capability.** 900 documents describe what the
 > company will measure. Four things measure anything today.
 
 ### 4.5 The 102 close-time values are a contract defect, mine

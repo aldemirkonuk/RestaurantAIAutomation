@@ -94,7 +94,7 @@ out = ["---", "type: moc", "title: Org Map", "updated: 2026-08-24", "---", "",
        f"**{len(m['divisions'])} divisions · "
        f"{sum(1 for u in m['units'] if u['kind']=='department')} departments and sub-layers · "
        f"{sum(1 for u in m['units'] if u['kind']=='team')} teams · "
-       f"{len(adv)} advisory** — {len(m['units'])} units, 8 artifacts each.", ""]
+       f"{len(adv)} advisory** — {len(m['units'])} units, 9 artifacts each.", ""]  # 9th = agent-stack, ADR 0034
 for d in m["divisions"]:
     out.append(f"## {d['title']}")
     out.append("")
