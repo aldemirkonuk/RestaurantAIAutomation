@@ -736,7 +736,11 @@ export class AuthService {
         });
 
       // Both emails are fire-and-forget — Gmail latency must never delay the registration response
-      this.queueEmailVerification(userId, dto.email).catch((err) =>
+      // `userId` is declared `string | null` for the rollback path above; by
+      // here it has been assigned from the created row and the throw on
+      // failure means it cannot be null. Asserting that rather than widening
+      // the callee, which would let a genuinely-null id through elsewhere.
+      this.queueEmailVerification(userId as string, dto.email).catch((err) =>
         this.logger.warn(
           `queueEmailVerification failed (non-fatal): ${err.message}`,
         ),

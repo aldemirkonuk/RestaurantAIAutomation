@@ -71,25 +71,21 @@ export type AskAiAction = ReorderAction | VendorDraftAction;
 /**
  * The result of validating one proposal.
  *
- * FLAT, not a discriminated union, and that is a workaround rather than a
- * preference. `apps/api-gateway/tsconfig.json` sets `strictNullChecks: false`,
- * under which TypeScript does NOT narrow a union on a boolean literal
- * discriminant — `if (!v.ok)` leaves the full union and every field access on
- * the narrowed side is a compile error. The `{ok: true, action} | {ok: false,
- * reason}` shape is the better model and cannot be used here.
+ * A proper discriminated union — restored 2026-08-27 when `strictNullChecks`
+ * was turned on (OD-107). It shipped flattened to optional fields because the
+ * gateway compiled with the flag OFF, under which TypeScript does not narrow a
+ * union on a boolean discriminant and `if (!v.ok)` was a compile error on every
+ * field access.
  *
- * Worth knowing beyond this file: the same setting means discriminated-union
- * narrowing silently does not work anywhere in the gateway, so code that READS
- * as type-safe may not be. Filed for the register rather than fixed in passing —
- * flipping that flag repo-wide is its own decision with its own blast radius.
+ * That was a workaround for a compiler setting, and it cost real safety: with
+ * `action?` optional, nothing stopped a caller reading `validation.action`
+ * without checking `ok` first. The measurement that closed OD-107 found exactly
+ * three of these flattenings, all in this feature, and the flip turned them
+ * back into the types they should always have been.
  */
-export interface ActionValidation {
-  ok: boolean;
-  /** Present when `ok`. */
-  action?: AskAiAction;
-  /** Present when not `ok`. Always set — a refusal with no reason is a dead end. */
-  reason?: string;
-}
+export type ActionValidation =
+  | { ok: true; action: AskAiAction }
+  | { ok: false; reason: string };
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

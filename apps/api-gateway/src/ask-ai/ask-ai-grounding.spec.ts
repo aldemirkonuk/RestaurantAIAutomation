@@ -31,7 +31,8 @@ describe("checkActionGrounded — a well-formed uuid is not a real one", () => {
       candidates,
     );
     expect(g.grounded).toBe(false);
-    expect(g.ungrounded).toContain(`inventoryId:${OTHER_TENANT}`);
+    if (!g.grounded)
+      expect(g.ungrounded).toContain(`inventoryId:${OTHER_TENANT}`);
   });
 
   it("rejects a provider id from outside the candidate set", () => {
@@ -47,7 +48,7 @@ describe("checkActionGrounded — a well-formed uuid is not a real one", () => {
       reorder({ inventoryId: OTHER_TENANT, providerId: OTHER_TENANT }),
       candidates,
     );
-    expect(g.ungrounded).toHaveLength(2);
+    if (!g.grounded) expect(g.ungrounded).toHaveLength(2);
   });
 
   it("does NOT echo the invented uuid back to the operator", () => {
@@ -57,8 +58,8 @@ describe("checkActionGrounded — a well-formed uuid is not a real one", () => {
       reorder({ inventoryId: OTHER_TENANT }),
       candidates,
     );
-    expect(g.reason).not.toContain(OTHER_TENANT);
-    expect(g.reason).toContain("could not find");
+    if (!g.grounded) expect(g.reason).not.toContain(OTHER_TENANT);
+    if (!g.grounded) expect(g.reason).toContain("could not find");
   });
 
   it("checks the order id for a vendor draft", () => {

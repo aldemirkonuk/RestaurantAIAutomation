@@ -203,10 +203,10 @@ describe("DashboardService", () => {
       const result = await service.getDashboardSummary(restaurantId);
 
       expect(result.reports).not.toBeNull();
-      expect(result.reports.latest).toBeNull();
+      expect(result.reports!.latest).toBeNull();
       // The whole point: a caller can tell this apart from an empty archive.
-      expect(result.reports.unavailable).toEqual(expect.any(String));
-      expect(result.reports.unavailable).toContain("PGRST205");
+      expect(result.reports!.unavailable).toEqual(expect.any(String));
+      expect(result.reports!.unavailable).toContain("PGRST205");
     });
 
     it("still renders a genuinely empty archive as empty, not as broken", async () => {
@@ -215,9 +215,9 @@ describe("DashboardService", () => {
 
       const result = await service.getDashboardSummary(restaurantId);
 
-      expect(result.reports.latest).toBeNull();
-      expect(result.reports.lastGeneratedAt).toBeNull();
-      expect(result.reports.unavailable).toBeNull();
+      expect(result.reports!.latest).toBeNull();
+      expect(result.reports!.lastGeneratedAt).toBeNull();
+      expect(result.reports!.unavailable).toBeNull();
     });
   });
 });
