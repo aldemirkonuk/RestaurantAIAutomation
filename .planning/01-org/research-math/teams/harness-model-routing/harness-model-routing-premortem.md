@@ -33,7 +33,7 @@ org now maintains **two** harnesses and measures **neither**.
 GitHub stars and contains no latency table. Earlier still: the OD-03 session appearing on
 a calendar while `harness_overhead_ms` still reads *unmeasured*.
 
-**Counter-pressure.** Mechanical, not cultural. `OD-03 (OPEN-DECISIONS.md:25)` already states the
+**Counter-pressure.** Mechanical, not cultural. `OD-03 (OPEN-DECISIONS.md:24)` already states the
 rule — *"A scoped bake-off on this repo's actual workloads. No pick from repute."* — so:
 (1) the bake-off **cannot be scheduled** until the overhead instrument has published a
 first reading ([[harness-model-routing-directive]] rule 2); (2)

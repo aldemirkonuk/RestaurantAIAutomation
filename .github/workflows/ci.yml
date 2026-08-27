@@ -189,7 +189,7 @@ jobs:
           echo "::notice::DISAGREEING means a citation's OD id and its OPEN-DECISIONS.md line name different rows. The guard prints the line the id is actually on — use that one."
           echo "::notice::NAMES NOTHING means an OD id in the corpus has no register row. File the fork and cite the number you are given — never borrow a number already in use: the design-foundation fork spent a day pointing at the resolved email-verification decision that way."
           echo "::notice::UNGRADED means a task type records only call_level_v0 — 'the HTTP request returned 200'. Grade it, or add it to EXEMPT with the reason. On 2026-08-27 six of the gateway's seven task types were in that state."
-          echo "::notice::UNANCHORED means a bare OPEN-DECISIONS.md:N with no id beside it. ADR 0025 §6 requires both: write OD-88 (OPEN-DECISIONS.md:55)."
+          echo "::notice::UNANCHORED means a bare OPEN-DECISIONS.md:N with no id beside it. ADR 0025 §6 requires both: write OD-88 (OPEN-DECISIONS.md:54)."
           echo "::notice::Do NOT add a citation to PAIRING_DEBT. That list is a two-PR handoff for six page dossiers owned by a concurrent branch, and it only ever shrinks."
           echo "::notice::Exit 2 means the guard could not check what it claims to. That is a failure, not a skip."
 

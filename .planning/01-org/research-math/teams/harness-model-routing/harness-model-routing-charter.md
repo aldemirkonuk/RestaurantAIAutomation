@@ -138,7 +138,7 @@ surface [[README]]:60-62 already assigned to this department.
 The two competing OD-03 candidates (`NousResearch/hermes-agent`,
 `deepseek-ai/deepseek-harness`) have **no presence in this repo** — no spike, no branch,
 no import. Their evidence is entirely external, which is exactly the condition under which
-`OD-03 (OPEN-DECISIONS.md:25)`'s *"no pick from repute"* rule matters most. This charter cannot
+`OD-03 (OPEN-DECISIONS.md:24)`'s *"no pick from repute"* rule matters most. This charter cannot
 grade them; it can only refuse to let them be graded by reputation.
 
 ## Entry triggers this team owns

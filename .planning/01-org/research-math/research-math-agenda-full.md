@@ -57,7 +57,7 @@ symmetric across the three teams.
    [[evaluation-doneability-charter]], committed **before** RM-1's bake-off produces any
    result, per the author≠auditor rule.
 5. **Weeks 4–8 — build the overhead instrument, then run the bake-off.** OD-03 may not be
-   scheduled before `harness_overhead_ms` has a first reading. `OD-03 (OPEN-DECISIONS.md:25)`
+   scheduled before `harness_overhead_ms` has a first reading. `OD-03 (OPEN-DECISIONS.md:24)`
    already forbids a pick from repute; this makes the prohibition mechanical.
 6. **Continuous — publish the gap.** `nf_a.verified_task_success_rate` beside
    `base_agent.py:144`'s self-reported rate, every close-time. The gap is the

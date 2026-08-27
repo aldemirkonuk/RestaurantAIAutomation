@@ -192,6 +192,6 @@ someone grepped for it.
   OD-20 (analytics spend, `decisions/OPEN-DECISIONS.md:107`),
   OD-21 (Obsidian workflow, `decisions/OPEN-DECISIONS.md:134`),
   OD-22 (tooling library, `decisions/OPEN-DECISIONS.md:117`) and
-  OD-23 (revenue target, unverified, `decisions/OPEN-DECISIONS.md:32`) — four of the five
+  OD-23 (revenue target, unverified, `decisions/OPEN-DECISIONS.md:31`) — four of the five
   were taken. The forks above now carry **PROD-F1…PROD-F5** ([[FORK-REGISTRY]]) and should
   be cited by ID.

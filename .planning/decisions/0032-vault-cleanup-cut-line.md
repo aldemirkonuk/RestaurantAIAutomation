@@ -1,0 +1,114 @@
+# 0032 — Delete closed build artifacts; a tombstone index replaces the archive tree
+
+- **Status:** Locked
+- **Date:** 2026-08-27
+- **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
+- **Keywords:** vault, cleanup, archive, phases, quick, tombstone, OD-01, retire-to-write, corpus
+- **Links:** [[0004-obsidian-as-backlink-layer]], [[0005-v3-to-v0-version-reset]], [[0018-p2-plan-of-record]], [[0025-citations-must-disagree-loudly]] (deleted the first 469 archive twins), [OPEN-DECISIONS](OPEN-DECISIONS.md) OD-01, `foundation/VAULT_CLEANUP_AUDIT.md` (retired into this ADR, per its own §Status)
+
+## Context
+
+OD-01 (filed 2026-08-24) held the `.planning/` restructure open: the vault carried
+~2,078 files, of which ~1,090 were Apr–Jul v1.0/v2.0 build artifacts sitting beside
+the 2026-08-24 restructure. The evidence pass already existed —
+`foundation/VAULT_CLEANUP_AUDIT.md`, written after an earlier session deleted 996
+files **without a founder call** and was reverted. That audit measured the decisive
+fact: `archive/` was 94% byte-identical copies of `phases/` + `quick/`, created by
+an archive step that copied instead of moving. ADR 0025's sweep later deleted 469
+of those twins; this decision finishes the job. The founder picked the cut line on
+2026-08-27, in-session, question by question.
+
+The same copy-not-move pattern turned up twice more during execution: the four
+data blobs (2.3 MB) were byte-identical to their canonical
+`datasets/planning-exports/` copies, and the two top-level milestone audits were
+byte-identical to their (since-deleted) `archive/` twins.
+
+## Options considered
+
+1. **A — junk only** (6 files). Leaves the duplication and the Apr–Jul weight in place.
+2. **B — junk + archive de-dup** (~528 files). Zero counter-argument, but keeps 470
+   closed build files polluting vault search and the unique-filename rule
+   (46 `README.md`s and other collisions lived almost entirely in those trees).
+3. **C — B plus `phases/` + `quick/`, blobs to `datasets/`.** Costs the in-graph
+   prose of *why* each closed phase was planned as it was; everything durable is
+   already carried by `REQUIREMENTS.md`, `v3.0-TECH-DEBT.md` and the two
+   milestone audits, and ADR 0005 locks v1/v2/v3 as scaffolding that resets.
+4. **D — C plus `sketches/` + `claude_full_architectural.md` + `STATE.md` rewrite.**
+   Rejected: 20 live code comments cite sketches by number
+   (`InventoryCommandPage.tsx:2`, `Providers.tsx:727` …), the founder explicitly
+   keeps `claude_full_architectural.md`, and STATE.md was already rewritten under
+   ADR 0018 — D's remaining content is either harmful or done.
+5. **Mechanism fork — move to a versioned `.planning/archive/` instead of deleting.**
+   Rejected: the existing `archive/` tree is the proof of where that road goes —
+   copy-drift, twin trees, and a vault that only grows. Git history already keeps
+   every byte; what the working tree needs is an *index*, not a second copy.
+
+## Decision
+
+**Cut line C-modified, mechanism delete-plus-tombstone** (founder, 2026-08-27):
+delete the closed build trees and the duplicate blobs; keep `sketches/`,
+`claude_full_architectural.md`, the `999.1` backlog stub, and the two pre-P2
+snapshots ADR 0018/0025 reference; this ADR carries the index that makes every
+deletion recoverable.
+
+Two standing rules ride with it:
+
+- **Archive means delete + tombstone.** Nothing is ever again copied or moved
+  into an in-tree archive folder. A retirement lists the file in the retiring
+  ADR with the recovery commit; `archive/` exists only for the two pre-P2
+  snapshots that locked decisions cite by path.
+- **Flag metric for future retirements.** A doc is scored on duplication
+  (byte-identical elsewhere), staleness (pre-reset branding/facts), inbound
+  references, and live consumers (code or skill citations). Only provable
+  zero-loss cases (byte dupes, zero-byte junk) are `AUTO`; everything else is
+  `REVIEW` and goes to the founder before anything moves.
+
+## Tombstone index
+
+Every deleted path is recoverable with
+`git show <commit>^:<path>` (single file) or
+`git checkout <commit>^ -- <path>` (tree). Commits are on `docs/vault-cleanup`.
+
+| What | Files | Deleted at | Why |
+|---|---:|---|---|
+| `.planning/phases/` — 39 closed v1.0/v2.0 phase dirs (incl. 12.1, and 14/15/16 rescued from `archive/` in `9c2d3dcc` so they recover from the same path) | 445 | `a9e1e977` | Closed Apr–Jul build artifacts; durable content lives in `REQUIREMENTS.md`, `v3.0-TECH-DEBT.md`, `v1.0/v2.0-MILESTONE-AUDIT.md` |
+| `.planning/quick/` — 10 closed one-off tasks | 25 | `a9e1e977` | Same class; all closed Apr–May 2026 |
+| `.planning/archive/v1.0-quick/`, `v2.0-quick/`, `v2.0-phases/`, empty `v1.0-phases/` | ~50 | `a9e1e977` | The twins ADR 0025's sweep left behind |
+| `.planning/.next-call-count` | 1 | `a9e1e977` | Zero bytes, stale since 2026-07-08 |
+| 4 data blobs (`stage1_producer_research_raw.json` 1.9 MB, `analytics-feature-catalog.json`/`.csv`, `producer_aliases.json`) | 4 | `c3a5c6f3` | Byte-identical to `datasets/planning-exports/` — the path every referencing doc already cites |
+| `foundation/VAULT_CLEANUP_AUDIT.md` | 1 | this ADR's commit | Retired into this ADR by its own contract ("this doc is retired into the resulting ADR") — retire-to-write satisfied |
+
+Kept deliberately: `phases/999.1-consumer-food-profiles…/.gitkeep` (FUTURES §7
+backlog marker, not history); `archive/{ROADMAP,STATE}-pre-P2-20260825.md` (the
+only archive files anything references — STATE.md:5, ROADMAP.md:5, ADR 0018);
+`sketches/` (96 files, 20 live code citations); `debug/` (1 note, folded later
+if ever); `FIX_ERROR_LOG.md` — the audit and the founder's first instinct both
+had it archivable, but `.cursor/skills/fix-error/` still exists and maintains
+it: it is live.
+
+Vault: 1,677 → 1,152 files. Top level: 35 → 30.
+
+## Consequences
+
+- Vault search, the Obsidian graph, and the unique-filename rule now operate on
+  the working corpus only; sessions stop paying the Apr–Jul navigation tax.
+- The prose *why* of closed phases leaves the graph (ADR 0004's cost, accepted —
+  git history keeps it, three commands away).
+- The pre-P2 snapshots still contain dead internal pointers to
+  `archive/v2.0-phases/`; they are verbatim historical records and stay unedited.
+- **Residue, not yet decided:** where the ~24 surviving top-level docs land —
+  founder rule: *into `01-`…`06-` where a dir's charter genuinely fits, one new
+  `07-reference/` for the rest* — goes through founder batch review before any
+  file moves. `md/` (113 files) and the `md_files/` remnant follow the same
+  metric on their own branch. Revisit this ADR if a deleted phase doc turns out
+  to be load-bearing (signal: a session recovering one from history to answer a
+  live question).
+
+## Review trail
+
+- 2026-08-24 — audit written (evidence pass, no deletions), after the reverted
+  996-file incident.
+- 2026-08-25 — ADR 0025 deletes 469 archive twins; STATE/ROADMAP rewritten under
+  ADR 0018 (removing what was the audit's largest breakage cascade).
+- 2026-08-27 — founder locks cut line C-modified + delete-tombstone in-session;
+  executed same day on `docs/vault-cleanup`. OD-01 moves to Resolved.

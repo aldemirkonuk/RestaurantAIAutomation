@@ -112,9 +112,12 @@ point can and should be as deep as the decision warrants.
 
 ## 4. The planning corpus
 
-`.planning/` currently holds 28 top-level documents (~1.2MB). It is **not yet
-restructured** — that work is proposed but undecided (see
-`.planning/decisions/OPEN-DECISIONS.md`, OD-01). Until it is:
+`.planning/` holds ~30 top-level files after the OD-01 cleanup
+([ADR 0032](.planning/decisions/0032-vault-cleanup-cut-line.md), 2026-08-27 —
+closed build trees deleted, recoverable via its tombstone index). **Archive
+means delete + tombstone**: nothing is ever copied or moved into an in-tree
+archive folder; a retirement lists the file in the retiring ADR with its
+recovery commit. Ongoing rules:
 
 - Treat `PROJECT.md`, `STATE.md`, `ROADMAP.md`, `REQUIREMENTS.md`, `FUTURES.md`
   as the live spine.

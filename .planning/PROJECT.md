@@ -43,7 +43,7 @@ NF-B guests **held** on OD-05/OD-07 rather than queued. Stages and position:
 held items resolved.
 
 Prior milestones: v1.0 complete (2026-04-08); v2.0 closed `gaps_found`
-(2026-07-28, [audit](archive/v2.0-MILESTONE-AUDIT.md)) — its unfinished work is
+(2026-07-28, [audit](v2.0-MILESTONE-AUDIT.md)) — its unfinished work is
 the live defect register [v3.0-TECH-DEBT.md](v3.0-TECH-DEBT.md), which feeds
 P2.3's proposal rather than a phase plan of its own; P1 Neural Footprint
 instrumentation closed 2026-08-25 (ADRs 0006/0008/0017). Requirement IDs and
