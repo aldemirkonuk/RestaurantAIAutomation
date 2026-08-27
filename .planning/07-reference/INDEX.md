@@ -39,10 +39,16 @@ plan of record — that is `PROJECT.md` → `STATE.md` → `ROADMAP.md`.
 | [SCHEMA_DRIFT_INVENTORY.txt](SCHEMA_DRIFT_INVENTORY.txt) | 2026-08-04 schema-drift snapshot | Partially superseded by ADRs 0026/0031; retire when schema-migrations reconciles |
 | [LLM_INSTRUCTION_PROMPTS.md](LLM_INSTRUCTION_PROMPTS.md) | Tombstone stub for the retired WineOps prompt library — recovery instructions inside | Retired 2026-08-27; successor planned |
 <<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> origin/main
 | [FEATURE_ROADMAP.md](FEATURE_ROADMAP.md) | Mudavym feature backlog aligned to expansion stages (was `md/06-planning/`) — cited by FUTURES §7 | Reference |
 | [MOBILE_APP_SETUP_AND_STATUS.md](MOBILE_APP_SETUP_AND_STATUS.md) | Mobile app setup + status (was `md/05-guides-setup/`) — linked from `apps/mobile/README.md`; P3.A input | Guide |
 | [GOOGLE_AND_API_CREDENTIALS_SETUP.md](GOOGLE_AND_API_CREDENTIALS_SETUP.md) | Google + API credentials from scratch (was `md/05-guides-setup/`) | Guide |
 | [TOAST_API_DEVELOPER_GUIDE.md](TOAST_API_DEVELOPER_GUIDE.md) | Toast developer-guide research report (was `md/Toast_API/ToastAPI`) | External-API reference |
 | [TOAST_API_CONFIGURATION.md](TOAST_API_CONFIGURATION.md) | Toast platform integration/config report (was `md/Toast_API/`) | External-API reference |
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> origin/main
 >>>>>>> origin/main

@@ -27,7 +27,7 @@ below is read as capability, here is the true state:
 | Department | EXISTS | PARTIAL | NEW |
 |---|---|---|---|
 | Legal | — | — | **all 15 document types** |
-| Knowledge & Documentation | the `.planning/` vault (post-ADR-0032 cleanup); legacy `md/`+`md_files/` retired 2026-08-27 — 5 schema-debt `.sql` files remain for the ADR 0026 lane | Obsidian **adopted** ([ADR 0004](../../decisions/0004-obsidian-as-backlink-layer.md)), **not installed** — no `.obsidian` vault exists | frontmatter contract, staleness detection, archive policy |
+| Knowledge & Documentation | the `.planning/` vault (post-ADR-0032 cleanup); legacy `md/`+`md_files/` retired 2026-08-27 in full (the final `.sql` files exited via the ADR 0026 shrink path) | Obsidian **adopted** ([ADR 0004](../../decisions/0004-obsidian-as-backlink-layer.md)), **not installed** — no `.obsidian` vault exists | frontmatter contract, staleness detection, archive policy |
 | Compliance & Privacy | versioned consent + erasure schema; 4 independent PII guards; a privacy notice | privacy notice says "WineOps"; erasure untested end-to-end | **every word of GDPR/CCPA** — zero occurrences in source |
 | People & Agent Ops | 26 agent modules, `AgentMetrics`, agent registry, spend logging | metrics have no cost attribution and no doneability verdict | NF-A spine, review rubric, onboarding gate |
 | Strategy & Fundraising | `YC_WEDGE_PLAN.md` (406 lines), a prior YC-lens business review | wedge metric named but not instrumented as a company metric | cap table, data room, SAFE, board consents |
