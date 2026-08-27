@@ -113,7 +113,15 @@ def grade_wine_extractions(
             supabase.table("neural_footprint_event")
             .select("id")
             .eq("context->>wine_id", str(wine_id))
-            .in_("task_type", list(GRADABLE_TASK_TYPES))
+            # `task_type` is NOT a column — `spend_logger.py:395` writes it into
+            # `context`, and `nf_a_verdict_coverage` reads it back as
+            # `e.context->>'task_type'`. Filtering the bare name made PostgREST
+            # reject the request with `column does not exist`; the surrounding
+            # try/except then swallowed it as a warning, so this grader wrote
+            # ZERO verdicts while reporting nothing wrong. Found 2026-08-27
+            # while building the beverage twin of this function, which had
+            # copied the same line.
+            .in_("context->>task_type", list(GRADABLE_TASK_TYPES))
             .order("occurred_at", desc=True)
             .limit(20)
             .execute()
