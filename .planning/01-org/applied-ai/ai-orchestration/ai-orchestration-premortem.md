@@ -30,11 +30,11 @@ work on the layer **most likely to be replaced** was written off.
 
 **Earliest observable signal.** `core/base_agent.py` grows past ~1,300 lines with no
 bake-off scheduled. More precisely: the first commit that adds a *new capability*
-(not a bug fix) to `core/` while `OPEN-DECISIONS.md:25` still reads OD-03 as open.
+(not a bug fix) to `core/` while `OPEN-DECISIONS.md:26` still reads OD-03 as open.
 
 **Counter-pressure.** OD-03 gets a **close-time, not a resolution** — a dated
 bake-off in [[ai-orchestration-schedule]], scoped to this repo's real workloads per
-`OD-03 (OPEN-DECISIONS.md:25)`. Until it closes, [[harness-runtime-charter]] is on a
+`OD-03 (OPEN-DECISIONS.md:26)`. Until it closes, [[harness-runtime-charter]] is on a
 **stated diet**: bug fixes, instrumentation, and interface-narrowing only. Making
 `BaseAgent`'s surface *smaller* is portable work under any of the three outcomes;
 making it *richer* is a bet on one. That rule is written into

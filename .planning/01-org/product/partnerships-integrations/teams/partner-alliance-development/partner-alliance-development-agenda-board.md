@@ -55,7 +55,7 @@ SORT updated ASC
 | `pi.unblocking_agreements` | **0** — an acceptable v0 reading |
 | Outreach attempts | **0** — *the number that makes the zero above readable* |
 | `pi.time_to_first_response` | no data |
-| OD-07 | **open** — `OPEN-DECISIONS.md:29` |
+| OD-07 | **open** — `OPEN-DECISIONS.md:30` |
 
 ## Blocker ledger — all nine, all one state
 
