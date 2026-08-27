@@ -1,13 +1,13 @@
 {
  "generator": "scripts/generate_design_atlas.py",
  "counts": {
-  "endpoints": 464,
+  "endpoints": 468,
   "pages": 47,
   "features": 186,
-  "services": 38,
+  "services": 39,
   "agents": 25,
-  "tables": 162,
-  "model_tasks": 39
+  "tables": 163,
+  "model_tasks": 40
  },
  "nodes": [
   {
@@ -744,6 +744,15 @@
    "label": "GET /analytics/wine/:restaurantId/:masterWineId",
    "module": "analytics",
    "file": "apps/api-gateway/src/analytics/analytics.controller.ts",
+   "auth": true,
+   "public": false
+  },
+  {
+   "id": "ep:GET /ask-ai/actions",
+   "kind": "endpoint",
+   "label": "GET /ask-ai/actions",
+   "module": "ask-ai",
+   "file": "apps/api-gateway/src/ask-ai/ask-ai.controller.ts",
    "auth": true,
    "public": false
   },
@@ -2778,6 +2787,33 @@
    "label": "POST /analytics/tables/:restaurantId",
    "module": "analytics",
    "file": "apps/api-gateway/src/analytics/analytics.controller.ts",
+   "auth": true,
+   "public": false
+  },
+  {
+   "id": "ep:POST /ask-ai/actions/:id/confirm",
+   "kind": "endpoint",
+   "label": "POST /ask-ai/actions/:id/confirm",
+   "module": "ask-ai",
+   "file": "apps/api-gateway/src/ask-ai/ask-ai.controller.ts",
+   "auth": true,
+   "public": false
+  },
+  {
+   "id": "ep:POST /ask-ai/actions/:id/discard",
+   "kind": "endpoint",
+   "label": "POST /ask-ai/actions/:id/discard",
+   "module": "ask-ai",
+   "file": "apps/api-gateway/src/ask-ai/ask-ai.controller.ts",
+   "auth": true,
+   "public": false
+  },
+  {
+   "id": "ep:POST /ask-ai/propose",
+   "kind": "endpoint",
+   "label": "POST /ask-ai/propose",
+   "module": "ask-ai",
+   "file": "apps/api-gateway/src/ask-ai/ask-ai.controller.ts",
    "auth": true,
    "public": false
   },
@@ -6027,6 +6063,12 @@
    "runtime": "gateway"
   },
   {
+   "id": "svc:ask-ai",
+   "kind": "service",
+   "label": "ask-ai",
+   "runtime": "gateway"
+  },
+  {
    "id": "svc:auth",
    "kind": "service",
    "label": "auth",
@@ -6247,6 +6289,11 @@
    "kind": "service",
    "label": "wines",
    "runtime": "gateway"
+  },
+  {
+   "id": "table:ai_proposed_actions",
+   "kind": "table",
+   "label": "ai_proposed_actions"
   },
   {
    "id": "table:analytics_goals",
@@ -7057,6 +7104,14 @@
    "id": "table:wine_regions",
    "kind": "table",
    "label": "wine_regions"
+  },
+  {
+   "id": "task:ask_ai_proposal",
+   "kind": "model_task",
+   "label": "ask_ai_proposal",
+   "owners": [
+    "ask-ai"
+   ]
   },
   {
    "id": "task:auction_wine_research",
@@ -8451,6 +8506,12 @@
    "basis": "derived:controller-module"
   },
   {
+   "from": "ep:GET /ask-ai/actions",
+   "to": "svc:ask-ai",
+   "kind": "handled_by",
+   "basis": "derived:controller-module"
+  },
+  {
    "from": "ep:GET /auth/check-email",
    "to": "svc:auth",
    "kind": "handled_by",
@@ -9827,6 +9888,24 @@
   {
    "from": "ep:POST /analytics/tables/:restaurantId",
    "to": "svc:analytics",
+   "kind": "handled_by",
+   "basis": "derived:controller-module"
+  },
+  {
+   "from": "ep:POST /ask-ai/actions/:id/confirm",
+   "to": "svc:ask-ai",
+   "kind": "handled_by",
+   "basis": "derived:controller-module"
+  },
+  {
+   "from": "ep:POST /ask-ai/actions/:id/discard",
+   "to": "svc:ask-ai",
+   "kind": "handled_by",
+   "basis": "derived:controller-module"
+  },
+  {
+   "from": "ep:POST /ask-ai/propose",
+   "to": "svc:ask-ai",
    "kind": "handled_by",
    "basis": "derived:controller-module"
   },
@@ -12863,6 +12942,36 @@
   {
    "from": "svc:analytics",
    "to": "task:consultant_analysis",
+   "kind": "emits",
+   "basis": "derived:tasktype-scan"
+  },
+  {
+   "from": "svc:ask-ai",
+   "to": "table:ai_proposed_actions",
+   "kind": "queries",
+   "basis": "derived:table-scan"
+  },
+  {
+   "from": "svc:ask-ai",
+   "to": "table:procurement_orders",
+   "kind": "queries",
+   "basis": "derived:table-scan"
+  },
+  {
+   "from": "svc:ask-ai",
+   "to": "table:providers",
+   "kind": "queries",
+   "basis": "derived:table-scan"
+  },
+  {
+   "from": "svc:ask-ai",
+   "to": "table:restaurant_inventory",
+   "kind": "queries",
+   "basis": "derived:table-scan"
+  },
+  {
+   "from": "svc:ask-ai",
+   "to": "task:ask_ai_proposal",
    "kind": "emits",
    "basis": "derived:tasktype-scan"
   },
