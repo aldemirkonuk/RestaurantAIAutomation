@@ -305,3 +305,64 @@ identical to it.
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-08-26 | — | Created. Proposed, not locked. |
+
+---
+
+## Amendment, 2026-08-26 — a sweep without a ratchet lasts one day
+
+This ADR guards *where* schema lives and whether the code's queries match it. It
+does not guard the **security posture** of what a migration creates, and that gap
+closed a hole that reopened within twenty-four hours.
+
+OD-72 and OD-73 were one-time sweeps: 142 tables RLS-on-zero-policies, and 12
+tables RLS-off with anon DML including the procurement invoice store and
+`user_oauth_accounts`. OD-73's row recorded the outcome as **"0 public tables
+remain RLS-off"**, verified against the live database, not assumed.
+
+Roughly **two hours later that was false again.** `20260826175836_evidence_gate_v1.sql`
+— restored verbatim from production's ledger in `6c4996f9` — creates
+`field_evidence_policy`, `promotion_audit` and `source_registry` with no RLS, no
+policy, no GRANT and no REVOKE anywhere in the file. The intervening commit
+`bab85d2c` *had* carried six explicit `REVOKE ALL … FROM anon, authenticated`, and
+said in its own message that it had to write them by hand because the OD-72 sweep
+had already run. **The session that remembered was overwritten by the next one,
+inside an hour.**
+
+That is the argument for a ratchet, made by the corpus rather than asserted:
+
+- `scripts/check_new_tables_are_locked_down.py` — every public table a migration
+  creates must reach RLS-enabled **and** anon/authenticated-revoked somewhere in
+  the migration set. Two independent arms, because OD-94 already recorded that
+  relying on grant ordering is *"ordering luck, not a control"*. Blocking, in the
+  `schema-code-parity` job. Exit 2 when it cannot check. Debt list shrink-only,
+  one entry (`sommelier_conversations`, which OD-72's sweep deliberately excludes).
+- Proven against three trees that must fail it, not one: `main` as it stood today
+  (names the 3 regressed tables), the pre-OD-73 tree (names the 8 the sweep
+  actually created, including `procurement_documents` and `user_oauth_accounts`),
+  and a missing directory (exit 2).
+
+**Two things worth recording because they are counter-intuitive.**
+
+*The severity was smaller than it first looked, and saying so matters.* OD-72 left
+a standing `alter default privileges … revoke all on tables from anon,
+authenticated` at `20260825210000_od72_revoke_client_grants.sql:183`. Every table
+created after that version starts with no client grant, so the three tables were
+never PostgREST-reachable. The gap was RLS only — defence-in-depth, not an open
+door. An earlier reading of this incident called it live anon exposure; it was not,
+and the correction is recorded here rather than quietly dropped.
+
+*The fix is a follow-up migration, against the convention, for a stated reason.*
+OD-59 and OD-94 both require RLS in the migration that CREATES the table, and the
+guard says so in its failure message. That rule assumes the creating migration has
+not shipped. `20260826175836` **has** — so editing it would change only databases
+built from scratch, giving a fresh build RLS that production lacks. That is a new
+fresh-vs-remote divergence, and one `check_schema_parity.sh` cannot see, because
+parity compares columns and functions and not RLS or grants. A follow-up reaches
+production on the next deploy and every fresh build alike.
+
+**What this still does not catch:** views and `SECURITY DEFINER` functions. A view
+cannot carry RLS, so grants are its whole control; a `SECURITY DEFINER` function
+granted to `anon` bypasses table RLS entirely. Both are out of the guard's scope
+and neither OD-72 nor OD-73 swept the `SECURITY INVOKER` function surface — OD-73
+deferred it in as many words (*"narrowing function ACLs is a separate question"*).
+A separate finding, not folded in here to look complete.
