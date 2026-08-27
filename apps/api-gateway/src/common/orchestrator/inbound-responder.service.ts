@@ -787,10 +787,14 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
             : {}),
         },
       });
-      // The honest verdict on THIS task is whether a human approved and sent
-      // the draft — the product never auto-sends. That is `approval_v1` and
-      // needs a deferred join against the approve/dismiss record; it lands as a
+      // The honest verdict on THIS task is what happened to the draft — a human
+      // approving it, or the autonomy gate releasing it. That is `approval_v1`,
+      // needs a deferred join against the approve/dismiss record, and lands as a
       // second row beside this one rather than replacing it.
+      //
+      // Deliberately NOT phrased as the absolute this file used to carry: OD-37
+      // established that the stronger claim is overstated, and a CLAIMS.jsonl
+      // guard fails the build if it reappears here.
       return analysis;
     } catch (error: any) {
       // ModelClientError.message already carries the API error detail the old

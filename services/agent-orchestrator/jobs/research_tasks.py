@@ -758,12 +758,23 @@ async def _process_record(
                 agent="research_agent",
                 task_type="field_search",
                 choice=f"search:{len(search_results)}_results",
-                outcome="success" if search_ok else "failure",  # call-level
+                # `results_v1`: a FAILED search stays `failure` (search_ok is a
+                # real signal). A search that succeeded and found nothing is
+                # `null` — untestable — rather than the `success` it used to be.
+                outcome=(
+                    ("success" if search_results else None) if search_ok else "failure"
+                ),
                 duration_ms=int((time.perf_counter() - _t0) * 1000),
                 context={
+                    "outcome_basis": "results_v1",
                     "field": field_name,
                     "wine_id": wine_id,
                     "results_count": len(search_results),
+                    **(
+                        {"untestable": "search_returned_no_results"}
+                        if search_ok and not search_results
+                        else {}
+                    ),
                 },
             )
         except Exception as spend_err:
@@ -1053,13 +1064,24 @@ async def _process_record(
                     agent="research_agent",
                     task_type="field_search_reflexion",
                     choice=f"search:{len(search_results)}_results",
-                    outcome="success" if search_ok else "failure",  # call-level
+                    # `results_v1` — same reading as field_search above.
+                    outcome=(
+                        ("success" if search_results else None)
+                        if search_ok
+                        else "failure"
+                    ),
                     duration_ms=int((time.perf_counter() - _t0) * 1000),
                     context={
+                        "outcome_basis": "results_v1",
                         "field": field_name,
                         "wine_id": wine_id,
                         "attempt": attempt,
                         "results_count": len(search_results),
+                        **(
+                            {"untestable": "search_returned_no_results"}
+                            if search_ok and not search_results
+                            else {}
+                        ),
                     },
                 )
             except Exception as spend_err:

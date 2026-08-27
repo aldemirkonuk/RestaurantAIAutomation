@@ -513,9 +513,15 @@ class ClaudeVisionExtractor:
                 agent_fallback="claude_vision_extractor",
                 task_type="menu_page_extraction",
                 choice=f"wines:{len(parsed.get('wines', []))}",
-                outcome="partial" if parse_error else "success",  # call-level
+                # OD-59 / P3.0: this outcome has NEVER been call-level. It is
+                # decided by `parse_json_response`, which is a genuine parse
+                # check — the row was stamped `call_level_v0` by default and
+                # therefore understated the code. Correcting the string costs
+                # nothing and stops a later re-grade redoing work already done.
+                outcome="partial" if parse_error else "success",
                 duration_ms=int((time.perf_counter() - _t0) * 1000),
                 context={
+                    "outcome_basis": "parse_v1",
                     "page_index": page_index,
                     "parse_error": bool(parse_error),
                 },
@@ -673,9 +679,10 @@ class ClaudeVisionExtractor:
                 agent_fallback="claude_vision_extractor",
                 task_type="pdf_extraction",
                 choice=f"wines:{len(parsed.get('wines', []))}",
-                outcome="partial" if parse_error else "success",  # call-level
+                # Same as the per-page path: graded on the parse, not on HTTP.
+                outcome="partial" if parse_error else "success",
                 duration_ms=int((time.perf_counter() - _t0) * 1000),
-                context={"parse_error": bool(parse_error)},
+                context={"outcome_basis": "parse_v1", "parse_error": bool(parse_error)},
             )
         except Exception:
             pass
