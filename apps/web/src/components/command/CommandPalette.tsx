@@ -20,7 +20,7 @@ import {
   useState,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Search, CornerDownLeft, Lightbulb, ArrowRight, Home } from "lucide-react";
+import { Search, CornerDownLeft, Lightbulb, ArrowRight, Home, Sparkles } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { LANDING_KEY } from "./CommandProvider";
@@ -32,6 +32,7 @@ import {
   staticCommands,
 } from "./commands";
 import { apiClient } from "../../services/api/client";
+import { ASK_AI_OPEN_EVENT } from "../askai/events";
 
 const RECENTS_KEY = "wineops.command.recents";
 const MAX_RECENTS = 5;
@@ -153,7 +154,20 @@ export function CommandPalette({
       });
     }
 
-    const merged = [...base, ...landing];
+    // Ask AI (P3.C) is reachable by ⌘⇧K, but a shortcut nobody is told about
+    // is not a feature. It appears here too, and hands off to the same event.
+    const askAi: Command = {
+      id: "askai-open",
+      title: "Ask AI to do something",
+      subtitle: "Reorder stock or draft a vendor reply — you confirm before it runs",
+      section: "Create",
+      icon: Sparkles,
+      keywords: "ask ai action propose reorder draft vendor natural language command",
+      shortcut: "⌘ ⇧ K",
+      action: () => window.dispatchEvent(new CustomEvent(ASK_AI_OPEN_EVENT)),
+    };
+
+    const merged = [...base, askAi, ...landing];
     return topRec ? [topRec, ...merged] : merged;
   }, [topRec, location.pathname, toast]);
 
