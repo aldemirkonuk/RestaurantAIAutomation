@@ -88,22 +88,30 @@
 
 | Stage | Gate | Status |
 |---|---|---|
-| **P3.0 Doneability coverage** | *is* the gate | not started |
+| **P3.0 Doneability coverage** | *is* the gate | ✅ **shipped 2026-08-27** — 7/7 gateway task types graded, Python restamped, CI guard blocks a regression. One migration awaiting production (below) |
 | **P3.A Mobile parity** | none — runs alongside | not started |
 | **P3.B Backend-kitchen expansion** (beverages first) | none — runs alongside | not started |
 | **P3.C Ask AI** | behind P3.0 | blocked by design |
 | **P3.D Job → model registry** (OD-04) | behind P3.0 + traffic | blocked by design |
 | **NF-B guests** | — | **held** — blocked on OD-05/OD-07, not on work |
 
-**The one number this milestone exists to fix,** measured 2026-08-26: the gateway
-emits **7** task types and **1** carries a real verdict (`document_extraction` on
-`reconciliation_v1`, `document-extractor.service.ts:169`). The other six stamp
-`outcome_basis: "call_level_v0"` at `model-client.service.ts:387` — *"the HTTP
-request returned 200."* On the Python side OD-75 moved 12 sites to `parse_v1`.
+**The one number this milestone existed to fix — closed 2026-08-27.** It was:
+the gateway emits **7** task types and **1** carries a real verdict. It is now
+**7 of 7**, and across both runtimes **26 of 38** task types carry a basis better
+than `call_level_v0`, with the remaining **12** named in a shrink-only exemption
+list that states why each cannot be graded (genuine human rubric, or a deferred
+join that does not exist yet). `scripts/check_task_types_are_graded.py` blocks a
+regression in CI, and fails on a *redundant* exemption too — claiming something
+cannot be graded when it can is the same rot pointing the other way.
 
-**Next action:** P3.0, starting from `04-specs/OD-59-VERDICT-CENSUS.md` §4 rows
-2–9 (synchronous, Trivial/Low, graders already running and simply not reaching
-the footprint). P3.A and P3.B may start at the same time; P3.C and P3.D may not.
+**Not done until applied:** `20260827100000_photo_count_suggestions.sql` is
+committed and **not yet applied to production**. `schema-parity.yml`'s production
+arm is red until it is, and that is the guard working as designed — an unapplied
+migration is the phantom-table class this repo found five times in one day.
+
+**Next action:** apply the photo-count migration, then **P3.C (Ask AI)** and
+**P3.D (model registry)** are unblocked — the gate they sat behind is closed.
+P3.A (mobile) and P3.B (beverages) were never gated and remain startable.
 
 **Page layer:** 47 route notes in `06-pages/`, each carrying Surface + §1a
 Features + the §10–13 dossier + `archetype:` — both the graph and the
@@ -117,4 +125,4 @@ founder-readable layer are CI-claimed (ADR-0018 claims in `CLAIMS.jsonl`).
 - Real data, never mock-only; docs bulletproof before features (ADR 0018).
 
 ---
-*Last updated: 2026-08-26 — P2 closed (both held items resolved); P3 opened under ADR 0029.*
+*Last updated: 2026-08-27 — P3.0 shipped: every task type graded or knowingly exempt, guarded in CI.*

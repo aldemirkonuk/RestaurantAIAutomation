@@ -317,9 +317,19 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
                 agent="web_verify",
                 task_type="web_verify_search",
                 choice=f"search:{len(snippets)}_results",
-                outcome="success",  # call-level: search completed
+                # `results_v1` — see jobs/score_tasks.py for the reasoning.
+                outcome="success" if snippets else None,
                 duration_ms=int((time.perf_counter() - _t0) * 1000),
-                context={"wine_id": wine_id, "results_count": len(snippets)},
+                context={
+                    "outcome_basis": "results_v1",
+                    "wine_id": wine_id,
+                    "results_count": len(snippets),
+                    **(
+                        {"untestable": "search_returned_no_results"}
+                        if not snippets
+                        else {}
+                    ),
+                },
             )
         except Exception:
             pass

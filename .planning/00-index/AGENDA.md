@@ -2,7 +2,7 @@
 type: agenda
 title: Agenda
 status: live
-updated: 2026-08-26
+updated: 2026-08-27
 links: ["[[PLAN]]", "[[HOME]]", "[[OPEN-DECISIONS]]", "[[0029-p3-plan-of-record]]"]
 ---
 
@@ -44,18 +44,19 @@ Canonical list: the 🔴 rows of [[OPEN-DECISIONS]]. Headlines only:
 
 | Item | State |
 |---|---|
-| **P3.0 · P3.A · P3.B** | Open and startable. P3.A and P3.B may run at the same time as P3.0 — they share no files and no decisions |
+| **P3.0** | ✅ **Shipped 2026-08-27.** 7/7 gateway task types graded; 26 of 38 across both runtimes carry a real basis, 12 knowingly exempt with reasons; `check_task_types_are_graded.py` blocks a regression. **One migration awaits production** — `20260827100000_photo_count_suggestions.sql`; schema-parity is red until applied |
+| **P3.C · P3.D** | Unblocked — the gate they sat behind is closed |
+| **P3.A · P3.B** | Open and startable; never gated |
 | Main | PRs #68–#118 merged 2026-08-26. Latest: #118 rescued the §1a Features layer (47/47 page notes) and re-scoped ADR-0018's Surface claim, which had been selecting page notes by filename |
 | Other sessions | #119 OD-73 RLS relock · #113 prose corrections · #86 studio.md self-contradiction (**stale** — needs a rebase past #118) |
 
 ## 🟢 Next actions (no approval needed)
 
-1. **P3.0** — start at `04-specs/OD-59-VERDICT-CENSUS.md` §4 rows 2–9: synchronous,
-   Trivial/Low, and the graders are **already running** — the results simply never
-   reach the footprint. Two task types are already graded better than they are
-   stamped; correcting the string costs nothing.
-2. **P3.A / P3.B** — either may start immediately, in parallel with each other and
-   with P3.0.
+1. **Apply `20260827100000_photo_count_suggestions.sql` to production.** Until
+   then the code writes to a table production does not have — the exact phantom
+   class ADR 0028 exists for — and schema-parity stays red.
+2. **P3.A / P3.B / P3.C / P3.D** — all four are now startable; the P3.0 gate is
+   closed.
 3. **`DocumentsPage` `?doc=` deep link** — the copy-link button builds a param the
    page never reads, so a shared link silently loses its target.
 4. **Per-item inventory ledger view** — `inventory-ledger.controller.ts:210` serves
@@ -63,9 +64,10 @@ Canonical list: the 🔴 rows of [[OPEN-DECISIONS]]. Headlines only:
 5. Mechanical register items (OD-30/32/33 cluster) — **verify each against the
    register before starting**; half-closed entries are the norm, not the exception.
 
-**Not startable, and that is deliberate:** P3.C (Ask AI) and P3.D (model registry)
-are behind the P3.0 gate. Scaffolding them "to get ahead" is the specific failure
-[ADR 0029](../decisions/0029-p3-plan-of-record.md) §6.3 names.
+**The gate is closed, so §6.1 is the live risk now**, not §6.3: P3.0 must not be
+called done on the cheap census rows alone. It is not — but the deferred
+`ontology_v1` join (census §4 row 12, four task types) is real work still
+outstanding, and it is named in the exemption list rather than quietly counted.
 
 ## 📌 Standing watch
 

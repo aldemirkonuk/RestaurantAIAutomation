@@ -182,12 +182,24 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
                 agent="score_agent",
                 task_type="score_search",
                 choice=f"search:{len(snippets)}_results",
-                outcome="success",  # call-level: search completed
+                # OD-59 / P3.0 `results_v1`: a search that returned NOTHING used to
+                # record `success` — "the HTTP request completed". It is now
+                # `null`: the search ran and whether the wine has no coverage or
+                # the query was wrong is not knowable here, and a fabricated
+                # verdict either way would train people to ignore the number. A
+                # search that actually FAILED stays `failure`.
+                outcome="success" if snippets else None,
                 duration_ms=int((time.perf_counter() - _t0) * 1000),
                 context={
+                    "outcome_basis": "results_v1",
                     "wine_id": wine_id,
                     "source": source_key,
                     "results_count": len(snippets),
+                    **(
+                        {"untestable": "search_returned_no_results"}
+                        if not snippets
+                        else {}
+                    ),
                 },
             )
         except Exception:
@@ -235,9 +247,19 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
                 agent="score_agent",
                 task_type="price_search",
                 choice=f"search:{len(price_snippets)}_results",
-                outcome="success",  # call-level: search completed
+                # Same `results_v1` reading as score_search above.
+                outcome="success" if price_snippets else None,
                 duration_ms=int((time.perf_counter() - _t0) * 1000),
-                context={"wine_id": wine_id, "results_count": len(price_snippets)},
+                context={
+                    "outcome_basis": "results_v1",
+                    "wine_id": wine_id,
+                    "results_count": len(price_snippets),
+                    **(
+                        {"untestable": "search_returned_no_results"}
+                        if not price_snippets
+                        else {}
+                    ),
+                },
             )
         except Exception:
             pass

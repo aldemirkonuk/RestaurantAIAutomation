@@ -53,10 +53,27 @@ export interface ExtractedItem {
   warnings: string[];
 }
 
+/**
+ * Why the parse ended where it did, as a value rather than a warning string.
+ *
+ * OD-59: the doneability verdict has to tell "the model returned garbage" from
+ * "the page really had three wines", and the two are indistinguishable once the
+ * distinction only exists in prose inside `warnings[]`. A grader that
+ * string-matches an English sentence breaks the first time someone improves the
+ * wording, and breaks silently.
+ */
+export type ParseStatus = "ok" | "invalid_json" | "no_item_array";
+
 export interface ExtractionResult {
   items: ExtractedItem[];
   rejected: Array<{ raw: RawExtractedItem; reason: string }>;
   warnings: string[];
+  /** How the parse ended. See {@link ParseStatus}. */
+  parseStatus: ParseStatus;
+  /** Rows the model returned, before validation. `0` when nothing parsed. */
+  rowCount: number;
+  /** True when >50% of rows were rejected — a broken parser, not a small page. */
+  yieldCollapsed: boolean;
 }
 
 /** Bottle formats we recognise, in ml. */
@@ -266,6 +283,9 @@ export function normalizeExtraction(
       warnings: [
         "Model response was not valid JSON; no observations recorded.",
       ],
+      parseStatus: "invalid_json",
+      rowCount: 0,
+      yieldCollapsed: false,
     };
   }
 
@@ -283,6 +303,9 @@ export function normalizeExtraction(
         items: [],
         rejected: [],
         warnings: ["Model response contained no recognisable item array."],
+        parseStatus: "no_item_array",
+        rowCount: 0,
+        yieldCollapsed: false,
       };
     }
   }
@@ -310,13 +333,21 @@ export function normalizeExtraction(
   // A page where most rows fail is a broken parse, not a sparse catalogue. Say
   // so loudly — the alternative is a vendor silently contributing three prices
   // from a hundred-wine list and nobody noticing the parser regressed.
-  if (rows.length > 0 && rejected.length > rows.length / 2) {
+  const yieldCollapsed = rows.length > 0 && rejected.length > rows.length / 2;
+  if (yieldCollapsed) {
     warnings.push(
       `${rejected.length} of ${rows.length} rows were rejected — treat this page's parser as broken rather than the catalogue as small.`,
     );
   }
 
-  return { items, rejected, warnings };
+  return {
+    items,
+    rejected,
+    warnings,
+    parseStatus: "ok",
+    rowCount: rows.length,
+    yieldCollapsed,
+  };
 }
 
 /**

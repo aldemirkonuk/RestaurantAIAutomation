@@ -1,7 +1,12 @@
 import { Injectable, Logger, Optional } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../../database/database.service";
-import { ModelClientService } from "../model-client/model-client.service";
+import {
+  ModelClientService,
+  NfEventRef,
+} from "../model-client/model-client.service";
+import { NfVerdictService } from "../model-client/nf-verdict.service";
+import { PARSE_BASIS } from "../model-client/verdict-bases";
 import { getCorrelationId } from "../model-client/correlation";
 import { WebsocketGateway } from "../../websocket/websocket.gateway";
 import { EmailClass, TransportSignals, replySkipReason } from "./email-triage";
@@ -152,6 +157,7 @@ export class InboundResponderService {
     private readonly databaseService: DatabaseService,
     private readonly modelClient: ModelClientService,
     private readonly websocketGateway: WebsocketGateway,
+    private readonly nfVerdicts: NfVerdictService,
     @Optional() private readonly senderReputation?: SenderReputationService,
   ) {}
 
@@ -733,6 +739,11 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       }
     }
 
+    // OD-59 / P3.0: `parseAnalysis` returning null means this call produced
+    // nothing usable — no reply body, no analysis. At call level that reads as
+    // `success` because the HTTP request returned 200, which is the exact
+    // inversion the verdict below exists to correct.
+    const eventRef = new NfEventRef();
     try {
       // P1 NF-A: routed through the model client. Body and the PDF beta
       // header pass through VERBATIM — temperature 0.4 and
@@ -756,11 +767,35 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
           choice: "analysis+draft",
           restaurantId: input.restaurantId,
           correlationId: input.correlationId ?? null,
+          eventRef,
         },
       });
 
       const text: string = payload?.content?.[0]?.text ?? "";
-      return this.parseAnalysis(text);
+      const analysis = this.parseAnalysis(text);
+      this.nfVerdicts.record(eventRef, PARSE_BASIS, {
+        outcome: analysis ? "success" : "failure",
+        evidence: {
+          // Enough to re-check a disputed verdict without re-running the call.
+          response_chars: text.length,
+          parsed: analysis !== null,
+          ...(analysis
+            ? {
+                intent: analysis.intent,
+                reply_body_chars: analysis.reply_body.length,
+              }
+            : {}),
+        },
+      });
+      // The honest verdict on THIS task is what happened to the draft — a human
+      // approving it, or the autonomy gate releasing it. That is `approval_v1`,
+      // needs a deferred join against the approve/dismiss record, and lands as a
+      // second row beside this one rather than replacing it.
+      //
+      // Deliberately NOT phrased as the absolute this file used to carry: OD-37
+      // established that the stronger claim is overstated, and a CLAIMS.jsonl
+      // guard fails the build if it reappears here.
+      return analysis;
     } catch (error: any) {
       // ModelClientError.message already carries the API error detail the old
       // axios-shape read (error.response.data.error.message) used to surface.
