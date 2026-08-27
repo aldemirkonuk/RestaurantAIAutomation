@@ -189,12 +189,13 @@ measurement layer above it missing entirely.
 - **OD-03 — the harness choice is open.** `NousResearch/hermes-agent` vs
   `deepseek-ai/deepseek-harness` vs extending in-house
   `services/agent-orchestrator/core/base_agent.py`
-  (`OD-03, .planning/decisions/OPEN-DECISIONS.md:25`). **This charter does not pick one.**
+  (OD-03, `.planning/decisions/OPEN-DECISIONS.md:25`). **This charter does not pick one.**
   The resolution path named in the decision log is *"a scoped bake-off on this repo's
   actual workloads. No pick from repute"* — and this department owns running it. See
   [[ai-orchestration-directive]] §The harness fork.
-- **OD-04 — external model roster**, explicitly downstream of OD-03
-  (`OD-04, OPEN-DECISIONS.md:26`). → [[model-routing-inference-economics-charter]].
+- **OD-04 — external model roster.** No longer stated as downstream of OD-03: the row's
+  unblocker is now a **job → model registry** (OD-04, `OPEN-DECISIONS.md:26`).
+  → [[model-routing-inference-economics-charter]].
 - **The evaluation seam** (**TECH-F3**; numbered OD-21 in `technology.md:845`, collision noted
   above) — methodology vs. operations, or one team in Intelligence.
 - **TECH-F6 — guardian-agent co-ownership.** Fleet owns the code, SRE owns the findings
