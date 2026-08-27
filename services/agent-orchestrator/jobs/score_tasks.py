@@ -169,6 +169,25 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
         _t0 = time.perf_counter()
         snippets = await serper_search(query, num_results=5)
 
+        # OD-59 / P3.0 `results_parsed_v1`: the parse is hoisted ABOVE the spend
+        # log so the emit can grade on what the search actually YIELDED.
+        #
+        # A paid search that returns five irrelevant snippets used to record
+        # identically to one that found the score. That is the number that
+        # matters here — Serper is billed per query, and "the HTTP call
+        # completed" is not a thing anyone is buying.
+        parsed = (
+            parse_serper_score_snippets(
+                [
+                    {"title": s["title"], "link": s["link"], "snippet": s["snippet"]}
+                    for s in snippets
+                ],
+                source_key,
+            )
+            if snippets
+            else None
+        )
+
         # Log Serper spend.
         # P1 fix: wine_id is NOT a restaurant_id — it now rides in context.
         try:
@@ -182,19 +201,20 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
                 agent="score_agent",
                 task_type="score_search",
                 choice=f"search:{len(snippets)}_results",
-                # OD-59 / P3.0 `results_v1`: a search that returned NOTHING used to
-                # record `success` — "the HTTP request completed". It is now
-                # `null`: the search ran and whether the wine has no coverage or
-                # the query was wrong is not knowable here, and a fabricated
-                # verdict either way would train people to ignore the number. A
-                # search that actually FAILED stays `failure`.
-                outcome="success" if snippets else None,
+                # success  — snippets came back AND a score parsed out of them.
+                # failure  — we paid for results and none of them were usable.
+                # null     — the search found nothing at all. Whether this wine
+                #            has no coverage or the query was wrong is NOT
+                #            knowable here, and guessing would train people to
+                #            ignore the number.
+                outcome=("success" if parsed else "failure") if snippets else None,
                 duration_ms=int((time.perf_counter() - _t0) * 1000),
                 context={
-                    "outcome_basis": "results_v1",
+                    "outcome_basis": "results_parsed_v1",
                     "wine_id": wine_id,
                     "source": source_key,
                     "results_count": len(snippets),
+                    "parsed": bool(parsed),
                     **(
                         {"untestable": "search_returned_no_results"}
                         if not snippets
@@ -209,13 +229,6 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
             new_scores[source_key] = {"status": "not_found"}
             continue
 
-        parsed = parse_serper_score_snippets(
-            [
-                {"title": s["title"], "link": s["link"], "snippet": s["snippet"]}
-                for s in snippets
-            ],
-            source_key,
-        )
         if parsed:
             new_scores[source_key] = {
                 "raw_score": parsed["raw_score"],
@@ -235,6 +248,18 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
         price_query = queries["wine_searcher"]
         _t0 = time.perf_counter()
         price_snippets = await serper_search(price_query, num_results=5)
+        # Parse hoisted above the emit for the same reason as score_search.
+        price_parsed = (
+            parse_serper_score_snippets(
+                [
+                    {"title": s["title"], "link": s["link"], "snippet": s["snippet"]}
+                    for s in price_snippets
+                ],
+                "wine_searcher",
+            )
+            if price_snippets
+            else None
+        )
         # P1 fix: wine_id is NOT a restaurant_id — it now rides in context.
         try:
             get_spend_logger().log(
@@ -247,13 +272,18 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
                 agent="score_agent",
                 task_type="price_search",
                 choice=f"search:{len(price_snippets)}_results",
-                # Same `results_v1` reading as score_search above.
-                outcome="success" if price_snippets else None,
+                # Same `results_parsed_v1` reading as score_search above.
+                outcome=(
+                    ("success" if price_parsed else "failure")
+                    if price_snippets
+                    else None
+                ),
                 duration_ms=int((time.perf_counter() - _t0) * 1000),
                 context={
-                    "outcome_basis": "results_v1",
+                    "outcome_basis": "results_parsed_v1",
                     "wine_id": wine_id,
                     "results_count": len(price_snippets),
+                    "parsed": bool(price_parsed),
                     **(
                         {"untestable": "search_returned_no_results"}
                         if not price_snippets
@@ -263,16 +293,8 @@ async def _score_async(wine_id: str) -> Optional[Dict[str, Any]]:
             )
         except Exception:
             pass
-        if price_snippets:
-            price_parsed = parse_serper_score_snippets(
-                [
-                    {"title": s["title"], "link": s["link"], "snippet": s["snippet"]}
-                    for s in price_snippets
-                ],
-                "wine_searcher",
-            )
-            if price_parsed:
-                retail_price_avg = price_parsed["raw_score"]
+        if price_parsed:
+            retail_price_avg = price_parsed["raw_score"]
 
     # Merge new scores into existing (Pitfall 4: preserve prior finds)
     merged_scores = {**existing_scores}

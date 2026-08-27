@@ -152,3 +152,54 @@ def insert_event(supabase, row: Dict[str, Any]) -> Optional[str]:
             exc,
         )
         return None
+
+
+def record_verdict(
+    supabase,
+    event_id: str,
+    basis: str,
+    outcome: Optional[str],
+    evidence: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """
+    Write one task-level doneability verdict over an existing NF row. Never raises.
+
+    The Python mirror of the gateway's `NfVerdictService` (ADR 0017). Until this
+    existed, Python could emit events and had no way to grade them, so a
+    DEFERRED grader — one that only learns the answer minutes later, in another
+    process — had nowhere to put it.
+
+    `basis` names the grader IN THE ROW, and the table is keyed
+    `(event_id, basis)`, so re-running the same grader is idempotent and a
+    genuinely different grader lands as a SECOND row with its disagreement
+    intact. That is the whole reason verdicts are a sidecar and not a column.
+
+    Failure posture matches `insert_event`: a warn and a drop counter, never an
+    exception. The instrument must not break the thing it measures — a verdict
+    that cannot be written shows up honestly as uncovered, while a raised one
+    would kill a Celery task doing real work.
+
+    Returns True on success, False on any failure — including an event_id that
+    is not a uuid, which the FK would reject anyway.
+    """
+    if not _is_uuid(event_id):
+        return False
+    try:
+        supabase.table("nf_verdict").upsert(
+            {
+                "event_id": event_id,
+                "basis": basis,
+                "outcome": outcome,
+                "evidence": evidence or {},
+            },
+            on_conflict="event_id,basis",
+        ).execute()
+        return True
+    except Exception as exc:
+        total = record_drop("nf_verdict")
+        logger.warning(
+            "nf_verdict upsert failed (non-fatal, drop #%d this process): %s",
+            total,
+            exc,
+        )
+        return False
