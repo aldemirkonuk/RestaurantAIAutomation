@@ -37,3 +37,4 @@ plan of record — that is `PROJECT.md` → `STATE.md` → `ROADMAP.md`.
 | [DISH_IDENTITY_DESIGN.md](DISH_IDENTITY_DESIGN.md) | Dish identity design | Design record |
 | [claude_full_architectural.md](claude_full_architectural.md) | Pre-Mudavym architecture essay — oldest doc in the vault, kept by founder call | Historical (kept, ADR 0032) |
 | [SCHEMA_DRIFT_INVENTORY.txt](SCHEMA_DRIFT_INVENTORY.txt) | 2026-08-04 schema-drift snapshot | Partially superseded by ADRs 0026/0031; retire when schema-migrations reconciles |
+| [LLM_INSTRUCTION_PROMPTS.md](LLM_INSTRUCTION_PROMPTS.md) | Tombstone stub for the retired WineOps prompt library — recovery instructions inside | Retired 2026-08-27; successor planned |

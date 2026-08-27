@@ -77,6 +77,7 @@ Every deleted path is recoverable with
 | `.planning/.next-call-count` | 1 | `a9e1e977` | Zero bytes, stale since 2026-07-08 |
 | 4 data blobs (`stage1_producer_research_raw.json` 1.9 MB, `analytics-feature-catalog.json`/`.csv`, `producer_aliases.json`) | 4 | `c3a5c6f3` | Byte-identical to `datasets/planning-exports/` — the path every referencing doc already cites |
 | `foundation/VAULT_CLEANUP_AUDIT.md` | 1 | this ADR's commit | Retired into this ADR by its own contract ("this doc is retired into the resulting ADR") — retire-to-write satisfied |
+| `LLM_INSTRUCTION_PROMPTS.md` (content; a tombstone stub keeps the name at `07-reference/`) | 1 | the survivor-mapping follow-up commit | Founder call 2026-08-27: WineOps-era prompt library retired outright — a successor will be written fresh, and the stub carries the summary + recovery pointer for its line-anchored citations (OD-33 evidence) |
 
 Kept deliberately: `phases/999.1-consumer-food-profiles…/.gitkeep` (FUTURES §7
 backlog marker, not history); `archive/{ROADMAP,STATE}-pre-P2-20260825.md` (the
@@ -106,10 +107,10 @@ Vault: 1,677 → 1,152 files. Top level: 35 → 30.
   `.cursor/` is untracked, so that edit rides no commit),
   `AGENT_NATIVE_UI_DECISION.md` → `decisions/` (pre-log row added). 67 files of
   path citations rewritten in the same branch; wikilinks unaffected.
-- **Residue:** `LLM_INSTRUCTION_PROMPTS.md` is still top-level — the one
-  survivor without a founder call (20 references, WineOps-branded, overlaps
-  CLAUDE.md). `md/` (113 files) and the `md_files/` remnant follow the same
-  metric on their own branch. Revisit this ADR if a deleted phase doc turns out
+- **Residue:** `md/` (113 files) and the `md_files/` remnant follow the same
+  metric on their own branch (`docs/md-cleanup`, started the same session). A
+  successor LLM-instruction-prompts doc is planned; until it exists `CLAUDE.md`
+  is the only instruction source. Revisit this ADR if a deleted doc turns out
   to be load-bearing (signal: a session recovering one from history to answer a
   live question).
 

@@ -130,7 +130,7 @@ one a customer sees:
 | `apps/web/src/pages/InsightCatalog.tsx:2` — the explorer page header | `.planning/decisions/AGENT_NATIVE_UI_DECISION.md:64,100,105` |
 | `apps/web/src/components/command/commands.ts:99` — command palette, *"Browse all 375 insight types"* | `.planning/YC_WEDGE_PLAN.md:280,324` |
 | `apps/api-gateway/src/analytics/analytics.controller.ts:219` — the shipped OpenAPI summary | `.planning/07-reference/UX_PATHS_CATALOG.md:1844` |
-| `.planning/LLM_INSTRUCTION_PROMPTS.md:51,166` | `.planning/foundation/teams/corporate.md:435,448` |
+| `.planning/07-reference/LLM_INSTRUCTION_PROMPTS.md:51,166` | `.planning/foundation/teams/corporate.md:435,448` |
 | `.planning/07-reference/UX_PATHS_CATALOG.md:1543,1564,1566,1593,1598` | |
 
 `UX_PATHS_CATALOG.md` contains **both** numbers: `:1564` says 375, `:1844` says 573.
