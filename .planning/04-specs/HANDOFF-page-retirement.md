@@ -86,7 +86,7 @@ Verify with `cd apps/web && npx tsc --noEmit && npx vitest run && bash scripts/c
 
 ## 2. OD-83(b) — confirmed, and confirmed closed
 
-The register already marks OD-83 ✅ Resolved (`OPEN-DECISIONS.md:93`). This session
+The register already marks OD-83 ✅ Resolved (`OPEN-DECISIONS.md:94`). This session
 re-derived it independently rather than trusting that, because it was handed to us as
 an open "known loss":
 

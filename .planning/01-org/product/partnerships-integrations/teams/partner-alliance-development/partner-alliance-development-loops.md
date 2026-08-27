@@ -89,7 +89,7 @@ That is the whole mechanism. A staleness loop with no consequence is the thing i
 prevent.
 
 **What this loop does not do:** decide OD-07. That is the founder's
-(`OD-07, OPEN-DECISIONS.md:29`).
+(`OD-07, OPEN-DECISIONS.md:30`).
 
 ---
 

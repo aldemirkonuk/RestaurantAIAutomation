@@ -186,7 +186,7 @@ built to catch.
 > because the whole point is that another PR is fixing those lines right now.
 
 1. A citation into a decision document carries **both** the id and the line:
-   `OD-88 (OPEN-DECISIONS.md:55)`. Neither alone is admissible. *(This example's
+   `OD-88 (OPEN-DECISIONS.md:56)`. Neither alone is admissible. *(This example's
    own line number rotted from `:56` within the hour this guard shipped — a
    different session's checker caught it against `main` before the guard's own
    CI run did. Repaired here rather than left as a lesson: the id half held, the

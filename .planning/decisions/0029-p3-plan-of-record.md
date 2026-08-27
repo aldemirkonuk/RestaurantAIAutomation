@@ -172,7 +172,7 @@ cannot pass yet is a to-do wearing a guard's clothes.
 | Stage | Closes when |
 |---|---|
 | P3.0 | no emit site stamps `call_level_v0` without an entry in the named human-rubric exemption list, and `nf_a_verdict_coverage` reports > 0 for every non-exempt gateway task type |
-| P3.A | the mobile app renders the P2-approved feature set, verified on a simulator, not asserted |
+| P3.A | the mobile app renders the P2-approved feature set, verified on a simulator, not asserted. **Unmet as of 2026-08-27 and shipped anyway — see OD-109.** The app has never been run: managed Expo, no `ios/`, CocoaPods absent. A build and 37 unit tests are not rendering, and P3.A cannot be called done on that evidence |
 | P3.B | beverage extraction runs on the same graded basis as wine, with the verdict reaching the footprint |
 | P3.C | no Ask AI action can execute without a recorded human confirm — a guard, not a code-review habit |
 | P3.D | the roster choice cites `nf_a_cost_per_verified_task`, and the loop refuses to close on cost-per-call alone |

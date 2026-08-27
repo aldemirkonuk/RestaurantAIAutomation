@@ -68,7 +68,7 @@ precedent: "scripts/benchmark_haiku_vs_sonnet.py — the right shape, run once; 
 ```
 
 **Trip condition.** An ADR draft whose evidence section contains no measurement taken on
-this repo → [[decision-office-charter]] rejects it (`OD-03, OPEN-DECISIONS.md:25`).
+this repo → [[decision-office-charter]] rejects it (`OD-03, OPEN-DECISIONS.md:26`).
 
 ---
 

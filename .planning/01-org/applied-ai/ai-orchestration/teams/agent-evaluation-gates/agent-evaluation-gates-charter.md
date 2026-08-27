@@ -51,7 +51,7 @@ occurrence is a coordination miss. Two is the line failing, and the escalation i
 ([[agent-evaluation-gates-directive]] §Escalation).
 
 > ✅ **ID resolved — this fork is `TECH-F3`.** `technology.md:845` originally numbered
-> it **OD-21**; `.planning/decisions/OPEN-DECISIONS.md:135` already uses **OD-21** for
+> it **OD-21**; `.planning/decisions/OPEN-DECISIONS.md:136` already uses **OD-21** for
 > the Obsidian structural workflow, which is locked ([[OBSIDIAN_VAULT]]). The Decision
 > Office renamespaced the evaluation seam to **TECH-F3** ([[FORK-REGISTRY]]) — it is
 > now citable, and therefore closeable. → [[decision-office-charter]].
