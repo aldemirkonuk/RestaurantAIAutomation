@@ -2,16 +2,16 @@ import { NfVerdict } from "../../common/model-client/nf-verdict.service";
 import { ParsedDocument, tieOutToleranceCents } from "./parsed-document";
 
 /**
- * The basis string written into every row this grader produces (OD-59).
+ * Re-exported so this grader's callers keep importing the basis from the grader
+ * that produces it. The string itself now lives with every other basis in
+ * `common/model-client/verdict-bases.ts` — one place, so a typo is a compile
+ * error rather than a row nobody ever queries.
  *
  * `_v1` is load-bearing. This grader proves ARITHMETIC CONSISTENCY, not
  * correctness: an extraction can tie out to the cent and still carry the wrong
- * vendor, the wrong date, or the wrong SKU. Naming the basis in the row is what
- * keeps a narrow verdict from silently becoming the definition of "done" — a
- * later, stricter grader (scenario truth, per OD-59's ownership line) takes a
- * NEW basis and lands beside this one rather than overwriting it.
+ * vendor, the wrong date, or the wrong SKU.
  */
-export const RECONCILIATION_BASIS = "reconciliation_v1";
+export { RECONCILIATION_BASIS } from "../../common/model-client/verdict-bases";
 
 /**
  * Grade one extracted document.

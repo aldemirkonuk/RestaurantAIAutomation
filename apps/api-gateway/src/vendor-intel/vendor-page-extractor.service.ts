@@ -2,7 +2,12 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as crypto from "crypto";
 import { DatabaseService } from "../database/database.service";
-import { ModelClientService } from "../common/model-client/model-client.service";
+import {
+  ModelClientService,
+  NfEventRef,
+} from "../common/model-client/model-client.service";
+import { NfVerdictService } from "../common/model-client/nf-verdict.service";
+import { PARSE_YIELD_BASIS, parseYieldVerdict } from "./parse-yield-verdict";
 import {
   ExtractedItem,
   htmlToText,
@@ -68,6 +73,7 @@ export class VendorPageExtractorService {
     private readonly configService: ConfigService,
     private readonly databaseService: DatabaseService,
     private readonly modelClient: ModelClientService,
+    private readonly nfVerdicts: NfVerdictService,
   ) {}
 
   private model(): string {
@@ -201,6 +207,10 @@ export class VendorPageExtractorService {
     }
 
     let rawText: string;
+    // OD-59 / P3.0: this call grades itself. The ref carries the NF row id back
+    // once the fire-and-forget emit lands, so the verdict below attaches to it
+    // without the extraction ever waiting on the instrument.
+    const eventRef = new NfEventRef();
     try {
       // P1 NF-A: model client owns transport (same 120s budget as before) and
       // emits the footprint row. HTTP errors throw as `Anthropic <status>: …`,
@@ -220,6 +230,7 @@ export class VendorPageExtractorService {
           choice: "extracted_items",
           restaurantId: params.restaurantId ?? null,
           context: { url },
+          eventRef,
         },
       });
       rawText =
@@ -234,6 +245,16 @@ export class VendorPageExtractorService {
     result.itemsFound = extraction.items.length;
     result.rejected = extraction.rejected.length;
     result.warnings = extraction.warnings;
+
+    // The judgement already exists in `normalizeExtraction` — the >50%-rejected
+    // warning has always said "treat this page's parser as broken". This only
+    // carries it into the footprint, where until now a page that returned
+    // unparseable text still recorded `success` because HTTP said 200.
+    this.nfVerdicts.record(
+      eventRef,
+      PARSE_YIELD_BASIS,
+      parseYieldVerdict(extraction),
+    );
 
     for (const r of extraction.rejected.slice(0, 10)) {
       this.logger.debug(`Rejected row from ${url}: ${r.reason}`);

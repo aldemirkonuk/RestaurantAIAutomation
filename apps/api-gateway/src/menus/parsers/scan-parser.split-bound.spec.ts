@@ -1,6 +1,7 @@
 import { ScanParserService } from "./scan-parser.service";
 import { ConfigService } from "@nestjs/config";
 import { ModelClientService } from "../../common/model-client/model-client.service";
+import { NfVerdictService } from "../../common/model-client/nf-verdict.service";
 
 /**
  * OD-55 — loop-bound injection (CodeQL `js/loop-bound-injection`, high).
@@ -28,6 +29,9 @@ function makeService(): any {
   return new ScanParserService(
     { get: () => undefined } as unknown as ConfigService,
     {} as unknown as ModelClientService,
+    // nfVerdicts — splitPdfIfLarge never reaches a model call, so the grader is
+    // never invoked here.
+    {} as unknown as NfVerdictService,
   );
 }
 
