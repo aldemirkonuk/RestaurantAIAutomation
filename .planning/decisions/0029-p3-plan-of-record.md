@@ -115,7 +115,7 @@ mobile at **8.9%** of the web feature set — 19.5 of 219 §1a features across t
 legal), and mobile has never attempted either: **staff 21% · owner 10% ·
 public 3% · dev 0%.** Scoping both out would put the denominator at 154 and
 today's parity at 16% — a third smaller stage for the same work. The founder
-chose **all 219: full parity, no carve-outs.** P3.A's number is therefore always
+chose **all 219: full parity, no carve-outs** (filed as OD-108, retroactively — the answer reached this ADR before the question reached the register, which is its own finding and is recorded there). P3.A's number is therefore always
 out of 219, and a later reading that quotes 154 is quoting a scope that was
 considered and rejected. Census: `04-specs/P3A-MOBILE-PARITY-GAP.md`.
 

@@ -23,15 +23,34 @@ cannot report failure. A spend cap whose join key matched zero rows. A revoke
 that returned success on a 404. A test mocking an async method as sync. Each was
 found by hand, one at a time. This guard makes one shape of it mechanical.
 
-WHAT COUNTS AS UNABLE TO FAIL
------------------------------
-A `test` script whose entire body is an echo, a `true`, an `exit 0`, or a
-combination — nothing that could ever exercise the package. A script that runs a
-real runner (jest, vitest, pytest, node --test) can fail, and is fine.
+WHY AN ALLOWLIST, AFTER A BLOCKLIST FAILED
+------------------------------------------
+The first version of this guard matched *no-op shapes*: `echo`, `true`, `:`,
+`exit 0`. An adversarial audit broke it in four lines, and every one of these
+passed while doing nothing at all:
 
-A package with NO `test` script at all is also fine, and deliberately so: turbo
-skips it, no board shows it as covered, and nothing is claimed. The lie is
-specific to a script that runs, exits 0, and lets a dashboard say "passed".
+    "test": "npm run nothing"     -> indirection the regex never resolves
+    "test": "sh -c 'exit 0'"      -> not a builtin at the top level
+    "test": "#"                   -> a comment
+    "test": "node -e \"\""         -> a real binary running nothing
+
+That is the wrong shape for this problem. Enumerating ways to do nothing is
+unbounded; enumerating ways to RUN TESTS is small and known. So the rule
+inverted: a declared `test` script must invoke a recognised test runner.
+
+The blocklist version would have shipped looking correct, which is the same
+failure it was written to catch — a check that reports success without having
+established anything.
+
+WIDENING IS A DELIBERATE EDIT
+-----------------------------
+A package using a runner not in RUNNERS fails until someone adds it, in a diff,
+on purpose. That is the cost of the allowlist and it is the point: the guard
+cannot be satisfied by accident.
+
+A package with NO `test` script is fine, and deliberately so: turbo skips it, no
+board shows it as covered, and nothing is claimed. The lie is specific to a
+script that runs, exits 0, and lets a dashboard say "passed".
 
 Exit codes:  0 pass  |  1 a test script that cannot fail  |  2 cannot check
 """
@@ -42,31 +61,36 @@ import sys
 
 WORKSPACE_GLOBS = ("apps", "packages", "services")
 
-#: Scripts that are honestly empty rather than dishonestly green. A package may
-#: declare it has no tests — it may not declare that it ran them.
-NOOP = re.compile(
-    r"^\s*(?:"
-    r"echo(?:\s+(?:\"[^\"]*\"|'[^']*'|[^&|;]*))?"
-    r"|true"
-    r"|:"
-    r"|exit\s+0"
-    r")\s*(?:&&|;|\|\|)?\s*",
+#: Every test runner this repo may legitimately use. Matched as a whole word, so
+#: `jest` matches `jest --ci` and `npx jest` but not `jestfoo`. Add to this list
+#: in a diff, never by loosening the match.
+RUNNERS = (
+    "jest",
+    "vitest",
+    "mocha",
+    "ava",
+    "tap",
+    "pytest",
+    "playwright",
+    "cypress",
+    "karma",
+    "turbo",       # a workspace root delegating to its packages
+    "nest",        # `nest test`
+    "tsx",
+    "ts-node",
 )
+
+#: `node --test` is a runner; a bare `node` is not.
+NODE_TEST = re.compile(r"\bnode\b[^&|;]*--test\b")
+
+RUNNER_RE = re.compile(r"\b(?:" + "|".join(RUNNERS) + r")\b")
 
 ALLOW: dict[str, str] = {}
 
 
-def is_noop(script: str) -> bool:
-    """True when the whole script is echoes and exits — nothing that can fail."""
-    remaining = script.strip()
-    if not remaining:
-        return True
-    while remaining:
-        m = NOOP.match(remaining)
-        if not m or m.end() == 0:
-            return False
-        remaining = remaining[m.end() :].strip()
-    return True
+def runs_a_test_runner(script: str) -> bool:
+    """True when the script invokes something that can actually fail."""
+    return bool(RUNNER_RE.search(script) or NODE_TEST.search(script))
 
 
 def main() -> int:
@@ -93,29 +117,31 @@ def main() -> int:
             checked += 1
             if os.path.join(root, name) in ALLOW:
                 continue
-            if is_noop(script):
+            if not runs_a_test_runner(script):
                 offenders.append((os.path.join(root, name), script))
 
     if checked == 0:
         print("CANNOT CHECK — no package declared a `test` script at all")
         return 2
 
-    print(f"== Test scripts: {checked} package(s) declare one, {len(offenders)} cannot fail")
+    print(f"== Test scripts: {checked} package(s) declare one, {len(offenders)} run no known runner")
     if not offenders:
-        print("PASS — every declared test script runs something that can fail.")
+        print("PASS — every declared test script invokes a real test runner.")
         return 0
 
-    print("\n== CANNOT FAIL")
+    print("\n== RUNS NO TEST RUNNER")
     for path, script in offenders:
         print(f"   {path}")
         print(f"      test: {script}")
     print(
-        "\nFAIL — a `test` script that only echoes and exits 0 reports success by\n"
-        "   construction. turbo runs it, the board goes green, and the package is\n"
-        "   shown as covered while nothing is exercised. apps/mobile carried four\n"
-        "   real defects for as long as it carried such a script.\n"
-        "   Either run a real test runner, or DELETE the script — a package with no\n"
-        "   `test` key claims nothing, which is honest."
+        "\nFAIL — a `test` script that invokes no recognised runner reports success\n"
+        "   by construction. turbo runs it, the board goes green, and the package\n"
+        "   is shown as covered while nothing is exercised. apps/mobile carried\n"
+        "   four real defects for as long as it carried such a script.\n"
+        "   Either run a real test runner, or DELETE the script — a package with\n"
+        "   no `test` key claims nothing, which is honest.\n"
+        "   If the runner is legitimate and simply unlisted, add it to RUNNERS —\n"
+        "   deliberately, in a diff. The allowlist is the mechanism."
     )
     return 1
 
