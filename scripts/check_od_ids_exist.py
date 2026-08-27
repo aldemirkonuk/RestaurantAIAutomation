@@ -141,6 +141,13 @@ def parse_register(text: str) -> tuple[set[str], dict[str, tuple[str, str, int]]
         # exactly the false positive that would train people to ignore this guard.
         ids = ["OD-" + n for n in re.findall(r"OD-(\d+)", cell)]
         ids += ["OD-" + n for n in re.findall(r"(?<=/)(\d+)", cell)]
+        if not ids:
+            # `OD-` with no number behind it. Nothing to record, and the absorbs
+            # lookup below needs a real absorbing id -- an IndexError here would
+            # exit 1, which this guard's contract reserves for "an id names
+            # nothing". A guard that misreports its own crash is worse than one
+            # that fails.
+            continue
         rows.update(ids)
 
         for am in ABSORBS.finditer(body):
