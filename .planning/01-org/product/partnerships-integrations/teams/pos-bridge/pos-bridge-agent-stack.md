@@ -143,7 +143,7 @@ vault PRs, skill candidates. Gap rows:
 | `pos.catalog_pulled` cannot fire for a real provider | `pullPosCatalog()` throws for anything but `'simpos'` (`catalog-matcher.service.ts:187-191`), so at a real venue the proposer has no input and mapping is item-by-item through `POST /pos-hub/mappings/:restaurantId` |
 | No pull path exists at all | 13 of 27 providers declare `webhooks: false`, no `@Cron` calls a POS, no cursor is stored (POS-Q4). Blocked on **OD-A**, which stays open — this card presupposes no outcome |
 | `pos_checks.correlation_id` is never set | POS rows cannot join the correlation-id timeline (`POS-BRIDGE-AUDIT.md:614-620`), so an nf_a event and the check that caused it cannot be tied together |
-| The weekly throughput read excludes the wrong set | [[pos-bridge-schedule]] says "excluding SimPOS-sourced `generic_webhook`". Since 2026-08-24 it must also exclude the 66 `P3PROOF-*` rows left in production deliberately (`POS-BRIDGE-AUDIT.md:622-628`), or the metric reads 66 and means 0 |
+| The weekly throughput read — **fixed 2026-08-27 (founder, ADR 0035)** | [[pos-bridge-schedule]] now excludes both SimPOS-sourced `generic_webhook` and the 66 `P3PROOF-*` proof rows (`POS-BRIDGE-AUDIT.md:622-628`); the metric can no longer read 66 while meaning 0 |
 
 ## 6. Evidence today
 

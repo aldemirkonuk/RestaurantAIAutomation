@@ -51,8 +51,11 @@ Owns outright:
 
 - **The adversarial corpus** — cases, detection rate, and the CI suite that runs them.
 - **Injection policy** on every path where untrusted text reaches a prompt.
-- **Action and tool allowlisting** — the `ask → propose → confirm → execute` contract
-  (`foundation README:258-260`) is this team's to enforce, not to admire.
+- **Allowlist coverage audit** — verifying every AI surface sits behind the
+  `ask → propose → confirm → execute` contract (`foundation README:258-260`) and
+  classifying the gaps. *Narrowed 2026-08-27 (founder, ADR 0035): this line
+  originally claimed enforcement; **enforcement of the gate is
+  [[action-safety-the-human-gate-charter]]'s** — Security classifies, they gate.*
 - **Inference budgets** — per-tenant ceilings, and the definition of unauthenticated spend.
 - **Prompt and log hygiene** — PII and secrets entering a prompt or leaving in a log line.
 

@@ -143,8 +143,10 @@ for failing README §3.3 rule 3, each with its reason stated in-file; 7 skill ta
 are honestly empty (POS telemetry, social-community, both Legal teams,
 compliance-privacy dept, people-agent-ops dept, skill-harvesting — gated).
 
-**Cross-unit seams the wave surfaced — recorded in the files named, routed to the
-Decision Office, not resolved here:**
+**Cross-unit seams the wave surfaced — recorded in the files named. All seven were
+resolved by the founder the same day, [ADR 0035](../decisions/0035-wave2-seam-reconciliation.md);
+the list below is kept as the finding record, and every named file now carries its
+resolution line:**
 
 1. `nf-a-coverage-report` claimed by both [`ai-orchestration-agent-stack`](../01-org/applied-ai/ai-orchestration/ai-orchestration-agent-stack.md) and the observability schedule (see [`observability-telemetry-plumbing-agent-stack`](../01-org/platform/reliability-sre/teams/observability-telemetry-plumbing/observability-telemetry-plumbing-agent-stack.md)).
 2. The daily substrate report has two declared loop owners — department vs team (see [`data-agent-stack`](../01-org/platform/data/data-agent-stack.md) and its substrate team file).

@@ -62,6 +62,10 @@ escalates_to: "[[02-advisory/decision-office/decision-office-charter|decision-of
 Consumed, owned elsewhere: the skill envelope and registry ([[skills-charter]]);
 gate operation ([[agent-evaluation-gates-charter]]).
 
+**Sole owner of `nf-a-coverage-report` per ADR 0035** (founder, 2026-08-27):
+observability's twin job is `nf-emission-liveness-report` — is each field emitting —
+while this skill answers what share of tasks carry verdicts. Split by question.
+
 ## 4. Memory
 
 - **Procedural** — the §3 skills; candidates from consolidation go to

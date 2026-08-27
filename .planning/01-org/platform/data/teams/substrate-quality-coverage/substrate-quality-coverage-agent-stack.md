@@ -40,7 +40,7 @@ consumes:
 emits:
   - "quarantine decisions + `wine_repair_log` entries — consumer: [[corpora-enrichment-agent-stack|enrichment-runner]]'s repair loop (`enrichment-repair`)"
   - "threshold-change proposals — consumer: [[decision-office-charter]] (loop `threshold-change-review`, owner: them, not us)"
-  - "the daily substrate report — consumer: [[data-agent-stack|data-l0-rollup]] and [[data-agenda-board]] (**two declared owners — see §5**)"
+  - "the daily substrate report — this team is the sole producer (ADR 0035); consumer: [[data-agent-stack|data-l0-rollup]] and [[data-agenda-board]]"
   - "`substrate.rows_without_source_guarantee` — consumer: [[data-charter]]; **source column not yet contracted (gap)**"
   - nf_a events (task_type: substrate_audit)
 routing_class: mechanical        # apply a stated threshold, count, classify — deliberately not judgment
@@ -112,7 +112,7 @@ events, vault PRs. Gap and seam rows:
 | Gap / seam | Why it is a gap |
 |---|---|
 | `source_guarantee` has no intake contract | This unit holds the department's load-bearing invariant and cannot currently count it. `substrate.rows_without_source_guarantee` is declared with no source column |
-| The daily substrate report has **two declared owners** | [[substrate-quality-coverage-loops]] loop 5 (owner: this team) and [[data-loops]] loop 1 (owner: the department) describe one report. Recorded here and in [[data-agent-stack]] §5; **neither card resolves it** |
+| The daily substrate report — **resolved 2026-08-27 (founder, ADR 0035)** | This team runs it (loop 5 `substrate-progress-report` is the producer); the department's [[data-loops]] loop 1 is the daily consumption/rollup. Matches how every other department board works |
 | Nothing enforces that a quarantine actually blocks a publish | The charter's own reservation: this team's independence is worth its cost **only if its findings can stop a publish**. If the gate is advisory in practice, the honest output of `gate-efficacy-review` is a recommendation to merge this team back into the producers (M2) |
 | Consumers above L0 can route around the gate | M5's mechanism; nothing in the substrate layer can see it, which is why the gate-efficacy review is exempt from the anti-sprawl downgrade rule |
 

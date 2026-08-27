@@ -64,14 +64,15 @@ has collapsed the one-sentence boundary that is the whole team.
 | Skill (`.claude/skills/…`) | Tier | Trigger | Doneability | Past instance | Status |
 |---|---|---|---|---|---|
 | `signal-liveness-audit` | T2 | Weekly, and immediately after any change to the dependency set or container image | Every board metric has a named, verified liveness twin; the list without one is empty or explicitly accepted | `core/observability.py:53-84` returns `NoopMetric` when `prometheus_client` is absent and logs it at INFO (`:50`) — *no metrics* and *metrics are zero* render identically | NEW |
-| `nf-a-coverage-report` | T2 | Weekly, and on demand before any L4 claim | Coverage over agent tasks with whole-tuple grading, plus the three most-missing fields named | `decision_log` and `api_spend` cover parts of the tuple from two writers and **cannot be joined per task** (`technology.md:745-746`) | NEW |
+| `nf-emission-liveness-report` | T2 | Weekly, and on demand before any L4 claim | Every NF-A field classified emitting / dead / unjoinable — **is the pipe live**, with the three most-missing fields named | `decision_log` and `api_spend` cover parts of the tuple from two writers and **cannot be joined per task** (`technology.md:745-746`) | NEW |
 | `trace-attribute-review` | T2 | Any PR adding a span attribute, Sentry context, or log field | The attribute is on the allowlist or the PR is blocked; no raw guest identifier crosses the boundary | The guest-data invariant already required shell guards: `scripts/check_no_raw_guest_channels.sh`, `scripts/check_no_guest_name_matching.sh` | NEW |
 | `incident-timeline-assemble` | T3 | An incident is declared and routed here per the folded incident-command duty | A timeline joining `decision_log`, Sentry events and deploy history, with gaps in the record marked **as gaps** | `apps/web/src/pages/LogsTimelinePage.tsx` exists precisely because assembling this by hand was needed | NEW |
 
-**Named collision, not resolved here:** `nf-a-coverage-report` is claimed by this name in
-[[ai-orchestration-agent-stack]] as well. Same skill name, two proposed owners, two
-different past instances (theirs: PR #35 / `feat/p1-readout`). Recorded as a seam for
-[[decision-office-charter]] — a unit doc must not pick.
+**Collision resolved 2026-08-27 (founder, ADR 0035) — split by question.** The name
+`nf-a-coverage-report` and the *verdict-coverage* question (what share of tasks carry
+verdicts) belong to [[ai-orchestration-agent-stack]]; this team's row above was renamed
+`nf-emission-liveness-report` and answers the *pipe* question (is each field emitting
+at all). Two questions, one owner each — the harness/fleet split, one layer down.
 
 Consumed, owned elsewhere: the NF-A event schema and doneability definition
 ([[neural-footprint-instrumentation-charter]], [[evaluation-doneability-charter]]) — method

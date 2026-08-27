@@ -107,7 +107,7 @@ candidates only. Gap rows, stated rather than assumed away:
 |---|---|
 | `fin.price_quoted_externally` has no publisher | Nothing announces an externally quoted number; the register depends on founder/Sales/Media & Brand disclosure ([[unit-economics-pricing-schedule]] §Dependencies), and `fin.unregistered_quote_incidents` only detects after the fact — which is [[finance-pricing-premortem]] D3, the anchor arriving before the model |
 | Escalation to [[growth-charter]] is a doc edit; nothing notifies | Exactly [[finance-pricing-premortem]] D4 — the parent consuming nothing this sub-layer produced. Growth's schedule must poll [[finance-pricing-agenda-full]] §Questions |
-| `nf_a.cost_per_completed_task` has two claimed owners | [[model-routing-inference-economics-charter]] says it produces cost-per-task (`:54`) and reports it **not emitted** (`:66`); [[inference-cost-charter]] names the same metric primary. Two owners, one number — OD-29-shaped. **Recorded, not resolved**; the path is [[decision-office-charter]] |
+| `nf_a.cost_per_completed_task` — **resolved 2026-08-27 (founder, ADR 0035)** | [[model-routing-inference-economics-charter]] produces the measurement; [[inference-cost-charter]] consumes it for unit economics. The number has one producer; this division fetches. OD-29's RM-1 half stays open |
 | The provider invoice is not a system input | Reconciliation is a human reading the Anthropic and Google consoles; console access is "assumed, **not verified**" ([[inference-cost-schedule]] §Dependencies) |
 
 ## 6. Evidence today

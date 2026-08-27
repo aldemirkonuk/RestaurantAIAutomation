@@ -100,7 +100,7 @@ only — never a synchronous call into a team. Gap and seam rows, stated rather 
 | Gap / seam | Why it is a gap |
 |---|---|
 | `source_guarantee` has no intake contract | The department's load-bearing invariant ([[data-charter]] §Boundaries, [[data-premortem]] M2) is designed, not built — [[data-schedule]] closes on exactly this: no skill should be authored "before the intake contract (`source_guarantee`) exists". Until then `substrate.rows_without_source_guarantee` has no denominator and no source |
-| The daily substrate report has **two declared owners** | [[data-loops]] loop 1 (`data-substrate-daily-report`, owner: `data`) and [[substrate-quality-coverage-loops]] loop 5 (`substrate-progress-report`, owner: that team) describe the same report. Recorded as a finding for the department to settle; **this card does not settle it** |
+| The daily substrate report — **resolved 2026-08-27 (founder, ADR 0035)** | The team **runs** it ([[substrate-quality-coverage-loops]] `substrate-progress-report` is the producer); [[data-loops]] `data-substrate-daily-report` is the department's daily **consumption** — the board rollup over that report and the other four teams' feeds. One producer, one consumer |
 | `loop.close_time_breached` has no publisher | Nothing measures loop age; the daily and monthly schedules bound the blind spot |
 | Escalation to [[decision-office-charter]] is a doc edit, not an event | Acceptable async path (vault PR), but nothing notifies — their schedule must poll [[data-agenda-full]] §Questions |
 

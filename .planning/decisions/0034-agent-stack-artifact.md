@@ -1,9 +1,11 @@
 # 0034 — Every unit gets an agent stack: declarative cards, layered git-native memory
 
-- **Status:** Proposed — the founder answered the four framing forks in-session
-  (2026-08-27, via AskUserQuestion) and delegated the harness- and memory-approach
-  picks to Claude with named criteria ("benefit at scale, SOTA" / "fetches what it
-  needs, improves, and developers can see how"); awaiting a written lock.
+- **Status:** **Locked 2026-08-27** — the founder answered the four framing forks
+  in-session (via AskUserQuestion), delegated the harness- and memory-approach picks
+  with named criteria ("benefit at scale, SOTA" / "fetches what it needs, improves,
+  and developers can see how"), and locked the same day by re-stating the criteria
+  ("the most scalable and highest quality, cutting-edge for us") — which the recorded
+  picks are the ones satisfying; no pick was overruled.
 - **Date:** 2026-08-27
 - **Decider:** Aldemir (founder) — granularity, placement, and the delegations; Claude — the two delegated picks, recorded here for the founder to lock or overrule
 - **Keywords:** agent-stack, agent-card, harness, memory, skills, consolidation, async, ninth-artifact
@@ -107,3 +109,4 @@ a synchronous call. Everything ships `status: designed`; nothing is build.
 |---|---|---|
 | 2026-08-27 | Founder (AskUserQuestion, in-session) | Granularity, placement, git handling picked; harness + memory approach delegated with criteria |
 | 2026-08-27 | — | Created |
+| 2026-08-27 | Founder (AskUserQuestion, in-session) | **Locked** — criteria re-stated ("most scalable, highest quality, cutting-edge"); recorded picks stand unchanged |

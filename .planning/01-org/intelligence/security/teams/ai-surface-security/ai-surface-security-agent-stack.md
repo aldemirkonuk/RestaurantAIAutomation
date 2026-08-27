@@ -115,14 +115,15 @@ Cross-unit interaction: board rows to the department (vault PR), NF-A events, lo
 | `nf_a.unauthenticated_inference_spend` has no publisher | 0 of 7 callsites emit cost events; grepping `apps/api-gateway/src` for `api_spend`, `cost_usd`, `input_tokens` returns nothing. [[neural-footprint-instrumentation-charter]] is a **hard dependency**, escalated monthly as an integer, and OD-11 gates the column contract. **The primary metric stays unmeasurable here** |
 | `pr.prompt_or_callsite_changed` has no publisher | Nothing flags a new `api.anthropic.com` fetch; the eighth callsite arrives uninstrumented by default. The monthly run bounds the blind spot at 30 days |
 | The corpus itself has no publisher | `sec.injection_corpus_size` = 0. Every number on this card except the callsite count depends on a deliverable that does not exist |
-| The allowlist seam is stated, not settled | [[ai-surface-security-charter]] §Boundaries claims allowlist enforcement; [[action-safety-the-human-gate-charter]] owns the gate. This card takes the narrow reading (see header). Reconciling the two charters is a correction for their owners, **left open** |
+| The allowlist seam — **settled 2026-08-27 (founder, ADR 0035)** | [[ai-surface-security-charter]] §Boundaries was narrowed to *allowlist coverage audit*; enforcement is [[action-safety-the-human-gate-charter]]'s. The narrow reading this card already took is now the charter's own text |
 | Findings reach [[action-safety-the-human-gate-charter]] as a doc edit | No event; their schedule must poll ours |
 
 ## 6. Evidence today
 
-- **NEW — the sentinel, both skills, the corpus, the budgets, the allowlist enforcement,
-  and everything in §4.** The charter grades the team `new` deliberately; calling any of
-  this `partial` would credit a posture we do not have.
+- **NEW — the sentinel, both skills, the corpus, the budgets, the allowlist coverage
+  audit (enforcement is action-safety's — ADR 0035), and everything in §4.** The charter
+  grades the team `new` deliberately; calling any of this `partial` would credit a
+  posture we do not have.
 - **EXISTS — the exposure.** `POST /analytics/consult/:restaurantId` reaching
   `consultants.service.ts:154-176` on the founder's key, with the toggle gating it
   unguarded too; the only brake was `ai: 20/60s` backed by an in-memory `Map`

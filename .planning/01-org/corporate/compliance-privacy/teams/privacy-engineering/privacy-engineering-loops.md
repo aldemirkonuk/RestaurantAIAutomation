@@ -190,7 +190,7 @@ data at all.
 ```yaml
 type: loop
 id: nfb-research-store-erasability
-owner: UNASSIGNED — escalated
+owner: privacy-engineering  # assigned 2026-08-27, founder via ADR 0035 (was UNASSIGNED — escalated); sync loops.json on next regeneration
 measures: [nf_b.research_store_erasability, nf_b.row_count]
 changes: [nf_b.schema, nf_b.retention_policy, privacy.erasure_runbook]
 inputs_from: [taste-fingerprint, neural-footprint-instrumentation, privacy-engineering]

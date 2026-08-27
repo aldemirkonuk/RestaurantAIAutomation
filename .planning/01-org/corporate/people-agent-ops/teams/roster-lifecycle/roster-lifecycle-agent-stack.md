@@ -108,7 +108,7 @@ Board rows and memory PRs to the department, CI checks on PRs, NF-A events, and 
 | Gap | Why it is a gap |
 |---|---|
 | `agents.module_added` has no publisher | Nothing announces a new module; three cards now wait on the same absent event. The daily census bounds this team's blind spot at 24h — tighter than the weekly cards, which is an argument for one publisher, not three pollers |
-| Census overlap with `fleet-census-agent` | [[agent-fleet-agent-stack]] §2 reads the same disk and the same class map. The charters split the verbs (they ask *should this agent exist*, we ask *does the record match reality*), but two cards now compute counts over one source at different cadences. Named here rather than discovered in a board disagreement; a seam this shape goes to [[decision-office-charter]] |
+| Census overlap — **resolved 2026-08-27 (founder, ADR 0035)** | `fleet-census-agent` ([[agent-fleet-agent-stack]]) is the **single computer** of the four counts; this card **consumes** that census and adds only the HR overlay — declared workforce (agent-stack §1 rosters) vs the computed census, published as `roster.headcount_claim_variance`. One truth, one computer |
 | The declared column has no reconciler | ADR 0034 promises the census a declared baseline; nothing yet compares card rosters to the registry, and whether a card agent belongs on `roster.headcount_claim_variance` at all is **left open** — merging the populations would manufacture a fifth wrong number |
 | `recurring_order_agent` has no declared class | Its docstring (`:17-21`) declares the exclusion deliberately; the register that would record it does not exist yet, so the founding entry of the declared-exclusion register is still a sentence in a source file |
 
