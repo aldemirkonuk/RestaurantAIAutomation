@@ -61,7 +61,7 @@ entry, and no follow-up migration within 24 hours. The **first** one sets the te
 **Counter-pressure.** Write the emergency runbook **now**, while calm: what may be applied
 by hand, who may do it, what is recorded at the time (statement, timestamp, operator), and
 the hard requirement that a reconciliation migration lands within one close-time.
-`.planning/SCHEMA_DRIFT_INVENTORY.txt` is the register. An emergency path that is designed
+`.planning/07-reference/SCHEMA_DRIFT_INVENTORY.txt` is the register. An emergency path that is designed
 is a cost; one that is improvised is this premortem.
 
 ---

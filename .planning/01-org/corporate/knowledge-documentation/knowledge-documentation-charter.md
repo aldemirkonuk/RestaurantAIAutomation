@@ -148,7 +148,7 @@ stale-claim measurement, no `.claude/skills/` directory (the only project skill 
 `.agents/skills/railway-config/`, while 99 `schedule.md` files assert skills live in
 `.claude/skills/`).
 
-**Open forks touching this department:** OD-01 (`OPEN-DECISIONS.md:25`) — now the only one
+**Open forks touching this department:** OD-01 (`OPEN-DECISIONS.md:73`) — now the only one
 still open. OD-08 (folded into OD-21), OD-14 (root `SKILLS.md`), OD-21 (vault workflow) and
 OD-22 (tooling library) have all since been resolved.
 
@@ -156,8 +156,8 @@ OD-22 (tooling library) have all since been resolved.
 [[OBSIDIAN_VAULT]]:3 states *"**LOCKED** 2026-08-24 (OD-21)"*, while
 `OPEN-DECISIONS.md` at the time still listed **OD-21 and OD-08 in the Open table**. A
 document claimed a decision was closed; the register that is canonical for decisions said
-it was open. The register has since moved both into Resolved — OD-21 (`OPEN-DECISIONS.md:137`)
-locked the Obsidian structure, and OD-08 (`OPEN-DECISIONS.md:136`) was folded into it — so
+it was open. The register has since moved both into Resolved — OD-21 (`OPEN-DECISIONS.md:138`)
+locked the Obsidian structure, and OD-08 (`OPEN-DECISIONS.md:137`) was folded into it — so
 the document was right and the register was behind. Per
 [`CLAUDE.md`](../../../CLAUDE.md) §0.1 the register is still what decides; it now agrees.
 Raised to [[decision-office-charter]]; tracked as the first entry in

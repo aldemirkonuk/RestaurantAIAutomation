@@ -138,7 +138,7 @@ A real supply-side surface exists. Nothing has ever flowed through it.
 
 ### ⚠️ The reality check
 
-**`procurement_orders` = 1** (`.planning/AGENT_NATIVE_UI_DECISION.md:59`). One order, in the
+**`procurement_orders` = 1** (`.planning/decisions/AGENT_NATIVE_UI_DECISION.md:59`). One order, in the
 entire system. Every capability above is unexercised.
 
 ### Correction — this team's "first concrete assignment" is already closed

@@ -190,7 +190,7 @@ view.
 
 This directly supports the OD-59 framing — *"`context.task_type` partitions the column, so
 one task type is immediately useful."* — quoted from the entry as it read when this audit
-ran; OD-59 (`OPEN-DECISIONS.md:101`) has since been closed and rewritten, and the row no
+ran; OD-59 (`OPEN-DECISIONS.md:102`) has since been closed and rewritten, and the row no
 longer carries that sentence. That claim is **verified true**: introducing a verdict for
 `invoice_extraction` alone would surface as its own row.
 Note the corollary, though: it surfaces as its own row **only if no `call_level_v0` rows

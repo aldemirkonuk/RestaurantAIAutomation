@@ -27,7 +27,7 @@ below is read as capability, here is the true state:
 | Department | EXISTS | PARTIAL | NEW |
 |---|---|---|---|
 | Legal | — | — | **all 15 document types** |
-| Knowledge & Documentation | 1,082 `.md` under `.planning/` + `md/` (113) + `md_files/` (42); one stale index | Obsidian **adopted** ([ADR 0004](../../decisions/0004-obsidian-as-backlink-layer.md)), **not installed** — no `.obsidian` vault exists | frontmatter contract, staleness detection, archive policy |
+| Knowledge & Documentation | the `.planning/` vault (post-ADR-0032 cleanup); legacy `md/`+`md_files/` retired 2026-08-27 in full (the final `.sql` files exited via the ADR 0026 shrink path) | Obsidian **adopted** ([ADR 0004](../../decisions/0004-obsidian-as-backlink-layer.md)), **not installed** — no `.obsidian` vault exists | frontmatter contract, staleness detection, archive policy |
 | Compliance & Privacy | versioned consent + erasure schema; 4 independent PII guards; a privacy notice | privacy notice says "WineOps"; erasure untested end-to-end | **every word of GDPR/CCPA** — zero occurrences in source |
 | People & Agent Ops | 26 agent modules, `AgentMetrics`, agent registry, spend logging | metrics have no cost attribution and no doneability verdict | NF-A spine, review rubric, onboarding gate |
 | Strategy & Fundraising | `YC_WEDGE_PLAN.md` (406 lines), a prior YC-lens business review | wedge metric named but not instrumented as a company metric | cap table, data room, SAFE, board consents |
@@ -436,7 +436,7 @@ dismissed.**
       catalogue, a sommelier AI — *"A YC partner reads that as no wedge."*
     - an honest competitive read against MarginEdge (line 328).
     - §4's track table has real ✅ statuses (A, B0, B0a, B0b, B0c, B1 complete).
-  - [`AGENT_NATIVE_UI_DECISION.md`](../../AGENT_NATIVE_UI_DECISION.md):78 — a prior
+  - [`AGENT_NATIVE_UI_DECISION.md`](../../decisions/AGENT_NATIVE_UI_DECISION.md):78 — a prior
     *"Business review (YC-partner lens) — verdict: don't build."* Strategy review is
     already a practice here, not a new habit.
   - [ADR 0005](../../decisions/0005-v3-to-v0-version-reset.md) — the deliberate v3→v0

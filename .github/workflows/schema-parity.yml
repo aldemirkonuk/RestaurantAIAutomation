@@ -87,7 +87,7 @@ jobs:
           echo "::notice::Columns/functions only in REMOTE were applied by hand — capture them"
           echo "::notice::as a migration, then: supabase migration repair --status applied <version>"
           echo "::notice::Columns/functions only in LOCAL are unpushed — run: supabase db push"
-          echo "::notice::Background: .planning/SCHEMA_DRIFT_INVENTORY.txt"
+          echo "::notice::Background: .planning/07-reference/SCHEMA_DRIFT_INVENTORY.txt"
 
   # The arm of the schema-code guard that needs a database.
   #

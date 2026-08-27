@@ -35,7 +35,8 @@ describe("validateAction — the allowlist has to be mechanical", () => {
       payload: { inventoryId: INV, quantity: 6 },
     });
     expect(v.ok).toBe(false);
-    expect(v.reason).toContain("allowlisted action family");
+    // `if (!v.ok)` narrows again now that strictNullChecks is on (OD-107).
+    if (!v.ok) expect(v.reason).toContain("allowlisted action family");
   });
 
   it("rejects an unknown action inside an allowed family", () => {
@@ -67,7 +68,7 @@ describe("validateAction — the allowlist has to be mechanical", () => {
     // implausible human intent.
     const v = validateAction(reorder({ quantity: MAX_REORDER_QUANTITY + 1 }));
     expect(v.ok).toBe(false);
-    expect(v.reason).toContain("Orders page");
+    if (!v.ok) expect(v.reason).toContain("Orders page");
   });
 
   it("accepts exactly the cap", () => {
@@ -83,7 +84,7 @@ describe("validateAction — the allowlist has to be mechanical", () => {
   it("drops an empty unitType instead of storing it", () => {
     const v = validateAction(reorder({ unitType: "   " }));
     expect(v.ok).toBe(true);
-    expect(v.action?.payload).not.toHaveProperty("unitType");
+    if (v.ok) expect(v.action.payload).not.toHaveProperty("unitType");
   });
 
   it("rejects a vendor draft with no instruction", () => {
@@ -111,7 +112,7 @@ describe("validateAction — the allowlist has to be mechanical", () => {
     ];
     for (const r of rejections) {
       expect(r.ok).toBe(false);
-      expect((r.reason ?? "").length).toBeGreaterThan(10);
+      if (!r.ok) expect(r.reason.length).toBeGreaterThan(10);
     }
   });
 });

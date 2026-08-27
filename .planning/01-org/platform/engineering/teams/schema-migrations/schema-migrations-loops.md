@@ -62,7 +62,7 @@ status: proposed
 Counters premortem M2. A 2am `ALTER` to avoid downtime is **correct behaviour**; the
 failure is improvisation around it. Fires on every hand-applied statement — recorded at the
 time with statement, timestamp, and operator into
-`.planning/SCHEMA_DRIFT_INVENTORY.txt` — and closes only when a reconciliation migration
+`.planning/07-reference/SCHEMA_DRIFT_INVENTORY.txt` — and closes only when a reconciliation migration
 lands. Reconciliation lag is the number that matters; one incident followed by a 9am
 migration costs the streak a day and nothing else.
 

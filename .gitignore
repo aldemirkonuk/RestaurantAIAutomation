@@ -28,7 +28,15 @@ id_rsa
 id_ed25519
 
 # Dependencies
-node_modules/
+#
+# NO TRAILING SLASH, deliberately. `node_modules/` matches DIRECTORIES ONLY — a
+# SYMLINK named node_modules walks straight past it. On 2026-08-27 exactly that
+# happened: a worktree symlink pointing at an absolute path on one laptop was
+# committed to main, and every CI `pnpm install` died with
+# `ENOENT ... mkdir '.../apps/api-gateway/node_modules'` because pnpm cannot
+# create the real directory over a dangling link. Two jobs red on main until it
+# was removed.
+node_modules
 
 # Python (root-level scripts, datasets tooling)
 __pycache__/

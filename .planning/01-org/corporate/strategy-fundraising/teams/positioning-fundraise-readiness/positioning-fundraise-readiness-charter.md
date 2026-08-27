@@ -126,7 +126,7 @@ Transcribing `corporate.md:426-448`, verified independently for this charter.
   than one that does not.
 - **A section arguing against its own headline metric** (`:369-373`).
 
-Two further pieces of prior art: `.planning/AGENT_NATIVE_UI_DECISION.md:78` — *"Business
+Two further pieces of prior art: `.planning/decisions/AGENT_NATIVE_UI_DECISION.md:78` — *"Business
 review (YC-partner lens) — verdict: don't build"* — so strategy review is an existing
 practice here, not a new habit; and
 [ADR 0005](../../../../decisions/0005-v3-to-v0-version-reset.md), the deliberate v3→v0 reset,

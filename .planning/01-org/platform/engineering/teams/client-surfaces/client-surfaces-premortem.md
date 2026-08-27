@@ -22,7 +22,7 @@ progress.*
 
 ### M1 — The burn-down became the job
 
-`.planning/UX_PATHS_CATALOG.md` is 154KB and 760 paths. It is the most *legible* work
+`.planning/07-reference/UX_PATHS_CATALOG.md` is 154KB and 760 paths. It is the most *legible* work
 available: paths close, a counter rises, every week produces a number that went the right
 way. Roughly 90–100 paths were already closed before the team existed. Nothing about that
 work is wrong — it is simply not the metric. Twelve months on, the counter reads 400/760,

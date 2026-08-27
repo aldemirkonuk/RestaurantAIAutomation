@@ -449,7 +449,7 @@ reachable from the public API. Verified by execution (§1.2). Convenient for OD-
 — but the docs currently describe a stricter emitter than the one that ships.
 
 **7.2 OD-59's own opener rationale does not hold as a pairing.**
-OD-59 (`OPEN-DECISIONS.md:101`) proposed opening with `invoice_extraction` and justified
+OD-59 (`OPEN-DECISIONS.md:102`) proposed opening with `invoice_extraction` and justified
 the volume with "the dominant real path (`@Cron */5` email sweep)". Those are two
 different runtimes. The cron is gateway-side —
 `procurement/documents/document-intake.service.ts:581`,

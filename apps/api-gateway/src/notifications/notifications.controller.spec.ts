@@ -412,8 +412,12 @@ describe("NotificationsController", () => {
     };
 
     it("should update user preferences", async () => {
+      // `updateDto` already carries `userId`, so the spread overwrote the
+      // explicit key — it was dead. Both happen to be "user-123" today, so the
+      // assertion is right by coincidence; change either fixture and this test
+      // would keep passing against an expectation nobody wrote. Surfaced by
+      // strictNullChecks (TS2783).
       const expectedResponse = {
-        userId: mockQuery.userId,
         ...updateDto,
         updatedAt: new Date().toISOString(),
       };

@@ -79,7 +79,7 @@ skills or the first overlap, not before (`intelligence.md:504`).
   (`intelligence.md:521`); OD-11 gates every NF implementation and each week of delay
   adds a private table (premortem M5).
 - **There is live unauthorized spend on the founder's key**
-  (`OD-20, OPEN-DECISIONS.md:110`) and **nobody can say how much**, because the callsite emits
+  (`OD-20, OPEN-DECISIONS.md:111`) and **nobody can say how much**, because the callsite emits
   nothing. *Corrected 2026-08-25: both halves are closed — OD-20 is RESOLVED
   (`analytics.controller.ts:51` now carries a class-level `@UseGuards(JwtAuthGuard)`)
   and the callsite emits since P1.* That is not a security finding this department owns — it is an

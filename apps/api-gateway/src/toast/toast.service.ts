@@ -74,7 +74,11 @@ export class ToastService {
       "TOAST_CACHE_TTL_SECONDS",
       300,
     );
-    this.webhookSecret = this.configService.get<string>(
+    // `string | null`, because the default IS null — the secret is genuinely
+    // optional and `verifyWebhookSignature` already branches on its absence.
+    // Typing it `string` while defaulting to null is how "the secret is set"
+    // became unfalsifiable at the type level.
+    this.webhookSecret = this.configService.get<string | null>(
       "TOAST_WEBHOOK_SECRET",
       null,
     );

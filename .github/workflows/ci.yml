@@ -335,6 +335,9 @@ jobs:
       - name: Type check
         run: pnpm run type-check
 
+      - name: No dependency directory is tracked in git
+        run: ./scripts/check_no_vendored_deps.py
+
       - name: Every declared test script can actually fail
         run: ./scripts/check_test_scripts_are_real.py
 

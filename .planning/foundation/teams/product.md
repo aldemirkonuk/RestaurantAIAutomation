@@ -158,7 +158,7 @@ documents.
 - Surfaces: `/distributors`, `/vendor-prices` (`VendorPriceCompare`), `/providers`
   ([PAGE_MAP.md:36-37,56](../PAGE_MAP.md)) — note `/distributors` and `/vendor-prices` are
   both cold-entry with no inbound link (PAGE_MAP.md:116,130).
-- `.planning/PROSPECTS_ATTRIBUTION_ARCHITECTURE.md`.
+- `.planning/07-reference/PROSPECTS_ATTRIBUTION_ARCHITECTURE.md`.
 
 **Boundary — read this with §3.3.** This team ships the *software that finds vendors*.
 Partnerships' Supplier & Distributor Network team owns the *relationships those vendors
@@ -169,7 +169,7 @@ least two live distributor prices — with **price freshness p50** as the paired
 
 **Premortem.** It builds a beautiful crawler for a supply graph nobody queries, because
 procurement volume is `procurement_orders` = 1
-([AGENT_NATIVE_UI_DECISION.md §2](../../AGENT_NATIVE_UI_DECISION.md)) and the founder's
+([AGENT_NATIVE_UI_DECISION.md §2](../../decisions/AGENT_NATIVE_UI_DECISION.md)) and the founder's
 actual distributors were reachable by phone the whole time.
 
 ---
@@ -222,7 +222,7 @@ becomes that module's chatbot, which is precisely the outcome FUTURES §8.3 forb
 **Evidence — PARTIAL (entry points exist; the composer does not):**
 - Contract written: [FUTURES.md:203-245](../../FUTURES.md) §8 (principle, allowlist
   families, out-of-MVP list, complexity-easing contract).
-- 25 paths specified: [UX_PATHS_CATALOG.md:1803-1830](../../UX_PATHS_CATALOG.md) §AC
+- 25 paths specified: [UX_PATHS_CATALOG.md:1803-1830](../../07-reference/UX_PATHS_CATALOG.md) §AC
   `NEW-886…NEW-910`, incl. `NEW-903` (Wine Agent FAB and Ask AI share one action schema),
   `NEW-906` (dangerous intents refused), `NEW-907` (idempotent confirm).
 - Divergent entry points live today: Reports `AICommandPill`/`AICommandPalette`
@@ -257,7 +257,7 @@ source), value (what the restaurant gets). Reading them in that order is the roa
 
 ⚠️ **Honesty gate for the whole sub-layer.** `guests` has a schema and near-zero rows; the
 POS corpus behind any taste signal is **47 checks, 1 restaurant, 1 day, 82 line items,
-37 distinct item strings** (`.planning/DISH_IDENTITY_DESIGN.md` §1.1). Four teams is the
+37 distinct item strings** (`.planning/07-reference/DISH_IDENTITY_DESIGN.md` §1.1). Four teams is the
 *shape* of this sub-layer, not its v0 headcount — see §5.3.
 
 ---
@@ -286,7 +286,7 @@ every other identity team in the company.
   all deliberately absent.
 - Commit `ce65715 feat(a14): build real guest identity — the slice that cannot be backfilled`.
 - Guest consent paths already specified: `NEW-658`, `NEW-662`, `NEW-663`, `NEW-666`
-  ([UX_PATHS_CATALOG.md:1483-1491](../../UX_PATHS_CATALOG.md)); `NEW-879`, `NEW-884` (§AB).
+  ([UX_PATHS_CATALOG.md:1483-1491](../../07-reference/UX_PATHS_CATALOG.md)); `NEW-879`, `NEW-884` (§AB).
 
 **Primary metric — NF-B subject coverage.** % of `pos_checks` carrying a *consented*
 `guest_check_links` row. This is the denominator of every other NF-B metric in this
@@ -315,7 +315,7 @@ for keeping Red Team out of Security.
 - Schema shape defined: `neural_footprint_event` with `subject_type = guest`
   ([foundation README:229-241](../README.md)); NF-B named a **priority** track (README:206).
 - ⛔ **Hard blocker, decided:** dish identity is **DEFERRED** by explicit product-owner
-  call — `.planning/DISH_IDENTITY_DESIGN.md` (register A15, 2026-08-20). Dishes stay raw
+  call — `.planning/07-reference/DISH_IDENTITY_DESIGN.md` (register A15, 2026-08-20). Dishes stay raw
   POS strings, so `"Ribeye 12oz"` and `"Ribeye"` are different entities to any `GROUP BY`
   (§1 of that doc). **A taste fingerprint over food cannot exist until this reverses.**
 - ⛔ **Corpus blocker, measured:** 47 `pos_checks`, 1 restaurant, one day
@@ -355,7 +355,7 @@ not a checklist item on a modelling team.
   no self-referral farming, review quality gate, consent-first), conservative redemption
   (§7.4), MVP vs north star (§7.5).
 - **40 paths already written:** §W `NEW-652…NEW-666`
-  ([UX_PATHS_CATALOG.md:1471-1491](../../UX_PATHS_CATALOG.md)) and §AB `NEW-861…NEW-885`
+  ([UX_PATHS_CATALOG.md:1471-1491](../../07-reference/UX_PATHS_CATALOG.md)) and §AB `NEW-861…NEW-885`
   (:1771-1801) — including `NEW-871` (provisional vs confirmed visually distinct),
   `NEW-872` (expiry notice *before*, not after), `NEW-878` (suspected abuse → held + appeal
   path, not silent zeroing).
@@ -396,7 +396,7 @@ precisely.
 - Restaurant-side insight, specified: `NEW-659` (aggregated audience segments, privacy-safe),
   `NEW-660` (top preferences, k-anonymized), `NEW-661` (which menu items attract which
   segments), `NEW-664` (weekly digest → menu experiment), `NEW-665` (export anonymized
-  segment report) — [UX_PATHS_CATALOG.md:1484-1490](../../UX_PATHS_CATALOG.md).
+  segment report) — [UX_PATHS_CATALOG.md:1484-1490](../../07-reference/UX_PATHS_CATALOG.md).
   Plus `NEW-880`, `NEW-882`, `NEW-883` (advocacy signal feeds par/promotion suggestions),
   `NEW-885` (restaurant sees program cost, no platform liability) — §AB.
 - Photo-as-promotion: `NEW-865` — *"Add a dish photo → bonus points; consent prompt for
@@ -451,7 +451,7 @@ thing that unblocks it.
 **Why distinct.** This is convergent delivery accounting, not design. Its unit of work is
 a row that either exists in the product or does not, and it doubles as the E2E test spine —
 the catalogue's own reading rule is *"Given I am on page X, When I <trigger>, Then
-<outcome>"* ([UX_PATHS_CATALOG.md:70](../../UX_PATHS_CATALOG.md)). Sibling 3.3 does the
+<outcome>"* ([UX_PATHS_CATALOG.md:70](../../07-reference/UX_PATHS_CATALOG.md)). Sibling 3.3 does the
 opposite job (divergent exploration, most output discarded). One team cannot hold both
 success criteria.
 
@@ -523,7 +523,7 @@ Design team does.
   a full *trigger / motion / haptic / **anti-gimmick*** spec, and **042**
   (`mobile-stack-capabilities`) already picked a stack: *H — RN Skia + Reanimated*.
 - Accessibility standard already enumerated: §X `NEW-667…NEW-676`
-  ([UX_PATHS_CATALOG.md:1493-1506](../../UX_PATHS_CATALOG.md)) — skip links, focus rings,
+  ([UX_PATHS_CATALOG.md:1493-1506](../../07-reference/UX_PATHS_CATALOG.md)) — skip links, focus rings,
   Escape behaviour, SR announcements, reduced-motion, RTL, grid roles.
 
 **Primary metric.** *% of newly-shipped surface composed from system primitives + tokens*
@@ -587,7 +587,7 @@ explicitly do not — **cutting surface**. This is not invented: the agent-nativ
 rejected adaptive personalization and named the alternative in the same breath — the
 surface is enormous and a new user drowns, *"but the fix is to **cut the surface** with
 role-based defaults in a week, deterministically, with no telemetry"*
-([AGENT_NATIVE_UI_DECISION.md §3](../../AGENT_NATIVE_UI_DECISION.md)). That sentence is a
+([AGENT_NATIVE_UI_DECISION.md §3](../../decisions/AGENT_NATIVE_UI_DECISION.md)). That sentence is a
 team charter, and nobody owns it.
 
 The same section also constrains the whole department: **high staff turnover** means you
@@ -607,7 +607,7 @@ performance budget. Design in this product is bound by turnover, not by taste.
   (`interactive-guidance`), 049 (`mobile-guidance-web-shell`), 050 (`activation-flow` →
   winner *"C — Hybrid"*), 051 (`staff-firstrun-tutorial` → winner *"B — first-visit
   overrides session cap"*, i.e. the existing one-tour-per-session cap is a known defect).
-- Paths: §S `NEW-589…NEW-608` ([UX_PATHS_CATALOG.md:1388](../../UX_PATHS_CATALOG.md)).
+- Paths: §S `NEW-589…NEW-608` ([UX_PATHS_CATALOG.md:1388](../../07-reference/UX_PATHS_CATALOG.md)).
 - ⚠️ Role-based defaults — the thing §3 actually prescribed — do **not** exist. `/settings`
   role matrix is deferred (`NEW-513`, §O log at :63).
 
@@ -672,7 +672,7 @@ a counterparty's willingness — which is precisely what separates it from 4.2.
 - Simulator to develop against: `apps/api-gateway/src/simpos/` (11 routes) + routes
   `/simpos/:restaurantId`, `/simpos/:restaurantId/orders`.
 - ⚠️ **Reality check:** `pos_checks` = **0 real rows**
-  ([AGENT_NATIVE_UI_DECISION.md §2](../../AGENT_NATIVE_UI_DECISION.md)); the 47 rows that
+  ([AGENT_NATIVE_UI_DECISION.md §2](../../decisions/AGENT_NATIVE_UI_DECISION.md)); the 47 rows that
   exist are `source='generic_webhook'` simulator output from one 43-minute window
   (`20260819000000_guest_identity_minimal_slice.sql:11-14`).
 
@@ -748,7 +748,7 @@ Vendor Finder's metric is catalogue coverage; this team's is live, willing count
 - Outbound relationship machinery already shipped: vendor-reply AI drafts with one-tap
   approve and **never auto-send**; `procurement_conversations` threading.
 - ⚠️ **Reality check:** `procurement_orders` = **1**
-  ([AGENT_NATIVE_UI_DECISION.md §2](../../AGENT_NATIVE_UI_DECISION.md)).
+  ([AGENT_NATIVE_UI_DECISION.md §2](../../decisions/AGENT_NATIVE_UI_DECISION.md)).
 
 **Primary metric.** *Distributors with a live, refreshing price feed or an active portal
 login* — not distributors in the database. The gap between those two numbers is this team's
@@ -822,7 +822,7 @@ These were considered and rejected. Rejecting them is part of the proposal.
 | Considered | Why not |
 |---|---|
 | **Decision & Roadmap Ops** (Product & Vision) | The daily open-decision digest is assigned to Product & Vision (foundation README:277), but a team that runs it would duplicate the **Decision Office** advisory, which already owns *"the ADR log, the open-decision queue, and loop close-times"* ([ORG_STRUCTURE §3](../ORG_STRUCTURE.md)). Keep it as a **scheduled job**, not a team. |
-| **Self-Learning UX Optimizer** (Design) | `apps/api-gateway/src/ux-optimizer/` exists, is dark by design (`UX_OPTIMIZER_ENABLED=false`), and has **0 rows in all four of its tables**. [AGENT_NATIVE_UI_DECISION.md §3](../../AGENT_NATIVE_UI_DECISION.md) reached a **"don't build"** verdict with a statistical argument. Staffing a team here would relitigate a decision by staffing rather than by superseding ADR. **Design owns keeping it dark**, not advancing it. |
+| **Self-Learning UX Optimizer** (Design) | `apps/api-gateway/src/ux-optimizer/` exists, is dark by design (`UX_OPTIMIZER_ENABLED=false`), and has **0 rows in all four of its tables**. [AGENT_NATIVE_UI_DECISION.md §3](../../decisions/AGENT_NATIVE_UI_DECISION.md) reached a **"don't build"** verdict with a statistical argument. Staffing a team here would relitigate a decision by staffing rather than by superseding ADR. **Design owns keeping it dark**, not advancing it. |
 | **Accessibility & i18n** (Design) | §X `NEW-667…676` is 10 well-specified paths. That is a **standard enforced by 3.2 and burned down by 3.1**, not a team. A separate a11y team at this scale becomes the department that is overruled by every deadline. |
 | **Category Expansion** (beverages → bakery → kitchen) | FUTURES §2 sequencing is **locked** and the gating question is corpus depth, not product definition — which makes it **Data**'s blocker (foundation §1, L0 "the named blocker"), not a Product team. §1.1's module contracts absorb the product half. |
 

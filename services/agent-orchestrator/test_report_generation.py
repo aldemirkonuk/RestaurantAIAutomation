@@ -128,7 +128,10 @@ def test_supabase_cron():
     print("   Steps:")
     print("   1. Open Supabase SQL Editor")
     print(
-        "   2. Run the migration script: md_files/02-architecture/SUPABASE_CRON_SETUP.sql"
+        "   2. Run the cron-setup DDL (retired 2026-08-27, ADR 0032 — recover with:"
+    )
+    print(
+        "      git show 31d1ae18:md/02-architecture/SUPABASE_CRON_SETUP.sql )"
     )
     print("   3. Verify cron jobs created:")
     print("      SELECT * FROM list_cron_jobs();")

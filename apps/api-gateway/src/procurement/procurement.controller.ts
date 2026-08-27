@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -539,6 +540,15 @@ export class ProcurementController {
     @Body() dto: ApproveDraftDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<{ success: boolean }> {
+    // `modifiedContent` is OPTIONAL on the DTO, and `editDraft` requires a
+    // string — it raises BadRequest for empty content. Omitting the field
+    // therefore produced a 400 from the service that this catch converted into
+    // a **500**, telling the caller the server broke when the caller had simply
+    // left out a required field. Found by the OD-107 measurement.
+    if (!dto.modifiedContent || dto.modifiedContent.trim().length === 0) {
+      throw new BadRequestException("modifiedContent is required");
+    }
+
     try {
       return await this.procurementService.editDraft(
         user.restaurantId,
@@ -547,6 +557,9 @@ export class ProcurementController {
       );
     } catch (error: any) {
       if (error instanceof ForbiddenException) throw error;
+      // A 4xx from the service is the CALLER's problem and must survive the
+      // catch. Collapsing it to 500 is what hid the defect above.
+      if (error instanceof BadRequestException) throw error;
       throw new HttpException(
         error.message || "Failed to edit draft",
         HttpStatus.INTERNAL_SERVER_ERROR,
