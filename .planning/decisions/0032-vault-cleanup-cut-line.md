@@ -78,7 +78,23 @@ Every deleted path is recoverable with
 | 4 data blobs (`stage1_producer_research_raw.json` 1.9 MB, `analytics-feature-catalog.json`/`.csv`, `producer_aliases.json`) | 4 | `c3a5c6f3` | Byte-identical to `datasets/planning-exports/` — the path every referencing doc already cites |
 | `foundation/VAULT_CLEANUP_AUDIT.md` | 1 | this ADR's commit | Retired into this ADR by its own contract ("this doc is retired into the resulting ADR") — retire-to-write satisfied |
 | `LLM_INSTRUCTION_PROMPTS.md` (content; a tombstone stub keeps the name at `07-reference/`) | 1 | the survivor-mapping follow-up commit | Founder call 2026-08-27: WineOps-era prompt library retired outright — a successor will be written fresh, and the stub carries the summary + recovery pointer for its line-anchored citations (OD-33 evidence) |
+<<<<<<< HEAD
 | `md/` + `md_files/` doc corpus — the Apr-13 WineOps import: 48 build logs in `04-updates-builds/` (incl. `POS_INTEGRATION_COMPLETE.md`, formally superseded by `04-specs/POS-BRIDGE-AUDIT.md`), getting-started/setup guides, package READMEs, architecture/planning/feature essays, the 8 top-level overview docs, `PROJECT_ANALYSIS_AND_CHAT_CONTEXT.md` (both copies), and the `md_files/` duplicates | 108 | `docs/md-cleanup` deletion commit | Founder batch calls 2026-08-27: superseded by the `.planning` spine and git history; five later-touched keepers moved to `07-reference/` instead (`FEATURE_ROADMAP`, `MOBILE_APP_SETUP_AND_STATUS`, `GOOGLE_AND_API_CREDENTIALS_SETUP`, both Toast API reports); the 5 schema-debt `.sql` files deliberately stay for the ADR 0026 lane (one may be the sole DDL of the live `pending_ai_approvals` view) |
+=======
+<<<<<<< HEAD
+| `md/` + `md_files/` doc corpus — the Apr-13 WineOps import: 48 build logs in `04-updates-builds/` (incl. `POS_INTEGRATION_COMPLETE.md`, formally superseded by `04-specs/POS-BRIDGE-AUDIT.md`), getting-started/setup guides, package READMEs, architecture/planning/feature essays, the 8 top-level overview docs, `PROJECT_ANALYSIS_AND_CHAT_CONTEXT.md` (both copies), and the `md_files/` duplicates | 108 | `docs/md-cleanup` deletion commit | Founder batch calls 2026-08-27: superseded by the `.planning` spine and git history; five later-touched keepers moved to `07-reference/` instead (`FEATURE_ROADMAP`, `MOBILE_APP_SETUP_AND_STATUS`, `GOOGLE_AND_API_CREDENTIALS_SETUP`, both Toast API reports); the 5 schema-debt `.sql` files deliberately stay for the ADR 0026 lane (one may be the sole DDL of the live `pending_ai_approvals` view) |
+=======
+<<<<<<< HEAD
+| `md/` + `md_files/` doc corpus — the Apr-13 WineOps import: 48 build logs in `04-updates-builds/` (incl. `POS_INTEGRATION_COMPLETE.md`, formally superseded by `04-specs/POS-BRIDGE-AUDIT.md`), getting-started/setup guides, package READMEs, architecture/planning/feature essays, the 8 top-level overview docs, `PROJECT_ANALYSIS_AND_CHAT_CONTEXT.md` (both copies), and the `md_files/` duplicates | 108 | `docs/md-cleanup` deletion commit | Founder batch calls 2026-08-27: superseded by the `.planning` spine and git history; five later-touched keepers moved to `07-reference/` instead (`FEATURE_ROADMAP`, `MOBILE_APP_SETUP_AND_STATUS`, `GOOGLE_AND_API_CREDENTIALS_SETUP`, both Toast API reports) |
+| The 5 schema-debt `.sql` files (`md/02-architecture/` ×4, `md_files/02-architecture/DATABASE_SCHEMA.sql`) — the last tracked content of both trees | 5 | `fix/md-sql-schema-debt` | Exited via the ADR 0026 shrink path (guard `--update`, inventory −5). Evidence, measured 2026-08-27: every table they define is also defined in `supabase/migrations/`; `pending_ai_approvals` and all three cron functions return **404 PGRST205/202-class to the service-role key** in production (never applied) and have **zero consumers** in code — the REGISTER-AUDIT:422 sole-DDL worry was moot. Nothing captured, per ADR 0028 ("repointed or deleted, never created") |
+=======
+<<<<<<< HEAD
+| `md/` + `md_files/` doc corpus — the Apr-13 WineOps import: 48 build logs in `04-updates-builds/` (incl. `POS_INTEGRATION_COMPLETE.md`, formally superseded by `04-specs/POS-BRIDGE-AUDIT.md`), getting-started/setup guides, package READMEs, architecture/planning/feature essays, the 8 top-level overview docs, `PROJECT_ANALYSIS_AND_CHAT_CONTEXT.md` (both copies), and the `md_files/` duplicates | 108 | `docs/md-cleanup` deletion commit | Founder batch calls 2026-08-27: superseded by the `.planning` spine and git history; five later-touched keepers moved to `07-reference/` instead (`FEATURE_ROADMAP`, `MOBILE_APP_SETUP_AND_STATUS`, `GOOGLE_AND_API_CREDENTIALS_SETUP`, both Toast API reports); the 5 schema-debt `.sql` files deliberately stay for the ADR 0026 lane (one may be the sole DDL of the live `pending_ai_approvals` view) |
+=======
+>>>>>>> origin/main
+>>>>>>> origin/main
+>>>>>>> origin/main
+>>>>>>> origin/main
 
 Kept deliberately: `phases/999.1-consumer-food-profiles…/.gitkeep` (FUTURES §7
 backlog marker, not history); `archive/{ROADMAP,STATE}-pre-P2-20260825.md` (the
@@ -108,9 +124,32 @@ Vault: 1,677 → 1,152 files. Top level: 35 → 30.
   `.cursor/` is untracked, so that edit rides no commit),
   `AGENT_NATIVE_UI_DECISION.md` → `decisions/` (pre-log row added). 67 files of
   path citations rewritten in the same branch; wikilinks unaffected.
+<<<<<<< HEAD
 - **Residue:** `md/` + `md_files/` were executed the same day on `docs/md-cleanup`
   (five keepers to `07-reference/`, 108 deletions, `.sql` files deferred to the
   ADR 0026 schema lane). A
+=======
+<<<<<<< HEAD
+- **Residue:** `md/` + `md_files/` were executed the same day on `docs/md-cleanup`
+  (five keepers to `07-reference/`, 108 deletions, `.sql` files deferred to the
+  ADR 0026 schema lane). A
+=======
+<<<<<<< HEAD
+- **Residue:** `md/` + `md_files/` were executed the same day on `docs/md-cleanup`
+  (five keepers to `07-reference/`, 108 deletions; the deferred `.sql` files
+  exited the same day on `fix/md-sql-schema-debt` with production evidence). A
+=======
+<<<<<<< HEAD
+- **Residue:** `md/` + `md_files/` were executed the same day on `docs/md-cleanup`
+  (five keepers to `07-reference/`, 108 deletions, `.sql` files deferred to the
+  ADR 0026 schema lane). A
+=======
+- **Residue:** `md/` (113 files) and the `md_files/` remnant follow the same
+  metric on their own branch (`docs/md-cleanup`, started the same session). A
+>>>>>>> origin/main
+>>>>>>> origin/main
+>>>>>>> origin/main
+>>>>>>> origin/main
   successor LLM-instruction-prompts doc is planned; until it exists `CLAUDE.md`
   is the only instruction source. Revisit this ADR if a deleted doc turns out
   to be load-bearing (signal: a session recovering one from history to answer a
@@ -124,6 +163,31 @@ Vault: 1,677 → 1,152 files. Top level: 35 → 30.
   ADR 0018 (removing what was the audit's largest breakage cascade).
 - 2026-08-27 — founder locks cut line C-modified + delete-tombstone in-session;
   executed same day on `docs/vault-cleanup`. OD-01 moves to Resolved.
+<<<<<<< HEAD
 - 2026-08-27 (same session) — `md/` + `md_files/` executed on `docs/md-cleanup`:
   108 deletions, five keepers into `07-reference/`, `.sql` files deferred to the
   ADR 0026 lane. Every fork above was a founder batch call.
+=======
+<<<<<<< HEAD
+- 2026-08-27 (same session) — `md/` + `md_files/` executed on `docs/md-cleanup`:
+  108 deletions, five keepers into `07-reference/`, `.sql` files deferred to the
+  ADR 0026 lane. Every fork above was a founder batch call.
+=======
+<<<<<<< HEAD
+- 2026-08-27 (same session) — `md/` + `md_files/` executed on `docs/md-cleanup`:
+  108 deletions, five keepers into `07-reference/`, `.sql` files deferred to the
+  ADR 0026 lane. Every fork above was a founder batch call.
+- 2026-08-27 (same session) — the deferred `.sql` files removed on
+  `fix/md-sql-schema-debt`: production probes showed none of their DDL was ever
+  applied and nothing queries it; guard inventory shrank 5 lines; both trees
+  are now empty and gone.
+=======
+<<<<<<< HEAD
+- 2026-08-27 (same session) — `md/` + `md_files/` executed on `docs/md-cleanup`:
+  108 deletions, five keepers into `07-reference/`, `.sql` files deferred to the
+  ADR 0026 lane. Every fork above was a founder batch call.
+=======
+>>>>>>> origin/main
+>>>>>>> origin/main
+>>>>>>> origin/main
+>>>>>>> origin/main

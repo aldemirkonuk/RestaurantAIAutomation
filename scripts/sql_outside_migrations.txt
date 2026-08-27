@@ -10,11 +10,6 @@ Supabase_SQL_Files/SQL_editor5.sql
 Supabase_SQL_Files/SQL_editor6_sku_additions.sql
 Supabase_SQL_Files/supabase_sql_file_v1.sql
 Supabase_SQL_Files/supabase_sql_file_v2.sql
-md/02-architecture/DATABASE_SCHEMA.sql
-md/02-architecture/SCHEMA_MIGRATION_ADDITIONS.sql
-md/02-architecture/SUPABASE_CRON_SETUP.sql
-md/02-architecture/migrations/001_add_conversation_approval_fields.sql
-md_files/02-architecture/DATABASE_SCHEMA.sql
 scripts/fix_uuid_migration.sql
 scripts/init_database_local.sql
 services/database/migrations_archive/000_migration_tracker.sql

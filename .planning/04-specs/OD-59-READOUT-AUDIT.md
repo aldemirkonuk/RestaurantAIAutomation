@@ -190,7 +190,7 @@ view.
 
 This directly supports the OD-59 framing — *"`context.task_type` partitions the column, so
 one task type is immediately useful."* — quoted from the entry as it read when this audit
-ran; OD-59 (`OPEN-DECISIONS.md:102`) has since been closed and rewritten, and the row no
+ran; OD-59 (`OPEN-DECISIONS.md:100`) has since been closed and rewritten, and the row no
 longer carries that sentence. That claim is **verified true**: introducing a verdict for
 `invoice_extraction` alone would surface as its own row.
 Note the corollary, though: it surfaces as its own row **only if no `call_level_v0` rows
@@ -262,7 +262,7 @@ Two special cases:
 
 ### Rot found in the register (see §6)
 
-OD-58 (`.planning/decisions/OPEN-DECISIONS.md:45`) said *"`scripts/nf_readout.py`
+OD-58 (`.planning/decisions/OPEN-DECISIONS.md:43`) said *"`scripts/nf_readout.py`
 **refuses** below 30 agent events"*, and `.planning/04-specs/P1-NF-A-INSTRUMENTATION.md`
 said it *"**refuses** to report below 30 events."* **Both were wrong.** It reports, under a
 banner, and exits 0. Only `--require-volume` refuses, and only via exit code — the
@@ -453,7 +453,7 @@ subject_type = 'agent'`) once the `@Cron */5` invoice sweep is producing volume.
 |---|---|---|---|
 | 1 | The view named `cost_per_completed_task` has **no completion predicate**. It measures cost per *attempted model call*. | `20260824153600_nf_a_readout.sql:104,108` | **High** — the name is the claim |
 | 2 | Nothing in the view layer or CLI is aware of `outcome_basis`. Two readings will silently merge. | grep of `supabase/`, `scripts/` returns nothing | **High** — this is §2 |
-| 3 | OD-58 (`OPEN-DECISIONS.md:45`) and `P1-NF-A-INSTRUMENTATION.md` both claimed the readout **"refuses"** below 30 events. It does not — it prints the full table and exits 0. Only `--require-volume` changes the exit code, and the numbers still print. **Both corrected 2026-08-25 off this finding.** | `nf_readout.py:305-339` vs. the two docs | **Medium** — register rot; matches the standing `decision-register-rots` warning |
+| 3 | OD-58 (`OPEN-DECISIONS.md:43`) and `P1-NF-A-INSTRUMENTATION.md` both claimed the readout **"refuses"** below 30 events. It does not — it prints the full table and exits 0. Only `--require-volume` changes the exit code, and the numbers still print. **Both corrected 2026-08-25 off this finding.** | `nf_readout.py:305-339` vs. the two docs | **Medium** — register rot; matches the standing `decision-register-rots` warning |
 | 4 | `outcome_basis` is stamped **conditionally** in Python (`if outcome is not None`) but **unconditionally** in TypeScript. Three basis states exist today, not one. Any `= 'call_level_v0'` filter silently drops ungraded Python rows. | `neural_footprint.py:93-94` + `test_spend_logger.py:183` vs. `model-client.service.ts:347` | **Medium** — will bite whoever writes the OD-59 partition |
 | 5 | The metric key is `nf_a.cost_per_completed_task` but no `nf_a` **schema** exists; the object is `public.nf_a_cost_per_completed_task`. The migration's own header (`:7`, `:82`) and the CLI docstring (`nf_readout.py:2`) use the dotted form, which reads as a schema-qualified name that would fail if pasted into psql. | `grep 'create schema' supabase/` — no match | **Low** — cosmetic, but it is a paste-and-fail trap |
 | 6 | `provenance.task_types` uses `count(distinct ...)`, which ignores NULL, while view 1 emits a `(null)` task_type group. Header count and row count disagree whenever an untyped row exists — reachable via `spend_logger.py:381-382`. | `20260824153600_nf_a_readout.sql:137` vs. `:102,109` | **Low** |
