@@ -62,7 +62,7 @@ Public — applies to every tier identically.
 - `Privacy.tsx:43` — two occurrences: "grants **WineOps** permission to write files on
   your behalf" and "limited to files **WineOps** creates".
 Status: OD-27 **deferred by founder** — wineops strings stay pending the full Mudavym
-migration (OD-27, `.planning/decisions/OPEN-DECISIONS.md:136`).
+migration (OD-27, `.planning/decisions/OPEN-DECISIONS.md:134`).
 
 ## 8. State & config
 none — no flags, no env vars. But the page's *claims* are couplings to config
@@ -132,4 +132,4 @@ The four-state question does not bite here, and saying so is more useful than in
 1. Deep-link the controls: `/settings?tab=services` and `/settings?tab=features` (`Privacy.tsx:64`), matching `Help.tsx:154`. One-line, immediate.
 2. Add the guard §9 says is missing — a test that fails when `VITE_UX_OPTIMIZER` defaults to enabled while this text stands, plus a comment reference at `lib/uxSignals.ts:15` pointing back here. Cheapest possible binding between a promise and its implementation.
 3. Register the coupling in `v3.0-TECH-DEBT.md` — §9 notes it is absent from the register, which is why it is invisible to anyone not reading this page.
-4. Rebrand the 4 strings alongside the auth screens and the verification email, not separately — a notice under one brand describing a product under another is worse than either. *Blocked:* OD-27, deferred by founder pending the full Mudavym migration (OD-27, `.planning/decisions/OPEN-DECISIONS.md:136`).
+4. Rebrand the 4 strings alongside the auth screens and the verification email, not separately — a notice under one brand describing a product under another is worse than either. *Blocked:* OD-27, deferred by founder pending the full Mudavym migration (OD-27, `.planning/decisions/OPEN-DECISIONS.md:134`).

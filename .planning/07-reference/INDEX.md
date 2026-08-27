@@ -41,6 +41,9 @@ plan of record — that is `PROJECT.md` → `STATE.md` → `ROADMAP.md`.
 <<<<<<< HEAD
 =======
 <<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> origin/main
 >>>>>>> origin/main
 | [FEATURE_ROADMAP.md](FEATURE_ROADMAP.md) | Mudavym feature backlog aligned to expansion stages (was `md/06-planning/`) — cited by FUTURES §7 | Reference |
 | [MOBILE_APP_SETUP_AND_STATUS.md](MOBILE_APP_SETUP_AND_STATUS.md) | Mobile app setup + status (was `md/05-guides-setup/`) — linked from `apps/mobile/README.md`; P3.A input | Guide |
@@ -49,6 +52,9 @@ plan of record — that is `PROJECT.md` → `STATE.md` → `ROADMAP.md`.
 | [TOAST_API_CONFIGURATION.md](TOAST_API_CONFIGURATION.md) | Toast platform integration/config report (was `md/Toast_API/`) | External-API reference |
 <<<<<<< HEAD
 =======
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> origin/main
 >>>>>>> origin/main
 >>>>>>> origin/main

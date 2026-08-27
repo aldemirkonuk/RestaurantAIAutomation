@@ -122,7 +122,7 @@ first month, it should produce those three.
    line fails, merge rather than duplicate** (`technology.md:406`). We would rather
    have a merge now than a duplicate discovered in six months.
 2. **✅ The fork numbered OD-21 in `technology.md:845` is now `TECH-F3`.** It collided
-   with the real OD-21 (Obsidian structural workflow, `OPEN-DECISIONS.md:138`, already
+   with the real OD-21 (Obsidian structural workflow, `OPEN-DECISIONS.md:136`, already
    locked); the Decision Office renamespaced it ([[FORK-REGISTRY]]).
    → [[decision-office-charter]].
 3. **OD-03: what closes it, and by when?** The decision log names the method (a scoped
