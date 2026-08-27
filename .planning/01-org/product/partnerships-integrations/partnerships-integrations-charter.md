@@ -181,7 +181,7 @@ independently reached the same conclusion. Nothing to do; the doc is stale, not 
 
 | Team | Grade | One-line basis |
 |---|---|---|
-| [[pos-bridge-charter]] | **EXISTS** | 8 source files, 27-provider registry, capability model, 10 endpoints, tests, a simulator to develop against — and **0 real `pos_checks` rows** (`.planning/AGENT_NATIVE_UI_DECISION.md:56`) |
+| [[pos-bridge-charter]] | **EXISTS** | 8 source files, 27-provider registry, capability model, 10 endpoints, tests, a simulator to develop against — and **0 real `pos_checks` rows** (`.planning/decisions/AGENT_NATIVE_UI_DECISION.md:56`) |
 | [[partner-alliance-development-charter]] | **NEW** (function) / EXISTS (blocker list) | The 9 blocked providers are enumerable in code; **zero outreach has occurred**. Graded down from the team doc's EXISTS — see that charter's Evidence section for the reasoning |
 | [[supplier-distributor-network-charter]] | **PARTIAL** | Portal, catalogue, discovery and reply-drafting all exist; `procurement_orders` = **1** (`AGENT_NATIVE_UI_DECISION.md:59`) |
 | [[connector-platform-trust-charter]] | **PARTIAL** | 5 OAuth endpoints, all guarded — the good pattern; credential encryption exists; 2 providers only; its own UI is orphaned (`PAGE_MAP.md:110, 156`) |

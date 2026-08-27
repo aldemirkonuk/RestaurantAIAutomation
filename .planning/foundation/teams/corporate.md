@@ -436,7 +436,7 @@ dismissed.**
       catalogue, a sommelier AI — *"A YC partner reads that as no wedge."*
     - an honest competitive read against MarginEdge (line 328).
     - §4's track table has real ✅ statuses (A, B0, B0a, B0b, B0c, B1 complete).
-  - [`AGENT_NATIVE_UI_DECISION.md`](../../AGENT_NATIVE_UI_DECISION.md):78 — a prior
+  - [`AGENT_NATIVE_UI_DECISION.md`](../../decisions/AGENT_NATIVE_UI_DECISION.md):78 — a prior
     *"Business review (YC-partner lens) — verdict: don't build."* Strategy review is
     already a practice here, not a new habit.
   - [ADR 0005](../../decisions/0005-v3-to-v0-version-reset.md) — the deliberate v3→v0

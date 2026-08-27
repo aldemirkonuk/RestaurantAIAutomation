@@ -28,7 +28,7 @@ restart. In order:
 4. **Alerts on unauthenticated writes** to `notifications/**`, `communications/**`,
    `contacts/**` — 50 unguarded endpoints that send messages and read contact lists (M5).
 
-Phase 0 of `.planning/INBOUND_EMAIL_INTELLIGENCE_PLAN.md` has shipped — triage signals,
+Phase 0 of `.planning/07-reference/INBOUND_EMAIL_INTELLIGENCE_PLAN.md` has shipped — triage signals,
 shadow classification, durable notifications, a conservative reply gate. The durable-
 notification work there is the closest existing thing to this ledger and is the natural
 foundation rather than a parallel effort.

@@ -201,7 +201,7 @@ department's one genuine asset is a relationship, and a relationship is not an o
   `apps/api-gateway/src/common/orchestrator/prospects.service.ts:36-42`;
   both controllers registered, feature gated on `INBOUND_EMAIL_DOMAIN`, *"Nothing is left
   to build… Activating it is an ops task, not a build task"*
-  (`.planning/PROSPECTS_ATTRIBUTION_ARCHITECTURE.md:3-12`). Reusable pattern. **Not a
+  (`.planning/07-reference/PROSPECTS_ATTRIBUTION_ARCHITECTURE.md:3-12`). Reusable pattern. **Not a
   pipeline.** See the trap warning at the top.
 - **PARTIAL — a sending-identity switch already exists.** `env.example:165` declares
   `EMAIL_BACKEND=gmail`, and a second backend key is already reserved

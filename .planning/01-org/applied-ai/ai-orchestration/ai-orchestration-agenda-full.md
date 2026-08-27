@@ -68,7 +68,7 @@ Owner: [[action-safety-the-human-gate-charter]].
 
 ### Step 4 — close OD-03 with evidence
 
-Run the scoped bake-off `OD-03 (OPEN-DECISIONS.md:27)` asks for: hermes-agent vs
+Run the scoped bake-off `OD-03 (OPEN-DECISIONS.md:26)` asks for: hermes-agent vs
 deepseek-harness vs extending in-house `base_agent.py`, on this repo's actual
 workloads. **This agenda does not have a preferred answer and should not acquire one
 before the bake-off.** Steps 0–3 all produce inputs to it — you cannot compare harness

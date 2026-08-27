@@ -47,9 +47,9 @@ Owns outright:
 - **Queue order** — the enrichment queue is produced by
   `supabase/migrations/20260813170000_enrichment_demand_priority.sql`, and the team owns
   keeping it pointed at that function rather than at a hand-picked batch.
-- **Producer reputation coverage** — `.planning/PRODUCER_REPUTATION_PLAN.md`; reached 100%
+- **Producer reputation coverage** — `.planning/07-reference/PRODUCER_REPUTATION_PLAN.md`; reached 100%
   on the menu corpus in `f7e0ea1`.
-- **Menu extraction at scale** — `.planning/MENU_EXTRACTION_SCALE_PLAN.md`.
+- **Menu extraction at scale** — `.planning/07-reference/MENU_EXTRACTION_SCALE_PLAN.md`.
 - **Embeddings, for now** — `scripts/populate_embeddings.py` is one script and sits inside
   this team **deliberately, until retrieval work justifies otherwise**
   (`technology.md:580-581`). Recorded here so the decision to split it later is a decision,
@@ -100,7 +100,7 @@ the team's primary metric has the denominator it has.
 - Datasets present: `datasets/{wine_labels,wine_menus,wine_invoices,menu_corpus,scraped}/`
 - Demand prioritization present: `supabase/migrations/20260813170000_enrichment_demand_priority.sql`
   (function returns `demand_score`, indexed at `:112-114`)
-- Plans present: `.planning/PRODUCER_REPUTATION_PLAN.md`, `.planning/MENU_EXTRACTION_SCALE_PLAN.md`
+- Plans present: `.planning/07-reference/PRODUCER_REPUTATION_PLAN.md`, `.planning/07-reference/MENU_EXTRACTION_SCALE_PLAN.md`
 - Live in git history: `f7e0ea1 data(producer-reputation): reach 100% coverage on the menu
   corpus`, `ef19b81 data(a10): enrich 79 more wines in-session (144/1,448)`,
   `8bbcde6 feat(enrich): run the wine backfill in-session instead of on API credits`

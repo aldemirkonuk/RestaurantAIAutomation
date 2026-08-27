@@ -204,7 +204,7 @@ SEC-3 is different in kind and should exist from day one regardless.
 
 The corpus circulates **"~86"** non-webhook endpoints lacking `JwtAuthGuard` and **≈51**
 webhook routes (`technology.md:257`), while `foundation README.md:33-37` and
-OD-19 (`OPEN-DECISIONS.md:33`) put those two at **94** and **32**. Summing `ENDPOINTS.md`'s
+OD-19 (`OPEN-DECISIONS.md:32`) put those two at **94** and **32**. Summing `ENDPOINTS.md`'s
 own per-module ⚠️ counts gives a third pair of numbers:
 
 | Class | Modules | Routes |
@@ -459,7 +459,7 @@ say that to both siblings. Same independence argument as RM-2, one department ov
   blocked on §44.7 (SimPOS simulator, `:309`), which makes that dependency this
   team's single most important escalation.
 - The contract has already failed once, visibly:
-  `.planning/ANALYTICS_FEATURE_CATALOG.md:1-20` catalogues **460 features** (tiers
+  `.planning/07-reference/ANALYTICS_FEATURE_CATALOG.md:1-20` catalogues **460 features** (tiers
   92 / 170 / 98 at `:931-936`) and its header read *"Planning only — not built"* for
   **two weeks after the engine shipped** — "a shipped engine sat behind a 'not built'
   label." The file's own warning is the charter: *"the header was wrong once already."*

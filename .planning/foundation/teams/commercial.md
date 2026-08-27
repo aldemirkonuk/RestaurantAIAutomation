@@ -395,7 +395,7 @@ customer-facing delivery — one spam complaint, three broken systems.
 inbound-capture shape is built, wired, and dormant:
 `apps/api-gateway/src/common/orchestrator/prospects.service.ts:32-45` captures unknown-sender
 email, dedupes by domain, never auto-replies, and offers one-tap promotion;
-[PROSPECTS_ATTRIBUTION_ARCHITECTURE.md:3-9](../../PROSPECTS_ATTRIBUTION_ARCHITECTURE.md)
+[PROSPECTS_ATTRIBUTION_ARCHITECTURE.md:3-9](../../07-reference/PROSPECTS_ATTRIBUTION_ARCHITECTURE.md)
 confirms both controllers are registered and the feature is gated on `INBOUND_EMAIL_DOMAIN`.
 
 > **Read that correctly.** Those "prospects" are *vendors approaching a restaurant*, not

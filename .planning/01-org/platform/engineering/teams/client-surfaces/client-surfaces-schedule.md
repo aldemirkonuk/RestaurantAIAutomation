@@ -24,7 +24,7 @@ links: ["[[client-surfaces-charter]]", "[[client-surfaces-loops]]", "[[engineeri
 | Monthly | Mobile load watch — L-CS-5 | `apps/mobile/app/` route count and commit share |
 | Monthly | `.planning/foundation/PAGE_MAP.md` refresh against the live router | Navigation-graph drift |
 | Quarterly | `packages/ui` component audit — `{charts,layout,notifications,primitives}` | Unused components; duplicated primitives |
-| Quarterly | `.planning/UX_PATHS_CATALOG.md` reconciliation against the link graph | Closed paths sitting on unreachable pages |
+| Quarterly | `.planning/07-reference/UX_PATHS_CATALOG.md` reconciliation against the link graph | Closed paths sitting on unreachable pages |
 
 ## Skills owned
 

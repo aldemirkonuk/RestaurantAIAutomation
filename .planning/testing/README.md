@@ -9,7 +9,7 @@
 3. For manual work → [`checklists/`](./checklists/) (stub now; filled in Phases 39–40 / 43)
 4. For score fights → [`RUBRIC.md`](./RUBRIC.md) + inventory evidence paths — **do not browse inventory first**
 
-Status oracle for ✅/⚠️/❌ before writing checklist steps: [`.planning/UX_PATHS_CATALOG.md`](../UX_PATHS_CATALOG.md).
+Status oracle for ✅/⚠️/❌ before writing checklist steps: [`.planning/07-reference/UX_PATHS_CATALOG.md`](../07-reference/UX_PATHS_CATALOG.md).
 
 ---
 

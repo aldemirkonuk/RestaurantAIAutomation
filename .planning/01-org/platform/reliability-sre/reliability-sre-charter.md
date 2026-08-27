@@ -51,7 +51,7 @@ Owns outright:
   `agents/inequality_detector.py`, `.github/workflows/schema-parity.yml`,
   `scripts/check_schema_parity.sh`, `check_no_direct_stock_writes.sh`,
   `check_no_direct_type_attributes_access.sh`, `check_no_raw_guest_channels.sh`,
-  `check_no_guest_name_matching.sh`, `.planning/SCHEMA_DRIFT_INVENTORY.txt`.
+  `check_no_guest_name_matching.sh`, `.planning/07-reference/SCHEMA_DRIFT_INVENTORY.txt`.
 
 **Four teams, deliberately under-teamed** (`.planning/foundation/teams/technology.md:55,706-722`):
 

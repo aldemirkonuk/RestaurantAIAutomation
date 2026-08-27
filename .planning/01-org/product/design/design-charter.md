@@ -33,7 +33,7 @@ during service is a real performance budget. Every decision below is downstream 
 
 Owns outright:
 
-- **The UX path ledger** — `.planning/UX_PATHS_CATALOG.md`: 1,867 lines, 157,641 bytes,
+- **The UX path ledger** — `.planning/07-reference/UX_PATHS_CATALOG.md`: 1,867 lines, 157,641 bytes,
   **910 unique `NEW-` IDs** (`NEW-001…NEW-910`) across **29 lettered sections**, counted
   this session. Definition, priority, acceptance criteria, and the deferred/unblocked-by
   record. *Not* the build — see non-goals.
@@ -192,6 +192,6 @@ someone grepped for it.
   OD-20 (analytics spend, `decisions/OPEN-DECISIONS.md:111`),
   OD-21 (Obsidian workflow, `decisions/OPEN-DECISIONS.md:138`),
   OD-22 (tooling library, `decisions/OPEN-DECISIONS.md:121`) and
-  OD-23 (revenue target, unverified, `decisions/OPEN-DECISIONS.md:34`) — four of the five
+  OD-23 (revenue target, unverified, `decisions/OPEN-DECISIONS.md:33`) — four of the five
   were taken. The forks above now carry **PROD-F1…PROD-F5** ([[FORK-REGISTRY]]) and should
   be cited by ID.

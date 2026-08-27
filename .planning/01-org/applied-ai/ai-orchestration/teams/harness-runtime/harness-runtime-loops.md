@@ -92,7 +92,7 @@ outputs_to: [decision-office, engineering, reliability-sre]
 close_time: one-shot
 close_time_note: "a dated bake-off"
 status: proposed
-method: "OD-03 (OPEN-DECISIONS.md:27) — a scoped bake-off on this repo's actual workloads. No pick from repute."
+method: "OD-03 (OPEN-DECISIONS.md:26) — a scoped bake-off on this repo's actual workloads. No pick from repute."
 inputs_required: "cost instrumentation (model-routing) + doneability verdicts (agent-evaluation-gates). Running earlier produces a preference, not evidence."
 note: "core_lines_added_since_od03_opened is the sunk-cost meter — the size of the write-off if the fork resolves away from in-house. It is measured so that the diet (directive §The diet gate) has a number behind it rather than a principle."
 escalation: "The date passing without the bake-off running is an escalation to decision-office, not a reschedule."

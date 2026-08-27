@@ -116,7 +116,7 @@ accountable for the objection ([[engineering-directive]]).
 against the ledger. A count that disagrees produces an adjustment. If adjustments are
 written as their own truth rather than as movements through `apply_stock_movement`, the
 team has re-created dual bookkeeping under a new name — and this time with the count
-service's blessing. `.planning/INVENTORY_ADD_REMOVE_SCENARIOS.md` exists precisely because
+service's blessing. `.planning/07-reference/INVENTORY_ADD_REMOVE_SCENARIOS.md` exists precisely because
 these paths are subtle.
 
 **Earliest observable signal.** An adjustment row with no corresponding movement row.

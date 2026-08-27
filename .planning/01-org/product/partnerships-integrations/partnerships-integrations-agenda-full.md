@@ -43,7 +43,7 @@ The department inherits working code. Its first job is therefore **not build** â
    `available` right now (`:29-51`). The registry is a sequenced strategy document (`:3-16`),
    not a wish list.
 2. **Nothing has ever flowed through it.** `pos_checks` = **0** real rows;
-   `procurement_orders` = **1** (`.planning/AGENT_NATIVE_UI_DECISION.md:56, :59`). Every
+   `procurement_orders` = **1** (`.planning/decisions/AGENT_NATIVE_UI_DECISION.md:56, :59`). Every
    capability claim in this department is unexercised.
 3. **The ingress posture is inconsistent, and inconsistency is the defect.** `pos-hub`
    verifies correctly and fails closed (`pos-hub.service.ts:96-121`); `toast` verifies only
