@@ -47,6 +47,12 @@ logger = logging.getLogger(__name__)
 #: actually writes (haiku_enrichment_service.py:74); `abv_pct`, `proof`,
 #: `age_years` and `volume_ml` are the `public.beverages` column names, present
 #: here so the same reader works once the beverage catalogue has a writer.
+#:
+#: `producer` and `description` are flattened but **no rule reads them** —
+#: `beverage_ontology` excludes both deliberately (proper nouns and free prose
+#: are how a category rule invents failures; see `_CLASSIFYING_FIELDS` there).
+#: They are carried so a reader can see what was available and chose not to use
+#: it. Do not "wire them up".
 _SUBMISSION_FIELDS = (
     "name",
     "display_name",
