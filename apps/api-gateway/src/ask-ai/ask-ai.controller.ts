@@ -58,10 +58,21 @@ export class AskAiController {
   @ApiOperation({
     summary: "Confirm a proposal and execute it through the owning service",
     description:
-      "The confirm is a compare-and-swap on the row's status, so a double tap or a retry executes exactly once.",
+      "The confirm is a compare-and-swap on the row's status, so a double tap or a retry executes exactly once. " +
+      "An optional `payload` carries the operator's edits — re-validated through the same allowlist and grounding " +
+      "check as a model proposal, because an editable field is an id-injection hole the moment it is trusted.",
   })
-  async confirm(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
-    return this.askAi.confirm(user.restaurantId, user.userId, id);
+  async confirm(
+    @Param("id") id: string,
+    @Body() body: { payload?: Record<string, unknown> },
+    @CurrentUser() user: AuthedUser,
+  ) {
+    return this.askAi.confirm(
+      user.restaurantId,
+      user.userId,
+      id,
+      body?.payload,
+    );
   }
 
   @Post("actions/:id/discard")

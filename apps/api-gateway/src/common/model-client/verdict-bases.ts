@@ -98,3 +98,19 @@ export const PROPOSAL_BASIS = "proposal_v1";
  * that is running, not working.
  */
 export const CONFIRMATION_BASIS = "confirmation_v1";
+
+/**
+ * The operator accepted the proposal, but changed it first.
+ *
+ * A separate basis, not a flavour of `confirmation_v1`, and the reason is
+ * measurement rather than tidiness: folding an edited acceptance into the
+ * confirmation score would credit the model with the human's correction. A
+ * grader that cannot tell *"the model was right"* from *"a person made it
+ * right"* is measuring nothing.
+ *
+ * `confirmation_v1` still gets a row for an edited acceptance — as `partial`,
+ * because the proposal WAS accepted, just not as proposed. `edit_v1` carries
+ * what changed. Between them the two answer a question neither could alone:
+ * how close is the model getting, and on which field does it miss?
+ */
+export const EDIT_BASIS = "edit_v1";
