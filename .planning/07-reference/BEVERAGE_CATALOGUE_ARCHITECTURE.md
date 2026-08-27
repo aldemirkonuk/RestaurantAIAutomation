@@ -420,7 +420,7 @@ A `whiskey_details` row living *alongside* a `beverages` row for the same bottle
 is two representations of one entity that drift independently. That is the exact
 failure this codebase already paid to fix in inventory — `stock_live` written by
 three uncoordinated actors, an "immutable" ledger nothing wrote to
-(`.planning/INVENTORY_SOTA_PLAN.md` §1).
+(`.planning/07-reference/INVENTORY_SOTA_PLAN.md` §1).
 
 *(An earlier draft also cited `vendor_catalogue` as a second instance. Checked:
 it holds 25 rows, all `source='curated'`. The real pattern there is one vendor
@@ -1216,7 +1216,7 @@ not a schema fix, and no table design resolves it. Tracked as register A15.
 
 **Resolved 2026-08-20 — deferred, with the design written first.** The product
 owner's call is to keep raw strings for now. The full design, the traps, and the
-revisit triggers live in `.planning/DISH_IDENTITY_DESIGN.md`. Two findings from
+revisit triggers live in `.planning/07-reference/DISH_IDENTITY_DESIGN.md`. Two findings from
 writing it are worth carrying here, because they change what "deferred" means:
 
 1. **There is no negative-label source for dishes.** What makes the beverage key

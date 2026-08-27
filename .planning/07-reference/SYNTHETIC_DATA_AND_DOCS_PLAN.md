@@ -164,7 +164,7 @@ Every rendered document carries, non-optionally: a visible `SYNTHETIC — NOT A 
 
 ## 5. The WineOps document
 
-Design work is gated on the manager-pain research (`.planning/INVOICE_DOC_UX_RESEARCH.md`) so the field list is derived from what actually hurts rather than from what is convenient to render.
+Design work is gated on the manager-pain research (`.planning/07-reference/INVOICE_DOC_UX_RESEARCH.md`) so the field list is derived from what actually hurts rather than from what is convenient to render.
 
 Fixed regardless of research outcome:
 

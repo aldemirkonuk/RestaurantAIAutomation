@@ -103,8 +103,8 @@ can separate them again.
 - `scripts/check_display_name_parity.py`
 
 **Design corpus**
-- `.planning/BEVERAGE_CATALOGUE_ARCHITECTURE.md`
-- `.planning/DISH_IDENTITY_DESIGN.md`
+- `.planning/07-reference/BEVERAGE_CATALOGUE_ARCHITECTURE.md`
+- `.planning/07-reference/DISH_IDENTITY_DESIGN.md`
 
 **Gap, stated plainly:** the evidence for merge *machinery* is strong; the evidence for a
 **labelled identity set** to measure false merges against is absent. `scripts/eval_merge_policies.py`

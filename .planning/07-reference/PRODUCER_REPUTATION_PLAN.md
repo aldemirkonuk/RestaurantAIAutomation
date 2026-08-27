@@ -6,7 +6,7 @@ session and was explicitly NOT built here — Stage 1 produced raw observations 
 in `datasets/planning-exports/stage1_producer_research_raw.json`, ready to load once that schema lands.
 See §11 for what shipped and what it found.
 
-**Companion documents.** `.planning/BEVERAGE_CATALOGUE_PLAN.md` and
+**Companion documents.** `.planning/07-reference/BEVERAGE_CATALOGUE_PLAN.md` and
 `BEVERAGE_CATALOGUE_ARCHITECTURE.md` own identity, the catalogue split, and the merge
 policy. This plan is downstream of them and conforms to their decisions — see §0.
 

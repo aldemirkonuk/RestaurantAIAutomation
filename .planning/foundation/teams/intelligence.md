@@ -459,7 +459,7 @@ say that to both siblings. Same independence argument as RM-2, one department ov
   blocked on §44.7 (SimPOS simulator, `:309`), which makes that dependency this
   team's single most important escalation.
 - The contract has already failed once, visibly:
-  `.planning/ANALYTICS_FEATURE_CATALOG.md:1-20` catalogues **460 features** (tiers
+  `.planning/07-reference/ANALYTICS_FEATURE_CATALOG.md:1-20` catalogues **460 features** (tiers
   92 / 170 / 98 at `:931-936`) and its header read *"Planning only — not built"* for
   **two weeks after the engine shipped** — "a shipped engine sat behind a 'not built'
   label." The file's own warning is the charter: *"the header was wrong once already."*

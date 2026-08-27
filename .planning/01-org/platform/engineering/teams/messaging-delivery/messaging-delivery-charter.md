@@ -98,8 +98,8 @@ arrived. Only an id-keyed ledger sees the drop.
 - `services/agent-orchestrator/agents/buffer_manager.py` — 30-minute LIFO anti-spam window
 
 **Design corpus**
-- `.planning/CONVERSATION_THREADING_PLAN.md`
-- `.planning/INBOUND_EMAIL_INTELLIGENCE_PLAN.md`
+- `.planning/07-reference/CONVERSATION_THREADING_PLAN.md`
+- `.planning/07-reference/INBOUND_EMAIL_INTELLIGENCE_PLAN.md`
 
 **What is *not* in evidence:** any `notification_id`-keyed delivery ledger. The primary
 metric names its measurement basis and no artifact implements it. Batching state is split

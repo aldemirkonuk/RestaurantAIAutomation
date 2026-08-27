@@ -24,7 +24,7 @@ links: ["[[messaging-delivery-charter]]", "[[messaging-delivery-loops]]", "[[eng
 | Weekly | Buffer window review — `services/agent-orchestrator/agents/buffer_manager.py` 30-minute LIFO | Items held, items aged out, window pressure |
 | Monthly | Sender reputation review — `apps/api-gateway/src/common/orchestrator/sender-reputation.service.ts` | Reputation drift per sending domain |
 | Monthly | Inbound routing audit — `inbound-address.service.ts`, `email-triage.ts`, `priority.ts`, `rabbitmq-bridge.service.ts:528` | Misrouted inbound, unclassified mail |
-| Quarterly | Threading plan review against `.planning/CONVERSATION_THREADING_PLAN.md` and `.planning/INBOUND_EMAIL_INTELLIGENCE_PLAN.md` | Plan-vs-reality diff |
+| Quarterly | Threading plan review against `.planning/07-reference/CONVERSATION_THREADING_PLAN.md` and `.planning/07-reference/INBOUND_EMAIL_INTELLIGENCE_PLAN.md` | Plan-vs-reality diff |
 
 ## Skills owned
 

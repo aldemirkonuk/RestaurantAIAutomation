@@ -72,6 +72,7 @@
 | Live camera stack: RF-DETR → PaddleOCR → Gemini; no full OCR on live frames | [`PROJECT.md`](../PROJECT.md) / `SCANNING_PIPELINE_SETUP.md` | 2026-07-27 |
 | Extend BaseAgent, not rebuild; wave sequencing; 7 core principles | [`PROJECT.md`](../PROJECT.md) Key Decisions | v2.0 |
 | Blender / landing-page visuals: **hold** until structure + brand exist | Vision capture §13/§14.5 | 2026-08-24 |
+| Agent-native UI: **do not build**; fix the security defects, ship the narrow deterministic slice | [`AGENT_NATIVE_UI_DECISION.md`](AGENT_NATIVE_UI_DECISION.md) (moved here from top level, ADR 0032) | 2026-07-27 |
 
 ## Open
 

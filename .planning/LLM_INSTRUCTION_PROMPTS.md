@@ -15,11 +15,11 @@ Copy the block that matches the job. Keep the **Hard rules** intact — they are
 | Have the in-product agent propose SOTA UX improvements | **E — Self-Learning UX Agent** |
 
 Canonical specs:
-- UX: `.planning/UX_PATHS_CATALOG.md` (`NEW-001`–`NEW-760`)
+- UX: `.planning/07-reference/UX_PATHS_CATALOG.md` (`NEW-001`–`NEW-760`)
 - Insight types: `apps/api-gateway/src/analytics/insights/insight-catalog.ts` (**375** types)
 - Deterministic sentences: `insight-verbalizer.ts` (LLM never replaces these)
-- Feature backlog: `.planning/ANALYTICS_FEATURE_CATALOG.md`
-- Self-learning UX agent: `.planning/UX_SELF_LEARNING_AGENT.md` (`apps/api-gateway/src/ux-optimizer/*`)
+- Feature backlog: `.planning/07-reference/ANALYTICS_FEATURE_CATALOG.md`
+- Self-learning UX agent: `.planning/07-reference/UX_SELF_LEARNING_AGENT.md` (`apps/api-gateway/src/ux-optimizer/*`)
 
 **Recommendation action store (P0, shipped 2026-07-20):** disposition survives
 recompute via `recommendation_actions` keyed by `ruleKey` (or `insight:<candidate_key>`
@@ -36,10 +36,10 @@ for Reports insight cards). Routes:
 You are a senior product engineer for WineOps AI (restaurant wine inventory + procurement + analytics).
 
 MISSION
-Implement UX paths from `.planning/UX_PATHS_CATALOG.md` with the smallest correct diff that makes the path real end-to-end (UI → API → persistence → feedback). Prefer wiring dead/partial controls (Part 1 ⚠️/❌) before building net-new chrome.
+Implement UX paths from `.planning/07-reference/UX_PATHS_CATALOG.md` with the smallest correct diff that makes the path real end-to-end (UI → API → persistence → feedback). Prefer wiring dead/partial controls (Part 1 ⚠️/❌) before building net-new chrome.
 
 SOURCE OF TRUTH (read before coding)
-1. `.planning/UX_PATHS_CATALOG.md` — path ID, trigger, outcome
+1. `.planning/07-reference/UX_PATHS_CATALOG.md` — path ID, trigger, outcome
 2. Existing page/component for that route under `apps/web/src`
 3. Matching API under `apps/api-gateway/src` (analytics, orders, inventory, etc.)
 4. Patterns already used on sibling pages (Orders bulk bar, Notifications R-Click, Reports EngineInsightsPanel)
@@ -155,7 +155,7 @@ Task: Produce 3–8 weighted claims for the {{persona}} lens.
 ## C — UX Path Author (extend the catalog)
 
 ```
-You author new WineOps UX paths for `.planning/UX_PATHS_CATALOG.md`.
+You author new WineOps UX paths for `.planning/07-reference/UX_PATHS_CATALOG.md`.
 
 A UX path = trigger → action(s) → outcome. It must be testable as:
 Given I am on {page}, When I {trigger}, Then {outcome}.
@@ -228,7 +228,7 @@ Return 2–5 proposals sorted by (confidence × expected friction removed) desce
 **Guardrails (enforced in code, not just prompt):** `AUTO_APPLY=false`; global
 kill switch `UX_OPTIMIZER_ENABLED`; approvals ship at a rollout % and are
 reversible; regressions auto-revert; the agent may only target known
-`target_key`s. Full contract: `.planning/UX_SELF_LEARNING_AGENT.md`.
+`target_key`s. Full contract: `.planning/07-reference/UX_SELF_LEARNING_AGENT.md`.
 
 ---
 

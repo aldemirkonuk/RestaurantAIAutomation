@@ -15,8 +15,8 @@ frame; v-numbers reset at publish (ADR 0005).
 
 | Milestone | What it was | Record |
 |---|---|---|
-| v1.0 (2026-04-08) | Wine extraction pipeline — Claude Vision + Gemini + YOLO + Haiku, ontology, verification, studio | [v1.0-MILESTONE-AUDIT.md](v1.0-MILESTONE-AUDIT.md); phase dirs deleted, recoverable per [ADR 0032](decisions/0032-vault-cleanup-cut-line.md) |
-| v2.0 (2026-07-28, `gaps_found`) | Agent hardening to Level 4, golden path E2E, deploy | [v2.0-MILESTONE-AUDIT.md](v2.0-MILESTONE-AUDIT.md) |
+| v1.0 (2026-04-08) | Wine extraction pipeline — Claude Vision + Gemini + YOLO + Haiku, ontology, verification, studio | [v1.0-MILESTONE-AUDIT.md](07-reference/v1.0-MILESTONE-AUDIT.md); phase dirs deleted, recoverable per [ADR 0032](decisions/0032-vault-cleanup-cut-line.md) |
+| v2.0 (2026-07-28, `gaps_found`) | Agent hardening to Level 4, golden path E2E, deploy | [v2.0-MILESTONE-AUDIT.md](07-reference/v2.0-MILESTONE-AUDIT.md) |
 | Org + register (2026-08-24) | One-entity Mudavym, `.planning` org corpus, ADR log, OPEN-DECISIONS + CI claims | [decisions/](decisions/README.md) |
 | P1 (2026-08-25) | Neural Footprint instrumentation: NF-A emitters in both runtimes, readout, doneability verdicts (`nf_verdict`) | ADRs 0006, 0008, 0017; `04-specs/P1-*` |
 | P2 (2026-08-25) | Web complete + deploy: spine reset, 47-note page graph, founder-approved build scope, live production verification | ADRs 0018, 0019; `06-pages/` |

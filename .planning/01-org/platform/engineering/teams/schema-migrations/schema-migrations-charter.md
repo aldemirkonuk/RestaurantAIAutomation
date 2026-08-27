@@ -28,7 +28,7 @@ Owns outright:
 - **Generated types** — `packages/database/src/types/database.types.ts` and siblings
 - **RLS policies and Postgres functions** as authored artifacts
 - **Migration tooling** — `scripts/concat_migrations.py`, `scripts/run_migration.sh`
-- **The drift record** — `.planning/SCHEMA_DRIFT_INVENTORY.txt`
+- **The drift record** — `.planning/07-reference/SCHEMA_DRIFT_INVENTORY.txt`
 - **The rule itself**: production shape comes only from the repo
 
 ## Distinct from siblings because
@@ -75,7 +75,7 @@ month average out. A streak cannot be averaged, and it makes the premortem's fai
   logic with no source in the repo**.
 - **Generated types** — `packages/database/src/types/database.types.ts` and siblings
 - **Tooling** — `scripts/concat_migrations.py`, `scripts/run_migration.sh`
-- **Drift record** — `.planning/SCHEMA_DRIFT_INVENTORY.txt`
+- **Drift record** — `.planning/07-reference/SCHEMA_DRIFT_INVENTORY.txt`
 
 **Why that incident matters more than its size.** Thirteen functions with no source meant
 business logic existed that no one could review, test, or reproduce locally —

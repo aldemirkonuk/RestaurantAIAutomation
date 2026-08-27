@@ -119,10 +119,13 @@ means delete + tombstone**: nothing is ever copied or moved into an in-tree
 archive folder; a retirement lists the file in the retiring ADR with its
 recovery commit. Ongoing rules:
 
-- Treat `PROJECT.md`, `STATE.md`, `ROADMAP.md`, `REQUIREMENTS.md`, `FUTURES.md`
-  as the live spine.
-- Treat the large `*_PLAN.md` / `*_ARCHITECTURE.md` / `*_CATALOG.md` files as
-  reference corpora — grep them, cite them by `file.md:line`, do not restate them.
+- Treat `PROJECT.md`, `STATE.md`, `ROADMAP.md`, `FUTURES.md`, `YC_WEDGE_PLAN.md`
+  as the live spine — the only top-level docs besides `v3.0-TECH-DEBT.md` and
+  `config.json`.
+- Closed records and reference corpora (REQUIREMENTS ledger, milestone audits,
+  the `*_PLAN` / `*_CATALOG` files) live in `.planning/07-reference/` — grep
+  them, cite them by `file.md:line`, do not restate them. `07-reference/INDEX.md`
+  says what each one is.
 - `v3.0-TECH-DEBT.md` is the live defect register. Check it before claiming
   something is broken or fixed.
 - Do **not** create new top-level `.planning/*.md` files. New long-form docs go in

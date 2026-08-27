@@ -88,8 +88,8 @@ can see syntactically; this number is the ones that actually exist.
 - `supabase/migrations/20260805131000_stock_race_and_pour_idempotency.sql`
 
 **Design corpus**
-- `.planning/INVENTORY_SOTA_PLAN.md`
-- `.planning/INVENTORY_ADD_REMOVE_SCENARIOS.md`
+- `.planning/07-reference/INVENTORY_SOTA_PLAN.md`
+- `.planning/07-reference/INVENTORY_ADD_REMOVE_SCENARIOS.md`
 
 **Runtime**
 - `services/agent-orchestrator/services/inventory_count_service.py`

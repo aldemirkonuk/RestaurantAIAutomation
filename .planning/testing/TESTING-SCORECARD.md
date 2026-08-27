@@ -7,7 +7,7 @@
 **Legend:** [RUBRIC.md](./RUBRIC.md) (T0–T4 definitions + promote-past-T1 guard)  
 **Evidence source:** [EXISTING-TEST-INVENTORY.md](./EXISTING-TEST-INVENTORY.md)  
 **Group ownership:** [FUNCTIONALITY-REGISTRY.md](./FUNCTIONALITY-REGISTRY.md)  
-**Operator UX traps:** [.planning/UX_PATHS_CATALOG.md](../UX_PATHS_CATALOG.md)
+**Operator UX traps:** [.planning/07-reference/UX_PATHS_CATALOG.md](../07-reference/UX_PATHS_CATALOG.md)
 
 ---
 

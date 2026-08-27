@@ -372,4 +372,4 @@ rearrange itself."
   to a real defect in current code
 - Architecture review of the slot/targeting contract — independently confirmed D1
   and D2 without being told about them (see §7b)
-- Prior design doc: `.planning/UX_SELF_LEARNING_AGENT.md`
+- Prior design doc: `.planning/07-reference/UX_SELF_LEARNING_AGENT.md`

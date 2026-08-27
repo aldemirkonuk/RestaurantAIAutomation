@@ -22,8 +22,8 @@ links: ["[[inventory-ledger-charter]]", "[[inventory-ledger-loops]]", "[[enginee
 | Weekly | Count adjustment provenance — L-IL-5 | Adjustments with no matching movement row |
 | Weekly | Cross-hop duplication scan — L-IL-4 | Duplicate movements per originating event |
 | Fortnightly | Ledger v1 caller census — L-IL-3 | Distinct v1 callers; new call sites escalate |
-| Monthly | Scenario re-walk against `.planning/INVENTORY_ADD_REMOVE_SCENARIOS.md` | Divergence-definition drift between scenarios and sampler |
-| Quarterly | `.planning/INVENTORY_SOTA_PLAN.md` phase-gate review (3 gated phases, 13 locked decisions) | Phase advance or explicit hold |
+| Monthly | Scenario re-walk against `.planning/07-reference/INVENTORY_ADD_REMOVE_SCENARIOS.md` | Divergence-definition drift between scenarios and sampler |
+| Quarterly | `.planning/07-reference/INVENTORY_SOTA_PLAN.md` phase-gate review (3 gated phases, 13 locked decisions) | Phase advance or explicit hold |
 
 ## Skills owned
 

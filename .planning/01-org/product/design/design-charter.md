@@ -33,7 +33,7 @@ during service is a real performance budget. Every decision below is downstream 
 
 Owns outright:
 
-- **The UX path ledger** — `.planning/UX_PATHS_CATALOG.md`: 1,867 lines, 157,641 bytes,
+- **The UX path ledger** — `.planning/07-reference/UX_PATHS_CATALOG.md`: 1,867 lines, 157,641 bytes,
   **910 unique `NEW-` IDs** (`NEW-001…NEW-910`) across **29 lettered sections**, counted
   this session. Definition, priority, acceptance criteria, and the deferred/unblocked-by
   record. *Not* the build — see non-goals.

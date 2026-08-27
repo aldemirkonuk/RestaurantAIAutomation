@@ -47,7 +47,7 @@
 | Z2–Z4 Contextual insights | `i`-key toggle | 737, 747, 757 | Needs page-level keyboard wiring per host | Follow-up, same pattern as other page shortcuts |
 | Recommendations | Scheduled digest send | 303 | Toggle + preferences persist (`recommendation_digest_prefs`); the actual cron/email send was never built, only feature-flagged | Wire `InsightSchedulerService` (or a new cron) to read `digest_enabled` and call the email service |
 | Analytics catalog | Seating-density UX (Batch 6) | 761–860 | 100 UX rows are fully written (trigger→outcome) and the 100 backing analytics features + 8 new measures are documented in `ANALYTICS_FEATURE_CATALOG.md` / `insight-catalog.ts`, but the **Reports "Seating Density" widget these rows reference does not exist yet** | Build the Reports widget + wire Act/hover/keyboard per the NEW-761–860 rows |
-| Self-Learning UX Agent | Runtime activation (Phase B/C/D) | — | Ships dark by design (`UX_OPTIMIZER_ENABLED=false`); not a gap, a staged rollout | See `.planning/UX_SELF_LEARNING_AGENT.md` → Rollout plan |
+| Self-Learning UX Agent | Runtime activation (Phase B/C/D) | — | Ships dark by design (`UX_OPTIMIZER_ENABLED=false`); not a gap, a staged rollout | See `.planning/07-reference/UX_SELF_LEARNING_AGENT.md` → Rollout plan |
 | §E Wine Library | Inline bin/price edit; scan persistence; reorder-without-reload; compare sheet; collections; notes/photos; price history; vendor matrix | 207, 211–215, 216, 218/219, 224/225, 228/229 | Need wine-patch mutation, scanner ingest pipeline, or new endpoints | Respective endpoints |
 | §H Providers | Multi-select bulk bar; notes CRUD; locations persistence; merge; archive; credit terms; price lists; SLA; map view | 309, 314, 315, 318–320, 322, 324, 328 | Four view surfaces need checkbox affordances; rest need endpoints/schema | Own pass + endpoints |
 | §N Notifications | Snooze; undo archive/delete; mute-type; priority rules; assign; desktop push; audit export | 476, 482, 479, 484, 489, 486, 491 | Delete is permanent server-side; no snoozed_until column or rules table | `snoozed_until` column, unarchive route, rules table |
@@ -1862,7 +1862,7 @@ and every insight surface pick them up automatically.
 **Platform addition — Self-Learning UX Agent (in-product runtime):** foundation
 shipped 2026-07-20. Observes friction telemetry → proposes SOTA-aligned changes
 (never auto-applied) → serves human-approved, rollout-gated overrides → measures
-→ learns. See `.planning/UX_SELF_LEARNING_AGENT.md`. Ships dark
+→ learns. See `.planning/07-reference/UX_SELF_LEARNING_AGENT.md`. Ships dark
 (`UX_OPTIMIZER_ENABLED=false`).
 
 **Seating density Batch 6 (2026-07-20):** analytics features **#361–#460** (sales vs check-in density over seating) + UX paths **NEW-761–NEW-860**. Insight catalog measures expanded (`checkin_density`, `checks_per_seat`, `wine_revenue_per_seat`, `revenue_per_cover`, `wine_per_cover`, `seat_utilization`, `turnover_per_seat`, `tip_per_seat`); candidate types now **573+**.

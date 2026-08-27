@@ -96,10 +96,19 @@ Vault: 1,677 → 1,152 files. Top level: 35 → 30.
   git history keeps it, three commands away).
 - The pre-P2 snapshots still contain dead internal pointers to
   `archive/v2.0-phases/`; they are verbatim historical records and stay unedited.
-- **Residue, not yet decided:** where the ~24 surviving top-level docs land —
-  founder rule: *into `01-`…`06-` where a dir's charter genuinely fits, one new
-  `07-reference/` for the rest* — goes through founder batch review before any
-  file moves. `md/` (113 files) and the `md_files/` remnant follow the same
+- **Survivor mapping (founder calls, 2026-08-27, same session):** spine stays
+  top-level — `PROJECT`, `STATE`, `ROADMAP`, `FUTURES`, `YC_WEDGE_PLAN` (kept
+  top-level by call: live strategy, 82 citations), `v3.0-TECH-DEBT`,
+  `config.json`. Twenty docs moved to `07-reference/` (see its `INDEX.md`),
+  including `REQUIREMENTS.md` — a historical ledger by its own ADR 0018 banner,
+  so it leaves the spine. Special homes by call: `FIX_ERROR_LOG.md` → `debug/`
+  (its `.cursor/skills/fix-error/` paths updated in the working checkout —
+  `.cursor/` is untracked, so that edit rides no commit),
+  `AGENT_NATIVE_UI_DECISION.md` → `decisions/` (pre-log row added). 67 files of
+  path citations rewritten in the same branch; wikilinks unaffected.
+- **Residue:** `LLM_INSTRUCTION_PROMPTS.md` is still top-level — the one
+  survivor without a founder call (20 references, WineOps-branded, overlaps
+  CLAUDE.md). `md/` (113 files) and the `md_files/` remnant follow the same
   metric on their own branch. Revisit this ADR if a deleted phase doc turns out
   to be load-bearing (signal: a session recovering one from history to answer a
   live question).

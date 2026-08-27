@@ -17,7 +17,7 @@ Parent: **[[design-charter]]** (Product division). Siblings:
 
 ## Mandate
 
-Own `.planning/UX_PATHS_CATALOG.md` as a **live execution ledger**: which of its 910 paths
+Own `.planning/07-reference/UX_PATHS_CATALOG.md` as a **live execution ledger**: which of its 910 paths
 ship, in what order, with what acceptance criteria, and — for every deferred path — the
 named thing that unblocks it, verified against the repository rather than remembered.
 
@@ -25,7 +25,7 @@ named thing that unblocks it, verified against the repository rather than rememb
 
 Owns outright:
 
-- **The ledger.** `.planning/UX_PATHS_CATALOG.md` — 1,867 lines, 157,641 bytes,
+- **The ledger.** `.planning/07-reference/UX_PATHS_CATALOG.md` — 1,867 lines, 157,641 bytes,
   **910 unique `NEW-` IDs** (`NEW-001…NEW-910`) across **29 lettered sections**, counted
   this session.
 - **The Deferred Decisions Log** at `:10-67` — every row's *why deferred* and *unblocked
@@ -87,7 +87,7 @@ human verdict. Neither emits today ([[README]] §1, L4).
 **EXISTS — and unusually well-instrumented for a backlog.**
 
 - **910 unique `NEW-` IDs**, `NEW-001…NEW-910`, verified by count this session against
-  `.planning/UX_PATHS_CATALOG.md`. **29 lettered sections.**
+  `.planning/07-reference/UX_PATHS_CATALOG.md`. **29 lettered sections.**
 - **A consolidated Deferred Decisions Log at `:10-67`** where every deferred item already
   carries *why deferred* **and** *unblocked by*. This is the rarest artifact in the repo: a
   backlog that knows its own dependencies.

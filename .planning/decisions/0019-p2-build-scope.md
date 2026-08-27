@@ -4,7 +4,7 @@
 - **Date:** 2026-08-25
 - **Decider:** Aldemir (founder) — this document exists to be edited and locked by you
 - **Keywords:** P2.3, build scope, page graph, dead ends, live defects, endpoint gaps, web deploy
-- **Links:** [[0018-p2-plan-of-record]], `.planning/06-pages/PAGES-MAP.md` (findings feed), `.planning/v3.0-TECH-DEBT.md`, `.planning/UX_PATHS_CATALOG.md`
+- **Links:** [[0018-p2-plan-of-record]], `.planning/06-pages/PAGES-MAP.md` (findings feed), `.planning/v3.0-TECH-DEBT.md`, `.planning/07-reference/UX_PATHS_CATALOG.md`
 
 ## Context
 

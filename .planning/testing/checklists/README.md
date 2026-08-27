@@ -31,4 +31,4 @@ Each file should link:
 
 1. Registry group section in `FUNCTIONALITY-REGISTRY.md`
 2. Matching row in `TESTING-SCORECARD.md`
-3. 3–7 canonical routes (prefer UX catalog ✅/⚠️ status before writing steps — see [`.planning/UX_PATHS_CATALOG.md`](../../UX_PATHS_CATALOG.md))
+3. 3–7 canonical routes (prefer UX catalog ✅/⚠️ status before writing steps — see [`.planning/07-reference/UX_PATHS_CATALOG.md`](../../07-reference/UX_PATHS_CATALOG.md))
