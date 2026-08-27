@@ -337,8 +337,8 @@ describe("SimposService.closeCheck (decisions C25/C27/C28)", () => {
 
     expect(result.check.status).toBe("closed");
     const stored = tables.simpos_checks.find((c: Row) => c.id === checkId);
-    expect(stored.status).toBe("closed");
-    expect(stored.webhook_status).toBe("sent");
+    expect(stored!.status).toBe("closed");
+    expect(stored!.webhook_status).toBe("sent");
   });
 
   it("fails closed (does not throw) and records failure when no secret is configured", async () => {
@@ -350,7 +350,7 @@ describe("SimposService.closeCheck (decisions C25/C27/C28)", () => {
     expect(mockedAxios.post).not.toHaveBeenCalled();
     expect(result.webhook.ok).toBe(false);
     const stored = tables.simpos_checks.find((c: Row) => c.id === checkId);
-    expect(stored.webhook_status).toBe("failed");
+    expect(stored!.webhook_status).toBe("failed");
   });
 
   it("refuses to close an already-closed check", async () => {

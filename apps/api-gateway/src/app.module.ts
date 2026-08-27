@@ -49,6 +49,7 @@ import { ModelClientModule } from "./common/model-client/model-client.module";
 import { TenantGuard } from "./common/tenant/tenant.guard";
 import { OrchestratorModule } from "./common/orchestrator/orchestrator.module";
 import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
+import { AskAiModule } from "./ask-ai/ask-ai.module";
 
 @Module({
   imports: [
@@ -82,6 +83,7 @@ import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
     VendorPortalModule, // Public vendor catalogue pages (subdomain-resolved)
     VendorIntelModule, // Vendor price scraping + multi-source comparison
     UxOptimizerModule, // Self-learning UX agent (observe → propose → gated ship → learn)
+    AskAiModule, // Ask AI (FUTURES §8): ask → propose → confirm → execute
     PosHubModule, // MultiPOS ingestion hub (canonical checks → pos_checks)
     // Fake POS terminal. Its close() makes THIS server HMAC-sign a webhook into
     // PosHubModule, which trusts the signature and depletes stock — so an unguarded

@@ -34,6 +34,6 @@ this doc was one of the sources claiming **375**). Those anchors refer to the
 retired text, not this stub:
 
 ```
-git log --oneline -- .planning/LLM_INSTRUCTION_PROMPTS.md   # find the last pre-retirement commit
-git show <commit>:.planning/LLM_INSTRUCTION_PROMPTS.md
+git log --oneline -- .planning/07-reference/LLM_INSTRUCTION_PROMPTS.md   # find the last pre-retirement commit
+git show <commit>:.planning/07-reference/LLM_INSTRUCTION_PROMPTS.md
 ```
