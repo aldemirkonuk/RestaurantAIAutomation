@@ -28,6 +28,49 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+# Identity fields that must never reach the error tracker. Kept byte-identical
+# with PII_USER_KEYS in apps/web/src/lib/error-tracking.ts and
+# apps/api-gateway/src/common/error-tracking/sentry.service.ts —
+# scripts/check_sentry_pii_scope.py fails the build if the three drift.
+#
+# `id` and restaurant_id survive on purpose: they are UUIDs that mean nothing
+# outside our own database, so an issue stays routable to an account without
+# Sentry holding an identity.
+PII_USER_KEYS = ("email", "username", "name", "ip_address")
+
+# Request headers that carry a credential rather than a description.
+SENSITIVE_HEADERS = ("authorization", "cookie", "x-api-key", "proxy-authorization")
+
+
+def scrub_sentry_event(event: Dict, hint: Optional[Dict] = None) -> Optional[Dict]:
+    """
+    Strip credentials and identity from an event before it is transmitted.
+
+    Registered as `before_send` on every sentry_sdk.init() in this service. It is
+    the last line of defence, not the first: `send_default_pii=False` keeps the
+    SDK from attaching bodies and IPs of its own accord, and the narrowed
+    `set_user` signature keeps identity out at the source. This catches whatever
+    reached the event by a path neither of those covers.
+
+    `hint` is accepted and ignored — sentry_sdk always passes it.
+    """
+    request = event.get("request")
+    if isinstance(request, dict):
+        headers = request.get("headers")
+        if isinstance(headers, dict):
+            for name in list(headers):
+                if name.lower() in SENSITIVE_HEADERS:
+                    headers.pop(name, None)
+        request.pop("cookies", None)
+
+    user = event.get("user")
+    if isinstance(user, dict):
+        for key in PII_USER_KEYS:
+            user.pop(key, None)
+
+    return event
+
+
 class SentryClient:
     """Sentry error tracking client for Python services."""
 
@@ -88,6 +131,7 @@ class SentryClient:
                 profiles_sample_rate=(
                     profiles_sample_rate if environment == "production" else 1.0
                 ),
+                send_default_pii=False,
                 integrations=[
                     FastApiIntegration(transaction_style="endpoint"),
                     StarletteIntegration(transaction_style="endpoint"),
@@ -96,7 +140,7 @@ class SentryClient:
                         event_level=logging.ERROR,
                     ),
                 ],
-                before_send=self._before_send,
+                before_send=scrub_sentry_event,
             )
 
             self._initialized = True
@@ -106,27 +150,6 @@ class SentryClient:
         except Exception as e:
             logger.error(f"Failed to initialize Sentry: {e}")
             return False
-
-    def _before_send(self, event: Dict, hint: Dict) -> Optional[Dict]:
-        """
-        Filter sensitive data before sending to Sentry.
-
-        Args:
-            event: Sentry event
-            hint: Event hint with original exception
-
-        Returns:
-            Filtered event or None to drop
-        """
-        # Remove sensitive headers
-        if "request" in event and "headers" in event["request"]:
-            headers = event["request"]["headers"]
-            if isinstance(headers, dict):
-                headers.pop("authorization", None)
-                headers.pop("cookie", None)
-                headers.pop("x-api-key", None)
-
-        return event
 
     @property
     def is_initialized(self) -> bool:
@@ -200,18 +223,19 @@ class SentryClient:
     def set_user(
         self,
         user_id: str,
-        email: Optional[str] = None,
-        username: Optional[str] = None,
         restaurant_id: Optional[str] = None,
     ) -> None:
         """
-        Set user context.
+        Set user context — opaque identifiers only.
+
+        `email` and `username` parameters used to exist here and were forwarded
+        straight to Sentry. They are gone rather than ignored: a parameter that
+        accepts an email is an invitation to pass one, and `send_default_pii`
+        does not cover anything set explicitly through set_user().
 
         Args:
-            user_id: User ID
-            email: User email
-            username: Username
-            restaurant_id: Restaurant ID
+            user_id: User ID (UUID — meaningless outside our database)
+            restaurant_id: Restaurant ID (UUID)
         """
         if not self._initialized or not SENTRY_AVAILABLE:
             return
@@ -219,8 +243,6 @@ class SentryClient:
         sentry_sdk.set_user(
             {
                 "id": user_id,
-                "email": email,
-                "username": username,
                 "restaurant_id": restaurant_id,
             }
         )
