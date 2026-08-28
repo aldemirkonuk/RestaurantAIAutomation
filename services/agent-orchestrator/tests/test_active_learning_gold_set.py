@@ -82,6 +82,7 @@ def stub_parser(monkeypatch):
 # Fail-loud on an unusable corpus
 # ---------------------------------------------------------------------------
 
+
 def test_empty_gold_set_raises_instead_of_green_zero(gold_dir):
     """An empty corpus must raise, not return overall_accuracy == 0.0."""
     mgr = BenchmarkManager()
@@ -129,6 +130,7 @@ def test_present_but_noncomparable_corpus_raises(gold_dir):
 # Passes on a populated corpus
 # ---------------------------------------------------------------------------
 
+
 def test_populated_gold_set_asserts_accuracy(gold_dir, stub_parser):
     """A populated corpus returns a real, non-vacuous accuracy number."""
     _write_docs(gold_dir, BenchmarkManager.BENCHMARK_MIN_DOCS)
@@ -156,6 +158,7 @@ def test_improvement_cycle_reports_skip_reason_when_below_threshold(gold_dir):
 # ---------------------------------------------------------------------------
 # Consumer boundary: the HTTP endpoint fails loud (503), never 200 with 0.0
 # ---------------------------------------------------------------------------
+
 
 async def test_benchmark_endpoint_returns_503_on_empty_gold_set(gold_dir, monkeypatch):
     """The /learning/benchmark route must surface the empty corpus as an error."""
