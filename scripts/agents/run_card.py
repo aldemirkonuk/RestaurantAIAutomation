@@ -98,20 +98,16 @@ def fleet_census_agent():
     registered = re.findall(r'"([a-z0-9_]+)"\s*:\s*\w+Agent', block.group(0)) if block else []
     unregistered = [m for m in modules if m not in registered]
 
-    # Stub heuristic: process_message whose body is only logging/pass/return.
-    stubs = []
-    for m in registered:
-        f = agents_dir / f"{m}.py"
-        if not f.exists():
-            continue
-        pm = re.search(r"def process_message\(.*?\n(.*?)(?=\n    (?:async )?def |\Z)",
-                       f.read_text(), re.S)
-        if pm:
-            body = [l.strip() for l in pm.group(1).splitlines()
-                    if l.strip() and not l.strip().startswith(("#", '"', "'"))]
-            if body and all(l.startswith(("logger.", "log.", "self.logger", "pass",
-                                          "return", "await self.log")) for l in body):
-                stubs.append(m)
+    # Gate check, not a heuristic (fix 2026-08-28, ADR 0038 correction / PAO-14):
+    # the registry is the arbiter. OPTIONAL-tier specs are boot-refused unless
+    # AGENT_<NAME>_ENABLED is set, and that env default is off — so an OPTIONAL
+    # agent cannot receive by default regardless of what its process_message says.
+    # The first census read only orchestrator.py, published 23, and overturned the
+    # charter's correct ≈18; measuring the wrong gate with confidence was the bug.
+    reg_src = (ORCH / "core" / "agent_registry.py").read_text()
+    optional = re.findall(
+        r'"([a-z0-9_]+)":\s*\{[^}]*?AgentTier\.OPTIONAL', reg_src, re.S)
+    stubs = [m for m in registered if m in optional]
 
     # Subscription coverage: topics subscribed vs published, grep-level.
     subs = {m.group(1) for _, _, l in _grep_lines(ORCH, r'subscribe\w*\(\s*["\']', ".py")
@@ -124,24 +120,29 @@ def fleet_census_agent():
         "fleet.modules_on_disk": len(modules),
         "fleet.subclassing_baseagent": len(subclassing),
         "fleet.registered": len(registered),
-        "fleet.can_receive_estimate": live,
+        "fleet.can_start_by_default": live,
         "fleet.live_agent_ratio": f"{live}/{len(modules)}",
+        "fleet.optional_gated_off": len(stubs),
         "fleet.orphan_modules": len(unregistered),
         "fleet.subscribed_topics_without_publisher": len(dead_topics),
     }
     findings = [f"unregistered modules: {', '.join(unregistered) or 'none'}",
-                f"stub heuristic flagged (registered, process_message only logs): "
+                f"OPTIONAL tier, boot-refused unless AGENT_<NAME>_ENABLED "
+                f"(agent_registry.py is_enabled, default off): "
                 f"{', '.join(stubs) or 'none'}",
                 f"subscribed topics with no publisher (grep-level): "
                 f"{', '.join(dead_topics) or 'none'}"]
     facts = [("fleet-census",
-              f"Fleet census {TODAY}: {live}/{len(modules)} can receive",
+              f"Fleet census {TODAY}: {live}/{len(modules)} can start by default",
               f"On disk {len(modules)} · subclass BaseAgent {len(subclassing)} · "
-              f"registered {len(registered)} · stub-flagged {len(stubs)} "
+              f"registered {len(registered)} · OPTIONAL gated off {len(stubs)} "
               f"({', '.join(stubs) or '—'}) · unregistered "
               f"{', '.join(unregistered) or '—'} · dead subscribed topics "
-              f"{', '.join(dead_topics) or '—'}. Stub detection is a heuristic "
-              f"(process_message body only logs); counts reproducible by rerun.")]
+              f"{', '.join(dead_topics) or '—'}. The gate is the registry "
+              f"(AgentTier.OPTIONAL + is_enabled default-off), not a body "
+              f"heuristic — corrected 2026-08-28 after the first census measured "
+              f"the wrong gate and published 23 where the default-boot count "
+              f"matches the charter's ≈18.")]
     return {"metrics": metrics, "findings": findings, "facts": facts}
 
 
@@ -341,6 +342,21 @@ IMPLEMENTED = {
     "kd-ledger": ("knowledge-documentation", kd_ledger),
 }
 
+# Boundary discipline (2026-08-28 audit finding, ADR 0038 correction): only
+# mechanical cards run here — EXCEPT an agent whose card is judgment/extraction
+# but whose implemented function is strictly the mechanical SUB-DUTY of that
+# card (a census or a wrapped guard, never the judgment itself). Each such
+# exception is named here with its sub-duty; an implemented agent that is
+# neither mechanical nor listed is refused at runtime.
+MECHANICAL_SUBDUTY = {
+    "registry-clerk": "registry census only (§3.3 field presence); the gate "
+                      "review — 'is this past instance real?' — stays human",
+    "claim-auditor": "wraps the three existing guards and reports exit codes; "
+                     "judges nothing itself",
+    "gate-runner": "wraps scripts/check_task_types_are_graded.py; grades no task",
+    "kd-ledger": "file-count census; no corpus judgment",
+}
+
 
 def write_memory(unit_path: str, slug: str, facts):
     unit_dir = P / pathlib.Path(unit_path).parent
@@ -381,6 +397,12 @@ def main():
             print(f"WARN: {agent} has no card in cards.json — refusing to run "
                   f"an undeclared agent")
             continue
+        if agent not in mech and agent not in MECHANICAL_SUBDUTY:
+            print(f"REFUSED: {agent} card is "
+                  f"{cards[agent]['routing_class']} and it is not in "
+                  f"MECHANICAL_SUBDUTY — running it would cross the ADR 0038 "
+                  f"boundary")
+            continue
         r = fn()
         r.update(agent=agent, unit=unit, ran_at=TODAY)
         reports.append(r)
@@ -389,7 +411,11 @@ def main():
 
     unimplemented = sorted(mech - set(IMPLEMENTED))
     out = {"ran": reports, "mechanical_cards_total": len(mech),
-           "implemented": sorted(IMPLEMENTED),
+           "implemented_mechanical": sorted(set(IMPLEMENTED) & mech),
+           "implemented_mechanical_subduty": {k: MECHANICAL_SUBDUTY[k]
+                                              for k in sorted(
+                                                  set(IMPLEMENTED)
+                                                  & set(MECHANICAL_SUBDUTY))},
            "mechanical_unimplemented": unimplemented,
            "memory_files_written": wrote}
     if JSON_OUT:

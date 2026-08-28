@@ -50,9 +50,33 @@ time, the key-management design; nothing is built while NF-B is HELD.
   named training path — the fallback recorded here is option 3 applied only to
   that path's inputs, never to the store itself.
 
+## Addendum — 2026-08-28, same day: three consequences the decision must own
+
+Surfaced by the adversarial audit and, independently, by the guest-experience and
+compliance-privacy wave-3 passes. None overturns the pick; all three bind its
+implementation and are privacy-engineering's to carry:
+
+1. **Keys must be STORED, not derived.** The repo's only key precedent,
+   `guest_pepper()` (`20260819000000_guest_identity_minimal_slice.sql:338-367`),
+   HMAC-derives per-restaurant keys from one vault master — a derived key can be
+   recomputed and therefore cannot be destroyed. Crypto-shredding requires
+   independently stored, destroyable per-guest keys: different infrastructure
+   than anything shipped. (Their agendas' D1/GX-4 attack this with
+   architecture-review before any build.)
+2. **Aggregate residue is a liability, not a feature.** The Decision section
+   stated pre-erasure cross-guest aggregates "survive untouched" as a benefit
+   without arguing the point; an aggregate derived from an erased subject is
+   residual personal-data risk that the erasure story must address (k-thresholds
+   or aggregate expiry — design question, not settled here).
+3. **Model residue is out of this ADR's scope and someone's problem.** Key
+   destruction does not remove what a trained model already absorbed (GX-17).
+   Filed to privacy-engineering + decision-office; any NF-B-trained model
+   inherits an unlearning question this ADR deliberately does not answer.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-08-28 | Founder (AskUserQuestion, in-session) | Locked — option 1, recommended, chosen |
 | 2026-08-28 | — | Created |
+| 2026-08-28 | Adversarial audit + GX/CP wave passes | WOUNDED on consequences, not on the pick — addendum above binds implementation |

@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Analytics &amp; BI — Agenda Canvas (2026-08-28)</title>
+<style>
+  :root{
+    --ink:#0e1116; --ink-2:#161b23; --ink-3:#1d232d;
+    --line:#2a323e; --line-soft:#222935;
+    --text:#e8ecf2; --text-2:#a6b0be; --text-3:#6f7b8b;
+    --burgundy:#CD2D5B; --burgundy-dim:#7c1d3c;
+    --a:#D9A441;   /* Programme A — truth board */
+    --b:#CD2D5B;   /* Programme B — reconciliation */
+    --c:#3FA6A0;   /* Programme C — grounding */
+    --d:#8B7BD8;   /* Programme D — measurement */
+    --blocked:#5b6472;
+    --mono:'JetBrains Mono','SF Mono',Menlo,Consolas,monospace;
+    --sans:'Plus Jakarta Sans','DM Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:28px 26px 44px; background:var(--ink); color:var(--text);
+    font-family:var(--sans); font-size:14px; line-height:1.45;
+    background-image:radial-gradient(1200px 600px at 15% -10%, #1b2029 0%, transparent 60%);
+  }
+  .wrap{max-width:1440px;margin:0 auto}
+
+  /* ---------- header ---------- */
+  header{border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:22px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--burgundy)}
+  h1{font-size:27px;margin:6px 0 8px;letter-spacing:-.02em;font-weight:700}
+  h1 span{color:var(--text-3);font-weight:400}
+  .thesis{color:var(--text-2);max-width:76ch;font-size:14.5px}
+  .thesis b{color:var(--text);font-weight:600}
+  .meta{margin-top:12px;display:flex;gap:22px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--text-3)}
+  .meta b{color:var(--text-2);font-weight:500}
+
+  h2{font-size:12px;font-family:var(--mono);letter-spacing:.12em;text-transform:uppercase;
+     color:var(--text-3);margin:30px 0 12px;font-weight:500;
+     border-top:1px solid var(--line-soft);padding-top:14px}
+  h2 em{font-style:normal;color:var(--burgundy);text-transform:none;letter-spacing:0;font-size:12px}
+
+  /* ---------- the five numbers ---------- */
+  .five{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  .num{background:var(--ink-2);border:1px solid var(--line);border-radius:8px;padding:12px 13px;position:relative;overflow:hidden}
+  .num::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--line)}
+  .num.measured::before{background:var(--c)}
+  .num.unmeasured::before{background:var(--d)}
+  .num.blocked::before{background:var(--blocked)}
+  .num.divergent::before{background:var(--b)}
+  .num .k{font-family:var(--mono);font-size:10px;color:var(--text-3);letter-spacing:.02em;display:block;margin-bottom:7px;word-break:break-all}
+  .num .v{font-size:21px;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+  .num .v.small{font-size:15px;line-height:1.25}
+  .num .d{font-size:11.5px;color:var(--text-2);margin-top:5px}
+  .num .go{font-family:var(--mono);font-size:10px;color:var(--text-3);margin-top:8px;padding-top:7px;border-top:1px dashed var(--line)}
+  .never{font-family:var(--mono);font-size:10.5px;color:var(--burgundy);margin-top:9px;letter-spacing:.03em}
+
+  /* ---------- matrix ---------- */
+  .matrix{display:grid;grid-template-columns:126px repeat(5,1fr);gap:7px;align-items:stretch}
+  .colhead{font-family:var(--mono);font-size:10.5px;color:var(--text-3);text-align:center;
+           padding:6px 0;border-bottom:1px solid var(--line);letter-spacing:.04em}
+  .colhead b{display:block;color:var(--text-2);font-size:12px;font-weight:600;letter-spacing:0}
+  .lane{font-family:var(--mono);font-size:10.5px;color:var(--text-2);padding:11px 8px 11px 0;
+        border-right:1px solid var(--line);text-align:right;line-height:1.35}
+  .lane small{display:block;color:var(--text-3);font-size:9.5px;margin-top:3px}
+  .cell{display:flex;flex-direction:column;gap:6px;padding:5px 2px;min-height:56px;
+        border-bottom:1px solid var(--line-soft)}
+  .task{background:var(--ink-2);border:1px solid var(--line);border-left-width:3px;border-radius:6px;
+        padding:7px 9px;font-size:11.5px;line-height:1.35;color:var(--text-2)}
+  .task b{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.06em;margin-bottom:3px;color:var(--text)}
+  .task .cadence{display:inline-block;font-family:var(--mono);font-size:9px;color:var(--text-3);
+        border:1px solid var(--line);border-radius:3px;padding:0 4px;margin-top:5px;letter-spacing:.05em}
+  .pA{border-left-color:var(--a)} .pA b{color:var(--a)}
+  .pB{border-left-color:var(--b)} .pB b{color:#f07a9c}
+  .pC{border-left-color:var(--c)} .pC b{color:var(--c)}
+  .pD{border-left-color:var(--d)} .pD b{color:var(--d)}
+
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0 4px;font-size:11.5px;color:var(--text-2)}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:middle}
+
+  /* ---------- two-up ---------- */
+  .twoup{display:grid;grid-template-columns:1.15fr 1fr;gap:18px}
+  @media (max-width:1080px){.twoup{grid-template-columns:1fr}.five{grid-template-columns:repeat(2,1fr)}
+    .matrix{grid-template-columns:100px repeat(5,1fr)}}
+
+  .panel{background:var(--ink-2);border:1px solid var(--line);border-radius:8px;padding:14px 15px}
+  .panel h3{margin:0 0 4px;font-size:13px;letter-spacing:-.01em}
+  .panel p.sub{margin:0 0 11px;font-size:11.5px;color:var(--text-3)}
+
+  /* seam map */
+  .seam{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center}
+  .seamcol{display:flex;flex-direction:column;gap:5px}
+  .chip{font-family:var(--mono);font-size:10px;color:var(--text-2);background:var(--ink-3);
+        border:1px solid var(--line);border-radius:4px;padding:4px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hub{background:linear-gradient(160deg,var(--burgundy-dim),#3a1223);border:1px solid var(--burgundy);
+       border-radius:8px;padding:14px 12px;text-align:center;min-width:118px}
+  .hub .n{font-size:26px;font-weight:700;line-height:1}
+  .hub .l{font-family:var(--mono);font-size:9.5px;color:#f2b7c8;letter-spacing:.08em;margin-top:5px}
+  .seamnum{font-family:var(--mono);font-size:10px;color:var(--text-3);text-align:center;margin-top:7px}
+
+  /* census */
+  table.census{width:100%;border-collapse:collapse;font-size:11.5px}
+  table.census th{text-align:left;font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;
+        text-transform:uppercase;color:var(--text-3);border-bottom:1px solid var(--line);padding:0 8px 6px 0;font-weight:500}
+  table.census td{padding:7px 8px 7px 0;border-bottom:1px solid var(--line-soft);color:var(--text-2);vertical-align:top}
+  table.census td.n{font-family:var(--mono);color:var(--text);font-size:13px;font-weight:600;white-space:nowrap}
+  table.census tr.keep td{color:var(--text-3)}
+  table.census tr.keep td.n{color:var(--blocked)}
+  code{font-family:var(--mono);font-size:10.5px;color:#c4cedb;background:var(--ink-3);
+       border-radius:3px;padding:1px 4px}
+
+  /* footer strips */
+  .strips{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px}
+  @media (max-width:900px){.strips{grid-template-columns:1fr}}
+  .strip{border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:var(--ink-2)}
+  .strip.lock{border-color:#4a3a1a;background:#191510}
+  .strip h4{margin:0 0 7px;font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+       text-transform:uppercase;color:var(--text-3);font-weight:500}
+  .strip.lock h4{color:var(--a)}
+  .strip ul{margin:0;padding-left:15px;font-size:11.5px;color:var(--text-2)}
+  .strip li{margin-bottom:5px}
+  footer{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);
+         font-family:var(--mono);font-size:10px;color:var(--text-3);display:flex;
+         gap:20px;flex-wrap:wrap;justify-content:space-between}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Intelligence · Analytics &amp; BI · agenda canvas · sketch 060</div>
+  <h1>The number means the same thing everywhere <span>— or it does not ship</span></h1>
+  <p class="thesis">The engine is 11,748 lines and works. The <b>contract</b> is markdown.
+    <b>28 loops in other units</b> declare this department as <code>inputs_from</code> and
+    there is nothing published for any of them to read. So: one spine — <b>the truth
+    board</b> — and three programmes feeding it. Ambition here is not a bigger catalogue;
+    it is becoming the unit the rest of the org can cite.</p>
+  <div class="meta">
+    <span><b>Agenda</b> 2026-08-28 · ADR 0039 Track B</span>
+    <span><b>Teams</b> AB-1 engine · AB-2 narrative · AB-3 truth-assurance</span>
+    <span><b>Loops owned</b> 22 — 20 proposed, 2 blocked</span>
+    <span><b>Quality bar</b> ADR 0020 — no fabricated answers</span>
+  </div>
+</header>
+
+<h2>The five numbers <em>— never summed, never averaged, never ranked</em></h2>
+<div class="five">
+  <div class="num measured">
+    <span class="k">analytics.satisfiable_candidate_share</span>
+    <div class="v">25.1%</div>
+    <div class="d">144 / 573 without POS · 6.6% consumption-only · 67.4% with 66 POS checks</div>
+    <div class="go">→ D2 · weekly from 09-04</div>
+  </div>
+  <div class="num unmeasured">
+    <span class="k">analytics.insight_acceptance_rate</span>
+    <div class="v small">not computed</div>
+    <div class="d">Both tables exist. No query has ever joined them.</div>
+    <div class="go">→ D1 · fortnightly from 09-11</div>
+  </div>
+  <div class="num blocked">
+    <span class="k">analytics.kpi_ground_truth_agreement</span>
+    <div class="v">0%</div>
+    <div class="d">Blocked on §44.7 SimPOS. Publishing the 0 <em>is</em> the point.</div>
+    <div class="go">→ A5 · monthly · 3 repeats escalate</div>
+  </div>
+  <div class="num divergent">
+    <span class="k">analytics.metric_claim_divergence_count</span>
+    <div class="v">2 live</div>
+    <div class="d">Insight-type count · feature count (360 vs 460)</div>
+    <div class="go">→ B1–B6 · structural closure only</div>
+  </div>
+  <div class="num measured">
+    <span class="k">analytics.engine_service_test_ratio</span>
+    <div class="v small">149 / 3,679<br>vs 23 / ~5,600</div>
+    <div class="d">The tested half is not the half that ships numbers to the screen.</div>
+    <div class="go">→ D4 · 10-09</div>
+  </div>
+</div>
+<div class="never">◇ NO ROLL-UP EXISTS. A department health score would hide exactly the number this department was built to publish.</div>
+
+<h2>The agenda as one matrix <em>— team lane × close_time</em></h2>
+<div class="legend">
+  <span><i style="background:var(--a)"></i>A · truth board <span style="color:var(--text-3)">(the spine)</span></span>
+  <span><i style="background:var(--b)"></i>B · 375→573 reconciliation</span>
+  <span><i style="background:var(--c)"></i>C · grounding expansion</span>
+  <span><i style="background:var(--d)"></i>D · measure the unmeasured</span>
+</div>
+
+<div class="matrix">
+  <div></div>
+  <div class="colhead"><b>2026-09-04</b>week 1</div>
+  <div class="colhead"><b>2026-09-11</b>week 2</div>
+  <div class="colhead"><b>2026-09-25</b>week 4</div>
+  <div class="colhead"><b>2026-10-09</b>week 6</div>
+  <div class="colhead"><b>2026-10-30</b>week 9</div>
+
+  <!-- department lane -->
+  <div class="lane">department<small>abi-orchestrator</small></div>
+  <div class="cell">
+    <div class="task pA"><b>A1</b>Publish the truth board — five numbers, five denominators, no roll-up
+      <span class="cadence">DONE WHEN ANOTHER UNIT CAN CITE A ROW</span></div>
+  </div>
+  <div class="cell">
+    <div class="task pA"><b>A2</b>Name the 28 consumer loops — each maps to a row or to a gap row
+      <span class="cadence">NO CONSUMER SILENTLY UNSERVED</span></div>
+  </div>
+  <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+
+  <!-- AB-1 -->
+  <div class="lane">AB-1<small>analytics-engine<br>“is it right?”</small></div>
+  <div class="cell">
+    <div class="task pB"><b>B1</b>Exact-count assertion: <code>=== 573</code> + per-category vector
+      <span class="cadence">ONE ADDED TYPE TURNS CI RED</span></div>
+    <div class="task pD"><b>D2</b>Reach reading per restaurant + blocking requirement ranked
+      <span class="cadence">WEEKLY</span></div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="task pB"><b>B3</b>The API cannot emit a bare count — <code>{total, satisfiable, blocking[]}</code>
+      <span class="cadence">BOTH NUMBERS OR NEITHER</span></div>
+  </div>
+  <div class="cell">
+    <div class="task pD"><b>D4</b>First spec file over <code>insight-generator.service.ts</code> <span style="color:var(--text-3)">· joint AB-2</span>
+      <span class="cadence">RATIO LEAVES “INVERTED”</span></div>
+  </div>
+  <div class="cell">
+    <div class="task pD"><b>D5</b>Satisfiability becomes a gate — the <em>first</em> unsatisfiable PR is refused
+      <span class="cadence">PER-PR</span></div>
+  </div>
+
+  <!-- AB-2 -->
+  <div class="lane">AB-2<small>insight-narrative<br>“worth saying?”</small></div>
+  <div class="cell">
+    <div class="task pC"><b>C4</b>Consultant enablement expiry — named human or switched off
+      <span class="cadence">WEEKLY · DEFAULT IS OFF</span></div>
+  </div>
+  <div class="cell">
+    <div class="task pC"><b>C1</b>Ground against <em>supplied AND non-null</em> — a rejected fetch still keys the pack
+      <span class="cadence">SPEC CASE PROVES IT</span></div>
+    <div class="task pC"><b>C5</b>Ask RM-3 for a basis the deterministic path can carry
+      <span class="cadence">THEIR DESIGN, NOT OURS</span></div>
+    <div class="task pD"><b>D1</b>impressions ⋈ actions → acceptance + top-rank-ignore
+      <span class="cadence">FORTNIGHTLY · insufficient_data FLAG</span></div>
+  </div>
+  <div class="cell">
+    <div class="task pC"><b>C3</b>Report <code>unknown_evidence_roots</code> on the board, with its denominator
+      <span class="cadence">WEEKLY COUNT</span></div>
+    <div class="task pD"><b>D3</b>Name + test the 5 support floors (<code>:200 :550 :867 :1017 :1107</code>)
+      <span class="cadence">LOWERING ONE NEEDS A REVIEWER</span></div>
+  </div>
+  <div class="cell">
+    <div class="task pC"><b>C2</b>Widen the evidence pack 4 → the 12 engine modules <span style="color:var(--text-3)">· joint AB-1</span>
+      <span class="cadence">EACH CATEGORY SHIPS WITH A NULL-GUARD</span></div>
+  </div>
+  <div class="cell"></div>
+
+  <!-- AB-3 -->
+  <div class="lane">AB-3<small>metric-contract<br>“same everywhere?”</small></div>
+  <div class="cell">
+    <div class="task pB"><b>B4</b>Three cross-unit notes: <em>OD-33 is settled; your rows read unresolved</em>
+      <span class="cadence">WE DO NOT EDIT THEIR FILES</span></div>
+  </div>
+  <div class="cell">
+    <div class="task pA"><b>A3</b>The claim register — claim · <code>path:line</code> · weakest defensible verb
+      <span class="cadence">ENTRY #1 = “WE ASKED ≠ WE RECEIVED”</span></div>
+    <div class="task pB"><b>B2</b>All 5 code sites read the count at runtime <span style="color:var(--text-3)">· joint AB-1</span>
+      <span class="cadence">NO LITERAL SURVIVES</span></div>
+  </div>
+  <div class="cell">
+    <div class="task pA"><b>A4</b>Register guard in CI — <strong>exit 2</strong> when it cannot check what it claims
+      <span class="cadence">PROVEN AGAINST THE PRE-FIX TREE</span></div>
+    <div class="task pA"><b>A5</b>Ground-truth restatement, published at 0% with its blocker named
+      <span class="cadence">MONTHLY · 3 REPEATS → FOUNDER</span></div>
+    <div class="task pB"><b>B6</b><code>registry_binding_share</code> — 69 distinct ids, max 352, Batch 6 empty
+      <span class="cadence">FRACTION, NOT A PERCENTAGE ALONE</span></div>
+  </div>
+  <div class="cell">
+    <div class="task pB"><b>B5</b>Feature count 360 vs 460 — and repair the registry’s dead doc pointer
+      <span class="cadence">ONE NUMBER, DERIVED OR ASSERTED</span></div>
+  </div>
+  <div class="cell"></div>
+</div>
+
+<h2>The two pictures underneath</h2>
+<div class="twoup">
+
+  <div class="panel">
+    <h3>The 375-vs-573 census — four buckets, deliberately not summed</h3>
+    <p class="sub">Measured 2026-08-28. OD-33 settled the count at 573 on 2026-08-26 —
+      in the register only. Nothing in code or CI knows.</p>
+    <table class="census">
+      <tr><th>N</th><th>Bucket</th><th>Where</th><th>Move</th></tr>
+      <tr>
+        <td class="n">5</td>
+        <td><b style="color:var(--text)">Assertive · ours</b><br>code that tells a user 375</td>
+        <td><code>commands.ts:84,105</code> <code>InsightCatalog.tsx:2</code>
+            <code>analytics.controller.ts:226</code>
+            <code>insight-generator.service.ts:55</code> — the same file whose
+            <code>getCatalogSummary()</code> returns the true count</td>
+        <td>B1 + B2</td>
+      </tr>
+      <tr>
+        <td class="n">7</td>
+        <td><b style="color:var(--text)">Assertive · not ours</b><br>one reference file</td>
+        <td><code>07-reference/UX_PATHS_CATALOG.md</code> §Z lines
+            1548, 1550, 1569, 1571, 1583, 1598, 1603</td>
+        <td>B4 → ux-path-burn-down questions</td>
+      </tr>
+      <tr>
+        <td class="n">10</td>
+        <td><b style="color:var(--text)">Stale-as-unresolved</b><br>the number is settled, the status is not</td>
+        <td>decision-office ×5 · strategy-fundraising ×3 ·
+            <code>foundation/teams/corporate.md</code> ×2</td>
+        <td>B4 → their questions files</td>
+      </tr>
+      <tr class="keep">
+        <td class="n">7</td>
+        <td><b>Citational — DO NOT EDIT</b><br>docs that record the divergence</td>
+        <td>OD-33 · REGISTER-AUDIT · 0025-citation-rot evidence ·
+            LLM_INSTRUCTION_PROMPTS tombstone · TIER-MAP · S15 · UX_PATHS:1856</td>
+        <td>editing these deletes the audit trail</td>
+      </tr>
+    </table>
+    <p class="sub" style="margin-top:11px">B is finished when the story <em>cannot be
+      retold</em>: not “the docs say 573”, but <b style="color:var(--text)">a contributor
+      who types 375 into any of those surfaces gets a red build</b>. A divergence closed by
+      editing markdown reopens — that is how a shipped engine sat behind a “not built”
+      header for two weeks.</p>
+  </div>
+
+  <div class="panel">
+    <h3>The seam — demand measured from <code>loops.json</code>, not assumed</h3>
+    <p class="sub">Counted 2026-08-28. A2 maps every left-hand row to a board row or a gap row.</p>
+    <div class="seam">
+      <div class="seamcol">
+        <div class="chip">str-verb-strength · per-event</div>
+        <div class="chip">pfr-verb-strength · per-event</div>
+        <div class="chip">claim-falsification · fortnightly</div>
+        <div class="chip">oe-claim-provenance · quarterly</div>
+        <div class="chip">doneability-verdict-coverage · weekly</div>
+        <div class="chip">uxb-blocker-reconciliation · weekly</div>
+        <div class="chip">nf-b-event-completeness · weekly</div>
+        <div class="chip">sec-inference-spend-attribution</div>
+        <div class="chip" style="color:var(--text-3)">…20 more</div>
+        <div class="seamnum">28 loops name us <code>inputs_from</code></div>
+      </div>
+      <div class="hub">
+        <div class="n">28</div>
+        <div class="l">CONSUMERS</div>
+        <div class="n" style="margin-top:12px">0</div>
+        <div class="l">PUBLISHED</div>
+      </div>
+      <div class="seamcol">
+        <div class="chip">data-substrate-daily-report</div>
+        <div class="chip">unresolved-queue-drain</div>
+        <div class="chip">pos-real-throughput</div>
+        <div class="chip">nf-a-emission-completeness</div>
+        <div class="chip">cost-per-completed-task</div>
+        <div class="chip">sre-signal-liveness</div>
+        <div class="chip">quarantine-rate-tracking</div>
+        <div class="chip">routing-policy-vs-verdict</div>
+        <div class="chip" style="color:var(--text-3)">…17 more</div>
+        <div class="seamnum">25 loops send <code>outputs_to</code> us</div>
+      </div>
+    </div>
+    <p class="sub" style="margin-top:14px"><b style="color:var(--text)">The gap this
+      canvas is really about.</b> Fifty-three declared dependencies cross this
+      department’s boundary and it has never published a readable artifact. That is the
+      condition A1 and A2 exist to end — and the reason the truth board, not the engine,
+      is the spine.</p>
+  </div>
+</div>
+
+<div class="strips">
+  <div class="strip lock">
+    <h4>Locks — respected, not worked around</h4>
+    <ul>
+      <li><b>Pricing model deferred.</b> Nothing here produces a price or a metric whose
+        only consumer would be a pricing decision. Cost-per-consult is Finance’s to
+        consume from Track A2; we do not pre-stage it.</li>
+      <li><b>Brand / landing visuals held.</b> A3’s register governs <em>wording and
+        provenance</em> only. It commissions no visual, no landing copy, no deck — and
+        when the hold lifts it is the prerequisite that already exists.</li>
+      <li><b>No fork resolved here.</b> INTEL-F3 / F6 / F7 are carried, not closed.</li>
+    </ul>
+  </div>
+  <div class="strip">
+    <h4>Findings — no card or loop can carry these</h4>
+    <ul>
+      <li><code>analytics.claim_published</code> has <b>no publisher</b>. A weekly job
+        cannot catch a deck written on a Tuesday.</li>
+      <li>Escalation to the Decision Office is a doc edit with no notification. B4 is the
+        first live test of whether that path works at all.</li>
+      <li>One department agent, three teams with opposed incentives — it cannot arbitrate.
+        Conflicts land at AB-3 (definition) or the founder (priority).</li>
+      <li>Two skills ship, not six: <code>metric-claim-census</code>,
+        <code>insight-candidate-reach</code>.</li>
+    </ul>
+  </div>
+  <div class="strip">
+    <h4>Reach — graded, not scheduled as if earned</h4>
+    <ul>
+      <li><b>Versioned public metric contract</b> at <code>GET /analytics/metrics</code> —
+        buildable, unscheduled; it is a contract decision (INTEL-F7).</li>
+      <li><b>Counterfactual ledger</b> for threshold changes — aspiration; needs storage
+        nobody agreed to and touches RM-2’s boundary.</li>
+      <li><b>Insight → purchase-order attribution</b> — the number that would matter most.
+        Blocked on INTEL-F3: the operator has no <code>subject_type</code>.</li>
+      <li><b><code>insufficient_data</code> as a designed surface</b> — code already
+        returns <code>null</code>; needs a founder yes and a Design render.</li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+  <span>.planning/sketches/060-analytics-bi-agenda-canvas · throwaway-grade thinking surface</span>
+  <span>source: analytics-bi-agenda-full.md · analytics-bi-agenda-board.md · 00-index/loops.json · cards.json</span>
+  <span>ADR 0039 Track B · GENERATION_BRIEF §8</span>
+</footer>
+
+</div>
+</body>
+</html>

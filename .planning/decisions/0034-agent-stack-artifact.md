@@ -103,6 +103,19 @@ a synchronous call. Everything ships `status: designed`; nothing is build.
   measured, named cadence — the signal is a consolidation backlog metric, not a
   feeling.
 
+## Corrections — 2026-08-28 adversarial audit
+
+- Stale counts in the locked text: "99 units" became **100** the same day (ADR
+  0035 item 8), and the fleet is **24** modules on disk at measurement, not the
+  charter-era 26. The lock's substance is untouched; the numbers are.
+- **The retire-to-write reading is flagged as a founder fork, not settled.** The
+  Context paragraph read wave 2 as covered by the org-generation exemption in a
+  parenthetical; the audit correctly notes OD-34's exemption names only "the
+  initial 693-doc generation" and that this reading was never put to the
+  founder. **Put to the founder and RATIFIED 2026-08-28**: structured
+  wave-generated unit artifacts are the generation; retire-to-write binds every
+  non-wave document. Recorded on OD-34's row and in the review trail.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -110,3 +123,4 @@ a synchronous call. Everything ships `status: designed`; nothing is build.
 | 2026-08-27 | Founder (AskUserQuestion, in-session) | Granularity, placement, git handling picked; harness + memory approach delegated with criteria |
 | 2026-08-27 | — | Created |
 | 2026-08-27 | Founder (AskUserQuestion, in-session) | **Locked** — criteria re-stated ("most scalable, highest quality, cutting-edge"); recorded picks stand unchanged |
+| 2026-08-28 | Adversarial audit (founder-ordered) | WOUNDED — stale counts corrected above; retire-to-write exemption escalated to the founder as a fork |
