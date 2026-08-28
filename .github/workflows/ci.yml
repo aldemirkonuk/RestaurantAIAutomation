@@ -45,6 +45,35 @@ jobs:
           echo "::notice::The permitted values are read from §5.1's own table — fix the block, or amend the table if the contract itself is wrong."
           echo "::notice::If the index is merely stale: run 'python3 scripts/build_loop_index.py' and commit the result."
 
+  # The card layer's twin of loop-contract (ADR 0034/0038): every unit's
+  # <slug>-agent-stack.md declares its agents as fenced YAML cards; this gate
+  # parses all of them, enforces the contract (requirements-only, no model or
+  # OD-03 candidate, mutate_stock_money_outbound: confirm on every card), and
+  # fails if 00-index/cards.json or CARD-MAP.md is stale. Exit 2 means the gate
+  # could not check at all — that blocks too; a vacuous pass is the failure mode
+  # ADR 0025 exists to end.
+  agent-card-contract:
+    name: Agent-card contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Ensure PyYAML
+        run: python3 -m pip install --quiet pyyaml
+
+      - name: Guard against card-contract drift and a stale card index
+        run: python3 scripts/build_agent_card_index.py --check
+
+      - name: Smoke-run the mechanical card runner (report-only, no writes)
+        run: python3 scripts/agents/run_card.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::Either a card breaks the ADR 0034 contract, the card index is stale, or a mechanical runner crashed."
+          echo "::notice::If the index is merely stale: run 'python3 scripts/build_agent_card_index.py' and commit the result."
+
   # OD-44. The UCC contract-formation guardrail exists in two runtimes that ship as
   # separate containers. They were two hand-written lists under a comment claiming
   # they were "ported verbatim" — TypeScript carried 19 patterns, Python carried 8,
@@ -72,6 +101,47 @@ jobs:
           echo "::notice::Canon is apps/api-gateway/src/common/orchestrator/commitment-patterns.ts — edit it there, never the generated Python module."
           echo "::notice::Then run 'python3 scripts/sync_commitment_patterns.py' and commit both files."
           echo "::notice::Weakening the list to make this pass is a legal-guardrail regression, not a fix."
+
+  # Sentry is a subprocessor, so the question is never "did we redact it before
+  # we looked" but "did it ever go". All three runtimes used to answer yes: the
+  # web app, the gateway and the orchestrator each forwarded `email` and
+  # `username` onto the Sentry user scope, and the two `beforeSend` hooks that
+  # existed stripped auth headers only.
+  #
+  # Three things make this a blocking job rather than a review habit. It fails
+  # silently — nothing errors, no test goes red, and the evidence lives in a
+  # vendor UI most of the team never opens. It fails retroactively — deleting
+  # the field later does not un-send a retention window of events that carried
+  # it. And it regresses by copy-paste, because `setUser({ id, email, username })`
+  # is the shape in Sentry's own getting-started page.
+  #
+  # The subtle part, and the reason a reviewer cannot be the control: Sentry's
+  # own option docs say `sendDefaultPii` applies "to data that the SDK is
+  # sending by default but not data that was explicitly set (e.g. by calling
+  # `Sentry.setUser()`)". A file that opens with `sendDefaultPii: false` reads
+  # as safe and is not. Stdlib only, no install step; exits 2 rather than green
+  # when it cannot find what it measures against.
+  sentry-pii-scope:
+    name: The error tracker never receives an identity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: No identity reaches a Sentry user scope
+        run: ./scripts/check_sentry_pii_scope.py
+
+      - name: The guard still fires on the shape it exists to catch
+        run: ./scripts/check_sentry_pii_scope.py --self-test
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::Something is putting a person's identity into a Sentry event. Send opaque identifiers only — an account id and a restaurant id keep an issue routable without making it personal."
+          echo "::notice::Adding 'sendDefaultPii: false' does NOT fix a setUser() finding. Sentry's option docs are explicit that the flag covers only data the SDK attaches by itself. The narrowed user type is what stops the leak."
+          echo "::notice::DRIFTED means PII_USER_KEYS differs between apps/web, apps/api-gateway and services/agent-orchestrator. Three copies of one rule is one edit away from three different rules — sync them, do not exempt them."
+          echo "::notice::CANNOT CHECK (exit 2) means the guard found no Sentry init or no user shape at all. That is a rename or a move, not a pass; repoint the guard."
+          echo "::notice::If a new field is genuinely needed for triage, it has to be an identifier meaningless to the processor. Widening SentryUser is a privacy decision and belongs in an ADR, not in a PR diff."
 
   # P1 §5 item 4. Defect D3 was that the entire NestJS gateway wrote nothing to
   # the spend ledger: seven raw `fetch("https://api.anthropic.com/...")` call
@@ -174,6 +244,9 @@ jobs:
 
       - name: Every OD id names a register row
         run: ./scripts/check_od_ids_exist.py
+
+      - name: The collision helper still catches what it claims to
+        run: python3 ./scripts/_od_collisions.py --self-test
 
       - name: A merged-away id resolves, and prose alone still does not
         run: ./scripts/check_od_ids_exist.py --self-test
@@ -555,9 +628,48 @@ jobs:
           sarif_file: "trivy-results.sarif"
 
   # Summary
+  #
+  # THIS JOB MUST RUN EVEN WHEN ITS DEPENDENCIES DO NOT, AND MUST COVER ALL OF THEM.
+  #
+  # Until 2026-08-27 it carried no `if:`, so any dependency that skipped took
+  # this job down with it -- and GitHub reports a SKIPPED required check as
+  # successful. A summary job that cannot report failure is worse than none,
+  # because people trust it.
+  #
+  # The 2026-08-27 sequence, checked against the API rather than remembered
+  # (an earlier version of this comment got the causal chain wrong):
+  #
+  #   15:04:27 / 15:04:33  #134 and #136 merge. Both PR runs were 15/15 green.
+  #   15:08:25  first post-merge run on `main` fails `Decision register matches
+  #             reality`; `CI Complete` SKIPS.
+  #   15:10:56  `Lint Python` starts failing too -- six minutes AFTER the
+  #             merges, so it did not gate them.
+  #
+  # So the merges were not pushed past a skipped gate. They were unblocked
+  # because on 2026-08-27 `main` had NO branch protection at all -- `protected:
+  # false`, `/protection` 404, `/rulesets` `[]`. Nothing was required, so
+  # nothing could block.
+  #
+  # BOTH HALVES ARE CLOSED NOW. The skip hole is fixed here, and protection was
+  # enabled on 2026-08-28: `CI Complete` is a required check with `strict: true`
+  # (the branch must be up to date before it merges). `enforce_admins` is
+  # deliberately false -- the owner can still override, which turns a silent
+  # merge onto a red `main` into a deliberate one rather than locking a solo
+  # founder out of their own repository. Turning it on is a settings change, not
+  # a code change, so nothing here can assert it stays true; `gh api
+  # repos/:owner/:repo/branches/main/protection` is where to look.
+  #
+  # A second hole, found by review: `needs` listed 9 of 15 jobs, and
+  # loop-contract / commitment-guardrail-sync / model-call-ledger -- all
+  # self-described blocking guards, one of them the spend ledger -- were root
+  # jobs with no dependents, so they could fail while this printed success. They
+  # are listed now, and the first step below asserts the list stays complete:
+  # three separate commits added a job and none updated this list, so a
+  # hand-maintained list is exactly what needs a check, not a promise.
   ci-complete:
     name: CI Complete
     runs-on: ubuntu-latest
+    if: always()
     needs:
       [
         build,
@@ -569,10 +681,110 @@ jobs:
         test-python,
         merge-identity-gate,
         security,
+        # Root jobs with no dependents. Absent from this list until 2026-08-27,
+        # so all three could fail while the summary said every check passed.
+        # `lint-typescript` / `lint-python` are NOT listed and do not need to be:
+        # build/test-* depend on them, so a lint failure skips a direct need and
+        # is caught. The coverage step below proves that rather than trusting it.
+        loop-contract,
+        commitment-guardrail-sync,
+        model-call-ledger,
+        # Added 2026-08-28 with the job itself: the coverage step below failed
+        # this PR because `agent-card-contract` was a root job nobody depended
+        # on — exactly the drift the step exists to catch, caught on the commit
+        # that introduced it.
+        agent-card-contract,
+        sentry-pii-scope,
       ]
     steps:
-      - name: CI Success
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # The gate polices its own coverage. `toJSON(needs)` removed one
+      # hand-maintained list; `needs:` itself is still one, and it had already
+      # drifted three times before anyone noticed. This is the claim a command
+      # can check, so it is one.
+      - name: The gate covers every job in this workflow
         run: |
-          echo "✅ All CI checks passed!"
-          echo "🎉 Build, lint, test, and security scans completed successfully"
+          python3 - <<'PY'
+          import sys, yaml
+
+          wf = yaml.safe_load(open(".github/workflows/ci.yml"))
+          jobs = wf["jobs"]
+          gate = "ci-complete"
+          direct = set(jobs[gate].get("needs") or [])
+          if not direct:
+              print("CANNOT CHECK -- ci-complete declares no needs.")
+              sys.exit(2)
+
+          closure, stack = set(direct), list(direct)
+          while stack:
+              for n in jobs.get(stack.pop(), {}).get("needs") or []:
+                  if n not in closure:
+                      closure.add(n)
+                      stack.append(n)
+
+          uncovered = sorted(set(jobs) - {gate} - closure)
+          if uncovered:
+              for j in uncovered:
+                  name = jobs[j].get("name", j)
+                  print(f"::error::job `{j}` ({name}) is not reachable from "
+                        f"{gate}.needs -- it can fail while CI Complete passes")
+              print(f"\nFAIL -- {len(uncovered)} job(s) outside the gate: "
+                    f"{', '.join(uncovered)}")
+              print("Add them to ci-complete.needs, or to a job already in it.")
+              sys.exit(1)
+
+          print(f"All {len(jobs) - 1} jobs are covered by {gate} "
+                f"({len(direct)} directly, {len(closure) - len(direct)} transitively).")
+          PY
+
+      - name: Every gated job actually ran, and passed
+        env:
+          # `toJSON(needs)` is the only way to see a dependency's result without
+          # naming each one twice; naming them twice is how this list drifts.
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+
+          # Unset, empty or unparseable are all "this gate could not check",
+          # which is exit 2 -- not a KeyError landing on exit 1 wearing the
+          # costume of a real failure. Same contract as check_decision_claims.sh.
+          raw = os.environ.get("NEEDS", "").strip()
+          if not raw:
+              print("CANNOT CHECK -- NEEDS arrived unset or empty.")
+              sys.exit(2)
+          try:
+              needs = json.loads(raw)
+          except json.JSONDecodeError as e:
+              print(f"CANNOT CHECK -- NEEDS is not JSON: {e}")
+              sys.exit(2)
+          if not needs:
+              print("CANNOT CHECK -- `needs` came through empty.")
+              sys.exit(2)
+
+          results = {j: (v or {}).get("result") or "?" for j, v in needs.items()}
+          for job, result in sorted(results.items()):
+              print(f"  {result:<10} {job}")
+
+          bad = {j: r for j, r in results.items() if r != "success"}
+          if bad:
+              print()
+              for job, result in sorted(bad.items()):
+                  if result == "skipped":
+                      msg = (f"`{job}` was SKIPPED, not passed. Something it depends "
+                             f"on failed, so its checks never ran.")
+                  else:
+                      msg = f"`{job}` came back `{result}`."
+                  print(f"::error::{msg}")
+                  print(f"FAIL -- {msg}")
+              print("\nA skipped job is not a passing job. This gate exists so that "
+                    "cannot be merged.")
+              sys.exit(1)
+
+          print(f"\nAll {len(results)} gated jobs in ci.yml passed -- and every one "
+                f"of them actually ran. (Checks from other workflows are not in scope "
+                f"here.)")
+          PY
 

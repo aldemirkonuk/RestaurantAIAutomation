@@ -128,23 +128,41 @@ class TestStubsAreMarked:
         assert getattr(InventoryEngineAgent, "IS_STUB", False) is False
         assert getattr(ProcurementAgent, "IS_STUB", False) is False
 
-    def test_every_optional_tier_agent_is_currently_a_stub(self):
-        # Documents today's reality: OPTIONAL is exactly the set of unimplemented
-        # agents. If a future agent is OPTIONAL *and* implemented this fails, which
-        # is the moment to reconsider whether the marker or the tier is wrong.
-        optional = [
+    # OPTIONAL used to be exactly the five unimplemented stubs, and this class
+    # asserted that identity. The original comment said an OPTIONAL *and*
+    # implemented agent "fails, which is the moment to reconsider whether the
+    # marker or the tier is wrong" — ADR 0039 Track A3 is that moment, and the
+    # answer is neither. recurring_order_agent is fully implemented and gated
+    # OPTIONAL on purpose: it owns a daily sweep over scheduled purchasing, so
+    # putting it under the harness (retry, idempotency, DLQ, health) and deciding
+    # to run it against live tenants are two different decisions, and only the
+    # first was made.
+    #
+    # So the invariant is restated rather than dropped. OPTIONAL now means "does
+    # not boot by default", and every member must justify itself as one of two
+    # things — a declared stub, or a named deliberate gate. An agent that is
+    # neither still fails here.
+    DELIBERATELY_GATED = {
+        "recurring_order_agent": (
+            "ADR 0039 Track A3 — implemented, propose-only, but scheduled "
+            "purchasing does not start on boot without an explicit decision"
+        ),
+    }
+
+    def test_every_optional_tier_agent_is_a_stub_or_a_declared_gate(self):
+        optional = sorted(
             name
             for name, cfg in DEFAULT_AGENT_SPECS.items()
             if cfg.get("tier") == AgentTier.OPTIONAL
-        ]
-
-        assert sorted(optional) == sorted(
-            n
-            for n, _ in [
-                ("ghost_inventory_agent", 0),
-                ("negotiation_playbook_agent", 0),
-                ("auto_pilot_agent", 0),
-                ("compliance_agent", 0),
-                ("shrinkage_detective_agent", 0),
-            ]
         )
+        stub_names = sorted(name.rsplit(".", 1)[-1] for name, _ in self.STUBS)
+        # module path tail == agent name for every stub, e.g. agents.auto_pilot_agent
+        assert sorted(optional) == sorted(stub_names + list(self.DELIBERATELY_GATED))
+
+    def test_a_deliberately_gated_agent_is_implemented_not_a_stub(self):
+        # The two categories must not blur: a stub in DELIBERATELY_GATED would
+        # smuggle an event-swallowing agent past the IS_STUB refusal at boot.
+        from agents.recurring_order_agent import RecurringOrderAgent
+
+        assert getattr(RecurringOrderAgent, "IS_STUB", False) is False
+        assert "recurring_order_agent" in self.DELIBERATELY_GATED

@@ -3602,7 +3602,7 @@
  },
  {
   "id": "nfb-research-store-erasability",
-  "owner": "UNASSIGNED \u2014 escalated",
+  "owner": "privacy-engineering",
   "close_time": "one-shot",
   "status": "blocked",
   "measures": [

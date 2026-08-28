@@ -22,7 +22,7 @@ links:
 |---|---|---|
 | **Per PR** | Two-provider check on any `pos-types.ts` diff; `generic_webhook` contract must still validate | L2 |
 | **Per PR** | Ingress guard on the 10 `pos-hub` routes — a new route without a guard or a verification call fails CI | L4 |
-| **Weekly** | Real-throughput read: `pos_checks` rows **excluding SimPOS-sourced `generic_webhook`** | L5 |
+| **Weekly** | Real-throughput read: `pos_checks` rows **excluding `external_check_id LIKE 'P3PROOF-%'` and rows on the synthetic fixture tenant `550e8400-e29b-41d4-a716-446655440000`** (`POS-BRIDGE-AUDIT.md:622-628`, `REGISTER-AUDIT-2026-08-26.md:287`). *Predicate re-cut 2026-08-28 (audit of ADR 0035 item 6): "SimPOS-sourced generic_webhook" was not computable — all 66 proof rows share `source = 'generic_webhook'`, and `generic_webhook` is a real available ingress, so excluding by provider would permanently exclude the only path a real venue can use today. Exclude by check-id prefix and fixture tenant, never by provider.* | L5 |
 | **Weekly** | Catalogue-match gate review — approval rate against dwell time, looking for rubber-stamping | L3, `nf_a.*` |
 | **Monthly** | Registry audit — do the 27 statuses match what builds and connects? Demote anything unsupported | L1 |
 | **Monthly** | Adapter-gate decision — is `pi.merchant_backed_providers` still 0? If yes, the gate stays shut | L1 |

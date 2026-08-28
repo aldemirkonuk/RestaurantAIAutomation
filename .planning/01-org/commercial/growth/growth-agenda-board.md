@@ -2,17 +2,16 @@
 type: agenda-board
 division: commercial
 department: growth
-status: provisional
+status: active
 metrics: []
-updated: 2026-08-24
-links: ["[[growth-charter]]", "[[growth-agenda-full]]", "[[growth-loops]]", "[[growth-schedule]]", "[[growth-premortem]]"]
+updated: 2026-08-28
+links: ["[[growth-charter]]", "[[growth-agenda-full]]", "[[growth-loops]]", "[[growth-schedule]]", "[[growth-premortem]]", "[[growth-agent-stack]]", "[[growth-questions]]", "[[0039-activation-plan-of-record]]"]
 ---
 
 # Growth — Board
 
-> **PROVISIONAL — no work done yet.**
-
-Bullets and queries only. Prose belongs in [[growth-agenda-full]].
+**Active, dated 2026-08-28.** Bullets and queries only. Prose belongs in
+[[growth-agenda-full]]; the sixteen tasks and their evidence live there, not here.
 
 ## Every Growth artifact, live
 
@@ -25,6 +24,19 @@ TABLE WITHOUT ID
   updated AS Updated
 FROM "01-org/commercial/growth"
 SORT default(team, "") ASC, type ASC
+```
+
+## Agendas still provisional — the wave-3 burn-down
+
+```dataview
+TABLE WITHOUT ID
+  file.link AS Doc,
+  default(team, "— dept —") AS Unit,
+  status AS Status,
+  updated AS Updated
+FROM "01-org/commercial/growth"
+WHERE (type = "agenda-full" OR type = "agenda-board") AND status = "provisional"
+SORT default(team, "") ASC
 ```
 
 ## Charters by evidence grade
@@ -69,47 +81,63 @@ WHERE type = "premortem"
 SORT default(team, "") ASC
 ```
 
+## Findings routed here — advisory is findings-only, and nothing blocks
+
+```dataview
+TABLE WITHOUT ID
+  file.link AS Doc,
+  open_questions AS Open,
+  updated AS Updated
+FROM "01-org/commercial/growth"
+WHERE type = "questions" AND open_questions > 0
+SORT open_questions DESC
+```
+
 ## The five team outcomes (hand-entered until the jobs exist)
 
-No activity counters on this board by design — no drafts written, no keywords harvested,
-no checklist percentage. [[growth-premortem]] M1 and M3 are both the department reporting
-activity instead of outcome.
+No activity counters on this board by design — no drafts written, no keywords harvested, no
+checklist percentage. [[growth-premortem]] M1 and M3 are both the department reporting
+activity instead of outcome. Every row carries a value, the word **blocked**, or
+**unmeasurable** with its failed precondition named — never a composite score
+([[growth-agent-stack]] §2 `quality_bar`).
 
-- [ ] `demand.uncovered_keyword_count` — **unmeasurable**: no Search Console property
-- [ ] `content.published_units_per_week` — **0**, and correctly 0 until a publishing target exists
-- [ ] `editorial.claims_traceable_pct` — **n/a**: nothing published, provenance format unwritten
-- [ ] `seo.indexed_pages` — **0**: no `robots.txt`, no sitemap, no content route
-- [ ] `answer_surface.assistant_citations` — **0**, and unmeasured; no standard dashboard reports this
+- [ ] `demand.uncovered_keyword_count` — **unmeasurable**: no Search Console property, no verified domain
+- [ ] `content.published_units_per_week` — **0**, correctly, until a publishing target exists (GRO-4)
+- [ ] `editorial.claims_traceable_pct` — **n/a → computable at GRO-11**: nothing published, provenance format unwritten until GRO-10
+- [ ] `seo.indexed_pages` — **0**: no `robots.txt`, no sitemap, no content route. GRO-6 tests whether `/v/:slug` changes this without any decision
+- [ ] `answer_surface.assistant_citations` — **0, unmeasured**. GRO-7 builds the instrument; every number it prints carries the word *sampled*
 - [ ] `funnel.visit_to_activated_rate` — **unmeasurable**: `funnel.measurable_steps` = 0 pre-login
 
 ## The three zeros — any non-zero is a department-level escalation
 
 - [ ] `editorial.gate_bypass_count` — **0**. One bypass invalidates the pipeline, not one article
 - [ ] `funnel.fabricated_social_proof_count` — **0**. Absolute; unrecoverable if breached
-- [ ] Published claims stronger than the evidence — **0**. Specifically: *dollars recovered*
-      means **we asked**, not we received ([[YC_WEDGE_PLAN]]:31-33)
+- [ ] Published claims stronger than the evidence — **0**. *Dollars recovered* means **we asked**, not we received ([[YC_WEDGE_PLAN]]:31-33)
 
 ## Diagnostics that stop a checklist reading green on an empty site
 
-- [ ] `seo.soft_404_rate` — **100%** baseline. `vercel.json:12-15` returns 200 for every
-      unmatched URL; `apps/web/src/App.tsx:302` then redirects client-side
-- [ ] `funnel.measurable_steps` — **0** pre-login. `apps/web/src/lib/uxSignals.ts:15` is dark
-      and post-authentication
-- [ ] `demand.wedge_share_of_corpus` — **n/a**: no corpus yet
+- [ ] `seo.soft_404_rate` — **100%** baseline, asserted not measured until GRO-5. `vercel.json:13-16` returns 200 for every unmatched URL; `apps/web/src/App.tsx:328` then redirects client-side *(both citations re-verified 2026-08-28; wave-1 docs cite `:12-15` and `:302` — drifted)*
+- [ ] `funnel.measurable_steps` — **0** pre-login. `apps/web/src/lib/uxSignals.ts:15` ships dark; `:21` buckets on the authenticated user id
+- [ ] `demand.wedge_share_of_corpus` — **n/a**: no corpus yet. GRO-2 creates the first one
+
+## OD-53 — settled 2026-08-28, both halves, by fetch
+
+- [x] **(a) Perplexity search-history endpoint — NO.** No endpoint in the published index returns a user's own searches/threads/Library; the API is zero-retention by policy. `https://docs.perplexity.ai/llms.txt`, `https://docs.perplexity.ai/faq/faq` — retrieved 2026-08-28
+- [x] **(b) AnswerThePublic API — Alpha, per-workspace, personal access token, 60 req/min, paid plans only.** `https://answerthepublic.zendesk.com/hc/en-us/articles/15219088022555-Does-AnswerThePublic-Have-an-API` — retrieved 2026-08-28. Pricing: Starter $20/mo · Growth $99/mo · Business $199/mo, `https://answerthepublic.com/pricing` — retrieved 2026-08-28
+- [ ] **Residual unknown, not closed:** which paid tier actually carries API access. The help centre says "paid plans"; the pricing page lists no API line on any tier. GRO-3 confirms with the vendor before any spend proposal
+- [ ] Register row is [[decision-office-charter]]'s to write. Growth supplies the dated lines and does not edit the register
 
 ## Blocking decisions
 
-- [ ] **Publishing target** — inside `apps/web`, separate surface, or static generator.
-      Blocks all eight items in [[growth-agenda-full]]. Not yet in [[OPEN-DECISIONS]]
-- [ ] **CM-F1** — merge [[content-production-charter]] and [[editorial-gate-charter]]?
-      **Recorded, not resolved**
-- [ ] **Domain** — `wineops.ai` still live in shipped surfaces; publishing under a name we
-      are migrating away from ([[brand-identity-charter]])
-- [ ] **Pre-login measurement vs. the published privacy position**
-      (`apps/web/src/pages/Privacy.tsx:30-31`) — [[compliance-privacy-charter]] holds the pen
+- [ ] **Publishing target** — inside `apps/web`, separate surface, or static generator. Blocks eight items. **Still not in [[OPEN-DECISIONS]]** as of 2026-08-28; GRO-4 delivers the brief with a recommendation
+- [ ] **CM-F1** — merge [[content-production-charter]] and [[editorial-gate-charter]]? **Recorded, not resolved**
+- [ ] **Domain** — `wineops.ai` still live; `apps/web/index.html:7` still titles every page *WineOps AI*
+- [ ] **Pre-login measurement vs. the published privacy position** (`apps/web/src/pages/Privacy.tsx:31`) — [[compliance-privacy-charter]] holds the pen
 
 ## Standing prohibitions
 
 - [ ] Growth proposes **no pricing** — founder-deferred, [[unit-economics-pricing-charter]] owns it
+- [ ] Growth designs **no brand or landing visuals** — HELD (ADR 0039, founder re-confirmed 2026-08-28)
 - [ ] Growth sketches **no target list** — founder-deferred, Sales owns it
 - [ ] No social proof without a named, consenting counterparty and a dated artifact
+- [ ] **No agent publishes.** Drafts propose; a human publishes. `mutate_stock_money_outbound: confirm` is a constant on the department card

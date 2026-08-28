@@ -1089,11 +1089,23 @@ async def run_learning_cycle():
 
 @router.get("/learning/benchmark")
 async def run_benchmark():
-    """Run the parser against the gold-standard benchmark set."""
-    from services.active_learning_service import get_active_learning_service
+    """Run the parser against the gold-standard benchmark set.
+
+    A benchmark over an empty/below-threshold gold set asserts nothing, so the
+    oracle raises ``BenchmarkCorpusError`` rather than returning a vacuous 0.0.
+    Surface that as a 503 (the check could not run) instead of a green 200 —
+    the HTTP analogue of a guard's "exit 2 when it cannot check".
+    """
+    from services.active_learning_service import (
+        get_active_learning_service,
+        BenchmarkCorpusError,
+    )
 
     al = get_active_learning_service()
-    result = al.benchmark.run_benchmark()
+    try:
+        result = al.benchmark.run_benchmark()
+    except BenchmarkCorpusError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     return {
         "documents": result.total_documents,
         "wines": result.total_wines,

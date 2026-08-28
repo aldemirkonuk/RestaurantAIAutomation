@@ -274,6 +274,7 @@ class SpendLogger:
         outcome: Optional[str] = None,
         duration_ms: Optional[int] = None,
         correlation_id: Optional[str] = None,
+        skill_id: Optional[str] = None,
         context: Optional[Dict[str, Any]] = None,
     ) -> Optional[str]:
         """
@@ -309,6 +310,10 @@ class SpendLogger:
                 is stamped context.outcome_basis = "call_level_v0".
             duration_ms: wall-clock call duration when the caller measured it
             correlation_id: joins decision_log; defaults to ambient context
+            skill_id: registry skill that fired, when one did (ADR 0039 A4).
+                NF row only — api_spend has no such column. Left unset the key
+                is omitted entirely, so the column stays NULL meaning "not a
+                skill task", never "unknown".
             context: extra jsonb payload (wine_id, results_count, parse flags…)
         """
         # Bound BEFORE the outer try so every exit path can return it. There is
@@ -434,6 +439,7 @@ class SpendLogger:
                     duration_ms=duration_ms,
                     correlation_id=corr,
                     restaurant_id=restaurant_id,
+                    skill_id=skill_id,
                     context=nf_context,
                 )
                 # never raises; returns the row id, or None on a counted drop

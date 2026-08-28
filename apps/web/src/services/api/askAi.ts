@@ -1,7 +1,7 @@
 /**
  * Ask AI — the web client for `POST /ask-ai/*` (P3.C, FUTURES §8).
  *
- * Four calls, one rule: **this module never executes anything by itself.**
+ * Five calls, one rule: **this module never executes anything by itself.**
  * `propose` returns a proposal; only `confirm` executes, and only against an
  * action id a human has looked at. That is the gate ADR 0029 §5 closes P3.C on,
  * and the UI's job is to make it legible rather than to route around it.
@@ -43,6 +43,40 @@ export interface AskAiAction {
   family: AskAiFamily
   actionType: AskAiActionType
   payload: AskAiPayload
+}
+
+/**
+ * One thing an action can point at — the id the server grounds against, and
+ * the words a person can pick it out by.
+ */
+export interface CandidateOption {
+  id: string
+  label: string
+}
+
+export interface OrderCandidateOption extends CandidateOption {
+  providerId: string | null
+  providerName: string | null
+  status: string | null
+}
+
+/**
+ * Everything this restaurant's actions may point at.
+ *
+ * The gateway returns the SAME capped set it hands the propose prompt and
+ * grounds the confirm against, which is the only reason a picker built from
+ * this is safe: every option it renders is an id `confirm` will accept.
+ *
+ * `capped` is not a paging cursor and there is no page two — see the endpoint's
+ * docblock. It says "Ask AI cannot reach past this", which the UI should say
+ * out loud rather than quietly showing a short list.
+ */
+export interface AskAiCandidates {
+  inventory: CandidateOption[]
+  providers: CandidateOption[]
+  orders: OrderCandidateOption[]
+  limits: { inventory: number; providers: number; orders: number }
+  capped: { inventory: boolean; providers: boolean; orders: boolean }
 }
 
 /** One proposal awaiting confirmation, in the single shape the UI consumes. */
@@ -163,6 +197,31 @@ export async function listOpenProposals(): Promise<AskAiProposal[]> {
 }
 
 /**
+ * The ids this restaurant's actions may point at, so the card can offer a
+ * choice instead of a read-only uuid.
+ *
+ * Read-only and cheap — no model call. Errors are NOT swallowed here for the
+ * same reason the gateway does not swallow them: an empty candidate set and a
+ * failed one look identical in a dropdown, and only one of them means "you
+ * have no vendors". The caller decides what a failure looks like; the card
+ * falls back to showing the ids read-only rather than to an empty picker.
+ */
+export async function listCandidates(): Promise<AskAiCandidates> {
+  const { data } = await apiClient.get<AskAiCandidates>('/ask-ai/candidates')
+  return {
+    inventory: Array.isArray(data?.inventory) ? data.inventory : [],
+    providers: Array.isArray(data?.providers) ? data.providers : [],
+    orders: Array.isArray(data?.orders) ? data.orders : [],
+    limits: data?.limits ?? { inventory: 0, providers: 0, orders: 0 },
+    capped: data?.capped ?? {
+      inventory: false,
+      providers: false,
+      orders: false,
+    },
+  }
+}
+
+/**
  * Confirm — the gate.
  *
  * Omit `payload` to confirm exactly what was proposed. Supply it and the
@@ -196,6 +255,7 @@ export async function discardAction(actionId: string): Promise<void> {
 export const askAiApi = {
   propose: proposeAction,
   listOpen: listOpenProposals,
+  listCandidates,
   confirm: confirmAction,
   discard: discardAction,
 }

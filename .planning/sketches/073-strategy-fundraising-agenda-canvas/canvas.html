@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>073 — Strategy &amp; Fundraising agenda canvas · 2026-08-28</title>
+<style>
+  /* Throwaway thinking surface for
+     .planning/01-org/corporate/strategy-fundraising/strategy-fundraising-agenda-full.md.
+     Audit-ledger palette: cool paper, near-black ink, one slate blue, and a three-state
+     verdict scale (holds / drifted / gone-or-inverted) that is the only colour allowed to
+     mean anything. No assets, no build, no JS — hover a chip for its doneability.
+     Every number on this page was read off disk on 2026-08-28 and the agenda cites the
+     path:line it came from. */
+  :root{
+    --paper:#F7F7F4; --sunk:#EFEEEA; --deep:#E4E2DC; --card:#FFFFFF;
+    --ink:#14161A; --soft:#4C525C; --faint:#868C96;
+    --rule:#DCDAD3;
+    --slate:#2D4B73; --slate-deep:#1B2E48; --slate-wash:#E9EEF5;
+    --hold:#2E6448; --hold-wash:#E7F0EA;
+    --drift:#8A6A12; --drift-wash:#FAF2DB;
+    --gone:#A33B22; --gone-wash:#FBEAE4;
+    --r:.6rem;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);padding:30px 24px 64px;
+       font:14.5px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+  .wrap{max-width:1420px;margin:0 auto}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+  header{border-bottom:1px solid var(--ink);padding-bottom:16px;margin-bottom:24px}
+  .id{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--slate);font-weight:700}
+  h1{margin:7px 0 0;font-size:29px;font-weight:400;letter-spacing:-.02em}
+  header p{margin:9px 0 0;color:var(--soft);max-width:82ch;font-size:13.5px}
+  .thesis{margin-top:14px;padding:11px 14px;background:var(--slate-wash);
+          border-left:3px solid var(--slate);border-radius:0 var(--r) var(--r) 0;
+          font-size:13.5px;max-width:96ch;color:var(--slate-deep)}
+  .refuse{margin-top:9px;font-size:12.5px;color:var(--faint);max-width:96ch}
+
+  h2{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--slate);
+     font-weight:700;margin:32px 0 11px;padding-bottom:5px;border-bottom:1px solid var(--rule)}
+  h2 span{float:right;text-transform:none;letter-spacing:0;color:var(--faint);font-weight:400}
+  .note{font-size:12.5px;color:var(--faint);margin:10px 0 0;max-width:100ch}
+  .note b{color:var(--soft)}
+
+  /* ── verdict strip ───────────────────────────────────────────────── */
+  .strip{display:grid;grid-template-columns:repeat(7,1fr);gap:9px}
+  @media(max-width:1180px){.strip{grid-template-columns:repeat(3,1fr)}}
+  @media(max-width:640px){.strip{grid-template-columns:1fr}}
+  .src{background:var(--card);border:1px solid var(--rule);border-radius:var(--r);
+       padding:11px 11px 12px;display:flex;flex-direction:column}
+  .src .n{font-size:10.5px;letter-spacing:.14em;color:var(--faint);font-weight:700}
+  .src .path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;
+             color:var(--ink);margin-top:5px;word-break:break-all;line-height:1.45}
+  .src .why{font-size:11.5px;color:var(--soft);margin-top:7px;line-height:1.4;flex:1}
+  .v{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.09em;
+     text-transform:uppercase;padding:2.5px 7px;border-radius:99px;margin-top:9px;align-self:flex-start}
+  .v-hold{background:var(--hold-wash);color:var(--hold)}
+  .v-drift{background:var(--drift-wash);color:var(--drift)}
+  .v-gone{background:var(--gone-wash);color:var(--gone)}
+  .src.hold{border-top:3px solid var(--hold)}
+  .src.drift{border-top:3px solid var(--drift)}
+  .src.gone{border-top:3px solid var(--gone)}
+
+  .counts{display:flex;gap:30px;flex-wrap:wrap;margin-top:14px;padding:13px 16px;
+          background:var(--sunk);border-radius:var(--r);align-items:flex-start}
+  .counts div{font-size:12.5px;color:var(--soft);max-width:34ch}
+  .counts b{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:20px;
+            color:var(--slate);display:block;font-weight:700;line-height:1.25}
+  .counts .bad b{color:var(--gone)}
+
+  /* ── register ─────────────────────────────────────────────────────── */
+  .reg{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+  @media(max-width:1100px){.reg{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:640px){.reg{grid-template-columns:1fr}}
+  .cl{background:var(--card);border:1px solid var(--rule);border-left-width:3px;
+      border-radius:0 var(--r) var(--r) 0;padding:9px 11px;cursor:help}
+  .cl .ct{font-size:13px;line-height:1.3}
+  .cl .s{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;
+         color:var(--faint);margin-top:5px}
+  .cl .g{font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;margin-top:7px}
+  .g-ok{border-left-color:var(--hold)} .g-ok .g{color:var(--hold)}
+  .g-weak{border-left-color:var(--drift)} .g-weak .g{color:var(--drift)}
+  .g-block{border-left-color:var(--gone)} .g-block .g{color:var(--gone)}
+  .g-rej{border-left-color:var(--ink)} .g-rej .g{color:var(--ink)}
+  .g-const{border-left-color:var(--slate)} .g-const .g{color:var(--slate)}
+
+  /* ── close-time grid ─────────────────────────────────────────────── */
+  .gridwrap{overflow-x:auto}
+  .grid{display:grid;grid-template-columns:126px repeat(7,minmax(124px,1fr));
+        border:1px solid var(--rule);border-radius:var(--r);overflow:hidden;background:var(--card);
+        min-width:980px}
+  .grid > div{border-right:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:8px}
+  .hd{background:var(--sunk);font-size:11px;letter-spacing:.09em;text-transform:uppercase;
+      color:var(--soft);font-weight:700;padding:9px 8px !important}
+  .hd small{display:block;text-transform:none;letter-spacing:0;font-weight:400;
+            color:var(--faint);font-size:10.5px;margin-top:2px}
+  .lane{background:var(--sunk);font-size:12.5px;font-weight:600;line-height:1.35}
+  .lane small{display:block;font-weight:400;color:var(--faint);font-size:11px;margin-top:3px}
+  .cell{min-height:104px;vertical-align:top}
+  .t{display:block;background:var(--slate-wash);border-left:3px solid var(--slate);
+     border-radius:0 5px 5px 0;padding:6px 7px;margin-bottom:6px;cursor:help}
+  .t b{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;
+       color:var(--slate-deep);letter-spacing:.02em}
+  .t > span{display:block;font-size:11.5px;color:var(--ink);margin-top:2px;line-height:1.32}
+  .t > span .mono{display:inline;font-size:11px}
+  .t.reach{background:var(--drift-wash);border-left-color:var(--drift)}
+  .t.reach b{color:var(--drift)}
+  .t.founder{background:var(--hold-wash);border-left-color:var(--hold)}
+  .t.founder b{color:var(--hold)}
+  .t.fix{background:var(--gone-wash);border-left-color:var(--gone)}
+  .t.fix b{color:var(--gone)}
+  .legend{display:flex;gap:20px;flex-wrap:wrap;margin-top:11px;font-size:12px;color:var(--soft)}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;
+            vertical-align:-1px}
+
+  /* ── two-col ─────────────────────────────────────────────────────── */
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:940px){.two{grid-template-columns:1fr}}
+  .panel{background:var(--card);border:1px solid var(--rule);border-radius:var(--r);padding:14px 16px}
+  .panel h3{margin:0 0 9px;font-size:13px;letter-spacing:.02em}
+  .panel ul{margin:0;padding-left:18px}
+  .panel li{font-size:12.5px;color:var(--soft);margin-bottom:8px;line-height:1.45}
+  .panel li b{color:var(--ink);font-weight:600}
+  .panel code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
+              background:var(--sunk);padding:1px 4px;border-radius:3px}
+  .seam{background:var(--sunk);border:1px dashed var(--rule)}
+
+  footer{margin-top:34px;border-top:1px solid var(--rule);padding-top:14px;
+         font-size:12px;color:var(--faint);max-width:110ch}
+  footer b{color:var(--soft)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="id">Sketch 073 · Corporate → Strategy &amp; Fundraising · 2026-08-28</div>
+  <h1>The register an investor's diligence cannot puncture</h1>
+  <p>One picture of <span class="mono">strategy-fundraising-agenda-full.md</span> — 17 tasks,
+  two units, six close-times. This department owns the claim, not the paper and not the craft:
+  it decides what the company says about itself to outsiders and whether that is true at the
+  moment it is said.</p>
+  <div class="thesis"><b>The thesis this canvas argues.</b> The agenda's spine is not
+  “write a claim register.” It is <b>make the register something a machine re-reads, in the
+  repo, on every commit</b> — because in the four days since this department was chartered,
+  its own vault drifted at four separate points, and the only reason anyone knows is that
+  somebody re-read it by hand. A diligence reader's question is <i>“is this still true?”</i>
+  Today the honest answer is a date. The tasks below make it a run.</div>
+  <div class="refuse">What this canvas will never show — and the omission is the design:
+  a deck, a data room, a cap table, an instrument, a price, or an investor. Those are the
+  founder's, or <span class="mono">instruments-equity</span>'s, or triggered work behind the
+  split trigger. A canvas that tracked them would be the second team this department declined
+  to charter, arriving through a dashboard instead of the org chart.</div>
+</header>
+
+<h2>1 · The only thing this department has ever measured <span>All seven sources in <span class="mono">YC_WEDGE_PLAN.md:398-406</span>, re-read 2026-08-28</span></h2>
+
+<div class="strip">
+  <div class="src hold">
+    <div class="n">S1</div>
+    <div class="path">procurement/invoice-match.ts</div>
+    <div class="why">No line anchor at all — the claim survives the file moving. The only §6 citation built to last.</div>
+    <div class="v v-hold">holds</div>
+  </div>
+  <div class="src drift">
+    <div class="n">S2</div>
+    <div class="path">ReceivingWorkspace.tsx:233,265 · :92</div>
+    <div class="why">Inputs now <span class="mono">:394</span> / <span class="mono">:434</span> by aria-label; <span class="mono">invoiceQty</span> initialises <span class="mono">null</span> at <span class="mono">:168</span>. The vault recorded <span class="mono">:401,440</span> one day earlier.</div>
+    <div class="v v-drift">drifted</div>
+  </div>
+  <div class="src gone">
+    <div class="n">S3</div>
+    <div class="path">InvoiceScannerModal.tsx:88,126</div>
+    <div class="why">The file does not exist anywhere under <span class="mono">apps/</span>, and the repo has zero references to <span class="mono">invoices/scan</span>. <b>No previous sweep recorded this.</b></div>
+    <div class="v v-gone">gone</div>
+  </div>
+  <div class="src drift">
+    <div class="n">S4</div>
+    <div class="path">scan-parser.service.ts:43–65</div>
+    <div class="why">File holds; <span class="mono">:43</span> is a comment terminator and <span class="mono">:65</span> prompt text. The model call is <span class="mono">claude-haiku-4-5</span> at <span class="mono">:289</span>.</div>
+    <div class="v v-drift">drifted</div>
+  </div>
+  <div class="src drift">
+    <div class="n">S5</div>
+    <div class="path">pos-hub.controller.ts:18,44</div>
+    <div class="why"><span class="mono">:18</span> is an express import, <span class="mono">:44</span> a comment. The <span class="mono">generic_webhook</span> bridge description is at <span class="mono">:76</span>.</div>
+    <div class="v v-drift">drifted</div>
+  </div>
+  <div class="src hold">
+    <div class="n">S6</div>
+    <div class="path">procurement.controller.ts:33</div>
+    <div class="why">Class-level <span class="mono">@UseGuards(JwtAuthGuard)</span>, exactly to the line. Thirteen months and it did not move.</div>
+    <div class="v v-hold">holds</div>
+  </div>
+  <div class="src gone">
+    <div class="n">S7</div>
+    <div class="path">ux-optimizer/ — “0 @UseGuards, all re-confirmed 2026-07-27”</div>
+    <div class="why"><span class="mono">ux-optimizer.controller.ts:55</span> carries the guard. <b>Second instance at <span class="mono">:194</span></b>, never recorded.</div>
+    <div class="v v-gone">inverted</div>
+  </div>
+</div>
+
+<div class="counts">
+  <div><b>71%</b>5 of 7 sources do not hold — measured 2026-08-28 across all seven</div>
+  <div class="bad"><b>≈29%</b>the figure carried in 12 documents of this vault, from a 2-source sample</div>
+  <div><b>2.4×</b>the factor by which this department understated its own primary defect</div>
+  <div><b>0</b>demos in the evidence mix. 100% <span class="mono">path:line</span> is what produced the rate above</div>
+</div>
+
+<p class="note"><b>Why this strip leads the canvas rather than the task list.</b> A partial
+sweep reported as a baseline is the same failure as <span class="mono">“all re-confirmed
+2026-07-27”</span>, one level up — and the two worst classes here, a <i>gone</i> file and a
+<i>duplicated</i> inversion, were both invisible to a sample that stopped at two. This is
+the only fact this department has ever produced, and it is a fact about its own accuracy.
+<b>What could not be checked, said plainly:</b> wave 3 runs no git commands, so S2's six-line
+difference cannot be attributed to a file change versus a differently-anchored sweep. Task
+STR-4 removes the question instead of answering it.</p>
+
+<h2>2 · The register, seeded worst-first <span>12 claims already in force in the company's own documents · hover for the grade's reason</span></h2>
+
+<div class="reg">
+  <div class="cl g-weak" title="STR-2 · Enters in its weak form or not at all. YC_WEDGE_PLAN.md:32 — it means 'we asked' until an X12 812 credit memo lands on a later invoice. Bound to the metric contract and to the number Sales actually produces.">
+    <div class="ct">“Dollars recovered” as the headline</div><div class="s">YC_WEDGE_PLAN.md:315</div><div class="g">weaken</div></div>
+  <div class="cl g-rej" title="STR-2 · Computable but not computed (:361-364). Evidence would be a plan, and a future citation is not a citation — directive R3 rejects rather than defers.">
+    <div class="ct">Cost drift caught</div><div class="s">YC_WEDGE_PLAN.md:370</div><div class="g">rejected</div></div>
+  <div class="cl g-rej" title="STR-9 · No ADR records any pricing (OD-23, OPEN-DECISIONS.md:32). We have been calling it 'locked' in 14 documents. An unwritten choice is open — CLAUDE.md §0.1.">
+    <div class="ct">“$20–50/mo pricing” as a company fact</div><div class="s">this vault, 14 documents</div><div class="g">rejected</div></div>
+  <div class="cl g-block" title="STR-2 · Not 'unresolved target' — the target's price is unrecorded, its source document is not in this repo, and PROJECT.md:73 reads 'No revenue pressure: Build right, not fast'.">
+    <div class="ct">“$20k MRR in 30 days”</div><div class="s">OD-23 · OPEN-DECISIONS.md:32</div><div class="g">blocked</div></div>
+  <div class="cl g-weak" title="STR-2 · '### Track A — Security' at :188 is where the unscoped word lives. OD-19 (OPEN-DECISIONS.md:31) records 40 routes on five controllers with no class-level guard, most deliberate.">
+    <div class="ct">“Security complete”</div><div class="s">YC_WEDGE_PLAN.md:188</div><div class="g">weaken</div></div>
+  <div class="cl g-ok" title="STR-8 · Accurate in the row's own words: 'guarded, tenant-scoped, validated, mounted, tagged, evaluated nightly'. This vault has been grading it as an overstatement against the wrong line.">
+    <div class="ct">“ux-optimizer secured”</div><div class="s">YC_WEDGE_PLAN.md:340</div><div class="g">releasable · scope attached</div></div>
+  <div class="cl g-ok" title="STR-10 · The block lifted. OD-33 (OPEN-DECISIONS.md:37) settled it at 573 on 2026-08-26 by transpiling insight-catalog.ts standalone. The verify command must assert the exact count.">
+    <div class="ct">573 insight types</div><div class="s">YC_WEDGE_PLAN.md:324</div><div class="g">releasable</div></div>
+  <div class="cl g-block" title="STR-2 · Travels in the same sentence as 573 and has had no equivalent measurement. One settled number does not settle its neighbour.">
+    <div class="ct">860-path UX catalogue</div><div class="s">YC_WEDGE_PLAN.md:324</div><div class="g">blocked</div></div>
+  <div class="cl g-ok" title="STR-6 · The strongest available claims — and the evidence class is wrong. Needs a recorded demo, the one evidence type that cannot silently drift.">
+    <div class="ct">Four-way match · credit ledger · X12 · two-stage receiving</div><div class="s">YC_WEDGE_PLAN.md:340-348</div><div class="g">releasable · needs a demo</div></div>
+  <div class="cl g-ok" title="STR-2 · Sound and honest; names the defensible angle narrowly. Re-verify before every use — competitor facts age fastest of anything in the register.">
+    <div class="ct">Competitive read vs MarginEdge</div><div class="s">YC_WEDGE_PLAN.md:328</div><div class="g">releasable</div></div>
+  <div class="cl g-weak" title="STR-2 · Today's success_rate means 'the call returned'. check_task_types_are_graded.py exists because six of seven task types recorded a garbage response as a success.">
+    <div class="ct">Any <span class="mono">nf_a.*</span> completion figure</div><div class="s">charter §Metrics</div><div class="g">weaken by default</div></div>
+  <div class="cl g-const" title="STR-2 · A positioning claim, not a factual one — no evidence required. It is the constant every other artifact must reduce to in its first paragraph (directive R5).">
+    <div class="ct">“Restaurants get overbilled by their distributors and never catch it. We catch it from a photo of the invoice.”</div><div class="s">YC_WEDGE_PLAN.md:312</div><div class="g">the constant</div></div>
+</div>
+
+<p class="note"><b>Expected first reading, stated before starting so it is not read as a bad
+month:</b> 4 releasable · 3 weaken · 2 blocked · 2 rejected · 1 constant. <b>Four of the
+twelve originate inside this department's own vault</b>, not outside it — which is why the
+gate points inward before it points anywhere else.</p>
+
+<h2>3 · The agenda, by close-time <span>17 tasks · two units, one cadence · hover a chip for its doneability</span></h2>
+
+<div class="gridwrap">
+<div class="grid">
+  <div class="hd lane">Owner</div>
+  <div class="hd">2026-09-04</div>
+  <div class="hd">2026-09-11</div>
+  <div class="hd">2026-09-18</div>
+  <div class="hd">2026-09-25</div>
+  <div class="hd">2026-10-02</div>
+  <div class="hd">2026-10-16</div>
+  <div class="hd">Recurring<small>event-closed and silent when nothing happens</small></div>
+
+  <div class="lane">Department<small>strategy-warden · boundaries only</small></div>
+  <div class="cell">
+    <span class="t fix" title="Doneability: strategy.citation_drift_rate carries a dated per-source result, never a document-level date, and the corrected 71% replaces ≈29% on the board. A correction ask goes to standards-verification; this agenda edits no other document."><b>STR-7</b><span>Publish the real drift baseline — 5 of 7</span></span>
+    <span class="t fix" title="Doneability: no document in this tree grades YC_WEDGE_PLAN.md:340 as an overstatement. The unscoped word is the :188 heading. An audit with a bad anchor is worse than no audit, because it is quoted with confidence."><b>STR-8</b><span>Correct our own mis-anchored finding</span></span>
+  </div>
+  <div class="cell">
+    <span class="t fix" title="Doneability: no document in this tree calls $20–50/mo 'locked', and every revenue figure carries OD-23 in the ADR 0025 pair form — id AND line, so a renumber and an insert each break the pair loudly. Removes a false certainty; proposes no price."><b>STR-9</b><span>Strike “locked pricing” from this vault</span></span>
+    <span class="t founder" title="Doneability: one dated paragraph — raise, or not yet and here is the trigger. 'Not yet' is a valid answer and must be an answer. Absence is itself the finding. The department states the position and its consequences; it names no instrument, cap, price or term."><b>STR-15</b><span>Raise position in writing → founder</span></span>
+  </div>
+  <div class="cell">
+    <span class="t" title="Doneability: a script returns holds / drifted to :N / inverted / gone / cannot-run per row, inheriting all four strict-mode rules from check_decision_claims.sh — cannot-run is a failure not a skip; exit 126/127 or a cannot-run stderr signature fails regardless of reported exit code; no verify may contain 2>; malformed input is a hard failure. Green against a fixture with a deliberately broken row, red without it."><b>STR-3</b><span><span class="mono">claim-provenance-check</span> in CI</span></span>
+  </div>
+  <div class="cell">
+    <span class="t" title="Doneability: the 16 documents of this vault are swept for the recovery phrasing, the pricing phrasing, and any nf_a completion figure used as correctness; every hit is qualified in place or entered as a graded register row. The board's overstatement watch returns empty for a stated reason rather than by accident."><b>STR-5</b><span>Sweep our own vault for overstatement</span></span>
+    <span class="t" title="Doneability: the split trigger stops being an event nothing emits and becomes two dated founder-set fields — first_term_sheet_conversation and first_instrument_issued — plus split_trigger_age_days. The twelve-month not-needed condition becomes readable without anyone remembering to check."><b>STR-16</b><span>Split trigger = two dates, not an event</span></span>
+  </div>
+  <div class="cell">
+    <span class="t" title="Doneability: one page states, for BOTH candidates, exactly what query would make it real — for dollars recovered, the join counting only 812 credit memos landed on a later invoice; for cost drift caught, the computation :361-364 calls computable-but-not-computed. The choice stays the founder's; the implementation cost drops to one step."><b>STR-12</b><span>Instrument the headline — the query, not the choice</span></span>
+  </div>
+  <div class="cell">
+    <span class="t reach" title="REACH — may close as BLOCKED with a named holder. Doneability: Red Team picks claims at random and tries to break them the way a diligence reader would; a written finding lands in the questions file with claims-tested and claims-broken counts. A zero-broken result is reported as suspect. Advisory is findings-only; nothing blocks."><b>STR-17</b><span>Adversarial read of the register → red-team</span></span>
+  </div>
+  <div class="cell">
+    <span class="t" title="Per-commit (CI) and per-send (L-STR-1). The primary control is the gate at the moment of sending; the sweep is the backstop."><b>STR-3</b><span>per commit · per send</span></span>
+    <span class="t" title="Monthly unattributed-target sweep, L-STR-4. A revenue figure quoted without its fork id is the drift, mid-flight."><b>STR-9</b><span>monthly</span></span>
+    <span class="t" title="Quarterly: founding-artifact re-verification (STR-7), the vault overstatement sweep (STR-5), the raise position (STR-15), and the team-shape review that reads the split-trigger dates (STR-16)."><b>STR-5·7·15·16</b><span>quarterly</span></span>
+  </div>
+
+  <div class="lane">Team<small>positioning-fundraise-readiness · the desk</small></div>
+  <div class="cell">
+    <span class="t" title="Doneability: one JSON object per line carrying id, claim verbatim, audience, channel, evidence_type, verify (a command, or 'NONE — human rubric' with the rubric named), status and a verified date PLUS result. Done when all twelve seed claims parse. JSONL over a markdown table because a table cannot be executed."><b>STR-1</b><span>Register v1 — a JSONL row, not a table</span></span>
+    <span class="t" title="Doneability: all twelve rows exist with a grade and, where not blocked, a verify command that runs. Expected: 4 releasable · 3 weaken · 2 blocked · 2 rejected · 1 constant."><b>STR-2</b><span>The twelve seed claims, graded</span></span>
+  </div>
+  <div class="cell">
+    <span class="t fix" title="Doneability: claim #6 moves from blocked to releasable carrying a verify that asserts the exact count. Residual risk recorded as a cross-unit ask: insight-catalog.spec.ts:10 asserts >= 200, so 348, 375 and 573 all pass. A block that outlives its cause is an overstatement in the cautious direction."><b>STR-10</b><span>Retire the 375-vs-573 block</span></span>
+  </div>
+  <div class="cell">
+    <span class="t" title="Doneability: the register rejects a path:line evidence value carrying no symbol, at parse time, the way check_citation_pairing.py rejects an unanchored register locator. A symbol-less row fails the run with a named reason."><b>STR-4</b><span>Symbol rule, enforced at parse time</span></span>
+    <span class="t" title="Doneability: a one-command way to add a channel:spoken row from a phone, and a board line that reads the count — so its ZERO is legible as a signal rather than as restraint. A pitch is a publication with no artifact; the strongest claims are always spoken first."><b>STR-13</b><span>Spoken claims — a mechanism, not a promise</span></span>
+  </div>
+  <div class="cell">
+    <span class="t" title="Doneability: the checker's fixture contains the three canonical rewrites already fixed in L-PFR-2, plus a fourth added today for completion claims about the card layer. Each fixture input produces the fixed output; an unfixtured strong verb fails the run. Weakening is the success state; rejection is the fallback."><b>STR-11</b><span>The canonical rewrites become test cases</span></span>
+  </div>
+  <div class="cell">
+    <span class="t reach" title="REACH — may close as BLOCKED with a named holder. Doneability: the four-way-match claim carries a recorded demo path as its evidence and the evidence-type mix shows a non-zero demo share for the first time. Depends on a working path and someone to record it — neither is this department's to own."><b>STR-6</b><span>Demo evidence — the class that cannot drift</span></span>
+  </div>
+  <div class="cell">
+    <span class="t" title="Doneability: one page listing the questions a diligence reader would ask, each with a location and an owner. Most rows read 'does not exist yet' and that is the useful part. Done when the page exists and contains NO artifact — an index that starts producing its own contents has breached R4 that day."><b>STR-14</b><span>The one-page diligence index — and nothing beyond it</span></span>
+  </div>
+  <div class="cell">
+    <span class="t" title="Per claim: register entry (L-PFR-1) and the verb-strength rewrite (L-PFR-2). The register is touched only as part of sending — there is no upkeep job, and that absence is a control."><b>STR-1·11</b><span>per claim</span></span>
+    <span class="t" title="Per external conversation, within 24 hours (R6). Zero rows after an active month is a signal, not restraint."><b>STR-13</b><span>per conversation</span></span>
+    <span class="t" title="Quarterly diligence-index refresh. Completeness is measured against questions a reader would ask, never against a template's slots."><b>STR-14</b><span>quarterly</span></span>
+  </div>
+</div>
+</div>
+
+<div class="legend">
+  <span><i style="background:var(--slate)"></i>department or team work</span>
+  <span><i style="background:var(--gone)"></i>a correction this department owes itself</span>
+  <span><i style="background:var(--drift)"></i>reach — may close as <span class="mono">BLOCKED</span> with a named holder</span>
+  <span><i style="background:var(--hold)"></i>the founder decides</span>
+</div>
+
+<p class="note"><b>There is no weekly column, and the omission is load-bearing.</b> The
+register is empty, no artifact is in flight, and no counterparty exists. A weekly reading of
+zero produces no action for three consecutive runs and is deleted by the org's own
+anti-sprawl rule — both schedules refuse a weekly cadence, and this agenda does not smuggle
+one in through a task. <b>Two lanes, not one</b>, because the department owns the boundaries
+and the team owns the desk; <b>one cadence</b>, because splitting them is the decision this
+department declined until the first term sheet.</p>
+
+<h2>4 · The seams — what this agenda cannot carry, and who it asks</h2>
+
+<div class="two">
+  <div class="panel seam">
+    <h3>Findings — no card and no loop can carry these</h3>
+    <ul>
+      <li><b>F1 · The agent cannot run its own checker.</b> <code>strategy-warden</code> is
+      <code>extraction</code> and <code>pfr-claim-gate</code> is <code>judgment</code>, while
+      <code>run_card.py:375</code> executes only <code>mechanical</code> cards. So
+      <code>claim-provenance-check</code> is built as a script plus a CI job — which is the
+      honest shape anyway: the grading is mechanical even though the judgment about a verb
+      is not.</li>
+      <li><b>F2 · Both nf_a task types would fail the doneability gate today.</b>
+      <code>strategy_sweep</code> and <code>claim_check</code> have no consumer and no verdict
+      basis better than <code>call_level_v0</code>. Emitting either before STR-3 exists would
+      record “the call returned” as “the claim was checked” — this department's own failure
+      mode wearing a metric. Neither is scheduled to emit.</li>
+      <li><b>F3 · The staleness watcher cannot see a date-only bump.</b>
+      <code>watch_loops.py:74</code> reads <code>updated:</code> and nothing else — exactly
+      the disguise L-STR-5 names. Legal filed this gap the same day; this department
+      <b>seconds it rather than filing a duplicate</b>.</li>
+      <li><b>F4 · The register still has no publisher.</b> Four claim-producing units are
+      chartered and none is built, so the gate depends on being <i>invited</i>, and a claim
+      that skips the invitation is invisible. What changed today is only that the register now
+      has somewhere to be <i>before</i> the first publisher arrives.</li>
+      <li><b>F5 · CORP-F1 / OD-17 got sharper, not answered.</b> One team, 16 documents, one
+      inherited artifact — and the artifact is 71% drifted.</li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h3>Cross-unit asks — each lands in that unit's questions file; none blocks</h3>
+    <ul>
+      <li><b>standards-verification</b> — the ≈29% baseline is quoted in 12 documents and is
+      wrong. Corpus truth is theirs; the outward half is ours.</li>
+      <li><b>metric-contract-truth-assurance</b> — replace
+      <code>insight-catalog.spec.ts:10</code>'s <code>&gt;= 200</code> floor with an
+      exact-count assertion, and hand us the <code>dollars_recovered</code> contract the
+      register's row 2 must bind to.</li>
+      <li><b>skills</b> — admit <code>claim-provenance-check</code> through the §3.3 gate.
+      The registry is theirs; we author and commission.</li>
+      <li><b>red-team</b> — the adversarial read (STR-17). A unit that grades its own claims
+      is the structure the org chart was built to distrust, and the last four days are the
+      argument.</li>
+      <li><b>decision-office</b> — OD-23 reported monthly by name from today, escalating at
+      two consecutive unmoved months.</li>
+      <li><b>design-partner-operations</b> — tell us the verified recovery number's shape,
+      credits watched landing, before the first artifact needs it.</li>
+    </ul>
+  </div>
+</div>
+
+<h2>5 · The three claims this department got wrong about itself <span>counted inward, 2026-08-28</span></h2>
+
+<div class="strip" style="grid-template-columns:repeat(3,1fr)">
+  <div class="src gone">
+    <div class="n">Inward overstatement · 1</div>
+    <div class="path">“locked $20–50/mo pricing”</div>
+    <div class="why">In 14 documents. OD-23 (<span class="mono">OPEN-DECISIONS.md:32</span>) records that <b>no ADR sets any price</b> — an unwritten choice is open. A claim about our own company that our own register does not support.</div>
+    <div class="v v-gone">STR-9</div>
+  </div>
+  <div class="src gone">
+    <div class="n">Inward overstatement · 2</div>
+    <div class="path">Track A “Security” ✅ at :339</div>
+    <div class="why">The sequence row is at <span class="mono">:340</span> and is scoped and accurate; the unscoped word is the <span class="mono">:188</span> heading. <b>A true finding filed against a false anchor.</b></div>
+    <div class="v v-gone">STR-8</div>
+  </div>
+  <div class="src gone">
+    <div class="n">Inward overstatement · 3</div>
+    <div class="path">“573 vs 375 blocks publishing either”</div>
+    <div class="why">Settled at <b>573</b> on 2026-08-26 — two days before this agenda. A block that outlives its cause is an overstatement in the cautious direction, and R1 does not exempt it.</div>
+    <div class="v v-gone">STR-10</div>
+  </div>
+</div>
+
+<p class="note"><b>This section is the canvas's real argument.</b> Every other department's
+agenda can be graded by someone else. This one grades claims, so the only honest opening move
+is to publish the three claims it got wrong about itself in the four days it has existed —
+before it grades anybody. <span class="mono">directive R7</span> says the rule points upward;
+it points inward first.</p>
+
+<footer>
+  <b>Sketch 073 · throwaway thinking surface, not a product.</b> Renders
+  <span class="mono">.planning/01-org/corporate/strategy-fundraising/strategy-fundraising-agenda-full.md</span>
+  (2026-08-28) and never adds to it. Every figure was read off disk on 2026-08-28 in the
+  <span class="mono">docs/wave3-agendas</span> worktree; the agenda carries the
+  <span class="mono">path:line</span> for each. <b>Locks respected:</b> the pricing model
+  stays deferred (STR-9 removes a false certainty and proposes nothing in its place), brand
+  and landing visuals stay held (this file is an internal ledger, not a customer-facing
+  surface), and equity, terms and the raise decision are the founder's alone. <b>No agent in
+  this department sends, files, or speaks to an investor</b> — its strongest action is to hold
+  a send back.
+</footer>
+
+</div>
+</body>
+</html>

@@ -207,10 +207,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (user) {
+      // Only opaque identifiers reach the error tracker. `user.email` and
+      // `user.name` are in scope here and are deliberately not passed: an
+      // error report needs to be routable to an account, not to a person.
       errorTracking.setUser({
         id: user.userId,
-        email: user.email,
-        username: user.name,
         restaurantId: user.restaurantId,
       })
     } else {

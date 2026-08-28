@@ -116,6 +116,33 @@ ABSORBS = re.compile(r"\*{0,2}Absorbs\s+OD-(\d+)\s+\(merged\s+(\d{4}-\d{2}-\d{2}
 OD_REF = re.compile(r"\bOD-(\d+)\b")
 
 
+def ids_in_cell(cell: str) -> list[str]:
+    """Every id an ID cell carries.
+
+    One row can carry several. `| OD-30/42 |` is a real row -- the two forks were
+    reconciled together and share one entry -- and `| OD-11a |` is another, where
+    the suffix distinguishes a sub-decision. A parser that reads only the first
+    plain id reports OD-42 as naming nothing, which is exactly the false positive
+    that trains people to ignore this guard.
+
+    Exported deliberately: `_od_collisions.py` needs the SAME answer to "which ids
+    does this row own". Two files deriving that separately is how the two guards
+    start disagreeing about the same register.
+    """
+    ids = ["OD-" + n for n in re.findall(r"OD-(\d+)", cell)]
+    ids += ["OD-" + n for n in re.findall(r"(?<=/)(\d+)", cell)]
+    return ids
+
+
+def _read(path: str) -> str:
+    """Read a file and close it. CodeQL flags `open(...).read()` as a leaked
+    handle (`py/file-not-closed`) — CPython refcounting happens to close it, but
+    a guard that lectures other files about being re-checkable should not rely
+    on an implementation detail."""
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+
 def parse_register(text: str) -> tuple[set[str], dict[str, tuple[str, str, int]]]:
     """Split the register into ids that OWN a row and ids RETIRED INTO one.
 
@@ -135,12 +162,7 @@ def parse_register(text: str) -> tuple[set[str], dict[str, tuple[str, str, int]]
         cell, body = m.group(1), m.group(2)
         if "OD-" not in cell:
             continue
-        # One row can carry several ids. `| OD-30/42 |` is a real row: the two
-        # forks were reconciled together and share one entry, so a parser that
-        # only reads the first id reports OD-42 as naming nothing -- which is
-        # exactly the false positive that would train people to ignore this guard.
-        ids = ["OD-" + n for n in re.findall(r"OD-(\d+)", cell)]
-        ids += ["OD-" + n for n in re.findall(r"(?<=/)(\d+)", cell)]
+        ids = ids_in_cell(cell)
         if not ids:
             # `OD-` with no number behind it. Nothing to record, and the absorbs
             # lookup below needs a real absorbing id -- an IndexError here would
@@ -151,7 +173,16 @@ def parse_register(text: str) -> tuple[set[str], dict[str, tuple[str, str, int]]
         rows.update(ids)
 
         for am in ABSORBS.finditer(body):
-            absorbed["OD-" + am.group(1)] = (ids[0], am.group(2), lineno)
+            retired = "OD-" + am.group(1)
+            # FIRST declaration wins, and a later one does not silently replace
+            # it. `absorbed[x] = ...` made the answer depend on which absorbing
+            # row happened to sit lower in the file, so a register with two rows
+            # claiming one merge resolved every citation to whichever was later
+            # -- chosen by line order, reported as fact. Detecting that case is
+            # `_od_collisions.py`'s job (it fails the build); this only makes
+            # sure the resolver's own answer is stable while it does.
+            if retired not in absorbed:
+                absorbed[retired] = (ids[0], am.group(2), lineno)
 
     return rows, absorbed
 
@@ -206,7 +237,8 @@ def main() -> int:
         print(f"CANNOT CHECK — {REGISTER} not found (run from the repo root)")
         return 2
 
-    reg = open(REGISTER, encoding="utf-8").read()
+    with open(REGISTER, encoding="utf-8") as fh:
+        reg = fh.read()
     rows, absorbed = parse_register(reg)
     if not rows:
         print(f"CANNOT CHECK — no `| OD-NNN |` rows parsed out of {REGISTER}")
@@ -331,7 +363,7 @@ def self_test() -> int:
     # -- 1. an absorbs declaration resolves the retired id -------------------------
     with tempfile.TemporaryDirectory() as d:
         doc = build(d)
-        _rows, absorbed = parse_register(open(REGISTER, encoding="utf-8").read())
+        _rows, absorbed = parse_register(_read(REGISTER))
         if absorbed.get("OD-43", (None,))[0] != "OD-26":
             failures.append("`**Absorbs OD-43 (merged 2026-08-27)**` did not resolve to OD-26")
         code, out = run("The audit found OD-43 duplicated OD-26.\n", doc)
@@ -346,7 +378,7 @@ def self_test() -> int:
     #    The over-broad case. If this stops failing, the guard is a no-op.
     with tempfile.TemporaryDirectory() as d:
         doc = build(d, body_extra="OD-44's option set still stands, and OD-44 was absorbed.")
-        _rows, absorbed = parse_register(open(REGISTER, encoding="utf-8").read())
+        _rows, absorbed = parse_register(_read(REGISTER))
         if "OD-44" in absorbed:
             failures.append("a bare prose mention of OD-44 in a row body RESOLVED it")
         code, out = run("The audit found OD-44.\n", doc)
@@ -358,7 +390,7 @@ def self_test() -> int:
     # -- 3. a near-miss declaration must NOT resolve -------------------------------
     with tempfile.TemporaryDirectory() as d:
         doc = build(d, body_extra="Absorbs OD-45 (merged yesterday).")
-        _rows, absorbed = parse_register(open(REGISTER, encoding="utf-8").read())
+        _rows, absorbed = parse_register(_read(REGISTER))
         if "OD-45" in absorbed:
             failures.append("`(merged yesterday)` was accepted as a merge date")
         code, _out = run("The audit found OD-45.\n", doc)
