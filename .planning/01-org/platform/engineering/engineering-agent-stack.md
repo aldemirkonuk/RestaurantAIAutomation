@@ -46,7 +46,7 @@ consumes:
   - "scripts/watch_loops.py --json (publisher: .github/workflows/loop-watcher.yml, Mondays 07:00 UTC)"
   - the eight teams' questions.md files (publisher: humans and advisory passes)
 emits:
-  - "[[engineering-agenda-board]] — eight rows, never summed (charter §Metrics; consumer: [[platform-charter]] and the founder board review)"
+  - "[[engineering-agenda-board]] — eight rows, never summed (charter §Metrics; consumer: the Platform division roll-up (a division has no charter file — see [[ORG-MAP]]) and the founder board review)"
   - "seam assignments and OPEN-DECISIONS entries (consumer: [[decision-office-charter]])"
   - "nf_a events (task_type: eng_board_rollup) — consumer: NONE (gap, see §5)"
 routing_class: extraction        # reading eight boards and counting is not judgment
