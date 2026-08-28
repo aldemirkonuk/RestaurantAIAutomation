@@ -1,8 +1,8 @@
 ---
 type: plan
 title: Design Foundation
-status: proposed — workstream DEFERRED by founder 2026-08-26; documentation only, nothing builds
-updated: 2026-08-26
+status: active — workstream REOPENED by founder 2026-08-27; sketches + brand exploration underway, production builds still gated on a direction pick
+updated: 2026-08-27
 links: ["[[PAGE-CONTRACT]]", "[[PAGES-MAP]]", "[[OPEN-DECISIONS]]"]
 ---
 
@@ -18,15 +18,19 @@ links: ["[[PAGE-CONTRACT]]", "[[PAGES-MAP]]", "[[OPEN-DECISIONS]]"]
 > header of [`sketches/MANIFEST.md`](../sketches/MANIFEST.md) as the home of
 > visual-language intent; the MANIFEST keeps the sketch registry only.*
 
-## 0. Decision state (founder consulted 2026-08-26)
+## 0. Decision state (founder consulted 2026-08-26; kickoff 2026-08-27)
 
 | Fork | State |
 |---|---|
-| Direction A/B/C (§4) | **Open** — founder: no preference yet; sketch bake-off remains the offered path when the workstream wakes |
-| Brand primary #9E4249 vs #CD2D5B | **Open** — founder: no preference yet; side-by-side mock offered |
-| First co-design step | **Decided: archetype map of every page** — done as documentation (47 routes; the count was 50 before the four ADR 0019 §B retirements): `archetype:` frontmatter on every page doc + Archetype column in [[PAGES-MAP]] (proposed assignments, founder to adjust) |
+| Workstream | **REOPENED 2026-08-27** — "time has come … let's start for Mudavym." Sketches and brand exploration are go; production builds stay gated on the founder picking a direction. |
+| Brand name on the product | **Decided: Mudavym everywhere** — customer-facing product brand, replaces WineOps in all sketches; the "müdavim = the restaurant's regular" story is the brand hook. Logo, slogan, voice all designed under this name. |
+| Direction A/B/C (§4) · burgundy #9E4249 vs #CD2D5B | **Superseded** — founder ordered a from-scratch exploration (anything visual may change, even text size; only the monorepo architecture is untouchable). Replaced by the 5-direction bake-off below. |
+| Brand directions | **Decided: 5 full directions** (voice + logo concepts + slogan candidates + palette + type + motion personality, each applied to the same sample screens); founder may extend to 10 after seeing them. |
+| Coverage | **Decided: flagships first** — brand system + ~1 full sketch per archetype; propagation to all 47 pages only after the founder picks a direction. |
 | Scope | **Decided: web first, mobile-aware** — tokens/archetypes written to port; 043–046 motion specs parked until mobile's turn |
-| Workstream | **Deferred** — founder will not focus on this now; documentation only, no sketches/tokens/builds until the founder reopens it |
+| References | manus.im · bklit.com · motion.dev · the founder's GitHub stars (mined 2026-08-27: shadcn/Motion "design engineering" cluster — kokonutui, bklit-ui charts; `motion` as sole JS animation lib recommended). |
+| Delivery | **Decided: HTML sketches in `sketches/` (MANIFEST-registered, 053+) + one published Artifact gallery.** Wave 1 shipped 2026-08-27: boards 053–057 (Habitué · Instrument · Cellar · Pass · Ledger) + 058 Blender marks (seal/ember/meter); gallery = Artifact "Mudavym Brand Directions". Founder pick pending; hybrid picks allowed; +5 more directions on request. |
+| First co-design step (2026-08-26) | **Done: archetype map of every page** — 47 routes, `archetype:` frontmatter + Archetype column in [[PAGES-MAP]] (proposed assignments, founder to adjust) |
 
 ## 1. What exists today (evidence, not judgment)
 
