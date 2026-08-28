@@ -12,7 +12,9 @@ import { of, throwError, firstValueFrom } from "rxjs";
 
 const setUserMock = jest.fn();
 const initMock = jest.fn();
-const captureExceptionMock = jest.fn(() => "event-id");
+// Typed to accept the args it is actually called with: the spread below needs a
+// rest parameter, and the assertions read `mock.calls[0][1]` (the context arg).
+const captureExceptionMock = jest.fn((..._args: unknown[]) => "event-id");
 
 jest.mock("@sentry/node", () => ({
   init: (...args: unknown[]) => initMock(...args),

@@ -73,7 +73,9 @@ class TestSetUser:
         client._initialized = True
         with patch("utils.sentry_client.sentry_sdk") as sdk:
             client.set_user("user-1", restaurant_id="rest-1")
-        sdk.set_user.assert_called_once_with({"id": "user-1", "restaurant_id": "rest-1"})
+        sdk.set_user.assert_called_once_with(
+            {"id": "user-1", "restaurant_id": "rest-1"}
+        )
 
     def test_no_longer_accepts_an_email_argument(self):
         # The parameters are gone rather than ignored: a signature that accepts
