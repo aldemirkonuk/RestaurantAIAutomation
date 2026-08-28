@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>st harness</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --m-serif:Fraunces,Georgia,serif;
+  --m-sans:'Instrument Sans',system-ui,sans-serif;
+  --m-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+html[data-skin="branded"]{
+  --m-bg:#15130F; --m-surface:#1E1B16; --m-sunk:#100E0B;
+  --m-line:#332E26; --m-line2:#4A4239;
+  --m-ink:#EFE7D9; --m-mut:#8E8576;
+  --m-accent:#5FB0BC; --m-accent-ink:#0E1416;
+  --m-ok:#6FAE7E; --m-warn:#D9A441; --m-no:#D2705F;
+}
+html[data-skin="neutral"]{
+  --m-bg:#F4F4F5; --m-surface:#FFFFFF; --m-sunk:#EAEAEC;
+  --m-line:#DCDCE0; --m-line2:#BFBFC6;
+  --m-ink:#18181B; --m-mut:#71717A;
+  --m-accent:#3F3F46; --m-accent-ink:#FAFAFA;
+  --m-ok:#3F7A4F; --m-warn:#9A6B14; --m-no:#A33A2A;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:20px;background:var(--m-bg);color:var(--m-ink);font-family:var(--m-sans)}
+#bar{display:flex;gap:10px;align-items:center;margin-bottom:16px;font:500 12px var(--m-mono)}
+#bar button{font:500 11px var(--m-mono);background:var(--m-surface);color:var(--m-ink);
+  border:1px solid var(--m-line);border-radius:6px;padding:6px 11px;cursor:pointer}
+#grid{display:grid;grid-template-columns:repeat(3,minmax(280px,1fr));gap:14px}
+.cardw{border:1px solid var(--m-line);border-radius:12px;background:var(--m-bg);overflow:hidden}
+.cardh{display:flex;justify-content:space-between;gap:8px;align-items:baseline;
+  padding:7px 11px;border-bottom:1px solid var(--m-line);background:var(--m-surface)}
+.cardh b{font:600 11px var(--m-mono)}
+.cardh i{font:400 10px var(--m-mono);color:var(--m-mut);font-style:normal;cursor:pointer}
+.stagew{height:150px;display:flex;align-items:center;padding:12px}
+.stage{width:100%}
+</style>
+</head>
+<body>
+<div id="bar">
+  <button id="skin">skin: branded</button>
+  <button id="all">play all</button>
+  <span id="count"></span>
+</div>
+<div id="grid"></div>
+<script>
+window.MUDAVYM_MOTIONS = [];
+document.documentElement.setAttribute('data-skin','branded');
+
+fetch('st.html?' + Date.now()).then(function(r){ return r.text(); }).then(function(txt){
+  var host = document.createElement('div');
+  host.innerHTML = txt;
+  Array.prototype.forEach.call(host.querySelectorAll('style'), function(s){ document.head.appendChild(s); });
+  Array.prototype.forEach.call(host.querySelectorAll('script'), function(s){
+    var n = document.createElement('script'); n.textContent = s.textContent; document.body.appendChild(n);
+  });
+  render();
+}).catch(function(e){ console.error('HARNESS fetch failed', e); });
+
+window.STAGES = [];
+function render(){
+  var grid = document.getElementById('grid');
+  var list = window.MUDAVYM_MOTIONS;
+  document.getElementById('count').textContent = list.length + ' motions · ' + (list[0] && list[0].family);
+  var ids = {};
+  list.forEach(function(m){
+    if(ids[m.id]) console.error('DUPLICATE ID', m.id);
+    ids[m.id] = 1;
+    ['id','name','family','purpose','spec','html','play'].forEach(function(k){
+      if(!m[k]) console.error('MISSING FIELD', m.id, k);
+    });
+    if(m.html.indexOf('<style') > -1 || m.html.indexOf('<script') > -1) console.error('MARKUP NOT SELF-CONTAINED', m.id);
+    var w = document.createElement('div'); w.className = 'cardw';
+    var h = document.createElement('div'); h.className = 'cardh';
+    h.innerHTML = '<b>' + m.id + ' · ' + m.name + '</b><i>replay</i>';
+    var sw = document.createElement('div'); sw.className = 'stagew';
+    var st = document.createElement('div'); st.className = 'stage';
+    st.innerHTML = m.html;
+    sw.appendChild(st); w.appendChild(h); w.appendChild(sw);
+    grid.appendChild(w);
+    window.STAGES.push(st);
+    h.querySelector('i').addEventListener('click', function(){ safePlay(m, st); });
+    safePlay(m, st);
+  });
+}
+function safePlay(m, st){
+  try { m.play(st); } catch(e){ console.error('PLAY THREW', m.id, e && e.message, e); }
+}
+window.playAll = function(){
+  window.MUDAVYM_MOTIONS.forEach(function(m, i){ safePlay(m, window.STAGES[i]); });
+};
+document.getElementById('skin').addEventListener('click', function(){
+  var b = document.documentElement.getAttribute('data-skin') === 'branded';
+  document.documentElement.setAttribute('data-skin', b ? 'neutral' : 'branded');
+  this.textContent = 'skin: ' + (b ? 'neutral' : 'branded');
+});
+document.getElementById('all').addEventListener('click', window.playAll);
+</script>
+</body>
+</html>
