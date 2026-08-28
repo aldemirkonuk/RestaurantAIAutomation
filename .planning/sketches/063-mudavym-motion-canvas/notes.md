@@ -54,7 +54,23 @@ toggle were all verified reaching inside a part.
   rendered in full and the rest were verified through the DOM and computed styles
   rather than watched. Per-frame playback of every demo is therefore *asserted from
   parameters and structure, not filmed.*
-- Each agent verified its own set in isolation before assembly; their individual
-  caveats are in their final reports, not restated here.
+- Each agent verified its own set in isolation before assembly. The **Entrances** set
+  went further than the rest: blocked out of the shared pane entirely (the tab cap was
+  held by siblings), it drove real headless Chrome over CDP instead — frame captures at
+  t=0/320/600/1000/1600/2500 in both skins, and a genuine `prefers-reduced-motion`
+  reload confirming every demo lands within 180ms. The **Numbers** set separately
+  proved teardown is clean: ten rapid replays of its live demo leave exactly one
+  interval running, zero after kill.
+- **`color-mix()` has no fallback** — 45 uses across `ent`, `st`, `num` and `srf`.
+  It has shipped in Chrome, Safari and Firefox since 2023, so this is a real gap only
+  for genuinely old browsers. Left deliberately unpatched: writing 45 fallback
+  declarations into a sketch is the gold-plating the "keep it as simple as possible"
+  rule exists to prevent. If any of this motion is promoted into the product, that
+  is the moment to add them — not before.
+- **A process mistake worth recording:** the assembly step deleted the agents'
+  `_*-test.html` harnesses while one agent was still verifying. It recreated its
+  harness, finished, and cleaned up — no output was lost — but the parts directory
+  should be treated as agent-owned until every agent has reported, not until the
+  files merely exist.
 
 | 063 | mudavym-motion-canvas | 62 motions on one surface — which movements belong to Mudavym? | null | motion, canvas, animation, springs, skin-toggle, entrances, feedback, numbers, navigation, product-surfaces, od-106 |
