@@ -745,18 +745,15 @@ export class AskAiService {
       reason: `The ${what} this refers to is no longer available. Ask again to pick a current one.`,
     });
 
-    const lookup = async (
-      table: string,
-      id: unknown,
-      extra?: (q: any) => any,
-    ): Promise<boolean> => {
-      let q = client
-        .from(table)
-        .select("id")
-        .eq("id", id)
-        .eq("restaurant_id", restaurantId);
-      if (extra) q = extra(q);
-      const { data, error } = await q.limit(1);
+    // Every `.from()` below takes a STRING LITERAL, and the helper receives a
+    // built query rather than a table name. The obvious shape — `lookup(table,
+    // id)` doing `client.from(table)` — cost nothing to write and broke
+    // `check_queried_tables_exist.py`, which resolves table names statically and
+    // fails when its unresolvable-call-site count grows. That guard is right:
+    // a table name it cannot read is a table it cannot verify exists, and this
+    // file would have been the 25th blind spot against a ceiling of 24.
+    const exists = async (table: string, query: any): Promise<boolean> => {
+      const { data, error } = await query.limit(1);
       if (error) {
         this.logger.error(
           `Ask AI could not re-check ${table} before executing: ${error.message}`,
@@ -767,27 +764,42 @@ export class AskAiService {
     };
 
     if (row.family === "procurement" && row.action_type === "reorder") {
-      if (!(await lookup("restaurant_inventory", payload.inventoryId))) {
-        return gone("item");
-      }
-      if (
-        !(await lookup("providers", payload.providerId, (q) =>
-          q.eq("is_active", true),
-        ))
-      ) {
-        return gone("vendor");
-      }
+      const itemLive = await exists(
+        "restaurant_inventory",
+        client
+          .from("restaurant_inventory")
+          .select("id")
+          .eq("id", payload.inventoryId)
+          .eq("restaurant_id", restaurantId),
+      );
+      if (!itemLive) return gone("item");
+
+      const vendorLive = await exists(
+        "providers",
+        client
+          .from("providers")
+          .select("id")
+          .eq("id", payload.providerId)
+          .eq("restaurant_id", restaurantId)
+          .eq("is_active", true),
+      );
+      if (!vendorLive) return gone("vendor");
+
       return { ok: true, payload };
     }
 
     if (row.family === "communications" && row.action_type === "vendor_draft") {
-      if (
-        !(await lookup("procurement_orders", payload.orderId, (q) =>
-          q.not("status", "in", '("delivered","cancelled")'),
-        ))
-      ) {
-        return gone("order");
-      }
+      const orderLive = await exists(
+        "procurement_orders",
+        client
+          .from("procurement_orders")
+          .select("id")
+          .eq("id", payload.orderId)
+          .eq("restaurant_id", restaurantId)
+          .not("status", "in", '("delivered","cancelled")'),
+      );
+      if (!orderLive) return gone("order");
+
       return { ok: true, payload };
     }
 

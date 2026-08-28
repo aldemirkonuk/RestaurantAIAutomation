@@ -134,6 +134,15 @@ def ids_in_cell(cell: str) -> list[str]:
     return ids
 
 
+def _read(path: str) -> str:
+    """Read a file and close it. CodeQL flags `open(...).read()` as a leaked
+    handle (`py/file-not-closed`) — CPython refcounting happens to close it, but
+    a guard that lectures other files about being re-checkable should not rely
+    on an implementation detail."""
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+
 def parse_register(text: str) -> tuple[set[str], dict[str, tuple[str, str, int]]]:
     """Split the register into ids that OWN a row and ids RETIRED INTO one.
 
@@ -228,7 +237,8 @@ def main() -> int:
         print(f"CANNOT CHECK — {REGISTER} not found (run from the repo root)")
         return 2
 
-    reg = open(REGISTER, encoding="utf-8").read()
+    with open(REGISTER, encoding="utf-8") as fh:
+        reg = fh.read()
     rows, absorbed = parse_register(reg)
     if not rows:
         print(f"CANNOT CHECK — no `| OD-NNN |` rows parsed out of {REGISTER}")
@@ -353,7 +363,7 @@ def self_test() -> int:
     # -- 1. an absorbs declaration resolves the retired id -------------------------
     with tempfile.TemporaryDirectory() as d:
         doc = build(d)
-        _rows, absorbed = parse_register(open(REGISTER, encoding="utf-8").read())
+        _rows, absorbed = parse_register(_read(REGISTER))
         if absorbed.get("OD-43", (None,))[0] != "OD-26":
             failures.append("`**Absorbs OD-43 (merged 2026-08-27)**` did not resolve to OD-26")
         code, out = run("The audit found OD-43 duplicated OD-26.\n", doc)
@@ -368,7 +378,7 @@ def self_test() -> int:
     #    The over-broad case. If this stops failing, the guard is a no-op.
     with tempfile.TemporaryDirectory() as d:
         doc = build(d, body_extra="OD-44's option set still stands, and OD-44 was absorbed.")
-        _rows, absorbed = parse_register(open(REGISTER, encoding="utf-8").read())
+        _rows, absorbed = parse_register(_read(REGISTER))
         if "OD-44" in absorbed:
             failures.append("a bare prose mention of OD-44 in a row body RESOLVED it")
         code, out = run("The audit found OD-44.\n", doc)
@@ -380,7 +390,7 @@ def self_test() -> int:
     # -- 3. a near-miss declaration must NOT resolve -------------------------------
     with tempfile.TemporaryDirectory() as d:
         doc = build(d, body_extra="Absorbs OD-45 (merged yesterday).")
-        _rows, absorbed = parse_register(open(REGISTER, encoding="utf-8").read())
+        _rows, absorbed = parse_register(_read(REGISTER))
         if "OD-45" in absorbed:
             failures.append("`(merged yesterday)` was accepted as a merge date")
         code, _out = run("The audit found OD-45.\n", doc)

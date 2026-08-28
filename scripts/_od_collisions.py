@@ -112,7 +112,8 @@ def row_identities(cell: str) -> list[str]:
 def main() -> int:
     path = sys.argv[1] if len(sys.argv) > 1 else ".planning/decisions/OPEN-DECISIONS.md"
     try:
-        txt = open(path, encoding="utf-8").read()
+        with open(path, encoding="utf-8") as fh:
+            txt = fh.read()
     except OSError as e:
         print(f"cannot read {path}: {e}", file=sys.stderr)
         return 2
