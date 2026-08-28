@@ -31,6 +31,18 @@ BENCHMARK_DIR = PROJECT_ROOT / "datasets" / "annotated" / "menus"
 METRICS_FILE = PROJECT_ROOT / "datasets" / "_active_learning_metrics.jsonl"
 
 
+class BenchmarkCorpusError(RuntimeError):
+    """Raised when the gold-standard benchmark cannot assert accuracy.
+
+    A benchmark run over an empty or below-threshold corpus is not a passing
+    run — it is a run that proved nothing. Returning a green ``0/0`` (0.0
+    accuracy over 0 documents) is a vacuous pass: the exact failure mode
+    ADR 0025 ("a claim that cannot run is a FAILURE") and the ``check_*.sh``
+    "exit 2 when it cannot check" discipline exist to stop. So instead of
+    silently reporting 0.0, the oracle raises this and callers fail loud.
+    """
+
+
 # =============================================================================
 # DATA MODELS
 # =============================================================================
@@ -397,14 +409,30 @@ class BenchmarkManager:
     """
 
     BENCHMARK_SIZE_TARGET = 200
+    # Minimum documents required before the benchmark may assert an accuracy
+    # number. Below this the corpus proves nothing, so ``run_benchmark`` raises
+    # rather than reporting a vacuous 0.0. Matches the gate long used inside
+    # ``run_improvement_cycle`` (which now reads this constant).
+    BENCHMARK_MIN_DOCS = 10
 
     def __init__(self):
         self._benchmark_docs: List[Dict[str, Any]] = []
         self._load_benchmark()
 
     def _load_benchmark(self):
-        """Load benchmark documents from annotated directory."""
+        """Load benchmark documents from the annotated directory.
+
+        Loading is intentionally non-fatal: the service (and the API it backs)
+        must still construct on an empty corpus. Emptiness is made *loud* at
+        assertion time in ``run_benchmark`` — not here — so instantiating the
+        service never crashes DI, but no accuracy number can be reported from a
+        corpus that does not exist.
+        """
         if not BENCHMARK_DIR.exists():
+            logger.warning(
+                "Benchmark dir does not exist: %s — benchmark cannot assert accuracy",
+                BENCHMARK_DIR,
+            )
             return
 
         for f in sorted(BENCHMARK_DIR.glob("*.json")):
@@ -416,7 +444,17 @@ class BenchmarkManager:
             except Exception:
                 continue
 
-        logger.info(f"Loaded {len(self._benchmark_docs)} benchmark documents")
+        n = len(self._benchmark_docs)
+        if n < self.BENCHMARK_MIN_DOCS:
+            logger.warning(
+                "Loaded %d benchmark documents from %s (below minimum of %d) — "
+                "benchmark cannot assert accuracy until the gold set is populated",
+                n,
+                BENCHMARK_DIR,
+                self.BENCHMARK_MIN_DOCS,
+            )
+        else:
+            logger.info("Loaded %d benchmark documents", n)
 
     def add_to_benchmark(
         self,
@@ -452,12 +490,28 @@ class BenchmarkManager:
         """
         Run the current parser against all benchmark documents.
         Returns accuracy metrics per field.
+
+        Raises:
+            BenchmarkCorpusError: if the gold set holds fewer than
+                ``BENCHMARK_MIN_DOCS`` documents, or if it holds documents but
+                none yield a single comparable field. Either case would
+                otherwise produce ``overall_accuracy == 0.0`` over an empty
+                comparison set — a vacuous green — so the run fails loud
+                instead of reporting a pass it never earned.
         """
+        n_docs = len(self._benchmark_docs)
+        if n_docs < self.BENCHMARK_MIN_DOCS:
+            raise BenchmarkCorpusError(
+                f"gold set is empty: {n_docs} documents found under "
+                f"{BENCHMARK_DIR}, expected >= {self.BENCHMARK_MIN_DOCS}; "
+                f"accuracy cannot be asserted"
+            )
+
         from services.html_menu_parser import get_menu_parser
 
         parser = get_menu_parser()
         result = BenchmarkResult()
-        result.total_documents = len(self._benchmark_docs)
+        result.total_documents = n_docs
 
         field_correct: Dict[str, int] = defaultdict(int)
         field_total: Dict[str, int] = defaultdict(int)
@@ -499,9 +553,14 @@ class BenchmarkManager:
                 total_correct += correct
                 total_fields += total
 
-        result.overall_accuracy = (
-            total_correct / total_fields if total_fields > 0 else 0.0
-        )
+        if total_fields == 0:
+            raise BenchmarkCorpusError(
+                f"gold set has {n_docs} documents under {BENCHMARK_DIR} but none "
+                f"yielded a comparable field (missing raw_text/expected_wines, or "
+                f"no field matched); accuracy cannot be asserted"
+            )
+
+        result.overall_accuracy = total_correct / total_fields
 
         # Save benchmark result
         self._save_result(result)
@@ -643,22 +702,29 @@ class ActiveLearningService:
         # Step 1: Analyze corrections
         new_rules = self.learner.analyze_corrections()
 
-        # Step 2: Run benchmark
+        # Step 2: Run benchmark — but only once the gold set can assert
+        # accuracy. Below threshold we do NOT fabricate a pass; we say plainly
+        # that validation was skipped and why, rather than returning a silent
+        # ``benchmark_result: None`` that reads as "all clear".
         benchmark_result = None
-        if self.benchmark.benchmark_size >= 10:
+        benchmark_skipped_reason = None
+        if self.benchmark.benchmark_size >= self.benchmark.BENCHMARK_MIN_DOCS:
             benchmark_result = self.benchmark.run_benchmark()
+        else:
+            benchmark_skipped_reason = (
+                f"gold set has {self.benchmark.benchmark_size} documents "
+                f"(need >= {self.benchmark.BENCHMARK_MIN_DOCS}); benchmark not run — "
+                f"accuracy not validated"
+            )
 
         return {
             "new_rules_proposed": len(new_rules),
             "rules": [r.description for r in new_rules],
+            "benchmark_skipped_reason": benchmark_skipped_reason,
             "benchmark_result": (
                 {
-                    "overall_accuracy": (
-                        benchmark_result.overall_accuracy if benchmark_result else None
-                    ),
-                    "field_accuracies": (
-                        benchmark_result.field_accuracies if benchmark_result else {}
-                    ),
+                    "overall_accuracy": benchmark_result.overall_accuracy,
+                    "field_accuracies": benchmark_result.field_accuracies,
                 }
                 if benchmark_result
                 else None
