@@ -102,6 +102,47 @@ jobs:
           echo "::notice::Then run 'python3 scripts/sync_commitment_patterns.py' and commit both files."
           echo "::notice::Weakening the list to make this pass is a legal-guardrail regression, not a fix."
 
+  # Sentry is a subprocessor, so the question is never "did we redact it before
+  # we looked" but "did it ever go". All three runtimes used to answer yes: the
+  # web app, the gateway and the orchestrator each forwarded `email` and
+  # `username` onto the Sentry user scope, and the two `beforeSend` hooks that
+  # existed stripped auth headers only.
+  #
+  # Three things make this a blocking job rather than a review habit. It fails
+  # silently — nothing errors, no test goes red, and the evidence lives in a
+  # vendor UI most of the team never opens. It fails retroactively — deleting
+  # the field later does not un-send a retention window of events that carried
+  # it. And it regresses by copy-paste, because `setUser({ id, email, username })`
+  # is the shape in Sentry's own getting-started page.
+  #
+  # The subtle part, and the reason a reviewer cannot be the control: Sentry's
+  # own option docs say `sendDefaultPii` applies "to data that the SDK is
+  # sending by default but not data that was explicitly set (e.g. by calling
+  # `Sentry.setUser()`)". A file that opens with `sendDefaultPii: false` reads
+  # as safe and is not. Stdlib only, no install step; exits 2 rather than green
+  # when it cannot find what it measures against.
+  sentry-pii-scope:
+    name: The error tracker never receives an identity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: No identity reaches a Sentry user scope
+        run: ./scripts/check_sentry_pii_scope.py
+
+      - name: The guard still fires on the shape it exists to catch
+        run: ./scripts/check_sentry_pii_scope.py --self-test
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::Something is putting a person's identity into a Sentry event. Send opaque identifiers only — an account id and a restaurant id keep an issue routable without making it personal."
+          echo "::notice::Adding 'sendDefaultPii: false' does NOT fix a setUser() finding. Sentry's option docs are explicit that the flag covers only data the SDK attaches by itself. The narrowed user type is what stops the leak."
+          echo "::notice::DRIFTED means PII_USER_KEYS differs between apps/web, apps/api-gateway and services/agent-orchestrator. Three copies of one rule is one edit away from three different rules — sync them, do not exempt them."
+          echo "::notice::CANNOT CHECK (exit 2) means the guard found no Sentry init or no user shape at all. That is a rename or a move, not a pass; repoint the guard."
+          echo "::notice::If a new field is genuinely needed for triage, it has to be an identifier meaningless to the processor. Widening SentryUser is a privacy decision and belongs in an ADR, not in a PR diff."
+
   # P1 §5 item 4. Defect D3 was that the entire NestJS gateway wrote nothing to
   # the spend ledger: seven raw `fetch("https://api.anthropic.com/...")` call
   # sites, and `grep -c api_spend apps/api-gateway/src` returning 0. Every one of
@@ -653,6 +694,7 @@ jobs:
         # on — exactly the drift the step exists to catch, caught on the commit
         # that introduced it.
         agent-card-contract,
+        sentry-pii-scope,
       ]
     steps:
       - name: Checkout code

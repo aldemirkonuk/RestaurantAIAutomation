@@ -21,6 +21,8 @@ import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
+from utils.sentry_client import scrub_sentry_event
+
 _sentry_dsn = os.getenv("SENTRY_DSN")
 _environment = os.getenv("ENVIRONMENT", "development")
 
@@ -34,7 +36,14 @@ else:
         dsn=_sentry_dsn,
         traces_sample_rate=0.1,
         environment=_environment,
+        # Already the SDK default, stated explicitly because it is a privacy
+        # control and a silent default is not a control anyone can audit. Keeps
+        # the SDK from attaching request bodies, cookies and client IPs on its
+        # own. It does not cover anything set through set_user(), which is why
+        # SentryClient.set_user takes opaque identifiers only.
+        send_default_pii=False,
         integrations=[StarletteIntegration(), FastApiIntegration()],
+        before_send=scrub_sentry_event,
     )
 # ── End Sentry ────────────────────────────────────────────────────────────────
 
