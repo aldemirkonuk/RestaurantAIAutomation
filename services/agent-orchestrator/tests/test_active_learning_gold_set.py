@@ -155,6 +155,23 @@ def test_improvement_cycle_reports_skip_reason_when_below_threshold(gold_dir):
     assert "not validated" in out["benchmark_skipped_reason"]
 
 
+def test_improvement_cycle_reports_skip_reason_when_noncomparable(gold_dir):
+    """Docs present but nothing comparable must be REPORTED, not raised.
+
+    Before the fix only the below-threshold shape was pre-checked, so this one
+    escaped run_improvement_cycle as an uncaught BenchmarkCorpusError.
+    """
+    from services.active_learning_service import ActiveLearningService
+
+    _write_docs(gold_dir, BenchmarkManager.BENCHMARK_MIN_DOCS, with_fields=False)
+    svc = ActiveLearningService()
+    assert svc.benchmark.benchmark_size == BenchmarkManager.BENCHMARK_MIN_DOCS
+    out = svc.run_improvement_cycle()  # must not raise
+    assert out["benchmark_result"] is None
+    assert "not validated" in out["benchmark_skipped_reason"]
+    assert "comparable field" in out["benchmark_skipped_reason"]
+
+
 # ---------------------------------------------------------------------------
 # Consumer boundary: the HTTP endpoint fails loud (503), never 200 with 0.0
 # ---------------------------------------------------------------------------
@@ -172,3 +189,62 @@ async def test_benchmark_endpoint_returns_503_on_empty_gold_set(gold_dir, monkey
         await scan_routes.run_benchmark()
     assert exc.value.status_code == 503
     assert "accuracy cannot be asserted" in str(exc.value.detail)
+
+
+async def test_run_cycle_endpoint_returns_503_on_empty_gold_set(gold_dir, monkeypatch):
+    """/learning/run-cycle must not answer 200 for a benchmark that never ran.
+
+    It previously returned 200 with a benchmark_skipped_reason body field:
+    loud in the body, green in the status code.
+    """
+    from fastapi import HTTPException
+    from api import scan_routes
+
+    monkeypatch.setattr(als, "_service_instance", None)
+
+    with pytest.raises(HTTPException) as exc:
+        await scan_routes.run_learning_cycle()
+    assert exc.value.status_code == 503
+    # The non-benchmark half really ran, so the 503 carries its payload rather
+    # than pretending nothing happened.
+    detail = exc.value.detail
+    assert isinstance(detail, dict)
+    assert detail["benchmark_result"] is None
+    assert "not validated" in detail["benchmark_skipped_reason"]
+    assert detail["new_rules_proposed"] == 0
+    assert detail["rules"] == []
+
+
+async def test_run_cycle_endpoint_returns_503_on_noncomparable_gold_set(
+    gold_dir, monkeypatch
+):
+    """Docs present (>= MIN_DOCS) but none comparable gets the SAME 503, not a 500.
+
+    This path used to escape run_improvement_cycle uncaught, so FastAPI turned
+    it into a 500 — asymmetric with the benchmark route's graceful 503.
+    """
+    from fastapi import HTTPException
+    from api import scan_routes
+
+    _write_docs(gold_dir, BenchmarkManager.BENCHMARK_MIN_DOCS, with_fields=False)
+    monkeypatch.setattr(als, "_service_instance", None)
+
+    with pytest.raises(HTTPException) as exc:
+        await scan_routes.run_learning_cycle()
+    assert exc.value.status_code == 503
+    assert "comparable field" in exc.value.detail["benchmark_skipped_reason"]
+
+
+async def test_run_cycle_endpoint_returns_200_on_populated_gold_set(
+    gold_dir, stub_parser, monkeypatch
+):
+    """The happy path is untouched: a usable gold set still returns a payload."""
+    from api import scan_routes
+
+    _write_docs(gold_dir, BenchmarkManager.BENCHMARK_MIN_DOCS)
+    monkeypatch.setattr(als, "_service_instance", None)
+
+    out = await scan_routes.run_learning_cycle()  # no HTTPException -> 200
+    assert out["benchmark_skipped_reason"] is None
+    assert out["benchmark_result"]["overall_accuracy"] == pytest.approx(1.0)
+    assert out["benchmark_result"]["field_accuracies"]
