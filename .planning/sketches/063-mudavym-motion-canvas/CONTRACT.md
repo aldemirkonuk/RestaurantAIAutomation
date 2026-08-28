@@ -48,3 +48,30 @@ Real numbers, not vibes: springs are simulated (sample into a CSS `linear()` eas
 or hand-tuned with stated stiffness/damping. Every motion needs a REASON tied to
 restaurant operations — an owner approving money, a porter at the door with a phone
 at 12%, a manager reading a discrepancy queue at 1am.
+
+---
+
+## Wave 2 (codebase-derived sets)
+
+Same contract, new prefixes. **Do not touch any existing `parts/*.html`** — you write
+exactly one new file.
+
+Two extra requirements for this wave:
+
+1. **Ground every motion in the real repository.** Before building, read your domain's
+   actual code and its page notes in `.planning/06-pages/` (each has a §1a Features
+   list of what the page presents and a §9 Gaps list of what is broken or missing).
+   Every motion's `purpose` must name the real surface it belongs to, and where a
+   motion answers a documented gap, say so in the purpose.
+2. **Add a `source` field** to each registration: a `path:line` citation, or the page
+   note it came from. It is rendered on the card, so it must be true.
+
+```js
+window.MUDAVYM_MOTIONS.push({
+  id, name, family, purpose, spec, html, play,
+  source: 'apps/web/src/lib/doorOutbox.ts:58'    // or '06-pages/receiving-door.md §9'
+});
+```
+
+Aim for roughly two thirds covering functionality that exists and one third proposing
+an improvement to something the docs record as broken, silent, or invisible.

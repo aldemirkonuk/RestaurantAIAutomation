@@ -91,4 +91,4 @@ Premium B2B SaaS onboarding for restaurant operators. The visual language is Str
 | 060 | mudavym-anatolian | The name's own homeland — can İznik geometry and glaze depth be structure rather than ornament? | null | brand, mudavym, anatolian, iznik, tile-geometry, brass, heritage, od-106 |
 | 061 | mudavym-guestbook | Recognition as the product — can "the house remembers you" carry an ops tool's whole identity? | null | brand, mudavym, guestbook, memory, recognition, arrival, od-106 |
 | 062 | mudavym-warmmachine | Mechanism on show — can the most technical direction also be the warmest? | null | brand, mudavym, warm-machine, brass, mechanism, agent-visible, od-106 |
-| 063 | mudavym-motion-canvas | 62 motions on one surface — which movements belong to Mudavym? | null | motion, canvas, animation, springs, skin-toggle, entrances, feedback, numbers, navigation, product-surfaces, od-106 |
+| 063 | mudavym-motion-canvas | 117 motions on one surface, 55 of them derived from the codebase and citing the file or gap they answer &#8212; which movements belong to Mudavym? | null | motion, canvas, animation, springs, skin-toggle, codebase-derived, defects-found, od-106 |

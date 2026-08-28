@@ -86,4 +86,78 @@ toggle were all verified reaching inside a part.
   304px → 332px rather than editing an agent's part. Re-measured after: **62 cards,
   zero overflowing stages, no horizontal page scroll, no console errors.**
 
-| 063 | mudavym-motion-canvas | 62 motions on one surface — which movements belong to Mudavym? | null | motion, canvas, animation, springs, skin-toggle, entrances, feedback, numbers, navigation, product-surfaces, od-106 |
+
+---
+
+## Wave 2 — 55 motions derived from the codebase (2026-08-27)
+
+Founder brief: *"analyze codebase and do it for all functionalities and possible
+improvements."* Five agents each took a domain, read the real source and the page
+notes' §1a Features / §9 Gaps, then built. **Every wave-2 motion carries a `source`** —
+a `path:line` or the page note it answers — rendered on its card.
+
+| Prefix | Family | n | Domain read |
+|---|---|---|---|
+| `prc` | Procurement & money | 11 | `Orders.tsx`, `useDraftEmailQueries.ts`, credits, documents, vendor-intel |
+| `inv` | Inventory & receiving | 11 | inventory command tree, `doorOutbox.ts`, `spotCountOutbox.ts`, `sync-manager.ts` |
+| `itl` | Intelligence & reporting | 11 | `Reports.tsx`, `Recommendations.tsx`, `InsightCatalog.tsx`, `notificationStack.ts`, `LogsTimelinePage.tsx` |
+| `acc` | Access, team & setup | 11 | auth pages, `GetStarted.tsx`, team command tree, `Settings.tsx`, guidance |
+| `sys` | System states | 11 | `useOnlineStatus`, the eight optimistic-mutation hooks, the empty/error/loading triplet, `uxSignals.ts` |
+
+Ratio across the wave: roughly two thirds cover behaviour that ships, one third answer
+a documented gap.
+
+### Defects found in the codebase along the way — verified independently
+
+These came out of the analysis rather than the design, and are worth acting on
+regardless of which direction wins.
+
+1. **Every stock event rewrites the row you are reading.**
+   `apps/web/src/lib/websocket.tsx:489-491` blanket-invalidates the whole `inventory`,
+   `dashboard` *and* `wines` query trees on every `stock:updated`. One bottle moving
+   anywhere refetches and re-renders a row a manager is mid-way through reading.
+   Motion answering it: `sys-08` holds the read row behind a rail with a `new: 34`
+   badge and applies it on release.
+
+2. **A dropped door receipt is indistinguishable from a delivered one.**
+   `lib/doorOutbox.ts:113-118` gives up after 8 attempts or a permanent 4xx — a
+   deliberate, well-argued decision ("a queue that never drains stops being watched")
+   that *does* report the outcome as `{sent, failed}`. But `watchDoorOutbox:137-139`
+   discards the result and `pages/receiving/DoorReceipt.tsx:70-71` only re-reads
+   `pendingDoorCount`, so a discarded receipt and a successful send both simply
+   decrement the badge. `lib/spotCountOutbox.ts:110-115` has the same shape.
+   **The fix is small: surface `failed`.** Motion: `inv-09`.
+
+3. **A docstring asserts a wiring that does not exist.**
+   `hooks/useUxOverrides.ts:12` says *"Mounted once in DashboardLayout"*; the hook has
+   **zero importers**, and 11 `data-ux-key` markers sit waiting for a reporter that
+   never runs. The comment makes the gap invisible to the next reader. Motion:
+   `sys-11` and `acc-11` render consent that cannot complete because nothing receives it.
+
+4. **The insight catalogue headlines a flattering number.** Confirms OD-33 —
+   `itl-07` counts 375 *down* to the 144 actually reachable while the track grows to
+   the true 573.
+
+5. **`collapseStackedNotifications` returns `foldedById`, and `Notifications.tsx:231`
+   throws it away** — the "2 earlier duplicates grouped" string the library already
+   writes is rendered only by the header bell. Motion: `itl-09`.
+
+*(1, 2 and 3 were re-verified in the repository by hand, not taken on an agent's word;
+one agent's count of 15 `data-ux-key` markers was wrong — it is 11.)*
+
+### A build defect of mine, and the guard it earned
+
+The assembly script's "fragment only" check did `if "<title" in body: re.sub(r"</?title[^>]*>", ...)`.
+In `sys.html` that matched `for (var i=0;i<title.length;i++)`, and because `[^>]*`
+crosses newlines it deleted every character up to the next `>` in the file — silently
+corrupting a part's JavaScript in the built page. The check now matches only real
+document tags and **refuses to build** rather than repairing anything: a blocked build
+is recoverable, a silently mangled one is not. The id counter was also over-counting
+(it matched `id:` inside demo data); it now counts only ids carrying the part's own
+prefix.
+
+**Assembled and verified:** 117 registered, 117 rendered, 0 duplicate ids, 55 sourced,
+0 empty stages, 0 overflowing, 0 console errors, 0 non-ASCII characters in the built
+page. Assembly ran only after all five agents reported — the rule earned last round.
+
+| 063 | mudavym-motion-canvas | 117 motions on one surface, 55 of them derived from the codebase and citing the file or gap they answer &#8212; which movements belong to Mudavym? | null | motion, canvas, animation, springs, skin-toggle, codebase-derived, defects-found, od-106 |
