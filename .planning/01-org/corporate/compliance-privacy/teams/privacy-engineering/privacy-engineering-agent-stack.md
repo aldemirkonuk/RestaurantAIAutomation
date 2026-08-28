@@ -110,7 +110,7 @@ CI verdicts, board rows, memory PRs, NF-A events, [[privacy-engineering-loops]].
 | `table.created` has no publisher | The daily schema-parity rebuild exists because production drifted by 27 tables and 403 columns applied by hand; it diffs but emits nothing, so the erasure denominator widens silently and the monthly schedule bounds the blind spot at 30 days |
 | The `erasure-proof` loop (`close_time: per-event`) has no producer | No erasure function, no receipt table, no test. The primary metric reads "not emitted", never 0% achieved |
 | The `consent-gate` loop cannot close | The gate is not a callable check, so [[customer-relationship-research-charter]] is blocked on us — stated loudly here rather than read as their delay |
-| `nfb-research-store-erasability` — **owner assigned 2026-08-27 (founder, ADR 0035): this team** | The loop is now this team's to run; NF-B itself stays HELD (ADR 0029), so owning the question activates nothing. The *mechanism* fork (crypto-shredding vs subject partitions vs aggregate-only retention — each with real ML cost) *remains open* and is this team's to bring to the founder with costs attached |
+| `nfb-research-store-erasability` — **owner: this team (ADR 0035); mechanism: crypto-shredding (founder, 2026-08-28, ADR 0037)** | Per-guest keys; erasure = key destruction, O(1), rows become noise in place — the wide append-only research store (ADR 0006) survives erasure intact. Costs owned going in: key-management infra and decryption on every training path. NF-B stays HELD (ADR 0029); nothing activates — the design is settled so activation, whenever it comes, does not improvise it |
 
 ## 6. Evidence today
 

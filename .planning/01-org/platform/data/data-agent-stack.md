@@ -38,7 +38,7 @@ triggers:
   - topic: loop.close_time_breached                        # publisher: NONE (gap — loops.json is a static census)
 consumes:
   - the five team agenda-boards (Dataview output) — publishers: the five team agents in §5
-  - nf_a events sliced by this department's task types (ADR 0006/0008) — publisher: [[corpora-enrichment-agent-stack|enrichment-runner]] today, the rest on paper
+  - 'nf_a events sliced by this department''s task types (ADR 0006/0008) — publisher: [[corpora-enrichment-agent-stack|enrichment-runner]] today, the rest on paper'
   - "[[data-loops]] rows: data-substrate-daily-report, provenance-integrity-audit, threshold-change-review"
 emits:
   - "[[data-agenda-board]] rollup — the metric SET with named denominators ([[data-charter]] §Metrics)"
