@@ -19,11 +19,24 @@
  *    ("An edit cannot change what kind of action this is"), because that turns
  *    "fix the quantity" into "swap in a different action a human already
  *    confirmed". There is no control here that could try.
- *  • The ids — editable on the wire, but there is no candidate endpoint for the
- *    web app to build a picker from, and a bare uuid text box is not a UI, it
- *    is a trap. They render read-only. Changing WHICH item or vendor means
- *    asking again, which is honest: the model re-grounds against the live
- *    candidate set when it does.
+ *  • The ids — editable, and now with a control worth editing them through.
+ *    `GET /ask-ai/candidates` returns the SAME capped set the propose prompt
+ *    was handed and the confirm grounds against, so every option the picker
+ *    offers is an id the server will accept. That identity is the only reason
+ *    a picker is safe here: one built from a wider or differently-ordered
+ *    query would offer choices that fail grounding at confirm, which is a
+ *    worse control than the read-only row it replaced.
+ *
+ *    Two ways that set can fail to contain the proposed id — it was capped
+ *    out, or the row went inactive between propose and now. The select then
+ *    carries the current id as its own leading option rather than dropping it.
+ *    Silently rewriting what a person is about to confirm is the one thing a
+ *    confirm gate must never do; and an UNTOUCHED confirm sends no payload at
+ *    all, so the stored id must still be the value showing.
+ *
+ *    When the candidate fetch has not landed, or failed, the ids degrade to
+ *    the read-only rows they used to be. The old note still holds for that
+ *    path: a bare uuid text box is not a UI, it is a trap.
  *
  * THE THREE FAILURE SHAPES ARE DIFFERENT AND ARE SHOWN DIFFERENTLY
  * ---------------------------------------------------------------
@@ -49,8 +62,10 @@ import {
 } from 'lucide-react'
 import {
   AskAiActionError,
+  AskAiCandidates,
   AskAiPayload,
   AskAiProposal,
+  CandidateOption,
   ReorderPayload,
   VendorDraftPayload,
   confirmAction,
@@ -68,6 +83,13 @@ export const MAX_REORDER_QUANTITY = 500
 
 interface Props {
   proposal: AskAiProposal
+  /**
+   * What this restaurant's actions may point at. `AskAiBar` fetches it once
+   * per open and shares it — one request for the whole stack of cards, not one
+   * per card. `null` while it is in flight or after it failed, which is the
+   * read-only fallback rather than an empty dropdown.
+   */
+  candidates?: AskAiCandidates | null
 }
 
 type Phase = 'editing' | 'working' | 'executed' | 'discarded' | 'gone' | 'failed'
@@ -76,24 +98,128 @@ function shortId(id: string): string {
   return id.length > 12 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id
 }
 
-/** Read-only id row — enough to tell two rows apart, not a uuid to retype. */
-function IdField({ label, value }: { label: string; value: string }) {
+/**
+ * The id row: a picker when there is something to pick from, the old read-only
+ * row when there is not.
+ *
+ * The degraded path is deliberate and is not an empty `<select>`. A dropdown
+ * with no options looks like "you have no vendors", which is a different and
+ * much more alarming claim than "the list did not load" — the same conflation
+ * the gateway refuses to make by throwing instead of returning `[]`.
+ *
+ * `options` is `null` when the candidate fetch is in flight or failed.
+ */
+function IdPicker({
+  label,
+  value,
+  options,
+  capped,
+  disabled,
+  inputId,
+  onChange,
+}: {
+  label: string
+  value: string
+  options: CandidateOption[] | null
+  capped?: boolean
+  disabled?: boolean
+  inputId: string
+  onChange: (id: string) => void
+}) {
+  if (!options) {
+    return (
+      <div className="flex items-baseline justify-between gap-3 py-1">
+        <span className="text-xs text-gray-500">{label}</span>
+        <code
+          className="text-[11px] text-gray-500 font-mono truncate"
+          title={value}
+        >
+          {shortId(value)}
+        </code>
+      </div>
+    )
+  }
+
+  // The proposed id can be outside the candidate set — capped out, or the row
+  // went inactive since the proposal was made. Keep it as the selected option
+  // rather than letting the select fall through to its first entry: an
+  // untouched Confirm sends no payload at all, so what is showing has to be
+  // what will actually run.
+  const known = options.some((o) => o.id === value)
+
   return (
-    <div className="flex items-baseline justify-between gap-3 py-1">
-      <span className="text-xs text-gray-500">{label}</span>
-      <code
-        className="text-[11px] text-gray-500 font-mono truncate"
-        title={value}
-      >
-        {shortId(value)}
-      </code>
+    <div className="flex items-center gap-3 py-1">
+      <label className="text-xs text-gray-500 w-16 shrink-0" htmlFor={inputId}>
+        {label}
+      </label>
+      <div className="flex-1 min-w-0">
+        <select
+          id={inputId}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-200 bg-white outline-none focus:border-wine-400 disabled:opacity-50"
+        >
+          {!known && (
+            <option value={value}>As proposed ({shortId(value)})</option>
+          )}
+          {options.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        {capped && (
+          // Not "there are more on page two" — there is no page two. This list
+          // IS what the confirm grounds against, so anything past the cap is
+          // out of Ask AI's reach entirely, and saying so beats a short list
+          // that looks complete.
+          <p className="mt-0.5 text-[11px] text-gray-400">
+            Showing the first {options.length} — Ask AI cannot act on more than
+            this.
+          </p>
+        )}
+      </div>
     </div>
   )
 }
 
-export function ProposalCard({ proposal }: Props) {
+/**
+ * Payload equality that does not care about key order — see `dirty` below for
+ * why that matters. Shallow by design: every field in both payload shapes is a
+ * string or a number, and `unitType` is the only optional one.
+ */
+function samePayload(a: AskAiPayload, b: AskAiPayload): boolean {
+  const A = a as unknown as Record<string, unknown>
+  const B = b as unknown as Record<string, unknown>
+  // An absent `unitType` and an empty one mean the same thing to the gateway,
+  // and the input renders `undefined` as "". Without this, clearing a unit that
+  // was never set would count as an edit.
+  const keys = new Set([...Object.keys(A), ...Object.keys(B)])
+  for (const k of keys) {
+    const av = A[k] ?? ''
+    const bv = B[k] ?? ''
+    if (av !== bv) return false
+  }
+  return true
+}
+
+export function ProposalCard({ proposal, candidates }: Props) {
   const isReorder = proposal.action.actionType === 'reorder'
   const original = proposal.action.payload
+
+  // The ids are state now, not read-only reads off `original`. They still
+  // START at what was proposed, so a card nobody touches confirms exactly what
+  // the model put in front of the operator.
+  const [inventoryId, setInventoryId] = useState<string>(
+    isReorder ? ((original as ReorderPayload).inventoryId ?? '') : '',
+  )
+  const [providerId, setProviderId] = useState<string>(
+    isReorder ? ((original as ReorderPayload).providerId ?? '') : '',
+  )
+  const [orderId, setOrderId] = useState<string>(
+    !isReorder ? ((original as VendorDraftPayload).orderId ?? '') : '',
+  )
 
   const [quantity, setQuantity] = useState<string>(
     isReorder ? String((original as ReorderPayload).quantity ?? '') : '',
@@ -110,28 +236,48 @@ export function ProposalCard({ proposal }: Props) {
   const [executionRef, setExecutionRef] = useState<string | null>(null)
   const [wasEdited, setWasEdited] = useState(false)
 
-  /** The payload as currently typed, or null when a field is locally invalid. */
+  /** The payload as currently chosen, or null when a field is locally invalid. */
   const edited = useMemo<AskAiPayload | null>(() => {
     if (isReorder) {
-      const o = original as ReorderPayload
       const n = Number(quantity)
       if (!quantity.trim() || !Number.isInteger(n) || n < 1) return null
+      if (!inventoryId || !providerId) return null
       const unit = unitType.trim()
       return {
-        inventoryId: o.inventoryId,
-        providerId: o.providerId,
+        inventoryId,
+        providerId,
         quantity: n,
         ...(unit ? { unitType: unit } : {}),
       }
     }
-    const o = original as VendorDraftPayload
+    if (!orderId) return null
     if (!instruction.trim()) return null
-    return { orderId: o.orderId, instruction: instruction.trim() }
-  }, [isReorder, original, quantity, unitType, instruction])
+    return { orderId, instruction: instruction.trim() }
+  }, [isReorder, inventoryId, providerId, orderId, quantity, unitType, instruction])
 
+  /**
+   * Did anything actually change?
+   *
+   * NOT `JSON.stringify(a) !== JSON.stringify(b)`. That is key-order sensitive,
+   * and the two sides do not agree on key order: a card rendered from a propose
+   * response carries the object this gateway built, while a card restored by
+   * `GET /ask-ai/actions` carries a `jsonb` column, and Postgres normalises
+   * jsonb key order (length, then bytewise) rather than preserving it. So a
+   * reorder read back from the database returns as `{quantity, providerId,
+   * inventoryId}` while this component builds `{inventoryId, providerId,
+   * quantity}` — identical payloads, different strings.
+   *
+   * The consequence was not cosmetic. Every proposal that survived a reload
+   * read as edited: the button said "Confirm edits", the "your version is what
+   * gets confirmed" note appeared on a card nobody had touched, and the confirm
+   * sent a payload — so the gateway recorded `edited: true` and filed an edit
+   * verdict. That is exactly the "a human fixed it" vs "the model was right"
+   * conflation the `executed_payload` column exists to keep apart, so the P3.0
+   * edit-rate ledger read 100% edited for every restored reorder.
+   */
   const dirty = useMemo(() => {
     if (!edited) return false
-    return JSON.stringify(edited) !== JSON.stringify(original)
+    return !samePayload(edited, original)
   }, [edited, original])
 
   /** Local guard only — it saves a round trip, it does not replace the server's. */
@@ -142,9 +288,14 @@ export function ProposalCard({ proposal }: Props) {
       }
       return null
     }
-    if (isReorder) return 'Quantity must be a whole number of at least 1.'
+    if (isReorder) {
+      if (!inventoryId) return 'Pick the item to reorder.'
+      if (!providerId) return 'Pick the vendor to order from.'
+      return 'Quantity must be a whole number of at least 1.'
+    }
+    if (!orderId) return 'Pick the order to reply on.'
     return 'The draft needs an instruction.'
-  }, [edited, isReorder])
+  }, [edited, isReorder, inventoryId, providerId, orderId])
 
   const busy = phase === 'working'
   const settled =
@@ -223,8 +374,24 @@ export function ProposalCard({ proposal }: Props) {
         <div className="px-4 pb-3 space-y-2 border-t border-gray-100 pt-3">
           {isReorder ? (
             <>
-              <IdField label="Item" value={(original as ReorderPayload).inventoryId} />
-              <IdField label="Vendor" value={(original as ReorderPayload).providerId} />
+              <IdPicker
+                label="Item"
+                inputId={`inventory-${proposal.actionId}`}
+                value={inventoryId}
+                options={candidates?.inventory ?? null}
+                capped={candidates?.capped.inventory}
+                disabled={busy}
+                onChange={setInventoryId}
+              />
+              <IdPicker
+                label="Vendor"
+                inputId={`provider-${proposal.actionId}`}
+                value={providerId}
+                options={candidates?.providers ?? null}
+                capped={candidates?.capped.providers}
+                disabled={busy}
+                onChange={setProviderId}
+              />
               <div className="flex items-center gap-3">
                 <label
                   className="text-xs text-gray-500 w-16 shrink-0"
@@ -262,7 +429,15 @@ export function ProposalCard({ proposal }: Props) {
             </>
           ) : (
             <>
-              <IdField label="Order" value={(original as VendorDraftPayload).orderId} />
+              <IdPicker
+                label="Order"
+                inputId={`order-${proposal.actionId}`}
+                value={orderId}
+                options={candidates?.orders ?? null}
+                capped={candidates?.capped.orders}
+                disabled={busy}
+                onChange={setOrderId}
+              />
               <label
                 className="block text-xs text-gray-500"
                 htmlFor={`instruction-${proposal.actionId}`}

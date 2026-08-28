@@ -33,7 +33,25 @@ const sedimentTransition = LinearTransition.springify()
 export default function TodayScreen() {
   const router = useRouter();
   const user = useSession((s) => s.user);
+  const status = useSession((s) => s.status);
   const guidance = useGuidanceOptional();
+
+  /**
+   * A signed-in account with no restaurant has nothing to show here — every
+   * query on this screen is scoped to a restaurant that does not exist, so the
+   * tab loads forever and explains nothing.
+   *
+   * `/no-access` is the screen that explains it. On web the route exists and
+   * *nothing routes to it* (`no-access.md` §9: "Orphaned"); porting that as-is
+   * would have added a second orphan, so mobile gives it the caller web never
+   * had. Ten of the ten production restaurants have owners, but six are
+   * owner-only, so an invited-but-unattached account is a real state.
+   */
+  useEffect(() => {
+    if (status === "signedIn" && user && !user.restaurantId) {
+      router.replace("/no-access");
+    }
+  }, [status, user, router]);
   const { data, isLoading, isError, refetch, isRefetching, dataUpdatedAt } = useFeed();
   const unread = useUnreadCount().data ?? 0;
   const showActivateBanner =
