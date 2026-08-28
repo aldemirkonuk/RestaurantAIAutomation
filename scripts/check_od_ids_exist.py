@@ -116,6 +116,24 @@ ABSORBS = re.compile(r"\*{0,2}Absorbs\s+OD-(\d+)\s+\(merged\s+(\d{4}-\d{2}-\d{2}
 OD_REF = re.compile(r"\bOD-(\d+)\b")
 
 
+def ids_in_cell(cell: str) -> list[str]:
+    """Every id an ID cell carries.
+
+    One row can carry several. `| OD-30/42 |` is a real row -- the two forks were
+    reconciled together and share one entry -- and `| OD-11a |` is another, where
+    the suffix distinguishes a sub-decision. A parser that reads only the first
+    plain id reports OD-42 as naming nothing, which is exactly the false positive
+    that trains people to ignore this guard.
+
+    Exported deliberately: `_od_collisions.py` needs the SAME answer to "which ids
+    does this row own". Two files deriving that separately is how the two guards
+    start disagreeing about the same register.
+    """
+    ids = ["OD-" + n for n in re.findall(r"OD-(\d+)", cell)]
+    ids += ["OD-" + n for n in re.findall(r"(?<=/)(\d+)", cell)]
+    return ids
+
+
 def parse_register(text: str) -> tuple[set[str], dict[str, tuple[str, str, int]]]:
     """Split the register into ids that OWN a row and ids RETIRED INTO one.
 
@@ -135,12 +153,7 @@ def parse_register(text: str) -> tuple[set[str], dict[str, tuple[str, str, int]]
         cell, body = m.group(1), m.group(2)
         if "OD-" not in cell:
             continue
-        # One row can carry several ids. `| OD-30/42 |` is a real row: the two
-        # forks were reconciled together and share one entry, so a parser that
-        # only reads the first id reports OD-42 as naming nothing -- which is
-        # exactly the false positive that would train people to ignore this guard.
-        ids = ["OD-" + n for n in re.findall(r"OD-(\d+)", cell)]
-        ids += ["OD-" + n for n in re.findall(r"(?<=/)(\d+)", cell)]
+        ids = ids_in_cell(cell)
         if not ids:
             # `OD-` with no number behind it. Nothing to record, and the absorbs
             # lookup below needs a real absorbing id -- an IndexError here would
@@ -151,7 +164,16 @@ def parse_register(text: str) -> tuple[set[str], dict[str, tuple[str, str, int]]
         rows.update(ids)
 
         for am in ABSORBS.finditer(body):
-            absorbed["OD-" + am.group(1)] = (ids[0], am.group(2), lineno)
+            retired = "OD-" + am.group(1)
+            # FIRST declaration wins, and a later one does not silently replace
+            # it. `absorbed[x] = ...` made the answer depend on which absorbing
+            # row happened to sit lower in the file, so a register with two rows
+            # claiming one merge resolved every citation to whichever was later
+            # -- chosen by line order, reported as fact. Detecting that case is
+            # `_od_collisions.py`'s job (it fails the build); this only makes
+            # sure the resolver's own answer is stable while it does.
+            if retired not in absorbed:
+                absorbed[retired] = (ids[0], am.group(2), lineno)
 
     return rows, absorbed
 
