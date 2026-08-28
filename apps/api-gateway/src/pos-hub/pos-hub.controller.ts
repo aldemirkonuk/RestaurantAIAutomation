@@ -39,7 +39,8 @@ import {
  */
 @ApiTags("pos-hub")
 // Guarded at class level. Only the provider webhook is @Public() — it authenticates
-// by HMAC signature instead (pos-hub.service.ts:96-121, fails closed).
+// by HMAC signature instead (PosHubService.verifyWebhookSignature, fails closed,
+// keyed per (provider, restaurant)).
 // Before this, catalog-match approve/reject were reachable unauthenticated, so the
 // human approval gate could be operated by anyone for any restaurant.
 @UseGuards(JwtAuthGuard)
@@ -73,11 +74,12 @@ export class PosHubController {
   @ApiOperation({
     summary: "Ingest a POS webhook payload",
     description:
-      "Normalizes the provider payload into canonical checks, upserts pos_checks (idempotent on external check id), and — for closed checks — depletes stock via apply_stock_movement/record_glass_pour. Use provider 'generic_webhook' with the canonical JSON shape to bridge any POS today. Requires an HMAC-SHA256 signature over the raw body, hex-encoded, in X-Pos-Hub-Signature, keyed by POS_HUB_WEBHOOK_SECRET.",
+      "Normalizes the provider payload into canonical checks, upserts pos_checks (idempotent on external check id), and — for closed checks — depletes stock via apply_stock_movement/record_glass_pour. Use provider 'generic_webhook' with the canonical JSON shape to bridge any POS today. Requires a hex HMAC-SHA256 signature in X-Pos-Hub-Signature, keyed per (provider, restaurant): POS_WEBHOOK_SECRET_<PROVIDER>__<RESTAURANT_ID> then POS_WEBHOOK_SECRET_<PROVIDER> — both signing '<provider>:<restaurantId>.' + rawBody — falling back to the legacy process-wide POS_HUB_WEBHOOK_SECRET over the raw body alone. Fails closed when no secret is configured.",
   })
   @ApiHeader({
     name: "X-Pos-Hub-Signature",
-    description: "HMAC-SHA256(rawBody, POS_HUB_WEBHOOK_SECRET), hex-encoded",
+    description:
+      "Hex HMAC-SHA256. With a scoped secret (POS_WEBHOOK_SECRET_<PROVIDER>[__<RESTAURANT_ID>]) the signed message is `<provider>:<restaurantId>.` + rawBody; on the legacy POS_HUB_WEBHOOK_SECRET fallback it is rawBody alone.",
     required: true,
   })
   async webhook(
@@ -87,8 +89,16 @@ export class PosHubController {
     @Headers("x-pos-hub-signature") signature: string | undefined,
     @Req() request: RawBodyRequest<Request>,
   ) {
-    // B17/B28: shared-secret guard, fail closed (see PosHubService.verifyWebhookSignature).
-    if (!this.posHub.verifyWebhookSignature(request.rawBody, signature)) {
+    // B17/B28: HMAC guard, fail closed (see PosHubService.verifyWebhookSignature).
+    // The provider and restaurant from the path are passed as the identity the
+    // key is resolved for AND (on a scoped secret) signed over, so a signature
+    // minted for one tenant cannot authenticate another's payload.
+    if (
+      !this.posHub.verifyWebhookSignature(request.rawBody, signature, {
+        provider,
+        restaurantId,
+      })
+    ) {
       throw new HttpException(
         "Webhook signature verification failed",
         HttpStatus.UNAUTHORIZED,
