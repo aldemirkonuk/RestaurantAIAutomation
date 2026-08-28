@@ -11,6 +11,7 @@ type AuthedUser = { userId: string; restaurantId: string };
  *
  *   POST /ask-ai/propose              turn an utterance into ONE typed proposal
  *   GET  /ask-ai/actions              what is waiting for this restaurant
+ *   GET  /ask-ai/candidates           the ids an action may point at, labelled
  *   POST /ask-ai/actions/:id/confirm  the gate: confirm, then execute
  *   POST /ask-ai/actions/:id/discard  the operator says no
  *
@@ -52,6 +53,18 @@ export class AskAiController {
   @ApiOperation({ summary: "Proposals awaiting confirmation" })
   async list(@CurrentUser() user: AuthedUser) {
     return this.askAi.listOpen(user.restaurantId);
+  }
+
+  @Get("candidates")
+  @ApiOperation({
+    summary: "The ids this restaurant's actions may point at, with labels",
+    description:
+      "The SAME capped set the propose prompt is handed and the confirm grounds against — so every option a picker builds from this is an id `confirm` will accept. " +
+      "Read-only: no model call, no row written. Not paginated, deliberately; the grounding set is the first page, so a second page would offer ids that fail grounding. " +
+      "`capped` says when a list is at its limit rather than complete.",
+  })
+  async candidates(@CurrentUser() user: AuthedUser) {
+    return this.askAi.listCandidates(user.restaurantId);
   }
 
   @Post("actions/:id/confirm")

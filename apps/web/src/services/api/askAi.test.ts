@@ -1,5 +1,5 @@
 /**
- * The Ask AI web client — the two things it exists to get right.
+ * The Ask AI web client — the three things it exists to get right.
  *
  *  1. `GET /ask-ai/actions` returns database rows (`action_type`) while
  *     `POST /propose` returns the TypeScript action (`actionType`). If both
@@ -9,6 +9,10 @@
  *     the compare-and-swap working; a 400 is a rejected edit the operator must
  *     be able to fix in place; a 5xx is a real failure. Collapsing them into
  *     "something went wrong" is what turns a working gate into a scary one.
+ *  3. `GET /ask-ai/candidates` hits the right path and does not manufacture a
+ *     candidate set out of a malformed body. Everything the picker offers is
+ *     an id the confirm will ground against, so an invented option here is a
+ *     rejected confirm later.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -16,6 +20,7 @@ import {
   AskAiActionError,
   confirmAction,
   discardAction,
+  listCandidates,
   listOpenProposals,
   proposeAction,
 } from './askAi'
@@ -204,5 +209,50 @@ describe('discardAction', () => {
     )
     const error = await discardAction('a-1').catch((e) => e as AskAiActionError)
     expect((error as AskAiActionError).kind).toBe('gone')
+  })
+})
+
+describe('listCandidates', () => {
+  it('reads the candidate set from the guarded gateway route', async () => {
+    http.get.mockResolvedValue({
+      data: {
+        inventory: [{ id: INVENTORY, label: 'Barolo 2019' }],
+        providers: [{ id: PROVIDER, label: 'Acme Wines' }],
+        orders: [],
+        limits: { inventory: 60, providers: 30, orders: 20 },
+        capped: { inventory: false, providers: true, orders: false },
+      },
+    })
+
+    const sets = await listCandidates()
+
+    // No restaurantId on the wire — the gateway takes it from the token.
+    expect(http.get).toHaveBeenCalledWith('/ask-ai/candidates')
+    expect(sets.inventory).toEqual([{ id: INVENTORY, label: 'Barolo 2019' }])
+    expect(sets.capped.providers).toBe(true)
+  })
+
+  it('degrades a malformed body to empty lists, never to invented options', async () => {
+    // An option that is not in the gateway's grounding set is worse than no
+    // option: it renders as a choice and fails at confirm.
+    http.get.mockResolvedValue({ data: { inventory: 'nope' } })
+
+    const sets = await listCandidates()
+
+    expect(sets.inventory).toEqual([])
+    expect(sets.providers).toEqual([])
+    expect(sets.orders).toEqual([])
+    expect(sets.capped).toEqual({
+      inventory: false,
+      providers: false,
+      orders: false,
+    })
+  })
+
+  it('propagates a failure instead of returning an empty set', async () => {
+    // "You have no vendors" and "the query broke" must not look the same.
+    http.get.mockRejectedValue(httpError(503, 'Ask AI is temporarily unavailable.'))
+
+    await expect(listCandidates()).rejects.toBeTruthy()
   })
 })
