@@ -45,6 +45,35 @@ jobs:
           echo "::notice::The permitted values are read from §5.1's own table — fix the block, or amend the table if the contract itself is wrong."
           echo "::notice::If the index is merely stale: run 'python3 scripts/build_loop_index.py' and commit the result."
 
+  # The card layer's twin of loop-contract (ADR 0034/0038): every unit's
+  # <slug>-agent-stack.md declares its agents as fenced YAML cards; this gate
+  # parses all of them, enforces the contract (requirements-only, no model or
+  # OD-03 candidate, mutate_stock_money_outbound: confirm on every card), and
+  # fails if 00-index/cards.json or CARD-MAP.md is stale. Exit 2 means the gate
+  # could not check at all — that blocks too; a vacuous pass is the failure mode
+  # ADR 0025 exists to end.
+  agent-card-contract:
+    name: Agent-card contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Ensure PyYAML
+        run: python3 -m pip install --quiet pyyaml
+
+      - name: Guard against card-contract drift and a stale card index
+        run: python3 scripts/build_agent_card_index.py --check
+
+      - name: Smoke-run the mechanical card runner (report-only, no writes)
+        run: python3 scripts/agents/run_card.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::Either a card breaks the ADR 0034 contract, the card index is stale, or a mechanical runner crashed."
+          echo "::notice::If the index is merely stale: run 'python3 scripts/build_agent_card_index.py' and commit the result."
+
   # OD-44. The UCC contract-formation guardrail exists in two runtimes that ship as
   # separate containers. They were two hand-written lists under a comment claiming
   # they were "ported verbatim" — TypeScript carried 19 patterns, Python carried 8,
@@ -619,6 +648,11 @@ jobs:
         loop-contract,
         commitment-guardrail-sync,
         model-call-ledger,
+        # Added 2026-08-28 with the job itself: the coverage step below failed
+        # this PR because `agent-card-contract` was a root job nobody depended
+        # on — exactly the drift the step exists to catch, caught on the commit
+        # that introduced it.
+        agent-card-contract,
       ]
     steps:
       - name: Checkout code

@@ -90,8 +90,10 @@ Board rows, memory PRs, NF-A events; loops per [[skills-loops]]. Gap rows:
 
 ## 6. Evidence today
 
-- **NEW — everything in the roster and §3.** The repo has zero committed skills;
-  the one `SKILL.md` on disk is gitignored vendor tooling (charter §Evidence).
+- **NEW — the orchestrator and §3's health job.** The registry itself moved
+  2026-08-28: **4 committed skills**, all §3.3-compliant, measured by
+  `run_card.py --agent registry-clerk` (ADR 0038) — the charter-era "zero
+  committed, one gitignored vendor file" held 2026-08-24 → 2026-08-28.
 - **EXISTS — the enforcement patterns to copy.** Five `check_*.sh` CI guards; the
   schema-parity daily cron; the §3.3 protocol as locked prose.
 - **EXISTS — the demand.** 59 `scripts/` entries behaving like skills without the

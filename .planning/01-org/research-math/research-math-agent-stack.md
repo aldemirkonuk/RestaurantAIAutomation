@@ -45,7 +45,7 @@ consumes:
 emits:
   - "[[research-math-agenda-board]] — the metric SET; never an average, never a velocity number (charter §Metrics)"
   - a seam finding or the single word clean into "[[research-math-agenda-full]]" §Questions — consumer: "[[decision-office-charter]]"
-  - nf_a events (task_type: rm_board_publish) — consumer: "[[neural-footprint-instrumentation-charter]]"'s contract
+  - 'nf_a events (task_type: rm_board_publish) — consumer: "[[neural-footprint-instrumentation-charter]]"''s contract'
 routing_class: extraction
 quality_bar: "every row carries a measured value or the words 'not measured' — never an inferred one; the verified/self-reported pair publishes together or neither publishes (charter §The independence rule, clause 4)"
 autonomy:
