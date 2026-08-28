@@ -99,7 +99,8 @@ what exists beats one that is theoretically cleaner and needs explaining.*
 | 060 | `mudavym-anatolian` | New territory: the name's own homeland, İznik geometry as structure. |
 | 061 | `mudavym-guestbook` | New territory: recognition and memory as the product. |
 | 062 | `mudavym-warmmachine` | New territory: mechanism on show — the technical direction proving it can be the warmest. |
-| 058 | `mudavym-3d-marks` | Re-rendered with real effort: six marks, computed framing, subsurface wax, brushed metal, printed ink. |
+| 058 | `mudavym-3d-marks` | Re-rendered with real effort: six marks, computed framing, subsurface wax, brushed metal, printed ink — plus three generated scenes (higgsfield `z_image`, 0.45 credits) that gave the paper tooth and wax the renderer could not. |
+| 063 | `mudavym-motion-canvas` | **One surface dedicated to motion: 62 live replayable demos** in five families — entrances, state/feedback, numbers, navigation, and the product surfaces the founder named (media display, order bars, comms, mail, team, invitations). Skin toggle (branded ↔ neutral) and a speed control make it a comparison tool rather than a showreel. |
 
 Review surface: the **Mudavym Design Review** artifact — all nine boards, a **motion lab**
 running every named token from every direction through the same three demos (springs
