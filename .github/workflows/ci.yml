@@ -648,6 +648,11 @@ jobs:
         loop-contract,
         commitment-guardrail-sync,
         model-call-ledger,
+        # Added 2026-08-28 with the job itself: the coverage step below failed
+        # this PR because `agent-card-contract` was a root job nobody depended
+        # on — exactly the drift the step exists to catch, caught on the commit
+        # that introduced it.
+        agent-card-contract,
       ]
     steps:
       - name: Checkout code
