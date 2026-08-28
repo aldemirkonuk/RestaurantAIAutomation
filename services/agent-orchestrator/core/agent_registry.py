@@ -190,6 +190,27 @@ DEFAULT_AGENT_SPECS: Dict[str, dict] = {
         "dependencies": ["inventory_engine"],
         "description": "Shrinkage detection",
     },
+    # Scheduled purchasing (ADR 0039 Track A3).
+    #
+    # OPTIONAL, not ON_DEMAND, and the distinction is load-bearing here. This
+    # agent owns a daily sweep over recurring_orders and stages purchase
+    # proposals; OPTIONAL means it needs AGENT_RECURRING_ORDER_AGENT_ENABLED
+    # before it gets a proxy at all, which is the same gate the five P1 stubs
+    # sit behind. It is deliberately NOT CORE: bringing scheduled purchasing
+    # inside the harness is this slice's job, deciding to run it against live
+    # tenants is not, and a schedule sweep that starts on boot in every
+    # environment is exactly the kind of change that should be a decision rather
+    # than a side effect of a refactor.
+    #
+    # Its dependency on notification_agent is real: the reminder and
+    # approval_needed events it publishes on recurring.events have no other
+    # consumer, so starting it without one would stage proposals nobody is told
+    # about.
+    "recurring_order_agent": {
+        "tier": AgentTier.OPTIONAL,
+        "dependencies": ["notification_agent"],
+        "description": "Recurring order schedule — stages purchase proposals (never places orders)",
+    },
     # SimPOS testbed — catalog drift (sim-* tenants only)
     "drift_agent": {
         "tier": AgentTier.ON_DEMAND,
