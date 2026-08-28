@@ -67,10 +67,23 @@ toggle were all verified reaching inside a part.
   declarations into a sketch is the gold-plating the "keep it as simple as possible"
   rule exists to prevent. If any of this motion is promoted into the product, that
   is the moment to add them — not before.
-- **A process mistake worth recording:** the assembly step deleted the agents'
-  `_*-test.html` harnesses while one agent was still verifying. It recreated its
-  harness, finished, and cleaned up — no output was lost — but the parts directory
-  should be treated as agent-owned until every agent has reported, not until the
-  files merely exist.
+- **A process mistake worth recording, and its consequence.** The canvas was first
+  assembled, published and committed the moment the five part files *existed* — but
+  three agents were still working, and kept revising. The published build was
+  therefore stale, and shipped without: the State set's replay fix (`st-04/05/06`
+  stranded on a stale closure and only animated correctly on first play), the
+  Product-surfaces `box-sizing` fix (all fourteen of its demos overflowed their cards
+  by 22px), and its drag fix (a shift grabbed mid-flight jumped, because the drag read
+  the block's target rather than its live matrix). All three are present in the
+  rebuild. The assembly step also deleted an agent's test harness mid-verification;
+  it recreated it and lost nothing.
+  **The rule this earns:** the parts directory is agent-owned until every agent has
+  *reported* — file existence is not completion, and neither is a harness being
+  cleaned up (one agent deleted its harness and then worked for another thirty
+  minutes). Assemble on the last completion notification, nothing earlier.
+- One host-level defect found in the rebuild and fixed: the widest demo measured 303px
+  inside a 278px stage and was clipping silently. The grid's minimum column went
+  304px → 332px rather than editing an agent's part. Re-measured after: **62 cards,
+  zero overflowing stages, no horizontal page scroll, no console errors.**
 
 | 063 | mudavym-motion-canvas | 62 motions on one surface — which movements belong to Mudavym? | null | motion, canvas, animation, springs, skin-toggle, entrances, feedback, numbers, navigation, product-surfaces, od-106 |

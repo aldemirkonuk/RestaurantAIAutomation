@@ -231,6 +231,7 @@
 
 /* ── 12 · the command palette ─────────────────────────────────────────── */
 .mx-nav-12 .nv12-page{padding:7px 9px}
+.mx-nav-12 .nv12-scrim{transition-duration:170ms}
 .mx-nav-12 .nv12-pal{position:absolute;left:9px;right:9px;top:12px;z-index:3;
   background:var(--m-surface);border:1px solid var(--m-line2);border-radius:9px;
   overflow:hidden;opacity:0;transform:translateY(-10px) scale(.98);transform-origin:50% 0;
@@ -401,7 +402,7 @@
           if(n===i){ p.style.transform='translateX('+(dir*6)+'px)'; reflow(p); p.classList.add('on'); }
           else if(p.classList.contains('on')){ p.classList.remove('on'); p.style.transform='translateX('+(-dir*6)+'px)'; }
         });
-        var t=tabs[i], bar=q(el,'.nv3-bar');
+        var t=tabs[i];
         var x=t.offsetLeft, w=t.offsetWidth;
         if(!animate){ ind.style.transition='none'; inner.style.transition='none'; }
         ind.style.transform='translateX('+x+'px)';

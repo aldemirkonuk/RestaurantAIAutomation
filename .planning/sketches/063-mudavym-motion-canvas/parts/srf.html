@@ -27,6 +27,7 @@
   --lift:0 1px 2px color-mix(in srgb, var(--m-ink) 12%, transparent),
          0 8px 22px color-mix(in srgb, var(--m-ink) 16%, transparent);
 
+  box-sizing:border-box;
   position:relative; width:100%; height:150px; overflow:hidden;
   padding:11px; border-radius:7px;
   font-family:var(--m-sans); color:var(--m-ink);
@@ -92,7 +93,8 @@
   border-radius:0 3px 3px 0;}
 .mx-srf .s2-face i{display:block; height:2px; border-radius:1px; background:var(--m-line2); width:84%;}
 .mx-srf .s2-face i:nth-of-type(2){width:62%;} .mx-srf .s2-face i:nth-of-type(3){width:74%;}
-.mx-srf .s2-back{transform:rotateY(180deg); border-radius:3px 0 0 3px;}
+.mx-srf .s2-back{transform:rotateY(180deg); border-radius:3px 0 0 3px; background:var(--m-sunk);}
+.mx-srf .s2-back b{color:var(--m-mut); font-weight:400; font-size:8.5px; letter-spacing:.1em;}
 .mx-srf .s2-face s{margin-top:auto; text-decoration:none; font-family:var(--m-mono); font-size:10px; color:var(--m-accent);}
 .mx-srf .s2-shine{position:absolute; inset:0; pointer-events:none; opacity:0; border-radius:0 3px 3px 0;
   background:linear-gradient(102deg,transparent 34%,
@@ -123,7 +125,7 @@
   border-bottom:var(--hair); padding-bottom:3px; opacity:0; transform:translateY(5px) scale(.9);
   transform-origin:0 50%;}
 .mx-srf .s3-f span{font-size:9px; color:var(--m-mut); text-transform:uppercase; letter-spacing:.08em;}
-.mx-srf .s3-f b{font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.mx-srf .s3-f b{font-size:10px; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 
 /* ---------- 04 · PO status bar advancing ---------- */
 .mx-srf .s4-head{display:flex; justify-content:space-between; align-items:baseline; gap:8px;}
@@ -178,7 +180,7 @@
 
 /* ---------- 07 · vendor thread drawer, arrival then awaiting ---------- */
 .mx-srf .s7-row{display:flex; align-items:center; gap:7px; width:100%; text-align:left; cursor:pointer;
-  font:inherit; color:inherit; background:var(--m-sunk); border:var(--hair); border-radius:5px; padding:5px 8px;
+  font:inherit; color:inherit; background:var(--m-sunk); border:var(--hair); border-radius:5px; padding:4px 8px;
   transition:background 160ms var(--e-ink), border-color 160ms var(--e-ink);}
 .mx-srf .s7-row:hover{border-color:var(--m-line2);}
 .mx-srf .s7-row span{font-size:9px; color:var(--m-mut);}
@@ -188,16 +190,16 @@
 .mx-srf .s7-drawer{display:grid; grid-template-rows:0fr; transition:grid-template-rows 420ms var(--e-turn);}
 .mx-srf .s7-drawer.open{grid-template-rows:1fr;}
 .mx-srf .s7-inner{overflow:hidden; min-height:0;}
-.mx-srf .s7-pad{padding-top:6px; display:flex; flex-direction:column; gap:4px;}
-.mx-srf .s7-m{max-width:82%; font-size:9.5px; padding:4px 7px; border-radius:8px; opacity:0;}
+.mx-srf .s7-pad{padding-top:5px; display:flex; flex-direction:column; gap:3px;}
+.mx-srf .s7-m{max-width:82%; font-size:9.5px; padding:3px 7px; border-radius:8px; opacity:0;}
 .mx-srf .s7-in{align-self:flex-start; background:var(--m-sunk); border:var(--hair); border-bottom-left-radius:2px;
   transform:translate(-9px,7px);}
 .mx-srf .s7-out{align-self:flex-end; background:var(--m-accent); color:var(--m-accent-ink); border-bottom-right-radius:2px;
   transform:translate(9px,7px);}
-.mx-srf .s7-typing{align-self:flex-start; display:flex; gap:3px; padding:5px 8px; border-radius:8px;
+.mx-srf .s7-typing{align-self:flex-start; display:flex; gap:3px; padding:4px 8px; border-radius:8px;
   background:var(--m-sunk); border:var(--hair); opacity:0; height:0; overflow:hidden;
   transition:opacity 200ms var(--e-ink), height 240ms var(--e-settle), padding 240ms var(--e-settle);}
-.mx-srf .s7-typing.on{opacity:1; height:18px;}
+.mx-srf .s7-typing.on{opacity:1; height:15px;}
 .mx-srf .s7-typing i{width:4px; height:4px; border-radius:50%; background:var(--m-mut);
   animation:srf-dot 1100ms ease-in-out infinite;}
 .mx-srf .s7-typing i:nth-child(2){animation-delay:140ms;}
@@ -408,17 +410,27 @@
   }
   var TALLY = springArr(120,26,1,1408,240);   /* overdamped: figures arrive, never bounce past */
 
+  /* Counters are rAF-driven so they share a clock with the compositor, but a
+     backgrounded tab throttles rAF — so a timer backstop writes the final
+     figure regardless, and `live` lets a later stage retire a running count
+     before it can overwrite what came after it. */
   function tick(root, el, from, to, durMs, fmt){
-    if(RM()){ el.textContent=fmt(to); return; }
+    var live={on:true};
+    if(RM()){ el.textContent=fmt(to); return live; }
     var t0=null;
     function step(now){
+      if(!live.on) return;
       if(t0===null) t0=now;
       var p=Math.min(1,(now-t0)/durMs), f=p*(TALLY.length-1), lo=Math.floor(f), hi=Math.min(TALLY.length-1,lo+1);
       var x=TALLY[lo]+(TALLY[hi]-TALLY[lo])*(f-lo);
       el.textContent=fmt(from+(to-from)*x);
       if(p<1) root.__r.push(requestAnimationFrame(step));
+      else live.on=false;
     }
     root.__r.push(requestAnimationFrame(step));
+    root.__t.push(setTimeout(function(){ if(live.on){ live.on=false; el.textContent=fmt(to); } }, durMs+60));
+    root.__c.push(function(){ live.on=false; });
+    return live;
   }
   var int0=function(n){ return String(Math.round(n)); };
   var money=function(n){ return '$'+Math.round(n).toLocaleString('en-US'); };
@@ -486,7 +498,7 @@
         '<div class="s2-cast"></div>'+
         '<div class="s2-leaf">'+
           '<div class="s2-face s2-front"><b>PO-1042 &middot; p2</b><i></i><i></i><i></i><s>24 &times; Rioja Crianza</s></div>'+
-          '<div class="s2-face s2-back"><i></i><i></i><i></i></div>'+
+          '<div class="s2-face s2-back"><b>VERSO &middot; p2</b><i></i><i></i><i></i><i></i></div>'+
           '<div class="s2-shine"></div>'+
         '</div>'+
       '</div>'+
@@ -542,7 +554,7 @@
         doc.style.transition='filter 520ms var(--e-turn), transform 520ms var(--e-turn)';
         doc.style.filter='blur(0) contrast(1)'; doc.style.transform='none';
       });
-      at(root,1400,function(){ st.className='s3-status done'; st.textContent='Read · 3 fields matched to PO-1042'; });
+      at(root,1400,function(){ st.className='s3-status done'; st.textContent='Read · matched to PO-1042'; });
       fs.forEach(function(f,i){
         at(root,1440+i*90,function(){
           f.style.transition='opacity 200ms var(--e-ink), transform 560ms var(--e-stamp)';
@@ -906,9 +918,15 @@
     play:function(root){
       reset(root);
       var block=q(root,'.s11-block'), cells=qa(root,'.s11-cell'), target=q(root,'.s11-cell[data-t="1"]');
+      /* Where the block ACTUALLY is right now, not where it was told to go —
+         so a finger landing on it mid-flight picks it up without a jump. */
+      function curPos(){
+        try{ var m=new DOMMatrixReadOnly(getComputedStyle(block).transform);
+             return {x:m.m41, y:m.m42}; }
+        catch(e){ return block.__pos||{x:0,y:0}; }
+      }
       function place(el){
-        var cr=el.getBoundingClientRect(), br=block.getBoundingClientRect(), rr=root.getBoundingClientRect();
-        var cur=block.__pos||{x:0,y:0};
+        var cr=el.getBoundingClientRect(), br=block.getBoundingClientRect(), cur=curPos();
         return {x:cur.x+(cr.left+cr.width/2)-(br.left+br.width/2),
                 y:cur.y+(cr.top+cr.height/2)-(br.top+br.height/2)};
       }
@@ -938,7 +956,7 @@
         block.addEventListener('pointerdown',function(ev){
           ev.preventDefault(); dragging=true;
           try{ block.setPointerCapture(ev.pointerId); }catch(e){}
-          base=block.__pos||{x:0,y:0}; sx=ev.clientX; sy=ev.clientY;
+          base=curPos(); block.__pos=base; sx=ev.clientX; sy=ev.clientY;
           block.classList.add('lift'); block.style.transition='box-shadow 220ms var(--e-ink)';
         });
         block.addEventListener('pointermove',function(ev){
@@ -1000,9 +1018,10 @@
         hole.style.transition='width 420ms var(--e-turn)';
         lost.style.width='0%'; hole.style.width='25%';
         badge.className='s12-badge bad';
-        tick(root,badge,0,1,840,function(v){ return int0(v)+' gap'; });
+        root.__gapCount=tick(root,badge,0,1,840,function(v){ return int0(v)+' gap'; });
       });
       at(root,2300,function(){
+        if(root.__gapCount) root.__gapCount.on=false;
         note.style.opacity='0';
         hole.style.transition='width 450ms var(--e-tuck)';
         cover.style.transition='width 450ms var(--e-tuck)';

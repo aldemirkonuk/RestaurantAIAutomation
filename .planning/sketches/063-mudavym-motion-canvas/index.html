@@ -52,7 +52,9 @@
   h2{font-size:11.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;
      color:var(--m-mut);margin:34px 0 13px;padding-bottom:8px;border-bottom:1px solid var(--m-line)}
   h2 span{color:var(--m-accent);font-family:var(--m-mono)}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(304px,1fr));gap:13px}
+  /* 332 not 304: the widest demo measures 303px inside the stage's padding, and a
+     stage narrower than its content clips silently rather than complaining. */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(332px,1fr));gap:13px}
   .card{background:var(--m-surface);border:1px solid var(--m-line);border-radius:10px;
         display:flex;flex-direction:column;overflow:hidden}
   .card:hover{border-color:var(--m-line2)}
@@ -218,9 +220,9 @@
 /* &#x2500;&#x2500; 09 &#xB7; new since you left &#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500; */
 .mx-ent-09 .e-stack{position:relative}
 .mx-ent-09 .e-r{height:19px;font-size:10px}
-.mx-ent-09 .e-wash{position:absolute;left:0;right:0;top:0;height:0;background:var(--m-accent);
-  opacity:.13;pointer-events:none}
-.mx-ent-09 .e-edge{position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--m-accent);opacity:.9}
+.mx-ent-09 .e-wash{position:absolute;left:0;right:0;top:0;height:0;pointer-events:none;
+  background:color-mix(in srgb,var(--m-accent) 14%,transparent)}
+.mx-ent-09 .e-edge{position:absolute;left:0;right:0;bottom:0;height:1.5px;background:var(--m-accent)}
 .mx-ent-09 .e-mk{position:absolute;left:0;top:2px;bottom:2px;width:2px;background:var(--m-accent);transform-origin:50% 50%}
 .mx-ent-09 .e-div{display:flex;align-items:center;gap:6px;height:14px}
 .mx-ent-09 .e-div .ln{flex:1;height:1px;background:var(--m-line2);transform-origin:50% 50%}
@@ -678,7 +680,7 @@
           divs = q(root,'.e-div .ln'), lb = root.querySelector('.e-div .lb'),
           RH = news[0] ? news[0].getBoundingClientRect().height : 19, H = RH*news.length;
       news.forEach(function(r){ r._on = false; r.querySelector('.e-mk').style.transform = 'scaleY(0)'; });
-      wash.style.height = '0px'; wash.style.opacity = '.13';
+      wash.style.height = '0px'; wash.style.opacity = '1';
       divs.forEach(function(d){ c.an(d, [{transform:'scaleX(0)'},{transform:'scaleX(1)'}], {duration:300, easing:EZ.turn}); });
       c.an(lb, [{opacity:0},{opacity:1}], {duration:240, delay:180});
 
@@ -698,7 +700,7 @@
           }
         });
         if (p < 1) c.raf(frame);
-        else c.an(wash, [{opacity:.13},{opacity:0}], {duration:1400, delay:260, easing:EZ.exit});
+        else c.an(wash, [{opacity:1},{opacity:0}], {duration:1400, delay:260, easing:EZ.exit});
       }
       if (REDUCED){
         wash.style.height = H+'px'; wash.style.opacity = '0';
@@ -860,15 +862,15 @@
       }).join('')+'</div></div>',
     play:function(root){
       var c = ctl(root), rows = q(root,'.e-r'), chip = root.querySelector('.e-chip'),
-          ROT = [-1.6, 0.9, -0.7, 1.2, 0], DECKY = 2;
+          ROT = [-1.6, 0.9, -0.7, 1.2, 0], DECKY = 3;
       c.an(chip, [{opacity:0, transform:'scale(.9)'},{opacity:1, transform:'none'}],
                  {duration:220, easing:EZ.settle});
       rows.forEach(function(r,i){
-        var y = i*21, dy = DECKY - y, pip = r.querySelector('.e-pip'), t = 260 + i*52;
-        c.an(r, [{transform:'translateY('+dy+'px) rotate('+ROT[i]+'deg) scale(.97)', opacity:i<3?1:0},
-                 {transform:'none', opacity:1}],
+        // held in the deck (visible, stacked, tilted) until it is dealt
+        var y = i*21, dy = DECKY + i*1.6 - y, pip = r.querySelector('.e-pip'), t = 420 + i*52,
+            held = 'translateY('+dy+'px) rotate('+ROT[i]+'deg) scale(.97)';
+        c.an(r, [{transform:held},{transform:'none'}],
                 {duration:SP.deal.duration, delay:t, easing:SP.deal.easing});
-        c.an(r, [{opacity:0},{opacity:1}], {duration:120, delay:t, easing:'linear'});
         c.an(pip, [{transform:'scale(0)', opacity:0},{transform:'none', opacity:1}],
                   {duration:SP.stamp.duration, delay:t+60, easing:SP.stamp.easing});
       });
@@ -958,15 +960,16 @@
 .mx-st-04 .t04-fill{position:absolute;inset:0;transform-origin:left;transform:scaleX(0);
   background:color-mix(in oklab, var(--m-accent-ink) 24%, transparent)}
 .mx-st-04 .t04-lab{position:relative;display:block;white-space:nowrap}
-.mx-st-04 .t04-seal{position:relative;flex:none;width:46px;height:46px;margin-left:-13px;
+.mx-st-04 .t04-seal{position:relative;flex:none;width:54px;height:54px;margin-left:-17px;
   display:grid;place-items:center;opacity:0;transform:rotate(-9deg) scale(.42);
   will-change:transform,opacity;pointer-events:none}
-.mx-st-04 .t04-wax{width:44px;height:44px;display:block;position:relative;z-index:1}
+.mx-st-04 .t04-wax{width:52px;height:52px;display:block;position:relative;z-index:1;
+  filter:drop-shadow(0 2px 6px color-mix(in oklab, var(--m-accent) 45%, transparent))}
 .mx-st-04 .w-blob{fill:var(--m-accent)}
 .mx-st-04 .w-ring{fill:none;stroke:var(--m-accent-ink);stroke-width:1.15;stroke-dasharray:2.2 3.4;opacity:.6}
 .mx-st-04 .w-m{fill:var(--m-accent-ink);font-family:var(--m-serif);
   font-variation-settings:'SOFT' 42,'WONK' 1;font-size:36px;font-weight:600}
-.mx-st-04 .t04-halo{position:absolute;width:40px;height:40px;border-radius:99px;
+.mx-st-04 .t04-halo{position:absolute;width:46px;height:46px;border-radius:99px;
   border:1.5px solid var(--m-accent);opacity:0;transform:scale(.82);pointer-events:none}
 .mx-st-04 .t04-book{height:13px;font:400 9.5px/13px var(--m-mono);letter-spacing:.03em;
   color:var(--m-mut);opacity:0;transform:translateY(6px);
@@ -1379,12 +1382,13 @@
         book.textContent='Released at '+pct+'% \u2014 nothing sent.';
         book.className='t04-book warn show';
       }
+      root._stAPI={start:start,cancel:cancel};
       if(!root._stWired){
         root._stWired=true;
-        btn.addEventListener('pointerdown',start);
-        btn.addEventListener('pointerup',cancel);
-        btn.addEventListener('pointerleave',cancel);
-        btn.addEventListener('pointercancel',cancel);
+        btn.addEventListener('pointerdown',function(e){ root._stAPI.start(e); });
+        btn.addEventListener('pointerup',function(){ root._stAPI.cancel(); });
+        btn.addEventListener('pointerleave',function(){ root._stAPI.cancel(); });
+        btn.addEventListener('pointercancel',function(){ root._stAPI.cancel(); });
       }
       clean(); flush(root);
       at(root,360,function(){ start(null); });
@@ -1418,10 +1422,15 @@
         row.classList.remove('gone');
         drain.style.transition='none'; drain.style.transform='scaleX(1)';
       }
-      if(!root._stWired){ root._stWired=true; undo.addEventListener('click',restore); }
+      root._stAPI={restore:restore};
+      if(!root._stWired){
+        root._stWired=true;
+        undo.addEventListener('click',function(){ root._stAPI.restore(); });
+      }
 
       row.classList.remove('gone');
       bar.className='t05-bar';
+      q(root,'.t05-msg').innerHTML='Removed <b class="fig">2 cs</b> &middot; Sancerre';
       drain.style.transition='none'; drain.style.transform='scaleX(1)';
       c.textContent='5';
       flush(root);
@@ -1464,7 +1473,7 @@
         stage=0; why.classList.remove('show');
         btn.className='t06-del'; lab.textContent='Delete vendor';
         arm.style.transition='none'; arm.style.transform='scaleX(0)'; arm.style.opacity='0';
-        n.textContent='0';
+        n.textContent='14';
       }
       function step(){
         if(stage===0){
@@ -1489,9 +1498,10 @@
           why.classList.remove('show');
         }
       }
+      root._stAPI={step:step,busy:function(){ return stage===1; }};
       if(!root._stWired){
         root._stWired=true;
-        btn.addEventListener('click',function(){ if(stage!==1) step(); });
+        btn.addEventListener('click',function(){ if(!root._stAPI.busy()) root._stAPI.step(); });
       }
       clean(); flush(root);
       at(root,500,step);
@@ -1586,7 +1596,7 @@
       reset(root);
       var a=q(root,'[data-t="1"]'), b=q(root,'[data-t="2"]'), SHIFT='-38px';
 
-      [a,b].forEach(function(t){ t.className=t.className.replace(/\s*(in|out)\b/g,''); t.style.setProperty('--y','0px'); });
+      [a,b].forEach(function(t){ t.classList.remove('in','out'); t.style.setProperty('--y','0px'); });
       flush(root);
 
       at(root,260,function(){ a.classList.add('in'); });
@@ -1687,18 +1697,19 @@
     html:'<div class="mx-st mx-st-12">'+
       '<button class="t12-btn" type="button" disabled>Send to vendor</button>'+
       '<div class="t12-why">'+
-        '<i data-w="block"><b class="fig" data-n>2</b> lines still unpriced</i>'+
+        '<i data-w="block"><b class="fig" data-n>2</b> <span data-p>lines</span> still unpriced</i>'+
         '<i data-w="ready" class="ready">Ready \u00b7 12 lines \u00b7 &euro;412.80</i>'+
       '</div>'+
     '</div>',
     play:function(root){
       reset(root);
-      var btn=q(root,'.t12-btn'), n=q(root,'[data-n]'),
+      var btn=q(root,'.t12-btn'), n=q(root,'[data-n]'), plural=q(root,'[data-p]'),
           block=q(root,'[data-w="block"]'), ready=q(root,'[data-w="ready"]');
 
       function paint(left){
         if(left>0){
           n.textContent=String(left);
+          plural.textContent = left===1 ? 'line' : 'lines';
           btn.classList.remove('on'); btn.disabled=true;
           btn.textContent='Send to vendor';
           block.classList.add('show'); ready.classList.remove('show');
@@ -1747,6 +1758,11 @@
 .mx-num-01.rest .pip{opacity:1}
 
 /* &#x2500;&#x2500; 02 &#xB7; odometer: only the digits that changed roll &#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500; */
+/* an overflow:hidden inline-block takes its baseline from its bottom margin edge,
+   so the unit label would sit ~0.28em low next to the figure. Align on the box
+   bottom instead and lift the label back onto the digits' baseline. */
+.mx-num-02 .nfig{align-items:flex-end}
+.mx-num-02 .nunit{position:relative;top:-6px}
 .mx-num-02 .od{display:inline-flex;align-items:flex-start;--slh:1.16em}
 .mx-num-02 .od .sl{display:inline-block;height:var(--slh);overflow:hidden;line-height:var(--slh)}
 .mx-num-02 .od .sl .col{display:block;transition:transform 460ms cubic-bezier(.16,1,.3,1)}
@@ -2468,6 +2484,9 @@ M.push({
 
 /* &#x2500;&#x2500; 01 &#xB7; settle &#x2014; the row that opens &#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500; */
 .mx-nav-01 .nv-list>div+div{border-top:1px solid var(--m-line)}
+.mx-nav-01 .nv-head{padding:6px 9px}
+.mx-nav-01 .nv-body{padding-bottom:6px}
+.mx-nav-01 .nv-ln{line-height:1.65}
 
 /* &#x2500;&#x2500; 02 &#xB7; turn &#x2014; show the working &#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500; */
 .mx-nav-02 .nv2-top{display:flex;align-items:flex-end;justify-content:space-between;
@@ -2627,6 +2646,7 @@ M.push({
 
 /* &#x2500;&#x2500; 12 &#xB7; the command palette &#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500; */
 .mx-nav-12 .nv12-page{padding:7px 9px}
+.mx-nav-12 .nv12-scrim{transition-duration:170ms}
 .mx-nav-12 .nv12-pal{position:absolute;left:9px;right:9px;top:12px;z-index:3;
   background:var(--m-surface);border:1px solid var(--m-line2);border-radius:9px;
   overflow:hidden;opacity:0;transform:translateY(-10px) scale(.98);transform-origin:50% 0;
@@ -2797,7 +2817,7 @@ M.push({
           if(n===i){ p.style.transform='translateX('+(dir*6)+'px)'; reflow(p); p.classList.add('on'); }
           else if(p.classList.contains('on')){ p.classList.remove('on'); p.style.transform='translateX('+(-dir*6)+'px)'; }
         });
-        var t=tabs[i], bar=q(el,'.nv3-bar');
+        var t=tabs[i];
         var x=t.offsetLeft, w=t.offsetWidth;
         if(!animate){ ind.style.transition='none'; inner.style.transition='none'; }
         ind.style.transform='translateX('+x+'px)';
@@ -3212,14 +3232,17 @@ M.push({
   --e-stamp:linear(0.0000 0.0%,0.0869 3.6%,0.2841 7.1%,0.5155 10.7%,0.7303 14.3%,0.9010 17.9%,1.0182 21.4%,1.0850 25.0%,1.1111 28.6%,1.1089 32.1%,1.0902 35.7%,1.0647 39.3%,1.0393 42.9%,1.0179 46.4%,1.0023 50.0%,0.9927 53.6%,0.9881 57.1%,0.9873 60.7%,0.9889 64.3%,0.9916 67.9%,0.9945 71.4%,0.9971 75.0%,0.9991 78.6%,1.0005 82.1%,1.0012 85.7%,1.0014 89.3%,1.0013 92.9%,1.0011 96.4%,1.0000 100.0%);
   /* tally &#x2014; spring 120/26/1, 1408ms to rest, measured overshoot 0.00% */
   --e-tally:linear(0.0000 0.0%,0.1463 4.5%,0.3705 9.1%,0.5579 13.6%,0.6951 18.2%,0.7913 22.7%,0.8575 27.3%,0.9029 31.8%,0.9338 36.4%,0.9549 40.9%,0.9693 45.5%,0.9791 50.0%,0.9857 54.5%,0.9903 59.1%,0.9934 63.6%,0.9955 68.2%,0.9969 72.7%,0.9979 77.3%,0.9986 81.8%,0.9990 86.4%,0.9993 90.9%,0.9995 95.5%,1.0000 100.0%);
-  /* arc &#x2014; the up-then-down path an attachment takes when it detaches */
-  --e-arc:linear(0.000,-0.310 14%,-0.520 28%,-0.560 40%,-0.400 54%,-0.090 66%,0.330 76%,0.720 85%,0.930 92%,1.000);
+  /* arc &#x2014; the up-then-down path an attachment takes when it detaches.
+     Negative early stops lift it against the drop direction: peak hop is
+     0.21 x the fall distance, i.e. ~15px on a 70px drop. */
+  --e-arc:linear(0.00,-0.12 12%,-0.20 26%,-0.21 40%,-0.12 54%,0.10 66%,0.42 76%,0.74 86%,0.93 93%,1.00);
 
   --hair:1px solid var(--m-line);
   --tint:color-mix(in srgb, var(--m-accent) 12%, transparent);
   --lift:0 1px 2px color-mix(in srgb, var(--m-ink) 12%, transparent),
          0 8px 22px color-mix(in srgb, var(--m-ink) 16%, transparent);
 
+  box-sizing:border-box;
   position:relative; width:100%; height:150px; overflow:hidden;
   padding:11px; border-radius:7px;
   font-family:var(--m-sans); color:var(--m-ink);
@@ -3285,7 +3308,8 @@ M.push({
   border-radius:0 3px 3px 0;}
 .mx-srf .s2-face i{display:block; height:2px; border-radius:1px; background:var(--m-line2); width:84%;}
 .mx-srf .s2-face i:nth-of-type(2){width:62%;} .mx-srf .s2-face i:nth-of-type(3){width:74%;}
-.mx-srf .s2-back{transform:rotateY(180deg); border-radius:3px 0 0 3px;}
+.mx-srf .s2-back{transform:rotateY(180deg); border-radius:3px 0 0 3px; background:var(--m-sunk);}
+.mx-srf .s2-back b{color:var(--m-mut); font-weight:400; font-size:8.5px; letter-spacing:.1em;}
 .mx-srf .s2-face s{margin-top:auto; text-decoration:none; font-family:var(--m-mono); font-size:10px; color:var(--m-accent);}
 .mx-srf .s2-shine{position:absolute; inset:0; pointer-events:none; opacity:0; border-radius:0 3px 3px 0;
   background:linear-gradient(102deg,transparent 34%,
@@ -3296,7 +3320,7 @@ M.push({
 .mx-srf .s2-foot{padding-top:6px; font-size:9px; color:var(--m-mut);}
 
 /* ---------- 03 &#xB7; scan resolve (blur + deskew, fields stamp) ---------- */
-.mx-srf .srf03{display:flex; gap:9px;}
+.mx-srf.srf03{display:flex; gap:9px;}
 .mx-srf .s3-plate{flex:0 0 74px; position:relative; border:var(--hair); border-radius:4px;
   background:var(--m-sunk); overflow:hidden;}
 .mx-srf .s3-doc{position:absolute; inset:9px; background:var(--m-surface); border:var(--hair); border-radius:2px;
@@ -3316,7 +3340,7 @@ M.push({
   border-bottom:var(--hair); padding-bottom:3px; opacity:0; transform:translateY(5px) scale(.9);
   transform-origin:0 50%;}
 .mx-srf .s3-f span{font-size:9px; color:var(--m-mut); text-transform:uppercase; letter-spacing:.08em;}
-.mx-srf .s3-f b{font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.mx-srf .s3-f b{font-size:10px; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 
 /* ---------- 04 &#xB7; PO status bar advancing ---------- */
 .mx-srf .s4-head{display:flex; justify-content:space-between; align-items:baseline; gap:8px;}
@@ -3371,7 +3395,7 @@ M.push({
 
 /* ---------- 07 &#xB7; vendor thread drawer, arrival then awaiting ---------- */
 .mx-srf .s7-row{display:flex; align-items:center; gap:7px; width:100%; text-align:left; cursor:pointer;
-  font:inherit; color:inherit; background:var(--m-sunk); border:var(--hair); border-radius:5px; padding:5px 8px;
+  font:inherit; color:inherit; background:var(--m-sunk); border:var(--hair); border-radius:5px; padding:4px 8px;
   transition:background 160ms var(--e-ink), border-color 160ms var(--e-ink);}
 .mx-srf .s7-row:hover{border-color:var(--m-line2);}
 .mx-srf .s7-row span{font-size:9px; color:var(--m-mut);}
@@ -3381,16 +3405,16 @@ M.push({
 .mx-srf .s7-drawer{display:grid; grid-template-rows:0fr; transition:grid-template-rows 420ms var(--e-turn);}
 .mx-srf .s7-drawer.open{grid-template-rows:1fr;}
 .mx-srf .s7-inner{overflow:hidden; min-height:0;}
-.mx-srf .s7-pad{padding-top:6px; display:flex; flex-direction:column; gap:4px;}
-.mx-srf .s7-m{max-width:82%; font-size:9.5px; padding:4px 7px; border-radius:8px; opacity:0;}
+.mx-srf .s7-pad{padding-top:5px; display:flex; flex-direction:column; gap:3px;}
+.mx-srf .s7-m{max-width:82%; font-size:9.5px; padding:3px 7px; border-radius:8px; opacity:0;}
 .mx-srf .s7-in{align-self:flex-start; background:var(--m-sunk); border:var(--hair); border-bottom-left-radius:2px;
   transform:translate(-9px,7px);}
 .mx-srf .s7-out{align-self:flex-end; background:var(--m-accent); color:var(--m-accent-ink); border-bottom-right-radius:2px;
   transform:translate(9px,7px);}
-.mx-srf .s7-typing{align-self:flex-start; display:flex; gap:3px; padding:5px 8px; border-radius:8px;
+.mx-srf .s7-typing{align-self:flex-start; display:flex; gap:3px; padding:4px 8px; border-radius:8px;
   background:var(--m-sunk); border:var(--hair); opacity:0; height:0; overflow:hidden;
   transition:opacity 200ms var(--e-ink), height 240ms var(--e-settle), padding 240ms var(--e-settle);}
-.mx-srf .s7-typing.on{opacity:1; height:18px;}
+.mx-srf .s7-typing.on{opacity:1; height:15px;}
 .mx-srf .s7-typing i{width:4px; height:4px; border-radius:50%; background:var(--m-mut);
   animation:srf-dot 1100ms ease-in-out infinite;}
 .mx-srf .s7-typing i:nth-child(2){animation-delay:140ms;}
@@ -3437,7 +3461,7 @@ M.push({
 .mx-srf .s9-row{position:relative; display:flex; align-items:center; gap:6px; padding:5px 7px; margin-bottom:4px;
   border:var(--hair); border-radius:4px; background:var(--m-sunk); font-size:9.5px; white-space:nowrap;}
 .mx-srf .s9-row span{color:var(--m-mut); font-size:9px; overflow:hidden; text-overflow:ellipsis;}
-.mx-srf .s9-dot{flex:0 0 auto; width:5px; height:5px; border-radius:50%; background:var(--m-accent) !important;}
+.mx-srf .s9-dot{flex:0 0 auto; width:5px; height:5px; border-radius:50%; background:var(--m-accent);}
 .mx-srf .s9-tag{margin-left:auto; font-style:normal; font-size:8.5px; padding:1px 6px; border-radius:20px;
   background:var(--m-accent); color:var(--m-accent-ink); opacity:0; transform:scale(.4);}
 
@@ -3449,7 +3473,7 @@ M.push({
 .mx-srf .s10-ghost{display:inline-flex; align-items:center; height:16px; padding:0 7px; border-radius:8px;
   border:1px dashed var(--m-line2); font-size:8.5px; color:var(--m-mut); white-space:nowrap;}
 .mx-srf .s10-fly{position:absolute; left:0; top:0; z-index:5; pointer-events:none;}
-.mx-srf .s10-clip{display:flex; align-items:center; justify-content:center; overflow:hidden;
+.mx-srf .s10-clip{position:relative; display:flex; align-items:center; justify-content:center; overflow:hidden;
   width:104px; height:16px; border-radius:8px; border:1px solid var(--m-line2); background:var(--m-surface);
   font-size:8.5px; white-space:nowrap; padding:0 6px;}
 .mx-srf .s10-clip .pill{opacity:1;}
@@ -3472,10 +3496,11 @@ M.push({
 .mx-srf .s11-cell.filled{border-style:solid; border-color:var(--m-line2);}
 .mx-srf .s11-tray{position:absolute; left:11px; right:11px; bottom:11px; height:30px;
   border-top:var(--hair); padding-top:6px;}
-.mx-srf .s11-block{position:absolute; left:0; top:6px; width:132px; height:23px; z-index:6;
-  display:flex; align-items:center; padding:0 7px; gap:5px; cursor:grab; touch-action:none; user-select:none;
+.mx-srf .s11-block{position:absolute; left:0; top:6px; width:76px; height:23px; z-index:6;
+  display:flex; align-items:center; justify-content:center; padding:0 5px; gap:4px;
+  cursor:grab; touch-action:none; user-select:none;
   border-radius:3px; background:var(--m-accent); color:var(--m-accent-ink); font-size:9px; white-space:nowrap;
-  box-shadow:0 0 0 rgba(0,0,0,0);}
+  box-shadow:0 0 0 transparent;}
 .mx-srf .s11-block.lift{box-shadow:var(--lift); cursor:grabbing;}
 .mx-srf .s11-block b{font-family:var(--m-mono); font-size:9px;}
 .mx-srf .s11-hint{position:absolute; right:11px; bottom:13px; font-size:8.5px; color:var(--m-mut);}
@@ -3600,17 +3625,27 @@ M.push({
   }
   var TALLY = springArr(120,26,1,1408,240);   /* overdamped: figures arrive, never bounce past */
 
+  /* Counters are rAF-driven so they share a clock with the compositor, but a
+     backgrounded tab throttles rAF \u2014 so a timer backstop writes the final
+     figure regardless, and `live` lets a later stage retire a running count
+     before it can overwrite what came after it. */
   function tick(root, el, from, to, durMs, fmt){
-    if(RM()){ el.textContent=fmt(to); return; }
+    var live={on:true};
+    if(RM()){ el.textContent=fmt(to); return live; }
     var t0=null;
     function step(now){
+      if(!live.on) return;
       if(t0===null) t0=now;
       var p=Math.min(1,(now-t0)/durMs), f=p*(TALLY.length-1), lo=Math.floor(f), hi=Math.min(TALLY.length-1,lo+1);
       var x=TALLY[lo]+(TALLY[hi]-TALLY[lo])*(f-lo);
       el.textContent=fmt(from+(to-from)*x);
       if(p<1) root.__r.push(requestAnimationFrame(step));
+      else live.on=false;
     }
     root.__r.push(requestAnimationFrame(step));
+    root.__t.push(setTimeout(function(){ if(live.on){ live.on=false; el.textContent=fmt(to); } }, durMs+60));
+    root.__c.push(function(){ live.on=false; });
+    return live;
   }
   var int0=function(n){ return String(Math.round(n)); };
   var money=function(n){ return '$'+Math.round(n).toLocaleString('en-US'); };
@@ -3678,7 +3713,7 @@ M.push({
         '<div class="s2-cast"></div>'+
         '<div class="s2-leaf">'+
           '<div class="s2-face s2-front"><b>PO-1042 &middot; p2</b><i></i><i></i><i></i><s>24 &times; Rioja Crianza</s></div>'+
-          '<div class="s2-face s2-back"><i></i><i></i><i></i></div>'+
+          '<div class="s2-face s2-back"><b>VERSO &middot; p2</b><i></i><i></i><i></i><i></i></div>'+
           '<div class="s2-shine"></div>'+
         '</div>'+
       '</div>'+
@@ -3734,7 +3769,7 @@ M.push({
         doc.style.transition='filter 520ms var(--e-turn), transform 520ms var(--e-turn)';
         doc.style.filter='blur(0) contrast(1)'; doc.style.transform='none';
       });
-      at(root,1400,function(){ st.className='s3-status done'; st.textContent='Read \u00b7 3 fields matched to PO-1042'; });
+      at(root,1400,function(){ st.className='s3-status done'; st.textContent='Read \u00b7 matched to PO-1042'; });
       fs.forEach(function(f,i){
         at(root,1440+i*90,function(){
           f.style.transition='opacity 200ms var(--e-ink), transform 560ms var(--e-stamp)';
@@ -4092,18 +4127,21 @@ M.push({
         '<div class="s11-rl">L</div><div class="s11-cell"></div><div class="s11-cell"></div><div class="s11-cell"></div>'+
         '<div class="s11-rl">D</div><div class="s11-cell"></div><div class="s11-cell" data-t="1"></div><div class="s11-cell"></div>'+
       '</div>'+
-      '<div class="s11-tray"><div class="s11-block"><b>17:00</b> Dinner &middot; Marta</div>'+
+      '<div class="s11-tray"><div class="s11-block"><b>17:00</b> Marta</div>'+
       '<span class="s11-hint">drag me</span></div>'+
       '</div>',
     play:function(root){
       reset(root);
       var block=q(root,'.s11-block'), cells=qa(root,'.s11-cell'), target=q(root,'.s11-cell[data-t="1"]');
-      var home=q(root,'.s11-tray');
-      function homeRect(){ var hr=home.getBoundingClientRect(), rr=root.getBoundingClientRect();
-        return {x:hr.left-rr.left, y:hr.top-rr.top+6}; }
+      /* Where the block ACTUALLY is right now, not where it was told to go \u2014
+         so a finger landing on it mid-flight picks it up without a jump. */
+      function curPos(){
+        try{ var m=new DOMMatrixReadOnly(getComputedStyle(block).transform);
+             return {x:m.m41, y:m.m42}; }
+        catch(e){ return block.__pos||{x:0,y:0}; }
+      }
       function place(el){
-        var cr=el.getBoundingClientRect(), br=block.getBoundingClientRect(), rr=root.getBoundingClientRect();
-        var cur=block.__pos||{x:0,y:0};
+        var cr=el.getBoundingClientRect(), br=block.getBoundingClientRect(), cur=curPos();
         return {x:cur.x+(cr.left+cr.width/2)-(br.left+br.width/2),
                 y:cur.y+(cr.top+cr.height/2)-(br.top+br.height/2)};
       }
@@ -4111,8 +4149,7 @@ M.push({
         block.style.transform='translate('+p.x+'px,'+p.y+'px)'; }
       cells.forEach(function(c){ c.classList.remove('hot','filled'); });
       block.classList.remove('lift');
-      var h=homeRect();
-      block.style.left=h.x+'px'; set({x:0,y:0});
+      set({x:0,y:0});
       reflow(block);
       at(root,420,function(){
         block.classList.add('lift');
@@ -4134,7 +4171,7 @@ M.push({
         block.addEventListener('pointerdown',function(ev){
           ev.preventDefault(); dragging=true;
           try{ block.setPointerCapture(ev.pointerId); }catch(e){}
-          base=block.__pos||{x:0,y:0}; sx=ev.clientX; sy=ev.clientY;
+          base=curPos(); block.__pos=base; sx=ev.clientX; sy=ev.clientY;
           block.classList.add('lift'); block.style.transition='box-shadow 220ms var(--e-ink)';
         });
         block.addEventListener('pointermove',function(ev){
@@ -4196,9 +4233,10 @@ M.push({
         hole.style.transition='width 420ms var(--e-turn)';
         lost.style.width='0%'; hole.style.width='25%';
         badge.className='s12-badge bad';
-        tick(root,badge,0,1,840,function(v){ return int0(v)+' gap'; });
+        root.__gapCount=tick(root,badge,0,1,840,function(v){ return int0(v)+' gap'; });
       });
       at(root,2300,function(){
+        if(root.__gapCount) root.__gapCount.on=false;
         note.style.opacity='0';
         hole.style.transition='width 450ms var(--e-tuck)';
         cover.style.transition='width 450ms var(--e-tuck)';
