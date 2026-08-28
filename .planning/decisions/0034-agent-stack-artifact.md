@@ -112,8 +112,9 @@ a synchronous call. Everything ships `status: designed`; nothing is build.
   Context paragraph read wave 2 as covered by the org-generation exemption in a
   parenthetical; the audit correctly notes OD-34's exemption names only "the
   initial 693-doc generation" and that this reading was never put to the
-  founder. Put to the founder 2026-08-28 — outcome recorded in the review trail
-  when answered.
+  founder. **Put to the founder and RATIFIED 2026-08-28**: structured
+  wave-generated unit artifacts are the generation; retire-to-write binds every
+  non-wave document. Recorded on OD-34's row and in the review trail.
 
 ## Review trail
 
