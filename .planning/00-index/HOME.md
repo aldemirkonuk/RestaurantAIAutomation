@@ -1,7 +1,7 @@
 ---
 type: moc
 title: Home
-updated: 2026-08-24
+updated: 2026-08-28
 ---
 
 # Mudavym — Vault Home
@@ -18,6 +18,7 @@ Autonomous restaurant operations platform. One entity; many small softwares insi
 | [[SCENARIO-MAP]] | What happens in a restaurant — the 17 rituals |
 | [[PAGES-MAP]] | The product surface — 50 pages, endpoints, signals, rebrand debt |
 | [[LOOP-MAP]] | What feeds back into what, and how fast it closes |
+| [[CARD-MAP]] | **The agent layer** — every unit's declared agents, their class, and their gaps ([[0034-agent-stack-artifact]]) |
 | [[METRICS]] | Every metric the org names — and whether it has a number today |
 | [[DECISION-INDEX]] | What is locked, how a decision moves, where the ADRs are |
 | [[OPEN-DECISIONS]] | What is still undecided, and what unblocks it |
@@ -40,5 +41,16 @@ WHERE type = "charter"
 GROUP BY status
 ```
 
-The org is **designed, not operating**. See [[LOOP-MAP]]: of 482 loops, only a handful
-carry status `active` or `running`. Treat the corpus as a plan, not as capability.
+The org is **designed, barely operating — and the gap is now measured, not guessed**
+(re-counted 2026-08-28):
+
+- **[[LOOP-MAP]]: 485 loops, 5 of them live** (3 `active` + 2 `running`); 438 still `proposed`.
+- **[[CARD-MAP]]: 102 declared agents across 100 units, 8 of which actually execute**
+  (`scripts/agents/run_card.py`); 58 carry no quality bar at all.
+- **Agendas: 48 of 200 are `status: active`** — the 24 department-level units were written
+  for real in wave 3 (ADR 0039); the 152 team-level agendas still carry the
+  `PROVISIONAL — no work done yet` banner, and that banner is honest.
+- **Skills: 4 committed**, all §3.3-compliant; firing telemetry does not exist yet.
+
+Treat the corpus as a plan, not as capability — but the plan now names its own
+denominators, so "what is real" is a query rather than an opinion.

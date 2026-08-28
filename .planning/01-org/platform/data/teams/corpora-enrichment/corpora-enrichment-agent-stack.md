@@ -41,7 +41,7 @@ consumes:
 emits:
   - "enriched rows carrying per-field confidence — consumer: [[substrate-quality-coverage-agent-stack|substrate-auditor]]'s gate (`governance.py:107`)"
   - "candidate facts for identity — consumer: [[catalogue-identity-charter]]"
-  - nf_a events (task_type: corpus_enrichment) — consumer: [[data-agent-stack|data-l0-rollup]]
+  - 'nf_a events (task_type: corpus_enrichment) — consumer: [[data-agent-stack|data-l0-rollup]]'
 routing_class: extraction        # pull a defined field set out of sources; the field set is fixed, the sources are not
 quality_bar: "another unit's gate: `governance.py:107` assign_governance_tier + `:227` compute_overall_confidence, published by [[substrate-quality-coverage-charter]]. This agent never grades its own output (author ≠ auditor, `technology.md:32-34`)"
 autonomy:

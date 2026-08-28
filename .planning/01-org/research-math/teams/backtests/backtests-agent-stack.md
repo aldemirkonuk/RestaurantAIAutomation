@@ -34,13 +34,13 @@ triggers:
   - topic: claim.published        # publisher: NONE (gap — no unit emits when it publishes a number)
 consumes:
   - neural_footprint_event rows carrying outcome_basis — publisher: model-client.service.ts:413, spend_logger.py:406
-  - the 17 scenarios' §9 simulation gates — publisher: "[[SCENARIO-CONTRACT]]" (specified; nothing executes them)
-  - injected / synthetic corpora — publisher: "[[synthetic-generation-simulation-charter]]" (gap — unbuilt)
+  - 'the 17 scenarios'' §9 simulation gates — publisher: "[[SCENARIO-CONTRACT]]" (specified; nothing executes them)'
+  - 'injected / synthetic corpora — publisher: "[[synthetic-generation-simulation-charter]]" (gap — unbuilt)'
 emits:
   - bt.* onto "[[backtests-agenda-board]]", reported per scenario class and never as one number
   - a finding at the owning unit with the advisory 42-day age-out — consumer: that unit's questions.md
   - an unfalsifiable-claim record — consumer: same; per [[backtests-directive]] an unfalsifiable claim is itself a finding
-  - nf_a events (task_type: backtest_replay) — consumer: "[[neural-footprint-instrumentation-charter]]"'s contract
+  - 'nf_a events (task_type: backtest_replay) — consumer: "[[neural-footprint-instrumentation-charter]]"''s contract'
 routing_class: judgment          # replaying is mechanical; deciding whether the scenario's §9 gate was met is not
 quality_bar: "the re-grade scores against the scenario's own §9 gate, never against the agent's self-report; NONE (gap) — ADR 0017 grades tasks, and no verdict basis grades a backtest"
 autonomy:
@@ -106,12 +106,15 @@ Cross-unit interaction is loops ([[backtests-loops]] — all three currently `bl
 
 - **NEW — everything.** The replayer, the harness, the memory layers. [[backtests-charter]]
   §Evidence is unambiguous: no harness, no backtest, no replay.
-- **The entry trigger now reads as met, and confirming it is the card's first act.**
-  The charter gates this team on the first rows carrying `outcome_basis: call_level_v0`.
-  `neural_footprint_event` has emitted since P1 (`model-client.service.ts:413`), and
-  `.planning/STATE.md:98-105` records 26 of 38 task types above `call_level_v0` with **12**
-  on a shrink-only exemption list — i.e. rows to re-grade almost certainly exist. This doc
-  may not declare the trigger met; the team must check and record it.
+- **The entry trigger is MET — checked and recorded 2026-08-28.** The charter gates
+  this team on the first rows carrying `outcome_basis: call_level_v0`.
+  `neural_footprint_event` has emitted since P1 (`model-client.service.ts:413`) and
+  every pre-upgrade row carried `call_level_v0` by definition; `.planning/STATE.md:98-105`
+  further records 26 of 38 task types now above it with **12** on a shrink-only exemption
+  list — the re-grade backlog this team exists for. Verified against STATE and the
+  emitter, not inferred; the roster-acceptance record is ORG_STRUCTURE §2's 2026-08-27
+  correction note. What remains NEW is everything above: the trigger firing changes the
+  team's standing, not its evidence grades.
 - **PARTIAL — what could be replayed against.** The 17 scenarios' §9 simulation gates
   specify the runs; nothing executes them. `scripts/watch_loops.py` already watches the
   2026-10-23 staleness cliff that [[backtests-premortem]] M5 names — if it fires with this
