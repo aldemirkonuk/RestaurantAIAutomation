@@ -576,10 +576,18 @@ jobs:
   #             merges, so it did not gate them.
   #
   # So the merges were not pushed past a skipped gate. They were unblocked
-  # because `main` had NO branch protection at all -- `branches/main` reports
-  # `protected: false`, `/protection` 404s, and `/rulesets` is `[]`. Nothing was
-  # required, so nothing could block. The skip hole is real and is fixed here;
-  # the missing requirement is the other half and lives in repo settings.
+  # because on 2026-08-27 `main` had NO branch protection at all -- `protected:
+  # false`, `/protection` 404, `/rulesets` `[]`. Nothing was required, so
+  # nothing could block.
+  #
+  # BOTH HALVES ARE CLOSED NOW. The skip hole is fixed here, and protection was
+  # enabled on 2026-08-28: `CI Complete` is a required check with `strict: true`
+  # (the branch must be up to date before it merges). `enforce_admins` is
+  # deliberately false -- the owner can still override, which turns a silent
+  # merge onto a red `main` into a deliberate one rather than locking a solo
+  # founder out of their own repository. Turning it on is a settings change, not
+  # a code change, so nothing here can assert it stays true; `gh api
+  # repos/:owner/:repo/branches/main/protection` is where to look.
   #
   # A second hole, found by review: `needs` listed 9 of 15 jobs, and
   # loop-contract / commitment-guardrail-sync / model-call-ledger -- all

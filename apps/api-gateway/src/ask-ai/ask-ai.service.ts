@@ -510,9 +510,13 @@ export class AskAiService {
    *
    * Grounding is re-derived from the CURRENT candidate set rather than the one
    * captured at propose time: stock and vendors change, and the question is
-   * whether this action is valid to run NOW. That applies to an UNTOUCHED
-   * confirm too — a proposal can sit in the open list for days, so "nobody
-   * edited it" is not a reason to trust that what it points at still exists.
+   * whether this action is valid to run NOW.
+   *
+   * An UNTOUCHED confirm is checked too — a proposal can sit in the open list
+   * for days, so "nobody edited it" is no reason to trust that what it points
+   * at still exists — but by direct lookup rather than candidate-set
+   * membership. See the comment in `confirm` for why those are different
+   * questions and why answering both with the capped set was wrong.
    */
   async confirm(
     restaurantId: string,
@@ -552,35 +556,44 @@ export class AskAiService {
     // Validate the edit BEFORE executing, and roll the claim back if it fails —
     // otherwise a rejected edit would leave the row stuck at `confirmed` with
     // nothing executed and no way to retry.
-    // EVERY payload is re-checked here, edited or not.
+    // EVERY payload is re-checked before it executes, edited or not — but the
+    // two cases are asking DIFFERENT questions, and conflating them was a bug.
     //
-    // This used to sit inside `if (editedPayload)`, which made the docblock
-    // above false: an UNTOUCHED confirm ran the payload stored at propose time
-    // with no grounding at all. A proposal survives a reload and sits in the
-    // open list indefinitely, so "untouched" routinely means minutes or days
-    // old — long enough for the vendor to be deactivated or the order to be
-    // delivered. `createOrder` only checks the restaurant has SOME active
-    // provider, not that it has THIS one, so a dead `provider_id` reached the
-    // executor. Not a tenant break — the stored payload was grounded to this
-    // tenant when it was written, and the claim above is scoped by
-    // restaurant_id — but a stale reference on a path that creates purchase
-    // orders, which is what re-grounding against the CURRENT set is for.
+    //   EDITED    -> must be in the CANDIDATE SET. An editable id is an
+    //                id-injection hole the moment it is trusted, and the fact
+    //                that a human typed it is not a security property: a human
+    //                can paste a uuid. "Only ids we offered you" is the rule.
     //
-    // `edited` stays keyed to whether the OPERATOR supplied a payload, not to
-    // whether one was validated, because that flag feeds the P3.0 ledger and
-    // means "a human changed it".
-    const toCheck = editedPayload ?? (claimed.payload as Record<string, unknown>);
-    const check = await this.validateEdit(restaurantId, claimed, toCheck);
+    //   UNTOUCHED -> was already grounded against the candidate set at propose
+    //                time. The open question is not "did you pick this from a
+    //                list" but "does it still EXIST and is it still usable" —
+    //                so the ids are looked up directly.
+    //
+    // Grounding an untouched confirm against the candidate set as well looked
+    // tidier and was wrong: that set is capped (60/30/20) and is deliberately
+    // the only page, so a perfectly live order simply aged past position 20 as
+    // newer ones arrived and its confirm started failing with "I could not find
+    // that", which was false. The cap exists to keep the PROMPT small. Nothing
+    // about it belongs in a question about one known id.
+    let check:
+      | { ok: true; payload: Record<string, unknown> }
+      | { ok: false; reason: string };
+    try {
+      check = editedPayload
+        ? await this.validateEdit(restaurantId, claimed, editedPayload)
+        : await this.verifyStoredAction(restaurantId, claimed);
+    } catch (err) {
+      // The checks THROW on a failed query (loadCandidates does, by design).
+      // Without this the throw escaped past the rollback below and left the row
+      // at `confirmed` — where `confirm` cannot claim it again (it requires
+      // `proposed`) and `discard` cannot either. A transient database blip
+      // would have permanently stranded a proposal: not executable, not
+      // dismissable, gone. Roll back first, then let the 503 surface.
+      await this.releaseClaim(actionId);
+      throw err;
+    }
     if (!check.ok) {
-      await client
-        .from("ai_proposed_actions")
-        .update({
-          status: "proposed",
-          confirmed_by: null,
-          confirmed_at: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", actionId);
+      await this.releaseClaim(actionId);
       throw new BadRequestException(check.reason);
     }
     const executedPayload: Record<string, unknown> | null = editedPayload
@@ -678,6 +691,112 @@ export class AskAiService {
       CONFIRMATION_BASIS,
       confirmationVerdict(input),
     );
+  }
+
+  /**
+   * Put a claimed row back to `proposed`.
+   *
+   * The claim is a compare-and-swap, so anything that stops the execution after
+   * it has been won MUST undo it. A row left at `confirmed` is unreachable by
+   * both `confirm` (which requires `proposed`) and `discard` (same), so it is
+   * not a retry away from working — it is gone.
+   */
+  private async releaseClaim(actionId: string): Promise<void> {
+    await this.databaseService
+      .getClient()
+      .from("ai_proposed_actions")
+      .update({
+        status: "proposed",
+        confirmed_by: null,
+        confirmed_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", actionId);
+  }
+
+  /**
+   * Does what this proposal points at still exist, and is it still usable?
+   *
+   * For a payload nobody edited. It was grounded against the candidate set when
+   * it was written, so the injection question is already answered and asking it
+   * again only re-imposes the prompt's cap on a question that has nothing to do
+   * with prompt size. What is genuinely open is whether the world moved: the
+   * vendor deactivated, the order delivered, the item deleted.
+   *
+   * Every lookup is scoped by `restaurant_id`. The client is service-role and
+   * bypasses RLS, so that filter is the tenant boundary, not a hint.
+   *
+   * Errors THROW rather than reading as "not found" — a failed lookup and a
+   * deleted row must not produce the same answer on a path that creates
+   * purchase orders. The caller rolls the claim back.
+   */
+  private async verifyStoredAction(
+    restaurantId: string,
+    row: any,
+  ): Promise<
+    | { ok: true; payload: Record<string, unknown> }
+    | { ok: false; reason: string }
+  > {
+    const client = this.databaseService.getClient();
+    const payload = (row.payload ?? {}) as Record<string, unknown>;
+
+    const gone = (what: string) => ({
+      ok: false as const,
+      reason: `The ${what} this refers to is no longer available. Ask again to pick a current one.`,
+    });
+
+    const lookup = async (
+      table: string,
+      id: unknown,
+      extra?: (q: any) => any,
+    ): Promise<boolean> => {
+      let q = client
+        .from(table)
+        .select("id")
+        .eq("id", id)
+        .eq("restaurant_id", restaurantId);
+      if (extra) q = extra(q);
+      const { data, error } = await q.limit(1);
+      if (error) {
+        this.logger.error(
+          `Ask AI could not re-check ${table} before executing: ${error.message}`,
+        );
+        throw new ServiceUnavailableException("Could not confirm that action.");
+      }
+      return (data ?? []).length > 0;
+    };
+
+    if (row.family === "procurement" && row.action_type === "reorder") {
+      if (!(await lookup("restaurant_inventory", payload.inventoryId))) {
+        return gone("item");
+      }
+      if (
+        !(await lookup("providers", payload.providerId, (q) =>
+          q.eq("is_active", true),
+        ))
+      ) {
+        return gone("vendor");
+      }
+      return { ok: true, payload };
+    }
+
+    if (row.family === "communications" && row.action_type === "vendor_draft") {
+      if (
+        !(await lookup("procurement_orders", payload.orderId, (q) =>
+          q.not("status", "in", '("delivered","cancelled")'),
+        ))
+      ) {
+        return gone("order");
+      }
+      return { ok: true, payload };
+    }
+
+    // Same reasoning as `execute`'s fallthrough: reached only if the allowlist
+    // widened and this did not, so it refuses rather than waving it through.
+    return {
+      ok: false,
+      reason: "That kind of action can no longer be confirmed here.",
+    };
   }
 
   /**
