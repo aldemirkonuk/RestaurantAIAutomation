@@ -94,7 +94,9 @@ queue handoff to harvesting is a file append. Gap rows:
 - **PARTIAL — the template.** `.agents/skills/railway-config/SKILL.md:1-214`,
   well-formed and uncommitted; borrowed, not owned.
 - **EXISTS — the enforcement shape.** Five `check_*.sh` guards wired into CI.
-- **NEW — the clerk, both skills, the index, the gate.** The directory itself now
-  EXISTS (README only, zero skills — verified 2026-08-27, superseding the charter's
-  2026-08-24 "absent"); registry size 0, so everything downstream of the first
-  admitted skill is still unexercised.
+- **PARTIAL — the clerk's census half runs.** `run_card.py --agent registry-clerk`
+  (2026-08-28, ADR 0038) measures the registry: **4 committed skills, 4/4
+  §3.3-compliant** — the first admissions, including `registry-index-refresh`
+  itself, went through the gate this doc designs. Still NEW: the PR-review gate
+  as an automated act, description-collision detection, last-fired (blocked on
+  `nf_a.skill_id`).

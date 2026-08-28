@@ -129,6 +129,68 @@ export function resolveSaleVolume(
 }
 
 /**
+ * Which rung of the secret chain authenticated a webhook. Ordered most
+ * specific first; `legacy_global` is the pre-existing process-wide key and is
+ * the only rung that is NOT bound to a provider or a tenant.
+ */
+export type WebhookSecretSource =
+  | "per_connection"
+  | "per_provider"
+  | "legacy_global";
+
+export interface ResolvedWebhookSecret {
+  secret: string;
+  source: WebhookSecretSource;
+  envVar: string;
+}
+
+/** Env-var-safe token: `generic_webhook` -> `GENERIC_WEBHOOK`. */
+function envToken(raw: string): string {
+  return raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, "_");
+}
+
+/**
+ * The two scoped env vars a (provider, restaurant) pair may be keyed by.
+ * Exported so operators and tests name them from one place rather than
+ * re-deriving the string. `__` separates the two tokens because provider keys
+ * themselves contain `_` (`ncr_aloha`), and a single separator would make
+ * `POS_WEBHOOK_SECRET_NCR_ALOHA` ambiguous.
+ */
+export function webhookSecretEnvVars(
+  providerKey: string,
+  restaurantId: string,
+): { perConnection: string; perProvider: string } {
+  const provider = envToken(providerKey);
+  return {
+    perConnection: `POS_WEBHOOK_SECRET_${provider}__${envToken(restaurantId)}`,
+    perProvider: `POS_WEBHOOK_SECRET_${provider}`,
+  };
+}
+
+/**
+ * The message a scoped signature covers.
+ *
+ * The provider and the restaurant are inside the signed bytes, not merely
+ * beside them, so one provider-wide secret still cannot mint a signature that
+ * authenticates a different tenant's payload — the same reason Toast signs
+ * `timestamp.body` rather than `body` (toast.service.ts:152).
+ */
+function scopedSignedPayload(
+  providerKey: string,
+  restaurantId: string,
+  rawBody: Buffer | string,
+): string {
+  const body = Buffer.isBuffer(rawBody) ? rawBody.toString("utf8") : rawBody;
+  return `${providerKey}:${restaurantId}.${body}`;
+}
+
+/** Identity the webhook route claims, and which this must bind the key to. */
+export interface WebhookContext {
+  provider: string;
+  restaurantId: string;
+}
+
+/**
  * PosHubService — the unified ingestion pipeline and the single POS door for
  * stock writes (SimPOS testbed plan, decision B13).
  *
@@ -143,8 +205,16 @@ export function resolveSaleVolume(
 @Injectable()
 export class PosHubService {
   private readonly logger = new Logger(PosHubService.name);
-  private readonly webhookSecret: string | null =
-    process.env.POS_HUB_WEBHOOK_SECRET || null;
+
+  /**
+   * Which (source, provider, restaurant) triples have already been logged, so
+   * a route that takes production webhook volume states its key resolution
+   * once rather than on every request. Bounded: `restaurantId` comes off an
+   * unauthenticated path, so an attacker could otherwise grow this set without
+   * limit by varying it.
+   */
+  private readonly loggedSecretResolutions = new Set<string>();
+  private static readonly MAX_LOGGED_RESOLUTIONS = 500;
 
   // Multilingual wine keywords (incl. Turkish şarap) for the fallback
   // heuristic when no pos_item_mappings row exists yet.
@@ -199,27 +269,155 @@ export class PosHubService {
   // B28: SimPOS signs with a real HMAC secret so this path stays exercised)
   // =========================================================================
 
+  /** Log a key-resolution outcome once per (source, provider, restaurant). */
+  private logSecretResolutionOnce(
+    key: string,
+    emit: () => void,
+  ): void {
+    if (this.loggedSecretResolutions.has(key)) return;
+    // Overflow clears rather than stops deduping: memory stays bounded and the
+    // route keeps reporting, at the cost of repeating a line after 500 pairs.
+    if (
+      this.loggedSecretResolutions.size >= PosHubService.MAX_LOGGED_RESOLUTIONS
+    ) {
+      this.loggedSecretResolutions.clear();
+    }
+    this.loggedSecretResolutions.add(key);
+    emit();
+  }
+
   /**
-   * Verify an inbound webhook's HMAC-SHA256 signature against the raw request
-   * body. Fails closed: no configured secret means every signed request is
-   * rejected, matching decision B16's fail-closed posture elsewhere in the
-   * ingress path. `POS_HUB_WEBHOOK_SECRET` is unset -> reject.
+   * Resolve the HMAC key for one (provider, restaurant), most specific first:
+   *
+   *   1. `POS_WEBHOOK_SECRET_<PROVIDER>__<RESTAURANT_ID>` — per connection.
+   *   2. `POS_WEBHOOK_SECRET_<PROVIDER>`                  — per provider.
+   *   3. `POS_HUB_WEBHOOK_SECRET`                         — legacy, global.
+   *
+   * The first rung that is SET wins; a rung being set is therefore the cutover
+   * switch for everything below it. Configuring (1) or (2) for a provider
+   * stops the legacy global key from authenticating that provider at all —
+   * deliberate, because a fallback that runs after a scoped signature fails is
+   * not a fallback, it is the hole still being open.
+   *
+   * Returns null when nothing is configured. Callers must reject on null.
+   */
+  private resolveWebhookSecret(
+    providerKey: string,
+    restaurantId: string,
+  ): ResolvedWebhookSecret | null {
+    const { perConnection, perProvider } = webhookSecretEnvVars(
+      providerKey,
+      restaurantId,
+    );
+
+    const rungs: Array<{ source: WebhookSecretSource; envVar: string }> = [
+      { source: "per_connection", envVar: perConnection },
+      { source: "per_provider", envVar: perProvider },
+      { source: "legacy_global", envVar: "POS_HUB_WEBHOOK_SECRET" },
+    ];
+
+    for (const rung of rungs) {
+      const secret = process.env[rung.envVar];
+      if (!secret) continue;
+      const logKey = `${rung.source}:${providerKey}:${restaurantId}`;
+      this.logSecretResolutionOnce(logKey, () => {
+        if (rung.source === "legacy_global") {
+          this.logger.warn(
+            `POS webhook [${providerKey}] r=${restaurantId} is authenticating with the ` +
+              `legacy process-wide POS_HUB_WEBHOOK_SECRET, which is shared by every ` +
+              `provider and every tenant. Set ${perProvider} (or ${perConnection}) to ` +
+              `bind this door to one provider and one restaurant.`,
+          );
+        } else {
+          this.logger.log(
+            `POS webhook [${providerKey}] r=${restaurantId} keyed by ${rung.envVar} (${rung.source})`,
+          );
+        }
+      });
+      return { secret, source: rung.source, envVar: rung.envVar };
+    }
+
+    return null;
+  }
+
+  /**
+   * Verify an inbound webhook's HMAC-SHA256 signature.
+   *
+   * Fails closed on every path: an unknown provider, a blank context, a
+   * missing signature or body, and — decision B16's posture — no configured
+   * secret all reject. There is no arm that returns true without a key.
+   *
+   * The signature is bound to the identity the URL claims. A scoped key signs
+   * `"<provider>:<restaurantId>." + rawBody`, so a signature minted for one
+   * tenant does not authenticate another's payload even when both sit behind
+   * the same provider-wide secret. Before this, one process-wide key covered
+   * all 27 providers and every restaurant while the route read `restaurantId`
+   * straight out of the path and never bound it to anything — so a signature
+   * valid for restaurant A was valid for restaurant B's URL, and holding the
+   * secret meant stock writes for any tenant (POS-BRIDGE-AUDIT.md §2.4, OD-B).
+   *
+   * The legacy global key keeps its original unscoped scheme (HMAC over the
+   * raw body alone) so today's signers — SimPOS `sendSignedWebhook`
+   * (simpos.service.ts:490) and `scripts/simulate/bridge.py` — keep working
+   * until a scoped secret is configured. Every acceptance on that rung is
+   * logged as the open door it is.
    */
   verifyWebhookSignature(
     rawBody: Buffer | string | undefined,
     signature: string | null | undefined,
+    context: WebhookContext,
   ): boolean {
-    if (!this.webhookSecret) {
+    const providerKey = context?.provider?.trim();
+    const restaurantId = context?.restaurantId?.trim();
+    if (!providerKey || !restaurantId) {
       this.logger.error(
-        "POS_HUB_WEBHOOK_SECRET not configured — rejecting webhook (fail closed)",
+        "POS webhook rejected: signature verification requires a provider and a restaurant to key on",
       );
       return false;
     }
+
+    // An unrecognized provider is rejected here rather than deeper in
+    // `ingest`, so an unauthenticated caller cannot probe the registry and no
+    // secret is ever matched against a provider we do not serve.
+    const provider = PROVIDER_BY_KEY[providerKey];
+    if (!provider) {
+      this.logSecretResolutionOnce(`unknown:${providerKey}`, () =>
+        this.logger.error(
+          `POS webhook rejected: unknown provider '${providerKey}'`,
+        ),
+      );
+      return false;
+    }
+
+    const resolved = this.resolveWebhookSecret(providerKey, restaurantId);
+    if (!resolved) {
+      const { perConnection, perProvider } = webhookSecretEnvVars(
+        providerKey,
+        restaurantId,
+      );
+      this.logSecretResolutionOnce(
+        `missing:${providerKey}:${restaurantId}`,
+        () =>
+          this.logger.error(
+            `POS webhook rejected (fail closed): no secret configured for provider ` +
+              `'${providerKey}'${provider.status === "available" ? " — which the registry marks AVAILABLE, so this door is advertised and shut" : ""}. ` +
+              `Set ${perProvider}, ${perConnection}, or the legacy POS_HUB_WEBHOOK_SECRET.`,
+          ),
+      );
+      return false;
+    }
+
     if (!signature || !rawBody) return false;
+
     try {
+      const signedPayload =
+        resolved.source === "legacy_global"
+          ? rawBody
+          : scopedSignedPayload(providerKey, restaurantId, rawBody);
+
       const expected = crypto
-        .createHmac("sha256", this.webhookSecret)
-        .update(rawBody)
+        .createHmac("sha256", resolved.secret)
+        .update(signedPayload)
         .digest("hex");
       const a = Buffer.from(expected, "hex");
       const b = Buffer.from(signature.toLowerCase(), "hex");

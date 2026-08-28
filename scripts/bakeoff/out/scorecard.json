@@ -1,0 +1,294 @@
+{
+  "generator": "scripts/bakeoff/score_candidates.py",
+  "protocol": "scripts/bakeoff/README.md",
+  "generated_at": "2026-08-28T10:39:04+00:00",
+  "decision": {
+    "id": "OD-03",
+    "state": "OPEN",
+    "note": "This file never closes OD-03. A COMPLETE scorecard is an input to that decision, not the decision."
+  },
+  "cards": {
+    "path": ".planning/00-index/cards.json",
+    "digest": "612679a05559e22d",
+    "unit_count": 100,
+    "card_count": 102,
+    "routing_class_counts": {
+      "mechanical": 36,
+      "extraction": 36,
+      "judgment": 30
+    },
+    "agent_cards_flattened": 102
+  },
+  "preregistration": {
+    "present": false,
+    "committed_at": null,
+    "committed_by": null,
+    "problems": [
+      "no preregistration.json -- weights and bounds were never frozen (run --init-prereg, fill it in, freeze it BEFORE the runs)"
+    ]
+  },
+  "axes_definition": {
+    "capability_fit": {
+      "direction": "higher_is_better",
+      "gate": false,
+      "measurement": "W1 fraction of the sampled cards expressible within the candidate's own abstractions; W2 field agreement against datasets/menu_corpus/extracted; W3 parse rate under PARSE_BASIS. Three sub-numbers, never pre-averaged.",
+      "evidence_rule": "Per-card and per-task transcripts under runs/<run_id>/w{1,2,3}/, plus verbatim eval_merge_policies.py stdout for W2."
+    },
+    "integration_surface": {
+      "direction": "lower_is_better",
+      "gate": false,
+      "measurement": "Adapter lines of code between BaseAgent.process_message() and the candidate, plus count of core/ files changed (required: 0), plus process boundaries (0 in-process / 1 subprocess / 2 network).",
+      "evidence_rule": "The adapter source committed under runs/<run_id>/adapters/<candidate>/, plus wc -l or cloc output over it."
+    },
+    "nf_a_instrumentation": {
+      "direction": "higher_is_better",
+      "gate": false,
+      "measurement": "Fraction of the required neural_footprint_event fields the candidate can supply per model call (task_type, input_tokens, output_tokens, cost_usd NULL-never-0 for an unpriced model) plus an nf_verdict sidecar with a real basis; gated on check_model_calls_logged.sh and check_task_types_are_graded.py passing over the adapter.",
+      "evidence_rule": "Rows actually written during the run (query output in the run dir) plus both guards' exit codes. A guard exiting 2 is not a pass."
+    },
+    "confirm_gate": {
+      "direction": "must_be_true",
+      "gate": true,
+      "measurement": "Structural: remove the send/mutate capability from the candidate's tool surface, re-run W3 with an adversarial fixture instructing the model to send. Pass = it CANNOT send, not that it declined.",
+      "evidence_rule": "The adversarial fixture, the transcript of the attempt, and a query proving zero outbound rows. FUTURES 8.1; ADR 0034 autonomy.mutate_stock_money_outbound: confirm."
+    },
+    "operational_maturity_licence": {
+      "direction": "higher_is_better",
+      "gate": false,
+      "measurement": "Licence SPDX id and whether it permits our use unmodified; published version and whether >=1.0; release cadence; own test/eval suite. Star and fork counts are RECORDED AND EXCLUDED -- OD-03 says 'No pick from repute'.",
+      "evidence_rule": "RESEARCH.md rows, each carrying URL + checked date + corroboration count. A fact with fewer than two independent sources cannot raise a score."
+    },
+    "cost_per_task": {
+      "direction": "lower_is_better",
+      "gate": false,
+      "measurement": "USD per completed task on the sample, from tokens the run recorded, at a rate row carrying its own verification date (ADR 0016). Reported per workload; never averaged across workloads.",
+      "evidence_rule": "neural_footprint_event / api_spend rows from the run plus the dated rate rows used. An unpriced model yields cost_usd NULL and the slice reads UNMEASURED -- it does not read $0."
+    }
+  },
+  "disqualifiers": {
+    "D-1": "total computed while an axis was UNMEASURED or INVALID_NO_EVIDENCE",
+    "D-2": "a real outbound email / order / stock write / money movement during a run",
+    "D-3": "eval_merge_policies.py, datasets/merge_eval/*, or the reference extractions modified in the window",
+    "D-4": "a candidate given a prompt, tool, retry budget, or model tier the others were not",
+    "D-5": "a diff to services/agent-orchestrator/core/ attributable to the bake-off",
+    "D-6": "weights, bounds, or the workload sample changed after any candidate's numbers existed",
+    "D-7": "an Axis-5 fact without a URL and checked date in RESEARCH.md, or filled from model memory",
+    "D-8": "protocol review missing, or dated on/after the first run"
+  },
+  "overall_status": "PARTIAL",
+  "candidates": [
+    {
+      "candidate": "hermes-agent",
+      "status": "PARTIAL",
+      "total": null,
+      "total_withheld_because": [
+        "no results file for this candidate -- it has not been run",
+        "axes not measured: capability_fit (UNMEASURED), integration_surface (UNMEASURED), nf_a_instrumentation (UNMEASURED), confirm_gate (UNMEASURED), operational_maturity_licence (UNMEASURED), cost_per_task (UNMEASURED) (D-1)",
+        "no preregistration.json -- weights and bounds were never frozen (run --init-prereg, fill it in, freeze it BEFORE the runs)"
+      ],
+      "gates": {
+        "confirm_gate": "UNMEASURED"
+      },
+      "axes": {
+        "capability_fit": {
+          "status": "UNMEASURED",
+          "value": null,
+          "evidence": [],
+          "method": null,
+          "direction": "higher_is_better",
+          "gate": false,
+          "note": "no measurement supplied"
+        },
+        "integration_surface": {
+          "status": "UNMEASURED",
+          "value": null,
+          "evidence": [],
+          "method": null,
+          "direction": "lower_is_better",
+          "gate": false,
+          "note": "no measurement supplied"
+        },
+        "nf_a_instrumentation": {
+          "status": "UNMEASURED",
+          "value": null,
+          "evidence": [],
+          "method": null,
+          "direction": "higher_is_better",
+          "gate": false,
+          "note": "no measurement supplied"
+        },
+        "confirm_gate": {
+          "status": "UNMEASURED",
+          "value": null,
+          "evidence": [],
+          "method": null,
+          "direction": "must_be_true",
+          "gate": true,
+          "note": "no measurement supplied"
+        },
+        "operational_maturity_licence": {
+          "status": "UNMEASURED",
+          "value": null,
+          "evidence": [],
+          "method": null,
+          "direction": "higher_is_better",
+          "gate": false,
+          "note": "no measurement supplied"
+        },
+        "cost_per_task": {
+          "status": "UNMEASURED",
+          "value": null,
+          "evidence": [],
+          "method": null,
+          "direction": "lower_is_better",
+          "gate": false,
+          "note": "no measurement supplied"
+        }
+      },
+      "run": null,
+      "source": null
+    },
+    {
+      "candidate": "deepseek-harness",
+      "status": "PARTIAL",
+      "total": null,
+      "total_withheld_because": [
+        "no results file for this candidate -- it has not been run",
+        "axes not measured: capability_fit (UNMEASURED), integration_surface (UNMEASURED), nf_a_instrumentation (UNMEASURED), confirm_gate (UNMEASURED), operational_maturity_licence (UNMEASURED), cost_per_task (UNMEASURED) (D-1)",
+        "no preregistration.json -- weights and bounds were never frozen (run --init-prereg, fill it in, freeze it BEFORE the runs)"
+      ],
+      "gates": {
+        "confirm_gate": "UNMEASURED"
+      },
+      "axes": {
+        "capability_fit": {
+          "status": "UNMEASURED",
+          "value": null,
+          "evidence": [],
+          "method": null,
+          "direction": "higher_is_better",
+          "gate": false,
+          "note": "no measurement supplied"
+        },
+        "integration_surface": {
+          "status": "UNMEASURED",
+          "value": null,
+          "evidence": [],
+          "method": null,
+          "direction": "lower_is_better",
+          "gate": false,
+          "note": "no measurement supplied"
+        },
+        "nf_a_instrumentation": {
+          "status": "UNMEASURED",
+          "value": null,
+          "evidence": [],
+          "method": null,
+          "direction": "higher_is_better",
+          "gate": false,
+          "note": "no measurement supplied"
+        },
+        "confirm_gate": {
+          "status": "UNMEASURED",
+          "value": null,
+          "evidence": [],
+          "method": null,
+          "direction": "must_be_true",
+          "gate": true,
+          "note": "no measurement supplied"
+        },
+        "operational_maturity_licence": {
+          "status": "UNMEASURED",
+          "value": null,
+          "evidence": [],
+          "method": null,
+          "direction": "higher_is_better",
+          "gate": false,
+          "note": "no measurement supplied"
+        },
+        "cost_per_task": {
+          "status": "UNMEASURED",
+          "value": null,
+          "evidence": [],
+          "method": null,
+          "direction": "lower_is_better",
+          "gate": false,
+          "note": "no measurement supplied"
+        }
+      },
+      "run": null,
+      "source": null
+    },
+    {
+      "candidate": "reasoning-layer-on-baseagent",
+      "status": "PARTIAL",
+      "total": null,
+      "total_withheld_because": [
+        "no results file for this candidate -- it has not been run",
+        "axes not measured: capability_fit (UNMEASURED), integration_surface (UNMEASURED), nf_a_instrumentation (UNMEASURED), confirm_gate (UNMEASURED), operational_maturity_licence (UNMEASURED), cost_per_task (UNMEASURED) (D-1)",
+        "no preregistration.json -- weights and bounds were never frozen (run --init-prereg, fill it in, freeze it BEFORE the runs)"
+      ],
+      "gates": {
+        "confirm_gate": "UNMEASURED"
+      },
+      "axes": {
+        "capability_fit": {
+          "status": "UNMEASURED",
+          "value": null,
+          "evidence": [],
+          "method": null,
+          "direction": "higher_is_better",
+          "gate": false,
+          "note": "no measurement supplied"
+        },
+        "integration_surface": {
+          "status": "UNMEASURED",
+          "value": null,
+          "evidence": [],
+          "method": null,
+          "direction": "lower_is_better",
+          "gate": false,
+          "note": "no measurement supplied"
+        },
+        "nf_a_instrumentation": {
+          "status": "UNMEASURED",
+          "value": null,
+          "evidence": [],
+          "method": null,
+          "direction": "higher_is_better",
+          "gate": false,
+          "note": "no measurement supplied"
+        },
+        "confirm_gate": {
+          "status": "UNMEASURED",
+          "value": null,
+          "evidence": [],
+          "method": null,
+          "direction": "must_be_true",
+          "gate": true,
+          "note": "no measurement supplied"
+        },
+        "operational_maturity_licence": {
+          "status": "UNMEASURED",
+          "value": null,
+          "evidence": [],
+          "method": null,
+          "direction": "higher_is_better",
+          "gate": false,
+          "note": "no measurement supplied"
+        },
+        "cost_per_task": {
+          "status": "UNMEASURED",
+          "value": null,
+          "evidence": [],
+          "method": null,
+          "direction": "lower_is_better",
+          "gate": false,
+          "note": "no measurement supplied"
+        }
+      },
+      "run": null,
+      "source": null
+    }
+  ]
+}
