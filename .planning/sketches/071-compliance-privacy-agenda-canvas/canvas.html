@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>071 · Compliance &amp; Privacy — Agenda Canvas (2026-08-28)</title>
+<style>
+  :root{
+    --ink:#F2EDEA; --ink-2:#B9AFAA; --ink-3:#7C7370;
+    --bg:#141010; --panel:#1C1716; --panel-2:#231D1C; --line:#332A29;
+    --wine:#9E4249; --wine-dim:#6A2F34;
+    --proven:#4E8C6A; --asserted:#B98A3C; --absent:#8A4340;
+    --pe:#C8626B;      /* privacy-engineering */
+    --rp:#5E8FB5;      /* regulatory-posture */
+    --ro:#8A7BB5;      /* regulated-operations (gated) */
+    --dept:#B99A5C;    /* department-level */
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--sans);
+    font-size:14px; line-height:1.5; padding:28px 22px 60px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1500px;margin:0 auto}
+
+  /* ---------- header ---------- */
+  header{border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:22px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+  h1{margin:8px 0 6px;font-size:26px;font-weight:600;letter-spacing:-.01em}
+  h1 .dim{color:var(--ink-3);font-weight:400}
+  .thesis{max-width:88ch;color:var(--ink-2);font-size:14.5px}
+  .thesis b{color:var(--ink);font-weight:600}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:14px;font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:9px;height:9px;border-radius:2px;display:inline-block}
+
+  /* ---------- counters ---------- */
+  .counters{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px;margin-bottom:26px}
+  .ct{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:11px 12px;position:relative;overflow:hidden}
+  .ct::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--absent)}
+  .ct.proven::before{background:var(--proven)}
+  .ct.asserted::before{background:var(--asserted)}
+  .ct .k{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);letter-spacing:.02em}
+  .ct .v{font-size:19px;font-weight:650;margin-top:3px;letter-spacing:-.01em}
+  .ct .n{font-size:11.5px;color:var(--ink-2);margin-top:3px;line-height:1.35}
+  .ct .n em{color:var(--wine);font-style:normal}
+
+  /* ---------- section ---------- */
+  section{margin:0 0 30px}
+  h2{font-size:12px;font-family:var(--mono);letter-spacing:.16em;text-transform:uppercase;
+     color:var(--ink-3);margin:0 0 4px;font-weight:600}
+  .sub{color:var(--ink-2);font-size:13px;margin:0 0 14px;max-width:100ch}
+
+  /* ---------- timeline ---------- */
+  .tl{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:0;overflow-x:auto}
+  .tl-grid{display:grid;grid-template-columns:132px repeat(9,minmax(96px,1fr));min-width:1080px}
+  .tl-head{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);padding:9px 8px;
+           border-bottom:1px solid var(--line);text-align:center;letter-spacing:.04em}
+  .tl-head.lane{text-align:left;padding-left:14px}
+  .tl-head.now{color:var(--wine)}
+  .lane-name{padding:12px 10px 12px 14px;border-bottom:1px solid var(--line);border-right:1px solid var(--line)}
+  .lane-name .ln{font-size:12.5px;font-weight:600}
+  .lane-name .lm{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:2px}
+  .cell{border-bottom:1px solid var(--line);padding:8px 6px;display:flex;flex-direction:column;gap:6px;min-height:62px}
+  .cell + .cell{border-left:1px dashed rgba(255,255,255,.045)}
+  .chip{
+    border-radius:6px;padding:6px 7px;font-size:11.5px;line-height:1.3;
+    background:var(--panel-2);border-left:3px solid var(--pe);color:var(--ink);
+    border-top:1px solid rgba(255,255,255,.05);border-right:1px solid rgba(255,255,255,.05);
+    border-bottom:1px solid rgba(255,255,255,.05);
+  }
+  .chip.rp{border-left-color:var(--rp)} .chip.ro{border-left-color:var(--ro)} .chip.dept{border-left-color:var(--dept)}
+  .chip.reach{border-top-style:dashed;border-right-style:dashed;border-bottom-style:dashed;opacity:.9}
+  .chip.asp{border-style:dotted;border-left-style:solid;opacity:.72}
+  .chip .id{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);letter-spacing:.06em}
+  .chip.dep{box-shadow:0 0 0 1px var(--wine), 0 0 18px -6px var(--wine)}
+  .chip .dep-tag{display:block;font-family:var(--mono);font-size:9px;color:var(--wine);margin-top:3px;letter-spacing:.05em}
+
+  /* ---------- two-column blocks ---------- */
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:1080px){.cols{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .card h3{margin:0 0 4px;font-size:14.5px;font-weight:650;letter-spacing:-.005em}
+  .card .why{color:var(--ink-2);font-size:12.5px;margin:0 0 12px}
+  .card .why b{color:var(--ink)}
+
+  /* the two-subject gate */
+  .gate{display:grid;grid-template-columns:1fr 22px 1fr;align-items:stretch;gap:0;margin-top:6px}
+  .subj{border:1px solid var(--line);border-radius:8px;padding:11px 12px;background:var(--panel-2)}
+  .subj h4{margin:0 0 6px;font-size:12px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+  .subj .state{font-size:13px;font-weight:600;margin-bottom:6px}
+  .subj.ok .state{color:var(--proven)}
+  .subj.no .state{color:var(--absent)}
+  .subj p{margin:0;font-size:11.5px;color:var(--ink-2);line-height:1.45}
+  .subj code{font-family:var(--mono);font-size:10.5px;color:var(--ink);background:rgba(255,255,255,.05);padding:1px 4px;border-radius:3px}
+  .gate-mid{display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;color:var(--ink-3)}
+  .gate-note{margin-top:11px;font-size:12px;color:var(--ink-2);border-left:2px solid var(--wine);padding-left:10px}
+  .gate-note b{color:var(--ink)}
+
+  /* derivation trap */
+  .trap{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+  .trap .box{border:1px solid var(--line);border-radius:8px;padding:11px 12px;background:var(--panel-2)}
+  .trap .box.bad{border-color:var(--wine-dim)}
+  .trap h4{margin:0 0 8px;font-size:11px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+  .keydiag{font-family:var(--mono);font-size:10.5px;line-height:1.75;color:var(--ink-2);white-space:pre}
+  .verdict{margin-top:9px;font-size:11.5px;padding:7px 9px;border-radius:6px;line-height:1.4}
+  .verdict.no{background:rgba(138,67,64,.16);color:#E8B2AE;border:1px solid var(--wine-dim)}
+  .verdict.yes{background:rgba(78,140,106,.14);color:#A8D6BD;border:1px solid #35634C}
+
+  /* seams table */
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+     color:var(--ink-3);font-weight:600;padding:0 10px 8px 0;border-bottom:1px solid var(--line)}
+  td{padding:9px 10px 9px 0;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:top;color:var(--ink-2)}
+  td.who{color:var(--ink);font-weight:600;white-space:nowrap}
+  td.when{font-family:var(--mono);font-size:11.5px;white-space:nowrap;color:var(--ink)}
+  td.when.hot{color:var(--wine);font-weight:700}
+  .was{color:var(--ink-3);text-decoration:line-through}
+
+  /* findings */
+  .find{border-left:3px solid var(--wine);padding:2px 0 2px 13px;margin:0 0 15px}
+  .find:last-child{margin-bottom:0}
+  .find h4{margin:0 0 4px;font-size:13px;font-weight:650}
+  .find p{margin:0;font-size:12.5px;color:var(--ink-2);line-height:1.5}
+  .find code{font-family:var(--mono);font-size:11px;color:var(--ink);background:rgba(255,255,255,.05);padding:1px 4px;border-radius:3px}
+
+  footer{margin-top:30px;padding-top:14px;border-top:1px solid var(--line);
+         font-family:var(--mono);font-size:10.5px;color:var(--ink-3);line-height:1.7}
+  footer b{color:var(--ink-2);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Sketch 071 · corporate / compliance-privacy · wave 3 · ADR 0039 Track B</div>
+  <h1>The agenda as one picture <span class="dim">— asserted vs. exercised</span></h1>
+  <p class="thesis">
+    This department's problem has never been that its controls are wrong. It is that
+    <b>a control that has never run and a control that works look identical on paper</b>.
+    The canvas separates the two: what is <b>proven</b> (has executed at least once),
+    what is <b>asserted</b> (committed, argued, CI-guarded — and never exercised), and
+    what is <b>absent</b>. Every task is placed at the date it moves something from one
+    band to the next.
+  </p>
+  <div class="legend">
+    <span><i class="sw" style="background:var(--proven)"></i> proven — has run</span>
+    <span><i class="sw" style="background:var(--asserted)"></i> asserted — exists, never exercised</span>
+    <span><i class="sw" style="background:var(--absent)"></i> absent</span>
+    <span style="margin-left:10px"><i class="sw" style="background:var(--pe)"></i> privacy-engineering</span>
+    <span><i class="sw" style="background:var(--rp)"></i> regulatory-posture</span>
+    <span><i class="sw" style="background:var(--dept)"></i> department</span>
+    <span><i class="sw" style="background:var(--ro)"></i> regulated-ops ⏸ gated</span>
+    <span style="margin-left:10px">solid = committed · dashed = reach · dotted = aspiration</span>
+  </div>
+</header>
+
+<!-- ============ COUNTERS ============ -->
+<section>
+  <h2>Measured 2026-08-28 against HEAD — not transcribed</h2>
+  <div class="counters">
+    <div class="ct"><div class="k">privacy.pii_definition_count</div>
+      <div class="v">4 <span style="font-size:13px;color:var(--ink-3)">/ 5 guards</span></div>
+      <div class="n"><em>was recorded as 3/4.</em> Sentry is the fourth. Target 1.</div></div>
+    <div class="ct"><div class="k">privacy.consent_call_sites</div>
+      <div class="v">0</div><div class="n">The 564-line schema still has no caller.</div></div>
+    <div class="ct"><div class="k">privacy.erasure_completeness</div>
+      <div class="v">0%</div><div class="n">No producer. Denominator lands 09-18.</div></div>
+    <div class="ct asserted"><div class="k">nf_b.research_store_erasability</div>
+      <div class="v">DECIDED</div><div class="n"><em>ADR 0037 — crypto-shredding, locked 08-28.</em> NF-B stays HELD.</div></div>
+    <div class="ct"><div class="k">compliance.obligation_coverage</div>
+      <div class="v">0%</div><div class="n">Zero "GDPR"/"CCPA" in source. Re-verified.</div></div>
+    <div class="ct"><div class="k">compliance.subprocessor_classification</div>
+      <div class="v">0 / 50</div><div class="n">One host now <em>provably</em> receives personal data.</div></div>
+    <div class="ct"><div class="k">compliance.notice_accuracy</div>
+      <div class="v">1 + 3</div><div class="n">One omitted data flow, three stale brand strings.</div></div>
+    <div class="ct proven"><div class="k">privacy.guard_pass_rate</div>
+      <div class="v">2 running</div><div class="n">The only closing loop — and it guards a path with no callers.</div></div>
+  </div>
+</section>
+
+<!-- ============ TIMELINE ============ -->
+<section>
+  <h2>19 tasks · every one carries a doneability and a close_time</h2>
+  <p class="sub">
+    Lanes are teams. The <span style="color:var(--wine);font-weight:600">glowing chip on 09-11</span> is not an internal
+    estimate — it is the date Media &amp; Brand's customer research is scheduling against, this same wave.
+  </p>
+  <div class="tl">
+    <div class="tl-grid">
+      <div class="tl-head lane">team / lane</div>
+      <div class="tl-head now">Sep 04</div><div class="tl-head">Sep 11</div><div class="tl-head">Sep 18</div>
+      <div class="tl-head">Sep 25</div><div class="tl-head">Sep 30</div><div class="tl-head">Oct 02</div>
+      <div class="tl-head">Oct 09</div><div class="tl-head">Oct 16</div><div class="tl-head">Oct 23–30</div>
+
+      <!-- privacy-engineering -->
+      <div class="lane-name">
+        <div class="ln">privacy-engineering</div>
+        <div class="lm">exists · 11 rows</div>
+      </div>
+      <div class="cell">
+        <div class="chip"><span class="id">B1</span> Re-measure the PII census — all four citations drifted in 4 days</div>
+        <div class="chip"><span class="id">E2</span> Is <code>guest_identifier_pepper</code> provisioned at all?</div>
+      </div>
+      <div class="cell">
+        <div class="chip dep"><span class="id">A1</span> Consent-gate SPEC v1 — both subjects, zero follow-up questions
+          <span class="dep-tag">▸ MEDIA &amp; BRAND DEPENDS ON THIS DATE</span></div>
+        <div class="chip"><span class="id">B2</span> Classify Sentry: 4th PII definition + personal-data subprocessor</div>
+      </div>
+      <div class="cell">
+        <div class="chip"><span class="id">A2</span> Customer-approval register — record design (proposed, not applied)</div>
+        <div class="chip"><span class="id">E1</span> Store inventory from the corpus walk <i>already running in CI</i></div>
+      </div>
+      <div class="cell">
+        <div class="chip"><span class="id">B3</span> One <code>pii</code> module + <code>check_single_pii_definition.sh</code>; exit 2 when it can't check</div>
+      </div>
+      <div class="cell"></div>
+      <div class="cell">
+        <div class="chip"><span class="id">D1</span> Crypto-shred keys must be <b>stored, not derived</b> — design note, attacked by architecture-review</div>
+        <div class="chip"><span class="id">A3</span> Gate denials become countable (reason codes)</div>
+        <div class="chip reach"><span class="id">B4</span> <code>log_safety.py</code> redacts nothing — fix or register the gap</div>
+      </div>
+      <div class="cell">
+        <div class="chip"><span class="id">D4</span> One receipt schema for both a tombstone <i>and</i> a shred</div>
+      </div>
+      <div class="cell">
+        <div class="chip reach"><span class="id">D2</span> Shred-survives-restore — one drill, shared with SRE</div>
+      </div>
+      <div class="cell">
+        <div class="chip asp"><span class="id">D3</span> Name the NF-B training paths while there are zero</div>
+        <div class="chip reach"><span class="id">E3</span> First end-to-end erasure drill <i>(needs a caller — Product's)</i></div>
+      </div>
+
+      <!-- regulatory-posture -->
+      <div class="lane-name">
+        <div class="ln">regulatory-posture</div>
+        <div class="lm">new · 0% coverage · 4 rows</div>
+      </div>
+      <div class="cell"></div>
+      <div class="cell">
+        <div class="chip rp"><span class="id">C3</span> <code>Privacy.tsx</code> documents five data flows and omits error tracking entirely</div>
+      </div>
+      <div class="cell"></div>
+      <div class="cell"></div>
+      <div class="cell">
+        <div class="chip rp"><span class="id">C1</span> Obligation register v1 — 10 duties → a control or a named gap</div>
+      </div>
+      <div class="cell"></div>
+      <div class="cell">
+        <div class="chip rp"><span class="id">C2</span> 50/50 subprocessor classification · <b>unknown = FAIL</b></div>
+      </div>
+      <div class="cell">
+        <div class="chip rp reach"><span class="id">C4</span> Notice-accuracy as a per-PR check, not a comment (answers DO-7)</div>
+      </div>
+      <div class="cell"></div>
+
+      <!-- department / regulated-ops -->
+      <div class="lane-name">
+        <div class="ln">department · regulated-ops ⏸</div>
+        <div class="lm">1 row, and it is the whole point of gating</div>
+      </div>
+      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell">
+        <div class="chip dept"><span class="id">F1</span> First-ever regulated-operations trigger check — 5 minutes, quarterly</div>
+      </div>
+      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ THE TWO FINDINGS ============ -->
+<section class="cols">
+
+  <div class="card">
+    <h3>The gate is two gates — and the blocking half is the one nobody built</h3>
+    <p class="why">
+      The department has treated "the consent gate" as one thing. Media &amp; Brand gates on
+      <b>two subjects</b>, and the good schema solves only one of them.
+    </p>
+    <div class="gate">
+      <div class="subj ok">
+        <h4>Guests</h4>
+        <div class="state">ASSERTED — schema exists</div>
+        <p>Consent as a versioned record: <code>consent_purpose</code>, <code>consent_notice_version</code>,
+        <code>consent_captured_via</code> (CHECK, 4 channels), <code>consent_withdrawn_at</code>. Erasure as a
+        tombstone. 564 lines, argued in-file, CI-guarded — and <b>zero call sites</b>.</p>
+      </div>
+      <div class="gate-mid">vs</div>
+      <div class="subj no">
+        <h4>Customers (restaurants)</h4>
+        <div class="state">ABSENT — no record at all</div>
+        <p>Public web presence may only be reviewed with the restaurant's explicit approval.
+        The approval register <b>does not exist</b>, so today the correct answer to every
+        research request is <code>no</code>. This is the half that blocks them.</p>
+      </div>
+    </div>
+    <div class="gate-note">
+      <b>Why this is good news for a schedule:</b> the blocking half is B2B. No ML cost, no
+      append-only tension, no NF-B dependency — a record, a purpose vocabulary, a withdrawal
+      path. It is small, and nobody had said so in one sentence before this canvas.
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>The derivation trap — this repo's only key precedent cannot shred</h3>
+    <p class="why">
+      ADR 0037 locked crypto-shredding: <b>per-guest keys, erasure = key destruction</b>. An
+      implementer will reach for the one key-management pattern already in the tree. It is
+      the wrong one, and the reason is not obvious.
+    </p>
+    <div class="trap">
+      <div class="box bad">
+        <h4>What exists — <code>guest_pepper()</code></h4>
+        <div class="keydiag">vault: guest_identifier_pepper
+   │  (one master secret)
+   ▼  HMAC(restaurant_id, master)
+key(restaurant A)   key(restaurant B)
+   │                    │
+   ▼                    ▼
+ hashes               hashes</div>
+        <div class="verdict no">Derived. You cannot forget one output of a deterministic
+        function — destroying the master shreds <b>every</b> subject under it. Fine for a
+        pepper. Fatal for erasure.</div>
+      </div>
+      <div class="box">
+        <h4>What ADR 0037 needs</h4>
+        <div class="keydiag">KEK
+   │
+   ▼  wraps
+key(guest 1) key(guest 2) key(guest 3)
+   │            ✂ destroyed   │
+   ▼                          ▼
+ rows          rows = noise  rows</div>
+        <div class="verdict yes">Stored, not derived — one destroyable key per subject.
+        Structurally the opposite of the precedent, which is exactly why it has to be
+        written down before anyone builds it.</div>
+      </div>
+    </div>
+    <div class="gate-note" style="margin-top:12px">
+      <b>The question underneath (D2):</b> destroying a key in the live database does not
+      destroy its copy in a PITR window. Crypto-shredding's real advantage is that the
+      <i>backup</i> becomes noise too — but only if the key was never in the backup in the
+      same restorable form. That is a placement decision, and it is the same drill SRE
+      already owes for <code>days_since_verified_restore</code>.
+    </div>
+  </div>
+
+</section>
+
+<!-- ============ SEAMS ============ -->
+<section>
+  <h2>The seams — what this department owes, now with dates</h2>
+  <p class="sub">Wave 2 recorded these as prose states. Wave 3's contribution is that four of the six carry a date, and one moved from "unanswered" to "locked".</p>
+  <table>
+    <thead><tr><th style="width:20%">Unit</th><th style="width:30%">What they need from us</th><th style="width:22%">2026-08-24</th><th style="width:28%">2026-08-28</th></tr></thead>
+    <tbody>
+      <tr><td class="who">customer-relationship-research</td><td>The consent gate as a callable check</td>
+          <td class="was">not built — they are blocked</td>
+          <td class="when hot">SPEC 2026-09-11 · record 09-18</td></tr>
+      <tr><td class="who">commercial-workforce-agreements</td><td>DPA/BAA Annex content that is evidenceable</td>
+          <td class="was">not written</td>
+          <td class="when">register v1 2026-09-30</td></tr>
+      <tr><td class="who">taste-fingerprint</td><td>What happens to NF-B on erasure</td>
+          <td class="was">unanswered</td>
+          <td class="when">ADR 0037 · key design 10-02</td></tr>
+      <tr><td class="who">security</td><td>A single definition of PII to protect</td>
+          <td class="was">3 definitions, 4 guards</td>
+          <td class="when">4 / 5 measured · one module 09-25</td></tr>
+      <tr><td class="who">reliability-sre</td><td>— <span style="color:var(--ink-3)">(new seam)</span></td>
+          <td class="was">not a dependency</td>
+          <td class="when">shared restore/shred drill 10-16</td></tr>
+      <tr><td class="who">guest-experience</td><td>— <span style="color:var(--ink-3)">(new seam)</span></td>
+          <td class="was">not a dependency</td>
+          <td class="when">readiness dossier ≠ key design</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ FINDINGS ============ -->
+<section class="cols">
+  <div class="card">
+    <h3>Found while writing this agenda</h3>
+    <div class="find">
+      <h4>A fourth PII definition, shipping today</h4>
+      <p><code>AuthContext.tsx:208-218</code> sends the signed-in user's <b>email</b>, name and
+      restaurant id to Sentry on every authenticated session. <code>beforeSend</code> strips exactly
+      two things — the <code>authorization</code> and <code>cookie</code> headers. That is an
+      unwritten definition: <i>auth headers are sensitive; an email address is not</i> — and it
+      disagrees with <code>research_tasks.py</code>, for which an email <b>is</b> PII, inside the same product.</p>
+    </div>
+    <div class="find">
+      <h4>A public promise with a hole in it</h4>
+      <p><code>Privacy.tsx</code> enumerates five flows — cookies, Google sign-in, integrations,
+      product analytics, partner sharing. <b>Error tracking is not among them.</b> The analytics
+      section's careful list of what leaves the browser is scoped to interaction telemetry, while a
+      second exporter ships an email address.</p>
+    </div>
+    <div class="find">
+      <h4>Every citation this department owns had drifted</h4>
+      <p>Four days after they were written: <code>constraint_engine.py</code> :28→:52,
+      applied :113→:137. <code>provider_communication_agent.py</code> applied :725→:833.
+      <code>research_tasks.py</code> has <b>two</b> call sites, not one. One of four held. A
+      department whose entire product is citations cannot keep them by hand.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>The cheapest large win — and it is already running</h3>
+    <p class="why">
+      The store-inventory loop is blocked on a <code>table.created</code> publisher that the card
+      declares as a gap. It does not need to be built.
+    </p>
+    <div class="keydiag" style="background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:12px;white-space:pre-wrap">check_new_tables_are_locked_down.py
+  ├─ already walks the whole migration corpus
+  ├─ already enumerates every CREATE TABLE in public
+  ├─ already wired into CI  (ci.yml:281-283, if: !cancelled())
+  └─ built for OD-72 / OD-73 — a <b>security</b> ratchet
+
+        ▼  read it for a purpose neither OD anticipated
+
+privacy.store_inventory_coverage  →  the erasure denominator,
+<b>discovered, not declared</b>  (unclassified counts as FAIL)</div>
+    <div class="gate-note" style="margin-top:12px">
+      Same move as the subprocessor register: <code>EXTERNAL_CONNECTIONS.md</code> becomes the
+      register by being <i>classified</i>, not rewritten. This department's best work is
+      reading artifacts other people already maintain.
+    </div>
+  </div>
+</section>
+
+<!-- ============ LOCKS ============ -->
+<section>
+  <div class="card" style="border-color:var(--wine-dim)">
+    <h3 style="color:var(--wine)">Locks respected, stated out loud</h3>
+    <p class="why" style="margin-bottom:8px">
+      <b>NF-B stays HELD</b> (ADR 0029, zero callers). Everything in §D is a document; ADR 0037 is
+      explicit that nothing is built while NF-B is held. <b>The pricing model is deferred and
+      brand/landing visuals are held</b> (founder re-confirmed 2026-08-28) — the "WineOps" strings in
+      <code>Privacy.tsx</code> are a stale product name in a <i>legal notice</i>, not a brand-visual
+      decision, and the fix stays inside that line. <b>No open fork is resolved here:</b> capture
+      ownership, CORP-F2, CORP-F4, the signature veto and the red-team referral all remain the
+      founder's, and the agenda is built so work proceeds without pre-empting any of them.
+    </p>
+  </div>
+</section>
+
+<footer>
+  <b>Sketch 071</b> · throwaway thinking surface, not a product · self-contained, no external assets<br>
+  Sources: <b>compliance-privacy-agenda-full.md</b> (2026-08-28) · charter · loops · directive · schedule · agent-stack ·
+  <b>00-index/cards.json</b>, <b>loops.json</b> · ADR 0006 / 0029 / 0035 / 0037 / 0039 · GENERATION_BRIEF §8<br>
+  All counters re-verified against HEAD on 2026-08-28. Where a number differs from wave 2's, the wave-2 number is shown struck through rather than quietly replaced.
+</footer>
+
+</div>
+</body>
+</html>

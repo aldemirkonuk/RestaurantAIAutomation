@@ -86,12 +86,14 @@ telemetry ask is an agenda-full question to R&M. Gap rows:
 | Gap | Why it is a gap |
 |---|---|
 | `nf_a.skill_id` does not exist | The entire firing signal; "currently undefined, not zero — undefined defaults to keep" (charter §Metrics). The card's ordering follows the charter's one good ordering: telemetry can be built before the first skill exists |
-| Nothing to reap | registry_size = 0 — the reaper's design being ready *before* inventory exists is the point, not a problem |
+| Inventory exists, telemetry still does not | registry_size = 4 since 2026-08-28; `run_card.py --agent staleness-reaper` (ADR 0038) reports all 4 as UNMEASURABLE — exactly the escalation this card demands, now emitted by a running job instead of prose |
 | OD-25 unresolved | The weekly job runs under a carry, and every run's output says so, so the contested ownership is visible in the artifact rather than settled by drift |
 
 ## 6. Evidence today
 
-- **NEW — everything.** The charter grades the team NEW and nothing found here
-  upgrades it: no telemetry, no review, no deprecation path, no inventory.
+- **PARTIAL since 2026-08-28.** The staleness review runs
+  (`run_card.py --agent staleness-reaper`, ADR 0038) over a 4-skill inventory
+  and reports every row UNMEASURABLE — the honest output the charter demands.
+  Still NEW: the telemetry itself (`nf_a.skill_id`), deprecation, deletion.
 - **EXISTS — the two patterns to copy.** The schema-parity cron (shape of the
   job) and the five CI guards (shape of the enforcement).

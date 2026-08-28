@@ -36,14 +36,14 @@ triggers:
   - topic: migration.merged      # publisher: NONE (gap — nothing emits on a migration; PR review only)
 consumes:
   - neural_footprint_event rows — publisher: model-client.service.ts:413 (gateway), spend_logger.py:406 (Python)
-  - supabase/migrations/ — publisher: "[[data-charter]]" (they own the DDL; we own the contract)
+  - 'supabase/migrations/ — publisher: "[[data-charter]]" (they own the DDL; we own the contract)'
   - api_spend and decision_log, the two pre-contract writers — publisher: spend_logger.py, base_agent.py:743-784
   - the provider invoice — publisher: NONE (gap — no feed; reconciliation depends on a human-fetched bill)
 emits:
   - nf_a.event_completeness and the callsite ledger — consumer: "[[research-math-agenda-board]]"
-  - a same-day escalation when the private-telemetry-table count reaches 2 — consumer: "[[research-math-charter]]", then "[[decision-office-charter]]"
+  - 'a same-day escalation when the private-telemetry-table count reaches 2 — consumer: "[[research-math-charter]]", then "[[decision-office-charter]]"'
   - OD-11 session inputs — columns, partial indexes, retention, both owners named — consumer: "[[data-charter]]"
-  - nf_a events (task_type: nf_contract_audit) — consumer: this team's own contract
+  - 'nf_a events (task_type: nf_contract_audit) — consumer: this team''s own contract'
 routing_class: mechanical        # scan, count, diff against a declared contract; the schema judgment calls belong to the OD-11 session, not to an agent
 quality_bar: "completeness is recomputed from the table, never inferred from the callsite list; NONE (gap) — ADR 0017 defines no verdict basis for a contract audit"
 autonomy:

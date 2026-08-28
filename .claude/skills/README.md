@@ -3,9 +3,12 @@
 Skills live here — auto-discovered by Claude Code, committed, and reviewable in PRs
 ([decision 2026-08-24](../../.planning/decisions/OPEN-DECISIONS.md), Resolved table).
 
-**Current state: zero committed skills.** The only `SKILL.md` on disk
-(`.agents/skills/railway-config/SKILL.md`) is gitignored via `.gitignore:100` as
-CLI-installed vendor tooling — `git ls-files` returns no `SKILL.md` at all.
+**Current state: 4 committed skills** (first admitted 2026-08-28 through the §3.3
+gate — `fleet-census`, `harness-contract-audit`, `model-pin-census`,
+`registry-index-refresh`; each wraps `scripts/agents/run_card.py`). The census is
+`python3 scripts/agents/run_card.py --agent registry-clerk`, never this paragraph.
+(The prior state — zero committed, one gitignored vendor `SKILL.md` at
+`.agents/skills/railway-config/` — held from 2026-08-24 to 2026-08-28.)
 
 ## Adding one
 
