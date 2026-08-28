@@ -88,9 +88,28 @@ ADR and §8 are the plan; no wave file is written under this ADR's commit).
   after wave 3 lands, the agenda-staleness watcher (`watch_loops.py`) becomes the
   live check that agendas do not re-rot into provisional.
 
+## Corrections — 2026-08-28 audit (executed the same day this plan was)
+
+- **Numbers:** "198 agenda files still PROVISIONAL" was neither of the true
+  counts (194 under 01-org, 202 with advisory). Post-execution the honest number
+  is red-team's: the wave rewrote 24 department-level pairs and the staleness
+  cliff **split** — 154 files dated 2026-08-24, 46 dated 2026-08-28 — rather
+  than closing; the per-unit first-promise check red-team filed (F-W1) is the
+  counter-pressure. "Five items" vs "four debts": Track A is five items — four
+  architecture debts + the A5 rubric.
+- **A1's done-condition tightened:** "OD-03 is a Resolved row" must also close
+  **OD-52's reframe** — the bake-off's own F-0 finding confirmed empirically
+  that `BaseAgent` is the substrate under all three candidates, so the
+  resolving ADR must resolve OD-03 *as reframed by OD-52* and mark both.
+- The "40 unguarded endpoints" example in §Track B was one of four unreconciled
+  denominators; security's wave pass measured the truth (40 class-unguarded →
+  34 intentional → residual 6, all `auth.controller.ts`) and both security's
+  and engineering's agendas schedule the single reproducible census script.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-08-28 | Founder (AskUserQuestion, in-session) | Scope, canvas form (HTML sketches), parallel sequencing, subagent crew, both locks kept — all picked |
 | 2026-08-28 | — | Created |
+| 2026-08-28 | Adversarial audit (founder-ordered) | WOUNDED (minor) — corrections above; plan executed same day: 24/24 agendas + canvases, A1–A4 delivered |

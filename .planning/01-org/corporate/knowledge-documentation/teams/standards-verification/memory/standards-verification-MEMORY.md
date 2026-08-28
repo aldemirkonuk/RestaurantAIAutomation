@@ -5,3 +5,4 @@
 > frontmatter on every fact.
 
 - [Guard run 2026-08-28: decision-claims=PASS, citation-pairing=PASS, agent-card-contract=PASS](2026-08-28-guard-run.md)
+- [Guard run 2026-08-28: decision-claims=PASS, citation-pairing=PASS, agent-card-contract=FAIL](2026-08-28-guard-run.md)
