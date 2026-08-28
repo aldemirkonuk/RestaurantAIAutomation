@@ -38,8 +38,41 @@ logger = logging.getLogger(__name__)
 # Sentry holding an identity.
 PII_USER_KEYS = ("email", "username", "name", "ip_address")
 
+# Identity keys stripped from every *free-form* container an event can carry
+# (`extra`, `request.data`, each entry of `contexts`). Wider than
+# PII_USER_KEYS because these bags are assembled ad hoc by callers and nothing
+# types them. Kept byte-identical with PII_KEYS in the two TypeScript scrubbers.
+PII_KEYS = (
+    "email",
+    "name",
+    "username",
+    "first_name",
+    "last_name",
+    "phone",
+    "phone_number",
+    "ip_address",
+    "address",
+    "password",
+    "ssn",
+)
+_PII_KEY_SET = frozenset(PII_KEYS)
+
 # Request headers that carry a credential rather than a description.
 SENSITIVE_HEADERS = ("authorization", "cookie", "x-api-key", "proxy-authorization")
+
+
+def _scrub_pii_keys(obj: Any) -> None:
+    """
+    Drop every PII key from one free-form mapping, in place, case-insensitively.
+
+    Non-dict input is ignored rather than rejected: `before_send` raising would
+    drop the event and hide the very error it was reporting.
+    """
+    if not isinstance(obj, dict):
+        return
+    for key in list(obj):
+        if isinstance(key, str) and key.lower() in _PII_KEY_SET:
+            obj.pop(key, None)
 
 
 def scrub_sentry_event(event: Dict, hint: Optional[Dict] = None) -> Optional[Dict]:
@@ -52,6 +85,13 @@ def scrub_sentry_event(event: Dict, hint: Optional[Dict] = None) -> Optional[Dic
     `set_user` signature keeps identity out at the source. This catches whatever
     reached the event by a path neither of those covers.
 
+    The containers covered here are the contract the three runtimes share, and
+    scripts/check_sentry_pii_scope.py fails the build if one of them stops
+    covering a container the others do. `extra` and `contexts` are scrubbed even
+    though no caller in this service currently puts identity there: the whole
+    point of a last line of defence is that it does not depend on what today's
+    callers happen to do.
+
     `hint` is accepted and ignored — sentry_sdk always passes it.
     """
     request = event.get("request")
@@ -62,11 +102,19 @@ def scrub_sentry_event(event: Dict, hint: Optional[Dict] = None) -> Optional[Dic
                 if name.lower() in SENSITIVE_HEADERS:
                     headers.pop(name, None)
         request.pop("cookies", None)
+        _scrub_pii_keys(request.get("data"))
 
     user = event.get("user")
     if isinstance(user, dict):
         for key in PII_USER_KEYS:
             user.pop(key, None)
+
+    _scrub_pii_keys(event.get("extra"))
+
+    contexts = event.get("contexts")
+    if isinstance(contexts, dict):
+        for ctx in contexts.values():
+            _scrub_pii_keys(ctx)
 
     return event
 

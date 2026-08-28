@@ -13,6 +13,7 @@ from unittest.mock import patch
 import pytest
 
 from utils.sentry_client import (
+    PII_KEYS,
     PII_USER_KEYS,
     SENSITIVE_HEADERS,
     SentryClient,
@@ -54,6 +55,50 @@ class TestScrubSentryEvent:
         event = scrub_sentry_event({"request": {"cookies": {"session": "abc"}}})
         assert "cookies" not in event["request"]
 
+    def test_strips_identity_from_extra_request_body_and_contexts(self):
+        # The TypeScript scrubbers always did this; the Python one did not,
+        # which made three "identical" scrubbers three different rules.
+        event = scrub_sentry_event(
+            {
+                "extra": {
+                    "email": "chef@restaurant.example",
+                    "phone": "555-0100",
+                    "order_id": "ord-9",
+                },
+                "request": {
+                    "data": {"name": "Ada Chef", "password": "hunter2", "note": "keep"}
+                },
+                "contexts": {
+                    "order": {"total": 42},
+                    "account": {
+                        "first_name": "Ada",
+                        "last_name": "Chef",
+                        "plan": "pro",
+                    },
+                },
+            }
+        )
+        assert event["extra"] == {"order_id": "ord-9"}
+        assert event["request"]["data"] == {"note": "keep"}
+        assert event["contexts"]["order"] == {"total": 42}
+        assert event["contexts"]["account"] == {"plan": "pro"}
+
+    @pytest.mark.parametrize("key", PII_KEYS)
+    def test_removes_each_pii_key_from_extra(self, key):
+        event = scrub_sentry_event({"extra": {key: "sensitive", "kept": "yes"}})
+        assert event["extra"] == {"kept": "yes"}
+
+    def test_removes_pii_keys_whatever_the_casing(self):
+        event = scrub_sentry_event({"extra": {"Email": "chef@restaurant.example"}})
+        assert event["extra"] == {}
+
+    def test_survives_non_dict_free_form_containers(self):
+        # `extra` and a context are caller-assembled; nothing types them.
+        event = scrub_sentry_event(
+            {"extra": "not-a-dict", "contexts": {"trace": None}, "request": {"data": 7}}
+        )
+        assert event["extra"] == "not-a-dict"
+
     def test_accepts_the_hint_sentry_always_passes(self):
         assert scrub_sentry_event({"user": {"id": "u"}}, {"exc_info": None}) is not None
 
@@ -88,10 +133,29 @@ class TestSetUser:
                 client.set_user("user-1", email="chef@restaurant.example")
 
 
-def test_scrub_list_matches_the_typescript_runtimes():
+def test_scrub_lists_match_the_typescript_runtimes():
     """
-    Canonical list, kept identical in three places by
+    Canonical lists, kept identical in three places by
     scripts/check_sentry_pii_scope.py. Asserted here as well so a one-sided
     edit fails the unit suite too, not only the guard.
     """
     assert PII_USER_KEYS == ("email", "username", "name", "ip_address")
+    assert sorted(PII_KEYS) == [
+        "address",
+        "email",
+        "first_name",
+        "ip_address",
+        "last_name",
+        "name",
+        "password",
+        "phone",
+        "phone_number",
+        "ssn",
+        "username",
+    ]
+    assert sorted(SENSITIVE_HEADERS) == [
+        "authorization",
+        "cookie",
+        "proxy-authorization",
+        "x-api-key",
+    ]

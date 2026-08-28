@@ -42,10 +42,18 @@ WHAT IT CHECKS
      and not in the type or signature that describes one. The type check is the
      load-bearing half: a narrowed type makes a re-introduction a compile
      error, which a scrubber cannot do.
-  3. The three runtimes' identity field lists have not drifted apart. Same
-     reasoning as scripts/sync_commitment_patterns.py: two copies of one rule
-     with no shared module is one edit away from being two different rules,
-     and nothing else in CI would notice.
+  3. The three runtimes' key lists have not drifted apart -- every list they
+     share (PII_USER_KEYS, PII_KEYS, SENSITIVE_HEADERS). Same reasoning as
+     scripts/sync_commitment_patterns.py: two copies of one rule with no shared
+     module is one edit away from being two different rules, and nothing else
+     in CI would notice.
+  4. The three scrubbers cover the same *containers*. Agreeing on the key list
+     is not the same as agreeing on where the keys are looked for, and the
+     original version of this guard checked only the former: for a while the
+     Python scrubber shared PII_USER_KEYS with the TypeScript ones while
+     silently not scrubbing `extra` or `contexts` at all, and the guard passed.
+     The container set is therefore pinned to REQUIRED_CONTAINERS as well as
+     compared across runtimes, so "all three dropped it together" fails too.
 
 Exit 0 pass, 1 violation, 2 cannot check.
 """
@@ -93,15 +101,55 @@ IDENTITY_FIELDS = (
     "full_name",
 )
 
-# The canonical scrub list, and the three files that must agree on it.
-PII_USER_KEYS_DECL_RE = re.compile(
-    r"PII_USER_KEYS\s*[:=]\s*[\(\[]([^\)\]]*)[\)\]]", re.DOTALL
-)
+# The canonical scrub lists, and the three files that must agree on them.
+# One declaration per runtime is the source of truth for that runtime; this
+# guard is what makes the three declarations one rule.
+SHARED_LISTS = ("PII_USER_KEYS", "PII_KEYS", "SENSITIVE_HEADERS")
 DRIFT_FILES = (
     "apps/web/src/lib/error-tracking.ts",
     "apps/api-gateway/src/common/error-tracking/sentry.service.ts",
     "services/agent-orchestrator/utils/sentry_client.py",
 )
+
+# The scrubber entry point in each runtime, and where its body starts.
+SCRUBBER_DECL_RE = re.compile(
+    r"(?:function\s+scrubSentryEvent\b|def\s+scrub_sentry_event\b)"
+)
+
+# Every container of an event that a scrubber must reach into. Pinned, not
+# merely compared across runtimes: three runtimes that all stopped scrubbing
+# `contexts` would still agree with each other.
+#
+# Detected per language from the scrubber body. The patterns are deliberately
+# shape-agnostic (`.get(...)` / `.pop(...)` / property access) so that a
+# rewrite of the scrubbing style does not read as a dropped container.
+CONTAINER_PATTERNS = {
+    "user": {
+        "ts": r"event\.user\b",
+        "py": r"""event\.(?:get|pop)\(\s*['"]user['"]""",
+    },
+    "extra": {
+        "ts": r"event\.extra\b",
+        "py": r"""event\.(?:get|pop)\(\s*['"]extra['"]""",
+    },
+    "contexts": {
+        "ts": r"event\.contexts\b",
+        "py": r"""event\.(?:get|pop)\(\s*['"]contexts['"]""",
+    },
+    "request.headers": {
+        "ts": r"request\??\.headers\b",
+        "py": r"""request\.(?:get|pop)\(\s*['"]headers['"]""",
+    },
+    "request.cookies": {
+        "ts": r"request\??\.cookies\b",
+        "py": r"""request\.(?:get|pop)\(\s*['"]cookies['"]""",
+    },
+    "request.data": {
+        "ts": r"request\??\.data\b",
+        "py": r"""request\.(?:get|pop)\(\s*['"]data['"]""",
+    },
+}
+REQUIRED_CONTAINERS = frozenset(CONTAINER_PATTERNS)
 
 INIT_CALL_RE = re.compile(r"\b(?:Sentry\.init|sentry_sdk\.init)\s*\(")
 SET_USER_CALL_RE = re.compile(r"\b(?:Sentry\.setUser|sentry_sdk\.set_user)\s*\(")
@@ -302,36 +350,218 @@ def check_user_scope(files: list[Path]) -> tuple[list[str], int]:
     return problems, checked
 
 
-def check_no_drift() -> list[str]:
-    """The three runtimes' identity field lists are the same list."""
-    lists: dict[str, tuple[str, ...]] = {}
-    for rel in DRIFT_FILES:
+def _declared_list(text: str, name: str) -> tuple[str, ...] | None:
+    """
+    The string members of a `NAME = [...]` / `NAME = (...)` / `NAME = new Set([...])`
+    declaration, sorted so member order is not treated as drift.
+    """
+    match = re.search(
+        rf"\b{name}\s*[:=]\s*(?:new\s+Set\s*\(\s*)?[\(\[]([^\)\]]*)[\)\]]",
+        text,
+        re.DOTALL,
+    )
+    if not match:
+        return None
+    return tuple(sorted(re.findall(r"""['"]([^'"]+)['"]""", match.group(1))))
+
+
+def _scrubber_body(rel: str, text: str) -> str:
+    """
+    The body of the runtime's scrub function, comment-masked.
+
+    Scoped to the function rather than the whole file so that a mention of
+    `event.extra` in a neighbouring helper cannot stand in for the scrubber
+    actually reaching into it.
+    """
+    match = SCRUBBER_DECL_RE.search(text)
+    if not match:
+        raise CannotCheck(f"no scrubber function found in {rel}")
+    if rel.endswith(".py"):
+        # Python has no closing brace: run to the next top-level statement.
+        rest = text[match.start() :]
+        after_signature = rest.index("\n")
+        end = re.search(r"\n(?=\S)", rest[after_signature:])
+        if end is None:
+            return rest
+        return rest[: after_signature + end.start()]
+    open_index = text.find("{", match.end())
+    if open_index == -1:
+        raise CannotCheck(f"scrubber function in {rel} has no body")
+    return _balanced_block(text, open_index)
+
+
+def _containers_scrubbed(rel: str, body: str) -> frozenset[str]:
+    """Which event containers the scrubber body reaches into."""
+    lang = "py" if rel.endswith(".py") else "ts"
+    return frozenset(
+        name
+        for name, patterns in CONTAINER_PATTERNS.items()
+        if re.search(patterns[lang], body)
+    )
+
+
+def check_no_drift(drift_files: tuple[str, ...] = DRIFT_FILES) -> list[str]:
+    """
+    The three runtimes implement one contract: same key lists, same containers.
+
+    Both halves matter. A shared key list with different containers is the
+    asymmetry this check was extended to catch — `email` in the same list in
+    all three files means nothing if only two of them look in `extra` for it.
+    """
+    problems: list[str] = []
+    lists: dict[str, dict[str, tuple[str, ...]]] = {name: {} for name in SHARED_LISTS}
+    containers: dict[str, frozenset[str]] = {}
+
+    for rel in drift_files:
         path = REPO / rel
         if not path.is_file():
             raise CannotCheck(f"expected scrubber file is missing: {rel}")
-        match = PII_USER_KEYS_DECL_RE.search(
-            path.read_text(encoding="utf-8", errors="replace")
-        )
-        if not match:
-            raise CannotCheck(f"no PII_USER_KEYS declaration found in {rel}")
-        keys = tuple(sorted(re.findall(r"""['"]([^'"]+)['"]""", match.group(1))))
-        if not keys:
-            raise CannotCheck(f"PII_USER_KEYS in {rel} parsed as empty")
-        lists[rel] = keys
+        text = _mask_noncode(path.read_text(encoding="utf-8", errors="replace"))
+        for name in SHARED_LISTS:
+            keys = _declared_list(text, name)
+            if keys is None:
+                raise CannotCheck(f"no {name} declaration found in {rel}")
+            if not keys:
+                raise CannotCheck(f"{name} in {rel} parsed as empty")
+            lists[name][rel] = keys
+        containers[rel] = _containers_scrubbed(rel, _scrubber_body(rel, text))
 
-    distinct = set(lists.values())
-    if len(distinct) > 1:
-        detail = "\n".join(f"    {rel}: {list(keys)}" for rel, keys in lists.items())
-        return [
-            "PII_USER_KEYS has drifted between runtimes — one rule, "
-            f"{len(distinct)} definitions:\n{detail}"
-        ]
-    return []
+    for name in SHARED_LISTS:
+        distinct = set(lists[name].values())
+        if len(distinct) > 1:
+            detail = "\n".join(
+                f"    {rel}: {list(keys)}" for rel, keys in lists[name].items()
+            )
+            problems.append(
+                f"{name} has drifted between runtimes — one rule, "
+                f"{len(distinct)} definitions:\n{detail}"
+            )
+
+    if len(set(containers.values())) > 1:
+        detail = "\n".join(
+            f"    {rel}: {sorted(found)}" for rel, found in containers.items()
+        )
+        problems.append(
+            "the scrubbers do not cover the same event containers — same key "
+            f"list, different reach:\n{detail}"
+        )
+    for rel, found in containers.items():
+        missing = REQUIRED_CONTAINERS - found
+        if missing:
+            problems.append(
+                f"{rel} — scrubber does not reach {sorted(missing)}; "
+                "every container in REQUIRED_CONTAINERS must be scrubbed "
+                "(widen the contract deliberately, do not narrow it silently)"
+            )
+    return problems
 
 
 # ---------------------------------------------------------------------------
 # Self-test — prove the guard fails on the shape it exists to catch
 # ---------------------------------------------------------------------------
+
+
+_FIXTURE_LISTS_TS = """
+const PII_USER_KEYS = ['email', 'username', 'name', 'ip_address']
+const PII_KEYS = new Set(['email', 'name', 'username', 'first_name', 'last_name',
+  'phone', 'phone_number', 'ip_address', 'address', 'password', 'ssn'])
+const SENSITIVE_HEADERS = new Set(['authorization', 'cookie', 'x-api-key',
+  'proxy-authorization'])
+"""
+
+_FIXTURE_SCRUBBER_TS = """
+export function scrubSentryEvent(event) {
+  if (event.request) {
+    const headers = event.request.headers
+    delete event.request.cookies
+  }
+  if (event.user) { drop(event.user) }
+  scrubPiiKeys(event.extra)
+  scrubPiiKeys(event.request?.data)
+  if (event.contexts) { each(event.contexts) }
+  return event
+}
+"""
+
+_FIXTURE_LISTS_PY = """
+PII_USER_KEYS = ("email", "username", "name", "ip_address")
+PII_KEYS = ("email", "name", "username", "first_name", "last_name", "phone",
+            "phone_number", "ip_address", "address", "password", "ssn")
+SENSITIVE_HEADERS = ("authorization", "cookie", "x-api-key", "proxy-authorization")
+"""
+
+# The shape the audit actually found: identical key lists, three fewer
+# containers. This is what the guard used to pass.
+_FIXTURE_SCRUBBER_PY_PRE_FIX = """
+def scrub_sentry_event(event, hint=None):
+    request = event.get("request")
+    if isinstance(request, dict):
+        headers = request.get("headers")
+        request.pop("cookies", None)
+    user = event.get("user")
+    return event
+"""
+
+_FIXTURE_SCRUBBER_PY_FIXED = """
+def scrub_sentry_event(event, hint=None):
+    request = event.get("request")
+    if isinstance(request, dict):
+        headers = request.get("headers")
+        request.pop("cookies", None)
+        _scrub_pii_keys(request.get("data"))
+    user = event.get("user")
+    _scrub_pii_keys(event.get("extra"))
+    contexts = event.get("contexts")
+    return event
+"""
+
+
+def _self_test_containers() -> list[str]:
+    """
+    The container half of check_no_drift, against the asymmetry it was added
+    for: a Python scrubber sharing every key list with the TypeScript ones
+    while never looking in `extra`, `contexts` or `request.data`.
+    """
+    global REPO
+    real_repo = REPO
+    failures: list[str] = []
+    fixture_files = ("web.ts", "gateway.ts", "orchestrator.py")
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            for label, py_body, expect_failure in (
+                ("pre-fix", _FIXTURE_SCRUBBER_PY_PRE_FIX, True),
+                ("fixed", _FIXTURE_SCRUBBER_PY_FIXED, False),
+            ):
+                root = Path(tmp) / label
+                root.mkdir(parents=True)
+                for name in ("web.ts", "gateway.ts"):
+                    (root / name).write_text(
+                        _FIXTURE_LISTS_TS + _FIXTURE_SCRUBBER_TS, encoding="utf-8"
+                    )
+                (root / "orchestrator.py").write_text(
+                    _FIXTURE_LISTS_PY + py_body, encoding="utf-8"
+                )
+
+                REPO = root
+                problems = check_no_drift(fixture_files)
+
+                if bool(problems) != expect_failure:
+                    failures.append(
+                        f"[{label}] container check: expected "
+                        f"{'a failure' if expect_failure else 'no failure'}, "
+                        f"got {problems}"
+                    )
+                elif expect_failure and not any(
+                    "container" in p or "does not reach" in p for p in problems
+                ):
+                    failures.append(
+                        f"[{label}] container check fired for the wrong reason: "
+                        f"{problems}"
+                    )
+    finally:
+        REPO = real_repo
+    return failures
 
 
 def _self_test() -> int:
@@ -395,13 +625,18 @@ def _self_test() -> int:
                 )
 
     REPO = real_repo
+    failures.extend(_self_test_containers())
 
     if failures:
         print("FAIL — the guard does not behave as documented:")
         for line in failures:
             print(f"  {line}")
         return 1
-    print("PASS — guard fires on the pre-fix shape and is silent on the fixed one.")
+    print(
+        "PASS — guard fires on the pre-fix shapes (identity on the user scope, "
+        "and a scrubber that covers fewer containers than its peers) and is "
+        "silent on the fixed ones."
+    )
     return 0
 
 
@@ -445,7 +680,8 @@ def main(argv: list[str]) -> int:
     print(
         f"PASS — {init_checked} Sentry init site(s) declare their PII posture, "
         f"{user_checked} user scope(s)/shape(s) carry opaque identifiers only, "
-        "and the runtimes' scrub lists agree."
+        f"and {len(DRIFT_FILES)} runtimes agree on {len(SHARED_LISTS)} scrub "
+        f"list(s) and all {len(REQUIRED_CONTAINERS)} scrubbed containers."
     )
     return 0
 

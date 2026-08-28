@@ -59,6 +59,13 @@ const PII_KEYS = new Set([
   'password',
   'ssn',
 ])
+// Request headers that carry a credential rather than a description.
+const SENSITIVE_HEADERS = new Set([
+  'authorization',
+  'cookie',
+  'x-api-key',
+  'proxy-authorization',
+])
 
 function scrubPiiKeys(obj: Record<string, any> | undefined): void {
   if (!obj || typeof obj !== 'object') return
@@ -69,11 +76,26 @@ function scrubPiiKeys(obj: Record<string, any> | undefined): void {
 
 /**
  * Remove PII from a Sentry event before it is transmitted.
+ * - drops credential request headers and cookies
  * - reduces `user` to a pseudonymous id (+ non-PII custom keys like restaurantId)
  * - strips common PII keys from free-form extra/contexts/request payloads
+ *
+ * The containers covered here are the contract all three runtimes share;
+ * scripts/check_sentry_pii_scope.py fails the build if one of them stops
+ * covering a container the others do.
+ *
  * Exported so the scrubbing contract can be unit-tested.
  */
 export function scrubSentryEvent<T extends Sentry.Event>(event: T): T {
+  if (event.request) {
+    const headers = event.request.headers
+    if (headers) {
+      for (const key of Object.keys(headers)) {
+        if (SENSITIVE_HEADERS.has(key.toLowerCase())) delete headers[key]
+      }
+    }
+    delete event.request.cookies
+  }
   if (event.user) {
     for (const key of PII_USER_KEYS) {
       delete (event.user as Record<string, any>)[key]

@@ -130,6 +130,32 @@ describe('error tracking — what reaches Sentry', () => {
       expect(event.user).toEqual({ id: 'user-1', restaurantId: 'rest-1' })
     })
 
+    it('removes every credential header, in any casing, and the cookies', async () => {
+      // A browser event carries a `request` too (Sentry fills url/headers), and
+      // the three runtimes are meant to scrub the same containers — the
+      // asymmetry between them is what scripts/check_sentry_pii_scope.py now
+      // fails the build on.
+      const { scrubSentryEvent } = await freshModule()
+
+      const event = scrubSentryEvent({
+        request: {
+          url: '/orders',
+          headers: {
+            authorization: 'Bearer secret',
+            Cookie: 'session=abc',
+            'X-API-Key': 'k-1',
+            'proxy-authorization': 'Basic secret',
+            'user-agent': 'vitest',
+          },
+          cookies: { session: 'abc' },
+        },
+      } as never) as Record<string, any>
+
+      expect(event.request.headers).toEqual({ 'user-agent': 'vitest' })
+      expect(event.request).not.toHaveProperty('cookies')
+      expect(event.request.url).toBe('/orders')
+    })
+
     it('strips identity from free-form extra, request body and contexts', async () => {
       const { scrubSentryEvent } = await freshModule()
 

@@ -92,17 +92,30 @@ describe("sentry — what reaches the error tracker", () => {
   });
 
   describe("scrubSentryEvent", () => {
-    it("removes credential headers in either casing", () => {
+    it("removes every credential header, in any casing", () => {
+      // Node lower-cases inbound header names, but an event can also be
+      // assembled by hand; a case-sensitive delete is the classic way a
+      // scrubber silently stops scrubbing.
       const event = scrubSentryEvent({
         request: {
           headers: {
             authorization: "Bearer secret",
             Cookie: "session=abc",
+            "X-API-Key": "k-1",
+            "proxy-authorization": "Basic secret",
             "user-agent": "jest",
           },
         },
       });
       expect(event.request.headers).toEqual({ "user-agent": "jest" });
+    });
+
+    it("removes request cookies", () => {
+      const event = scrubSentryEvent({
+        request: { cookies: { session: "abc" }, url: "/api/v1/orders" },
+      });
+      expect(event.request).not.toHaveProperty("cookies");
+      expect(event.request.url).toBe("/api/v1/orders");
     });
 
     it("strips identity from the user scope but keeps the opaque ids", () => {
