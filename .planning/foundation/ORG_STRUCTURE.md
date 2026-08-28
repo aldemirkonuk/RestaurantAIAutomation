@@ -33,7 +33,14 @@ one point, and so the loop graph (§4) has readable clusters instead of a dense 
 | **Commercial** | Growth · Sales · Media & Brand | Finance & Pricing *(under Growth)* |
 | **Corporate** | Legal · Knowledge & Documentation · Compliance & Privacy · People & Agent Ops · Strategy & Fundraising | — |
 
-**7 divisions · 19 departments · 2 sub-layers · 3 advisory · 75 teams.**
+**7 divisions · 19 departments · 2 sub-layers · 3 advisory · 76 teams.**
+
+> Correction 2026-08-27 ([ADR 0035](../decisions/0035-wave2-seam-reconciliation.md)):
+> the team count is **76**, not the 75 this line carried at lock. `backtests`
+> (Research & Math) was chartered after the team-layer docs froze at RM-1/2/3 —
+> trigger-gated, and its entry trigger now reads as met (`STATE.md:98-105`, to be
+> confirmed by the team). The founder accepted the roster at 76; `teams/intelligence.md`
+> `team_count: 9` is the stale remnant and is superseded by this note.
 
 > **Research & Math is a division, not a department** (promoted 2026-08-24). When the
 > founder's two-company proposal was declined ([ADR 0001](../decisions/0001-mudavym-single-entity.md)),
