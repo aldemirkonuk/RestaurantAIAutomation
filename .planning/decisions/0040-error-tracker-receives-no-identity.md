@@ -152,8 +152,49 @@ What ships:
 3. **A DPA with Sentry.** Out of scope here; belongs with
    `regulatory-posture-charter`. Named so it is not mistaken for handled.
 
+## Amendment, 2026-08-28 — the three scrubbers were not the same scrubber
+
+An audit of this ADR's own delivery found the "What ships / Egress" bullet above
+overstated. It claims a `beforeSend` on all three inits "reaching the user scope,
+`extra`, `contexts`, request body and credential headers". That described the two
+TypeScript scrubbers. The Python one reached the user scope, credential headers
+and cookies — and **not** `extra`, `contexts` or `request.data`. The reverse gap
+existed too: neither TypeScript scrubber touched `request.cookies`, and the
+gateway's header list was four hard-coded `delete`s (`authorization`/`cookie`,
+two casings each) rather than the Python list's four header *names* matched
+case-insensitively — so `x-api-key` and `proxy-authorization` survived in the
+gateway and no headers were scrubbed at all in the browser.
+
+No known leak followed from it: no Python caller puts identity in `extra`, and
+`send_default_pii=False` covers what the SDK attaches by itself. That is exactly
+why it is worth recording — the defect was in the *contract*, not in an observed
+event, and a last line of defence that depends on what today's callers happen to
+do is not one.
+
+The correction is symmetry plus enforcement:
+
+- Python gains `PII_KEYS` (byte-identical to the TS list) and scrubs `extra`,
+  `contexts` and `request.data`. Both TS runtimes gain `SENSITIVE_HEADERS` as a
+  list matched case-insensitively, and delete `request.cookies`. All three now
+  cover six containers: `user`, `extra`, `contexts`, `request.headers`,
+  `request.cookies`, `request.data`.
+- **The guard could not have caught this, and now can.** `check_no_drift`
+  compared `PII_USER_KEYS` *key names* only, so three files agreeing on a list
+  of words while looking for them in different places passed. It now compares
+  every shared list (`PII_USER_KEYS`, `PII_KEYS`, `SENSITIVE_HEADERS`) **and**
+  the set of containers each scrubber reaches into, pinned to
+  `REQUIRED_CONTAINERS` so that three runtimes dropping a container together
+  fails too. `--self-test` gained the pre-fix Python shape as a fixture, and the
+  extended guard was run against a copy of the real pre-fix tree: it reports the
+  asymmetry and names the three missing containers.
+
+This is the "enforced duplication, not silent duplication" consequence below
+being paid for a second time. The lesson generalizes: for duplicated logic, an
+agreeing *constant* is the easy half to check and the half that matters least.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-08-28 | — | Created; proposed, awaiting founder lock |
+| 2026-08-28 | audit | Scrubber symmetry gap found and closed; guard extended to containers (amendment above) |

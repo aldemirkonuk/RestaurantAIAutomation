@@ -19,6 +19,16 @@ const PII_KEYS = new Set([
   "password",
   "ssn",
 ]);
+// Request headers that carry a credential rather than a description. Matched
+// case-insensitively: Node lower-cases incoming header names, but an event can
+// also be assembled by hand, and a case-sensitive delete is the classic way a
+// scrubber silently stops scrubbing.
+const SENSITIVE_HEADERS = new Set([
+  "authorization",
+  "cookie",
+  "x-api-key",
+  "proxy-authorization",
+]);
 
 /**
  * What the error tracker is allowed to know about a person.
@@ -46,17 +56,25 @@ function scrubPiiKeys(obj: Record<string, any> | undefined): void {
 
 /**
  * Remove secrets and PII from a Sentry event before transmission.
- * - drops auth/cookie request headers
+ * - drops credential request headers and cookies
  * - reduces `user` to a pseudonymous id (+ non-PII custom keys like restaurant_id)
  * - strips common PII keys from free-form extra/contexts/request payloads
+ *
+ * The containers covered here are the contract all three runtimes share;
+ * scripts/check_sentry_pii_scope.py fails the build if one of them stops
+ * covering a container the others do.
+ *
  * Exported so the scrubbing contract can be unit-tested.
  */
 export function scrubSentryEvent<T extends Sentry.Event>(event: T): T {
-  if (event.request?.headers) {
-    delete event.request.headers["authorization"];
-    delete event.request.headers["Authorization"];
-    delete event.request.headers["cookie"];
-    delete event.request.headers["Cookie"];
+  if (event.request) {
+    const headers = event.request.headers;
+    if (headers) {
+      for (const key of Object.keys(headers)) {
+        if (SENSITIVE_HEADERS.has(key.toLowerCase())) delete headers[key];
+      }
+    }
+    delete event.request.cookies;
   }
   if (event.user) {
     for (const key of PII_USER_KEYS) {
