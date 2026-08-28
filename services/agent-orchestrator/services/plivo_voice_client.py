@@ -7,11 +7,57 @@ Handles voice calls via Plivo API with:
 - Webhook handling
 - AI conversation flow
 - Error handling and retry logic
+
+Binding-surface gate (FUTURES §8.1)
+-----------------------------------
+Voice is a **vendor-facing binding surface**. ``generate_negotiation_xml`` speaks a
+quantity and a target price down the phone and gathers "press 1 if you can
+accommodate this order" — from the vendor's side that is an offer plus an
+acceptance channel, i.e. outbound vendor communication that can form a
+commitment. FUTURES §8.1 is absolute: *ask → propose → confirm → execute; AI never
+silently mutates stock, money, or outbound vendor communication.*
+
+Email already obeys that rule — ``ProviderCommunicationAgent`` runs every draft
+through ``ConstraintEngine.check_hard_constraints`` before it can be sent
+(``agents/provider_communication_agent.py:458``). Voice had **no** equivalent: no
+constraint pass, no approval record, and — as of this commit — no in-repo caller
+at all. Three things follow, all enforced in this module rather than in callers,
+because a gate that lives in the caller is a gate the next caller can forget:
+
+1. **Hard-constraint pass.** Anything order-shaped is run through the same
+   ``ConstraintEngine`` the email path uses. If the engine cannot be imported the
+   call is refused — failing closed, never open.
+2. **Recorded human confirmation.** The call site must present a
+   ``VoiceOrderApproval`` naming the persisted approval row, the human who
+   approved, and *the exact terms they approved*. Speaking a quantity or a price
+   the human did not approve is a new commitment, so the gate rejects mismatches
+   as hard as it rejects a missing approval.
+3. **Off by default.** The whole outbound-order voice capability sits behind
+   ``VOICE_ORDER_CALLS_ENABLED`` (default ``false``). The flow currently has no
+   caller; this flag is what stops it quietly acquiring one. A future caller that
+   forgets the approval evidence trips the gate on its first run, in the dev's
+   own test, instead of on a live vendor's phone line.
+
+Violations raise ``VoiceBindingGateError`` and are never swallowed into a falsy
+return — an execution-shaped failure must be loud (same shape as the tiered
+"money/stock never auto-applies" rule in ``agents/drift_agent.py:8-17``).
+
+**Non-binding voice is untouched.** Plain ``make_call`` (a reminder, a
+notification) and plain ``generate_answer_xml`` (speak-only, or a menu that is
+not an order-acceptance prompt) work exactly as before.
+
+Known limit (follow-up): the gate validates the *shape and freshness* of the
+approval record the caller presents; it does not itself re-read the row from
+Supabase. Pass ``approval_verifier`` to ``PlivoVoiceClient`` to close that,
+and see the follow-up slice noted in the branch report.
 """
 
 import asyncio
-from typing import Optional, Dict, Any, List
-from datetime import datetime, timedelta
+import os
+import re
+from dataclasses import dataclass
+from typing import Optional, Dict, Any, List, Callable
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 import plivo
 from plivo.exceptions import PlivoRestError
@@ -19,6 +65,288 @@ from plivo.exceptions import PlivoRestError
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Binding gate (FUTURES §8.1)
+# ──────────────────────────────────────────────────────────────────────────
+
+#: Env flag that enables the outbound *order* voice capability. Default false.
+VOICE_ORDER_CALLS_ENV = "VOICE_ORDER_CALLS_ENABLED"
+
+#: An approval older than this is stale — a human who approved 6 bottles at $25
+#: yesterday has not approved today's call. Rejected the same as no approval.
+APPROVAL_MAX_AGE_SECONDS = 24 * 3600
+
+#: Context keys that make a ``make_call`` order-shaped. Presence of ANY of these
+#: means the call is about placing/negotiating an order and needs the full gate.
+ORDER_BINDING_CONTEXT_KEYS = (
+    "order_id",
+    "negotiation_type",
+    "target_price",
+    "quantity",
+)
+
+#: Speak-text shapes that turn a generic ``GetDigits`` menu into an order
+#: acceptance channel. Deliberately narrow: a "press 1 to hear your low-stock
+#: alert" prompt must keep working, but "press 1 if you can accommodate this
+#: order" must not be reachable without the gate.
+ORDER_ACCEPTANCE_PATTERNS = (
+    r"press\s+\w+\s+(?:if you can\s+)?(?:accommodate|accept|confirm|fulfill|fill)\b",
+    r"press\s+\w+\s+to\s+(?:accept|confirm|approve|place|book)\b.{0,40}\b(order|price|quantity|deal|offer)\b",
+    r"\b(?:accept|confirm|approve)\b.{0,30}\bthis (?:order|price|offer|deal)\b",
+)
+
+
+class VoiceBindingGateError(RuntimeError):
+    """
+    Raised when an order-binding voice action is attempted without the evidence
+    FUTURES §8.1 requires: the capability flag, a recorded human confirmation for
+    *these* terms, and a passing constraint-engine check.
+
+    This is intentionally an exception rather than a falsy return. The voice path
+    is execution-shaped; a caller that treats "no call placed" as a soft outcome
+    would degrade the gate into a retry loop.
+    """
+
+
+@dataclass(frozen=True)
+class VoiceOrderApproval:
+    """
+    Evidence that a human confirmed *this* order, on *these* terms, recently.
+
+    The call site must build this from a persisted approval row — ``approval_id``
+    and ``source`` exist so the record is traceable back to that row, not
+    invented at the call site. ``approved_quantity`` / ``approved_unit_price``
+    are what the human actually signed off on; the gate refuses to speak numbers
+    that differ from them.
+    """
+
+    approval_id: str
+    order_id: str
+    approved_by: str
+    approved_at: datetime
+    approved_quantity: float
+    approved_unit_price: float
+    #: Where the approval row lives, e.g. "procurement_orders.manager_approval_status".
+    source: str
+
+    def validate(self) -> List[str]:
+        """Return a list of reasons this evidence is unusable (empty == usable)."""
+        problems: List[str] = []
+        for field_name in (
+            "approval_id",
+            "order_id",
+            "approved_by",
+            "source",
+        ):
+            value = getattr(self, field_name, None)
+            if not isinstance(value, str) or not value.strip():
+                problems.append(f"{field_name} is missing or blank")
+
+        if not isinstance(self.approved_at, datetime):
+            problems.append("approved_at is not a datetime")
+        else:
+            age = _approval_age_seconds(self.approved_at)
+            if age < -60:
+                problems.append("approved_at is in the future")
+            elif age > APPROVAL_MAX_AGE_SECONDS:
+                problems.append(
+                    f"approval is stale ({int(age)}s old, max {APPROVAL_MAX_AGE_SECONDS}s)"
+                )
+
+        if not isinstance(self.approved_quantity, (int, float)) or (
+            self.approved_quantity <= 0
+        ):
+            problems.append("approved_quantity must be a positive number")
+        if not isinstance(self.approved_unit_price, (int, float)) or (
+            self.approved_unit_price <= 0
+        ):
+            problems.append("approved_unit_price must be a positive number")
+
+        return problems
+
+
+def _approval_age_seconds(approved_at: datetime) -> float:
+    """Age of an approval in seconds, tolerating naive (assumed UTC) datetimes."""
+    if approved_at.tzinfo is None:
+        approved_at = approved_at.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - approved_at).total_seconds()
+
+
+def voice_order_calls_enabled() -> bool:
+    """
+    True only when ``VOICE_ORDER_CALLS_ENABLED`` is explicitly truthy.
+
+    Read from the environment on every call rather than cached at import, so the
+    capability can be switched off without a redeploy and so tests cannot leave a
+    process-wide "on" behind them.
+    """
+    return os.getenv(VOICE_ORDER_CALLS_ENV, "false").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+        "on",
+    )
+
+
+def is_order_acceptance_prompt(speak_text: str) -> bool:
+    """True when speak text turns a DTMF menu into an order-acceptance channel."""
+    if not speak_text:
+        return False
+    return any(
+        re.search(p, speak_text, re.IGNORECASE) for p in ORDER_ACCEPTANCE_PATTERNS
+    )
+
+
+def _spoken_dollar_amounts(text: str) -> List[float]:
+    """Every dollar figure that will actually be read out to the vendor."""
+    amounts: List[float] = []
+    for raw in re.findall(r"\$\s*([\d,]+(?:\.\d{1,2})?)", text or ""):
+        try:
+            amounts.append(float(raw.replace(",", "")))
+        except ValueError:
+            continue
+    return amounts
+
+
+def _numbers_match(spoken: Optional[float], approved: float) -> bool:
+    """Terms must match what the human approved (cent-level tolerance only)."""
+    if spoken is None:
+        return False
+    try:
+        return abs(float(spoken) - float(approved)) < 0.005
+    except (TypeError, ValueError):
+        return False
+
+
+def assert_order_voice_allowed(
+    *,
+    surface: str,
+    spoken_text: str,
+    approval: Optional[VoiceOrderApproval],
+    order_id: Optional[str] = None,
+    quantity: Optional[float] = None,
+    unit_price: Optional[float] = None,
+    approval_verifier: Optional[Callable[[VoiceOrderApproval], bool]] = None,
+) -> None:
+    """
+    The single gate every order-binding voice action must pass.
+
+    Raises ``VoiceBindingGateError`` unless ALL of the following hold:
+      1. ``VOICE_ORDER_CALLS_ENABLED`` is on;
+      2. a well-formed, fresh ``VoiceOrderApproval`` is presented;
+      3. that approval names this order and these exact terms;
+      4. the optional ``approval_verifier`` (DB re-read) confirms it;
+      5. the text about to be spoken passes ``ConstraintEngine.check_hard_constraints``.
+
+    Order matters: the cheap, unambiguous refusals come first so a violation
+    reports the *first* thing that is wrong rather than a downstream symptom.
+    """
+    if not voice_order_calls_enabled():
+        raise VoiceBindingGateError(
+            f"{surface}: outbound order voice calls are disabled. "
+            f"Set {VOICE_ORDER_CALLS_ENV}=true to enable this capability "
+            "(default off — FUTURES §8.1)."
+        )
+
+    if approval is None:
+        raise VoiceBindingGateError(
+            f"{surface}: no recorded human approval presented. An order-binding "
+            "voice call requires a VoiceOrderApproval built from a persisted "
+            "approval row (FUTURES §8.1: confirmation is the gate)."
+        )
+
+    if not isinstance(approval, VoiceOrderApproval):
+        raise VoiceBindingGateError(
+            f"{surface}: approval must be a VoiceOrderApproval, got "
+            f"{type(approval).__name__}."
+        )
+
+    problems = approval.validate()
+    if problems:
+        raise VoiceBindingGateError(
+            f"{surface}: approval evidence is unusable — {'; '.join(problems)}."
+        )
+
+    if order_id is not None and str(order_id) != approval.order_id:
+        raise VoiceBindingGateError(
+            f"{surface}: approval {approval.approval_id} is for order "
+            f"{approval.order_id}, not {order_id}."
+        )
+
+    if not _numbers_match(quantity, approval.approved_quantity):
+        raise VoiceBindingGateError(
+            f"{surface}: about to speak quantity {quantity!r} but the human "
+            f"approved {approval.approved_quantity!r} (approval "
+            f"{approval.approval_id})."
+        )
+
+    if not _numbers_match(unit_price, approval.approved_unit_price):
+        raise VoiceBindingGateError(
+            f"{surface}: about to speak unit price {unit_price!r} but the human "
+            f"approved {approval.approved_unit_price!r} (approval "
+            f"{approval.approval_id})."
+        )
+
+    if approval_verifier is not None:
+        try:
+            verified = approval_verifier(approval)
+        except VoiceBindingGateError:
+            raise
+        except Exception as exc:  # verifier blew up → cannot check → refuse
+            raise VoiceBindingGateError(
+                f"{surface}: approval verifier failed for {approval.approval_id} "
+                f"({exc}); refusing to place an order-binding call it could not confirm."
+            ) from exc
+        if not verified:
+            raise VoiceBindingGateError(
+                f"{surface}: approval verifier rejected {approval.approval_id} "
+                "(no matching persisted approval)."
+            )
+
+    # Every price actually read out must be one the human signed off on: the
+    # approved unit price, or the line total it implies. Catches the case the
+    # scalar checks above cannot see — a script whose arguments match the
+    # approval but whose text quotes a different number to the vendor.
+    allowed_amounts = (
+        float(approval.approved_unit_price),
+        float(approval.approved_unit_price) * float(approval.approved_quantity),
+    )
+    for amount in _spoken_dollar_amounts(spoken_text):
+        if not any(_numbers_match(amount, allowed) for allowed in allowed_amounts):
+            raise VoiceBindingGateError(
+                f"{surface}: script would speak ${amount:.2f}, which is neither "
+                f"the approved unit price (${allowed_amounts[0]:.2f}) nor the "
+                f"approved line total (${allowed_amounts[1]:.2f}) on approval "
+                f"{approval.approval_id}."
+            )
+
+    # Constraint pass — same engine and same call shape the (guarded) email path
+    # uses at agents/provider_communication_agent.py:458. Imported here, not at
+    # module scope, so an import failure refuses the call instead of silently
+    # removing the check from a module that would otherwise still load.
+    try:
+        from services.constraint_engine import get_constraint_engine
+    except Exception as exc:
+        raise VoiceBindingGateError(
+            f"{surface}: constraint engine unavailable ({exc}); refusing to place "
+            "an order-binding call that cannot be constraint-checked."
+        ) from exc
+
+    check = get_constraint_engine().check_hard_constraints(
+        spoken_text,
+        quantity=float(approval.approved_quantity),
+        order_quantity=float(approval.approved_quantity),
+        target_price=float(approval.approved_unit_price),
+        proposed_price=float(unit_price) if unit_price is not None else None,
+    )
+    if check.blocked:
+        raise VoiceBindingGateError(
+            f"{surface}: hard constraints triggered "
+            f"({', '.join(check.triggered_hard) or 'unspecified'}) on the text "
+            "about to be spoken to the vendor."
+        )
 
 
 class CallStatus(Enum):
@@ -54,6 +382,7 @@ class PlivoVoiceClient:
         from_number: str,
         webhook_base_url: str = "https://your-domain.com/webhooks/plivo",
         mock_mode: bool = False,
+        approval_verifier: Optional[Callable[["VoiceOrderApproval"], bool]] = None,
     ):
         """
         Initialize Plivo Voice client
@@ -64,12 +393,17 @@ class PlivoVoiceClient:
             from_number: Source phone number (Plivo number)
             webhook_base_url: Base URL for webhooks
             mock_mode: If True, log instead of making real calls
+            approval_verifier: Optional callable that re-reads the approval row
+                and returns True if it really exists and is still approved. When
+                supplied it is an ADDITIONAL requirement on order-binding calls,
+                never a replacement for the rest of the gate.
         """
         self.auth_id = auth_id
         self.auth_token = auth_token
         self.from_number = from_number
         self.webhook_base_url = webhook_base_url
         self.mock_mode = mock_mode
+        self.approval_verifier = approval_verifier
 
         # Initialize Plivo client
         if not mock_mode and auth_id and auth_token:
@@ -97,6 +431,46 @@ class PlivoVoiceClient:
         self.total_calls = 0
         self.total_duration_seconds = 0
 
+    def _gate_call_context(
+        self,
+        context: Optional[Dict[str, Any]],
+        order_approval: Optional[VoiceOrderApproval],
+    ) -> None:
+        """
+        Apply the §8.1 gate when — and only when — a call is order-shaped.
+
+        Non-binding calls (a delivery reminder, a notification callback) carry
+        none of ``ORDER_BINDING_CONTEXT_KEYS`` and pass straight through, so this
+        gate cannot break the voice uses that commit nothing.
+        """
+        if not context:
+            return
+        if not any(context.get(k) is not None for k in ORDER_BINDING_CONTEXT_KEYS):
+            return
+
+        quantity = context.get("quantity")
+        unit_price = context.get("target_price")
+        if unit_price is None:
+            unit_price = context.get("unit_price", context.get("price_per_bottle"))
+
+        # Prefer the literal script when the caller has one; otherwise check the
+        # same context-derived summary the guarded email path pre-checks with
+        # (agents/provider_communication_agent.py:458).
+        spoken_text = context.get("spoken_text") or (
+            f"wine {context.get('wine_name', '')} bottles "
+            f"quantity {quantity} price {unit_price}"
+        )
+
+        assert_order_voice_allowed(
+            surface="make_call(order context)",
+            spoken_text=spoken_text,
+            approval=order_approval,
+            order_id=context.get("order_id"),
+            quantity=quantity,
+            unit_price=unit_price,
+            approval_verifier=self.approval_verifier,
+        )
+
     async def make_call(
         self,
         to_number: str,
@@ -106,6 +480,7 @@ class PlivoVoiceClient:
         record_callback_url: Optional[str] = None,
         max_retries: int = 3,
         context: Optional[Dict[str, Any]] = None,
+        order_approval: Optional[VoiceOrderApproval] = None,
     ) -> Dict[str, Any]:
         """
         Initiate a voice call
@@ -118,10 +493,24 @@ class PlivoVoiceClient:
             record_callback_url: URL for recording callback
             max_retries: Number of retry attempts
             context: Additional context for the call
+            order_approval: Required when ``context`` is order-shaped (see
+                ``ORDER_BINDING_CONTEXT_KEYS``) — recorded human confirmation of
+                the exact terms this call will discuss.
 
         Returns:
             Dict with call_uuid, status, etc.
+
+        Raises:
+            VoiceBindingGateError: the call is order-binding and the gate is not
+                satisfied. Raised BEFORE any dialling, mock or real: a mock run
+                that would have been a violation in production must fail in the
+                developer's test, not pass quietly.
         """
+        # Binding gate — first statement in the method, ahead of input validation,
+        # rate limiting and the mock-mode short-circuit, so no branch reaches a
+        # dial (or a convincing fake of one) without passing it.
+        self._gate_call_context(context, order_approval)
+
         # Validate inputs
         if not to_number:
             return {"success": False, "error": "Missing to_number"}
@@ -477,6 +866,7 @@ class PlivoVoiceClient:
         gather_input: bool = False,
         gather_action_url: Optional[str] = None,
         record_voicemail: bool = False,
+        order_approval: Optional[VoiceOrderApproval] = None,
     ) -> str:
         """
         Generate Plivo XML for call flow
@@ -486,10 +876,30 @@ class PlivoVoiceClient:
             gather_input: Whether to gather DTMF input
             gather_action_url: URL to send gathered input
             record_voicemail: Whether to record a voicemail
+            order_approval: Required only when the speak text is an order
+                acceptance prompt (see ``ORDER_ACCEPTANCE_PATTERNS``).
 
         Returns:
             Plivo XML string
+
+        Raises:
+            VoiceBindingGateError: the XML would gather an order acceptance and
+                the gate is not satisfied. This closes the obvious bypass — a
+                caller that skips ``generate_negotiation_xml`` and hands its own
+                order script straight to this method.
         """
+        if gather_input and is_order_acceptance_prompt(speak_text or ""):
+            approval = order_approval
+            assert_order_voice_allowed(
+                surface="generate_answer_xml(order acceptance prompt)",
+                spoken_text=speak_text or "",
+                approval=approval,
+                order_id=approval.order_id if approval else None,
+                quantity=approval.approved_quantity if approval else None,
+                unit_price=approval.approved_unit_price if approval else None,
+                approval_verifier=self.approval_verifier,
+            )
+
         xml_parts = ['<?xml version="1.0" encoding="UTF-8"?>', "<Response>"]
 
         if speak_text:
@@ -517,18 +927,34 @@ class PlivoVoiceClient:
         quantity: int,
         target_price: float,
         provider_name: str,
+        *,
+        order_id: Optional[str] = None,
+        order_approval: Optional[VoiceOrderApproval] = None,
     ) -> str:
         """
-        Generate XML for AI-powered negotiation call
+        Generate XML for AI-powered negotiation call.
+
+        This is the binding surface: the XML speaks a quantity and a price to a
+        vendor and gathers "press 1 if you can accommodate this order". It is
+        therefore gated — flag on, human approval for these exact terms, and a
+        hard-constraint pass on the greeting — per FUTURES §8.1.
 
         Args:
             wine_name: Name of the wine
             quantity: Quantity to order
             target_price: Target price per bottle
             provider_name: Name of the provider
+            order_id: Procurement order these terms belong to (must match the
+                approval)
+            order_approval: Recorded human confirmation of these exact terms
 
         Returns:
             Plivo XML for negotiation flow
+
+        Raises:
+            VoiceBindingGateError: whenever the gate is not satisfied. Never
+                returns a "safe" fallback XML — a caller must not be able to
+                place a degraded version of this call by ignoring a return value.
         """
         greeting = (
             f"Hello, this is an automated call from WineOps AI. "
@@ -539,10 +965,21 @@ class PlivoVoiceClient:
             f"or press 3 to leave a voicemail."
         )
 
+        assert_order_voice_allowed(
+            surface="generate_negotiation_xml",
+            spoken_text=greeting,
+            approval=order_approval,
+            order_id=order_id,
+            quantity=quantity,
+            unit_price=target_price,
+            approval_verifier=self.approval_verifier,
+        )
+
         return self.generate_answer_xml(
             speak_text=greeting,
             gather_input=True,
             gather_action_url=f"{self.webhook_base_url}/voice/negotiation/response",
+            order_approval=order_approval,
         )
 
     def _normalize_phone(self, phone: str) -> str:
