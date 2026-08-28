@@ -98,3 +98,8 @@ advanced and scalable one, and visibility and functionality").
   additive-only overlay) and the 01–06-else-07 placement rules already in
   force. Built and browser-verified the same day: zero console errors, Z1/Z2/Z3
   and search exercised against the live build.
+- 2026-08-27 — the anticipated second render mode landed the same day
+  (founder ask): `DESIGN-MAP-CLUSTERS.html`, the Option-B lens over the same
+  graph — one pan/zoom surface, every domain a box, coupling edges weighted by
+  shared data objects (heaviest measured: Communications ↔ Procurement, 15),
+  click-through to the exact overlap. Browser-verified.

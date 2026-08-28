@@ -187,10 +187,14 @@ data at all.
 
 ## The loop this team does not own and cannot close
 
+> Owner assigned 2026-08-27, founder via ADR 0035 (was `UNASSIGNED — escalated`).
+> *The note lives here, not in the YAML: the loop-index generator lifts `owner`
+> verbatim, so an inline comment pollutes the value in `loops.json`.*
+
 ```yaml
 type: loop
 id: nfb-research-store-erasability
-owner: privacy-engineering  # assigned 2026-08-27, founder via ADR 0035 (was UNASSIGNED — escalated); sync loops.json on next regeneration
+owner: privacy-engineering
 measures: [nf_b.research_store_erasability, nf_b.row_count]
 changes: [nf_b.schema, nf_b.retention_policy, privacy.erasure_runbook]
 inputs_from: [taste-fingerprint, neural-footprint-instrumentation, privacy-engineering]

@@ -3602,7 +3602,7 @@
  },
  {
   "id": "nfb-research-store-erasability",
-  "owner": "privacy-engineering  # assigned 2026-08-27, founder via ADR 0035 (was UNASSIGNED \u2014 escalated); sync loops.json on next regeneration",
+  "owner": "privacy-engineering",
   "close_time": "one-shot",
   "status": "blocked",
   "measures": [
