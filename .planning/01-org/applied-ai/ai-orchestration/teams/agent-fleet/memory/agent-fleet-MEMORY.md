@@ -5,3 +5,4 @@
 > frontmatter on every fact.
 
 - [Fleet census 2026-08-28: 23/24 can receive](2026-08-28-fleet-census.md)
+- [Fleet census 2026-08-28: 18/24 can start by default](2026-08-28-fleet-census.md)

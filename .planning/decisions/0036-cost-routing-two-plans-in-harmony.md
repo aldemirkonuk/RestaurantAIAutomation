@@ -47,9 +47,20 @@ duplicate as the escalation. OD-29 is resolved in place on its register row.
 - Revisit when the TECH-F3-style failure test fires twice running — then the fix
   is the merge, per this record, not a third owner.
 
+## Correction — 2026-08-28 audit: where TECH-F3 actually lives
+
+The "same line as TECH-F3" precedent this ADR borrows is recorded in the
+advisory `FORK-REGISTRY.md`, **not** in `OPEN-DECISIONS.md` — and that registry's
+own note says OD-29 and TECH-F3 "should be answered together, by the same
+principle." This ADR answers OD-29 by that principle; TECH-F3 itself remains
+open in the fork registry, is the decision-office's to route (their wave-3
+agenda schedules it), and nothing here decides it. The audit's point stands:
+a precedent should be cited where it is recorded, and now it is.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-08-28 | Founder (AskUserQuestion, in-session) | Locked — criterion stated, option 1 is its unique satisfier |
 | 2026-08-28 | — | Created |
+| 2026-08-28 | Adversarial audit (founder-ordered) | WOUNDED on citation, not on substance — correction above |

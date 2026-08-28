@@ -77,9 +77,33 @@ Four pieces, all landed 2026-08-28 on `feat/agent-stack-build`:
 - Revisit when OD-03 resolves — the runner's mechanical scope may then fold into
   the chosen harness, and this ADR's boundary dissolves by design.
 
+## Corrections — 2026-08-28 adversarial audit (same day; both defects fixed)
+
+1. **The routing-scope claim was false as written.** "8 of 36 mechanical" counted
+   8 implemented agents, of which only **4** carry `routing_class: mechanical`
+   cards; `registry-clerk`/`claim-auditor` are judgment-class and
+   `gate-runner`/`kd-ledger` extraction-class, so the ADR's own boundary was
+   crossed by its own artifact. What each of those four actually implements is
+   strictly the mechanical **sub-duty** of its card (a census or a wrapped
+   guard, never the judgment) — that distinction is now *enforced*, not implied:
+   `run_card.py` carries a named `MECHANICAL_SUBDUTY` allowlist and refuses any
+   implemented agent that is neither mechanical nor listed. Correct remainder:
+   **32** mechanical cards unimplemented, not 28.
+2. **`fleet.can_receive_estimate = 23` measured the wrong gate.** The census
+   read only `orchestrator.py` registration plus a body heuristic; the actual
+   gate is `agent_registry.py` — five specs are `AgentTier.OPTIONAL` and
+   `is_enabled()` defaults their `AGENT_<NAME>_ENABLED` flags off. Recomputed
+   against the registry: **18/24 can start by default**, matching the charter's
+   ≈18 this ADR wrongly overturned. The census now reads the registry, the
+   metric is renamed `fleet.can_start_by_default`, and the memory fact carries
+   the correction. Lesson recorded: the drift mitigation ("the census is a
+   charter metric") is exactly as fallible as the census — which is why the
+   audit pass exists.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-08-28 | Founder (AskUserQuestion, in-session) | Scope + home locked; implementation shape delegated and recorded |
 | 2026-08-28 | — | Created |
+| 2026-08-28 | Adversarial audit (founder-ordered) | WOUNDED ×2 — both defects fixed same day; corrections above |
