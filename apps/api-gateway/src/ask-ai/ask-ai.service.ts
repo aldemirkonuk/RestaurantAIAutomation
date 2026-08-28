@@ -31,6 +31,10 @@ const MAX_INVENTORY_CANDIDATES = 60;
 const MAX_PROVIDER_CANDIDATES = 30;
 const MAX_ORDER_CANDIDATES = 20;
 
+/** Labels a picker has to render even when the row has no name. */
+const UNNAMED = "(unnamed)";
+const UNKNOWN_VENDOR = "Unknown vendor";
+
 const SYSTEM_PROMPT = `You turn a restaurant operator's request into ONE typed action, or you decline.
 
 You may ONLY propose these actions:
@@ -62,6 +66,47 @@ export interface ProposalResult {
   action?: AskAiAction;
   /** Present when declined or rejected — always says why. */
   reason?: string;
+}
+
+/**
+ * One selectable candidate: the id the grounding check will accept, and the
+ * words a person can actually choose by. The label exists because a picker
+ * rendering uuids is not a picker.
+ */
+export interface CandidateOption {
+  id: string;
+  label: string;
+}
+
+/** An open order also carries who it is with, which is how operators name it. */
+export interface OrderCandidateOption extends CandidateOption {
+  providerId: string | null;
+  providerName: string | null;
+  status: string | null;
+}
+
+/**
+ * The candidate set, in the shape a UI can render.
+ *
+ * This is the SAME set — same query, same caps, same order — that the propose
+ * prompt is handed and that `checkActionGrounded` accepts at confirm time.
+ * That identity is the whole point: a picker built from a wider or
+ * differently-ordered query would offer ids the confirm then rejects as
+ * ungrounded, which is a worse control than no control at all.
+ */
+export interface CandidateSets {
+  inventory: CandidateOption[];
+  providers: CandidateOption[];
+  orders: OrderCandidateOption[];
+  /** The caps applied — echoed so a client does not have to hardcode them. */
+  limits: { inventory: number; providers: number; orders: number };
+  /**
+   * True when a list came back exactly AT its cap, so rows beyond it exist that
+   * neither the picker nor the grounding check can see. Reported rather than
+   * hidden: "your item is not in this list" and "Ask AI cannot reach your item"
+   * are different sentences, and only the second one is true here.
+   */
+  capped: { inventory: boolean; providers: boolean; orders: boolean };
 }
 
 /**
@@ -97,9 +142,18 @@ export class AskAiService {
    * looks exactly like "this restaurant has no inventory", and the model would
    * then decline politely while the real problem was a failed query — the
    * `catch { return [] }` shape this repo has spent the week deleting.
+   *
+   * ONE LIST, THREE CONSUMERS
+   * -------------------------
+   * The prompt block, the grounding sets and the picker payload are all built
+   * from the SAME rows below, in one pass. They used to be two derivations of
+   * one query; a third consumer with its own query would be the drift bug
+   * waiting to happen, because "the ids the model was offered" and "the ids the
+   * confirm accepts" have to be the same sentence or the feature lies.
    */
   private async loadCandidates(restaurantId: string): Promise<{
     candidates: ProposalCandidates;
+    lists: CandidateSets;
     prompt: string;
   }> {
     const client = this.databaseService.getClient();
@@ -109,12 +163,22 @@ export class AskAiService {
         .from("restaurant_inventory")
         .select("id, wine_name")
         .eq("restaurant_id", restaurantId)
+        // ORDERED, not merely capped. An unordered `.limit()` lets Postgres
+        // return any 60 rows it likes, and this query runs at least twice per
+        // action — once to fill the picker, once to ground the confirm. Two
+        // different subsets would reject an id the operator was just offered.
+        // `id` breaks name ties so the window is stable across calls; the
+        // alphabetical order is also the one a picker wants anyway.
+        .order("wine_name", { ascending: true })
+        .order("id", { ascending: true })
         .limit(MAX_INVENTORY_CANDIDATES),
       client
         .from("providers")
         .select("id, name")
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true)
+        .order("name", { ascending: true })
+        .order("id", { ascending: true })
         .limit(MAX_PROVIDER_CANDIDATES),
       client
         .from("procurement_orders")
@@ -122,6 +186,7 @@ export class AskAiService {
         .eq("restaurant_id", restaurantId)
         .not("status", "in", '("delivered","cancelled")')
         .order("created_at", { ascending: false })
+        .order("id", { ascending: true })
         .limit(MAX_ORDER_CANDIDATES),
     ]);
 
@@ -143,34 +208,94 @@ export class AskAiService {
     const inventory = inv.data ?? [];
     const providers = prov.data ?? [];
     const orders = ord.data ?? [];
-    const providerName = new Map(
-      providers.map((p: any) => [p.id, p.name as string]),
+    const providerName = new Map<string, string>(
+      providers.map((p: any) => [
+        p.id as string,
+        (p.name as string) || UNNAMED,
+      ]),
     );
+
+    const lists: CandidateSets = {
+      inventory: inventory.map((i: any) => ({
+        id: i.id as string,
+        label: (i.wine_name as string) || UNNAMED,
+      })),
+      providers: providers.map((p: any) => ({
+        id: p.id as string,
+        label: (p.name as string) || UNNAMED,
+      })),
+      orders: orders.map((o: any) => ({
+        id: o.id as string,
+        providerId: (o.provider_id as string) ?? null,
+        providerName: providerName.get(o.provider_id) ?? null,
+        status: (o.status as string) ?? null,
+        // How an operator names an order out loud: who it is with, and where
+        // it has got to. The uuid is the value; this is the handle.
+        label: `${providerName.get(o.provider_id) ?? UNKNOWN_VENDOR} · ${
+          (o.status as string) || "open"
+        }`,
+      })),
+      limits: {
+        inventory: MAX_INVENTORY_CANDIDATES,
+        providers: MAX_PROVIDER_CANDIDATES,
+        orders: MAX_ORDER_CANDIDATES,
+      },
+      capped: {
+        inventory: inventory.length >= MAX_INVENTORY_CANDIDATES,
+        providers: providers.length >= MAX_PROVIDER_CANDIDATES,
+        orders: orders.length >= MAX_ORDER_CANDIDATES,
+      },
+    };
 
     const prompt = [
       "CANDIDATES — every id you use must be copied from here.",
       "",
       "inventory:",
-      ...inventory.map((i: any) => `  ${i.id}  ${i.wine_name ?? "(unnamed)"}`),
+      ...lists.inventory.map((i) => `  ${i.id}  ${i.label}`),
       "",
       "providers:",
-      ...providers.map((p: any) => `  ${p.id}  ${p.name ?? "(unnamed)"}`),
+      ...lists.providers.map((p) => `  ${p.id}  ${p.label}`),
       "",
       "orders (open):",
-      ...orders.map(
-        (o: any) =>
-          `  ${o.id}  vendor=${providerName.get(o.provider_id) ?? "unknown"} status=${o.status}`,
+      ...lists.orders.map(
+        (o) =>
+          `  ${o.id}  vendor=${o.providerName ?? "unknown"} status=${o.status}`,
       ),
     ].join("\n");
 
     return {
       candidates: {
-        inventoryIds: new Set(inventory.map((i: any) => i.id as string)),
-        providerIds: new Set(providers.map((p: any) => p.id as string)),
-        orderIds: new Set(orders.map((o: any) => o.id as string)),
+        inventoryIds: new Set(lists.inventory.map((i) => i.id)),
+        providerIds: new Set(lists.providers.map((p) => p.id)),
+        orderIds: new Set(lists.orders.map((o) => o.id)),
       },
+      lists,
       prompt,
     };
+  }
+
+  /**
+   * The candidate set, labelled, for a client that needs to render a picker.
+   *
+   * `GET /ask-ai/candidates` is this and nothing else: a read that creates no
+   * row, calls no model, and costs nothing but three selects. It exists because
+   * `confirm()` accepts an edited `inventoryId` / `providerId` / `orderId` and
+   * re-grounds it — an ability the web app could not use, having no way to name
+   * the alternatives. A uuid text box is not a control.
+   *
+   * Deliberately NOT paginated. Page two would hand out ids that
+   * `checkActionGrounded` rejects, because the grounding set is the first page
+   * — so a picker that scrolled past the cap would be offering choices the
+   * confirm refuses. The cap is reported instead (`capped`), which is the
+   * honest version of the same limitation.
+   *
+   * Errors propagate, for the reason `loadCandidates` documents: an empty list
+   * reads as "this restaurant has no inventory", and a picker that renders
+   * "no items" over a failed query is worse than one that says it is broken.
+   */
+  async listCandidates(restaurantId: string): Promise<CandidateSets> {
+    const { lists } = await this.loadCandidates(restaurantId);
+    return lists;
   }
 
   async propose(
@@ -385,7 +510,9 @@ export class AskAiService {
    *
    * Grounding is re-derived from the CURRENT candidate set rather than the one
    * captured at propose time: stock and vendors change, and the question is
-   * whether this action is valid to run NOW.
+   * whether this action is valid to run NOW. That applies to an UNTOUCHED
+   * confirm too — a proposal can sit in the open list for days, so "nobody
+   * edited it" is not a reason to trust that what it points at still exists.
    */
   async confirm(
     restaurantId: string,
@@ -425,27 +552,40 @@ export class AskAiService {
     // Validate the edit BEFORE executing, and roll the claim back if it fails —
     // otherwise a rejected edit would leave the row stuck at `confirmed` with
     // nothing executed and no way to retry.
-    let executedPayload: Record<string, unknown> | null = null;
-    if (editedPayload) {
-      const check = await this.validateEdit(
-        restaurantId,
-        claimed,
-        editedPayload,
-      );
-      if (!check.ok) {
-        await client
-          .from("ai_proposed_actions")
-          .update({
-            status: "proposed",
-            confirmed_by: null,
-            confirmed_at: null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", actionId);
-        throw new BadRequestException(check.reason);
-      }
-      executedPayload = check.payload;
+    // EVERY payload is re-checked here, edited or not.
+    //
+    // This used to sit inside `if (editedPayload)`, which made the docblock
+    // above false: an UNTOUCHED confirm ran the payload stored at propose time
+    // with no grounding at all. A proposal survives a reload and sits in the
+    // open list indefinitely, so "untouched" routinely means minutes or days
+    // old — long enough for the vendor to be deactivated or the order to be
+    // delivered. `createOrder` only checks the restaurant has SOME active
+    // provider, not that it has THIS one, so a dead `provider_id` reached the
+    // executor. Not a tenant break — the stored payload was grounded to this
+    // tenant when it was written, and the claim above is scoped by
+    // restaurant_id — but a stale reference on a path that creates purchase
+    // orders, which is what re-grounding against the CURRENT set is for.
+    //
+    // `edited` stays keyed to whether the OPERATOR supplied a payload, not to
+    // whether one was validated, because that flag feeds the P3.0 ledger and
+    // means "a human changed it".
+    const toCheck = editedPayload ?? (claimed.payload as Record<string, unknown>);
+    const check = await this.validateEdit(restaurantId, claimed, toCheck);
+    if (!check.ok) {
+      await client
+        .from("ai_proposed_actions")
+        .update({
+          status: "proposed",
+          confirmed_by: null,
+          confirmed_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", actionId);
+      throw new BadRequestException(check.reason);
     }
+    const executedPayload: Record<string, unknown> | null = editedPayload
+      ? check.payload
+      : null;
 
     const effective = executedPayload
       ? { ...claimed, payload: executedPayload }

@@ -25,6 +25,7 @@ import {
   AskAiActionError,
   confirmAction,
   discardAction,
+  listCandidates,
   listOpenProposals,
   proposeAction,
 } from '../../services/api/askAi'
@@ -38,6 +39,7 @@ vi.mock('../../services/api/askAi', async () => {
     ...actual,
     proposeAction: vi.fn(),
     listOpenProposals: vi.fn(),
+    listCandidates: vi.fn(),
     confirmAction: vi.fn(),
     discardAction: vi.fn(),
   }
@@ -46,6 +48,7 @@ vi.mock('../../services/api/askAi', async () => {
 const api = {
   propose: vi.mocked(proposeAction),
   list: vi.mocked(listOpenProposals),
+  candidates: vi.mocked(listCandidates),
   confirm: vi.mocked(confirmAction),
   discard: vi.mocked(discardAction),
 }
@@ -82,9 +85,27 @@ function renderBar(route = '/inventory') {
   )
 }
 
+/** The candidate set the cards' id pickers are built from. */
+const CANDIDATES = {
+  inventory: [{ id: INVENTORY, label: 'Barolo 2019' }],
+  providers: [{ id: PROVIDER, label: 'Acme Wines' }],
+  orders: [
+    {
+      id: ORDER,
+      label: 'Acme Wines · sent',
+      providerId: PROVIDER,
+      providerName: 'Acme Wines',
+      status: 'sent',
+    },
+  ],
+  limits: { inventory: 60, providers: 30, orders: 20 },
+  capped: { inventory: false, providers: false, orders: false },
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   api.list.mockResolvedValue([])
+  api.candidates.mockResolvedValue(CANDIDATES)
 })
 
 describe('asking', () => {
@@ -270,5 +291,43 @@ describe('what the card refuses to offer', () => {
     }
     expect(screen.queryByLabelText(/family/i)).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/action type/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('candidates', () => {
+  it('fetches the candidate set ONCE and shares it across every card', async () => {
+    // The set is per-restaurant, not per-proposal. A fetch per card would be
+    // N identical requests every time the bar opens.
+    api.list.mockResolvedValue([reorder, vendorDraft])
+    renderBar()
+
+    await waitFor(() => expect(screen.getAllByTestId('askai-proposal-card')).toHaveLength(2))
+    expect(api.candidates).toHaveBeenCalledTimes(1)
+    expect(screen.getByLabelText('Item')).toBeTruthy()
+    expect(screen.getByLabelText('Order')).toBeTruthy()
+  })
+
+  it('leaves the ask box and the confirm gate working when candidates fail', async () => {
+    // A broken candidate query costs the pickers, nothing else. Degrading the
+    // whole surface because a dropdown could not be filled would be worse than
+    // the read-only ids this feature replaced.
+    const user = userEvent.setup()
+    api.candidates.mockRejectedValue(new Error('down'))
+    api.list.mockResolvedValue([reorder])
+    api.confirm.mockResolvedValue({
+      executed: true,
+      actionId: reorder.actionId,
+      executionRef: 'order-9',
+      edited: false,
+    })
+    renderBar()
+
+    await waitFor(() => expect(screen.getByTestId('askai-proposal-card')).toBeTruthy())
+    expect(screen.queryByLabelText('Item')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: /confirm/i }))
+    await waitFor(() =>
+      expect(api.confirm).toHaveBeenCalledWith(reorder.actionId, undefined),
+    )
   })
 })
