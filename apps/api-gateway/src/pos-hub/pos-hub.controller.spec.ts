@@ -40,11 +40,16 @@ describe("PosHubController — sale-unit review routes", () => {
     setSaleUnitBatch: jest.fn(),
   };
 
+  const posHub = {
+    verifyWebhookSignature: jest.fn(),
+    ingest: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PosHubController],
       providers: [
-        { provide: PosHubService, useValue: {} },
+        { provide: PosHubService, useValue: posHub },
         { provide: CatalogMatcherService, useValue: {} },
         { provide: PosMappingReviewService, useValue: mappingReview },
       ],
@@ -75,6 +80,35 @@ describe("PosHubController — sale-unit review routes", () => {
         ).toBeUndefined();
       }
       expect(Reflect.getMetadata(IS_PUBLIC_KEY, proto.webhook)).toBe(true);
+    });
+  });
+
+  describe("POST webhook/:provider/:restaurantId", () => {
+    const req = { rawBody: Buffer.from("[]") } as any;
+
+    it("keys verification on the provider and restaurant from the path", async () => {
+      // The whole fix rests on this argument arriving. Verification that takes
+      // no tenant context cannot tell restaurant A's signature from B's, which
+      // is what made a token minted for one tenant good for every other one.
+      posHub.verifyWebhookSignature.mockReturnValue(true);
+      posHub.ingest.mockResolvedValue({ received: 0 });
+
+      await controller.webhook("generic_webhook", "rest-1", [], "sig", req);
+
+      expect(posHub.verifyWebhookSignature).toHaveBeenCalledWith(
+        req.rawBody,
+        "sig",
+        { provider: "generic_webhook", restaurantId: "rest-1" },
+      );
+    });
+
+    it("rejects with 401 and never ingests when verification fails", async () => {
+      posHub.verifyWebhookSignature.mockReturnValue(false);
+
+      await expect(
+        controller.webhook("generic_webhook", "rest-1", [], "sig", req),
+      ).rejects.toThrow(HttpException);
+      expect(posHub.ingest).not.toHaveBeenCalled();
     });
   });
 
