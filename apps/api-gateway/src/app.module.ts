@@ -3,6 +3,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { ScheduleModule } from "@nestjs/schedule";
 import { APP_INTERCEPTOR, APP_GUARD } from "@nestjs/core";
+import { LivenessController } from "./health/liveness.controller";
 import { AuthModule } from "./auth/auth.module";
 import { InventoryModule } from "./inventory/inventory.module";
 import { ProcurementModule } from "./procurement/procurement.module";
@@ -120,7 +121,10 @@ import { AskAiModule } from "./ask-ai/ask-ai.module";
     // Real-time communication
     WebsocketModule,
   ],
-  controllers: [],
+  // The ONLY controller registered at the root. It has no dependencies by
+  // design — see liveness.controller.ts — so it cannot be the thing that breaks
+  // the boot it exists to verify.
+  controllers: [LivenessController],
   providers: [
     // Global guards
     {
