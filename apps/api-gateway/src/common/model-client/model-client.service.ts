@@ -116,6 +116,13 @@ export interface NfMeta {
   /** Extra keys merged into the context jsonb (persona, url, chunk index...). */
   context?: Record<string, unknown>;
   /**
+   * The registry skill that fired for this call, when one did (ADR 0039 A4).
+   * Optional passthrough: no call site sets it today, and a call that is not a
+   * skill firing must leave it unset rather than invent a value — the column is
+   * nullable forever and NULL there means "not a skill task", never "unknown".
+   */
+  skillId?: string | null;
+  /**
    * Supply a ref to receive this call's NF row id, for sites that grade their
    * own output once it has been parsed (OD-59). Omit it and nothing changes.
    */
@@ -430,6 +437,13 @@ export class ModelClientService {
         duration_ms: Math.round(call.durationMs),
         correlation_id: nf.correlationId ?? getCorrelationId(),
         restaurant_id: nf.restaurantId ?? null,
+        // Spread ONLY when set, and that is correctness rather than tidiness:
+        // PostgREST rejects the whole row for an unknown column, so writing
+        // `skill_id: null` unconditionally would drop every emit in any
+        // environment where 20260828103059_nf_skill_id.sql has not landed yet —
+        // an optional passthrough taking the instrument down. Omitting the key
+        // leaves the column at its NULL default: the same stored row, no risk.
+        ...(nf.skillId ? { skill_id: nf.skillId } : {}),
       });
 
     if (!nf.eventRef) {
