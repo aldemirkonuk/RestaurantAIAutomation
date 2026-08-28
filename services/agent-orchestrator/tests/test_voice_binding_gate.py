@@ -131,9 +131,7 @@ def test_wrong_type_approval_raises(flag_on, client):
         negotiate(client, order_approval={"approval_id": "appr-77"})
 
 
-@pytest.mark.parametrize(
-    "field", ["approval_id", "approved_by", "source", "order_id"]
-)
+@pytest.mark.parametrize("field", ["approval_id", "approved_by", "source", "order_id"])
 def test_blank_evidence_fields_raise(flag_on, client, field):
     with pytest.raises(VoiceBindingGateError, match="missing or blank"):
         negotiate(client, order_approval=approval(**{field: "   "}))
