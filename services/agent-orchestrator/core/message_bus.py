@@ -486,6 +486,14 @@ class MessageBus:
             ("conversation.events", ExchangeType.TOPIC, True),
             ("calendar.events", ExchangeType.TOPIC, True),
             ("voice.events", ExchangeType.TOPIC, True),
+            # NotificationAgent has bound three keys on this exchange since
+            # Phase 21 (notification_agent.py:296-298) and owns the templates for
+            # all three — but the exchange was never declared. declare_queue()
+            # skips the bind when the exchange is unknown (message_bus.py:574) and
+            # publish() returns False, so the whole recurring-order notification
+            # path was inert on both ends. Declared here as part of ADR 0039
+            # Track A3, which is the first producer on it.
+            ("recurring.events", ExchangeType.TOPIC, True),
             # System control (high priority)
             ("system.control", ExchangeType.TOPIC, True),
             # Broadcast (fanout for all subscribers)

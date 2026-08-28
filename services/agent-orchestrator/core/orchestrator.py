@@ -54,6 +54,9 @@ from agents.email_parsing_agent import EmailParsingAgent
 # Phase 32 Agents
 from agents.provider_communication_agent import ProviderCommunicationAgent
 
+# ADR 0039 Track A3 — scheduled purchasing, brought under the harness
+from agents.recurring_order_agent import RecurringOrderAgent
+
 logger = setup_logger(__name__)
 
 
@@ -208,6 +211,16 @@ class AgentOrchestrator:
             "email_parsing_agent": EmailParsingAgent,
             # Phase 32 agents
             "provider_communication_agent": ProviderCommunicationAgent,
+            # ADR 0039 Track A3 — scheduled purchasing.
+            #
+            # This agent was a plain class registered nowhere, with an
+            # auto-execute branch that placed orders whenever a schedule row had
+            # auto_approve set. Registering it is what puts scheduled purchasing
+            # under retry/idempotency/DLQ/health for the first time; it is
+            # OPTIONAL and gated off (AGENT_RECURRING_ORDER_AGENT_ENABLED) so
+            # bringing it inside the harness does not also switch it on. The
+            # execution path is gone, not flag-guarded — see the module docstring.
+            "recurring_order_agent": RecurringOrderAgent,
         }
 
         # Register with the new registry (includes tier and dependency info)
