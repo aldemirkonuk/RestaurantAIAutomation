@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sketch 054 · Data — Agenda Canvas (2026-08-28)</title>
+<style>
+  :root {
+    --chalk:#f4f1ea; --paper:#fbf9f5; --limestone:#e9e3d8; --stone:#d6cfc3;
+    --ink:#1b1613; --ink-2:#3a342e; --muted:#6d645b; --quiet:#9a9086;
+    --wine:#9e2a4a; --wine-deep:#6f1a32;
+    --probabilistic:#c4552f;   /* enrichment  — machine-generated */
+    --verified:#a1762f;        /* annotation  — the oracle */
+    --constructed:#42687a;     /* synthetic   — answer key first */
+    --observed:#2f6b4f;        /* POS         — observed, unrepeatable */
+    --audited:#9e2a4a;         /* quality     — the gate */
+    --dept:#1b1613;
+    --ok:#2f6b4f; --warn:#a66b1f; --danger:#a8342a;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Inter, "Helvetica Neue", Arial, sans-serif;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--chalk); }
+  body {
+    margin:0; padding:34px 30px 60px; background:var(--chalk); color:var(--ink);
+    font-family: var(--sans); font-size:14px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:1560px; margin:0 auto; }
+
+  /* ---------- masthead ---------- */
+  .masthead { display:flex; align-items:flex-end; justify-content:space-between;
+    gap:28px; border-bottom:2px solid var(--ink); padding-bottom:14px; flex-wrap:wrap; }
+  .mast-l h1 { font-family:var(--serif); font-size:37px; line-height:1.05; margin:0 0 6px;
+    letter-spacing:-0.015em; font-weight:400; }
+  .mast-l h1 em { font-style:italic; color:var(--wine); }
+  .kicker { font-family:var(--mono); font-size:10.5px; letter-spacing:0.16em;
+    text-transform:uppercase; color:var(--muted); margin-bottom:9px; }
+  .thesis { max-width:760px; color:var(--ink-2); font-size:14.5px; }
+  .thesis b { color:var(--ink); }
+  .mast-r { text-align:right; font-family:var(--mono); font-size:11px; color:var(--muted);
+    line-height:1.85; white-space:nowrap; }
+  .mast-r b { color:var(--ink); font-size:19px; display:block; line-height:1.2; }
+
+  /* ---------- section headers ---------- */
+  .sec { margin-top:34px; }
+  .sec-h { display:flex; align-items:baseline; gap:12px; margin-bottom:12px;
+    border-bottom:1px solid var(--stone); padding-bottom:6px; }
+  .sec-h h2 { font-family:var(--mono); font-size:11px; letter-spacing:0.17em;
+    text-transform:uppercase; margin:0; font-weight:600; }
+  .sec-h span { font-size:12.5px; color:var(--muted); }
+
+  /* ---------- three-number strip ---------- */
+  .three { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .num { background:var(--paper); border:1px solid var(--stone); border-top:3px solid var(--ink);
+    padding:14px 16px 13px; }
+  .num.wine-n  { border-top-color:var(--probabilistic); }
+  .num.dish-n  { border-top-color:var(--verified); }
+  .num.sales-n { border-top-color:var(--observed); }
+  .num .lab { font-family:var(--mono); font-size:10px; letter-spacing:0.13em;
+    text-transform:uppercase; color:var(--muted); }
+  .num .val { font-family:var(--serif); font-size:33px; line-height:1.1; margin:5px 0 3px; }
+  .num .val small { font-size:14px; color:var(--muted); font-family:var(--sans); }
+  .num .den { font-size:12.5px; color:var(--ink-2); }
+  .num .den b { color:var(--danger); }
+  .num .fix { font-family:var(--mono); font-size:10.5px; color:var(--muted); margin-top:7px;
+    padding-top:7px; border-top:1px dotted var(--stone); }
+
+  /* ---------- timeline board ---------- */
+  .board-scroll { overflow-x:auto; padding-bottom:6px; }
+  .board { min-width:1320px; display:grid;
+    grid-template-columns:186px repeat(7, minmax(150px,1fr)); gap:6px; }
+  .col-h { font-family:var(--mono); font-size:10px; letter-spacing:0.1em; color:var(--muted);
+    text-transform:uppercase; padding:0 0 6px 3px; border-bottom:1px solid var(--stone); }
+  .col-h b { display:block; color:var(--ink); font-size:12px; letter-spacing:0.04em; }
+  .corner { border-bottom:1px solid var(--stone); }
+
+  .lane-l { padding:11px 10px 11px 12px; background:var(--paper);
+    border-left:3px solid var(--stone); display:flex; flex-direction:column; gap:3px; }
+  .lane-l .team { font-size:13px; font-weight:650; letter-spacing:-0.01em; }
+  .lane-l .guar { font-family:var(--mono); font-size:9.5px; letter-spacing:0.1em;
+    text-transform:uppercase; }
+  .lane-l .card { font-family:var(--mono); font-size:10px; color:var(--quiet); margin-top:3px; }
+  .cell { display:flex; flex-direction:column; gap:5px; padding:2px 0; min-height:52px; }
+
+  .t { display:block; background:var(--paper); border:1px solid var(--stone);
+    border-left:3px solid var(--stone); padding:7px 9px 8px; }
+  .t .id { font-family:var(--mono); font-size:10px; letter-spacing:0.07em; font-weight:600; }
+  .t .ttl { font-size:12.3px; line-height:1.32; margin:2px 0 4px; color:var(--ink); }
+  .t .done { font-size:10.7px; line-height:1.35; color:var(--muted); }
+  .t .cad { font-family:var(--mono); font-size:9px; letter-spacing:0.09em; text-transform:uppercase;
+    color:var(--quiet); margin-top:5px; display:flex; gap:6px; flex-wrap:wrap; }
+  .t .cad i { font-style:normal; border:1px solid var(--stone); padding:1px 4px; }
+  .t.spine { box-shadow:0 0 0 1px var(--ink) inset; }
+  .t.spine .id::after { content:" ● SPINE"; color:var(--wine); letter-spacing:0.1em; }
+  .t.gated { border-style:dashed; background:transparent; }
+  .t.gated .ttl { color:var(--ink-2); }
+
+  /* guarantee tints */
+  .g-dept  .lane-l, .g-dept  .t { border-left-color:var(--dept); }
+  .g-prob  .lane-l, .g-prob  .t { border-left-color:var(--probabilistic); }
+  .g-ver   .lane-l, .g-ver   .t { border-left-color:var(--verified); }
+  .g-con   .lane-l, .g-con   .t { border-left-color:var(--constructed); }
+  .g-obs   .lane-l, .g-obs   .t { border-left-color:var(--observed); }
+  .g-aud   .lane-l, .g-aud   .t { border-left-color:var(--audited); }
+  .g-dept .guar { color:var(--dept); } .g-prob .guar { color:var(--probabilistic); }
+  .g-ver  .guar { color:var(--verified); } .g-con .guar { color:var(--constructed); }
+  .g-obs  .guar { color:var(--observed); } .g-aud .guar { color:var(--audited); }
+  .g-dept .id { color:var(--dept); } .g-prob .id { color:var(--probabilistic); }
+  .g-ver  .id { color:var(--verified); } .g-con .id { color:var(--constructed); }
+  .g-obs  .id { color:var(--observed); } .g-aud .id { color:var(--audited); }
+
+  /* ---------- two-column lower deck ---------- */
+  .deck { display:grid; grid-template-columns:1.05fr 1fr; gap:26px; align-items:start; }
+  @media (max-width:1080px) { .deck { grid-template-columns:1fr; } .three { grid-template-columns:1fr; } }
+
+  table { width:100%; border-collapse:collapse; font-size:12.4px; }
+  th { text-align:left; font-family:var(--mono); font-size:9.5px; letter-spacing:0.12em;
+    text-transform:uppercase; color:var(--muted); font-weight:600;
+    border-bottom:1px solid var(--stone); padding:0 8px 6px 0; }
+  td { padding:7px 8px 7px 0; border-bottom:1px solid var(--limestone); vertical-align:top;
+    line-height:1.4; }
+  td.k { font-family:var(--mono); font-size:10.5px; white-space:nowrap; color:var(--wine-deep);
+    font-weight:600; }
+  td code, .thesis code, .num code { font-family:var(--mono); font-size:0.9em;
+    background:var(--limestone); padding:0 3px; }
+  .to { font-family:var(--mono); font-size:10px; color:var(--muted); white-space:nowrap; }
+
+  .reach { background:var(--paper); border:1px solid var(--stone); padding:13px 15px; margin-bottom:10px; }
+  .reach h3 { margin:0 0 4px; font-size:13.5px; letter-spacing:-0.01em; }
+  .reach p { margin:0 0 6px; font-size:12.5px; color:var(--ink-2); }
+  .grade { font-family:var(--mono); font-size:9.5px; letter-spacing:0.12em; text-transform:uppercase;
+    padding:2px 6px; border:1px solid; display:inline-block; }
+  .grade.go { color:var(--ok); border-color:var(--ok); }
+  .grade.asp { color:var(--warn); border-color:var(--warn); }
+
+  .locks { margin-top:30px; border-top:2px solid var(--ink); padding-top:12px;
+    display:flex; gap:26px; flex-wrap:wrap; font-size:12.3px; color:var(--ink-2); }
+  .locks div { flex:1 1 300px; }
+  .locks b { font-family:var(--mono); font-size:10px; letter-spacing:0.12em;
+    text-transform:uppercase; color:var(--wine); display:block; margin-bottom:3px; }
+  .foot { margin-top:22px; font-family:var(--mono); font-size:10px; color:var(--quiet);
+    line-height:1.8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <div class="mast-l">
+      <div class="kicker">Sketch 054 · Platform / Data · agenda canvas · 2026-08-28</div>
+      <h1>Four kinds of truth, <em>one board</em>, no average</h1>
+      <p class="thesis">The department's whole first agenda on one page: <b>21 tasks</b> across
+      five teams, each in the lane of the truth guarantee it produces, placed at the date it must
+      have moved by. The three <b>spine</b> tasks are the three numbers that have never existed —
+      a substrate report that emits itself, coverage on the true denominator, and a POS
+      line-resolution rate. Nothing here has run.</p>
+    </div>
+    <div class="mast-r">
+      <b>21</b> tasks · 5 teams<br />
+      <b>31</b> loop rows · <b>0</b> running<br />
+      <b>8</b> findings · <b>5</b> seams<br />
+      <span style="color:var(--wine)">source: data-agenda-full.md</span>
+    </div>
+  </div>
+
+  <!-- ============ THE THREE NUMBERS ============ -->
+  <div class="sec">
+    <div class="sec-h"><h2>The three L0 numbers</h2>
+      <span>never reported as one · each with its denominator · this is today's honest state, not a target</span></div>
+    <div class="three">
+      <div class="num wine-n">
+        <div class="lab">wine · probabilistic</div>
+        <div class="val">144<small> / 1,448</small></div>
+        <div class="den">Library coverage — the flattering figure. The true one,
+          <b>demand-weighted on wines that appear on customer menus</b>, has never been published.</div>
+        <div class="fix">DAT-5 prints both, side by side, permanently</div>
+      </div>
+      <div class="num dish-n">
+        <div class="lab">dish · deferred</div>
+        <div class="val">0<small> — unmeasured</small></div>
+        <div class="den">Dish identity was deferred <em>with its design written</em> (<code>b728d25</code>).
+          <b>A deferral without a date is a cancellation nobody voted for.</b></div>
+        <div class="fix">Q2 — a date, or a drop, by 2026-09-30</div>
+      </div>
+      <div class="num sales-n">
+        <div class="lab">sales · observed</div>
+        <div class="val">—<small> not measured</small></div>
+        <div class="den">The pipes exist; the corpus does not. <code>analytics/</code> (39 routes)
+          is <b>already fitting baselines on it</b>.</div>
+        <div class="fix">DAT-14 defines density, then emits it</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ THE BOARD ============ -->
+  <div class="sec">
+    <div class="sec-h"><h2>The agenda, by lane and close_time</h2>
+      <span>lane = truth guarantee (the only line this department splits on) · column = the date the task must have moved</span></div>
+    <div class="board-scroll">
+    <div class="board">
+
+      <div class="corner"></div>
+      <div class="col-h">Sep 4<b>week 1</b></div>
+      <div class="col-h">Sep 11<b>week 2</b></div>
+      <div class="col-h">Sep 18<b>week 3</b></div>
+      <div class="col-h">Sep 25<b>week 4</b></div>
+      <div class="col-h">Oct 2<b>month 2</b></div>
+      <div class="col-h">Oct 16<b>month 2</b></div>
+      <div class="col-h">Nov 28<b>quarter</b></div>
+
+      <!-- ===== DEPARTMENT ===== -->
+      <div class="lane-l g-dept">
+        <div class="team">Data — department</div>
+        <div class="guar">rollup · never produces</div>
+        <div class="card">card: data-l0-rollup</div>
+      </div>
+      <div class="cell g-dept"></div>
+      <div class="cell g-dept">
+        <a class="t"><span class="id">DAT-10</span>
+          <div class="ttl">Decide where the oracle lives</div>
+          <div class="done">Register row w/ owner + close-time; no gold row exists outside it</div>
+          <div class="cad"><i>decision</i><i>→ OPEN-DECISIONS</i></div></a>
+        <a class="t"><span class="id">DAT-16</span>
+          <div class="ttl"><code>source_guarantee</code> spec + DDL request</div>
+          <div class="done">Spec merged; request filed with schema-migrations. <b>We author no DDL</b></div>
+          <div class="cad"><i>once</i><i>seam</i></div></a>
+      </div>
+      <div class="cell g-dept">
+        <a class="t"><span class="id">DAT-3</span>
+          <div class="ttl">Rollup <em>reads</em> the report, never recomputes it</div>
+          <div class="done">Every row carries value + denominator; no arithmetic spans two guarantees</div>
+          <div class="cad"><i>weekly</i></div></a>
+      </div>
+      <div class="cell g-dept">
+        <a class="t"><span class="id">DAT-4</span>
+          <div class="ttl">Six loops under the staleness watcher</div>
+          <div class="done">A breached close_time surfaces as a finding, not as silence</div>
+          <div class="cad"><i>continuous</i><i>watch_loops.py</i></div></a>
+      </div>
+      <div class="cell g-dept"></div><div class="cell g-dept"></div><div class="cell g-dept"></div>
+
+      <!-- ===== SUBSTRATE QUALITY (AUDITOR) ===== -->
+      <div class="lane-l g-aud">
+        <div class="team">Substrate quality &amp; coverage</div>
+        <div class="guar">audited · ships nothing</div>
+        <div class="card">card: substrate-auditor · mechanical</div>
+      </div>
+      <div class="cell g-aud"></div>
+      <div class="cell g-aud">
+        <a class="t spine"><span class="id">DAT-1</span>
+          <div class="ttl">The substrate report becomes a script that runs</div>
+          <div class="done">Three numbers, each with a denominator. <b>A single-scalar run fails its own assertion</b></div>
+          <div class="cad"><i>daily</i><i>run_card.py</i></div></a>
+        <a class="t"><span class="id">DAT-2</span>
+          <div class="ttl">Publish the zero state on day one</div>
+          <div class="done">dish = 0, sales = not measured, visible. No hand-edit raises either</div>
+          <div class="cad"><i>same day</i></div></a>
+      </div>
+      <div class="cell g-aud">
+        <a class="t"><span class="id">DAT-18</span>
+          <div class="ttl">Threshold-change protocol, before the first squeeze</div>
+          <div class="done">Rate prints beside its knob; the 2026-08-14 rescale retro-filed as the worked example</div>
+          <div class="cad"><i>monthly</i></div></a>
+        <a class="t gated"><span class="id">DAT-17</span>
+          <div class="ttl">Provenance audit — an absolute count</div>
+          <div class="done">Reads <code>BLOCKED-BY-DAT-16</code> until the column exists. <b>Never 0</b></div>
+          <div class="cad"><i>gated</i><i>weekly after</i></div></a>
+      </div>
+      <div class="cell g-aud"></div><div class="cell g-aud"></div><div class="cell g-aud"></div>
+      <div class="cell g-aud">
+        <a class="t"><span class="id">DAT-19</span>
+          <div class="ttl">Gate efficacy: publishes actually blocked</div>
+          <div class="done">A quarter at 0 opens the charter's own merge reservation as a register row</div>
+          <div class="cad"><i>quarterly</i><i>self-test</i></div></a>
+      </div>
+
+      <!-- ===== CORPORA ENRICHMENT ===== -->
+      <div class="lane-l g-prob">
+        <div class="team">Corpora &amp; enrichment</div>
+        <div class="guar">probabilistic</div>
+        <div class="card">card: enrichment-runner · extraction</div>
+      </div>
+      <div class="cell g-prob">
+        <a class="t spine"><span class="id">DAT-5</span>
+          <div class="ttl">Both coverage figures, from one query, side by side</div>
+          <div class="done">Two numbers, two denominators. <b>The library figure never appears alone</b></div>
+          <div class="cad"><i>weekly</i></div></a>
+      </div>
+      <div class="cell g-prob">
+        <a class="t"><span class="id">DAT-7</span>
+          <div class="ttl">A measured price for the corpus plan</div>
+          <div class="done">Cost/record with its sample size — or the words INSUFFICIENT VOLUME</div>
+          <div class="cad"><i>weekly</i><i>nf_readout.py</i></div></a>
+      </div>
+      <div class="cell g-prob">
+        <a class="t"><span class="id">DAT-8</span>
+          <div class="ttl">Depth, not presence — median field confidence</div>
+          <div class="done">Printed beside every coverage figure; a falling median is reported, not smoothed</div>
+          <div class="cad"><i>weekly</i></div></a>
+      </div>
+      <div class="cell g-prob">
+        <a class="t"><span class="id">DAT-6</span>
+          <div class="ttl">Four demand-ordered weeks — the push</div>
+          <div class="done">On three close-times of divergence, <b>the queue is re-sorted, not the report</b></div>
+          <div class="cad"><i>weekly ×4</i></div></a>
+      </div>
+      <div class="cell g-prob"></div><div class="cell g-prob"></div><div class="cell g-prob"></div>
+
+      <!-- ===== ANNOTATION ===== -->
+      <div class="lane-l g-ver">
+        <div class="team">Annotation &amp; ground truth</div>
+        <div class="guar">human-verified · the oracle</div>
+        <div class="card">card: gold-set-steward · mechanical</div>
+      </div>
+      <div class="cell g-ver">
+        <a class="t spine"><span class="id">DAT-9</span>
+          <div class="ttl">Publish the <em>true</em> gold-set size and freshness</div>
+          <div class="done"><b>Measured 2026-08-28: 0 tracked documents.</b> It gets published as 0</div>
+          <div class="cad"><i>weekly</i><i>per task type</i></div></a>
+      </div>
+      <div class="cell g-ver"></div>
+      <div class="cell g-ver">
+        <a class="t"><span class="id">DAT-11</span>
+          <div class="ttl">One dated annotation sitting — invoice family</div>
+          <div class="done">Freshness resets to 0 for one task type. <b>Founder-hours dependent (Q5)</b></div>
+          <div class="cad"><i>monthly</i><i>blocks DAT-20</i></div></a>
+      </div>
+      <div class="cell g-ver"></div><div class="cell g-ver"></div>
+      <div class="cell g-ver"></div><div class="cell g-ver"></div>
+
+      <!-- ===== POS ===== -->
+      <div class="lane-l g-obs">
+        <div class="team">POS operational telemetry</div>
+        <div class="guar">observed · unrepeatable</div>
+        <div class="card">card: pos-fitness-monitor · extraction</div>
+      </div>
+      <div class="cell g-obs"></div>
+      <div class="cell g-obs">
+        <a class="t spine"><span class="id">DAT-12</span>
+          <div class="ttl">The first line-resolution rate ever computed</div>
+          <div class="done">Per restaurant, printed with <code>n</code>. <b>No fleet mean anywhere in the output</b></div>
+          <div class="cad"><i>weekly</i></div></a>
+        <a class="t"><span class="id">DAT-13</span>
+          <div class="ttl">Drain the queue — and report what it <em>changed</em></div>
+          <div class="done">Rule-change vs one-off, split. A zero week states why</div>
+          <div class="cad"><i>weekly</i></div></a>
+      </div>
+      <div class="cell g-obs">
+        <a class="t"><span class="id">DAT-14</span>
+          <div class="ttl"><code>sales.density</code> — defined, then emitted</div>
+          <div class="done">Checks per open day × lines per check, per restaurant, beside the baselines</div>
+          <div class="cad"><i>weekly</i><i>third L0 number</i></div></a>
+      </div>
+      <div class="cell g-obs">
+        <a class="t"><span class="id">DAT-15</span>
+          <div class="ttl">Read <code>drift_findings</code> on a cadence</div>
+          <div class="done">A provider step change becomes a finding within one close-time; empty reads recorded</div>
+          <div class="cad"><i>daily / weekly</i><i>one adapter</i></div></a>
+      </div>
+      <div class="cell g-obs"></div><div class="cell g-obs"></div><div class="cell g-obs"></div>
+
+      <!-- ===== SYNTHETIC ===== -->
+      <div class="lane-l g-con">
+        <div class="team">Synthetic generation &amp; simulation</div>
+        <div class="guar">true by construction</div>
+        <div class="card">card: synth-forge · mechanical</div>
+      </div>
+      <div class="cell g-con"></div><div class="cell g-con"></div>
+      <div class="cell g-con"></div><div class="cell g-con"></div>
+      <div class="cell g-con">
+        <a class="t"><span class="id">DAT-20</span>
+          <div class="ttl">The first fidelity number — or the blocker in its place</div>
+          <div class="done">Names the gold-set size <em>and</em> the sim <code>pack_version</code>. <b>An empty oracle makes the run refuse</b></div>
+          <div class="cad"><i>monthly</i><i>gated on DAT-9/11</i></div></a>
+      </div>
+      <div class="cell g-con">
+        <a class="t"><span class="id">DAT-21</span>
+          <div class="ttl">Degrade profiles vs <em>real</em> damage</div>
+          <div class="done">Measured against real degraded documents, or not computed at all</div>
+          <div class="cad"><i>monthly</i></div></a>
+      </div>
+      <div class="cell g-con"></div>
+
+    </div>
+    </div>
+  </div>
+
+  <!-- ============ LOWER DECK ============ -->
+  <div class="sec deck">
+
+    <div>
+      <div class="sec-h"><h2>Seams — asks addressed to other units' questions files</h2>
+        <span>never an edit to their files</span></div>
+      <table>
+        <tr><th>Ask</th><th>Unit</th><th>What we give back</th></tr>
+        <tr><td class="k">source_guarantee DDL</td><td class="to">schema-migrations</td>
+          <td>The spec, the value set, the backfill rule, and the audit that consumes it</td></tr>
+        <tr><td class="k">OD-66 / OD-67</td><td class="to">pos-bridge · integration-eng</td>
+          <td>Both corrupt sale volume — our demand queue and <code>sales.density</code> input. The per-restaurant fitness report would have surfaced them</td></tr>
+        <tr><td class="k">sim-namespace-integrity</td><td class="to">state-integrity-invariants</td>
+          <td>Sim write sets + teardown refs. The leak count is graded there, <b>never here</b></td></tr>
+        <tr><td class="k">api_spend.task_type</td><td class="to">Track A2</td>
+          <td>The agent-side cost slice, readable today. We schedule nothing that assumes its date</td></tr>
+        <tr><td class="k">rubric #1 · vendor-reply</td><td class="to">Track A5 · research-math</td>
+          <td>An independent oracle for the invoice family — the thing only this department can supply</td></tr>
+      </table>
+
+      <div class="sec-h" style="margin-top:26px"><h2>Findings — filed, not scheduled</h2>
+        <span>a task no card or loop can carry is a finding</span></div>
+      <table>
+        <tr><td class="k">F1</td><td colspan="2">The oracle has no home — <code>.gitkeep</code>-only corpora; the 200-doc benchmark loads <b>0</b></td></tr>
+        <tr><td class="k">F2</td><td colspan="2"><code>annotation.inbox_arrival</code> has no publisher — nobody owns filling the inbox</td></tr>
+        <tr><td class="k">F3</td><td colspan="2"><code>loop.close_time_breached</code> has no publisher — the watcher reports, it does not emit</td></tr>
+        <tr><td class="k">F4</td><td colspan="2"><code>pos.restaurant_onboarded</code> has no publisher — the first-week gate is manual</td></tr>
+        <tr><td class="k">F5</td><td colspan="2">Inter-annotator agreement is unmeasurable at one annotator — a gap, never a value</td></tr>
+        <tr><td class="k">F6</td><td colspan="2">OD-66 / OD-67 corrupt the volume signal we compute on — not ours to fix</td></tr>
+        <tr><td class="k">F7</td><td colspan="2">Stale baseline corrected: <code>.claude/skills/</code> now exists (4 skills). Data owns <b>zero</b> of them</td></tr>
+        <tr><td class="k">F8</td><td colspan="2">Two of four corpora are gitignored — a count over them is a count over one machine</td></tr>
+      </table>
+    </div>
+
+    <div>
+      <div class="sec-h"><h2>The three reaches, graded</h2>
+        <span>ambition, then the same evidence discipline applied to it</span></div>
+
+      <div class="reach">
+        <h3>R1 · Zero to three running loops</h3>
+        <p>The org runs <b>5 of 485</b> loops. This department contributes <b>31 rows, all
+        <code>proposed</code></b>. Three closing on cadence by 2026-10-02 — report, reprioritization,
+        queue drain — is the largest single-department move available anywhere in the corpus.</p>
+        <span class="grade go">Achievable · DAT-1 + DAT-5 + DAT-12, scripts over tables that exist</span>
+      </div>
+
+      <div class="reach">
+        <h3>R2 · The provenance ledger</h3>
+        <p>Every L0 row provably carrying its truth guarantee, and every eval filtering on it
+        <em>explicitly</em> rather than by convention — a substrate that can prove what kind of
+        truth each row is.</p>
+        <span class="grade asp">Aspiration pending decisions we do not own · we schedule the spec and the request, not the column</span>
+      </div>
+
+      <div class="reach">
+        <h3>R3 · A measured corpus curve</h3>
+        <p>Coverage and cost-per-record published together until <em>90,000 records / 2.0 years</em>
+        stops being an estimate and becomes a curve with dated points.</p>
+        <span class="grade go">Achievable agent-side today · the joined spend view is Track A2's, not ours</span>
+      </div>
+
+      <div class="sec-h" style="margin-top:26px"><h2>Why the lanes are the lanes</h2><span></span></div>
+      <table>
+        <tr><th>Guarantee</th><th>When it is wrong</th></tr>
+        <tr><td class="k" style="color:var(--probabilistic)">probabilistic</td><td>Plausible-looking wrong facts, at scale</td></tr>
+        <tr><td class="k" style="color:var(--verified)">human-verified</td><td>Small, expensive, and stale before you notice</td></tr>
+        <tr><td class="k" style="color:var(--constructed)">true by construction</td><td>Unlimited, and unrepresentative in a way scores cannot show</td></tr>
+        <tr><td class="k" style="color:var(--observed)">observed</td><td>A missed Tuesday is missing forever</td></tr>
+        <tr><td class="k" style="color:var(--audited)">audited</td><td>The metric and the knob end up in the same hand</td></tr>
+      </table>
+      <p style="font-size:12.3px;color:var(--ink-2);margin-top:10px">Four incompatible epistemics
+      in one department is why <b>no task on this board rolls up into a single L0 number</b>, and
+      why the auditor produces nothing.</p>
+    </div>
+  </div>
+
+  <div class="locks">
+    <div><b>🔒 Lock — pricing model deferred</b>
+      DAT-7 publishes cost-per-enriched-record. That is a unit-economics <em>input</em>. Nothing on
+      this board proposes, implies, or assumes a price, and no task becomes correct only after an unlock.</div>
+    <div><b>🔒 Lock — brand / landing visuals held</b>
+      Not this department's surface. This canvas is a throwaway thinking sheet under the sketch
+      conventions — not a product visual and not brand work.</div>
+    <div><b>Open forks, untouched</b>
+      TECH-F1 · TECH-F5 · OD-03/OD-52 · OD-26 · OD-46 · OD-64 · OD-66 · OD-67 are referenced and
+      left exactly as open as they were.</div>
+  </div>
+
+  <div class="foot">
+    Source of record: <code>.planning/01-org/platform/data/data-agenda-full.md</code> ·
+    board: <code>data-agenda-board.md</code> · ADR 0039 Track B · GENERATION_BRIEF §8<br />
+    Every figure on this page was re-verified against the tree on 2026-08-28. Nothing here has run:
+    this is a plan of record, not a progress report.
+  </div>
+
+</div>
+</body>
+</html>

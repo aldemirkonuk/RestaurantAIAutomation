@@ -39,11 +39,11 @@ consumes:
   - datasets/merge_eval/ (entries, adjudicated, manifest) — publisher: scripts/build_merge_eval_set.py
   - the task-type grading manifest — publisher: scripts/check_task_types_are_graded.py
 emits:
-  - a verdict per graded task type — consumer: "[[research-math-agenda-board]]"; it publishes whether or not RM-1 agrees (independence clause 3)
-  - pass conditions committed before results exist — consumer: "[[harness-model-routing-charter]]"'s bake-off (clause 1)
+  - 'a verdict per graded task type — consumer: "[[research-math-agenda-board]]"; it publishes whether or not RM-1 agrees (independence clause 3)'
+  - 'pass conditions committed before results exist — consumer: "[[harness-model-routing-charter]]"''s bake-off (clause 1)'
   - a set-provenance label (free-negatives | imagination-only) per eval set — consumer: the gate that would otherwise inherit its authority
-  - a merge proposal if a golden set is maintained twice — consumer: "[[agent-evaluation-gates-charter]]" (TECH-F3, open)
-  - nf_a events (task_type: eval_gate_run) — consumer: "[[neural-footprint-instrumentation-charter]]"'s contract
+  - 'a merge proposal if a golden set is maintained twice — consumer: "[[agent-evaluation-gates-charter]]" (TECH-F3, open)'
+  - 'nf_a events (task_type: eval_gate_run) — consumer: "[[neural-footprint-instrumentation-charter]]"''s contract'
 routing_class: judgment          # writing a doneability criterion is judgment; enforcing one stays a script
 quality_bar: "identity.false_merge_count = 0, never summed with false splits (scripts/eval_merge_policies.py:5-13); every task type graded or on the shrink-only exemption list (scripts/check_task_types_are_graded.py)"
 autonomy:

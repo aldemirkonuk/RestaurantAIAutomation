@@ -67,7 +67,7 @@ links: ["[[HOME]]", "[[AGENDA]]", "[[PLAN]]", "[[ORG-MAP]]", "[[GLOSSARY]]"]
 > **[0014](../decisions/0014-proposal-candidate-set-null.md)** (0014's own number was still
 > vacant). Each carries a header note recording the original number. Inbound citations
 > repaired: ADR 0015's four references had been naming *reports through the gateway* for two
-> days, and ADR 0026's `[[0013-migration-ledger-reconciliation]]` link resolved to nothing.
+> days, and ADR 0026's `0013-migration-ledger-reconciliation` link (now [[0031-migration-ledger-reconciliation]]) resolved to nothing.
 >
 > Two of the restored ADRs also cited register ids — 68, 69, 70 — whose numbers have since
 > been reused or vacated. Those are described in words rather than cited, because a number
