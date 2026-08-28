@@ -1,0 +1,1061 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>061 — Mudavym · The Guest Book</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Instrument+Sans:wght@400;500;600&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   061 — THE GUEST BOOK · token sheet
+   Recognition is the product. Paper is warm, ink is cool,
+   the margin rule is violet, and gilt is a material — never a status.
+   ============================================================ */
+:root{
+  /* paper — a laid sheet, warmer than white, cooler than cream */
+  --page:#FBF8F4; --leaf:#F4F0E9; --well:#EAE4DB;
+  /* surfaces are alpha tints of a violet-warm ink, never painted gray */
+  --tint-2:rgba(41,34,46,.028); --tint-4:rgba(41,34,46,.055); --tint-8:rgba(41,34,46,.085);
+  /* ink ladder — four steps, violet-cast, shared by text and marks */
+  --ink-1:#1C181F; --ink-2:#4C4653; --ink-3:#756E7D; --ink-4:#918A98;
+  /* rules — the structure of a ruled page */
+  --rule:rgba(28,24,31,.13); --rule-strong:rgba(28,24,31,.28);
+  --ruleline:rgba(28,24,31,.055);          /* the ruled-sheet pattern */
+  --margin-rule:rgba(94,42,99,.24);        /* the vertical date-column rule */
+  /* the signing ink — violet, because registers were signed in violet */
+  --sign:#5E2A63; --sign-deep:#46204A; --sign-tint:rgba(94,42,99,.09); --sign-wash:rgba(94,42,99,.045);
+  /* gilt — a MATERIAL, not a status. Only tally marks, ribbons, page edges. */
+  --gilt:#B8862B; --gilt-soft:rgba(184,134,43,.28);
+  /* semantics, each with its tint twin so state never sits raw on paper */
+  --kept:#2E6A4C;  --kept-tint:rgba(46,106,76,.10);
+  --waiting:#8F6015; --waiting-tint:rgba(143,96,21,.11);
+  --owed:#B03A2E;  --owed-tint:rgba(176,58,46,.10);
+  /* type */
+  --serif:'Newsreader',Georgia,'Iowan Old Style',serif;
+  --sans:'Instrument Sans',-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:'DM Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  /* motion — see §07 */
+  --m-nib:150ms cubic-bezier(.2,.8,.2,1);
+  --m-leaf:340ms cubic-bezier(.2,.9,.25,1);
+  --m-turn:400ms cubic-bezier(.22,.85,.24,1);
+  --m-rule:300ms cubic-bezier(.25,1,.3,1);
+  --m-mark:300ms cubic-bezier(.2,1.5,.35,1);
+  --m-note:260ms cubic-bezier(.2,.8,.2,1);
+  --lift:0 1px 2px rgba(28,24,31,.05),0 6px 20px rgba(28,24,31,.06);
+}
+[data-theme="dark"]{
+  /* the night book — near-black carrying the violet of the ink */
+  --page:#141118; --leaf:#1B1721; --well:#241E2B;
+  --tint-2:rgba(237,230,242,.035); --tint-4:rgba(237,230,242,.06); --tint-8:rgba(237,230,242,.10);
+  --ink-1:#EFE9E1; --ink-2:#BEB4BF; --ink-3:#8D8493; --ink-4:#6F6779;
+  --rule:rgba(239,233,225,.12); --rule-strong:rgba(239,233,225,.26);
+  --ruleline:rgba(239,233,225,.05);
+  --margin-rule:rgba(200,156,209,.30);
+  --sign:#C89CD1; --sign-deep:#DCB8E2; --sign-tint:rgba(200,156,209,.15); --sign-wash:rgba(200,156,209,.07);
+  --gilt:#DDB264; --gilt-soft:rgba(221,178,100,.30);
+  --kept:#6BAE87;  --kept-tint:rgba(107,174,135,.13);
+  --waiting:#CE8B4A; --waiting-tint:rgba(206,139,74,.13);
+  --owed:#DB6D5F;  --owed-tint:rgba(219,109,95,.13);
+  --lift:0 1px 2px rgba(0,0,0,.4),0 8px 26px rgba(0,0,0,.38);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--page);color:var(--ink-1);
+  font:400 15px/1.6 var(--sans);
+  transition:background var(--m-turn),color var(--m-turn);
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+}
+.wrap{max-width:1080px;margin:0 auto;padding:0 clamp(20px,5vw,64px)}
+section{border-top:1px solid var(--rule);padding:56px 0 74px}
+/* — voices — */
+.kicker{font:500 11px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);display:flex;gap:14px;align-items:baseline;margin-bottom:26px}
+.kicker .no{color:var(--sign)}
+h1,h2,h3,.serif{font-family:var(--serif)}
+h2{font-size:30px;font-weight:500;letter-spacing:-.015em;line-height:1.18;margin-bottom:10px}
+.lede{color:var(--ink-2);max-width:62ch;margin-bottom:34px}
+.lede em{font-family:var(--serif);font-style:italic;color:var(--ink-1)}
+.fig{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.dash{color:var(--ink-4)}
+.note{font:italic 400 15px/1.5 var(--serif);color:var(--ink-2)}
+.foot-note{font-size:12.5px;color:var(--ink-3);margin-top:18px;max-width:74ch}
+/* — masthead — */
+header{padding:46px 0 32px;display:flex;justify-content:space-between;align-items:flex-start;gap:20px}
+.masthead .over{font:500 11px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3)}
+.masthead h1{font-size:clamp(31px,4.6vw,42px);font-weight:500;letter-spacing:-.02em;margin:12px 0 4px;line-height:1.05}
+.masthead h1 .sep{color:var(--sign)}
+.masthead .sig{display:block;margin:6px 0 10px}
+.masthead p{max-width:58ch}
+.themebtn{font:500 12px var(--mono);letter-spacing:.05em;color:var(--ink-2);background:var(--tint-4);border:1px solid var(--rule);border-radius:7px;padding:9px 14px;cursor:pointer;transition:background var(--m-nib),border-color var(--m-nib),color var(--m-nib);white-space:nowrap}
+.themebtn:hover{background:var(--tint-8);border-color:var(--rule-strong);color:var(--ink-1)}
+/* ============ the guest-book entry — the system's one component ============ */
+.entry{display:grid;grid-template-columns:112px 1fr;border-bottom:1px solid var(--rule);position:relative}
+.rail{padding:16px 18px 16px 0;border-right:1px solid var(--margin-rule);text-align:right}
+.rail .d{font:400 11px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);display:block}
+.rail .ord{font:400 11px var(--mono);color:var(--ink-3);display:block;margin-top:7px}
+.rail .tally{margin-top:9px;margin-left:auto;display:block}
+.ebody{padding:16px 0 17px 22px;min-width:0}
+.ename{font:500 22px/1.2 var(--serif);letter-spacing:-.012em}
+.emeta{font:400 12.5px var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-3);margin-top:5px}
+.eact{font-size:14.5px;color:var(--ink-2);margin-top:7px}
+.ribbon{position:absolute;top:0;right:22px;width:11px}
+/* ============ §01 premise ============ */
+.premise-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:36px;align-items:start}
+.moves li{list-style:none;padding:13px 0;border-bottom:1px solid var(--rule);display:grid;grid-template-columns:26px 1fr;gap:12px;align-items:baseline}
+.moves li::before{content:"—";font:400 13px var(--mono);color:var(--sign)}
+.moves b{font-weight:600}
+.moves span{display:block;font-size:13.5px;color:var(--ink-3);margin-top:2px}
+.refuse{margin-top:22px;border-left:2px solid var(--owed);background:var(--owed-tint);padding:12px 16px;font-size:13.5px;border-radius:0 8px 8px 0}
+.refuse b{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--owed);display:block;margin-bottom:5px}
+.specimen{border:1px solid var(--rule);border-radius:12px;background:var(--leaf);overflow:hidden;box-shadow:var(--lift);transition:background var(--m-turn)}
+.specimen .cap{font:500 11px var(--mono);letter-spacing:.15em;text-transform:uppercase;color:var(--ink-3);padding:13px 20px;border-bottom:1px solid var(--rule)}
+.ruled{background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 33px,var(--ruleline) 33px,var(--ruleline) 34px)}
+/* ============ §02 logo ============ */
+.logo-grid{display:grid;gap:30px}
+.logo-row{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:11px;overflow:hidden}
+.logo-cell{padding:30px 26px;display:flex;flex-direction:column;gap:16px;min-height:186px;justify-content:center;align-items:center}
+.logo-cell.lt{background:#FBF8F4}
+.logo-cell.dk{background:#141118}
+.logo-cell svg{width:100%;max-width:330px;height:auto}
+.logo-meta{display:grid;grid-template-columns:210px 1fr;gap:22px;margin-top:12px;align-items:baseline}
+.logo-meta b{font:500 17px var(--serif)}
+.logo-meta b i{display:block;font:400 11px var(--mono);font-style:normal;letter-spacing:.14em;text-transform:uppercase;color:var(--sign);margin-bottom:4px}
+.logo-meta span{font-size:13.5px;color:var(--ink-3)}
+.logo-meta span u{text-decoration:none;color:var(--ink-2)}
+/* ============ §03 slogans ============ */
+.slogan{display:grid;grid-template-columns:112px 1fr;border-bottom:1px solid var(--rule)}
+.slogan .n{padding:20px 18px 20px 0;text-align:right;border-right:1px solid var(--margin-rule);font:400 11px var(--mono);letter-spacing:.16em;color:var(--ink-4)}
+.slogan .s{padding:20px 0 20px 22px}
+.slogan h3{font-size:25px;font-weight:500;letter-spacing:-.015em;line-height:1.22}
+.slogan h3 em{font-style:italic;color:var(--sign)}
+.slogan p{font-size:13.5px;color:var(--ink-3);margin-top:6px;max-width:66ch}
+/* ============ §04 voice ============ */
+.rules{counter-reset:r;display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:0 44px;margin-bottom:42px}
+.rules li{list-style:none;counter-increment:r;padding:15px 0;border-bottom:1px solid var(--rule);display:grid;grid-template-columns:32px 1fr;gap:10px}
+.rules li::before{content:counter(r,decimal-leading-zero);font:400 12px/1.85 var(--mono);color:var(--sign)}
+.rules b{font-weight:600}
+.rules span{display:block;font-size:13.5px;color:var(--ink-3);margin-top:2px}
+.rw{border:1px solid var(--rule);border-radius:11px;overflow:hidden}
+.rw-row{display:grid;grid-template-columns:1fr 1.25fr;gap:1px;background:var(--rule)}
+.rw-row>div{background:var(--page);padding:17px 22px;transition:background var(--m-turn)}
+.rw-row .was{color:var(--ink-3);font-size:14px}
+.rw-row s{text-decoration:none;display:block;font:400 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;margin-bottom:8px;color:var(--ink-4)}
+.rw-row .now{font-size:15px}
+.rw-row .now s{color:var(--sign)}
+.rw-row .now .serif{font-size:17px;line-height:1.35;font-weight:400}
+/* ============ §05 palette ============ */
+.pal{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+.pal-col{border:1px solid var(--rule);border-radius:11px;overflow:hidden}
+.pal-col .pal-head{font:500 11px var(--mono);letter-spacing:.15em;text-transform:uppercase;padding:14px 18px;border-bottom:1px solid var(--rule)}
+.pal-col.pl{background:#FBF8F4;color:#1C181F}
+.pal-col.pl .pal-head{border-color:rgba(28,24,31,.13);color:#7C7584}
+.pal-col.pd{background:#141118;color:#EFE9E1}
+.pal-col.pd .pal-head{border-color:rgba(239,233,225,.12);color:#8D8493}
+.sw{display:grid;grid-template-columns:44px 1fr auto;gap:14px;align-items:center;padding:8px 18px;font-size:13px}
+.sw .chip{height:29px;border-radius:6px;border:1px solid rgba(127,127,127,.26)}
+.sw .tok{font:500 12px var(--mono)}
+.sw .hex{font:400 10.5px var(--mono);opacity:.55;display:block;letter-spacing:0}
+.sw .use{font-size:11.5px;opacity:.62;text-align:right;max-width:16ch}
+/* ============ §06 type ============ */
+.faces{display:grid;grid-template-columns:repeat(auto-fit,minmax(262px,1fr));gap:18px;margin-bottom:38px}
+.face{border:1px solid var(--rule);border-radius:11px;padding:20px;background:var(--tint-2)}
+.face b{display:block;font:500 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--sign);margin-bottom:8px}
+.face .g{font-size:31px;line-height:1.12;margin-bottom:10px}
+.face span{font-size:12.5px;color:var(--ink-3)}
+.spec{border-bottom:1px solid var(--rule);padding:17px 0;display:grid;grid-template-columns:236px 1fr;gap:24px;align-items:baseline}
+.spec .m{font:400 11.5px/1.65 var(--mono);color:var(--ink-3)}
+.thesis{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:11px;overflow:hidden;margin:30px 0 0}
+.thesis>div{background:var(--page);padding:20px 22px 22px;transition:background var(--m-turn)}
+.thesis h5{font:500 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin-bottom:14px}
+.thesis.t2 h5{color:var(--sign)}
+.idfirst .a{font:500 15px var(--mono);font-variant-numeric:tabular-nums}
+.idfirst .b{font-size:13.5px;color:var(--ink-3);margin-top:4px}
+/* ============ §07 motion ============ */
+.mtok{width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:36px}
+.mtok th{font:500 11px var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);text-align:left;padding:10px 14px 10px 0;border-bottom:1px solid var(--rule-strong)}
+.mtok td{padding:11px 14px 11px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+.mtok td:first-child{font:500 13px var(--mono);color:var(--sign);white-space:nowrap}
+.mtok code{font:400 11.5px var(--mono);color:var(--ink-2);background:var(--tint-4);padding:2px 6px;border-radius:4px}
+.demos{display:grid;grid-template-columns:repeat(auto-fit,minmax(292px,1fr));gap:20px}
+.demo{border:1px solid var(--rule);border-radius:11px;padding:20px;background:var(--leaf);transition:background var(--m-turn)}
+.demo.wide{grid-column:1/-1}
+.demo h4{font:500 17px var(--serif);margin-bottom:2px}
+.demo .sub{font-size:12.5px;color:var(--ink-3);margin-bottom:18px}
+.demo .maps{margin-top:16px;font:400 11px/1.7 var(--mono);color:var(--ink-3);border-top:1px solid var(--rule);padding-top:10px;word-break:break-word}
+.demo .maps b{color:var(--sign);font-weight:500}
+/* toggle */
+.tgl{display:flex;align-items:center;gap:14px;cursor:pointer;user-select:none}
+.tgl .track{width:46px;height:26px;border-radius:999px;background:var(--tint-8);border:1px solid var(--rule-strong);position:relative;transition:background var(--m-leaf),border-color var(--m-leaf);flex:none}
+.tgl .thumb{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:var(--page);box-shadow:0 1px 3px rgba(28,24,31,.32);transition:transform var(--m-leaf)}
+.tgl.on .track{background:var(--sign);border-color:var(--sign)}
+.tgl.on .thumb{transform:translateX(20px)}
+.tgl .lab{font-size:14px}
+.tgl .lab i{display:block;font:400 11.5px var(--mono);font-style:normal;color:var(--ink-3);transition:color var(--m-nib);margin-top:3px}
+.tgl.on .lab i{color:var(--kept)}
+/* row expand */
+.xrow{border:1px solid var(--rule);border-radius:9px;overflow:hidden;background:var(--page);cursor:pointer;transition:background var(--m-nib)}
+.xrow:hover{background:var(--tint-2)}
+.xrow .head{display:grid;grid-template-columns:1fr auto 16px;gap:12px;align-items:center;padding:13px 15px}
+.xrow .head .nm{font:500 17px var(--serif)}
+.xrow .head .nm i{display:block;font:400 11px var(--mono);font-style:normal;color:var(--ink-3);margin-top:2px}
+.xrow .chev{color:var(--ink-4);transition:transform var(--m-turn);font-size:11px}
+.xrow.open .chev{transform:rotate(90deg)}
+.xrow .body{display:grid;grid-template-rows:0fr;transition:grid-template-rows var(--m-turn)}
+.xrow.open .body{grid-template-rows:1fr}
+.xrow .body>div{overflow:hidden}
+.hist{border-top:1px solid var(--rule);padding:0 15px;font:400 12px/2 var(--mono);color:var(--ink-2);opacity:0;transition:opacity var(--m-turn),padding var(--m-turn)}
+.xrow.open .hist{opacity:1;padding:11px 15px 13px}
+.hist .r{display:grid;grid-template-columns:78px 1fr auto;gap:10px}
+.hist .r span:first-child{color:var(--ink-3);letter-spacing:.06em}
+.hist .flag{color:var(--waiting)}
+.hist .cl{margin-top:8px;padding-top:8px;border-top:1px solid var(--rule);font:italic 400 13.5px var(--serif);color:var(--ink-2);line-height:1.45}
+/* ticker */
+.tick{display:flex;align-items:baseline;gap:14px}
+.tick .num{font:500 33px var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.025em}
+.tick .memory{font:italic 400 13.5px var(--serif);color:var(--ink-3);opacity:0;transform:translateY(5px);transition:opacity var(--m-note),transform var(--m-note);display:block;margin-top:8px}
+.tick .memory.in{opacity:1;transform:none}
+.gbtn{font:500 12px var(--mono);color:var(--sign);background:var(--sign-tint);border:1px solid transparent;border-radius:7px;padding:7px 12px;cursor:pointer;transition:border-color var(--m-nib),background var(--m-nib)}
+.gbtn:hover{border-color:var(--sign)}
+/* the recall — signature moment */
+.recall{display:grid;grid-template-columns:1fr auto;gap:20px;align-items:start}
+.recall .nm{font:500 27px/1.15 var(--serif);letter-spacing:-.015em}
+.rdraw{height:1.5px;background:var(--sign);transform:scaleX(0);transform-origin:left center;transition:transform var(--m-rule);margin:11px 0 12px;opacity:.75}
+.recall.in .rdraw{transform:scaleX(1)}
+/* only the recall demo's marks draw themselves; static rails render complete */
+.tally-draw line{stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset var(--m-mark)}
+.recall.in .tally-draw line{stroke-dashoffset:0}
+.rnote{opacity:0;transform:translateY(6px);transition:opacity var(--m-note),transform var(--m-note);transition-delay:560ms;font:italic 400 14.5px/1.5 var(--serif);color:var(--ink-2);max-width:52ch}
+.recall.in .rnote{opacity:1;transform:none}
+.rcount{font:400 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin-top:10px;opacity:0;transition:opacity var(--m-note);transition-delay:620ms}
+.recall.in .rcount{opacity:1}
+/* ============ §08 screens ============ */
+.mock{border:1px solid var(--rule);border-radius:14px;background:var(--leaf);box-shadow:var(--lift);overflow:hidden;margin-bottom:34px;transition:background var(--m-turn)}
+.mock .bar{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 24px;border-bottom:1px solid var(--rule);font:500 11px var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
+.mock .bar .kbd{border:1px solid var(--rule);border-radius:4px;padding:2px 7px;font-size:10px;letter-spacing:.04em;text-transform:none}
+.mock .pad{padding:26px 24px 28px}
+.greet{font:400 30px/1.24 var(--serif);letter-spacing:-.018em;max-width:26ch}
+.greet b{font-weight:600}/* the name outweighs the greeting around it — rule 01, at 30px */
+.greet-2{font:italic 400 18px/1.45 var(--serif);color:var(--ink-2);margin-top:8px;max-width:40ch}
+.greet-sub{font:400 11.5px var(--mono);letter-spacing:.05em;color:var(--ink-3);margin-top:14px;margin-bottom:24px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));border:1px solid var(--rule);border-radius:11px;overflow:hidden;background:var(--rule);gap:1px;margin-bottom:22px}
+.kpi{background:var(--page);padding:15px 17px 16px;transition:background var(--m-turn),opacity 380ms cubic-bezier(.2,.8,.2,1),transform 380ms cubic-bezier(.2,.8,.2,1)}
+.kpi.pre{opacity:0;transform:translateY(6px)}
+.kpi .l{font:500 10.5px var(--mono);letter-spacing:.15em;text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:9px}
+.kpi .v{font:500 25px var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.03em;line-height:1}
+.kpi .d{display:block;font-size:12px;color:var(--ink-3);margin-top:8px;line-height:1.4}
+.kpi .d.up{color:var(--kept)}.kpi .d.watch{color:var(--waiting)}.kpi .d.bad{color:var(--owed)}
+.kpi .mem{display:block;font:italic 400 12.5px var(--serif);color:var(--ink-3);margin-top:5px;line-height:1.35}
+.onetap{border:1px solid var(--rule);border-radius:12px;background:var(--page);overflow:hidden;position:relative;transition:background var(--m-turn)}
+.onetap .entry{border-bottom:none}
+.onetap .ebody{padding-right:20px}
+.ot-foot{display:flex;justify-content:space-between;align-items:center;gap:16px;border-top:1px solid var(--rule);background:var(--sign-wash);padding:13px 20px 13px 22px}
+.ot-foot .sigline{display:flex;align-items:center;gap:12px;min-height:34px}
+.ot-foot .sigcap{font:400 11px var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);opacity:0;transition:opacity var(--m-note);transition-delay:520ms}
+.ot-foot.signed .sigcap{opacity:1}
+#sigPath{stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset 620ms cubic-bezier(.32,.72,0,1)}
+.ot-foot.signed #sigPath{stroke-dashoffset:0}
+.btn-sign{font:600 14px var(--sans);color:#FBF8F4;background:var(--sign);border:none;border-radius:9px;padding:11px 20px;cursor:pointer;transition:background var(--m-nib),transform var(--m-nib);white-space:nowrap}
+[data-theme="dark"] .btn-sign{color:#141118}
+.btn-sign:hover{background:var(--sign-deep)}
+.btn-sign:active{transform:scale(.97)}
+.btn-sign:disabled{cursor:default;background:var(--kept)}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;border-radius:999px;padding:3px 11px}
+.chip.transit{color:var(--waiting);background:var(--waiting-tint)}
+.chip.done{color:var(--kept);background:var(--kept-tint)}
+.chip.draft{color:var(--ink-3);background:var(--tint-8)}
+.chip.ai{color:var(--sign);background:var(--sign-tint);font-family:var(--mono);font-size:11px;letter-spacing:.01em;cursor:pointer;border:1px solid transparent;transition:border-color var(--m-nib)}
+.chip.ai:hover{border-color:var(--sign)}
+.subrow{display:grid;grid-template-columns:112px 1fr;border-bottom:1px solid var(--rule);background:var(--tint-2)}
+.subrow .sp{border-right:1px solid var(--margin-rule)}
+.subrow .sc{padding:11px 22px 14px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.quoteline{border-left:2px solid var(--sign);padding:2px 0 2px 12px;font:italic 400 13.5px var(--serif);color:var(--ink-2)}
+.quoteline i{font:400 10.5px var(--mono);font-style:normal;color:var(--ink-3);display:block;margin-top:3px;letter-spacing:.06em}
+.thread-hint{margin-left:auto;font:400 11px var(--mono);letter-spacing:.08em;color:var(--ink-3);text-transform:uppercase;white-space:nowrap}
+.thread-hint b{color:var(--sign);font-weight:500}
+.entry:hover{background:var(--tint-2)}
+.entry{transition:background var(--m-nib)}
+.entry .chev{position:absolute;right:22px;top:50%;transform:translateY(-50%);color:var(--ink-4);font-size:12px;transition:transform var(--m-nib)}
+.entry:hover .chev{transform:translateY(-50%) translateX(3px);color:var(--sign)}
+.stranger{font:italic 400 13px var(--serif);color:var(--ink-3);margin-top:7px}
+.stranger .dash{font-family:var(--mono);font-style:normal}
+footer{border-top:1px solid var(--rule-strong);padding:28px 0 62px;font:400 12px var(--mono);color:var(--ink-3);display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+@media (max-width:820px){
+  .premise-grid,.logo-row,.pal,.rw-row,.thesis{grid-template-columns:1fr}
+  .logo-meta{grid-template-columns:1fr;gap:8px}
+  .spec{grid-template-columns:1fr;gap:6px}
+  .entry,.slogan,.subrow{grid-template-columns:78px 1fr}
+  .rail{padding-right:12px}
+  .ebody,.slogan .s,.subrow .sc{padding-left:14px}
+  .recall{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){
+  /* delays matter as much as durations: the Recall's 300–840ms stagger must collapse too,
+     or reduced-motion users watch a slow silent sequence instead of no sequence at all. */
+  *,*::before,*::after{transition-duration:1ms!important;transition-delay:0ms!important;animation:none!important}
+  html{scroll-behavior:auto}
+  .tally-draw line{transition:none!important;stroke-dashoffset:0!important}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="masthead">
+    <div class="over">Direction 061 · one of the competing set · OD-106 document-only</div>
+    <h1>Mudavym <span class="sep">·</span> The Guest Book</h1>
+    <svg class="sig" width="150" height="26" viewBox="0 0 150 26" aria-hidden="true">
+      <path d="M3 20 C13 4, 26 2, 30 12 C34 22, 21 26, 18 18 C15 10, 33 3, 50 8 C66 13, 62 22, 76 19 C88 16.5, 92 9, 106 12 C118 14.5, 120 20, 134 16 L146 12"
+        fill="none" stroke="var(--sign)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" opacity=".85"/>
+    </svg>
+    <p class="note">The house remembers. Your table, your vintage, the vendor who shorts you every July,
+    the server who covers every Friday. Recognition is not a feature here — it is the product.</p>
+  </div>
+  <button class="themebtn" id="themeBtn">☾ night book</button>
+</header>
+
+<!-- ===================== §01 PREMISE ===================== -->
+<section id="premise">
+  <div class="kicker"><span class="no">§01</span><span>Premise — recognition as the product</span></div>
+  <h2>Every great restaurant's superpower is that it remembers</h2>
+  <p class="lede">Ops software is anonymous by construction: it leads with an ID, it greets no one, and it
+  forgets the moment a record closes. The maître d's book does the opposite — it opens on a
+  <em>name</em>, in a confident hand, with the date beside it and every previous visit still on the page.
+  Mudavym is that book, kept perfectly. The hospitality is the greeting; the technical superiority is
+  the <em>recall</em> — nothing forgotten, every pattern noticed, history always one gesture away.</p>
+
+  <div class="premise-grid">
+    <div>
+      <ul class="moves">
+        <li><div><b>Guest-book rules and ruled lines</b><span>Hairline rules and a violet vertical margin rule are the structure. No cards floating on nothing; entries sit on a page.</span></div></li>
+        <li><div><b>Name-first hierarchy</b><span>The proper name is always the largest type in the row. The identifier is demoted to a mono caption. See §06 — this is the typographic thesis.</span></div></li>
+        <li><div><b>Dates and returns as a visual system</b><span>A fixed left rail carries the date, the ordinal ("9th order"), and a tally of returns drawn as pen strokes. Frequency becomes a shape you read at a glance.</span></div></li>
+        <li><div><b>Exactly three hand-quality marks</b><span>The signature stroke, the tally mark, the marginal note. Drawn as SVG paths — never a handwriting typeface — and held against precise modern type everywhere else.</span></div></li>
+      </ul>
+      <div class="refuse">
+        <b>What this direction refuses</b>
+        Nostalgia kitsch, script fonts, sepia, torn-paper textures, quill iconography, and any
+        "vintage" filter over the interface. The book is <em>current</em>: today's page, in today's type.
+        Warmth comes from being <em>known</em>, not from looking old.
+      </div>
+    </div>
+
+    <div class="specimen">
+      <div class="cap">The entry — one component, every page</div>
+      <div class="ruled">
+        <div class="entry">
+          <div class="rail">
+            <span class="d">28 Aug</span>
+            <span class="ord">9th order</span>
+            <svg class="tally" width="62" height="18" viewBox="0 0 62 18" aria-label="nine previous orders">
+              <g stroke="var(--sign)" stroke-width="2" stroke-linecap="round" fill="none">
+                <line x1="3" y1="3" x2="3" y2="15"/><line x1="9" y1="3" x2="9" y2="15"/>
+                <line x1="15" y1="3" x2="15" y2="15"/><line x1="21" y1="3" x2="21" y2="15"/>
+                <line x1="36" y1="3" x2="36" y2="15"/><line x1="42" y1="3" x2="42" y2="15"/>
+                <line x1="48" y1="3" x2="48" y2="15"/><line x1="54" y1="3" x2="54" y2="15"/>
+              </g>
+              <line x1="1" y1="16" x2="24" y2="2" stroke="var(--gilt)" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="ebody">
+            <div class="ename">Vinos del Norte</div>
+            <div class="emeta">PO-1042 · 24 bottles · $1,860.00</div>
+            <div class="eact">Rioja Crianza 2021 · in transit, due Thursday before noon</div>
+            <div class="stranger">Nine orders since March. Never late. Shorted you once — July 2025.</div>
+          </div>
+          <svg class="ribbon" width="11" height="52" viewBox="0 0 11 52" aria-hidden="true">
+            <path d="M0 0 H11 V52 L5.5 45 L0 52 Z" fill="var(--gilt)" opacity=".85"/>
+          </svg>
+        </div>
+        <div class="entry" style="border-bottom:none">
+          <div class="rail"><span class="d">28 Aug</span><span class="ord">first time</span></div>
+          <div class="ebody">
+            <div class="ename">Bodega Sur</div>
+            <div class="emeta">PO-1038 · <span class="dash">—</span> bottles · $942.00</div>
+            <div class="stranger"><span class="dash">—</span> We have not met them before. Nothing to compare this to yet.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="foot-note">Both states are shown deliberately: an entry with deep memory, and an entry with none.
+  A direction built on recall has to be honest about the day it has nothing to recall — that is the credibility test.</p>
+</section>
+
+<!-- ===================== §02 LOGO ===================== -->
+<section id="logo">
+  <div class="kicker"><span class="no">§02</span><span>Logo — three resolved marks</span></div>
+  <h2>A name on a line, a count of returns, a ribbon in a page</h2>
+  <p class="lede">Three complete systems, each with its app tile and its wordmark lockup, each drawn in
+  the same ink. All three do a job inside the product, not only on the door — that is the test each one had to pass.</p>
+
+  <div class="logo-grid">
+
+    <!-- ---------- 1 · The Ruled Name ---------- -->
+    <div>
+      <div class="logo-row">
+        <div class="logo-cell lt">
+          <svg viewBox="0 0 400 130" role="img" aria-label="Mudavym wordmark signed across a ruled line, with app tile">
+            <rect x="6" y="33" width="64" height="64" rx="15" fill="#F4F0E9" stroke="#1C181F" stroke-opacity=".14"/>
+            <line x1="16" y1="80" x2="60" y2="80" stroke="#1C181F" stroke-width="1.6"/>
+            <path d="M47 80 l3.6 4.2 l7.6 -9.8" fill="none" stroke="#5E2A63" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+            <text x="33" y="74" text-anchor="middle" font-family="Newsreader,Georgia,serif" font-size="33" font-weight="600"
+              fill="#1C181F" paint-order="stroke fill" stroke="#F4F0E9" stroke-width="4" stroke-linejoin="round">M</text>
+            <line x1="88" y1="84" x2="352" y2="84" stroke="#1C181F" stroke-width="1.6"/>
+            <path d="M330 84 l5 6 l11 -14" fill="none" stroke="#5E2A63" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <text x="94" y="77" font-family="Newsreader,Georgia,serif" font-size="44" font-weight="500" letter-spacing="-0.9"
+              fill="#1C181F" paint-order="stroke fill" stroke="#FBF8F4" stroke-width="5" stroke-linejoin="round">Mudavym</text>
+          </svg>
+        </div>
+        <div class="logo-cell dk">
+          <svg viewBox="0 0 400 130" role="img" aria-label="Mudavym ruled-name mark, night">
+            <rect x="6" y="33" width="64" height="64" rx="15" fill="#1B1721" stroke="#EFE9E1" stroke-opacity=".16"/>
+            <line x1="16" y1="80" x2="60" y2="80" stroke="#EFE9E1" stroke-width="1.6"/>
+            <path d="M47 80 l3.6 4.2 l7.6 -9.8" fill="none" stroke="#C89CD1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+            <text x="33" y="74" text-anchor="middle" font-family="Newsreader,Georgia,serif" font-size="33" font-weight="600"
+              fill="#EFE9E1" paint-order="stroke fill" stroke="#1B1721" stroke-width="4" stroke-linejoin="round">M</text>
+            <line x1="88" y1="84" x2="352" y2="84" stroke="#EFE9E1" stroke-width="1.6"/>
+            <path d="M330 84 l5 6 l11 -14" fill="none" stroke="#C89CD1" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <text x="94" y="77" font-family="Newsreader,Georgia,serif" font-size="44" font-weight="500" letter-spacing="-0.9"
+              fill="#EFE9E1" paint-order="stroke fill" stroke="#141118" stroke-width="5" stroke-linejoin="round">Mudavym</text>
+          </svg>
+        </div>
+      </div>
+      <div class="logo-meta">
+        <b><i>Concept 1</i>The Ruled Name</b>
+        <span>The wordmark is <u>signed onto the line, not set above it</u> — the descender of the
+        <em>y</em> crosses the rule and knocks a clean break in it, exactly as a real signature crosses ruled paper.
+        That break is the whole mark; it cannot be faked by a logo that merely sits on a bar. The rule runs
+        past the name on both sides (the line is longer than any one signature) and closes on a violet
+        check made <em>across</em> it — one of the three hand marks, never a font glyph. <u>Product role:</u> the
+        rule is the same hairline that underlines every name in the app; the check is the "seen and entered" mark. <u>Clear space</u> = the cap height of the M. <u>Min size</u> 96px wide;
+        below that, the tile alone.</span>
+      </div>
+    </div>
+
+    <!-- ---------- 2 · The Return Marks ---------- -->
+    <div>
+      <div class="logo-row">
+        <div class="logo-cell lt">
+          <svg viewBox="0 0 400 130" role="img" aria-label="Mudavym tally-mark logo and wordmark">
+            <rect x="6" y="33" width="64" height="64" rx="15" fill="#5E2A63"/>
+            <g stroke="#FBF8F4" stroke-width="3.4" stroke-linecap="round">
+              <line x1="24" y1="49" x2="24" y2="81"/><line x1="32" y1="49" x2="32" y2="81"/>
+              <line x1="40" y1="49" x2="40" y2="81"/><line x1="48" y1="49" x2="48" y2="81"/>
+            </g>
+            <line x1="18" y1="85" x2="54" y2="45" stroke="#E0B75F" stroke-width="3.4" stroke-linecap="round"/>
+            <g stroke="#5E2A63" stroke-width="3.4" stroke-linecap="round">
+              <line x1="94" y1="47" x2="94" y2="83"/><line x1="104" y1="47" x2="104" y2="83"/>
+              <line x1="114" y1="47" x2="114" y2="83"/><line x1="124" y1="47" x2="124" y2="83"/>
+            </g>
+            <line x1="88" y1="88" x2="130" y2="42" stroke="#B8862B" stroke-width="3.4" stroke-linecap="round"/>
+            <text x="150" y="79" font-family="Newsreader,Georgia,serif" font-size="40" font-weight="500" letter-spacing="-0.8" fill="#1C181F">Mudavym</text>
+          </svg>
+        </div>
+        <div class="logo-cell dk">
+          <svg viewBox="0 0 400 130" role="img" aria-label="Mudavym tally-mark logo, night">
+            <rect x="6" y="33" width="64" height="64" rx="15" fill="#7A3A80"/>
+            <g stroke="#FBF8F4" stroke-width="3.4" stroke-linecap="round">
+              <line x1="24" y1="49" x2="24" y2="81"/><line x1="32" y1="49" x2="32" y2="81"/>
+              <line x1="40" y1="49" x2="40" y2="81"/><line x1="48" y1="49" x2="48" y2="81"/>
+            </g>
+            <line x1="18" y1="85" x2="54" y2="45" stroke="#E9C67F" stroke-width="3.4" stroke-linecap="round"/>
+            <g stroke="#C89CD1" stroke-width="3.4" stroke-linecap="round">
+              <line x1="94" y1="47" x2="94" y2="83"/><line x1="104" y1="47" x2="104" y2="83"/>
+              <line x1="114" y1="47" x2="114" y2="83"/><line x1="124" y1="47" x2="124" y2="83"/>
+            </g>
+            <line x1="88" y1="88" x2="130" y2="42" stroke="#DDB264" stroke-width="3.4" stroke-linecap="round"/>
+            <text x="150" y="79" font-family="Newsreader,Georgia,serif" font-size="40" font-weight="500" letter-spacing="-0.8" fill="#EFE9E1">Mudavym</text>
+          </svg>
+        </div>
+      </div>
+      <div class="logo-meta">
+        <b><i>Concept 2</i>The Return Marks</b>
+        <span>Four strokes and the fifth across them: the oldest count in the world, and the only
+        glyph that means <u>"this has happened again"</u>. The fifth stroke is gilt — the visit being
+        recorded right now. It is a mark, not a picture: it survives 16px, engraves on brass, and
+        stencils on a crate. <u>Product role:</u> the identical glyph is the return-tally in every
+        entry rail (see §01), so the logo is literally a component of the UI — the strongest possible
+        argument that recognition is the product. <u>Tile lifts</u> to <span class="fig">#7A3A80</span> on
+        dark ground so the plum still reads.</span>
+      </div>
+    </div>
+
+    <!-- ---------- 3 · The Kept Page ---------- -->
+    <div>
+      <div class="logo-row">
+        <div class="logo-cell lt">
+          <svg viewBox="0 0 400 130" role="img" aria-label="Mudavym wordmark on a page with a ribbon marker">
+            <rect x="6" y="26" width="64" height="64" rx="15" fill="#F4F0E9" stroke="#1C181F" stroke-opacity=".14"/>
+            <line x1="20" y1="26" x2="20" y2="90" stroke="#1C181F" stroke-opacity=".12"/>
+            <path d="M42 26 H57 V112 L49.5 104 L42 112 Z" fill="#5E2A63"/>
+            <path d="M42 90 H57 V96 L49.5 92.5 L42 96 Z" fill="#46204A"/>
+            <rect x="98" y="24" width="292" height="92" rx="3" fill="#EAE4DB"/>
+            <rect x="92" y="18" width="292" height="92" rx="3" fill="#F4F0E9" stroke="#1C181F" stroke-opacity=".13"/>
+            <line x1="108" y1="18" x2="108" y2="110" stroke="#1C181F" stroke-opacity=".13"/>
+            <text x="124" y="73" font-family="Newsreader,Georgia,serif" font-size="38" font-weight="500" letter-spacing="-0.7" fill="#1C181F">Mudavym</text>
+            <path d="M330 18 H345 V126 L337.5 118 L330 126 Z" fill="#5E2A63"/>
+            <path d="M330 110 H345 V116 L337.5 112.5 L330 116 Z" fill="#46204A"/>
+          </svg>
+        </div>
+        <div class="logo-cell dk">
+          <svg viewBox="0 0 400 130" role="img" aria-label="Mudavym kept-page mark, night">
+            <rect x="6" y="26" width="64" height="64" rx="15" fill="#1B1721" stroke="#EFE9E1" stroke-opacity=".16"/>
+            <line x1="20" y1="26" x2="20" y2="90" stroke="#EFE9E1" stroke-opacity=".13"/>
+            <path d="M42 26 H57 V112 L49.5 104 L42 112 Z" fill="#C89CD1"/>
+            <path d="M42 90 H57 V96 L49.5 92.5 L42 96 Z" fill="#8E5F97"/>
+            <rect x="98" y="24" width="292" height="92" rx="3" fill="#241E2B"/>
+            <rect x="92" y="18" width="292" height="92" rx="3" fill="#1B1721" stroke="#EFE9E1" stroke-opacity=".14"/>
+            <line x1="108" y1="18" x2="108" y2="110" stroke="#EFE9E1" stroke-opacity=".14"/>
+            <text x="124" y="73" font-family="Newsreader,Georgia,serif" font-size="38" font-weight="500" letter-spacing="-0.7" fill="#EFE9E1">Mudavym</text>
+            <path d="M330 18 H345 V126 L337.5 118 L330 126 Z" fill="#C89CD1"/>
+            <path d="M330 110 H345 V116 L337.5 112.5 L330 116 Z" fill="#8E5F97"/>
+          </svg>
+        </div>
+      </div>
+      <div class="logo-meta">
+        <b><i>Concept 3</i>The Kept Page</b>
+        <span>A ribbon marker running out past the bottom edge of the page — the object that means
+        <u>"come back to this one"</u>. The fold at the page edge is a second, darker plum so the ribbon
+        reads as material rather than a stripe. The lockup shows the page and its gutter rule; the
+        tile is the same ribbon cropped, and the overhang is what makes it legible at any size.
+        <u>Product role:</u> the ribbon is the regulars marker — it hangs on the vendor you always reorder
+        from, the staff member who never misses, the table that is always theirs. <u>Never rotate it,
+        never curl it</u>; the swallowtail notch is the only shape it has.</span>
+      </div>
+    </div>
+
+  </div>
+  <p class="foot-note">Recommendation: <b>Concept 2 as the mark, Concept 1 as the wordmark</b> — the tally is
+  the only one of the three that is simultaneously a logo and a working UI component, and the ruled name is
+  the only lockup with a detail (the crossed descender) that a competitor cannot copy without copying the idea.</p>
+</section>
+
+<!-- ===================== §03 SLOGANS ===================== -->
+<section id="slogans">
+  <div class="kicker"><span class="no">§03</span><span>Slogans — eight candidates</span></div>
+  <h2>Recognition, said eight ways</h2>
+  <p class="lede">Grammar borrowed deliberately: balanced antithesis and name-period-claim. No adjectives
+  praise the product; the recall does.</p>
+  <div>
+    <div class="slogan"><div class="n">01</div><div class="s"><h3>The house remembers.</h3><p>The whole direction in three words, and a sentence a restaurateur already says out loud about their own dining room.</p></div></div>
+    <div class="slogan"><div class="n">02</div><div class="s"><h3>Mudavym. Everything that has ever happened here.</h3><p>Name-period-category-claim. The category claim is not "ops platform" but total recall — which is what an ops platform actually is when it works.</p></div></div>
+    <div class="slogan"><div class="n">03</div><div class="s"><h3>Less looking things up, more looking after people.</h3><p>Balanced antithesis aimed at the owner's real trade-off: hours in a spreadsheet versus minutes on the floor.</p></div></div>
+    <div class="slogan"><div class="n">04</div><div class="s"><h3>Nothing here is a stranger.</h3><p>The hospitality inversion — usually said about guests, said here about your vendors, your stock, your Tuesdays.</p></div></div>
+    <div class="slogan"><div class="n">05</div><div class="s"><h3>Ask the book.</h3><p>Two words, verb-first. Turns the software into an object you consult rather than a system you operate.</p></div></div>
+    <div class="slogan"><div class="n">06</div><div class="s"><h3>Your <em>müdavim</em> — the one who never misses a night.</h3><p>Earns the name. The müdavim is the regular who is always there; this one keeps the book while being there.</p></div></div>
+    <div class="slogan"><div class="n">07</div><div class="s"><h3>Every name, every night, on the page.</h3><p>Cadence of return. Three beats that scan as a promise of routine rather than a feature list.</p></div></div>
+    <div class="slogan" style="border-bottom:none"><div class="n">08</div><div class="s"><h3>You will not have to explain yourself twice.</h3><p>The benefit stated as relief, not capability — the sentence a tired manager most wants to hear at 23:00.</p></div></div>
+  </div>
+</section>
+
+<!-- ===================== §04 VOICE ===================== -->
+<section id="voice">
+  <div class="kicker"><span class="no">§04</span><span>Voice — how the book speaks</span></div>
+  <h2>It greets you, then it gets out of the way</h2>
+  <p class="lede">Warm because it knows you; never chatty, never cute. Warmth arrives <em>quoted</em> — Marta's
+  reply, Deniz's note — while Mudavym's own sentences stay plain and exact.</p>
+  <ul class="rules">
+    <li><div><b>Name first, always.</b><span>People and places lead the sentence; numbers and IDs follow. "Vinos del Norte shorted you once — July 2025", never "PO-1042 has a quantity discrepancy".</span></div></li>
+    <li><div><b>Recall carries its date.</b><span>Every claim of memory shows its evidence: "since March", "your fourth Thursday running", "last time, $76.20". Recall without a date is a boast.</span></div></li>
+    <li><div><b>A dash where the memory is empty.</b><span>If the book has nothing, it says so — "—", "we have not met them before". Never a zero, never an invented comparison.</span></div></li>
+    <li><div><b>Second person, present tense, no exclamation.</b><span>The house is addressing one person standing at the pass. It never shouts and never congratulates itself.</span></div></li>
+    <li><div><b>Serif once per screen — the moment of recognition.</b><span>The greeting or the verdict is set in Newsreader. Everything else works in sans and counts in mono.</span></div></li>
+    <li><div><b>Warmth arrives quoted.</b><span>Vendor replies and staff notes appear in italics, attributed, in their own words. The brand around them stays deadpan.</span></div></li>
+    <li><div><b>Plain trade words.</b><span>"Bottles in", "the door", "the book", "letters", "the night" — never SKU, sync, workflow, entity, resource.</span></div></li>
+    <li><div><b>Endings are said in full.</b><span>Deletion and closure copy states exactly what will be forgotten, in whole sentences, with no euphemism and no dark pattern.</span></div></li>
+  </ul>
+
+  <div class="rw">
+    <div class="rw-row">
+      <div class="was"><s>Before</s>Draft, approve, and track purchase orders through delivery</div>
+      <div class="now"><s>Guest-book voice</s><span class="serif">From the letter you write to the crates at the door — and the book remembers every one.</span></div>
+    </div>
+    <div class="rw-row">
+      <div class="was"><s>Before</s>Alerts that need a decision, oldest first</div>
+      <div class="now"><s>Guest-book voice</s>Waiting on you. Longest wait at the top.</div>
+    </div>
+    <div class="rw-row">
+      <div class="was"><s>Before</s>No checks yet — close an order from the terminal</div>
+      <div class="now"><s>Guest-book voice</s>Nothing in the book yet tonight. Close a check at the terminal and it will be here.</div>
+    </div>
+    <div class="rw-row">
+      <div class="was"><s>Before</s>No comparable data</div>
+      <div class="now"><s>Guest-book voice</s>We have not seen this before — there is nothing to compare it to yet. Ask again in a few Thursdays.</div>
+    </div>
+    <div class="rw-row">
+      <div class="was"><s>Before</s>Permanently delete your Mudavym account.</div>
+      <div class="now"><s>Guest-book voice</s>Forget everything. This closes your account and erases the book — every order, every count, every letter, every name you taught us. Afterwards no one reads it back, not you and not us. Type your restaurant's name to confirm.</div>
+    </div>
+  </div>
+  <p class="foot-note">Note the deletion rewrite: on a brand whose promise is memory, the destructive action has
+  exactly one honest verb — <em>forget</em>. Naming it that way is the strongest proof that the promise was real.</p>
+</section>
+
+<!-- ===================== §05 PALETTE ===================== -->
+<section id="palette">
+  <div class="kicker"><span class="no">§05</span><span>Palette — warm paper, cool ink, one gilt material</span></div>
+  <h2>Signed in violet, because registers were</h2>
+  <p class="lede">The accent is <em>signing violet</em> — aniline violet was the standard ink of civil
+  registers and hotel books for a century, and it is nowhere near the blue-indigo-emerald band every
+  startup is standing in. Paper stays warm; the ink ladder is cast slightly violet, so text and paper
+  read the way a written page actually reads. Gilt is a <em>material</em>, not a status: tally marks,
+  ribbons and page edges only — never a fill, never text, never a state.</p>
+  <div class="pal">
+    <div class="pal-col pl">
+      <div class="pal-head">Light · "The day book"</div>
+      <div class="sw"><div class="chip" style="background:#FBF8F4"></div><div class="tok">--page<span class="hex">#FBF8F4</span></div><div class="use">the sheet</div></div>
+      <div class="sw"><div class="chip" style="background:#F4F0E9"></div><div class="tok">--leaf<span class="hex">#F4F0E9</span></div><div class="use">raised surface</div></div>
+      <div class="sw"><div class="chip" style="background:#EAE4DB"></div><div class="tok">--well<span class="hex">#EAE4DB</span></div><div class="use">inset, wells</div></div>
+      <div class="sw"><div class="chip" style="background:rgba(41,34,46,.055)"></div><div class="tok">--tint-2/4/8<span class="hex">#29222E @ 2.8–8.5%</span></div><div class="use">hovers, chips, fills</div></div>
+      <div class="sw"><div class="chip" style="background:#1C181F"></div><div class="tok">--ink-1<span class="hex">#1C181F</span></div><div class="use">names, primary</div></div>
+      <div class="sw"><div class="chip" style="background:#4C4653"></div><div class="tok">--ink-2<span class="hex">#4C4653</span></div><div class="use">body, notes</div></div>
+      <div class="sw"><div class="chip" style="background:#756E7D"></div><div class="tok">--ink-3<span class="hex">#756E7D · 4.6:1</span></div><div class="use">dates, meta</div></div>
+      <div class="sw"><div class="chip" style="background:#918A98"></div><div class="tok">--ink-4<span class="hex">#918A98 · 3.2:1</span></div><div class="use">the "—", disabled</div></div>
+      <div class="sw"><div class="chip" style="background:rgba(28,24,31,.13)"></div><div class="tok">--rule<span class="hex">ink @ 13% / 28%</span></div><div class="use">hairlines</div></div>
+      <div class="sw"><div class="chip" style="background:rgba(28,24,31,.055)"></div><div class="tok">--ruleline<span class="hex">ink @ 5.5%</span></div><div class="use">ruled-sheet pattern, 34px</div></div>
+      <div class="sw"><div class="chip" style="background:rgba(94,42,99,.24)"></div><div class="tok">--margin-rule<span class="hex">violet @ 24%</span></div><div class="use">the date column</div></div>
+      <div class="sw"><div class="chip" style="background:#5E2A63"></div><div class="tok">--sign<span class="hex">#5E2A63 · tint 9%</span></div><div class="use">accent, approvals, AI</div></div>
+      <div class="sw"><div class="chip" style="background:#46204A"></div><div class="tok">--sign-deep<span class="hex">#46204A</span></div><div class="use">pressed, ribbon fold</div></div>
+      <div class="sw"><div class="chip" style="background:#B8862B"></div><div class="tok">--gilt<span class="hex">#B8862B</span></div><div class="use">marks &amp; ribbons only</div></div>
+      <div class="sw"><div class="chip" style="background:#2E6A4C"></div><div class="tok">--kept<span class="hex">#2E6A4C · tint 10%</span></div><div class="use">delivered, settled</div></div>
+      <div class="sw"><div class="chip" style="background:#8F6015"></div><div class="tok">--waiting<span class="hex">#8F6015 · tint 11%</span></div><div class="use">in transit, low</div></div>
+      <div class="sw" style="padding-bottom:18px"><div class="chip" style="background:#B03A2E"></div><div class="tok">--owed<span class="hex">#B03A2E · tint 10%</span></div><div class="use">needs a decision</div></div>
+    </div>
+    <div class="pal-col pd">
+      <div class="pal-head">Dark · "The night book"</div>
+      <div class="sw"><div class="chip" style="background:#141118"></div><div class="tok">--page<span class="hex">#141118</span></div><div class="use">the sheet</div></div>
+      <div class="sw"><div class="chip" style="background:#1B1721"></div><div class="tok">--leaf<span class="hex">#1B1721</span></div><div class="use">raised surface</div></div>
+      <div class="sw"><div class="chip" style="background:#241E2B"></div><div class="tok">--well<span class="hex">#241E2B</span></div><div class="use">inset, wells</div></div>
+      <div class="sw"><div class="chip" style="background:rgba(237,230,242,.06)"></div><div class="tok">--tint-2/4/8<span class="hex">#EDE6F2 @ 3.5–10%</span></div><div class="use">hovers, chips, fills</div></div>
+      <div class="sw"><div class="chip" style="background:#EFE9E1"></div><div class="tok">--ink-1<span class="hex">#EFE9E1</span></div><div class="use">names, primary</div></div>
+      <div class="sw"><div class="chip" style="background:#BEB4BF"></div><div class="tok">--ink-2<span class="hex">#BEB4BF</span></div><div class="use">body, notes</div></div>
+      <div class="sw"><div class="chip" style="background:#8D8493"></div><div class="tok">--ink-3<span class="hex">#8D8493 · 5.3:1</span></div><div class="use">dates, meta</div></div>
+      <div class="sw"><div class="chip" style="background:#6F6779"></div><div class="tok">--ink-4<span class="hex">#6F6779 · 3.5:1</span></div><div class="use">the "—", disabled</div></div>
+      <div class="sw"><div class="chip" style="background:rgba(239,233,225,.12)"></div><div class="tok">--rule<span class="hex">ink @ 12% / 26%</span></div><div class="use">hairlines</div></div>
+      <div class="sw"><div class="chip" style="background:rgba(239,233,225,.05)"></div><div class="tok">--ruleline<span class="hex">ink @ 5%</span></div><div class="use">ruled-sheet pattern, 34px</div></div>
+      <div class="sw"><div class="chip" style="background:rgba(200,156,209,.30)"></div><div class="tok">--margin-rule<span class="hex">violet @ 30%</span></div><div class="use">the date column</div></div>
+      <div class="sw"><div class="chip" style="background:#C89CD1"></div><div class="tok">--sign<span class="hex">#C89CD1 · tint 15%</span></div><div class="use">accent, approvals, AI</div></div>
+      <div class="sw"><div class="chip" style="background:#DCB8E2"></div><div class="tok">--sign-deep<span class="hex">#DCB8E2</span></div><div class="use">hover (lifts, not deepens)</div></div>
+      <div class="sw"><div class="chip" style="background:#DDB264"></div><div class="tok">--gilt<span class="hex">#DDB264</span></div><div class="use">marks &amp; ribbons only</div></div>
+      <div class="sw"><div class="chip" style="background:#6BAE87"></div><div class="tok">--kept<span class="hex">#6BAE87 · tint 13%</span></div><div class="use">delivered, settled</div></div>
+      <div class="sw"><div class="chip" style="background:#CE8B4A"></div><div class="tok">--waiting<span class="hex">#CE8B4A · tint 13%</span></div><div class="use">in transit, low</div></div>
+      <div class="sw" style="padding-bottom:18px"><div class="chip" style="background:#DB6D5F"></div><div class="tok">--owed<span class="hex">#DB6D5F · tint 13%</span></div><div class="use">needs a decision</div></div>
+    </div>
+  </div>
+  <p class="foot-note">Rules that keep it disciplined: <b>one accent on screen at a time</b>; every status hue ships
+  with its 10–13% tint twin so state never sits raw on paper; charts draw in the ink ladder with chroma only where
+  meaning is (the anomaly, the shortfall, the line that needs a decision); and <b>gilt never becomes a status</b> —
+  the moment gold means "warning", the recognition system dies. Every ink step is measured, not eyeballed:
+  ink-3 clears AA at 4.6:1 (light) and 5.3:1 (dark) because dates and ordinals are content here, not chrome;
+  ink-4 — the colour of the honest <span class="dash">—</span> — is held above 3:1 in both themes for the same reason.</p>
+</section>
+
+<!-- ===================== §06 TYPE ===================== -->
+<section id="type">
+  <div class="kicker"><span class="no">§06</span><span>Type — the name-first hierarchy</span></div>
+  <h2>The largest word in any row is somebody's name</h2>
+  <p class="lede">This is the thesis, and it is a real inversion: ops software leads with the identifier
+  because the database does. A guest book leads with the <em>name</em>, because a person does. Newsreader
+  carries every name and every moment the house speaks; Instrument Sans does the work; DM Mono holds the
+  dates and the money in tabular columns that never shiver.</p>
+
+  <div class="faces">
+    <div class="face"><b>Names &amp; voice · Newsreader</b><div class="g serif" style="font-weight:500">Vinos del Norte</div><span>Greetings, names, verdicts, and the italic marginal note. 400/500/600 + italic, optical size axis on. Warm, current, no revival costume. Fallback: Georgia.</span></div>
+    <div class="face"><b>Work · Instrument Sans</b><div class="g" style="font-family:var(--sans);font-weight:500;font-size:27px">Approve the reorder</div><span>Buttons, body, forms, labels. 400/500/600. Slightly narrow, plain-spoken, quiet next to the serif. Fallback: system sans.</span></div>
+    <div class="face"><b>Dates &amp; figures · DM Mono</b><div class="g fig" style="font-weight:500;font-size:24px">28 AUG · $1,860</div><span>Every date, ordinal, ID, price and kicker. Monospaced, so money sits in columns by construction. 400/500 only.</span></div>
+  </div>
+
+  <div>
+    <div class="spec"><div class="m">greeting · serif 400 · 30px/1.24 · -0.018em</div><div class="serif" style="font-size:30px;font-weight:400;letter-spacing:-.018em;line-height:1.24">Good evening, Aldemir.</div></div>
+    <div class="spec"><div class="m">recognition line · serif italic 400 · 18px/1.45</div><div class="serif" style="font-style:italic;font-size:18px;color:var(--ink-2)">The book is open at Thursday — your 412th service.</div></div>
+    <div class="spec"><div class="m">name · serif 500 · 22px/1.2 · -0.012em<br>the largest thing in any row</div><div class="serif" style="font-size:22px;font-weight:500;letter-spacing:-.012em">Vinos del Norte</div></div>
+    <div class="spec"><div class="m">name, small · serif 500 · 17px/1.3</div><div class="serif" style="font-size:17px;font-weight:500">Deniz Arslan</div></div>
+    <div class="spec"><div class="m">identifier · mono 400 · 12.5px · tnum<br>demoted on purpose</div><div class="fig" style="font-size:12.5px;color:var(--ink-3)">PO-1042 · 24 bottles · $1,860.00</div></div>
+    <div class="spec"><div class="m">date rail · mono 400 · 11px · +0.16em · caps</div><div style="font:400 11px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3)">28 Aug &nbsp;·&nbsp; 9th order</div></div>
+    <div class="spec"><div class="m">body · sans 400 · 15px/1.6</div><div>Twelve bottles arrive Thursday with the morning delivery; Marta confirmed the price held at last month's rate.</div></div>
+    <div class="spec"><div class="m">marginal note · serif italic 400 · 14.5px/1.5<br>one of the three hand-quality marks</div><div class="note">Nine orders since March. Never late. Shorted you once — July 2025, and she made it right that week.</div></div>
+    <div class="spec"><div class="m">figure, large · mono 500 · 25px · -0.03em · tnum</div><div class="fig" style="font-size:25px;font-weight:500;letter-spacing:-.03em">$4,280</div></div>
+    <div class="spec"><div class="m">caption · sans 400 · 12.5px/1.5 · ink-3</div><div style="font-size:12.5px;color:var(--ink-3)">Entered by Deniz · reconciled against invoice #A-2214</div></div>
+    <div class="spec"><div class="m">kicker · mono 500 · 11px · +0.16em · caps</div><div style="font:500 11px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3)">§05 · Receiving — Thursday 28 August</div></div>
+    <div class="spec" style="border-bottom:none"><div class="m">button · sans 600 · 14px</div><div><button class="btn-sign" style="pointer-events:none">Approve &amp; sign</button></div></div>
+  </div>
+
+  <div class="thesis t2">
+    <div class="idfirst">
+      <h5>Typical ops row — ID first</h5>
+      <div class="a">PO-1042</div>
+      <div class="b">Vendor: Vinos del Norte · Qty 24 · $1,860.00 · Status: In transit</div>
+      <p class="foot-note" style="margin-top:14px">Reads as a record. You scan a code, then decode a person. The row is
+      the same width, the same height, the same weight as every other row — nothing is anybody.</p>
+    </div>
+    <div>
+      <h5>Guest-book row — name first</h5>
+      <div class="serif" style="font-size:22px;font-weight:500;letter-spacing:-.012em">Vinos del Norte</div>
+      <div class="fig" style="font-size:12.5px;color:var(--ink-3);margin-top:5px">PO-1042 · 24 bottles · $1,860.00 · in transit</div>
+      <p class="foot-note" style="margin-top:14px">Reads as a person. Same information, same density, one inversion —
+      and the scan target becomes the relationship, which is the thing the owner actually holds in their head.</p>
+    </div>
+  </div>
+  <p class="foot-note">Scale contrast is deliberately narrow: <b>30px greeting against an 11px date rail</b>. There is no
+  hero type in this direction. A book does not shout its own title at you on every page — authority comes from
+  the completeness of the record, not the point size.</p>
+</section>
+
+<!-- ===================== §07 MOTION ===================== -->
+<section id="motion">
+  <div class="kicker"><span class="no">§07</span><span>Motion — the hand that writes, and the page that turns</span></div>
+  <h2>Ink is laid down; it does not bounce</h2>
+  <p class="lede">Two physical models and nothing else. <em>Writing</em> — strokes that draw along their own
+  length, left to right, in the order a hand would make them. <em>Turning</em> — surfaces that open on a long
+  settle, never a snap. One emphatic exception: each return-mark lands with a touch of overshoot, because
+  being counted again should feel like something.</p>
+
+  <table class="mtok">
+    <tr><th>token</th><th>physics</th><th>used for</th><th>React / Reanimated mapping</th></tr>
+    <tr><td>nib</td><td class="fig">150ms · cubic-bezier(.2,.8,.2,1)</td><td>hovers, focus, chips — moves ≤3px</td><td><code>duration:.15, ease:[.2,.8,.2,1]</code></td></tr>
+    <tr><td>leaf</td><td class="fig">≈340ms · spring 260/30/1</td><td>house default — toggles, chips, entrances</td><td><code>type:"spring",stiffness:260,damping:30</code></td></tr>
+    <tr><td>turn</td><td class="fig">400ms · cubic-bezier(.22,.85,.24,1)</td><td>row expands, drawers, page changes</td><td><code>duration:.4, ease:[.22,.85,.24,1]</code></td></tr>
+    <tr><td>ruleDraw</td><td class="fig">300ms · cubic-bezier(.25,1,.3,1)</td><td>the rule drawing under a name</td><td><code>scaleX 0→1</code>, origin left</td></tr>
+    <tr><td>markSet</td><td class="fig">≈300ms · spring 520/22/1 · stagger 60ms</td><td>return-marks landing, one per visit</td><td><code>stiffness:520,damping:22</code> + <code>delayChildren</code></td></tr>
+    <tr><td>noteSurface</td><td class="fig">260ms · cubic-bezier(.2,.8,.2,1) · delay 560ms</td><td>the marginal note arriving last</td><td><code>opacity 0→1, y 6→0</code></td></tr>
+    <tr><td>reckon</td><td class="fig">760ms · easeOutCubic, per-digit</td><td>number tickers, KPI counts (tabular)</td><td><code>useSpring</code> + <code>tabular-nums</code></td></tr>
+    <tr><td>signStroke</td><td class="fig">620ms · cubic-bezier(.32,.72,0,1)</td><td>the signature drawing on approval — once</td><td><code>pathLength 0→1</code></td></tr>
+    <tr><td>arrive</td><td class="fig">380ms · cubic-bezier(.2,.8,.2,1) · stagger 45ms</td><td>first paint of a list or a tile row</td><td><code>staggerChildren:.045</code></td></tr>
+  </table>
+
+  <div class="demos">
+    <div class="demo">
+      <h4>Settings toggle</h4>
+      <div class="sub">token <span class="fig">leaf</span> — thumb slides, track fills with signing violet, the label answers in mono.</div>
+      <div class="tgl" id="tglDemo" role="switch" aria-checked="true" tabindex="0">
+        <div class="track"><div class="thumb"></div></div>
+        <div class="lab">Greet me by name at open<i id="tglState">on · "Good evening, Aldemir."</i></div>
+      </div>
+      <div class="maps"><b>motion:</b> &lt;motion.div animate={{x: on ? 20 : 0}} transition={{type:"spring", stiffness:260, damping:30}} /&gt;</div>
+    </div>
+
+    <div class="demo">
+      <h4>Row expand — the row opens onto its history</h4>
+      <div class="sub">token <span class="fig">turn</span> — not arithmetic underneath, but everything this vendor has ever done.</div>
+      <div class="xrow" id="xrowDemo" tabindex="0" role="button" aria-expanded="false">
+        <div class="head">
+          <span class="nm">Vinos del Norte<i>PO-1042 · $1,860.00 · in transit</i></span>
+          <span class="chip transit">● In transit</span>
+          <span class="chev">▶</span>
+        </div>
+        <div class="body"><div><div class="hist">
+          <div class="r"><span>28 Aug 26</span><span>24 bottles · Rioja Crianza</span><span>$1,860.00</span></div>
+          <div class="r"><span>02 Aug 26</span><span>18 bottles · Rioja Crianza</span><span>$1,395.00</span></div>
+          <div class="r"><span>11 Jul 25</span><span class="flag">12 ordered · 9 arrived</span><span>$697.50</span></div>
+          <div class="r"><span>14 Mar 25</span><span>first order</span><span>$465.00</span></div>
+          <div class="cl">Nine orders since March. Never late but once — she was three bottles short in July and made it right the same week.</div>
+        </div></div></div>
+      </div>
+      <div class="maps"><b>motion:</b> &lt;motion.div initial={{height:0}} animate={{height:"auto"}} transition={{duration:.4, ease:[.22,.85,.24,1]}} /&gt;</div>
+    </div>
+
+    <div class="demo">
+      <h4>Number ticker</h4>
+      <div class="sub">token <span class="fig">reckon</span> — the figure counts up, then the memory arrives beneath it.</div>
+      <div class="tick"><span class="num fig" id="tickNum">$0</span><button class="gbtn" id="tickBtn">count again</button></div>
+      <span class="memory" id="tickMem">your best Thursday since 14 March</span>
+      <div class="maps"><b>motion:</b> const v = useSpring(0,{stiffness:80,damping:26}); v.set(4280) → render with <b>tabular-nums</b>; memory fades at settle.</div>
+    </div>
+
+    <div class="demo wide">
+      <h4>The Recall — this direction's signature moment</h4>
+      <div class="sub">tokens <span class="fig">ruleDraw → markSet → noteSurface</span>, orchestrated as <span class="fig">recall</span> (≈880ms total).
+      A name is set, the house draws its line under it, the returns stamp in one at a time, and the note it kept about you surfaces last.
+      It fires once when a familiar name appears — never twice in a session, never on a stranger.</div>
+      <div class="recall" id="recallDemo">
+        <div>
+          <div class="nm serif">Vinos del Norte</div>
+          <div class="rdraw"></div>
+          <svg class="tally tally-draw" width="132" height="22" viewBox="0 0 132 22" aria-label="nine previous orders, the ninth being recorded now">
+            <g stroke="var(--sign)" stroke-width="2.4" stroke-linecap="round" fill="none">
+              <line x1="4"  y1="4" x2="4"  y2="18" pathLength="1" style="transition-delay:300ms"/>
+              <line x1="12" y1="4" x2="12" y2="18" pathLength="1" style="transition-delay:360ms"/>
+              <line x1="20" y1="4" x2="20" y2="18" pathLength="1" style="transition-delay:420ms"/>
+              <line x1="28" y1="4" x2="28" y2="18" pathLength="1" style="transition-delay:480ms"/>
+              <line x1="52" y1="4" x2="52" y2="18" pathLength="1" style="transition-delay:540ms"/>
+              <line x1="60" y1="4" x2="60" y2="18" pathLength="1" style="transition-delay:600ms"/>
+              <line x1="68" y1="4" x2="68" y2="18" pathLength="1" style="transition-delay:660ms"/>
+              <line x1="76" y1="4" x2="76" y2="18" pathLength="1" style="transition-delay:720ms"/>
+            </g>
+            <line x1="1" y1="20" x2="32" y2="2" stroke="var(--gilt)" stroke-width="2.4" stroke-linecap="round" pathLength="1" style="transition-delay:780ms"/>
+            <line x1="49" y1="20" x2="80" y2="2" stroke="var(--gilt)" stroke-width="2.4" stroke-linecap="round" pathLength="1" style="transition-delay:840ms;opacity:.35"/>
+          </svg>
+          <div class="rnote">Nine orders since March. Never late. Shorted you once — July 2025, and Marta made it right the same week.</div>
+          <div class="rcount">Regular · 9 orders · gilt stroke = tonight</div>
+        </div>
+        <button class="gbtn" id="recallBtn">recognize again</button>
+      </div>
+      <div class="maps"><b>motion:</b> variants → <b>container</b> { transition:{ staggerChildren:.06, delayChildren:.3 } }; <b>mark</b> { pathLength:0→1, type:"spring", stiffness:520, damping:22 }; <b>note</b> { opacity:0→1, y:6→0, delay:.56 }. Reduced motion: all three land instantly, in final state — durations <em>and</em> delays zeroed.</div>
+    </div>
+  </div>
+  <p class="foot-note">Discipline: nothing moves more than 6px, nothing loops, nothing animates on a working list except
+  on first paint. The Recall is the only moment in the product allowed to be a small ceremony — spend it once, on the
+  thing the brand is about.</p>
+</section>
+
+<!-- ===================== §08 SAMPLE SCREENS ===================== -->
+<section id="screens">
+  <div class="kicker"><span class="no">§08</span><span>Sample screens — the standard two</span></div>
+  <h2>The brand at work</h2>
+  <p class="lede">The same two mocks every direction renders. Watch for the direction's tells: a greeting with a
+  name and an ordinal, a remembered comparison under every figure, a date rail on every row, and an honest
+  <span class="dash">—</span> wherever the book has no memory yet.</p>
+
+  <!-- ---------- Mock 1 — dashboard snapshot ---------- -->
+  <div class="mock" id="mock-dash">
+    <div class="bar"><span>Mudavym · Tonight's page</span><span>Thu 28 Aug <span class="kbd">⌘K</span></span></div>
+    <div class="pad">
+      <div class="greet serif">Good evening, <b>Aldemir</b>.</div>
+      <div class="greet-2">The book is open at Thursday, 28 August — your 412th service.</div>
+      <div class="greet-sub">last entry 22:38 · Deniz and Marta both signed in tonight</div>
+
+      <div class="kpis" id="kpis">
+        <div class="kpi"><span class="l">Revenue</span><span class="v fig" id="kpiRev">$4,280</span>
+          <span class="d up">+6.2% vs last Thursday</span>
+          <span class="mem">your best Thursday since 14 March</span></div>
+        <div class="kpi"><span class="l">Low stock</span><span class="v fig">7</span>
+          <span class="d watch">2 critical by Friday</span>
+          <span class="mem">Rioja runs out every August — this is the fourth year</span></div>
+        <div class="kpi"><span class="l">Pending orders</span><span class="v fig">3</span>
+          <span class="d">1 waiting on your signature</span>
+          <span class="mem">all three from vendors you have used before</span></div>
+        <div class="kpi"><span class="l">Alerts</span><span class="v fig">2</span>
+          <span class="d bad">oldest waiting since Tuesday</span>
+          <span class="mem">the same delivery window that slipped in June</span></div>
+      </div>
+
+      <div class="onetap" id="onetap">
+        <div class="entry">
+          <div class="rail">
+            <span class="d">28 Aug</span>
+            <span class="ord">9th order</span>
+            <svg class="tally" width="62" height="18" viewBox="0 0 62 18" aria-label="eight previous orders">
+              <g stroke="var(--sign)" stroke-width="2" stroke-linecap="round" fill="none">
+                <line x1="3" y1="3" x2="3" y2="15"/><line x1="9" y1="3" x2="9" y2="15"/>
+                <line x1="15" y1="3" x2="15" y2="15"/><line x1="21" y1="3" x2="21" y2="15"/>
+                <line x1="36" y1="3" x2="36" y2="15"/><line x1="42" y1="3" x2="42" y2="15"/>
+                <line x1="48" y1="3" x2="48" y2="15"/><line x1="54" y1="3" x2="54" y2="15"/>
+              </g>
+              <line x1="1" y1="16" x2="24" y2="2" stroke="var(--gilt)" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="ebody">
+            <div class="ename">Vinos del Norte</div>
+            <div class="eact" style="margin-top:5px;color:var(--ink-1);font-size:15px">Approve Rioja reorder — 12 bottles</div>
+            <div class="emeta">12 × $77.50 = $930.00 · price held since July · net 30</div>
+            <div class="stranger">Drafted from Friday's shortfall. Nine orders since March, never late.
+              <span style="color:var(--ink-2)">“Same as last time, my friend.” — Marta, 09:14</span></div>
+          </div>
+          <svg class="ribbon" width="11" height="52" viewBox="0 0 11 52" aria-hidden="true">
+            <path d="M0 0 H11 V52 L5.5 45 L0 52 Z" fill="var(--gilt)" opacity=".85"/>
+          </svg>
+        </div>
+        <div class="ot-foot" id="otFoot">
+          <div class="sigline">
+            <svg width="128" height="30" viewBox="0 0 128 30" aria-hidden="true">
+              <path id="sigPath" pathLength="1"
+                d="M3 22 C11 6, 22 3, 26 12 C30 21, 19 26, 16 19 C13 12, 28 4, 43 8 C57 12, 54 22, 66 19 C76 16.5, 80 10, 92 13 C102 15.5, 104 20, 116 16 L125 12"
+                fill="none" stroke="var(--sign)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="sigcap" id="sigCap">Signed 22:41 · Aldemir · entered in the book</span>
+          </div>
+          <button class="btn-sign" id="signBtn">Approve &amp; sign</button>
+        </div>
+      </div>
+      <p class="foot-note">Every tile carries a remembered comparison in italic — that line is the product.
+      A KPI without a memory is just a number somebody else's software could also show you.</p>
+    </div>
+  </div>
+
+  <!-- ---------- Mock 2 — orders strip ---------- -->
+  <div class="mock" id="mock-orders">
+    <div class="bar"><span>Orders · the book of who you buy from</span><span>3 open · 1 draft</span></div>
+    <div class="ruled">
+
+      <div class="entry">
+        <div class="rail">
+          <span class="d">28 Aug</span><span class="ord">9th order</span>
+          <svg class="tally" width="62" height="18" viewBox="0 0 62 18" aria-label="eight previous orders">
+            <g stroke="var(--sign)" stroke-width="2" stroke-linecap="round" fill="none">
+              <line x1="3" y1="3" x2="3" y2="15"/><line x1="9" y1="3" x2="9" y2="15"/>
+              <line x1="15" y1="3" x2="15" y2="15"/><line x1="21" y1="3" x2="21" y2="15"/>
+              <line x1="36" y1="3" x2="36" y2="15"/><line x1="42" y1="3" x2="42" y2="15"/>
+              <line x1="48" y1="3" x2="48" y2="15"/><line x1="54" y1="3" x2="54" y2="15"/>
+            </g>
+            <line x1="1" y1="16" x2="24" y2="2" stroke="var(--gilt)" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="ebody">
+          <div class="ename">Vinos del Norte</div>
+          <div class="emeta">PO-1042 · 24 bottles · $1,860.00</div>
+          <div style="margin-top:9px"><span class="chip transit">● In transit</span></div>
+        </div>
+        <span class="chev">›</span>
+        <svg class="ribbon" width="11" height="52" viewBox="0 0 11 52" aria-hidden="true">
+          <path d="M0 0 H11 V52 L5.5 45 L0 52 Z" fill="var(--gilt)" opacity=".85"/>
+        </svg>
+      </div>
+      <div class="subrow">
+        <div class="sp"></div>
+        <div class="sc">
+          <span class="chip ai">✎ AI draft ready — one tap to approve</span>
+          <span class="quoteline">“Confirmed for Thursday, before noon.”<i>Marta · Vinos del Norte · 09:14</i></span>
+          <span class="thread-hint"><b>Thread</b> · 3 letters ›</span>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="rail"><span class="d">26 Aug</span><span class="ord">first time</span></div>
+        <div class="ebody">
+          <div class="ename">Bodega Sur</div>
+          <div class="emeta">PO-1038 · <span class="dash">—</span> bottles · $942.00</div>
+          <div style="margin-top:9px"><span class="chip done">✓ Delivered</span></div>
+          <div class="stranger"><span class="dash">—</span> Quantity was not on their invoice, and we have no history with them yet.
+            Count it at the door, or ask — either way the book learns it tonight.</div>
+        </div>
+        <span class="chev">›</span>
+      </div>
+
+      <div class="entry" style="border-bottom:none">
+        <div class="rail">
+          <span class="d">28 Aug</span><span class="ord">15th order</span>
+          <svg class="tally" width="62" height="18" viewBox="0 0 62 18" aria-label="fourteen previous orders">
+            <g stroke="var(--sign)" stroke-width="2" stroke-linecap="round" fill="none">
+              <line x1="3" y1="3" x2="3" y2="15"/><line x1="9" y1="3" x2="9" y2="15"/>
+              <line x1="15" y1="3" x2="15" y2="15"/><line x1="21" y1="3" x2="21" y2="15"/>
+              <line x1="36" y1="3" x2="36" y2="15"/><line x1="42" y1="3" x2="42" y2="15"/>
+              <line x1="48" y1="3" x2="48" y2="15"/><line x1="54" y1="3" x2="54" y2="15"/>
+            </g>
+            <line x1="1" y1="16" x2="24" y2="2" stroke="var(--gilt)" stroke-width="2" stroke-linecap="round"/>
+            <line x1="34" y1="16" x2="57" y2="2" stroke="var(--gilt)" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="ebody">
+          <div class="ename">Frutas Marín</div>
+          <div class="emeta">PO-1044 · draft · $312.40</div>
+          <div style="margin-top:9px"><span class="chip draft">Draft</span> <span class="chip ai" style="margin-left:6px">✎ same as every Monday for 14 weeks — send?</span></div>
+        </div>
+        <span class="chev">›</span>
+        <svg class="ribbon" width="11" height="52" viewBox="0 0 11 52" aria-hidden="true">
+          <path d="M0 0 H11 V52 L5.5 45 L0 52 Z" fill="var(--gilt)" opacity=".85"/>
+        </svg>
+      </div>
+
+    </div>
+  </div>
+  <p class="foot-note">Three rows, three depths of memory: a regular with a ribbon and nine marks, a stranger with a
+  dash and an explanation, and a habit the book noticed on its own ("every Monday for 14 weeks"). The vendor-thread
+  drawer opens off the quoted reply — the letters are the relationship, so they sit one gesture from the row.</p>
+</section>
+
+<footer>
+  <span>061 · mudavym-guestbook · OD-106 (document only, no build)</span>
+  <span>signed in violet · entered 2026-08-28</span>
+</footer>
+
+</div>
+<script>
+(function(){
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---- theme ---- */
+  var root = document.documentElement, tb = document.getElementById('themeBtn');
+  tb.addEventListener('click', function(){
+    var dark = root.getAttribute('data-theme') === 'dark';
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    tb.textContent = dark ? '☾ night book' : '☀ day book';
+  });
+
+  /* ---- token: leaf — settings toggle ---- */
+  var tgl = document.getElementById('tglDemo'), st = document.getElementById('tglState'), on = true;
+  function setTgl(v){
+    on = v; tgl.classList.toggle('on', v); tgl.setAttribute('aria-checked', String(v));
+    st.textContent = v ? 'on · "Good evening, Aldemir."' : 'off · the book opens without a greeting';
+  }
+  setTgl(true);
+  tgl.addEventListener('click', function(){ setTgl(!on); });
+  tgl.addEventListener('keydown', function(e){ if(e.key===' '||e.key==='Enter'){ e.preventDefault(); setTgl(!on); }});
+
+  /* ---- token: turn — row expand onto history ---- */
+  var xr = document.getElementById('xrowDemo');
+  function flip(){ var o = xr.classList.toggle('open'); xr.setAttribute('aria-expanded', String(o)); }
+  xr.addEventListener('click', flip);
+  xr.addEventListener('keydown', function(e){ if(e.key===' '||e.key==='Enter'){ e.preventDefault(); flip(); }});
+
+  /* ---- token: reckon — number ticker + memory ---- */
+  var num = document.getElementById('tickNum'), tbn = document.getElementById('tickBtn'),
+      mem = document.getElementById('tickMem'), TARGET = 4280, DUR = 760;
+  function reckon(){
+    mem.classList.remove('in');
+    if(reduce){ num.textContent = '$4,280'; mem.classList.add('in'); return; }
+    var t0 = performance.now();
+    function frame(t){
+      var p = Math.min(1, (t - t0) / DUR);
+      p = 1 - Math.pow(1 - p, 3);
+      num.textContent = '$' + Math.round(TARGET * p).toLocaleString('en-US');
+      if(p < 1) requestAnimationFrame(frame); else mem.classList.add('in');
+    }
+    requestAnimationFrame(frame);
+  }
+  tbn.addEventListener('click', reckon);
+
+  /* ---- token: recall — the signature moment ---- */
+  var rc = document.getElementById('recallDemo'), rbtn = document.getElementById('recallBtn');
+  function recall(){
+    rc.classList.remove('in');
+    void rc.offsetWidth;               /* restart the orchestration */
+    rc.classList.add('in');
+  }
+  rbtn.addEventListener('click', recall);
+
+  /* ---- token: signStroke — approve & sign ---- */
+  var sbtn = document.getElementById('signBtn'), foot = document.getElementById('otFoot');
+  sbtn.addEventListener('click', function(){
+    foot.classList.add('signed');
+    sbtn.textContent = 'Entered ✓';
+    sbtn.disabled = true;
+    setTimeout(function(){
+      foot.classList.remove('signed');
+      sbtn.textContent = 'Approve & sign';
+      sbtn.disabled = false;
+    }, 3400);
+  });
+
+  /* ---- token: arrive — KPI tiles on first paint ----
+     Content is never hidden by markup: the tiles ship visible and JS opts them into
+     the entrance. If JS, IntersectionObserver or the observer callback fails, the
+     numbers are simply there — an animation must never be able to swallow content. */
+  var kpis = [].slice.call(document.querySelectorAll('#kpis .kpi'));
+  function arrive(){
+    kpis.forEach(function(el, i){
+      setTimeout(function(){ el.classList.remove('pre'); }, reduce ? 0 : i * 45);
+    });
+  }
+  if(!reduce && 'IntersectionObserver' in window){
+    kpis.forEach(function(el){ el.classList.add('pre'); });
+    setTimeout(arrive, 2000);           /* failsafe: reveal even if the observer never fires */
+  }
+
+  /* ---- fire the demos when they are actually on screen ---- */
+  function once(el, fn, threshold){
+    if(!el) return;
+    if(!('IntersectionObserver' in window)){ fn(); return; }
+    new IntersectionObserver(function(entries, obs){
+      if(entries[0].isIntersecting){ fn(); obs.disconnect(); }
+    }, {threshold: threshold || .35}).observe(el);
+  }
+  once(num, reckon, .6);
+  once(rc, recall, .5);
+  once(document.getElementById('kpis'), arrive, .25);
+})();
+</script>
+</body>
+</html>

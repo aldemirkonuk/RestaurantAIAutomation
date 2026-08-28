@@ -87,3 +87,7 @@ Premium B2B SaaS onboarding for restaurant operators. The visual language is Str
 | 056 | mudavym-pass | Expo-line energy — can display-scale type and imperative voice run daily ops without exhausting the operator? | null | brand, mudavym, pass, display-type, imperative, spring, od-106 |
 | 057 | mudavym-ledger | The house's book of record — can honesty idioms and warm-paper provenance carry the whole brand? | null | brand, mudavym, ledger, paper, serif, provenance, honesty, od-106 |
 | 058 | mudavym-3d-marks | Do the direction motifs survive becoming physical objects — seal, ember, meter as real brand assets? | null | brand, mudavym, blender, 3d, render, seal, ember, meter, od-106 |
+| 059 | mudavym-house | The founder's own favorites, assembled — does the kept material cohere into one identity? | null | brand, mudavym, synthesis, house, ledger, fraunces, seal, od-106 |
+| 060 | mudavym-anatolian | The name's own homeland — can İznik geometry and glaze depth be structure rather than ornament? | null | brand, mudavym, anatolian, iznik, tile-geometry, brass, heritage, od-106 |
+| 061 | mudavym-guestbook | Recognition as the product — can "the house remembers you" carry an ops tool's whole identity? | null | brand, mudavym, guestbook, memory, recognition, arrival, od-106 |
+| 062 | mudavym-warmmachine | Mechanism on show — can the most technical direction also be the warmest? | null | brand, mudavym, warm-machine, brass, mechanism, agent-visible, od-106 |

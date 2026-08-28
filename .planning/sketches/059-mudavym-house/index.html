@@ -1,0 +1,1408 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>059 — Mudavym · The House</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=Instrument+Sans:ital,wdth,wght@0,75..100,400..700;1,75..100,400..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════════════════════════════════════
+   059 — MUDAVYM · THE HOUSE
+   Assembly of the founder's kept material from 053 / 054 / 055 / 056 / 057.
+   Structure: paper · ink · one seal.  Serif speaks, sans works, mono counts.
+   ══════════════════════════════════════════════════════════════════════════ */
+:root{
+  /* ── paper (warm off-whites; 053's cream over 057's structure) ── */
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  /* ── surfaces are alpha tints of warm ink #3B332A, never painted gray ── */
+  --tint-2:rgba(59,51,42,.030); --tint-4:rgba(59,51,42,.055); --tint-8:rgba(59,51,42,.085);
+  /* ── ink ladder, 4 steps, shared by text and icons ── */
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#ABA294;
+  /* ── rules: hairlines are the structure; cards are rare ── */
+  --rule:rgba(33,28,22,.13); --rule-strong:rgba(33,28,22,.28);
+  /* ── THE SEAL — one colour, live-swappable from §05 ── */
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  /* ── semantic + matching tint twin (state colour never sits raw) ── */
+  --ok:#2F6B45; --ok-tint:rgba(47,107,69,.10);
+  --warn:#94661A; --warn-tint:rgba(148,102,26,.12);
+  --alert:#B0362C; --alert-tint:rgba(176,54,44,.10);
+  /* ── type ── */
+  --serif:'Fraunces',Georgia,'Iowan Old Style',serif;
+  --sans:'Instrument Sans',-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  --house-voice:"SOFT" 42,"WONK" 1;
+  /* ── motion tokens (authoritative values also in motion.json) ── */
+  --m-ink:160ms cubic-bezier(.16,1,.3,1);
+  --m-settle:320ms cubic-bezier(.16,1,.3,1);
+  --m-turn:420ms cubic-bezier(.32,.72,0,1);
+  --shadow-lift:0 1px 2px rgba(33,28,22,.05),0 6px 22px rgba(33,28,22,.07);
+  --stamp-c:#FAF7F1;
+}
+[data-theme="dark"]{
+  /* dark is lamplight after close — near-black biased warm, never gray */
+  --paper-0:#16120E; --paper-1:#1D1813; --paper-2:#262019;
+  --tint-2:rgba(239,231,217,.035); --tint-4:rgba(239,231,217,.06); --tint-8:rgba(239,231,217,.10);
+  --ink-1:#EFE7D9; --ink-2:#C0B6A5; --ink-3:#8E8576; --ink-4:#665D50;
+  --rule:rgba(239,231,217,.13); --rule-strong:rgba(239,231,217,.28);
+  --seal:#5FB0BC; --seal-deep:#7DC3CD; --seal-tint:rgba(95,176,188,.14); --seal-ring:rgba(95,176,188,.38);
+  --ok:#78B58E; --ok-tint:rgba(120,181,142,.13);
+  --warn:#D3A458; --warn-tint:rgba(211,164,88,.13);
+  --alert:#E0776B; --alert-tint:rgba(224,119,107,.13);
+  --shadow-lift:0 1px 2px rgba(0,0,0,.4),0 8px 26px rgba(0,0,0,.38);
+  --stamp-c:#16120E;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--paper-0);color:var(--ink-1);
+  font:400 15.5px/1.62 var(--sans);
+  transition:background var(--m-turn),color var(--m-turn);
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+}
+.wrap{max-width:1100px;margin:0 auto;padding:0 clamp(20px,5vw,60px)}
+section{border-top:1px solid var(--rule);padding:58px 0 74px}
+
+/* ── the three voices ─────────────────────────────────────────────── */
+.serif{font-family:var(--serif);font-variation-settings:var(--house-voice)}
+.fig{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.kicker{font:500 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);
+  display:flex;gap:14px;align-items:baseline;margin-bottom:24px}
+.kicker .no{color:var(--seal);transition:color var(--m-ink)}
+h1,h2,h3.sf{font-family:var(--serif);font-variation-settings:var(--house-voice)}
+h2{font-size:31px;font-weight:600;letter-spacing:-.014em;line-height:1.18;margin-bottom:10px}
+h3{font-size:17px;font-weight:600;letter-spacing:-.005em}
+.lede{color:var(--ink-2);max-width:64ch;margin-bottom:32px;font-size:15.5px}
+.dash{color:var(--ink-4)}
+a{color:inherit}
+.note{font-size:12.5px;color:var(--ink-3);line-height:1.55}
+
+/* ── header ───────────────────────────────────────────────────────── */
+header{padding:46px 0 34px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap}
+.masthead .over{font:500 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.masthead h1{font-size:clamp(32px,5vw,46px);font-weight:600;letter-spacing:-.018em;margin:14px 0 10px;line-height:1.06}
+.masthead h1 .stop{color:var(--seal);transition:color var(--m-ink)}
+.masthead p{color:var(--ink-2);max-width:58ch}
+.hbtn{font:500 12px var(--mono);letter-spacing:.06em;color:var(--ink-2);background:var(--tint-4);
+  border:1px solid var(--rule);border-radius:7px;padding:10px 15px;cursor:pointer;white-space:nowrap;
+  transition:background var(--m-ink),border-color var(--m-ink),transform var(--m-ink)}
+.hbtn:hover{background:var(--tint-8);border-color:var(--rule-strong);transform:translateY(-1px)}
+.hbtn:active{transform:translateY(0)}
+.mandate{margin-top:26px;border-left:2px solid var(--seal);padding:4px 0 4px 20px;max-width:60ch}
+.mandate .q{font-family:var(--serif);font-variation-settings:var(--house-voice);font-style:italic;
+  font-size:19px;line-height:1.42;color:var(--ink-1)}
+.mandate .attr{display:block;margin-top:8px;font:500 10.5px var(--mono);letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-3)}
+
+/* ── §01 premise ──────────────────────────────────────────────────── */
+.defblock{border-top:1px solid var(--rule-strong);border-bottom:3px double var(--rule-strong);
+  padding:26px 0;margin-bottom:30px;display:grid;grid-template-columns:auto 1fr;gap:34px;align-items:baseline}
+.defblock .word{font-family:var(--serif);font-variation-settings:var(--house-voice);font-size:34px;
+  font-weight:600;letter-spacing:-.01em;white-space:nowrap}
+.defblock .word em{font-style:italic;color:var(--seal)}
+.defblock .pos{display:block;font:400 12px var(--mono);color:var(--ink-3);letter-spacing:.06em;margin-top:6px}
+.defblock .def{font-family:var(--serif);font-variation-settings:var(--house-voice);font-size:20px;
+  line-height:1.5;color:var(--ink-1);max-width:52ch}
+.thesis{font-size:16.5px;line-height:1.68;color:var(--ink-2);max-width:70ch;margin-bottom:22px}
+.thesis strong{color:var(--ink-1);font-weight:600}
+.prem-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:0 40px;margin-top:32px}
+.prem-grid div{padding:16px 0;border-top:1px solid var(--rule)}
+.prem-grid b{display:block;font-size:14px;font-weight:600;margin-bottom:5px}
+.prem-grid span{font-size:13px;color:var(--ink-3);line-height:1.55}
+
+/* ── §02 logo ─────────────────────────────────────────────────────── */
+.logo-block{margin-bottom:34px}
+.logo-row{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--rule);
+  border:1px solid var(--rule);border-radius:12px;overflow:hidden}
+.lcell{padding:38px 30px;display:flex;align-items:center;justify-content:center;min-height:186px}
+.lcell.lt{background:#FAF7F1}
+.lcell.dk{background:#16120E}
+.lcell svg,.smallsizes svg{max-width:100%;height:auto}
+.logo-meta{display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:baseline;margin-top:14px;
+  padding-bottom:2px}
+.logo-meta b{font-family:var(--serif);font-variation-settings:var(--house-voice);font-size:16px;font-weight:600;white-space:nowrap}
+.logo-meta .k{display:block;font:500 10.5px var(--mono);letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:4px}
+.logo-meta span.d{font-size:13px;line-height:1.6;color:var(--ink-3)}
+.logo-meta span.d i{font-style:normal;color:var(--ink-2)}
+.constr{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.constr span{font:400 10.5px var(--mono);letter-spacing:.04em;color:var(--ink-3);
+  border:1px solid var(--rule);border-radius:5px;padding:4px 8px}
+.smallsizes{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--rule);
+  border:1px solid var(--rule);border-radius:12px;overflow:hidden;margin-top:8px}
+.smallsizes>div{padding:26px 22px;display:flex;align-items:flex-end;gap:22px;flex-wrap:wrap}
+.smallsizes .lt{background:#FAF7F1}
+.smallsizes .dk{background:#16120E}
+.sz{display:flex;flex-direction:column;align-items:center;gap:7px}
+.sz i{font:400 9.5px var(--mono);font-style:normal;letter-spacing:.08em;color:#ABA294}
+.smallsizes .dk .sz i{color:#665D50}
+
+/* ── §03 slogans ──────────────────────────────────────────────────── */
+.slogans{display:flex;flex-direction:column}
+.slog{display:grid;grid-template-columns:56px 1fr;gap:20px;padding:22px 0;
+  border-bottom:1px solid var(--rule);align-items:baseline}
+.slog .n{font:400 11px var(--mono);color:var(--ink-4);letter-spacing:.08em;padding-top:6px}
+.slog .n b{display:block;color:var(--seal);font-weight:500;font-size:9.5px;letter-spacing:.1em;margin-top:5px}
+.slog h3{font-family:var(--serif);font-variation-settings:var(--house-voice);font-size:25px;
+  font-weight:600;letter-spacing:-.012em;line-height:1.24}
+.slog h3 em{font-style:italic;color:var(--seal)}
+.slog p{font-size:13.5px;color:var(--ink-3);margin-top:7px;max-width:70ch;line-height:1.6}
+.slog.newone{background:var(--tint-2);margin:0 -14px;padding:22px 14px;border-radius:0}
+.slog.sales h3{color:var(--ink-2)}
+.flagline{margin-top:22px;border:1px solid var(--warn-tint);background:var(--warn-tint);
+  border-radius:9px;padding:14px 18px;font-size:13.5px;color:var(--ink-2)}
+.flagline b{color:var(--warn)}
+
+/* ── §04 voice ────────────────────────────────────────────────────── */
+.voices{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1px;
+  background:var(--rule);border:1px solid var(--rule);border-radius:12px;overflow:hidden;margin-bottom:38px}
+.voice-c{background:var(--paper-0);padding:24px 22px}
+.voice-c .k{font:500 10.5px var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--seal);
+  display:block;margin-bottom:14px}
+.voice-c .sample{font-size:24px;line-height:1.3;margin-bottom:12px;color:var(--ink-1)}
+.voice-c.vs .sample{font-family:var(--serif);font-variation-settings:var(--house-voice);font-weight:500}
+.voice-c.vn .sample{font-size:20px;font-weight:500;letter-spacing:-.01em}
+.voice-c.vm .sample{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:20px;letter-spacing:-.02em}
+.voice-c p{font-size:13px;color:var(--ink-3);line-height:1.6}
+.voice-c p b{color:var(--ink-2)}
+.rules{counter-reset:r;display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:0 44px;margin-bottom:40px}
+.rules li{list-style:none;counter-increment:r;padding:15px 0;border-bottom:1px solid var(--rule);
+  display:grid;grid-template-columns:32px 1fr;gap:10px}
+.rules li::before{content:counter(r,decimal-leading-zero);font:400 11.5px/1.95 var(--mono);color:var(--seal)}
+.rules b{font-weight:600;font-size:14.5px}
+.rules span{display:block;font-size:13px;color:var(--ink-3);line-height:1.58;margin-top:3px}
+.rw{border:1px solid var(--rule);border-radius:12px;overflow:hidden}
+.rw-row{display:grid;grid-template-columns:1fr 1.25fr;gap:1px;background:var(--rule)}
+.rw-row>div{background:var(--paper-0);padding:18px 22px}
+.rw-row .was{color:var(--ink-3);font-size:14px}
+.rw-row s{text-decoration:none;display:block;font:500 10.5px var(--mono);letter-spacing:.12em;
+  text-transform:uppercase;margin-bottom:9px;color:var(--ink-4)}
+.rw-row .now s{color:var(--seal)}
+.rw-row .now{font-size:15px;line-height:1.55}
+.rw-row .now .sf{font-family:var(--serif);font-variation-settings:var(--house-voice);font-size:17px;font-weight:500}
+.rw-row .now .mn{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13.5px}
+.rw-row .tag{display:block;margin-top:9px;font:400 10.5px var(--mono);letter-spacing:.05em;color:var(--ink-4)}
+
+/* ── §05 seal candidates ──────────────────────────────────────────── */
+.sealbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:26px;
+  border:1px solid var(--rule);border-radius:10px;padding:13px 16px;background:var(--tint-2)}
+.sealbar .lbl{font:500 10.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.sealbar .cur{font:500 12.5px var(--mono);color:var(--seal)}
+.seal-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:22px}
+.seal-card{border:1px solid var(--rule);border-radius:12px;overflow:hidden;background:var(--paper-0);
+  transition:border-color var(--m-ink),transform var(--m-ink),box-shadow var(--m-ink);cursor:pointer;
+  display:flex;flex-direction:column}
+.seal-card:hover{border-color:var(--rule-strong);transform:translateY(-2px);box-shadow:var(--shadow-lift)}
+.seal-card.picked{border-color:var(--seal);box-shadow:0 0 0 1px var(--seal)}
+.seal-card .stamps{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--rule)}
+.stamp-t{display:flex;flex-direction:column;align-items:center;gap:9px;padding:22px 10px 16px}
+.stamp-t.lt{background:#FAF7F1}
+.stamp-t.dk{background:#16120E}
+.stamp-t i{font:400 9.5px var(--mono);font-style:normal;letter-spacing:.09em;text-transform:uppercase}
+.stamp-t.lt i{color:#ABA294}
+.stamp-t.dk i{color:#665D50}
+.seal-body{padding:16px 18px 18px;display:flex;flex-direction:column;gap:9px;flex:1}
+.seal-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.seal-head h3{font-family:var(--serif);font-variation-settings:var(--house-voice);font-size:19px;font-weight:600}
+.seal-head .rec{font:500 9.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--seal);border:1px solid var(--seal-ring);border-radius:4px;padding:3px 6px;white-space:nowrap}
+.hexes{display:flex;gap:14px;font:400 11.5px var(--mono);color:var(--ink-3);letter-spacing:.01em}
+.hexes b{font-weight:500;color:var(--ink-2)}
+.why{font-size:13px;line-height:1.58;color:var(--ink-2)}
+.wcag{font:400 11.5px/1.5 var(--mono);color:var(--ink-3);border-top:1px solid var(--rule);padding-top:9px;margin-top:auto}
+.wcag .pass{color:var(--ok)}
+.wcag .warnx{color:var(--warn)}
+.rejected{margin-top:26px;border:1px dashed var(--rule-strong);border-radius:10px;padding:16px 20px}
+.rejected h3{font-size:14px;margin-bottom:8px}
+.rejected ul{margin-left:16px;font-size:13px;color:var(--ink-3);line-height:1.75}
+.rejected code{font:400 12px var(--mono);color:var(--ink-2)}
+
+/* ── §06 palette ──────────────────────────────────────────────────── */
+.pal{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.pal-col{border:1px solid var(--rule);border-radius:12px;overflow:hidden}
+.pal-col .ph{font:500 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;padding:14px 18px;
+  border-bottom:1px solid;display:flex;justify-content:space-between}
+.pal-col.pl{background:#FAF7F1;color:#211C16}
+.pal-col.pl .ph{border-color:rgba(33,28,22,.13);color:#7C7365}
+.pal-col.pd{background:#16120E;color:#EFE7D9}
+.pal-col.pd .ph{border-color:rgba(239,231,217,.13);color:#8E8576}
+.sw{display:grid;grid-template-columns:44px 1fr auto;gap:14px;align-items:center;padding:8px 18px;font-size:13px}
+.sw .chip{height:28px;border-radius:6px;border:1px solid rgba(127,127,127,.28)}
+.sw .tok{font:500 11.5px var(--mono)}
+.sw .hex{display:block;font:400 10.5px var(--mono);opacity:.58}
+.sw .use{font-size:11.5px;opacity:.62;text-align:right;max-width:16ch}
+.pal-col .grp{font:500 10px var(--mono);letter-spacing:.14em;text-transform:uppercase;opacity:.5;
+  padding:14px 18px 4px}
+.pal-laws{margin-top:26px;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:0 40px}
+.pal-laws div{padding:15px 0;border-top:1px solid var(--rule)}
+.pal-laws b{display:block;font-size:13.5px;margin-bottom:4px}
+.pal-laws span{font-size:12.5px;color:var(--ink-3);line-height:1.55}
+
+/* ── §07 type ─────────────────────────────────────────────────────── */
+.scale{border:1px solid var(--rule);border-radius:12px;overflow:hidden}
+.srow{display:grid;grid-template-columns:132px 1fr auto;gap:18px;align-items:baseline;
+  padding:15px 20px;border-bottom:1px solid var(--rule)}
+.srow:last-child{border-bottom:none}
+.srow .m{font:400 10.5px var(--mono);color:var(--ink-3);letter-spacing:.06em;line-height:1.5}
+.srow .m b{display:block;color:var(--ink-2);font-weight:500;letter-spacing:.1em;text-transform:uppercase;font-size:10px}
+.srow .use{font:400 11px var(--mono);color:var(--ink-4);text-align:right;white-space:nowrap}
+.typelaws{margin-top:24px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0 40px}
+.typelaws div{padding:14px 0;border-top:1px solid var(--rule)}
+.typelaws b{display:block;font-size:13.5px;margin-bottom:4px}
+.typelaws span{font-size:12.5px;color:var(--ink-3);line-height:1.55}
+
+/* ── §08 motion ───────────────────────────────────────────────────── */
+.mtable{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:34px}
+.mtable th{text-align:left;font:500 10.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);padding:0 14px 10px 0;border-bottom:1px solid var(--rule-strong)}
+.mtable td{padding:11px 14px 11px 0;border-bottom:1px solid var(--rule);vertical-align:top;color:var(--ink-2)}
+.mtable td.n{font:500 12.5px var(--mono);color:var(--seal);white-space:nowrap}
+.mtable td.p{font:400 11.5px var(--mono);color:var(--ink-3);white-space:nowrap}
+.demos{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}
+.demo{border:1px solid var(--rule);border-radius:12px;padding:18px;background:var(--tint-2)}
+.demo h4{font-size:13.5px;font-weight:600;margin-bottom:3px}
+.demo .sub{font:400 11.5px var(--mono);color:var(--ink-3);margin-bottom:14px}
+.demo .sub b{color:var(--seal);font-weight:500}
+.demo .maps{margin-top:13px;font:400 10.5px/1.6 var(--mono);color:var(--ink-4);word-break:break-word}
+
+/* row expand — the `settle` demo (053, kept verbatim in behaviour) */
+.xrow{border:1px solid var(--rule);border-radius:9px;background:var(--paper-0);overflow:hidden}
+.xrow .xhead{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;
+  cursor:pointer;user-select:none}
+.xrow .t{font-size:14px;font-weight:500}
+.xrow .m{font-size:12px;color:var(--ink-3);margin-top:2px}
+.chev{transition:transform var(--m-settle);color:var(--ink-3);flex:none}
+.xrow.open .chev{transform:rotate(180deg)}
+.expander{display:grid;grid-template-rows:0fr;transition:grid-template-rows var(--m-settle)}
+.xrow.open .expander{grid-template-rows:1fr}
+.expander>div{overflow:hidden}
+.exp-body{padding:0 15px 13px;font:400 12.5px/2 var(--mono);color:var(--ink-2)}
+.ln{display:flex;justify-content:space-between;gap:16px}
+.ln.tot{border-top:3px double var(--rule-strong);color:var(--ink-1);font-weight:500;margin-top:4px;padding-top:4px}
+.ln em{font-style:normal;color:var(--ink-4)}
+.xrow.turn .expander{transition:grid-template-rows var(--m-turn)}
+.xrow.turn .chev{transition:transform var(--m-turn)}
+
+/* toggle — the `tuck` demo */
+.tgrow{display:flex;align-items:center;gap:14px}
+.toggle{width:48px;height:28px;border-radius:99px;background:var(--tint-8);position:relative;cursor:pointer;
+  flex:none;border:1px solid var(--rule);transition:background var(--m-settle),border-color var(--m-settle)}
+.toggle.on{background:var(--seal-tint);border-color:var(--seal-ring)}
+.toggle .thumb{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:99px;
+  background:var(--ink-2);will-change:transform}
+.toggle.on .thumb{background:var(--seal)}
+.tglab{font-size:13.5px}
+.tglab i{display:block;font:400 11px var(--mono);color:var(--ink-3);font-style:normal;margin-top:2px}
+
+/* hold-to-approve — the `press` + `stamp` demo (056) */
+.hold-btn{position:relative;overflow:hidden;font:600 15px var(--sans);background:var(--seal);color:var(--paper-0);
+  border:none;border-radius:10px;padding:14px 22px;cursor:pointer;user-select:none;-webkit-user-select:none;
+  touch-action:none;min-width:210px;transition:background var(--m-ink)}
+.hold-btn .fill{position:absolute;inset:0;background:rgba(0,0,0,.26);transform-origin:left;transform:scaleX(0)}
+.hold-btn .lbl{position:relative}
+.hold-btn.done{background:var(--ok)}
+.hold-hint{font:400 10.5px var(--mono);letter-spacing:.06em;color:var(--ink-3);margin-top:9px}
+.stampmark{display:inline-flex;align-items:center;gap:7px;font:500 10.5px var(--mono);letter-spacing:.12em;
+  text-transform:uppercase;color:var(--seal);border:1px solid var(--seal-ring);border-radius:5px;
+  padding:5px 9px;opacity:0;transform:rotate(-4deg) scale(.7);will-change:transform,opacity}
+
+/* ticker — the `tally` demo */
+.tick{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.ticknum{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:30px;font-weight:500;
+  letter-spacing:-.02em}
+.sbtn{font:500 12px var(--mono);letter-spacing:.05em;background:var(--tint-4);border:1px solid var(--rule);
+  color:var(--ink-2);border-radius:7px;padding:8px 13px;cursor:pointer;transition:background var(--m-ink)}
+.sbtn:hover{background:var(--tint-8)}
+
+/* shimmer — the AI thinking sweep */
+.shim{font-family:var(--serif);font-variation-settings:var(--house-voice);font-style:italic;font-size:14px;
+  background:linear-gradient(100deg,var(--ink-3) 20%,var(--seal) 42%,var(--ink-3) 64%);
+  background-size:240% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:shimmer 1.9s cubic-bezier(.45,0,.55,1) infinite}
+@keyframes shimmer{0%{background-position:135% 0}100%{background-position:-35% 0}}
+
+/* ── §09 sample screens ───────────────────────────────────────────── */
+.mock{border:1px solid var(--rule);border-radius:14px;overflow:hidden;background:var(--paper-0);
+  box-shadow:var(--shadow-lift);margin-bottom:26px}
+.mbar{display:flex;justify-content:space-between;align-items:center;padding:11px 20px;
+  border-bottom:1px solid var(--rule);background:var(--tint-2);font:400 11.5px var(--mono);color:var(--ink-3)}
+.kbd{border:1px solid var(--rule);border-radius:4px;padding:2px 6px;margin-left:8px;font-size:10.5px}
+.mpad{padding:26px 24px 24px}
+.greet{font-family:var(--serif);font-variation-settings:var(--house-voice);font-size:clamp(24px,3.4vw,34px);
+  font-weight:500;letter-spacing:-.014em;line-height:1.24}
+.greet .q{color:var(--ink-1)}
+.greet .ask{color:var(--ink-2);font-style:italic}
+.greet-sub{font:400 11.5px var(--mono);color:var(--ink-3);margin-top:9px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--rule);
+  border:1px solid var(--rule);border-radius:10px;overflow:hidden;margin:24px 0}
+.kpi{background:var(--paper-0);padding:15px 16px;opacity:0;transform:translateY(6px);
+  animation:rise .42s cubic-bezier(.16,1,.3,1) forwards}
+.kpi:nth-child(1){animation-delay:.02s}.kpi:nth-child(2){animation-delay:.05s}
+.kpi:nth-child(3){animation-delay:.08s}.kpi:nth-child(4){animation-delay:.11s}
+@keyframes rise{to{opacity:1;transform:none}}
+.kpi .l{font:500 10.5px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);display:block}
+.kpi .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:27px;font-weight:500;
+  letter-spacing:-.025em;display:block;margin:7px 0 4px}
+.kpi .d{font-size:11.5px;color:var(--ink-3);display:block;line-height:1.45}
+.kpi .d.up{color:var(--ok)}.kpi .d.wr{color:var(--warn)}.kpi .d.al{color:var(--alert)}
+.kpi .show{color:var(--seal);cursor:pointer;border-bottom:1px dashed var(--seal-ring)}
+.onetap{border:1px solid var(--seal-ring);background:var(--seal-tint);border-radius:12px;padding:18px 20px;
+  display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.onetap .body{flex:1;min-width:260px}
+.onetap .t{font-family:var(--serif);font-variation-settings:var(--house-voice);font-size:18px;font-weight:600;
+  letter-spacing:-.008em;line-height:1.34}
+.onetap .s{font-size:12.5px;color:var(--ink-2);margin-top:7px;line-height:1.6}
+.onetap .s b{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:500;color:var(--ink-1);font-size:12px}
+.quote{font-family:var(--serif);font-variation-settings:var(--house-voice);font-style:italic;color:var(--ink-2)}
+.ot-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+
+/* orders strip */
+.cols,.orow{display:grid;grid-template-columns:96px 1.5fr 1fr .8fr 1.1fr 22px;gap:14px;align-items:center;
+  padding:12px 24px}
+.cols{font:500 10px var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--ink-4);
+  border-bottom:1px solid var(--rule);padding-bottom:9px}
+.orow{border-bottom:1px solid var(--rule);font-size:13.5px}
+.orow .po{font:500 12.5px var(--mono);color:var(--ink-2)}
+.orow .vend{font-weight:500}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;border-radius:99px;padding:4px 10px;
+  border:1px solid transparent;white-space:nowrap}
+.chip.transit{background:var(--tint-8);color:var(--ink-2);border-color:var(--rule)}
+.chip.done{background:var(--ok-tint);color:var(--ok)}
+.chip.ai{background:var(--seal-tint);color:var(--seal);border-color:var(--seal-ring);cursor:pointer;
+  font-weight:500;transition:transform var(--m-ink)}
+.chip.ai:hover{transform:translateY(-1px)}
+.subrow{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:0 24px 14px;margin-top:-2px}
+.thread{font-size:12px;color:var(--ink-3);border-left:2px solid var(--rule-strong);padding-left:12px}
+.thread i{display:block;font:400 10.5px var(--mono);font-style:normal;color:var(--ink-4);margin-top:3px}
+.drawerhint{margin-left:auto;font:500 11.5px var(--mono);color:var(--ink-3);border:1px solid var(--rule);
+  border-radius:7px;padding:6px 11px;cursor:pointer;transition:border-color var(--m-ink),color var(--m-ink)}
+.drawerhint:hover{border-color:var(--seal-ring);color:var(--seal)}
+.footnote{padding:11px 24px 15px;border-top:1px solid var(--rule);font-size:12px;color:var(--ink-3)}
+.footnote .dash{color:var(--ink-4)}
+
+footer{border-top:3px double var(--rule-strong);padding:34px 0 60px;display:flex;
+  justify-content:space-between;gap:20px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-3)}
+footer .mm{font:400 11.5px var(--mono)}
+
+/* wax seal: the <use> shadow tree only inherits custom properties, so the fills
+   live as inline styles inside the <symbol> and read --c / --on from the host. */
+
+@media (max-width:820px){
+  .pal{grid-template-columns:1fr}
+  .logo-row,.smallsizes{grid-template-columns:1fr}
+  .rw-row{grid-template-columns:1fr}
+  .defblock{grid-template-columns:1fr;gap:16px}
+  .cols,.orow{grid-template-columns:80px 1fr .7fr .7fr;gap:10px}
+  .cols span:nth-child(5),.cols span:nth-child(6),.orow>*:nth-child(5),.orow>*:nth-child(6){display:none}
+}
+@media (max-width:560px){
+  .lcell{padding:24px 14px;min-height:0}
+  .smallsizes>div{padding:20px 14px;gap:16px}
+  .logo-meta{grid-template-columns:1fr;gap:6px}
+  .logo-meta span.d{text-align:left}
+  .seal-grid{grid-template-columns:1fr}
+  .srow{grid-template-columns:1fr;gap:6px}
+  .srow .use{text-align:left;white-space:normal}
+  .mtable td.p{white-space:normal}
+  .mtable th:nth-child(3),.mtable td:nth-child(3){display:none}
+  .voices{grid-template-columns:1fr}
+  .rules{grid-template-columns:1fr}
+  .mpad{padding:20px 16px}
+  .cols,.orow{padding-left:16px;padding-right:16px}
+  .subrow,.footnote{padding-left:16px;padding-right:16px}
+  .onetap{padding:16px}
+  .ot-right{align-items:stretch;width:100%}
+  .ot-right .hold-btn{width:100%}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
+    transition-duration:.001ms!important;scroll-behavior:auto!important}
+  .kpi{opacity:1;transform:none}
+}
+</style>
+<!-- live seal override, written by §05; must sit after the main sheet to win the cascade -->
+<style id="sealStyle"></style>
+</head>
+<body>
+
+<!-- wax-seal symbol, instantiated everywhere with <use> -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="wax" viewBox="0 0 96 96">
+  <path style="fill:var(--c,#1A5E6B)" d="M90 48C90 60 86 70.5 75.6 75.6C66 84 58 91 48 91C38 91 28 85 19 77C11 69 10 58 10 48C10 38 13 27 19.7 19.7C27 12 38 6 48 6C58 6 68 12 75.6 20.4C84 28 90 38 90 48Z"/>
+  <circle cx="48" cy="48" r="29.5" style="fill:none;stroke:var(--on,#FAF7F1);stroke-width:1.15;stroke-dasharray:2.2 3.4;opacity:.6"/>
+  <text x="48" y="61" text-anchor="middle" style="fill:var(--on,#FAF7F1);font-family:Fraunces,Georgia,serif;font-variation-settings:'SOFT' 42,'WONK' 1;font-size:36px;font-weight:600">M</text>
+</symbol></svg>
+
+<div class="wrap">
+
+<header>
+  <div class="masthead">
+    <div class="over">Sketch 059 · brand direction · OD-106 · document only</div>
+    <h1>Mudavym<span class="stop">.</span> The House<span class="stop">.</span></h1>
+    <p>Not a sixth idea. This is the founder's own keep-pile from 053–057, assembled into one identity
+      and finished: the müdavim story, the double rule and the full stop, the Fraunces house voice,
+      the settle row-expand, hold-to-approve — and one seal colour that belongs to nobody else.</p>
+    <div class="mandate">
+      <span class="q">“The main feeling must be the giving of hospitality and passion while technically superior.”</span>
+      <span class="attr">The mandate · founder</span>
+    </div>
+  </div>
+  <button class="hbtn" id="themeBtn" aria-label="Toggle theme">◐ after close</button>
+</header>
+
+<!-- ═══════════ §01 PREMISE ═══════════ -->
+<section id="premise">
+  <div class="kicker"><span class="no">§01</span><span>Premise — the kept story</span></div>
+
+  <div class="defblock">
+    <div class="word">müdavim<span class="pos">Turkish · noun</span></div>
+    <div class="def">The regular. The one who is there every day — who the house knows,
+      and who knows the house.</div>
+  </div>
+
+  <p class="thesis">Most restaurant software watches the restaurant like a security camera.
+    Mudavym sits at the bar like its most loyal regular: it knows every vendor by name, every bottle
+    by vintage, every shift by feel — and it <strong>quietly takes care of things</strong>.</p>
+
+  <p class="thesis">That is the whole brief, and it is also the whole design problem. A regular is warm
+    but never familiar; precise but never pedantic; present every night without asking to be thanked.
+    So the surface is <strong>paper, not chrome</strong>. The voice is <strong>a serif that only speaks
+    when the product speaks</strong>. The numbers are <strong>mono, tabular, and never invented</strong>.
+    And the whole system spends its colour on exactly one thing — <strong>a seal</strong>, pressed
+    where a decision was made. Hospitality on the surface; arithmetic underneath; nothing loud anywhere.</p>
+
+  <div class="prem-grid">
+    <div><b>Paper, ink, one seal</b><span>Three material facts and nothing else. Surfaces are alpha tints
+      of warm ink, not painted grays; structure is hairlines, not cards; colour appears only where a
+      human decided something.</span></div>
+    <div><b>Serif speaks, sans works, mono counts</b><span>Fraunces at SOFT&nbsp;42 / WONK&nbsp;1 — a wine
+      label that learned software — is rationed to once per screen. Instrument Sans runs the interface.
+      JetBrains Mono keeps the books.</span></div>
+    <div><b>The hand that writes, settles</b><span>Everything lands on the house curve and stays landed.
+      One emphatic motion exists — the stamp — because entering something into the book deserves a
+      small ceremony, and nothing else does.</span></div>
+    <div><b>Warmth arrives quoted</b><span>Mudavym's own copy stays exact. The warmth on screen belongs
+      to the people it quotes: the vendor's reply, the staff note, the drafted letter's courtesy.
+      The brand is the room; the people are the warmth.</span></div>
+  </div>
+</section>
+
+<!-- ═══════════ §02 LOGO ═══════════ -->
+<section id="logo">
+  <div class="kicker"><span class="no">§02</span><span>Logo — the double rule and the full stop, resolved</span></div>
+  <h2>Three lockups from two kept marks</h2>
+  <p class="lede">The founder kept the accountant's <b>double rule</b> and the <b>full stop</b> from 057
+    and rejected every mark from 053. So these are not three more sketches — they are one construction,
+    developed: the wordmark is measured to the rule (<span class="fig">textLength</span>, not eyeballed),
+    the period is the only coloured element in the identity, and every lockup carries its own clear-space
+    and minimum-size rule. The Meter from 054 follows as the alternate, re-cut in the house face.</p>
+
+  <!-- Lockup A — The Entry -->
+  <div class="logo-block">
+    <div class="logo-row">
+      <div class="lcell lt">
+        <svg viewBox="0 0 380 128" width="330" role="img" aria-label="Mudavym wordmark with seal full stop over an accountant's double rule">
+          <text x="76" y="62" textLength="228" lengthAdjust="spacing" font-family="Fraunces,Georgia,serif"
+            font-size="48" font-weight="600" letter-spacing="-1" fill="#211C16"
+            style="font-variation-settings:'SOFT' 42,'WONK' 1">Mudavym<tspan class="pd" fill="#1A5E6B">.</tspan></text>
+          <line x1="76" y1="80" x2="304" y2="80" stroke="#211C16" stroke-width="1.7"/>
+          <line x1="76" y1="85.5" x2="304" y2="85.5" stroke="#211C16" stroke-width="1.7"/>
+        </svg>
+      </div>
+      <div class="lcell dk">
+        <svg viewBox="0 0 380 128" width="330" role="img" aria-label="Mudavym wordmark, dark">
+          <text x="76" y="62" textLength="228" lengthAdjust="spacing" font-family="Fraunces,Georgia,serif"
+            font-size="48" font-weight="600" letter-spacing="-1" fill="#EFE7D9"
+            style="font-variation-settings:'SOFT' 42,'WONK' 1">Mudavym<tspan class="pd" fill="#5FB0BC">.</tspan></text>
+          <line x1="76" y1="80" x2="304" y2="80" stroke="#EFE7D9" stroke-width="1.7"/>
+          <line x1="76" y1="85.5" x2="304" y2="85.5" stroke="#EFE7D9" stroke-width="1.7"/>
+        </svg>
+      </div>
+    </div>
+    <div class="logo-meta">
+      <b><span class="k">Lockup A · primary</span>The Entry</b>
+      <span class="d">The accountant's mark under a final total: <i>this figure is done, checked, and stands.</i>
+        Resolved by construction — the wordmark is set to <i>exactly</i> the rule measure, so the double rule
+        is not decoration under the name but the name's own baseline of record. The full stop is the only
+        colour in the system; it is the same mark that ends every verdict the product writes.</span>
+    </div>
+    <div class="constr">
+      <span>rule weight = stem weight of the M ÷ 2</span>
+      <span>rule gap = 2× rule weight</span>
+      <span>clear space = cap height of the M, all four sides</span>
+      <span>min width 128px / 34mm</span>
+      <span>below min → use Lockup C</span>
+    </div>
+  </div>
+
+  <!-- Lockup B — The Sealed Entry -->
+  <div class="logo-block">
+    <div class="logo-row">
+      <div class="lcell lt">
+        <svg viewBox="0 0 420 120" width="360" role="img" aria-label="Mudavym seal and wordmark lockup">
+          <g class="wax" style="--c:#1A5E6B;--on:#FAF7F1"><use href="#wax" x="16" y="24" width="72" height="72"/></g>
+          <text x="112" y="60" textLength="210" lengthAdjust="spacing" font-family="Fraunces,Georgia,serif"
+            font-size="42" font-weight="600" letter-spacing="-.8" fill="#211C16"
+            style="font-variation-settings:'SOFT' 42,'WONK' 1">Mudavym<tspan fill="#1A5E6B">.</tspan></text>
+          <line x1="112" y1="76" x2="322" y2="76" stroke="#211C16" stroke-width="1.5"/>
+          <line x1="112" y1="81" x2="322" y2="81" stroke="#211C16" stroke-width="1.5"/>
+          <text x="112" y="99" font-family="'JetBrains Mono',monospace" font-size="9.5" letter-spacing="2.1"
+            fill="#7C7365">ENTERED · CHECKED · STANDS</text>
+        </svg>
+      </div>
+      <div class="lcell dk">
+        <svg viewBox="0 0 420 120" width="360" role="img" aria-label="Mudavym seal lockup, dark">
+          <g class="wax" style="--c:#5FB0BC;--on:#16120E"><use href="#wax" x="16" y="24" width="72" height="72"/></g>
+          <text x="112" y="60" textLength="210" lengthAdjust="spacing" font-family="Fraunces,Georgia,serif"
+            font-size="42" font-weight="600" letter-spacing="-.8" fill="#EFE7D9"
+            style="font-variation-settings:'SOFT' 42,'WONK' 1">Mudavym<tspan fill="#5FB0BC">.</tspan></text>
+          <line x1="112" y1="76" x2="322" y2="76" stroke="#EFE7D9" stroke-width="1.5"/>
+          <line x1="112" y1="81" x2="322" y2="81" stroke="#EFE7D9" stroke-width="1.5"/>
+          <text x="112" y="99" font-family="'JetBrains Mono',monospace" font-size="9.5" letter-spacing="2.1"
+            fill="#8E8576">ENTERED · CHECKED · STANDS</text>
+        </svg>
+      </div>
+    </div>
+    <div class="logo-meta">
+      <b><span class="k">Lockup B · stationery &amp; documents</span>The Sealed Entry</b>
+      <span class="d">The seal is not a second logo — it is <i>the full stop, pressed</i>: same colour, same
+        job, physical size. This is the lockup for purchase orders, vendor letters, exports and invoices,
+        because it is the one place where a mark should look like it was <i>applied</i> rather than printed.
+        The same wax lands in-product when an order is approved (§08 <span class="fig">stamp</span>), so the
+        brand mark and the product's most important interaction are literally the same object.</span>
+    </div>
+    <div class="constr">
+      <span>seal Ø = 1.5× cap height</span>
+      <span>seal-to-wordmark gap = seal Ø ÷ 3</span>
+      <span>strapline optional; drop below 300px</span>
+      <span>seal alone = the approval stamp, never the logo</span>
+    </div>
+  </div>
+
+  <!-- Lockup C — The Stop -->
+  <div class="logo-block">
+    <div class="logo-row">
+      <div class="lcell lt">
+        <svg viewBox="0 0 380 116" width="330" role="img" aria-label="Mudavym app tile and stacked full-stop wordmark">
+          <rect x="14" y="20" width="76" height="76" rx="18" fill="#F3EFE6" stroke="#211C16" stroke-opacity=".14"/>
+          <text x="48" y="76" text-anchor="middle" font-family="Fraunces,Georgia,serif" font-size="50"
+            font-weight="600" fill="#211C16" style="font-variation-settings:'SOFT' 42,'WONK' 1">M</text>
+          <circle cx="74" cy="70" r="5.4" fill="#1A5E6B"/>
+          <text x="118" y="52" font-family="Fraunces,Georgia,serif" font-size="34" font-weight="600"
+            letter-spacing="-.6" fill="#211C16" style="font-variation-settings:'SOFT' 42,'WONK' 1">Mudavym<tspan fill="#1A5E6B">.</tspan></text>
+          <text x="119" y="76" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="1.9"
+            fill="#7C7365">THE HOUSE'S OWN REGULAR</text>
+        </svg>
+      </div>
+      <div class="lcell dk">
+        <svg viewBox="0 0 380 116" width="330" role="img" aria-label="Mudavym app tile, dark">
+          <rect x="14" y="20" width="76" height="76" rx="18" fill="#1D1813" stroke="#EFE7D9" stroke-opacity=".14"/>
+          <text x="48" y="76" text-anchor="middle" font-family="Fraunces,Georgia,serif" font-size="50"
+            font-weight="600" fill="#EFE7D9" style="font-variation-settings:'SOFT' 42,'WONK' 1">M</text>
+          <circle cx="74" cy="70" r="5.4" fill="#5FB0BC"/>
+          <text x="118" y="52" font-family="Fraunces,Georgia,serif" font-size="34" font-weight="600"
+            letter-spacing="-.6" fill="#EFE7D9" style="font-variation-settings:'SOFT' 42,'WONK' 1">Mudavym<tspan fill="#5FB0BC">.</tspan></text>
+          <text x="119" y="76" font-family="'JetBrains Mono',monospace" font-size="10" letter-spacing="1.9"
+            fill="#8E8576">THE HOUSE'S OWN REGULAR</text>
+        </svg>
+      </div>
+    </div>
+    <div class="logo-meta">
+      <b><span class="k">Lockup C · app tile, favicon, small sizes</span>The Stop</b>
+      <span class="d">Below Lockup A's minimum, the identity collapses to two elements that survive anything:
+        an <i>M</i> and a period. The period sits on the M's baseline at its right shoulder — the place a
+        sentence would actually end — so the tile reads as “M.” and not as a bullet. This is the smallest
+        possible system and the hardest to forget.</span>
+    </div>
+  </div>
+
+  <!-- small sizes proof -->
+  <div class="smallsizes">
+    <div class="lt">
+      <div class="sz"><svg class="wax" style="--c:#1A5E6B;--on:#FAF7F1" width="48" height="48" viewBox="0 0 96 96"><use href="#wax"/></svg><i>48</i></div>
+      <div class="sz"><svg class="wax" style="--c:#1A5E6B;--on:#FAF7F1" width="32" height="32" viewBox="0 0 96 96"><use href="#wax"/></svg><i>32</i></div>
+      <div class="sz"><svg class="wax" style="--c:#1A5E6B;--on:#FAF7F1" width="24" height="24" viewBox="0 0 96 96"><use href="#wax"/></svg><i>24</i></div>
+      <div class="sz"><svg class="wax" style="--c:#1A5E6B;--on:#FAF7F1" width="16" height="16" viewBox="0 0 96 96"><use href="#wax"/></svg><i>16</i></div>
+      <div class="sz"><svg width="48" height="48" viewBox="0 0 96 96"><rect x="2" y="2" width="92" height="92" rx="22" fill="#F3EFE6" stroke="#211C16" stroke-opacity=".14"/><text x="42" y="68" text-anchor="middle" font-family="Fraunces,Georgia,serif" font-size="58" font-weight="600" fill="#211C16" style="font-variation-settings:'SOFT' 42,'WONK' 1">M</text><circle cx="74" cy="61" r="6.4" fill="#1A5E6B"/></svg><i>tile 48</i></div>
+      <div class="sz"><svg width="24" height="24" viewBox="0 0 96 96"><rect x="2" y="2" width="92" height="92" rx="22" fill="#F3EFE6" stroke="#211C16" stroke-opacity=".14"/><text x="42" y="68" text-anchor="middle" font-family="Fraunces,Georgia,serif" font-size="58" font-weight="600" fill="#211C16" style="font-variation-settings:'SOFT' 42,'WONK' 1">M</text><circle cx="74" cy="61" r="6.4" fill="#1A5E6B"/></svg><i>tile 24</i></div>
+      <div class="sz"><svg width="16" height="16" viewBox="0 0 96 96"><rect x="2" y="2" width="92" height="92" rx="22" fill="#F3EFE6" stroke="#211C16" stroke-opacity=".14"/><text x="42" y="68" text-anchor="middle" font-family="Fraunces,Georgia,serif" font-size="58" font-weight="600" fill="#211C16" style="font-variation-settings:'SOFT' 42,'WONK' 1">M</text><circle cx="74" cy="61" r="6.4" fill="#1A5E6B"/></svg><i>tile 16</i></div>
+    </div>
+    <div class="dk">
+      <div class="sz"><svg class="wax" style="--c:#5FB0BC;--on:#16120E" width="48" height="48" viewBox="0 0 96 96"><use href="#wax"/></svg><i>48</i></div>
+      <div class="sz"><svg class="wax" style="--c:#5FB0BC;--on:#16120E" width="32" height="32" viewBox="0 0 96 96"><use href="#wax"/></svg><i>32</i></div>
+      <div class="sz"><svg class="wax" style="--c:#5FB0BC;--on:#16120E" width="24" height="24" viewBox="0 0 96 96"><use href="#wax"/></svg><i>24</i></div>
+      <div class="sz"><svg class="wax" style="--c:#5FB0BC;--on:#16120E" width="16" height="16" viewBox="0 0 96 96"><use href="#wax"/></svg><i>16</i></div>
+      <div class="sz"><svg width="48" height="48" viewBox="0 0 96 96"><rect x="2" y="2" width="92" height="92" rx="22" fill="#1D1813" stroke="#EFE7D9" stroke-opacity=".14"/><text x="42" y="68" text-anchor="middle" font-family="Fraunces,Georgia,serif" font-size="58" font-weight="600" fill="#EFE7D9" style="font-variation-settings:'SOFT' 42,'WONK' 1">M</text><circle cx="74" cy="61" r="6.4" fill="#5FB0BC"/></svg><i>tile 48</i></div>
+      <div class="sz"><svg width="24" height="24" viewBox="0 0 96 96"><rect x="2" y="2" width="92" height="92" rx="22" fill="#1D1813" stroke="#EFE7D9" stroke-opacity=".14"/><text x="42" y="68" text-anchor="middle" font-family="Fraunces,Georgia,serif" font-size="58" font-weight="600" fill="#EFE7D9" style="font-variation-settings:'SOFT' 42,'WONK' 1">M</text><circle cx="74" cy="61" r="6.4" fill="#5FB0BC"/></svg><i>tile 24</i></div>
+      <div class="sz"><svg width="16" height="16" viewBox="0 0 96 96"><rect x="2" y="2" width="92" height="92" rx="22" fill="#1D1813" stroke="#EFE7D9" stroke-opacity=".14"/><text x="42" y="68" text-anchor="middle" font-family="Fraunces,Georgia,serif" font-size="58" font-weight="600" fill="#EFE7D9" style="font-variation-settings:'SOFT' 42,'WONK' 1">M</text><circle cx="74" cy="61" r="6.4" fill="#5FB0BC"/></svg><i>tile 16</i></div>
+    </div>
+  </div>
+  <p class="note" style="margin-top:12px">Small-size proof: the seal survives to 16px because it is a filled
+    blob with one counter; the tile survives because the period never drops below 1/8 of the tile width.
+    The double rule does not survive below 128px — that is why Lockup C exists.</p>
+
+  <!-- Alternate — The Meter -->
+  <div class="logo-block" style="margin-top:36px">
+    <div class="logo-row">
+      <div class="lcell lt">
+        <svg viewBox="0 0 380 96" width="330" role="img" aria-label="The Meter alternate mark, light">
+          <rect x="20" y="20" width="7" height="56" rx="1.5" fill="#211C16"/>
+          <rect x="32" y="20" width="7" height="28" rx="1.5" fill="#211C16"/>
+          <rect x="44" y="20" width="7" height="44" rx="1.5" fill="#1A5E6B"/>
+          <rect x="56" y="20" width="7" height="28" rx="1.5" fill="#211C16"/>
+          <rect x="68" y="20" width="7" height="56" rx="1.5" fill="#211C16"/>
+          <line x1="20" y1="82" x2="75" y2="82" stroke="#211C16" stroke-width="1.5"/>
+          <line x1="20" y1="86" x2="75" y2="86" stroke="#211C16" stroke-width="1.5"/>
+          <text x="98" y="66" font-family="Fraunces,Georgia,serif" font-size="38" font-weight="600"
+            letter-spacing="-.7" fill="#211C16" style="font-variation-settings:'SOFT' 42,'WONK' 1">Mudavym<tspan fill="#1A5E6B">.</tspan></text>
+        </svg>
+      </div>
+      <div class="lcell dk">
+        <svg viewBox="0 0 380 96" width="330" role="img" aria-label="The Meter alternate mark, dark">
+          <rect x="20" y="20" width="7" height="56" rx="1.5" fill="#EFE7D9"/>
+          <rect x="32" y="20" width="7" height="28" rx="1.5" fill="#EFE7D9"/>
+          <rect x="44" y="20" width="7" height="44" rx="1.5" fill="#5FB0BC"/>
+          <rect x="56" y="20" width="7" height="28" rx="1.5" fill="#EFE7D9"/>
+          <rect x="68" y="20" width="7" height="56" rx="1.5" fill="#EFE7D9"/>
+          <line x1="20" y1="82" x2="75" y2="82" stroke="#EFE7D9" stroke-width="1.5"/>
+          <line x1="20" y1="86" x2="75" y2="86" stroke="#EFE7D9" stroke-width="1.5"/>
+          <text x="98" y="66" font-family="Fraunces,Georgia,serif" font-size="38" font-weight="600"
+            letter-spacing="-.7" fill="#EFE7D9" style="font-variation-settings:'SOFT' 42,'WONK' 1">Mudavym<tspan fill="#5FB0BC">.</tspan></text>
+        </svg>
+      </div>
+    </div>
+    <div class="logo-meta">
+      <b><span class="k">Alternate · from 054 “Logo C — The Meter”</span>The Meter</b>
+      <span class="d">Kept, and given a home. Five bars hung from a top rail spell the M as a level readout;
+        exactly one bar carries the seal, and that bar means <i>one thing is waiting on you</i>. Two changes
+        make it belong to this house rather than to 054: the wordmark is re-cut in Fraunces, and the meter
+        now stands <i>on the double rule</i> — the readout and the total are the same object. Use as the
+        animated app icon and the status mark; A and B stay the print-stable lockups.</span>
+    </div>
+    <div class="constr">
+      <span>bar width = rule weight × 4</span>
+      <span>lit bar = the decision count, 0–5</span>
+      <span>all-ink = nothing waiting (the reward state)</span>
+      <span>never two lit bars</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ §03 SLOGANS ═══════════ -->
+<section id="slogans">
+  <div class="kicker"><span class="no">§03</span><span>Slogans — five kept, three new</span></div>
+  <h2>What the house says out loud</h2>
+  <p class="lede">The five the founder kept, each with the rationale that earned it — then three new
+    candidates written to the same grammar (balanced antithesis, rhythm-of-three, or name·period·claim).
+    None of them contains an adjective about the software.</p>
+
+  <div class="slogans">
+    <div class="slog"><span class="n">01<b>KEPT · 053</b></span><div>
+      <h3>Every vendor. Every bottle. Every shift.</h3>
+      <p>Deadpan rhythm-of-three that inventories the actual product surface. The most literal of the set
+        and therefore the most provable — every noun in it is a page in the app. Works as a footer line
+        under any lockup, and as the three-beat spine of a homepage.</p></div></div>
+
+    <div class="slog"><span class="n">02<b>KEPT · 053</b></span><div>
+      <h3>Less counting, more cooking.</h3>
+      <p>The balanced-antithesis structure aimed at the owner's real trade-off: hours in the cellar with a
+        clipboard versus hours on the line. Names the enemy and the reward in four words, and never once
+        claims the software is clever. The most campaign-ready line in the set.</p></div></div>
+
+    <div class="slog"><span class="n">03<b>KEPT · 055</b></span><div>
+      <h3>Set the table. We'll keep the books.</h3>
+      <p>Division of labour, stated as an offer rather than a boast. It gives the reader the dignified
+        half of the work — hospitality is <em>yours</em> — and quietly takes the half nobody wants.
+        The only slogan in the set that says “we”, and it earns it by conceding first.</p></div></div>
+
+    <div class="slog"><span class="n">04<b>KEPT · 057</b></span><div>
+      <h3>Every bottle, accounted for.</h3>
+      <p>Accountant-grade rigour meeting the wine-cellar heritage in three words. “Accounted for” carries
+        both meanings at once — counted, and answerable — which is exactly the honesty doctrine in §04.
+        Pairs naturally with the seal.</p></div></div>
+
+    <div class="slog"><span class="n">05<b>KEPT · 057</b></span><div>
+      <h3>Your <em>müdavim</em>, at the books.</h3>
+      <p>The line that earns the name. The müdavim is the regular who never misses a night; this one sits
+        at the back table keeping your ledger. Warmth underneath the rigour, and the only place the
+        Turkish is allowed to appear in marketing — once, with the meaning right beside it.</p></div></div>
+
+    <div class="slog newone"><span class="n">06<b>NEW</b></span><div>
+      <h3>Warm room. Cold arithmetic.</h3>
+      <p>The mandate said out loud, in two beats. The passion stays yours; the precision is ours. This is
+        the only candidate that names the brand's whole tension explicitly, which makes it the strongest
+        internal north star even if a softer line leads externally.</p></div></div>
+
+    <div class="slog newone"><span class="n">07<b>NEW</b></span><div>
+      <h3>Nothing counted twice. Nothing missed once.</h3>
+      <p>The honesty doctrine as balanced antithesis — a promise you can audit rather than an adjective you
+        have to believe. It is also a literal statement of what the lots-as-source-of-truth inventory model
+        does, so marketing and engineering can both stand behind it.</p></div></div>
+
+    <div class="slog newone"><span class="n">08<b>NEW</b></span><div>
+      <h3>Mudavym. The house's own regular.</h3>
+      <p>Name · period · category claim — the motion.dev grammar, and it uses the period that <em>is</em>
+        the logo. Delivers the etymology in five words to a reader who has never seen “müdavim”, which is
+        the one job the name cannot do by itself.</p></div></div>
+  </div>
+
+  <div class="flagline"><b>Sales material, not in-app:</b> “Your back of house, front of mind.” — kept from 055
+    and flagged deliberately. It is a good deck line and a bad product line: it addresses the buyer's
+    anxiety rather than the operator's night, and the brand's own rule is that the product never talks
+    about itself while someone is working. Decks and one-pagers only; never a screen, never an email
+    footer.</div>
+</section>
+
+<!-- ═══════════ §04 VOICE ═══════════ -->
+<section id="voice">
+  <div class="kicker"><span class="no">§04</span><span>Voice — how the book writes</span></div>
+  <h2>Serif speaks. Sans works. Mono counts.</h2>
+  <p class="lede">One contract, three faces, no overlap. Kept whole from 055 (the Fraunces house voice) and
+    057 (§03 “how the book writes”), with 053's warmth allowed into the serif register — contained by
+    rule 04, which is load-bearing.</p>
+
+  <div class="voices">
+    <div class="voice-c vs">
+      <span class="k">Fraunces — the house speaks</span>
+      <div class="sample">Good evening, chef.</div>
+      <p>Variable serif at <b>SOFT 42 / WONK 1</b> — warm, slightly wonky, a wine label that learned
+        software. Used <b>only when the product itself speaks</b>: greetings, questions, decisions asked,
+        verdicts given. At most <b>once per screen</b>. If two serif sentences compete, one becomes sans.</p>
+    </div>
+    <div class="voice-c vn">
+      <span class="k">Instrument Sans — the house works</span>
+      <div class="sample">Approve &amp; enter</div>
+      <p>Every control, row, label, button, empty state and error. It never performs and never charms;
+        it is the hand doing the job while the house talks. Warmth here would read as chatter.</p>
+    </div>
+    <div class="voice-c vm">
+      <span class="k">JetBrains Mono — the house counts</span>
+      <div class="sample">$1,860.00 · PO-1042</div>
+      <p>Money, counts, IDs, timestamps, kickers. <b>Tabular figures, always</b>, so a column never shivers.
+        Numbers are never spelled out, never celebrated, and never rounded in a headline and contradicted
+        in the detail.</p>
+    </div>
+  </div>
+
+  <ul class="rules">
+    <li><div><b>Say what's known; mark what isn't.</b><span>Unknowns render as “—”, never 0, never a filled
+      bar, never an average passed off as a reading. An empty cell is information; faking it is the one
+      unforgivable sin of this brand.</span></div></li>
+    <li><div><b>Every figure can show its working.</b><span>Any number the product asserts opens into its
+      arithmetic — price × qty, source, timestamp. If it cannot, it is labelled an estimate in those
+      words.</span></div></li>
+    <li><div><b>Verbs first, numbers second, adjectives never.</b><span>“Approve 12 bottles — $930.00”
+      beats “Smart reorder suggestion”. Banned outright: smart, seamless, powerful, effortless,
+      AI-powered. Confidence is shown by being exact.</span></div></li>
+    <li><div><b>Serif is the product speaking — once per screen.</b><span>The greeting, the verdict, or the
+      question. Everything else is working text. Without this cap the direction collapses into a themed
+      notebook app.</span></div></li>
+    <li><div><b>Plain trade words, no software words.</b><span>“Bottles in”, “close the night”, “the
+      purchase book”, “at the door”. Banned: SKU, sync, workflow, leverage, dashboard (in copy). The
+      reader runs a restaurant.</span></div></li>
+    <li><div><b>Ask before acting; record after acting.</b><span>The AI drafts; the human enters. Every
+      consequential action produces a visible line — who, what, when. Nothing auto-sends, ever.</span></div></li>
+    <li><div><b>Warmth arrives quoted.</b><span>Vendor replies, staff notes, the drafted letter's own
+      courtesy — serif italic, attributed. The frame around them stays deadpan. The brand is the room;
+      the people are the warmth.</span></div></li>
+    <li><div><b>Endings are spoken slowly and plainly.</b><span>Deletion and closure copy states exactly
+      what is lost, in full sentences, no euphemism, no guilt-trip button, no tiny gray cancel. Respect at
+      the exit is the last proof of honesty.</span></div></li>
+  </ul>
+
+  <div class="rw">
+    <div class="rw-row">
+      <div class="was"><s>Today</s>Draft, approve, and track purchase orders through delivery</div>
+      <div class="now"><s>The House</s><span class="sf">Draft it, approve it, watch it to the door —</span>
+        every step on the record.<span class="tag">rule 03 · verbs first. Serif carries the promise; sans carries the proof.</span></div>
+    </div>
+    <div class="rw-row">
+      <div class="was"><s>Today</s>Alerts that need a decision, oldest first</div>
+      <div class="now"><s>The House</s>Waiting on you. Longest wait first.<span class="tag">rules 03 + 05 · “alerts” is a software word; waiting is a trade word. Urgency is stated by age, never by exclamation.</span></div>
+    </div>
+    <div class="rw-row">
+      <div class="was"><s>Today</s>No checks yet — close an order from the terminal</div>
+      <div class="now"><s>The House</s>No checks in the book yet. Close one at the terminal and it lands here.<span class="tag">rule 01 · empty is expectant, not apologetic: name what will appear and how to invite it in.</span></div>
+    </div>
+    <div class="rw-row">
+      <div class="was"><s>Today</s>No comparable data</div>
+      <div class="now"><s>The House</s>Not enough history to compare — so we're showing a <span class="dash">—</span>.
+        A dash you can trust beats a number you can't.<span class="tag">rule 01 · the dash gets its own token (--ink-4) and its own sentence. This is the brand's whole thesis in one empty state.</span></div>
+    </div>
+    <div class="rw-row">
+      <div class="was"><s>Today</s>Permanently delete your Mudavym account.</div>
+      <div class="now"><s>The House</s>Close the book. This deletes your account and every record in it —
+        orders, counts, letters, the lot. It cannot be undone, and we won't slow you down with tricks.
+        Type your restaurant's name to confirm.<span class="tag">rule 08 · no serif, no motion, no charm. The metaphor is allowed only because it is the literal truth of the deletion.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ §05 SEAL COLOUR ═══════════ -->
+<section id="seal">
+  <div class="kicker"><span class="no">§05</span><span>The seal — one colour that belongs to nobody else</span></div>
+  <h2>Ten candidates, stamped on both surfaces</h2>
+  <p class="lede">The open question, made decidable. Each candidate is shown as actual pressed wax on paper
+    and on lamplight, with its dark-mode sibling re-tokenized (never the same hex), a one-line argument for
+    why it is not a startup colour, and measured WCAG contrast — computed, not eyeballed.
+    <b>Click any card to try it on the entire board</b>: logos, seals, chips, sample screens, everything.</p>
+
+  <div class="sealbar">
+    <span class="lbl">Currently wearing</span>
+    <span class="cur" id="curSeal">İznik · #1A5E6B / #5FB0BC</span>
+    <button class="hbtn" id="resetSeal" style="margin-left:auto">↺ back to İznik</button>
+  </div>
+
+  <div class="seal-grid" id="sealGrid"></div>
+
+  <div class="rejected">
+    <h3>Ruled out before the board started</h3>
+    <ul>
+      <li><code>#635BFF</code> Stripe indigo, <code>#5E6AD2</code> Linear violet, and the whole SaaS
+        purple-blue axis — the default costume of every developer-tool brand of the last decade. A
+        restaurant is not a dev tool.</li>
+      <li>Terracotta / clay (<code>#C1653F</code> family) — the house style of AI-generated design in
+        2025–26. It reads as “an LLM chose this”, which is the one thing this brand cannot afford.</li>
+      <li><code>#9E4249</code> and <code>#CD2D5B</code> — the incumbents. Generic burgundy is wine-shop
+        signage; it says “we sell wine”, not “we keep your books”. <span class="fig">Pomegranate</span> and
+        <span class="fig">Wax Oxblood</span> below are on the board as the honest, deepened versions of
+        that instinct — judge them against the incumbents directly.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═══════════ §06 PALETTE ═══════════ -->
+<section id="palette">
+  <div class="kicker"><span class="no">§06</span><span>Palette — paper, ink, one seal</span></div>
+  <h2>Two themes, one structure</h2>
+  <p class="lede">Kept whole from 057: paper grounds, a four-step ink ladder shared by text and icons,
+    surfaces built as alpha tints of warm ink rather than painted grays, and exactly one non-ink colour.
+    Warmed one step creamier than 057 (053's cream) so the light theme reads dining room rather than
+    office. Dark is lamplight after close — near-black biased warm, never gray.</p>
+
+  <div class="pal">
+    <div class="pal-col pl">
+      <div class="ph"><span>Light — the house, open</span><span>default</span></div>
+      <div class="grp">paper</div>
+      <div class="sw"><span class="chip" style="background:#FAF7F1"></span><span><span class="tok">--paper-0</span><span class="hex">#FAF7F1</span></span><span class="use">page ground</span></div>
+      <div class="sw"><span class="chip" style="background:#F3EFE6"></span><span><span class="tok">--paper-1</span><span class="hex">#F3EFE6</span></span><span class="use">raised, tiles</span></div>
+      <div class="sw"><span class="chip" style="background:#EAE4D8"></span><span><span class="tok">--paper-2</span><span class="hex">#EAE4D8</span></span><span class="use">wells, headers</span></div>
+      <div class="grp">tints of warm ink #3B332A — never painted gray</div>
+      <div class="sw"><span class="chip" style="background:rgba(59,51,42,.03)"></span><span><span class="tok">--tint-2</span><span class="hex">rgba(59,51,42,.030)</span></span><span class="use">subtle fill</span></div>
+      <div class="sw"><span class="chip" style="background:rgba(59,51,42,.055)"></span><span><span class="tok">--tint-4</span><span class="hex">rgba(59,51,42,.055)</span></span><span class="use">controls at rest</span></div>
+      <div class="sw"><span class="chip" style="background:rgba(59,51,42,.085)"></span><span><span class="tok">--tint-8</span><span class="hex">rgba(59,51,42,.085)</span></span><span class="use">hover, chips</span></div>
+      <div class="grp">ink ladder — text and icons share it</div>
+      <div class="sw"><span class="chip" style="background:#211C16"></span><span><span class="tok">--ink-1</span><span class="hex">#211C16 · 15.8:1</span></span><span class="use">primary</span></div>
+      <div class="sw"><span class="chip" style="background:#4F473C"></span><span><span class="tok">--ink-2</span><span class="hex">#4F473C · 8.5:1</span></span><span class="use">secondary</span></div>
+      <div class="sw"><span class="chip" style="background:#7C7365"></span><span><span class="tok">--ink-3</span><span class="hex">#7C7365 · 4.4:1</span></span><span class="use">meta floor</span></div>
+      <div class="sw"><span class="chip" style="background:#ABA294"></span><span><span class="tok">--ink-4</span><span class="hex">#ABA294 · 2.4:1</span></span><span class="use">the dash only</span></div>
+      <div class="grp">rules — hairlines are the structure</div>
+      <div class="sw"><span class="chip" style="background:rgba(33,28,22,.13)"></span><span><span class="tok">--rule</span><span class="hex">rgba(33,28,22,.13)</span></span><span class="use">every divider</span></div>
+      <div class="sw"><span class="chip" style="background:rgba(33,28,22,.28)"></span><span><span class="tok">--rule-strong</span><span class="hex">rgba(33,28,22,.28)</span></span><span class="use">double rule, totals</span></div>
+      <div class="grp">the seal — one colour, one job</div>
+      <div class="sw"><span class="chip" id="palSealL" style="background:#1A5E6B"></span><span><span class="tok">--seal</span><span class="hex" id="palSealLHex">#1A5E6B · 6.9:1</span></span><span class="use">acts of record</span></div>
+      <div class="sw"><span class="chip" id="palSealDeepL" style="background:#14515C"></span><span><span class="tok">--seal-deep</span><span class="hex" id="palSealDeepLHex">#14515C</span></span><span class="use">pressed / active</span></div>
+      <div class="sw"><span class="chip" id="palSealTintL" style="background:rgba(26,94,107,.10)"></span><span><span class="tok">--seal-tint</span><span class="hex" id="palSealTintLHex">seal @ 10%</span></span><span class="use">decision card</span></div>
+      <div class="grp">semantics — each with its tint twin</div>
+      <div class="sw"><span class="chip" style="background:#2F6B45"></span><span><span class="tok">--ok</span><span class="hex">#2F6B45 · 5.9:1</span></span><span class="use">delivered, settled</span></div>
+      <div class="sw"><span class="chip" style="background:#94661A"></span><span><span class="tok">--warn</span><span class="hex">#94661A · 4.7:1</span></span><span class="use">low, due soon</span></div>
+      <div class="sw"><span class="chip" style="background:#B0362C"></span><span><span class="tok">--alert</span><span class="hex">#B0362C · 5.8:1</span></span><span class="use">money at risk</span></div>
+    </div>
+
+    <div class="pal-col pd">
+      <div class="ph"><span>Dark — after close</span><span>re-tokenized</span></div>
+      <div class="grp">paper</div>
+      <div class="sw"><span class="chip" style="background:#16120E"></span><span><span class="tok">--paper-0</span><span class="hex">#16120E</span></span><span class="use">page ground</span></div>
+      <div class="sw"><span class="chip" style="background:#1D1813"></span><span><span class="tok">--paper-1</span><span class="hex">#1D1813</span></span><span class="use">raised, tiles</span></div>
+      <div class="sw"><span class="chip" style="background:#262019"></span><span><span class="tok">--paper-2</span><span class="hex">#262019</span></span><span class="use">wells, headers</span></div>
+      <div class="grp">tints of warm light #EFE7D9</div>
+      <div class="sw"><span class="chip" style="background:rgba(239,231,217,.035)"></span><span><span class="tok">--tint-2</span><span class="hex">rgba(239,231,217,.035)</span></span><span class="use">subtle fill</span></div>
+      <div class="sw"><span class="chip" style="background:rgba(239,231,217,.06)"></span><span><span class="tok">--tint-4</span><span class="hex">rgba(239,231,217,.06)</span></span><span class="use">controls at rest</span></div>
+      <div class="sw"><span class="chip" style="background:rgba(239,231,217,.10)"></span><span><span class="tok">--tint-8</span><span class="hex">rgba(239,231,217,.10)</span></span><span class="use">hover, chips</span></div>
+      <div class="grp">ink ladder — inverted step for step</div>
+      <div class="sw"><span class="chip" style="background:#EFE7D9"></span><span><span class="tok">--ink-1</span><span class="hex">#EFE7D9 · 15.2:1</span></span><span class="use">primary</span></div>
+      <div class="sw"><span class="chip" style="background:#C0B6A5"></span><span><span class="tok">--ink-2</span><span class="hex">#C0B6A5 · 9.3:1</span></span><span class="use">secondary</span></div>
+      <div class="sw"><span class="chip" style="background:#8E8576"></span><span><span class="tok">--ink-3</span><span class="hex">#8E8576 · 5.1:1</span></span><span class="use">meta floor</span></div>
+      <div class="sw"><span class="chip" style="background:#665D50"></span><span><span class="tok">--ink-4</span><span class="hex">#665D50 · 2.9:1</span></span><span class="use">the dash only</span></div>
+      <div class="grp">rules</div>
+      <div class="sw"><span class="chip" style="background:rgba(239,231,217,.13)"></span><span><span class="tok">--rule</span><span class="hex">rgba(239,231,217,.13)</span></span><span class="use">every divider</span></div>
+      <div class="sw"><span class="chip" style="background:rgba(239,231,217,.28)"></span><span><span class="tok">--rule-strong</span><span class="hex">rgba(239,231,217,.28)</span></span><span class="use">double rule, totals</span></div>
+      <div class="grp">the seal — lighter, never the light-mode hex</div>
+      <div class="sw"><span class="chip" id="palSealD" style="background:#5FB0BC"></span><span><span class="tok">--seal</span><span class="hex" id="palSealDHex">#5FB0BC · 7.5:1</span></span><span class="use">acts of record</span></div>
+      <div class="sw"><span class="chip" id="palSealDeepD" style="background:#7DC3CD"></span><span><span class="tok">--seal-deep</span><span class="hex" id="palSealDeepDHex">#7DC3CD</span></span><span class="use">pressed / active</span></div>
+      <div class="sw"><span class="chip" id="palSealTintD" style="background:rgba(95,176,188,.14)"></span><span><span class="tok">--seal-tint</span><span class="hex" id="palSealTintDHex">seal @ 14%</span></span><span class="use">decision card</span></div>
+      <div class="grp">semantics</div>
+      <div class="sw"><span class="chip" style="background:#78B58E"></span><span><span class="tok">--ok</span><span class="hex">#78B58E · 7.8:1</span></span><span class="use">delivered, settled</span></div>
+      <div class="sw"><span class="chip" style="background:#D3A458"></span><span><span class="tok">--warn</span><span class="hex">#D3A458 · 8.2:1</span></span><span class="use">low, due soon</span></div>
+      <div class="sw"><span class="chip" style="background:#E0776B"></span><span><span class="tok">--alert</span><span class="hex">#E0776B · 6.2:1</span></span><span class="use">money at risk</span></div>
+    </div>
+  </div>
+
+  <div class="pal-laws">
+    <div><b>One seal per screen.</b><span>If the seal appears twice on a surface, one of them is wrong.
+      It marks acts of record — approvals, drafted letters, the wordmark's full stop, kicker numerals —
+      and nothing else. It never fills a background, never colours data, never decorates.</span></div>
+    <div><b>Charts draw in the ink ladder.</b><span>Grayscale-warm ramps for every series; chroma appears
+      only where a decision lives. The one coloured series on a chart is the anomaly, and it wears the
+      seal.</span></div>
+    <div><b>Re-tokenize, never reuse.</b><span>The dark seal is a different hex from the light seal, always.
+      A colour that passes on paper will fail on lamplight and vice versa; the token name is the constant,
+      the value never is.</span></div>
+    <div><b>ink-4 is not for content.</b><span>It exists for the dash and for disabled states. ink-3 on
+      paper (4.4:1) is the floor for any text a human is expected to read.</span></div>
+  </div>
+</section>
+
+<!-- ═══════════ §07 TYPE ═══════════ -->
+<section id="type">
+  <div class="kicker"><span class="no">§07</span><span>Type — three faces, strict jobs</span></div>
+  <h2>Fraunces · Instrument Sans · JetBrains Mono</h2>
+  <p class="lede">Fraunces is the kept house voice from 055 — variable, warm, slightly wonky, run at
+    <span class="fig">SOFT 42 / WONK 1</span> so it drifts just off-square without becoming a costume.
+    Instrument Sans is the working face: modern, faintly narrow, high-density at 13–15px, and it never
+    competes with the serif. JetBrains Mono keeps the books, tabular always. All three Google-hosted.</p>
+
+  <div class="scale">
+    <div class="srow"><span class="m"><b>greeting</b>40 / 1.2 · −.014em<br>Fraunces 500</span><span class="serif" style="font-size:40px;font-weight:500;letter-spacing:-.014em;line-height:1.16">Good evening, chef.</span><span class="use">the product speaks</span></div>
+    <div class="srow"><span class="m"><b>display</b>31 / 1.18 · −.014em<br>Fraunces 600</span><span class="serif" style="font-size:31px;font-weight:600;letter-spacing:-.014em">Tonight's page</span><span class="use">section heads</span></div>
+    <div class="srow"><span class="m"><b>verdict</b>18 / 1.34 · −.008em<br>Fraunces 600</span><span class="serif" style="font-size:18px;font-weight:600;letter-spacing:-.008em">Approve Rioja reorder — 12 bottles</span><span class="use">decision cards</span></div>
+    <div class="srow"><span class="m"><b>title</b>22 / 1.3 · −.01em<br>Instrument Sans 600</span><span style="font-size:22px;font-weight:600;letter-spacing:-.01em">Purchase orders</span><span class="use">page titles</span></div>
+    <div class="srow"><span class="m"><b>heading</b>17 / 1.4<br>Instrument Sans 600</span><span style="font-size:17px;font-weight:600">Vendor thread</span><span class="use">card heads</span></div>
+    <div class="srow"><span class="m"><b>body</b>15.5 / 1.62<br>Instrument Sans 400</span><span style="font-size:15.5px">Draft it, approve it, watch it to the door.</span><span class="use">prose, descriptions</span></div>
+    <div class="srow"><span class="m"><b>ui</b>14 / 1.45 · 500<br>Instrument Sans</span><span style="font-size:14px;font-weight:500">Approve &amp; enter</span><span class="use">controls, rows</span></div>
+    <div class="srow"><span class="m"><b>small</b>13 / 1.55<br>Instrument Sans 400</span><span style="font-size:13px;color:var(--ink-2)">Drafted from Friday's shortfall</span><span class="use">supporting lines</span></div>
+    <div class="srow"><span class="m"><b>caption</b>11.5 / 1.45<br>Instrument Sans 400</span><span style="font-size:11.5px;color:var(--ink-3)">price held since July</span><span class="use">meta</span></div>
+    <div class="srow"><span class="m"><b>data-lg</b>27 / 1.1 · −.025em<br>JetBrains Mono 500 · tnum</span><span class="fig" style="font-size:27px;font-weight:500;letter-spacing:-.025em">$4,280</span><span class="use">KPI figures</span></div>
+    <div class="srow"><span class="m"><b>data</b>13 / 1.6<br>JetBrains Mono 400 · tnum</span><span class="fig" style="font-size:13px">24 × $77.50 = $1,860.00</span><span class="use">money, counts, arithmetic</span></div>
+    <div class="srow"><span class="m"><b>id</b>12.5 / 1.4 · 500<br>JetBrains Mono</span><span class="fig" style="font-size:12.5px;font-weight:500">PO-1042 · 22:41</span><span class="use">references, times</span></div>
+    <div class="srow"><span class="m"><b>kicker</b>11 / 1 · +.14em caps<br>JetBrains Mono 500</span><span class="fig" style="font-size:11px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)">Waiting on you</span><span class="use">section labels</span></div>
+  </div>
+
+  <div class="typelaws">
+    <div><b>Every numeral is mono and tabular.</b><span>No exceptions, including inside prose. “7 bottles”,
+      never “seven bottles”. Columns of money never shiver when a digit changes.</span></div>
+    <div><b>Display caps at 40px.</b><span>Authority comes from the record, not from point size. There is no
+      showroom scale in this system; staff read it mid-shift.</span></div>
+    <div><b>Serif never runs below 16px.</b><span>Fraunces at SOFT 42 needs air. Below 16px it stops being a
+      voice and starts being a texture — use sans.</span></div>
+    <div><b>Italic serif = someone else talking.</b><span>Quoted vendors, staff notes, drafted letters.
+      Never the product's own voice, never emphasis.</span></div>
+  </div>
+</section>
+
+<!-- ═══════════ §08 MOTION ═══════════ -->
+<section id="motion">
+  <div class="kicker"><span class="no">§08</span><span>Motion — the hand that writes, settles</span></div>
+  <h2>Nine tokens, five of them live below</h2>
+  <p class="lede">Springs are written as stiffness/damping first and beziers second, so the same vocabulary
+    ports to <span class="fig">motion</span> in React today and Reanimated <span class="fig">withSpring</span>
+    on the phone later. One emphatic motion exists — <span class="fig">stamp</span> — because entering
+    something into the book deserves a small ceremony and nothing else does. Every token is mirrored exactly
+    in <span class="fig">motion.json</span>.</p>
+
+  <table class="mtable">
+    <thead><tr><th>Token</th><th>Kind · params</th><th>≈ms</th><th>What it is for</th></tr></thead>
+    <tbody>
+      <tr><td class="n">settle</td><td class="p">bezier (.16,1,.3,1)</td><td class="p">320</td><td>The house curve. Row expands (grid-rows 0fr→1fr), chevrons, fades, panel swaps. <b>The one the founder named.</b></td></tr>
+      <tr><td class="n">ink</td><td class="p">bezier (.16,1,.3,1)</td><td class="p">160</td><td>Micro-states: hovers, borders, chip fills, the theme switch. Movement ≤2px.</td></tr>
+      <tr><td class="n">tuck</td><td class="p">spring 380 / 32 / m1</td><td class="p">300</td><td>Objects that move under a finger — toggle thumbs, drawer handles. Measured 1% overshoot — near-critical, effectively no oscillation.</td></tr>
+      <tr><td class="n">turn</td><td class="p">bezier (.32,.72,0,1)</td><td class="p">420</td><td>“Show the working” — the page-turn reveal for arithmetic panes, drawers, thread history.</td></tr>
+      <tr><td class="n">press</td><td class="p">linear fill + (.16,1,.3,1) release</td><td class="p">620 / 160</td><td>Hold-to-approve. The fill is linear because the operator is timing it; the release is the house curve.</td></tr>
+      <tr><td class="n">stamp</td><td class="p">spring 520 / 26 / m1</td><td class="p">360</td><td>The seal landing. Approvals only — the one place a small overshoot is allowed, and it is measured at 11%.</td></tr>
+      <tr><td class="n">tally</td><td class="p">spring 120 / 26 / m1</td><td class="p">840</td><td>Number tickers in tabular mono. Overdamped — 0% overshoot: figures arrive, they never bounce. (840ms to within 1% of target; fully at rest 1.41s.)</td></tr>
+      <tr><td class="n">shimmer</td><td class="p">bezier (.45,0,.55,1) loop</td><td class="p">1900</td><td>The AI thinking sweep across serif italic. Replaces every spinner in the product.</td></tr>
+      <tr><td class="n">stagger</td><td class="p">interval, first paint only</td><td class="p">28</td><td>List and KPI entrance interval. Never on re-render, never on filter.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="demos">
+    <div class="demo">
+      <h4>Live · row expand — the kept <b>settle</b></h4>
+      <div class="sub">token: <b>settle</b> — grid-rows 0fr→1fr, chevron on the same token</div>
+      <div class="xrow" id="settleRow">
+        <div class="xhead" data-x="settleRow">
+          <div><div class="t">PO-1038 · Bodega Álvaro</div><div class="m">18 bottles · delivered Tue</div></div>
+          <svg class="chev" width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="expander"><div><div class="exp-body">
+          <div class="ln"><span>Albariño 2023 × 12</span><span>$540.00</span></div>
+          <div class="ln"><span>Mencía 2022 × 6</span><span>$372.00</span></div>
+          <div class="ln tot"><span>Received &amp; shelved</span><span>$912.00</span></div>
+        </div></div></div>
+      </div>
+      <div class="maps">motion: &lt;motion.div layout transition={{duration:.32, ease:[.16,1,.3,1]}} /&gt; — siblings glide instead of snapping</div>
+    </div>
+
+    <div class="demo">
+      <h4>Live · “show the working” — <b>turn</b></h4>
+      <div class="sub">token: <b>turn</b> — the row opens like a page; arithmetic, totalled with a double rule</div>
+      <div class="xrow turn" id="workingRow">
+        <div class="xhead" data-x="workingRow">
+          <div><div class="t fig">PO-1042 · $1,860.00</div><div class="m">Vinos del Norte · net 30</div></div>
+          <svg class="chev" width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="expander"><div><div class="exp-body">
+          <div class="ln"><span>24 × $77.50 <em>Rioja Crianza 2021</em></span><span>$1,860.00</span></div>
+          <div class="ln"><span>last price $76.20 <em>· 12 Jul</em></span><span>+1.7%</span></div>
+          <div class="ln tot"><span>Stands as entered</span><span>$1,860.00</span></div>
+        </div></div></div>
+      </div>
+      <div class="maps">motion: initial={{height:0}} animate={{height:"auto"}} transition={{duration:.42, ease:[.32,.72,0,1]}}</div>
+    </div>
+
+    <div class="demo">
+      <h4>Live · hold to approve — <b>press</b> → <b>stamp</b></h4>
+      <div class="sub">token: <b>press</b> 620ms linear, then the seal lands on <b>stamp</b></div>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <button class="hold-btn" id="holdBtn"><span class="fill" id="holdFill"></span><span class="lbl" id="holdLbl">Hold to approve</span></button>
+        <span class="stampmark" id="stampMark">
+          <svg class="wax" style="--c:currentColor;--on:var(--stamp-c)" width="15" height="15" viewBox="0 0 96 96"><use href="#wax"/></svg>
+          Entered · 22:41</span>
+      </div>
+      <div class="hold-hint">hold 620ms — one deliberate gesture, no dialog, and nothing auto-sends</div>
+      <div class="maps">motion: whileTap fill scaleX 0→1 linear 620ms; on complete spring(520,26) on the seal</div>
+    </div>
+
+    <div class="demo">
+      <h4>Live · number ticker — <b>tally</b></h4>
+      <div class="sub">token: <b>tally</b> — tabular mono, the column never shivers</div>
+      <div class="tick">
+        <span class="ticknum" id="tickNum">$0</span>
+        <button class="sbtn" id="tickBtn">run service</button>
+        <span class="shim" id="shimmerLine" style="display:none">Totting up the night…</span>
+      </div>
+      <div class="maps">motion: const s = useSpring(0,{stiffness:120,damping:26}); s.set(4280) → render with tabular-nums</div>
+    </div>
+
+    <div class="demo">
+      <h4>Live · toggle — <b>tuck</b></h4>
+      <div class="sub">token: <b>tuck</b> — spring 380/32, the real numbers the React build passes</div>
+      <div class="tgrow">
+        <button class="toggle on" id="tuckToggle" role="switch" aria-checked="true" aria-label="Nightly closing summary">
+          <span class="thumb" id="tuckThumb" style="transform:translateX(20px)"></span></button>
+        <span class="tglab">Nightly closing summary<i id="tuckState">recorded · 23:30 each night</i></span>
+      </div>
+      <div class="maps">motion: animate={{x: on ? 20 : 0}} transition={{type:"spring", stiffness:380, damping:32}}</div>
+    </div>
+
+    <div class="demo">
+      <h4>Reduced motion</h4>
+      <div class="sub">the whole set collapses to state change</div>
+      <p class="note">Every token above is gated on <span class="fig">prefers-reduced-motion</span>: springs
+        jump to their target value, transitions collapse to ~1ms, the shimmer stops and the thinking line
+        becomes static italic text. Nothing in this system carries meaning that only motion delivers —
+        a row that expands is expanded, a stamp that lands is a stamp, whether or not it moved.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ §09 SAMPLE SCREENS ═══════════ -->
+<section id="screens">
+  <div class="kicker"><span class="no">§09</span><span>Sample screens — the shared two</span></div>
+  <h2>The house at work</h2>
+  <p class="lede">The two mocks every direction renders. Watch what the brand does: one serif sentence
+    (the greeting), one seal (the decision card), one dash where the invoice was silent, and the only warm
+    words on screen belong to Marta.</p>
+
+  <!-- Dashboard -->
+  <div class="mock">
+    <div class="mbar"><span>Mudavym · Tonight's page</span><span>Thu 28 Aug · 22:38 <span class="kbd">⌘K</span></span></div>
+    <div class="mpad">
+      <div class="greet"><span class="q">Good evening, chef.</span>
+        <span class="ask">What needs attention before service?</span></div>
+      <div class="greet-sub">book balanced through yesterday · 4 vendors open · last entry 22:38</div>
+
+      <div class="kpis">
+        <div class="kpi"><span class="l">Revenue</span><span class="v">$4,280</span>
+          <span class="d up">+6.2% vs last Thu · <span class="show">working ↗</span></span></div>
+        <div class="kpi"><span class="l">Low stock</span><span class="v">7</span>
+          <span class="d wr">2 critical by Friday</span></div>
+        <div class="kpi"><span class="l">Pending orders</span><span class="v">3</span>
+          <span class="d">1 awaits your signature</span></div>
+        <div class="kpi"><span class="l">Alerts</span><span class="v">2</span>
+          <span class="d al">longest wait 2 days</span></div>
+      </div>
+
+      <div class="onetap">
+        <div class="body">
+          <div class="t">Approve Rioja reorder — 12 bottles from Vinos del Norte</div>
+          <div class="s">Drafted from Friday's shortfall · <b>12 × $77.50 = $930.00</b> · price held since July ·
+            <span class="quote">“Same as last time, my friend.”</span> — Marta, 09:14</div>
+        </div>
+        <div class="ot-right">
+          <button class="hold-btn" id="holdBtn2" style="min-width:184px"><span class="fill" id="holdFill2"></span><span class="lbl" id="holdLbl2">Hold to approve</span></button>
+          <span class="stampmark" id="stampMark2">
+            <svg class="wax" style="--c:currentColor;--on:var(--stamp-c)" width="14" height="14" viewBox="0 0 96 96"><use href="#wax"/></svg>
+            Entered · 22:41</span>
+        </div>
+      </div>
+      <p class="note" style="margin-top:12px">One serif line, one seal, one decision. Everything else is
+        sans and mono doing its job. The seal on this card is the only colour on the screen.</p>
+    </div>
+  </div>
+
+  <!-- Orders strip -->
+  <div class="mock">
+    <div class="mbar"><span>Orders · the purchase book</span><span>3 open · 1 draft <span class="kbd">⌘K</span></span></div>
+    <div style="padding-top:16px">
+      <div class="cols"><span>PO</span><span>Vendor</span><span>Qty</span><span>Total</span><span>Status</span><span></span></div>
+      <div class="orow">
+        <span class="po">PO-1042</span><span class="vend">Vinos del Norte</span>
+        <span class="fig">24 bottles</span><span class="fig">$1,860</span>
+        <span><span class="chip transit">● In transit</span></span><span style="color:var(--ink-4)">›</span>
+      </div>
+      <div class="subrow">
+        <span class="chip ai" id="aiChip">✎ AI draft ready — one tap to approve</span>
+        <span class="thread"><span class="quote">“Confirmed for Thursday, before noon.”</span>
+          <i>Marta · Vinos del Norte · 09:14</i></span>
+        <span class="drawerhint" id="drawerHint">Thread · 3 letters ›</span>
+      </div>
+      <div class="orow">
+        <span class="po">PO-1038</span><span class="vend">Bodega Álvaro</span>
+        <span class="fig dash" title="Quantity was not on the invoice — Mudavym will not invent it.">—</span>
+        <span class="fig">$942</span>
+        <span><span class="chip done">✓ Delivered</span></span><span style="color:var(--ink-4)">›</span>
+      </div>
+      <div class="footnote"><span class="dash">—</span> quantity was not on the invoice. The dash is the
+        truth; ask Bodega Álvaro, or count it at the door.</div>
+    </div>
+  </div>
+  <p class="note">The strip shows all three type voices in one row — mono for the PO and the money, sans for
+    the vendor and the status, serif italic for the one sentence a human wrote. The AI chip carries the
+    <span class="fig">shimmer</span> sweep while a draft is being prepared, and the drawer hint is the only
+    affordance that opens on <span class="fig">turn</span>.</p>
+</section>
+
+<footer>
+  <span>059 · Mudavym · The House — assembled from the founder's keep-pile across 053–057.
+    Sketch only; no build. OD-106.</span>
+  <span class="mm">paper · ink · one seal</span>
+</footer>
+
+</div>
+
+<script>
+(function(){
+"use strict";
+var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ── spring integrator (semi-implicit Euler; same physics the React build ships) ── */
+function spring(o){
+  if(REDUCED){o.onUpdate(o.to); if(o.onComplete)o.onComplete(); return;}
+  var x=o.from, v=o.v0||0, m=o.mass||1, rd=o.restDelta||0.05, last=null;
+  function step(now){
+    if(last===null){last=now;}
+    var dt=Math.min((now-last)/1000,.064); last=now;
+    var n=Math.max(1,Math.ceil(dt/.008)), h=dt/n;
+    for(var i=0;i<n;i++){var F=-o.stiffness*(x-o.to)-o.damping*v; v+=F/m*h; x+=v*h;}
+    if(Math.abs(v)<rd*20 && Math.abs(x-o.to)<rd){o.onUpdate(o.to); if(o.onComplete)o.onComplete(); return;}
+    o.onUpdate(x); requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+/* ── theme ── */
+var tb=document.getElementById('themeBtn');
+tb.addEventListener('click',function(){
+  var dark=document.documentElement.getAttribute('data-theme')==='dark';
+  document.documentElement.setAttribute('data-theme',dark?'light':'dark');
+  tb.textContent = dark ? '◐ after close' : '◑ the house, open';
+});
+
+/* ── row expands (settle + turn) ── */
+Array.prototype.forEach.call(document.querySelectorAll('.xhead'),function(h){
+  h.addEventListener('click',function(){
+    document.getElementById(h.getAttribute('data-x')).classList.toggle('open');
+  });
+});
+
+/* ── hold-to-approve → stamp ── */
+function wireHold(btnId,fillId,lblId,markId){
+  var btn=document.getElementById(btnId),fill=document.getElementById(fillId),
+      lbl=document.getElementById(lblId),mark=document.getElementById(markId);
+  if(!btn)return;
+  var t=null,done=false;
+  function land(){
+    done=true; btn.classList.add('done'); lbl.textContent='Approved.';
+    fill.style.transition='none'; fill.style.transform='scaleX(0)';
+    mark.style.opacity='1';
+    spring({from:.7,to:1,stiffness:520,damping:26,restDelta:.002,onUpdate:function(s){
+      mark.style.transform='rotate('+(-4*(1-(s-.7)/.3))+'deg) scale('+s+')';}});
+    setTimeout(function(){
+      done=false; btn.classList.remove('done'); lbl.textContent='Hold to approve';
+      mark.style.opacity='0'; mark.style.transform='rotate(-4deg) scale(.7)';
+    },3000);
+  }
+  function start(e){
+    if(done)return; e.preventDefault();
+    if(REDUCED){land();return;}
+    fill.style.transition='transform 620ms linear'; fill.style.transform='scaleX(1)';
+    t=setTimeout(land,620);
+  }
+  function cancel(){
+    if(done)return; clearTimeout(t);
+    fill.style.transition='transform 160ms cubic-bezier(.16,1,.3,1)'; fill.style.transform='scaleX(0)';
+  }
+  btn.addEventListener('pointerdown',start);
+  btn.addEventListener('pointerup',cancel);
+  btn.addEventListener('pointerleave',cancel);
+  btn.addEventListener('pointercancel',cancel);
+}
+wireHold('holdBtn','holdFill','holdLbl','stampMark');
+wireHold('holdBtn2','holdFill2','holdLbl2','stampMark2');
+
+/* ── ticker (tally) ── */
+(function(){
+  var num=document.getElementById('tickNum'), btn=document.getElementById('tickBtn'),
+      shim=document.getElementById('shimmerLine'), from=0;
+  function run(){
+    var to = 4280 + Math.round((Math.random()-.5)*260);
+    shim.style.display='inline';
+    spring({from:from,to:to,stiffness:120,damping:26,restDelta:1.5,
+      onUpdate:function(x){num.textContent='$'+Math.round(x).toLocaleString('en-US');},
+      onComplete:function(){from=to; shim.style.display='none';}});
+  }
+  btn.addEventListener('click',run);
+  var io=new IntersectionObserver(function(en){
+    if(en[0].isIntersecting){run(); io.disconnect();}
+  },{threshold:.5});
+  io.observe(num);
+})();
+
+/* ── toggle (tuck) ── */
+(function(){
+  var tg=document.getElementById('tuckToggle'), th=document.getElementById('tuckThumb'),
+      st=document.getElementById('tuckState'), on=true, cur=20;
+  tg.addEventListener('click',function(){
+    on=!on; tg.classList.toggle('on',on); tg.setAttribute('aria-checked',String(on));
+    st.textContent = on ? 'recorded · 23:30 each night' : 'not recorded — the night closes unwritten';
+    spring({from:cur,to:on?20:0,stiffness:380,damping:32,restDelta:.05,
+      onUpdate:function(x){cur=x; th.style.transform='translateX('+x+'px)';}});
+  });
+})();
+
+/* ── §05 seal candidates ── */
+var SEALS=[
+ {n:'İznik', l:'#1A5E6B', d:'#5FB0BC', rec:true,
+  why:'Ottoman ceramic blue-teal — the glaze on every tile in an old Istanbul house. It is the same cultural register as <em>müdavim</em>, so the name and the colour explain each other. Nobody\'s SaaS blue: at this darkness and this low chroma it reads as fired glaze, not as a hyperlink, and it can never be mistaken for a status hue.',
+  cr:['6.87:1 on paper','7.47:1 on lamplight'], flag:''},
+ {n:'Aubergine', l:'#4A2340', d:'#B98BAC', rec:false,
+  why:'Patlıcan — the most restaurant-native colour there is, taken almost to black. Warm purple at 12:1 reads as ink with a secret rather than as a colour, which is exactly what a seal should be. Far enough from violet that no one files it next to Linear.',
+  cr:['12.23:1 on paper','6.52:1 on lamplight'], flag:''},
+ {n:'Verdigris', l:'#22645A', d:'#5FB09F', rec:false,
+  why:'Oxidised copper — the green a bar rail goes after twenty years of hands. Time-made rather than chosen, which is the whole müdavim argument in a pigment. Risk: it sits nearest to “success green” of anything here.',
+  cr:['6.46:1 on paper','7.27:1 on lamplight'], flag:'closest to the ok/settled hue — test them side by side'},
+ {n:'Prussian', l:'#163A57', d:'#5E9BC4', rec:false,
+  why:'The first modern synthetic pigment, and the blue of every ledger line ever ruled. Deep enough (11:1) to behave as ink rather than as accent — the most conservative candidate, and the one most likely to be mistaken for a corporate navy.',
+  cr:['11.05:1 on paper','6.18:1 on lamplight'], flag:'navy adjacency — the safe answer, and the least distinctive'},
+ {n:'Pomegranate', l:'#7B1A33', d:'#D9737F', rec:false,
+  why:'Nar — the deepened, bluer honest version of the burgundy instinct. Darker and less sweet than #9E4249, so it stops reading as wine-shop signage and starts reading as sealing wax. Included so the incumbents can be judged rather than assumed.',
+  cr:['9.64:1 on paper','5.95:1 on lamplight'], flag:'nearest neighbour to the incumbent burgundies'},
+ {n:'Cinnabar', l:'#B0341C', d:'#E88463', rec:false,
+  why:'The literal seal colour: Chinese chop paste, pressed on documents for two thousand years. The only candidate with genuine historical claim to being a stamp. It is also the most alive colour here — passion, unambiguously.',
+  cr:['5.86:1 on paper','7.02:1 on lamplight'], flag:'flirts with the terracotta zone the founder ruled out — the saturation saves it, but only just'},
+ {n:'Burnt Turmeric', l:'#A8590C', d:'#E0A24A', rec:false,
+  why:'Kitchen-native: the colour turmeric goes when it hits hot oil. Warm enough to carry the hospitality half of the mandate in the seal itself, rather than leaving all the warmth to the paper.',
+  cr:['4.79:1 on paper','8.37:1 on lamplight'], flag:'collides with --warn; adopting it means re-hueing the warning colour'},
+ {n:'Oxidised Brass', l:'#7A6A24', d:'#C4B25A', rec:false,
+  why:'Patinated bar brass — olive-gold, metallic without any gradient trickery. Almost nobody uses it because it photographs badly and renders beautifully, which is a good trade for software.',
+  cr:['5.02:1 on paper','8.75:1 on lamplight'], flag:'reads slightly dirty on cheap tablet panels'},
+ {n:'Olive Ink', l:'#525C1E', d:'#A7B45C', rec:false,
+  why:'The dark green of an oil press and a bay leaf. Deeply food, deeply Mediterranean, and used by essentially no software company — which is the point. Quiet to the edge of invisible.',
+  cr:['6.75:1 on paper','8.28:1 on lamplight'], flag:'may be too quiet to function as a call to action'},
+ {n:'Wax Oxblood', l:'#5E2A24', d:'#C0776C', rec:false,
+  why:'What sealing wax actually looks like once it has cooled — brown-red, matte, nearly ink. The most literal reading of the seal, and the furthest from #9E4249 while staying in the red family.',
+  cr:['10.72:1 on paper','5.41:1 on lamplight'], flag:'at 10.7:1 it barely reads as colour on paper — a seal that hides'}
+];
+function hexRGB(h){return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)].join(',');}
+function darken(h,f){
+  var r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16);
+  function c(v){return ('0'+Math.max(0,Math.min(255,Math.round(v))).toString(16)).slice(-2);}
+  return '#'+c(r*f)+c(g*f)+c(b*f);
+}
+function lighten(h,f){
+  var r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16);
+  function c(v){return ('0'+Math.max(0,Math.min(255,Math.round(v))).toString(16)).slice(-2);}
+  return '#'+c(r+(255-r)*f)+c(g+(255-g)*f)+c(b+(255-b)*f);
+}
+/* the logo section's seal-coloured atoms, captured once so they can follow the pick */
+var LOGO=document.getElementById('logo');
+var lNodes=[].slice.call(LOGO.querySelectorAll('[fill="#1A5E6B"]'));
+var dNodes=[].slice.call(LOGO.querySelectorAll('[fill="#5FB0BC"]'));
+var lWax=[].slice.call(LOGO.querySelectorAll('.lcell.lt .wax, .smallsizes .lt .wax'));
+var dWax=[].slice.call(LOGO.querySelectorAll('.lcell.dk .wax, .smallsizes .dk .wax'));
+
+var grid=document.getElementById('sealGrid'), cards=[];
+SEALS.forEach(function(s,i){
+  var el=document.createElement('div');
+  el.className='seal-card'+(s.rec?' picked':'');
+  el.setAttribute('role','button'); el.setAttribute('tabindex','0');
+  el.innerHTML =
+   '<div class="stamps">'+
+     '<div class="stamp-t lt"><svg class="wax" style="--c:'+s.l+';--on:#FAF7F1" width="76" height="76" viewBox="0 0 96 96"><use href="#wax"/></svg><i>on paper</i></div>'+
+     '<div class="stamp-t dk"><svg class="wax" style="--c:'+s.d+';--on:#16120E" width="76" height="76" viewBox="0 0 96 96"><use href="#wax"/></svg><i>on lamplight</i></div>'+
+   '</div>'+
+   '<div class="seal-body">'+
+     '<div class="seal-head"><h3>'+s.n+'</h3>'+(s.rec?'<span class="rec">★ recommended</span>':'')+'</div>'+
+     '<div class="hexes"><span><b>light</b> '+s.l+'</span><span><b>dark</b> '+s.d+'</span></div>'+
+     '<p class="why">'+s.why+'</p>'+
+     '<div class="wcag"><span class="pass">AA ✓</span> '+s.cr[0]+' · <span class="pass">AA ✓</span> '+s.cr[1]+
+       (s.flag?'<br><span class="warnx">△</span> '+s.flag:'')+'</div>'+
+   '</div>';
+  function pick(){
+    /* write BOTH themes into one late stylesheet — inline styles on <html> would beat
+       the [data-theme="dark"] rule and break dark mode */
+    document.getElementById('sealStyle').textContent =
+      ':root{--seal:'+s.l+';--seal-deep:'+darken(s.l,.82)+
+        ';--seal-tint:rgba('+hexRGB(s.l)+',.10);--seal-ring:rgba('+hexRGB(s.l)+',.32)}'+
+      '[data-theme="dark"]{--seal:'+s.d+';--seal-deep:'+lighten(s.d,.18)+
+        ';--seal-tint:rgba('+hexRGB(s.d)+',.14);--seal-ring:rgba('+hexRGB(s.d)+',.38)}';
+    document.getElementById('curSeal').textContent = s.n+' · '+s.l+' / '+s.d;
+    cards.forEach(function(c){c.classList.remove('picked');}); el.classList.add('picked');
+    /* keep the palette section honest */
+    document.getElementById('palSealL').style.background=s.l;
+    document.getElementById('palSealLHex').textContent=s.l+' · '+s.cr[0].split(' ')[0];
+    document.getElementById('palSealDeepL').style.background=darken(s.l,.82);
+    document.getElementById('palSealDeepLHex').textContent=darken(s.l,.82);
+    document.getElementById('palSealTintL').style.background='rgba('+hexRGB(s.l)+',.10)';
+    document.getElementById('palSealD').style.background=s.d;
+    document.getElementById('palSealDHex').textContent=s.d+' · '+s.cr[1].split(' ')[0];
+    document.getElementById('palSealDeepD').style.background=lighten(s.d,.18);
+    document.getElementById('palSealDeepDHex').textContent=lighten(s.d,.18);
+    document.getElementById('palSealTintD').style.background='rgba('+hexRGB(s.d)+',.14)';
+    /* the three lockups + the meter follow the seal too */
+    lNodes.forEach(function(n){n.setAttribute('fill',s.l);});
+    dNodes.forEach(function(n){n.setAttribute('fill',s.d);});
+    lWax.forEach(function(n){n.style.setProperty('--c',s.l);});
+    dWax.forEach(function(n){n.style.setProperty('--c',s.d);});
+  }
+  el.addEventListener('click',pick);
+  el.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();pick();}});
+  el._pick=pick;
+  cards.push(el); grid.appendChild(el);
+});
+document.getElementById('resetSeal').addEventListener('click',function(){cards[0]._pick();});
+
+/* ── AI chip shimmer sweep ── */
+(function(){
+  var chip=document.getElementById('aiChip'); if(!chip||REDUCED)return;
+  chip.style.backgroundImage='linear-gradient(100deg,transparent 30%,var(--seal-tint) 50%,transparent 70%)';
+  chip.style.backgroundSize='260% 100%';
+  var t0=null;
+  function loop(t){ if(t0===null)t0=t;
+    var p=((t-t0)%1900)/1900;
+    chip.style.backgroundPosition=(160-p*220)+'% 0';
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+
+/* ── drawer hint (turn) ── */
+document.getElementById('drawerHint').addEventListener('click',function(){
+  this.textContent = this.textContent.indexOf('›')>-1
+    ? 'Thread · opens on turn, 420ms ⌄' : 'Thread · 3 letters ›';
+});
+})();
+</script>
+</body>
+</html>

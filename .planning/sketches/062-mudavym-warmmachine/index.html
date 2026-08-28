@@ -1,0 +1,1353 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mudavym — 062 Warm Machine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Fraunces:ital,opsz,wght@0,9..144,400..600;1,9..144,400&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   062 — WARM MACHINE
+   Brass, steel and considered light. Mechanism worn openly.
+   ============================================================ */
+
+/* ---------- COLOR TOKENS — dark is home ("Roast") ---------- */
+:root[data-theme="dark"]{
+  --panel:#14100C; --surface:#1C1712; --raised:#241E17; --sunk:#0E0B08;
+  --rule:rgba(245,237,226,.10); --rule-strong:rgba(245,237,226,.20);
+  --brass-rule:rgba(195,154,78,.30);
+  --specular:rgba(255,238,214,.13);        /* light on a machined top edge */
+  --ink:#F6EFE4; --ink-2:#CDBFAD; --ink-3:#9C8D7C; --ink-4:#8E7E6B;
+  --brass:#C39A4E; --brass-dim:#8A6C36; --brass-tint:rgba(195,154,78,.12);
+  --ember:#F0743A; --ember-tint:rgba(240,116,58,.13); --ember-rule:rgba(240,116,58,.42);
+  --patina:#55B394; --patina-tint:rgba(85,179,148,.13); --patina-rule:rgba(85,179,148,.38);
+  --scald:#E4515B; --scald-tint:rgba(228,81,91,.12);
+  --ramp-1:#E9DFD2; --ramp-2:#C0B2A1; --ramp-3:#948676; --ramp-4:#6B5F51; --ramp-5:#473D33;
+  --gridline:rgba(245,237,226,.06); --crosshair:rgba(245,237,226,.24);
+  --heat:radial-gradient(130% 120% at 50% -20%, rgba(240,116,58,.16), transparent 62%);
+  --lamp:radial-gradient(120% 140% at 22% -30%, rgba(255,226,182,.07), transparent 58%);
+  --btn-ink:#F6EFE4; --btn-ink-text:#14100C;
+  --shadow:0 1px 0 var(--specular) inset, 0 12px 30px -22px rgba(0,0,0,.9);
+}
+/* ---------- light ("Crema") ---------- */
+:root[data-theme="light"]{
+  --panel:#F1E9DC; --surface:#FCF8F1; --raised:#FFFDF8; --sunk:#E5D9C7;
+  --rule:rgba(34,26,17,.13); --rule-strong:rgba(34,26,17,.26);
+  --brass-rule:rgba(126,90,24,.34);
+  --specular:rgba(255,255,255,.85);
+  --ink:#221A11; --ink-2:#4E4234; --ink-3:#6F6252; --ink-4:#7F6F59;
+  --brass:#7E5A18; --brass-dim:#B79A63; --brass-tint:rgba(126,90,24,.10);
+  --ember:#B54210; --ember-tint:rgba(181,66,16,.10); --ember-rule:rgba(181,66,16,.45);
+  --patina:#186751; --patina-tint:rgba(24,103,81,.10); --patina-rule:rgba(24,103,81,.40);
+  --scald:#A81C26; --scald-tint:rgba(168,28,38,.09);
+  --ramp-1:#2E251A; --ramp-2:#574A3A; --ramp-3:#85765F; --ramp-4:#B2A48C; --ramp-5:#DCD1BC;
+  --gridline:rgba(34,26,17,.07); --crosshair:rgba(34,26,17,.30);
+  --heat:radial-gradient(130% 120% at 50% -20%, rgba(181,66,16,.09), transparent 62%);
+  --lamp:radial-gradient(120% 140% at 22% -30%, rgba(255,242,220,.75), transparent 58%);
+  --btn-ink:#221A11; --btn-ink-text:#FCF8F1;
+  --shadow:0 1px 0 var(--specular) inset, 0 10px 24px -20px rgba(60,40,20,.55);
+}
+
+/* ---------- GEOMETRY: machined, chamfered — never brutalist, never bubbly ---------- */
+:root{
+  --r-data:2px;      /* tables, rows, cells */
+  --r-panel:4px;     /* panels, frames */
+  --r-control:8px;   /* things a hand touches */
+  --r-pill:999px;
+}
+
+/* ---------- MOTION TOKENS ----------
+   Springs are sampled from their true solution into linear();
+   the same stiffness/damping/mass ship in motion.json for the React build. */
+:root{
+  --t-press:90ms;   --e-press:cubic-bezier(.32,0,.12,1);
+  --t-seat:235ms;   --e-seat:linear(0, 0.0213, 0.0753, 0.15, 0.236, 0.3264, 0.4163, 0.5022, 0.5819, 0.6541, 0.7181, 0.7739, 0.8218, 0.8622, 0.8959, 0.9234, 0.9456, 0.9633, 0.977, 0.9875, 0.9953, 1.0009, 1);
+  --t-swing:356ms;  --e-swing:linear(0, 0.0193, 0.0684, 0.1363, 0.215, 0.2982, 0.3816, 0.4621, 0.5375, 0.6068, 0.6693, 0.7247, 0.7733, 0.8153, 0.8512, 0.8816, 0.907, 0.928, 0.9453, 0.9593, 0.9705, 0.9793, 1);
+  --t-needle:747ms; --e-needle:linear(0, 0.0434, 0.1503, 0.2912, 0.4432, 0.5905, 0.7225, 0.8336, 0.9216, 0.987, 1.0319, 1.0593, 1.0729, 1.0761, 1.0721, 1.0635, 1.0525, 1.041, 1.0298, 1.02, 1.0117, 1.0052, 1.0005, 0.9972, 0.9953, 0.9944, 0.9942, 0.9946, 1);
+  --t-pour:520ms;   --e-pour:cubic-bezier(.16,.84,.24,1);
+  --t-warm:700ms;   --e-warm:cubic-bezier(.4,0,.2,1);
+  --t-trace:260ms;  --e-trace:cubic-bezier(.2,0,0,1);
+}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{transition-duration:1ms!important;animation-duration:1ms!important;animation-iteration-count:1!important}
+}
+
+/* ---------- BASE ---------- */
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--panel); color:var(--ink);
+  background-image:var(--lamp); background-repeat:no-repeat; background-attachment:fixed;
+  font-family:"Bricolage Grotesque",-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-optical-sizing:auto; font-size:14px; line-height:22px;
+  -webkit-font-smoothing:antialiased;
+  transition:background-color var(--t-warm) var(--e-warm), color var(--t-warm) var(--e-warm);
+}
+.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+.num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+.serif{font-family:"Fraunces","Iowan Old Style",Georgia,serif;font-optical-sizing:auto}
+.kicker{font-family:"IBM Plex Mono",monospace;font-size:11px;line-height:14px;font-weight:600;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--brass)}
+.ember{color:var(--ember)} .patina{color:var(--patina)} .brass{color:var(--brass)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 32px}
+section{border-top:1px solid var(--rule);padding:58px 0 74px;position:relative}
+section::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,var(--brass-rule),transparent 42%)}
+.sec-head{display:flex;align-items:baseline;gap:16px;margin-bottom:10px}
+.sec-head h2{font-size:26px;line-height:32px;font-weight:600;letter-spacing:-.018em}
+.sec-sub{color:var(--ink-3);font-size:14px;line-height:22px;max-width:660px;margin-bottom:36px}
+.sec-sub b{color:var(--ink-2);font-weight:600}
+a{color:inherit}
+
+/* knurled brass strip — the tactile detail, used sparingly */
+.knurl{height:6px;background:repeating-linear-gradient(90deg,var(--brass-dim) 0 1px,transparent 1px 4px);opacity:.5}
+
+/* ---------- HEADER ---------- */
+header.bar{position:sticky;top:0;z-index:60;background:var(--panel);
+  border-bottom:1px solid var(--rule);box-shadow:0 1px 0 var(--specular) inset;
+  transition:background-color var(--t-warm) var(--e-warm)}
+header.bar .wrap{display:flex;align-items:center;justify-content:space-between;height:56px;gap:16px}
+.brandline{display:flex;align-items:center;gap:14px;min-width:0}
+.brandline svg{display:block;flex:none}
+.bl-name{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;letter-spacing:.24em}
+.bl-tag{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.theme-btn{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  background:var(--surface);border:1px solid var(--rule-strong);color:var(--ink-2);
+  padding:8px 13px;cursor:pointer;border-radius:var(--r-control);flex:none;
+  box-shadow:0 1px 0 var(--specular) inset;
+  transition:border-color var(--t-seat) var(--e-seat),color var(--t-seat) var(--e-seat),transform var(--t-press) var(--e-press)}
+.theme-btn:hover{border-color:var(--brass);color:var(--ink)}
+.theme-btn:active{transform:translateY(1px)}
+
+/* ---------- HERO ---------- */
+.hero{padding:76px 0 66px;border-top:none}
+.hero::before{display:none}
+.hero h1{font-size:34px;line-height:41px;font-weight:600;letter-spacing:-.022em;margin:14px 0 14px;max-width:19ch}
+.hero p{color:var(--ink-2);max-width:600px;font-size:15px;line-height:24px}
+.hero .spec{margin-top:30px;display:flex;border:1px solid var(--rule);border-radius:var(--r-panel);
+  background:var(--surface);box-shadow:var(--shadow);overflow:hidden}
+.hero .spec div{flex:1;padding:13px 16px;border-left:1px solid var(--rule)}
+.hero .spec div:first-child{border-left:none}
+.hero .spec .k{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);font-family:"IBM Plex Mono",monospace;font-weight:600}
+.hero .spec .v{font-size:13px;color:var(--ink-2);margin-top:4px}
+.hero-lede{font-family:"Fraunces",Georgia,serif;font-size:19px;line-height:29px;color:var(--ink-2);
+  max-width:620px;margin-top:22px;padding-left:16px;border-left:2px solid var(--brass)}
+
+/* ---------- PANELS (shared) ---------- */
+.panelbox{border:1px solid var(--rule);border-radius:var(--r-panel);background:var(--surface);
+  box-shadow:var(--shadow);overflow:hidden}
+
+/* ---------- 01 LOGO ---------- */
+.logo-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.logo-cell{border:1px solid var(--rule);border-radius:var(--r-panel);overflow:hidden;background:var(--surface);box-shadow:var(--shadow)}
+.logo-pair{display:grid;grid-template-columns:1fr 1fr}
+.tile{display:flex;align-items:center;justify-content:center;min-height:172px;padding:26px}
+.tile.dk{background:#14100C;background-image:radial-gradient(110% 130% at 30% -10%,rgba(255,226,182,.08),transparent 60%)}
+.tile.lt{background:#F1E9DC;background-image:radial-gradient(110% 130% at 30% -10%,rgba(255,255,255,.9),transparent 60%)}
+.logo-meta{padding:16px 20px 20px;border-top:1px solid var(--rule)}
+.logo-meta h3{font-size:16px;font-weight:600;margin:5px 0 5px;letter-spacing:-.008em}
+.logo-meta p{font-size:13px;line-height:20px;color:var(--ink-3)}
+.logo-meta p b{color:var(--ink-2);font-weight:600}
+.wordmark-row{grid-column:1 / -1}
+
+/* ---------- 02 SLOGANS ---------- */
+.slogan-list{border:1px solid var(--rule);border-radius:var(--r-panel);overflow:hidden;background:var(--surface);box-shadow:var(--shadow)}
+.slogan{display:grid;grid-template-columns:60px 1.05fr 1fr;border-top:1px solid var(--rule);align-items:baseline}
+.slogan:first-child{border-top:none}
+.slogan:hover{background:var(--raised)}
+.slogan .idx{padding:19px 0 19px 20px;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--brass);letter-spacing:.1em}
+.slogan .line{padding:17px 24px 17px 0;font-size:20px;line-height:28px;font-weight:600;letter-spacing:-.014em}
+.slogan .why{padding:19px 20px 19px 24px;font-size:13px;line-height:20px;color:var(--ink-3);border-left:1px solid var(--rule)}
+
+/* ---------- 03 VOICE ---------- */
+.rules{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:38px}
+.rule-card{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-panel);
+  padding:17px 19px 19px;box-shadow:var(--shadow)}
+.rule-card .k{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;letter-spacing:.14em;color:var(--brass)}
+.rule-card h4{font-size:14.5px;font-weight:600;margin:7px 0 5px;letter-spacing:-.005em}
+.rule-card p{font-size:13px;line-height:20px;color:var(--ink-3)}
+.rule-card p em{color:var(--ink-2);font-style:normal;font-family:"IBM Plex Mono",monospace;font-size:12px}
+.rw{border:1px solid var(--rule);border-radius:var(--r-panel);overflow:hidden;background:var(--surface);box-shadow:var(--shadow)}
+.rw-row{display:grid;grid-template-columns:1fr 1.15fr;border-top:1px solid var(--rule)}
+.rw-row:first-child{border-top:none;background:var(--raised)}
+.rw-row:first-child div{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);padding:11px 20px}
+.rw-row .before,.rw-row .after{padding:17px 20px;font-size:13.5px;line-height:21px}
+.rw-row .before{color:var(--ink-4);border-right:1px solid var(--rule)}
+.rw-row .after{color:var(--ink)}
+
+/* ---------- 04 PALETTE ---------- */
+.pal-cols{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.pal{border:1px solid var(--rule);border-radius:var(--r-panel);overflow:hidden;background:var(--surface);box-shadow:var(--shadow)}
+.pal-head{padding:13px 16px;border-bottom:1px solid var(--rule);font-family:"IBM Plex Mono",monospace;
+  font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);background:var(--raised)}
+.sw{display:grid;grid-template-columns:46px 1fr auto;align-items:center;border-top:1px solid var(--rule)}
+.sw .swatch{height:38px;border-right:1px solid var(--rule);border-radius:0}
+.sw .name{padding:0 14px;font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-2)}
+.sw .val{padding:0 14px;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-4)}
+.pal .group{padding:9px 16px 7px;font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink-4);border-top:1px solid var(--rule);background:var(--raised)}
+.ramp-strip{display:flex;height:38px}
+.ramp-strip div{flex:1}
+.pal-law{margin-top:20px;border:1px solid var(--brass-rule);border-radius:var(--r-panel);padding:16px 20px;
+  background:var(--brass-tint);font-size:13.5px;line-height:21px;color:var(--ink-2)}
+.pal-law b{color:var(--ink);font-weight:600}
+
+/* ---------- 05 TYPE ---------- */
+.type-table{border:1px solid var(--rule);border-radius:var(--r-panel);overflow:hidden;background:var(--surface);box-shadow:var(--shadow)}
+.type-row{display:grid;grid-template-columns:238px 1fr;border-top:1px solid var(--rule);align-items:center}
+.type-row:first-child{border-top:none}
+.type-row .spec{padding:16px 20px;border-right:1px solid var(--rule);font-family:"IBM Plex Mono",monospace;
+  font-size:11px;line-height:17px;color:var(--ink-3)}
+.type-row .spec b{color:var(--brass);font-weight:600;display:block;letter-spacing:.14em;text-transform:uppercase;font-size:10px;margin-bottom:3px}
+.type-row .sample{padding:14px 24px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.voices{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:26px}
+.voice-card{border:1px solid var(--rule);border-radius:var(--r-panel);padding:20px;background:var(--surface);box-shadow:var(--shadow)}
+.voice-card .k{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);margin-bottom:12px}
+.voice-card .ex{font-size:22px;line-height:30px;margin-bottom:10px}
+.voice-card .d{font-size:12.5px;line-height:19px;color:var(--ink-3)}
+
+/* ---------- 06 MOTION ---------- */
+.mo-tokens{border:1px solid var(--rule);border-radius:var(--r-panel);overflow:hidden;background:var(--surface);box-shadow:var(--shadow);margin-bottom:30px}
+.mo-row{display:grid;grid-template-columns:112px 120px 286px 1fr;border-top:1px solid var(--rule)}
+.mo-row:first-child{border-top:none;background:var(--raised)}
+.mo-row:first-child div{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);padding:11px 16px}
+.mo-row div{padding:13px 16px;font-size:13px;line-height:20px}
+.mo-row .tk{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--ink);font-weight:500}
+.mo-row .du{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.mo-row .cv{font-family:"IBM Plex Mono",monospace;font-size:11px;line-height:17px;color:var(--ink-4);word-break:break-word}
+.mo-row .use{color:var(--ink-2)}
+.demos{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px}
+.demo{border:1px solid var(--rule);border-radius:var(--r-panel);background:var(--surface);box-shadow:var(--shadow);
+  padding:0;min-height:238px;display:flex;flex-direction:column;overflow:hidden}
+.demo-head{padding:12px 18px;border-bottom:1px solid var(--rule);background:var(--raised);
+  font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);
+  display:flex;justify-content:space-between;gap:10px}
+.demo-head span:last-child{color:var(--ink-4)}
+.demo-body{flex:1;padding:20px 18px 18px;display:flex;flex-direction:column;justify-content:center}
+.demo .note{font-family:"IBM Plex Mono",monospace;font-size:10.5px;line-height:17px;color:var(--ink-4);
+  padding:0 18px 16px}
+
+/* toggle demo */
+.tgl-row{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  border:1px solid var(--rule);border-radius:var(--r-control);padding:14px 16px;background:var(--panel)}
+.tgl-label{font-size:13.5px;font-weight:600}
+.tgl-state{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.1em;color:var(--ink-4);margin-top:3px;text-transform:uppercase}
+.tgl{position:relative;width:52px;height:30px;border:1px solid var(--rule-strong);background:var(--sunk);
+  cursor:pointer;border-radius:var(--r-pill);flex:none;padding:0;
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.35);
+  transition:background-color var(--t-seat) var(--e-seat),border-color var(--t-seat) var(--e-seat)}
+.tgl .thumb{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;
+  background:linear-gradient(180deg,var(--ink-3),var(--ink-4));
+  box-shadow:0 1px 0 var(--specular) inset,0 2px 4px rgba(0,0,0,.4);
+  transition:transform var(--t-seat) var(--e-seat),background var(--t-seat) var(--e-seat)}
+.tgl.on{background:var(--patina-tint);border-color:var(--patina-rule)}
+.tgl.on .thumb{transform:translateX(22px);background:linear-gradient(180deg,#E8C784,var(--brass))}
+.tgl:active .thumb{transform:translateX(0) scaleX(1.12);transition-duration:var(--t-press)}
+.tgl.on:active .thumb{transform:translateX(20px) scaleX(1.12)}
+
+/* row-expand demo */
+.xrow{border:1px solid var(--rule);border-radius:var(--r-data);background:var(--panel);overflow:hidden}
+.xrow-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 14px;cursor:pointer;user-select:none;
+  transition:background-color var(--t-seat) var(--e-seat)}
+.xrow-head:hover{background:var(--raised)}
+.xrow-title{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink)}
+.xrow-caret{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--brass);
+  transition:transform var(--t-swing) var(--e-swing)}
+.xrow.open .xrow-caret{transform:rotate(90deg)}
+.xrow-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows var(--t-swing) var(--e-swing)}
+.xrow-body>div{overflow:hidden}
+.xrow.open .xrow-body{grid-template-rows:1fr}
+.xrow-detail{border-top:1px solid var(--rule);padding:13px 14px;font-family:"IBM Plex Mono",monospace;
+  font-size:11px;line-height:20px;color:var(--ink-3)}
+.xrow-detail b{color:var(--ink);font-weight:500}
+
+/* ticker demo */
+.tick-lbl{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);margin-bottom:8px}
+.tick-val{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:34px;line-height:40px;font-weight:500;letter-spacing:-.012em}
+.tick-delta{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--patina);margin-top:6px;height:18px;
+  opacity:0;transform:translateY(-3px);transition:opacity var(--t-pour) var(--e-pour),transform var(--t-pour) var(--e-pour)}
+.tick-delta.show{opacity:1;transform:none}
+.btn-mech{margin-top:16px;align-self:flex-start;font-family:"IBM Plex Mono",monospace;font-size:11px;
+  letter-spacing:.1em;text-transform:uppercase;background:var(--raised);border:1px solid var(--rule-strong);
+  color:var(--ink-2);padding:9px 14px;cursor:pointer;border-radius:var(--r-control);
+  box-shadow:0 1px 0 var(--specular) inset;
+  transition:border-color var(--t-seat) var(--e-seat),color var(--t-seat) var(--e-seat),transform var(--t-press) var(--e-press)}
+.btn-mech:hover{border-color:var(--brass);color:var(--ink)}
+.btn-mech:active{transform:translateY(1px)}
+
+/* ---------- SIGNATURE: THE EXTRACTION ---------- */
+.extraction{border:1px solid var(--rule);border-radius:var(--r-panel);background:var(--surface);
+  box-shadow:var(--shadow);overflow:hidden;position:relative}
+.extraction::after{content:"";position:absolute;inset:0;pointer-events:none;background:var(--heat);
+  opacity:0;transition:opacity var(--t-warm) var(--e-warm)}
+.extraction.hot::after{opacity:1}
+.ext-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 20px;
+  border-bottom:1px solid var(--rule);background:var(--raised);position:relative;z-index:2}
+.ext-head .t{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--brass)}
+.ext-head .s{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4)}
+.ext-grid{display:grid;grid-template-columns:264px 1fr;position:relative;z-index:2}
+.ext-gauge{padding:26px 22px;border-right:1px solid var(--rule);display:flex;flex-direction:column;align-items:center;gap:14px}
+.gauge-read{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:26px;line-height:30px;font-weight:500}
+.gauge-cap{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-4);text-align:center}
+#needle{transform-origin:60px 60px;transform:rotate(-120deg);
+  transition:transform var(--t-needle) var(--e-needle)}
+.tk{stroke:var(--ink-4);stroke-width:1.4}
+.tk.maj{stroke:var(--ink-3);stroke-width:2}
+.ext-right{padding:22px 24px 24px;min-height:280px;display:flex;flex-direction:column}
+.trace-title{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);margin-bottom:14px}
+.trace{list-style:none;border-left:1px solid var(--rule);padding-left:0;margin-bottom:6px}
+.trace li{position:relative;padding:0 0 13px 22px;font-family:"IBM Plex Mono",monospace;font-size:11.5px;line-height:19px;
+  color:var(--ink-3);opacity:0;transform:translateY(6px);
+  transition:opacity var(--t-trace) var(--e-trace),transform var(--t-trace) var(--e-trace),color var(--t-trace) var(--e-trace)}
+.trace li::before{content:"";position:absolute;left:-4.5px;top:6px;width:8px;height:8px;border-radius:50%;
+  background:var(--panel);border:1.5px solid var(--ink-4);
+  transition:background-color var(--t-seat) var(--e-seat),border-color var(--t-seat) var(--e-seat),box-shadow var(--t-warm) var(--e-warm)}
+.trace li.in{opacity:1;transform:none}
+.trace li.done{color:var(--ink-2)}
+.trace li.done::before{background:var(--ember);border-color:var(--ember);box-shadow:0 0 0 4px var(--ember-tint)}
+.trace li b{color:var(--ink);font-weight:500}
+.ext-result{display:grid;grid-template-rows:0fr;transition:grid-template-rows var(--t-swing) var(--e-swing);margin-top:auto}
+.ext-result>div{overflow:hidden}
+.extraction.done .ext-result{grid-template-rows:1fr}
+.result-card{border:1px solid var(--ember-rule);border-radius:var(--r-control);background:var(--ember-tint);
+  padding:16px 18px;margin-top:14px}
+.result-card .k{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--ember)}
+.result-card .h{font-family:"Fraunces",Georgia,serif;font-size:19px;line-height:27px;margin:8px 0 4px;color:var(--ink)}
+.result-card .m{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:11.5px;color:var(--ink-3)}
+.result-acts{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+.ext-foot{border-top:1px solid var(--rule);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;
+  gap:14px;background:var(--raised);position:relative;z-index:2;flex-wrap:wrap}
+.ext-foot .hint{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4)}
+/* pour — the shot, in flow beneath the gauge */
+.pour{display:flex;flex-direction:column;align-items:center;height:56px;margin-top:2px}
+.pour-stream{width:2px;height:0;border-radius:1px;opacity:0;
+  background:linear-gradient(180deg,var(--brass),var(--ember));
+  transition:height var(--t-pour) var(--e-pour),opacity 180ms linear}
+.extraction.pouring .pour-stream{height:24px;opacity:.95}
+.pour-cup{width:48px;height:26px;margin-top:auto;position:relative;overflow:hidden;background:var(--panel);
+  border:1.5px solid var(--brass-rule);border-top:none;border-radius:0 0 13px 13px}
+.pour-cup i{position:absolute;left:0;right:0;bottom:0;height:0;
+  background:linear-gradient(180deg,var(--ember),var(--brass-dim));
+  transition:height 900ms var(--e-pour)}
+.extraction.pouring .pour-cup i{height:18px}
+
+/* ---------- 07 SCREENS ---------- */
+.screens{display:grid;gap:40px}
+.frame{border:1px solid var(--rule-strong);border-radius:var(--r-panel);background:var(--panel);
+  box-shadow:var(--shadow);overflow:hidden}
+.frame-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:11px 18px;
+  border-bottom:1px solid var(--rule);background:var(--surface);box-shadow:0 1px 0 var(--specular) inset}
+.frame-bar .l,.frame-bar .r{display:flex;align-items:center;gap:14px;min-width:0}
+.fb-brand{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;letter-spacing:.24em}
+.kbd{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink-3);border:1px solid var(--rule-strong);
+  border-radius:4px;padding:3px 6px;box-shadow:0 1px 0 var(--specular) inset}
+.fb-meta{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.08em;color:var(--ink-4);white-space:nowrap}
+.frame-body{padding:26px 20px 24px;background-image:var(--lamp)}
+.greet{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.greet h3{font-family:"Fraunces",Georgia,serif;font-size:26px;line-height:34px;font-weight:400;letter-spacing:-.005em}
+.greet .sub{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em;color:var(--ink-4);margin-top:6px;text-transform:uppercase}
+.pressure-pill{display:flex;align-items:center;gap:9px;border:1px solid var(--patina-rule);background:var(--patina-tint);
+  border-radius:var(--r-pill);padding:7px 13px;font-family:"IBM Plex Mono",monospace;font-size:10.5px;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--patina)}
+.pressure-pill i{width:7px;height:7px;border-radius:50%;background:var(--patina);animation:breathe 3.4s ease-in-out infinite}
+@keyframes breathe{0%,100%{opacity:.45;transform:scale(.86)}50%{opacity:1;transform:scale(1)}}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--rule);border-radius:var(--r-panel);
+  margin-top:22px;background:var(--surface);box-shadow:var(--shadow);overflow:hidden}
+.kpi{padding:15px 17px 17px;border-left:1px solid var(--rule);position:relative}
+.kpi:first-child{border-left:none}
+.kpi .lbl{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-4)}
+.kpi .val{display:flex;align-items:baseline;gap:9px;margin-top:9px;font-family:"IBM Plex Mono",monospace;
+  font-variant-numeric:tabular-nums;font-size:28px;line-height:32px;font-weight:500;letter-spacing:-.014em}
+.kpi .sub{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.06em;color:var(--ink-4);margin-top:7px}
+.kpi.hot{background:var(--ember-tint)}
+.kpi.hot .lbl{color:var(--ember)}
+.kpi.hot .val{color:var(--ember)}
+.kpi.hot .sub{color:var(--ember);opacity:.8}
+.kpi.hot::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:var(--ember)}
+.kpi.good .val{color:var(--ink)}
+.spark{display:flex;align-items:flex-end;gap:2px;height:16px;margin-top:9px}
+.spark i{width:4px;background:var(--ramp-4);border-radius:1px}
+.decision{display:flex;margin-top:22px;border:1px solid var(--ember-rule);border-radius:var(--r-panel);
+  background:var(--surface);box-shadow:var(--shadow);overflow:hidden;position:relative}
+.decision::after{content:"";position:absolute;inset:0;background:var(--heat);pointer-events:none}
+.decision .bar-l{width:3px;background:linear-gradient(180deg,var(--brass),var(--ember));flex:none;position:relative;z-index:2}
+.decision .body{padding:17px 19px 18px;flex:1;position:relative;z-index:2}
+.decision .k{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--ember)}
+.decision h4{font-family:"Fraunces",Georgia,serif;font-size:20px;line-height:28px;font-weight:400;margin:9px 0 6px}
+.decision .why{font-family:"IBM Plex Mono",monospace;font-size:11.5px;line-height:19px;color:var(--ink-3);margin-bottom:4px}
+.decision .why b{color:var(--ink-2);font-weight:500}
+.decision .meta{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:11.5px;color:var(--ink-4);margin-top:6px}
+.decision .acts{display:flex;gap:10px;margin-top:15px;flex-wrap:wrap}
+.btn{font-family:"Bricolage Grotesque",sans-serif;font-size:13px;font-weight:600;letter-spacing:-.005em;
+  padding:10px 17px;cursor:pointer;border-radius:var(--r-control);border:1px solid transparent;
+  box-shadow:0 1px 0 var(--specular) inset;
+  transition:transform var(--t-press) var(--e-press),border-color var(--t-seat) var(--e-seat),opacity var(--t-seat) var(--e-seat)}
+.btn:active{transform:translateY(1px)}
+.btn.fill{background:linear-gradient(180deg,#E8C784,var(--brass));color:#14100C;border-color:var(--brass)}
+:root[data-theme="light"] .btn.fill{background:linear-gradient(180deg,#A87C2C,var(--brass));color:#FCF8F1}
+.btn.fill:hover{opacity:.9}
+.btn.ghost{background:var(--raised);color:var(--ink-2);border-color:var(--rule-strong)}
+.btn.ghost:hover{border-color:var(--brass);color:var(--ink)}
+.frame-cap{font-family:"IBM Plex Mono",monospace;font-size:10.5px;line-height:18px;letter-spacing:.03em;color:var(--ink-4);padding:12px 2px 0}
+.frame-cap b{color:var(--ink-3);font-weight:500}
+/* orders */
+.ord{border:1px solid var(--rule);border-radius:var(--r-panel);background:var(--surface);box-shadow:var(--shadow);overflow:hidden}
+.ord-head,.ord-row{display:grid;grid-template-columns:92px 1.1fr 106px 96px 134px 116px;align-items:center}
+.ord-head{border-bottom:1px solid var(--rule);background:var(--raised)}
+.ord-head div{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);padding:10px 13px}
+.ord-row{border-top:1px solid var(--rule);transition:background-color var(--t-seat) var(--e-seat)}
+.ord-row:first-of-type{border-top:none}
+.ord-row:hover{background:var(--raised)}
+.ord-row>div{padding:14px 13px;font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  font-size:12px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ord-row .po{color:var(--ink);font-weight:500}
+.ord-row.live{background:var(--ember-tint)}
+.chip{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;border:1px solid var(--rule-strong);color:var(--ink-3);padding:4px 8px;border-radius:var(--r-pill)}
+.chip.em{border-color:var(--ember-rule);color:var(--ember);background:var(--ember-tint)}
+.chip.pa{border-color:var(--patina-rule);color:var(--patina);background:var(--patina-tint)}
+.ord-row .thread{text-align:right;font-size:10.5px;color:var(--ink-4);cursor:pointer}
+.ord-row .thread:hover{color:var(--brass)}
+.ord-sub{grid-column:1/-1;border-top:1px dashed var(--rule);padding:12px 13px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.ord-quote{font-family:"Fraunces",Georgia,serif;font-style:italic;font-size:14.5px;line-height:22px;color:var(--ink-2);flex:1;min-width:220px}
+.ord-foot{border-top:1px solid var(--rule);padding:10px 15px;font-family:"IBM Plex Mono",monospace;font-size:10px;
+  letter-spacing:.1em;color:var(--ink-4);display:flex;gap:22px;background:var(--raised);flex-wrap:wrap}
+.drawer-hint{margin-top:0;border-top:1px solid var(--rule);background:var(--panel);padding:14px 15px;display:flex;gap:14px;align-items:flex-start}
+.drawer-hint .edge{width:3px;align-self:stretch;background:var(--brass);border-radius:2px;flex:none}
+.drawer-hint .txt{font-family:"IBM Plex Mono",monospace;font-size:11px;line-height:19px;color:var(--ink-3)}
+.drawer-hint .txt b{color:var(--ink-2);font-weight:500}
+
+footer{border-top:1px solid var(--rule);padding:30px 0 52px}
+footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-4)}
+
+svg{max-width:100%}
+@media(max-width:980px){
+  .mo-row{grid-template-columns:1fr}
+  .ext-grid{grid-template-columns:1fr}
+  .ext-gauge{border-right:none;border-bottom:1px solid var(--rule)}
+  .stream,.vessel{display:none}
+}
+@media(max-width:860px){
+  .wrap{padding:0 20px}
+  .logo-grid,.rules,.pal-cols,.demos,.voices{grid-template-columns:1fr}
+  .slogan{grid-template-columns:46px 1fr}
+  .slogan .why{grid-column:2;border-left:none;padding:0 20px 17px 0}
+  .kpis{grid-template-columns:1fr 1fr}
+  .kpi:nth-child(3),.kpi:nth-child(4){border-top:1px solid var(--rule)}
+  .kpi:nth-child(3){border-left:none}
+  .rw-row,.type-row{grid-template-columns:1fr}
+  .rw-row .before{border-right:none;border-bottom:1px dashed var(--rule)}
+  .type-row .spec{border-right:none;border-bottom:1px solid var(--rule)}
+  .ord-head{display:none}
+  .ord-row{grid-template-columns:1fr 1fr}
+  .hero .spec{flex-direction:column}
+  .hero .spec div{border-left:none;border-top:1px solid var(--rule)}
+  .hero .spec div:first-child{border-top:none}
+  .hero h1{font-size:28px;line-height:35px}
+}
+@media(max-width:660px){
+  .logo-pair{grid-template-columns:1fr}
+  .tile{min-height:132px;padding:20px}
+  .kpis{grid-template-columns:1fr}
+  .kpi,.kpi:nth-child(3){border-left:none;border-top:1px solid var(--rule)}
+  .kpi:first-child{border-top:none}
+  .ord-row{grid-template-columns:1fr}
+  .slogan .line{font-size:18px;line-height:26px}
+  .greet h3{font-size:22px;line-height:30px}
+  .decision h4,.result-card .h{font-size:17px;line-height:25px}
+  .tick-val{font-size:28px;line-height:34px}
+  .frame-bar{flex-wrap:wrap;row-gap:9px}
+  .frame-bar .l,.frame-bar .r{flex-wrap:wrap;gap:10px}
+  .fb-meta{white-space:normal}
+  .ext-foot,.result-acts,.decision .acts{gap:8px}
+  .btn{padding:10px 14px;font-size:12.5px}
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="wrap">
+    <div class="brandline">
+      <!-- header mark: the manifold M -->
+      <svg width="26" height="22" viewBox="0 0 30 26" fill="none" aria-hidden="true">
+        <path d="M3 24V6a3 3 0 0 1 3-3h3a3 3 0 0 1 3 3v7h6V6a3 3 0 0 1 3-3h3a3 3 0 0 1 3 3v18"
+              stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="15" cy="13" r="2.6" style="fill:var(--brass)"/>
+      </svg>
+      <span class="bl-name">MUDAVYM</span>
+      <span class="bl-tag">Direction 062 — Warm Machine</span>
+    </div>
+    <button class="theme-btn" id="themeBtn" type="button">Theme: roast</button>
+  </div>
+</header>
+
+<!-- ============ 00 PREMISE ============ -->
+<section class="hero">
+  <div class="wrap">
+    <div class="kicker">00 — Premise</div>
+    <h1>The mechanism is the hospitality.</h1>
+    <p>An espresso machine hides nothing. Brass, steel, a pressure gauge on the front, the
+    group head where you can watch the shot pull — and the whole apparatus exists to put a
+    warm cup in someone's hand. Mudavym is built the same way: you can see the agent read,
+    reason and draft, in the open, in numbers — and it is warm to look at while it does it.</p>
+    <p class="hero-lede">The thesis: the most technical direction can also be the warmest.
+    Warmth comes from material and light — brass hairlines, machined corners, a lamp over the
+    working surface. Precision comes from the information design, which never softens.</p>
+    <div class="spec">
+      <div><div class="k">Material</div><div class="v">Brass · steel · roast</div></div>
+      <div><div class="k">Geometry</div><div class="v">Chamfered — 2 / 4 / 8px</div></div>
+      <div><div class="k">Accent</div><div class="v">Ember + patina, never neon</div></div>
+      <div><div class="k">Motion</div><div class="v">Damped springs with mass</div></div>
+      <div><div class="k">Stance</div><div class="v">Reasoning shown, never hidden</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 01 LOGO ============ -->
+<section id="logo">
+  <div class="wrap">
+    <div class="sec-head"><span class="kicker">01</span><h2>Logo</h2></div>
+    <p class="sec-sub">Three resolved marks. All three are <b>mechanism drawn as letterform</b> —
+    a manifold, a gauge, a group head — with round joins and one brass fitting each. Every mark
+    reads at 16px, holds as a one-colour stamp, and has a defined live state where the machine is
+    working. Brass is the metal; ember is the heat.</p>
+
+    <div class="logo-grid">
+
+      <!-- A — THE MANIFOLD -->
+      <div class="logo-cell">
+        <div class="logo-pair">
+          <div class="tile dk">
+            <svg width="196" height="52" viewBox="0 0 232 62" fill="none" role="img" aria-label="Mudavym — manifold M mark, dark">
+              <path d="M6 56V16a9 9 0 0 1 9-9h6a9 9 0 0 1 9 9v18h18V16a9 9 0 0 1 9-9h6a9 9 0 0 1 9 9v40"
+                    stroke="#F6EFE4" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="39" cy="34" r="6.4" fill="#14100C" stroke="#C39A4E" stroke-width="3.4"/>
+              <text x="94" y="43" font-family="'Bricolage Grotesque',sans-serif" font-size="30" font-weight="600" letter-spacing="-0.9" fill="#F6EFE4">Mudavym</text>
+            </svg>
+          </div>
+          <div class="tile lt">
+            <svg width="196" height="52" viewBox="0 0 232 62" fill="none" role="img" aria-label="Mudavym — manifold M mark, light">
+              <path d="M6 56V16a9 9 0 0 1 9-9h6a9 9 0 0 1 9 9v18h18V16a9 9 0 0 1 9-9h6a9 9 0 0 1 9 9v40"
+                    stroke="#221A11" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="39" cy="34" r="6.4" fill="#F1E9DC" stroke="#7E5A18" stroke-width="3.4"/>
+              <text x="94" y="43" font-family="'Bricolage Grotesque',sans-serif" font-size="30" font-weight="600" letter-spacing="-0.9" fill="#221A11">Mudavym</text>
+            </svg>
+          </div>
+        </div>
+        <div class="logo-meta">
+          <span class="kicker">A — The Manifold</span>
+          <h3>The M brazed out of pipe</h3>
+          <p>The letter is built the way a boiler manifold is built: two risers, elbowed over,
+          joined at a centre fitting. Round joins and 6px stroke keep it warm at any size; the
+          brass union at the junction is the only chroma. <b>Live state:</b> the centre fitting
+          fills ember while an agent is running — the mark itself is a status lamp. This is the
+          primary lockup.</p>
+        </div>
+      </div>
+
+      <!-- B — THE GAUGE -->
+      <div class="logo-cell">
+        <div class="logo-pair">
+          <div class="tile dk">
+            <svg width="112" height="112" viewBox="0 0 120 120" fill="none" role="img" aria-label="Mudavym — gauge mark, dark">
+              <circle cx="60" cy="60" r="52" stroke="#C39A4E" stroke-width="4"/>
+              <circle cx="60" cy="60" r="44.5" stroke="#F6EFE4" stroke-width="1.3" opacity=".26"/>
+              <path d="M72.08 20.82 A41 41 0 0 1 92.05 34.44" stroke="#55B394" stroke-width="5.5" stroke-linecap="round"/>
+              <path d="M99.97 50.88 A41 41 0 0 1 95.51 80.5" stroke="#E4515B" stroke-width="5.5" stroke-linecap="round"/>
+              <path d="M36 84V37l24 23 24-23v47" stroke="#F6EFE4" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="60" cy="60" r="7" fill="#C39A4E"/>
+              <circle cx="60" cy="60" r="2.6" fill="#14100C"/>
+            </svg>
+          </div>
+          <div class="tile lt">
+            <svg width="112" height="112" viewBox="0 0 120 120" fill="none" role="img" aria-label="Mudavym — gauge mark, light">
+              <circle cx="60" cy="60" r="52" stroke="#7E5A18" stroke-width="4"/>
+              <circle cx="60" cy="60" r="44.5" stroke="#221A11" stroke-width="1.3" opacity=".22"/>
+              <path d="M72.08 20.82 A41 41 0 0 1 92.05 34.44" stroke="#186751" stroke-width="5.5" stroke-linecap="round"/>
+              <path d="M99.97 50.88 A41 41 0 0 1 95.51 80.5" stroke="#A81C26" stroke-width="5.5" stroke-linecap="round"/>
+              <path d="M36 84V37l24 23 24-23v47" stroke="#221A11" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="60" cy="60" r="7" fill="#7E5A18"/>
+              <circle cx="60" cy="60" r="2.6" fill="#F1E9DC"/>
+            </svg>
+          </div>
+        </div>
+        <div class="logo-meta">
+          <span class="kicker">B — The Gauge</span>
+          <h3>The M is the needle, at working pressure</h3>
+          <p>An M sits inside a brass bezel with its valley exactly on the pivot — so the letter's
+          right arm <i>is</i> the needle, and it points into the patina band at <b>9.1 bar</b>. The
+          bezel carries the two bands every espresso gauge carries: <b>patina = working</b>,
+          <b>scald = over-pressure</b>. The mark is therefore never neutral: it is always showing
+          the machine in the green. Favicon and app-icon strength — the only mark that holds as a
+          16px square with the bands still legible.</p>
+        </div>
+      </div>
+
+      <!-- C — THE GROUP HEAD -->
+      <div class="logo-cell">
+        <div class="logo-pair">
+          <div class="tile dk">
+            <svg width="196" height="60" viewBox="0 0 232 72" fill="none" role="img" aria-label="Mudavym — group head mark, dark">
+              <rect x="9" y="3" width="64" height="11" rx="5.5" fill="#C39A4E"/>
+              <path d="M23 19v13M41 19v19M59 19v13" stroke="#F6EFE4" stroke-width="5" stroke-linecap="round"/>
+              <path d="M17 42h48l-4 16a9 9 0 0 1-9 7H30a9 9 0 0 1-9-7z" stroke="#F6EFE4" stroke-width="5" stroke-linejoin="round" fill="none"/>
+              <path d="M67 46a8 8 0 0 1 0 14" stroke="#F6EFE4" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+              <path d="M26 50h30" stroke="#F0743A" stroke-width="4" stroke-linecap="round"/>
+              <text x="96" y="47" font-family="'Bricolage Grotesque',sans-serif" font-size="30" font-weight="600" letter-spacing="-0.9" fill="#F6EFE4">Mudavym</text>
+            </svg>
+          </div>
+          <div class="tile lt">
+            <svg width="196" height="60" viewBox="0 0 232 72" fill="none" role="img" aria-label="Mudavym — group head mark, light">
+              <rect x="9" y="3" width="64" height="11" rx="5.5" fill="#7E5A18"/>
+              <path d="M23 19v13M41 19v19M59 19v13" stroke="#221A11" stroke-width="5" stroke-linecap="round"/>
+              <path d="M17 42h48l-4 16a9 9 0 0 1-9 7H30a9 9 0 0 1-9-7z" stroke="#221A11" stroke-width="5" stroke-linejoin="round" fill="none"/>
+              <path d="M67 46a8 8 0 0 1 0 14" stroke="#221A11" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+              <path d="M26 50h30" stroke="#B54210" stroke-width="4" stroke-linecap="round"/>
+              <text x="96" y="47" font-family="'Bricolage Grotesque',sans-serif" font-size="30" font-weight="600" letter-spacing="-0.9" fill="#221A11">Mudavym</text>
+            </svg>
+          </div>
+        </div>
+        <div class="logo-meta">
+          <span class="kicker">C — The Group Head</span>
+          <h3>Three streams into one cup</h3>
+          <p>A brass group bar, three streams of unequal length — the machine's three outputs: the
+          order, the count, the reply — and the cup that catches all of them. The whole argument of
+          the direction in one picture: visible apparatus at the top, something warm handed over at
+          the bottom. The <b>ember crema line</b> is the only chroma in the cup. This is the
+          marketing and packaging lockup; A stays the product mark.</p>
+        </div>
+      </div>
+
+      <!-- WORDMARK -->
+      <div class="logo-cell wordmark-row">
+        <div class="logo-pair">
+          <div class="tile dk" style="flex-direction:column;gap:20px">
+            <svg width="248" height="40" viewBox="0 0 268 44" fill="none" role="img" aria-label="Mudavym wordmark, dark">
+              <text x="0" y="34" font-family="'Bricolage Grotesque',sans-serif" font-size="36" font-weight="600" letter-spacing="-1.1" fill="#F6EFE4">Mudavym</text>
+            </svg>
+            <svg width="216" height="20" viewBox="0 0 236 22" fill="none" role="img" aria-label="Mudavym stamp register, dark">
+              <text x="0" y="16" font-family="'IBM Plex Mono',monospace" font-size="14" font-weight="500" letter-spacing="8" fill="#C39A4E">MUDAVYM</text>
+            </svg>
+          </div>
+          <div class="tile lt" style="flex-direction:column;gap:20px">
+            <svg width="248" height="40" viewBox="0 0 268 44" fill="none" role="img" aria-label="Mudavym wordmark, light">
+              <text x="0" y="34" font-family="'Bricolage Grotesque',sans-serif" font-size="36" font-weight="600" letter-spacing="-1.1" fill="#221A11">Mudavym</text>
+            </svg>
+            <svg width="216" height="20" viewBox="0 0 236 22" fill="none" role="img" aria-label="Mudavym stamp register, light">
+              <text x="0" y="16" font-family="'IBM Plex Mono',monospace" font-size="14" font-weight="500" letter-spacing="8" fill="#7E5A18">MUDAVYM</text>
+            </svg>
+          </div>
+        </div>
+        <div class="logo-meta">
+          <span class="kicker">Wordmark — two registers</span>
+          <p style="margin-top:7px"><b>Product register:</b> Bricolage Grotesque 600 at −0.03em —
+          a grotesque with hand in it, so the name never reads machine-generated.
+          <b>Stamp register:</b> IBM Plex Mono 500 in brass, +0.57em tracked caps — for the
+          machine's own output: printed POs, exported receipts, the top bar. The brass colour is
+          reserved to the stamp register; the product register is always ink.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============ 02 SLOGANS ============ -->
+<section id="slogans">
+  <div class="wrap">
+    <div class="sec-head"><span class="kicker">02</span><h2>Slogans</h2></div>
+    <p class="sec-sub">Two structures only: the <b>balanced antithesis</b> ("More X, less Y") and
+    <b>Name. Category claim.</b> Every line has to be sayable by an owner to another owner without
+    embarrassment, and none of them may use the word "AI".</p>
+    <div class="slogan-list">
+      <div class="slogan"><div class="idx">S-01</div><div class="line">Under pressure, beautifully.</div><div class="why">The espresso premise and the service premise in four words. Nine bars and a full dining room are the same sentence.</div></div>
+      <div class="slogan"><div class="idx">S-02</div><div class="line">You can watch it think.</div><div class="why">The direction's whole differentiator, in the operator's own words. Every competitor's agent is a black box; this one has a window.</div></div>
+      <div class="slogan"><div class="idx">S-03</div><div class="line">Mudavym. The machine that keeps the house warm.</div><div class="why">Name. Category claim. "House" is hospitality's own word for itself; "machine" refuses to apologise for being one.</div></div>
+      <div class="slogan"><div class="idx">S-04</div><div class="line">More mechanism, less mystery.</div><div class="why">Balanced antithesis, aimed squarely at black-box software. Also the internal design bar: if a screen can't show its working, it isn't finished.</div></div>
+      <div class="slogan"><div class="idx">S-05</div><div class="line">Warm to the touch. Exact to the cent.</div><div class="why">The two halves of the brand held in one breath — the tension the direction exists to prove is survivable.</div></div>
+      <div class="slogan"><div class="idx">S-06</div><div class="line">Built like the machine on your bar.</div><div class="why">One image carries material, craft and twenty-years-of-service durability. Every owner already trusts that object.</div></div>
+      <div class="slogan"><div class="idx">S-07</div><div class="line">Every gauge readable. Every regular remembered.</div><div class="why">Precision and müdavim in one line — the instrument reads, the house remembers. The name's meaning made operational.</div></div>
+      <div class="slogan"><div class="idx">S-08</div><div class="line">It works the back. You work the room.</div><div class="why">The division of labour stated plainly. Verb-first, no adjectives, and it tells the owner what they get back: the floor.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 03 VOICE ============ -->
+<section id="voice">
+  <div class="wrap">
+    <div class="sec-head"><span class="kicker">03</span><h2>Voice</h2></div>
+    <p class="sec-sub">Unlike a deadpan instrument brand, this product is <b>allowed to be warm in
+    the verb</b> — but it buys that warmth with a number in every sentence. It never chirps, never
+    apologises, and never states a conclusion without the reading it came from.</p>
+
+    <div class="rules">
+      <div class="rule-card"><div class="k">V-01</div><h4>Show the working, then the answer.</h4>
+        <p>No recommendation ships without the reading beneath it. <em>"3.3 nights of cover — 7 bottles, 2.1 a night."</em> A conclusion with no visible arithmetic is a black box, and this brand's entire claim is that it isn't one.</p></div>
+      <div class="rule-card"><div class="k">V-02</div><h4>Warmth in the verb, precision in the number.</h4>
+        <p>The sentence may be kind; the figure may never be approximate. "About a dozen" is banned; "12 bottles, $930" is the same sentence done properly. Warmth is never bought by being vague.</p></div>
+      <div class="rule-card"><div class="k">V-03</div><h4>The machine says "I". Facts say nothing.</h4>
+        <p>First person belongs only to agent actions — <em>I read, I drafted, I'm holding this</em>. Measurements, totals and states are stated flat, with no speaker. The reader always knows who is talking.</p></div>
+      <div class="rule-card"><div class="k">V-04</div><h4>Physical verbs from a real kitchen.</h4>
+        <p>Draft, pour, hold, seat, count, receive, approve, hand off, set down, close. Never manage, leverage, optimise, streamline, empower. If two hands can't do it, the verb is wrong.</p></div>
+      <div class="rule-card"><div class="k">V-05</div><h4>No exclamation, no apology, no confetti.</h4>
+        <p>A finished job reports its number, not its feelings. <em>"Sent. 12 bottles, $930."</em> Never "Success!", never "Oops — something went wrong". Celebration is the operator's, not the software's.</p></div>
+      <div class="rule-card"><div class="k">V-06</div><h4>Empty is a reading, not an absence.</h4>
+        <p>Every empty state names the measurement that is missing and the condition that fills it. "No data" is a shrug; <em>"6 nights counted, 14 needed"</em> is an instrument reporting honestly.</p></div>
+      <div class="rule-card"><div class="k">V-07</div><h4>Consequences in objects, not warnings.</h4>
+        <p>Destructive copy lists what physically disappears — orders, counts, threads, years. Never "This action cannot be undone" alone; name the inventory being destroyed and let the number do the warning.</p></div>
+      <div class="rule-card"><div class="k">V-08</div><h4>One sentence, one thing.</h4>
+        <p>A second thought is a second line. Fragments are legal and often better: <em>"Held for you."</em> is a complete message. Nothing in this product needs a paragraph.</p></div>
+    </div>
+
+    <div class="rw">
+      <div class="rw-row"><div>Before — generic product copy</div><div>After — Warm Machine</div></div>
+      <div class="rw-row">
+        <div class="before">Draft, approve, and track purchase orders through delivery</div>
+        <div class="after">I write the order. You approve it. We watch it to the door.</div>
+      </div>
+      <div class="rw-row">
+        <div class="before">Alerts that need a decision, oldest first</div>
+        <div class="after">2 waiting on you. Oldest first — the Rioja has been sitting 3 days.</div>
+      </div>
+      <div class="rw-row">
+        <div class="before">No checks yet — close an order from the terminal</div>
+        <div class="after">The counter starts at the first closed check. Ring one up on the terminal and this fills.</div>
+      </div>
+      <div class="rw-row">
+        <div class="before">No comparable data</div>
+        <div class="after">Nothing to compare against yet — 6 nights counted, 14 needed.</div>
+      </div>
+      <div class="rw-row">
+        <div class="before">Permanently delete your Mudavym account.</div>
+        <div class="after">This takes the whole machine apart — 3,412 orders, 2 years of counts, 14 vendor threads. Nothing comes back. Type the restaurant's name to proceed.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 04 PALETTE ============ -->
+<section id="palette">
+  <div class="wrap">
+    <div class="sec-head"><span class="kicker">04</span><h2>Palette</h2></div>
+    <p class="sec-sub">No near-black, no neon. Dark mode is <b>roast</b> — a warm coffee-black with
+    brown in it — and light mode is <b>crema</b>, not white. The accents are drawn straight off the
+    machine: <b>brass</b> is the metal (structure, never status), <b>ember</b> is heat (working,
+    or waiting on a human), <b>patina</b> is oxidised copper (settled, healthy), <b>scald</b> is
+    over-pressure (irreversible money). No indigo, no violet, no startup blue anywhere in the system.</p>
+
+    <div class="pal-cols">
+      <div class="pal">
+        <div class="pal-head">Dark — "Roast" (home)</div>
+        <div class="group">Surfaces</div>
+        <div class="sw"><div class="swatch" style="background:#0E0B08"></div><div class="name">--sunk</div><div class="val">#0E0B08</div></div>
+        <div class="sw"><div class="swatch" style="background:#14100C"></div><div class="name">--panel</div><div class="val">#14100C</div></div>
+        <div class="sw"><div class="swatch" style="background:#1C1712"></div><div class="name">--surface</div><div class="val">#1C1712</div></div>
+        <div class="sw"><div class="swatch" style="background:#241E17"></div><div class="name">--raised</div><div class="val">#241E17</div></div>
+        <div class="group">Structure &amp; light</div>
+        <div class="sw"><div class="swatch" style="background:rgba(245,237,226,.10)"></div><div class="name">--rule</div><div class="val">ink 10%</div></div>
+        <div class="sw"><div class="swatch" style="background:rgba(245,237,226,.20)"></div><div class="name">--rule-strong</div><div class="val">ink 20%</div></div>
+        <div class="sw"><div class="swatch" style="background:rgba(195,154,78,.30)"></div><div class="name">--brass-rule</div><div class="val">brass 30%</div></div>
+        <div class="sw"><div class="swatch" style="background:rgba(255,238,214,.13)"></div><div class="name">--specular</div><div class="val">#FFEED6 13%</div></div>
+        <div class="group">Ink ladder</div>
+        <div class="sw"><div class="swatch" style="background:#F6EFE4"></div><div class="name">--ink</div><div class="val">#F6EFE4</div></div>
+        <div class="sw"><div class="swatch" style="background:#CDBFAD"></div><div class="name">--ink-2</div><div class="val">#CDBFAD</div></div>
+        <div class="sw"><div class="swatch" style="background:#9C8D7C"></div><div class="name">--ink-3</div><div class="val">#9C8D7C</div></div>
+        <div class="sw"><div class="swatch" style="background:#8E7E6B"></div><div class="name">--ink-4</div><div class="val">#8E7E6B</div></div>
+        <div class="group">Machine accents</div>
+        <div class="sw"><div class="swatch" style="background:#C39A4E"></div><div class="name">--brass</div><div class="val">#C39A4E</div></div>
+        <div class="sw"><div class="swatch" style="background:#8A6C36"></div><div class="name">--brass-dim</div><div class="val">#8A6C36</div></div>
+        <div class="sw"><div class="swatch" style="background:#F0743A"></div><div class="name">--ember</div><div class="val">#F0743A</div></div>
+        <div class="sw"><div class="swatch" style="background:#55B394"></div><div class="name">--patina</div><div class="val">#55B394</div></div>
+        <div class="sw"><div class="swatch" style="background:#E4515B"></div><div class="name">--scald</div><div class="val">#E4515B</div></div>
+        <div class="group">Chart ramp (warm greys)</div>
+        <div class="sw" style="grid-template-columns:1fr"><div class="ramp-strip">
+          <div style="background:#E9DFD2"></div><div style="background:#C0B2A1"></div><div style="background:#948676"></div><div style="background:#6B5F51"></div><div style="background:#473D33"></div>
+        </div></div>
+      </div>
+
+      <div class="pal">
+        <div class="pal-head">Light — "Crema"</div>
+        <div class="group">Surfaces</div>
+        <div class="sw"><div class="swatch" style="background:#E5D9C7"></div><div class="name">--sunk</div><div class="val">#E5D9C7</div></div>
+        <div class="sw"><div class="swatch" style="background:#F1E9DC"></div><div class="name">--panel</div><div class="val">#F1E9DC</div></div>
+        <div class="sw"><div class="swatch" style="background:#FCF8F1"></div><div class="name">--surface</div><div class="val">#FCF8F1</div></div>
+        <div class="sw"><div class="swatch" style="background:#FFFDF8"></div><div class="name">--raised</div><div class="val">#FFFDF8</div></div>
+        <div class="group">Structure &amp; light</div>
+        <div class="sw"><div class="swatch" style="background:rgba(34,26,17,.13)"></div><div class="name">--rule</div><div class="val">ink 13%</div></div>
+        <div class="sw"><div class="swatch" style="background:rgba(34,26,17,.26)"></div><div class="name">--rule-strong</div><div class="val">ink 26%</div></div>
+        <div class="sw"><div class="swatch" style="background:rgba(126,90,24,.34)"></div><div class="name">--brass-rule</div><div class="val">brass 34%</div></div>
+        <div class="sw"><div class="swatch" style="background:#FFFFFF"></div><div class="name">--specular</div><div class="val">#FFFFFF 85%</div></div>
+        <div class="group">Ink ladder</div>
+        <div class="sw"><div class="swatch" style="background:#221A11"></div><div class="name">--ink</div><div class="val">#221A11</div></div>
+        <div class="sw"><div class="swatch" style="background:#4E4234"></div><div class="name">--ink-2</div><div class="val">#4E4234</div></div>
+        <div class="sw"><div class="swatch" style="background:#6F6252"></div><div class="name">--ink-3</div><div class="val">#6F6252</div></div>
+        <div class="sw"><div class="swatch" style="background:#7F6F59"></div><div class="name">--ink-4</div><div class="val">#7F6F59</div></div>
+        <div class="group">Machine accents</div>
+        <div class="sw"><div class="swatch" style="background:#7E5A18"></div><div class="name">--brass</div><div class="val">#7E5A18</div></div>
+        <div class="sw"><div class="swatch" style="background:#B79A63"></div><div class="name">--brass-dim</div><div class="val">#B79A63</div></div>
+        <div class="sw"><div class="swatch" style="background:#B54210"></div><div class="name">--ember</div><div class="val">#B54210</div></div>
+        <div class="sw"><div class="swatch" style="background:#186751"></div><div class="name">--patina</div><div class="val">#186751</div></div>
+        <div class="sw"><div class="swatch" style="background:#A81C26"></div><div class="name">--scald</div><div class="val">#A81C26</div></div>
+        <div class="group">Chart ramp (warm greys)</div>
+        <div class="sw" style="grid-template-columns:1fr"><div class="ramp-strip">
+          <div style="background:#2E251A"></div><div style="background:#574A3A"></div><div style="background:#85765F"></div><div style="background:#B2A48C"></div><div style="background:#DCD1BC"></div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="pal-law">
+      <b>The four laws.</b> ① <b>Brass is a material, not a state</b> — it draws bezels, stamp type,
+      section hairlines and the fill on primary buttons, and it never means "something happened".
+      ② <b>Ember means a human is required</b> — it marks what the machine is working on or
+      waiting on, never a status and never a brand moment. Tiles may <i>count</i> what is waiting;
+      only one card per screen may <i>ask</i>.
+      ③ <b>Patina is the resting state</b>, so a healthy screen is warm-grey and green, never blank.
+      ④ <b>Scald is reserved for money that cannot come back</b> — over-pressure, nothing less.
+      Charts draw in the warm-grey ramp; hue enters a chart only where meaning does.
+    </div>
+  </div>
+</section>
+
+<!-- ============ 05 TYPE ============ -->
+<section id="type">
+  <div class="wrap">
+    <div class="sec-head"><span class="kicker">05</span><h2>Type</h2></div>
+    <p class="sec-sub">Three voices, all Google-hosted, each mapped to a speaker — this is the
+    typographic form of the whole thesis: the mechanism speaks in mono, the operator works in
+    grotesque, and the serif appears only at the moment the machine hands something over.</p>
+
+    <div class="voices">
+      <div class="voice-card">
+        <div class="k">The mechanism</div>
+        <div class="ex mono">9.1 bar · $1,860</div>
+        <div class="d"><b>IBM Plex Mono</b> 400/500/600. Every numeral in the product, plus agent
+        reasoning traces, telemetry, keyboard hints and the stamp register. Humanist, drawn by a
+        hand, warm at 11px — the reason it beats a geometric mono here.</div>
+      </div>
+      <div class="voice-card">
+        <div class="k">The operator</div>
+        <div class="ex">Approve the reorder</div>
+        <div class="d"><b>Bricolage Grotesque</b> 400–700, variable optical size. All UI, labels,
+        buttons and headings. A grotesque with visible craft in the curves, so the interface never
+        reads machine-generated.</div>
+      </div>
+      <div class="voice-card">
+        <div class="k">The hand-off</div>
+        <div class="ex serif" style="font-weight:400">Good evening, Aldemir.</div>
+        <div class="d"><b>Fraunces</b> 400–600. Used <b>once per screen at most</b>: the greeting,
+        the decision the machine hands you, and quoted humans. This is the warm cup at the end of
+        the pressure.</div>
+      </div>
+    </div>
+
+    <div class="type-table">
+      <div class="type-row"><div class="spec"><b>display</b>Bricolage 600 · 34/41 · −0.022em</div><div class="sample" style="font-size:34px;line-height:41px;font-weight:600;letter-spacing:-.022em">The mechanism is the hospitality</div></div>
+      <div class="type-row"><div class="spec"><b>h1</b>Bricolage 600 · 26/32 · −0.018em</div><div class="sample" style="font-size:26px;line-height:32px;font-weight:600;letter-spacing:-.018em">Tonight's service, in the open</div></div>
+      <div class="type-row"><div class="spec"><b>h2</b>Bricolage 600 · 20/27 · −0.012em</div><div class="sample" style="font-size:20px;line-height:27px;font-weight:600;letter-spacing:-.012em">Orders awaiting approval</div></div>
+      <div class="type-row"><div class="spec"><b>h3</b>Bricolage 600 · 16/23</div><div class="sample" style="font-size:16px;line-height:23px;font-weight:600">Vinos del Norte · thread</div></div>
+      <div class="type-row"><div class="spec"><b>hand-off</b>Fraunces 400 · 26/34 · opsz 40</div><div class="sample serif" style="font-size:26px;line-height:34px;font-weight:400">Good evening, Aldemir.</div></div>
+      <div class="type-row"><div class="spec"><b>hand-off italic</b>Fraunces 400 italic · 17/26</div><div class="sample serif" style="font-size:17px;line-height:26px;font-style:italic">"Confirmamos 24 botellas — salen mañana."</div></div>
+      <div class="type-row"><div class="spec"><b>body</b>Bricolage 400 · 14/22</div><div class="sample" style="font-size:14px;line-height:22px">I read 14 nights of pours and the vendor's last three invoices.</div></div>
+      <div class="type-row"><div class="spec"><b>ui</b>Bricolage 500 · 13/19</div><div class="sample" style="font-size:13px;line-height:19px;font-weight:500">Approve · Hold · Open thread</div></div>
+      <div class="type-row"><div class="spec"><b>data-xl</b>Plex Mono 500 · 34/40 · tnum</div><div class="sample num" style="font-size:34px;line-height:40px;font-weight:500;letter-spacing:-.012em">$4,280.00</div></div>
+      <div class="type-row"><div class="spec"><b>data-l</b>Plex Mono 500 · 28/32 · tnum</div><div class="sample num" style="font-size:28px;line-height:32px;font-weight:500">1,860.00</div></div>
+      <div class="type-row"><div class="spec"><b>data</b>Plex Mono 400 · 13/18 · tnum</div><div class="sample num" style="font-size:13px;line-height:18px">PO-1042 · 24 × $77.50 · 2026-08-28</div></div>
+      <div class="type-row"><div class="spec"><b>trace</b>Plex Mono 400 · 11.5/19</div><div class="sample mono" style="font-size:11.5px;line-height:19px">stock 7 ÷ 2.1 per night = 3.3 nights of cover</div></div>
+      <div class="type-row"><div class="spec"><b>kicker</b>Plex Mono 600 · 11/14 · +0.16em caps</div><div class="sample kicker">Needs a decision</div></div>
+      <div class="type-row"><div class="spec"><b>micro</b>Plex Mono 500 · 10/14 · +0.10em caps</div><div class="sample mono" style="font-size:10px;line-height:14px;letter-spacing:.10em;text-transform:uppercase;color:var(--ink-4)">Held · not sent</div></div>
+      <div class="type-row"><div class="spec"><b>stamp</b>Plex Mono 500 · 14 · +0.57em caps · brass</div><div class="sample mono" style="font-size:14px;font-weight:500;letter-spacing:.57em;color:var(--brass)">MUDAVYM</div></div>
+    </div>
+    <div class="pal-law" style="margin-top:20px">
+      <b>Type laws.</b> Every numeral is Plex Mono with <code class="mono">tabular-nums</code>, including
+      inside prose — figures must align down a column even mid-sentence. Display never exceeds 34px;
+      authority comes from density, not scale. <b>Fraunces appears at most once per screen</b> — the
+      moment it becomes decoration, the direction has failed.
+    </div>
+  </div>
+</section>
+
+<!-- ============ 06 MOTION ============ -->
+<section id="motion">
+  <div class="wrap">
+    <div class="sec-head"><span class="kicker">06</span><h2>Motion</h2></div>
+    <p class="sec-sub">Brass has mass. Everything in this system moves like a machined part being
+    seated: it accelerates, it settles, and the heavier the object the longer it takes.
+    Three of the eight tokens are <b>real springs</b> (stiffness / damping / mass), sampled into
+    CSS <code class="mono">linear()</code> here and shipped as true spring configs to
+    <code class="mono">motion</code> and Reanimated. Nothing bounces twice.</p>
+
+    <div class="mo-tokens">
+      <div class="mo-row"><div>Token</div><div>Duration</div><div>Curve / physics</div><div>What it is for</div></div>
+      <div class="mo-row"><div class="tk">press</div><div class="du">90ms</div><div class="cv">cubic-bezier(.32, 0, .12, 1)</div><div class="use">Key travel. Press-down on any control — 1px of Y, nothing else. The mechanical acknowledgement before anything else happens.</div></div>
+      <div class="mo-row"><div class="tk">seat</div><div class="du">235ms</div><div class="cv">spring · k 420 · c 34 · m 1 · ζ 0.83 · 0.9% overshoot</div><div class="use">A part seating into place: toggle thumbs, chips, hover lifts, tab indicators. The house curve.</div></div>
+      <div class="mo-row"><div class="tk">swing</div><div class="du">356ms</div><div class="cv">spring · k 200 · c 27 · m 1.2 · ζ 0.87 · 0.4% overshoot</div><div class="use">Heavier hinged things: row expands, drawers, sheets, the vendor thread. Same family as seat, more mass.</div></div>
+      <div class="mo-row"><div class="tk">needle</div><div class="du">747ms</div><div class="cv">spring · k 140 · c 15 · m 1 · ζ 0.63 · 7.6% overshoot</div><div class="use">Anything that <i>reads a value</i>: gauge needles, meters, progress arcs. The only token permitted visible overshoot — a real needle overshoots.</div></div>
+      <div class="mo-row"><div class="tk">pour</div><div class="du">520ms</div><div class="cv">cubic-bezier(.16, .84, .24, 1)</div><div class="use">Number tickers and fills. Fast start, long decelerating tail — a pour finishing, not a slot machine.</div></div>
+      <div class="mo-row"><div class="tk">warm</div><div class="du">700ms</div><div class="cv">cubic-bezier(.4, 0, .2, 1)</div><div class="use">Light and heat only: glow rising behind an active panel, brass specular, the light/dark swap. Colour temperature never snaps.</div></div>
+      <div class="mo-row"><div class="tk">trace</div><div class="du">260ms · 90ms stagger</div><div class="cv">cubic-bezier(.2, 0, 0, 1)</div><div class="use">Agent reasoning lines arriving one at a time. The stagger is the point: you are watching a sequence, not a paint.</div></div>
+      <div class="mo-row"><div class="tk">extraction</div><div class="du">2600ms total</div><div class="cv">composite · needle + trace×5 + pour + swing</div><div class="use">The signature. The full "machine works, visibly" choreography — used once per agent run, never decoratively.</div></div>
+    </div>
+
+    <div class="demos">
+      <div class="demo">
+        <div class="demo-head"><span>Settings toggle</span><span>seat · 235ms</span></div>
+        <div class="demo-body">
+          <div class="tgl-row">
+            <div>
+              <div class="tgl-label">Auto-draft vendor replies</div>
+              <div class="tgl-state" id="tglState">Off · I draft nothing alone</div>
+            </div>
+            <button class="tgl" id="tgl" type="button" role="switch" aria-checked="false" aria-label="Auto-draft vendor replies">
+              <span class="thumb"></span>
+            </button>
+          </div>
+        </div>
+        <div class="note">Thumb travels on <b>seat</b> and squashes 12% on <b>press</b> — a real
+        switch deforms before it moves. ON is brass on patina: the metal has engaged.</div>
+      </div>
+
+      <div class="demo">
+        <div class="demo-head"><span>Row expand</span><span>swing · 356ms</span></div>
+        <div class="demo-body">
+          <div class="xrow" id="xrow">
+            <div class="xrow-head" id="xrowHead" role="button" tabindex="0" aria-expanded="false">
+              <span class="xrow-title">PO-1042 · Vinos del Norte</span>
+              <span class="xrow-caret">▸</span>
+            </div>
+            <div class="xrow-body"><div><div class="xrow-detail">
+              24 × Rioja Reserva 2019 @ <b>$77.50</b><br>
+              subtotal <b>$1,860.00</b> · freight <b>$0.00</b> (over $1,500)<br>
+              ordered 2026-08-26 · <b>in transit</b>, arriving 2026-08-29
+            </div></div></div>
+          </div>
+        </div>
+        <div class="note">Grid-rows unmask on <b>swing</b> — heavier than a toggle, so it takes
+        121ms longer. The caret rotates on the same clock; nothing fades.</div>
+      </div>
+
+      <div class="demo">
+        <div class="demo-head"><span>Number ticker</span><span>pour · 520ms</span></div>
+        <div class="demo-body">
+          <div class="tick-lbl">Tonight · revenue</div>
+          <div class="tick-val num" id="tickVal">$4,280.00</div>
+          <div class="tick-delta num" id="tickDelta">+$186.50 · check closed</div>
+          <button class="btn-mech" id="tickBtn" type="button">Close a check</button>
+        </div>
+        <div class="note">Tabular figures, zero layout shift, lands on the exact cent. The
+        delta arrives on <b>pour</b> and leaves on its own — money never bounces.</div>
+      </div>
+    </div>
+
+    <!-- SIGNATURE MOMENT -->
+    <div class="kicker" style="margin:34px 0 12px">Signature — the extraction</div>
+    <div class="extraction" id="ext">
+      <div class="ext-head">
+        <span class="t">Procurement agent · live</span>
+        <span class="s" id="extStatus">Idle · 0.0 bar</span>
+      </div>
+      <div class="ext-grid">
+        <div class="ext-gauge">
+          <svg width="176" height="176" viewBox="0 0 120 120" fill="none" role="img" aria-label="Pressure gauge showing agent workload">
+            <circle cx="60" cy="60" r="55" style="stroke:var(--brass)" stroke-width="2.5" opacity=".7"/>
+            <circle cx="60" cy="60" r="50" style="fill:var(--sunk)"/>
+            <line class="tk maj" x1="20.2" y1="83.0" x2="27.1" y2="79.0"/>
+            <line class="tk" x1="15.2" y1="70.2" x2="19.1" y2="69.3"/>
+            <line class="tk maj" x1="14.1" y1="56.6" x2="22.1" y2="57.2"/>
+            <line class="tk" x1="17.2" y1="43.2" x2="20.9" y2="44.7"/>
+            <line class="tk maj" x1="24.0" y1="31.3" x2="30.3" y2="36.3"/>
+            <line class="tk" x1="34.1" y1="22.0" x2="36.3" y2="25.3"/>
+            <line class="tk maj" x1="46.4" y1="16.0" x2="48.8" y2="23.7"/>
+            <line class="tk" x1="60.0" y1="14.0" x2="60.0" y2="18.0"/>
+            <line class="tk maj" x1="73.6" y1="16.0" x2="71.2" y2="23.7"/>
+            <line class="tk" x1="85.9" y1="22.0" x2="83.7" y2="25.3"/>
+            <line class="tk maj" x1="96.0" y1="31.3" x2="89.7" y2="36.3"/>
+            <line class="tk" x1="102.8" y1="43.2" x2="99.1" y2="44.7"/>
+            <line class="tk maj" x1="105.9" y1="56.6" x2="97.9" y2="57.2"/>
+            <line class="tk" x1="104.8" y1="70.2" x2="100.9" y2="69.3"/>
+            <line class="tk maj" x1="99.8" y1="83.0" x2="92.9" y2="79.0"/>
+            <path d="M71.2 23.7 A38 38 0 0 1 89.7 36.3" style="stroke:var(--patina)" stroke-width="4.5" stroke-linecap="round"/>
+            <path d="M97.05 51.5 A38 38 0 0 1 92.9 79" style="stroke:var(--scald)" stroke-width="4.5" stroke-linecap="round"/>
+            <text x="60" y="82" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="7.5" letter-spacing="1.4" style="fill:var(--ink-4)">BAR</text>
+            <g id="needle">
+              <line x1="60" y1="60" x2="60" y2="22" style="stroke:var(--ember)" stroke-width="2.8" stroke-linecap="round"/>
+              <circle cx="60" cy="24" r="2.4" style="fill:var(--ember)"/>
+            </g>
+            <circle cx="60" cy="60" r="6" style="fill:var(--brass)"/>
+            <circle cx="60" cy="60" r="2.2" style="fill:var(--sunk)"/>
+          </svg>
+          <div class="gauge-read num" id="gaugeRead">0.0</div>
+          <div class="gauge-cap">Extraction pressure<br>green band = working</div>
+          <div class="pour" aria-hidden="true">
+            <div class="pour-stream"></div>
+            <div class="pour-cup"><i></i></div>
+          </div>
+        </div>
+
+        <div class="ext-right">
+          <div class="trace-title">What I am doing, as I do it</div>
+          <ul class="trace" id="trace">
+            <li>Read <b>14 nights</b> of pours from the POS — Rioja Reserva at <b>2.1 bottles/night</b>.</li>
+            <li>Counted stock: <b>7 bottles</b> on hand → <b>3.3 nights</b> of cover left.</li>
+            <li>Pulled Vinos del Norte: lead time <b>2 days</b>, last price <b>$77.50</b>.</li>
+            <li>Checked the freight line — a case of <b>12</b> clears <b>$1,500</b>, freight <b>$0</b>.</li>
+            <li>Compared 3 vendors: <b>Vinos del Norte</b> is <b>$4.20/bottle</b> cheaper this week.</li>
+          </ul>
+          <div class="ext-result"><div>
+            <div class="result-card">
+              <div class="k">Drafted · held for you</div>
+              <div class="h">Reorder 12 bottles of Rioja Reserva from Vinos del Norte?</div>
+              <div class="m">12 × $77.50 = $930.00 · freight $0.00 · arrives Sat 30 Aug</div>
+              <div class="result-acts">
+                <button class="btn fill" type="button">Approve &amp; send</button>
+                <button class="btn ghost" type="button">Read the draft</button>
+                <button class="btn ghost" type="button">Hold 24h</button>
+              </div>
+            </div>
+          </div></div>
+        </div>
+      </div>
+      <div class="ext-foot">
+        <span class="hint">I never send without you · 5 readings shown, 0 hidden</span>
+        <button class="btn-mech" id="extBtn" type="button" style="margin-top:0">Watch it work</button>
+      </div>
+    </div>
+    <div class="frame-cap" style="max-width:760px"><b>Why this is the signature:</b> every other
+    AI product hides this step behind a spinner. Here the reasoning is the interface — needle
+    sweeping into the green band, five readings landing one at a time on <b>trace</b>, the shot
+    pouring, and only then a drafted decision handed over in serif. The machine works in public
+    and stops at the human.</div>
+  </div>
+</section>
+
+<!-- ============ 07 SCREENS ============ -->
+<section id="screens">
+  <div class="wrap">
+    <div class="sec-head"><span class="kicker">07</span><h2>Sample screens</h2></div>
+    <p class="sec-sub">The two shared mocks in this direction. Flip the theme in the top bar —
+    both are designed roast-first and hold in crema. Note what carries the warmth: the greeting
+    serif, the brass hairlines, the lamp behind the working surface, and one quoted human.</p>
+
+    <div class="screens">
+
+      <!-- DASHBOARD -->
+      <div>
+        <div class="frame">
+          <div class="frame-bar">
+            <div class="l">
+              <svg width="20" height="17" viewBox="0 0 30 26" fill="none" aria-hidden="true">
+                <path d="M3 24V6a3 3 0 0 1 3-3h3a3 3 0 0 1 3 3v7h6V6a3 3 0 0 1 3-3h3a3 3 0 0 1 3 3v18"
+                      stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="15" cy="13" r="2.6" style="fill:var(--brass)"/>
+              </svg>
+              <span class="fb-brand">MUDAVYM</span>
+              <span class="kbd">⌘K</span>
+            </div>
+            <div class="r"><span class="fb-meta">FRI 28 AUG · SERVICE OPEN 4h 12m</span></div>
+          </div>
+          <div class="frame-body">
+            <div class="greet">
+              <div>
+                <h3 class="serif">Good evening, Aldemir.</h3>
+                <div class="sub">2 things want you · everything else is running</div>
+              </div>
+              <div class="pressure-pill"><i></i> Agent working · 9.1 bar</div>
+            </div>
+
+            <div class="kpis">
+              <div class="kpi good">
+                <div class="lbl">Revenue</div>
+                <div class="val num">$4,280</div>
+                <div class="spark"><i style="height:6px"></i><i style="height:9px"></i><i style="height:7px"></i><i style="height:12px"></i><i style="height:10px"></i><i style="height:14px"></i><i style="height:16px;background:var(--brass)"></i></div>
+                <div class="sub">+8.4% ON LAST FRIDAY</div>
+              </div>
+              <div class="kpi hot">
+                <div class="lbl">Low stock</div>
+                <div class="val num">7</div>
+                <div class="sub">RIOJA 3.3 NIGHTS OF COVER</div>
+              </div>
+              <div class="kpi good">
+                <div class="lbl">Pending orders</div>
+                <div class="val num">3</div>
+                <div class="sub">$4,120 IN TRANSIT · 0 LATE</div>
+              </div>
+              <div class="kpi hot">
+                <div class="lbl">Alerts</div>
+                <div class="val num">2</div>
+                <div class="sub">OLDEST SITTING 3 DAYS</div>
+              </div>
+            </div>
+
+            <div class="decision">
+              <div class="bar-l"></div>
+              <div class="body">
+                <div class="k">One tap · drafted, not sent</div>
+                <h4 class="serif">Approve Rioja reorder — 12 bottles from Vinos del Norte.</h4>
+                <div class="why">I read 14 nights of pours (<b>2.1/night</b>), counted <b>7</b> on
+                hand, and a case of <b>12</b> clears the <b>$1,500</b> freight line.</div>
+                <div class="meta">12 × $77.50 = $930.00 · freight $0.00 · arrives Sat 30 Aug · draft written 6m ago</div>
+                <div class="acts">
+                  <button class="btn fill" type="button">Approve &amp; send</button>
+                  <button class="btn ghost" type="button">Read the draft</button>
+                  <button class="btn ghost" type="button">Hold 24h</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="frame-cap"><b>What it proves:</b> warmth arrives in exactly three places — the
+        serif greeting, the serif decision line, and the lamp over the panel. Everything measurable
+        stays in tabular mono. Ember touches only the two tiles that want a human and the one card
+        that resolves them (law ②); the healthy tiles rest in patina-free warm ink so the screen
+        is calm without being cold.</div>
+      </div>
+
+      <!-- ORDERS -->
+      <div>
+        <div class="frame">
+          <div class="frame-bar">
+            <div class="l">
+              <span class="fb-brand">ORDERS</span>
+              <span class="kbd">⌘K</span>
+              <span class="kbd">hold ⏎ to approve</span>
+            </div>
+            <div class="r"><span class="fb-meta">14 OPEN · 3 IN TRANSIT · 1 DRAFT</span></div>
+          </div>
+          <div class="ord" style="border:none;border-radius:0;box-shadow:none">
+            <div class="ord-head">
+              <div>PO</div><div>Vendor</div><div>Qty</div><div>Value</div><div>Status</div><div style="text-align:right">Thread</div>
+            </div>
+            <div class="ord-row live">
+              <div class="po">PO-1042</div>
+              <div>Vinos del Norte</div>
+              <div>24 bottles</div>
+              <div>$1,860.00</div>
+              <div><span class="chip pa">In transit</span></div>
+              <div class="thread">2 messages ›</div>
+              <div class="ord-sub">
+                <span class="chip em">AI draft ready — one tap to approve</span>
+                <span class="ord-quote">“Confirmamos 24 botellas — salen mañana por la mañana.”</span>
+                <button class="btn fill" type="button">Approve &amp; send</button>
+              </div>
+            </div>
+            <div class="ord-row">
+              <div class="po">PO-1041</div><div>Barrio Produce</div><div>18 crates</div><div>$742.10</div>
+              <div><span class="chip pa">Received</span></div><div class="thread">4 messages ›</div>
+            </div>
+            <div class="ord-row">
+              <div class="po">PO-1039</div><div>Kasap Mehmet</div><div>32 kg</div><div>$1,518.00</div>
+              <div><span class="chip">Awaiting reply</span></div><div class="thread">1 message ›</div>
+            </div>
+            <div class="ord-row">
+              <div class="po">PO-1037</div><div>Deniz Su Ürünleri</div><div>9 kg</div><div>$412.75</div>
+              <div><span class="chip pa">Received</span></div><div class="thread">3 messages ›</div>
+            </div>
+          </div>
+          <div class="drawer-hint">
+            <div class="edge"></div>
+            <div class="txt"><b>Vendor thread — Vinos del Norte</b> · drawer swings in from the
+            right on <b>swing (356ms)</b>, brass edge first, then the messages stagger on
+            <b>trace</b>. Inside: my draft in full, the vendor's two replies in serif, and the
+            price history for this SKU. <b>Nothing sends from the drawer without a hold-⏎.</b></div>
+          </div>
+          <div class="ord-foot">
+            <span>⌘K COMMAND</span><span>HOLD ⏎ TO APPROVE</span><span>J / K TO MOVE</span><span>14 OPEN · $12,408.55 COMMITTED</span>
+          </div>
+        </div>
+        <div class="frame-cap"><b>What it proves:</b> a dense working table can still feel like
+        warm metal — brass column headers, a specular top edge, chamfered 2px rows. Exactly one
+        ember chip on the whole strip; status chips are patina outlines, because a status is not a
+        decision. The <b>only</b> serif sentence is the vendor's own words (the quoted human), and
+        the drawer hint tells you where the thread lives without spending a screenshot on it.</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>Mudavym · Direction 062 · Warm Machine</span>
+    <span>Brass · Ember · Patina · Roast</span>
+    <span>Mechanism on show</span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var RM = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---- theme ---- */
+  var root = document.documentElement, tb = document.getElementById("themeBtn");
+  tb.addEventListener("click", function(){
+    var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    tb.textContent = "Theme: " + (next === "dark" ? "roast" : "crema");
+  });
+
+  /* ---- toggle (seat) ---- */
+  var tgl = document.getElementById("tgl"), tglState = document.getElementById("tglState");
+  tgl.addEventListener("click", function(){
+    var on = tgl.classList.toggle("on");
+    tgl.setAttribute("aria-checked", on ? "true" : "false");
+    tglState.textContent = on ? "On · I draft, you approve" : "Off · I draft nothing alone";
+  });
+
+  /* ---- row expand (swing) ---- */
+  var xrow = document.getElementById("xrow"), xhead = document.getElementById("xrowHead");
+  function toggleRow(){
+    var open = xrow.classList.toggle("open");
+    xhead.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  xhead.addEventListener("click", toggleRow);
+  xhead.addEventListener("keydown", function(e){
+    if(e.key === "Enter" || e.key === " "){ e.preventDefault(); toggleRow(); }
+  });
+
+  /* ---- number ticker (pour) ---- */
+  var tickVal = document.getElementById("tickVal"),
+      tickDelta = document.getElementById("tickDelta"),
+      tickBtn = document.getElementById("tickBtn"),
+      current = 4280.00, raf = null, deltaTimer = null;
+  function money(n){
+    return "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+  /* pour: cubic-bezier(.16,.84,.24,1) — Newton-solved for accuracy */
+  function bez(p1x,p1y,p2x,p2y){
+    function A(a,b){return 1-3*b+3*a} function B(a,b){return 3*b-6*a} function C(a){return 3*a}
+    function calc(t,a,b){return ((A(a,b)*t + B(a,b))*t + C(a))*t}
+    function slope(t,a,b){return 3*A(a,b)*t*t + 2*B(a,b)*t + C(a)}
+    return function(x){
+      var t = x;
+      for(var i=0;i<6;i++){
+        var s = slope(t,p1x,p2x); if(s === 0) break;
+        t -= (calc(t,p1x,p2x) - x)/s;
+      }
+      return calc(t,p1y,p2y);
+    };
+  }
+  var ePour = bez(.16,.84,.24,1);
+  function tickTo(target){
+    if(raf) cancelAnimationFrame(raf);
+    if(RM){ current = target; tickVal.textContent = money(current); return; }
+    var from = current, dur = 520, t0 = performance.now();
+    (function step(now){
+      var p = Math.min((now - t0)/dur, 1);
+      current = from + (target - from) * ePour(p);
+      tickVal.textContent = money(current);
+      if(p < 1) raf = requestAnimationFrame(step);
+      else { current = target; tickVal.textContent = money(current); }
+    })(t0);
+  }
+  tickBtn.addEventListener("click", function(){
+    var amounts = [186.50, 94.00, 312.25, 58.75, 141.00];
+    var add = amounts[Math.floor(Math.random()*amounts.length)];
+    tickTo(current + add);
+    tickDelta.textContent = "+" + money(add) + " · check closed";
+    tickDelta.classList.add("show");
+    clearTimeout(deltaTimer);
+    deltaTimer = setTimeout(function(){ tickDelta.classList.remove("show"); }, 2600);
+  });
+
+  /* ---- SIGNATURE: the extraction ---- */
+  var ext = document.getElementById("ext"),
+      extBtn = document.getElementById("extBtn"),
+      extStatus = document.getElementById("extStatus"),
+      needle = document.getElementById("needle"),
+      gaugeRead = document.getElementById("gaugeRead"),
+      traceItems = Array.prototype.slice.call(document.querySelectorAll("#trace li")),
+      timers = [], gaugeRaf = null, running = false;
+
+  var BAR_MAX = 14, ANG_MIN = -120, ANG_SPAN = 240, TARGET_BAR = 9.1;
+  function angleFor(bar){ return ANG_MIN + (bar / BAR_MAX) * ANG_SPAN; }
+  function setNeedle(bar, animate){
+    needle.style.transition = animate ? "transform var(--t-needle) var(--e-needle)" : "none";
+    needle.style.transform = "rotate(" + angleFor(bar).toFixed(2) + "deg)";
+  }
+  function readout(to, dur){
+    if(gaugeRaf) cancelAnimationFrame(gaugeRaf);
+    if(RM){ gaugeRead.textContent = to.toFixed(1); return; }
+    var from = parseFloat(gaugeRead.textContent) || 0, t0 = performance.now();
+    (function step(now){
+      var p = Math.min((now - t0)/dur, 1);
+      gaugeRead.textContent = (from + (to - from) * ePour(p)).toFixed(1);
+      if(p < 1) gaugeRaf = requestAnimationFrame(step);
+      else gaugeRead.textContent = to.toFixed(1);
+    })(t0);
+  }
+  function clearAll(){ timers.forEach(clearTimeout); timers = []; }
+  function reset(){
+    clearAll(); running = false;
+    ext.classList.remove("hot","pouring","done");
+    traceItems.forEach(function(li){ li.classList.remove("in","done"); });
+    setNeedle(0, false);
+    gaugeRead.textContent = "0.0";
+    extStatus.textContent = "Idle · 0.0 bar";
+    extBtn.textContent = "Watch it work";
+  }
+  function endState(){
+    clearAll();
+    ext.classList.add("hot","pouring","done");
+    traceItems.forEach(function(li){ li.classList.add("in","done"); });
+    setNeedle(TARGET_BAR, false);
+    gaugeRead.textContent = TARGET_BAR.toFixed(1);
+    extStatus.textContent = "Held for approval · 9.1 bar";
+    extBtn.textContent = "Run again";
+    running = false;
+  }
+  function run(){
+    if(running) return;
+    reset();
+    if(RM){ endState(); return; }
+    running = true;
+    extBtn.textContent = "Working…";
+    extStatus.textContent = "Building pressure…";
+    ext.classList.add("hot");
+    /* needle sweeps into the green band */
+    timers.push(setTimeout(function(){ setNeedle(TARGET_BAR, true); readout(TARGET_BAR, 747); }, 90));
+    /* five readings land one at a time on `trace` (260ms, 90ms stagger) */
+    traceItems.forEach(function(li, i){
+      timers.push(setTimeout(function(){ li.classList.add("in"); }, 420 + i*90));
+      timers.push(setTimeout(function(){
+        li.classList.add("done");
+        extStatus.textContent = "Reading " + (i+1) + " of 5 · 9.1 bar";
+      }, 700 + i*250));
+    });
+    /* the shot pours */
+    timers.push(setTimeout(function(){ ext.classList.add("pouring"); }, 900));
+    /* the draft is handed over */
+    timers.push(setTimeout(function(){
+      ext.classList.add("done");
+      extStatus.textContent = "Held for approval · 9.1 bar";
+      extBtn.textContent = "Run again";
+      running = false;
+    }, 2600));
+  }
+  extBtn.addEventListener("click", function(){
+    if(running) return;
+    if(ext.classList.contains("done")) reset();
+    run();
+  });
+  setNeedle(0, false);
+
+  /* run it once, unprompted, the first time it comes into view — the board should
+     show the machine working without asking anyone to press anything */
+  if("IntersectionObserver" in window){
+    var fired = false;
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(en.isIntersecting && !fired){
+          fired = true; io.disconnect();
+          setTimeout(function(){ if(!running && !ext.classList.contains("done")) run(); }, 260);
+        }
+      });
+    }, { threshold: 0.4 });
+    io.observe(ext);
+  }
+})();
+</script>
+</body>
+</html>
