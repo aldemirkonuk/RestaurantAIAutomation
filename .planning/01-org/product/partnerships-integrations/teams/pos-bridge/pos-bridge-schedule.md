@@ -22,7 +22,7 @@ links:
 |---|---|---|
 | **Per PR** | Two-provider check on any `pos-types.ts` diff; `generic_webhook` contract must still validate | L2 |
 | **Per PR** | Ingress guard on the 10 `pos-hub` routes — a new route without a guard or a verification call fails CI | L4 |
-| **Weekly** | Real-throughput read: `pos_checks` rows **excluding SimPOS-sourced `generic_webhook`** | L5 |
+| **Weekly** | Real-throughput read: `pos_checks` rows **excluding SimPOS-sourced `generic_webhook` AND the 66 `P3PROOF-*` proof rows** (`POS-BRIDGE-AUDIT.md:622-628`; corrected 2026-08-27, ADR 0035 — as previously written the metric read 66 and meant 0) | L5 |
 | **Weekly** | Catalogue-match gate review — approval rate against dwell time, looking for rubber-stamping | L3, `nf_a.*` |
 | **Monthly** | Registry audit — do the 27 statuses match what builds and connects? Demote anything unsupported | L1 |
 | **Monthly** | Adapter-gate decision — is `pi.merchant_backed_providers` still 0? If yes, the gate stays shut | L1 |
