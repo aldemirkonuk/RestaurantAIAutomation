@@ -957,3 +957,84 @@ def test_log_returns_none_when_supabase_is_unconfigured():
         )
     finally:
         p.stop()
+
+
+# ---------------------------------------------------------------------------
+# ADR 0039 A4 — skill_id passthrough.
+#
+# `nf_a.skill_id` is the single blocking dependency for skill-firing telemetry:
+# run_card.py's staleness-reaper reports skills.firing_rate_30d as
+# "unmeasurable" because the column did not exist. It does now
+# (20260828103059_nf_skill_id.sql), nullable forever, and the emitters pass it
+# through optionally.
+#
+# The absence case is the load-bearing one. The key must be OMITTED, not written
+# as None: this insert goes through PostgREST, which rejects the whole row for an
+# unknown column, so an unconditional `skill_id: None` would drop every NF row in
+# any environment where the migration has not landed yet.
+# ---------------------------------------------------------------------------
+
+
+def test_skill_id_lands_in_the_nf_row_when_passed():
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(
+            provider="anthropic",
+            model="claude-haiku-4-5",
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.0001,
+            agent="provider_communication_agent",
+            task_type="email_draft",
+            skill_id="supabase-postgres-best-practices",
+        )
+    finally:
+        p.stop()
+
+    nf = rows["neural_footprint_event"][0]
+    assert nf["skill_id"] == "supabase-postgres-best-practices"
+    # NF only. api_spend has no such column, and adding one there would be a
+    # second, disagreeing home for the same fact.
+    assert "skill_id" not in rows["api_spend"][0]
+
+
+def test_skill_id_key_is_absent_when_not_passed():
+    """Not "None" — ABSENT. A null for an unmigrated column drops the row."""
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(
+            provider="google",
+            model="gemini-2.5-flash",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.001,
+        )
+    finally:
+        p.stop()
+
+    nf = rows["neural_footprint_event"][0]
+    assert "skill_id" not in nf
+    # Not smuggled into context either — attribution is a column here.
+    assert "skill_id" not in nf["context"]
+
+
+def test_build_agent_event_omits_skill_id_for_empty_values():
+    """Empty string and None are both 'not a skill task' — neither writes it."""
+    from services.neural_footprint import build_agent_event
+
+    for empty in (None, ""):
+        row = build_agent_event(
+            subject_id="agent", stimulus="s", choice="c", skill_id=empty
+        )
+        assert "skill_id" not in row
+
+    row = build_agent_event(
+        subject_id="agent", stimulus="s", choice="c", skill_id="registry-clerk"
+    )
+    assert row["skill_id"] == "registry-clerk"

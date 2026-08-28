@@ -1,0 +1,93 @@
+name: Agent cards weekly
+
+# ADR 0039 Track A4 — the mechanical card runner gets a cadence.
+#
+# The schedule question this answers
+# ----------------------------------
+# `scripts/agents/run_card.py` runs eight mechanical agent cards (ADR 0034) and
+# prints a census: how much of the fleet can receive a message, how many model
+# pins live outside the wrapper, how many skills are §3.3-compliant, whether the
+# guards pass, how the vault is growing. CI already invokes it — but only as a
+# smoke test on push and pull_request (ci.yml, job `agent-card-contract`), which
+# answers exactly one question: "does the runner crash?"
+#
+# Nobody runs it on a cadence, and nobody reads the report. That matters because
+# almost every metric it produces is only meaningful as a SERIES. "12 unregistered
+# modules" is a number; "12, up from 9 three weeks ago" is a finding. A census
+# sampled only when someone happens to open a pull request is sampled on the
+# rhythm of unrelated work — which is to say, not sampled at all. The
+# retire-to-write ratio, the OD-03 sunk-cost line count, and the skill
+# addition/deletion ratio are all trend claims made against a baseline nothing
+# currently records on a schedule.
+#
+# So: Monday morning, one hour after loop-watcher.yml, on the same principle and
+# in the same tone. It REPORTS. It never edits the corpus — `--write-memory` is
+# deliberately absent, because the one sanctioned write path lands facts as a
+# reviewable diff in a pull request (ADR 0034 §4), and a cron job committing to
+# the vault is precisely the thing that path exists to prevent.
+#
+# The single exception to "never blocks" is a crash. A mechanical agent that
+# raises is a defect in the runner, not a finding about the repo, and it must not
+# pass quietly on a schedule nobody is watching.
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"      # Monday 08:00 UTC — an hour after the loop watcher
+  workflow_dispatch:
+
+jobs:
+  run-cards:
+    name: Mechanical card census
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure PyYAML
+        # build_agent_card_index.py exits 2 without it — "cannot check" is a
+        # failure here, never a skip (ADR 0025).
+        run: python3 -m pip install --quiet pyyaml
+
+      - name: Card contract and index are current
+        # A precondition, not a finding: the runner reads 00-index/cards.json and
+        # refuses to run an agent with no card. A stale index means this week's
+        # census would be taken against last week's declared fleet. Exit 1 =
+        # drift or stale index; exit 2 = the guard could not check at all. Both
+        # block, and both mean main is already broken — this job did not break it.
+        run: python3 scripts/build_agent_card_index.py --check
+
+      - name: Run the mechanical cards
+        # Report-only. NO --write-memory in CI, by design (see the header).
+        # pipefail is set explicitly because the default runner shell is `bash -e`
+        # WITHOUT it, so a crashed runner piped into tee would exit 0 and this
+        # workflow would report a green week for a job that produced nothing.
+        run: |
+          set -o pipefail
+          python3 scripts/agents/run_card.py 2>&1 | tee card-report.txt
+
+      - name: Attach the report as the job summary
+        # always(), so a crash still publishes whatever the runner managed to
+        # print before it died — that partial output is the debugging evidence.
+        if: always()
+        run: |
+          {
+            echo "## Mechanical agent cards — $(date -u +%Y-%m-%d)"
+            echo
+            echo "Report-only census from \`scripts/agents/run_card.py\`."
+            echo "No memory was written: \`--write-memory\` lands facts via a"
+            echo "reviewable pull request, never from a scheduled job."
+            echo
+            echo '```text'
+            if [ -s card-report.txt ]; then
+              cat card-report.txt
+            else
+              echo "(no report — the runner failed before printing; see the step above)"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::warning::The weekly card census did not complete. This reports; it does not gate any merge."
+          echo "::notice::A mechanical agent that crashes is a defect in scripts/agents/run_card.py, not a finding about the repo."
+          echo "::notice::If the card index is merely stale: run 'python3 scripts/build_agent_card_index.py' and commit the result."
