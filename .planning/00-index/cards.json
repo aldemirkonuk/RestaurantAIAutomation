@@ -4584,7 +4584,7 @@
       }
      ],
      "emits": [
-      "[[engineering-agenda-board]] — eight rows, never summed (charter §Metrics; consumer: [[platform-charter]] and the founder board review)",
+      "[[engineering-agenda-board]] — eight rows, never summed (charter §Metrics; consumer: the Platform division roll-up (a division has no charter file — see [[ORG-MAP]]) and the founder board review)",
       "seam assignments and OPEN-DECISIONS entries (consumer: [[decision-office-charter]])",
       "nf_a events (task_type: eng_board_rollup) — consumer: NONE (gap, see §5)"
      ],
@@ -4604,6 +4604,7 @@
    ],
    "links": [
     "0034-agent-stack-artifact",
+    "ORG-MAP",
     "action-safety-the-human-gate-charter",
     "agent-evaluation-gates-charter",
     "catalogue-identity-charter",
@@ -4617,7 +4618,6 @@
     "harness-runtime-charter",
     "inventory-ledger-charter",
     "model-routing-inference-economics-charter",
-    "platform-charter",
     "skill-harvesting-charter",
     "skills-charter",
     "state-integrity-invariants-charter"

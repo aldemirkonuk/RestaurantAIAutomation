@@ -5,7 +5,7 @@ department: red-team
 status: active
 metrics: [rt.finding_return_hours, rt.locked_decision_challenge_rate, rt.reaffirmation_rate, rt.finding_actionability, rt.open_finding_age_days, rt.undeclared_decision_count, rt.self_selected_target_share]
 updated: 2026-08-28
-links: ["[[red-team-charter]]", "[[red-team-premortem]]", "[[red-team-directive]]", "[[red-team-loops]]", "[[red-team-schedule]]", "[[red-team-agent-stack]]", "[[red-team-questions]]", "[[red-team-agenda-full]]", "[[decision-office-charter]]", "[[architecture-review-charter]]", "[[security-charter]]", "[[knowledge-documentation-charter]]", "[[exploration-studio-charter]]", "[[compliance-privacy-charter]]", "[[0039-activation-plan-of-record]]", "[[0037-nf-b-erasure-is-crypto-shredding]]"]
+links: ["[[red-team-charter]]", "[[red-team-premortem]]", "[[red-team-directive]]", "[[red-team-loops]]", "[[red-team-schedule]]", "[[red-team-agent-stack]]", "[[red-team-questions]]", "[[red-team-agenda-full]]", "[[decision-office-charter]]", "[[architecture-review-charter]]", "[[security-charter]]", "[[knowledge-documentation-charter]]", "[[exploration-studio-charter]]", "[[compliance-privacy-charter]]", "[[0039-activation-plan-of-record]]", "[[0037-nfb-erasure-is-crypto-shredding]]"]
 ---
 
 # Red Team — Board
