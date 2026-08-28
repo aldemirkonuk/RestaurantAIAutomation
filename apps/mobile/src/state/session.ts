@@ -11,6 +11,13 @@ export interface SessionUser {
   name?: string;
   restaurantId?: string;
   role?: string;
+  /**
+   * From the `users.email_verified` column via `/auth/me`, never decoded from
+   * the JWT — a token minted before verification still says false (OD-79,
+   * `auth.service.ts:1588-1594`). `undefined` means "not asked yet"; only
+   * `false` means "asked, and no".
+   */
+  emailVerified?: boolean;
 }
 
 interface SessionState {
@@ -20,6 +27,19 @@ interface SessionState {
   /** Restore tokens from SecureStore at launch; lands in "locked" if found. */
   hydrate: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
+  /**
+   * Adopt tokens minted by something other than `POST /auth/login`.
+   *
+   * `join`, `register/restaurant` and `verify-email` all return the same
+   * `{ accessToken, refreshToken }` pair as login does, and before this
+   * existed there was no way to accept it — so the phone could only ever
+   * *sign in*, never *sign up*. Lands in `signedIn`, not `locked`: the user
+   * proved who they are seconds ago by typing a password they just chose, and
+   * demanding Face ID on top of that is a gate against nobody.
+   */
+  adoptTokens: (accessToken: string, refreshToken?: string) => Promise<void>;
+  /** Re-read `/auth/me` — used after verifying an email or accepting an invite. */
+  refreshUser: () => Promise<void>;
   /** Biometric gate passed — session becomes usable. */
   unlock: () => void;
   signOut: () => Promise<void>;
@@ -41,6 +61,7 @@ async function fetchMe(accessToken: string): Promise<SessionUser | null> {
       name: u.name ?? u.firstName ?? undefined,
       restaurantId: u.restaurantId ?? u.restaurant_id ?? undefined,
       role: u.role ?? undefined,
+      emailVerified: u.emailVerified ?? u.email_verified ?? undefined,
     };
   } catch {
     return null;
@@ -91,6 +112,24 @@ export const useSession = create<SessionState>((set, get) => ({
     ]);
     const user = await fetchMe(accessToken);
     set({ accessToken, user, status: "signedIn" });
+  },
+
+  adoptTokens: async (accessToken, refreshToken) => {
+    await Promise.all([
+      SecureStore.setItemAsync(ACCESS_KEY, accessToken),
+      refreshToken
+        ? SecureStore.setItemAsync(REFRESH_KEY, refreshToken)
+        : Promise.resolve(),
+    ]);
+    const user = await fetchMe(accessToken);
+    set({ accessToken, user, status: "signedIn" });
+  },
+
+  refreshUser: async () => {
+    const token = get().accessToken;
+    if (!token) return;
+    const user = await fetchMe(token);
+    if (user) set({ user });
   },
 
   unlock: () => {

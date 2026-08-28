@@ -6,6 +6,7 @@ zoomable viewer that renders it.
 Outputs (committed, regenerate rather than hand-edit):
   .planning/00-index/atlas-graph.json   the generated graph — the source of truth
   .planning/00-index/DESIGN-MAP.html    self-contained zoomable viewer (F, ADR 0033)
+  .planning/00-index/DESIGN-MAP-CLUSTERS.html  one-surface domain-cluster view (B lens)
 
 Input (curated, hand-edited):
   .planning/00-index/atlas-overlay.json additive-only overlay: domains, badges,
@@ -385,20 +386,21 @@ def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     (OUT_DIR / "atlas-graph.json").write_text(
         json.dumps(graph, indent=1, ensure_ascii=False) + "\n")
-    template = (ROOT / "scripts/design_map_template.html").read_text()
     payload = json.dumps({"graph": graph, "overlay": overlay},
                          ensure_ascii=False).replace("</", "<\\/")
     marker = "/*__ATLAS_DATA__*/null"
-    if marker not in template:
-        die("template marker missing — design_map_template.html rotted")
-    html = template.replace(marker, payload)
-    (OUT_DIR / "DESIGN-MAP.html").write_text(html)
+    for tpl, outname in (("design_map_template.html", "DESIGN-MAP.html"),
+                         ("design_map_clusters_template.html", "DESIGN-MAP-CLUSTERS.html")):
+        template = (ROOT / "scripts" / tpl).read_text()
+        if marker not in template:
+            die(f"template marker missing — {tpl} rotted")
+        (OUT_DIR / outname).write_text(template.replace(marker, payload))
     c = graph["counts"]
     print(f"atlas-graph.json: {c['features']} features · {c['pages']} pages · "
           f"{c['endpoints']} endpoints · {c['services']} services · {c['agents']} agents · "
           f"{c['tables']} tables · {c['model_tasks']} model tasks · "
           f"{len(graph['edges'])} edges")
-    print("DESIGN-MAP.html written")
+    print("DESIGN-MAP.html + DESIGN-MAP-CLUSTERS.html written")
     return 0
 
 

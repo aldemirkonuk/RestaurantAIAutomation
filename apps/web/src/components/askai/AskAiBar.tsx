@@ -33,7 +33,9 @@ import {
   Sparkles,
 } from 'lucide-react'
 import {
+  AskAiCandidates,
   AskAiProposal,
+  listCandidates,
   listOpenProposals,
   proposeAction,
 } from '../../services/api/askAi'
@@ -58,6 +60,17 @@ export function AskAiBar({ open, onClose }: { open: boolean; onClose: () => void
   /** A transport/5xx failure — different from a refusal, and said differently. */
   const [error, setError] = useState<string | null>(null)
   const [proposals, setProposals] = useState<AskAiProposal[]>([])
+  /**
+   * What the cards' id pickers choose from. Fetched HERE rather than per card:
+   * the set is per-restaurant, not per-proposal, so N cards would otherwise
+   * mean N identical requests.
+   *
+   * `null` means "no picker yet" — in flight, or the fetch failed — and the
+   * cards degrade to read-only ids for it. That is why this is not seeded with
+   * empty arrays: an empty candidate set is a real answer meaning "you have no
+   * vendors", and it must not be what a failure looks like.
+   */
+  const [candidates, setCandidates] = useState<AskAiCandidates | null>(null)
   const [useContext, setUseContext] = useState(true)
 
   const pageContext = derivePageContext(location.pathname, location.search)
@@ -76,6 +89,7 @@ export function AskAiBar({ open, onClose }: { open: boolean; onClose: () => void
     } else {
       setAsk('')
       setProposals([])
+      setCandidates(null)
       restoreFocusRef.current?.focus?.()
     }
   }, [open])
@@ -89,6 +103,27 @@ export function AskAiBar({ open, onClose }: { open: boolean; onClose: () => void
     listOpenProposals()
       .then((rows) => {
         if (!cancelled) setProposals(rows)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [open])
+
+  // The candidate set for the cards' pickers. Once per open, not once per
+  // card, and once per open rather than once per session because stock and
+  // vendors change — a list minutes old is fine, since the confirm re-grounds
+  // every payload against the live set before it executes, whether or not the
+  // operator touched the card.
+  //
+  // A failure leaves `candidates` at null, which is the read-only fallback:
+  // asking still works and confirming still works, only the pickers are gone.
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    listCandidates()
+      .then((sets) => {
+        if (!cancelled) setCandidates(sets)
       })
       .catch(() => {})
     return () => {
@@ -226,7 +261,11 @@ export function AskAiBar({ open, onClose }: { open: boolean; onClose: () => void
           )}
 
           {proposals.map((p) => (
-            <ProposalCard key={p.actionId} proposal={p} />
+            <ProposalCard
+              key={p.actionId}
+              proposal={p}
+              candidates={candidates}
+            />
           ))}
 
           {!refusal && !error && proposals.length === 0 && (
