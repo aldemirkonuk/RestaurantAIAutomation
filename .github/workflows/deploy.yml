@@ -66,15 +66,19 @@ jobs:
       - name: Check orchestrator URL
         id: check
         run: |
+          # Same rule as the gateway stage below: a missing URL means this
+          # audit cannot do its job, and saying "success" would be a lie the
+          # next deploy relies on. It warned and passed until 2026-08-28.
           if [ -z "$ORCHESTRATOR_URL" ]; then
-            echo "::warning::RAILWAY_ORCHESTRATOR_URL secret is not set — skipping orchestrator health verification. Set the secret to enable the post-deploy health audit."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "::error::RAILWAY_ORCHESTRATOR_URL is not set, so the"
+            echo "::error::orchestrator cannot be health-checked."
+            echo ""
+            echo "  gh secret set RAILWAY_ORCHESTRATOR_URL --body 'https://<host>'"
+            exit 1
           fi
+          echo "RAILWAY_ORCHESTRATOR_URL is set."
 
       - name: Poll orchestrator /health (up to 10 min)
-        if: steps.check.outputs.skip != 'true'
         run: |
           set -euo pipefail
           URL="${ORCHESTRATOR_URL%/}/health"
@@ -92,7 +96,6 @@ jobs:
           exit 1
 
       - name: Verify 9/9 agents Active
-        if: steps.check.outputs.skip != 'true'
         run: |
           set -euo pipefail
           URL="${ORCHESTRATOR_URL%/}/api/v1/health/agents"
@@ -125,34 +128,70 @@ jobs:
       github.event_name == 'workflow_run'
       || (github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit')
     steps:
-      - name: Check API gateway URL
-        id: check
+      # A MISSING SECRET IS A BROKEN AUDIT, NOT A PASSING ONE.
+      #
+      # This step used to `::warning::` and set skip=true, so the whole stage
+      # reported SUCCESS having verified nothing. On 2026-08-28 that is exactly
+      # what happened: `API_GATEWAY_URL` was never set, every deploy audit since
+      # this workflow was written reported a green "Stage 2 — API Gateway", and
+      # the gateway was never once checked. A check that cannot check must say
+      # so — the same rule the guard scripts in ci.yml keep, and the same
+      # failure `CI Complete` was hardened against the same day.
+      - name: API gateway URL is configured
         run: |
           if [ -z "$API_GATEWAY_URL" ]; then
-            echo "::warning::API_GATEWAY_URL secret is not set — skipping API gateway health verification. Set the secret to enable the post-deploy health audit."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "::error::API_GATEWAY_URL is not set, so the gateway cannot be"
+            echo "::error::health-checked and this audit cannot do its job."
+            echo ""
+            echo "Set it to the gateway origin with no trailing path, e.g."
+            echo "  gh secret set API_GATEWAY_URL --body 'https://<your-gateway-host>'"
+            echo ""
+            echo "This step used to warn and pass. It failed silently for every"
+            echo "deploy this workflow has ever audited."
+            exit 1
           fi
+          echo "API_GATEWAY_URL is set."
 
-      - name: Poll api-gateway /health (up to 5 min)
-        if: steps.check.outputs.skip != 'true'
+      # POLLS A URL THAT EXISTS.
+      #
+      # The old target was `${API_GATEWAY_URL}/health`, which has never resolved:
+      # the gateway sets a global `api/v1` prefix, and the only `health`
+      # controller is JWT-guarded. Measured against production on 2026-08-28 —
+      # `/health` 404, `/api/v1/health` 404, `/api/v1/health/agents` 401. So even
+      # with the secret set, this step would have failed for the wrong reason.
+      #
+      # `/api/v1/health/live` is the dependency-free liveness route added
+      # alongside this change. A 200 from it proves the process started, Nest
+      # built its injector and routing is live — the boot-failure class CI
+      # structurally cannot see, because a module that fails to wire up compiles
+      # and tests green.
+      - name: Poll api-gateway liveness (up to 5 min)
         run: |
           set -euo pipefail
-          URL="${API_GATEWAY_URL%/}/health"
+          URL="${API_GATEWAY_URL%/}/api/v1/health/live"
+          echo "Polling $URL ..."
           for i in $(seq 1 30); do
-            if curl -fsS "$URL" -o /tmp/gw-health.json; then
-              echo "API gateway healthy on attempt $i"
+            CODE="$(curl -sS -o /tmp/gw-health.json -w '%{http_code}' --max-time 15 "$URL" || echo 000)"
+            if [ "$CODE" = "200" ]; then
+              echo "API gateway live on attempt $i"
               cat /tmp/gw-health.json
               exit 0
             fi
+            echo "Attempt $i/30 — HTTP $CODE, waiting 10s ..."
             sleep 10
           done
-          echo "::error::API gateway /health did not become ready within 5 minutes"
+          echo "::error::API gateway did not answer 200 at $URL within 5 minutes."
+          echo "::error::Last response: HTTP $CODE"
+          echo "::error::A 404 here means the route is missing (check the api/v1"
+          echo "::error::prefix); a 000 means the host never answered; a 502 means"
+          echo "::error::the process is not up — the NestJS DI failure CI cannot see."
           exit 1
 
+      # Authenticated, and therefore optional: without a token this can only be
+      # skipped, so it says so rather than pretending. It is a READINESS probe —
+      # a different question from liveness above, which is why a missing token
+      # does not fail the stage.
       - name: Proxy agent health via gateway
-        if: steps.check.outputs.skip != 'true'
         run: |
           set -euo pipefail
           URL="${API_GATEWAY_URL%/}/api/v1/health/agents"
@@ -160,7 +199,8 @@ jobs:
           if [ -n "$TOKEN" ]; then
             curl -fsS -H "Authorization: Bearer $TOKEN" "$URL" | head -c 2000
           else
-            echo "E2E_TEST_TOKEN not set — skipping authenticated proxy check"
+            echo "::notice::E2E_TEST_TOKEN not set — the authenticated readiness"
+            echo "::notice::check did not run. Liveness above DID run and passed."
           fi
 
   # ── Stage 3: Frontend build smoke (Vercel deploys separately) ──────────────
