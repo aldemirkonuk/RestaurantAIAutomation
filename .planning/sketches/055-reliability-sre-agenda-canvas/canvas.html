@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reliability / SRE — Agenda Canvas 2026-08-28</title>
+<style>
+  :root{
+    --bg:#0e1013; --panel:#15181c; --panel-2:#1b1f25; --line:#252b33;
+    --ink:#e8ecf1; --ink-dim:#98a3b0; --ink-faint:#67717d;
+    --burgundy:#CD2D5B; --amber:#d99a2b; --red:#d8443c; --green:#3fa46a; --blue:#4b8fd6;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+       font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1500px;margin:0 auto;padding:28px 26px 70px}
+
+  /* ---------- header ---------- */
+  header{border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:22px}
+  .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+           color:var(--burgundy);margin-bottom:9px}
+  h1{margin:0 0 8px;font-size:27px;letter-spacing:-.02em;font-weight:650}
+  .lede{color:var(--ink-dim);max-width:76ch;font-size:13.5px}
+  .lede b{color:var(--ink);font-weight:600}
+  .meta{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
+  .tag{font-family:var(--mono);font-size:10.5px;color:var(--ink-dim);
+       border:1px solid var(--line);border-radius:3px;padding:3px 8px;background:var(--panel)}
+
+  h2{font-size:11px;font-family:var(--mono);letter-spacing:.14em;text-transform:uppercase;
+     color:var(--ink-faint);margin:32px 0 12px;font-weight:600}
+  h2 span{color:var(--ink-dim);text-transform:none;letter-spacing:0;font-family:var(--sans);
+          font-size:12px;margin-left:10px}
+
+  /* ---------- five numbers ---------- */
+  .numbers{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  .num{background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:12px 13px;
+       border-top:2px solid var(--line)}
+  .num.never{border-top-color:var(--red)}
+  .num.unmeasured{border-top-color:var(--amber)}
+  .num.partial{border-top-color:var(--blue)}
+  .num .k{font-family:var(--mono);font-size:11px;color:var(--ink);word-break:break-all}
+  .num .v{margin-top:7px;font-size:15px;font-weight:650;letter-spacing:-.01em}
+  .num.never .v{color:var(--red)} .num.unmeasured .v{color:var(--amber)} .num.partial .v{color:var(--blue)}
+  .num .why{margin-top:6px;color:var(--ink-faint);font-size:11.5px}
+  .num .twin{margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--ink-faint);
+             border-top:1px dashed var(--line);padding-top:6px}
+  .num .twin b{color:var(--green);font-weight:600}
+
+  /* ---------- timeline ---------- */
+  .tl-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+  .tl{min-width:1180px}
+  .tl-head{display:grid;grid-template-columns:150px repeat(10,1fr);
+           border-bottom:1px solid var(--line);background:var(--panel-2)}
+  .tl-head div{padding:8px 6px;font-family:var(--mono);font-size:10px;color:var(--ink-faint);
+               text-align:center;border-left:1px solid var(--line)}
+  .tl-head div:first-child{text-align:left;border-left:0;padding-left:12px;color:var(--ink-dim)}
+  .lane{display:grid;grid-template-columns:150px repeat(10,1fr);border-bottom:1px solid var(--line);
+        min-height:74px}
+  .lane:last-child{border-bottom:0}
+  .lane-name{padding:10px 12px;border-right:1px solid var(--line);background:var(--panel-2)}
+  .lane-name .ln{font-weight:650;font-size:12px}
+  .lane-name .lq{color:var(--ink-faint);font-size:10.5px;margin-top:3px;font-style:italic}
+  .lane-cells{grid-column:2 / -1;display:grid;grid-template-columns:repeat(10,1fr);
+              gap:5px;padding:7px 6px;background:
+              repeating-linear-gradient(to right,transparent,transparent calc(10% - 1px),var(--line) calc(10% - 1px),var(--line) 10%)}
+  .card{background:var(--panel-2);border:1px solid var(--line);border-left:2px solid var(--burgundy);
+        border-radius:4px;padding:6px 7px;align-self:start}
+  .card.spine{border-left-color:var(--red);background:#1e1518}
+  .card.dept{border-left-color:var(--blue)}
+  .card .id{font-family:var(--mono);font-size:10px;color:var(--burgundy);font-weight:700}
+  .card.spine .id{color:var(--red)} .card.dept .id{color:var(--blue)}
+  .card .t{font-size:11px;margin-top:2px;line-height:1.3}
+  .card .d{font-size:10px;color:var(--ink-faint);margin-top:4px;border-top:1px dashed var(--line);
+           padding-top:4px}
+
+  /* ---------- cadence ---------- */
+  .cad{display:grid;grid-template-columns:150px 1fr;border:1px solid var(--line);
+       border-radius:6px;overflow:hidden;background:var(--panel)}
+  .cad .cn{padding:9px 12px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);
+           background:var(--panel-2);font-weight:600;font-size:11.5px}
+  .cad .cc{padding:8px 10px;border-bottom:1px solid var(--line);display:flex;gap:6px;flex-wrap:wrap}
+  .cad > div:nth-last-child(-n+2){border-bottom:0}
+  .chip{border:1px solid var(--line);border-radius:3px;padding:4px 7px;font-size:11px;
+        background:var(--panel-2);display:flex;gap:6px;align-items:baseline}
+  .chip .cid{font-family:var(--mono);font-size:9.5px;color:var(--burgundy);font-weight:700}
+  .chip .cw{font-family:var(--mono);font-size:9px;color:var(--ink-faint);
+            border:1px solid var(--line);border-radius:2px;padding:1px 4px}
+  .cw.weekly{color:var(--green)} .cw.monthly{color:var(--blue)}
+  .cw.quarterly{color:var(--amber)} .cw.perpr{color:var(--ink-dim)}
+
+  /* ---------- lower grid ---------- */
+  .cols{display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:14px;align-items:start}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:13px 14px}
+  .box h3{margin:0 0 10px;font-size:11px;font-family:var(--mono);letter-spacing:.12em;
+          text-transform:uppercase;color:var(--ink-faint);font-weight:600}
+  .seam{border-left:2px solid var(--line);padding:0 0 0 10px;margin-bottom:11px}
+  .seam:last-child{margin-bottom:0}
+  .seam .s1{font-size:11.5px;font-weight:600}
+  .seam .s2{color:var(--ink-faint);font-size:11px;margin-top:3px}
+  .seam .units{margin-top:5px;display:flex;gap:5px;flex-wrap:wrap}
+  .u{font-family:var(--mono);font-size:9.5px;color:var(--ink-dim);border:1px solid var(--line);
+     border-radius:2px;padding:1.5px 5px;background:var(--panel-2)}
+  .u.out{color:var(--amber);border-color:#4a3a1c}
+  ul{margin:0;padding-left:15px} li{margin-bottom:6px;color:var(--ink-dim);font-size:11.5px}
+  li b{color:var(--ink);font-weight:600}
+  li.no{color:var(--ink-faint);text-decoration:line-through;text-decoration-color:#3a4048}
+  code{font-family:var(--mono);font-size:10.5px;color:var(--ink);background:#0b0d10;
+       border:1px solid var(--line);border-radius:2px;padding:0 3px}
+  footer{margin-top:30px;padding-top:14px;border-top:1px solid var(--line);
+         color:var(--ink-faint);font-size:11px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin:10px 0 0}
+  .lg{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--ink-faint)}
+  .sw{width:11px;height:11px;border-radius:2px;border:1px solid var(--line)}
+  @media(max-width:1000px){.numbers{grid-template-columns:repeat(2,1fr)}.cols{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Platform · Reliability / SRE · Agenda canvas · 2026-08-28</div>
+  <h1>Almost everything is built. Almost nothing is watched.</h1>
+  <p class="lede">
+    Four teams, five numbers, one named gap. The department's job this quarter is not to build —
+    it is to make built machinery <b>legible</b>: produce a number that has never existed,
+    give a queue a reader, and put one metric on a cadence.
+    Org-wide baseline: <b>325 metric keys, zero produced by a running instrument</b>.
+  </p>
+  <div class="meta">
+    <span class="tag">6 workflows · 29 jobs</span>
+    <span class="tag">21 check_* guards</span>
+    <span class="tag">4 scheduled crons</span>
+    <span class="tag">5 loops · all proposed</span>
+    <span class="tag">1 DLQ · no consumer</span>
+    <span class="tag">1 findings table · no reader</span>
+    <span class="tag">2 recovery paths · never exercised</span>
+  </div>
+</header>
+
+<h2>The five numbers <span>rendered as themselves — never averaged</span></h2>
+<div class="numbers">
+  <div class="num never">
+    <div class="k">sre.days_since_verified_restore</div>
+    <div class="v">never happened</div>
+    <div class="why">Not a bad value — no value has ever existed. Backup + restore are 19 and 25 lines, referenced by nothing.</div>
+    <div class="twin">twin: n/a until R5c</div>
+  </div>
+  <div class="num unmeasured">
+    <div class="k">nf_a.emission_coverage</div>
+    <div class="v">unmeasured</div>
+    <div class="why">Spine landed 2026-08-24: event table + two readout views + a reader script. 0 rows recorded in production.</div>
+    <div class="twin">twin: <b>nf_a_readout_provenance</b> — the only real one in the repo</div>
+  </div>
+  <div class="num unmeasured">
+    <div class="k">sre.dlq_depth_and_oldest_age</div>
+    <div class="v">unmeasured</div>
+    <div class="why">queue.dead_letters is bound and counted into at four sites. Nothing consumes it. Age is the load-bearing half.</div>
+    <div class="twin">twin: none</div>
+  </div>
+  <div class="num unmeasured">
+    <div class="k">sre.time_to_revert</div>
+    <div class="v">unmeasured</div>
+    <div class="why">deploy.yml rollback-guide prints steps. An unexercised procedure has no measured value.</div>
+    <div class="twin">twin: none</div>
+  </div>
+  <div class="num partial">
+    <div class="k">sre.mttd_silent_corruption</div>
+    <div class="v">≤24h · partial</div>
+    <div class="why">Schema drift is bounded by the daily 06:00 cron. Tenant leakage and stock divergence are unmeasured — the good number covers the easiest surface.</div>
+    <div class="twin">twin: the cron's own run record</div>
+  </div>
+</div>
+
+<h2>Dated work <span>one-shot tasks and their first closes — the spine in red</span></h2>
+<div class="tl-scroll"><div class="tl">
+  <div class="tl-head">
+    <div>lane / owner</div>
+    <div>Sep 05</div><div>Sep 12</div><div>Sep 19</div><div>Sep 26</div><div>Sep 30</div>
+    <div>Oct 03</div><div>Oct 10</div><div>Oct 15</div><div>Oct 24</div><div>Oct 31</div>
+  </div>
+
+  <div class="lane">
+    <div class="lane-name"><div class="ln">Department</div><div class="lq">the seams no team can grade alone</div></div>
+    <div class="lane-cells">
+      <div class="card dept" style="grid-column:2">
+        <div class="id">R19a</div><div class="t">Liveness twin for the A4 runner cron — filed before it ships</div>
+        <div class="d">a value non-zero by construction in every run summary</div>
+      </div>
+      <div class="card dept" style="grid-column:2">
+        <div class="id">R18</div><div class="t">Close <code>ci.yml:8-9</code> — fix the debt or make it a dated expiring exception</div>
+        <div class="d">both lines deleted, or an exception the audit can fail</div>
+      </div>
+      <div class="card dept" style="grid-column:7">
+        <div class="id">R20</div><div class="t">First metric produced on a cadence — org-first</div>
+        <div class="d"><b>two consecutive</b> dated values from a job, not a person</div>
+      </div>
+      <div class="card dept" style="grid-column:9">
+        <div class="id">R21</div><div class="t">≥3 of 5 loops off <code>proposed</code> with real <code>evidence:</code></div>
+        <div class="d">passes build_loop_index.py --check as active</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="lane">
+    <div class="lane-name"><div class="ln">Observability</div><div class="lq">does the signal exist?</div></div>
+    <div class="lane-cells">
+      <div class="card" style="grid-column:1">
+        <div class="id">R1</div><div class="t">nf_a.emission_coverage gets a dated number</div>
+        <div class="d">denominator = agent tasks, never HTTP requests. 0 rows is a valid close</div>
+      </div>
+      <div class="card" style="grid-column:3">
+        <div class="id">R3</div><div class="t">observability_degraded on the health surface; fallback logs WARNING</div>
+        <div class="d">a test asserts both, then someone watches it fire</div>
+      </div>
+      <div class="card" style="grid-column:6">
+        <div class="id">R4</div><div class="t">Specify the absence channel — do not build it</div>
+        <div class="d">three options priced; "doc row + weekly read" is a legitimate answer</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="lane">
+    <div class="lane-name"><div class="ln">Release eng.</div><div class="lq">can we put it back?</div></div>
+    <div class="lane-cells">
+      <div class="card spine" style="grid-column:2">
+        <div class="id">R5a</div><div class="t">Pick the drill target on evidence</div>
+        <div class="d">local Supabase = PG17 (matches prod 17.6); compose PG15 struck</div>
+      </div>
+      <div class="card spine" style="grid-column:3">
+        <div class="id">R5b</div><div class="t">Produce the first dump on purpose</div>
+        <div class="d">size, duration, pg_dump version — dated</div>
+      </div>
+      <div class="card spine" style="grid-column:4">
+        <div class="id">R5d</div><div class="t">Parity cannot be pointed at a restored DB — fix tooling or schedule</div>
+        <div class="d">closed by a commit, not by re-wording the drill</div>
+      </div>
+      <div class="card spine" style="grid-column:5">
+        <div class="id">R5c</div><div class="t"><b>The drill.</b> Restore, row counts, roles/RLS/extensions checked</div>
+        <div class="d">days_since_verified_restore gets its first value ever</div>
+      </div>
+      <div class="card" style="grid-column:6">
+        <div class="id">R7</div><div class="t">Are we the backup, or is the vendor? Frame it with numbers</div>
+        <div class="d">retention window quoted; RPO per option</div>
+      </div>
+      <div class="card" style="grid-column:8">
+        <div class="id">R6</div><div class="t">Timed no-op revert</div>
+        <div class="d">seconds, decision→healthy, with the SHA pair</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="lane">
+    <div class="lane-name"><div class="ln">Runtime resilience</div><div class="lq">does it survive partial failure?</div></div>
+    <div class="lane-cells">
+      <div class="card spine" style="grid-column:2">
+        <div class="id">R10a</div><div class="t">Name the DLQ consumer's owner — in writing</div>
+        <div class="d">an owner, or a REL-Q recording that all three declined</div>
+      </div>
+      <div class="card spine" style="grid-column:3">
+        <div class="id">R10b</div><div class="t">First reading: depth <i>and</i> oldest age</div>
+        <div class="d">0 / none is welcome; "unmeasured" is not</div>
+      </div>
+      <div class="card" style="grid-column:7">
+        <div class="id">R10c</div><div class="t">Replay policy — three dispositions, money and stock gated</div>
+        <div class="d">nothing auto-replays before Q2 is answered</div>
+      </div>
+      <div class="card" style="grid-column:10">
+        <div class="id">R11</div><div class="t">Exercise the kill switch <code>pause_all_writes</code></div>
+        <div class="d">a dated window, what paused, how resumed</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="lane">
+    <div class="lane-name"><div class="ln">State integrity</div><div class="lq">is it quietly wrong?</div></div>
+    <div class="lane-cells">
+      <div class="card" style="grid-column:3">
+        <div class="id">R13</div><div class="t">drift_findings gets a reader and an aging column</div>
+        <div class="d">one finding reaches a terminal disposition</div>
+      </div>
+      <div class="card" style="grid-column:4">
+        <div class="id">R14</div><div class="t">Re-census 21 guards: grep-side vs data-side</div>
+        <div class="d">a percentage, not a gate count</div>
+      </div>
+      <div class="card" style="grid-column:7">
+        <div class="id">R15</div><div class="t">Author ≠ auditor tripwire as a CI job</div>
+        <div class="d">proven against a synthetic two-sided commit; exit 2 when blind</div>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<div class="legend">
+  <span class="lg"><span class="sw" style="background:#1e1518;border-left:2px solid var(--red)"></span> spine — the three seeds</span>
+  <span class="lg"><span class="sw" style="background:var(--panel-2);border-left:2px solid var(--blue)"></span> department-level</span>
+  <span class="lg"><span class="sw" style="background:var(--panel-2);border-left:2px solid var(--burgundy)"></span> team-level</span>
+  <span class="lg">every card: what it is · how you know it is done</span>
+</div>
+
+<h2>Cadence <span>what closes repeatedly, and how fast</span></h2>
+<div class="cad">
+  <div class="cn">Department</div>
+  <div class="cc">
+    <span class="chip"><span class="cid">R17</span> red-signal audit vs 29 jobs <span class="cw weekly">weekly</span></span>
+    <span class="chip"><span class="cid">R19b</span> operate the runner cron — or downgrade it <span class="cw weekly">weekly</span></span>
+    <span class="chip"><span class="cid">R19c</span> carry the nf_a.skill_id ask <span class="cw monthly">monthly</span></span>
+    <span class="chip"><span class="cid">R20</span> the cadence metric itself <span class="cw perpr">fortnightly</span></span>
+  </div>
+  <div class="cn">Observability</div>
+  <div class="cc">
+    <span class="chip"><span class="cid">R1</span> emission coverage <span class="cw weekly">weekly</span></span>
+    <span class="chip"><span class="cid">R2</span> liveness-twin registry + board admission <span class="cw weekly">weekly</span></span>
+    <span class="chip"><span class="cid">R3</span> degraded-flag guard <span class="cw perpr">per-pr</span></span>
+  </div>
+  <div class="cn">Release eng.</div>
+  <div class="cc">
+    <span class="chip"><span class="cid">R8</span> env reconciliation · DEV_AUTH_BYPASS absent, proven by command <span class="cw monthly">monthly</span></span>
+    <span class="chip"><span class="cid">R9</span> publish collected-but-skipped tests (11 today) <span class="cw weekly">weekly</span></span>
+    <span class="chip"><span class="cid">R5c</span> restore drill <span class="cw quarterly">quarterly</span></span>
+    <span class="chip"><span class="cid">R6</span> timed revert <span class="cw quarterly">quarterly</span></span>
+  </div>
+  <div class="cn">Runtime resilience</div>
+  <div class="cc">
+    <span class="chip"><span class="cid">R10b</span> DLQ depth + oldest age <span class="cw weekly">weekly</span></span>
+    <span class="chip"><span class="cid">R12</span> breaker duration · retry amplification <span class="cw monthly">monthly</span></span>
+    <span class="chip"><span class="cid">R11</span> kill-switch exercise <span class="cw quarterly">quarterly</span></span>
+  </div>
+  <div class="cn">State integrity</div>
+  <div class="cc">
+    <span class="chip"><span class="cid">R13</span> findings triage + aging <span class="cw weekly">weekly</span></span>
+    <span class="chip"><span class="cid">R22</span> MTTD by class — never aggregated <span class="cw weekly">weekly</span></span>
+    <span class="chip"><span class="cid">R16</span> stubs counted as coverage (today: 2) <span class="cw monthly">monthly</span></span>
+    <span class="chip"><span class="cid">R14</span> guard class re-census <span class="cw quarterly">quarterly</span></span>
+  </div>
+</div>
+
+<h2>Seams, locks and open questions</h2>
+<div class="cols">
+
+  <div class="box">
+    <h3>Seams this agenda touches</h3>
+    <div class="seam">
+      <div class="s1">The DLQ consumer has three plausible owners</div>
+      <div class="s2">The queue is resilience's mechanism, the hosting process is harness-runtime's, the dying handlers are agent-fleet's. R10a refuses to let each assume the others have it.</div>
+      <div class="units"><span class="u">runtime-resilience</span><span class="u out">harness-runtime</span><span class="u out">agent-fleet</span></div>
+    </div>
+    <div class="seam">
+      <div class="s1">Track A4 splits into a column and a cron</div>
+      <div class="s2">The column is RM-3's; the cron is being built in parallel. SRE owns <i>operating</i> it — building it twice is the failure mode.</div>
+      <div class="units"><span class="u out">nf-instrumentation</span><span class="u out">skills</span><span class="u">reliability-sre</span></div>
+    </div>
+    <div class="seam">
+      <div class="s1">Author ≠ auditor, one founder</div>
+      <div class="s2">The migration's author and the parity gate's auditor are the same afternoon. R15 makes the artifact independent where the person cannot be.</div>
+      <div class="units"><span class="u out">schema-migrations</span><span class="u">state-integrity-invariants</span></div>
+    </div>
+    <div class="seam">
+      <div class="s1">A wave-3 side effect, filed not fixed</div>
+      <div class="s2">Rewriting 48 agendas to 2026-08-28 splits watch_loops.py's single staleness cliff into two (Oct 23 · Oct 27). The script stays right; its docstring does not.</div>
+      <div class="units"><span class="u out">decision-office</span></div>
+    </div>
+  </div>
+
+  <div class="box">
+    <h3>Awaiting a founder answer</h3>
+    <ul>
+      <li><b>Q1</b> Are we the backup, or is the vendor? — re-shapes the whole drill</li>
+      <li><b>Q2</b> DLQ replay autonomy for idempotent, non-financial messages</li>
+      <li><b>Q3</b> What does an absence alert wake? A doc row is a valid answer</li>
+      <li><b>Q4</b> May we actually <i>delete</i> a gate we will not fix?</li>
+      <li><b>Q5</b> TECH-F6 guardian-agent ownership — cheap now, expensive later</li>
+      <li><b>Q6</b> Incident Command's trigger: pager-based, or volume-based?</li>
+    </ul>
+  </div>
+
+  <div class="box">
+    <h3>Not scheduled, on purpose</h3>
+    <ul>
+      <li class="no">A Backup &amp; DR team — a named gap with an owner, not a headcount</li>
+      <li class="no">Incident Response / On-Call — rejected on scale; watched quarterly</li>
+      <li class="no">Infrastructure Cost — three vendors, flat plans</li>
+      <li class="no">Building the A4 cron here — the Track-A4 agent owns the build</li>
+      <li class="no">A rolled-up department health number — five questions do not average</li>
+      <li>Locks respected: <b>pricing deferred</b>, <b>brand visuals held</b>. R7 prices a platform vendor, and asks rather than buys.</li>
+    </ul>
+  </div>
+
+</div>
+
+<footer>
+  <span>Sketch 055 · thinking surface, not a product · one picture of <code>reliability-sre-agenda-full.md</code></span>
+  <span>Every figure verified against the repo on 2026-08-28 · ADR 0039 Track B</span>
+</footer>
+
+</div>
+</body>
+</html>

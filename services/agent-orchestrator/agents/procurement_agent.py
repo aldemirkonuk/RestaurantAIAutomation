@@ -15,12 +15,20 @@ Responsibilities:
 - Order status state machine (NEGOTIATING → CONFIRMED → IN_TRANSIT → DELIVERED)
 - Price history and target calculation
 - Voice call initiation (Plivo API), but message content via ProviderConversationAgent
+
+Voice is a binding surface and is gated (FUTURES §8.1): `_initiate_voice_negotiation`
+requires a recorded human approval for the exact terms, and the whole capability is
+off unless VOICE_ORDER_CALLS_ENABLED=true. Enforcement lives in PlivoVoiceClient, not
+here. See services/plivo_voice_client.py.
 """
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, TYPE_CHECKING
 from datetime import datetime
 
 from core.base_agent import BaseAgent
+
+if TYPE_CHECKING:  # import-time cost only for type checkers, not for the orchestrator
+    from services.plivo_voice_client import VoiceOrderApproval
 
 
 class ProcurementAgent(BaseAgent):
@@ -736,9 +744,22 @@ class ProcurementAgent(BaseAgent):
         wine_name: str,
         quantity: int,
         target_price: float,
+        *,
+        order_approval: "VoiceOrderApproval",
     ) -> Optional[str]:
         """
-        Initiate voice call negotiation with provider
+        Initiate voice call negotiation with provider.
+
+        BINDING SURFACE (FUTURES §8.1). This speaks a quantity and a price to a
+        vendor and gathers an acceptance, so ``order_approval`` — a recorded
+        human confirmation of these exact terms — is REQUIRED, not optional.
+        The gate itself lives one layer down in ``PlivoVoiceClient`` so that a
+        future caller cannot reach the phone line by going round this method;
+        this signature exists so the requirement is visible at the call site too.
+
+        The capability is additionally off unless ``VOICE_ORDER_CALLS_ENABLED``
+        is set — this path has no in-repo caller today, and the flag is what
+        stops it acquiring one silently.
 
         Args:
             order_id: Procurement order ID
@@ -746,13 +767,23 @@ class ProcurementAgent(BaseAgent):
             wine_name: Wine name
             quantity: Order quantity
             target_price: Target price per bottle
+            order_approval: Human approval evidence for this order and terms
 
         Returns:
             Call UUID if successful
+
+        Raises:
+            VoiceBindingGateError: gate not satisfied. Deliberately propagates —
+                the broad ``except`` below must never turn a refusal to place an
+                unapproved vendor call into a quiet ``None``.
         """
         if not self.voice_client:
             self.logger.warning("Voice client not available")
             return None
+
+        # Imported here (not at module scope) so the orchestrator's import graph
+        # is unchanged; by this point the voice client module is already loaded.
+        from services.plivo_voice_client import VoiceBindingGateError
 
         try:
             # Get provider details
@@ -764,15 +795,26 @@ class ProcurementAgent(BaseAgent):
             provider_name = provider.get("name", "Vendor")
             provider_phone = provider.get("contact_phone")
 
-            # Generate negotiation XML
+            # Generate negotiation XML. This is the gated call: it refuses unless
+            # the flag is on, `order_approval` covers this order at these exact
+            # terms, and the greeting passes the hard constraints.
+            #
+            # The XML is still not wired to an answer URL — `make_call` below
+            # falls back to the default `/voice/answer` webhook — so today this
+            # both builds the script and enforces the gate on it. Serving this
+            # XML from the answer webhook is the follow-up slice; until then the
+            # call must not be placed on a script the gate never saw.
             self.voice_client.generate_negotiation_xml(
                 wine_name=wine_name,
                 quantity=quantity,
                 target_price=target_price,
                 provider_name=provider_name,
+                order_id=order_id,
+                order_approval=order_approval,
             )
 
-            # Make the call
+            # Make the call — gated again at the client on the order-shaped
+            # context, so the dial cannot happen even if the XML step is skipped.
             result = await self.voice_client.make_call(
                 to_number=provider_phone,
                 record=True,
@@ -784,6 +826,7 @@ class ProcurementAgent(BaseAgent):
                     "target_price": target_price,
                     "negotiation_type": "voice",
                 },
+                order_approval=order_approval,
             )
 
             if result.get("success"):
@@ -817,6 +860,16 @@ class ProcurementAgent(BaseAgent):
                 self.logger.error(f"Voice call failed: {result.get('error')}")
                 return None
 
+        except VoiceBindingGateError:
+            # Never swallowed. A gate refusal means the system was one step away
+            # from an unapproved commitment to a vendor; collapsing that into
+            # `None` would make the most important failure here look like a
+            # transient one (FUTURES §8.1).
+            self.logger.error(
+                f"Voice binding gate refused order {order_id} — no call placed",
+                exc_info=True,
+            )
+            raise
         except Exception as e:
             self.logger.error(f"Error initiating voice negotiation: {e}", exc_info=True)
             return None

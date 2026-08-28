@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Finance &amp; Pricing — Agenda Canvas (066)</title>
+<style>
+  :root{
+    --bg:#0d0c0f; --panel:#151318; --panel-2:#1c191f; --line:#2b262f;
+    --ink:#efeaf1; --ink-2:#a49aac; --ink-3:#6f6676;
+    --burgundy:#CD2D5B; --burgundy-dim:#7c1d38;
+    --now:#3ad29f; --gated:#e0a33a; --hold:#8b7fd4; --lock:#c94f4f;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+       font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1440px;margin:0 auto;padding:28px 24px 60px}
+
+  header.top{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;
+             justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:16px}
+  h1{margin:0;font-size:22px;letter-spacing:-.02em;font-weight:650}
+  h1 span{color:var(--burgundy)}
+  .sub{color:var(--ink-2);font-size:12.5px;margin-top:5px;max-width:70ch}
+  .stamp{font-family:var(--mono);font-size:11px;color:var(--ink-3);text-align:right;white-space:nowrap}
+  .stamp b{color:var(--now);font-weight:600}
+
+  .locks{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0 22px}
+  .lock{border:1px solid var(--lock);border-radius:6px;padding:7px 11px;
+        background:rgba(201,79,79,.07);font-size:12px;color:#f0c9c9}
+  .lock b{color:#fff}
+  .lock .k{font-family:var(--mono);font-size:10.5px;color:var(--lock);letter-spacing:.06em;
+           text-transform:uppercase;display:block;margin-bottom:2px}
+
+  h2{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);
+     margin:30px 0 12px;font-weight:600}
+
+  /* ---- timeline ---- */
+  .grid{display:grid;grid-template-columns:168px repeat(9,1fr) 132px;gap:6px;min-width:1180px}
+  .axis>div{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);padding:0 0 6px 2px;
+            border-bottom:1px solid var(--line);letter-spacing:.02em}
+  .axis>div:first-child{border-bottom:none}
+  .lane-name{padding:12px 10px;background:var(--panel);border:1px solid var(--line);
+             border-radius:7px;display:flex;flex-direction:column;justify-content:center}
+  .lane-name .t{font-weight:650;font-size:12.5px}
+  .lane-name .s{color:var(--ink-3);font-size:10.5px;font-family:var(--mono);margin-top:3px}
+  .lane-name .g{margin-top:6px;font-size:10.5px;color:var(--ink-2)}
+  .cell{display:flex;flex-direction:column;gap:5px;padding:6px 2px;min-height:64px;
+        border-left:1px dashed rgba(43,38,47,.85)}
+  .cell.last{background:rgba(28,25,31,.5);border-left:1px solid var(--line);border-radius:0 7px 7px 0}
+
+  .chip{border:1px solid var(--line);background:var(--panel-2);border-radius:6px;
+        padding:6px 7px;font-size:11px;line-height:1.3;position:relative;overflow:hidden}
+  .chip .id{font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;color:var(--ink-3);
+            display:block;margin-bottom:2px}
+  .chip b{font-weight:600;color:var(--ink)}
+  .chip::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2.5px;background:var(--ink-3)}
+  .chip.now::before{background:var(--now)}
+  .chip.gated::before{background:var(--gated)}
+  .chip.hold::before{background:var(--hold)}
+  .chip.locked{border-color:var(--burgundy-dim)}
+  .chip.locked::after{content:"lock";position:absolute;right:5px;top:5px;font-family:var(--mono);
+        font-size:8px;letter-spacing:.08em;color:var(--burgundy);text-transform:uppercase}
+
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;font-size:11px;color:var(--ink-2)}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+
+  /* ---- seams ---- */
+  .seams{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:13px 14px}
+  .card h3{margin:0 0 9px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2)}
+  .card ul{margin:0;padding-left:0;list-style:none}
+  .card li{padding:5px 0;border-bottom:1px dashed rgba(43,38,47,.9);font-size:11.5px;color:var(--ink-2)}
+  .card li:last-child{border-bottom:none}
+  .card li b{color:var(--ink);font-weight:600}
+  .card li em{font-style:normal;font-family:var(--mono);font-size:10px;color:var(--ink-3)}
+  .arrow{color:var(--burgundy);font-family:var(--mono)}
+
+  /* ---- counters + findings ---- */
+  .two{display:grid;grid-template-columns:1.05fr .95fr;gap:12px}
+  table{width:100%;border-collapse:collapse;font-size:11.5px}
+  th{text-align:left;font-weight:600;color:var(--ink-3);font-size:10px;letter-spacing:.09em;
+     text-transform:uppercase;padding:0 8px 7px 0;border-bottom:1px solid var(--line)}
+  td{padding:6px 8px 6px 0;border-bottom:1px dashed rgba(43,38,47,.9);vertical-align:top;color:var(--ink-2)}
+  td.m{font-family:var(--mono);font-size:10.5px;color:var(--ink)}
+  .v-none{color:var(--lock)}.v-part{color:var(--gated)}.v-ok{color:var(--now)}
+  ol.find{margin:0;padding-left:18px}
+  ol.find li{padding:6px 0;font-size:11.5px;color:var(--ink-2);border-bottom:1px dashed rgba(43,38,47,.9)}
+  ol.find li:last-child{border-bottom:none}
+  ol.find b{color:var(--ink)}
+  code{font-family:var(--mono);font-size:10.5px;color:#d9c7dd;background:rgba(205,45,91,.08);
+       padding:1px 4px;border-radius:3px}
+  footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);
+         color:var(--ink-3);font-size:11px;font-family:var(--mono)}
+  .scroll{overflow-x:auto;padding-bottom:6px}
+  @media (max-width:900px){.seams,.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div>
+    <h1>Finance &amp; Pricing <span>— agenda canvas</span></h1>
+    <div class="sub">One sub-layer, two teams graded oppositely, twenty-one tasks on one time axis.
+      Every chip carries an owner, a close-time and a doneability in
+      <code>finance-pricing-agenda-full.md</code>. Sketch 066 — a thinking surface, not a product.</div>
+  </div>
+  <div class="stamp">
+    wave 3 · ADR 0039 track B<br />
+    dated <b>2026-08-28</b> · status active<br />
+    21 tasks · 3 lanes · 5 loops
+  </div>
+</header>
+
+<div class="locks">
+  <div class="lock"><span class="k">Lock — founder, re-confirmed 2026-08-28</span>
+    <b>Pricing model deferred.</b> No price, tier or rate anywhere on this canvas. Research and the unlock case are permitted; acting past the lock is not.</div>
+  <div class="lock"><span class="k">Lock</span>
+    <b>Brand / landing visuals held.</b> Nothing on this canvas touches them.</div>
+</div>
+
+<h2>The agenda on one axis — chips sit on their close-time</h2>
+<div class="scroll">
+<div class="grid axis">
+  <div></div>
+  <div>Sep 11</div><div>Sep 18</div><div>Sep 25</div><div>Sep 30</div>
+  <div>Oct 02</div><div>Oct 09</div><div>Oct 15</div><div>Oct 23</div><div>Nov 28</div>
+  <div>recurring</div>
+</div>
+
+<!-- F1 -->
+<div class="grid" style="margin-top:6px">
+  <div class="lane-name">
+    <div class="t">F1 · inference-cost</div>
+    <div class="s">EXISTS · owns the money view</div>
+    <div class="g">Live ledger, no published number.</div>
+  </div>
+  <div class="cell"><div class="chip now"><span class="id">FIN-A1</span><b>Reader</b> for the verdict-joined views</div></div>
+  <div class="cell">
+    <div class="chip now"><span class="id">FIN-A4</span>Guard extends to <b>scripts/</b> — shrink-only</div>
+    <div class="chip now"><span class="id">FIN-A6</span><b>Absence alarm</b> + drop-counter reader</div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="chip gated"><span class="id">FIN-A2</span>First <b>cost-per-verified-task</b> readout, graded</div>
+    <div class="chip gated"><span class="id">FIN-A3</span><b>Two cap systems</b> reconciled into one map</div>
+    <div class="chip gated"><span class="id">FIN-A5</span>First <b>ledger ↔ invoice</b> reconciliation</div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"><div class="chip gated"><span class="id">FIN-A7</span><b>spend-ledger-auditor</b> runs as a card</div></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell last"><div class="chip hold"><span class="id">FIN-A8</span><b>Track A2 watch</b>, weekly — then fetch, never recompute</div></div>
+</div>
+
+<!-- F2 -->
+<div class="grid" style="margin-top:6px">
+  <div class="lane-name">
+    <div class="t">F2 · unit-economics-pricing</div>
+    <div class="s">NEW · dormant, trigger unfired</div>
+    <div class="g">Research, registers, guards. No model.</div>
+  </div>
+  <div class="cell">
+    <div class="chip now locked"><span class="id">FIN-B4</span><b>Anchor register</b> — seeded with figures already in code</div>
+    <div class="chip now"><span class="id">FIN-B7</span><b>Entry-trigger query</b> — define it, or declare it undefinable</div>
+  </div>
+  <div class="cell"><div class="chip now locked"><span class="id">FIN-B5</span><b>no-price-proposed-guard</b> — exit 2 when it cannot check</div></div>
+  <div class="cell">
+    <div class="chip gated"><span class="id">FIN-B3</span><b>B2B money flow</b> already in the product</div>
+    <div class="chip gated locked"><span class="id">FIN-B6</span><b>Tier-vocabulary census</b> — three, none a price</div>
+  </div>
+  <div class="cell"></div>
+  <div class="cell"><div class="chip hold locked"><span class="id">FIN-B1</span><b>Payment-rails research</b> → dated library entries</div></div>
+  <div class="cell"><div class="chip hold locked"><span class="id">FIN-B2</span><b>Comparison artifact</b> — winner stays null</div></div>
+  <div class="cell"></div>
+  <div class="cell"><div class="chip gated"><span class="id">FIN-B8</span><b>pricing-trigger-warden</b> runs as a card</div></div>
+  <div class="cell"></div>
+  <div class="cell last"><div class="chip now"><span class="id">FIN-B7</span>Trigger count recorded weekly — or the word <b>undefined</b></div></div>
+</div>
+
+<!-- sub-layer -->
+<div class="grid" style="margin-top:6px">
+  <div class="lane-name">
+    <div class="t">Sub-layer</div>
+    <div class="s">PARTIAL · escalates via Growth</div>
+    <div class="g">Keeps the two numbers apart.</div>
+  </div>
+  <div class="cell"><div class="chip now"><span class="id">FIN-C5</span><b>Four cross-unit asks</b> filed in the receiving questions files</div></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"></div>
+  <div class="cell"><div class="chip hold locked"><span class="id">FIN-C1</span><b>Unlock case</b> prepared — and not acted on</div></div>
+  <div class="cell"><div class="chip gated"><span class="id">FIN-C2</span><b>two-number-separation-check</b> shipped &amp; fired once</div></div>
+  <div class="cell"></div>
+  <div class="cell">
+    <div class="chip gated"><span class="id">FIN-C3</span><b>CM-F4</b> computed from loops.json, not asserted</div>
+    <div class="chip now"><span class="id">FIN-C4</span><b>Anti-sprawl</b> applied to this unit first</div>
+  </div>
+  <div class="cell last"></div>
+</div>
+</div>
+
+<div class="legend">
+  <span><i style="background:var(--now)"></i>Buildable now — every dependency is in the repo today</span>
+  <span><i style="background:var(--gated)"></i>Gated on volume, access, or a prior task</span>
+  <span><i style="background:var(--hold)"></i>Aspiration pending a decision or Track A2</span>
+  <span><i style="background:var(--burgundy)"></i>Touches the pricing lock — research or guard only</span>
+</div>
+
+<h2>Seams this agenda touches</h2>
+<div class="seams">
+  <div class="card">
+    <h3>Consumes <span class="arrow">→</span> in</h3>
+    <ul>
+      <li><b>neural-footprint-instrumentation</b> (RM-3) <em>the spine; we own only the money column</em></li>
+      <li><b>model-routing-inference-economics</b> <em>ADR 0036: cost-per-task is fetched, never recomputed</em></li>
+      <li><b>schema-migrations</b> + <b>aio-model-routing</b> <em>Track A2 — api_spend gains task_type</em></li>
+      <li><b>agent-evaluation-gates</b> (RM-2) <em>the passing verdict that makes a task "completed"</em></li>
+      <li><b>design-partner-operations</b> <em>the discriminator FIN-B7 needs and cannot invent</em></li>
+      <li><b>the founder</b> <em>provider consoles — access assumed, NOT verified</em></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Emits <span class="arrow">→</span> out</h3>
+    <ul>
+      <li><b>harness-model-routing</b> / research-math <em>L-FIN-3, weekly — the economics, not the routing choice</em></li>
+      <li><b>strategy-fundraising</b> <em>cost-to-serve as ONE string, coverage attached, held until FIN-A4/A5</em></li>
+      <li><b>sales</b> <em>what an account costs — never what it should be charged</em></li>
+      <li><b>decision-office</b> <em>&gt;5% reconciliation variance; unregistered quotes; CM-F4</em></li>
+      <li><b>growth</b> (parent) <em>poll-only — nothing notifies; premortem D4</em></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Declared gaps — stated, not assumed away</h3>
+    <ul>
+      <li><b>fin.price_quoted_externally</b> has no publisher <em>disclosure-dependent; detects only after the fact</em></li>
+      <li><b>Escalation to Growth is a doc edit</b> <em>nothing notifies; Growth must poll</em></li>
+      <li><b>The provider invoice is not a system input</b> <em>reconciliation is a human reading two consoles</em></li>
+      <li><b>fin-orchestrator cannot run</b> <em>routing_class: extraction — waits on OD-03 / Track A1</em></li>
+    </ul>
+  </div>
+</div>
+
+<h2>What the meters read today — measured 2026-08-28, in-worktree</h2>
+<div class="two">
+  <div class="card">
+    <table>
+      <thead><tr><th>Metric</th><th>Reading</th><th>Task</th></tr></thead>
+      <tbody>
+        <tr><td class="m">doneability_verdict_coverage</td><td><span class="v-ok">27 of 39 graded</span>, 12 exempt, 0 ungraded</td><td class="m">A2</td></tr>
+        <tr><td class="m">metered_invocation_coverage</td><td><span class="v-ok">gateway 0 unrouted · py 18/18</span> — <span class="v-part">scripts/ uncovered: 11 files, 0 logged</span></td><td class="m">A4</td></tr>
+        <tr><td class="m">cost_per_completed_task</td><td><span class="v-part">computable, unpublished</span> — verdict views exist, no reader</td><td class="m">A1</td></tr>
+        <tr><td class="m">spend_attribution_coverage</td><td><span class="v-none">0% on api_spend</span> — still 8 columns; grain lives on the NF row</td><td class="m">A8</td></tr>
+        <tr><td class="m">spend_reconciliation_variance</td><td><span class="v-none">never measured</span></td><td class="m">A5</td></tr>
+        <tr><td class="m">hours_since_last_spend_row</td><td><span class="v-none">unmeasured</span> — drop counter is process-local</td><td class="m">A6</td></tr>
+        <tr><td class="m">cap_breach_count</td><td><span class="v-part">structurally partial</span> — a tier breach is a log line</td><td class="m">A3</td></tr>
+        <tr><td class="m">external_price_quotes_logged</td><td><span class="v-none">no register</span> — 5 figures already ship in code</td><td class="m">B4</td></tr>
+        <tr><td class="m">non_design_partner_count</td><td><span class="v-none">undefined, not zero</span> — no discriminator exists</td><td class="m">B7</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h3>Findings — no card or loop can carry these</h3>
+    <ol class="find">
+      <li><b>Our own CM-F4 number is wrong.</b> The loops file says 4 of 5; recomputed from <code>loops.json</code> it is <b>2 of 5</b>. Premortem D4's signal is not firing.</li>
+      <li><b>The sub-layer's own agent cannot run.</b> <code>fin-orchestrator</code> is <code>extraction</code>, not mechanical — it waits on OD-03.</li>
+      <li><b>A per-tier cap breach is unobservable.</b> Fails open, reports a <code>logger.warn</code> nothing consumes.</li>
+      <li><b>A view is named for a thing it does not compute.</b> <code>nf_a_cost_per_completed_task</code> has no outcome predicate — renaming is RM-3's call.</li>
+      <li><b>Stale citations in our own charter</b> — OD-11 listed open (resolved 2026-08-24); <code>log()</code> line numbers moved.</li>
+      <li><b>The anchor is already in production code.</b> Five dollar figures in <code>spend-tiers.ts</code>, correctly labelled placeholders, in no register. Premortem D3, live.</li>
+    </ol>
+  </div>
+</div>
+
+<footer>
+  sketch 066 · finance-pricing-agenda-canvas · throwaway-grade thinking surface ·
+  source of truth is <code>.planning/01-org/commercial/finance-pricing/finance-pricing-agenda-full.md</code>
+</footer>
+
+</div>
+</body>
+</html>

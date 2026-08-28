@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 057 · Skills Agenda Canvas</title>
+<style>
+  :root{
+    --ink:#0d0f13; --panel:#14181f; --panel-2:#1a1f28; --line:#2a3140;
+    --text:#e8eaf0; --dim:#98a1b3; --faint:#6b7488;
+    --live:#4ade80; --blocked:#f87171; --gated:#fbbf24; --reach:#a78bfa;
+    --burgundy:#cd2d5b; --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:"Plus Jakarta Sans",ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--text);font-family:var(--sans);
+       font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1280px;margin:0 auto;padding:32px 28px 72px}
+  header{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:28px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+  h1{font-size:30px;margin:8px 0 6px;letter-spacing:-.02em;font-weight:650}
+  .sub{color:var(--dim);max-width:70ch}
+  .sub b{color:var(--text);font-weight:600}
+
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .chip{font-family:var(--mono);font-size:11.5px;padding:5px 10px;border-radius:5px;
+        background:var(--panel);border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+  .chip b{color:var(--text)}
+  .chip.bad b{color:var(--blocked)} .chip.good b{color:var(--live)} .chip.warn b{color:var(--gated)}
+
+  h2{font-size:12px;font-family:var(--mono);letter-spacing:.14em;text-transform:uppercase;
+     color:var(--faint);margin:40px 0 14px;font-weight:500}
+
+  /* ---- pressure pipeline ---- */
+  .pipe{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  .stage{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 13px;position:relative}
+  .stage .n{font-family:var(--mono);font-size:26px;font-weight:600;letter-spacing:-.02em}
+  .stage .lbl{font-size:12px;color:var(--dim);margin-top:2px}
+  .stage .note{font-size:11.5px;color:var(--faint);margin-top:9px;border-top:1px solid var(--line);padding-top:8px}
+  .stage.in .n{color:var(--text)}
+  .stage.gate{border-color:#3b4557}
+  .stage.gate .n{color:var(--gated);font-size:15px;padding-top:8px}
+  .stage.reg .n{color:var(--live)}
+  .stage.break{border-color:#4a2530;background:linear-gradient(180deg,#191016,#14181f)}
+  .stage.break .n{color:var(--blocked);font-size:15px;padding-top:8px}
+  .stage.out .n{color:var(--blocked)}
+  .arrow{position:absolute;right:-11px;top:50%;transform:translateY(-50%);color:var(--faint);
+         font-size:14px;z-index:2}
+  .stage.break .arrow{color:var(--blocked)}
+  .verdict{margin-top:12px;font-size:12.5px;color:var(--dim);border-left:2px solid var(--burgundy);padding-left:12px}
+
+  /* ---- swimlanes ---- */
+  .lanes{border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .lanehead,.lane{display:grid;grid-template-columns:196px repeat(7,1fr)}
+  .lanehead{background:var(--panel-2);border-bottom:1px solid var(--line)}
+  .lanehead div{padding:9px 8px;font-family:var(--mono);font-size:10.5px;color:var(--faint);
+                text-align:center;border-left:1px solid var(--line)}
+  .lanehead div:first-child{text-align:left;border-left:none;color:var(--dim)}
+  .lane{border-bottom:1px solid var(--line)}
+  .lane:last-child{border-bottom:none}
+  .lane > div{border-left:1px solid var(--line);padding:9px 7px;min-height:66px}
+  .owner{border-left:none;background:var(--panel-2);display:flex;flex-direction:column;justify-content:center}
+  .owner .t{font-weight:620;font-size:13px}
+  .owner .m{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:3px}
+  .task{display:block;background:var(--panel);border:1px solid var(--line);border-left:2px solid var(--dim);
+        border-radius:5px;padding:6px 7px;margin-bottom:6px}
+  .task .id{font-family:var(--mono);font-size:10px;color:var(--faint)}
+  .task .t{font-size:11.5px;line-height:1.35;margin-top:2px}
+  .task.live{border-left-color:var(--live)}
+  .task.blocked{border-left-color:var(--blocked)}
+  .task.gated{border-left-color:var(--gated)}
+  .task.reach{border-left-color:var(--reach)}
+
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:var(--faint)}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .sw{width:9px;height:9px;border-radius:2px;display:inline-block}
+
+  /* ---- two-col ---- */
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px 17px}
+  .card h3{margin:0 0 12px;font-size:13px;font-weight:620}
+  .row{display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:12.5px}
+  .row:first-of-type{border-top:none}
+  .row .k{color:var(--dim);flex:0 0 148px;font-family:var(--mono);font-size:11px;padding-top:1px}
+  .row .v{color:var(--text);flex:1}
+  .row .v em{color:var(--faint);font-style:normal}
+  ol.refuse{margin:0;padding-left:18px;font-size:12.5px;color:var(--dim)}
+  ol.refuse li{margin-bottom:9px}
+  ol.refuse b{color:var(--text);font-weight:600}
+
+  .locks{margin-top:26px;border:1px dashed #3a3040;background:#17121a;border-radius:8px;
+         padding:13px 16px;font-size:12.5px;color:var(--dim)}
+  .locks b{color:var(--gated)}
+  footer{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);
+         font-family:var(--mono);font-size:11px;color:var(--faint);display:flex;
+         justify-content:space-between;gap:16px;flex-wrap:wrap}
+
+  @media (max-width:1000px){
+    .pipe{grid-template-columns:1fr 1fr}
+    .arrow{display:none}
+    .cols{grid-template-columns:1fr}
+    .lanehead,.lane{grid-template-columns:150px repeat(7,minmax(90px,1fr));min-width:820px}
+    .lanescroll{overflow-x:auto}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Sketch 057 · applied-ai / skills · agenda canvas</div>
+  <h1>233 proposals, 4 skills, one missing column</h1>
+  <p class="sub">The registry moved <b>0 → 4</b> on 2026-08-28 (ADR 0038) — and the department's own
+  sequencing rule broke on the way: premortem <b>M2</b> says telemetry precedes skill #2. There are four
+  skills and no telemetry. Every task on this canvas is either a brake being fitted while the vehicle
+  moves, or a measurement that says how fast it is going.</p>
+  <div class="chips">
+    <span class="chip good">registry_size <b>4</b></span>
+    <span class="chip good">protocol_compliance <b>4/4</b></span>
+    <span class="chip bad">firing_rate_30d <b>unmeasurable</b></span>
+    <span class="chip">deletions_per_quarter <b>0</b></span>
+    <span class="chip warn">script_to_skill <b>84 : 4</b></span>
+    <span class="chip warn">docs : skills <b>40 : 4</b></span>
+    <span class="chip">T4 share of supply line <b>1 of 233</b></span>
+  </div>
+</header>
+
+<h2>The pressure diagram — where the agenda actually acts</h2>
+<div class="pipe">
+  <div class="stage in">
+    <div class="n">84 + 233</div>
+    <div class="lbl">inflow: <code>scripts/</code> entries + proposed-skill rows across 100 agent-stack §3 tables</div>
+    <div class="note">228 distinct names · 5 collide · 46 cite no checkable artifact</div>
+    <div class="arrow">→</div>
+  </div>
+  <div class="stage gate">
+    <div class="n">§3.3 gate<br>reported, not enforced</div>
+    <div class="lbl">four fields · a citable past instance · owning department</div>
+    <div class="note">Checked only inside <code>run_card.py::_skills_census</code>, which never fails a build. <b style="color:var(--gated)">SK-4</b> makes it blocking.</div>
+    <div class="arrow">→</div>
+  </div>
+  <div class="stage reg">
+    <div class="n">4</div>
+    <div class="lbl">committed skills in <code>.claude/skills/</code></div>
+    <div class="note">fleet-census · harness-contract-audit · model-pin-census · registry-index-refresh</div>
+    <div class="arrow">→</div>
+  </div>
+  <div class="stage break">
+    <div class="n">30-day review<br>cannot run</div>
+    <div class="lbl"><code>nf_a.skill_id</code> is not a column — Track A4 builds it, we consume it</div>
+    <div class="note">Unmeasurable defaults to <em>keep</em>. That default is the whole failure.</div>
+    <div class="arrow">→</div>
+  </div>
+  <div class="stage out">
+    <div class="n">0</div>
+    <div class="lbl">deletions this quarter, against 4 additions</div>
+    <div class="note">Benign at one quarter. At two, it is premortem M1 and escalates past us.</div>
+  </div>
+</div>
+<p class="verdict">Read left to right: the department has an inflow 58× its registry, a gate that reports
+instead of blocking, and no way to remove anything once admitted. The agenda fixes the middle two now
+and pre-builds the fourth so it arms the day the column lands.</p>
+
+<h2>Agenda — owners by team, across close-dates</h2>
+<div class="lanescroll">
+<div class="lanes">
+  <div class="lanehead">
+    <div>Team · metric it moves</div>
+    <div>Sep 4</div><div>Sep 11</div><div>Sep 18</div><div>Sep 30</div>
+    <div>Oct 9</div><div>Oct 23</div><div>Nov 24</div>
+  </div>
+
+  <div class="lane">
+    <div class="owner">
+      <span class="t">skill-registry-authoring</span>
+      <span class="m">registry_size · compliance_rate</span>
+    </div>
+    <div><a class="task live"><span class="id">SK-1</span><span class="t">Harvest sweep: reservoir census as dated memory facts (84 / 21 / 16)</span></a></div>
+    <div>
+      <a class="task live"><span class="id">SK-4</span><span class="t">check_skill_protocol.sh — §3.3 blocking in CI, exit 2 when it cannot check</span></a>
+      <a class="task live"><span class="id">SK-5</span><span class="t">Publish skills.registry_changed — closes the card's declared gap</span></a>
+    </div>
+    <div><a class="task live"><span class="id">SK-2</span><span class="t">Grade 233 rows into 4 buckets that sum to 233</span></a></div>
+    <div><a class="task live"><span class="id">SK-3</span><span class="t">Admit skills 5–8 at ≤2/week, compliance 8/8</span></a></div>
+    <div><a class="task reach"><span class="id">SK-13</span><span class="t">skill-create (T4) — beat the hand-authored baseline</span></a></div>
+    <div></div><div></div>
+  </div>
+
+  <div class="lane">
+    <div class="owner">
+      <span class="t">skill-lifecycle-anti-sprawl</span>
+      <span class="m">deletions_per_quarter · firing_rate_30d</span>
+    </div>
+    <div></div>
+    <div><a class="task blocked"><span class="id">SK-6</span><span class="t">Consumption spec to RM-3 <em>before</em> the A4 column is cut</span></a></div>
+    <div></div><div></div>
+    <div><a class="task gated"><span class="id">SK-8</span><span class="t">Paired-deletion guard, dry-run; arms when N is set</span></a></div>
+    <div></div>
+    <div><a class="task blocked"><span class="id">SK-7</span><span class="t">30-day review live ≤30d after A4; backstop 2026-11-24. Zero deletions <em>and</em> zero written keeps → red-team</span></a></div>
+  </div>
+
+  <div class="lane">
+    <div class="owner">
+      <span class="t">skills-orchestrator</span>
+      <span class="m">the department, on itself</span>
+    </div>
+    <div><a class="task live"><span class="id">SK-11</span><span class="t">OD-25 packet: name the 2 docs and the exact edit each needs</span></a></div>
+    <div><a class="task reach"><span class="id">SK-14</span><span class="t">Ask engineering: a CI <em>notice</em> on the scripts/ bypass</span></a></div>
+    <div></div><div></div><div></div>
+    <div><a class="task live"><span class="id">SK-10</span><span class="t">Beat the staleness cliff: 32 of 36 docs still dated 2026-08-24</span></a></div>
+    <div>
+      <a class="task live"><span class="id">SK-9</span><span class="t">Self-judgment against OD-24's adopted trigger — we write the recommendation</span></a>
+      <a class="task gated"><span class="id">SK-12</span><span class="t">TECH-F4 answered by census, not opinion</span></a>
+    </div>
+  </div>
+
+  <div class="lane">
+    <div class="owner">
+      <span class="t">skill-harvesting</span>
+      <span class="m">GATED at ≥15 skills — staffs nobody</span>
+    </div>
+    <div style="grid-column:2 / span 7;display:flex;align-items:center;color:var(--faint);font-size:12px">
+      Registry is 4. The trigger is not close. SK-1 and SK-2 are harvesting's work
+      <b style="color:var(--gated);margin:0 4px">running inside registry-authoring</b>
+      — which is exactly what the gated charter instructs. Overriding a written trigger would be a decision, not a judgement.
+    </div>
+  </div>
+</div>
+</div>
+<div class="legend">
+  <span><i class="sw" style="background:var(--live)"></i> unblocked — closes on its own date</span>
+  <span><i class="sw" style="background:var(--blocked)"></i> blocked on Track A4 (<code>nf_a.skill_id</code>)</span>
+  <span><i class="sw" style="background:var(--gated)"></i> built now, armed on a decision</span>
+  <span><i class="sw" style="background:var(--reach)"></i> reach — one real, one pending another unit's yes</span>
+</div>
+
+<h2>Seams &amp; refusals</h2>
+<div class="cols">
+  <div class="card">
+    <h3>Seams — each an ask into another unit's questions file, never an edit there</h3>
+    <div class="row"><div class="k">RM-3 nf-instr.</div><div class="v"><b>nf_a.skill_id</b> (Track A4) — SK-6's consumption spec lands before the column is cut. <em>We do not design the column.</em></div></div>
+    <div class="row"><div class="k">reliability-sre</div><div class="v">the <code>loop-watcher.yml</code>-sibling cron that ticks <code>run_card.py</code>. <em>Without it SK-7 has no scheduler.</em></div></div>
+    <div class="row"><div class="k">decision-office</div><div class="v">OD-25 (who runs the weekly job) · TECH-F4 (three teams or two)</div></div>
+    <div class="row"><div class="k">red-team</div><div class="v">SK-7's zero-deletion trip-wire fires to them the same week — <em>we do not report on our own core failure mode alone</em></div></div>
+    <div class="row"><div class="k">engineering</div><div class="v">SK-14, as a question. Approval is not ours to grant.</div></div>
+    <div class="row"><div class="k">ai-orchestration</div><div class="v">the collapse target, if 2026-11-24 goes that way (OD-24, Agreed)</div></div>
+  </div>
+  <div class="card">
+    <h3>What this agenda refuses</h3>
+    <ol class="refuse">
+      <li><b>A local firing log while we wait.</b> It manufactures a second ledger at a different grain — the exact debt Track A2 is paying down on spend right now.</li>
+      <li><b>Harvest all 84 scripts into wrappers.</b> Loops L5's named anti-pattern: sprawl delivered by the mechanism meant to prevent it.</li>
+      <li><b>Staff harvesting early to run the sweep.</b> Overriding a written trigger is a decision, not a judgement.</li>
+      <li><b>Write the 188 T2 bodies the corpus proposes.</b> Premortem M4 with a spreadsheet. SK-4's guard makes the refusal machine-enforced.</li>
+      <li><b>A new doc to track the queue.</b> Retire-to-write. Doc #41, in the department whose failure signal is docs outnumbering artifacts, would be self-parody.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="locks">
+  <b>Locks honored.</b> Nothing here schedules work past a lock: no pricing model, no brand or landing
+  visuals. <b>Registry ceiling N stays the founder's</b> — SK-8 builds the brake and ships it disarmed,
+  because a department that sets its own brake has no brake. <b>OD-25</b> and <b>TECH-F4</b> stay open;
+  SK-11 and SK-12 make each cheap to close, and close neither.
+</div>
+
+<footer>
+  <span>.planning/sketches/057-skills-agenda-canvas · throwaway thinking surface, not a product</span>
+  <span>counts measured 2026-08-28 — the census is <code>run_card.py --agent registry-clerk</code>, never this page</span>
+</footer>
+
+</div>
+</body>
+</html>
