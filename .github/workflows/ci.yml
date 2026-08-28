@@ -143,6 +143,48 @@ jobs:
           echo "::notice::CANNOT CHECK (exit 2) means the guard found no Sentry init or no user shape at all. That is a rename or a move, not a pass; repoint the guard."
           echo "::notice::If a new field is genuinely needed for triage, it has to be an identifier meaningless to the processor. Widening SentryUser is a privacy decision and belongs in an ADR, not in a PR diff."
 
+  # FUTURES §8.1: AI never forms or accepts a purchase commitment without a
+  # recorded human tap. PR #156 put `assert_order_voice_allowed()` behind the
+  # three voice surfaces that existed then. The audit of that PR named what it
+  # could not fix: the script a vendor actually hears is served by the answer
+  # webhook, which is unbuilt — "when that webhook slice lands it needs its own
+  # gate — the exact 'next caller forgets' risk, re-created one layer down".
+  #
+  # This job is the answer to that. It enumerates every function that can build
+  # Plivo call XML or dial, follows helper indirection and cross-module calls
+  # into the voice API, and fails unless each one reaches the gate or is named
+  # in the guard's ALLOWLIST with the reason it commits nothing. Written now,
+  # while the webhook does not exist, it inconveniences nobody and is waiting
+  # on the day somebody writes `<Speak>press 1 to accept this order</Speak>` in
+  # a new file. A TS/JS hit always fails: the gate is a Python function, so
+  # serving call XML from the gateway moves a binding surface out of reach of
+  # the only enforcement point there is — an ADR, not a PR diff.
+  #
+  # Stdlib only, no install step. Exit 2 (cannot check) blocks too: a vacuous
+  # pass on a binding surface is the failure mode this repo has already paid for.
+  voice-gate-coverage:
+    name: No voice path speaks without the §8.1 gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Every voice emitter reaches assert_order_voice_allowed()
+        run: python3 scripts/check_voice_gate_coverage.py
+
+      - name: The guard still fires on the shape it exists to catch
+        run: python3 scripts/check_voice_gate_coverage.py --self-test
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::UNGATED means a function can put words in a vendor's ear without passing assert_order_voice_allowed(). Voice forms a commitment in one breath and leaves no draft anyone can review afterwards — that is why it is the surface FUTURES §8.1 names."
+          echo "::notice::Fix it by calling the gate on the path that speaks, in services/agent-orchestrator/services/plivo_voice_client.py. Do NOT gate the caller instead: a gate that lives in the caller is a gate the next caller forgets, which is the whole argument this job enforces."
+          echo "::notice::If the path genuinely commits nothing, add it to ALLOWLIST in scripts/check_voice_gate_coverage.py with the reason. 'Only reachable from a gated caller today' is a claim about today — write it down as one."
+          echo "::notice::A TYPESCRIPT/JAVASCRIPT finding cannot be fixed by calling the gate; it is a Python function. Serving Plivo call XML from the gateway is a decision about where the binding surface lives, and belongs in an ADR."
+          echo "::notice::STALE or REDUNDANT allowlist entries fail on purpose. The list shrinks; a list nobody prunes is a list nobody reads."
+          echo "::notice::CANNOT CHECK (exit 2) means the voice module or the gate function is gone. That is a move or a rename, not a pass; repoint the guard."
+
   # P1 §5 item 4. Defect D3 was that the entire NestJS gateway wrote nothing to
   # the spend ledger: seven raw `fetch("https://api.anthropic.com/...")` call
   # sites, and `grep -c api_spend apps/api-gateway/src` returning 0. Every one of
@@ -695,6 +737,7 @@ jobs:
         # that introduced it.
         agent-card-contract,
         sentry-pii-scope,
+        voice-gate-coverage,
       ]
     steps:
       - name: Checkout code
