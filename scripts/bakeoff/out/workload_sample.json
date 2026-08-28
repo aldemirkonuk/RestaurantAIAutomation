@@ -1,0 +1,238 @@
+{
+  "generator": "scripts/bakeoff/score_candidates.py --emit-sample",
+  "protocol": "scripts/bakeoff/README.md",
+  "generated_at": "2026-08-28T10:37:06+00:00",
+  "cards_digest": "612679a05559e22d",
+  "selection": "first N per routing_class ordered by sha256(unit::agent) \u2014 deterministic, no RNG, no operator discretion",
+  "per_class": 6,
+  "counts": {
+    "mechanical": 6,
+    "extraction": 6,
+    "judgment": 6
+  },
+  "sample": {
+    "mechanical": [
+      {
+        "unit": "corpus-archive",
+        "agent": "corpus-warden",
+        "routing_class": "mechanical",
+        "quality_bar": "the census is reproducible: a rerun on the same commit yields the same four counts, and any count it cannot read is emitted as unreadable rather than as zero (ADR 0020). `corpus.ambiguous_duplicate_count` may not fall without a recorded per-pair decision ([[corpus-archive-directive]] rule 1). NONE (gap) for a formal verdict basis \u2014 this department emits nothing to the NF-A spine",
+        "autonomy": {
+          "read": "autonomous",
+          "propose": "autonomous",
+          "mutate_stock_money_outbound": "confirm"
+        },
+        "path": "01-org/corporate/knowledge-documentation/teams/corpus-archive/corpus-archive-agent-stack.md"
+      },
+      {
+        "unit": "instruments-equity",
+        "agent": "ie-chain-warden",
+        "routing_class": "mechanical",
+        "quality_bar": "a hold is reproducible: rerun against the same register state yields the same verdict and names the same missing leg. NONE (gap) \u2014 ADR 0017 defines no grader for legal checks, and the terminal gate is human and absolute: outside-counsel review before signature ([[legal-directive]] R1, legal.counsel_gate_compliance target 100% permanently)",
+        "autonomy": {
+          "read": "autonomous",
+          "propose": "autonomous",
+          "mutate_stock_money_outbound": "confirm"
+        },
+        "path": "01-org/corporate/legal/teams/instruments-equity/instruments-equity-agent-stack.md"
+      },
+      {
+        "unit": "design-system-motion-substrate",
+        "agent": "substrate-census",
+        "routing_class": "mechanical",
+        "quality_bar": "reproducible \u2014 a rerun on the same commit yields the same counts; each of the 10 \u00a7X rules reported as enforced-in-CI or unenforced-with-a-named-owner, never omitted. NONE (gap) \u2014 ADR 0017 has no verdict grader for lint-style reports",
+        "autonomy": {
+          "read": "autonomous",
+          "propose": "autonomous",
+          "mutate_stock_money_outbound": "confirm"
+        },
+        "path": "01-org/product/design/teams/design-system-motion-substrate/design-system-motion-substrate-agent-stack.md"
+      },
+      {
+        "unit": "harness-runtime",
+        "agent": "harness-sentinel",
+        "routing_class": "mechanical",
+        "quality_bar": "census reproducible: a rerun on the same commit yields the same four counts; NONE (gap) \u2014 no formal verdict basis exists for audits yet (ADR 0017 has no such grader)",
+        "autonomy": {
+          "read": "autonomous",
+          "propose": "autonomous",
+          "mutate_stock_money_outbound": "confirm"
+        },
+        "path": "01-org/applied-ai/ai-orchestration/teams/harness-runtime/harness-runtime-agent-stack.md"
+      },
+      {
+        "unit": "exploration-studio",
+        "agent": "sketch-manifest-steward",
+        "routing_class": "mechanical",
+        "quality_bar": "bidirectional closure \u2014 every directory has a row and every row a directory, or the exception is listed by name; no row silently carries null past two close-times. NONE (gap) \u2014 ADR 0017 has no verdict grader for an index sweep",
+        "autonomy": {
+          "read": "autonomous",
+          "propose": "autonomous",
+          "mutate_stock_money_outbound": "confirm"
+        },
+        "path": "01-org/product/design/teams/exploration-studio/exploration-studio-agent-stack.md"
+      },
+      {
+        "unit": "neural-footprint-instrumentation",
+        "agent": "nf-contract-sentinel",
+        "routing_class": "mechanical",
+        "quality_bar": "completeness is recomputed from the table, never inferred from the callsite list; NONE (gap) \u2014 ADR 0017 defines no verdict basis for a contract audit",
+        "autonomy": {
+          "read": "autonomous",
+          "propose": "autonomous",
+          "mutate_stock_money_outbound": "confirm"
+        },
+        "path": "01-org/research-math/teams/neural-footprint-instrumentation/neural-footprint-instrumentation-agent-stack.md"
+      }
+    ],
+    "extraction": [
+      {
+        "unit": "corpora-enrichment",
+        "agent": "enrichment-runner",
+        "routing_class": "extraction",
+        "quality_bar": "another unit's gate: `governance.py:107` assign_governance_tier + `:227` compute_overall_confidence, published by [[substrate-quality-coverage-charter]]. This agent never grades its own output (author \u2260 auditor, `technology.md:32-34`)",
+        "autonomy": {
+          "read": "autonomous",
+          "propose": "autonomous",
+          "mutate_stock_money_outbound": "confirm"
+        },
+        "path": "01-org/platform/data/teams/corpora-enrichment/corpora-enrichment-agent-stack.md"
+      },
+      {
+        "unit": "legal",
+        "agent": "legal-intake-registrar",
+        "routing_class": "extraction",
+        "quality_bar": "every routed request names its lane, its gates, and the date it was received; a request whose terms are absent is HOLD, never a best guess (R3). NONE (gap) \u2014 ADR 0017 defines no grader for legal work, and the terminal grade here is human: counsel review before signature",
+        "autonomy": {
+          "read": "autonomous",
+          "propose": "autonomous",
+          "mutate_stock_money_outbound": "confirm"
+        },
+        "path": "01-org/corporate/legal/legal-agent-stack.md"
+      },
+      {
+        "unit": "insight-narrative-generation",
+        "agent": "narrative-restraint-sentinel",
+        "routing_class": "extraction",
+        "quality_bar": "grounding_v1 (verdict-bases.ts:67) on the consultant path \u2014 every claim's evidence_refs root must name a category actually supplied, with HARD RULE 6's thin-evidence carve-out (consultant-grounding.ts); NONE (gap) on the 573-type template path, which has no verdict basis and no disposition column. No rate is emitted without its denominator; insufficient_data is a published state, not an apology (ADR 0020)",
+        "autonomy": {
+          "read": "autonomous",
+          "propose": "autonomous",
+          "mutate_stock_money_outbound": "confirm"
+        },
+        "path": "01-org/intelligence/analytics-bi/teams/insight-narrative-generation/insight-narrative-generation-agent-stack.md"
+      },
+      {
+        "unit": "skills",
+        "agent": "skills-orchestrator",
+        "routing_class": "extraction",
+        "quality_bar": "firing_rate reads 'unmeasurable' until the telemetry exists \u2014 never 0, never omitted (ADR 0016/0020)",
+        "autonomy": {
+          "read": "autonomous",
+          "propose": "autonomous",
+          "mutate_stock_money_outbound": "confirm"
+        },
+        "path": "01-org/applied-ai/skills/skills-agent-stack.md"
+      },
+      {
+        "unit": "compliance-privacy",
+        "agent": "cp-orchestrator",
+        "routing_class": "extraction",
+        "quality_bar": "every board row carries a measured value or the words 'not emitted' (ADR 0020). With 0 consent call sites and no erasure function, most rows read 'not emitted' today \u2014 that is the correct output, not a failure of the agent",
+        "autonomy": {
+          "read": "autonomous",
+          "propose": "autonomous",
+          "mutate_stock_money_outbound": "confirm"
+        },
+        "path": "01-org/corporate/compliance-privacy/compliance-privacy-agent-stack.md"
+      },
+      {
+        "unit": "guest-experience",
+        "agent": "guest-experience-orchestrator",
+        "routing_class": "extraction",
+        "quality_bar": "every board row reads as a measured value, `0 (structurally \u2014 no writer)`, or `undefined (no denominator)`. A number derived from a zero denominator is a failed run, not a low score (charter \u00a7Metrics)",
+        "autonomy": {
+          "read": "autonomous",
+          "propose": "autonomous",
+          "mutate_stock_money_outbound": "confirm"
+        },
+        "path": "01-org/product/guest-experience/guest-experience-agent-stack.md"
+      }
+    ],
+    "judgment": [
+      {
+        "unit": "guest-identity-consent",
+        "agent": "guest-identity-warden",
+        "routing_class": "judgment",
+        "quality_bar": "nf_b.false_merge_count = 0 \u2014 a gate, graded by scripts/eval_guest_merge_policies.py in CI. For the review findings: NONE (gap) \u2014 no verdict basis exists for 'does this diff introduce a threshold' (ADR 0017 has no such grader)",
+        "autonomy": {
+          "read": "autonomous",
+          "propose": "autonomous",
+          "mutate_stock_money_outbound": "confirm"
+        },
+        "path": "01-org/product/guest-experience/teams/guest-identity-consent/guest-identity-consent-agent-stack.md"
+      },
+      {
+        "unit": "social-community",
+        "agent": "sc-post-proposer",
+        "routing_class": "judgment",
+        "quality_bar": "post-preflight: the item cleared G3, the link resolves to something that exists, the voice clause is cited rather than felt, and the routing address is current. NONE (gap) for the outcome metric \u2014 referred activation is unmeasurable until G5 instruments the funnel",
+        "autonomy": {
+          "read": "autonomous",
+          "propose": "autonomous",
+          "mutate_stock_money_outbound": "confirm"
+        },
+        "path": "01-org/commercial/media-brand/teams/social-community/social-community-agent-stack.md"
+      },
+      {
+        "unit": "skill-harvesting",
+        "agent": "harvest-miner",
+        "routing_class": "judgment",
+        "quality_bar": "every candidate carries checkable evidence (the script path, the commit pattern, the repetition); admission is not this card's to grant \u2014 the \u00a73.3 gate at registry-clerk still stands, at any volume",
+        "autonomy": {
+          "read": "autonomous",
+          "propose": "autonomous",
+          "mutate_stock_money_outbound": "confirm"
+        },
+        "path": "01-org/applied-ai/skills/teams/skill-harvesting/skill-harvesting-agent-stack.md"
+      },
+      {
+        "unit": "skill-registry-authoring",
+        "agent": "registry-clerk",
+        "routing_class": "judgment",
+        "quality_bar": "every admitted skill cites a checkable past instance (path:line / PR / dated session); two skills with overlapping declared triggers are one skill or one is rejected \u2014 the anti-collision rule",
+        "autonomy": {
+          "read": "autonomous",
+          "propose": "autonomous",
+          "mutate_stock_money_outbound": "confirm"
+        },
+        "path": "01-org/applied-ai/skills/teams/skill-registry-authoring/skill-registry-authoring-agent-stack.md"
+      },
+      {
+        "unit": "ai-surface-security",
+        "agent": "ai-surface-sentinel",
+        "routing_class": "judgment",
+        "quality_bar": "two numbers or the run failed \u2014 a detection rate without the corpus size is a failed run; a run where every case passes is reported *suspicious*, not green, because that usually means the corpus was tuned to the model ([[ai-surface-security-schedule]]). Opposite pass condition to [[evaluation-doneability-charter]]: they want a high score, we want a failing case",
+        "autonomy": {
+          "read": "autonomous",
+          "propose": "autonomous",
+          "mutate_stock_money_outbound": "confirm"
+        },
+        "path": "01-org/intelligence/security/teams/ai-surface-security/ai-surface-security-agent-stack.md"
+      },
+      {
+        "unit": "positioning-fundraise-readiness",
+        "agent": "pfr-claim-gate",
+        "routing_class": "judgment",
+        "quality_bar": "the five-question send checklist returns one of hold / weaken / flag / release with a reason; every citation returns holds / drifted to :N / inverted / gone \u2014 **silence fails the run**; zero drift across a document older than a month is a defect until proven otherwise ([[positioning-fundraise-readiness-schedule]]). NONE (gap) \u2014 ADR 0017 defines no verdict basis for claim checks",
+        "autonomy": {
+          "read": "autonomous",
+          "propose": "autonomous",
+          "mutate_stock_money_outbound": "confirm"
+        },
+        "path": "01-org/corporate/strategy-fundraising/teams/positioning-fundraise-readiness/positioning-fundraise-readiness-agent-stack.md"
+      }
+    ]
+  },
+  "sample_digest": "7b329850d71e6740"
+}
