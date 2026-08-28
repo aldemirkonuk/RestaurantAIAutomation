@@ -698,23 +698,38 @@ class ActiveLearningService:
         1. Analyze corrections for patterns
         2. Propose new rules
         3. Run benchmark to validate
+
+        Total by construction: an unusable gold set is *reported* in
+        ``benchmark_skipped_reason``, never raised, so non-HTTP callers (cron,
+        scripts) still receive the step 1–2 rule proposals. Callers that must
+        not report success for a validation that never ran check that field —
+        the HTTP route (``api/scan_routes.run_learning_cycle``) answers 503 on
+        it.
         """
         # Step 1: Analyze corrections
         new_rules = self.learner.analyze_corrections()
 
-        # Step 2: Run benchmark — but only once the gold set can assert
-        # accuracy. Below threshold we do NOT fabricate a pass; we say plainly
-        # that validation was skipped and why, rather than returning a silent
-        # ``benchmark_result: None`` that reads as "all clear".
+        # Step 2: Run the benchmark. Every way the gold set can fail to assert
+        # accuracy is funnelled through one path — the oracle already raises
+        # BenchmarkCorpusError for BOTH the below-threshold corpus AND the
+        # ">= MIN_DOCS documents but none comparable" corpus — so we catch the
+        # exception rather than re-deriving the first condition with a size
+        # pre-check. That old pre-check covered only the size case, which left
+        # its twin (docs present, nothing comparable) escaping this method
+        # uncaught, i.e. a 500 at the HTTP boundary, while the size case
+        # returned a tidy 200. Catching here removes that asymmetry: both
+        # shapes now produce the same reported skip, and the same 503.
+        #
+        # We do NOT fabricate a pass: the reason is stated plainly rather than
+        # returning a silent ``benchmark_result: None`` that reads as
+        # "all clear".
         benchmark_result = None
         benchmark_skipped_reason = None
-        if self.benchmark.benchmark_size >= self.benchmark.BENCHMARK_MIN_DOCS:
+        try:
             benchmark_result = self.benchmark.run_benchmark()
-        else:
+        except BenchmarkCorpusError as exc:
             benchmark_skipped_reason = (
-                f"gold set has {self.benchmark.benchmark_size} documents "
-                f"(need >= {self.benchmark.BENCHMARK_MIN_DOCS}); benchmark not run — "
-                f"accuracy not validated"
+                f"benchmark not run — accuracy not validated: {exc}"
             )
 
         return {
