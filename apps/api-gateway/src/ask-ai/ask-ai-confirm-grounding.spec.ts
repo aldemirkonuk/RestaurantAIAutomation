@@ -207,4 +207,35 @@ describe("AskAiService.confirm — grounding is not conditional on an edit", () 
     expect(generateAiReply).toHaveBeenCalledTimes(1);
     expect(res).toMatchObject({ executed: true, edited: false });
   });
+
+  it("an EDITED payload must pass BOTH gates — candidate set AND still-exists", async () => {
+    // The point of the restructure: supplying a payload can only ADD checks.
+    // Here the edit names a provider that IS in the candidate set but has since
+    // been deactivated, so the candidate grounding passes and the existence
+    // check must still refuse it. Under the old ternary this combination was
+    // unreachable — an edited payload never got the existence check at all.
+    const { client } = makeClient(storedRow(PROV), {
+      providers: [{ id: PROV, name: "Acme" }],
+    });
+    // The candidate list the grounding check sees includes DEAD_PROV...
+    const service = makeService(client, { createOrder: jest.fn() });
+    (service as any).loadCandidates = async () => ({
+      candidates: {
+        inventoryIds: new Set([INV]),
+        providerIds: new Set([PROV, DEAD_PROV]),
+        orderIds: new Set<string>(),
+      },
+      lists: {} as any,
+      prompt: "",
+    });
+
+    // ...but the direct lookup does not, because it filters is_active.
+    await expect(
+      service.confirm("r1", "u1", "act-1", {
+        inventoryId: INV,
+        providerId: DEAD_PROV,
+        quantity: 4,
+      }),
+    ).rejects.toThrow(/vendor this refers to is no longer available/);
+  });
 });

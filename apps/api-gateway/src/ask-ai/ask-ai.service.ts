@@ -575,30 +575,66 @@ export class AskAiService {
     // newer ones arrived and its confirm started failing with "I could not find
     // that", which was false. The cap exists to keep the PROMPT small. Nothing
     // about it belongs in a question about one known id.
-    let check:
-      | { ok: true; payload: Record<string, unknown> }
-      | { ok: false; reason: string };
+    // ORDER MATTERS, AND SO DOES THE SHAPE.
+    //
+    // An earlier version chose BETWEEN the two checks with a ternary on
+    // `editedPayload`. CodeQL flagged it `js/user-controlled-bypass` — "this
+    // condition guards a sensitive action, but a user-provided value controls
+    // it" — and it was right about the shape even though the code was not
+    // exploitable: omitting the payload selects the STORED one, which the
+    // caller never supplied and which was grounded at propose time, so nothing
+    // could be injected through the weaker branch.
+    //
+    // "Not exploitable today" is a poor thing to rest on when the fix is free.
+    // A request field deciding WHICH guard runs is one refactor away from
+    // deciding WHETHER one runs. So the request can now only ADD a check:
+    //
+    //   supplied a payload -> ALSO pass `validateEdit` (candidate-set
+    //                         grounding, the anti-injection rule for operator
+    //                         input)
+    //   always             -> pass `verifyStoredAction` (the ids still exist,
+    //                         the vendor is still active, the order still open)
+    //
+    // The second is unconditional, so no request shape can skip it. And an
+    // edited payload now gets the existence check too, which the ternary
+    // version never gave it.
+    let executedPayload: Record<string, unknown> | null = null;
     try {
-      check = editedPayload
-        ? await this.validateEdit(restaurantId, claimed, editedPayload)
-        : await this.verifyStoredAction(restaurantId, claimed);
+      if (editedPayload) {
+        const edit = await this.validateEdit(
+          restaurantId,
+          claimed,
+          editedPayload,
+        );
+        if (!edit.ok) {
+          await this.releaseClaim(actionId);
+          throw new BadRequestException(edit.reason);
+        }
+        executedPayload = edit.payload;
+      }
+
+      const live = await this.verifyStoredAction(restaurantId, {
+        ...claimed,
+        payload: executedPayload ?? claimed.payload,
+      });
+      if (!live.ok) {
+        await this.releaseClaim(actionId);
+        throw new BadRequestException(live.reason);
+      }
     } catch (err) {
       // The checks THROW on a failed query (loadCandidates does, by design).
-      // Without this the throw escaped past the rollback below and left the row
-      // at `confirmed` — where `confirm` cannot claim it again (it requires
+      // Without this the throw escaped past the rollback and left the row at
+      // `confirmed` — where `confirm` cannot claim it again (it requires
       // `proposed`) and `discard` cannot either. A transient database blip
       // would have permanently stranded a proposal: not executable, not
-      // dismissable, gone. Roll back first, then let the 503 surface.
+      // dismissable, gone.
+      //
+      // A BadRequestException raised above has ALREADY released the claim, so
+      // it is rethrown untouched rather than rolled back twice.
+      if (err instanceof BadRequestException) throw err;
       await this.releaseClaim(actionId);
       throw err;
     }
-    if (!check.ok) {
-      await this.releaseClaim(actionId);
-      throw new BadRequestException(check.reason);
-    }
-    const executedPayload: Record<string, unknown> | null = editedPayload
-      ? check.payload
-      : null;
 
     const effective = executedPayload
       ? { ...claimed, payload: executedPayload }
