@@ -70,9 +70,13 @@ import { InviteLanding } from './pages/InviteLanding'
 import { NoAccess } from './pages/NoAccess'
 import { InventoryCommandPage } from './pages/inventory/command/InventoryCommandPage'
 import { Orders } from './pages/Orders'
+import { PageGate } from './components/mudavym'
 import { TeamCommandPage } from './pages/team/command/TeamCommandPage'
 
 // Onboarding pages (lazy loaded)
+// Mudavym redesign variants (ADR 0044) — reachable only behind their per-page flag
+const DashboardNext = lazyWithRefresh(() => import('./pages/dashboard/next/DashboardNext'))
+const OrdersNext = lazyWithRefresh(() => import('./pages/orders/next/OrdersNext'))
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
 const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
@@ -264,7 +268,7 @@ function App() {
                     </ProtectedRoute>
                   }
                 >
-                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/" element={<PageGate page="dashboard" legacy={<Dashboard />} next={<DashboardNext />} />} />
                   <Route path="/inventory" element={<InventoryCommandPage />} />
                   {/* `/inventory-legacy` is retired (ADR 0019 §B). It redirects
                       rather than 404s because every capability it had was ported
@@ -272,7 +276,7 @@ function App() {
                       still do the job. Without this it fell to the catch-all and
                       landed on the Dashboard, which reads as a broken app. */}
                   <Route path="/inventory-legacy" element={<Navigate to="/inventory" replace />} />
-                  <Route path="/orders" element={<Orders />} />
+                  <Route path="/orders" element={<PageGate page="orders" legacy={<Orders />} next={<OrdersNext />} />} />
                   {/* One event, three renderings, chosen by role — see ReceivingHome. */}
                   <Route path="/receiving" element={<ReceivingHome />} />
                   <Route path="/wines" element={<WineLibrary />} />

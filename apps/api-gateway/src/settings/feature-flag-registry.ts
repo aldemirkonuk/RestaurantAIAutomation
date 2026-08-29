@@ -68,6 +68,19 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     defaultValue: false,
     readBy: "common/orchestrator/inbound-responder.service.ts:382,497,1102",
   },
+  {
+    key: "mudavym_design_dashboard",
+    // OFF by default: the Mudavym redesign of `/` (ADR 0044) is opt-in per
+    // restaurant while under founder review; legacy renders otherwise.
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:73",
+  },
+  {
+    key: "mudavym_design_orders",
+    // OFF by default: the Mudavym redesign of `/orders` (ADR 0044), same gate.
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:73",
+  },
 ];
 
 export const ACTIVE_FEATURE_FLAG_KEYS: readonly string[] =
