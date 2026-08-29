@@ -169,7 +169,7 @@ now looks obvious, which is the more dangerous of the two.
   new claimant, and this office reports that rather than reconciling it.
 - **Register defect found in the same pass — filed, not fixed:** **OD-25 appears in both
   tables.** It is open at OD-25 (`OPEN-DECISIONS.md:33`).
-  It is also resolved at OD-25 (`OPEN-DECISIONS.md:131`).
+  It is also resolved at OD-25 (`OPEN-DECISIONS.md:33`).
   One identifier, two states, and the only such row in the file. No guard catches it:
   `check_od_ids_exist.py` checks that an id resolves, `check_citation_pairing.py` checks
   that an id and a line agree, and neither asks whether one id appears twice.
@@ -277,7 +277,7 @@ office's contradiction register pointed at its own log.
   [OD-106](OPEN-DECISIONS.md)"*, and repeats it at `:16`. But today
   OD-106 (`OPEN-DECISIONS.md:64`) is **Design foundation direction**, still open.
   The row that ADR actually closed is
-  OD-79 (`OPEN-DECISIONS.md:90`) — *"Resolved 2026-08-26 — enforced"*.
+  OD-79 (`OPEN-DECISIONS.md:91`) — *"Resolved 2026-08-26 — enforced"*.
   `0025-citations-must-disagree-loudly.md:385-388` records this exact
   renumber — OD-79 was refiled as OD-106 — and says `check_od_ids_exist.py` *"blocks the
   names-nothing half and says in its own docstring that it cannot catch
@@ -443,7 +443,7 @@ rights). Filed, not assumed. The first two are the ones this agenda was asked to
    now put a weekly skill-health mechanism with **RM-3 + SRE**. Three candidates, one
    job. The 2026-08-24 call fixed the principle and not the department, and the row is
    open at OD-25 (`OPEN-DECISIONS.md:33`) while its twin sits resolved
-   at OD-25 (`OPEN-DECISIONS.md:131`). One pick closes both.
+   at OD-25 (`OPEN-DECISIONS.md:33`). One pick closes both.
 2. **TECH-F3 — does ADR 0036's principle transfer to the evaluation seam?**
    [[0036-cost-routing-two-plans-in-harmony]] settled the routing seam as *methodology
    and operation, two plans in harmony; if the line fails, merge, never duplicate*, and

@@ -134,7 +134,7 @@ The Features section **was** the largest single block of dead controls in the
 product. It is not there any more, and the paragraph that described it was wrong
 about *why* it was dead.
 
-**Corrected 2026-08-26 (OD-86, `OPEN-DECISIONS.md:91`).** This dossier claimed the
+**Corrected 2026-08-26 (OD-86, `OPEN-DECISIONS.md:92`).** This dossier claimed the
 page renders 22 toggles that "write a real row via `PUT /settings/feature-flags`",
 and that one of them, `enable_ai_negotiation`, "genuinely stops the autonomous
 responder". Both halves were false, and the audit found the failure to be a layer
