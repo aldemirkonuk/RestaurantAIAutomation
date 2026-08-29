@@ -33,7 +33,7 @@ const FAQS = [
     a: 'Owners and managers manage restaurant Settings. Staff can update their own Profile but not restaurant ops.',
   },
   {
-    q: 'How do I get help from the WineOps team?',
+    q: 'How do I get help from the Mudavym team?',
     a: 'Email us or join Slack using the contact options on this page. For product tours, use Learn & Help in the sidebar.',
   },
 ]
@@ -76,7 +76,7 @@ export default function Help() {
               <MessageSquare className="w-5 h-5 text-wine-600 shrink-0 mt-0.5" />
               <div>
                 <p className="text-sm font-medium text-gray-900">Slack</p>
-                <p className="text-sm text-gray-500">Join the WineOps support channel</p>
+                <p className="text-sm text-gray-500">Join the Mudavym support channel</p>
               </div>
             </a>
           </div>
@@ -111,7 +111,7 @@ export default function Help() {
         </section>
 
         <div className="rounded-xl border border-gray-200 bg-white p-5 flex gap-4">
-          <BookOpen className="w-6 h-6 text-[#9E4249] flex-shrink-0" />
+          <BookOpen className="w-6 h-6 text-[#1A5E6B] flex-shrink-0" />
           <div className="flex-1">
             <h2 className="font-semibold text-gray-900">Learn & page tours</h2>
             <p className="text-sm text-gray-500 mt-1">
@@ -122,7 +122,7 @@ export default function Help() {
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white p-5 flex gap-4 items-start">
-          <Rocket className="w-6 h-6 text-[#9E4249] flex-shrink-0" />
+          <Rocket className="w-6 h-6 text-[#1A5E6B] flex-shrink-0" />
           <div className="flex-1">
             <h2 className="font-semibold text-gray-900">Get started guide</h2>
             <p className="text-sm text-gray-500 mt-1 mb-3">
@@ -140,7 +140,7 @@ export default function Help() {
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white p-5 flex gap-4 items-start">
-          <Shield className="w-6 h-6 text-[#9E4249] flex-shrink-0" />
+          <Shield className="w-6 h-6 text-[#1A5E6B] flex-shrink-0" />
           <div className="flex-1">
             <h2 className="font-semibold text-gray-900">Services & permissions</h2>
             <p className="text-sm text-gray-500 mt-1 mb-3">
@@ -160,7 +160,7 @@ export default function Help() {
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white p-5 flex gap-4 items-start">
-          <Bot className="w-6 h-6 text-[#9E4249] flex-shrink-0" />
+          <Bot className="w-6 h-6 text-[#1A5E6B] flex-shrink-0" />
           <div className="flex-1">
             <h2 className="font-semibold text-gray-900">Wine Agent</h2>
             <p className="text-sm text-gray-500 mt-1 mb-3">

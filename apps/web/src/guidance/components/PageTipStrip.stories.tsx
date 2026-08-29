@@ -5,7 +5,7 @@ function TipStripPreview() {
     <div
       role="region"
       aria-label="Page tip"
-      className="mx-4 mt-4 mb-2 rounded-xl border border-[#9E4249]/20 bg-[#9E4249]/[0.04] px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+      className="mx-4 mt-4 mb-2 rounded-xl border border-[#1A5E6B]/20 bg-[#1A5E6B]/[0.04] px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="min-w-0 pr-2">
         <p className="text-sm font-semibold text-gray-900">Inventory Command</p>
@@ -16,7 +16,7 @@ function TipStripPreview() {
       <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
         <button
           type="button"
-          className="px-3 py-1.5 text-sm font-medium rounded-lg bg-[#9E4249] text-white"
+          className="px-3 py-1.5 text-sm font-medium rounded-lg bg-[#1A5E6B] text-white"
         >
           Take tour
         </button>

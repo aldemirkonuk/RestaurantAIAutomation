@@ -211,7 +211,7 @@ export function Register() {
           type="button"
           onClick={() => setPath('create')}
           className="bg-wine-600 rounded-2xl p-7 text-left hover:-translate-y-0.5 transition-all hover:bg-wine-700"
-          style={{ boxShadow: '0 8px 24px rgba(158,66,73,0.3)' }}
+          style={{ boxShadow: '0 8px 24px rgba(26,94,107,0.3)' }}
         >
           <div className="w-[50px] h-[50px] rounded-[13px] bg-white/20 flex items-center justify-center mb-[18px]">
             <Wine className="w-[22px] h-[22px] text-white" />
@@ -241,7 +241,7 @@ export function Register() {
           type="button"
           onClick={() => setPath('create')}
           className="relative bg-wine-600 rounded-[20px] p-[26px] text-left overflow-hidden hover:-translate-y-0.5 transition-all"
-          style={{ boxShadow: '0 8px 24px rgba(158,66,73,0.3)' }}
+          style={{ boxShadow: '0 8px 24px rgba(26,94,107,0.3)' }}
         >
           <span
             className="inline-flex items-center gap-[5px] bg-white/20 text-white text-[0.65rem] font-bold tracking-widest uppercase px-[9px] py-[3px] rounded-full mb-3"
@@ -320,7 +320,7 @@ export function Register() {
       <div className="flex items-start mb-7">
         {/* Step 1 — active */}
         <div className="flex flex-col items-center gap-1">
-          <div className="w-7 h-7 rounded-full bg-wine-600 text-white text-[0.7rem] font-bold flex items-center justify-center shadow-[0_2px_8px_rgba(158,66,73,0.3)]">
+          <div className="w-7 h-7 rounded-full bg-wine-600 text-white text-[0.7rem] font-bold flex items-center justify-center shadow-[0_2px_8px_rgba(26,94,107,0.3)]">
             1
           </div>
           <span className="text-[0.68rem] font-semibold text-wine-600">Code</span>
@@ -365,7 +365,7 @@ export function Register() {
                 ? 'border-green-500 focus:border-green-500 shadow-[0_0_0_3px_rgba(5,150,105,0.08)]'
                 : invitePreview?.valid === false
                   ? 'border-red-400 focus:border-red-400 shadow-[0_0_0_3px_rgba(220,38,38,0.08)]'
-                  : 'border-gray-200 focus:border-wine-600 focus:shadow-[0_0_0_3px_rgba(158,66,73,0.08)]',
+                  : 'border-gray-200 focus:border-wine-600 focus:shadow-[0_0_0_3px_rgba(26,94,107,0.08)]',
             ].join(' ')}
             placeholder="········"
             maxLength={8}
@@ -987,7 +987,7 @@ export function Register() {
                       className={[
                         'w-5 h-5 rounded-full flex items-center justify-center text-[0.62rem] font-bold flex-shrink-0 transition-all',
                         isDone ? 'bg-green-500 text-white' : '',
-                        isActive ? 'bg-wine-600 text-white shadow-[0_2px_6px_rgba(158,66,73,0.35)]' : '',
+                        isActive ? 'bg-wine-600 text-white shadow-[0_2px_6px_rgba(26,94,107,0.35)]' : '',
                         !isDone && !isActive ? 'bg-gray-100 text-gray-400 border border-gray-200' : '',
                       ].join(' ')}
                     >
@@ -1309,7 +1309,7 @@ export function Register() {
     <div className="relative min-h-screen flex items-start justify-center px-4 py-12 overflow-hidden bg-[#FAF7F5]">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(158,66,73,0.10),transparent_50%),radial-gradient(ellipse_at_100%_100%,rgba(158,66,73,0.07),transparent_45%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(26,94,107,0.10),transparent_50%),radial-gradient(ellipse_at_100%_100%,rgba(26,94,107,0.07),transparent_45%)]"
       />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -1324,9 +1324,9 @@ export function Register() {
             transition={{ delay: 0.1, type: 'spring' }}
             className="inline-flex mb-5"
           >
-            <BrandMark size={72} className="shadow-[0_12px_40px_-12px_rgba(158,66,73,0.55)]" />
+            <BrandMark size={34} />
           </motion.div>
-          <h1 className="text-3xl font-semibold tracking-tight text-gray-900 mb-2">Join WineOps AI</h1>
+          <h1 className="text-3xl font-semibold tracking-tight text-gray-900 mb-2">Join Mudavym</h1>
           <p className="text-[15px] text-gray-500">Transform your restaurant&apos;s wine operations</p>
         </div>
 
@@ -1340,14 +1340,14 @@ export function Register() {
             /* All other steps: standard glass card */
             <div
               key={stepKey}
-              className="rounded-2xl border border-wine-100/80 bg-white/80 backdrop-blur-md p-8 overflow-hidden shadow-[0_24px_64px_-24px_rgba(158,66,73,0.18),0_8px_24px_-12px_rgba(15,23,42,0.08)]"
+              className="rounded-2xl border border-wine-100/80 bg-white/80 backdrop-blur-md p-8 overflow-hidden shadow-[0_24px_64px_-24px_rgba(26,94,107,0.18),0_8px_24px_-12px_rgba(15,23,42,0.08)]"
             >
               {content}
             </div>
           )}
         </AnimatePresence>
 
-        <p className="text-center text-xs text-gray-400 mt-8">© 2026 WineOps AI. All rights reserved.</p>
+        <p className="text-center text-xs text-gray-400 mt-8">© 2026 Mudavym. All rights reserved.</p>
       </motion.div>
     </div>
   )

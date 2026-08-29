@@ -1,7 +1,7 @@
 /**
  * SimPOS terminal API — talks only to /simpos/:restaurantId.
- * Never reads WineOps tables directly; the signed webhook on check close
- * is the only channel into WineOps (decision C25).
+ * Never reads Mudavym tables directly; the signed webhook on check close
+ * is the only channel into Mudavym (decision C25).
  */
 
 import { apiClient } from './client'

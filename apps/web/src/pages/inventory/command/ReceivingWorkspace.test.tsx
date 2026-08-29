@@ -87,7 +87,7 @@ beforeEach(() => {
   forOrder.mockResolvedValue([])
 })
 
-describe('ReceivingWorkspace — canonical WineOps invoice', () => {
+describe('ReceivingWorkspace — canonical Mudavym invoice', () => {
   it('renders all four documents side by side', () => {
     renderWorkspace()
 

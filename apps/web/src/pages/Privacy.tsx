@@ -17,12 +17,12 @@ export default function Privacy() {
     <div className="min-h-screen bg-[#FAF7F5] px-4 py-12">
       <div className="mx-auto w-full max-w-2xl">
         <div className="mb-8 flex flex-col items-center text-center">
-          <BrandMark size={44} />
+          <BrandMark size={26} />
           <h1 className="mt-4 text-2xl font-semibold tracking-tight text-gray-900">
             Privacy &amp; data
           </h1>
           <p className="mt-2 text-sm text-gray-500">
-            What WineOps stores, what leaves your browser, and what you control.
+            What Mudavym stores, what leaves your browser, and what you control.
           </p>
         </div>
 
@@ -30,7 +30,7 @@ export default function Privacy() {
           <Section
             icon={Cookie}
             title="Cookies"
-            body="WineOps sets no tracking or advertising cookies. We don't use a cookie-consent banner because there is nothing to consent to. Your sign-in session is kept in your browser's local storage instead of a cookie, and it is cleared when you sign out."
+            body="Mudavym sets no tracking or advertising cookies. We don't use a cookie-consent banner because there is nothing to consent to. Your sign-in session is kept in your browser's local storage instead of a cookie, and it is cleared when you sign out."
           />
 
           <Section
@@ -42,7 +42,7 @@ export default function Privacy() {
           <Section
             icon={Database}
             title="Connected integrations"
-            body="Connecting Google Drive or Microsoft Excel grants WineOps permission to write files on your behalf. We request the narrowest scopes that work — access is limited to files WineOps creates, not your whole drive. The access and refresh tokens are encrypted before being stored, and you can revoke a connection at any time from Settings → Integrations, which also revokes it at the provider."
+            body="Connecting Google Drive or Microsoft Excel grants Mudavym permission to write files on your behalf. We request the narrowest scopes that work — access is limited to files Mudavym creates, not your whole drive. The access and refresh tokens are encrypted before being stored, and you can revoke a connection at any time from Settings → Integrations, which also revokes it at the provider."
           />
 
           <Section

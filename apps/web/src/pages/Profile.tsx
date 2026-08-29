@@ -874,7 +874,7 @@ export default function Profile() {
                 <div className="border-t border-red-50 pt-6">
                   <p className="text-sm font-medium text-gray-900">Delete account</p>
                   <p className="text-sm text-gray-500 mt-0.5 mb-3">
-                    Permanently delete your WineOps account. This cannot be undone.
+                    Permanently delete your Mudavym account. This cannot be undone.
                   </p>
                   <input
                     value={confirmDelete}

@@ -93,7 +93,7 @@ export function StudioInviteRedeem() {
       <div className="bg-white rounded-2xl border border-slate-200 shadow-card p-8 max-w-md w-full">
         <div className="flex items-center gap-2 mb-6">
           <Wine className="w-5 h-5 text-wine-600" />
-          <span className="font-semibold text-slate-900 text-sm">WineOps Studio</span>
+          <span className="font-semibold text-slate-900 text-sm">Mudavym Studio</span>
         </div>
 
         {status === 'done' ? (
@@ -138,7 +138,7 @@ export function StudioInviteRedeem() {
           <>
             <h1 className="text-2xl font-bold text-slate-900 mb-2">Accept your studio invite</h1>
             <p className="text-slate-500 mb-6">
-              You've been invited to contribute to the WineOps master library. Accepting adds a
+              You've been invited to contribute to the Mudavym master library. Accepting adds a
               studio role to your account.
             </p>
             {user?.email && (

@@ -53,7 +53,7 @@ function GoogleGlyph({ className }: { className?: string }) {
 /**
  * Google sign-in — Anthropic-style button + optional One Tap for saved accounts.
  * The white Google popup (accounts.google.com) is hosted by Google; we cannot
- * restyle it. One Tap shows saved accounts on the WineOps page when available.
+ * restyle it. One Tap shows saved accounts on the Mudavym page when available.
  */
 export const GoogleSignInButton = forwardRef<GoogleSignInHandle, GoogleSignInButtonProps>(function GoogleSignInButton({
   onSuccess,

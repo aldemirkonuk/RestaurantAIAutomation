@@ -126,7 +126,7 @@ export function QuickGmailModal({
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
     <!-- Header -->
     <div style="background: linear-gradient(135deg, #7c2d12 0%, #991b1b 100%); padding: 40px 30px; text-align: center;">
-      <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 600;">🍷 WineOps AI</h1>
+      <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 600;">🍷 Mudavym</h1>
       <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 14px;">Restaurant Wine Management System</p>
     </div>
 
@@ -142,7 +142,7 @@ export function QuickGmailModal({
       
       <div style="margin-top: 40px; padding-top: 30px; border-top: 2px solid #e5e7eb;">
         <p style="color: #6b7280; font-size: 14px; margin: 0;">
-          This email was sent by <strong>WineOps AI</strong> - Your intelligent wine inventory management system.
+          This email was sent by <strong>Mudavym</strong> - Your intelligent wine inventory management system.
         </p>
       </div>
     </div>
@@ -150,7 +150,7 @@ export function QuickGmailModal({
     <!-- Footer -->
     <div style="background-color: #f3f4f6; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
       <p style="color: #9ca3af; font-size: 12px; margin: 0;">
-        © ${new Date().getFullYear()} WineOps AI. All rights reserved.
+        © ${new Date().getFullYear()} Mudavym. All rights reserved.
       </p>
       <p style="color: #9ca3af; font-size: 12px; margin: 5px 0 0 0;">
         Automated wine procurement and inventory management
@@ -186,7 +186,7 @@ export function QuickGmailModal({
         bodyHtml = `
           <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
             <div style="background:linear-gradient(135deg,#7c2d12,#991b1b);padding:24px;border-radius:12px 12px 0 0;">
-              <h1 style="color:#fff;margin:0;font-size:22px;">WineOps AI</h1>
+              <h1 style="color:#fff;margin:0;font-size:22px;">Mudavym</h1>
             </div>
             <div style="background:#fff;padding:24px;border:1px solid #e5e7eb;border-radius:0 0 12px 12px;">
               ${customBody
@@ -197,7 +197,7 @@ export function QuickGmailModal({
                   return `<p style="margin:4px 0;color:#374151;">${line || '&nbsp;'}</p>`
                 }).join('')}
             </div>
-            <p style="color:#9ca3af;font-size:11px;text-align:center;margin-top:12px;">Sent by WineOps AI</p>
+            <p style="color:#9ca3af;font-size:11px;text-align:center;margin-top:12px;">Sent by Mudavym</p>
           </div>`
       } else {
         bodyHtml = generateEmailHTML()

@@ -1,7 +1,7 @@
 /**
  * ONE-TAP ACTION CENTER
  * 
- * This is the CRITICAL component for WineOps AI.
+ * This is the CRITICAL component for Mudavym.
  * Per Blueprint requirements:
  * - Human-in-the-loop for all critical decisions
  * - One-tap actions for: Approve/Reject orders, stock corrections, price acceptance

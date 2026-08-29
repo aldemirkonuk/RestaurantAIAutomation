@@ -153,7 +153,7 @@ export function Login() {
   const setPasswordHref = `/forgot-password?email=${encodeURIComponent(identity?.email ?? email)}`
 
   return (
-    <AuthShell title="WineOps AI" subtitle="Sign in to manage your wine inventory">
+    <AuthShell title="Mudavym" subtitle="Sign in to manage your wine inventory">
       <AuthCard>
         {(error || authError) && (
           <motion.div

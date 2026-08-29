@@ -614,7 +614,7 @@ export function Reports() {
         rows: purchaseDayData,
         columns,
         filename: `wineops-purchasing-report-${timeRange}-${new Date().toISOString().slice(0, 10)}`,
-        title: `WineOps AI Purchasing Report · ${timeRange}`,
+        title: `Mudavym Purchasing Report · ${timeRange}`,
       })
       setExportSuccess(format)
       setTimeout(() => setExportSuccess(null), 3000)

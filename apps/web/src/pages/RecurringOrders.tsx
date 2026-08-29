@@ -131,7 +131,7 @@ export function RecurringOrders() {
 
   const handleSendPriceInquiry = async (order: RecurringOrder) => {
     const providerNames = order.preferred_providers.join(', ') || 'your provider'
-    const emailBody = `Hi ${providerNames},\n\nI wanted to confirm our upcoming recurring order for ${order.wine_name} (${order.quantity} ${order.unit_type}s).\n\nCould you please confirm the current pricing for this order?\n\nThank you,\nWineOps AI`
+    const emailBody = `Hi ${providerNames},\n\nI wanted to confirm our upcoming recurring order for ${order.wine_name} (${order.quantity} ${order.unit_type}s).\n\nCould you please confirm the current pricing for this order?\n\nThank you,\nMudavym`
     
     try {
       await axios.post(`${API_URL}/api/v1/notifications/send-email`, {

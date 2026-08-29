@@ -1,6 +1,6 @@
 /**
  * SimPOS order log — full-page debugging view over SimPOS's own data only
- * (distinct from the WineOps /logs correlated timeline). Reached via
+ * (distinct from the Mudavym /logs correlated timeline). Reached via
  * "Check logs in full page" from the terminal Home tab.
  */
 import { Link, useParams } from 'react-router-dom'

@@ -1346,7 +1346,7 @@ export function GmailTemplateBuilder({ onClose, onSave, editingTemplate }: Gmail
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between mb-0.5">
-                                <span className="font-semibold text-gray-900 text-sm">WineOps AI</span>
+                                <span className="font-semibold text-gray-900 text-sm">Mudavym</span>
                                 <span className="text-xs text-gray-400">{new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
                               </div>
                               <p className="text-sm font-medium text-gray-900 truncate">{templateSubject || 'No subject'}</p>
@@ -1414,7 +1414,7 @@ export function GmailTemplateBuilder({ onClose, onSave, editingTemplate }: Gmail
                                   W
                                 </div>
                                 <div className="flex-1">
-                                  <p className="font-semibold text-gray-900 text-sm">WineOps AI</p>
+                                  <p className="font-semibold text-gray-900 text-sm">Mudavym</p>
                                   <p className="text-xs text-gray-500">{templateSubject || 'No subject'}</p>
                                 </div>
                               </div>
@@ -1461,7 +1461,7 @@ export function GmailTemplateBuilder({ onClose, onSave, editingTemplate }: Gmail
                                 W
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="font-semibold text-gray-900 text-sm">WineOps AI</p>
+                                <p className="font-semibold text-gray-900 text-sm">Mudavym</p>
                                 <p className="text-[10px] text-gray-500 truncate">{templateSubject || 'No subject'}</p>
                               </div>
                             </div>

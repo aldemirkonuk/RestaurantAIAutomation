@@ -26,7 +26,7 @@ import { useMemo } from 'react'
 import { formatMoney } from '../../../lib/utils'
 
 const CHANNEL_COLORS: Record<string, string> = {
-  'Dine-in':  '#9E4249',
+  'Dine-in':  '#1A5E6B',
   'Bar':      '#f472b6',
   'Takeout':  '#fbbf24',
   'Delivery': '#a78bfa',

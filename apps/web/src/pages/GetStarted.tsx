@@ -60,7 +60,7 @@ function SuccessScreen({
           We found {result.itemsExtracted} wine{result.itemsExtracted !== 1 ? 's' : ''}!
         </h1>
         <p className="text-gray-500 text-center max-w-sm mb-8">
-          Your wine list is uploaded and your inventory is live. Next, learn how to use WineOps
+          Your wine list is uploaded and your inventory is live. Next, learn how to use Mudavym
           day to day.
         </p>
         <div className="flex gap-3">
@@ -274,9 +274,8 @@ export default function GetStarted() {
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <header className="p-6 flex items-center justify-between border-b border-gray-100">
-        <div className="flex items-center gap-2">
-          <BrandMark size={28} alt="" />
-          <span className="font-bold text-gray-900">WineOps</span>
+        <div className="flex items-center">
+          <BrandMark size={20} alt="Mudavym" />
         </div>
         <button
           type="button"
@@ -321,7 +320,7 @@ export default function GetStarted() {
                   Let&apos;s set up your wine list
                 </h1>
                 <p className="text-gray-500 max-w-lg mx-auto">
-                  Uploading your menu helps WineOps understand what you sell — making
+                  Uploading your menu helps Mudavym understand what you sell — making
                   ordering, inventory, and AI suggestions accurate from day one.
                 </p>
                 {progress?.menu_uploaded && (
@@ -415,7 +414,7 @@ export default function GetStarted() {
             <>
               <div className="text-center mb-10">
                 <h1 className="text-3xl font-bold text-gray-900 mb-3">
-                  How to use WineOps
+                  How to use Mudavym
                 </h1>
                 <p className="text-gray-500 max-w-lg mx-auto">
                   Short paths for busy shifts — open a surface, get the job done, come back

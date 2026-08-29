@@ -104,7 +104,7 @@ export function VerifyEmail() {
 
         <div className="space-y-3 my-6">
           {[
-            'Open the email from WineOps AI',
+            'Open the email from Mudavym',
             'Click "Verify My Email"',
             `You'll be guided through setting up your wine list`,
           ].map((text, i) => (

@@ -55,8 +55,10 @@ every brand wave before them:
 Shared constraints: İznik `#1A5E6B`/`#5FB0BC` + ink + paper + Warm Charcoal only;
 every candidate proven at 96/32/24px on both grounds; at least two per wave must work
 as a circular **seal stamp** so the mark can be the thing that lands when an approval
-completes. Candidate sheets are published on the logo-search canvas (link in the
-review-trail row when published) and the founder's verdicts will be recorded here.
+completes. Candidate sheets are published for review:
+<https://claude.ai/code/artifact/a2dc2d0b-2af5-43b0-a77d-003256b2b62c> — twelve marks,
+both lineages side by side, each proven at 96/32/24px on paper and charcoal. The
+founder's verdicts will be recorded here.
 
 ## Consequences
 
@@ -74,3 +76,4 @@ review-trail row when published) and the founder's verdicts will be recorded her
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-08-30 | Aldemir (founder) | Interim = text wordmark ("the name with a font"); Fraunces picked from a three-way; search waves ordered under this ADR |
+| 2026-08-30 | — | Both waves delivered; 12 candidates published on the logo-search canvas, awaiting elimination |

@@ -566,7 +566,7 @@ Estimated delivery: {{estimatedDelivery}}`,
         position: { x: 0, y: 88 },
         size: { width: 100, height: 12 },
         config: {
-          content: 'This is an automated alert from WineOps AI. Please take action as soon as possible.',
+          content: 'This is an automated alert from Mudavym. Please take action as soon as possible.',
           fontSize: 11,
           textAlign: 'center',
           color: '#6B7280',

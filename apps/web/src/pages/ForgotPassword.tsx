@@ -52,7 +52,7 @@ export function ForgotPassword() {
 
   if (submitted) {
     return (
-      <AuthShell title="WineOps AI" subtitle="Check your email">
+      <AuthShell title="Mudavym" subtitle="Check your email">
         <AuthCard>
           <motion.div
             initial={{ opacity: 0, y: -8 }}
@@ -79,7 +79,7 @@ export function ForgotPassword() {
   }
 
   return (
-    <AuthShell title="WineOps AI" subtitle="Reset your password">
+    <AuthShell title="Mudavym" subtitle="Reset your password">
       <AuthCard>
         {error && (
           <motion.div

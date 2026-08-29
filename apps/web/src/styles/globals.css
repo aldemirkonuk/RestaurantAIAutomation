@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ============================================
-   WineOps AI - Clean Design System
+   Mudavym - Clean Design System
    Inspired by Toast, Stripe, Linear
    ============================================ */
 
@@ -21,8 +21,8 @@
     --popover: 0 0% 100%;
     --popover-foreground: 25 12% 10%;
 
-    /* Primary brand — #9E4249 */
-    --primary: 355 41% 44%;
+    /* Primary brand — İznik seal #1A5E6B (ADR 0042) */
+    --primary: 190 61% 26%;
     --primary-foreground: 0 0% 100%;
 
     /* Secondary (warm muted) */
@@ -44,7 +44,7 @@
     /* Borders & Inputs */
     --border: 30 12% 88%;
     --input: 30 12% 88%;
-    --ring: 355 41% 44%;
+    --ring: 190 61% 26%;
 
     /* Border radius - generous curves */
     --radius: 0.75rem;
@@ -54,33 +54,35 @@
   }
 
   .dark {
-    --background: 0 0% 3%;
-    --foreground: 210 40% 96%;
+    /* Warm Charcoal ground #15130F · raised #1D1813 · hairline #302921 (ADR 0042) */
+    --background: 40 17% 7%;
+    --foreground: 40 35% 89%;
 
-    --card: 0 0% 6%;
-    --card-foreground: 210 40% 96%;
+    --card: 30 21% 9%;
+    --card-foreground: 40 35% 89%;
 
-    --popover: 0 0% 6%;
-    --popover-foreground: 210 40% 96%;
+    --popover: 30 21% 9%;
+    --popover-foreground: 40 35% 89%;
 
-    --primary: 355 41% 50%;
-    --primary-foreground: 0 0% 100%;
+    /* Dark primary is seal-400 #5FB0BC, never #1A5E6B (ADR 0042) */
+    --primary: 188 41% 55%;
+    --primary-foreground: 192 71% 7%;
 
-    --secondary: 0 0% 12%;
-    --secondary-foreground: 210 40% 96%;
+    --secondary: 32 21% 12%;
+    --secondary-foreground: 40 35% 89%;
 
-    --muted: 0 0% 12%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 32 21% 12%;
+    --muted-foreground: 37 16% 63%;
 
-    --accent: 0 0% 12%;
-    --accent-foreground: 210 40% 96%;
+    --accent: 32 21% 12%;
+    --accent-foreground: 40 35% 89%;
 
     --destructive: 0 63% 31%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 16%;
-    --input: 0 0% 16%;
-    --ring: 210 40% 90%;
+    --border: 32 19% 16%;
+    --input: 32 19% 16%;
+    --ring: 188 41% 55%;
 
     /* Force consistent form control rendering in dark mode */
     color-scheme: dark;
@@ -105,7 +107,8 @@
   }
 
   .dark body {
-    @apply bg-black text-slate-100;
+    @apply text-slate-100;
+    background-color: #15130F; /* Warm Charcoal ground */
   }
 
   /* Guardrails: prevent accidental global dimming */
@@ -153,19 +156,19 @@
 
   /* Dark theme overrides for common utility classes */
   .dark .bg-white {
-    background-color: #0b0b0b !important;
+    background-color: #1D1813 !important; /* raised dark surface */
   }
 
   .dark .bg-gray-50 {
-    background-color: #0b0b0b !important;
+    background-color: #15130F !important; /* Warm Charcoal ground */
   }
 
   .dark .bg-gray-100 {
-    background-color: #111111 !important;
+    background-color: #1D1813 !important;
   }
 
   .dark .bg-gray-200 {
-    background-color: #1a1a1a !important;
+    background-color: #262019 !important;
   }
 
   .dark .text-gray-900,
@@ -182,7 +185,31 @@
   .dark .border-gray-100,
   .dark .border-gray-200,
   .dark .border-gray-300 {
-    border-color: #1f1f1f !important;
+    border-color: #302921 !important; /* dark hairline */
+  }
+
+  /* Dark-mode primary (ADR 0042): the seal reads as seal-400 #5FB0BC on charcoal.
+     Brand text/tint utilities are lifted globally; solid seal fills (bg-wine-600)
+     stay #1A5E6B, which keeps 7.3:1 contrast with white label text. */
+  .dark .text-wine-500,
+  .dark .text-wine-600,
+  .dark .text-wine-700,
+  .dark .text-brand-500,
+  .dark .text-brand-600,
+  .dark .text-brand-700 {
+    color: #5FB0BC !important;
+  }
+
+  .dark .bg-wine-50,
+  .dark .bg-wine-100,
+  .dark .bg-brand-50,
+  .dark .bg-brand-100 {
+    background-color: rgba(95, 176, 188, 0.14) !important; /* --seal-tint dark */
+  }
+
+  .dark .border-wine-100,
+  .dark .border-wine-200 {
+    border-color: rgba(95, 176, 188, 0.38) !important; /* --seal-ring dark */
   }
 
   /* Better focus states - High contrast for accessibility */
@@ -421,7 +448,7 @@
   .dark select {
     color: #F3F4F6 !important;
     -webkit-text-fill-color: #F3F4F6 !important;
-    background-color: #0b0b0b !important;
+    background-color: #1D1813 !important;
     filter: none !important;
     mix-blend-mode: normal !important;
     color-scheme: dark !important;

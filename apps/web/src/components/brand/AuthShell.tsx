@@ -14,8 +14,11 @@ interface AuthShellProps {
 }
 
 /**
- * Shared auth chrome — soft burgundy atmosphere + circular BrandMark.
- * Used by Login, Register, VerifyEmail, InviteLanding, NoAccess.
+ * Shared auth chrome — warm paper atmosphere with an İznik wash + the Mudavym
+ * text wordmark (ADR 0042). Used by Login, Register, VerifyEmail,
+ * InviteLanding, NoAccess. When `title` is the brand name itself, the wordmark
+ * doubles as the page heading; otherwise the wordmark sits small above the
+ * page-specific title.
  */
 export function AuthShell({
   title,
@@ -25,16 +28,18 @@ export function AuthShell({
   className,
   markSize = 72,
 }: AuthShellProps) {
+  const isBrandTitle = title === 'Mudavym'
+
   return (
     <div className="relative min-h-screen flex items-center justify-center px-4 py-12 overflow-hidden bg-[#FAF7F5]">
-      {/* Atmosphere — burgundy, not pink */}
+      {/* Atmosphere — İznik seal wash */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(158,66,73,0.10),transparent_50%),radial-gradient(ellipse_at_100%_100%,rgba(158,66,73,0.07),transparent_45%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(26,94,107,0.10),transparent_50%),radial-gradient(ellipse_at_100%_100%,rgba(26,94,107,0.07),transparent_45%)]"
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-[640px] h-[640px] rounded-full bg-wine-600/[0.04] blur-3xl"
+        className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-[640px] h-[640px] rounded-full bg-wine-600/[0.05] blur-3xl"
       />
 
       <motion.div
@@ -45,23 +50,28 @@ export function AuthShell({
       >
         <div className="text-center mb-8">
           <motion.div
-            initial={{ scale: 0.85, opacity: 0 }}
+            initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.08, type: 'spring', stiffness: 260, damping: 22 }}
-            className="inline-flex mb-5"
+            className={isBrandTitle ? 'mb-2' : 'mb-4'}
           >
-            <BrandMark
-              size={markSize}
-              className="shadow-[0_12px_40px_-12px_rgba(158,66,73,0.55)]"
-            />
+            {isBrandTitle ? (
+              <h1 className="leading-none">
+                <BrandMark size={Math.round(markSize / 2)} alt="Mudavym" />
+              </h1>
+            ) : (
+              <BrandMark size={22} alt="Mudavym" />
+            )}
           </motion.div>
-          <h1 className="text-3xl font-semibold tracking-tight text-gray-900 mb-2">{title}</h1>
+          {!isBrandTitle && (
+            <h1 className="text-3xl font-semibold tracking-tight text-gray-900 mb-2">{title}</h1>
+          )}
           {subtitle ? <p className="text-[15px] text-gray-500 leading-relaxed">{subtitle}</p> : null}
         </div>
 
         {children}
 
-        <p className="text-center text-xs text-gray-400 mt-8">© 2026 WineOps AI. All rights reserved.</p>
+        <p className="text-center text-xs text-gray-400 mt-8">© 2026 Mudavym. All rights reserved.</p>
       </motion.div>
     </div>
   )
@@ -77,7 +87,7 @@ export function AuthCard({ children, className }: AuthCardProps) {
     <div
       className={cn(
         'rounded-2xl border border-wine-100/80 bg-white/80 backdrop-blur-md p-8',
-        'shadow-[0_24px_64px_-24px_rgba(158,66,73,0.18),0_8px_24px_-12px_rgba(15,23,42,0.08)]',
+        'shadow-[0_24px_64px_-24px_rgba(26,94,107,0.18),0_8px_24px_-12px_rgba(15,23,42,0.08)]',
         className,
       )}
     >

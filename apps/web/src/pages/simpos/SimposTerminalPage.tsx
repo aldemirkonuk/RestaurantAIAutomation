@@ -7,7 +7,7 @@
  *   Receipts/Invoices — this fake restaurant's procurement_documents
  *
  * "Check logs in full page" opens /simpos/:restaurantId/orders — SimPOS's own
- * order log, distinct from the WineOps /logs timeline.
+ * order log, distinct from the Mudavym /logs timeline.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -332,12 +332,12 @@ export function SimposTerminalPage() {
       )}
 
       <footer className="border-t border-gray-800 px-4 py-2 text-[10px] text-gray-600 flex justify-between">
-        <span>Synthetic test fixture — not a WineOps feature</span>
+        <span>Synthetic test fixture — not a Mudavym feature</span>
         <button
           onClick={() => navigate('/')}
           className="hover:text-gray-400"
         >
-          Exit to WineOps
+          Exit to Mudavym
         </button>
       </footer>
     </div>
@@ -515,7 +515,7 @@ function EditPosPane({
           Edit POS — drift generator
         </h2>
         <p className="text-[10px] text-gray-500 mt-0.5">
-          Changes here diverge from WineOps inventory. The drift agent finds them.
+          Changes here diverge from Mudavym inventory. The drift agent finds them.
         </p>
       </div>
 

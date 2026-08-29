@@ -478,13 +478,9 @@ export function Sidebar() {
           to="/"
           onClick={closeMobileNav}
           className={cn('flex items-center', effectiveCollapsed ? 'justify-center' : 'gap-3')}
-          aria-label="WineOps AI home"
+          aria-label="Mudavym home"
         >
-          <BrandMark
-            size={effectiveCollapsed ? 28 : 32}
-            alt=""
-            className="shadow-sm"
-          />
+          {effectiveCollapsed && <BrandMark variant="glyph" size={22} alt="" />}
           <AnimatePresence>
             {!effectiveCollapsed && (
               <motion.div
@@ -493,8 +489,10 @@ export function Sidebar() {
                 exit={{ opacity: 0, width: 0 }}
                 className="overflow-hidden"
               >
-                <h1 className="text-lg font-bold text-gray-900 whitespace-nowrap">WineOps AI</h1>
-                <p className="text-xs text-gray-500 -mt-0.5">Inventory Intelligence</p>
+                <h1 className="leading-none whitespace-nowrap">
+                  <BrandMark size={24} alt="Mudavym" />
+                </h1>
+                <p className="text-xs text-gray-500 mt-1">Inventory Intelligence</p>
               </motion.div>
             )}
           </AnimatePresence>
