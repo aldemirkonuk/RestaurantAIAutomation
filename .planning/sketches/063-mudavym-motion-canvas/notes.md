@@ -160,4 +160,97 @@ prefix.
 0 empty stages, 0 overflowing, 0 console errors, 0 non-ASCII characters in the built
 page. Assembly ran only after all five agents reported — the rule earned last round.
 
-| 063 | mudavym-motion-canvas | 117 motions on one surface, 55 of them derived from the codebase and citing the file or gap they answer &#8212; which movements belong to Mudavym? | null | motion, canvas, animation, springs, skin-toggle, codebase-derived, defects-found, od-106 |
+
+---
+
+## Wave 3 — signature ceremonies + the Shortlist (2026-08-29)
+
+Founder review of the 117: nineteen motions marked as *"the direction where they're
+going"* — **inv-02/04/08/11, prc-02/07/09, srf-03/08/13, nav-05/08, num-07/08/10/11,
+st-04/09, ent-08** — plus two explicit asks: **signature motions**, above all *"when
+it's approved, we show our logo as a stamp"*, and **one swipe-up-to-accept like
+Robinhood** so the sketch can be read. Research of real products was required, not
+optional.
+
+**16 signature ceremonies** (`sig-01`–`sig-16`), family "Signature moments", built by
+three agents plus the hero. Canvas now **133 motions in eleven families**.
+
+### The find that unifies the brand
+
+The Mudavym wordmark is already **a double rule and a full stop** — and in bookkeeping
+a double rule under a figure means *the account is ruled off*: grand total, procedure
+ended. A single rule is only a subtotal. Every ceremony descends from that one fact:
+
+- `sig-02` presses that figure into wax as an Ottoman **mühür** — a seal pressed to
+  *approve* documents. You only ever see what the die left, so the die must leave.
+- `sig-03` is **the same die pressed dry** — a blind emboss — because fourteen bulk
+  approvals must not land fourteen seals. Ceremony is rationed or it is worthless.
+- `sig-06` draws the same two rules under the day, with no wax at all.
+- `sig-09` re-aims the convention as **a claim of provability**: a null unit price
+  leaves an em dash that never moves while everything around it does, the subtotal's
+  rule stays *dashed*, and the landed total gets **no second stroke at all** until the
+  price is read off the stored photo.
+
+### `sig-01` — the hero, and how it answers both asks at once
+
+150px of real thumb travel with progressive resistance `p(1 − 0.22p)`, committing at
+68%. The ghost seal fades up *during* the drag so you see what you are about to commit
+to; release early and it states what did not happen (*"Released at 42% — nothing
+sent."*); on commit the wax lands on the stamp spring (500/26) with the M and double
+rule pressed in as **shadow, not more wax**, so it reads as a die striking rather than
+a sticker. It is really draggable, not a playback.
+
+### Two builders disagreed, on the record
+
+`sig-a` **refused** Robinhood's swipe on principle: on `/orders` a swipe is the same
+gesture as scrolling the list it sits in. That is a fair objection, and `sig-01`
+answers it the way Robinhood itself does — a dedicated grabbable pill with
+`touch-action:none`, not a swipe on the row. Both can stand (**swipe the pill on a
+phone, press the die on the desktop list**) but the founder should settle it before
+this is built on.
+
+### Research: what was borrowed, and what was refused
+
+Borrowed — Ottoman *mühür* (approval, not decoration); letterpress craft from
+Smashing's 2012 piece, so every mark is drawn twice at 0.8px offset because the effect
+belongs to the paper; Duolingo's once-a-day streak rationing; Shazam's widening-search
+narrative; Apple Photos' merge-rather-than-pick arbitration; Superhuman's
+undo-over-confirmation (a real 10s window on `useCancelScheduledSend`); Figma's swap
+heuristic *inverted*, so a template fills what it knows and refuses to invent the rest.
+
+Refused, with the reason recorded in each `purpose` — Stripe/GitHub/Cobe's arc swarm
+(*"we are global" is a marketing claim; a kitchen only cares who can reach it*), so
+`sig-13` inverts the globe: **the restaurant is not a pin on the sphere, it is the
+point the sphere turns toward**, territory law is the front hemisphere, and a vendor
+that cannot reach you stays dark as it passes and ticks the *"4 can't reach you"*
+counter the page already computes. Also refused: confetti for a settled credit (money
+leaving a kitchen is not a win), and Wise's progressive disclosure for receipt maths —
+an operator checking a short-ship needs the working as primary content, not folded.
+
+### The Shortlist
+
+`shortlist.html` — a second view over **the same parts**, so a motion can never drift
+between the two surfaces. Hero at the top, then the sixteen ceremonies, then the
+nineteen marked motions grouped by **the moment they belong to** rather than by
+technique: *Committing to money* · *Stock, and the truth about it* · *Numbers that
+refuse to flatter* · *Structure and arrival*.
+
+### Verified
+
+Canvas **133 registered / 133 rendered**; Shortlist **35 cards, 0 empty stages, 0
+overflowing, no page scroll, no console errors, 0 non-ASCII** in either build.
+Assembled only after all five agents reported.
+
+Defects the agents found and fixed in their own work, worth knowing because they
+recur: a stale-closure bug that made `sig-07`'s actions dead after the first play (the
+same trap `st-04/05/06` hit); a demo auto-hold that restarted a hold the founder had
+begun by hand (0/1 completions before the fix, 1/1 after); penny drift from rounding
+three figures independently; and an honesty bug where $28 was written off but never
+left Outstanding — caught by conserving Outstanding + Recovered + written-off at
+exactly $1,204 across 219 sampled frames.
+
+**Not verified:** real touch hardware and haptics; paint cost on a low-battery phone
+(asserted from compositor-only properties, not profiled); the globe's animation-frame
+cost alongside 132 sibling motions; and any browser other than Chrome.
+
+| 063 | mudavym-motion-canvas | 133 motions on one surface &#8212; 55 codebase-derived, 16 signature ceremonies built on the wordmark's double rule, plus a curated Shortlist of the founder's picks | null | motion, canvas, signature, seal, swipe-to-approve, shortlist, codebase-derived, od-106 |

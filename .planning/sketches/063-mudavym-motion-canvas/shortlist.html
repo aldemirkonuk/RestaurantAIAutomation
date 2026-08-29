@@ -1,9 +1,8 @@
-<title>Mudavym Motion Canvas</title>
+<title>Mudavym Shortlist</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  /* ---- the two skins. Parts only ever touch these variables. ---- */
   :root, :root[data-skin="brand"]{
     --m-bg:#15130F; --m-surface:#1C1915; --m-sunk:#100E0B;
     --m-line:#2B271F; --m-line2:#3B362C;
@@ -28,7 +27,7 @@
   html,body{height:100%}
   body{background:var(--m-bg);color:var(--m-ink);font:15px/1.5 var(--m-sans);
        display:flex;flex-direction:column;-webkit-font-smoothing:antialiased}
-  header{position:sticky;top:0;z-index:20;background:var(--m-surface);
+  header{position:sticky;top:0;z-index:30;background:var(--m-surface);
          border-bottom:1px solid var(--m-line);padding:11px 20px;
          display:flex;gap:14px;align-items:center;flex-wrap:wrap}
   .brand{font-family:var(--m-serif);font-size:18px;font-weight:600;white-space:nowrap}
@@ -36,83 +35,59 @@
   .kick{font:500 10px/1 var(--m-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--m-mut)}
   .ctl{display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap}
   .btn{font:inherit;font-size:12.5px;font-weight:500;background:var(--m-surface);
-       border:1px solid var(--m-line2);border-radius:6px;color:var(--m-ink);
-       padding:5px 11px;cursor:pointer}
+       border:1px solid var(--m-line2);border-radius:6px;color:var(--m-ink);padding:5px 11px;cursor:pointer}
   .btn:hover{border-color:var(--m-accent)}
   .btn:focus-visible{outline:2px solid var(--m-accent);outline-offset:2px}
   .btn.on{background:var(--m-accent);border-color:var(--m-accent);color:var(--m-accent-ink)}
   label{font-size:12.5px;color:var(--m-mut);display:flex;gap:7px;align-items:center}
-  select,input[type=range]{font:inherit;font-size:12.5px;accent-color:var(--m-accent)}
-  select{background:var(--m-surface);color:var(--m-ink);border:1px solid var(--m-line2);
-         border-radius:6px;padding:4px 8px}
-  main{flex:1;padding:26px 20px 60px;max-width:1500px;margin:0 auto;width:100%}
-  .lede{max-width:66ch;color:var(--m-mut);margin-bottom:6px}
-  .lede b{color:var(--m-ink);font-weight:600}
-  h1{font-family:var(--m-serif);font-size:27px;font-weight:600;letter-spacing:-.015em;margin-bottom:9px}
+  input[type=range]{accent-color:var(--m-accent)}
+  main{flex:1;padding:0 20px 70px;max-width:1420px;margin:0 auto;width:100%}
+
+  /* the hero &#x2014; the one the founder asked to understand */
+  .hero{display:grid;grid-template-columns:minmax(260px,1fr) minmax(300px,420px);gap:40px;
+        align-items:center;padding:44px 0 40px;border-bottom:1px solid var(--m-line)}
+  .hero h1{font-family:var(--m-serif);font-size:clamp(30px,4.2vw,46px);font-weight:600;
+           letter-spacing:-.022em;line-height:1.05;text-wrap:balance;margin-bottom:16px}
+  .hero p{color:var(--m-mut);max-width:52ch;margin-bottom:12px}
+  .hero p b{color:var(--m-ink);font-weight:600}
+  .hero .try{display:inline-flex;align-items:center;gap:8px;margin-top:6px;padding:8px 13px;
+             border:1px solid var(--m-accent);border-radius:8px;color:var(--m-accent);
+             font-size:12.5px;font-weight:600}
+  .hstage{display:flex;justify-content:center}
+  .hspec{margin-top:14px;font:500 10px/1.6 var(--m-mono);color:var(--m-mut);
+         padding-top:12px;border-top:1px solid var(--m-line)}
+
   h2{font-size:11.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;
-     color:var(--m-mut);margin:34px 0 13px;padding-bottom:8px;border-bottom:1px solid var(--m-line)}
+     color:var(--m-mut);margin:38px 0 6px;padding-bottom:9px;border-bottom:1px solid var(--m-line);
+     display:flex;justify-content:space-between;align-items:baseline;gap:10px}
   h2 span{color:var(--m-accent);font-family:var(--m-mono)}
-  /* 332 not 304: the widest demo measures 303px inside the stage's padding, and a
-     stage narrower than its content clips silently rather than complaining. */
+  .blurb{color:var(--m-mut);font-size:13px;max-width:70ch;margin:10px 0 16px}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(332px,1fr));gap:13px}
   .card{background:var(--m-surface);border:1px solid var(--m-line);border-radius:10px;
         display:flex;flex-direction:column;overflow:hidden}
-  .card:hover{border-color:var(--m-line2)}
+  .card.liked{border-color:var(--m-line2)}
+  .card.sig{border-color:var(--m-accent)}
   .chead{padding:12px 14px 9px;display:flex;gap:8px;align-items:baseline;justify-content:space-between}
   .cname{font-weight:600;font-size:13.5px}
   .cid{font:500 9.5px/1 var(--m-mono);color:var(--m-mut);letter-spacing:.08em}
+  .card.sig .cid{color:var(--m-accent)}
   .cpurpose{padding:0 14px 11px;font-size:12px;color:var(--m-mut);min-height:3.1em}
   .stage{margin:0 14px;background:var(--m-sunk);border-radius:7px;padding:13px;
          min-height:152px;display:flex;align-items:center;justify-content:center;overflow:hidden}
-  .stage > *{max-width:100%}
   .cfoot{padding:10px 14px 12px;display:flex;gap:8px;align-items:flex-end;justify-content:space-between}
   .cmeta{flex:1;min-width:0}
   .cspec{font:500 10px/1.4 var(--m-mono);color:var(--m-mut);word-break:break-word}
-  .csrc{display:block;margin-top:5px;font:500 9.5px/1.35 var(--m-mono);color:var(--m-accent);
-        opacity:.85;word-break:break-all}
+  .csrc{display:block;margin-top:5px;font:500 9.5px/1.35 var(--m-mono);color:var(--m-accent);opacity:.85;word-break:break-all}
   .csrc:empty{display:none}
   .replay{font:inherit;font-size:11.5px;font-weight:600;background:transparent;
-          border:1px solid var(--m-line2);border-radius:5px;color:var(--m-ink);
-          padding:4px 9px;cursor:pointer;flex:none}
+          border:1px solid var(--m-line2);border-radius:5px;color:var(--m-ink);padding:4px 9px;cursor:pointer;flex:none}
   .replay:hover{border-color:var(--m-accent);color:var(--m-accent)}
-  .replay:focus-visible{outline:2px solid var(--m-accent);outline-offset:2px}
-  .empty{color:var(--m-mut);font-style:italic;padding:30px 0}
-  .rm{margin-top:30px;padding:13px 15px;border:1px solid var(--m-line);border-radius:9px;
-      background:var(--m-surface);font-size:12.5px;color:var(--m-mut);max-width:74ch}
-  .rm b{color:var(--m-ink)}
-  @media (prefers-reduced-motion: reduce){
-    .btn,.replay,.card{transition:none !important}
-  }
+  .note{margin-top:36px;padding:15px 17px;border:1px solid var(--m-line);border-radius:10px;
+        background:var(--m-surface);font-size:13px;color:var(--m-mut);max-width:76ch}
+  .note b{color:var(--m-ink)}
+  .missing{color:var(--m-no);font-family:var(--m-mono);font-size:11px}
+  @media (max-width:900px){ .hero{grid-template-columns:1fr;gap:24px} }
 </style>
-<header>
-  <span class="brand">Mudavym<i>.</i></span>
-  <span class="kick">Motion canvas &#183; OD-106</span>
-  <div class="ctl">
-    <label>Family
-      <select id="fam"><option value="">All</option></select>
-    </label>
-    <label>Speed
-      <input type="range" id="spd" min="20" max="200" value="100" step="5">
-      <span class="mono" id="spdv" style="font-family:var(--m-mono);min-width:44px">1.00&#215;</span>
-    </label>
-    <button class="btn" id="skin">Neutral skin</button>
-    <button class="btn" id="all">Play all</button>
-    <span class="kick" id="count"></span>
-  </div>
-</header>
-<main>
-  <h1>Every motion, one surface</h1>
-  <p class="lede">A canvas for exploring movement on its own terms. Each demo runs real
-  restaurant content, states its own curve, and replays on click or hover. <b>Speed</b>
-  slows everything down so you can see what a 240ms spring actually does; <b>Neutral
-  skin</b> strips the brand out so you can judge the movement without the colour
-  arguing for it.</p>
-  <div id="out"></div>
-  <p class="rm"><b>On reduced motion:</b> every demo here is authored to collapse to its
-  end state when the viewer asks for less movement. If your system has that on, the
-  canvas will look still &#8212; that is the correct behaviour, not a broken page.</p>
-</main>
-<script>window.MUDAVYM_MOTIONS = [];</script>
 <!-- part: ent -->
 <style>
 /* &#x2550;&#x2550; ent &#x2014; Entrances & reveals &#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;
@@ -12720,88 +12695,113 @@ M.push({
 })();
 </script>
 
+<!--SPLIT-->
+<header>
+  <span class="brand">Mudavym<i>.</i></span>
+  <span class="kick">Shortlist &#183; OD-106</span>
+  <div class="ctl">
+    <label>Speed <input type="range" id="spd" min="20" max="200" value="100" step="5">
+      <span id="spdv" style="font-family:var(--m-mono);min-width:44px">1.00&#215;</span></label>
+    <button class="btn" id="skin">Neutral skin</button>
+    <button class="btn" id="all">Play all</button>
+    <span class="kick" id="count"></span>
+  </div>
+</header>
+<main>
+  <section class="hero">
+    <div>
+      <h1>Swipe up to approve.</h1>
+      <p>The gesture you asked for, ending where the brand does: <b>the M and its double rule pressed into the order as wax</b>. Robinhood's swipe-to-commit, re-aimed at $1,860 of someone's money.</p>
+      <p>150px of real thumb travel with progressive resistance &#8212; the last third costs more than the first, so this cannot happen in a pocket. Release under 68% and it tells you exactly what did not happen.</p>
+      <span class="try">&#8593; Drag the pill yourself</span>
+      <div class="hspec" id="hspec"></div>
+    </div>
+    <div class="hstage" id="hstage"></div>
+  </section>
+  <div id="out"></div>
+  <p class="note"><b>What this surface is.</b> The nineteen motions you marked, plus the signature ceremonies, pulled out of the 117 and grouped by <b>the moment they belong to</b> rather than by technique. This is the working set to reshape everything from. Every card still states its real curve, and the codebase-derived ones still cite the file or gap they answer.</p>
+</main>
 <script>
 (function(){
-  const M = window.MUDAVYM_MOTIONS || [];
-  const out = document.getElementById('out');
-  const famSel = document.getElementById('fam');
-  const spd = document.getElementById('spd'), spdv = document.getElementById('spdv');
-  const cards = new Map();
+  var LIKED = ["inv-11", "inv-08", "inv-04", "inv-02", "prc-09", "prc-07", "prc-02", "srf-13", "srf-08", "srf-03", "nav-08", "nav-05", "num-11", "num-10", "num-08", "num-07", "st-04", "st-09", "ent-08"];
+  var GROUPS = [{"title": "Signature ceremonies", "blurb": "The few moments a day that deserve weight, because something became irreversible. The seal is the brand mark and the approve gesture at once.", "ids": ["sig-01", "sig-02", "sig-03", "sig-04", "sig-05", "sig-06", "sig-07", "sig-08", "sig-09", "sig-10", "sig-11", "sig-12", "sig-13", "sig-14", "sig-15", "sig-16"]}, {"title": "Committing to money", "blurb": "Your picks cluster hard here: a draft that cannot travel, an AI that stops at the human, and a hold that has to be meant.", "ids": ["prc-02", "prc-07", "prc-09", "st-04", "srf-08"]}, {"title": "Stock, and the truth about it", "blurb": "The offline seam \u2014 counts and receipts that must survive a dead phone and still be honest about what did not land.", "ids": ["inv-02", "inv-04", "inv-08", "inv-11"]}, {"title": "Numbers that refuse to flatter", "blurb": "Crossing par, showing the working, and the em dash that never animates as if it were a number.", "ids": ["num-07", "num-08", "num-10", "num-11"]}, {"title": "Structure and arrival", "blurb": "How the page restructures, and how things arrive without shoving what someone is reading.", "ids": ["nav-05", "nav-08", "ent-08", "srf-03", "srf-13", "st-09"]}];
+  var M = window.MUDAVYM_MOTIONS || [];
+  var byId = {}; M.forEach(function(m){ byId[m.id] = m; });
+  var stages = {}, out = document.getElementById('out');
+  var spd = document.getElementById('spd'), spdv = document.getElementById('spdv');
 
-  const families = [...new Set(M.map(m => m.family))];
-  families.forEach(f => {
-    const o = document.createElement('option'); o.value = f; o.textContent = f;
-    famSel.appendChild(o);
-  });
-  document.getElementById('count').textContent = M.length + ' motions';
+  function play(m, host){ try { m.play(host); } catch(e){ console.error(m.id, e); } }
 
-  function rate(){ return (+spd.value) / 100; }
-  // Parts read this to scale their own durations; also drives a global CSS multiplier.
-  window.MUDAVYM_RATE = rate;
-
-  function play(m){
-    const holder = cards.get(m.id);
-    if (!holder) return;
-    try { m.play(holder); } catch (e) { console.error('motion ' + m.id + ' failed', e); }
+  // hero: sig-01, rendered large rather than in the grid
+  var hero = byId['sig-01'];
+  if (hero){
+    var hs = document.getElementById('hstage');
+    hs.innerHTML = hero.html;
+    document.getElementById('hspec').textContent = hero.spec || '';
+    stages['sig-01'] = hs;
+    setTimeout(function(){ play(hero, hs); }, 400);
   }
 
-  function render(){
-    const only = famSel.value;
-    out.innerHTML = '';
-    cards.clear();
-    const shown = M.filter(m => !only || m.family === only);
-    if (!shown.length){ out.innerHTML = '<p class="empty">No motions registered yet.</p>'; return; }
-    families.forEach(fam => {
-      const items = shown.filter(m => m.family === fam);
-      if (!items.length) return;
-      const h = document.createElement('h2');
-      h.innerHTML = fam + ' <span>' + items.length + '</span>';
-      out.appendChild(h);
-      const g = document.createElement('div'); g.className = 'grid';
-      items.forEach(m => {
-        const c = document.createElement('div'); c.className = 'card';
-        c.innerHTML =
-          '<div class="chead"><span class="cname"></span><span class="cid"></span></div>' +
-          '<div class="cpurpose"></div>' +
-          '<div class="stage"></div>' +
-          '<div class="cfoot"><span class="cmeta"><span class="cspec"></span>' +
-          '<span class="csrc"></span></span><button class="replay">Replay</button></div>';
-        c.querySelector('.cname').textContent = m.name;
-        c.querySelector('.cid').textContent = m.id;
-        c.querySelector('.cpurpose').textContent = m.purpose || '';
-        c.querySelector('.cspec').textContent = m.spec || '';
-        c.querySelector('.csrc').textContent = m.source || '';
-        const stage = c.querySelector('.stage');
-        stage.innerHTML = m.html || '';
-        cards.set(m.id, stage);
-        c.querySelector('.replay').addEventListener('click', () => play(m));
-        c.addEventListener('mouseenter', () => play(m));
-        g.appendChild(c);
-      });
-      out.appendChild(g);
+  function card(m){
+    var isSig = m.family === 'Signature moments';
+    var c = document.createElement('div');
+    c.className = 'card ' + (isSig ? 'sig' : 'liked');
+    c.innerHTML = '<div class="chead"><span class="cname"></span><span class="cid"></span></div>' +
+      '<div class="cpurpose"></div><div class="stage"></div>' +
+      '<div class="cfoot"><span class="cmeta"><span class="cspec"></span><span class="csrc"></span></span>' +
+      '<button class="replay">Replay</button></div>';
+    c.querySelector('.cname').textContent = m.name;
+    c.querySelector('.cid').textContent = m.id;
+    c.querySelector('.cpurpose').textContent = m.purpose || '';
+    c.querySelector('.cspec').textContent = m.spec || '';
+    c.querySelector('.csrc').textContent = m.source || '';
+    var st = c.querySelector('.stage');
+    st.innerHTML = m.html || '';
+    stages[m.id] = st;
+    c.querySelector('.replay').addEventListener('click', function(){ play(m, st); });
+    c.addEventListener('mouseenter', function(){ play(m, st); });
+    return c;
+  }
+
+  var shown = 0, missing = [];
+  GROUPS.forEach(function(g){
+    var items = g.ids.map(function(id){ return byId[id]; }).filter(Boolean);
+    g.ids.forEach(function(id){ if (!byId[id]) missing.push(id); });
+    if (!items.length) return;
+    var h = document.createElement('h2');
+    h.innerHTML = g.title + ' <span>' + items.length + '</span>';
+    out.appendChild(h);
+    if (g.blurb){ var b = document.createElement('p'); b.className = 'blurb'; b.textContent = g.blurb; out.appendChild(b); }
+    var grid = document.createElement('div'); grid.className = 'grid';
+    items.forEach(function(m){ grid.appendChild(card(m)); shown++; });
+    out.appendChild(grid);
+    items.forEach(function(m, i){ setTimeout(function(){ play(m, stages[m.id]); }, 700 + i * 70); });
+  });
+  document.getElementById('count').textContent = shown + ' shortlisted';
+  if (missing.length){
+    var w = document.createElement('p'); w.className = 'missing';
+    w.textContent = 'not found in the build: ' + missing.join(', ');
+    out.appendChild(w);
+  }
+
+  document.getElementById('all').addEventListener('click', function(){
+    Object.keys(stages).forEach(function(id, i){
+      if (byId[id]) setTimeout(function(){ play(byId[id], stages[id]); }, i * 60);
     });
-    // first pass, staggered so the page does not seize
-    shown.forEach((m, i) => setTimeout(() => play(m), 120 + i * 45));
-  }
-
-  famSel.addEventListener('change', render);
-  spd.addEventListener('input', () => { spdv.textContent = rate().toFixed(2) + '\u00d7'; });
-  document.getElementById('all').addEventListener('click', () => {
-    const only = famSel.value;
-    M.filter(m => !only || m.family === only).forEach((m, i) => setTimeout(() => play(m), i * 55));
   });
-  const skinBtn = document.getElementById('skin');
+  spd.addEventListener('input', function(){ spdv.textContent = ((+spd.value)/100).toFixed(2) + '\u00d7'; });
+  var sk = document.getElementById('skin');
   function setSkin(s){
     document.documentElement.dataset.skin = s;
-    skinBtn.textContent = s === 'brand' ? 'Neutral skin' : 'Branded skin';
-    skinBtn.classList.toggle('on', s === 'neutral');
-    try { localStorage.setItem('mudavym.motion.skin', s); } catch(e){}
+    sk.textContent = s === 'brand' ? 'Neutral skin' : 'Branded skin';
+    sk.classList.toggle('on', s === 'neutral');
+    try { localStorage.setItem('mudavym.shortlist.skin', s); } catch(e){}
   }
-  skinBtn.addEventListener('click', () =>
-    setSkin(document.documentElement.dataset.skin === 'neutral' ? 'brand' : 'neutral'));
-  let s0 = 'brand';
-  try { const v = localStorage.getItem('mudavym.motion.skin'); if (v) s0 = v; } catch(e){}
+  sk.addEventListener('click', function(){
+    setSkin(document.documentElement.dataset.skin === 'neutral' ? 'brand' : 'neutral');
+  });
+  var s0 = 'brand';
+  try { var v = localStorage.getItem('mudavym.shortlist.skin'); if (v) s0 = v; } catch(e){}
   setSkin(s0);
-  render();
 })();
 </script>
