@@ -254,3 +254,30 @@ exactly $1,204 across 219 sampled frames.
 cost alongside 132 sibling motions; and any browser other than Chrome.
 
 | 063 | mudavym-motion-canvas | 133 motions on one surface &#8212; 55 codebase-derived, 16 signature ceremonies built on the wordmark's double rule, plus a curated Shortlist of the founder's picks | null | motion, canvas, signature, seal, swipe-to-approve, shortlist, codebase-derived, od-106 |
+
+---
+
+## Wave 4 — the founder's canvas ports (2026-08-30)
+
+The founder uploaded his own Claude Design canvas (`.planning/Mudavym Motion
+Canvas.dc.html`, 85 demos, 2026-08-29) and said it holds *some* of the motions he
+really liked — so the canvas is curation (ADR 0044 §4). Its twelve **"unafraid"**
+signatures, which existed nowhere in 063, are ported faithfully as `sig-17`–`sig-28`
+(part `sig-d`), each `source`-stamped `founder canvas 2026-08-29 · "<name>"` plus the
+repo code the moment maps to: The house knows you · The day seals itself · Mise en
+place · Scrub the day · The ticket rises · The receipt tears · The room dims · The
+case splits · Money has weight · The proof grows · The shift tide · The sign turns.
+
+Canvas now **145 motions**; shortlist **47** (hero + 28 ceremonies + the 19 marks).
+Verified: 47/47 cards, 0 empty, 0 overflow, 0 console errors; ports checked in
+headless Chrome with real frame timing (`--virtual-time-budget` freezes WAAPI — a
+useful discovery for future verification). Declared by the port agent: the two
+pointer gestures (sig-20 scrub, sig-25 hold) were verified by code inspection, not
+synthetic input.
+
+Best two ports of the founder's intent, per the agent: **The day seals itself**
+(sig-18 — the night's POs fold into one line and the stamp lands, grounded in the
+insight scheduler's real-but-invisible daily sweep) and **Money has weight** (sig-25 —
+$1,860 presses 4px deep against $212's 1.5px on the same `approveOrder` POST).
+
+| 063 wave 4 | parts: sig-d | canvas 145 · shortlist 47 |

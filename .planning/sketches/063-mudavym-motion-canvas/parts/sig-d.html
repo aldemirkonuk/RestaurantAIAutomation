@@ -1,0 +1,753 @@
+<style>
+/* ══ sig-d — Signature moments (17–28) ═══════════════════════════════════
+   The founder's twelve "unafraid" signatures, ported whole from his Claude
+   Design canvas (2026-08-29): alignment as completion, time made spatial,
+   consequence with weight. Each keeps its original name and its original
+   choreography; what changed is the ground under it — every card now names
+   the real Mudavym surface it belongs to.
+   Sibling files own sig-01..sig-16 and share the .mx-sig stem, so every
+   selector here is namespaced .mx-sig-d or .mx-sig-NN — never a bare
+   .mx-sig descendant. Every colour is a host variable.                    */
+
+.mx-sig-d{
+  font-family:var(--m-sans);
+  font-size:11px;line-height:1.4;color:var(--m-ink);
+  position:relative;width:100%;
+  -webkit-font-smoothing:antialiased;
+}
+.mx-sig-d *{box-sizing:border-box}
+.mx-sig-d .row{display:flex;align-items:center;gap:7px;padding:6px 8px;
+  background:var(--m-surface);border:1px solid var(--m-line);border-radius:5px;
+  font:500 10.5px var(--m-sans);color:var(--m-ink)}
+.mx-sig-d .mono{font:500 10.5px var(--m-mono);font-variant-numeric:tabular-nums;
+  letter-spacing:-.01em}
+.mx-sig-d .dim{color:var(--m-mut)}
+.mx-sig-d .sm{font:500 9px var(--m-mono);color:var(--m-mut);letter-spacing:.03em}
+.mx-sig-d .lbl{font:600 8.5px var(--m-mono);color:var(--m-mut);letter-spacing:.09em;
+  text-transform:uppercase}
+.mx-sig-d .nm{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+/* Reduced motion: the script already collapses every duration to its end
+   state; this belt-and-braces stops anything CSS-driven from moving.      */
+@media (prefers-reduced-motion: reduce){
+  .mx-sig-d *{animation:none !important;transition:none !important}
+}
+
+/* ── 17 · The house knows you ──────────────────────────────────────────
+   Müdavim: the regular. The serif voice is the HOUSE speaking, and it is
+   allowed to, because it recognised the van.                             */
+.mx-sig-17 .st{height:112px;display:flex;flex-direction:column;justify-content:center;
+  gap:8px;overflow:hidden}
+.mx-sig-17 .greet{font-family:var(--m-serif);font-size:17px;letter-spacing:-.01em;
+  clip-path:inset(0 100% 0 0)}
+.mx-sig-17 .rule{width:60px;height:3px;border-top:1px solid var(--m-line2);
+  border-bottom:1px solid var(--m-line2);transform:scaleX(0);transform-origin:left}
+.mx-sig-17 .cap{opacity:0}
+
+/* ── 18 · The day seals itself ─────────────────────────────────────────
+   The night's POs fold downward into one line of record. The seal is the
+   only ornament, and this is one of the only moments it appears.         */
+.mx-sig-18 .st{position:relative;height:132px;overflow:hidden;
+  display:flex;flex-direction:column;gap:6px}
+.mx-sig-18 .sum{display:flex;align-items:center;gap:7px;padding:6px 8px;
+  margin-top:auto;opacity:0}
+.mx-sig-18 .seal{width:10px;height:10px;border-radius:50%;background:var(--m-accent);
+  flex:none}
+
+/* ── 19 · Mise en place ────────────────────────────────────────────────
+   A ragged left edge IS the remaining work. Done means flush — alignment
+   is the completion state, no ticks anywhere.                            */
+.mx-sig-19 .st{position:relative;height:132px;display:flex;flex-direction:column;
+  gap:6px;justify-content:center;padding-left:6px;overflow:hidden}
+.mx-sig-19 .edge{position:absolute;left:0;top:8px;bottom:8px;width:1px;
+  background:var(--m-accent);transform:scaleY(0);transform-origin:top;z-index:1}
+
+/* ── 20 · Scrub the day ────────────────────────────────────────────────
+   The night read like a tape, not a summary. The scrub is a REAL gesture:
+   drag across the chart and the figures answer for that minute.          */
+.mx-sig-20 .st{height:112px;display:flex;flex-direction:column;gap:8px;
+  cursor:ew-resize;touch-action:none}
+.mx-sig-20 .hd{display:flex;gap:14px}
+.mx-sig-20 .v{font:600 17px var(--m-mono);font-variant-numeric:tabular-nums;
+  letter-spacing:-.02em}
+.mx-sig-20 .tr{position:relative;flex:1;border-bottom:1px solid var(--m-line)}
+.mx-sig-20 .tr svg{display:block;width:100%;height:100%}
+.mx-sig-20 .ln{position:absolute;top:0;bottom:0;left:0;width:1px;background:var(--m-ink)}
+
+/* ── 21 · The ticket rises ─────────────────────────────────────────────
+   Time made spatial: altitude = age, shadow = altitude. Readable from
+   across the kitchen without opening anything.                           */
+.mx-sig-21 .st{height:104px;display:flex;align-items:flex-end;gap:8px;padding-bottom:4px}
+.mx-sig-21 .tk{flex:1;background:var(--m-surface);border:1px solid var(--m-line);
+  border-radius:4px;padding:7px}
+.mx-sig-21 .tt{font:600 9.5px var(--m-sans)}
+.mx-sig-21 .ag{margin-top:3px}
+
+/* ── 22 · The receipt tears ────────────────────────────────────────────
+   A void physically loses its bottom half, then says who tore it and
+   when. Irreversible, because it is.                                     */
+.mx-sig-22 .st{height:138px;display:flex;justify-content:center;overflow:hidden}
+.mx-sig-22 .rc{width:156px}
+.mx-sig-22 .top{background:var(--m-surface);border:1px solid var(--m-line);
+  border-bottom:0;padding:8px}
+.mx-sig-22 .half{background:var(--m-surface);border:1px solid var(--m-line);
+  border-top:1px dashed var(--m-line2);padding:8px;transform-origin:top left;
+  color:var(--m-mut)}
+.mx-sig-22 .vd{padding-top:5px;opacity:0}
+
+/* ── 23 · The room dims ────────────────────────────────────────────────
+   Closing legible as light: tables go dark in clearing order and the one
+   open check is the only thing left lit.                                 */
+.mx-sig-23 .st{height:110px;display:flex;flex-direction:column;gap:9px}
+.mx-sig-23 .grid{flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:7px;
+  align-content:center}
+.mx-sig-23 .tb{height:26px;border-radius:5px;background:var(--m-surface);
+  border:1px solid var(--m-line2);display:flex;align-items:center;justify-content:center;
+  font:600 9px var(--m-mono)}
+
+/* ── 24 · The case splits ──────────────────────────────────────────────
+   24 becomes 16 and 8 in front of you — the division is witnessed, not
+   announced. Counts tick both ways on the same overdamped spring.        */
+.mx-sig-24 .st{height:110px;display:flex;flex-direction:column;justify-content:center;gap:8px}
+.mx-sig-24 .bar{display:flex}
+.mx-sig-24 .a,.mx-sig-24 .b{height:34px;background:var(--m-surface);
+  border:1px solid var(--m-line2);display:flex;align-items:center;justify-content:center;
+  font:600 13px var(--m-mono);font-variant-numeric:tabular-nums}
+.mx-sig-24 .a{flex:2;border-radius:4px 0 0 4px}
+.mx-sig-24 .b{flex:1;border-left:0;border-radius:0 4px 4px 0;color:var(--m-mut)}
+.mx-sig-24 .lbs{display:flex}
+.mx-sig-24 .l1{flex:2;text-align:center}
+.mx-sig-24 .l2{flex:1;text-align:center;opacity:0}
+
+/* ── 25 · Money has weight ─────────────────────────────────────────────
+   Same gesture, different consequence: the larger amount presses visibly
+   deeper before it commits. Hold either bar — the press is wired.        */
+.mx-sig-25 .st{height:110px;display:flex;flex-direction:column;justify-content:center;gap:9px}
+.mx-sig-25 .p{position:relative;height:34px;border:1px solid var(--m-line2);
+  border-radius:5px;background:var(--m-surface);overflow:hidden;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  user-select:none;-webkit-user-select:none;touch-action:none}
+.mx-sig-25 .f{position:absolute;inset:0;transform-origin:left;transform:scaleX(0);
+  background:color-mix(in oklab, var(--m-ink) 11%, transparent)}
+.mx-sig-25 .t{position:relative}
+
+/* ── 26 · The proof grows ──────────────────────────────────────────────
+   A timer that grows instead of draining: readiness is something
+   ARRIVING, and the geometry says when it has.                           */
+.mx-sig-26 .st{height:96px;display:flex;align-items:center;gap:14px}
+.mx-sig-26 .ring{position:relative;width:56px;height:56px;flex:none}
+.mx-sig-26 .dash{position:absolute;inset:0;border:1px dashed var(--m-line2);border-radius:50%}
+.mx-sig-26 .b{position:absolute;inset:0;border-radius:50%;
+  background:color-mix(in oklab, var(--m-ink) 14%, transparent);transform:scale(.2)}
+.mx-sig-26 .led{display:flex;flex-direction:column;gap:3px}
+.mx-sig-26 .tt{font:600 12px var(--m-mono)}
+
+/* ── 27 · The shift tide ───────────────────────────────────────────────
+   Staffing as a waterline against the dashed forecast. Drop a person in
+   and the level visibly rises to where the need is.                      */
+.mx-sig-27 .st{position:relative;height:118px;display:flex;gap:7px;align-items:stretch}
+.mx-sig-27 .day{flex:1;display:flex;flex-direction:column;gap:4px}
+.mx-sig-27 .dl{text-align:center}
+.mx-sig-27 .tank{flex:1;position:relative;border:1px solid var(--m-line);
+  border-radius:4px;overflow:hidden}
+.mx-sig-27 .w{position:absolute;left:0;right:0;bottom:0;height:100%;
+  transform-origin:bottom;background:color-mix(in oklab, var(--m-ink) 10%, transparent)}
+.mx-sig-27 .fc{position:absolute;left:0;right:0;top:38%;border-top:1px dashed var(--m-line2)}
+.mx-sig-27 .chip{position:absolute;right:4px;top:20px;padding:3px 8px;
+  border:1px solid var(--m-line2);border-radius:99px;background:var(--m-surface);
+  font:500 9px var(--m-sans);z-index:1;white-space:nowrap}
+
+/* ── 28 · The sign turns ───────────────────────────────────────────────
+   The whole service card flips like the sign on the door. The front was
+   the work; the back is the record, and only the record wears the seal.  */
+.mx-sig-28 .st{height:120px;display:flex;align-items:center;justify-content:center;
+  perspective:700px}
+.mx-sig-28 .c{position:relative;width:180px;height:96px;transform-style:preserve-3d}
+.mx-sig-28 .face{position:absolute;inset:0;backface-visibility:hidden;
+  -webkit-backface-visibility:hidden;border:1px solid var(--m-line2);border-radius:7px;
+  background:var(--m-surface);padding:11px;display:flex;flex-direction:column;gap:4px}
+.mx-sig-28 .back{transform:rotateY(180deg);border-color:var(--m-accent)}
+.mx-sig-28 .h{font-family:var(--m-serif);font-size:13px}
+</style>
+<script>
+(function(){
+  var FAM = 'Signature moments';
+  window.MUDAVYM_MOTIONS = window.MUDAVYM_MOTIONS || [];
+  function push(o){ o.family = FAM; window.MUDAVYM_MOTIONS.push(o); }
+
+  var RM = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  function rate(){
+    var r = window.MUDAVYM_RATE && window.MUDAVYM_RATE();
+    return (typeof r === 'number' && r > 0) ? r : 1;
+  }
+  /* Every duration goes through T(): the canvas speed control scales it,
+     reduced motion collapses it to the end state. */
+  function T(ms){ return RM ? 0 : ms / rate(); }
+
+  /* ── Spring sampler ──────────────────────────────────────────────────
+     Integrates a real mass-spring-damper at 600Hz and samples it into a
+     CSS linear() easing. Overshoot / rest figures quoted on the cards are
+     MEASURED off these runs, not asserted. House vocabulary per
+     059-mudavym-house/motion.json: tuck 380/32 (≈1% — weight, not
+     bounce), stamp 520/26 (the one permitted overshoot), tally 120/26
+     (overdamped — figures arrive, they never bounce past and correct). */
+  function spring(k, c, m, restD){
+    m = m || 1; restD = restD || 0.0005;
+    var dt = 1/600, x = 1, v = 0, t = 0, raw = [0], peak = 0, guard = 0;
+    while (t < 4 && guard++ < 24000){
+      var a = (-k * x - c * v) / m;
+      v += a * dt; x += v * dt; t += dt;
+      var p = 1 - x;
+      if (p > peak) peak = p;
+      raw.push(p);
+      if (Math.abs(x) < restD && Math.abs(v) < restD) break;
+    }
+    var n = 48, pts = [];
+    for (var i = 0; i <= n; i++) pts.push(raw[Math.round(i / n * (raw.length - 1))]);
+    pts[0] = 0; pts[n] = 1;
+    return {
+      pts: pts,
+      css: 'linear(' + pts.map(function(p){ return Math.round(p * 10000) / 10000; }).join(',') + ')',
+      ms: Math.round(t * 1000),
+      over: Math.round((peak - 1) * 1000) / 10
+    };
+  }
+  var SPR = {
+    tuck:  spring(380, 32),  /* under a finger — items tucking flush      */
+    stamp: spring(520, 26),  /* the seal — the one permitted overshoot    */
+    tally: spring(120, 26)   /* number tickers, overdamped, never bounce  */
+  };
+  var KC = { tuck:'380/32', stamp:'520/26', tally:'120/26' };
+  /* linear() is Chrome 113 / Safari 17.4 / Firefox 112. Older engines throw
+     on an unknown easing, so fall back to the house bezier, don't break. */
+  var LINEAR_OK = (function(){
+    try { document.createElement('div').animate([{opacity:0},{opacity:1}],
+          {duration:1, easing:'linear(0,0.5,1)'}); return true; }
+    catch(e){ return false; }
+  })();
+  var EASE = {
+    settle:'cubic-bezier(.16,1,.3,1)',   /* the house curve            */
+    turn:  'cubic-bezier(.32,.72,0,1)',  /* opening a record, a page   */
+    ink:   'cubic-bezier(.4,0,.2,1)',    /* micro-states, 150ms        */
+    lin:   'linear'
+  };
+  function E(n){ return LINEAR_OK ? SPR[n].css : EASE.settle; }
+  function spec(n, label){
+    var s = SPR[n];
+    return label + ' spring ' + KC[n] + ' sampled to linear() 49pt, '
+      + s.over.toFixed(1) + '% overshoot, at rest ' + s.ms + 'ms';
+  }
+
+  /* ── Runner: cancels the previous pass so play() is idempotent ─────── */
+  function runner(root){
+    var prev = root.__sigdRun;
+    if (prev){
+      prev.dead = true;
+      prev.anims.forEach(function(a){ try { a.cancel(); } catch(e){} });
+      prev.timers.forEach(clearTimeout);
+      prev.rafs.forEach(function(id){ cancelAnimationFrame(id); });
+    }
+    var st = { dead:false, anims:[], timers:[], rafs:[] };
+    root.__sigdRun = st;
+    return {
+      st: st,
+      an: function(el, kf, o){ if (!el) return null; var a = el.animate(kf, o); st.anims.push(a); return a; },
+      at: function(ms, fn){ var id = setTimeout(function(){ if (!st.dead) fn(); }, T(ms));
+                            st.timers.push(id); return id; },
+      rf: function(fn){
+        function step(ts){ if (st.dead) return; if (fn(ts) !== false) st.rafs.push(requestAnimationFrame(step)); }
+        st.rafs.push(requestAnimationFrame(step));
+      }
+    };
+  }
+  function opt(dur, ease, extra){
+    var o = { duration: Math.max(1, T(dur)), easing: ease || EASE.settle, fill:'none' };
+    if (extra) for (var k in extra) o[k] = extra[k];
+    return o;
+  }
+  function q(root, s){ return root.querySelector(s); }
+  function qa(root, s){ return Array.prototype.slice.call(root.querySelectorAll(s)); }
+  /* Time-based tween; ease is a p→p function or null for linear. Under
+     reduced motion it jumps straight to the end value. */
+  function tween(r, ms, ease, step){
+    var dur = T(ms);
+    if (!dur){ step(1); return; }
+    var t0 = null;
+    r.rf(function(ts){
+      if (t0 === null) t0 = ts;
+      var p = Math.min(1, (ts - t0) / dur);
+      step(ease ? ease(p) : p);
+      return p < 1;
+    });
+  }
+  /* Number ticker on the overdamped tally spring. */
+  function tallyEase(p){
+    var pts = SPR.tally.pts;
+    var i = p * (pts.length - 1), lo = Math.floor(i), hi = Math.ceil(i);
+    return pts[lo] + (pts[hi] - pts[lo]) * (i - lo);
+  }
+
+  /* ══ 17 · The house knows you ════════════════════════════════════════ */
+  push({
+    id:'sig-17',
+    name:'The house knows you',
+    purpose:'Müdavim means the regular, and this is the product remembering why it is named that. Recurring orders already know each vendor’s cadence (RecurringOrders’ weekly/biweekly frequency labels) and the door knows what is expected (ReceivingHome’s "bottles expected" line) — so when Bodega Álvaro’s van appears the 14th Friday in a row, the house greets it in its own serif voice. Serif, because for one line the HOUSE is speaking, not a label.',
+    spec:'greeting clip-path reveal 600ms cubic-bezier(.32,.72,0,1) · rule 320ms cubic-bezier(.16,1,.3,1) · caption 150ms ink',
+    source:'founder canvas 2026-08-29 · "The house knows you" · apps/web/src/pages/RecurringOrders.tsx:110',
+    html:
+      '<div class="mx-sig-d mx-sig-17"><div class="st">' +
+        '<div class="greet" data-g>Bodega Álvaro, again.</div>' +
+        '<div class="rule" data-r></div>' +
+        '<div class="sm cap" data-c>14th Friday in a row · usual dock, usual hour</div>' +
+      '</div></div>',
+    play: function(root){
+      var r = runner(root);
+      var g = q(root, '[data-g]'), ru = q(root, '[data-r]'), cap = q(root, '[data-c]');
+      g.style.clipPath = 'inset(0 100% 0 0)';
+      ru.style.transform = 'scaleX(0)';
+      cap.style.opacity = '0';
+      void root.offsetWidth;
+      g.style.clipPath = 'inset(0 0 0 0)';
+      r.an(g, [{ clipPath:'inset(0 100% 0 0)' }, { clipPath:'inset(0 0 0 0)' }], opt(600, EASE.turn));
+      r.at(520, function(){
+        ru.style.transform = 'scaleX(1)';
+        r.an(ru, [{ transform:'scaleX(0)' }, { transform:'scaleX(1)' }], opt(320, EASE.settle));
+      });
+      r.at(660, function(){
+        cap.style.opacity = '1';
+        r.an(cap, [{ opacity:0 }, { opacity:1 }], opt(150, EASE.ink));
+      });
+    }
+  });
+
+  /* ══ 18 · The day seals itself ═══════════════════════════════════════ */
+  push({
+    id:'sig-18',
+    name:'The day seals itself',
+    purpose:'Close of service. The nightly sweep already exists — the insight scheduler’s daily cadence runs each restaurant at its own local hour (default 06:00) — but it is invisible: the day just changes. This gives the close a body: the night’s POs fold into one line of record and the seal lands. The seal is the single emphatic motion in the system, and sealing the day is one of the only moments it is allowed to appear.',
+    spec:'rows fold 460ms cubic-bezier(.16,1,.3,1), 90ms stagger · seal ' + spec('stamp','scale 2.4→1 on') + ' (' + SPR.stamp.over.toFixed(1) + '% is the one permitted overshoot)',
+    source:'founder canvas 2026-08-29 · "The day seals itself" · apps/api-gateway/src/analytics/insights/insight-scheduler.service.ts:12',
+    html:
+      '<div class="mx-sig-d mx-sig-18"><div class="st">' +
+        '<div class="row" data-r><span class="mono dim">PO-1042</span><span class="nm">Vinos del Norte</span><span class="mono">$1,860</span></div>' +
+        '<div class="row" data-r><span class="mono dim">PO-1043</span><span class="nm">Bodega Álvaro</span><span class="mono">$740</span></div>' +
+        '<div class="row" data-r><span class="mono dim">PO-1044</span><span class="nm">Panadería Sur</span><span class="mono">$212</span></div>' +
+        '<div class="sum" data-sum><span class="seal" data-seal></span><span class="mono">Friday sealed · 3 POs · $2,812</span></div>' +
+      '</div></div>',
+    play: function(root){
+      var r = runner(root);
+      var rows = qa(root, '[data-r]'), sum = q(root, '[data-sum]'), seal = q(root, '[data-seal]');
+      rows.forEach(function(row){ row.style.opacity = '1'; row.style.transform = 'none'; });
+      sum.style.opacity = '0';
+      void root.offsetWidth;
+      rows.forEach(function(row, i){
+        r.at(300 + i * 90, function(){
+          var end = 'translateY(' + ((3 - i) * 35 - 8) + 'px) scaleY(.08)';
+          row.style.transform = end; row.style.opacity = '0';
+          r.an(row, [{ transform:'none', opacity:1 }, { transform:end, opacity:0 }],
+               opt(460, EASE.settle));
+        });
+      });
+      r.at(880, function(){
+        sum.style.opacity = '1';
+        r.an(sum, [{ opacity:0 }, { opacity:1 }], opt(150, EASE.ink));
+        r.an(seal, [{ transform:'scale(2.4)' }, { transform:'scale(1)' }],
+             opt(SPR.stamp.ms, E('stamp')));
+      });
+    }
+  });
+
+  /* ══ 19 · Mise en place ══════════════════════════════════════════════ */
+  push({
+    id:'sig-19',
+    name:'Mise en place',
+    purpose:'The count list in Inventory Command’s spot-count panel: each location counted tucks flush to the left edge on the under-a-finger spring, and when the last one lands the accent edge draws down the seam. A ragged edge IS the remaining work — alignment is the completion state, no ticks needed, readable from across the cellar. The same completion grammar belongs to receiving verification’s line checklist.',
+    spec:'items tuck flush on ' + spec('tuck','') + ', 160ms stagger · edge 320ms cubic-bezier(.16,1,.3,1)',
+    source:'founder canvas 2026-08-29 · "Mise en place" · apps/web/src/pages/inventory/command/SpotCountPanel.tsx:180',
+    html:
+      '<div class="mx-sig-d mx-sig-19"><div class="st">' +
+        '<div class="edge" data-e></div>' +
+        '<div class="row" data-m style="margin-left:9px"><span class="nm">citrus segmented</span></div>' +
+        '<div class="row" data-m style="margin-left:26px"><span class="nm">stocks strained</span></div>' +
+        '<div class="row" data-m style="margin-left:15px"><span class="nm">rioja decanted</span></div>' +
+        '<div class="row" data-m style="margin-left:32px"><span class="nm">linens counted</span></div>' +
+      '</div></div>',
+    play: function(root){
+      var r = runner(root);
+      var ms = qa(root, '[data-m]'), edge = q(root, '[data-e]');
+      var offs = ['9px', '26px', '15px', '32px'];
+      ms.forEach(function(m){ m.style.transform = 'none'; });
+      edge.style.transform = 'scaleY(0)';
+      void root.offsetWidth;
+      ms.forEach(function(m, i){
+        r.at(250 + i * 160, function(){
+          var end = 'translateX(-' + offs[i] + ')';
+          m.style.transform = end;
+          r.an(m, [{ transform:'none' }, { transform:end }], opt(SPR.tuck.ms, E('tuck')));
+        });
+      });
+      r.at(1250, function(){
+        edge.style.transform = 'scaleY(1)';
+        r.an(edge, [{ transform:'scaleY(0)' }, { transform:'scaleY(1)' }], opt(320, EASE.settle));
+      });
+    }
+  });
+
+  /* ══ 20 · Scrub the day ══════════════════════════════════════════════ */
+  push({
+    id:'sig-20',
+    name:'Scrub the day',
+    purpose:'The dashboard calendar already computes per-day figures (useDashboardPage’s per-day spend/orders/bottles from the calendar-revenue endpoint) but presents them as a summary. This is the other reading: drag across the service line and covers, labour and the clock answer for that MINUTE — the owner reads the night like a tape, not a total. Deliberately un-eased, because an eased scrub would lie about time. Drag the chart: the pointer is wired.',
+    spec:'auto pass 1600ms LINEAR (un-eased on purpose — it is a tape head) · live pointermove scrub · figures interpolated between 8 samples 17:00–24:00',
+    source:'founder canvas 2026-08-29 · "Scrub the day" · apps/web/src/pages/dashboard/useDashboardPage.ts:102',
+    html:
+      '<div class="mx-sig-d mx-sig-20"><div class="st" data-st>' +
+        '<div class="hd">' +
+          '<div><div class="lbl">covers</div><div class="v" data-c>0</div></div>' +
+          '<div><div class="lbl">labour</div><div class="v" data-lb>42.0%</div></div>' +
+          '<div style="margin-left:auto;text-align:right"><div class="lbl">time</div><div class="v" data-tm>17:00</div></div>' +
+        '</div>' +
+        '<div class="tr" data-tr>' +
+          '<svg viewBox="0 0 280 52" preserveAspectRatio="none">' +
+            '<polyline points="0,50 40,46 80,38 120,24 160,10 200,4 240,7 280,3" fill="none" stroke="var(--m-line2)" stroke-width="1.5"></polyline>' +
+          '</svg>' +
+          '<div class="ln" data-ln></div>' +
+        '</div>' +
+      '</div></div>',
+    play: function(root){
+      var r = runner(root);
+      var covers = [0, 8, 24, 61, 102, 148, 171, 184];
+      var labour = [42, 40, 37, 33, 30.5, 29.8, 30.4, 31.1];
+      var c = q(root, '[data-c]'), lb = q(root, '[data-lb]'), tm = q(root, '[data-tm]');
+      var ln = q(root, '[data-ln]'), tr = q(root, '[data-tr]'), st = q(root, '[data-st]');
+      function at(p){
+        p = Math.max(0, Math.min(1, p));
+        var f = p * (covers.length - 1), i = Math.floor(f), fr = f - i;
+        var j = Math.min(covers.length - 1, i + 1);
+        c.textContent = String(Math.round(covers[i] + (covers[j] - covers[i]) * fr));
+        lb.textContent = (labour[i] + (labour[j] - labour[i]) * fr).toFixed(1) + '%';
+        var m = Math.round(17 * 60 + p * 7 * 60);
+        tm.textContent = String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+        ln.style.left = (p * 100) + '%';
+      }
+      /* The real gesture: property assignment, so replays never stack handlers. */
+      st.onpointermove = function(e){
+        var rect = tr.getBoundingClientRect();
+        if (rect.width) at((e.clientX - rect.left) / rect.width);
+      };
+      at(0);
+      void root.offsetWidth;
+      tween(r, 1600, null, at);
+    }
+  });
+
+  /* ══ 21 · The ticket rises ═══════════════════════════════════════════ */
+  push({
+    id:'sig-21',
+    name:'The ticket rises',
+    purpose:'The Orders page buckets every PO by stage — Pending / Approved / Ordered / Delivered — but inside a bucket a 2-minute wait and a 16-minute wait look identical (Orders.tsx buckets carry status, not age). Borrowed from the pass at 20:40: a waiting ticket lifts off the rail as it ages, its shadow deepening with altitude — time made spatial, so the oldest order is readable from across the room without opening anything.',
+    spec:'lift 900ms LINEAR per ticket (ageing is un-eased), 120ms stagger · shadow blur = lift+3px, offset = lift/2+2px · oldest ticket’s border steps to line2 at rest',
+    source:'founder canvas 2026-08-29 · "The ticket rises" · apps/web/src/pages/Orders.tsx:274',
+    html:
+      '<div class="mx-sig-d mx-sig-21"><div class="st">' +
+        '<div class="tk" data-tk><div class="tt">T4 · pulpo</div><div class="sm ag">2 min</div></div>' +
+        '<div class="tk" data-tk><div class="tt">T9 · arroz</div><div class="sm ag">11 min</div></div>' +
+        '<div class="tk" data-tk><div class="tt">T2 · lubina</div><div class="sm ag">16 min</div></div>' +
+      '</div></div>',
+    play: function(root){
+      var r = runner(root);
+      var tks = qa(root, '[data-tk]'), lifts = [0, 7, 14];
+      tks.forEach(function(t){
+        t.style.transform = 'none'; t.style.boxShadow = 'none';
+        t.style.borderColor = 'var(--m-line)';
+      });
+      void root.offsetWidth;
+      tks.forEach(function(t, i){
+        var lift = lifts[i];
+        if (!lift) return;                    /* the 2-minute ticket sits still */
+        r.at(i * 120, function(){
+          var tf = 'translateY(-' + lift + 'px)';
+          var sh = '0 ' + (lift / 2 + 2) + 'px ' + (lift + 3) + 'px color-mix(in oklab, var(--m-sunk) 85%, transparent)';
+          t.style.transform = tf; t.style.boxShadow = sh;
+          r.an(t, [{ transform:'none', boxShadow:'0 0 0 transparent' },
+                   { transform:tf, boxShadow:sh }], opt(900, EASE.lin));
+        });
+      });
+      r.at(1150, function(){ tks[2].style.borderColor = 'var(--m-line2)'; });
+    }
+  });
+
+  /* ══ 22 · The receipt tears ══════════════════════════════════════════ */
+  push({
+    id:'sig-22',
+    name:'The receipt tears',
+    purpose:'PosHub persists voided on every check precisely so revenue readers can exclude it — a defect fixed and pinned by test (pos-hub.correctness.spec: "voided is persisted, not just acted on"). On the receipts surface a void at 1am should look like what the flag means: the record physically loses its bottom half along the perforation, then states who tore it and when. It should feel irreversible, because it is.',
+    spec:'tear rotate 4°→−2° with 60px drop, 700ms cubic-bezier(.32,.72,0,1) · void attribution 150ms ink at 1050ms',
+    source:'founder canvas 2026-08-29 · "The receipt tears" · apps/api-gateway/src/pos-hub/pos-adapters.ts:44',
+    html:
+      '<div class="mx-sig-d mx-sig-22"><div class="st"><div class="rc">' +
+        '<div class="top mono"><div>table 9 · comp</div><div class="dim" style="margin-top:2px">−$38.00</div></div>' +
+        '<div class="half mono" data-h>crema catalana ×2<br>café ×2</div>' +
+        '<div class="sm vd" data-v>voided 01:12 · Elif Kaya</div>' +
+      '</div></div></div>',
+    play: function(root){
+      var r = runner(root);
+      var h = q(root, '[data-h]'), vd = q(root, '[data-v]');
+      h.style.opacity = '1'; h.style.transform = 'none';
+      vd.style.opacity = '0';
+      void root.offsetWidth;
+      r.at(300, function(){
+        var end = 'rotate(-2deg) translateY(60px)';
+        h.style.transform = end; h.style.opacity = '0';
+        r.an(h, [
+          { transform:'none', opacity:1 },
+          { transform:'rotate(4deg) translateY(9px)', opacity:1, offset:.5 },
+          { transform:end, opacity:0 }
+        ], opt(700, EASE.turn));
+      });
+      r.at(1050, function(){
+        vd.style.opacity = '1';
+        r.an(vd, [{ opacity:0 }, { opacity:1 }], opt(150, EASE.ink));
+      });
+    }
+  });
+
+  /* ══ 23 · The room dims ══════════════════════════════════════════════ */
+  push({
+    id:'sig-23',
+    name:'The room dims',
+    purpose:'PROPOSAL for the Tables surface — today simpos ships 20 hard-coded DISABLED table placeholders (decision C29; the service keeps a real simpos_tables list behind them). When tables go live, closing should read like closing a room: each table goes dark in the order it was cleared, the caption counts down, and the one still-open check is the only thing left lit at 01:12. State legible as light, no list to read.',
+    spec:'each table dims 150ms ink in clearing order, 180ms apart · last-open pulse scale 1→1.08→1, 500ms cubic-bezier(.16,1,.3,1)',
+    source:'founder canvas 2026-08-29 · "The room dims" · apps/api-gateway/src/simpos/simpos.service.ts:187 · 06-pages/simpos-terminal.md §1a (C29)',
+    html:
+      '<div class="mx-sig-d mx-sig-23"><div class="st">' +
+        '<div class="grid">' +
+          [1,2,3,4,5,6,7,9].map(function(t, i){
+            return '<div class="tb" data-tb="' + i + '">' + t + '</div>';
+          }).join('') +
+        '</div>' +
+        '<div class="sm" data-cap>service · 8 tables open</div>' +
+      '</div></div>',
+    play: function(root){
+      var r = runner(root);
+      var tb = qa(root, '[data-tb]'), cap = q(root, '[data-cap]');
+      var order = [0, 3, 1, 5, 2, 6, 4];
+      tb.forEach(function(t){ t.style.opacity = '1'; });
+      cap.textContent = 'service · 8 tables open';
+      void root.offsetWidth;
+      order.forEach(function(o, i){
+        r.at(250 + i * 180, function(){
+          tb[o].style.opacity = '.22';
+          r.an(tb[o], [{ opacity:1 }, { opacity:.22 }], opt(150, EASE.ink));
+          cap.textContent = 'closing · ' + (7 - i) + ' open';
+        });
+      });
+      r.at(1760, function(){
+        cap.textContent = 'table 9 still open · 01:12';
+        r.an(tb[7], [{ transform:'scale(1)' }, { transform:'scale(1.08)', offset:.5 },
+                     { transform:'scale(1)' }], opt(500, EASE.settle));
+      });
+    }
+  });
+
+  /* ══ 24 · The case splits ════════════════════════════════════════════ */
+  push({
+    id:'sig-24',
+    name:'The case splits',
+    purpose:'Inventory Command assigns received stock across storage zones (assignWineToLocation on the cellar map). When a case is divided, show the division happening: 24 bottles becomes 16 and 8 in front of you, the counts ticking both ways on the overdamped tally spring while the block physically parts — witnessed, not announced. The same motion is ready for the day a PO splits across branches.',
+    spec:'block parts 8px on 320ms cubic-bezier(.16,1,.3,1) · counts on ' + spec('tally','') + ' over 600ms, both directions · second label 150ms ink',
+    source:'founder canvas 2026-08-29 · "The case splits" · apps/web/src/pages/inventory/command/InventoryCommandPage.tsx:95',
+    html:
+      '<div class="mx-sig-d mx-sig-24"><div class="st">' +
+        '<div class="sm">PO-1042 · Rioja Crianza</div>' +
+        '<div class="bar">' +
+          '<div class="a" data-a>24</div>' +
+          '<div class="b" data-b></div>' +
+        '</div>' +
+        '<div class="lbs sm"><span class="l1">Kadıköy</span><span class="l2" data-l2>Beşiktaş</span></div>' +
+      '</div></div>',
+    play: function(root){
+      var r = runner(root);
+      var a = q(root, '[data-a]'), b = q(root, '[data-b]'), l2 = q(root, '[data-l2]');
+      b.style.marginLeft = '0px'; b.style.borderLeft = '0';
+      b.style.borderRadius = '0 4px 4px 0';
+      a.style.borderRadius = '4px 0 0 4px';
+      a.textContent = '24'; b.textContent = '';
+      l2.style.opacity = '0';
+      void root.offsetWidth;
+      r.at(350, function(){
+        b.style.borderLeft = '1px solid var(--m-line2)'; b.style.borderRadius = '4px';
+        a.style.borderRadius = '4px';
+        b.style.marginLeft = '8px';
+        r.an(b, [{ marginLeft:'0px' }, { marginLeft:'8px' }], opt(320, EASE.settle));
+        tween(r, 600, tallyEase, function(p){
+          a.textContent = String(Math.round(24 - p * 8));
+          b.textContent = String(Math.round(p * 8));
+        });
+      });
+      r.at(550, function(){
+        l2.style.opacity = '1';
+        r.an(l2, [{ opacity:0 }, { opacity:1 }], opt(150, EASE.ink));
+      });
+    }
+  });
+
+  /* ══ 25 · Money has weight ═══════════════════════════════════════════ */
+  push({
+    id:'sig-25',
+    name:'Money has weight',
+    purpose:'approveOrder is the same POST for $212 and for $1,860 — the gesture should not be. The larger amount presses visibly deeper before it commits (4px against 1.5px, with a matching shrink), then releases on the stamp spring. Consequence is felt in the hand before it is entered in the book, and no confirm dialog is needed to make the point. Hold either bar — the real press is wired.',
+    spec:'press fill 620ms LINEAR (the operator times it against their own thumb) · depth 1.5px vs 4px by amount · release on ' + spec('stamp',''),
+    source:'founder canvas 2026-08-29 · "Money has weight" · apps/web/src/services/api/orders.ts:116',
+    html:
+      '<div class="mx-sig-d mx-sig-25"><div class="st">' +
+        '<div class="p" data-p="0"><div class="f" data-f></div><span class="t mono">approve $212</span></div>' +
+        '<div class="p" data-p="1"><div class="f" data-f></div><span class="t mono">approve $1,860</span></div>' +
+      '</div></div>',
+    play: function(root){
+      var r = runner(root);
+      var ps = qa(root, '[data-p]'), fs = qa(root, '[data-f]');
+      var depth = [1.5, 4];
+      function pressed(i){
+        return 'translateY(' + depth[i] + 'px) scale(' + (1 - depth[i] * .006) + ')';
+      }
+      ps.forEach(function(p, i){
+        p.style.transform = 'none';
+        fs[i].style.transform = 'scaleX(0)';
+        /* The real gesture: hold fills, release stamps back. Property
+           assignment, so replays never stack handlers. */
+        p.onpointerdown = function(ev){
+          if (p.setPointerCapture && ev.pointerId != null){
+            try { p.setPointerCapture(ev.pointerId); } catch(e){}
+          }
+          fs[i].style.transform = 'scaleX(1)';
+          r.an(fs[i], [{ transform:'scaleX(0)' }, { transform:'scaleX(1)' }], opt(620, EASE.lin));
+          p.style.transform = pressed(i);
+          r.an(p, [{ transform:'none' }, { transform:pressed(i) }], opt(620, EASE.lin));
+        };
+        p.onpointerup = p.onpointercancel = function(){
+          p.style.transform = 'none';
+          r.an(p, [{ transform:pressed(i) }, { transform:'none' }], opt(SPR.stamp.ms, E('stamp')));
+          fs[i].style.transform = 'scaleX(0)';
+          r.an(fs[i], [{ transform:'scaleX(1)' }, { transform:'scaleX(0)' }], opt(160, EASE.ink));
+        };
+      });
+      void root.offsetWidth;
+      ps.forEach(function(p, i){
+        r.at(200, function(){
+          fs[i].style.transform = 'scaleX(1)';
+          r.an(fs[i], [{ transform:'scaleX(0)' }, { transform:'scaleX(1)' }], opt(620, EASE.lin));
+          p.style.transform = pressed(i);
+          r.an(p, [{ transform:'none' }, { transform:pressed(i) }], opt(620, EASE.lin));
+        });
+        r.at(850, function(){
+          p.style.transform = 'none';
+          r.an(p, [{ transform:pressed(i) }, { transform:'none' }], opt(SPR.stamp.ms, E('stamp')));
+          fs[i].style.transform = 'scaleX(0)';
+          r.an(fs[i], [{ transform:'scaleX(1)' }, { transform:'scaleX(0)' }], opt(160, EASE.ink));
+        });
+      });
+    }
+  });
+
+  /* ══ 26 · The proof grows ════════════════════════════════════════════ */
+  push({
+    id:'sig-26',
+    name:'The proof grows',
+    purpose:'A timer that grows instead of draining: readiness is something ARRIVING, and the geometry says when it has — the disc meets the dashed rim exactly at ready, so a cook reads it from across the kitchen without arithmetic. Belongs to prep timers, and equally to the delivery-ETA reminders the cron already computes: an order en route should grow toward arrived, never drain toward zero.',
+    spec:'disc scale .2→1 over 1500ms LINEAR (elapsed time is un-eased) · counter linear alongside · ready pulse 1→1.05→1, 400ms cubic-bezier(.16,1,.3,1)',
+    source:'founder canvas 2026-08-29 · "The proof grows" · apps/api-gateway/src/communications/scheduled-tasks.service.ts:367',
+    html:
+      '<div class="mx-sig-d mx-sig-26"><div class="st">' +
+        '<div class="ring"><div class="dash"></div><div class="b" data-b></div></div>' +
+        '<div class="led"><span class="tt" data-t>focaccia · proofing</span><span class="sm" data-r>34 min of 45</span></div>' +
+      '</div></div>',
+    play: function(root){
+      var r = runner(root);
+      var b = q(root, '[data-b]'), t = q(root, '[data-t]'), cap = q(root, '[data-r]');
+      b.style.transform = 'scale(.2)';
+      t.textContent = 'focaccia · proofing';
+      cap.textContent = '34 min of 45';
+      void root.offsetWidth;
+      b.style.transform = 'scale(1)';
+      r.an(b, [{ transform:'scale(.2)' }, { transform:'scale(1)' }], opt(1500, EASE.lin));
+      tween(r, 1500, null, function(p){
+        cap.textContent = Math.round(34 + p * 11) + ' min of 45';
+      });
+      r.at(1560, function(){
+        t.textContent = 'ready';
+        r.an(b, [{ transform:'scale(1)' }, { transform:'scale(1.05)', offset:.5 },
+                 { transform:'scale(1)' }], opt(400, EASE.settle));
+      });
+    }
+  });
+
+  /* ══ 27 · The shift tide ═════════════════════════════════════════════ */
+  push({
+    id:'sig-27',
+    name:'The shift tide',
+    purpose:'ManagerShiftDesk’s coverage lens counts tonight’s gaps as numbers ("2 blockers"). Draw the week as water instead: each day a tank, the dashed line the forecast’s waterline, staffing the level. Drop Yusuf into Friday and the level visibly RISES toward where the need is — a rota read as tide against demand, per day, from across the office. The chip flies on the under-a-finger spring because a person was just dragged.',
+    spec:'chip flight on ' + spec('tuck','') + ' · waterline rises .35→.66 over 500ms cubic-bezier(.16,1,.3,1)',
+    source:'founder canvas 2026-08-29 · "The shift tide" · apps/web/src/pages/team/command/ManagerShiftDesk.tsx:123',
+    html:
+      '<div class="mx-sig-d mx-sig-27"><div class="st">' +
+        [['THU', .55], ['FRI', .35], ['SAT', .7]].map(function(d, i){
+          return '<div class="day"><span class="lbl dl">' + d[0] + '</span>' +
+            '<div class="tank" data-tank="' + i + '">' +
+              '<div class="w" data-w="' + i + '" style="transform:scaleY(' + d[1] + ')"></div>' +
+              '<div class="fc"></div>' +
+            '</div></div>';
+        }).join('') +
+        '<div class="chip" data-chip>Yusuf 17–23</div>' +
+      '</div></div>',
+    play: function(root){
+      var r = runner(root);
+      var w = q(root, '[data-w="1"]'), tank = q(root, '[data-tank="1"]'), chip = q(root, '[data-chip]');
+      w.style.transform = 'scaleY(.35)';
+      chip.style.opacity = '1'; chip.style.transform = 'none';
+      void root.offsetWidth;
+      r.at(250, function(){
+        var a = chip.getBoundingClientRect(), host = tank.getBoundingClientRect();
+        var dx = host.width ? (host.left - a.left + 8) : -60;
+        var dy = host.width ? (host.top - a.top + 30) : 44;
+        var end = 'translate(' + dx + 'px,' + dy + 'px) scale(.8)';
+        chip.style.transform = end; chip.style.opacity = '0';
+        r.an(chip, [{ transform:'none', opacity:1 }, { transform:end, opacity:0 }],
+             opt(SPR.tuck.ms, E('tuck')));
+      });
+      r.at(650, function(){
+        w.style.transform = 'scaleY(.66)';
+        r.an(w, [{ transform:'scaleY(.35)' }, { transform:'scaleY(.66)' }], opt(500, EASE.settle));
+      });
+    }
+  });
+
+  /* ══ 28 · The sign turns ═════════════════════════════════════════════ */
+  push({
+    id:'sig-28',
+    name:'The sign turns',
+    purpose:'closeCheck is the exact moment work becomes record — closing a check makes the server sign a webhook into PosHub and the night’s stock moves for real. At end of day the whole service card earns the same moment at page scale: it flips over like the sign on the door. The front was the work (184 covers, 21 open checks); the back is the record (sealed, $8,412, 0 discrepancies), and only the back wears the accent border.',
+    spec:'rotateY 0→180° over 760ms cubic-bezier(.32,.72,0,1), perspective 700px · backface-visibility keeps each side honest',
+    source:'founder canvas 2026-08-29 · "The sign turns" · apps/api-gateway/src/simpos/simpos.service.ts:356',
+    html:
+      '<div class="mx-sig-d mx-sig-28"><div class="st">' +
+        '<div class="c" data-c>' +
+          '<div class="face"><span class="h">In service</span>' +
+            '<span class="mono dim">184 covers · 21 open checks</span></div>' +
+          '<div class="face back"><span class="h">Friday, sealed.</span>' +
+            '<span class="mono dim">$8,412 · 0 discrepancies</span></div>' +
+        '</div>' +
+      '</div></div>',
+    play: function(root){
+      var r = runner(root);
+      var c = q(root, '[data-c]');
+      c.style.transform = 'rotateY(0deg)';
+      void root.offsetWidth;
+      r.at(250, function(){
+        c.style.transform = 'rotateY(180deg)';
+        r.an(c, [{ transform:'rotateY(0deg)' }, { transform:'rotateY(180deg)' }],
+             opt(760, EASE.turn));
+      });
+    }
+  });
+})();
+</script>
