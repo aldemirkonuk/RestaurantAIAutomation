@@ -60,6 +60,46 @@ completes. Candidate sheets are published for review:
 both lineages side by side, each proven at 96/32/24px on paper and charcoal. The
 founder's verdicts will be recorded here.
 
+## The withdrawn slab lineage (2026-08-29 → 2026-08-30) — absorbed from the retired `0043-mudavym-mark.md`
+
+A parallel session ran a full mark selection on 2026-08-29 that this ADR now absorbs,
+because its id collided with this file and its outcome feeds OD-111 directly.
+
+**What happened, in order.** The founder rejected the three earlier survivors, rejected
+an Ottoman *tughra* as "too Turkish", and chose an angular two-pillar monogram from a
+generated batch — then specified four craft corrections. It was redrawn as one closed
+uniformly-stroked path (`M15 86 L15 14 L85 86 L85 14 Z`), which satisfied three
+corrections structurally. On 2026-08-30 the founder withdrew the form: **it reads as
+the Visual Studio Code mark**, and the resemblance would follow the brand permanently.
+Its replacement — a slab monogram (M crossed by a diagonal, letterpress grain, 1024px
+raster) — was never committed; three sessions searched every ref and found nothing,
+a hand-trace was attempted and abandoned, and on 2026-08-30 the founder **skipped the
+slab entirely: "selection round instead"** (relayed by session -29). The canvas above
+is therefore the single vehicle for the logo decision.
+
+**What survives as OD-111 selection criteria** — every one of these killed a candidate
+once already, so the elimination round should apply them up front:
+
+1. **Counters and traps must survive 16–24px** — sliver gaps clog; nothing under ~6
+   grid units of negative space survives a favicon.
+2. **No asymmetric cutouts** competing with the silhouette.
+3. **Stroke weight must not drift** between elements — best enforced by construction,
+   not adjustment.
+4. **The first read must be M** — the withdrawn slab resolved as "N" first; the bowtie
+   resolved as VS Code first. Check the first read with someone outside the project.
+5. **No lookalike liabilities** (VS Code) and **no costume** ("too Turkish").
+
+**Also carried forward:** the two-cut idea (a display cut with character at ≥64px, a
+solid cut for small sizes) — my candidate sheets' separately-drawn 32/24px variants
+are the same principle.
+
+**One recorded conflict.** The absorbed ADR paired the mark with a **Plus Jakarta Sans
+800** wordmark (2026-08-29); this ADR records the founder choosing **Fraunces 600**
+directly on 2026-08-30. The later, direct call stands — Fraunces ships — but the
+pairing question deliberately reopens when the final mark is chosen, since the
+absorbed ADR's reasoning (humanist sans to soften an industrial mark) was about a
+mark that no longer exists.
+
 ## Consequences
 
 - **Easier:** dev.mudavym.com ships a coherent identity today without pre-empting the
@@ -77,3 +117,4 @@ founder's verdicts will be recorded here.
 |---|---|---|
 | 2026-08-30 | Aldemir (founder) | Interim = text wordmark ("the name with a font"); Fraunces picked from a three-way; search waves ordered under this ADR |
 | 2026-08-30 | — | Both waves delivered; 12 candidates published on the logo-search canvas, awaiting elimination |
+| 2026-08-30 | Aldemir (founder, relayed by session -29) | Slab monogram SKIPPED — "selection round instead"; the canvas is the sole vehicle. Retired `0043-mudavym-mark.md` absorbed as the slab-lineage section |
