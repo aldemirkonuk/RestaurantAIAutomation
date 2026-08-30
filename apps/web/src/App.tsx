@@ -77,6 +77,8 @@ import { TeamCommandPage } from './pages/team/command/TeamCommandPage'
 // Mudavym redesign variants (ADR 0044) — reachable only behind their per-page flag
 const DashboardNext = lazyWithRefresh(() => import('./pages/dashboard/next/DashboardNext'))
 const OrdersNext = lazyWithRefresh(() => import('./pages/orders/next/OrdersNext'))
+const ReceivingNext = lazyWithRefresh(() => import('./pages/receiving/next/ReceivingNext'))
+const DoorNext = lazyWithRefresh(() => import('./pages/receiving/next/DoorNext'))
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
 const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
@@ -217,7 +219,7 @@ function App() {
                   path="/receiving/:orderId/door"
                   element={
                     <ProtectedRoute>
-                      <DoorReceipt />
+                      <PageGate page="receiving_door" legacy={<DoorReceipt />} next={<DoorNext />} />
                     </ProtectedRoute>
                   }
                 />
@@ -278,7 +280,7 @@ function App() {
                   <Route path="/inventory-legacy" element={<Navigate to="/inventory" replace />} />
                   <Route path="/orders" element={<PageGate page="orders" legacy={<Orders />} next={<OrdersNext />} />} />
                   {/* One event, three renderings, chosen by role — see ReceivingHome. */}
-                  <Route path="/receiving" element={<ReceivingHome />} />
+                  <Route path="/receiving" element={<PageGate page="receiving" legacy={<ReceivingHome />} next={<ReceivingNext />} />} />
                   <Route path="/wines" element={<WineLibrary />} />
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/recommendations" element={<Recommendations />} />

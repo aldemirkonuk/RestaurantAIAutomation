@@ -17,7 +17,7 @@ to keep asking questions and keep documenting.
 The founder also uploaded his own curated motion canvas
 (`.planning/Mudavym Motion Canvas.dc.html`, 85 demos, 2026-08-29) and said it holds
 *some* of the motions he really liked — making that file a curation signal, including
-twelve "unafraid" signature ideas that exist nowhere in the 063 set.
+twelve "unafraid" signature ideas that exist nowhere in the 087 set.
 
 ## Decision — the founder's four answers, 2026-08-30
 
@@ -39,7 +39,7 @@ twelve "unafraid" signature ideas that exist nowhere in the 063 set.
    unaffected — the die (M above double rule) is specified by the sketches. The
    monogram slots in as a single swap when its vector exists.
 4. **The uploaded canvas is curation.** What is on it is what the founder liked. Its
-   twelve unafraid signatures port into 063 as `sig-17`–`sig-28` (part `sig-d`), and
+   twelve unafraid signatures port into 087 as `sig-17`–`sig-28` (part `sig-d`), and
    the canvas joins the makeover verdicts as a binding reference for implementation
    taste.
 
@@ -102,11 +102,11 @@ lookalike, and his four craft criteria — feeds OD-111 as selection criteria. T
 **The mark, resolved procedurally (2026-08-30).** The founder **skipped the slab
 monogram entirely** — no raster, no trace. The logo decision runs as an elimination
 round on OD-111's candidate artifact (owned by the brand session), joined by the
-sketch lineage's candidates (059 lockups, the Meter, the Full Stop) extracted as
+sketch lineage's candidates (083 lockups, the Meter, the Full Stop) extracted as
 clean SVGs. The founder's four withdrawal criteria are the bar: counters must not
 clog at 16px, no asymmetric cutouts, uniform weight, reads M first. Supporting
-evidence available to the round: `058-.../ledger-scene.png`, the generated photograph
-in which the model unprompted drew the 059 lockup as a wax seal on a leather ledger.
+evidence available to the round: `082-.../ledger-scene.png`, the generated photograph
+in which the model unprompted drew the 083 lockup as a wax seal on a leather ledger.
 
 **Sketch renumbering (owned here).** `main` occupies sketches 053–076; the design
 sketches renumber **053–063 → 077–087** (077 habitue · 078 instrument · 079 cellar ·

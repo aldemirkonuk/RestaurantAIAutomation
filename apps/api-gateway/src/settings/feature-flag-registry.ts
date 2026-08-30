@@ -81,6 +81,18 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     defaultValue: false,
     readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:73",
   },
+  {
+    key: "mudavym_design_receiving",
+    // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:73",
+  },
+  {
+    key: "mudavym_design_receiving_door",
+    // OFF by default: the Mudavym redesign of the door flow (ADR 0044 P2).
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:73",
+  },
 ];
 
 export const ACTIVE_FEATURE_FLAG_KEYS: readonly string[] =

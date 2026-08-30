@@ -30,7 +30,7 @@ import { settingsApi } from '../../services/api/settings';
  * PageGate accept it immediately) and register `mudavym_design_<page>` in the
  * gateway's ACTIVE_FEATURE_FLAGS with a `readBy` pointing at your PageGate.
  */
-export const MUDAVYM_PAGES = ['dashboard', 'orders'] as const;
+export const MUDAVYM_PAGES = ['dashboard', 'orders', 'receiving', 'receiving_door'] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
 
