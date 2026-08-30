@@ -70,3 +70,53 @@ twelve "unafraid" signature ideas that exist nowhere in the 063 set.
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-08-30 | Aldemir (founder) | Chose Dashboard+Orders, flag-per-page + motion-map scope, wordmark-only, canvas-as-curation |
+
+## Addendum — the collaborative integration plan (2026-08-30, cross-session)
+
+The founder asked the sessions to work as one makeover. Coordinated by message with
+the brand session(s) (`feat/mudavym-brand`) and the sketch session; agreed:
+
+**Landing order.** `feat/mudavym-brand` lands first (shell-only re-skin + rename,
+green, already deployed to dev.mudavym.com). `feat/mudavym-design-p1` rebases onto it
+afterwards. **Never push to `feat/mudavym-brand`** — that branch name publishes to the
+founder's dev URL.
+
+**Rebase facts, from the brand owner + a merge-tree rehearsal.** Only
+`tailwind.config.js` truly conflicts (both add scales in the same block). Absorb on
+rebase: İznik sits at **wine/brand-600**, not 500 (500 is interpolated `#3D8794`;
+400 = `#5FB0BC` dark primary); `red-*` is now the DANGER family, no longer
+brand-adjacent; `globals.css` shadcn vars were rewritten to the charcoal set;
+`BrandMark` changed contract from square glyph to wide text wordmark (call sites
+already fixed on the brand branch); 49 files carry rename strings — expect trivial
+string conflicts only. After rebase: re-verify the byte-identical-legacy claim (the
+ground under `.mudavym` scopes changed) and rerun `scripts/check_citation_pairing.py`
+(the brand branch repointed 44 citations and added OD-111 to the register).
+
+**ADR numbering.** The canonical 0043 is the brand branch's
+`0043-wordmark-interim-logo-search.md` (committed + pushed). The uncommitted
+`0043-mudavym-mark.md` in the shared checkout (the withdrawn slab story) is the brand
+session's to reconcile; its withdrawal narrative — the founder rejecting a VS-Code
+lookalike, and his four craft criteria — feeds OD-111 as selection criteria. This ADR
+(0044) is confirmed non-colliding.
+
+**The mark, resolved procedurally (2026-08-30).** The founder **skipped the slab
+monogram entirely** — no raster, no trace. The logo decision runs as an elimination
+round on OD-111's candidate artifact (owned by the brand session), joined by the
+sketch lineage's candidates (059 lockups, the Meter, the Full Stop) extracted as
+clean SVGs. The founder's four withdrawal criteria are the bar: counters must not
+clog at 16px, no asymmetric cutouts, uniform weight, reads M first. Supporting
+evidence available to the round: `058-.../ledger-scene.png`, the generated photograph
+in which the model unprompted drew the 059 lockup as a wax seal on a leather ledger.
+
+**Sketch renumbering (owned here).** `main` occupies sketches 053–076; the design
+sketches renumber **053–063 → 077–087** (077 habitue · 078 instrument · 079 cellar ·
+080 pass · 081 ledger · 082 3d-marks · 083 house · 084 anatolian · 085 guestbook ·
+086 warmmachine · 087 motion-canvas), with every cross-reference — MANIFEST rows,
+notes, motion.json citations, and the two assembly scripts — rewritten in the same
+commit before `docs/mudavym-design-kickoff` goes up.
+
+**Page claims across sessions.** This session: dashboard, orders, receiving,
+receiving-door. Brand session: shell, palette, rename, decisions 0041–0043, OD-111.
+Sketch session: documentation only. Unclaimed and open: receipts (the founder's most
+demanding brief), documents-reports (three sketches asked), communications +
+providers (MERGE verdicts), team (+3 ideas), inventory, wine-agent scope.
