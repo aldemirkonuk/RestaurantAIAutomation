@@ -1,9 +1,11 @@
 /**
  * The Mudavym wordmark — "Mudavym." with the full stop in seal colour.
  *
- * The final mark exists now: the Rivet M (OD-111 resolved, ADR 0045), served
- * app-shell-wide by `components/brand/BrandMark` (lockup/wordmark/mark
- * variants, ground-aware brass). This component stays deliberately separate:
+ * The final mark exists now: the trued A+M interlock (ADR 0047, superseding
+ * 0045's Rivet M), served app-shell-wide by `components/brand/BrandMark`
+ * (lockup/wordmark/mark variants, monochrome İznik) — whose lockup wordmark
+ * matches this component exactly ("Mudavym." with the seal-coloured stop).
+ * This component stays deliberately separate:
  * it is the in-page *typographic* signature — Fraunces 600 (the founder's
  * direct pick) with the İznik full stop — used at 13–14px inside rebuilt
  * pages, below the mark's own clearspace floor where a lockup would smudge.

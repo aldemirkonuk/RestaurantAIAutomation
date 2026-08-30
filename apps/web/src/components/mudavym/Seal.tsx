@@ -3,13 +3,15 @@
  * a scalloped wax blob carrying the brand mark above a double rule.
  *
  * This is the seal-as-interaction-object of ADR 0042 (the hold-to-approve
- * gesture completes into it). The die face is the **Rivet M** (OD-111
- * resolved, ADR 0045) — geometry verbatim from the Mark canvas, scaled onto
- * sig-hero's proven wax/rule composition. Inside wax the mark takes the
- * canvas's etched/mono treatment: ground colour only, never brass — the
- * brass/paprika exception applies to the mark on a page ground, not to an
- * impression. The rivet is a filled ground-colour dot (the die's dimple);
- * below ~24px it fades out gracefully while the M still reads.
+ * gesture completes into it). The die face is the **trued A+M interlock**
+ * (ADR 0047, the founder's own trace; supersedes 0045's Rivet M) — the nine
+ * straight-cut polygons scaled onto sig-hero's proven wax/rule composition,
+ * etched: ground colour only, monochrome per 0047. The four counter ticks
+ * are deliberately absent: 0047 says they read from 32px, and the die face
+ * never reaches that at any Seal size — a physical die is one object, so it
+ * is a reduced cut everywhere rather than size-conditional artwork.
+ * Verified on a rendered sheet at 18/34/48/96px, both grounds, against the
+ * full-tick and no-rule variants before choosing this cut.
  *
  * Colour: the wax is `currentColor`, İznik by default (`--seal`, with the
  * light-column fallback so it renders correctly outside a `.mudavym` scope).
@@ -37,8 +39,19 @@ export interface SealProps extends Omit<SVGProps<SVGSVGElement>, 'color'> {
 const WAX_PATH =
   'M50 6c9 0 14 6 22 8s16-2 21 5-1 15 1 23 8 13 5 21-13 8-18 14-6 15-14 17-14-4-22-4-14 6-22 4-9-11-14-17-15-6-18-14 3-13 5-21-3-16 1-23 13-3 21-5S41 6 50 6z';
 
-/** Rivet M — verbatim from the Mark canvas draft 01 (ADR 0045). */
-const RIVET_PATH = 'M22,76 L22,24 L50,54 L78,24 L78,76';
+/**
+ * The A+M interlock's nine structural polygons — verbatim from ADR 0047's
+ * 483×574 grid, sans the four counter ticks (see the die-cut note above).
+ */
+const AM_DIE_PATHS = [
+  'M0 38H72V540H0Z',
+  'M15 38H96L460 574H379Z',
+  'M0 346H305L353 416H0Z',
+  'M0 470H137V540H0Z',
+  'M99 0H151L278.7 187.8L284.8 273Z',
+  'M389.5 40H460.9L284.8 273L251.4 224Z',
+  'M412 40H483V574H412Z',
+];
 
 export function Seal({
   size = 48,
@@ -62,19 +75,13 @@ export function Seal({
       {title ? <title>{title}</title> : null}
       <path fill="currentColor" d={WAX_PATH} />
       <g opacity={pressed ? 0.62 : 1}>
-        {/* die face: Rivet M scaled onto the wax, above the double rule */}
-        <g transform="translate(50 48) scale(0.44) translate(-50 -50)">
-          <path
-            d={RIVET_PATH}
-            fill="none"
-            stroke={groundColor}
-            strokeWidth={13}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          {/* the rivet: wax showing through the etched M — a ground-coloured
-              dot would vanish into the ground-coloured strokes */}
-          <circle cx="50" cy="54" r="9" fill="currentColor" />
+        {/* die face: the A+M interlock scaled onto the wax, above the rule */}
+        <g transform="translate(50 47) scale(0.0592) translate(-241.5 -287)">
+          <g fill={groundColor}>
+            {AM_DIE_PATHS.map((d) => (
+              <path key={d} d={d} />
+            ))}
+          </g>
         </g>
         <g fill="none" stroke={groundColor} strokeWidth={4.4} strokeLinecap="square">
           <path d="M30 71h40" />
