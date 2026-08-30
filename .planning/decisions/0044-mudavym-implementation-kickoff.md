@@ -120,3 +120,25 @@ receiving-door. Brand session: shell, palette, rename, decisions 0041–0043, OD
 Sketch session: documentation only. Unclaimed and open: receipts (the founder's most
 demanding brief), documents-reports (three sketches asked), communications +
 providers (MERGE verdicts), team (+3 ideas), inventory, wine-agent scope.
+
+---
+
+## Status — 2026-08-30, published for review
+
+Founder's order: **push what exists, merge nothing.** Both branches are now on
+origin, unmerged, awaiting his review and the OD-111 elimination:
+
+- `feat/mudavym-design-p1` — P1 (`23d24c5d`: foundation + DashboardNext +
+  OrdersNext) and P2 (`f5b38edb`: ReceivingNext + DoorNext) behind per-page
+  flags, all defaulting OFF; plus the Fraunces-600 wordmark fix (`a9226b23`).
+  Flags off, every legacy page is byte-untouched — pushing this changes
+  nothing user-visible anywhere it deploys.
+- `docs/mudavym-design-kickoff` — the design corpus: sketches **077–087**
+  (renumbered clear of main's 053–076 in `ca54f3bb`), DESIGN-FOUNDATION
+  §0/§0a, and the two P2-found defects in v3.0-TECH-DEBT (`1d7b53ad`).
+
+Landing order is unchanged from the addendum above: `feat/mudavym-brand`
+first, then this branch rebases onto it (tailwind scales, İznik@600,
+citation guard, byte-identical legacy re-check) before any merge is
+proposed. `feat/mudavym-brand` remains the one branch this session never
+pushes to.
