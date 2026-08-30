@@ -1,6 +1,6 @@
 # 0045 — The mark is the Rivet M; the rebuild goes to full go
 
-- **Status:** Locked — mark identity, pairing, full-go, claims, **and the adjusted mark hexes** (landed `d4ba2f19` on `feat/mudavym-brand`, see §2)
+- **Status:** **Superseded on the mark (§1–2) by [ADR 0047](0047-am-interlock-supersedes-rivet-m.md), same day** — the founder withdrew the Rivet M hours after it shipped ("wasn't the one I wanted"); the brass/paprika exception and adjusted hexes die with it. §3–5 stand: Fraunces pairing, full-go (executed — #163 merged), page claims and the audit protocol. The 17-candidate ranking remains valid evidence
 - **Date:** 2026-08-30
 - **Decider:** Aldemir (founder), 2026-08-30 — three AskUserQuestion rounds in session -7f, answers recorded verbatim below
 - **Keywords:** logo, Rivet M, brass, paprika, OD-111, full go, merge, page claims, motion map, audit agents, Fraunces
