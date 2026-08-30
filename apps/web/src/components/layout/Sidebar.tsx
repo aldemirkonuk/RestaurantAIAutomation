@@ -480,7 +480,7 @@ export function Sidebar() {
           className={cn('flex items-center', effectiveCollapsed ? 'justify-center' : 'gap-3')}
           aria-label="Mudavym home"
         >
-          {effectiveCollapsed && <BrandMark variant="glyph" size={22} alt="" />}
+          {effectiveCollapsed && <BrandMark variant="mark" size={22} alt="" />}
           <AnimatePresence>
             {!effectiveCollapsed && (
               <motion.div

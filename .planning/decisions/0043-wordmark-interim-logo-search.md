@@ -130,3 +130,4 @@ mark that no longer exists.
 | 2026-08-30 | — | Both waves delivered; 12 candidates published on the logo-search canvas, awaiting elimination |
 | 2026-08-30 | Aldemir (founder, relayed by session -29) | Slab monogram SKIPPED — "selection round instead"; the canvas is the sole vehicle. Retired `0043-mudavym-mark.md` absorbed as the slab-lineage section |
 | 2026-08-30 | — | Wave: lineage folded in (5 sketch-derived marks from session -29, pre-screened vs all five criteria + ledger-scene exhibit) — 17 candidates on the canvas |
+| 2026-08-30 | Aldemir (founder, via session -7f) | **OD-111 RESOLVED: the Rivet M** ("Mudavym Mark" canvas, draft 01 — brass `#C79A3D` M, paprika `#B23B2A` rivet; mark keeps its own colours as an exception beside the İznik UI palette). Full record lands in ADR 0045 (owned by -7f). The interim "M." glyph duty ends; the Fraunces wordmark stays beside the mark |
