@@ -57,7 +57,7 @@ function stageOf(status: OrderStatus): Stage | 'cancelled' {
  * but not these backend-only variants, which the legacy page mapped by hand
  * (useOrdersPage.ts mapApiStatusToUi). Same truth, kept here.
  */
-function canonicalStatus(raw: string | undefined): OrderStatus {
+export function canonicalStatus(raw: string | undefined): OrderStatus {
   switch ((raw ?? '').toUpperCase()) {
     case 'APPROVAL_NEEDED':
       return 'pending_approval';

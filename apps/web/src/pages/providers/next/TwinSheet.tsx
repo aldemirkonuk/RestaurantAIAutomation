@@ -49,8 +49,13 @@ function FactRow({ label, value }: { label: string; value: string }) {
 export function TwinSheet({ provider, onClose }: Props) {
   const closeRef = useRef<HTMLButtonElement>(null);
 
+  // Focus lands on Close exactly once, when the sheet mounts — not on every
+  // parent re-render (audit finding: [onClose] deps stole focus on each poll).
   useEffect(() => {
     closeRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
@@ -72,7 +77,7 @@ export function TwinSheet({ provider, onClose }: Props) {
       />
       {/* the sheet itself */}
       <aside
-        className="absolute right-0 top-0 flex h-full w-full max-w-md flex-col overflow-y-auto"
+        className="pv-sheet absolute right-0 top-0 flex h-full w-full max-w-md flex-col overflow-y-auto"
         style={{
           background: 'var(--paper-0, #FAF7F1)',
           borderLeft: '1px solid var(--paper-2, #EAE4D8)',
@@ -82,7 +87,7 @@ export function TwinSheet({ provider, onClose }: Props) {
       >
         <style>{`
           @keyframes pv-sheet-in { from { transform: translateX(24px); opacity: 0 } to { transform: none; opacity: 1 } }
-          @media (prefers-reduced-motion: reduce) { aside[aria-label] { animation: none !important } }
+          @media (prefers-reduced-motion: reduce) { .pv-sheet { animation: none !important } }
         `}</style>
 
         <header

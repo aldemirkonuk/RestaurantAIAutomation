@@ -18,6 +18,7 @@ import { useProviders } from '../../../hooks/queries/useProviderQueries';
 import { useOrders } from '../../../hooks/queries/useOrderQueries';
 import { useAuth } from '../../../contexts/AuthContext';
 import type { Provider } from '../../../services/api/providers';
+import { canonicalStatus } from '../../orders/next/useOrdersNextData';
 import { num } from './pv-format';
 
 export interface ProviderCardVM {
@@ -28,7 +29,21 @@ export interface ProviderCardVM {
   lastContact: string | null;
 }
 
-const OPEN_STAGES = new Set(['pending', 'approved', 'ordered']);
+/**
+ * "Open" = live business with the vendor: not yet delivered, not closed.
+ * Matched on the CANONICAL status (canonicalStatus knows the gateway's
+ * SCREAMING_SNAKE variants — PENDING, APPROVAL_NEEDED, CONFIRMED, IN_TRANSIT —
+ * that raw lowercasing silently dropped; audit finding, providers-audit.md).
+ */
+const OPEN_STAGES = new Set([
+  'pending',
+  'pending_approval',
+  'negotiating',
+  'approved',
+  'ordered',
+  'in_transit',
+  'partially_received',
+]);
 
 export function useProvidersNextData() {
   const { activeRestaurantId } = useAuth();
@@ -39,8 +54,7 @@ export function useProvidersNextData() {
     if (!ordersQ.data) return null;
     const m = new Map<string, number>();
     for (const o of ordersQ.data) {
-      const status = String(o.status ?? '').toLowerCase();
-      if (!o.providerId || !OPEN_STAGES.has(status)) continue;
+      if (!o.providerId || !OPEN_STAGES.has(canonicalStatus(o.status))) continue;
       m.set(o.providerId, (m.get(o.providerId) ?? 0) + 1);
     }
     return m;
