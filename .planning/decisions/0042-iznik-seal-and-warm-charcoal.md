@@ -1,6 +1,6 @@
 # 0042 — İznik is the seal; Warm Charcoal is the dark ground
 
-- **Status:** Locked (palette) · canvas re-skinned 2026-08-29 · app rollout in progress on `feat/mudavym-brand`
+- **Status:** Locked (palette) · canvas re-skinned 2026-08-29 · live on dev.mudavym.com 2026-08-30 (`feat/mudavym-brand`)
 - **Date:** 2026-08-29
 - **Decider:** Aldemir (founder), 2026-08-29
 - **Keywords:** palette, seal, İznik, 1A5E6B, 5FB0BC, warm charcoal, 15130F, re-skin, CD2D5B, OD-106, sketch 059
@@ -85,6 +85,12 @@ The re-skin is mechanical and confined to colour:
   ([[0043-wordmark-interim-logo-search]]) + all user-visible WineOps→Mudavym strings.
   Light-mode grounds deliberately unchanged — the warm-paper spine arrives with the
   page redesigns, not this pass.
+- **2026-08-30 — dev.mudavym.com LIVE.** Founder attached the domain and the branch
+  pin; verified on the wire: DNS → vercel-dns, HTTP 200, title "Mudavym", Fraunces
+  loaded, `favicon.svg` M. mark, compiled CSS carries #1A5E6B ×31 / #15130F ×5 /
+  #5FB0BC ×8 and zero #CD2D5B (the two #9E4249 hits are the retained danger scale);
+  link colours computed in-browser as `rgb(26,94,107)`. Production/main untouched,
+  still WineOps until this branch merges.
 
 ## Review trail
 
