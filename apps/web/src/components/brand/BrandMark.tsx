@@ -16,10 +16,11 @@ interface BrandMarkProps {
   /** 'ink' (default) or 'seal' — İznik-coloured wordmark text. */
   tone?: 'ink' | 'seal'
   /**
-   * Mark colouring. 'color' is brass + paprika — the mark keeps its own
-   * colours as a founder-granted exception to the İznik palette (OD-111
-   * verdict; ADR 0045 pending). 'mono' inherits currentColor for etched /
-   * constrained contexts, per the Mark canvas rules.
+   * Mark colouring. 'color' is brass + rivet, ground-aware — the mark keeps
+   * its own colours as a founder-granted exception to the İznik palette
+   * (OD-111 verdict; ADR 0045), with per-ground values after the measured
+   * contrast/risk-adjacency defects. 'mono' inherits currentColor for
+   * etched / constrained contexts, per the Mark canvas rules.
    */
   mark?: 'color' | 'mono'
   className?: string
@@ -29,8 +30,12 @@ interface BrandMarkProps {
 
 /** Rivet M geometry — verbatim from the "Mudavym Mark" canvas, draft 01. */
 const RIVET_PATH = 'M22,76 L22,24 L50,54 L78,24 L78,76'
-const BRASS = '#C79A3D'
-const PAPRIKA = '#B23B2A'
+// Ground-aware mark colours (ADR 0045 §Colour): the canvas hexes failed on the
+// light ground only — brass #C79A3D measured 2.42:1 on #FAF7F1 (WCAG 1.4.11
+// needs 3.0) and paprika #B23B2A sat ΔE00 3.4 from --risk. Light ground wears
+// brass one step down (#B18833, 3.05:1) and a deep-oxblood rivet (#7E2B22,
+// ΔE00 10.6 from risk); the dark ground keeps the canvas brass and an
+// effectively-unchanged rivet (#B13A29). Same pattern as the seal's 600/400.
 const INK = '#17130F'
 
 function RivetM({ size, mono }: { size: number; mono: boolean }) {
@@ -45,10 +50,11 @@ function RivetM({ size, mono }: { size: number; mono: boolean }) {
       <path
         d={RIVET_PATH}
         fill="none"
-        stroke={mono ? 'currentColor' : BRASS}
+        stroke={mono ? 'currentColor' : undefined}
         strokeWidth="13"
         strokeLinecap="round"
         strokeLinejoin="round"
+        className={mono ? undefined : 'stroke-[#B18833] dark:stroke-[#C79A3D]'}
       />
       {mono ? (
         // washer rivet: ring only, reads at 16px where a filled dot muddies
@@ -58,7 +64,14 @@ function RivetM({ size, mono }: { size: number; mono: boolean }) {
           d="M59,54 A9,9 0 1,0 41,54 A9,9 0 1,0 59,54 M55,54 A5,5 0 1,0 45,54 A5,5 0 1,0 55,54"
         />
       ) : (
-        <circle cx="50" cy="54" r="9" fill={PAPRIKA} stroke={INK} strokeWidth="2.5" />
+        <circle
+          cx="50"
+          cy="54"
+          r="9"
+          stroke={INK}
+          strokeWidth="2.5"
+          className="fill-[#7E2B22] dark:fill-[#B13A29]"
+        />
       )}
     </svg>
   )

@@ -106,10 +106,11 @@ are the same principle.
 
 **One recorded conflict.** The absorbed ADR paired the mark with a **Plus Jakarta Sans
 800** wordmark (2026-08-29); this ADR records the founder choosing **Fraunces 600**
-directly on 2026-08-30. The later, direct call stands — Fraunces ships — but the
-pairing question deliberately reopens when the final mark is chosen, since the
-absorbed ADR's reasoning (humanist sans to soften an industrial mark) was about a
-mark that no longer exists.
+directly on 2026-08-30. The later, direct call stands — Fraunces ships. The pairing
+question was deliberately reopened when the Rivet M landed, and **settled the same
+day: Fraunces 600 stays beside the mark** (founder, 2026-08-30, via session -7f;
+recorded as decided in ADR 0045). Piazzolla remains presentation type on the Mark
+canvas sheet only.
 
 ## Consequences
 
