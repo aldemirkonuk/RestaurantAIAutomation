@@ -122,7 +122,11 @@ Triaged 2026-08-30 (session -32's block/no-block judgement + in-branch verificat
   hex values moves zero pixels while looking done (false-completion trap for the
   page waves); tenant email colour lives in `restaurant_branding.primary_color`
   in the DB and overrides the code constant — no regression at merge, but it
-  gates any brand **announcement** on a data migration.
+  gates any brand **announcement** on a data migration; and post-split the
+  product has **two error reds** — `danger-600` `#9E4249` vs the semantic
+  `--risk` `#B3261E`, ΔE00 11.3 apart, both meaning "error" — to reconcile when
+  the semantic layer rolls out (found by -32 while retracting the block; the
+  mark hexes were re-verified against BOTH reds and hold, ≥10.5 everywhere).
 
 ## Consequences
 
@@ -145,3 +149,4 @@ Triaged 2026-08-30 (session -32's block/no-block judgement + in-branch verificat
 | 2026-08-30 | Aldemir (founder) | Round 3: mark colours ADJUST — rivet off the red axis, brass darkened on light grounds, on -32's ΔE00/contrast evidence |
 | 2026-08-30 | — | Rivet M implemented on `feat/mudavym-brand` (d0d95d3b, session -34) with canvas hexes; PR #163 open |
 | 2026-08-30 | — | Ground-aware hexes derived (-32) and landed (`d4ba2f19`, session -7f adopting the orphaned brand branch): tsc clean, 423/423 tests, four declarations verified in compiled CSS. ADR fully Locked; merge trigger armed on green CI |
+| 2026-08-30 | — | **PR #163 MERGED to main** (merge commit, 09:56Z) on the full-go; -32's block retracted after in-branch verification; railway check run post-merge. The 17-candidate ranking delivered: `evidence/0045-logo-ranking.md` + <https://claude.ai/code/artifact/29ab7e8c-38f9-4f94-995d-b43673a25f4b> — result: full-stop family strongest in-set; Rivet M screened clean on C5 (one pin-between-peaks adjacency note, no named-mark collision) |
