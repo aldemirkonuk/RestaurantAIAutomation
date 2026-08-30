@@ -1,6 +1,6 @@
 # 0045 — The mark is the Rivet M; the rebuild goes to full go
 
-- **Status:** Locked (mark identity, pairing, full-go, claims) · adjusted mark hexes **in flight** (values delegated to measurement, see §Colour)
+- **Status:** Locked — mark identity, pairing, full-go, claims, **and the adjusted mark hexes** (landed `d4ba2f19` on `feat/mudavym-brand`, see §2)
 - **Date:** 2026-08-30
 - **Decider:** Aldemir (founder), 2026-08-30 — three AskUserQuestion rounds in session -7f, answers recorded verbatim below
 - **Keywords:** logo, Rivet M, brass, paprika, OD-111, full go, merge, page claims, motion map, audit agents, Fraunces
@@ -57,11 +57,24 @@ brass `#C79A3D` on paper `#FAF7F1` is **2.42:1**, failing WCAG 1.4.11 non-text
 
 Second answer: **"Adjust values"** — keep the brass+paprika identity; shift the
 rivet off the red axis (deep-oxblood/ink direction) and darken brass for light
-grounds. Exact hexes are delegated to session -32 (owns the colour tooling) under
-these constraints: rivet ΔE00 ≥ ~5 from `--risk`, brass ≥ 3.0:1 on `#FAF7F1`,
-both values still reading as brass/paprika family. Session -34 applies them on
-`feat/mudavym-brand` before PR #163 merges — the founder's explicit concern was
-fixing this **before** favicons, PWA icons and store builds are cut.
+grounds — the founder's explicit concern was fixing this **before** favicons,
+PWA icons and store builds are cut.
+
+**The landed values** (derived by session -32 — exhaustive LCh search under the
+constraint set, CIEDE2000 + WCAG 2.1 luminance; applied in `d4ba2f19`). The
+insight: the *ground* was the problem, not the colours — so the mark became
+ground-aware, the same pattern as the seal's 600/400:
+
+| Element | Light `#FAF7F1` | Dark `#15130F` |
+|---|---|---|
+| brass (strokes) | **`#B18833`** — 3.05:1, ΔE00 6.1 from canvas brass, 12.1 from `--warn` | **`#C79A3D`** unchanged — 7.17:1 |
+| rivet | **`#7E2B22`** deep oxblood — 8.71:1, ΔE00 10.6 from `--risk` | **`#B13A29`** — ΔE00 0.3 from canvas paprika, 12.3 from dark `--risk`, 3.10:1 |
+
+Brass↔rivet separation inside the mark: 37.8 light / 36.6 dark; both 43–47 from
+the seal. Favicon (ink tile = dark ground) wears the dark rivet. Known
+deviation, recorded: the PNG icon tiles keep the canvas paprika ground — ΔE00
+0.3 from the adjusted dark value, imperceptible, and no icon pipeline exists to
+regenerate them.
 
 ### 3. The wordmark pairing (closes 0043's reopen)
 
@@ -96,12 +109,20 @@ The founder's protocol, verbatim in intent:
 
 ## Pre-merge checks inherited from the colour audits (session -32)
 
-Filed here so #163's merge is eyes-open; full working in their audit docs:
-`wine`/`brand`/`red`/`danger` are byte-identical scales and `--destructive` ==
-`--primary` (391 sites need brand-vs-error triage); `packages/ui` has no CSS build
-step (editing its hex values moves zero pixels); tenant email colour lives in
-`restaurant_branding.primary_color` in the DB and overrides the code constant (no
-data migration → brown-headed mail persists).
+Filed here so #163's merge is eyes-open; full working in their audit docs.
+Triaged 2026-08-30 (session -32's block/no-block judgement + in-branch verification):
+
+- **Brand/danger aliasing — was the one BLOCK, now verified already fixed on the
+  branch.** On `feat/p1-readout`, `wine`/`brand`/`red`/`danger` are four
+  byte-identical scales; on `feat/mudavym-brand`, `wine`/`brand` carry the İznik
+  scale (600 `#1A5E6B`) while `red`/`danger` keep the burgundy danger family
+  (600 `#9E4249`, "Danger aligned with red triad"). Destructive UI does not turn
+  teal. Verified in that branch's `tailwind.config.js` before merge.
+- **Tracking, not gating:** `packages/ui` has no CSS build step — editing its ~50
+  hex values moves zero pixels while looking done (false-completion trap for the
+  page waves); tenant email colour lives in `restaurant_branding.primary_color`
+  in the DB and overrides the code constant — no regression at merge, but it
+  gates any brand **announcement** on a data migration.
 
 ## Consequences
 
@@ -111,9 +132,8 @@ data migration → brown-headed mail persists).
 - **Harder / given up:** the mark carries two non-palette colours forever, and every
   future surface must respect the mark-only boundary; the shipped-then-adjusted hexes
   mean one extra fix-forward commit on the brand branch before merge.
-- **Revisit when:** the adjusted hexes land (this ADR's status flips to fully
-  Locked), or if the 17-candidate ranking surfaces a lookalike liability against the
-  Rivet M itself — that finding would go back to the founder, not be absorbed
+- **Revisit if:** the 17-candidate ranking surfaces a lookalike liability against
+  the Rivet M itself — that finding would go back to the founder, not be absorbed
   silently.
 
 ## Review trail
@@ -123,4 +143,5 @@ data migration → brown-headed mail persists).
 | 2026-08-30 | Aldemir (founder) | Round 1: Rivet M chosen + rank all 17; mark keeps its own colours; FULL GO; -7f takes all remaining pages with per-page docs, Sonnet audits, 2–5-Opus final review |
 | 2026-08-30 | Aldemir (founder) | Round 2: Fraunces stays beside the mark (0043's pairing reopen — closed) |
 | 2026-08-30 | Aldemir (founder) | Round 3: mark colours ADJUST — rivet off the red axis, brass darkened on light grounds, on -32's ΔE00/contrast evidence |
-| 2026-08-30 | — | Rivet M implemented on `feat/mudavym-brand` (d0d95d3b, session -34) with canvas hexes; adjusted-hex fix-forward pending; PR #163 open, merge held on it |
+| 2026-08-30 | — | Rivet M implemented on `feat/mudavym-brand` (d0d95d3b, session -34) with canvas hexes; PR #163 open |
+| 2026-08-30 | — | Ground-aware hexes derived (-32) and landed (`d4ba2f19`, session -7f adopting the orphaned brand branch): tsc clean, 423/423 tests, four declarations verified in compiled CSS. ADR fully Locked; merge trigger armed on green CI |
