@@ -55,9 +55,8 @@ The re-skin is mechanical and confined to colour:
   `--ink-1`; ink `#191316` → `#211C16`, `#5C5155` → `#4F473C`, `#8C8085` → `#7C7365`.
 - Dark tokens `#14100F/#1D1815/#322A28` → `#15130F/#1D1813/#262019`.
 - **Semantics do not move.** `--ok`, `--warn`, `--risk` keep their values; `--info`
-  `#2F58E0` must be re-checked against the seal, because a blue seal and a blue
-  "informational" are now competing for the same reading — likely the info role
-  becomes ink-with-underline and the blue is retired.
+  `#2F58E0` must be re-checked against the seal — **checked 2026-08-30, see
+  Execution below: retire it.**
 - **`--calm` `#6B5F8A` is at risk and must be re-judged in context.** It exists so a
   manager can see at a glance what the platform did unasked. Against a crimson primary
   a muted violet was clearly not-the-brand; against an İznik seal it is a neighbouring
@@ -92,8 +91,27 @@ The re-skin is mechanical and confined to colour:
   link colours computed in-browser as `rgb(26,94,107)`. Production/main untouched,
   still WineOps until this branch merges.
 
+### `--info` vs the seal — judged 2026-08-30
+
+Measured and rendered side by side (paper and Warm Charcoal, links/badges/focus
+rings): `--info` `#2F58E0` sits at hue 226° against the seal's 190° — only 32–36°
+apart on both grounds — with a contrast ratio between the two colors of just
+**1.26:1**. On screen they read as two shades of one blue-teal family, not two
+categories; the confusion is worst in dark mode, where `#5B8DEF` (info) and
+`#5FB0BC` (seal) are nearly interchangeable at a glance.
+
+**Decision: retire `--info` as a hue.** Informational/system-sourced text and
+links become **ink with an underline** (a value/texture cue, not a hue cue) —
+this can never be mistaken for a seal-colored brand action regardless of what the
+seal ends up being. `--info-bg` is retired with it; an informational banner uses
+`--ink-1` text on `--paper-1` with a plain left rule, matching the honesty-idiom
+register the kit already uses for `--calm`. `--ok`/`--warn`/`--risk` are
+unaffected — they were never adjacent to the seal on the wheel and the same
+comparison was not run for them.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-08-29 | Aldemir (founder) | "Re-skin into İznik, and Warm Charcoal as well" — palette locked, execution held |
+| 2026-08-30 | — | `--info` vs seal measured + rendered; hunch confirmed, `--info` retired for ink+underline |
