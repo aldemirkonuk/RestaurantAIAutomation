@@ -51,14 +51,21 @@ every brand wave before them:
   ticks, counters, stamps. Six candidates.
 - **Wave: house** — the müdavim story: the set table, the door, the ledger line, the
   monogram, the wax seal. Six candidates. Wine imagery explicitly banned.
+- **Wave: lineage** (added later on 2026-08-30, produced by session -29, folded in
+  here) — the 054/057/059 sketches' own marks re-cut as single-colour standalone
+  SVGs: Full Stop, Double Rule M, Stop Tile, Seal, Meter — five candidates, each
+  with a solid cut and (bar the tile) a ≥64px display cut, pre-screened at a true
+  16px rasterisation against all five criteria with an honest ranking (full-stop
+  first, meter last — kept in the round only by the founder's wave-1 keep). The
+  058 ledger-scene render rides along as an exhibit, not a candidate.
 
 Shared constraints: İznik `#1A5E6B`/`#5FB0BC` + ink + paper + Warm Charcoal only;
 every candidate proven at 96/32/24px on both grounds; at least two per wave must work
 as a circular **seal stamp** so the mark can be the thing that lands when an approval
 completes. Candidate sheets are published for review:
-<https://claude.ai/code/artifact/a2dc2d0b-2af5-43b0-a77d-003256b2b62c> — twelve marks,
-both lineages side by side, each proven at 96/32/24px on paper and charcoal. The
-founder's verdicts will be recorded here.
+<https://claude.ai/code/artifact/a2dc2d0b-2af5-43b0-a77d-003256b2b62c> — seventeen
+marks across three waves side by side, each proven at 96/32/24px (lineage also at
+16px) on paper and charcoal. The founder's verdicts will be recorded here.
 
 ## The withdrawn slab lineage (2026-08-29 → 2026-08-30) — absorbed from the retired `0043-mudavym-mark.md`
 
@@ -118,3 +125,4 @@ mark that no longer exists.
 | 2026-08-30 | Aldemir (founder) | Interim = text wordmark ("the name with a font"); Fraunces picked from a three-way; search waves ordered under this ADR |
 | 2026-08-30 | — | Both waves delivered; 12 candidates published on the logo-search canvas, awaiting elimination |
 | 2026-08-30 | Aldemir (founder, relayed by session -29) | Slab monogram SKIPPED — "selection round instead"; the canvas is the sole vehicle. Retired `0043-mudavym-mark.md` absorbed as the slab-lineage section |
+| 2026-08-30 | — | Wave: lineage folded in (5 sketch-derived marks from session -29, pre-screened vs all five criteria + ledger-scene exhibit) — 17 candidates on the canvas |
