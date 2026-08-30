@@ -38,6 +38,38 @@ outbound-email audit trail, labelled by `outbound_email_type`).
 - **Procurement History** tab: audit trail of outbound procurement emails, labelled by type
 - Filter by channel: all / email / SMS
 
+## 1b. Motions used — Mudavym redesign (flag `mudavym_design_communications`)
+
+Canonical source with curves: `apps/web/src/pages/communications/next/MOTIONS.md`
+— this list is the note-side index (ADR 0044 §2).
+
+| id | name | fires |
+|---|---|---|
+| `cm-row-settle` | Row settles open | a ledger row's expansion — `settle`, 320ms house curve, 4px drop |
+| `cm-ink` | Ink micro-state | row and rail-button hover/focus — one paper step, nothing translates |
+
+Deliberate non-motions: glance figures never tally; the template sheet appears
+in place; draft chips never pulse (a draft drawing attention to itself starts
+to look like activity — prc-02).
+
+### Design used, and why (ADR 0045 §5 wave · MAKEOVER-VERDICTS: MERGE, warning on both sides)
+
+The founder liked **today's page** because "it shows basically everything" and
+rejected the redesign as "too much text" — while calling today's template-ish
+UI also to be avoided. The build takes both warnings structurally: a
+four-figure **glance strip** (threads · drafts waiting · sent 30d · report
+schedules — each derived from a live query and shown as an em dash until that
+query answers) restores at-a-glance completeness; the conversation book is a
+**ledger of short rows** (date · vendor · type · wine · state chip) with all
+prose held inside the settle-open expansion; and the founder's two named
+additions are built in — the **channels rail** makes the page's integrations
+visible in words, and the template builders open inside a **TemplateSheet**
+whose header answers "what's going on" before anything renders: *"You are
+editing a saved template. Nothing is sent from here."* prc-02 carried: a
+DRAFT/PENDING_APPROVAL exchange wears a dashed "AI draft · not sent" chip and
+its body renders in a dashed frame. Legacy page untouched; flag defaults OFF;
+override `mudavym.design.communications`.
+
 ## 2. Entry
 
 - Sidebar (`components/layout/Sidebar.tsx:120`); command palette

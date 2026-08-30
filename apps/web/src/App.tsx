@@ -80,6 +80,7 @@ const OrdersNext = lazyWithRefresh(() => import('./pages/orders/next/OrdersNext'
 const ReceivingNext = lazyWithRefresh(() => import('./pages/receiving/next/ReceivingNext'))
 const DoorNext = lazyWithRefresh(() => import('./pages/receiving/next/DoorNext'))
 const ProvidersNext = lazyWithRefresh(() => import('./pages/providers/next/ProvidersNext'))
+const CommunicationsNext = lazyWithRefresh(() => import('./pages/communications/next/CommunicationsNext'))
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
 const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
@@ -304,7 +305,7 @@ function App() {
                       is retired (ADR 0019 §B) and its one exclusive — reminders that
                       actually fire — was ported onto `/calendar` first. */}
                   <Route path="/calendar-classic" element={<Navigate to="/calendar" replace />} />
-                  <Route path="/communications" element={<Communications />} />
+                  <Route path="/communications" element={<PageGate page="communications" legacy={<Communications />} next={<CommunicationsNext />} />} />
                   <Route path="/documents-reports" element={<DocumentsPage />} />
                   <Route path="/receipts" element={<ReceiptsPage />} />
                   <Route path="/credits" element={<Navigate to="/receipts?tab=credits" replace />} />
