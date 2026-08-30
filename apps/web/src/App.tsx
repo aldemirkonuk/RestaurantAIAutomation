@@ -79,6 +79,7 @@ const DashboardNext = lazyWithRefresh(() => import('./pages/dashboard/next/Dashb
 const OrdersNext = lazyWithRefresh(() => import('./pages/orders/next/OrdersNext'))
 const ReceivingNext = lazyWithRefresh(() => import('./pages/receiving/next/ReceivingNext'))
 const DoorNext = lazyWithRefresh(() => import('./pages/receiving/next/DoorNext'))
+const ProvidersNext = lazyWithRefresh(() => import('./pages/providers/next/ProvidersNext'))
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
 const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
@@ -285,7 +286,7 @@ function App() {
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/recommendations" element={<Recommendations />} />
                   <Route path="/recommendations/catalog" element={<InsightCatalog />} />
-                  <Route path="/providers" element={<Providers />} />
+                  <Route path="/providers" element={<PageGate page="providers" legacy={<Providers />} next={<ProvidersNext />} />} />
                   {/* Vendor price comparison. Role gate is enforced server-side
                       too (owner/manager on /vendor-intel/*) — a hidden route is
                       not access control. */}

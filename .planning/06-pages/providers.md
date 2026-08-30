@@ -40,6 +40,34 @@ export; **discover** — the U.S. distributor catalogue on a map, one-tap add (S
 - **Discover** tab: the U.S. distributor catalogue on a map with facet filters and one-tap add
 - Export; contextual insights rail
 - 🚧 No link to `/vendor-prices` price comparison — that page is unreachable from here (§9)
+- **Mudavym redesign behind `mudavym_design_providers` (OFF)**: a quiet grid of small, closed vendor buckets (≤3 real facts each: open orders · lead time · last contact) with the digital twin held back in a right-hand TwinSheet, fetched on open
+
+## 1b. Motions used — Mudavym redesign (flag `mudavym_design_providers`)
+
+Canonical source with curves: `apps/web/src/pages/providers/next/MOTIONS.md` —
+this list is the note-side index (ADR 0044 §2).
+
+| id | name | fires |
+|---|---|---|
+| `pv-sheet-settle` | The sheet settles in | TwinSheet opening from a bucket card — `settle`, 320ms house curve, 24px travel |
+| `pv-card-ink` | Ink micro-state | bucket-card hover/focus — border to seal ring, one paper step; nothing moves |
+
+Deliberate non-motions: no card stagger (a roster is a reference, not an
+arrival), no count tallies, instant sheet close.
+
+### Design used, and why (ADR 0045 §5 wave · MAKEOVER-VERDICTS: MERGE)
+
+The founder liked **today's page** for its small-buckets calm ("less crowded")
+and the **redesign** for its digital twin — and flagged the crowding as the
+failure mode. The build enforces the reconciliation structurally: the card
+*promises less* (name, type, three facts all real — open orders counted from
+the orders book, `leadTimeDays`, `lastContactDate`), and everything learned
+lives in the sheet via `ProviderIntelligencePanel`, lazy-fetched on open so
+the grid never pays for the twin. Honesty rules carried from OrdersNext: an
+unreachable orders book renders open-order counts as em dashes with a line
+saying so — never zeros; a never-contacted vendor says "never contacted".
+Legacy page untouched; flag defaults OFF; per-browser override
+`mudavym.design.providers`.
 
 ## 2. Entry
 Sidebar item (`components/layout/Sidebar.tsx:87`). `/distributors` redirects here with
