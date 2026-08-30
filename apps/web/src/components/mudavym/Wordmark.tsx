@@ -1,14 +1,15 @@
 /**
  * The Mudavym wordmark — "Mudavym." with the full stop in seal colour.
  *
- * ADR 0043 (Withdrawal, 2026-08-30): the monogram is withdrawn and has no
- * vector source, so the brand ships wordmark-only. What survives from that
- * ADR and applies here — UPDATED 2026-08-30: the founder chose Fraunces 600
- * directly (supersedes the withdrawn slab ADR's PJS 800). Interim only: ADR 0043
- * notes the pairing question deliberately reopens when the final mark lands.
- * (already loaded app-wide via index.html / tailwind `font-display`), and the
- * ADR-0042 colour rules — İznik `--seal` for the stop, `--ink-1` for the name.
- * Fallback values are the light column, so the wordmark is correct even
+ * The final mark exists now: the Rivet M (OD-111 resolved, ADR 0045), served
+ * app-shell-wide by `components/brand/BrandMark` (lockup/wordmark/mark
+ * variants, ground-aware brass). This component stays deliberately separate:
+ * it is the in-page *typographic* signature — Fraunces 600 (the founder's
+ * direct pick) with the İznik full stop — used at 13–14px inside rebuilt
+ * pages, below the mark's own clearspace floor where a lockup would smudge.
+ * Where a page wants mark + name, compose `BrandMark` instead.
+ * Colour per ADR 0042 — İznik `--seal` for the stop, `--ink-1` for the name;
+ * fallback values are the light column, so the wordmark is correct even
  * outside a `.mudavym` token scope.
  */
 
