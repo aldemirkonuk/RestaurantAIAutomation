@@ -454,6 +454,15 @@
     color-scheme: dark !important;
   }
 
+  /* The light-mode `select option` rule above forces white !important with no
+     dark counterpart, so dark dropdowns popped white option lists. */
+  .dark select,
+  .dark select option {
+    color: #F3F4F6 !important;
+    -webkit-text-fill-color: #F3F4F6 !important;
+    background: #1D1813 !important;
+  }
+
   .dark input::placeholder,
   .dark textarea::placeholder {
     color: #9CA3AF !important;

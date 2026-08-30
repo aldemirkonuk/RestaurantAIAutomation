@@ -3,14 +3,18 @@
 - **Status:** Locked (palette) · canvas re-skinned 2026-08-29 · live on dev.mudavym.com 2026-08-30 (`feat/mudavym-brand`)
 - **Date:** 2026-08-29
 - **Decider:** Aldemir (founder), 2026-08-29
-- **Keywords:** palette, seal, İznik, 1A5E6B, 5FB0BC, warm charcoal, 15130F, re-skin, CD2D5B, OD-106, sketch 059
-- **Links:** [[0041-makeover-canvas-and-conflicted-palette]] (supersedes its palette half), sketch `059-mudavym-house`, `06-pages/MAKEOVER-VERDICTS.md`
+- **Keywords:** palette, seal, İznik, 1A5E6B, 5FB0BC, warm charcoal, 15130F, re-skin, CD2D5B, OD-106, sketch 083
+- **Links:** [[0041-makeover-canvas-and-conflicted-palette]] (supersedes its palette half), sketch `083-mudavym-house`, `06-pages/MAKEOVER-VERDICTS.md`
 
 ## Context
 
+> Sketch numbers in this ADR follow the 2026-08-30 renumber (`ca54f3bb` on
+> `docs/mudavym-design-kickoff`): the brand sketches formerly 053–063 are now
+> 077–087.
+
 ADR 0041 recorded a `#CD2D5B` answer given on a stale premise: the 2026-08-27 wave
 reviews had already ruled out both incumbent burgundies, and the live question was the
-*seal* colour, with İznik recommended on sketch 059's decision board and not yet picked.
+*seal* colour, with İznik recommended on sketch 083's decision board and not yet picked.
 
 On 2026-08-29 the founder closed it: **"we're going to re-skin into İznik — but we're
 going to do the Warm Charcoal as well."**
@@ -22,7 +26,7 @@ green-shifted, which is why it does not read as generic SaaS blue. **Dark ground
 Warm Charcoal `#15130F`**, the value decided on 2026-08-27 under the standing
 instruction *"keep it as simple as possible"* (Aubergine was recommended and overruled).
 
-The canonical values come from sketch 059's token block, not from a fresh derivation:
+The canonical values come from sketch 083's token block, not from a fresh derivation:
 
 | Token | Light | Dark |
 |---|---|---|

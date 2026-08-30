@@ -4,15 +4,19 @@
 - **Date:** 2026-08-30
 - **Decider:** Aldemir (founder), 2026-08-30
 - **Keywords:** logo, wordmark, Fraunces, brand mark, seal stamp, Meter, dev.mudavym.com, OD-106, OD-111
-- **Links:** [[0042-iznik-seal-and-warm-charcoal]], [[0001-mudavym-single-entity]], sketch `054-mudavym-instrument` (the Meter), sketch `059-mudavym-house` (seal-as-stamp), [OPEN-DECISIONS.md](OPEN-DECISIONS.md)
+- **Links:** [[0042-iznik-seal-and-warm-charcoal]], [[0001-mudavym-single-entity]], sketch `078-mudavym-instrument` (the Meter), sketch `083-mudavym-house` (seal-as-stamp), [OPEN-DECISIONS.md](OPEN-DECISIONS.md)
 
 ## Context
 
+> Sketch numbers in this ADR follow the 2026-08-30 renumber (`ca54f3bb` on
+> `docs/mudavym-design-kickoff`): the brand sketches formerly 053–063 are now
+> 077–087.
+
 The brand rollout to dev.mudavym.com needs *something* where the logo goes, and the
 logo is genuinely undecided: the 2026-08-27 wave review cut **every** logo from sketch
-053 and kept exactly one survivor — sketch 054's "Meter" (five bars hung from a top
+053 and kept exactly one survivor — sketch 078's "Meter" (five bars hung from a top
 rail spelling an M; at rest all ink, one bar carrying the signal colour when the
-product has something to say). Sketch 059 separately established that the mark and the
+product has something to say). Sketch 083 separately established that the mark and the
 approve interaction should be one object: hold-to-approve completes into the seal
 landing.
 
@@ -36,7 +40,7 @@ ADR 43, deploy agents."*
 serif the wave verdicts kept as the house voice (*"serif speaks only when the product
 speaks"*; a wordmark is the product speaking). Where a single glyph is unavoidable
 (collapsed rail, favicon, app icon) it is **"M."** in the same face, the full stop in
-the İznik seal colour — the double-rule/full-stop device from sketch 057 doing interim
+the İznik seal colour — the double-rule/full-stop device from sketch 081 doing interim
 duty. The wine-glass `BrandMark` is retired everywhere.
 
 Font choice was put to the founder as a three-way (Fraunces / Plus Jakarta Sans 800 /
