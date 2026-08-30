@@ -1,6 +1,6 @@
 # 0043 — Ship a Fraunces text wordmark now; run the logo search in the open
 
-- **Status:** Locked (the interim wordmark) · the final mark is **open** — register row OD-111
+- **Status:** Locked (the interim wordmark) · the final mark is **resolved 2026-08-30** — the Rivet M, [ADR 0045](0045-rivet-m-and-full-go.md); OD-111 moved to the register's Resolved table. The pairing question this ADR deliberately reopened is closed the same day: Fraunces stays (0045 §3)
 - **Date:** 2026-08-30
 - **Decider:** Aldemir (founder), 2026-08-30
 - **Keywords:** logo, wordmark, Fraunces, brand mark, seal stamp, Meter, dev.mudavym.com, OD-106, OD-111
