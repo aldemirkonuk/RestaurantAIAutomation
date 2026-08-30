@@ -448,7 +448,7 @@ export default function DevSandbox() {
             <TestButton 
               label="Clear All Local Data" 
               onClick={() => {
-                if (confirm('Clear all local WineOps data? This cannot be undone.')) {
+                if (confirm('Clear all local Mudavym data? This cannot be undone.')) {
                   localStorage.removeItem('wineops_pending_actions')
                   localStorage.removeItem('wineops_shadow_stock')
                   localStorage.removeItem('wineops_orders_history')

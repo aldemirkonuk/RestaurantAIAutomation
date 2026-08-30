@@ -15,7 +15,7 @@ function makeDraft(overrides = {}) {
     providerEmail: 'orders@aussiewines.com',
     emailType: 'PRICE_INQUIRY' as const,
     draftContent: 'Dear Aussie Wines, we would like to order 12 bottles of Penfolds Grange 2019.',
-    disclaimer: 'This email was drafted by WineOps AI.',
+    disclaimer: 'This email was drafted by Mudavym.',
     constraintWarnings: [],
     roundCount: 1,
     timestamp: new Date().toISOString(),

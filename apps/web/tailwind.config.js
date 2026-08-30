@@ -19,33 +19,33 @@ export default {
     },
     extend: {
       colors: {
-        // ── Triad: Red (brand) · Blue (info) · Yellow (signal) ──────────────
-        // Red — brand / CTAs / wine identity
+        // ── Triad: İznik seal (brand) · Blue (info) · Yellow (signal) — ADR 0042
+        // İznik seal — brand / CTAs (600 = #1A5E6B, the seal; 400 = dark-mode primary)
         wine: {
-          50: '#FDF7F6',
-          100: '#FAEDEC',
-          200: '#F3D4D2',
-          300: '#E5A9A8',
-          400: '#D07072',
-          500: '#B85055',
-          600: '#9E4249',
-          700: '#82363C',
-          800: '#682C31',
-          900: '#522327',
-          950: '#2F1518',
+          50: '#F1F7F8',
+          100: '#E0EFF1',
+          200: '#BEDDE2',
+          300: '#8FC4CD',
+          400: '#5FB0BC',
+          500: '#3D8794',
+          600: '#1A5E6B',
+          700: '#14515C',
+          800: '#10424C',
+          900: '#0C343C',
+          950: '#08262C',
         },
         brand: {
-          50: '#FDF7F6',
-          100: '#FAEDEC',
-          200: '#F3D4D2',
-          300: '#E5A9A8',
-          400: '#D07072',
-          500: '#B85055',
-          600: '#9E4249',
-          700: '#82363C',
-          800: '#682C31',
-          900: '#522327',
-          950: '#2F1518',
+          50: '#F1F7F8',
+          100: '#E0EFF1',
+          200: '#BEDDE2',
+          300: '#8FC4CD',
+          400: '#5FB0BC',
+          500: '#3D8794',
+          600: '#1A5E6B',
+          700: '#14515C',
+          800: '#10424C',
+          900: '#0C343C',
+          950: '#08262C',
         },
         // Blue — info, links, charts, secondary accents
         info: {
@@ -226,6 +226,7 @@ export default {
         display: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
         body: ['"DM Sans"', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+        brand: ['"Fraunces"', 'Georgia', '"Times New Roman"', 'serif'],
       },
       // Font sizes with better line heights
       fontSize: {

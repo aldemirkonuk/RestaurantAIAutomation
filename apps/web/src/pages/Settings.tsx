@@ -167,7 +167,7 @@ function CalendarSubscriptionSection() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600">
-        Subscribe to your WineOps calendar in Outlook, Apple Calendar, or Google Calendar using the URL below. No login required — the URL includes a secure token.
+        Subscribe to your Mudavym calendar in Outlook, Apple Calendar, or Google Calendar using the URL below. No login required — the URL includes a secure token.
       </p>
       {tokenError && (
         <div className="text-sm text-red-700">

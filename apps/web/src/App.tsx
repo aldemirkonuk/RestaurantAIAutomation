@@ -220,7 +220,7 @@ function App() {
 
                 {/*
                   SimPOS terminal — chrome-free on purpose (decision C26).
-                  A fake POS used to drive real traffic into WineOps; sidebar
+                  A fake POS used to drive real traffic into Mudavym; sidebar
                   and agent chrome would break the terminal illusion. Mapped
                   to a Vercel subdomain rewrite in production.
                 */}

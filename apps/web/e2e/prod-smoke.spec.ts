@@ -174,8 +174,8 @@ test('Wave F-4: /studio write-flow creates a session record and is torn down', a
   await page.goto('/studio', { waitUntil: 'networkidle', timeout: 20_000 })
   expect(page.url()).not.toMatch(/\/login/)
 
-  // The StudioLayout header contains "WineOps Studio" in a <span>
-  await expect(page.getByText('WineOps Studio')).toBeVisible({ timeout: 10_000 })
+  // The StudioLayout header contains "Mudavym Studio" in a <span>
+  await expect(page.getByText('Mudavym Studio')).toBeVisible({ timeout: 10_000 })
 
   // Step 3: Fill the CommandBar input with a wine name and press Enter to ingest.
   // Typing non-URL text → detectedType='manual' → canIngest=true → Ingest button enabled.

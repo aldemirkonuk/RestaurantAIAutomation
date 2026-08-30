@@ -131,7 +131,7 @@ That card belongs to [[standards-verification-charter]]; the finding is routed, 
 ### Register defects open — found 2026-08-28, filed not fixed
 
 - [ ] **One id in two tables.** Open at OD-25 (`OPEN-DECISIONS.md:33`), resolved at
-      OD-25 (`OPEN-DECISIONS.md:131`) — the only such row in the file, and **no guard
+      OD-25 (`OPEN-DECISIONS.md:33`) — the only such row in the file, and **no guard
       checks for it.** A real past instance for a `register-table-integrity` candidate
 - [ ] **A row that says Resolved inside the Open table.** OD-29's cell opens
       *"✅ Resolved in two cuts"* (ADR 0035, then ADR 0036) and the row has not moved.

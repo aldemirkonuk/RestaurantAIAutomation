@@ -1,7 +1,7 @@
 {
   "name": "@wineops/web",
   "version": "0.1.0",
-  "description": "WineOps AI - Beautiful Manager Dashboard",
+  "description": "Mudavym - Beautiful Manager Dashboard",
   "private": true,
   "type": "module",
   "scripts": {

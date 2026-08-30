@@ -1,5 +1,5 @@
 /**
- * WineOps AI Service Worker
+ * Mudavym Service Worker
  * Handles push notifications, background sync, and caching
  *
  * Cache strategy:
@@ -64,7 +64,7 @@ self.addEventListener("push", (event) => {
   console.log("Service Worker: Push received", event)
 
   let data = {
-    title: "WineOps AI",
+    title: "Mudavym",
     body: "You have a new notification",
     icon: "/logo.png",
     badge: "/badge.png",

@@ -252,10 +252,10 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
       {!hasFile ? (
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="w-full flex flex-col items-center justify-center gap-3 p-12 rounded-xl border-2 border-dashed border-gray-300 bg-white hover:border-[#9E4249]/50 hover:bg-[#9E4249]/5 transition-all group"
+          className="w-full flex flex-col items-center justify-center gap-3 p-12 rounded-xl border-2 border-dashed border-gray-300 bg-white hover:border-[#1A5E6B]/50 hover:bg-[#1A5E6B]/5 transition-all group"
         >
-          <div className="w-12 h-12 rounded-xl bg-gray-100 group-hover:bg-[#9E4249]/10 flex items-center justify-center transition-colors">
-            <FileSpreadsheet className="w-6 h-6 text-gray-500 group-hover:text-[#9E4249] transition-colors" />
+          <div className="w-12 h-12 rounded-xl bg-gray-100 group-hover:bg-[#1A5E6B]/10 flex items-center justify-center transition-colors">
+            <FileSpreadsheet className="w-6 h-6 text-gray-500 group-hover:text-[#1A5E6B] transition-colors" />
           </div>
           <div className="text-center">
             <p className="font-medium text-gray-700">Click to upload file</p>
@@ -273,10 +273,10 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
         <div>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <FileSpreadsheet className="w-5 h-5 text-[#9E4249]" />
+              <FileSpreadsheet className="w-5 h-5 text-[#1A5E6B]" />
               <span className="font-medium text-gray-900 text-sm">{fileName}</span>
               {queue.length > 0 && (
-                <span className="text-xs font-medium text-[#9E4249]">
+                <span className="text-xs font-medium text-[#1A5E6B]">
                   +{queue.length} more queued
                 </span>
               )}
@@ -338,7 +338,7 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
           <Button
             onClick={handleImport}
             disabled={loading}
-            className="w-full bg-[#9E4249] hover:bg-[#B85055] text-white"
+            className="w-full bg-[#1A5E6B] hover:bg-[#14515C] text-white"
           >
             {loading ? (
               <span className="flex items-center gap-2">

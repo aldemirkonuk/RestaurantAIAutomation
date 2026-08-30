@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { isValidPhone } from './phone'
 
 /**
- * Validation Schemas for WineOps Forms
+ * Validation Schemas for Mudavym Forms
  * Uses Zod for runtime validation with type inference
  */
 

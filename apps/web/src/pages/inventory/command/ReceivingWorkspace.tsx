@@ -1,5 +1,5 @@
 /**
- * Receiving workspace — the canonical WineOps invoice.
+ * Receiving workspace — the canonical Mudavym invoice.
  *
  * Vendors send wildly different paperwork; we never make the manager read theirs. This renders
  * OUR normalized FOUR-way match instead, always the same shape:

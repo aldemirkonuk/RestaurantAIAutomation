@@ -12,7 +12,7 @@ test.describe('Studio Flow', () => {
   // assertion alive.
   test('login page renders step one: identify yourself', async ({ page }) => {
     await page.goto('/login')
-    await expect(page.getByRole('heading', { name: 'WineOps AI' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Mudavym' })).toBeVisible()
     await expect(page.getByLabel('Email Address')).toBeVisible()
     await expect(page.getByRole('button', { name: /continue/i })).toBeVisible()
 
@@ -33,9 +33,9 @@ test.describe('Studio Flow', () => {
     await page.goto('/studio')
 
     // ProtectedRoute passes through when authenticated with correct role.
-    // Studio renders StudioLayout with "WineOps Studio" header — assert this is visible.
+    // Studio renders StudioLayout with "Mudavym Studio" header — assert this is visible.
     // If the Studio component itself errors (backend down), the header still renders.
-    await expect(page.getByText('WineOps Studio')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('Mudavym Studio')).toBeVisible({ timeout: 10000 })
 
     // Confirm the page did NOT redirect to /login
     expect(page.url()).not.toContain('/login')

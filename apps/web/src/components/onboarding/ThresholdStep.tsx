@@ -62,7 +62,7 @@ export function ThresholdStep({ onDone }: ThresholdStepProps) {
             max={999}
             value={value}
             onChange={(e) => setValue(Math.max(0, parseInt(e.target.value, 10) || 0))}
-            className="w-24 text-center text-3xl font-bold text-gray-900 border-b-2 border-[#9E4249] focus:outline-none py-1"
+            className="w-24 text-center text-3xl font-bold text-gray-900 border-b-2 border-[#1A5E6B] focus:outline-none py-1"
           />
           <button
             type="button"
@@ -83,7 +83,7 @@ export function ThresholdStep({ onDone }: ThresholdStepProps) {
           <Button
             onClick={handleSave}
             disabled={saving}
-            className="bg-[#9E4249] hover:bg-[#B85055] text-white"
+            className="bg-[#1A5E6B] hover:bg-[#14515C] text-white"
           >
             {saving ? 'Saving...' : 'Continue'}
           </Button>

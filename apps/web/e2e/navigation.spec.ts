@@ -16,7 +16,7 @@ test.describe('Navigation Guards', () => {
   test('public routes accessible without auth', async ({ page }) => {
     // /login — should render without redirect
     await page.goto('/login')
-    await expect(page.getByRole('heading', { name: 'WineOps AI' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Mudavym' })).toBeVisible()
     expect(page.url()).toContain('/login')
 
     // /register — should render without redirect
@@ -37,7 +37,7 @@ test.describe('Navigation Guards', () => {
     await page.goto('/studio')
 
     // StudioLayout renders a header with nav links for developer role
-    await expect(page.getByText('WineOps Studio')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('Mudavym Studio')).toBeVisible({ timeout: 10000 })
 
     // Developer role gets Queue and Certify nav links in StudioLayout
     await expect(page.getByRole('link', { name: 'Queue' })).toBeVisible()
