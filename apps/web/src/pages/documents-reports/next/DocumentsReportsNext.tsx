@@ -19,9 +19,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Wordmark } from '@/components/mudavym';
-import type { GeneratedReport } from '../../../hooks/queries/useReportQueries';
+import type { GeneratedReport } from '../../../services/api/reports';
 import { ink, settle } from '../../../lib/mudavym/motion';
-import { EM, MONO, SANS, SERIF, fmtDate } from './so-format';
+import { EM, MONO, SANS, SERIF, fmtDate, labelize } from './so-format';
 import { useSortingOfficeData } from './useSortingOfficeData';
 
 function DrawerLabel({ children }: { children: string }) {
@@ -41,16 +41,28 @@ function DrawerLabel({ children }: { children: string }) {
   );
 }
 
-function Count({ value, capped = false }: { value: number | null; capped?: boolean }) {
+function Count({
+  value,
+  capped = false,
+  size = 20,
+  tone = 'ink',
+}: {
+  value: number | null;
+  capped?: boolean;
+  /** Sketch hierarchy: page-level figures 22, drawer counts 20. */
+  size?: number;
+  /** 'seal' = the sketch's accent on the signal figure ("Needs a human"). */
+  tone?: 'ink' | 'seal';
+}) {
   return (
     <span
       style={{
         fontFamily: MONO,
-        fontSize: 20,
+        fontSize: size,
         fontWeight: 600,
         letterSpacing: '-0.02em',
         fontVariantNumeric: 'tabular-nums',
-        color: 'var(--ink-1, #211C16)',
+        color: tone === 'seal' ? 'var(--seal-deep, #14515C)' : 'var(--ink-1, #211C16)',
       }}
     >
       {value === null ? EM : `${capped ? '≥' : ''}${value}`}
@@ -93,7 +105,7 @@ function ReadingPane({ report }: { report: GeneratedReport }) {
       }}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <DrawerLabel>{`House report · ${report.reportType || 'report'}`}</DrawerLabel>
+        <DrawerLabel>{`House report · ${labelize(report.reportType || 'report')}`}</DrawerLabel>
         <div className="flex gap-2">
           <button
             type="button"
@@ -115,7 +127,6 @@ function ReadingPane({ report }: { report: GeneratedReport }) {
               padding: '5px 12px',
               borderRadius: 8,
               border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-              background: 'transparent',
               color: 'var(--seal-deep, #14515C)',
               cursor: 'pointer',
             }}
@@ -152,7 +163,7 @@ function ReadingPane({ report }: { report: GeneratedReport }) {
                 borderRadius: 8,
                 border: '1px solid var(--paper-2, #EAE4D8)',
                 background: 'var(--paper-2, #EAE4D8)',
-                color: 'var(--ink-3, #7C7365)',
+                color: 'var(--ink-4, #665D50)',
               }}
             >
               No file was attached
@@ -225,10 +236,14 @@ export default function DocumentsReportsNext() {
     >
       <style>{`
         @keyframes so-settle { from { transform: translateY(-4px); opacity: 0 } to { transform: none; opacity: 1 } }
-        .so-row, .so-ink { transition: background ${ink.ms}ms ${ink.easing}, border-color ${ink.ms}ms ${ink.easing} }
+        .so-row, .so-ink { transition: background ${ink.ms}ms ${ink.easing} }
         .so-row:hover, .so-ink:hover { background: var(--paper-0, #FAF7F1) }
-        .so-row:focus-visible, .so-ink:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: 2px }
-        @media (prefers-reduced-motion: reduce) { .so-row, .so-ink, [style*="so-settle"] { animation: none !important; transition: none !important } }
+        .so-row:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: -2px }
+        .so-ink:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: 2px }
+        .so-link { text-decoration: underline; text-underline-offset: 2px; transition: color ${ink.ms}ms ${ink.easing} }
+        .so-link:hover { color: var(--seal, #1A5E6B) }
+        .so-link:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: 2px }
+        @media (prefers-reduced-motion: reduce) { .so-row, .so-ink, .so-link, [style*="so-settle"] { animation: none !important; transition: none !important } }
       `}</style>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
         <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
@@ -250,7 +265,12 @@ export default function DocumentsReportsNext() {
           <div className="flex gap-5 text-right" style={{ fontFamily: SANS }}>
             <div>
               <DrawerLabel>Needs a human</DrawerLabel>
-              <Count value={data.waiting === null ? null : data.waiting.length} />
+              <Count
+                value={data.waiting === null ? null : data.waiting.length}
+                capped={data.paperNeedsReviewCapped}
+                size={22}
+                tone="seal"
+              />
             </div>
             <div>
               <DrawerLabel>In the registers</DrawerLabel>
@@ -261,12 +281,13 @@ export default function DocumentsReportsNext() {
                   data.threadsTotal === null ||
                   !data.reportsKnown
                     ? null
-                    : data.reports.length +
+                    : (data.reportsTotal ?? data.reports.length) +
                       data.paperCount +
                       data.threadsTotal +
                       data.timelineCount
                 }
                 capped={data.paperCapped || data.timelineCapped}
+                size={22}
               />
             </div>
           </div>
@@ -274,7 +295,7 @@ export default function DocumentsReportsNext() {
 
         {data.anyError && (
           <div
-            role="alert"
+            role={data.hasData ? 'status' : 'alert'}
             className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3"
             style={{
               fontFamily: SANS,
@@ -284,7 +305,7 @@ export default function DocumentsReportsNext() {
           >
             <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
               {data.hasData
-                ? `A register could not be refreshed (${data.errorMessage}) — its drawer shows the last answer or ${EM}; the other drawers keep their own state.`
+                ? `A register could not be refreshed (${data.errorMessage}) — it keeps its last answer or shows ${EM}; the other registers keep their own state.`
                 : `The registers could not be reached (${data.errorMessage}) — every drawer shows ${EM}; nothing below is claimed.`}
             </span>
             <button
@@ -297,7 +318,6 @@ export default function DocumentsReportsNext() {
                 padding: '5px 12px',
                 borderRadius: 8,
                 border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-                background: 'transparent',
                 color: 'var(--seal-deep, #14515C)',
                 cursor: 'pointer',
               }}
@@ -320,7 +340,7 @@ export default function DocumentsReportsNext() {
                 className="so-ink flex w-full items-baseline gap-3"
                 onClick={() => setWaitingOpen((o) => !o)}
                 aria-expanded={waitingOpen}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}
+                style={{ border: 'none', cursor: 'pointer', padding: 0 }}
               >
                 <span
                   style={{
@@ -335,7 +355,10 @@ export default function DocumentsReportsNext() {
                   Drawer · Waiting on you
                 </span>
                 <span className="ml-auto">
-                  <Count value={data.waiting === null ? null : data.waiting.length} />
+                  <Count
+                    value={data.waiting === null ? null : data.waiting.length}
+                    capped={data.paperNeedsReviewCapped}
+                  />
                 </span>
               </button>
               {waitingOpen &&
@@ -345,7 +368,7 @@ export default function DocumentsReportsNext() {
                     known.
                   </p>
                 ) : data.waiting.length === 0 ? (
-                  <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
+                  <p style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
                     Nothing needs you. The registers keep counting without you.
                   </p>
                 ) : (
@@ -370,7 +393,14 @@ export default function DocumentsReportsNext() {
                       </Link>
                     ))}
                     {data.waiting.length > 6 && (
-                      <p style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: '6px 0 0' }}>
+                      <p
+                        style={{
+                          fontSize: 11.5,
+                          color: 'var(--ink-3, #7C7365)',
+                          margin: '6px 0 0',
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      >
                         {data.waiting.length - 6} more · sorted oldest-debt first, never by arrival
                       </p>
                     )}
@@ -383,8 +413,14 @@ export default function DocumentsReportsNext() {
               <section aria-label="House reports" style={drawerStyle}>
                 <DrawerLabel>House reports</DrawerLabel>
                 <div className="flex items-baseline gap-2">
-                  <Count value={data.reportsKnown ? data.reports.length : null} />
-                  <span style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+                  <Count value={data.reportsTotal} />
+                  <span
+                    style={{
+                      fontSize: 11.5,
+                      color: 'var(--ink-3, #7C7365)',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
                     {data.reportsKnown && data.reports.length > 0 && data.reports[0].createdAt
                       ? `latest ${fmtDate(data.reports[0].createdAt)}`
                       : data.reportsKnown
@@ -392,13 +428,16 @@ export default function DocumentsReportsNext() {
                         : ''}
                   </span>
                 </div>
+                <span style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', display: 'block' }}>
+                  digests · variance · sales reads
+                </span>
                 <div style={{ marginTop: 4, maxHeight: 132, overflowY: 'auto' }}>
                   {data.reports.slice(0, 20).map((r) => (
                     <button
                       key={r.id}
                       type="button"
                       onClick={() => setSelectedId(r.id)}
-                      aria-pressed={selectedId === r.id}
+                      aria-current={selectedId === r.id ? 'true' : undefined}
                       className="so-row block w-full text-left"
                       style={{
                         padding: '5px 4px',
@@ -408,9 +447,8 @@ export default function DocumentsReportsNext() {
                           selectedId === r.id
                             ? '3px solid var(--seal, #1A5E6B)'
                             : '3px solid transparent',
-                        background: 'transparent',
                         cursor: 'pointer',
-                        fontSize: 12,
+                        fontSize: 12.5,
                         color: 'var(--ink-1, #211C16)',
                         fontFamily: SANS,
                       }}
@@ -419,16 +457,35 @@ export default function DocumentsReportsNext() {
                     </button>
                   ))}
                 </div>
+                {data.reportsTotal !== null && data.reportsTotal > 20 && (
+                  <p
+                    style={{
+                      fontSize: 11.5,
+                      color: 'var(--ink-3, #7C7365)',
+                      margin: '4px 0 0',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    {data.reportsTotal - Math.min(data.reports.length, 20)} more filed — the newest
+                    20 are listed
+                  </p>
+                )}
               </section>
 
               <section aria-label="Vendor paper" style={drawerStyle}>
                 <DrawerLabel>Vendor paper</DrawerLabel>
                 <div className="flex items-baseline gap-2">
                   <Count value={data.paperCount} capped={data.paperCapped} />
-                  <span style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+                  <span
+                    style={{
+                      fontSize: 11.5,
+                      color: 'var(--ink-3, #7C7365)',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
                     {data.paperNeedsReviewCount === null
-                      ? ''
-                      : `${data.paperNeedsReviewCapped ? '≥' : ''}${data.paperNeedsReviewCount} need review`}
+                      ? `${EM} need review`
+                      : `${data.paperNeedsReviewCapped ? '≥' : ''}${data.paperNeedsReviewCount} need review, all paper`}
                   </span>
                 </div>
                 <span style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', display: 'block' }}>
@@ -436,7 +493,7 @@ export default function DocumentsReportsNext() {
                 </span>
                 <Link
                   to="/receipts"
-                  className="so-ink"
+                  className="so-link"
                   style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
                 >
                   Open in Receipts
@@ -447,7 +504,13 @@ export default function DocumentsReportsNext() {
                 <DrawerLabel>Conversations</DrawerLabel>
                 <div className="flex items-baseline gap-2">
                   <Count value={data.threadsTotal} />
-                  <span style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+                  <span
+                    style={{
+                      fontSize: 11.5,
+                      color: 'var(--ink-3, #7C7365)',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
                     {data.draftsPending === null ? '' : `${data.draftsPending} draft${data.draftsPending === 1 ? '' : 's'} waiting`}
                   </span>
                 </div>
@@ -456,7 +519,7 @@ export default function DocumentsReportsNext() {
                 </span>
                 <Link
                   to="/communications"
-                  className="so-ink"
+                  className="so-link"
                   style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
                 >
                   Open in Communications
@@ -467,7 +530,7 @@ export default function DocumentsReportsNext() {
                 <DrawerLabel>System log</DrawerLabel>
                 <div className="flex items-baseline gap-2">
                   <Count value={data.timelineCount} capped={data.timelineCapped} />
-                  <span style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+                  <span style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
                     {data.timelineCapped ? 'latest window' : 'recent entries'}
                   </span>
                 </div>
@@ -476,7 +539,7 @@ export default function DocumentsReportsNext() {
                 </span>
                 <Link
                   to="/logs"
-                  className="so-ink"
+                  className="so-link"
                   style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
                 >
                   Open the timeline
@@ -496,13 +559,19 @@ export default function DocumentsReportsNext() {
               <div className="flex flex-wrap items-baseline gap-3">
                 <DrawerLabel>Filed itself today</DrawerLabel>
                 {data.todayRoutine === null ? (
-                  <span style={{ fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>{EM}</span>
+                  <span style={{ fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>{EM}</span>
                 ) : data.todayRoutine.count === 0 ? (
-                  <span style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
+                  <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
                     nothing yet today
                   </span>
                 ) : (
-                  <span style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
+                  <span
+                    style={{
+                      fontSize: 12.5,
+                      color: 'var(--ink-2, #4F473C)',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
                     {data.todayRoutine.count} entr{data.todayRoutine.count === 1 ? 'y' : 'ies'} —{' '}
                     {Array.from(data.todayRoutine.bySource.entries())
                       .map(([s, n]) => `${n} ${s.replace(/_/g, ' ')}`)
@@ -511,15 +580,15 @@ export default function DocumentsReportsNext() {
                 )}
                 <Link
                   to="/logs"
-                  className="so-ink ml-auto"
-                  style={{ fontSize: 11, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
+                  className="so-link ml-auto"
+                  style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
                 >
                   Open the drawer
                 </Link>
               </div>
             </section>
 
-            <p style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: 0 }}>
+            <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: 0 }}>
               Every count is a real count from its own register; a filled window renders as a floor
               (≥), never as a total it cannot know.
             </p>
@@ -529,6 +598,11 @@ export default function DocumentsReportsNext() {
           <section aria-label="Reading pane">
             {selected ? (
               <ReadingPane key={selected.id} report={selected} />
+            ) : selectedId && data.reportsKnown ? (
+              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
+                That report is no longer here — it may have been deleted, or it belongs to a
+                different restaurant than the one you're in.
+              </p>
             ) : data.reportsKnown && data.reports.length === 0 ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
                 The house has written no reports yet — when it does, they open here, with room to

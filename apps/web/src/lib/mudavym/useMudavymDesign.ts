@@ -21,7 +21,8 @@
  *    someone who is not meant to see it.
  */
 
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
+import { AuthContext } from '../../contexts/AuthContext';
 import { settingsApi } from '../../services/api/settings';
 
 /**
@@ -100,19 +101,28 @@ export function clearMudavymDesignCache(): void {
  */
 export function useMudavymDesign(page: MudavymPage): boolean {
   const override = typeof window === 'undefined' ? null : readOverride(page);
+  // Reactive restaurant identity: a switch happens while gated pages stay
+  // mounted, and reading localStorage inside the effect alone would leave the
+  // previous restaurant's flag verdict rendering for the new one (Opus
+  // review 2026-08-31). The context is consumed optionally — a gate must
+  // degrade to the localStorage fallback outside an AuthProvider (tests,
+  // isolated mounts), never crash the page it wraps.
+  const activeRestaurantId = useContext(AuthContext)?.activeRestaurantId ?? null;
   const [remote, setRemote] = useState(false);
 
   useEffect(() => {
     if (override !== null) return; // overridden — don't spend the request
     let cancelled = false;
-    let restaurantId: string | null = null;
-    try {
-      restaurantId = window.localStorage.getItem(ACTIVE_RESTAURANT_KEY);
-    } catch {
-      restaurantId = null;
+    setRemote(false); // never carry one restaurant's verdict into another's
+    let restaurantId: string | null = activeRestaurantId ?? null;
+    if (!restaurantId) {
+      try {
+        restaurantId = window.localStorage.getItem(ACTIVE_RESTAURANT_KEY);
+      } catch {
+        restaurantId = null;
+      }
     }
     if (!restaurantId) {
-      setRemote(false);
       return;
     }
     fetchFlag(restaurantId, page).then((enabled) => {
@@ -121,7 +131,7 @@ export function useMudavymDesign(page: MudavymPage): boolean {
     return () => {
       cancelled = true;
     };
-  }, [page, override]);
+  }, [page, override, activeRestaurantId]);
 
   return override !== null ? override : remote;
 }

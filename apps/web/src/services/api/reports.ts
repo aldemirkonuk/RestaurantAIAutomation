@@ -98,6 +98,19 @@ export async function listReports(): Promise<GeneratedReport[]> {
   return Array.isArray(data?.reports) ? data.reports : []
 }
 
+/**
+ * Same endpoint, with the gateway's `count: "exact"` total kept instead of
+ * thrown away — a register count must be the count, not an array length.
+ */
+export async function listReportsWithTotal(): Promise<{
+  reports: GeneratedReport[]
+  total: number
+}> {
+  const { data } = await apiClient.get<ReportListResponse>('/reports')
+  const reports = Array.isArray(data?.reports) ? data.reports : []
+  return { reports, total: typeof data?.total === 'number' ? data.total : reports.length }
+}
+
 export async function deleteReport(id: string): Promise<void> {
   await apiClient.delete(`/reports/${id}`)
 }

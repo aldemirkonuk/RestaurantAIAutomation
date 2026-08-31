@@ -6,13 +6,20 @@
  *   Waiting on you    — vendor paper needing review + AI drafts awaiting
  *                       approval + door-counted deliveries with no paperwork,
  *                       oldest debt first (never by arrival).
- *   House reports     — generated_reports through the gateway (OD-45 path).
+ *   House reports     — generated_reports through the gateway (OD-45 path);
+ *                       the count is the gateway's exact total, never an
+ *                       array length.
  *   Vendor paper      — procurement documents (window of the latest 100 —
- *                       counts render as floors when the window fills).
+ *                       counts render as floors when the window fills), plus
+ *                       a status-filtered needs_review query of its own.
  *   Conversations     — classified thread total + drafts from the live
  *                       active-conversations source (the DraftRail's own).
  *   System log        — the /logs timeline (latest 100, windowed); today's
  *                       routine entries become the self-filing noise roll.
+ *
+ * Every query is keyed by the active restaurant (Opus review, blocker 1):
+ * a restaurant switch happens while this page stays mounted, and an unkeyed
+ * cache would keep serving the previous tenant's rows indefinitely.
  */
 
 import { useMemo } from 'react';
@@ -21,12 +28,13 @@ import { apiClient } from '../../../services/api/client';
 import { useAuth } from '../../../contexts/AuthContext';
 import { documentsApi, type ProcurementDocument } from '../../../services/api/documents';
 import { receivingApi, type UnverifiedDelivery } from '../../../services/api/receiving';
-import { useGeneratedReports, type GeneratedReport } from '../../../hooks/queries/useReportQueries';
+import { listReportsWithTotal, type GeneratedReport } from '../../../services/api/reports';
 import { useConversationThreads } from '../../../hooks/queries/useConversationQueries';
 import {
   useActiveConversations,
   type ActiveConversationDto,
 } from '../../../hooks/queries/useDraftEmailQueries';
+import { sortKey } from './so-format';
 
 export interface TimelineEvent {
   id: string;
@@ -48,13 +56,29 @@ export interface WaitingRow {
 const TIMELINE_LIMIT = 100;
 const PAPER_LIMIT = 100;
 
+/**
+ * An error counts only once the query has settled — a poll or retry in
+ * flight is not a verdict, and a flapping banner is the opposite of this
+ * page's calm (Opus review, defect 7).
+ */
+function settledError(q: { isError: boolean; isFetching: boolean }): boolean {
+  return q.isError && !q.isFetching;
+}
+
 export function useSortingOfficeData() {
   const { activeRestaurantId } = useAuth();
+  const rid = activeRestaurantId ?? '';
 
-  const reportsQ = useGeneratedReports();
+  const reportsQ = useQuery<{ reports: GeneratedReport[]; total: number }>({
+    queryKey: ['sorting-office', 'reports', rid],
+    queryFn: listReportsWithTotal,
+    enabled: !!rid,
+    staleTime: 30_000,
+  });
   const paperQ = useQuery<ProcurementDocument[]>({
-    queryKey: ['sorting-office', 'paper'],
+    queryKey: ['sorting-office', 'paper', rid],
     queryFn: () => documentsApi.list({ limit: PAPER_LIMIT }),
+    enabled: !!rid,
     staleTime: 30_000,
   });
   // The review set gets its own status-filtered query (the receipts page's
@@ -63,26 +87,28 @@ export function useSortingOfficeData() {
   // 100 of ANY status — exactly the oldest debt the waiting drawer exists to
   // surface (Sonnet audit, blocker 1).
   const reviewQ = useQuery<ProcurementDocument[]>({
-    queryKey: ['sorting-office', 'paper-review'],
+    queryKey: ['sorting-office', 'paper-review', rid],
     queryFn: () => documentsApi.list({ status: 'needs_review', limit: PAPER_LIMIT }),
+    enabled: !!rid,
     staleTime: 30_000,
   });
   const threadsQ = useConversationThreads();
   const activeQ = useActiveConversations();
   const unverifiedQ = useQuery<{ items: UnverifiedDelivery[] }>({
-    queryKey: ['sorting-office', 'unverified'],
+    queryKey: ['sorting-office', 'unverified', rid],
     queryFn: () => receivingApi.listUnverified(),
+    enabled: !!rid,
     staleTime: 30_000,
   });
   const timelineQ = useQuery<{ events: TimelineEvent[] }>({
-    queryKey: ['sorting-office', 'timeline', activeRestaurantId],
+    queryKey: ['sorting-office', 'timeline', rid],
     queryFn: async () => {
-      const { data } = await apiClient.get(`/logs/timeline/${activeRestaurantId}`, {
+      const { data } = await apiClient.get(`/logs/timeline/${rid}`, {
         params: { limit: TIMELINE_LIMIT },
       });
       return data;
     },
-    enabled: !!activeRestaurantId,
+    enabled: !!rid,
     staleTime: 60_000,
   });
 
@@ -132,9 +158,9 @@ export function useSortingOfficeData() {
         href: '/receipts',
       });
     }
-    return rows.sort(
-      (a, b) => (Date.parse(a.since) || 0) - (Date.parse(b.since) || 0),
-    );
+    // sortKey agrees with fmtDate on date-only values and sends unparseable
+    // dates LAST — an unknown date never presents itself as the oldest debt.
+    return rows.sort((a, b) => sortKey(a.since) - sortKey(b.since));
   }, [reviewQ.data, activeQ.data, unverifiedQ.data, paperNeedsReview]);
 
   const todayRoutine = useMemo(() => {
@@ -150,28 +176,33 @@ export function useSortingOfficeData() {
 
   const reports: GeneratedReport[] = useMemo(
     () =>
-      [...(reportsQ.data ?? [])].sort(
+      [...(reportsQ.data?.reports ?? [])].sort(
         (a, b) => (Date.parse(b.createdAt ?? '') || 0) - (Date.parse(a.createdAt ?? '') || 0),
       ),
     [reportsQ.data],
   );
 
   // Every register the page renders answers into the banner — a failure in
-  // any of the six is said in words, never swallowed (Sonnet audit, blocker 2).
-  const errors = [
-    reportsQ.error,
-    paperQ.error,
-    reviewQ.error,
-    threadsQ.error,
-    activeQ.error,
-    unverifiedQ.error,
-    timelineQ.error,
+  // any of the seven is said in words, never swallowed (Sonnet audit,
+  // blocker 2), and named, so the banner never points at a drawer the
+  // failing register doesn't have (Opus review, defect 8).
+  const labelled: Array<[string, { isError: boolean; isFetching: boolean; error: unknown }]> = [
+    ['House reports', reportsQ],
+    ['Vendor paper', paperQ],
+    ['the review queue', reviewQ],
+    ['Conversations', threadsQ],
+    ['draft replies', activeQ],
+    ['the door count', unverifiedQ],
+    ['the system log', timelineQ],
   ];
+  const firstError = labelled.find(([, q]) => settledError(q));
 
   return {
     waiting,
     reports,
     reportsKnown: reportsQ.data !== undefined,
+    /** The gateway's exact count — can exceed reports.length. */
+    reportsTotal: reportsQ.data === undefined ? null : reportsQ.data.total,
     paperCount: paperQ.data === undefined ? null : paper.length,
     paperCapped: paper.length >= PAPER_LIMIT,
     paperNeedsReviewCount: reviewQ.data === undefined ? null : paperNeedsReview.length,
@@ -181,20 +212,17 @@ export function useSortingOfficeData() {
     timelineCount: timelineQ.data === undefined ? null : timelineQ.data.events.length,
     timelineCapped: (timelineQ.data?.events.length ?? 0) >= TIMELINE_LIMIT,
     todayRoutine,
-    hasData: reportsQ.data !== undefined || paperQ.data !== undefined,
-    isError: reportsQ.isError && paperQ.isError,
-    anyError:
-      reportsQ.isError ||
-      paperQ.isError ||
-      reviewQ.isError ||
-      threadsQ.isError ||
-      activeQ.isError ||
-      unverifiedQ.isError ||
-      timelineQ.isError,
-    errorMessage:
-      errors
-        .map((e) => (e instanceof Error ? e.message : null))
-        .find((m) => m !== null) ?? 'unknown error',
+    // "Nothing below is claimed" may only be said when nothing below claims
+    // anything — any answered register keeps the partial branch (Opus
+    // review, blocker 2).
+    hasData: labelled.some(([, q]) => (q as { data?: unknown }).data !== undefined),
+    isError: settledError(reportsQ) && settledError(paperQ),
+    anyError: labelled.some(([, q]) => settledError(q)),
+    errorMessage: firstError
+      ? `${firstError[0]} — ${
+          firstError[1].error instanceof Error ? firstError[1].error.message : 'unknown error'
+        }`
+      : 'unknown error',
     refetch: () => {
       void reportsQ.refetch();
       void paperQ.refetch();

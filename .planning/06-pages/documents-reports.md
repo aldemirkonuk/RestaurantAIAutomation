@@ -2,7 +2,7 @@
 type: page
 route: /documents-reports
 slug: documents-reports
-component: apps/web/src/pages/DocumentsPage.tsx
+component: apps/web/src/pages/DocumentsPage.tsx # legacy default; flag-gated next: pages/documents-reports/next/DocumentsReportsNext.tsx
 audience: owner
 tier: core
 archetype: list+detail # proposed 2026-08-26 (OD-106)
@@ -10,8 +10,8 @@ signals_today: none
 rebrand_strings: 0
 maturity: hollow
 status: documented
-updated: 2026-08-26
-links: ["[[PAGE-CONTRACT]]"]
+updated: 2026-08-31
+links: ["[[PAGE-CONTRACT]]", "[[receipts]]", "[[communications]]", "[[logs]]"]
 ---
 
 # /documents-reports — Documents & Reports
@@ -24,7 +24,11 @@ links: ["[[PAGE-CONTRACT]]"]
 - **Email** → external `mailto:` compose with the report link
 - **Copy link** → clipboard (`fileUrl` or `/documents-reports?doc=:id`)
 - **Delete / batch delete** → API delete-report mutation
-- (no outbound navigation — dead-end page)
+- (legacy render: no outbound navigation — dead-end page)
+- Behind the flag (Sorting Office): **Waiting rows** → `/receipts` or
+  `/communications` per row · **Open in Receipts** → `/receipts` ·
+  **Open in Communications** → `/communications` · **Open the timeline /
+  Open the drawer** → `/logs`
 
 ## 1. Purpose
 
@@ -118,6 +122,54 @@ selector is live, all ten flag anchors + guards. One out-of-scope find filed
 as its own task: gateway `listUnverified` windows the OLDEST 500 receipt
 events (predates this page).
 
+**Two-Opus final review, 2026-08-31 (correctness + design/idiom) — all
+in-scope findings fixed same day:**
+- *Restaurant switch* (correctness blocker): four of seven queries were
+  unkeyed by restaurant and kept serving the previous tenant's rows after a
+  header switch with the page mounted → every Sorting Office query is now
+  keyed by `activeRestaurantId`; `useConversationThreads` (shared) gained the
+  same key; `useMudavymDesign` now consumes the auth context optionally and
+  re-evaluates the flag (resetting to legacy) on a switch instead of carrying
+  one restaurant's verdict into another's.
+- *"Nothing below is claimed"* (correctness blocker): `hasData` covered 2 of
+  7 registers, so the all-down copy could deny drawers that were still
+  answering → any answered register keeps the partial branch, and the test
+  now fails every register before asserting the all-down copy.
+- *House reports register* (design blocker): the count was an array length
+  from the only unwindowed query → the gateway's `count: "exact"` total is
+  threaded through (`listReportsWithTotal`), the drawer renders it, and a
+  "N more filed" line discloses what the 20-row list omits.
+- Correctness defects fixed: sort/display disagreement on date-only values
+  (shared `sortKey` = `fmtDate`'s calendar; unparseable dates sort LAST, never
+  as oldest debt); the exact-looking waiting count now carries the review
+  window's `≥`; the two disjoint paper windows are labelled ("need review,
+  all paper"); banner errors are register-NAMED and gated on settled queries
+  (a 30s drafts poll blip no longer flashes a `role="alert"` — partial
+  failures are `role="status"`); a `?doc=` id that no longer resolves says
+  so; `fmtDate` refuses rolled-over dates; the suite pins `TZ` so date
+  assertions cannot pass vacuously in UTC CI (with a canary).
+- Design defects fixed: dead hovers (inline `background: transparent` beat
+  the hover rule — removed; Tailwind preflight keeps buttons transparent);
+  raw `reportType` enum in the pane (labelized); row focus rings clipped in
+  the scroller (`-2px` rows / `+2px` controls, the siblings' split); the two
+  honesty-bearing lines promoted `--ink-3`→`--ink-4` (AA); type scale
+  collapsed to 9·10·11.5·12.5·13.5·20·24·30; secondary numerals get
+  `tabular-nums`; links get a real idiom (underline + color shift, per ADR
+  0042's value-not-hue principle) recorded here; header figures 22px with the
+  seal on "Needs a human" (sketch hierarchy); `aria-current` over
+  `aria-pressed`; House drawer regains its descriptor line.
+- **Stated deferrals (founder's call, not silent losses):** the sketch's
+  "File to…" re-categorization control and the "Cross-filed under" footer —
+  both need backend affordances (a re-categorize mutation; correlation
+  lookups) that don't exist yet. They are the manual override for D's own
+  named tradeoff ("the drawers are only as good as the sorter's rules");
+  deferred, and surfaced to the founder with the review.
+- Accepted, recorded: the register grid's asymmetry (House reports carries
+  the selector list); the door count's window cannot be detected client-side
+  (upstream fix filed — see §9); the wave-wide dead-hover and
+  `PageGate` charcoal-nesting findings are filed as their own task, and the
+  wave-wide `--ink-3` AA question as OD-112.
+
 **Motions** (tokens from `lib/mudavym/motion.ts`; canonical table in
 `next/MOTIONS.md`):
 
@@ -207,6 +259,18 @@ dashboard.md §7.
 - Direct-Supabase delete with deferred RLS (§8) means authorization for report
   deletion rests on the anon-key policy set — worth a verification pass, not
   asserted broken (no debt-register entry).
+- **Flag-flip blocker:** gateway `listUnverified`
+  (`receiving.service.ts:~220`) windows the OLDEST 500 lifetime receipt
+  events — past 500, new door debt never surfaces and an order whose closing
+  event fell outside the window becomes a permanent phantom row at the TOP of
+  the waiting queue. Filed as its own fix task 2026-08-31; the Opus reviewer's
+  verdict ("the one finding I'd hold the flag-on for") stands until it lands.
+- `--ink-3` fails AA on every light paper ground (3.69–4.37:1, measured) —
+  wave-wide, filed as OD-112; this page already moved its two honesty-bearing
+  lines to `--ink-4`.
+- Wave-wide siblings share the dead-hover inline-background pattern and the
+  `PageGate` double-`.mudavym` charcoal-nesting latent — filed as one
+  cross-page task, not fixed from this branch.
 
 ## 10. Maturity
 
