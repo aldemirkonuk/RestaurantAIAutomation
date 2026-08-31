@@ -29,13 +29,23 @@ export function fmtCadence(frequency: string, dayOfWeek?: number | null, timeOfD
   return parts.join(' · ');
 }
 
-/** The outbound lifecycle, collapsed to what a manager needs to know. */
+/**
+ * The outbound lifecycle, collapsed to what a manager needs to know.
+ * APPROVED is PRE-send — approval authorises dispatch, it is not dispatch
+ * (prc-02; same reading as conversationGrouping.ts and the receiving spine).
+ * Only AUTO_SENT / SENT / DELIVERED may ever look sent.
+ */
 export type SendState = 'draft' | 'sent' | 'closed' | 'other';
 
 export function sendState(status: string): SendState {
   const s = status.toUpperCase();
-  if (s === 'DRAFT' || s === 'PENDING_APPROVAL') return 'draft';
-  if (s === 'AUTO_SENT' || s === 'SENT' || s === 'APPROVED') return 'sent';
+  if (s === 'DRAFT' || s === 'PENDING_APPROVAL' || s === 'APPROVED') return 'draft';
+  if (s === 'AUTO_SENT' || s === 'SENT' || s === 'DELIVERED') return 'sent';
   if (s === 'COMPLETED' || s === 'CLOSED') return 'closed';
   return 'other';
+}
+
+/** Chip wording for the pre-send states — approval is said as approval. */
+export function draftChipText(status: string): string {
+  return status.toUpperCase() === 'APPROVED' ? 'Approved · not sent' : 'AI draft · not sent';
 }

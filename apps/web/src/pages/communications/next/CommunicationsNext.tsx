@@ -23,7 +23,7 @@ import { useState } from 'react';
 import { Wordmark } from '@/components/mudavym';
 import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
 import { ink, settle } from '../../../lib/mudavym/motion';
-import { EM, MONO, SANS, SERIF, fmtCadence, fmtWhen, sendState } from './cm-format';
+import { EM, MONO, SANS, SERIF, draftChipText, fmtCadence, fmtWhen, sendState } from './cm-format';
 import { TemplateSheet, type TemplateChannel } from './TemplateSheet';
 import { useCommsNextData } from './useCommsNextData';
 
@@ -40,7 +40,16 @@ const TYPE_LABELS: Record<string, string> = {
   MANUAL_REPLY: 'Manual reply',
 };
 
-function GlanceFigure({ label, value }: { label: string; value: number | null }) {
+function GlanceFigure({
+  label,
+  value,
+  floor = false,
+}: {
+  label: string;
+  value: number | null;
+  /** True when the figure is a floor (its source window was truncated). */
+  floor?: boolean;
+}) {
   return (
     <div style={{ minWidth: 96 }}>
       <span
@@ -66,7 +75,7 @@ function GlanceFigure({ label, value }: { label: string; value: number | null })
           color: 'var(--ink-1, #211C16)',
         }}
       >
-        {value === null ? EM : value}
+        {value === null ? EM : floor ? `≥${value}` : value}
       </span>
     </div>
   );
@@ -76,7 +85,7 @@ function StateChip({ status }: { status: string }) {
   const state = sendState(status);
   const looks =
     state === 'draft'
-      ? { text: 'AI draft · not sent', bg: 'var(--paper-2, #EAE4D8)', fg: 'var(--ink-2, #4F473C)', dashed: true }
+      ? { text: draftChipText(status), bg: 'var(--paper-2, #EAE4D8)', fg: 'var(--ink-2, #4F473C)', dashed: true }
       : state === 'sent'
         ? { text: 'Sent', bg: 'var(--seal-tint, rgba(26,94,107,.10))', fg: 'var(--seal-deep, #14515C)', dashed: false }
         : state === 'closed'
@@ -192,6 +201,7 @@ export default function CommunicationsNext() {
     >
       <style>{`
         @keyframes cm-settle { from { transform: translateY(-4px); opacity: 0 } to { transform: none; opacity: 1 } }
+        .cm-row { transition: background ${ink.ms}ms ${ink.easing} }
         .cm-row:hover { background: var(--paper-1, #F3EFE6) }
         .cm-row:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: -2px }
         @media (prefers-reduced-motion: reduce) { .cm-row, [style*="cm-settle"] { animation: none !important; transition: none !important } }
@@ -217,7 +227,11 @@ export default function CommunicationsNext() {
           <div className="flex flex-wrap gap-6">
             <GlanceFigure label="Threads" value={data.glance.threads} />
             <GlanceFigure label="Drafts waiting" value={data.glance.draftsPending} />
-            <GlanceFigure label="Sent · 30 days" value={data.glance.sentLast30} />
+            <GlanceFigure
+              label="Sent · 30 days"
+              value={data.glance.sentLast30}
+              floor={data.glance.sentLast30Truncated}
+            />
             <GlanceFigure label="Report schedules" value={data.glance.schedules} />
           </div>
         </header>

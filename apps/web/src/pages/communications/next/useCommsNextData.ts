@@ -16,6 +16,7 @@ import {
   useProcurementConversationHistory,
   type ProcurementHistoryItem,
 } from '../../../hooks/queries/useConversationQueries';
+import { useActiveConversations } from '../../../hooks/queries/useDraftEmailQueries';
 import { listReportSchedules, type ScheduledReport } from '../../../services/api/reports';
 import { sendState } from './cm-format';
 
@@ -24,12 +25,19 @@ export interface CommsGlance {
   threads: number | null;
   draftsPending: number | null;
   sentLast30: number | null;
+  /** True when the history window hit its server cap — the figure is a floor. */
+  sentLast30Truncated: boolean;
   schedules: number | null;
 }
 
 export function useCommsNextData() {
   const historyQ = useProcurementConversationHistory();
   const threadsQ = useConversationThreads();
+  // Drafts awaiting action come from the same live source the orders DraftRail
+  // uses — the history endpoint filters drafts out at the SQL level, so
+  // deriving "drafts waiting" from it was a structurally guaranteed false
+  // zero (communications-audit.md, BLOCKER 2).
+  const activeQ = useActiveConversations();
   const schedulesQ = useQuery<ScheduledReport[]>({
     queryKey: ['report-schedules'],
     queryFn: listReportSchedules,
@@ -46,22 +54,24 @@ export function useCommsNextData() {
   const glance: CommsGlance = useMemo(() => {
     const cutoff = Date.now() - 30 * 86_400_000;
     return {
-      threads: threadsQ.data === undefined ? null : threadsQ.data.threads.length,
-      draftsPending:
-        historyQ.data === undefined
-          ? null
-          : historyQ.data.filter((i) => sendState(i.status) === 'draft').length,
+      // The thread list is paginated — .threads.length is a page, .total is
+      // the book (audit BLOCKER 3).
+      threads: threadsQ.data === undefined ? null : threadsQ.data.total,
+      draftsPending: activeQ.data === undefined ? null : activeQ.data.length,
       sentLast30:
         historyQ.data === undefined
           ? null
           : historyQ.data.filter(
               (i) =>
-                sendState(i.status) !== 'draft' &&
+                sendState(i.status) === 'sent' &&
                 new Date(i.sentAt ?? i.createdAt).getTime() >= cutoff,
             ).length,
+      // The history endpoint serves at most its server cap; when the window
+      // is full the 30-day figure is a floor, and the strip says so.
+      sentLast30Truncated: (historyQ.data?.length ?? 0) >= 100,
       schedules: schedulesQ.data === undefined ? null : schedulesQ.data.length,
     };
-  }, [historyQ.data, threadsQ.data, schedulesQ.data]);
+  }, [historyQ.data, threadsQ.data, activeQ.data, schedulesQ.data]);
 
   return {
     rows,
@@ -74,6 +84,7 @@ export function useCommsNextData() {
     refetch: () => {
       void historyQ.refetch();
       void threadsQ.refetch();
+      void activeQ.refetch();
       void schedulesQ.refetch();
     },
   };

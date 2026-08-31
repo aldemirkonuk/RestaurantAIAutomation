@@ -89,6 +89,22 @@ describe('CommunicationsNext', () => {
     expect(screen.queryByText(/^Sent$/)).not.toBeInTheDocument();
   });
 
+  it('APPROVED is approval, never dispatch (the audit blocker case)', () => {
+    mockData.current = { ...base, rows: [item({ status: 'APPROVED' })] };
+    render(<CommunicationsNext />);
+    expect(screen.getByText('Approved · not sent')).toBeInTheDocument();
+    expect(screen.queryByText(/^Sent$/)).not.toBeInTheDocument();
+  });
+
+  it('a truncated history window renders the sent figure as a floor', () => {
+    mockData.current = {
+      ...base,
+      glance: { threads: 4, draftsPending: 1, sentLast30: 97, sentLast30Truncated: true, schedules: 2 },
+    };
+    render(<CommunicationsNext />);
+    expect(screen.getByText('≥97')).toBeInTheDocument();
+  });
+
   it('the template sheet leads with what is going on', async () => {
     render(<CommunicationsNext />);
     fireEvent.click(screen.getByText('Email template workshop'));
