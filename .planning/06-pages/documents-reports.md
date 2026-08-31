@@ -49,12 +49,25 @@ DM Sans / JetBrains Mono, the P3 pages' panel idiom):
 | Direction | Axis | Honest tradeoff |
 |---|---|---|
 | A — The Filing Room | calm archive: month-grouped report cards + reading pane | least transformative |
-| B — The Ledger Spine (leading) | one dated book of everything written or received — house reports and vendor paper on a single spine, provenance chips | two sources share one list; the chip carries the burden |
-| C — The Reading Desk | report-as-primary: the newest opens read-first like the morning paper; archive demoted to a rail | heavy for fetch-one-old-file visits |
+| B — The Ledger Spine | one dated book of everything written or received — house reports and vendor paper on a single spine, provenance chips | two sources share one list; the chip carries the burden |
+| C — The Reading Desk | report-as-primary: the newest opens read-first like the morning paper; archive demoted to a rail | clean and readable — the founder kept this quality — but **not scalable** (his round-1 verdict) |
 
-B leads because "transformative" was the ask. **No build until the founder
-eliminates** — the chosen direction becomes `mudavym_design_documents_reports`
-behind the standard PageGate, with its §1b Motions table written then.
+**Round 2, 2026-08-31 — founder feedback on round 1, verbatim in intent:**
+*"be more creative, 2 more sketches. What we need is scalable — each will
+create chaos, lots of data, logs of noise. Make the categorization of the UI
+better. Direction C's full view of the report looks more clean and there is
+more space to read, but it's not scalable."* Two scale-first directions added
+to the same canvas; both assume 1,000+ entries a month, both make categories
+named and countable, both keep C's clean reading as the detail surface:
+
+| Direction | Axis | Honest tradeoff |
+|---|---|---|
+| D — The Sorting Office | categorization-first: everything sorts into named, countable drawers on arrival ("Waiting on you" · House reports · Vendor paper · Conversations · System log); noise files itself and stays countable, never deleted; windowed lists | the drawers are only as good as the sorter's rules |
+| E — The Signal Press | compression-first: each day's chaos pressed into a few trusted signals read in C's calm, beside the full windowed feed with category chips; quiet days say so in one line | the press must earn trust before anyone stops reading the feed |
+
+**No build until the founder eliminates** — the chosen direction becomes
+`mudavym_design_documents_reports` behind the standard PageGate, with its §1b
+Motions table written then.
 
 ## 2. Entry
 

@@ -1,11 +1,14 @@
 {
   "artboards": [
     { "file": "DirectionA.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "Direction A — The Filing Room" },
-    { "file": "Main.dc.html", "x": 1540, "y": 0, "w": 1440, "h": 900, "title": "Direction B — The Ledger Spine (leading)" },
-    { "file": "DirectionC.dc.html", "x": 3080, "y": 0, "w": 1440, "h": 900, "title": "Direction C — The Reading Desk" }
+    { "file": "Main.dc.html", "x": 1540, "y": 0, "w": 1440, "h": 900, "title": "Direction B — The Ledger Spine" },
+    { "file": "DirectionC.dc.html", "x": 3080, "y": 0, "w": 1440, "h": 900, "title": "Direction C — The Reading Desk (clean, not scalable)" },
+    { "file": "DirectionD.dc.html", "x": 0, "y": 1040, "w": 1440, "h": 900, "title": "Direction D — The Sorting Office (round 2, scale-first)" },
+    { "file": "DirectionE.dc.html", "x": 1540, "y": 1040, "w": 1440, "h": 900, "title": "Direction E — The Signal Press (round 2, scale-first)" }
   ],
   "annotations": [
-    { "id": "brief", "x": 0, "y": -170, "w": 620, "text": "REWORK verdict, 2026-08-29: \"That definitely needs a re-do… it can be more modern, more transformative. Let's create three more sketches into this.\"\n\nThree directions, each with its axis and its honest tradeoff. B leads because 'transformative' was the ask — it unifies house reports and vendor paper on one dated spine. Pick by elimination; the chosen one becomes the build behind mudavym_design_documents_reports." }
+    { "id": "brief", "x": 0, "y": -170, "w": 620, "text": "REWORK verdict, 2026-08-29: \"That definitely needs a re-do… it can be more modern, more transformative. Let's create three more sketches into this.\"\n\nRound 1: three directions (A/B/C). B led on the 'transformative' reading. Pick by elimination." },
+    { "id": "round-2", "x": 0, "y": 810, "w": 720, "text": "ROUND 2, 2026-08-31 — founder feedback on round 1: \"What we need is scalable — each will create chaos, lots of data, logs of noise. Make the categorization of the UI better. Direction C's full view of the report looks more clean and there is more space to read, but it's not scalable.\"\n\nD and E below are built for that: both assume 1,000+ entries a month, both make categories named and countable, both keep C's clean reading as the detail surface. D sorts everything into drawers the moment it lands (noise files itself, stays countable); E presses each day's chaos into a few trusted signals beside the full windowed feed. Pick by elimination — the chosen one becomes the build behind mudavym_design_documents_reports." }
   ],
   "launch": { "view": "canvas" }
 }
