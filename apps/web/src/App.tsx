@@ -81,6 +81,7 @@ const ReceivingNext = lazyWithRefresh(() => import('./pages/receiving/next/Recei
 const DoorNext = lazyWithRefresh(() => import('./pages/receiving/next/DoorNext'))
 const ProvidersNext = lazyWithRefresh(() => import('./pages/providers/next/ProvidersNext'))
 const CommunicationsNext = lazyWithRefresh(() => import('./pages/communications/next/CommunicationsNext'))
+const TeamNext = lazyWithRefresh(() => import('./pages/team/next/TeamNext'))
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
 const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
@@ -299,7 +300,7 @@ function App() {
                     element={<Navigate to="/providers?tab=discover" replace />}
                   />
                   <Route path="/promotions" element={<Promotions />} />
-                  <Route path="/team" element={<TeamCommandPage />} />
+                  <Route path="/team" element={<PageGate page="team" legacy={<TeamCommandPage />} next={<TeamNext />} />} />
                   <Route path="/calendar" element={<CalendarModular />} />
                   {/* Same reasoning as `/inventory-legacy` above: `/calendar-classic`
                       is retired (ADR 0019 §B) and its one exclusive — reminders that

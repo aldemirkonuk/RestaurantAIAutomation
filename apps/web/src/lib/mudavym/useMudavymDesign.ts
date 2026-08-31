@@ -37,6 +37,7 @@ export const MUDAVYM_PAGES = [
   'receiving_door',
   'providers',
   'communications',
+  'team',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
