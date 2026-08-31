@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, renderHook } from '@testing-library/react';
+import { fireEvent, render, screen, renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -15,18 +15,20 @@ const api = vi.hoisted(() => ({
   week: {} as Record<string, unknown>,
   members: [] as unknown[],
   certs: [] as unknown[],
+  createShift: vi.fn(() => Promise.resolve({})),
 }));
 
 vi.mock('../../../services/api/team', () => ({
   getWeek: () => Promise.resolve(api.week),
   getTeamMembers: () => Promise.resolve(api.members),
   getCertifications: () => Promise.resolve(api.certs),
-  createShift: vi.fn(() => Promise.resolve({})),
+  createShift: api.createShift,
   broadcast: vi.fn(() => Promise.resolve({})),
 }));
 
 import TeamNext from './TeamNext';
 import { useTeamNextData } from './useTeamNextData';
+import { mondayOf } from './tm-format';
 
 const member = (id: string, name: string, position: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -96,9 +98,22 @@ beforeEach(() => {
   api.certs = [];
 });
 
+describe('mondayOf', () => {
+  it('anchors on the local calendar date with UTC-only arithmetic', () => {
+    expect(mondayOf(new Date(2026, 8, 2, 12, 0))).toBe('2026-08-31'); // Wed noon
+    expect(mondayOf(new Date(2026, 8, 6, 23, 30))).toBe('2026-08-31'); // Sun, late evening
+    expect(mondayOf(new Date(2026, 8, 7, 0, 10))).toBe('2026-09-07'); // Mon, just after midnight
+  });
+});
+
 describe('useTeamNextData derivations', () => {
-  it('suggests the free, role-matching member with the fewest hours', async () => {
-    api.members = [member('m1', 'Busy', 'Line cook'), member('m2', 'Light', 'Line cook'), member('m3', 'Occupied', 'Line cook')];
+  it('suggests the free, exact-role member with the fewest hours, with copied times', async () => {
+    api.members = [
+      member('m1', 'Busy', 'line'),
+      member('m2', 'Light', 'line'),
+      member('m3', 'Occupied', 'line'),
+      member('m4', 'Wrong', 'Airline'), // exact-match rule: never suggested for "line"
+    ];
     api.week = weekPayload({
       shifts: [
         shift('m1', '2026-09-01'), // 6h already
@@ -108,7 +123,8 @@ describe('useTeamNextData derivations', () => {
       coverage: {
         totalGaps: 1,
         days: [
-          { date: '2026-09-05', staffed: 1, openShifts: 2, status: 'gap', gaps: [{ role: 'line', period: '17:00–23:00', staffed: 1, required: 3 }] },
+          // real coverage rules speak "am"/"pm", never clock times
+          { date: '2026-09-05', staffed: 1, openShifts: 2, status: 'gap', gaps: [{ role: 'line', period: 'pm', staffed: 1, required: 3 }] },
         ],
       },
     });
@@ -116,6 +132,12 @@ describe('useTeamNextData derivations', () => {
     expect(result.current.gaps).toHaveLength(1);
     expect(result.current.gaps[0].unfilled).toBe(2);
     expect(result.current.gaps[0].suggested?.name).toBe('Light'); // 0h beats Busy's 12h; Occupied is on that day
+    // times are copied from the same-day pm line shift, provenance stated
+    expect(result.current.gaps[0].times).toEqual({
+      start: '17:00',
+      end: '23:00',
+      source: "times from this day's line shifts",
+    });
   });
 
   it('an expired cert blocks that member’s shifts; expiring blocks none yet', async () => {
@@ -140,20 +162,47 @@ describe('TeamNext rendering', () => {
     expect(screen.getByText(/withheld number, not a zero/)).toBeInTheDocument();
   });
 
-  it('disables Assign with the reason when the period carries no clock times', async () => {
-    api.members = [member('m2', 'Light', 'Line cook')];
+  it('disables Assign with an on-screen reason when no shift exists to copy times from', async () => {
+    api.members = [member('m2', 'Light', 'line')];
     api.week = weekPayload({
       coverage: {
         totalGaps: 1,
         days: [
-          { date: '2026-09-05', staffed: 0, openShifts: 1, status: 'gap', gaps: [{ role: 'line', period: 'dinner service', staffed: 0, required: 1 }] },
+          { date: '2026-09-05', staffed: 0, openShifts: 1, status: 'gap', gaps: [{ role: 'line', period: 'pm', staffed: 0, required: 1 }] },
         ],
       },
     });
     render(<TeamNext />, { wrapper });
     const btn = await screen.findByRole('button', { name: 'Assign' });
     expect(btn).toBeDisabled();
-    expect(btn).toHaveAttribute('title', expect.stringContaining('no clock times'));
+    expect(screen.getByText(/no shift of this role to copy times from/)).toBeInTheDocument();
+  });
+
+  it('assigns with the camelCase payload the gateway DTO requires', async () => {
+    api.createShift.mockClear();
+    api.members = [member('m2', 'Light', 'line')];
+    api.week = weekPayload({
+      shifts: [shift('m9', '2026-09-01', '16:00', '22:00')],
+      coverage: {
+        totalGaps: 1,
+        days: [
+          { date: '2026-09-05', staffed: 0, openShifts: 1, status: 'gap', gaps: [{ role: 'line', period: 'pm', staffed: 0, required: 1 }] },
+        ],
+      },
+    });
+    render(<TeamNext />, { wrapper });
+    const btn = await screen.findByRole('button', { name: 'Assign' });
+    expect(btn).toBeEnabled();
+    fireEvent.click(btn);
+    await vi.waitFor(() => expect(api.createShift).toHaveBeenCalled());
+    expect(api.createShift).toHaveBeenCalledWith({
+      scheduleId: 'sch1',
+      shiftDate: '2026-09-05',
+      startTime: '16:00',
+      endTime: '22:00',
+      role: 'line',
+      memberId: 'm2',
+    });
   });
 
   it('says the schedule should not publish while shifts are blocked', async () => {

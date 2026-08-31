@@ -32,12 +32,18 @@ export function fmtDayShort(isoDate: string): string {
   return Number.isFinite(d.getTime()) ? dayShort.format(d) : isoDate;
 }
 
-/** Monday of the week containing `d`, as YYYY-MM-DD (schedules key on it). */
+/**
+ * Monday of the week containing `d`, as YYYY-MM-DD (schedules key on it).
+ * Computed from the LOCAL calendar date but with UTC-only arithmetic — the
+ * previous local-getters + toISOString mix returned the wrong day for ~5
+ * evening hours in any west-of-UTC timezone (team-audit.md, BLOCKER 2; the
+ * gateway's own mondayOf is UTC-only for the same reason).
+ */
 export function mondayOf(d: Date): string {
-  const copy = new Date(d);
-  const day = (copy.getDay() + 6) % 7; // Mon=0
-  copy.setDate(copy.getDate() - day);
-  return copy.toISOString().slice(0, 10);
+  const utcAnchor = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = (utcAnchor.getUTCDay() + 6) % 7; // Mon=0
+  utcAnchor.setUTCDate(utcAnchor.getUTCDate() - day);
+  return utcAnchor.toISOString().slice(0, 10);
 }
 
 /**

@@ -617,11 +617,27 @@ export class NotificationsService {
       metadata?: Record<string, any>;
       groupKey?: string;
     },
-    opts: { broadcast?: boolean; dedupeWithinMinutes?: number } = {},
+    opts: {
+      broadcast?: boolean;
+      dedupeWithinMinutes?: number;
+      /**
+       * Restrict the write to these user ids (still intersected with the
+       * restaurant's own members, so a caller can never write outside the
+       * tenant). Without it, every member gets the row — which is right for
+       * a true broadcast and wrong for a targeted message; the team
+       * broadcast endpoint was leaking per-member messages to the whole
+       * restaurant through this default (team-audit.md, BLOCKER 4).
+       */
+      onlyUserIds?: string[];
+    } = {},
   ): Promise<{ inserted: number }> {
     const { broadcast = true, dedupeWithinMinutes } = opts;
     try {
-      const userIds = await this.resolveRestaurantMemberIds(restaurantId);
+      let userIds = await this.resolveRestaurantMemberIds(restaurantId);
+      if (opts.onlyUserIds) {
+        const allow = new Set(opts.onlyUserIds);
+        userIds = userIds.filter((id) => allow.has(id));
+      }
       if (!userIds.length) return { inserted: 0 };
 
       // Optional dedupe: skip if an identical group_key was already written for

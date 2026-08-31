@@ -25,15 +25,22 @@ import {
   type Shift,
   type TeamMember,
 } from '../../../services/api/team';
-import { mondayOf } from './tm-format';
+import { mondayOf, parsePeriod } from './tm-format';
 
 export interface GapVM {
   date: string;
   role: string;
+  /** As the coverage rules speak it: "am" | "pm" (or, defensively, a time range). */
   period: string;
   unfilled: number;
   /** Real candidate, or null — the row then says why. */
   suggested: { memberId: string; name: string; hoursThisWeek: number } | null;
+  /**
+   * Clock times for the one-tap assign, with their provenance — copied from
+   * real shifts of the same role and period (same day first, then this
+   * week), never invented. Null → the control is disabled and says why.
+   */
+  times: { start: string; end: string; source: string } | null;
 }
 
 export interface CertBlockVM {
@@ -82,12 +89,33 @@ export function useTeamNextData(now = new Date()) {
       if (!busyByDate.has(s.shift_date)) busyByDate.set(s.shift_date, new Set());
       busyByDate.get(s.shift_date)!.add(s.member_id);
     }
+    // Exact role equality, case-insensitive — the same rule the gateway's
+    // coverage computation uses. Substring matching false-matched roles
+    // (team-audit.md; the gateway carries the identical correction).
     const roleMatches = (m: TeamMember, role: string) => {
-      const r = role.toLowerCase();
+      const r = role.trim().toLowerCase();
       return (
-        (m.position ?? '').toLowerCase().includes(r) ||
-        m.skills.some((sk) => sk.toLowerCase().includes(r))
+        (m.position ?? '').trim().toLowerCase() === r ||
+        m.skills.some((sk) => sk.trim().toLowerCase() === r)
       );
+    };
+    // Coverage rules speak in "am"/"pm"; the gateway's boundary is 15:00.
+    const periodOf = (start: string): 'am' | 'pm' => {
+      const [h] = start.split(':').map(Number);
+      return Number.isFinite(h) && h < 15 ? 'am' : 'pm';
+    };
+    /** The most common start–end pair among the given shifts, or null. */
+    const modalTimes = (pool: Shift[]): { start: string; end: string } | null => {
+      const counts = new Map<string, { start: string; end: string; n: number }>();
+      for (const s of pool) {
+        const key = `${s.start_time}–${s.end_time}`;
+        const cur = counts.get(key) ?? { start: s.start_time, end: s.end_time, n: 0 };
+        cur.n += 1;
+        counts.set(key, cur);
+      }
+      let best: { start: string; end: string; n: number } | null = null;
+      for (const c of counts.values()) if (!best || c.n > best.n) best = c;
+      return best ? { start: best.start, end: best.end } : null;
     };
     const out: GapVM[] = [];
     for (const day of weekQ.data.coverage.days) {
@@ -99,6 +127,26 @@ export function useTeamNextData(now = new Date()) {
           .filter((m) => m.status === 'active' && !busy.has(m.id) && roleMatches(m, g.role))
           .sort((a, b) => (hoursByMember.get(a.id) ?? 0) - (hoursByMember.get(b.id) ?? 0));
         const pick = candidates[0] ?? null;
+
+        // Times are copied from real shifts of this role+period, never made up:
+        // same day first, then anywhere this week. A gap period that already
+        // carries clock times ("17:00–23:00") is honoured as-is.
+        const parsed = parsePeriod(g.period);
+        const sameRolePeriod = (s: Shift) =>
+          (s.role ?? '').trim().toLowerCase() === g.role.trim().toLowerCase() &&
+          (g.period === 'am' || g.period === 'pm' ? periodOf(s.start_time) === g.period : true);
+        let times: GapVM['times'] = null;
+        if (parsed) {
+          times = { ...parsed, source: 'from the coverage rule' };
+        } else {
+          const sameDay = modalTimes(shifts.filter((s) => s.shift_date === day.date && sameRolePeriod(s)));
+          if (sameDay) times = { ...sameDay, source: `times from this day's ${g.role} shifts` };
+          else {
+            const sameWeek = modalTimes(shifts.filter(sameRolePeriod));
+            if (sameWeek) times = { ...sameWeek, source: `times from this week's ${g.role} shifts` };
+          }
+        }
+
         out.push({
           date: day.date,
           role: g.role,
@@ -111,6 +159,7 @@ export function useTeamNextData(now = new Date()) {
                 hoursThisWeek: Math.round((hoursByMember.get(pick.id) ?? 0) * 10) / 10,
               }
             : null,
+          times,
         });
       }
     }
@@ -152,6 +201,9 @@ export function useTeamNextData(now = new Date()) {
     week: weekQ.data ?? null,
     gaps,
     gapsKnown: weekQ.data !== undefined && membersQ.data !== undefined,
+    membersFailed: membersQ.isError,
+    certsFailed: certsQ.isError,
+    scheduleId: weekQ.data?.schedule?.id ?? null,
     certBlocks,
     certsKnown: certsQ.data !== undefined && membersQ.data !== undefined && weekQ.data !== undefined,
     blockedTotal,

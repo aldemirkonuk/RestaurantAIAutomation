@@ -23,7 +23,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Wordmark } from '@/components/mudavym';
 import { broadcast, createShift } from '../../../services/api/team';
 import { ink } from '../../../lib/mudavym/motion';
-import { EM, MONO, SANS, SERIF, fmtDayShort, fmtMoneyWhole, fmtWeekday, parsePeriod } from './tm-format';
+import { EM, MONO, SANS, SERIF, fmtDayShort, fmtMoneyWhole, fmtWeekday } from './tm-format';
 import { useTeamNextData, type CertBlockVM, type GapVM } from './useTeamNextData';
 
 function PanelTitle({ children }: { children: string }) {
@@ -51,28 +51,47 @@ const panelStyle = {
   padding: '16px 18px',
 } as const;
 
-function GapRow({ gap, weekStart }: { gap: GapVM; weekStart: string }) {
+/** Coverage rules speak "am"/"pm" — said as service language on screen. */
+function periodLabel(period: string): string {
+  if (period === 'am') return 'day';
+  if (period === 'pm') return 'evening';
+  return period;
+}
+
+function GapRow({
+  gap,
+  weekStart,
+  scheduleId,
+}: {
+  gap: GapVM;
+  weekStart: string;
+  scheduleId: string | null;
+}) {
   const qc = useQueryClient();
-  const period = parsePeriod(gap.period);
   const assign = useMutation({
+    // camelCase per the gateway's CreateShiftDto (forbidNonWhitelisted rejects
+    // snake_case bodies outright — team-audit.md, BLOCKER 3). shiftType is
+    // omitted on purpose: the server derives am/pm from the start time.
     mutationFn: () =>
       createShift({
-        shift_date: gap.date,
-        start_time: period!.start,
-        end_time: period!.end,
+        scheduleId: scheduleId ?? undefined,
+        shiftDate: gap.date,
+        startTime: gap.times!.start,
+        endTime: gap.times!.end,
         role: gap.role,
-        member_id: gap.suggested!.memberId,
-        shift_type: 'cover',
+        memberId: gap.suggested!.memberId,
       }),
+    // No terminal "assigned" latch: the week refetch recomputes the gap, and
+    // a 2-unfilled row must come back assignable for the second slot.
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['team-next-week', weekStart] }),
   });
 
-  const canAssign = gap.suggested !== null && period !== null && !assign.isSuccess;
+  const canAssign = gap.suggested !== null && gap.times !== null;
   const reason =
     gap.suggested === null
       ? 'no free, role-matching member this day'
-      : period === null
-        ? `period "${gap.period}" carries no clock times — assign from the shift desk`
+      : gap.times === null
+        ? 'no shift of this role to copy times from — set times in the shift desk'
         : null;
 
   return (
@@ -92,37 +111,35 @@ function GapRow({ gap, weekStart }: { gap: GapVM; weekStart: string }) {
         {gap.unfilled} unfilled
       </span>
       <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-        {fmtWeekday(gap.date)} · {gap.role}
-        {gap.period ? ` · ${gap.period}` : ''}
+        {fmtWeekday(gap.date)} · {gap.role} · {periodLabel(gap.period)}
+        {gap.times ? ` · ${gap.times.start.slice(0, 5)}–${gap.times.end.slice(0, 5)}` : ''}
       </span>
       <span className="ml-auto" style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
         {gap.suggested
-          ? `suggest ${gap.suggested.name} — ${gap.suggested.hoursThisWeek}h this week`
-          : 'no suggestion — ' + reason}
+          ? `suggest ${gap.suggested.name} — ${gap.suggested.hoursThisWeek}h this week` +
+            (gap.times ? ` · ${gap.times.source}` : '')
+          : reason}
       </span>
-      {assign.isSuccess ? (
-        <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--seal-deep, #14515C)' }}>
-          assigned
-        </span>
-      ) : (
-        <button
-          type="button"
-          disabled={!canAssign || assign.isPending}
-          title={reason ?? undefined}
-          onClick={() => assign.mutate()}
-          style={{
-            fontSize: 11.5,
-            fontWeight: 600,
-            padding: '4px 10px',
-            borderRadius: 8,
-            border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-            background: canAssign ? 'transparent' : 'var(--paper-2, #EAE4D8)',
-            color: canAssign ? 'var(--seal-deep, #14515C)' : 'var(--ink-3, #7C7365)',
-            cursor: canAssign ? 'pointer' : 'not-allowed',
-          }}
-        >
-          {assign.isPending ? 'Assigning…' : 'Assign'}
-        </button>
+      <button
+        type="button"
+        disabled={!canAssign || assign.isPending}
+        onClick={() => assign.mutate()}
+        style={{
+          fontSize: 11.5,
+          fontWeight: 600,
+          padding: '4px 10px',
+          borderRadius: 8,
+          border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+          background: canAssign ? 'transparent' : 'var(--paper-2, #EAE4D8)',
+          color: canAssign ? 'var(--seal-deep, #14515C)' : 'var(--ink-3, #7C7365)',
+          cursor: canAssign && !assign.isPending ? 'pointer' : 'not-allowed',
+        }}
+      >
+        {assign.isPending ? 'Assigning…' : 'Assign'}
+      </button>
+      {/* the reason is on-screen text, not a hover-only title (a11y) */}
+      {!canAssign && reason && gap.suggested !== null && (
+        <span style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)', width: '100%' }}>{reason}</span>
       )}
       {assign.isError && (
         <span role="alert" style={{ fontSize: 11, color: 'var(--ink-2, #4F473C)', width: '100%' }}>
@@ -267,9 +284,19 @@ export default function TeamNext() {
           ) : (
             <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
               {data.gaps.map((g) => (
-                <GapRow key={`${g.date}-${g.role}-${g.period}`} gap={g} weekStart={data.weekStart} />
+                <GapRow
+                  key={`${g.date}-${g.role}-${g.period}`}
+                  gap={g}
+                  weekStart={data.weekStart}
+                  scheduleId={data.scheduleId}
+                />
               ))}
             </div>
+          )}
+          {data.membersFailed && (
+            <p role="alert" style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
+              The roster could not be read — suggested covers are withheld, not empty.
+            </p>
           )}
         </section>
 
@@ -320,7 +347,11 @@ export default function TeamNext() {
           {/* ── 3 · credentials as blockers ─────────────────────────────── */}
           <section aria-label="Credentials" style={panelStyle}>
             <PanelTitle>Credentials that block</PanelTitle>
-            {!data.certsKnown && !data.isError ? (
+            {data.certsFailed ? (
+              <p role="alert" style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', margin: 0 }}>
+                The credentials file could not be read — blockers are unknown, not absent.
+              </p>
+            ) : !data.certsKnown && !data.isError ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)', margin: 0 }}>
                 Reaching the gateway…
               </p>
