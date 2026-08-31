@@ -71,6 +71,20 @@ Deliberate non-motions: gap rows never animate in (an unfilled shift is a
 standing fact, not an arrival); the labour figure never tallies; "assigned" /
 "requested" confirmations are a change of words, in place.
 
+**2026-08-31 wave polish (Sorting Office two-Opus review):** the Assign,
+"Request renewal" and error-banner "Try again" controls carried an inline
+`background: 'transparent'` (or a ternary resolving to it) that permanently
+outranked `.tm-ctl:hover` — dead hovers on every tm-ctl control; fixed by
+omitting the inline value instead of adding `!important` (verified via a
+static cascade repro, since the route sits behind auth). The week's-labour
+figure was resized 26px → 22px to match the page-level-figure convention set
+by `documents-reports/next/so-format.ts`'s `Count` component and
+CommunicationsNext's glance strip (no wave value had been recorded before
+this). `fmtWeekday`/`fmtDayShort` in `tm-format.ts` were checked against the
+same-day `so-format.ts` date-parser bug and found already correct — they
+append `T00:00:00` before parsing, which JS reads as local time (unlike a
+bare date-only string, which reads as UTC), so no backport was needed here.
+
 ### Design used, and why (ADR 0045 §5 wave · MAKEOVER-VERDICTS: KEEP + three ideas)
 
 The verdict kept the redesign ("spot on") and asked for three additions; all

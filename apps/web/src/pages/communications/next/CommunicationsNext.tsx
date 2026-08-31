@@ -122,7 +122,6 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
         aria-expanded={open}
         className="cm-row flex w-full items-baseline gap-3 py-2.5 text-left"
         style={{
-          background: 'transparent',
           border: 'none',
           cursor: 'pointer',
           fontFamily: SANS,

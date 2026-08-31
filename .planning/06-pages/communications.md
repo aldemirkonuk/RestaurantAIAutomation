@@ -56,6 +56,20 @@ Deliberate non-motions: glance figures never tally; the template sheet appears
 in place; draft chips never pulse (a draft drawing attention to itself starts
 to look like activity — prc-02).
 
+**2026-08-31 wave polish (Sorting Office two-Opus review):** the ledger row's
+expand/collapse toggle carried an inline `background: 'transparent'` that
+permanently outranked `.cm-row:hover` — a dead hover; fixed by removing the
+inline value rather than adding `!important` (verified via a static cascade
+repro, since the route sits behind auth). The two template-workshop buttons
+in the channels rail (`setSheet('gmail')`/`setSheet('sms')`) also carry
+`.cm-row` with a static inline background, but theirs is `var(--paper-0,…)`,
+a deliberate card fill, not `'transparent'` — deferred to a design call in
+this pass, and **fixed later the same day** in the follow-up below. `fmtWhen`
+in `cm-format.ts` was checked against the same-day `so-format.ts` date-parser
+bug: `sentAt`/`createdAt`/`nextRunAt` are all `timestamp with time zone`
+columns, not date-only, so the bare `new Date(iso)` it uses is already
+correct — no backport needed here.
+
 **2026-08-31 dead-hover follow-up (channels-rail template-workshop
 buttons):** the "Email template workshop" / "SMS template workshop" buttons
 carry `.cm-row` but rested on a static inline `background: 'var(--paper-0,
