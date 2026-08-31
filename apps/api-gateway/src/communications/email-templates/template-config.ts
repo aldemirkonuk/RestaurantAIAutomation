@@ -170,26 +170,44 @@ export function formatCurrency(amount: number): string {
 }
 
 /**
- * Format date for emails
+ * Format date for emails.
+ *
+ * A string input is a wire timestamp (a DB column serialized to ISO, e.g.
+ * `next_order_date`, `payment_due_date`) and is pinned to `timeZone: "UTC"` so the
+ * rendered day matches the wire value regardless of server TZ — the same class of bug
+ * fixed in studio-invite.controller.ts, where the missing option shifted a UTC-midnight
+ * date to the prior day west of UTC.
+ *
+ * A `Date` object input is NOT given that treatment: the one live call site that passes
+ * one (`scheduled-tasks.service.ts`'s inventory-audit reminder) builds it via
+ * `new Date(); .setDate(+2)`, i.e. local-time calendar arithmetic meant to land on "the
+ * upcoming Wednesday" in the server's own clock — forcing UTC there would re-derive a
+ * different calendar day than the one the arithmetic produced, on any host whose process
+ * TZ isn't already UTC.
  */
 export function formatDate(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date;
+  const isWireTimestamp = typeof date === "string";
+  const d = isWireTimestamp ? new Date(date) : date;
   return d.toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
+    ...(isWireTimestamp ? { timeZone: "UTC" as const } : {}),
   });
 }
 
 /**
- * Format short date
+ * Format short date. See {@link formatDate} for why only string (wire-timestamp) inputs
+ * are pinned to UTC.
  */
 export function formatShortDate(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date;
+  const isWireTimestamp = typeof date === "string";
+  const d = isWireTimestamp ? new Date(date) : date;
   return d.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
+    ...(isWireTimestamp ? { timeZone: "UTC" as const } : {}),
   });
 }
