@@ -279,12 +279,15 @@ dashboard.md §7.
 - Direct-Supabase delete with deferred RLS (§8) means authorization for report
   deletion rests on the anon-key policy set — worth a verification pass, not
   asserted broken (no debt-register entry).
-- **Flag-flip blocker:** gateway `listUnverified`
-  (`receiving.service.ts:~220`) windows the OLDEST 500 lifetime receipt
-  events — past 500, new door debt never surfaces and an order whose closing
-  event fell outside the window becomes a permanent phantom row at the TOP of
-  the waiting queue. Filed as its own fix task 2026-08-31; the Opus reviewer's
-  verdict ("the one finding I'd hold the flag-on for") stands until it lands.
+- **Flag-flip blocker — CLEARED 2026-09-01.** Gateway `listUnverified`
+  windowed the OLDEST 500 lifetime receipt events (past 500, new door debt
+  never surfaced; a phantom row could pin the top of the waiting queue).
+  Fixed in PR #173 (newest-first window + timestamp-based latest-count +
+  a 500+ regression test), merged to main and Railway-verified SUCCESS.
+  Until `feat/mudavym-design-p3` merges, the page previews on dev via the
+  localStorage override (`mudavym.design.documents_reports = 1`) — the
+  production gateway's registry doesn't carry the flag yet, so a DB flip
+  cannot render before the branch merges.
 - `--ink-3` fails AA on every light paper ground (3.69–4.37:1, measured) —
   wave-wide, filed as OD-112; this page already moved its two honesty-bearing
   lines to `--ink-4`.
