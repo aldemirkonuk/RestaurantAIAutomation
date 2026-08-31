@@ -203,6 +203,11 @@ export default function CommunicationsNext() {
         .cm-row { transition: background ${ink.ms}ms ${ink.easing} }
         .cm-row:hover { background: var(--paper-1, #F3EFE6) }
         .cm-row:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: -2px }
+        /* the two template-workshop buttons rest on a card fill rather than
+           transparent — the value lives here, not inline, so .cm-row:hover
+           above still governs them instead of being dead-cascaded under a
+           style attribute (2026-08-31 follow-up to the wave-polish pass). */
+        .cm-card { background: var(--paper-0, #FAF7F1) }
         @media (prefers-reduced-motion: reduce) { .cm-row, [style*="cm-settle"] { animation: none !important; transition: none !important } }
       `}</style>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
@@ -318,12 +323,12 @@ export default function CommunicationsNext() {
                 reported here.
               </p>
               <div className="flex flex-col gap-2">
-                <button type="button" onClick={() => setSheet('gmail')} className="cm-row rounded-lg px-3 py-2 text-left"
-                  style={{ border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-0, #FAF7F1)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)', cursor: 'pointer' }}>
+                <button type="button" onClick={() => setSheet('gmail')} className="cm-row cm-card rounded-lg px-3 py-2 text-left"
+                  style={{ border: '1px solid var(--paper-2, #EAE4D8)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)', cursor: 'pointer' }}>
                   Email template workshop
                 </button>
-                <button type="button" onClick={() => setSheet('sms')} className="cm-row rounded-lg px-3 py-2 text-left"
-                  style={{ border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-0, #FAF7F1)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)', cursor: 'pointer' }}>
+                <button type="button" onClick={() => setSheet('sms')} className="cm-row cm-card rounded-lg px-3 py-2 text-left"
+                  style={{ border: '1px solid var(--paper-2, #EAE4D8)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)', cursor: 'pointer' }}>
                   SMS template workshop
                 </button>
               </div>
