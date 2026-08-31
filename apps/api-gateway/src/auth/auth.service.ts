@@ -1487,9 +1487,22 @@ export class AuthService {
   }
 
   /**
-   * Find or create OAuth user.
-   * If the user doesn't exist, create them and assign to the default restaurant
-   * (or leave restaurant_id null for an onboarding flow).
+   * Find the account an OAuth identity belongs to. Never creates one.
+   *
+   * This used to self-provision: an unknown address that passed Google's token
+   * check was INSERTed as `role: "manager"` into `DEFAULT_RESTAURANT_ID`. That
+   * variable is set in production, `POST /auth/oauth/google` is unauthenticated,
+   * and `verifyGoogleToken` only checks the audience and `email_verified` — no
+   * domain restriction. So anyone on the internet holding any Google account
+   * could mint themselves a manager of a real tenant by signing in. Verified
+   * against production 2026-09-01 (the default id resolved to a live restaurant
+   * carrying real inventory); no account had come in that way yet.
+   *
+   * The auto-create is removed outright rather than re-gated on the env var:
+   * an unset variable was the only thing standing between the public internet
+   * and a manager role, and a stray value in a future environment must not be
+   * able to reopen it. Registration is where a restaurant gets created or an
+   * invite redeemed — OAuth sign-in only ever resolves an EXISTING account.
    */
   async findOrCreateOAuthUser(params: {
     provider: "google" | "microsoft";
@@ -1497,54 +1510,27 @@ export class AuthService {
     email: string;
     name: string;
   }) {
-    const { provider, providerId, email, name } = params;
+    const { provider, email } = params;
 
-    let { data: user } = await this.databaseService.supabase
+    // Normalised like every other lookup (checkEmailExists, resolveSignInMethods).
+    // `users.email` is UNIQUE and case-sensitive, so a mixed-case stored address
+    // against Google's lower-cased claim used to miss and fall through to the
+    // create branch — the same defect wearing a different hat.
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const { data: user } = await this.databaseService.supabase
       .from("users")
       .select("*")
-      .eq("email", email)
+      .eq("email", normalizedEmail)
       .single();
 
     if (!user) {
-      const defaultRestaurantId = this.configService.get<string>(
-        "DEFAULT_RESTAURANT_ID",
+      this.logger.warn(
+        `Rejected ${provider} sign-in for unknown email; no account exists`,
       );
-
-      // Without a restaurant to join, signing up here would mint an account
-      // that can authenticate but belongs to no tenant — it lands on /no-access
-      // with no way forward, and quietly consumes the email address so the
-      // proper registration flow later reports it as taken. Registration is
-      // where a restaurant gets created or an invite gets redeemed.
-      if (!defaultRestaurantId) {
-        this.logger.warn(
-          `Rejected ${provider} sign-in for unknown email; no account exists`,
-        );
-        throw new UnauthorizedException(
-          "No WineOps account uses that address. Create an account or use your invite code first.",
-        );
-      }
-
-      const insertData: Record<string, any> = {
-        email,
-        name,
-        oauth_provider: provider,
-        oauth_id: providerId,
-        role: "manager",
-        restaurant_id: defaultRestaurantId,
-      };
-
-      const { data: newUser, error } = await this.databaseService.supabase
-        .from("users")
-        .insert(insertData)
-        .select()
-        .single();
-
-      if (error || !newUser) {
-        this.logger.error(`OAuth registration failed: ${error?.message}`);
-        throw new UnauthorizedException("OAuth registration failed");
-      }
-
-      user = newUser;
+      throw new UnauthorizedException(
+        "No WineOps account uses that address. Create an account or use your invite code first.",
+      );
     }
 
     return user;
