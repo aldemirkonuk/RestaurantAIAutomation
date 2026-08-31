@@ -216,18 +216,23 @@ export class ReceivingService {
    * indistinguishable from theft and cannot be claimed from the vendor.
    */
   async listUnverified(restaurantId: string): Promise<UnverifiedDelivery[]> {
+    // Newest-first: the cap below is a lifetime-event-count safety valve, not a
+    // recency window, and a restaurant well past 500 lifetime events must still
+    // see today's delivery. Ascending order here previously meant the cap kept
+    // the OLDEST 500 events, so every new door count stopped surfacing once a
+    // restaurant crossed that lifetime total.
     const { data, error } = await this.db
       .getClient()
       .from("procurement_receipt_events")
       .select("order_id, counted_qty_bottles, occurred_at, stage")
       .eq("restaurant_id", restaurantId)
-      .order("occurred_at", { ascending: true })
+      .order("occurred_at", { ascending: false })
       .limit(500);
     if (error) throw new Error(error.message);
 
     const byOrder = new Map<
       string,
-      { counted: number; at: string; verified: boolean }
+      { counted: number; at: string; verified: boolean; caseCountAt: number | null }
     >();
     for (const e of data ?? []) {
       if (!e.order_id) continue;
@@ -235,10 +240,17 @@ export class ReceivingService {
         counted: 0,
         at: e.occurred_at,
         verified: false,
+        caseCountAt: null,
       };
+      // Rows are no longer guaranteed ascending, so pick the latest case_count
+      // by comparing timestamps explicitly rather than trusting fetch order.
       if (e.stage === "case_count") {
-        cur.counted = Number(e.counted_qty_bottles ?? 0);
-        cur.at = e.occurred_at;
+        const t = new Date(e.occurred_at).getTime();
+        if (cur.caseCountAt === null || t >= cur.caseCountAt) {
+          cur.counted = Number(e.counted_qty_bottles ?? 0);
+          cur.at = e.occurred_at;
+          cur.caseCountAt = t;
+        }
       }
       // Either a bottle count or an explicit reconcile closes the loop.
       if (e.stage === "bottle_count" || e.stage === "reconciled")
