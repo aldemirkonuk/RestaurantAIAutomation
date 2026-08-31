@@ -38,6 +38,7 @@ export const MUDAVYM_PAGES = [
   'providers',
   'communications',
   'team',
+  'inventory',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];

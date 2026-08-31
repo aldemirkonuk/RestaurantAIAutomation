@@ -73,39 +73,39 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // OFF by default: the Mudavym redesign of `/` (ADR 0044) is opt-in per
     // restaurant while under founder review; legacy renders otherwise.
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:81",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:82",
   },
   {
     key: "mudavym_design_orders",
     // OFF by default: the Mudavym redesign of `/orders` (ADR 0044), same gate.
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:81",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:82",
   },
   {
     key: "mudavym_design_receiving",
     // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:81",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:82",
   },
   {
     key: "mudavym_design_receiving_door",
     // OFF by default: the Mudavym redesign of the door flow (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:81",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:82",
   },
   {
     key: "mudavym_design_providers",
     // OFF by default: the Mudavym redesign of `/providers` (ADR 0045 §5 wave,
     // MERGE verdict — small buckets + twin-in-sheet), founder-reviewed per flip.
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:81",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:82",
   },
   {
     key: "mudavym_design_communications",
     // OFF by default: the Mudavym redesign of `/communications` (ADR 0045 §5
     // wave, MERGE verdict — glance strip + ledger + template-clarity sheet).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:81",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:82",
   },
   {
     key: "mudavym_design_team",
@@ -113,7 +113,15 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // verdict + the founder's three additions: gaps-first, labour build-up,
     // credential blockers).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:81",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:82",
+  },
+  {
+    key: "mudavym_design_inventory",
+    // OFF by default: NOT a page swap — the KEEP verdict's named gap only:
+    // the ReceiptDepth card inside the kept RowExpansion dropdown (ADR 0045
+    // §5). The page renders byte-identically with the flag off.
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:82",
   },
 ];
 
