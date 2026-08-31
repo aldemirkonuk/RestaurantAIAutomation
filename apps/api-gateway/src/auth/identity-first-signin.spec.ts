@@ -526,3 +526,127 @@ describe("the provider registry is the only place provider names live", () => {
     expect(src.match(inferencePattern)).toBeNull();
   });
 });
+
+/**
+ * OAuth sign-in resolves an existing account; it never creates one.
+ *
+ * Found 2026-09-01 while the founder was preparing to put the app on a public
+ * branded domain. `findOrCreateOAuthUser` used to INSERT an unknown but
+ * Google-verified address as `role: "manager"` into `DEFAULT_RESTAURANT_ID`.
+ * That variable IS set in production, `POST /auth/oauth/google` carries no
+ * guard (probed live: it answers the service's own "Failed to verify Google
+ * token", not a guard rejection), and `verifyGoogleToken` checks only the
+ * audience and `email_verified` — no domain restriction. Net effect: anyone
+ * holding any Google account could mint themselves a manager of a real tenant.
+ *
+ * Each test below was run against the reverted implementation and observed to
+ * FAIL before being kept.
+ */
+describe("findOrCreateOAuthUser — resolves, never provisions", () => {
+  function makeOAuthService(opts: {
+    row?: Record<string, unknown> | null;
+    defaultRestaurantId?: string;
+  }) {
+    const inserts: unknown[] = [];
+    const from = jest.fn((table: string) => {
+      if (table !== "users") throw new Error(`unexpected table: ${table}`);
+      const chain: any = {
+        select: () => chain,
+        eq: (_col: string, val: unknown) => {
+          chain._email = val;
+          return chain;
+        },
+        insert: (payload: unknown) => {
+          inserts.push(payload);
+          return {
+            select: () => ({
+              single: () =>
+                Promise.resolve({ data: { user_id: "minted" }, error: null }),
+            }),
+          };
+        },
+        single: () =>
+          Promise.resolve(
+            opts.row
+              ? { data: opts.row, error: null }
+              : { data: null, error: { message: "no rows" } },
+          ),
+      };
+      return chain;
+    });
+
+    const svc = new AuthService(
+      { sign: jest.fn(), verify: jest.fn(), decode: jest.fn() } as any,
+      { get: jest.fn().mockReturnValue(opts.defaultRestaurantId) } as any,
+      { supabase: { from } } as any,
+      { blacklistToken: jest.fn() } as any,
+      { sendEmail: jest.fn() } as any,
+    );
+    return { svc, inserts, from };
+  }
+
+  const params = {
+    provider: "google" as const,
+    providerId: "google-123",
+    email: "stranger@gmail.com",
+    name: "A Stranger",
+  };
+
+  it("refuses an unknown address even when DEFAULT_RESTAURANT_ID is set, and writes nothing", async () => {
+    const { svc, inserts } = makeOAuthService({
+      row: null,
+      defaultRestaurantId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+
+    await expect(svc.findOrCreateOAuthUser(params)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    // The account must not exist afterwards — this is the whole finding.
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("never mints a manager role into the default tenant", async () => {
+    const { svc, inserts } = makeOAuthService({
+      row: null,
+      defaultRestaurantId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+
+    await expect(svc.findOrCreateOAuthUser(params)).rejects.toThrow();
+    expect(JSON.stringify(inserts)).not.toContain("manager");
+  });
+
+  it("still resolves an existing account", async () => {
+    const { svc } = makeOAuthService({
+      row: { user_id: "u1", email: "known@gmail.com" },
+      defaultRestaurantId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+
+    await expect(
+      svc.findOrCreateOAuthUser({ ...params, email: "known@gmail.com" }),
+    ).resolves.toMatchObject({ user_id: "u1" });
+  });
+
+  it("normalises the address before lookup — a mixed-case claim still finds its row", async () => {
+    // users.email is UNIQUE and case-sensitive; the un-normalised lookup used
+    // to miss and fall through into the create branch.
+    const { svc, from } = makeOAuthService({
+      row: { user_id: "u1" },
+      defaultRestaurantId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+
+    await svc.findOrCreateOAuthUser({ ...params, email: "  Known@GMAIL.com " });
+
+    const chain = from.mock.results[0].value as any;
+    expect(chain._email).toBe("known@gmail.com");
+  });
+
+  it("the source carries no self-provisioning insert into users", () => {
+    const src = stripComments(
+      fs.readFileSync(path.join(__dirname, "auth.service.ts"), "utf8"),
+    );
+    const fn = src.slice(src.indexOf("async findOrCreateOAuthUser"));
+    const body = fn.slice(0, fn.indexOf("\n  async ", 1));
+    expect(body).not.toContain("DEFAULT_RESTAURANT_ID");
+    expect(body).not.toContain(".insert(");
+  });
+});
