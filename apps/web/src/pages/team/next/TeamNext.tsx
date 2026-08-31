@@ -131,7 +131,7 @@ function GapRow({
           padding: '4px 10px',
           borderRadius: 8,
           border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-          background: canAssign ? 'transparent' : 'var(--paper-2, #EAE4D8)',
+          background: canAssign ? undefined : 'var(--paper-2, #EAE4D8)',
           color: canAssign ? 'var(--seal-deep, #14515C)' : 'var(--ink-3, #7C7365)',
           cursor: canAssign && !assign.isPending ? 'pointer' : 'not-allowed',
         }}
@@ -200,7 +200,6 @@ function CertRow({ block }: { block: CertBlockVM }) {
             padding: '4px 10px',
             borderRadius: 8,
             border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-            background: 'transparent',
             color: 'var(--seal-deep, #14515C)',
             cursor: 'pointer',
           }}
@@ -278,7 +277,6 @@ export default function TeamNext() {
                 padding: '5px 12px',
                 borderRadius: 8,
                 border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-                background: 'transparent',
                 color: 'var(--seal-deep, #14515C)',
                 cursor: 'pointer',
               }}
@@ -336,7 +334,10 @@ export default function TeamNext() {
                 <span
                   style={{
                     fontFamily: MONO,
-                    fontSize: 26,
+                    // wave value: page-level figures sit at 22 across Mudavym
+                    // pages (so-format's Count, CommunicationsNext's glance
+                    // strip) — this was the one holdout at 26.
+                    fontSize: 22,
                     fontWeight: 600,
                     letterSpacing: '-0.02em',
                     fontVariantNumeric: 'tabular-nums',

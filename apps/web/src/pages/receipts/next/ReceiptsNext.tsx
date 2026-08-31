@@ -366,7 +366,6 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
             padding: '5px 12px',
             borderRadius: 8,
             border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-            background: 'transparent',
             color: doc.order_id ? 'var(--seal-deep, #14515C)' : 'var(--ink-3, #7C7365)',
             cursor: doc.order_id ? 'pointer' : 'not-allowed',
           }}
@@ -547,7 +546,7 @@ export default function ReceiptsNext() {
                       border: 'none',
                       borderBottom: '1px solid var(--paper-2, #EAE4D8)',
                       borderLeft: selectedId === d.id ? '3px solid var(--seal, #1A5E6B)' : '3px solid transparent',
-                      background: selectedId === d.id ? 'var(--paper-1, #F3EFE6)' : 'transparent',
+                      background: selectedId === d.id ? 'var(--paper-1, #F3EFE6)' : undefined,
                       cursor: 'pointer',
                       fontFamily: SANS,
                     }}
@@ -581,7 +580,6 @@ export default function ReceiptsNext() {
                     letterSpacing: '0.14em',
                     textTransform: 'uppercase',
                     color: 'var(--ink-3, #7C7365)',
-                    background: 'transparent',
                     border: 'none',
                     padding: '4px 0',
                     cursor: 'pointer',
@@ -603,7 +601,7 @@ export default function ReceiptsNext() {
                           border: 'none',
                           borderBottom: '1px solid var(--paper-2, #EAE4D8)',
                           borderLeft: selectedId === d.id ? '3px solid var(--seal, #1A5E6B)' : '3px solid transparent',
-                          background: selectedId === d.id ? 'var(--paper-1, #F3EFE6)' : 'transparent',
+                          background: selectedId === d.id ? 'var(--paper-1, #F3EFE6)' : undefined,
                           cursor: 'pointer',
                           fontFamily: SANS,
                         }}
