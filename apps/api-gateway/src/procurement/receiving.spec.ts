@@ -30,7 +30,11 @@ function makeDb(opts: {
         select: () => q,
         eq: () => q,
         in: () => q,
-        order: () => q,
+        order: (col: string, ordOpts: { ascending: boolean }) => {
+          q._orderCol = col;
+          q._ascending = ordOpts?.ascending ?? true;
+          return q;
+        },
         limit: () => q,
         maybeSingle: async () => {
           if (table === "procurement_orders")
@@ -61,12 +65,21 @@ function makeDb(opts: {
         },
         then: undefined,
       };
-      // Terminal awaits for list queries.
+      // Terminal awaits for list queries. Mirrors real Supabase: sort by the
+      // requested column/direction, then cap — so a test that supplies more
+      // rows than the cap actually exercises which end of the table survives.
       if (table === "procurement_receipt_events")
-        (q as any).limit = async () => ({
-          data: opts.events ?? [],
-          error: null,
-        });
+        (q as any).limit = async (n: number) => {
+          const rows = [...(opts.events ?? [])];
+          const dir = q._ascending === false ? -1 : 1;
+          rows.sort(
+            (a, b) =>
+              dir *
+              (new Date(a.occurred_at).getTime() -
+                new Date(b.occurred_at).getTime()),
+          );
+          return { data: rows.slice(0, n), error: null };
+        };
       if (table === "procurement_orders" && opts.orders)
         (q as any).in = async () => ({ data: opts.orders, error: null });
       return q;
@@ -393,5 +406,60 @@ describe("listUnverified", () => {
     });
 
     expect(await new ReceivingService(db).listUnverified("r1")).toHaveLength(0);
+  });
+
+  it("still surfaces a brand-new delivery once a restaurant has 500+ lifetime receipt events", async () => {
+    // 500 old, already-closed events padding out the table, plus one fresh
+    // unverified case count. The 500-row cap must keep the newest window —
+    // if it keeps the oldest 500 instead, the new delivery never appears.
+    const padding = Array.from({ length: 500 }, (_, i) => ({
+      order_id: `pad-${i}`,
+      stage: "reconciled",
+      counted_qty_bottles: 0,
+      occurred_at: hoursAgo(5000 - i),
+    }));
+    const { db } = makeDb({
+      events: [
+        ...padding,
+        {
+          order_id: "new-order",
+          stage: "case_count",
+          counted_qty_bottles: 18,
+          occurred_at: hoursAgo(1),
+        },
+      ],
+      orders: [
+        { id: "new-order", order_number: "PO-NEW", status: "PARTIALLY_RECEIVED" },
+      ],
+    });
+
+    const items = await new ReceivingService(db).listUnverified("r1");
+
+    expect(items.map((i) => i.orderId)).toEqual(["new-order"]);
+  });
+
+  it("keeps the latest case count when a delivery was recounted, regardless of fetch order", async () => {
+    const { db } = makeDb({
+      events: [
+        {
+          order_id: "o1",
+          stage: "case_count",
+          counted_qty_bottles: 99,
+          occurred_at: hoursAgo(50),
+        },
+        {
+          order_id: "o1",
+          stage: "case_count",
+          counted_qty_bottles: 10,
+          occurred_at: hoursAgo(1),
+        },
+      ],
+      orders: [{ id: "o1", order_number: "PO-1", status: "PARTIALLY_RECEIVED" }],
+    });
+
+    const items = await new ReceivingService(db).listUnverified("r1");
+
+    expect(items).toHaveLength(1);
+    expect(items[0].countedQtyBottles).toBe(10);
   });
 });
