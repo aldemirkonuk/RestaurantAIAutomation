@@ -139,6 +139,7 @@ describe("refileReport / getReportCrossFile (Sorting Office)", () => {
       updateFilters: [] as Filter[],
       audits: [] as Array<Record<string, unknown>>,
       paperTouched: false,
+      paperFilters: [] as Filter[],
       rpcArgs: [] as Array<Record<string, unknown>>,
     };
 
@@ -177,6 +178,8 @@ describe("refileReport / getReportCrossFile (Sorting Office)", () => {
         }),
         eq: jest.fn((column: string, value: unknown) => {
           if (op === "update") captured.updateFilters.push({ column, value });
+          if (table === "procurement_documents")
+            captured.paperFilters.push({ column, value });
           return builder;
         }),
         gte: jest.fn(() => builder),
@@ -252,7 +255,15 @@ describe("refileReport / getReportCrossFile (Sorting Office)", () => {
     expect(captured.rpcArgs[0]).toMatchObject({
       p_restaurant_id: "restaurant-1",
       p_date_from: "2026-03-01",
-      p_date_to: "2026-03-31",
+      // The RPC's timestamptz bound gets end-of-day, not midnight — a bare
+      // date would silently exclude nearly all of the period's last day.
+      p_date_to: "2026-03-31T23:59:59.999",
+    });
+    // The paper leg is tenant-scoped — dropping this .eq would be a
+    // cross-tenant count leak, and no other assertion would notice.
+    expect(captured.paperFilters).toContainEqual({
+      column: "restaurant_id",
+      value: "restaurant-1",
     });
   });
 
@@ -299,5 +310,12 @@ describe("ReportsController routing", () => {
     expect(methodOrder.indexOf("deleteSchedule")).toBeLessThan(
       methodOrder.indexOf("deleteReport"),
     );
+  });
+
+  it("registers the Sorting Office routes on paths :id cannot capture", () => {
+    // Two-segment paths are safe against the one-segment :id wildcard at any
+    // declaration order; this pins the paths themselves.
+    expect(pathOf("getReportCrossFile")).toBe(":id/cross-file");
+    expect(pathOf("refileReport")).toBe(":id");
   });
 });

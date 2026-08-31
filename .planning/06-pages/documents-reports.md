@@ -168,7 +168,21 @@ in-scope findings fixed same day:**
   /reports/:id/cross-file` computes the period's presence in the other
   registers (paper by `doc_date` count-exact; threads via the
   `list_conversation_threads` RPC's `total_threads`, date-bounded); both
-  covered by gateway specs (8/8) and page tests (27 on this page).
+  covered by gateway specs (9/9) and page tests (29 on this page).
+  A follow-up Sonnet audit of the extension found one defect, fixed same
+  day: the RPC's `timestamptz` end bound got a bare date — midnight — so the
+  period's last day of conversations was silently excluded while the paper
+  leg (a `date` column) included it; the bound is now end-of-day, with the
+  spec pinning it. Hardened per the same audit: the paper leg's tenant scope
+  is now asserted by a test; the footer links' routes are asserted; the
+  cross-file query is skipped entirely when the report itself names no
+  period; a synchronous ref backs the double-submit guard; reopening the
+  filing row clears a stale failure message; the crossQ error and filing
+  failure branches are tested. Verified clean by that audit: the dto can
+  never smuggle extra columns into the update (single-field DTO +
+  `forbidNonWhitelisted` + literal `{ report_type }` payload), route order,
+  audit-row NOT NULLs, and the timeline rendering `report_refiled` rows
+  unfiltered.
 - Accepted, recorded: the register grid's asymmetry (House reports carries
   the selector list); the door count's window cannot be detected client-side
   (upstream fix filed — see §9); the wave-wide dead-hover and

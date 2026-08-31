@@ -16,7 +16,7 @@
  * is said in words, branch-aware.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Wordmark } from '@/components/mudavym';
@@ -92,25 +92,35 @@ function ReadingPane({ report, onRefiled }: { report: GeneratedReport; onRefiled
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [filingOpen, setFilingOpen] = useState(false);
   const [filing, setFiling] = useState<'idle' | 'busy' | 'failed'>('idle');
+  const filingRef = useRef(false); // synchronous double-submit lock
   const { activeRestaurantId } = useAuth();
 
   // "Cross-filed under" — the other registers holding this report's period.
+  // The report prop already knows when there is no period; asking the server
+  // to say the same thing would be a wasted round trip.
+  const hasPeriod = Boolean(report.periodStart && report.periodEnd);
   const crossQ = useQuery({
     queryKey: ['sorting-office', 'cross-file', activeRestaurantId ?? '', report.id],
     queryFn: () => getReportCrossFile(report.id),
+    enabled: hasPeriod,
     staleTime: 60_000,
   });
 
   const refile = (t: ReportType) => {
-    if (t === report.reportType || filing === 'busy') return;
+    if (t === report.reportType || filingRef.current) return;
+    filingRef.current = true;
     setFiling('busy');
     refileReport(report.id, t).then(
       () => {
+        filingRef.current = false;
         setFiling('idle');
         setFilingOpen(false);
         onRefiled(); // the drawers re-read their own registers
       },
-      () => setFiling('failed'),
+      () => {
+        filingRef.current = false;
+        setFiling('failed');
+      },
     );
   };
 
@@ -171,7 +181,10 @@ function ReadingPane({ report, onRefiled }: { report: GeneratedReport; onRefiled
           <button
             type="button"
             className="so-ink"
-            onClick={() => setFilingOpen((o) => !o)}
+            onClick={() => {
+              setFilingOpen((o) => !o);
+              setFiling('idle'); // a past failure is not this session's state
+            }}
             aria-expanded={filingOpen}
             style={{
               fontSize: 11.5,
@@ -323,7 +336,9 @@ function ReadingPane({ report, onRefiled }: { report: GeneratedReport; onRefiled
           fontVariantNumeric: 'tabular-nums',
         }}
       >
-        {crossQ.isError ? (
+        {!hasPeriod ? (
+          <span>This report names no period — nothing is cross-filed.</span>
+        ) : crossQ.isError ? (
           <span>The cross-file could not be checked.</span>
         ) : crossQ.data === undefined ? (
           <span>{`Cross-filed under: ${EM}`}</span>

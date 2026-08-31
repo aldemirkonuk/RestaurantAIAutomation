@@ -393,8 +393,10 @@ describe('DocumentsReportsNext', () => {
     });
   });
 
-  it('cross-files a period report to its registers, counted and linked', async () => {
-    api.reports = [report('r1', { summary: 'A summary.' })];
+  it('cross-files a period report to its registers, counted and linked at the right routes', async () => {
+    api.reports = [
+      report('r1', { summary: 'A summary.', periodStart: '2026-03-01', periodEnd: '2026-03-31' }),
+    ];
     api.crossFile = {
       periodStart: '2026-03-01',
       periodEnd: '2026-03-31',
@@ -405,16 +407,52 @@ describe('DocumentsReportsNext', () => {
     await waitFor(() =>
       expect(screen.getByText('Vendor paper (12 documents · INV-88)')).toBeTruthy(),
     );
-    expect(screen.getByText('Conversations (2 threads)')).toBeTruthy();
+    // the links must land in the registers they name
+    expect(
+      screen.getByRole('link', { name: /Vendor paper \(12/ }).getAttribute('href'),
+    ).toBe('/receipts');
+    expect(
+      screen.getByRole('link', { name: /Conversations \(2 threads\)/ }).getAttribute('href'),
+    ).toBe('/communications');
   });
 
-  it('a report with no period says nothing is cross-filed — never invented links', async () => {
+  it('a report with no period says nothing is cross-filed — and asks no server', async () => {
     api.reports = [report('r1', { summary: 'A summary.' })];
+    api.crossFileReject = true; // if the query fired anyway, the error branch would show
     renderPage(['/documents-reports?doc=r1']);
     await waitFor(() =>
       expect(screen.getByText(/names no period — nothing is cross-filed/)).toBeTruthy(),
     );
     expect(screen.queryByText(/Vendor paper \(/)).toBeNull();
+    expect(screen.queryByText(/could not be checked/)).toBeNull();
+  });
+
+  it('a failed cross-file check is said, never rendered as empty registers', async () => {
+    api.reports = [
+      report('r1', { summary: 'A summary.', periodStart: '2026-03-01', periodEnd: '2026-03-31' }),
+    ];
+    api.crossFileReject = true;
+    renderPage(['/documents-reports?doc=r1']);
+    await waitFor(() =>
+      expect(screen.getByText('The cross-file could not be checked.')).toBeTruthy(),
+    );
+    expect(screen.queryByText(/Vendor paper \(/)).toBeNull();
+  });
+
+  it('a failed re-file is said on the filing row, and reopening clears it', async () => {
+    api.reports = [report('r1', { reportType: 'inventory_summary', summary: 'A summary.' })];
+    api.refileSpy = vi.fn(() => Promise.reject(new Error('refused')));
+    renderPage(['/documents-reports?doc=r1']);
+    await waitFor(() => expect(screen.getByText('File to…')).toBeTruthy());
+    fireEvent.click(screen.getByText('File to…'));
+    fireEvent.click(screen.getByText('sales analysis'));
+    await waitFor(() =>
+      expect(screen.getByText(/The re-file did not take/)).toBeTruthy(),
+    );
+    // closing and reopening is a new session — the old failure does not resurface
+    fireEvent.click(screen.getByText('File to…'));
+    fireEvent.click(screen.getByText('File to…'));
+    expect(screen.queryByText(/The re-file did not take/)).toBeNull();
   });
 
   it('File to… offers every type, marks the current one, and re-files on choice', async () => {

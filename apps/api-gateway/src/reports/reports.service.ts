@@ -231,7 +231,13 @@ export class ReportsService {
       this.databaseService.supabase.rpc("list_conversation_threads", {
         p_restaurant_id: restaurantId,
         p_date_from: report.periodStart,
-        p_date_to: report.periodEnd,
+        // The RPC's bound is timestamptz: a bare date casts to MIDNIGHT of
+        // the last day, silently excluding nearly all of it — while the paper
+        // query's `date` column includes it. Same reason resolveDateWindow's
+        // widen() extends "to" bounds (conversations.service.ts).
+        p_date_to: /^\d{4}-\d{2}-\d{2}$/.test(report.periodEnd)
+          ? `${report.periodEnd}T23:59:59.999`
+          : report.periodEnd,
         p_limit: 1,
         p_offset: 0,
       }),
