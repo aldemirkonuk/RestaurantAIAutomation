@@ -53,6 +53,18 @@ Deliberate non-motions: a recomputed tie-out swaps text, never animates
 (arithmetic has no continuity after a correction); the no-paperwork strip
 never pulses; verified documents leave the queue without an exit flourish.
 
+**2026-08-31 wave polish (Sorting Office two-Opus review):** the "Check line
+pairing" and "Verified" controls, plus the two row lists' selected-state
+buttons, carried an inline `background: 'transparent'` that permanently
+outranked `.rc-ink:hover`/`.rc-row:hover` (a style attribute beats a class
+selector regardless of specificity) — dead hovers on every rc-ink/rc-row
+control. Fixed by removing the inline value rather than adding `!important`;
+verified via a static cascade repro (before/after screenshots) since the
+route sits behind auth. `fmtDate` in `rc2-format.ts` also got the
+local-calendar-day parser backported from `documents-reports/next/so-format.ts`
+— `doc_date` is a Postgres `date` (no time, no zone), so the bare
+`new Date(iso)` it used rendered the prior day west of UTC.
+
 ### Design used, and why (ADR 0045 §5 wave · MAKEOVER-VERDICTS: KEEP+, the most demanding brief)
 
 The founder's four requirements, mapped to structure: (1) *compress
