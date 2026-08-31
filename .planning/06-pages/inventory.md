@@ -136,6 +136,11 @@ never renders. Shared layout chrome applies (see dashboard.md §7).
   running — against the *new* page".
 - Market-price columns render "—" until price enrichment exists
   (`v3.0-TECH-DEBT.md:436-441` — plumbing complete, data absent).
+- ReceiptDepth shows doc-level rows only: the per-item invoice LINE (this
+  wine's qty × price inside the document) needs an order-line join the web
+  API does not expose (`documentsApi.detail` has lines, but nothing maps an
+  inventory item → its order_line ids). Deliberately not faked with
+  description matching (§1b).
 
 ## 10. Maturity
 

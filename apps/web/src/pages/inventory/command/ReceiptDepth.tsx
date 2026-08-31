@@ -49,17 +49,21 @@ export function ReceiptDepth({
   orders: Array<{ id: string; orderNumber?: string | null }>
 }) {
   const navigate = useNavigate()
-  const orderIds = orders.map((o) => o.id)
+  const orderIds = orders.slice(0, 4).map((o) => o.id)
 
   const docsQ = useQuery({
     queryKey: ['inventory', 'receipt-depth', orderIds],
     queryFn: async () => {
-      const perOrder = await Promise.all(orderIds.slice(0, 4).map((id) => documentsApi.forOrder(id)))
+      const perOrder = await Promise.all(orderIds.map((id) => documentsApi.forOrder(id)))
       const numberOf = new Map(orders.map((o) => [o.id, o.orderNumber ?? null]))
-      return perOrder
-        .flat()
+      // One invoice routinely links to several orders (the gateway calls this
+      // routine, not an edge case) — de-dup by document id or it renders once
+      // per linked order (inventory-audit.md, BLOCKER).
+      const unique = Array.from(new Map(perOrder.flat().map((d) => [d.id, d])).values())
+      const when = (d: ProcurementDocument) => Date.parse(d.doc_date ?? d.created_at) || 0
+      return unique
         .filter((d) => d.status !== 'superseded')
-        .sort((a, b) => (b.doc_date ?? b.created_at).localeCompare(a.doc_date ?? a.created_at))
+        .sort((a, b) => when(b) - when(a))
         .map((d) => ({ doc: d, orderNumber: d.order_id ? (numberOf.get(d.order_id) ?? null) : null }))
     },
     enabled: orderIds.length > 0,
