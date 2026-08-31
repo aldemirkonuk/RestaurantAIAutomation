@@ -49,6 +49,8 @@ export interface CertBlockVM {
   memberId: string;
   /** Shifts this member holds in the visible week — the blast radius. */
   blockedShifts: number;
+  /** A renewal request over broadcast reaches only linked accounts. */
+  memberLinked: boolean;
 }
 
 function hoursOf(s: Shift): number {
@@ -169,6 +171,7 @@ export function useTeamNextData(now = new Date()) {
   const certBlocks: CertBlockVM[] = useMemo(() => {
     if (certsQ.data === undefined || membersQ.data === undefined || !weekQ.data) return [];
     const nameOf = new Map(members.map((m) => [m.id, m.display_name]));
+    const linkedOf = new Map(members.map((m) => [m.id, Boolean(m.accountLinked && m.user_id)]));
     const shiftCount = new Map<string, number>();
     for (const s of shifts) {
       if (!s.member_id) continue;
@@ -181,6 +184,7 @@ export function useTeamNextData(now = new Date()) {
         memberId: c.member_id,
         memberName: nameOf.get(c.member_id) ?? 'unknown member',
         blockedShifts: c.status === 'expired' ? (shiftCount.get(c.member_id) ?? 0) : 0,
+        memberLinked: linkedOf.get(c.member_id) ?? false,
       }))
       .sort((a, b) => b.blockedShifts - a.blockedShifts);
   }, [certsQ.data, membersQ.data, members, shifts, weekQ.data]);

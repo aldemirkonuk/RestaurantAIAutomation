@@ -141,6 +141,10 @@ export function SwipeToConfirm({ label, assertion, disabled = false, onConfirm }
           onPointerCancel={onPointerUp}
           onKeyDown={onKeyDown}
           onKeyUp={onKeyUp}
+          // A consent hold must not complete undeliberately: losing focus
+          // mid-hold (click away, Alt-Tab) cancels like a lifted key
+          // (opus-honesty BLOCKER 2 / receipts-audit D3).
+          onBlur={stopHold}
           style={{
             position: 'absolute',
             left: '50%',

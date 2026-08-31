@@ -129,7 +129,7 @@ applies (see dashboard.md §7).
 
 ## 9. Gaps
 
-- ReceiptsNext (flag ON) has no credits lane yet — the credit-claim ledger stays on the legacy tab until a later pass; flipping the flag must not orphan `/receipts?tab=credits` (§1b).
+- ReceiptsNext (flag ON) has no credits lane yet — `?tab=credits` renders the LEGACY page even with the flag on (guarded in `ReceiptsNext.tsx`), so `/credits` keeps working; a native credits lane is a later pass (§1b).
 
 - Line-match **suggestions** from `POST /procurement/documents/:id/match` have no UI
   on the LEGACY page — deferred by design (`v3.0-TECH-DEBT.md:447`). ReceiptsNext

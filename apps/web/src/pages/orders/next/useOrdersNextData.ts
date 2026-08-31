@@ -14,7 +14,7 @@ import { useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOrders } from '@/hooks/queries/useOrderQueries';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
-import { normalizeOrderStatus, type Order, type OrderStatus } from '@/services/api/types';
+import { type Order, type OrderStatus } from '@/services/api/types';
 import { num } from './format';
 
 export type Stage = 'pending' | 'approved' | 'ordered' | 'delivered';
@@ -57,18 +57,11 @@ function stageOf(status: OrderStatus): Stage | 'cancelled' {
  * but not these backend-only variants, which the legacy page mapped by hand
  * (useOrdersPage.ts mapApiStatusToUi). Same truth, kept here.
  */
-export function canonicalStatus(raw: string | undefined): OrderStatus {
-  switch ((raw ?? '').toUpperCase()) {
-    case 'APPROVAL_NEEDED':
-      return 'pending_approval';
-    case 'CONFIRMED':
-      return 'ordered';
-    case 'FAILED':
-      return 'cancelled';
-    default:
-      return normalizeOrderStatus(raw);
-  }
-}
+// Moved to the foundation (lib/mudavym/status.ts) so other pages depend on
+// lib/mudavym, never on this page; imported for local use and re-exported to
+// keep existing call sites stable.
+import { canonicalStatus } from '@/lib/mudavym/status';
+export { canonicalStatus };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (v: string | null | undefined): boolean => !!v && UUID_RE.test(v);

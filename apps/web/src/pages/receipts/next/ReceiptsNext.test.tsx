@@ -8,6 +8,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import type { ProcurementDocument } from '../../../services/api/documents';
 
@@ -89,7 +90,11 @@ const line = {
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  return (
+    <MemoryRouter>
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    </MemoryRouter>
+  );
 }
 
 beforeEach(() => {
@@ -126,7 +131,8 @@ describe('ReceiptsNext', () => {
     api.detail = { document: api.queue[0], lines: [line], links: [] };
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    expect(screen.getByLabelText('Quantity, line 1')).toBeDisabled();
+    // readOnly, not disabled — the figures stay reachable to assistive tech
+    expect(screen.getByLabelText('Quantity, line 1')).toHaveAttribute('readonly');
     expect(screen.getByText(/record a dispute leans on/)).toBeInTheDocument();
     // no ceremony on a verified document
     expect(screen.queryByText('Swipe up to confirm')).not.toBeInTheDocument();

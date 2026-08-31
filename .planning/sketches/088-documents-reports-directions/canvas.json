@@ -1,0 +1,11 @@
+{
+  "artboards": [
+    { "file": "DirectionA.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900, "title": "Direction A — The Filing Room" },
+    { "file": "Main.dc.html", "x": 1540, "y": 0, "w": 1440, "h": 900, "title": "Direction B — The Ledger Spine (leading)" },
+    { "file": "DirectionC.dc.html", "x": 3080, "y": 0, "w": 1440, "h": 900, "title": "Direction C — The Reading Desk" }
+  ],
+  "annotations": [
+    { "id": "brief", "x": 0, "y": -170, "w": 620, "text": "REWORK verdict, 2026-08-29: \"That definitely needs a re-do… it can be more modern, more transformative. Let's create three more sketches into this.\"\n\nThree directions, each with its axis and its honest tradeoff. B leads because 'transformative' was the ask — it unifies house reports and vendor paper on one dated spine. Pick by elimination; the chosen one becomes the build behind mudavym_design_documents_reports." }
+  ],
+  "launch": { "view": "canvas" }
+}

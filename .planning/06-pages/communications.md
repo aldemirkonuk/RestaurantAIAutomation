@@ -38,6 +38,10 @@ outbound-email audit trail, labelled by `outbound_email_type`).
 - **Procurement History** tab: audit trail of outbound procurement emails, labelled by type
 - Filter by channel: all / email / SMS
 
+### Redesign feature summary (behind the flag)
+
+- **Mudavym redesign behind `mudavym_design_communications` (OFF)**: four-figure glance strip (threads · drafts waiting · sent-30d · report schedules), the conversation book as a short-row ledger with prose inside the expansion, honest channel-state line (Gmail inbound watch queried, never asserted), template workshops behind a what's-going-on banner, scheduled-reports rail
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_communications`)
 
 Canonical source with curves: `apps/web/src/pages/communications/next/MOTIONS.md`
@@ -126,6 +130,13 @@ chrome per dashboard.md §7.
   DB CHECK constraint (memory: procurement-conversations-schema-gotchas).
 
 ## 9. Gaps
+
+- ReceiptsNext-style parity, deliberate: with the flag ON, three legacy
+  surfaces are not carried yet — the saved-templates lists (workshops open,
+  but the saved library isn't browsable), the classified-history tab's
+  filter controls, and the report-scheduler's create/delete forms (schedules
+  render read-only). Flip the flag back to operate them; carrying them over
+  is the flag-ON exit criterion (§1b).
 
 - **Scheduled report *sending* is feature-flagged off server-side** — "no mailer —
   scheduled send is feature-flagged" ([TIER-MAP](../03-scenarios/TIER-MAP.md):51, S15

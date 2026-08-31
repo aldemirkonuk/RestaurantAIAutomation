@@ -689,8 +689,14 @@ export class NotificationsService {
       }
 
       if (broadcast) {
-        this.websocketGateway.server
-          .to(`restaurant:${restaurantId}`)
+        // A targeted write must not fan its text to the whole restaurant over
+        // the socket either — DB rows and push were narrowed by onlyUserIds,
+        // and the live emit follows the same addressing (Opus correctness
+        // review, BLOCKER 2). Every client already joins its user:<id> room.
+        const emitTo = opts.onlyUserIds
+          ? this.websocketGateway.server.to(userIds.map((id) => `user:${id}`))
+          : this.websocketGateway.server.to(`restaurant:${restaurantId}`);
+        emitTo
           .emit("notification:new", {
             event: "NewNotification",
             data: {

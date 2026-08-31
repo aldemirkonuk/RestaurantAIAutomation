@@ -67,7 +67,14 @@ the grid never pays for the twin. Honesty rules carried from OrdersNext: an
 unreachable orders book renders open-order counts as em dashes with a line
 saying so — never zeros; a never-contacted vendor says "never contacted".
 Legacy page untouched; flag defaults OFF; per-browser override
-`mudavym.design.providers`.
+`mudavym.design.providers`. One ask deliberately substituted, disclosed: the
+verdict's example behavioural fact ("confirms in 6 hours", "ships Tuesdays")
+has no backing field on `interface Provider`, so the card carries
+`lastContactDate` instead — a real fact, not an invented behaviour; the
+learned behaviours stay in the sheet's intelligence panel. A second known
+coherence gap: that panel renders in the legacy grey/blue skin inside the
+İznik sheet — filed in §9 and v3.0-TECH-DEBT rather than hacked over with
+CSS overrides.
 
 ## 2. Entry
 Sidebar item (`components/layout/Sidebar.tsx:87`). `/distributors` redirects here with
@@ -115,6 +122,10 @@ none — no user-visible `WineOps` strings (grep of `Providers.tsx`: zero hits).
 - No feature flags
 
 ## 9. Gaps
+- TwinSheet's intelligence panel renders in the legacy grey/blue skin inside
+  the İznik sheet (`ProviderIntelligencePanel` is a shared legacy component) —
+  the founder's "set does not cohere" complaint, reproduced in miniature;
+  re-skin filed in v3.0-TECH-DEBT rather than patched with CSS overrides.
 - TIER-MAP S13 Pro: "discovery is catalogue-first, **comparison routes unreachable**" —
   this page never links to `/vendor-prices` (see [[vendor-prices]] §2).
 - `v3.0-TECH-DEBT.md:391-393` (44.15) claims no bulk select / column sorting on

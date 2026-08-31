@@ -122,6 +122,7 @@ function GapRow({
       </span>
       <button
         type="button"
+        className="tm-ctl"
         disabled={!canAssign || assign.isPending}
         onClick={() => assign.mutate()}
         style={{
@@ -175,13 +176,22 @@ function CertRow({ block }: { block: CertBlockVM }) {
         {block.cert.expires_at ? ` · ${fmtDayShort(block.cert.expires_at.slice(0, 10))}` : ''}
       </span>
       <span className="ml-auto" style={{ fontFamily: MONO, fontSize: 11, color: block.blockedShifts > 0 ? 'var(--ink-1, #211C16)' : 'var(--ink-3, #7C7365)' }}>
-        {block.blockedShifts > 0 ? `blocks ${block.blockedShifts} shift${block.blockedShifts === 1 ? '' : 's'}` : 'no shifts this week'}
+        {block.blockedShifts > 0
+          ? `blocks ${block.blockedShifts} shift${block.blockedShifts === 1 ? '' : 's'}`
+          : block.cert.status === 'expiring'
+            ? 'expires inside the window — blocks nothing yet'
+            : 'no shifts this week'}
       </span>
       {requested ? (
         <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--seal-deep, #14515C)' }}>requested</span>
+      ) : !block.memberLinked ? (
+        <span style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+          no linked account — a request would reach nobody
+        </span>
       ) : (
         <button
           type="button"
+          className="tm-ctl"
           disabled={renew.isPending}
           onClick={() => renew.mutate()}
           style={{
@@ -216,6 +226,12 @@ export default function TeamNext() {
       className="mudavym min-h-screen"
       style={{ background: 'var(--paper-0, #FAF7F1)', color: 'var(--ink-1, #211C16)' }}
     >
+      <style>{`
+        .tm-ctl { transition: background ${ink.ms}ms ${ink.easing}, border-color ${ink.ms}ms ${ink.easing} }
+        .tm-ctl:hover:not(:disabled) { background: var(--seal-tint, rgba(26,94,107,.10)) }
+        .tm-ctl:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: 2px }
+        @media (prefers-reduced-motion: reduce) { .tm-ctl, [data-tm-chip] { transition: none !important } }
+      `}</style>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
         <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -248,11 +264,13 @@ export default function TeamNext() {
             style={{ fontFamily: SANS, border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
           >
             <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-              The gateway could not be reached ({data.errorMessage}). The week is unknown — nothing
-              below is claimed.
+              {data.week
+                ? `The week could not be refreshed (${data.errorMessage}) — what is below is the last answer, not the present.`
+                : `The gateway could not be reached (${data.errorMessage}). The week is unknown — nothing below is claimed.`}
             </span>
             <button
               type="button"
+              className="tm-ctl"
               onClick={data.refetch}
               style={{
                 fontSize: 12,
@@ -404,6 +422,7 @@ export default function TeamNext() {
                         : '1px solid var(--paper-2, #EAE4D8)',
                     transition: `border-color ${ink.ms}ms ${ink.easing}`,
                   }}
+                  data-tm-chip
                 >
                   <span style={{ display: 'block', fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-3, #7C7365)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                     {fmtDayShort(d.date)}

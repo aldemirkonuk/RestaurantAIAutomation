@@ -20,7 +20,8 @@
  * tuck on early release); row settle for the doc open; ink micro-states.
  */
 
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Wordmark } from '@/components/mudavym';
 import {
@@ -33,6 +34,13 @@ import { ink, settle } from '../../../lib/mudavym/motion';
 import { EM, MONO, SANS, SERIF, fmtDate, fmtMoney, parseCell } from './rc2-format';
 import { SwipeToConfirm } from './SwipeToConfirm';
 import { useReceiptsNextData } from './useReceiptsNextData';
+
+// The credit ledger has no Next lane yet; /credits lands here as
+// ?tab=credits and must keep working with the flag ON (opus-correctness
+// DEFECT 5) — that tab renders the legacy page until a credits lane exists.
+const LegacyReceiptsPage = lazy(() =>
+  import('../../ReceiptsPage').then((m) => ({ default: m.ReceiptsPage })),
+);
 
 const TYPE_LABELS: Record<string, string> = {
   invoice: 'Invoice',
@@ -64,16 +72,24 @@ function TieOutLine({ doc }: { doc: ProcurementDocument }) {
   );
 }
 
-/** One editable money/number cell. Commits on blur or Enter; Escape reverts. */
+/**
+ * One editable money/number cell. Commits on blur or Enter; Escape reverts.
+ * A non-nullable cell (qty) treats an emptied input as INVALID — silently
+ * showing the unknown dash over a value the record still holds was the exact
+ * false-unknown opus-honesty BLOCKER 1 describes. Locked cells are readOnly,
+ * not disabled, so assistive tech can still reach the figures.
+ */
 function EditCell({
   value,
   ariaLabel,
-  disabled,
+  locked,
+  nullable = true,
   onCommit,
 }: {
   value: number | null;
   ariaLabel: string;
-  disabled: boolean;
+  locked: boolean;
+  nullable?: boolean;
   onCommit: (next: number | null) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
@@ -87,7 +103,7 @@ function EditCell({
   const commit = () => {
     if (draft === null) return;
     const parsed = parseCell(draft);
-    if (parsed === 'invalid') {
+    if (parsed === 'invalid' || (parsed === null && !nullable)) {
       setBad(true);
       return;
     }
@@ -101,7 +117,8 @@ function EditCell({
       aria-invalid={bad || undefined}
       value={shown}
       placeholder={EM}
-      disabled={disabled}
+      readOnly={locked}
+      aria-readonly={locked || undefined}
       onChange={(e) => {
         setBad(false);
         setDraft(e.target.value);
@@ -124,7 +141,7 @@ function EditCell({
         border: bad
           ? '1px solid var(--ink-1, #211C16)'
           : '1px solid var(--paper-2, #EAE4D8)',
-        background: disabled ? 'transparent' : 'var(--paper-0, #FAF7F1)',
+        background: locked ? 'transparent' : 'var(--paper-0, #FAF7F1)',
         color: 'var(--ink-1, #211C16)',
       }}
     />
@@ -295,7 +312,8 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                     <EditCell
                       value={l.qty}
                       ariaLabel={`Quantity, line ${l.line_no}`}
-                      disabled={!editable}
+                      locked={!editable}
+                      nullable={false}
                       onCommit={(v) => v !== null && edit.mutate({ lineId: l.id, patch: { qty: v } })}
                     />
                   </td>
@@ -303,7 +321,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                     <EditCell
                       value={l.unit_price}
                       ariaLabel={`Unit price, line ${l.line_no}`}
-                      disabled={!editable}
+                      locked={!editable}
                       onCommit={(v) => edit.mutate({ lineId: l.id, patch: { unitPrice: v } })}
                     />
                   </td>
@@ -311,7 +329,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                     <EditCell
                       value={l.line_total}
                       ariaLabel={`Line total, line ${l.line_no}`}
-                      disabled={!editable}
+                      locked={!editable}
                       onCommit={(v) => edit.mutate({ lineId: l.id, patch: { lineTotal: v } })}
                     />
                   </td>
@@ -419,8 +437,21 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
 
 export default function ReceiptsNext() {
   const data = useReceiptsNextData();
+  const [searchParams] = useSearchParams();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selected = data.queue.find((d) => d.id === selectedId) ?? null;
+  const [showVerified, setShowVerified] = useState(false);
+  const selected =
+    data.queue.find((d) => d.id === selectedId) ??
+    data.verified.find((d) => d.id === selectedId) ??
+    null;
+
+  if (searchParams.get('tab') === 'credits') {
+    return (
+      <Suspense fallback={null}>
+        <LegacyReceiptsPage />
+      </Suspense>
+    );
+  }
 
   return (
     <div
@@ -429,7 +460,9 @@ export default function ReceiptsNext() {
     >
       <style>{`
         @keyframes rc-settle { from { transform: translateY(-4px); opacity: 0 } to { transform: none; opacity: 1 } }
-        .rc-row { transition: background ${ink.ms}ms ${ink.easing} }
+        .rc-row, .rc-ink { transition: background ${ink.ms}ms ${ink.easing}, border-color ${ink.ms}ms ${ink.easing} }
+        .rc-ink:hover:not(:disabled) { background: var(--seal-tint, rgba(26,94,107,.10)) }
+        .rc-ink:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: 2px }
         .rc-row:hover { background: var(--paper-1, #F3EFE6) }
         .rc-row:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: -2px }
         @media (prefers-reduced-motion: reduce) { .rc-row, [style*="rc-settle"] { animation: none !important; transition: none !important } }
@@ -456,8 +489,9 @@ export default function ReceiptsNext() {
             style={{ fontFamily: SANS, border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
           >
             <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-              The gateway could not be reached ({data.errorMessage}). The paper trail is unknown —
-              nothing below is claimed.
+              {data.queueKnown
+                ? `The paper trail could not be refreshed (${data.errorMessage}) — what is below is the last answer, not the present.`
+                : `The gateway could not be reached (${data.errorMessage}). The paper trail is unknown — nothing below is claimed.`}
             </span>
             <button
               type="button"
@@ -527,6 +561,60 @@ export default function ReceiptsNext() {
                     </span>
                   </button>
                 ))}
+              </div>
+            )}
+
+            {/* the verified lane — the record, one click away, read-only
+                (opus-fidelity R-1: "everything from all of the orders" must
+                not shrink the verified book to a header integer) */}
+            {data.verifiedKnown && data.verified.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowVerified((v) => !v)}
+                  aria-expanded={showVerified}
+                  className="rc-ink"
+                  style={{
+                    fontFamily: MONO,
+                    fontSize: 9.5,
+                    fontWeight: 600,
+                    letterSpacing: '0.14em',
+                    textTransform: 'uppercase',
+                    color: 'var(--ink-3, #7C7365)',
+                    background: 'transparent',
+                    border: 'none',
+                    padding: '4px 0',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Verified · {data.verifiedCapped ? '≥' : ''}{data.verified.length} {showVerified ? '▾' : '▸'}
+                </button>
+                {showVerified && (
+                  <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+                    {data.verified.map((d) => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => setSelectedId(d.id)}
+                        aria-pressed={selectedId === d.id}
+                        className="rc-row block w-full text-left"
+                        style={{
+                          padding: '7px 8px',
+                          border: 'none',
+                          borderBottom: '1px solid var(--paper-2, #EAE4D8)',
+                          borderLeft: selectedId === d.id ? '3px solid var(--seal, #1A5E6B)' : '3px solid transparent',
+                          background: selectedId === d.id ? 'var(--paper-1, #F3EFE6)' : 'transparent',
+                          cursor: 'pointer',
+                          fontFamily: SANS,
+                        }}
+                      >
+                        <span style={{ display: 'block', fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
+                          {TYPE_LABELS[d.doc_type] ?? d.doc_type} · {d.doc_number || EM} · {fmtDate(d.doc_date)} · {fmtMoney(d.total)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </section>

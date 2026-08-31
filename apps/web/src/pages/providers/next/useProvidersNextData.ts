@@ -18,7 +18,7 @@ import { useProviders } from '../../../hooks/queries/useProviderQueries';
 import { useOrders } from '../../../hooks/queries/useOrderQueries';
 import { useAuth } from '../../../contexts/AuthContext';
 import type { Provider } from '../../../services/api/providers';
-import { canonicalStatus } from '../../orders/next/useOrdersNextData';
+import { canonicalStatus } from '../../../lib/mudavym/status';
 import { num } from './pv-format';
 
 export interface ProviderCardVM {

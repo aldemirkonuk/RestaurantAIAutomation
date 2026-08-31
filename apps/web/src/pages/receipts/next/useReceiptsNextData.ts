@@ -38,6 +38,8 @@ export function useReceiptsNextData() {
   return {
     queue: queueQ.data ?? [],
     queueKnown: queueQ.data !== undefined,
+    verified: verifiedQ.data ?? [],
+    verifiedKnown: verifiedQ.data !== undefined,
     verifiedCount: verifiedQ.data === undefined ? null : verifiedQ.data.length,
     verifiedCapped: (verifiedQ.data?.length ?? 0) >= 100,
     deliveriesWithoutPaper: unverifiedQ.data?.items ?? [],

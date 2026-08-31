@@ -247,8 +247,9 @@ export default function CommunicationsNext() {
             }}
           >
             <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-              The gateway could not be reached ({data.errorMessage}). The book is unknown — every
-              figure above is {EM}, never zero.
+              {data.hasData
+                ? `The conversation book could not be refreshed (${data.errorMessage}) — its rows and figures show the last answer, not the present. Figures from other sources keep their own state.`
+                : `The conversation book could not be reached (${data.errorMessage}) — its figures show ${EM}; the other figures come from their own sources and keep their own state.`}
             </span>
             <button
               type="button"
@@ -309,8 +310,13 @@ export default function CommunicationsNext() {
                 Channels & templates
               </h2>
               <p style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '0 0 10px' }}>
-                Outbound mail rides the connected Gmail integration; SMS templates are staged for
-                the messaging channel. Connections are managed in Settings.
+                {data.gmailWatchConfigured === null
+                  ? `Gmail inbound watch: ${EM} — the gateway hasn't answered yet.`
+                  : data.gmailWatchConfigured
+                    ? 'Gmail inbound watch: configured — vendor replies reach this page.'
+                    : 'Gmail inbound watch: NOT configured — vendor replies will not arrive until it is.'}
+                {' '}SMS templates stage for the messaging channel; its connection state is not
+                reported here.
               </p>
               <div className="flex flex-col gap-2">
                 <button type="button" onClick={() => setSheet('gmail')} className="cm-row rounded-lg px-3 py-2 text-left"

@@ -32,6 +32,14 @@ pinned task (not a popup), menu-scan intake, and per-branch views.
 
 ## 1a. Features
 - 9-column live stock table; expand a row for detail: live vs shadow stock, par/reorder bar, velocity, busy-hours heatmap, order history, manual entry (🚧 market-price columns render "—" until price enrichment exists)
+- Attention rail surfacing low stock first
+- Spot counts with an offline-safe outbox (counts queue and sync when back online)
+- Receiving verification as a pinned task, not a popup — verify a delivery against its documents
+- Cellar map view of storage zones
+- Scan a menu/wine list photo to add wines
+- Add and remove wines; manage storage locations
+- Switch branches and see another branch's stock
+- Contextual insights rail (analytics engine)
 - **Receipts & invoices depth in the dropdown, behind `mudavym_design_inventory` (OFF)** — the founder's named gap (MAKEOVER: KEEP the dropdowns, deepen receipt/invoice actions): for the wine's recent orders, every attached invoice / delivery receipt / packing slip with total, tie-out state and review status, E49-honest (null tie-out = dash, never a pass), linking into `/receipts`
 
 ## 1b. Motions used — Mudavym addition (flag `mudavym_design_inventory`)
@@ -53,14 +61,6 @@ tie-out and review status. Known limitation, recorded: rows are doc-level;
 the per-item invoice LINE (this wine's qty × price inside the document) needs
 an order-line join the web API does not expose yet — filed in §9 rather than
 faked with description matching. Flag off = byte-identical page.
-- Attention rail surfacing low stock first
-- Spot counts with an offline-safe outbox (counts queue and sync when back online)
-- Receiving verification as a pinned task, not a popup — verify a delivery against its documents
-- Cellar map view of storage zones
-- Scan a menu/wine list photo to add wines
-- Add and remove wines; manage storage locations
-- Switch branches and see another branch's stock
-- Contextual insights rail (analytics engine)
 
 ## 2. Entry
 

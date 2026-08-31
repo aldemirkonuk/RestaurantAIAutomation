@@ -111,7 +111,7 @@ export default function ProvidersNext() {
       <style>{`
         .pv-card:hover { border-color: var(--seal-ring, rgba(26,94,107,.32)); background: var(--paper-0, #FAF7F1) }
         .pv-card:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: 2px }
-        @media (prefers-reduced-motion: reduce) { .pv-card { transition: none } }
+        @media (prefers-reduced-motion: reduce) { .pv-card { transition: none !important } }
       `}</style>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
         <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
@@ -148,8 +148,9 @@ export default function ProvidersNext() {
             }}
           >
             <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-              The gateway could not be reached ({data.errorMessage}). The vendor book is unknown —
-              nothing below is claimed.
+              {data.hasData
+                ? `The vendor book could not be refreshed (${data.errorMessage}) — the cards show the last answer, not the present.`
+                : `The gateway could not be reached (${data.errorMessage}). The vendor book is unknown — nothing below is claimed.`}
             </span>
             <button
               type="button"

@@ -755,6 +755,20 @@ export class DocumentIntakeService {
     if (beforeErr) throw new Error(beforeErr.message);
     if (!before) throw new Error("NOT_FOUND");
 
+    // qty_bottles is derived (qty × pack size) and the matcher quotes it — a
+    // qty or pack-size correction must carry it along unless the caller set
+    // it explicitly (Opus correctness review, DEFECT 4).
+    if (
+      patch.qtyBottles === undefined &&
+      (update.qty !== undefined || update.pack_size !== undefined)
+    ) {
+      const beforeRow = before as Record<string, unknown>;
+      const effQty = (update.qty ?? beforeRow.qty) as number | null;
+      const effPack = (update.pack_size ?? beforeRow.pack_size) as number | null;
+      if (finite(effQty) && finite(effPack))
+        update.qty_bottles = effQty * effPack;
+    }
+
     const { data: line, error: lineErr } = await client
       .from("procurement_document_lines")
       .update(update)
@@ -782,7 +796,14 @@ export class DocumentIntakeService {
       statusNow.status !== "needs_review" &&
       statusNow.status !== "received"
     ) {
-      const { id: _id, ...restore } = before as Record<string, unknown>;
+      // Restore ONLY the columns this edit touched — a whole-row snapshot
+      // write-back would silently revert a concurrent edit's already-200'd
+      // correction, and rewriting order_line_id without its match_confidence/
+      // match_method companions strands a pairing (Opus correctness review,
+      // DEFECT 3).
+      const beforeRow = before as Record<string, unknown>;
+      const restore: Record<string, unknown> = {};
+      for (const col of Object.keys(update)) restore[col] = beforeRow[col];
       await client
         .from("procurement_document_lines")
         .update(restore)

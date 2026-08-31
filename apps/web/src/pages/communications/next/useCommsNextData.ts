@@ -17,6 +17,7 @@ import {
   type ProcurementHistoryItem,
 } from '../../../hooks/queries/useConversationQueries';
 import { useActiveConversations } from '../../../hooks/queries/useDraftEmailQueries';
+import { apiClient } from '../../../services/api/client';
 import { listReportSchedules, type ScheduledReport } from '../../../services/api/reports';
 import { sendState } from './cm-format';
 
@@ -42,6 +43,17 @@ export function useCommsNextData() {
     queryKey: ['report-schedules'],
     queryFn: listReportSchedules,
     staleTime: 60_000,
+  });
+  // The rail's integration line must report REAL state, not assert a
+  // connection nothing checked (opus-fidelity C-1). The gateway's Gmail
+  // watch status is the honest source for the inbound mail channel.
+  const gmailQ = useQuery<{ configured: boolean }>({
+    queryKey: ['comms-gmail-watch-status'],
+    queryFn: async () => {
+      const { data } = await apiClient.get('/communications/webhooks/gmail/status');
+      return data;
+    },
+    staleTime: 5 * 60_000,
   });
 
   const rows: ProcurementHistoryItem[] = useMemo(() => {
@@ -76,6 +88,8 @@ export function useCommsNextData() {
   return {
     rows,
     glance,
+    /** null = unanswered; boolean = the gateway's own word. */
+    gmailWatchConfigured: gmailQ.data === undefined ? null : gmailQ.data.configured,
     schedules: schedulesQ.data ?? [],
     schedulesKnown: schedulesQ.data !== undefined,
     hasData: historyQ.data !== undefined,
