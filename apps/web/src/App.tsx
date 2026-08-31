@@ -83,6 +83,7 @@ const ProvidersNext = lazyWithRefresh(() => import('./pages/providers/next/Provi
 const CommunicationsNext = lazyWithRefresh(() => import('./pages/communications/next/CommunicationsNext'))
 const TeamNext = lazyWithRefresh(() => import('./pages/team/next/TeamNext'))
 const ReceiptsNext = lazyWithRefresh(() => import('./pages/receipts/next/ReceiptsNext'))
+const DocumentsReportsNext = lazyWithRefresh(() => import('./pages/documents-reports/next/DocumentsReportsNext'))
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
 const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
@@ -308,7 +309,7 @@ function App() {
                       actually fire — was ported onto `/calendar` first. */}
                   <Route path="/calendar-classic" element={<Navigate to="/calendar" replace />} />
                   <Route path="/communications" element={<PageGate page="communications" legacy={<Communications />} next={<CommunicationsNext />} />} />
-                  <Route path="/documents-reports" element={<DocumentsPage />} />
+                  <Route path="/documents-reports" element={<PageGate page="documents_reports" legacy={<DocumentsPage />} next={<DocumentsReportsNext />} />} />
                   <Route path="/receipts" element={<PageGate page="receipts" legacy={<ReceiptsPage />} next={<ReceiptsNext />} />} />
                   <Route path="/credits" element={<Navigate to="/receipts?tab=credits" replace />} />
                   <Route path="/logs" element={<LogsTimelinePage />} />

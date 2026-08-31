@@ -13,6 +13,10 @@
 -- 'restaurant_settings' row, NOT NULL DEFAULT false — OFF is the founder-
 -- reviewed default for every page (ADR 0044 §2), and a restaurant gets a
 -- redesigned page only by deliberately opting in.
+--
+-- 2026-08-31, same wave, pre-merge: a tenth column joins the same statement —
+-- mudavym_design_documents_reports, the Sorting Office (Direction D). The
+-- migration has not left this branch, so widening it in place is safe.
 
 ALTER TABLE public.restaurant_feature_flags
   ADD COLUMN IF NOT EXISTS mudavym_design_dashboard boolean NOT NULL DEFAULT false,
@@ -23,7 +27,8 @@ ALTER TABLE public.restaurant_feature_flags
   ADD COLUMN IF NOT EXISTS mudavym_design_communications boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS mudavym_design_team boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS mudavym_design_inventory boolean NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS mudavym_design_receipts boolean NOT NULL DEFAULT false;
+  ADD COLUMN IF NOT EXISTS mudavym_design_receipts boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS mudavym_design_documents_reports boolean NOT NULL DEFAULT false;
 
 COMMENT ON COLUMN public.restaurant_feature_flags.mudavym_design_dashboard IS
   'On the ''restaurant_settings'' row only. TRUE renders the Mudavym redesign of / for this restaurant (ADR 0044); FALSE (default) renders the legacy page.';
@@ -43,3 +48,5 @@ COMMENT ON COLUMN public.restaurant_feature_flags.mudavym_design_inventory IS
   'On the ''restaurant_settings'' row only. NOT a page swap: gates the ReceiptDepth card inside the kept /inventory dropdown (ADR 0045 §5).';
 COMMENT ON COLUMN public.restaurant_feature_flags.mudavym_design_receipts IS
   'On the ''restaurant_settings'' row only. Mudavym redesign of /receipts (ADR 0045 §5).';
+COMMENT ON COLUMN public.restaurant_feature_flags.mudavym_design_documents_reports IS
+  'On the ''restaurant_settings'' row only. Mudavym redesign of /documents-reports — Direction D, the Sorting Office (ADR 0045 §5, founder-chosen 2026-08-31).';

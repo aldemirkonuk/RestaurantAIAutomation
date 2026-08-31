@@ -38,7 +38,14 @@ vendor conversation list shared with `/communications`.
 - **History** tab: classified vendor conversation list (same component as `/communications`)
 - Share links (`?doc=`) open the page with that document selected
 
-## 1b. Redesign state — three sketches delivered, build gated on elimination
+Behind `mudavym_design_documents_reports` (OFF — the Sorting Office, §1b):
+- **Waiting on you** drawer: vendor paper needing review + AI drafts awaiting approval + door-counted deliveries with no paperwork, one queue, oldest debt first (never by arrival); opens only when every register behind it has answered
+- **Four countable registers**: House reports (inline list → reading pane) · Vendor paper (→ `/receipts`) · Conversations (→ `/communications`) · System log (→ `/logs`); a filled window renders its count as a floor (`≥`), never a total
+- **Filed itself today**: the routine noise roll — today's timeline entries counted by source, filed, never deleted, never in the way
+- **Reading pane** (Direction C, kept): serif title, metadata line, paragraph summary at reading width; copy-share-link; OD-81 file truth (no file → says so, disabled, with the reason)
+- `?doc=` share links preselect in the pane, same as legacy
+
+## 1b. Redesign state — Direction D chosen, built 2026-08-31
 
 The REWORK verdict (MAKEOVER-VERDICTS: *"more modern, more transformative…
 let's create three more sketches into this"*) is answered with a design
@@ -65,9 +72,41 @@ named and countable, both keep C's clean reading as the detail surface:
 | D — The Sorting Office | categorization-first: everything sorts into named, countable drawers on arrival ("Waiting on you" · House reports · Vendor paper · Conversations · System log); noise files itself and stays countable, never deleted; windowed lists | the drawers are only as good as the sorter's rules |
 | E — The Signal Press | compression-first: each day's chaos pressed into a few trusted signals read in C's calm, beside the full windowed feed with category chips; quiet days say so in one line | the press must earn trust before anyone stops reading the feed |
 
-**No build until the founder eliminates** — the chosen direction becomes
-`mudavym_design_documents_reports` behind the standard PageGate, with its §1b
-Motions table written then.
+**Resolved 2026-08-31 — the founder chose Direction D** (*"go with direction
+D, start building it"*), with C's clean reading kept inside it as the detail
+surface — his round-1 praise for C, delivered scalably. Built the same day on
+`feat/mudavym-design-p3` behind `mudavym_design_documents_reports` (OFF;
+standard PageGate — legacy `DocumentsPage` renders until a restaurant opts in).
+
+**Build** (`apps/web/src/pages/documents-reports/next/`):
+- `useSortingOfficeData.ts` — six registers, each answering for itself:
+  gateway reports (OD-45 path), procurement documents (window 100),
+  conversation threads + live drafts (the DraftRail's own source, the
+  communications audit's fix carried), unverified door counts, `/logs`
+  timeline (window 100). The waiting queue is `null` until paper + drafts +
+  unverified have ALL answered — a half-known queue would misstate the debt
+  order.
+- `DocumentsReportsNext.tsx` — drawers left, reading pane right; branch-aware
+  error banner ("last answer" vs "nothing below is claimed"); floor
+  disclosure caption.
+- `so-format.ts` (EM/fonts/fmtDate) · `MOTIONS.md` (canonical) ·
+  `DocumentsReportsNext.test.tsx` (10 contracts: drawer-null-until-answered,
+  oldest-debt ordering, `≥` floors, OD-81 wording, `?doc=` preselect, empty
+  honesty, branch-aware banner).
+
+**Motions** (tokens from `lib/mudavym/motion.ts`; canonical table in
+`next/MOTIONS.md`):
+
+| id | token | curve · ms | fires |
+|---|---|---|---|
+| `so-settle` | `settle` | HOUSE · 320ms | the reading pane settling open per chosen report |
+| `so-ink` | `ink` | HOUSE · 160ms | drawer rows and controls on hover/focus — background/border only |
+
+Deliberate non-motions, load-bearing at this page's volume: counts never
+tally (a register's number is a read fact, not a performance); the noise
+roll never pulses (routine is the opposite of an alarm); the waiting drawer's
+open swaps content with no entrance. Reduced motion kills both motions with
+`!important`.
 
 ## 2. Entry
 
@@ -81,21 +120,28 @@ Motions table written then.
 
 ## 3. Files
 
-- Route binding: `apps/web/src/App.tsx:280` (lazy import :96).
-- `apps/web/src/pages/DocumentsPage.tsx` (962 lines).
-- Shared render: `components/communications/ClassifiedConversationList.tsx`
+- Route binding: `apps/web/src/App.tsx` `/documents-reports` — now a
+  `PageGate page="documents_reports"` (legacy `DocumentsPage`, next
+  `DocumentsReportsNext`).
+- `apps/web/src/pages/DocumentsPage.tsx` (962 lines) — legacy, still the
+  default render.
+- `apps/web/src/pages/documents-reports/next/` — the Sorting Office (§1b).
+- Shared render (legacy): `components/communications/ClassifiedConversationList.tsx`
   (mounted :452).
 
 ## 4. Endpoints
 
-Atlas row for conversations: [ENDPOINTS](../foundation/ENDPOINTS.md):180. The report
-archive itself does **not** go through the api-gateway:
+Atlas row for conversations: [ENDPOINTS](../foundation/ENDPOINTS.md):180. The
+report archive went through the gateway when OD-45 landed (the old
+browser-direct Supabase path hit RLS-on-with-zero-policies and silently
+rendered an empty archive — the rationale is written at the top of
+`useReportQueries.ts`):
 
 | Source | Operation | Call site |
 |---|---|---|
-| Supabase direct | `generated_reports` select (per restaurant, newest first) | `hooks/queries/useReportQueries.ts:26` (used DocumentsPage.tsx:103) |
-| Supabase direct | `generated_reports` delete | `useReportQueries.ts:37` (DocumentsPage.tsx:104) |
+| Gateway | `generated_reports` list/delete (restaurant from JWT) | `hooks/queries/useReportQueries.ts` → `services/api/reports.ts` |
 | Gateway | `/conversations/threads` + `/thread/:id` + `/stats/overview`, POST `/:id/summarize` | ClassifiedConversationList → `hooks/queries/useConversationQueries.ts:194-240` |
+| Gateway (next only) | procurement documents list · active conversations · unverified door counts · `GET /logs/timeline/:restaurantId` | `documents-reports/next/useSortingOfficeData.ts` |
 
 Realtime: `useReportSubscription` pushes `generated` report events into the list
 (`DocumentsPage.tsx:31,125`).
@@ -119,16 +165,21 @@ dashboard.md §7.
 
 ## 8. State & config
 
-- Browser talks to Supabase directly for this table (`lib/supabase` client,
-  `useReportQueries.ts:3`) — RLS posture matters here more than gateway guards;
-  per-tenant RLS on authed clients is a decided deferral (`v3.0-TECH-DEBT.md:450`).
-- `?doc=:id` deep-link param produced (:318); no flags or env gates.
+- Report reads/deletes go through the gateway since OD-45 (§4) — the old
+  browser-direct claim here is superseded; per-tenant RLS on authed clients
+  remains a decided deferral (`v3.0-TECH-DEBT.md:450`).
+- `?doc=:id` deep-link param produced (:318) and honoured by both renders.
+- `mudavym_design_documents_reports` (registry entry, OFF; column on the
+  `restaurant_settings` row via `20260831090000_mudavym_design_flags.sql`).
 
 ## 9. Gaps
 
 - The two tabs duplicate `/communications` content (ClassifiedConversationList is
   mounted on both) — one of the split/merge candidates the retire-to-write rule
-  exists for (CLAUDE.md §4); no decision recorded either way.
+  exists for (CLAUDE.md §4); no decision recorded either way. The Sorting
+  Office answers it differently for the next render: conversations become a
+  countable drawer that points at `/communications`, no duplicated list — the
+  legacy duplication remains until the flag flips and the tab dies with it.
 - Direct-Supabase delete with deferred RLS (§8) means authorization for report
   deletion rests on the anon-key policy set — worth a verification pass, not
   asserted broken (no debt-register entry).
