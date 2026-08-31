@@ -1,6 +1,6 @@
 # 0047 — The mark is the trued A+M interlock; the Rivet M is withdrawn the same day
 
-- **Status:** Locked (mark identity) · rollout gated — **live on dev.mudavym.com (`b65f14a0`), main deliberately held** until the founder's eyeball
+- **Status:** Locked (mark identity) · rollout gated — **main deliberately held** until the founder's eyeball. Domain correction, 2026-08-31: when PR #163 merged, `dev.mudavym.com` became the alias of MAIN's production deployment, so it now shows the (withdrawn) Rivet M and no longer previews this branch. The A+M preview lives on the brand branch's own deployment; Vercel also silently skipped `b65f14a0`'s build (retriggered by empty commit `1789b4e6`, now READY and verified serving the interlock). The founder's eyeball gate therefore runs on the branch deployment link — or on a domain re-pin, which is the founder's own Vercel setting to change
 - **Date:** 2026-08-30
 - **Decider:** Aldemir (founder), 2026-08-30 — "the rivet m wasn't the one I wanted, here is what I wanted", plus three AskUserQuestion answers recorded below
 - **Keywords:** logo, A+M interlock, letterpress, print trued, Rivet M withdrawn, OD-111, warm wave, dev-first
@@ -74,4 +74,5 @@ genre is letterpress printers' monograms — crowded but unowned.
 |---|---|---|
 | 2026-08-30 | Aldemir (founder) | Rivet M withdrawn ("wasn't the one I wanted"); canvas pasted with the trued A+M interlock |
 | 2026-08-30 | Aldemir (founder) | Three-way answered: A+M interlock is the mark · dev first, main held · locked 0042 values (sheet's palette drift not adopted) |
-| 2026-08-30 | — | Swap implemented on `feat/mudavym-brand` `b65f14a0`: BrandMark, favicon, icon-192/512, maskable logo, badge; tsc clean, 423/423 tests, build passes; pushed → dev.mudavym.com |
+| 2026-08-30 | — | Swap implemented on `feat/mudavym-brand` `b65f14a0`: BrandMark, favicon, icon-192/512, maskable logo, badge; tsc clean, 423/423 tests, build passes |
+| 2026-08-31 | — | Rollout truth established: Vercel had skipped `b65f14a0`'s build (retriggered, now READY), and `dev.mudavym.com` was found aliased to MAIN's production deployment since the #163 merge — the dev-first gate needs the branch deployment link or a founder domain re-pin. Interlock verified serving on the branch deployment (favicon screenshot, paper-on-seal tile) |
