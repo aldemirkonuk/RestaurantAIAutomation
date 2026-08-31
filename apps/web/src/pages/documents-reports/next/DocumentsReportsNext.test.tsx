@@ -32,12 +32,27 @@ const api = vi.hoisted(() => ({
   unverifiedReject: false,
   timeline: { events: [] as unknown[] },
   timelineReject: false,
+  crossFile: {
+    periodStart: null,
+    periodEnd: null,
+    paper: null,
+    conversations: null,
+  } as unknown,
+  crossFileReject: false,
+  refileSpy: vi.fn(() => Promise.resolve({})),
 }));
 
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({ activeRestaurantId: 'r1' }),
 }));
 vi.mock('../../../services/api/reports', () => ({
+  REPORT_TYPES: [
+    'inventory_summary',
+    'sales_analysis',
+    'procurement_history',
+    'financial_summary',
+    'compliance_report',
+  ],
   listReportsWithTotal: () =>
     api.reportsReject
       ? Promise.reject(new Error('reports register down'))
@@ -45,6 +60,11 @@ vi.mock('../../../services/api/reports', () => ({
           reports: api.reports,
           total: api.reportsTotal ?? api.reports.length,
         }),
+  getReportCrossFile: () =>
+    api.crossFileReject
+      ? Promise.reject(new Error('cross-file down'))
+      : Promise.resolve(api.crossFile),
+  refileReport: (...args: unknown[]) => api.refileSpy(...(args as [])),
 }));
 vi.mock('../../../hooks/queries/useConversationQueries', () => ({
   useConversationThreads: () => ({
@@ -151,6 +171,9 @@ beforeEach(() => {
   api.unverifiedReject = false;
   api.timeline = { events: [] };
   api.timelineReject = false;
+  api.crossFile = { periodStart: null, periodEnd: null, paper: null, conversations: null };
+  api.crossFileReject = false;
+  api.refileSpy = vi.fn(() => Promise.resolve({}));
 });
 
 describe('useSortingOfficeData', () => {
@@ -368,6 +391,43 @@ describe('DocumentsReportsNext', () => {
       expect(roll).toContain('1 pos checks');
       expect(roll).toContain('1 decision log');
     });
+  });
+
+  it('cross-files a period report to its registers, counted and linked', async () => {
+    api.reports = [report('r1', { summary: 'A summary.' })];
+    api.crossFile = {
+      periodStart: '2026-03-01',
+      periodEnd: '2026-03-31',
+      paper: { count: 12, sample: 'INV-88' },
+      conversations: { count: 2 },
+    };
+    renderPage(['/documents-reports?doc=r1']);
+    await waitFor(() =>
+      expect(screen.getByText('Vendor paper (12 documents · INV-88)')).toBeTruthy(),
+    );
+    expect(screen.getByText('Conversations (2 threads)')).toBeTruthy();
+  });
+
+  it('a report with no period says nothing is cross-filed — never invented links', async () => {
+    api.reports = [report('r1', { summary: 'A summary.' })];
+    renderPage(['/documents-reports?doc=r1']);
+    await waitFor(() =>
+      expect(screen.getByText(/names no period — nothing is cross-filed/)).toBeTruthy(),
+    );
+    expect(screen.queryByText(/Vendor paper \(/)).toBeNull();
+  });
+
+  it('File to… offers every type, marks the current one, and re-files on choice', async () => {
+    api.reports = [report('r1', { reportType: 'inventory_summary', summary: 'A summary.' })];
+    renderPage(['/documents-reports?doc=r1']);
+    await waitFor(() => expect(screen.getByText('File to…')).toBeTruthy());
+    fireEvent.click(screen.getByText('File to…'));
+    const current = screen.getByText('inventory summary · current');
+    expect((current as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByText('procurement history'));
+    await waitFor(() =>
+      expect(api.refileSpy).toHaveBeenCalledWith('r1', 'procurement_history'),
+    );
   });
 
   it('a failed clipboard write is said on the control, and the label recovers', async () => {

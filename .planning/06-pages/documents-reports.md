@@ -28,7 +28,8 @@ links: ["[[PAGE-CONTRACT]]", "[[receipts]]", "[[communications]]", "[[logs]]"]
 - Behind the flag (Sorting Office): **Waiting rows** → `/receipts` or
   `/communications` per row · **Open in Receipts** → `/receipts` ·
   **Open in Communications** → `/communications` · **Open the timeline /
-  Open the drawer** → `/logs`
+  Open the drawer** → `/logs` · **File to…** → PATCH refile mutation ·
+  **Cross-filed links** → `/receipts`, `/communications`
 
 ## 1. Purpose
 
@@ -47,6 +48,8 @@ Behind `mudavym_design_documents_reports` (OFF — the Sorting Office, §1b):
 - **Four countable registers**: House reports (inline list → reading pane) · Vendor paper (→ `/receipts`) · Conversations (→ `/communications`) · System log (→ `/logs`); a filled window renders its count as a floor (`≥`), never a total
 - **Filed itself today**: the routine noise roll — today's timeline entries counted by source, filed, never deleted, never in the way
 - **Reading pane** (Direction C, kept): serif title, metadata line, paragraph summary at reading width; copy-share-link; OD-81 file truth (no file → says so, disabled, with the reason)
+- **File to…** (sketch affordance, founder-ordered 2026-08-31): re-file the open report under another type; the change writes a `system_audit_log` row the System-log drawer itself renders — the re-file files itself
+- **Cross-filed under** (sketch affordance): the pane's footer counts the report's period in the other registers — vendor paper by `doc_date`, conversation threads via the production `list_conversation_threads` window total — linked to `/receipts` and `/communications`; a report with no period says nothing is cross-filed
 - `?doc=` share links preselect in the pane, same as legacy
 
 ## 1b. Redesign state — Direction D chosen, built 2026-08-31
@@ -158,12 +161,14 @@ in-scope findings fixed same day:**
   0042's value-not-hue principle) recorded here; header figures 22px with the
   seal on "Needs a human" (sketch hierarchy); `aria-current` over
   `aria-pressed`; House drawer regains its descriptor line.
-- **Stated deferrals (founder's call, not silent losses):** the sketch's
-  "File to…" re-categorization control and the "Cross-filed under" footer —
-  both need backend affordances (a re-categorize mutation; correlation
-  lookups) that don't exist yet. They are the manual override for D's own
-  named tradeoff ("the drawers are only as good as the sorter's rules");
-  deferred, and surfaced to the founder with the review.
+- **The two sketch affordances the build had deferred were surfaced to the
+  founder, who ordered both built ("Build both now", 2026-08-31) — built the
+  same day:** `PATCH /reports/:id` re-files a report (IsEnum-validated,
+  restaurant-scoped, audit row → the timeline) and `GET
+  /reports/:id/cross-file` computes the period's presence in the other
+  registers (paper by `doc_date` count-exact; threads via the
+  `list_conversation_threads` RPC's `total_threads`, date-bounded); both
+  covered by gateway specs (8/8) and page tests (27 on this page).
 - Accepted, recorded: the register grid's asymmetry (House reports carries
   the selector list); the door count's window cannot be detected client-side
   (upstream fix filed — see §9); the wave-wide dead-hover and
@@ -218,6 +223,7 @@ rendered an empty archive — the rationale is written at the top of
 | Gateway | `generated_reports` list/delete (restaurant from JWT) | `hooks/queries/useReportQueries.ts` → `services/api/reports.ts` |
 | Gateway | `/conversations/threads` + `/thread/:id` + `/stats/overview`, POST `/:id/summarize` | ClassifiedConversationList → `hooks/queries/useConversationQueries.ts:194-240` |
 | Gateway (next only) | procurement documents list · active conversations · unverified door counts · `GET /logs/timeline/:restaurantId` | `documents-reports/next/useSortingOfficeData.ts` |
+| Gateway (next only) | `PATCH /reports/:id` (File to… — refile + audit row) · `GET /reports/:id/cross-file` | `DocumentsReportsNext.tsx` ReadingPane → `services/api/reports.ts` |
 
 Realtime: `useReportSubscription` pushes `generated` report events into the list
 (`DocumentsPage.tsx:31,125`).

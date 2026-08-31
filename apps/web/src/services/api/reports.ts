@@ -111,6 +111,47 @@ export async function listReportsWithTotal(): Promise<{
   return { reports, total: typeof data?.total === 'number' ? data.total : reports.length }
 }
 
+export const REPORT_TYPES: readonly ReportType[] = [
+  'inventory_summary',
+  'sales_analysis',
+  'procurement_history',
+  'financial_summary',
+  'compliance_report',
+]
+
+export interface ReportCrossFileRegister {
+  count: number
+  sample?: string | null
+}
+
+/** Null paper/conversations = the report names no period; nothing is invented. */
+export interface ReportCrossFile {
+  periodStart: string | null
+  periodEnd: string | null
+  paper: ReportCrossFileRegister | null
+  conversations: ReportCrossFileRegister | null
+}
+
+/** "Cross-filed under" — the other registers holding this report's period. */
+export async function getReportCrossFile(id: string): Promise<ReportCrossFile> {
+  const { data } = await apiClient.get<ReportCrossFile>(`/reports/${id}/cross-file`)
+  return {
+    periodStart: data?.periodStart ?? null,
+    periodEnd: data?.periodEnd ?? null,
+    paper: data?.paper ?? null,
+    conversations: data?.conversations ?? null,
+  }
+}
+
+/** "File to…" — re-file a report under a different type. */
+export async function refileReport(
+  id: string,
+  reportType: ReportType,
+): Promise<GeneratedReport> {
+  const { data } = await apiClient.patch<GeneratedReport>(`/reports/${id}`, { reportType })
+  return data
+}
+
 export async function deleteReport(id: string): Promise<void> {
   await apiClient.delete(`/reports/${id}`)
 }

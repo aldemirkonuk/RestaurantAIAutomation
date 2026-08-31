@@ -17,9 +17,17 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Wordmark } from '@/components/mudavym';
-import type { GeneratedReport } from '../../../services/api/reports';
+import { useAuth } from '../../../contexts/AuthContext';
+import {
+  REPORT_TYPES,
+  getReportCrossFile,
+  refileReport,
+  type GeneratedReport,
+  type ReportType,
+} from '../../../services/api/reports';
 import { ink, settle } from '../../../lib/mudavym/motion';
 import { EM, MONO, SANS, SERIF, fmtDate, labelize } from './so-format';
 import { useSortingOfficeData } from './useSortingOfficeData';
@@ -78,10 +86,33 @@ const drawerStyle = {
 } as const;
 
 /** Direction C's reading pane, kept as the detail surface. */
-function ReadingPane({ report }: { report: GeneratedReport }) {
+function ReadingPane({ report, onRefiled }: { report: GeneratedReport; onRefiled: () => void }) {
   const fileUrl = report.pdfUrl ?? report.excelUrl ?? report.csvUrl ?? null;
   const shareLink = `${window.location.origin}/documents-reports?doc=${report.id}`;
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [filingOpen, setFilingOpen] = useState(false);
+  const [filing, setFiling] = useState<'idle' | 'busy' | 'failed'>('idle');
+  const { activeRestaurantId } = useAuth();
+
+  // "Cross-filed under" — the other registers holding this report's period.
+  const crossQ = useQuery({
+    queryKey: ['sorting-office', 'cross-file', activeRestaurantId ?? '', report.id],
+    queryFn: () => getReportCrossFile(report.id),
+    staleTime: 60_000,
+  });
+
+  const refile = (t: ReportType) => {
+    if (t === report.reportType || filing === 'busy') return;
+    setFiling('busy');
+    refileReport(report.id, t).then(
+      () => {
+        setFiling('idle');
+        setFilingOpen(false);
+        onRefiled(); // the drawers re-read their own registers
+      },
+      () => setFiling('failed'),
+    );
+  };
 
   // Both outcomes are said, and neither is permanent: the label reverts so
   // the control stays usable for the next copy.
@@ -137,6 +168,23 @@ function ReadingPane({ report }: { report: GeneratedReport }) {
                 ? 'Copy failed — use the address bar'
                 : 'Copy share link'}
           </button>
+          <button
+            type="button"
+            className="so-ink"
+            onClick={() => setFilingOpen((o) => !o)}
+            aria-expanded={filingOpen}
+            style={{
+              fontSize: 11.5,
+              fontWeight: 600,
+              padding: '5px 12px',
+              borderRadius: 8,
+              border: '1px solid var(--paper-2, #EAE4D8)',
+              color: 'var(--ink-2, #4F473C)',
+              cursor: 'pointer',
+            }}
+          >
+            File to…
+          </button>
           {fileUrl ? (
             <a
               href={fileUrl}
@@ -171,6 +219,57 @@ function ReadingPane({ report }: { report: GeneratedReport }) {
           )}
         </div>
       </div>
+      {filingOpen && (
+        <div className="flex flex-wrap items-baseline gap-2" style={{ fontSize: 11.5 }}>
+          <span
+            style={{
+              fontFamily: MONO,
+              fontSize: 9,
+              fontWeight: 600,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: 'var(--ink-3, #7C7365)',
+            }}
+          >
+            File under
+          </span>
+          {REPORT_TYPES.map((t) => (
+            <button
+              key={t}
+              type="button"
+              className="so-ink"
+              disabled={t === report.reportType || filing === 'busy'}
+              onClick={() => refile(t)}
+              style={{
+                fontSize: 11.5,
+                fontWeight: 600,
+                padding: '4px 10px',
+                borderRadius: 8,
+                border:
+                  t === report.reportType
+                    ? '1px solid var(--seal-ring, rgba(26,94,107,.32))'
+                    : '1px solid var(--paper-2, #EAE4D8)',
+                color:
+                  t === report.reportType
+                    ? 'var(--seal-deep, #14515C)'
+                    : 'var(--ink-2, #4F473C)',
+                cursor: t === report.reportType ? 'default' : 'pointer',
+              }}
+            >
+              {labelize(t)}
+              {t === report.reportType ? ' · current' : ''}
+            </button>
+          ))}
+          {filing === 'busy' && (
+            <span style={{ color: 'var(--ink-3, #7C7365)' }}>Filing…</span>
+          )}
+          {filing === 'failed' && (
+            <span style={{ color: 'var(--ink-2, #4F473C)' }}>
+              The re-file did not take — try again.
+            </span>
+          )}
+        </div>
+      )}
       <h2
         style={{
           margin: 0,
@@ -211,6 +310,50 @@ function ReadingPane({ report }: { report: GeneratedReport }) {
           {fileUrl ? '.' : ', and its file was never attached (a recorded generation gap, not a missing download).'}
         </p>
       )}
+      <div
+        style={{
+          marginTop: 'auto',
+          borderTop: '1px solid var(--paper-2, #EAE4D8)',
+          paddingTop: 10,
+          fontSize: 11.5,
+          color: 'var(--ink-4, #665D50)',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 6,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {crossQ.isError ? (
+          <span>The cross-file could not be checked.</span>
+        ) : crossQ.data === undefined ? (
+          <span>{`Cross-filed under: ${EM}`}</span>
+        ) : crossQ.data.paper === null ? (
+          <span>This report names no period — nothing is cross-filed.</span>
+        ) : (
+          <>
+            <span>Cross-filed under:</span>
+            <Link
+              to="/receipts"
+              className="so-link"
+              style={{ fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
+            >
+              {`Vendor paper (${crossQ.data.paper.count} document${
+                crossQ.data.paper.count === 1 ? '' : 's'
+              }${crossQ.data.paper.sample ? ` · ${crossQ.data.paper.sample}` : ''})`}
+            </Link>
+            <span>·</span>
+            <Link
+              to="/communications"
+              className="so-link"
+              style={{ fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
+            >
+              {`Conversations (${crossQ.data.conversations?.count ?? 0} thread${
+                (crossQ.data.conversations?.count ?? 0) === 1 ? '' : 's'
+              })`}
+            </Link>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -597,7 +740,7 @@ export default function DocumentsReportsNext() {
           {/* ── C's reading pane, kept ──────────────────────────────────── */}
           <section aria-label="Reading pane">
             {selected ? (
-              <ReadingPane key={selected.id} report={selected} />
+              <ReadingPane key={selected.id} report={selected} onRefiled={data.refetch} />
             ) : selectedId && data.reportsKnown ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
                 That report is no longer here — it may have been deleted, or it belongs to a
