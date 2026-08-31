@@ -173,7 +173,11 @@ export function SwipeToConfirm({ label, assertion, disabled = false, onConfirm }
           margin: '6px 0 0',
         }}
       >
-        {done ? 'Verified' : label}
+        {/* The gesture completing is NOT the verification succeeding — the
+            control never claims "Verified"; on success the document leaves
+            the queue, and on failure the parent remounts this control fresh
+            (receipts-audit.md, BLOCKER 2). */}
+        {done ? 'Confirming…' : label}
       </p>
       <p style={{ textAlign: 'center', fontSize: 10.5, color: 'var(--ink-3, #7C7365)', margin: '2px 0 0', maxWidth: 220, marginLeft: 'auto', marginRight: 'auto' }}>
         {assertion}

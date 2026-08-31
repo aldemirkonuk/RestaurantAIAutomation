@@ -698,43 +698,62 @@ export class DocumentIntakeService {
         `NOT_EDITABLE:${doc.status}`,
       );
 
-    // Whitelisted columns only, with finite-number guards — a NaN written
-    // here would poison the tie-out silently.
-    const num = (v: unknown): number | null =>
-      typeof v === "number" && Number.isFinite(v) ? v : null;
+    // Whitelisted columns only, with finite-number guards. A NaN is REJECTED,
+    // never coerced to NULL — "clear this value" is null in the patch, and
+    // junk must not masquerade as a deliberate clearing (receipts-audit.md).
+    const finite = (v: unknown): v is number =>
+      typeof v === "number" && Number.isFinite(v);
+    const nullable = (v: number | null, field: string): number | null => {
+      if (v === null) return null;
+      if (!finite(v)) throw new Error(`BAD_FIELD:${field}`);
+      return v;
+    };
     const update: Record<string, unknown> = {};
     if (patch.qty !== undefined) {
-      const q = num(patch.qty);
-      if (q === null || q < 0) throw new Error("BAD_FIELD:qty");
-      update.qty = q;
+      if (!finite(patch.qty) || patch.qty < 0) throw new Error("BAD_FIELD:qty");
+      update.qty = patch.qty;
     }
     if (patch.unitPrice !== undefined)
-      update.unit_price = patch.unitPrice === null ? null : num(patch.unitPrice);
+      update.unit_price = nullable(patch.unitPrice, "unitPrice");
     if (patch.lineTotal !== undefined)
-      update.line_total = patch.lineTotal === null ? null : num(patch.lineTotal);
+      update.line_total = nullable(patch.lineTotal, "lineTotal");
     if (patch.description !== undefined) update.description = patch.description;
     if (patch.vintage !== undefined)
-      update.vintage = patch.vintage === null ? null : num(patch.vintage);
+      update.vintage = nullable(patch.vintage, "vintage");
     if (patch.packSize !== undefined) {
-      const p = num(patch.packSize);
-      if (p === null || p <= 0) throw new Error("BAD_FIELD:packSize");
-      update.pack_size = p;
+      if (!finite(patch.packSize) || patch.packSize <= 0)
+        throw new Error("BAD_FIELD:packSize");
+      update.pack_size = patch.packSize;
     }
     if (patch.qtyBottles !== undefined) {
-      const q = num(patch.qtyBottles);
-      if (q === null || q < 0) throw new Error("BAD_FIELD:qtyBottles");
-      update.qty_bottles = q;
+      if (!finite(patch.qtyBottles) || patch.qtyBottles < 0)
+        throw new Error("BAD_FIELD:qtyBottles");
+      update.qty_bottles = patch.qtyBottles;
     }
     if (patch.freeGoodsQty !== undefined) {
-      const q = num(patch.freeGoodsQty);
-      if (q === null || q < 0) throw new Error("BAD_FIELD:freeGoodsQty");
-      update.free_goods_qty = q;
+      if (!finite(patch.freeGoodsQty) || patch.freeGoodsQty < 0)
+        throw new Error("BAD_FIELD:freeGoodsQty");
+      update.free_goods_qty = patch.freeGoodsQty;
     }
     if (patch.allowance !== undefined)
-      update.allowance = patch.allowance === null ? null : num(patch.allowance);
+      update.allowance = nullable(patch.allowance, "allowance");
     if (patch.uom !== undefined) update.uom = patch.uom;
     if (patch.vendorSku !== undefined) update.vendor_sku = patch.vendorSku;
     if (Object.keys(update).length === 0) throw new Error("EMPTY_PATCH");
+
+    // Capture the line as it stands, so a verify that lands mid-edit can be
+    // answered by restoring it (the TOCTOU window below).
+    const LINE_COLS =
+      "id, line_no, qty, uom, pack_size, qty_bottles, free_goods_qty, unit_price, line_total, allowance, description, vintage, vendor_sku, order_line_id";
+    const { data: before, error: beforeErr } = await client
+      .from("procurement_document_lines")
+      .select(LINE_COLS)
+      .eq("id", lineId)
+      .eq("document_id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (beforeErr) throw new Error(beforeErr.message);
+    if (!before) throw new Error("NOT_FOUND");
 
     const { data: line, error: lineErr } = await client
       .from("procurement_document_lines")
@@ -742,10 +761,36 @@ export class DocumentIntakeService {
       .eq("id", lineId)
       .eq("document_id", documentId)
       .eq("restaurant_id", restaurantId)
-      .select("id, line_no, qty, uom, pack_size, qty_bottles, free_goods_qty, unit_price, line_total, allowance, description, vintage, vendor_sku, order_line_id")
+      .select(LINE_COLS)
       .maybeSingle();
     if (lineErr) throw new Error(lineErr.message);
     if (!line) throw new Error("NOT_FOUND");
+
+    // The status read above and the update here are two statements: a verify
+    // can land between them. Re-check, and if the document got verified while
+    // we wrote, restore the captured line (verify never touches lines, so the
+    // restore leaves pre-edit lines under a verified document — consistent)
+    // and refuse the edit.
+    const { data: statusNow } = await client
+      .from("procurement_documents")
+      .select("status")
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (
+      statusNow &&
+      statusNow.status !== "needs_review" &&
+      statusNow.status !== "received"
+    ) {
+      const { id: _id, ...restore } = before as Record<string, unknown>;
+      await client
+        .from("procurement_document_lines")
+        .update(restore)
+        .eq("id", lineId)
+        .eq("document_id", documentId)
+        .eq("restaurant_id", restaurantId);
+      throw new Error(`NOT_EDITABLE:${statusNow.status}`);
+    }
 
     // Recompute the tie-out over ALL lines with the one rule extraction uses.
     const { data: allLines, error: allErr } = await client
@@ -771,8 +816,11 @@ export class DocumentIntakeService {
         lineTotal: l.line_total,
         allowance: l.allowance,
       })),
-      // applyTieOut reads only the fields above; the cast keeps the tie-out
-      // rule single-sourced instead of duplicated here.
+      // applyTieOut spreads doc.warnings on the does-not-tie-out branch —
+      // omitting it threw the moment an edit BROKE the tie-out, after the
+      // line had already committed (receipts-audit.md, BLOCKER 1). The cast
+      // keeps the tie-out rule single-sourced; warnings must ride along.
+      warnings: [],
     } as unknown as ParsedDocument);
 
     const { error: tieErr } = await client

@@ -20,7 +20,7 @@
  * tuck on early release); row settle for the doc open; ink micro-states.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Wordmark } from '@/components/mudavym';
 import {
@@ -79,6 +79,11 @@ function EditCell({
   const [draft, setDraft] = useState<string | null>(null);
   const [bad, setBad] = useState(false);
   const shown = draft ?? (value == null ? '' : String(value));
+  // The draft holds until the server round-trip moves `value` — clearing it
+  // at commit time flashed the stale figure mid-flight (receipts-audit.md).
+  useEffect(() => {
+    setDraft(null);
+  }, [value]);
   const commit = () => {
     if (draft === null) return;
     const parsed = parseCell(draft);
@@ -87,8 +92,8 @@ function EditCell({
       return;
     }
     setBad(false);
-    setDraft(null);
     if (parsed !== value) onCommit(parsed);
+    else setDraft(null);
   };
   return (
     <input
@@ -151,6 +156,9 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
     onSuccess: (res) => {
       setEditError(null);
       setTieOut(res.tieOut);
+      // Pairing suggestions were computed against the pre-edit lines — a
+      // stale reason must not invite a stale confirmation.
+      setMatchResult(null);
       qc.setQueryData(
         ['receipts-next', 'doc', doc.id],
         (cur: { document: ProcurementDocument; lines: ProcurementDocumentLine[]; links: unknown[] } | undefined) =>
@@ -287,7 +295,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                     <EditCell
                       value={l.qty}
                       ariaLabel={`Quantity, line ${l.line_no}`}
-                      disabled={!editable || edit.isPending}
+                      disabled={!editable}
                       onCommit={(v) => v !== null && edit.mutate({ lineId: l.id, patch: { qty: v } })}
                     />
                   </td>
@@ -295,7 +303,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                     <EditCell
                       value={l.unit_price}
                       ariaLabel={`Unit price, line ${l.line_no}`}
-                      disabled={!editable || edit.isPending}
+                      disabled={!editable}
                       onCommit={(v) => edit.mutate({ lineId: l.id, patch: { unitPrice: v } })}
                     />
                   </td>
@@ -303,7 +311,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                     <EditCell
                       value={l.line_total}
                       ariaLabel={`Line total, line ${l.line_no}`}
-                      disabled={!editable || edit.isPending}
+                      disabled={!editable}
                       onCommit={(v) => edit.mutate({ lineId: l.id, patch: { lineTotal: v } })}
                     />
                   </td>
@@ -392,6 +400,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
       {editable && (
         <div className="mt-5">
           <SwipeToConfirm
+            key={`swipe-${verify.failureCount}`}
             label="Swipe up to confirm"
             assertion="Confirms this transcription matches the paper. It does not accept charges or touch stock."
             disabled={verify.isPending}
@@ -499,10 +508,12 @@ export default function ReceiptsNext() {
                     className="rc-row block w-full text-left"
                     style={{
                       padding: '9px 8px',
-                      borderBottom: '1px solid var(--paper-2, #EAE4D8)',
-                      background: selectedId === d.id ? 'var(--paper-1, #F3EFE6)' : 'transparent',
+                      // shorthand first: 'border: none' would clobber a
+                      // longhand declared before it (receipts-audit.md)
                       border: 'none',
+                      borderBottom: '1px solid var(--paper-2, #EAE4D8)',
                       borderLeft: selectedId === d.id ? '3px solid var(--seal, #1A5E6B)' : '3px solid transparent',
+                      background: selectedId === d.id ? 'var(--paper-1, #F3EFE6)' : 'transparent',
                       cursor: 'pointer',
                       fontFamily: SANS,
                     }}
