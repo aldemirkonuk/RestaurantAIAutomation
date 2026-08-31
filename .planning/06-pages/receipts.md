@@ -36,6 +36,45 @@ documents that prove the claims" (`ReceiptsPage.tsx:1-10`, decisions E48/E49).
 - Verify a document
 - **Credits** tab: the vendor credit-claim ledger with stats; move a claim through its states
 - Deep-linkable tab (`?tab=credits` — where `/credits` lands)
+- **Mudavym redesign behind `mudavym_design_receipts` (OFF)** — the founder's four-requirement brief: the review queue + the door's paperless deliveries on one surface; the linked order above the lines ("the right invoice"); qty/unit/total editable in place pre-verification with the tie-out recomputed in the same response (new gateway route `PATCH /procurement/documents/:id/lines/:lineId`); the swipe-up confirm ceremony firing verify; matcher suggestions with plain-language reasons, one-tap confirmed, never auto-written
+
+## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receipts`)
+
+Canonical source with curves: `apps/web/src/pages/receipts/next/MOTIONS.md` —
+this list is the note-side index (ADR 0044 §2).
+
+| id | name | fires |
+|---|---|---|
+| `rc-swipe-confirm` | The swipe-up confirm | the verify ceremony — fill tracks the finger 1:1; keyboard hold fills at the pour rate, linear (a countdown never eases); early release tucks back |
+| `rc-doc-settle` | Document settles open | the selected document's panel — `settle`, 320ms house curve |
+| `rc-ink` | Ink micro-state | queue rows and controls — one paper step, nothing translates |
+
+Deliberate non-motions: a recomputed tie-out swaps text, never animates
+(arithmetic has no continuity after a correction); the no-paperwork strip
+never pulses; verified documents leave the queue without an exit flourish.
+
+### Design used, and why (ADR 0045 §5 wave · MAKEOVER-VERDICTS: KEEP+, the most demanding brief)
+
+The founder's four requirements, mapped to structure: (1) *compress
+everything from the orders* — the door's counted-but-paperless deliveries
+share the surface with the review queue, so no part of an order's paper
+trail waits invisibly elsewhere; (2) *backend integration without
+overcrowding* — three list queries plus one on-demand document detail;
+(3) *the right invoice* — the linked order rides above the lines, an
+unlinked document says "pair it before trusting any line", and the line
+matcher's suggestions surface with their plain-language reasons for one-tap
+confirmation (never auto-written — a wrong link corrupts cost basis
+silently); (4) *editable and confirmable right away* — qty/unit/total edit
+in place through the new PATCH route, which recomputes the tie-out through
+the same rule extraction uses and returns it in the response, and the named
+**swipe-up ceremony** completes into verify. The edit/verify honesty
+contract: only a pre-verification document is editable (a verified document
+is the record a dispute leans on — no un-verify exists); edits are anonymous
+drafts and provenance is carried by verify's `verified_by` stamp; the
+ceremony's own copy says exactly what it asserts — the transcription, never
+charges or stock. Credits stay on the legacy tab (flag off) until a later
+pass; recorded in §9. E48/E49 carried throughout: tri-state nulls are
+untestable, never a pass.
 
 ## 2. Entry
 
@@ -90,8 +129,11 @@ applies (see dashboard.md §7).
 
 ## 9. Gaps
 
+- ReceiptsNext (flag ON) has no credits lane yet — the credit-claim ledger stays on the legacy tab until a later pass; flipping the flag must not orphan `/receipts?tab=credits` (§1b).
+
 - Line-match **suggestions** from `POST /procurement/documents/:id/match` have no UI
-  rendering them — deferred by design (`v3.0-TECH-DEBT.md:447`).
+  on the LEGACY page — deferred by design (`v3.0-TECH-DEBT.md:447`). ReceiptsNext
+  renders them with reasons + one-tap confirm behind `mudavym_design_receipts` (§1b).
 - Cost-drift-caught / straight-through-rate / days-to-close metrics are decided-not-
   built (`v3.0-TECH-DEBT.md:446`) — this page is where they would land.
 

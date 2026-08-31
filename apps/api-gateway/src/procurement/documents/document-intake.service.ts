@@ -4,7 +4,7 @@ import { createHash } from "crypto";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
 import { SourceChannel } from "./document-types";
-import { ParsedDocument } from "./parsed-document";
+import { applyTieOut, ParsedDocument } from "./parsed-document";
 import { matchLines, MatchLinesResult } from "./line-matcher";
 import { looksLikeX12, parseX12 } from "./x12";
 import { runWithNewCorrelationId } from "../../common/model-client/correlation";
@@ -644,6 +644,156 @@ export class DocumentIntakeService {
     if (ingested)
       this.logger.log(`document backfill ingested ${ingested} attachment(s)`);
     return ingested;
+  }
+
+  /**
+   * Correct one extracted line by hand (ADR 0045 §5, the receipts brief:
+   * "we can edit, and we can just confirm it right away").
+   *
+   * Guards, in order of importance:
+   * - Only a PRE-verification document may be edited (`received` /
+   *   `needs_review`). A verified document is the record a vendor dispute
+   *   leans on; there is deliberately no un-verify here.
+   * - Edits are anonymous drafts: provenance is carried by the verify step,
+   *   which stamps who confirmed the FINAL transcription (verified_by).
+   * - The document's tie-out is recomputed through the same applyTieOut rule
+   *   extraction uses — an edited line must never leave a stale
+   *   ties-out/delta claim standing.
+   */
+  async editLine(
+    documentId: string,
+    lineId: string,
+    restaurantId: string,
+    patch: {
+      qty?: number;
+      unitPrice?: number | null;
+      lineTotal?: number | null;
+      description?: string | null;
+      vintage?: number | null;
+      packSize?: number;
+      qtyBottles?: number;
+      freeGoodsQty?: number;
+      allowance?: number | null;
+      uom?: string;
+      vendorSku?: string | null;
+    },
+  ): Promise<{
+    line: Record<string, unknown>;
+    tieOut: { computedLinesTotal: number; tieOutDelta: number | null; tiesOut: boolean | null };
+  }> {
+    const client = this.db.getClient();
+
+    const { data: doc, error: docErr } = await client
+      .from("procurement_documents")
+      .select(
+        "id, status, total, freight, fuel_surcharge, split_case_fee, delivery_fee, deposit_total, tax, other_charges, discount_total",
+      )
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (docErr) throw new Error(docErr.message);
+    if (!doc) throw new Error("NOT_FOUND");
+    if (doc.status !== "needs_review" && doc.status !== "received")
+      throw new Error(
+        `NOT_EDITABLE:${doc.status}`,
+      );
+
+    // Whitelisted columns only, with finite-number guards — a NaN written
+    // here would poison the tie-out silently.
+    const num = (v: unknown): number | null =>
+      typeof v === "number" && Number.isFinite(v) ? v : null;
+    const update: Record<string, unknown> = {};
+    if (patch.qty !== undefined) {
+      const q = num(patch.qty);
+      if (q === null || q < 0) throw new Error("BAD_FIELD:qty");
+      update.qty = q;
+    }
+    if (patch.unitPrice !== undefined)
+      update.unit_price = patch.unitPrice === null ? null : num(patch.unitPrice);
+    if (patch.lineTotal !== undefined)
+      update.line_total = patch.lineTotal === null ? null : num(patch.lineTotal);
+    if (patch.description !== undefined) update.description = patch.description;
+    if (patch.vintage !== undefined)
+      update.vintage = patch.vintage === null ? null : num(patch.vintage);
+    if (patch.packSize !== undefined) {
+      const p = num(patch.packSize);
+      if (p === null || p <= 0) throw new Error("BAD_FIELD:packSize");
+      update.pack_size = p;
+    }
+    if (patch.qtyBottles !== undefined) {
+      const q = num(patch.qtyBottles);
+      if (q === null || q < 0) throw new Error("BAD_FIELD:qtyBottles");
+      update.qty_bottles = q;
+    }
+    if (patch.freeGoodsQty !== undefined) {
+      const q = num(patch.freeGoodsQty);
+      if (q === null || q < 0) throw new Error("BAD_FIELD:freeGoodsQty");
+      update.free_goods_qty = q;
+    }
+    if (patch.allowance !== undefined)
+      update.allowance = patch.allowance === null ? null : num(patch.allowance);
+    if (patch.uom !== undefined) update.uom = patch.uom;
+    if (patch.vendorSku !== undefined) update.vendor_sku = patch.vendorSku;
+    if (Object.keys(update).length === 0) throw new Error("EMPTY_PATCH");
+
+    const { data: line, error: lineErr } = await client
+      .from("procurement_document_lines")
+      .update(update)
+      .eq("id", lineId)
+      .eq("document_id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .select("id, line_no, qty, uom, pack_size, qty_bottles, free_goods_qty, unit_price, line_total, allowance, description, vintage, vendor_sku, order_line_id")
+      .maybeSingle();
+    if (lineErr) throw new Error(lineErr.message);
+    if (!line) throw new Error("NOT_FOUND");
+
+    // Recompute the tie-out over ALL lines with the one rule extraction uses.
+    const { data: allLines, error: allErr } = await client
+      .from("procurement_document_lines")
+      .select("qty, unit_price, line_total, allowance")
+      .eq("document_id", documentId)
+      .eq("restaurant_id", restaurantId);
+    if (allErr) throw new Error(allErr.message);
+
+    const recomputed = applyTieOut({
+      total: doc.total,
+      freight: doc.freight,
+      fuelSurcharge: doc.fuel_surcharge,
+      splitCaseFee: doc.split_case_fee,
+      deliveryFee: doc.delivery_fee,
+      depositTotal: doc.deposit_total,
+      tax: doc.tax,
+      otherCharges: doc.other_charges,
+      discountTotal: doc.discount_total,
+      lines: (allLines ?? []).map((l) => ({
+        qty: l.qty,
+        unitPrice: l.unit_price,
+        lineTotal: l.line_total,
+        allowance: l.allowance,
+      })),
+      // applyTieOut reads only the fields above; the cast keeps the tie-out
+      // rule single-sourced instead of duplicated here.
+    } as unknown as ParsedDocument);
+
+    const { error: tieErr } = await client
+      .from("procurement_documents")
+      .update({
+        computed_lines_total: recomputed.computedLinesTotal,
+        tie_out_delta: recomputed.tieOutDelta,
+        ties_out: recomputed.tiesOut,
+      })
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId);
+    if (tieErr) throw new Error(tieErr.message);
+
+    return {
+      line,
+      tieOut: {
+        computedLinesTotal: recomputed.computedLinesTotal ?? 0,
+        tieOutDelta: recomputed.tieOutDelta,
+        tiesOut: recomputed.tiesOut,
+      },
+    };
   }
 }
 
