@@ -38,6 +38,24 @@ vendor conversation list shared with `/communications`.
 - **History** tab: classified vendor conversation list (same component as `/communications`)
 - Share links (`?doc=`) open the page with that document selected
 
+## 1b. Redesign state — three sketches delivered, build gated on elimination
+
+The REWORK verdict (MAKEOVER-VERDICTS: *"more modern, more transformative…
+let's create three more sketches into this"*) is answered with a design
+canvas, 2026-08-31, in the locked Mudavym system (0042 tokens, Fraunces /
+DM Sans / JetBrains Mono, the P3 pages' panel idiom):
+<https://claude.ai/code/artifact/620c531d-d060-449b-a5e1-cd2b35f9f533>
+
+| Direction | Axis | Honest tradeoff |
+|---|---|---|
+| A — The Filing Room | calm archive: month-grouped report cards + reading pane | least transformative |
+| B — The Ledger Spine (leading) | one dated book of everything written or received — house reports and vendor paper on a single spine, provenance chips | two sources share one list; the chip carries the burden |
+| C — The Reading Desk | report-as-primary: the newest opens read-first like the morning paper; archive demoted to a rail | heavy for fetch-one-old-file visits |
+
+B leads because "transformative" was the ask. **No build until the founder
+eliminates** — the chosen direction becomes `mudavym_design_documents_reports`
+behind the standard PageGate, with its §1b Motions table written then.
+
 ## 2. Entry
 
 - Sidebar "Documents & Reports" (`components/layout/Sidebar.tsx:126`); command
