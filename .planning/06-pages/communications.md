@@ -56,6 +56,21 @@ Deliberate non-motions: glance figures never tally; the template sheet appears
 in place; draft chips never pulse (a draft drawing attention to itself starts
 to look like activity — prc-02).
 
+**2026-08-31 dead-hover follow-up (channels-rail template-workshop
+buttons):** the "Email template workshop" / "SMS template workshop" buttons
+carry `.cm-row` but rested on a static inline `background: 'var(--paper-0,
+…)'`, which — like the ledger-row toggle's inline `'transparent'` fixed in
+the same day's wave-polish pass — permanently outranked `.cm-row:hover`
+regardless of selector specificity, so hovering did nothing. Unlike the
+ledger row, this resting value is a deliberate paper-0 card fill, not a bare
+`'transparent'`, so it couldn't just be deleted without changing the resting
+look. Fixed by moving the resting value into a new `.cm-card` class (kept
+alongside `.cm-row` on both buttons) instead of the inline style — the
+existing `.cm-row:hover` rule now governs them, and the resting appearance
+is unchanged (verified via computed-style diff: same `rgb(26,26,26)` at
+rest, `.cm-row:hover`'s value while `:hover` matches). Still no
+`!important` used anywhere on this page.
+
 ### Design used, and why (ADR 0045 §5 wave · MAKEOVER-VERDICTS: MERGE, warning on both sides)
 
 The founder liked **today's page** because "it shows basically everything" and
