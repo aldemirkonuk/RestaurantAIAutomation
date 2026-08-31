@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, renderHook, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
@@ -17,10 +17,13 @@ const api = vi.hoisted(() => ({
   reports: undefined as unknown,
   reportsError: false,
   paper: [] as unknown[],
+  review: [] as unknown[],
   paperPending: false,
+  paperReject: false,
   threads: { total: 0 } as unknown,
   active: [] as unknown[],
   unverified: { items: [] as unknown[] },
+  unverifiedReject: false,
   timeline: { events: [] as unknown[] },
 }));
 
@@ -43,12 +46,20 @@ vi.mock('../../../hooks/queries/useDraftEmailQueries', () => ({
 }));
 vi.mock('../../../services/api/documents', () => ({
   documentsApi: {
-    list: () =>
-      api.paperPending ? new Promise(() => {}) : Promise.resolve(api.paper),
+    list: (params?: { status?: string }) => {
+      if (api.paperPending) return new Promise(() => {});
+      if (api.paperReject) return Promise.reject(new Error('paper register down'));
+      return Promise.resolve(params?.status === 'needs_review' ? api.review : api.paper);
+    },
   },
 }));
 vi.mock('../../../services/api/receiving', () => ({
-  receivingApi: { listUnverified: () => Promise.resolve(api.unverified) },
+  receivingApi: {
+    listUnverified: () =>
+      api.unverifiedReject
+        ? Promise.reject(new Error('door register down'))
+        : Promise.resolve(api.unverified),
+  },
 }));
 vi.mock('../../../services/api/client', () => ({
   apiClient: { get: () => Promise.resolve({ data: api.timeline }) },
@@ -103,10 +114,13 @@ beforeEach(() => {
   api.reports = [];
   api.reportsError = false;
   api.paper = [];
+  api.review = [];
   api.paperPending = false;
+  api.paperReject = false;
   api.threads = { total: 0 };
   api.active = [];
   api.unverified = { items: [] };
+  api.unverifiedReject = false;
   api.timeline = { events: [] };
 });
 
@@ -122,11 +136,15 @@ describe('useSortingOfficeData', () => {
   });
 
   it('sorts the waiting queue oldest-debt first across registers, never by arrival', async () => {
-    api.paper = [
+    // The review docs are deliberately ABSENT from the unfiltered window
+    // (api.paper): the queue must come from its own status-filtered query, so
+    // debt older than the 100 newest documents of any status still surfaces
+    // (audit blocker 1).
+    api.review = [
       paperDoc('p-new', { status: 'needs_review', doc_date: '2026-08-29', ties_out: false, tie_out_delta: -3.5 }),
       paperDoc('p-old', { status: 'needs_review', doc_date: '2026-08-10' }),
-      paperDoc('p-fine'), // processed — not a debt
     ];
+    api.paper = [paperDoc('p-fine')]; // processed — not a debt
     api.active = [{ id: 'c1', createdAt: '2026-08-20T10:00:00Z', providerName: 'Kermit' }];
     api.unverified = {
       items: [
@@ -204,6 +222,69 @@ describe('DocumentsReportsNext', () => {
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('could not be refreshed'));
     expect(screen.getByRole('alert').textContent).not.toContain('nothing below is claimed');
   });
+
+  it('a waiting-register failure raises the banner too — the drawer is never silently stuck', async () => {
+    // Audit blocker 2: threads/drafts/door failures used to be invisible.
+    api.unverifiedReject = true;
+    api.reports = [report('r1')];
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('could not be refreshed'));
+    expect(screen.getByRole('alert').textContent).toContain('door register down');
+    expect(screen.getByText('Try again')).toBeTruthy();
+  });
+
+  it('when every register is down the banner claims nothing', async () => {
+    api.reportsError = true;
+    api.reports = undefined;
+    api.paperReject = true;
+    renderPage();
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('could not be reached'));
+    expect(screen.getByRole('alert').textContent).toContain('nothing below is claimed');
+  });
+
+  it('the "In the registers" header counts all four registers, Conversations included', async () => {
+    api.reports = [report('r1')];
+    api.paper = [paperDoc('p1'), paperDoc('p2')];
+    api.threads = { total: 7 };
+    api.timeline = {
+      events: [
+        { id: 'e1', source: 'pos_checks', occurredAt: '2026-08-01T10:00:00Z', correlationId: null, summary: 's' },
+        { id: 'e2', source: 'decision_log', occurredAt: '2026-08-01T11:00:00Z', correlationId: null, summary: 's' },
+        { id: 'e3', source: 'pos_checks', occurredAt: '2026-08-01T12:00:00Z', correlationId: null, summary: 's' },
+      ],
+    };
+    renderPage();
+    // 1 report + 2 paper + 7 threads + 3 timeline = 13
+    await waitFor(() => expect(screen.getByText('13')).toBeTruthy());
+  });
+
+  it('the noise roll counts today by source and files yesterday away', async () => {
+    const today = new Date().toISOString();
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString();
+    api.timeline = {
+      events: [
+        { id: 'e1', source: 'pos_checks', occurredAt: today, correlationId: null, summary: 's' },
+        { id: 'e2', source: 'decision_log', occurredAt: today, correlationId: null, summary: 's' },
+        { id: 'e3', source: 'pos_checks', occurredAt: yesterday, correlationId: null, summary: 's' },
+      ],
+    };
+    renderPage();
+    await waitFor(() => {
+      const roll = screen.getByLabelText('Filed itself today').textContent ?? '';
+      expect(roll).toContain('2 entries');
+      expect(roll).toContain('1 pos checks');
+      expect(roll).toContain('1 decision log');
+    });
+  });
+
+  it('a failed clipboard write is said on the control, and the label recovers', async () => {
+    // jsdom exposes no navigator.clipboard — the control must not throw or lie.
+    api.reports = [report('r1', { summary: 'A summary.' })];
+    renderPage(['/documents-reports?doc=r1']);
+    await waitFor(() => expect(screen.getByText('Copy share link')).toBeTruthy());
+    fireEvent.click(screen.getByText('Copy share link'));
+    expect(screen.getByText('Copy failed — use the address bar')).toBeTruthy();
+  });
 });
 
 describe('so-format', () => {
@@ -211,5 +292,10 @@ describe('so-format', () => {
     expect(fmtDate(null)).toBe(EM);
     expect(fmtDate('not-a-date')).toBe(EM);
     expect(fmtDate('2026-08-30T09:00:00Z')).toMatch(/Aug/);
+  });
+
+  it('renders a date-only value as that calendar day in every timezone', () => {
+    // A Postgres `date` ('2026-08-20') must never show as Aug 19 west of UTC.
+    expect(fmtDate('2026-08-20')).toMatch(/Aug 20/);
   });
 });

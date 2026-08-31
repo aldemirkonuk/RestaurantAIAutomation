@@ -79,20 +79,44 @@ surface — his round-1 praise for C, delivered scalably. Built the same day on
 standard PageGate — legacy `DocumentsPage` renders until a restaurant opts in).
 
 **Build** (`apps/web/src/pages/documents-reports/next/`):
-- `useSortingOfficeData.ts` — six registers, each answering for itself:
-  gateway reports (OD-45 path), procurement documents (window 100),
+- `useSortingOfficeData.ts` — seven queries over six registers, each
+  answering for itself: gateway reports (OD-45 path), procurement documents
+  (an unfiltered window of 100 for the count PLUS a status-filtered
+  `needs_review` query for the debt queue — deriving debt from the recency
+  window would hide anything older than the newest 100 of any status),
   conversation threads + live drafts (the DraftRail's own source, the
   communications audit's fix carried), unverified door counts, `/logs`
-  timeline (window 100). The waiting queue is `null` until paper + drafts +
+  timeline (window 100). The waiting queue is `null` until review + drafts +
   unverified have ALL answered — a half-known queue would misstate the debt
-  order.
+  order — and a failure in ANY of the seven raises the banner.
 - `DocumentsReportsNext.tsx` — drawers left, reading pane right; branch-aware
   error banner ("last answer" vs "nothing below is claimed"); floor
   disclosure caption.
-- `so-format.ts` (EM/fonts/fmtDate) · `MOTIONS.md` (canonical) ·
-  `DocumentsReportsNext.test.tsx` (10 contracts: drawer-null-until-answered,
-  oldest-debt ordering, `≥` floors, OD-81 wording, `?doc=` preselect, empty
-  honesty, branch-aware banner).
+- `so-format.ts` (EM/fonts/fmtDate — date-only values parsed as local
+  calendar days, never UTC-midnight) · `MOTIONS.md` (canonical) ·
+  `DocumentsReportsNext.test.tsx` (16 contracts: drawer-null-until-answered,
+  debt-from-its-own-query ordering, `≥` floors, OD-81 wording, `?doc=`
+  preselect, empty honesty, branch-aware banner incl. waiting-register and
+  all-down branches, four-register header sum, noise-roll counting, clipboard
+  failure said on the control, date-only rendering).
+
+**Per-page Sonnet audit, 2026-08-31 — all findings fixed same day:**
+two blockers (needs_review derived from the unfiltered recency window, which
+past 100 lifetime documents silently dropped the oldest debt → its own
+status-filtered query, the receipts pattern; error surface blind to
+threads/drafts/door failures, leaving the waiting drawer stuck with no banner
+→ all seven queries feed `anyError`/message), three defects (date-only
+`fmtDate` off-by-one west of UTC; "In the registers" omitted Conversations
+from its sum; clipboard write with no `.catch` and a stuck "Link copied" →
+tri-state label that recovers), one NIT fixed (inert `aria-disabled` on a
+span, removed), one NIT accepted (the page `<style>` block is document-global
+while mounted — class names are page-scoped `so-*`, verified collision-free).
+Verified clean by the audit: all six data-source field shapes against gateway
+code and production schema, `threads.total` is a true `count(*) OVER ()`,
+timeline camelCase, `?doc=` never overrides a user click, the reduced-motion
+selector is live, all ten flag anchors + guards. One out-of-scope find filed
+as its own task: gateway `listUnverified` windows the OLDEST 500 receipt
+events (predates this page).
 
 **Motions** (tokens from `lib/mudavym/motion.ts`; canonical table in
 `next/MOTIONS.md`):

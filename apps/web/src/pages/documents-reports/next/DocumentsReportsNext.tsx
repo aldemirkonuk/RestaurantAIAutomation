@@ -69,7 +69,15 @@ const drawerStyle = {
 function ReadingPane({ report }: { report: GeneratedReport }) {
   const fileUrl = report.pdfUrl ?? report.excelUrl ?? report.csvUrl ?? null;
   const shareLink = `${window.location.origin}/documents-reports?doc=${report.id}`;
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+
+  // Both outcomes are said, and neither is permanent: the label reverts so
+  // the control stays usable for the next copy.
+  useEffect(() => {
+    if (copyState === 'idle') return;
+    const t = setTimeout(() => setCopyState('idle'), 2000);
+    return () => clearTimeout(t);
+  }, [copyState]);
   return (
     <div
       style={{
@@ -91,7 +99,15 @@ function ReadingPane({ report }: { report: GeneratedReport }) {
             type="button"
             className="so-ink"
             onClick={() => {
-              void navigator.clipboard?.writeText(shareLink).then(() => setCopied(true));
+              const clip = navigator.clipboard;
+              if (!clip) {
+                setCopyState('failed');
+                return;
+              }
+              clip.writeText(shareLink).then(
+                () => setCopyState('copied'),
+                () => setCopyState('failed'),
+              );
             }}
             style={{
               fontSize: 11.5,
@@ -104,7 +120,11 @@ function ReadingPane({ report }: { report: GeneratedReport }) {
               cursor: 'pointer',
             }}
           >
-            {copied ? 'Link copied' : 'Copy share link'}
+            {copyState === 'copied'
+              ? 'Link copied'
+              : copyState === 'failed'
+                ? 'Copy failed — use the address bar'
+                : 'Copy share link'}
           </button>
           {fileUrl ? (
             <a
@@ -125,7 +145,6 @@ function ReadingPane({ report }: { report: GeneratedReport }) {
             </a>
           ) : (
             <span
-              aria-disabled="true"
               style={{
                 fontSize: 11.5,
                 fontWeight: 600,
@@ -237,9 +256,15 @@ export default function DocumentsReportsNext() {
               <DrawerLabel>In the registers</DrawerLabel>
               <Count
                 value={
-                  data.paperCount === null || data.timelineCount === null || !data.reportsKnown
+                  data.paperCount === null ||
+                  data.timelineCount === null ||
+                  data.threadsTotal === null ||
+                  !data.reportsKnown
                     ? null
-                    : data.reports.length + data.paperCount + data.timelineCount
+                    : data.reports.length +
+                      data.paperCount +
+                      data.threadsTotal +
+                      data.timelineCount
                 }
                 capped={data.paperCapped || data.timelineCapped}
               />
@@ -403,7 +428,7 @@ export default function DocumentsReportsNext() {
                   <span style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
                     {data.paperNeedsReviewCount === null
                       ? ''
-                      : `${data.paperNeedsReviewCount} need review`}
+                      : `${data.paperNeedsReviewCapped ? '≥' : ''}${data.paperNeedsReviewCount} need review`}
                   </span>
                 </div>
                 <span style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', display: 'block' }}>

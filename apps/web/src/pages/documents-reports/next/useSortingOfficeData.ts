@@ -57,6 +57,16 @@ export function useSortingOfficeData() {
     queryFn: () => documentsApi.list({ limit: PAPER_LIMIT }),
     staleTime: 30_000,
   });
+  // The review set gets its own status-filtered query (the receipts page's
+  // pattern, useReceiptsNextData.ts): deriving it from the unfiltered recency
+  // window above would hide any needs_review document older than the newest
+  // 100 of ANY status — exactly the oldest debt the waiting drawer exists to
+  // surface (Sonnet audit, blocker 1).
+  const reviewQ = useQuery<ProcurementDocument[]>({
+    queryKey: ['sorting-office', 'paper-review'],
+    queryFn: () => documentsApi.list({ status: 'needs_review', limit: PAPER_LIMIT }),
+    staleTime: 30_000,
+  });
   const threadsQ = useConversationThreads();
   const activeQ = useActiveConversations();
   const unverifiedQ = useQuery<{ items: UnverifiedDelivery[] }>({
@@ -77,16 +87,13 @@ export function useSortingOfficeData() {
   });
 
   const paper = paperQ.data ?? [];
-  const paperNeedsReview = useMemo(
-    () => paper.filter((d) => d.status === 'needs_review'),
-    [paper],
-  );
+  const paperNeedsReview = useMemo(() => reviewQ.data ?? [], [reviewQ.data]);
 
   const waiting: WaitingRow[] | null = useMemo(() => {
     // The drawer opens only once every register behind it has answered —
     // a half-known queue would misstate the debt order.
     if (
-      paperQ.data === undefined ||
+      reviewQ.data === undefined ||
       activeQ.data === undefined ||
       unverifiedQ.data === undefined
     )
@@ -128,7 +135,7 @@ export function useSortingOfficeData() {
     return rows.sort(
       (a, b) => (Date.parse(a.since) || 0) - (Date.parse(b.since) || 0),
     );
-  }, [paperQ.data, activeQ.data, unverifiedQ.data, paperNeedsReview]);
+  }, [reviewQ.data, activeQ.data, unverifiedQ.data, paperNeedsReview]);
 
   const todayRoutine = useMemo(() => {
     if (timelineQ.data === undefined) return null;
@@ -149,14 +156,26 @@ export function useSortingOfficeData() {
     [reportsQ.data],
   );
 
+  // Every register the page renders answers into the banner — a failure in
+  // any of the six is said in words, never swallowed (Sonnet audit, blocker 2).
+  const errors = [
+    reportsQ.error,
+    paperQ.error,
+    reviewQ.error,
+    threadsQ.error,
+    activeQ.error,
+    unverifiedQ.error,
+    timelineQ.error,
+  ];
+
   return {
     waiting,
     reports,
     reportsKnown: reportsQ.data !== undefined,
     paperCount: paperQ.data === undefined ? null : paper.length,
     paperCapped: paper.length >= PAPER_LIMIT,
-    paperNeedsReviewCount: paperQ.data === undefined ? null : paperNeedsReview.length,
-    recentPaper: paper.slice(0, 6),
+    paperNeedsReviewCount: reviewQ.data === undefined ? null : paperNeedsReview.length,
+    paperNeedsReviewCapped: paperNeedsReview.length >= PAPER_LIMIT,
     threadsTotal: threadsQ.data === undefined ? null : threadsQ.data.total,
     draftsPending: activeQ.data === undefined ? null : activeQ.data.length,
     timelineCount: timelineQ.data === undefined ? null : timelineQ.data.events.length,
@@ -164,14 +183,22 @@ export function useSortingOfficeData() {
     todayRoutine,
     hasData: reportsQ.data !== undefined || paperQ.data !== undefined,
     isError: reportsQ.isError && paperQ.isError,
-    anyError: reportsQ.isError || paperQ.isError || timelineQ.isError,
+    anyError:
+      reportsQ.isError ||
+      paperQ.isError ||
+      reviewQ.isError ||
+      threadsQ.isError ||
+      activeQ.isError ||
+      unverifiedQ.isError ||
+      timelineQ.isError,
     errorMessage:
-      (reportsQ.error instanceof Error && reportsQ.error.message) ||
-      (paperQ.error instanceof Error && paperQ.error.message) ||
-      'unknown error',
+      errors
+        .map((e) => (e instanceof Error ? e.message : null))
+        .find((m) => m !== null) ?? 'unknown error',
     refetch: () => {
       void reportsQ.refetch();
       void paperQ.refetch();
+      void reviewQ.refetch();
       void threadsQ.refetch();
       void activeQ.refetch();
       void unverifiedQ.refetch();
