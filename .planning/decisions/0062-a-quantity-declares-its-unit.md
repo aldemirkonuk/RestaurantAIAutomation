@@ -1,4 +1,4 @@
-# 0061 — A quantity crossing the wire declares its unit, and the door accumulates
+# 0062 — A quantity crossing the wire declares its unit, and the door accumulates
 
 - **Status:** Proposed
 - **Date:** 2026-09-01
