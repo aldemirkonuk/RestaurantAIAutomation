@@ -55,12 +55,22 @@ What replaced it, and what was deliberately kept:
   also *buying* it. This is where the negotiation logic went; nothing was thrown
   away.
 * ``_propose_reorder`` — stages a ``one_tap_actions`` row with
-  ``status='pending'`` and null ``executed_by``/``executed_at``, writes a
-  ``decision_log`` row, and notifies the manager. Execution happens later in
+  ``status='pending'`` and null ``executed_by``/``executed_at``, and writes a
+  ``decision_log`` row. Execution happens later in
   ``OneTapActionsService.executeAction``
   (``apps/api-gateway/src/one-tap-actions/one-tap-actions.service.ts:230``),
   which stamps ``executed_by`` from the authenticated user. Nothing in this file
   can produce that stamp.
+
+**Shadow mode: the proposal is written, but no human is told.** Approving a
+proposal executes nothing today — ``triggerWorkflow`` is a switch of TODO logs
+with no branch for this family — so notifying a manager would put a card in
+front of a person that does nothing when tapped, silently. ADR 0020 (LOCKED)
+forbids exactly that. The rows are still staged, and are safe to stage because
+the web action center filters this ``action_type`` out by design; they serve as
+shadow-mode input for the hop-4 bridge. See the ``PROPOSAL_EXECUTOR_EXISTS``
+block below for the full argument and for what to change when the executor
+lands. This means the buy side is now **safe, not finished**.
 * ``_emit_action_proposal`` — the enforcement point, copied from
   ``recurring_order_agent.py``. It validates the caller-supplied row and refuses
   anything that arrives already confirmed.
@@ -117,6 +127,52 @@ DECISION_REORDER_BLOCKED = "procurement_reorder_blocked"
 # the other three notifications in this file do.
 EXCHANGE_NOTIFICATION = "notification.events"
 RK_REORDER_PROPOSED = "notification.procurement_reorder_proposed"
+
+
+# =============================================================================
+# WHY NOBODY IS TOLD ABOUT THESE PROPOSALS YET  —  REMOVE THIS WITH THE EXECUTOR
+# =============================================================================
+# Approving a proposal is supposed to execute it. Today nothing does.
+# ``OneTapActionsService.triggerWorkflow``
+# (``apps/api-gateway/src/one-tap-actions/one-tap-actions.service.ts:404-429``)
+# is a switch of TODO logs, and it has no branch for this family at all. A
+# manager who approved one of these would get silence: no order, no error, no
+# explanation.
+#
+# ADR 0020 (LOCKED, `.planning/decisions/0020-no-fabricated-answers.md`) forbids
+# precisely that shape — "Actions that cannot complete refuse out loud and keep
+# the card", and "An error must never render as emptiness". Shipping a card that
+# does nothing when tapped is the defect that ADR catalogues, not a lesser
+# version of it.
+#
+# So the notification is gated, and only the notification. The row is still
+# staged, and that is both safe and useful:
+#
+#   * Safe, because the web action center filters this action_type out. `custom`
+#     is deliberately absent from RENDERABLE_SERVER_TYPES and `mapServerAction`
+#     returns None for it — "it is filtered out rather than shown as a dead
+#     card" (apps/web/src/components/notifications/OneTapActionCenter.tsx:76-90,
+#     :104-116). No card reaches a person from the row alone. The mobile app
+#     does not read one_tap_actions at all.
+#   * Useful, because the rows accumulate as shadow-mode input: the hop-4 bridge
+#     design needs to know how often a par crossing would fire and what it would
+#     propose, and that is exactly what these rows measure.
+#
+# The publish is the one step that would put a human in front of a dead action,
+# which is why it is the one step behind this flag.
+#
+# TO WHOEVER BUILDS THE EXECUTOR: flip this to True in the same change that
+# gives `triggerWorkflow` a real branch for `procurement.reorder.place`, and
+# delete this block. Do not flip it on its own — the flag means "approval does
+# something", not "we would like to notify".
+# ``tests/test_procurement_agent.py::TestNoHumanIsToldUntilApprovalWorks`` pins
+# both halves until then.
+#
+# NOTE: this is not unique to this agent. `recurring_order_agent` stages the
+# same `custom` rows against the same absent executor, so its proposals approved
+# today also buy nothing. That is a pre-existing defect in the other runtime,
+# tracked separately, and deliberately not widened into this change.
+PROPOSAL_EXECUTOR_EXISTS = False
 
 
 class ProcurementSafetyError(RuntimeError):
@@ -386,6 +442,10 @@ class ProcurementAgent(BaseAgent):
                     "executed": False,
                     "orders_created": 0,
                     "vendor_intents_published": 0,
+                    # Makes the shadow-mode volume countable straight off
+                    # decision_log, which is what the hop-4 bridge design needs.
+                    "shadow_mode": not PROPOSAL_EXECUTOR_EXISTS,
+                    "manager_notified": PROPOSAL_EXECUTOR_EXISTS,
                 },
                 reasoning=(
                     "Stock crossed its reorder threshold. Staged a pending "
@@ -394,6 +454,13 @@ class ProcurementAgent(BaseAgent):
                     "intent was published: FUTURES §8.1 requires a confirmation "
                     "record (executed_by/executed_at) against this specific "
                     "action before anything reaches a vendor."
+                    + (
+                        " Shadow mode: no manager was notified, because "
+                        "approving a proposal executes nothing yet and ADR 0020 "
+                        "forbids an action that silently does nothing."
+                        if not PROPOSAL_EXECUTOR_EXISTS
+                        else ""
+                    )
                 ),
                 confidence=0.9,
                 restaurant_id=restaurant_id,
@@ -449,6 +516,21 @@ class ProcurementAgent(BaseAgent):
                     restaurant_id=restaurant_id,
                 )
                 return None
+
+            if not PROPOSAL_EXECUTOR_EXISTS:
+                # SHADOW MODE. The row is written; no human is told, because
+                # approving it would silently do nothing (ADR 0020). See the
+                # PROPOSAL_EXECUTOR_EXISTS block at the top of this module for
+                # the full reasoning and for what to change when the executor
+                # lands.
+                self.logger.info(
+                    f"Staged reorder proposal {action_id} in shadow mode: "
+                    f"{wine_name} x{plan['quantity']} from "
+                    f"{plan['provider_name']}. No manager was notified — "
+                    "approving a proposal executes nothing today "
+                    "(one-tap-actions.service.ts:404-429)."
+                )
+                return action_id
 
             # Tell the manager there is something to look at. This is the only
             # publish on this path, it is manager-facing, and it carries no

@@ -18,6 +18,8 @@ E1's POS unification supplies the missing input. Hence the gate, before the pipe
 
 Covers:
   1. par crossing → exactly one pending proposal, no order, no vendor intent
+  1b. shadow mode: the row is staged, and no human is notified, because
+     approving it executes nothing today (ADR 0020)
   2. the enforcement point refuses a pre-confirmed row
   3. fail-closed: when staging fails, nothing else happens either
   4. the deleted execution path is deleted, not renamed
@@ -34,6 +36,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+import agents.procurement_agent as procurement_module
 from agents.procurement_agent import (
     ACTION_FAMILY,
     ACTION_KIND,
@@ -41,6 +44,7 @@ from agents.procurement_agent import (
     DECISION_REORDER_BLOCKED,
     DECISION_REORDER_PROPOSAL,
     ONE_TAP_ACTION_TYPE,
+    PROPOSAL_EXECUTOR_EXISTS,
     PROPOSAL_STATUS,
     RK_REORDER_PROPOSED,
     ProcurementAgent,
@@ -308,8 +312,10 @@ class TestParCrossingCannotReachAVendor:
         assert meta["payload"]["inventory_id"] == INV_ID
         assert meta["payload"]["provider_id"] == PROV_ID
 
-        # 4. The manager is asked, not informed after the fact.
-        assert [p["routing_key"] for p in _published(bus)] == [RK_REORDER_PROPOSED]
+        # 4. Nothing at all was published. The proposal is staged in shadow mode
+        #    because approving it would execute nothing — see
+        #    TestNoHumanIsToldUntilApprovalWorks.
+        assert _published(bus) == []
 
     @pytest.mark.asyncio
     async def test_the_proposal_preserves_the_negotiation_numbers(self):
@@ -343,6 +349,9 @@ class TestParCrossingCannotReachAVendor:
         assert rows[0]["output"]["executed"] is False
         assert rows[0]["output"]["orders_created"] == 0
         assert rows[0]["output"]["vendor_intents_published"] == 0
+        # The shadow-mode volume has to be countable off decision_log alone.
+        assert rows[0]["output"]["shadow_mode"] is True
+        assert rows[0]["output"]["manager_notified"] is False
 
     @pytest.mark.asyncio
     async def test_no_order_placement_side_effect_exists_at_all(self):
@@ -361,6 +370,74 @@ class TestParCrossingCannotReachAVendor:
                 "propose-only (FUTURES §8.1)"
             )
         assert ProcurementAgent.AUTONOMY_TIER == "propose_only"
+
+
+# ---------------------------------------------------------------------------
+# 1b. Shadow mode — nobody is told until approving does something
+# ---------------------------------------------------------------------------
+
+
+class TestNoHumanIsToldUntilApprovalWorks:
+    """
+    ADR 0020 (LOCKED): an action that cannot complete must refuse out loud, and
+    "an error must never render as emptiness". Approving one of these proposals
+    executes nothing — OneTapActionsService.triggerWorkflow
+    (one-tap-actions.service.ts:404-429) is a switch of TODO logs with no branch
+    for this family — so a manager who tapped approve would get silence.
+
+    The row is still staged (shadow-mode input for the hop-4 bridge, and safe
+    because the web action center excludes this action_type from
+    RENDERABLE_SERVER_TYPES by design). What is gated is the notification.
+
+    These tests fail the moment someone flips PROPOSAL_EXECUTOR_EXISTS without
+    building the executor, and the moment someone re-adds the publish.
+    """
+
+    def test_the_gate_is_closed_and_says_why(self):
+        assert PROPOSAL_EXECUTOR_EXISTS is False, (
+            "PROPOSAL_EXECUTOR_EXISTS may only become True in the same change "
+            "that gives OneTapActionsService.triggerWorkflow a real branch for "
+            f"{ACTION_KIND!r}. Notifying without an executor puts a card in "
+            "front of a manager that does nothing when tapped (ADR 0020)."
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_staged_proposal_notifies_nobody(self):
+        agent, router, bus, _ = _make_agent()
+
+        action_id = await agent._propose_reorder(_breach())
+
+        # The row exists — that is the shadow-mode data we want to keep.
+        assert action_id is not None
+        assert len(router.inserts["one_tap_actions"]) == 1
+
+        # And absolutely nothing was announced, on any exchange.
+        assert _published(bus) == [], (
+            "a proposal nobody can execute must not be announced to a human "
+            "(ADR 0020)"
+        )
+        assert RK_REORDER_PROPOSED not in {p["routing_key"] for p in _published(bus)}
+
+    @pytest.mark.asyncio
+    async def test_the_notification_returns_when_the_executor_lands(self, monkeypatch):
+        """
+        The gate is a gate, not a deletion. Flipping the flag restores the
+        manager notification — so whoever builds the executor gets the
+        behaviour back by changing one constant, and this test tells them the
+        wiring still works.
+        """
+        monkeypatch.setattr(procurement_module, "PROPOSAL_EXECUTOR_EXISTS", True)
+        agent, router, bus, _ = _make_agent()
+
+        await agent._propose_reorder(_breach())
+
+        published = _published(bus)
+        assert [p["routing_key"] for p in published] == [RK_REORDER_PROPOSED]
+        body = published[0]["body"]["payload"]
+        assert body["one_tap_action_id"] == router.inserts["one_tap_actions"][0]["id"]
+        assert body["restaurant_id"] == REST_ID
+        # Still no order, even with the notification switched back on.
+        assert router.inserts.get("procurement_orders") is None
 
 
 # ---------------------------------------------------------------------------
@@ -530,9 +607,7 @@ class TestManualOrderRequest:
         db.create_procurement_order.assert_not_awaited()
         assert len(router.inserts.get("one_tap_actions", [])) == 1
         assert router.inserts["one_tap_actions"][0]["status"] == PROPOSAL_STATUS
-
-        keys = {p["routing_key"] for p in _published(bus)}
-        assert not (keys & VENDOR_FACING_KEYS)
+        assert _published(bus) == []
 
 
 # ---------------------------------------------------------------------------
