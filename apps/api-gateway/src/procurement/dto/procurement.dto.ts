@@ -11,6 +11,7 @@ import {
   Min,
 } from "class-validator";
 import { Type } from "class-transformer";
+import { ORDER_UNIT_TYPES } from "../order-units";
 
 export enum ProcurementOrderStatus {
   PENDING = "PENDING",
@@ -42,10 +43,38 @@ export class CreateOrderDto {
   @Min(1)
   quantity: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description:
+      "Purchase unit: bottle | case | keg | pack | split_case | each | liter. " +
+      "Omitted means bottles. An unrecognised unit is refused rather than assumed — " +
+      "a guessed unit books a wrong quantity that nothing downstream can detect.",
+    enum: ORDER_UNIT_TYPES as unknown as string[],
+  })
   @IsString()
   @IsOptional()
   unitType?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Bottles in one purchase unit. REQUIRED when unitType is case, pack or split_case: " +
+      "guessing 12 books twelve times the delivery and guessing 1 books a twelfth of it, " +
+      "so the order is refused until the pack size is stated.",
+    minimum: 1,
+  })
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  bottlesPerUnit?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "The vendor's own SKU for this wine, when the buyer knows it. Carried onto the " +
+      "order line so an arriving invoice can be matched on an exact SKU rather than on " +
+      "a description — the only match method strong enough to auto-apply.",
+  })
+  @IsString()
+  @IsOptional()
+  vendorSku?: string;
 
   @ApiPropertyOptional()
   @IsNumber()
