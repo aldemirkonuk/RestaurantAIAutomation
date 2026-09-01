@@ -58,6 +58,19 @@ export interface InsightComparator {
   label: string;
   /** Template family used by the verbalizer. */
   template: string;
+  /**
+   * Data the *comparator* needs, over and above the dimension and the measure.
+   *
+   * Most comparators are pure re-shapings of the measure's own series and add
+   * nothing. Two do not, and saying otherwise mislabels a type as computable
+   * when its generator provably cannot run (ADR 0020 — a mislabelled number is
+   * a fabrication):
+   *   - `goal_pace` reads `analytics_goals`, not the measure's series.
+   *   - `basket_affinity` mines `pos_checks.items`, not the consumption log.
+   * `insight-implementations.spec.ts` derives each implemented type's real
+   * guard from the generator source and fails if this drifts.
+   */
+  requires?: DataRequirement[];
 }
 
 // ---------------------------------------------------------------------------
@@ -265,9 +278,17 @@ export const COMPARATORS: InsightComparator[] = [
     key: "basket_affinity",
     label: "sold-together affinity",
     template: "basket",
+    // Mined from pos_checks.items, not the wine consumption log.
+    requires: ["checks"],
   },
   { key: "forecast_gap", label: "actual vs forecast", template: "forecast" },
-  { key: "goal_pace", label: "pace vs goal", template: "goal" },
+  {
+    key: "goal_pace",
+    label: "pace vs goal",
+    template: "goal",
+    // Needs a goal to pace against.
+    requires: ["goals"],
+  },
   { key: "hot_entity_live", label: "live surge watchlist", template: "hot" },
 ];
 
@@ -523,7 +544,9 @@ function buildCandidates(): InsightCandidate[] {
           !["table", "table_zone", "venue_feature"].includes(dim.key)
         )
           continue;
-        const requires = Array.from(new Set([...dim.requires, ...m.requires]));
+        const requires = Array.from(
+          new Set([...dim.requires, ...m.requires, ...(c.requires ?? [])]),
+        );
         out.push({
           key: `${dim.key}.${mKey}.${cKey}`,
           dimension: dim.key,

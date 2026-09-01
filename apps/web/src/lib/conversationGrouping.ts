@@ -107,6 +107,12 @@ const DRAFT_STATUS_LABEL: Record<string, string> = {
   DRAFT: 'Unsent draft',
   PENDING_APPROVAL: 'Draft awaiting approval',
   APPROVED: 'Approved, not sent',
+  SENDING: 'Sending now',
+  // The vendor may already have this email; the status write failed after the
+  // send. Falling through to null here made it an unlabelled mystery row — the
+  // exact failure this map exists to prevent, on the one state where a human
+  // most needs the truth.
+  SEND_UNCONFIRMED: 'Sent, delivery unconfirmed — check the vendor thread',
 }
 
 export function draftStatusLabel(
