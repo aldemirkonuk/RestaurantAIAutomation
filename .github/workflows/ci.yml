@@ -305,6 +305,52 @@ jobs:
           echo "::notice::Only the numbers THIS branch introduces are checked. A duplicate between two other branches is deliberately not your problem -- run --audit for the full picture."
           echo "::notice::Exit 2 means CANNOT CHECK: the guard could not see every branch, so any verdict would be a guess. That is a failure, not a skip -- fix the fetch, do not disable the step."
 
+  # ADR 0051: a surface shows live data or says it does not know. Analytics did
+  # neither. Both cost loaders resolved a unit cost as
+  #
+  #     lot?.has_invoice_cost && lot?.wac ? lot.wac
+  #       : Number(i.last_purchase_price) || (unitPrice ? unitPrice * 0.6 : 0)
+  #
+  # `0.6` appeared in no ADR, comment or doc, and it was not the rare branch:
+  # `last_purchase_price` has NO write site in this repo and is NULL on all 72
+  # production inventory rows, while `inventory_lots` holds 2. The measured path
+  # covered ~2 rows; the invented one covered ~70. `getFinancialSummary` then
+  # labelled the result "on-hand qty x WAC (lot rollup)" and getMenuEngineering
+  # "unit_price - WAC (lot rollup)".
+  #
+  # The label is why this blocks rather than being a convention. A bare number
+  # can be spotted in review; a `basis` string naming a source the value did not
+  # come from IS what a reviewer checks the number against. And the expression
+  # existed twice because the second copy was written from the first -- a third
+  # is one loader away and would not look wrong in a diff.
+  #
+  # Stdlib only, no install step. Exit 2 (cannot check) blocks like exit 1: this
+  # fabrication reached 70 of 72 production rows under a green CI, which is
+  # exactly what a vacuous pass buys.
+  analytics-cost-honesty:
+    name: Analytics never invents a cost
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: The guard still fires on the shape it exists to catch
+        run: python3 scripts/check_analytics_cost_honesty.py --self-test
+
+      - name: No fabricated cost, and no basis claiming a source it does not use
+        run: python3 scripts/check_analytics_cost_honesty.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::MAGIC-NUMBER COST means a unit cost was scaled from a bare literal, or a cost-column read was defaulted into a number. Delete the literal: with no invoiced cost and no recorded purchase price the cost is UNKNOWN, and resolveUnitCost() in apps/api-gateway/src/analytics/inventory-cost.ts returns null so the caller can say so."
+          echo "::notice::Do not substitute a different guess. 0.6 was a guess and it valued ~70 of 72 production rows while two endpoints labelled it 'WAC (lot rollup)'."
+          echo "::notice::OUTSIDE THE RESOLVER means a file derives a unit cost from last_purchase_price / has_invoice_cost without calling resolveUnitCost(). The inline expression existed twice because the second copy was written from the first; call the resolver instead of writing a third."
+          echo "::notice::LYING BASIS means a cost-shaped basis entry names a source unconditionally. Build it from the rows it covered -- costBasisSentence(coverage) or COST_BASIS_LABEL[row.costBasis] -- so the label cannot drift away from the number."
+          echo "::notice::Propagate the null rather than defaulting it: a margin from an unknown cost is unknown, not zero. See ADR 0051 and the per-field notes in apps/api-gateway/src/analytics/cost-honesty.spec.ts."
+          echo "::notice::WHICH price should value inventory is OPEN-DECISIONS OD-100 and is the founder's call. This guard is about not answering it silently -- do not resolve OD-100 by editing resolveUnitCost in a bug-fix PR."
+          echo "::notice::CANNOT CHECK (exit 2) means inventory-cost.ts is gone or gutted, nothing was scanned, or no cost basis label is derived any more. That is a move or a rename, not a pass; repoint the guard."
+
   decision-claims:
     name: Decision register matches reality
     runs-on: ubuntu-latest
@@ -809,6 +855,7 @@ jobs:
         # Added 2026-09-01 with the job itself, per the rule this list exists to
         # enforce: a guard nobody depends on can fail while this prints success.
         adr-numbers-unique,
+        analytics-cost-honesty,
       ]
     steps:
       - name: Checkout code

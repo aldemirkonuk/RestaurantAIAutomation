@@ -4,6 +4,12 @@ import * as E from "./engine";
 import { AnalyticsService } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
+import {
+  COST_BASIS_LABEL,
+  costBasisSentence,
+  resolveUnitCost,
+  summarizeCostBasis,
+} from "./inventory-cost";
 
 /**
  * AdvancedAnalyticsService — the second wave of catalogue features.
@@ -63,22 +69,26 @@ export class AdvancedAnalyticsService {
     const rollup = new Map<string, any>();
     if (rollupRes.status === "fulfilled")
       for (const r of rollupRes.value.data || []) rollup.set(r.inventory_id, r);
+    // Same fix as AnalyticsService.loadInventory: the third branch here was
+    // `unitPrice * 0.6`, an undocumented magic number that was the live path
+    // for ~70 of 72 production rows while `basis.margin` below called the
+    // result "WAC (lot rollup)". See ./inventory-cost.ts.
     return inventory.map((i: any) => {
       const lot = rollup.get(i.id);
       const unitPrice = Number(i.menu_price_current) || 0;
-      const cost =
-        lot?.has_invoice_cost && lot?.wac
-          ? lot.wac
-          : Number(i.last_purchase_price) || (unitPrice ? unitPrice * 0.6 : 0);
+      const { unitCost, costBasis } = resolveUnitCost(i, lot);
       return {
         id: i.id,
         masterWineId: i.master_wine_id,
         name: i.wine_name || i.master_wine_id || i.id,
         type: i.master_wine_library?.primary_type || "unknown",
         qty: lot?.live_qty ?? i.stock_live ?? 0,
-        unitCost: cost,
+        unitCost,
+        costBasis,
         unitPrice,
-        marginPerBottle: unitPrice - cost,
+        // A margin computed against an unknown cost is unknown. Defaulting the
+        // cost to 0 would report the entire menu price as margin.
+        marginPerBottle: unitCost == null ? null : unitPrice - unitCost,
       };
     });
   }
@@ -171,21 +181,28 @@ export class AdvancedAnalyticsService {
       if (!c.wineId) continue;
       soldByWine.set(c.wineId, (soldByWine.get(c.wineId) || 0) + c.qty);
     }
-    const items = inventory
-      .filter((i) => i.unitPrice > 0)
-      .map((i) => ({
-        id: i.id,
-        name: i.name,
-        type: i.type,
-        velocityPerDay: (soldByWine.get(i.masterWineId) || 0) / sinceDays,
-        marginPerBottle: i.marginPerBottle,
-        marginPct: E.grossMargin(i.unitCost, i.unitPrice),
-      }));
+    const priced = inventory.filter((i) => i.unitPrice > 0);
+    const costCoverage = summarizeCostBasis(priced);
+    const items = priced.map((i) => ({
+      id: i.id,
+      name: i.name,
+      type: i.type,
+      velocityPerDay: (soldByWine.get(i.masterWineId) || 0) / sinceDays,
+      marginPerBottle: i.marginPerBottle,
+      costBasis: i.costBasis,
+      marginPct:
+        i.unitCost == null ? null : E.grossMargin(i.unitCost, i.unitPrice),
+    }));
 
     const velocities = items.map((i) => i.velocityPerDay);
-    const margins = items.map((i) => i.marginPerBottle);
+    // The margin cutoff is a median over the wines that HAVE a margin. Rows
+    // with an unknown cost cannot be on either side of it, so they are left
+    // unclassified below rather than dragged to one side by a stand-in 0.
+    const margins = items
+      .map((i) => i.marginPerBottle)
+      .filter((m): m is number => m != null);
     const medVel = E.median(velocities) ?? 0;
-    const medMargin = E.median(margins) ?? 0;
+    const medMargin = margins.length > 0 ? E.median(margins) : null;
 
     const ACTIONS: Record<string, string> = {
       star: "Protect: keep in stock, feature prominently, never discount.",
@@ -196,7 +213,12 @@ export class AdvancedAnalyticsService {
       dog: "Low volume, low margin: candidate to delist, flight off, or replace.",
     };
 
+    // The quadrant is a two-axis claim. With no cost there is no margin axis,
+    // so there is no quadrant and no action — `dog` ("candidate to delist") is
+    // not the safe default for a wine we simply never costed.
     const classified = items.map((i) => {
+      if (i.marginPerBottle == null || medMargin == null)
+        return { ...i, quadrant: null, action: null };
       const highVel = i.velocityPerDay > medVel;
       const highMargin = i.marginPerBottle > medMargin;
       const quadrant = highVel
@@ -209,22 +231,43 @@ export class AdvancedAnalyticsService {
       return { ...i, quadrant, action: ACTIONS[quadrant] };
     });
 
-    const counts: Record<string, number> = {};
+    const counts: Record<string, number> = { unclassified: 0 };
     for (const c of classified)
-      counts[c.quadrant] = (counts[c.quadrant] || 0) + 1;
+      if (c.quadrant == null) counts.unclassified += 1;
+      else counts[c.quadrant] = (counts[c.quadrant] || 0) + 1;
 
     return {
       basis: {
         velocity: `wine_consumption_log units/day over ${sinceDays}d`,
-        margin: "unit_price − WAC (lot rollup)",
+        // Was "unit_price − WAC (lot rollup)" unconditionally, for a margin
+        // that came from WAC on ~2 rows in 72 and from a fabricated
+        // 0.6 × menu price on the rest.
+        margin: `menu_price_current − unit cost — ${costBasisSentence(costCoverage)}`,
+        costDerived:
+          "items[].marginPerBottle, items[].marginPct, items[].quadrant, items[].action and medians.marginPerBottle are null for rows with no recorded cost; those rows are counted under counts.unclassified (ADR 0051)",
       },
+      costCoverage,
       medians: { velocityPerDay: medVel, marginPerBottle: medMargin },
       counts,
-      items: classified.sort(
-        (a, b) =>
-          b.velocityPerDay * b.marginPerBottle -
-          a.velocityPerDay * a.marginPerBottle,
-      ),
+      // Unclassified rows sort after every classified one — ordering them by
+      // `velocity × null` would be NaN, and ordering them by velocity alone
+      // would interleave them as if they had a known margin of zero.
+      items: classified.sort((a, b) => {
+        const av =
+          a.marginPerBottle == null
+            ? null
+            : a.velocityPerDay * a.marginPerBottle;
+        const bv =
+          b.marginPerBottle == null
+            ? null
+            : b.velocityPerDay * b.marginPerBottle;
+        if (av == null || bv == null)
+          return (
+            (av == null ? 1 : 0) - (bv == null ? 1 : 0) ||
+            b.velocityPerDay - a.velocityPerDay
+          );
+        return bv - av;
+      }),
       generatedAt: new Date().toISOString(),
     };
   }
@@ -474,9 +517,19 @@ export class AdvancedAnalyticsService {
     return {
       masterWineId,
       name: item?.name ?? masterWineId,
+      // This endpoint carried no `basis` at all, so `unitCost` arrived with no
+      // way to tell an invoiced number from the 0.6 × menu price fabrication.
+      basis: {
+        demand: "wine_consumption_log units/day over 90d",
+        unitCost: item
+          ? `${COST_BASIS_LABEL[item.costBasis]}${item.unitCost == null ? " — unitCost and marginPerBottle are null (ADR 0051)" : ""}`
+          : "wine not found in active inventory",
+        unitPrice: "restaurant_inventory.menu_price_current",
+      },
       onHand: item?.qty ?? null,
       unitPrice: item?.unitPrice ?? null,
       unitCost: item?.unitCost ?? null,
+      costBasis: item?.costBasis ?? null,
       marginPerBottle: item?.marginPerBottle ?? null,
       demand: profile,
       daysOfCover:
