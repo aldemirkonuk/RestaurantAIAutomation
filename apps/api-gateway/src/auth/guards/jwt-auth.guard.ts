@@ -9,6 +9,7 @@ import { IS_PUBLIC_KEY } from "../decorators/public.decorator";
 import { ALLOW_UNVERIFIED_KEY } from "../decorators/allow-unverified.decorator";
 import { TokenBlacklistService } from "../services/token-blacklist.service";
 import { assertTenantMatch } from "../../common/tenant/assert-tenant-match";
+import { ALLOWS_TENANT_CHANGE_KEY } from "../../common/tenant/allows-tenant-change.decorator";
 import { assertEmailVerified } from "../assert-email-verified";
 
 @Injectable()
@@ -57,7 +58,20 @@ export class JwtAuthGuard extends AuthGuard("jwt") {
       //
       // This is the first line at which the answer is knowable. The block that
       // used to sit here computed two UUID regexes and discarded both results.
-      assertTenantMatch(request);
+      //
+      // A route marked @AllowsTenantChange() is exempt from the BODY-derived
+      // names only — path and query are still compared. Without it, the one
+      // route that exists to change tenants was refused before the membership
+      // check that authorises it could run, so no user with access to more
+      // than one restaurant could ever switch (verified in production
+      // 2026-09-01: three such users, none able to move).
+      const allowsTenantChange = this.reflector.getAllAndOverride<boolean>(
+        ALLOWS_TENANT_CHANGE_KEY,
+        [context.getHandler(), context.getClass()],
+      );
+      assertTenantMatch(request, {
+        allowBodyTenantChange: allowsTenantChange === true,
+      });
 
       // Email verification runs here for the same reason (OD-79). It used to
       // exist only in the browser, comparing a field the API never sent.
