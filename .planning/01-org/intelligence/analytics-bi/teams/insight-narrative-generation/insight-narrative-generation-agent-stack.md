@@ -123,7 +123,7 @@ Gap rows:
 | `insight.disposition_recorded` has no publisher, and for 573 types no substrate | `analytics_insights` (baseline `:2194-2209`) carries `candidate_key`, `sentence`, `score`, `effect_pct`, `z_score`, `evidence`, `computed_at` and **no disposition column**. Acceptance is measurable over 8 rules and not over 573 types — the surface the founder wants to lead with is the surface with no feedback loop |
 | INTEL-F3 — the operator has no NF `subject_type` | `recommendation_actions.created_by` already stores the operator's identity; `foundation §4.4` allows `agent` / `guest` / `bio` only. Open fork, interacts with OD-11; this card does not pick a side, it restates the blockage monthly |
 | `nf_b.aggregate_guest_signal_consumed` has no producer named here | We consume NF-B **in aggregate** only ([[guest-experience-charter]] owns the guest); nothing publishes an aggregate today |
-| The weekly OD-20 restatement has no subject | [[analytics-bi-charter]]'s 2026-08-25 correction records OD-20 **resolved** (`analytics.controller.ts:51`, re-verified 2026-08-27); this team's schedule still lists the restatement weekly. Recorded as drift — the schedule is not this doc's to edit |
+| ~~The weekly OD-20 restatement has no subject~~ — **drift resolved 2026-09-01** | [[analytics-bi-charter]]'s 2026-08-25 correction records OD-20 **resolved** (`analytics.controller.ts:51`, re-verified 2026-08-27); this team's schedule still listed the restatement weekly. That drift was recorded here and has now been carried into [[insight-narrative-generation-schedule]], where the job is retired with its outcome (closed by PR #31 on 2026-08-24) rather than deleted |
 
 ## 6. Evidence today
 
