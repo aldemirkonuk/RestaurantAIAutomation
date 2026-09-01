@@ -691,10 +691,20 @@ This is an automated alert from WineOps AI.
       subject: options.subject,
       html: options.html,
       text: options.text || this.htmlToPlainText(options.html),
+      // Honour a pre-minted Message-ID so a caller that recorded the id before
+      // sending (see ProcurementService.approveDraft) is telling the truth on
+      // this path too, not just on the Gmail API path.
+      messageId: options.messageIdHeader || undefined,
+      inReplyTo: options.inReplyTo || undefined,
+      references: options.references || undefined,
     });
 
     this.logger.log(`Email delivered via SMTP. MessageId: ${info.messageId}`);
-    return { success: true, messageId: info.messageId };
+    return {
+      success: true,
+      messageId: info.messageId,
+      rfc822MessageId: options.messageIdHeader || info.messageId || undefined,
+    };
   }
 
   /**

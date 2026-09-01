@@ -475,6 +475,8 @@ export class InboundResponderService {
           "PENDING_APPROVAL",
           "AUTO_SEND_SCHEDULED",
           "AUTO_SENDING",
+          // A manager-approved send is in flight — don't stage a rival draft.
+          "SENDING",
         ])
         .limit(1);
       if (existingDraft?.length) {
