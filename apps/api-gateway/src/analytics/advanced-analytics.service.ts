@@ -54,6 +54,10 @@ export class AdvancedAnalyticsService {
         .select("inventory_id, live_qty, wac, has_invoice_cost")
         .eq("restaurant_id", restaurantId),
     ]);
+    if (invRes.status === "fulfilled" && invRes.value.error)
+      this.logQueryFailure("restaurant_inventory", invRes.value.error);
+    if (rollupRes.status === "fulfilled" && rollupRes.value.error)
+      this.logQueryFailure("inventory_lot_rollup", rollupRes.value.error);
     const inventory =
       invRes.status === "fulfilled" ? invRes.value.data || [] : [];
     const rollup = new Map<string, any>();
@@ -81,7 +85,7 @@ export class AdvancedAnalyticsService {
 
   private async loadConsumption(restaurantId: string, sinceDays = 90) {
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
-    const { data } = await this.dbService
+    const { data, error } = await this.dbService
       .getClient()
       .from("wine_consumption_log")
       // No master_wine_id column on this table — resolve via the inventory FK.
@@ -90,6 +94,7 @@ export class AdvancedAnalyticsService {
       )
       .eq("restaurant_id", restaurantId)
       .gte("created_at", since);
+    if (error) this.logQueryFailure("wine_consumption_log", error);
     return (data || []).map((c: any) => ({
       wineId: c.restaurant_inventory?.master_wine_id ?? null,
       qty: c.quantity || (c.volume_ml ? c.volume_ml / 750 : 0),
@@ -99,15 +104,39 @@ export class AdvancedAnalyticsService {
 
   private async loadOrders(restaurantId: string, sinceDays = 365) {
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
-    const { data } = await this.dbService
+    // Same schema-drift class as loadInventory above. `procurement_orders` has
+    // NO provider_name and NO wine_name column (see
+    // supabase/migrations/20260805000000_baseline_from_production.sql:4514-4568)
+    // — it carries provider_id → providers(id) and inventory_id →
+    // restaurant_inventory(id). Naming either one 42703s the WHOLE PostgREST
+    // query, and the discarded `error` below turned that into an empty order
+    // list, so getVendorScorecard and getCashflow returned zeroes for every
+    // restaurant, forever. The vendor label comes from the FK embed instead;
+    // wine_name was selected but never read, so it is simply gone.
+    const { data, error } = await this.dbService
       .getClient()
       .from("procurement_orders")
       .select(
-        "id, provider_id, provider_name, wine_name, total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status",
+        "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status",
       )
       .eq("restaurant_id", restaurantId)
       .gte("created_at", since);
+    if (error) this.logQueryFailure("procurement_orders", error);
     return data || [];
+  }
+
+  /**
+   * A failed loader still degrades to `[]` — an analytics page that 500s
+   * because one lens is unavailable is worse than one that renders the rest.
+   * But it must never do so SILENTLY: a query that fails and returns no rows
+   * is indistinguishable from one that succeeds with no rows, which is exactly
+   * how the provider_name drift above survived unnoticed in production.
+   */
+  private logQueryFailure(table: string, error: any) {
+    this.logger.error(
+      `analytics query on ${table} failed — this lens will report empty ` +
+        `rather than wrong: ${error?.code ?? "?"} ${error?.message ?? error}`,
+    );
   }
 
   private toDaily(
@@ -246,7 +275,7 @@ export class AdvancedAnalyticsService {
       );
       return {
         vendorId,
-        vendorName: os[0]?.provider_name || vendorId,
+        vendorName: os[0]?.providers?.name || vendorId,
         orders: os.length,
         delivered: delivered.length,
         spend,
@@ -307,11 +336,12 @@ export class AdvancedAnalyticsService {
     // Per-category weekday winners (which type sells on which day).
     const byType = new Map<string, Array<{ date: string; value: number }>>();
     const client = this.dbService.getClient();
-    const { data: inv } = await client
+    const { data: inv, error: invError } = await client
       .from("restaurant_inventory")
       // Varietal/type lives on master_wine_library, not restaurant_inventory.
       .select("master_wine_id, master_wine_library(primary_type)")
       .eq("restaurant_id", restaurantId);
+    if (invError) this.logQueryFailure("restaurant_inventory", invError);
     const typeByWine = new Map(
       (inv || []).map((i: any) => [
         i.master_wine_id,

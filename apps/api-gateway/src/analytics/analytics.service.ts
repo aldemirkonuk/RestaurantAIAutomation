@@ -159,13 +159,22 @@ export class AnalyticsService {
     // column, so selecting one 42703s the whole query and silently yields an
     // empty demand series (zero velocity, zero forecast, no reorder points).
     // Resolve the wine through the inventory FK instead.
-    const { data } = await client
+    const { data, error } = await client
       .from("wine_consumption_log")
       .select(
         "inventory_id, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id)",
       )
       .eq("restaurant_id", restaurantId)
       .gte("created_at", since);
+    // getFinancialSummary's dead-stock join now depends on this series, and an
+    // empty one is deliberately read as "no movement signal" rather than "no
+    // movement" — so a failure here must at least be loud in the logs.
+    if (error)
+      this.logger.error(
+        `analytics query on wine_consumption_log failed — demand, reorder ` +
+          `science and dead stock will report empty rather than wrong: ` +
+          `${error.code ?? "?"} ${error.message ?? error}`,
+      );
     return (data || []).map((c: any) => ({
       masterWineId: c.restaurant_inventory?.master_wine_id ?? null,
       inventoryId: c.inventory_id,
@@ -336,9 +345,11 @@ export class AnalyticsService {
   // =========================================================================
 
   async getFinancialSummary(restaurantId: string, labor = 0) {
-    const [inventory, orders] = await Promise.all([
+    const DEAD_STOCK_WINDOW_DAYS = 90;
+    const [inventory, orders, consumption] = await Promise.all([
       this.loadInventory(restaurantId),
       this.loadDeliveredOrders(restaurantId, 365),
+      this.loadConsumption(restaurantId, DEAD_STOCK_WINDOW_DAYS),
     ]);
 
     const inventoryValue = E.stats.sum(inventory.map((i) => i.inventoryValue));
@@ -363,20 +374,54 @@ export class AnalyticsService {
         ? E.finance.primeCostRatio(inventoryValue, labor, revenue)
         : null;
 
-    // Dead stock: positive value, but zero recent movement. Approximated here
-    // as items whose qty > 0 but reorder_point/threshold suggest overstock —
-    // a fuller version joins consumption; see getInventoryScience.
-    const deadStock = inventory
-      .filter((i) => i.qty > 0 && i.qty > Math.max(i.thresholdMin * 3, 12))
-      .map((i) => ({ name: i.name, value: i.inventoryValue, qty: i.qty }))
-      .sort((a, b) => b.value - a.value);
-    const deadStockCapital = E.stats.sum(deadStock.map((d) => d.value));
+    // Dead stock: on hand, but NOT MOVING. The previous definition was a
+    // depth test (`qty > max(thresholdMin*3, 12)`) with no consumption join at
+    // all, so a wine that sold every night but was stocked deep counted as
+    // dead capital — while recommendations.service.ts rendered the total to
+    // managers as "locked in slow inventory" and advised discounting the top
+    // names to cost. Applied to a fast mover that advice destroys margin, so
+    // the join is the fix rather than the label: the recommendation attached to
+    // this number is only sound for genuinely idle stock.
+    //
+    // A bottle counts as moving if EITHER its inventory row or its master wine
+    // saw consumption in the window — over-matching risks understating dead
+    // capital, under-matching risks telling a manager to discount a best
+    // seller, and only one of those two errors is expensive.
+    const movedInventoryIds = new Set<string>();
+    const movedMasterWineIds = new Set<string>();
+    for (const c of consumption) {
+      if ((c.qty ?? 0) <= 0) continue;
+      if (c.inventoryId) movedInventoryIds.add(c.inventoryId);
+      if (c.masterWineId) movedMasterWineIds.add(c.masterWineId);
+    }
+    // No movement recorded ANYWHERE is not evidence that nothing moved — it is
+    // a restaurant with no POS/consumption feed, or a loader that failed. Zero
+    // rows would otherwise mark the entire cellar dead and put the whole
+    // inventory value in front of a manager as idle capital. Null says "we
+    // have no idea", which is the truth (ADR 0020).
+    const hasMovementSignal =
+      movedInventoryIds.size > 0 || movedMasterWineIds.size > 0;
+    const deadStock = !hasMovementSignal
+      ? []
+      : inventory
+          .filter(
+            (i) =>
+              i.qty > 0 &&
+              !movedInventoryIds.has(i.id) &&
+              !(i.masterWineId && movedMasterWineIds.has(i.masterWineId)),
+          )
+          .map((i) => ({ name: i.name, value: i.inventoryValue, qty: i.qty }))
+          .sort((a, b) => b.value - a.value);
+    const deadStockCapital = hasMovementSignal
+      ? E.stats.sum(deadStock.map((d) => d.value))
+      : null;
 
     return {
       basis: {
         cogs: "delivered procurement_orders (trailing 365d)",
         revenue: "unit_price × on-hand qty (POS-revenue proxy)",
         inventoryValue: "on-hand qty × WAC (lot rollup)",
+        deadStock: `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d; null when the restaurant records no movement at all`,
       },
       inventoryValue,
       cogs,

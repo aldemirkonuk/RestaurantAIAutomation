@@ -2,6 +2,7 @@
 type: page
 route: /profile
 slug: profile
+softwares: [auth-onboarding]
 component: apps/web/src/pages/Profile.tsx
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[login]]", "[[settings]]"]
 ---
 
 # /profile
+
+> **Part of** [[08-softwares/auth-onboarding|Auth & Onboarding]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

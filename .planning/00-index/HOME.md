@@ -16,6 +16,7 @@ Autonomous restaurant operations platform. One entity; many small softwares insi
 | **[[PLAN]]** | **What gates what** — the critical path |
 | [[ORG-MAP]] | Who exists — divisions → departments → teams → advisory |
 | [[SCENARIO-MAP]] | What happens in a restaurant — the 17 rituals |
+| [[SOFTWARE-MAP]] | **The products** — the small softwares inside the one entity, each with its screens, spine, and owner ([[0052-software-catalog-layer]]) |
 | [[PAGES-MAP]] | The product surface — 50 pages, endpoints, signals, rebrand debt |
 | [[LOOP-MAP]] | What feeds back into what, and how fast it closes |
 | [[CARD-MAP]] | **The agent layer** — every unit's declared agents, their class, and their gaps ([[0034-agent-stack-artifact]]) |

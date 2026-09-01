@@ -2,6 +2,7 @@
 type: page
 route: /simpos/:restaurantId
 slug: simpos-terminal
+softwares: [simpos]
 component: apps/web/src/pages/simpos/SimposTerminalPage.tsx
 audience: dev
 tier: public
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[simpos-order-log]]", "[[logs]]", "[[dashboard]]"
 ---
 
 # /simpos/:restaurantId
+
+> **Part of** [[08-softwares/simpos|SimPOS]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
