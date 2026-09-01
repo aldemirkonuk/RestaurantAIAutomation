@@ -11,7 +11,7 @@
  * spend total, spend-by-month, bottles-delivered figure and the goals engine's
  * purchase-spend series read a STRUCTURAL ZERO — not "no data yet", but a
  * number that could never be anything else, rendered as though it were
- * measured. See ADR 0055.
+ * measured. See ADR 0058.
  *
  * The fix is not "spell it uppercase at nine call sites". It is that no call
  * site should be spelling it at all: the sets below are the vocabulary, and

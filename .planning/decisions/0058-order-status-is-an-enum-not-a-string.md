@@ -1,4 +1,4 @@
-# 0055 — Order status is an enum, not a string
+# 0058 — Order status is an enum, not a string
 
 - **Status:** Proposed
 - **Date:** 2026-09-01

@@ -4,7 +4,7 @@ import { DatabaseService } from "../database/database.service";
 import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
 
 /**
- * The test that would have caught the case defect (ADR 0055).
+ * The test that would have caught the case defect (ADR 0058).
  *
  * `procurement_orders.status` is written from `ProcurementOrderStatus` —
  * UPPERCASE. Nine read sites compared it to the lowercase `"delivered"`, so no

@@ -487,7 +487,7 @@ jobs:
       # enum (UPPERCASE) and was read against the lowercase "delivered" at nine
       # sites, so every vendor scorecard, lead-time statistic, spend total and
       # goal series returned a structural zero that rendered as a measurement.
-      # 21 violations across 8 files when this guard landed. ADR 0055.
+      # 21 violations across 8 files when this guard landed. ADR 0058.
       - name: Guard order status literals (the enum is the vocabulary)
         if: ${{ !cancelled() }}
         run: ./scripts/check_order_status_literals.py
@@ -499,7 +499,7 @@ jobs:
       - name: Explain a failure
         if: failure()
         run: |
-          echo "::notice::[order status] means code compared procurement_orders.status to a string literal that is not a ProcurementOrderStatus member. Do NOT just retype it in uppercase -- import a set from apps/api-gateway/src/procurement/order-status.ts. Which set is a real question: ORDER_SPEND_STATUSES excludes PARTIALLY_RECEIVED (its money columns describe the PO, not the short delivery), ORDER_ARRIVED_STATUSES includes it (the truck did come). ADR 0055."
+          echo "::notice::[order status] means code compared procurement_orders.status to a string literal that is not a ProcurementOrderStatus member. Do NOT just retype it in uppercase -- import a set from apps/api-gateway/src/procurement/order-status.ts. Which set is a real question: ORDER_SPEND_STATUSES excludes PARTIALLY_RECEIVED (its money columns describe the PO, not the short delivery), ORDER_ARRIVED_STATUSES includes it (the truck did come). ADR 0058."
           echo "::notice::A mis-cased status filter matches NOTHING, so the figure reads 0 rather than erroring. On a .not(...in...) gate it inverts: nothing matches, so NOT IN matches EVERYTHING and the gate fails OPEN."
           echo "::notice::Exit 2 from that guard is CANNOT CHECK, not a skip: the enum could not be parsed, or the chain extractor found no procurement_orders queries. Fix the anchor, do not delete the step."
 

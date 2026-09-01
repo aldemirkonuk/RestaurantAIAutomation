@@ -192,7 +192,7 @@ KNOWN_BROKEN: dict[tuple[str, str, str], str] = {
         "`next_order_date` column. Whether recurrence is a status, a separate "
         "table, or an abandoned feature is a PRODUCT decision, and guessing "
         "would silently start mailing real tenants. Left failing-closed (it "
-        "sends nothing today) and recorded rather than invented. See ADR 0055."
+        "sends nothing today) and recorded rather than invented. See ADR 0058."
     ),
 }
 
@@ -587,7 +587,7 @@ def main() -> int:
         print("      vocabulary from apps/api-gateway/src/procurement/order-status.ts:")
         print("      ORDER_SPEND_STATUSES, ORDER_ARRIVED_STATUSES, ORDER_CLOSED_STATUSES,")
         print("      and `hasStatus()` for in-memory filters. Which set a call site wants")
-        print("      is a real question -- ADR 0055 records why they differ.")
+        print("      is a real question -- ADR 0058 records why they differ.")
 
     print()
     if blocked:
