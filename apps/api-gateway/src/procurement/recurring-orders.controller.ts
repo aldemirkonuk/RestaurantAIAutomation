@@ -11,11 +11,13 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from "@nestjs/swagger";
+import { RecurringOrdersService } from "./recurring-orders.service";
 import {
-  RecurringOrdersService,
-  RecurringOrderTemplate,
-} from "./recurring-orders.service";
+  CreateRecurringOrderDto,
+  UpdateRecurringOrderDto,
+} from "./dto/recurring-order.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
 
 @ApiTags("recurring-orders")
 /**
@@ -77,21 +79,30 @@ export class RecurringOrdersController {
 
   @Post(":restaurantId")
   @ApiOperation({ summary: "Create a new recurring order" })
+  @ApiResponse({
+    status: 400,
+    description:
+      "A field this endpoint cannot honour, an unreadable unit, or a case quantity " +
+      "with no pack size. The body was previously typed as a TypeScript interface, " +
+      "which is erased at runtime and validated nothing.",
+  })
   async create(
     @Param("restaurantId") restaurantId: string,
-    @Body()
-    body: Omit<RecurringOrderTemplate, "id" | "restaurant_id"> & {
-      userId?: string;
-    },
+    @Body() body: CreateRecurringOrderDto,
+    // The actor comes from the verified token, never from the body. The old
+    // `body.userId || "system"` let a caller claim to be anyone, and "system"
+    // is not a uuid — `recurring_orders.created_by` has an FK to
+    // public.users(user_id) and would have raised 22P02 on it.
+    @CurrentUser() user: { userId: string; restaurantId: string },
   ) {
     try {
-      const userId = body.userId || "system";
       return await this.recurringOrdersService.createRecurringOrder(
         restaurantId,
-        userId,
+        user?.userId,
         body,
       );
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to create recurring order",
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -104,7 +115,7 @@ export class RecurringOrdersController {
   async update(
     @Param("restaurantId") restaurantId: string,
     @Param("id") id: string,
-    @Body() body: Partial<RecurringOrderTemplate>,
+    @Body() body: UpdateRecurringOrderDto,
   ) {
     try {
       return await this.recurringOrdersService.updateRecurringOrder(
@@ -113,6 +124,7 @@ export class RecurringOrdersController {
         body,
       );
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to update recurring order",
         HttpStatus.INTERNAL_SERVER_ERROR,
