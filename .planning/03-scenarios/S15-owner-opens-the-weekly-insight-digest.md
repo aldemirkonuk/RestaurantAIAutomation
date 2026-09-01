@@ -19,7 +19,7 @@ links: ["[[SCENARIO-CONTRACT]]", "[[analytics-engine-charter]]", "[[analytics-bi
 > **The commercial scenario.** Every other ritual keeps the restaurant running; this is the
 > one where the owner sees *results* and decides the subscription is worth another month. So
 > it is graded hardest: a digest that promises insights the signals cannot feed is exactly
-> the failure §6 exists to prevent, and the honest ceiling here is low — **25.1%** of the
+> the failure §6 exists to prevent, and the honest ceiling here is low — **23.0%** of the
 > catalogue is reachable without POS (`analytics-engine-charter.md:71`).
 
 ## 1. Trigger
@@ -40,7 +40,7 @@ Its honesty is entirely inherited from what fed it. The engine's own `availableC
 gates every type on its `DataRequirement` set (`insight-catalog.ts:557-563`):
 - **consumption** (`wine_consumption_log`) · **orders** · **inventory** — the no-POS trio.
 - **checks** and **tables** — the POS/guest-side half, and the reason the ceiling is low:
-  **429 of 573 types (74.9%) require `checks`**; 241 (42.1%) require `tables`
+  **434 of 573 types (75.7%) require `checks`**; 241 (42.1%) require `tables`
   (`analytics-engine-charter.md:89-95,134-142`).
 - **goals** — *declared but never wired*: 22 goal-pace types report satisfiable even for a
   restaurant with zero goals rows, because `goal_pace` is pinned to the `overall` dimension
@@ -71,7 +71,7 @@ gates every type on its `DataRequirement` set (`insight-catalog.ts:557-563`):
   analytics module (`analytics.controller.ts:799`; only prefs persistence, `recommendation-actions.service.ts:238-280`).
   So "owner opens the *email*" is aspirational; "owner opens the in-app panel" is real.
 
-## 6. Insights the owner sees (the heart — checked against the 25.1% ceiling)
+## 6. Insights the owner sees (the heart — checked against the 23.0% ceiling)
 Only the families the engine actually computes sentences for ship: **consumption, orders,
 inventory, checks, goals** (`insight-generator.service.ts:94-98`). Against a **no-POS**
 restaurant, this is what is genuinely on the table:
@@ -86,7 +86,7 @@ restaurant, this is what is genuinely on the table:
   and no new math changes that (`analytics-engine-charter.md:74-76`).
 - **The mislabel to correct, not inherit:** the shipped UI says *"Browse all 375 insight
   types"* (`commands.ts:78,99`; `InsightCatalog.tsx:2`) while the enumerated space is **573**
-  (`insight-catalog.ts:547`) and only ~144 are satisfiable. The digest must show the *reachable*
+  (`insight-catalog.ts:547`) and only 132 are satisfiable without POS. The digest must show the *reachable*
   count for *this* restaurant, never a headline 375/573 (OD-33; `OPEN-DECISIONS.md:37`).
 
 ## 7. Decisions
@@ -109,8 +109,22 @@ own reach rather than imply completeness (ask→propose→confirm→execute).
   *"not enough data"*, not imply calm.
 
 ## 9. Simulation & deploy gate
+
+> **EXECUTED 2026-09-01** — `apps/api-gateway/src/analytics/insights/insight-catalog.reach.spec.ts`,
+> 10 assertions, no database and no fixtures, running in CI. This is the **second** of the
+> library's 17 §9 gates to execute anything.
+>
+> **It falsified three of the baselines written below on its first run**, which is the
+> gate working rather than failing: consumption-only was **34, not 38**;
+> consumption+orders+inventory **132, not 144**; the `checks` gate **434 (75.7%), not
+> 429 (74.9%)**. All four figures in this section and §10 are now the measured ones.
+> `241` tables, `174`/`108` category sizes and the `573` total all survived unchanged.
+>
+> The synthetic-week half of this gate (quiet week, false-spike week, honest copy) is
+> **still unexecuted** — this covers the reach ladder only, deliberately, because the
+> ladder needs no data and the weeks need a corpus.
 Harness: **synthetic engine**. Generate weeks against varying availability sets — consumption-
-only (**expect ~6.6%**, 38/573), consumption+orders+inventory (**expect ~25.1%**, 144/573),
+only (**expect 5.9%**, 34/573), consumption+orders+inventory (**expect 23.0%**, 132/573),
 and full seven (**100%**, `analytics-engine-charter.md:66-72`) — plus a quiet week and a
 false-spike week. Gate: no digest/engine change ships until the reachable counts match those
 baselines exactly and the empty/false-spike weeks produce honest copy, not fabricated
@@ -125,7 +139,7 @@ a pricing name.
 - **Core (operate):** the in-app insight panel showing **only what is currently reachable for
   this restaurant**, with `candidateTypesAvailable / candidateTypesTotal` stated in-band on
   every run. For a no-POS restaurant that is the consumption / orders / inventory basics —
-  **144 of 573 types (25.1%)**, dropping to **38 / 573 (6.6%)** if only `wine_consumption_log`
+  **132 of 573 types (23.0%)**, dropping to **34 / 573 (5.9%)** if only `wine_consumption_log`
   is populated. Short, unglamorous, and honest. Ships today.
 - **Plus (understand):** the assembled weekly digest — ranked by effect × significance ×
   support, capped per category, narrated, with drafted recommendations across the reachable
@@ -135,14 +149,14 @@ a pricing name.
   **its scheduled send is feature-flagged**, with no insight-digest mailer in the analytics
   module. 🚧 "Owner opens the *email*" is aspirational; "owner opens the in-app panel" is real.
 - **Pro (optimize):** Holt-Winters forecasting plus the guest-side families — and this is
-  **the biggest single POS gate in the library**. ⛔ **needs POS: 429 of 573 types (74.9%)
+  **the biggest single POS gate in the library**. ⛔ **needs POS: 434 of 573 types (75.7%)
   declare a `checks` requirement and 241 (42.1%) declare `tables`.** The two largest categories
   in the whole catalogue, **`tables` (174 types)** and **`efficiency` (108)**, are entirely
   dark without POS. Roughly three quarters of Pro's promised surface is unreachable and **no
   amount of new math changes that**.
 
 **The labelling rule that binds every tier page:** never headline "375 insight types" (the
-number the shipped UI prints) — the enumerated space is **573**, only ~144 are satisfiable
+number the shipped UI prints) — the enumerated space is **573**, only 132 are satisfiable
 without POS, and the count shown must be *reachable-for-this-restaurant* (OD-33). A tier page
 advertising a catalogue total is the canonical failure §6 exists to prevent.
 
