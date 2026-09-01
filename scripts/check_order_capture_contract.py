@@ -18,6 +18,13 @@ had yet produced a visible failure, which is exactly why they survived review.
      288 bottles). Same wound, two ends.
   C. `price_history` was correctly designed, correctly indexed, and had ZERO
      writers repo-wide, so no price series could ever exist.
+  D. `procurement_orders.created_by` was first written with a foreign key to
+     `auth.users(id)`. That table shares ZERO ids with `public.users`, which is
+     what the JWT actually carries — so the constraint would have raised 23503
+     on EVERY order creation the moment the migration applied. Caught in
+     pre-flight against production, by a human, and by nothing else: no test
+     touched it, and CI's fresh-database job applied the migration successfully
+     because a fresh database has no rows to violate it.
 
 Each is a one-line regression: delete the line write, re-add a `?? "case"`, drop
 the price insert. None of them breaks a test that existed before this change and
@@ -330,10 +337,86 @@ def check_price_history_has_a_writer(root: Path) -> list[str]:
     ]
 
 
+# ---------------------------------------------------------------------------
+# Contract D — an actor FK points at the identity table this app actually uses.
+# ---------------------------------------------------------------------------
+# This lives in the capture guard rather than its own script because it is the
+# same failure class as the three above — a write that cannot succeed — and it
+# was found the same way: `procurement_orders.created_by` was first written
+# against `auth.users(id)`, which would have raised 23503 on EVERY order
+# creation the moment the migration applied.
+#
+# The two tables are disjoint in production (2026-09-01: auth.users 5 rows,
+# public.users 7, zero overlap). `auth.users` is Supabase-managed and this
+# codebase does not populate it for its own accounts; the JWT strategy returns
+# `user.user_id` from `public.users`. Schema-wide the precedent is 11 FKs to
+# public.users(user_id) against 5 to auth.users(id).
+#
+# Grandfathered, not endorsed: the five below predate this guard. Two of them
+# (`pos_unresolved_lines.resolved_by`) were added by the OD-71 migration and are
+# plausibly wrong for exactly this reason, but re-pointing a constraint on a
+# table that already holds rows is a different change with a different risk.
+# This list is SHRINK-ONLY: fixing one means deleting its entry, never adding.
+GRANDFATHERED_AUTH_USERS_FKS = frozenset(
+    {
+        "one_tap_actions_executed_by_fkey",
+        "one_tap_actions_user_id_fkey",
+        "pos_unresolved_lines_resolved_by_fkey",
+        "pos_catalog_match_proposals_resolved_by_fkey",
+    }
+)
+
+AUTH_USERS_FK = re.compile(
+    r"constraint\s+([a-z0-9_]+)\s+foreign\s+key\s*\([^)]*\)\s*"
+    r"references\s+auth\.users",
+    re.I,
+)
+
+
+def check_actor_fk_targets(root: Path) -> list[str]:
+    mig_dir = root / MIGRATIONS
+    if not mig_dir.is_dir():
+        raise CannotCheck(f"{MIGRATIONS} is not a directory under {root}")
+
+    files = sorted(mig_dir.glob("*.sql"))
+    if not files:
+        raise CannotCheck(f"{MIGRATIONS} contains no .sql files")
+
+    bad: list[str] = []
+    seen: set[str] = set()
+    for p in files:
+        text = p.read_text(encoding="utf-8", errors="replace")
+        for m in AUTH_USERS_FK.finditer(text):
+            name = m.group(1).lower()
+            seen.add(name)
+            if name not in GRANDFATHERED_AUTH_USERS_FKS:
+                bad.append(
+                    f"{p.name}: {name} references auth.users. This app's identity "
+                    f"table is public.users(user_id) — the JWT strategy returns "
+                    f"user.user_id and the two tables share ZERO ids in production, "
+                    f"so this raises 23503 on every write. Point it at "
+                    f"public.users(user_id), or add it to "
+                    f"GRANDFATHERED_AUTH_USERS_FKS with the reason if it genuinely "
+                    f"constrains a Supabase-auth-managed actor."
+                )
+
+    # Shrink-only, and it must actually shrink honestly: an entry that no longer
+    # matches anything means the list is stale, which quietly widens what the
+    # guard permits.
+    for stale in sorted(GRANDFATHERED_AUTH_USERS_FKS - seen):
+        bad.append(
+            f"GRANDFATHERED_AUTH_USERS_FKS lists {stale}, which no migration "
+            f"defines any more. Delete the entry — a grandfather list that "
+            f"outlives what it excuses is a hole, not a record."
+        )
+    return bad
+
+
 CHECKS = (
     ("order line capture", check_order_writes_a_line),
     ("unit defaults", check_no_multiplying_default),
     ("price_history writer", check_price_history_has_a_writer),
+    ("actor FK target", check_actor_fk_targets),
 )
 
 
@@ -358,7 +441,7 @@ def main() -> int:
         return 1
     print(
         "PASS -- an order writes its line, no unit default multiplies, "
-        "price_history has a writer."
+        "price_history has a writer, and no new actor FK points at auth.users."
     )
     return 0
 
@@ -423,9 +506,18 @@ export class ReceivingService {
 """,
         encoding="utf-8",
     )
+    # The grandfathered auth.users FKs are part of the CLEAN fixture: the
+    # shrink-only list is only honest if an entry matching nothing is a
+    # finding, so a compliant tree has to actually contain them.
+    grandfathered = "".join(
+        f"alter table public.t add constraint {name} "
+        f"foreign key (c) references auth.users(id) on delete set null;\n"
+        for name in sorted(GRANDFATHERED_AUTH_USERS_FKS)
+    )
     (root / MIGRATIONS / "20260901150000_units.sql").write_text(
         "alter table public.procurement_orders "
-        "add constraint procurement_orders_unit_type_check check (true);\n",
+        "add constraint procurement_orders_unit_type_check check (true);\n"
+        + grandfathered,
         encoding="utf-8",
     )
     return root
@@ -534,6 +626,45 @@ def self_test() -> int:
         expect("no unit_type CHECK", run(root)[0], 1)
         mig.write_text(sql, encoding="utf-8")
 
+        # D. an actor FK pointed at auth.users — the defect that would have
+        # raised 23503 on every order creation. Caught in pre-flight against
+        # production, not by any test, which is why it is a guard now.
+        mig.write_text(
+            sql
+            + "alter table public.procurement_orders\n"
+            "  add constraint procurement_orders_created_by_fkey\n"
+            "  foreign key (created_by) references auth.users(id) on delete set null;\n",
+            encoding="utf-8",
+        )
+        expect("actor FK points at auth.users", run(root)[0], 1)
+
+        # D2. the same FK pointed at public.users(user_id) is fine.
+        mig.write_text(
+            sql
+            + "alter table public.procurement_orders\n"
+            "  add constraint procurement_orders_created_by_fkey\n"
+            "  foreign key (created_by) references public.users(user_id) on delete set null;\n",
+            encoding="utf-8",
+        )
+        code, findings = run(root)
+        expect("actor FK points at public.users", code, 0)
+        if findings:
+            failures.append(f"correct actor FK flagged: {findings}")
+
+        # D3. the list is SHRINK-ONLY, and an entry matching nothing is itself a
+        # finding — a stale exemption silently widens what the guard allows.
+        # This arm is how the first draft's invented fifth entry was caught.
+        one = sorted(GRANDFATHERED_AUTH_USERS_FKS)[0]
+        mig.write_text(
+            "\n".join(l for l in sql.splitlines() if one not in l) + "\n",
+            encoding="utf-8",
+        )
+        code, findings = run(root)
+        expect("grandfather list must not outlive what it excuses", code, 1)
+        if not any("no migration defines any more" in f for f in findings):
+            failures.append(f"stale grandfather entry not reported: {findings}")
+        mig.write_text(sql, encoding="utf-8")
+
         # C. price_history loses its only writer.
         (root / SERVICE).write_text(
             svc.replace('.from("price_history").insert({ price: 1 })', "noop()"),
@@ -602,6 +733,9 @@ def self_test() -> int:
     print("   normalising the unit but never refusing one exits 1")
     print("   dropping the procurement_orders unit_type CHECK exits 1")
     print("   removing price_history's only writer exits 1")
+    print("   an actor FK pointed at auth.users exits 1 (the 23503 trap)")
+    print("   the same FK pointed at public.users(user_id) exits 0")
+    print("   a grandfather entry that matches no migration exits 1")
     print("   a missing file, a renamed method, or a missing migrations dir exits 2")
     print("PASS")
     return 0

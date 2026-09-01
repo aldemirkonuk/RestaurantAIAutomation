@@ -130,6 +130,7 @@ cannot.** Concretely:
 | 5 | `created_by`, `source` (manual\|ask_ai\|recurring\|retroactive\|agent), `recurring_order_id`. `source` is NULL when unstated, never `'manual'`. |
 | 6 | `price_history` gets two writers: `order_confirmed` on `confirmDeal`, `receipt_verified` on `verifyReceipt` when an invoice actually existed. |
 | 7 | `procurement_order_items` gets the four foreign keys it never had, before it has any rows. |
+| 8 | An actor column references `public.users(user_id)`, never `auth.users(id)` — see the section below, which is the one that nearly took ordering down. |
 
 **Rule 2's asymmetry is the load-bearing part and it is a deliberate refinement
 of ADR 0011.** An absent unit resolving to `bottle` is not the guess 0011
@@ -169,6 +170,48 @@ visible and the other is not. A refusal happens in front of the person who can
 fix it, in the second it happens. A twelvefold booking happens silently, is
 indistinguishable from theft two months later, and cannot be claimed from the
 vendor by then.
+
+## `auth.users` vs `public.users` — a live footgun, recorded because it nearly shipped
+
+**The first draft of this migration pointed `procurement_orders.created_by` at
+`auth.users(id)`. It would have raised 23503 on every order creation the moment
+it applied — a total outage of ordering, caused by the fix.**
+
+The two tables are disjoint. Measured in production 2026-09-01: `auth.users` 5
+rows, `public.users` 7 rows, **zero** `public.users` ids present in `auth.users`.
+`auth.users` is Supabase-managed and this codebase does not populate it for its
+own accounts. `public.users` has PK `user_id` (`users_pkey`, `baseline:8184`),
+and that is what the JWT carries — `auth/strategies/jwt.strategy.ts:38` returns
+`userId: user.user_id` after looking the row up, which is also why a correctly
+targeted FK here can never fire spuriously.
+
+**The precedent is schema-wide and it points the other way.** Counted across
+`supabase/migrations`:
+
+| target | FKs | includes |
+|---|---|---|
+| `public.users(user_id)` | **11** | every actor-attribution column on the app's own tables — `organization_invites.invited_by`, `organizations.owner_id`, `user_restaurant_access.deactivated_by` |
+| `auth.users(id)` | 5 | `one_tap_actions` (×2), and the two `resolved_by` columns ADR 0015/OD-71 added |
+
+The draft cited OD-71's census, `-> auth.users : SET NULL 2 of 2`. That figure is
+**accurate for the tables that migration touched and is a biased sample of the
+schema** — it counted only the FKs OD-71 itself was adding. Reusing a census
+without re-deriving its scope is the failure, not the number.
+
+Two things made it hard to catch and both are worth knowing:
+
+- **The sibling actor columns on this very table — `approved_by`, `received_by`,
+  `match_verified_by` — carry no foreign key at all**, so there was no in-table
+  precedent to copy and an out-of-table one got reached for.
+- **CI could not see it.** `Fresh database equals remote` applied the migration
+  successfully, because a fresh database has no rows to violate a foreign key.
+  Every guard was green. It was found by a human pre-flighting the migration
+  against production before applying it.
+
+Now held by the fourth check in `scripts/check_order_capture_contract.py`: any
+FK to `auth.users` outside a shrink-only grandfather list fails the build, and a
+grandfather entry that no longer matches a migration fails too — an exemption
+that outlives what it excuses is a hole, not a record.
 
 ## Consequences
 

@@ -204,13 +204,50 @@ alter table public.procurement_orders
          'manual','ask_ai','recurring','retroactive','agent'
        ]::text[]));
 
--- Actor attribution SET NULLs: the census in the OD-71 migration found
--- `-> auth.users : SET NULL 2 of 2`, and an order does not stop being a real
--- order because the person who placed it left the company.
+-- `created_by` references public.users(user_id) — NOT auth.users(id).
+--
+-- THIS IS A LIVE FOOTGUN AND THE FIRST DRAFT OF THIS MIGRATION FELL INTO IT.
+-- Pointed at `auth.users(id)`, this constraint would have raised 23503 on EVERY
+-- order creation the moment it was applied, because the id `createOrder`
+-- receives is not an `auth.users` id and never has been:
+--
+--   * `procurement_orders.created_by` is written from `createOrder`'s `userId`.
+--   * That value comes from the JWT strategy, which returns
+--     `userId: user.user_id` (`auth/strategies/jwt.strategy.ts:38`) after
+--     looking the row up — so it is a `public.users.user_id`, and a valid
+--     request proves the row exists, which is also why this FK cannot fire
+--     spuriously.
+--   * `public.users` has PK `user_id` (`users_pkey`, `baseline:8184`).
+--   * Measured in production 2026-09-01: `auth.users` 5 rows,
+--     `public.users` 7 rows, and **zero** `public.users` ids appear in
+--     `auth.users`. The two tables are disjoint. `auth.users` is
+--     Supabase-managed and this codebase does not populate it for its own
+--     accounts.
+--
+-- The first draft cited the OD-71 census (`-> auth.users : SET NULL 2 of 2`).
+-- That number is accurate for the tables THAT migration touched and is a biased
+-- sample of the schema. Counted across all of `supabase/migrations`:
+--
+--   -> public.users(user_id) : 11 FKs, including every actor-attribution column
+--      on the app's own tables — `organization_invites.invited_by`,
+--      `organizations.owner_id`, `user_restaurant_access.deactivated_by`
+--   -> auth.users(id)        : 5 FKs, on `one_tap_actions` and the two
+--      `resolved_by` columns OD-71 itself added
+--
+-- So the real precedent is the opposite of the one cited. Note also that the
+-- sibling actor columns already on this table — `approved_by`, `received_by`,
+-- `match_verified_by` — carry NO foreign key at all, which is part of why there
+-- was no in-table precedent to copy and the wrong census got reached for. They
+-- are deliberately left alone here; constraining columns that already hold data
+-- is a different change with a different risk.
+--
+-- SET NULL is unchanged and stays right for the original reason: an order does
+-- not stop being a real order because the person who placed it left. Two of the
+-- three `public.users` attribution FKs above use SET NULL as well.
 alter table public.procurement_orders
   drop constraint if exists procurement_orders_created_by_fkey,
   add  constraint procurement_orders_created_by_fkey
-       foreign key (created_by) references auth.users(id) on delete set null;
+       foreign key (created_by) references public.users(user_id) on delete set null;
 
 alter table public.procurement_orders
   drop constraint if exists procurement_orders_recurring_order_id_fkey,
