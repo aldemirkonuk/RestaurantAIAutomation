@@ -20,6 +20,7 @@ import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { RolesGuard } from "./guards/roles.guard";
 import { Roles } from "./decorators/roles.decorator";
 import { Public } from "./decorators/public.decorator";
+import { AllowsTenantChange } from "../common/tenant/allows-tenant-change.decorator";
 import { AllowUnverified } from "./decorators/allow-unverified.decorator";
 import { CheckEmailDto } from "./dto/check-email.dto";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
@@ -443,6 +444,7 @@ export class AuthController {
    */
   @Post("switch-restaurant")
   @UseGuards(JwtAuthGuard)
+  @AllowsTenantChange()
   async switchRestaurant(
     @Req() req: Request & { user: any },
     @Body() body: { restaurantId: string },
