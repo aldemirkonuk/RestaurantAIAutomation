@@ -4,7 +4,7 @@ division: intelligence
 department: security
 status: partial
 metrics: [sec.unguarded_authenticated_surface, sec.unverified_public_ingress, nf_a.unauthenticated_inference_spend, sec.recurrence_guard_present, sec.fail_open_defaults, sec.checklist_12c_items_with_a_reading]
-updated: 2026-08-24
+updated: 2026-09-01
 links: ["[[security-premortem]]", "[[security-agenda-full]]", "[[security-agenda-board]]", "[[security-directive]]", "[[security-loops]]", "[[security-schedule]]", "[[ORG_STRUCTURE]]", "[[intelligence]]", "[[ENDPOINTS]]", "[[OPEN-DECISIONS]]", "[[access-control-tenant-isolation-charter]]", "[[perimeter-ingress-integrity-charter]]", "[[ai-surface-security-charter]]", "[[research-math-charter]]", "[[analytics-bi-charter]]", "[[engineering-charter]]", "[[platform-api-charter]]", "[[red-team-charter]]", "[[decision-office-charter]]", "[[compliance-privacy-charter|compliance-charter]]"]
 ---
 
@@ -106,7 +106,7 @@ The department's job is to make the fail-closed shape the default, not to invent
 | Guarded by `JwtAuthGuard` | **311** | `ENDPOINTS.md:6` |
 | Webhook-module routes (legitimately public, need signatures instead) | **32** | `simpos` 11, `toast` 10, `pos-hub` 10, `inbound-email` 1 |
 | Explicit `@Public()`, non-webhook | **11** | `communications/test/e2e/*` 9, `vendor-portal` 2 |
-| **Unguarded by omission — the backlog** | **94** | `analytics` 39, `notifications` 24, `communications` 9, `dashboard` 8, `contacts` 8, `procurement/recurring-orders` 6 |
+| **Unguarded by omission — the backlog** *(2026-08-24 snapshot; **now 0** — see correction below)* | **94** | `analytics` 39, `notifications` 24, `communications` 9, `dashboard` 8, `contacts` 8, `procurement/recurring-orders` 6 |
 | | **448** | |
 
 > **Corrected 2026-08-25.** The 94-row backlog is stale as a *present* count: the
@@ -117,17 +117,32 @@ The department's job is to make the fail-closed shape the default, not to invent
 > decorators across the 47 non-spec controllers, of which **40** sit on the five
 > controllers carrying no class-level `@UseGuards`. OD-19 stays open to enumerate those 40
 > and confirm each is public by intent.
+>
+> **Enumerated 2026-09-01 — the E0 auth census, now merged** (`ECOSYSTEM-PLAN.md:83`,
+> method at [[ECOSYSTEM-E0-MEASUREMENTS]] §2). The 40 were enumerated and each confirmed:
+> **468 route handlers, 444 authenticated, 23 deliberately public with evidence, 0
+> unauthenticated by omission, 1 unclear.** The backlog this table names is **empty**.
+> **It does not follow that the surface is secured — the defect count is zero while the
+> defect generator is fully intact:** `JwtAuthGuard` is per-controller, not a global
+> `APP_GUARD` (`app.module.ts:130-137` registers only `RateLimitGuard` and `TenantGuard`),
+> so a controller that declares nothing is unauthenticated by default and **endpoint 469
+> arrives unguarded**. This department's metric is the default, not the backlog. Quote the
+> zero and this sentence together or not at all.
 
-**The denominator has now been stated four ways: 86 → 103 → 94 → 40.** The department
+**The denominator has now been stated five ways: 86 → 103 → 94 → 40 → 0.** The department
 inherits the reconciliation, and it is worth writing down once because it is the argument
 for per-route classification:
 
 - **86** — [[README]] and OD-19 as originally written.
 - **103** — `intelligence.md:211-216`, summing `ENDPOINTS.md`'s per-module *header* counts.
 - **94** — verified row-by-row against `ENDPOINTS.md`, and canonical until 2026-08-26.
-- **40** — current. The re-measure struck the 94 arithmetic as describing "a codebase two
-  guard-sweeps ago" and counts routes on class-unguarded controllers instead
+- **40** — routes on class-unguarded controllers. The re-measure struck the 94 arithmetic
+  as describing "a codebase two guard-sweeps ago" and counted a proxy instead
   (OD-19, `OPEN-DECISIONS.md:31`).
+- **0** — current, and the answer to the question all four earlier numbers were reaching
+  for. E0 enumerated the 40 route-by-route (`ECOSYSTEM-PLAN.md:83`, 2026-09-01): every one
+  is either authenticated or deliberately public with recorded evidence; one is unclear.
+  **The count is zero and the generator is untouched** — see the correction above.
 
 The 103 figure counted `communications` at its module total of **18** when only **9** of
 those rows are unguarded by omission (nine carry `@Public()`), and placed `vendor-portal`'s

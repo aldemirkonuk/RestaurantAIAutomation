@@ -96,7 +96,14 @@ knowing which is which is a prerequisite, not a detail.
 class-level `@UseGuards(JwtAuthGuard)` since 2026-08-25
 (`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`, commit `fdaa7fa0`,
 OD-20); no `@Public()` appears in the file, and [[ENDPOINTS]]:464-473 marks all six ✅.
-The counts above are deliberately **not** re-derived here — the corrected census is the E0
-auth reconciliation (`ECOSYSTEM-PLAN.md:80`), and until it lands the figures stand as
-their 2026-08-24 measurement. Nothing about the *default* changed: guarding is still
-opt-in per controller, which is the mandate above. The cluster closed; the class did not.
+The counts above are **superseded, not re-derived here.** The corrected census is the E0
+auth reconciliation, merged 2026-09-01 (`ECOSYSTEM-PLAN.md:83`, method at
+[[ECOSYSTEM-E0-MEASUREMENTS]] §2): **468 route handlers, 444 authenticated, 23 deliberately
+public with evidence, 0 unauthenticated by omission, 1 unclear.** The 137/86 figures above
+stand only as their 2026-08-24 measurement and must not be quoted as current. **The zero
+does not close this charter, because the defect count is zero while the defect generator is
+fully intact:** `JwtAuthGuard` is per-controller, not a global `APP_GUARD`
+(`app.module.ts:130-137` registers only `RateLimitGuard` and `TenantGuard`), so a
+controller that declares nothing is unauthenticated by default and **endpoint 469 arrives
+unguarded**. Nothing about the *default* changed: guarding is still opt-in per controller,
+which is the mandate above. The cluster closed, the backlog closed; the class did not.

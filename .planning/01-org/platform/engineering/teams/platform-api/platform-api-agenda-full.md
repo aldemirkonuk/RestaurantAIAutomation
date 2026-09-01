@@ -39,9 +39,18 @@ improvement or detect regression.
 first can reach 100% while the second is flat — that is M1 in one sentence, and it is why
 the department watches both in [[engineering-loops]] L-ENG-5.
 
-**Consequence sets the order, not count.** The remediable population is ~86 routes (137
-minus ~51 legitimately public), as measured 2026-08-24 and not re-derived here — the
-corrected census is E0 (`ECOSYSTEM-PLAN.md:80`). The first tranche is not the easiest
+**Consequence sets the order, not count.** The remediable population was ~86 routes (137
+minus ~51 legitimately public) as measured 2026-08-24; the corrected census is E0, merged
+2026-09-01 (`ECOSYSTEM-PLAN.md:83`, method at [[ECOSYSTEM-E0-MEASUREMENTS]] §2), and it
+measured **468 route handlers, 444 authenticated, 23 deliberately public with evidence, 0
+unauthenticated by omission, 1 unclear**. The remediable population is therefore **zero**,
+and this team's mandate is unchanged: **the defect count is zero while the defect generator
+is fully intact** — `JwtAuthGuard` is per-controller, not a global `APP_GUARD`
+(`app.module.ts:130-137` registers only `RateLimitGuard` and `TenantGuard`), so a
+controller that declares nothing is unauthenticated by default and endpoint 469 arrives
+unguarded. A zero backlog is exactly why the *second* number below is the one that matters.
+The tranche ordering below is retained as the standing exclusion rule, not as a live queue.
+The first tranche is not the easiest
 tranche: it is money-moving (`procurement/recurring-orders`, 6 — **guarded since
 2026-08-25**: class-level `@UseGuards(JwtAuthGuard)` at
 `apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`, commit `fdaa7fa0`,
