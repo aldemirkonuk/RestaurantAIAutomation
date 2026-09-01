@@ -94,6 +94,28 @@ CI-wired, but all six checks are `count(*)` over empty tables — it **passes be
 is nothing to test**, and it guards `superseded_by`, an operation no code performs. This
 repo's own rule is that a guard which cannot check must exit 2, never 0.
 
+> **Worked example — this failure caught the author of this document, four hours after
+> writing the paragraph above.** It is recorded here rather than as a footnote because a
+> demonstration is a better argument than a principle.
+>
+> To land two PRs I wrote a merge loop that waited until `gh pr checks` reported **no
+> pending checks**, then read the required `CI Complete` result and merged. It failed
+> nine times, and I twice diagnosed it wrongly as branch contention before actually
+> reading the error. The real cause: on a **freshly pushed head SHA the check-runs do not
+> exist yet**, so "zero pending" is satisfied *vacuously* — the loop was reading the
+> required check's **absence as success**, then merging against a commit CI had not
+> finished. Identical shape to the guard above: `count(*)` over an empty set returns a
+> passing number.
+>
+> A second session independently reported the **same latent bug** in its own pollers,
+> which happened to return correct answers because the runs were genuinely complete —
+> right answers by luck, not by construction. Two sessions, one defect, one of them paid.
+>
+> The correct form in both cases is the same and is worth stating as a rule: **assert
+> that the thing you are checking EXISTS before you interpret its result.** Wait for the
+> named check to be present *and* report success on the actual head SHA; count the rows
+> you compared and exit 2 when that count is zero. Absence is not a pass.
+
 ## 6. The systemic defect: failure is invisible
 
 Four independent auditors hunting the same pattern found **~29 live instances**. The
