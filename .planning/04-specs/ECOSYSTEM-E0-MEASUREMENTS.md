@@ -2,7 +2,10 @@
 
 - **Status:** Evidence of record for the 2026-09-01 E0 measurement pass. Findings only; the decisions they fed are in ECOSYSTEM-PLAN.md and its ADRs.
 - **Date:** 2026-09-01
-- **Anchor:** every claim below is against `origin/main` @ `b70e62d9` unless stated. Re-anchor before acting — main moves hourly.
+- **Code anchor:** every claim below is against `origin/main` @ `b70e62d9` unless stated. Re-anchor before acting — main moves hourly.
+- **Data anchor — READ THIS BEFORE QUOTING ANY NUMBER FROM HERE.** Every production figure in this document (SKU counts, par crossings, order and proposal row counts, notification volumes) was measured **2026-09-01** against a database that is **single-tenant and mid-build**: 10 restaurants of which **1 is a real tenant**, only 2 with any provider, `sales_velocity_7d` at `0.000` across every SKU, 2 `procurement_orders` ever, and 0 rows in `one_tap_actions` and `ai_proposed_actions`. These numbers are true **of that population, on that day** — they are not the shape of a working restaurant, and several are the shape of an empty one. Quote them **with this scope attached**, or re-derive over your own.
+
+  *Why this paragraph exists:* a sibling session shipped a migration, green in CI, whose foreign key would have failed on every write — because its author cited an earlier note reading `-> auth.users : SET NULL 2 of 2`, which was **literally accurate** and counted only the FKs that migration was itself adding. Re-derived schema-wide the ratio inverts (11 FKs to `public.users` vs 5 to `auth.users`). The defect was not a wrong number; it was **a right number reused outside the scope that produced it**. This document is now the thing other sessions cite, so it carries its own denominators. The same shape explains §2: six "unauthenticated endpoint" figures that looked like a contradiction were six different questions, none wrong, all quoted without their scope.
 - **Method:** seven parallel agents over a clean read-only worktree, dispatched under the hardness threshold in [ADR 0050](../decisions/0050-agent-dispatch-hardness-threshold.md). Two findings were independently corroborated by concurrent sessions, noted per row.
 
 > **Retire-to-write (§4).** This supersedes the scattered auth-by-omission counts
