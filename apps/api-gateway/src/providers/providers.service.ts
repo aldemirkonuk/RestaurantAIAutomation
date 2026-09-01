@@ -24,6 +24,7 @@ import {
 } from "./dto/providers.dto";
 import { UpdateIntelligenceDto } from "./dto/update-intelligence.dto";
 import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
+import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
 
 function normalizeToE164(phone: string | null | undefined): string | null {
   if (!phone) return null;
@@ -956,7 +957,7 @@ export class ProvidersService {
           quantity: dto.quantity ?? null,
           final_confirmed_cost: dto.finalConfirmedCost ?? null,
           actual_delivery: dto.invoiceDate ?? null,
-          status: "delivered",
+          status: ProcurementOrderStatus.DELIVERED,
           source: "retroactive",
         })
         .select("id")

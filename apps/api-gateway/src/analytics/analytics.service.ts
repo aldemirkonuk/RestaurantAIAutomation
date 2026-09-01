@@ -7,6 +7,7 @@ import {
   resolveUnitCost,
   summarizeCostBasis,
 } from "./inventory-cost";
+import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
 
 /**
  * AnalyticsService — the quantitative heart of WineOps.
@@ -151,7 +152,7 @@ export class AnalyticsService {
         "id, provider_id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
       )
       .eq("restaurant_id", restaurantId)
-      .eq("status", "delivered")
+      .in("status", ORDER_SPEND_STATUSES)
       .gte("delivered_at", since);
     return (data || []).map((o: any) => ({
       providerId: o.provider_id || "unknown",

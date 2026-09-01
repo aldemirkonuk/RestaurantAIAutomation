@@ -16,6 +16,7 @@ import {
   tableAttributeReading,
   InsightEvidence,
 } from "./insight-verbalizer";
+import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 
 /**
  * InsightGeneratorService — executes the insight candidate space.
@@ -236,7 +237,7 @@ export class InsightGeneratorService {
             "provider_id, providers(name), total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
           )
           .eq("restaurant_id", restaurantId)
-          .eq("status", "delivered")
+          .in("status", ORDER_SPEND_STATUSES)
           .gte("delivered_at", since180),
         client
           .from("restaurant_inventory")
