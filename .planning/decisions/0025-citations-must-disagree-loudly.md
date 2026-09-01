@@ -449,3 +449,69 @@ of defect #2. **This PR closes that instance and the other eleven beside it.**
   Both are pre-existing on `main` and both sit inside the edit range #110 is holding;
   fixing them here would conflict with it for no gain. Named so that "the ADR is
   clean" is not inferred from this PR.
+
+---
+
+## Correction — 2026-09-01: the cost figure, and what it actually counts
+
+**The decision is untouched.** A citation still carries two anchors, and CI still fails
+when they disagree. What follows corrects a *measurement* inside this ADR and, more
+importantly, a misquotation of it that had spread downstream.
+
+**1. This ADR's "27" counts anchor *shifts*, from a five-row event — not one row.**
+§10.3 says `--fix` "reduced a 27-anchor shift to a non-event". Its source is the guard's
+own docstring (`scripts/check_citation_pairing.py:71-72`): *"rebasing onto a `main` **five
+rows longer** turned 0 failures into 27."* §10.3 corroborates the shape at `:355-361` —
+PR #107 merged **five** Open rows and turned 31 anchors red. Beyond that docstring the 27
+has **no surviving derivation**: `evidence/0025-citation-rot.md` contains none, and the
+neighbouring instances in the same section quote +5-row shifts of 31 and 17. It is left in
+place, unsourced, rather than replaced — see point 4.
+
+**2. It has been misquoted as a one-row cost, and the misquote is the real defect.**
+The sentence *"Adding one `OPEN-DECISIONS` row re-anchors every citation below it — 27
+across 24 files, measured"* appears in
+[sales-agenda-full](../01-org/commercial/sales/sales-agenda-full.md), attributed to this
+ADR. **That phrasing appears nowhere in this ADR.** The "24 files" half appears borrowed
+from an unrelated population — CM-F3's "61 citations in 24 files"
+([FORK-REGISTRY](../07-reference/FORK-REGISTRY.md)). Corrected there in the same change
+as this block.
+
+**3. Measured today — and *position*, not elapsed time, dominates the number.**
+Method: worktree at `14503ced`; control run first (guard reports 0 disagreements); insert
+exactly one row; take the guard's own `== DISAGREEING (N)` total; restore; repeat.
+
+| one row inserted at | citations broken | files |
+|---|---|---|
+| **line 24 — top of Open, where a new fork actually lands** | **165** | **86** |
+| line 48 | 58 | 41 |
+| line 72 — end of Open, before `## Resolved` | 45 | 34 |
+| line 101 — mid-Resolved | 37 | 28 |
+| line 148 — EOF | 0 | 0 |
+
+The register is newest-first, so **filing a genuine new fork breaks every register
+citation in the corpus — 165 of 165, across 86 files** — and that is a **floor**, not a
+total: the guard cannot see the 7 `.html` anchors in point 5, so they break unseen on top
+of it. Quote the floor, not the end-of-table figure: a figure measured by appending below every existing row describes a
+position no new decision is ever written to. The corollary for a future session is that
+this cost cannot be "re-measured anywhere" — the insert position *is* the measurement.
+
+**4. Shifts and breaks are different populations, and this is the ADR that says so.**
+A citation can shift and still resolve; only a citation whose id and line name different
+rows is a break. §10.3's 27 is the first kind; the table above is the second. They are
+therefore **not comparable**, and this correction deliberately does **not** replace 27
+with 165 — substituting a differently-scoped number for an unsourced one would leave the
+record worse, and doing it *here* would commit the exact conflation this ADR exists to
+make impossible.
+
+**5. Two guard defects found while measuring** (code, fixed separately — not in this
+change): `.html` is absent from the guard's `TEXT_SUFFIXES`, so **7 anchors across 3
+`sketches/*/canvas.html` files** are never checked and never repaired by `--fix` — they
+break silently on every Open-table insert. And the summary line prints
+`total - len(examples)` when `total` already excludes examples, under-reporting by one
+(prints 164 where 165 is correct).
+
+*Provenance: the misquotation was traced to durable session memory carried independently
+by two sessions, each of which reported it to its founder as this ADR's own text before
+either checked. Both memories are struck. The measurement above was reproduced from a
+peer session's method — control, single insert, guard's own count — and their figure (41
+at `b70e62d9`) replicates here as 45 at `14503ced`, the delta being corpus growth.*
