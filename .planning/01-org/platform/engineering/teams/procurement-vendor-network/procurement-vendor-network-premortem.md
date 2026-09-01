@@ -5,7 +5,7 @@ department: engineering
 team: procurement-vendor-network
 status: provisional
 metrics: [procurement.order_to_delivery_reconciliation_rate, procurement.unguarded_money_moving_routes]
-updated: 2026-08-24
+updated: 2026-09-01
 links: ["[[procurement-vendor-network-charter]]", "[[procurement-vendor-network-loops]]", "[[procurement-vendor-network-directive]]", "[[engineering-premortem]]", "[[platform-api-premortem]]", "[[red-team-charter]]", "[[security-charter]]"]
 ---
 
@@ -18,14 +18,31 @@ controller stays unguarded because it is "internal," `TenantGuard` passes unauth
 requests through by design (`apps/api-gateway/src/common/tenant/tenant.guard.ts:38-46`),
 and a scripted caller places real orders against a real vendor.*
 
+**Seed status, 2026-09-01: the `recurring-orders` half of that seed is closed.** A
+class-level `@UseGuards(JwtAuthGuard)` has covered all six routes since 2026-08-25
+(`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`, commit `fdaa7fa0`,
+OD-20); [[ENDPOINTS]]:464-473 marks all six ✅. The seed is kept verbatim because M1 below
+is the record of what was true at founding. What the seed says about `TenantGuard` is
+still true, and so is the default that produced the exposure — see M1's closure note.
+
 This is the only premortem in the department whose worst case involves money leaving the
 company, so it is written with that weight.
 
 ## It is 2027-08. This team has failed. What happened?
 
-### M1 — Six unguarded routes placed real orders
+### M1 — Six unguarded routes placed real orders — **CLOSED 2026-08-25**
 
-`procurement/recurring-orders` is 6 endpoints, **all unguarded** ([[ENDPOINTS]]:428). The
+> **Closure.** The exposure this scenario forecast is gone. `procurement/recurring-orders`
+> is 6 endpoints, **all guarded** since 2026-08-25 by a class-level
+> `@UseGuards(JwtAuthGuard)`
+> (`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`, commit `fdaa7fa0`,
+> landed under OD-20); no `@Public()` appears in the file, and [[ENDPOINTS]]:464-473 marks
+> all six ✅. The scenario is kept, not deleted: its counter-pressure (2) is still
+> unbuilt, and the *mechanism* it names survives the fix — guarding is opt-in per
+> controller, so the next money-moving route added without the decorator reproduces M1
+> exactly. Read what follows as the founding forecast, in past tense.
+
+At founding, `procurement/recurring-orders` was 6 endpoints, **all unguarded**. The
 justification was that it is internal — called by `recurring_order_agent.py`, not by a
 browser. `TenantGuard` returns `true` with no authenticated user by design
 (`tenant.guard.ts:38-46`), so "internal" was never enforced by anything; it was a
@@ -34,9 +51,11 @@ posts to the endpoint. Orders go to a real vendor. The first person to notice is
 vendor.
 
 **Earliest observable signal.** A recurring-order creation whose request carries no
-authenticated principal and no known internal caller signature. This is loggable
-**today**, before any guard exists — and the absence of that log is itself the earliest
-signal that nobody is watching.
+authenticated principal and no known internal caller signature. On this cluster the guard
+now rejects such a request before it lands, so the signal has moved: what is still
+unlogged — and still worth logging — is the same request arriving at a money-moving route
+that nobody has guarded yet. The absence of that log remains the earliest signal that
+nobody is watching.
 
 **Counter-pressure.** Two independent moves, because either alone fails. (1) Log and
 alert on unauthenticated writes to money-moving routes now, without waiting for
@@ -134,7 +153,11 @@ silently.
 
 ## What [[red-team-charter]] should attack first
 
-M1, today, without waiting for the charter to be adopted. Six unguarded endpoints on the
-module that places automated orders is not a forecast — it is the current state of the
-repo, and [[security-charter]]'s classification of the 137 unguarded routes should rank it
-first on consequence rather than on count.
+Not M1 — it is closed
+(`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`, 2026-08-25,
+[[ENDPOINTS]]:464-473). The six endpoints on the module that places automated orders are
+guarded, so the standing invitation to attack them first is withdrawn; what is worth
+attacking in its place is the **default**, not the cluster — find the next money-moving
+route that carries no explicit guard decision, since guarding is opt-in per controller.
+[[security-charter]]'s classification of the 137 unguarded routes should still rank on
+consequence rather than on count.

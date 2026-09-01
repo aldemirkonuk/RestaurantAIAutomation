@@ -5,7 +5,7 @@ department: engineering
 team: procurement-vendor-network
 status: provisional
 metrics: [procurement.order_to_delivery_reconciliation_rate, procurement.no_touch_reconciliation_rate, procurement.unguarded_money_moving_routes]
-updated: 2026-08-24
+updated: 2026-09-01
 links: ["[[procurement-vendor-network-charter]]", "[[procurement-vendor-network-premortem]]", "[[procurement-vendor-network-agenda-board]]", "[[procurement-vendor-network-loops]]", "[[engineering-agenda-full]]", "[[platform-api-charter]]", "[[action-safety-the-human-gate-charter|action-safety-the-human-gate]]"]
 ---
 
@@ -17,9 +17,13 @@ links: ["[[procurement-vendor-network-charter]]", "[[procurement-vendor-network-
 
 Close a live exposure, then build the number that tells us the system works. In order:
 
-1. **Stop the unguarded money path.** 6 unguarded `recurring-orders` routes
-   ([[ENDPOINTS]]:428) on the module that places orders automatically. This is not debt;
-   it is an open door.
+1. ~~**Stop the unguarded money path.**~~ **DONE 2026-08-25.** The 6 `recurring-orders`
+   routes on the module that places orders automatically now carry a class-level
+   `@UseGuards(JwtAuthGuard)`
+   (`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`, commit
+   `fdaa7fa0`, OD-20); [[ENDPOINTS]]:464-473 marks all six ✅. The door is shut. What is
+   *not* done is the default behind it — guarding is opt-in per controller, so keep the
+   daily watch (L-PV-2) and the `@Public()` allowlist exclusion below.
 2. **Define reconciliation with the "without human repair" clause intact** — two numbers,
    raw and no-touch, from day one. The clause cannot be added retroactively.
 3. **Snapshot price-at-order** so reconciliation compares against a contract, not against
@@ -54,10 +58,14 @@ more than any threshold policy.
 
 ## Why now
 
-- **The exposure is current.** `recurring-orders` is unguarded today, `TenantGuard`
-  passes unauthenticated requests by design (`tenant.guard.ts:38-46`), and
-  `recurring_order_agent.py` exists to place orders without a human in the loop. Those
-  three facts are already true together.
+- **The exposure was current, and is now closed — the default is not.** `recurring-orders`
+  was unguarded at founding and has been guarded since 2026-08-25
+  (`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`,
+  [[ENDPOINTS]]:464-473). Two of the three facts still hold: `TenantGuard` passes
+  unauthenticated requests by design (`tenant.guard.ts:38-46`), and
+  `recurring_order_agent.py` exists to place orders without a human in the loop. Guarding
+  is opt-in per controller, so the third fact returns the next time a money-moving
+  controller is added without the decorator. That is why this is still "now."
 - **Reconciliation history is not backfillable.** The `manual_intervention` flag and the
   price-at-order snapshot must exist *before* the orders they describe. Every week without
   them is a week of unmeasurable procurement.
