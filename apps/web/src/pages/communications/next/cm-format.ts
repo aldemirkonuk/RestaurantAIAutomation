@@ -35,12 +35,20 @@ export function fmtCadence(frequency: string, dayOfWeek?: number | null, timeOfD
  * (prc-02; same reading as conversationGrouping.ts and the receiving spine).
  * Only AUTO_SENT / SENT / DELIVERED may ever look sent.
  */
-export type SendState = 'draft' | 'sent' | 'closed' | 'other';
+export type SendState = 'draft' | 'sending' | 'sent' | 'unconfirmed' | 'closed' | 'other';
 
 export function sendState(status: string): SendState {
   const s = status.toUpperCase();
   if (s === 'DRAFT' || s === 'PENDING_APPROVAL' || s === 'APPROVED') return 'draft';
+  // A send is in flight and the row is claimed. Not a draft — nobody may act
+  // on it — and not yet sent, so it gets its own state rather than falling
+  // through to 'other' and rendering as a raw enum.
+  if (s === 'SENDING' || s === 'AUTO_SENDING') return 'sending';
   if (s === 'AUTO_SENT' || s === 'SENT' || s === 'DELIVERED') return 'sent';
+  // The vendor may already hold this email but we could not confirm it. It is
+  // NOT 'sent' (that would overclaim) and NOT 'draft' (that would invite a
+  // second send). ADR 0020: say the uncertainty out loud.
+  if (s === 'SEND_UNCONFIRMED') return 'unconfirmed';
   if (s === 'COMPLETED' || s === 'CLOSED') return 'closed';
   return 'other';
 }
