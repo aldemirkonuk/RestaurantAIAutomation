@@ -327,6 +327,45 @@ jobs:
   # Stdlib only, no install step. Exit 2 (cannot check) blocks like exit 1: this
   # fabrication reached 70 of 72 production rows under a green CI, which is
   # exactly what a vacuous pass buys.
+  # Six figures on the rebuilt /receiving were server-side windows rendered as
+  # totals -- the staff count (a 25-row page printed as "N out for delivery"
+  # while the gateway's exact `total` was destructured away), the lane counts
+  # and at-risk total behind .limit(100), the uncounted strip behind .limit(500)
+  # and every owner figure behind an unordered .limit(5000). There was not one
+  # `>=` on the page. Beside them, `dollarsAtRisk > 0 ? money : EM` printed a
+  # MEASURED $0 as an unknown next to a literal `0`, and `unverified: known ? ...
+  # : []` made a failed fetch read as "nothing uncounted".
+  #
+  # One rule wearing seven hats, which is what a command should hold. The guard
+  # does NOT trace a .limit() to a JSX node -- that is undecidable across two
+  # languages and an HTTP hop, and its header says so in full. It holds five
+  # checkable things instead; read that header before widening or narrowing it.
+  #
+  # Stdlib only, no install step. Exit 2 (cannot check) blocks like exit 1.
+  windowed-figures:
+    name: A windowed figure is a floor, an unknown is not a zero
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: The guard still fires on the shapes it exists to catch
+        run: python3 scripts/check_windowed_figures.py --self-test
+
+      - name: No window rendered as a total, no unknown rendered as a zero
+        run: python3 scripts/check_windowed_figures.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::[window drift] means a declared cap in SERVER_WINDOWS no longer matches the .limit() it cites. The page's floor prose now names a cap the server does not use -- update the register AND the sentences that quote it, in the same change."
+          echo "::notice::[unconsumed window] means a cap is declared but nothing reads it, or a renderer that knows about the register carries no floor marker. Deleting the >= while keeping the constant is the cheapest way to silently undo this."
+          echo "::notice::[zero as unknown] means a measured 0 renders as an em dash. ADR 0051 clause 1: a real zero and an absent figure must be distinguishable. Run the value through num() and format the null-or-number, do not gate on > 0."
+          echo "::notice::[empty as unknown] means a view-model field falls back to [] when its query did not answer. A failed fetch then renders as an empty list -- which is how the uncounted-delivery safety net went silent exactly when it was needed."
+          echo "::notice::[unknown lost] means a field whose job is to say 'the query did not answer' lost its | null. Widen it back deliberately or the page can only ever say 'empty', which is a measurement."
+          echo "::notice::[cardinality discarded] means a queryFn sends a limit but reads neither total nor hasMore. The exact count is in the payload; without it the page renders a page length dressed as a total."
+          echo "::notice::Exit 2 is CANNOT CHECK, not a skip: an anchor moved (the register, a cited gateway file, a guarded interface field). Fix the anchor, do not delete the step."
+
   analytics-cost-honesty:
     name: Analytics never invents a cost
     runs-on: ubuntu-latest
@@ -856,6 +895,7 @@ jobs:
         # enforce: a guard nobody depends on can fail while this prints success.
         adr-numbers-unique,
         analytics-cost-honesty,
+        windowed-figures,
       ]
     steps:
       - name: Checkout code
