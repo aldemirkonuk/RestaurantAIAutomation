@@ -440,9 +440,7 @@ class RFQAgent(BaseAgent):
             "solicitations": solicitations,
         }
 
-    async def _propose_rfq_solicitation(
-        self, message: Dict[str, Any]
-    ) -> Optional[str]:
+    async def _propose_rfq_solicitation(self, message: Dict[str, Any]) -> Optional[str]:
         """
         Turn a par crossing (or an RFQ request) into a proposal a human taps.
 

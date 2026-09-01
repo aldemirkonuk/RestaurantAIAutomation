@@ -299,7 +299,10 @@ class TestParCrossingCannotReachAVendor:
         in ANYTHING the agent published or wrote. A future path that leaked the
         address into a payload would be one string interpolation from a send.
         """
-        vendors = [_vendor("v-0001", "Vendor One", 4.9), _vendor("v-0002", "Vendor Two")]
+        vendors = [
+            _vendor("v-0001", "Vendor One", 4.9),
+            _vendor("v-0002", "Vendor Two"),
+        ]
         agent, router, bus, _db = _make_agent(vendors=vendors)
 
         await agent.process_message(_breach())
@@ -329,9 +332,7 @@ class TestParCrossingCannotReachAVendor:
         for key in VENDOR_CONTACT_KEYS:
             # Allowed only inside a comment/docstring describing what was removed.
             live = [
-                ln
-                for ln in source.splitlines()
-                if key in ln and "routing_key=" in ln
+                ln for ln in source.splitlines() if key in ln and "routing_key=" in ln
             ]
             assert not live, f"{key} is published again at: {live}"
 
@@ -345,9 +346,9 @@ class TestParCrossingCannotReachAVendor:
             agent, router, bus, _ = _make_agent(config={"mock_mode": mock_mode})
             await agent.process_message(_breach())
             keys = [p["routing_key"] for p in _published(bus)]
-            assert keys == ["notification.rfq_solicitation_proposed"], (
-                f"mock_mode={mock_mode} changed the outcome: {keys}"
-            )
+            assert keys == [
+                "notification.rfq_solicitation_proposed"
+            ], f"mock_mode={mock_mode} changed the outcome: {keys}"
             assert len(router.inserts.get("one_tap_actions", [])) == 1
 
     async def test_every_proposal_writes_a_decision_log_row(self):
