@@ -916,12 +916,20 @@ export class AskAiService {
     row: any,
   ): Promise<string> {
     if (row.family === "procurement" && row.action_type === "reorder") {
-      const order = await this.procurement.createOrder(restaurantId, userId, {
-        inventoryId: row.payload.inventoryId,
-        providerId: row.payload.providerId,
-        quantity: row.payload.quantity,
-        ...(row.payload.unitType ? { unitType: row.payload.unitType } : {}),
-      } as any);
+      const order = await this.procurement.createOrder(
+        restaurantId,
+        userId,
+        {
+          inventoryId: row.payload.inventoryId,
+          providerId: row.payload.providerId,
+          quantity: row.payload.quantity,
+          ...(row.payload.unitType ? { unitType: row.payload.unitType } : {}),
+        } as any,
+        // Provenance, not decoration: without it an Ask-AI order and a manual
+        // one were byte-identical rows, so "did the AI place this?" — the first
+        // question anyone asks of autonomous ordering — had no answer.
+        { source: "ask_ai" },
+      );
       return String((order as any)?.id ?? "");
     }
 

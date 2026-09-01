@@ -1,6 +1,12 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { normalizeUom, toBottles, Uom } from "./documents/document-types";
+import { ORDER_UNIT_TYPES } from "./order-units";
 
 /**
  * ReceivingService — the door stage of a two-stage delivery.
@@ -106,7 +112,42 @@ export class ReceivingService {
     if (orderErr) throw new Error(orderErr.message);
     if (!order) throw new NotFoundException("Order not found");
 
-    const uom: Uom = normalizeUom(input.countedUom) ?? "case";
+    // FAIL CLOSED ON THE UNIT — ADR 0011's rule, applied to the door.
+    //
+    // This was `normalizeUom(input.countedUom) ?? "case"`, and `"case"` is the
+    // unit that MULTIPLIES. An absent or misspelt unit therefore took the one
+    // fallback that inflates: 24 counted against a 12-pack booked 288 bottles,
+    // silently, into live stock. ADR 0011 decided this exact class of error for
+    // POS depletion — "a wrong number that nobody can see is worse than a
+    // missing number that everybody can" — and the fallback here is the same
+    // silent 12x guess that ADR removed from `sale_unit`.
+    //
+    // It differs from the ADR in ONE respect, deliberately. The ADR queues,
+    // because a POS webhook arrives with no human present and a refusal would go
+    // nowhere. At the door a human is standing there: a 400 IS the queue, it is
+    // synchronous, and it names the question they can answer in two seconds
+    // ("cases or bottles?"). The web door client already treats 4xx as a
+    // permanent refusal and surfaces it rather than retrying (`doorOutbox.ts`).
+    const uom: Uom | null = normalizeUom(input.countedUom);
+    if (!uom) {
+      this.logger.warn(
+        `door receipt refused for order ${input.orderId}: unit ` +
+          `${JSON.stringify(input.countedUom ?? null)} cannot be converted to bottles`,
+      );
+      throw new BadRequestException({
+        reason: "unknown_counted_uom",
+        message:
+          `"${input.countedUom ?? "(no unit)"}" is not a unit this delivery can be counted in. ` +
+          `Say one of: ${ORDER_UNIT_TYPES.join(", ")}. ` +
+          `Nothing was booked — a guessed unit would have multiplied the delivery into live stock ` +
+          `and surfaced later as a phantom overage against the invoice rather than as a bug.`,
+      });
+    }
+    // Pack size is back-derived from the order's own bottles_total / quantity.
+    // That derivation was worthless until `createOrder` started multiplying by
+    // the pack size: it wrote bottles_total = quantity, so the ratio was always
+    // 1 and every case count silently became a bottle count. The two fixes are
+    // one fix — see `order-units.ts`.
     const packSize = this.resolvePackSize(input.packSize, order);
     const countedBottles = toBottles(
       Math.max(0, input.countedQty ?? 0),

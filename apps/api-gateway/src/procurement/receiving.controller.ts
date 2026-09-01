@@ -13,6 +13,7 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
   IsInt,
   IsISO8601,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
@@ -23,6 +24,7 @@ import {
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ReceivingService } from "./receiving.service";
+import { ORDER_UNIT_TYPES } from "./order-units";
 
 type AuthedUser = { userId: string; restaurantId: string };
 
@@ -32,15 +34,18 @@ export class DoorReceiptDto {
   @Min(0)
   countedQty!: number;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     description:
-      "Unit actually counted. Defaults to case — nobody opens fourteen shrink-wrapped cases on a sidewalk.",
-    default: "case",
+      "Unit actually counted — bottle | case | keg | pack | split_case | each | liter. " +
+      "REQUIRED, and no longer defaulted to 'case': 'case' is the unit that multiplies, so an " +
+      "absent or misspelt unit used to book 24 counted against a 12-pack as 288 bottles of live " +
+      "stock. An unrecognised unit is refused and nothing is booked (ADR 0011).",
+    enum: ORDER_UNIT_TYPES as unknown as string[],
   })
-  @IsOptional()
   @IsString()
+  @IsNotEmpty()
   @MaxLength(20)
-  countedUom?: string;
+  countedUom!: string;
 
   @ApiPropertyOptional({
     description: "Bottles per case, when the receiver knows it",
@@ -133,7 +138,10 @@ export class ReceivingController {
         orderId,
         userId: user.userId,
         countedQty: body.countedQty,
-        countedUom: body.countedUom ?? "case",
+        // NOT `?? "case"`. The controller injecting the multiplying unit put the
+        // exact defect this endpoint was fixed for back one layer up, where the
+        // service's fail-closed check could never see it.
+        countedUom: body.countedUom,
         packSize: body.packSize ?? null,
         rejectedQty: body.rejectedQty ?? 0,
         damagePhotoPath: body.damagePhotoPath ?? null,
@@ -143,6 +151,10 @@ export class ReceivingController {
         notes: body.notes ?? null,
       });
     } catch (error) {
+      // A refusal keeps its own body. Re-wrapping it flattened the structured
+      // `{ reason, message }` a client needs to tell "we cannot read that unit"
+      // apart from "the server broke".
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to record the delivery",
         error.status || HttpStatus.INTERNAL_SERVER_ERROR,

@@ -93,15 +93,20 @@ export type ReceiptStage = (typeof RECEIPT_STAGES)[number];
 /**
  * Coerce a free-text unit into the canonical vocabulary.
  *
- * Necessary because the schema is not self-consistent and cannot cheaply be made
- * so: `procurement_order_items.unit_type` has NO check constraint and defaults to
- * the PLURAL `'bottles'`, while `procurement_orders.unit_type` stores the
- * singular `'bottle'` and `procurement_document_lines.uom` has a CHECK that only
- * accepts singulars. Extracted and EDI documents add their own spellings (`BT`,
- * `CS`, `EA` are the common X12 codes). Every quantity comparison funnels through
- * here so one stray plural cannot silently become an unrecognised unit and skip
- * bottle normalisation — which would resurface the split-case false alarm the
- * whole mechanism exists to prevent.
+ * Originally necessary because the schema was not self-consistent:
+ * `procurement_order_items.unit_type` had NO check constraint and defaulted to
+ * the PLURAL `'bottles'`, `procurement_orders.unit_type` had none either, and
+ * only `procurement_document_lines.uom` was CHECK-constrained to singulars.
+ * `20260901150000_order_line_capture_and_units.sql` closed that: all four unit
+ * columns now share one CHECK over the same seven singulars, and this function
+ * is what every writer funnels through to produce them.
+ *
+ * It is still necessary, because the inputs are not ours. Extracted and EDI
+ * documents add their own spellings (`BT`, `CS`, `EA` are the common X12 codes),
+ * and every quantity comparison funnels through here so one stray plural cannot
+ * silently become an unrecognised unit and skip bottle normalisation — which
+ * would resurface the split-case false alarm the whole mechanism exists to
+ * prevent.
  *
  * Unrecognised input returns null rather than guessing `bottle`: a wrong unit
  * produces confident, wrong quantity maths, and silence is worse than a refusal.
