@@ -30,6 +30,11 @@ import { ConsultantsService } from "./consultants.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { InsightSchedulerService } from "./insights/insight-scheduler.service";
+import {
+  annotatedCandidates,
+  catalogCoverage,
+} from "./insights/insight-implementations";
+import { DataRequirement } from "./insights/insight-catalog";
 import { Persona } from "./metric-registry";
 
 /**
@@ -223,20 +228,35 @@ export class AnalyticsController {
 
   @Get("insight-catalog/types")
   @ApiOperation({
-    summary: "Full enumerated insight catalog (Browse All types)",
+    summary: "Full enumerated insight catalog (Browse All Types)",
     description:
-      "Every dimension × measure × comparator candidate type with category and data requirements. Pass restaurantId to also receive which requirements this restaurant satisfies (computable vs blocked).",
+      "Every dimension × measure × comparator candidate type with category, data requirements, and whether a generator implements it today. Pass restaurantId to also receive which requirements this restaurant satisfies. `coverage` is the honest split: computable now = implemented AND data available; the rest are blocked on data or not built yet (ADR 0020 — the catalogue is a roadmap, not a capability claim).",
   })
   @ApiQuery({ name: "restaurantId", required: false })
   async getInsightCatalogTypes(@Query("restaurantId") restaurantId?: string) {
     const catalog = this.insightGenerator.getCatalogTypes();
-    if (!restaurantId) return { ...catalog, available: null };
+    // `implemented` per type + the coverage split are the only honest basis for
+    // a "computable now" figure; data availability alone counted the roadmap.
+    const candidates = annotatedCandidates();
+    const unknown = {
+      ...catalog,
+      candidates,
+      available: null,
+      coverage: catalogCoverage(null),
+    };
+    if (!restaurantId) return unknown;
     try {
       const available =
         await this.insightGenerator.getAvailability(restaurantId);
-      return { ...catalog, available };
+      return {
+        ...catalog,
+        candidates,
+        available,
+        coverage: catalogCoverage(new Set<DataRequirement>(available)),
+      };
     } catch {
-      return { ...catalog, available: null };
+      // Availability unknown — say so with nulls rather than guessing a count.
+      return unknown;
     }
   }
 
