@@ -2,6 +2,7 @@
 type: page
 route: /authorize/:integrationId
 slug: authorize-integration
+softwares: [settings-integrations]
 component: apps/web/src/pages/AuthorizeIntegration.tsx
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[settings]]"]
 ---
 
 # /authorize/:integrationId
+
+> **Part of** [[08-softwares/settings-integrations|Settings & Integrations]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

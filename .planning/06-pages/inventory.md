@@ -2,6 +2,7 @@
 type: page
 route: /inventory
 slug: inventory
+softwares: [inventory-command]
 component: apps/web/src/pages/inventory/command/InventoryCommandPage.tsx
 audience: staff
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[orders]]"]
 ---
 
 # /inventory — Inventory Command
+
+> **Part of** [[08-softwares/inventory-command|Inventory Command]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

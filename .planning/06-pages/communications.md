@@ -2,6 +2,7 @@
 type: page
 route: /communications
 slug: communications
+softwares: [communications-hub]
 component: apps/web/src/pages/Communications.tsx
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[documents-reports]]"]
 ---
 
 # /communications — Communications
+
+> **Part of** [[08-softwares/communications-hub|Communications Hub]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

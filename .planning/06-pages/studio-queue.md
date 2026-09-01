@@ -2,6 +2,7 @@
 type: page
 route: /studio/queue
 slug: studio-queue
+softwares: [wine-studio]
 component: apps/web/src/pages/studio/StudioApprovalQueue.tsx
 audience: dev
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[studio]]", "[[studio-certify]]"]
 ---
 
 # /studio/queue — override approval queue
+
+> **Part of** [[08-softwares/wine-studio|Wine Studio]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
