@@ -20,12 +20,36 @@ import { ForbiddenException } from "@nestjs/common";
  * `TenantGuard` keeps calling it too — harmless when there is no user, and it
  * still covers anything that populates `request.user` earlier.
  */
-export function assertTenantMatch(request: {
-  user?: { userId?: string; restaurantId?: string } | null;
-  params?: Record<string, unknown>;
-  query?: Record<string, unknown>;
-  body?: unknown;
-}): void {
+export function assertTenantMatch(
+  request: {
+    user?: { userId?: string; restaurantId?: string } | null;
+    params?: Record<string, unknown>;
+    query?: Record<string, unknown>;
+    body?: unknown;
+  },
+  options: {
+    /**
+     * Skip the BODY-derived tenant names only. Path and query names are still
+     * compared, so the route keeps full isolation over what it reads.
+     *
+     * Exists for exactly one shape of route: one whose PURPOSE is to change
+     * the caller's tenant, and which therefore must name a restaurant the
+     * caller is not currently in. `POST /auth/switch-restaurant` is the only
+     * such route today. Before this, that endpoint was dead by construction —
+     * the body carried the target restaurant, this function saw a tenant that
+     * differed from the JWT's, and threw before `switchRestaurant()` could run
+     * the membership check that authorises the move. Verified against
+     * production 2026-09-01: three users hold access to more than one
+     * restaurant and none of them could switch.
+     *
+     * This is not a hole. The route still proves membership before issuing a
+     * token — `auth.service.ts#switchRestaurant` — so authorisation happens,
+     * just in the place that can actually answer the question. What is removed
+     * is a check that could only ever produce a false negative here.
+     */
+    allowBodyTenantChange?: boolean;
+  } = {},
+): void {
   const user = request.user;
   if (!user) return; // authentication is JwtAuthGuard's job, not this one's
 
@@ -34,18 +58,22 @@ export function assertTenantMatch(request: {
       ? (request.body as Record<string, unknown>)
       : undefined;
 
-  const named = [
+  const clean = (values: unknown[]) =>
+    values.filter((v) => typeof v === "string" && v.length > 0).map(String);
+
+  const fromPathAndQuery = clean([
     request.params?.restaurantId,
     request.params?.restaurant_id,
     request.query?.restaurantId,
     request.query?.restaurant_id,
-    body?.restaurantId,
-    body?.restaurant_id,
-  ]
-    .filter((v) => typeof v === "string" && v.length > 0)
-    .map(String);
+  ]);
+  const fromBody = clean([body?.restaurantId, body?.restaurant_id]);
 
-  if (named.length === 0) return; // nothing to violate
+  // Every name the request carries, exemption or not. The tenantless branch
+  // below is judged against ALL of them: the exemption permits changing which
+  // tenant you are in, never acquiring one for free.
+  const allNamed = [...fromPathAndQuery, ...fromBody];
+  if (allNamed.length === 0) return; // nothing to violate
 
   // A session with no tenant may not reach into one by naming it. Tenantless
   // users are ordinary — onboarding, profile, settings — but those routes name
@@ -54,8 +82,15 @@ export function assertTenantMatch(request: {
     throw new ForbiddenException("Tenant isolation violation");
   }
 
+  // Only these are compared against the caller's tenant. On an exempt route the
+  // body may legitimately name a different restaurant — that is the switch —
+  // while a path or query naming one is still a read into another tenant.
+  const compared = options.allowBodyTenantChange
+    ? fromPathAndQuery
+    : allNamed;
+
   const tenantId = String(user.restaurantId);
-  if (named.some((value) => value !== tenantId)) {
+  if (compared.some((value) => value !== tenantId)) {
     throw new ForbiddenException("Tenant isolation violation");
   }
 }
