@@ -12,6 +12,7 @@ import { ReportsModule } from "./reports/reports.module";
 import { WebsocketModule } from "./websocket/websocket.module";
 import { DatabaseModule } from "./database/database.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
+import { DashboardSignalsModule } from "./dashboard-signals/dashboard-signals.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { VendorPortalModule } from "./vendor-portal/vendor-portal.module";
 import { VendorIntelModule } from "./vendor-intel/vendor-intel.module";
@@ -80,6 +81,7 @@ import { AskAiModule } from "./ask-ai/ask-ai.module";
 
     // Feature modules
     DashboardModule, // Aggregated dashboard endpoint (API Bus pattern)
+    DashboardSignalsModule, // Drink window, purchase "why", count freshness (dashboard rebuild §3.1/§3.2/§5)
     AnalyticsModule, // Quantitative analytics engine (finance/stats/risk/forecast)
     VendorPortalModule, // Public vendor catalogue pages (subdomain-resolved)
     VendorIntelModule, // Vendor price scraping + multi-source comparison
