@@ -113,7 +113,22 @@ MIN_LOCATORS = 20
 # the start of the row. Beyond this the id is a coincidence, not a pair.
 PAIR_WINDOW = 120
 
-TEXT_SUFFIXES = {".md", ".ts", ".tsx", ".js", ".py", ".sh", ".yml", ".yaml", ".jsonl", ".json", ".sql"}
+TEXT_SUFFIXES = {".md", ".ts", ".tsx", ".js", ".py", ".sh", ".yml", ".yaml", ".jsonl", ".json", ".sql",
+                 ".html", ".htm"}
+# `.html` was MISSING here until 2026-09-01, and that omission was the exact failure mode
+# this guard was written to end: seven register anchors across three
+# `.planning/sketches/*/canvas.html` files were neither checked nor repaired, and the run
+# said PASS anyway. A blind spot that reports success is worse than no guard.
+#
+# It is scanned AND repaired, not report-only. The rewrite in repoint() replaces
+# `m.group(1)` -- a run of digits -- with another run of digits, so it cannot emit `<`,
+# `>`, `"`, `&` or a newline and cannot change markup structure. Inspected before
+# enabling: the live anchors sit in element text (`<code>`, `<li>`, `<span>`) and inside
+# double-quoted `title="..."` attribute values, and none of the three files contains a
+# `<script>` block at all. Report-only would have been the safe answer if the substitution
+# could reshape the document; it cannot, and making HTML permanently hand-maintained would
+# reintroduce the rot --fix exists to prevent (see the --fix note above: one inserted
+# register row moves every anchor below it).
 # `.obsidian` holds vendored plugin bundles, not corpus. Excluding it is not tidiness:
 # `.obsidian/plugins/obsidian-git/main.js` is a bundled *git* client, so it contains
 # literal conflict-marker strings — which made the --fix conflict check below refuse
@@ -403,14 +418,79 @@ def self_test() -> int:
         if doc.read_text(encoding="utf-8") != before:
             failures.append("repoint() edited inside a conflict block")
 
+    # -- 3. HTML is scanned and repaired like any other text file --------------------
+    # Added 2026-09-01 after `.html` was found missing from TEXT_SUFFIXES: seven live
+    # anchors were invisible and the run still said PASS. A blind spot in the SCAN is
+    # not visible in any of the checks above, so it gets its own invariant -- and the
+    # markup is asserted byte-for-byte apart from the digits, which is the whole basis
+    # for allowing --fix to touch HTML at all.
+    with tempfile.TemporaryDirectory() as d:
+        tmp = pathlib.Path(d)
+        ROOT = tmp
+        build(tmp)
+        page = tmp / "page.html"
+        page.write_text(
+            '<div class="cl" title="STR-9 · OD-7 (OPEN-DECISIONS.md:999) & co">\n'
+            "  <p><code>OD-7</code> is at <span>OPEN-DECISIONS.md:998</span></p>\n"
+            "</div>\n",
+            encoding="utf-8",
+        )
+        repoint(load_register())
+        got = page.read_text(encoding="utf-8")
+        want = line_of(tmp, "OD-7")
+        if f"OPEN-DECISIONS.md:{want}" not in got.splitlines()[0]:
+            failures.append("an anchor inside an HTML attribute was not checked/repointed")
+        if f"OPEN-DECISIONS.md:{want}" not in got.splitlines()[1]:
+            failures.append("an anchor inside HTML element text was not checked/repointed")
+        expected = (
+            f'<div class="cl" title="STR-9 · OD-7 (OPEN-DECISIONS.md:{want}) & co">\n'
+            f"  <p><code>OD-7</code> is at <span>OPEN-DECISIONS.md:{want}</span></p>\n"
+            "</div>\n"
+        )
+        if got != expected:
+            failures.append(f"--fix altered HTML beyond the line number: {got!r}")
+
+    # -- 4. the headline count is the number actually checked ------------------------
+    # The header printed `total - len(examples)` while `total` already excluded the
+    # examples, so it under-reported by one per escape. Nothing crashes when a guard
+    # miscounts its own work, which is why it is asserted rather than trusted.
+    with tempfile.TemporaryDirectory() as d:
+        import contextlib
+        import io
+
+        tmp = pathlib.Path(d)
+        ROOT = tmp
+        build(tmp)
+        want = line_of(tmp, "OD-7")
+        body = [f"Row {i}: OD-7 (OPEN-DECISIONS.md:{want}) is fine." for i in range(25)]
+        body.append("Quoted: `OD-7 (OPEN-DECISIONS.md:999)`. <!-- cite-example -->")
+        (tmp / "doc.md").write_text("\n".join(body) + "\n", encoding="utf-8")
+        buf, argv = io.StringIO(), sys.argv
+        sys.argv = ["check_citation_pairing.py"]
+        try:
+            with contextlib.redirect_stdout(buf):
+                rc = main()
+        finally:
+            sys.argv = argv
+        out = buf.getvalue()
+        if rc != 0:
+            failures.append(f"the synthetic clean tree did not pass: {out!r}")
+        if "25 register citations checked" not in out:
+            failures.append(
+                "the headline count is not the number of citations checked "
+                f"(25 expected, 1 cite-example skipped): {out.splitlines()[0]!r}"
+            )
+
     ROOT = real_root
-    print("== --fix self-test: 2 invariants")
+    print("== --fix self-test: 4 invariants")
     if failures:
         for f in failures:
             print(f"   FAIL — {f}")
         return 1
     print("   cite-example citations survive --fix, ordinary ones are repointed")
     print("   conflict markers are detected and the tree is left alone")
+    print("   HTML is scanned and repointed, and nothing but the digits changes")
+    print("   the headline count equals the citations actually checked")
     print("PASS")
     return 0
 
@@ -502,7 +582,12 @@ def main() -> int:
         print("FAIL — the citation-check escape is being used as an opt-out.")
         return 1
 
-    checked = total - len(examples)
+    # `total` is already the CHECKED count: the scan loop above `continue`s on a
+    # cite-example line before it ever increments `total`. Subtracting the examples a
+    # second time (as this did until 2026-09-01) under-reports the work by exactly the
+    # number of escapes in the corpus -- printing 164 where 165 citations were compared.
+    # A guard's own headline number has to be the number it actually stands behind.
+    checked = total
     print(f"== Citation pairing: {checked} register citations checked against {len(rows)} rows")
 
     if examples:
