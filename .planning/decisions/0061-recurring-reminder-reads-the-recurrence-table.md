@@ -147,6 +147,39 @@ touch. The violation set on this branch is **byte-identical** to pristine `main`
 this change introduces no status literal and removes none of #222's. The list shrank
 by exactly one, and nothing else moved.
 
+## Found while doing this — a SECOND recurring reminder, and this flag does not gate it
+
+`RecurringOrdersService.sendRecurringOrderReminders()`
+(`apps/api-gateway/src/procurement/recurring-orders.service.ts:281`) is a
+**separate `@Cron("0 6 * * *")` doing the same job two hours earlier**, and it
+already queries `recurring_orders` correctly (`active = true`,
+`next_order_date = reminderDate`). That is independent corroboration that the
+repoint above is right rather than a guess — two implementations, written apart,
+agree on the table.
+
+It is also three things this ADR does **not** fix, because the file belongs to
+PR #220:
+
+1. **No `restaurant_id` filter.** It sweeps `recurring_orders` across every
+   tenant in one pass, with no `scheduled_tenants` opt-in and no per-tenant
+   isolation — the structure ADR 0022 / OD-87 exists to prevent. The per-row
+   event payload does carry the row's own `restaurant_id`, so this is an
+   unscoped *read* rather than a mis-addressed email; the blast radius depends
+   on what the orchestrator does with `recurring.order.reminder`.
+2. **No flag.** `RECURRING_ORDER_REMINDERS_ENABLED` gates the job in
+   `ScheduledTasksService` only. This one fires regardless.
+3. **`wine_name || "Unknown"`** (`:317`) — the fabricated-label pattern this ADR
+   removes from the other path.
+
+**PR #220 does not change any of this** — verified against
+`origin/fix/retroactive-and-recurring`, where the query is still
+`.from("recurring_orders").eq("active", true).eq("next_order_date", reminderDate)`.
+
+All three are inert today only because `recurring_orders` holds 0 rows. **They
+stop being inert the moment #220 lands and rows appear**, without anybody
+flipping a flag. Recorded here rather than fixed, since three unmerged PRs own
+that file; it wants its own change.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
