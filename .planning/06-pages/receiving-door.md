@@ -2,6 +2,7 @@
 type: page
 route: /receiving/:orderId/door
 slug: receiving-door
+softwares: [receiving]
 component: apps/web/src/pages/receiving/DoorReceipt.tsx
 audience: staff
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[orders]]"]
 ---
 
 # /receiving/:orderId/door — Door receipt
+
+> **Part of** [[08-softwares/receiving|Receiving]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

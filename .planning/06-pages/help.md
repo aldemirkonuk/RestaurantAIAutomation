@@ -2,6 +2,7 @@
 type: page
 route: /help
 slug: help
+softwares: [app-shell-support]
 component: apps/web/src/pages/Help.tsx
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[privacy]]", "[[sommelier]]", "[[services]]", "[[
 ---
 
 # /help — Help & Support
+
+> **Part of** [[08-softwares/app-shell-support|App Shell & Support]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

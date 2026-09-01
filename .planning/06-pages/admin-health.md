@@ -2,6 +2,7 @@
 type: page
 route: /admin/health
 slug: admin-health
+softwares: [admin-health-sw]
 component: apps/web/src/pages/AdminHealth.tsx
 audience: dev
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[admin]]"]
 ---
 
 # /admin/health
+
+> **Part of** [[08-softwares/admin-health|Admin & Health]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
