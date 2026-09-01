@@ -351,6 +351,52 @@ jobs:
           echo "::notice::WHICH price should value inventory is OPEN-DECISIONS OD-100 and is the founder's call. This guard is about not answering it silently -- do not resolve OD-100 by editing resolveUnitCost in a bug-fix PR."
           echo "::notice::CANNOT CHECK (exit 2) means inventory-cost.ts is gone or gutted, nothing was scanned, or no cost basis label is derived any more. That is a move or a rename, not a pass; repoint the guard."
 
+  # ADR 0059: a machine proposal shown to a human is written BEFORE the human
+  # answers, and the answer is APPENDED, never substituted.
+  #
+  # Receiving is the only place in the product where a number is produced by a
+  # person touching an object. Four of its six machine-proposes/human-judges
+  # pairs destroyed the machine's half at the instant it became a label. The
+  # cleanest instance was two lines in documents.controller.ts:
+  #
+  #     // A person confirmed it, so confidence is not a model's estimate any more.
+  #     match_confidence: body?.orderLineId ? 1 : null,
+  #     match_method:     body?.orderLineId ? "manual" : null,
+  #
+  # The comment is CORRECT about live state and the write is still the defect:
+  # the proposal and the confirmation shared two columns, so confirming a
+  # pairing deleted the model's score at the one moment it could never be
+  # reconstructed. Nothing looks wrong in the diff and nothing looks wrong in
+  # the row -- the corpus is simply empty of every case the model got right.
+  #
+  # That is why this is a guard: the violating line is short, plausible,
+  # well-commented, and identical in form to the legitimate write six files
+  # away. A reviewer cannot reliably tell them apart; an allowlist can.
+  #
+  # Stdlib only, no install step. Exit 2 (cannot check) blocks like exit 1.
+  proposal-preservation:
+    name: A proposal is never overwritten by the answer
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: The guard still fires on the shape it exists to catch
+        run: python3 scripts/check_proposal_preservation.py --self-test
+
+      - name: No write outside a declared writer touches a proposal column
+        run: python3 scripts/check_proposal_preservation.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::PROPOSAL OVERWRITTEN means a database write outside the declared writer set assigns a protected column -- match_confidence, match_method, ties_out, tie_out_delta, computed_lines_total, or any proposed_* column."
+          echo "::notice::If the write is the HUMAN'S ANSWER, give the answer its own columns (confirmed_by / confirmed_at, or a proposed_* twin) and leave the machine's half alone. ADR 0059: append, never substitute."
+          echo "::notice::If the write really is a PROPOSAL -- a machine recording its own suggestion -- add the file to ALLOWLIST in scripts/check_proposal_preservation.py with the reason it is one. That edit is the mechanism: it is deliberate, reviewable, and a sentence someone has to be willing to write."
+          echo "::notice::Do NOT widen the allowlist to a directory to make this pass. 'This module may write it' is a much weaker claim than 'this function may', and the weaker claim is how the defect returns."
+          echo "::notice::CANNOT CHECK (exit 2) means the guard scanned nothing, found zero write sites at all, or a declared writer stopped writing the column it is declared for. That is a move or a rename, not a pass; repoint the guard rather than deleting the step."
+          echo "::notice::Context: production held 0 procurement_documents / 0 document_lines / 0 receipt_events when this rule was adopted on 2026-09-01. The corpus being empty is why the rule was free to adopt -- and why a regression is expensive: the proposal half cannot be back-filled from the confirmed half, by construction."
+
   decision-claims:
     name: Decision register matches reality
     runs-on: ubuntu-latest
@@ -856,6 +902,7 @@ jobs:
         # enforce: a guard nobody depends on can fail while this prints success.
         adr-numbers-unique,
         analytics-cost-honesty,
+        proposal-preservation,
       ]
     steps:
       - name: Checkout code
