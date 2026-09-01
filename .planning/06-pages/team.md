@@ -2,6 +2,7 @@
 type: page
 route: /team
 slug: team
+softwares: [team-command]
 component: apps/web/src/pages/team/command/TeamCommandPage.tsx
 audience: staff
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]"]
 ---
 
 # /team — Team Command
+
+> **Part of** [[08-softwares/team-command|Team Command]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

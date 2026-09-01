@@ -2,6 +2,7 @@
 type: page
 route: /reset-password
 slug: reset-password
+softwares: [auth-onboarding]
 component: apps/web/src/pages/ResetPassword.tsx
 audience: public
 tier: public
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[forgot-password]]", "[[login]]"]
 ---
 
 # /reset-password
+
+> **Part of** [[08-softwares/auth-onboarding|Auth & Onboarding]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
