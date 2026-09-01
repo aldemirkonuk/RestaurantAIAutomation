@@ -49,6 +49,9 @@ const OUTCOME_LABELS: Record<string, string> = {
   SENT: 'Sent',
   COMPLETED: 'Completed',
   CLOSED: 'Closed',
+  // Reaches this history list because the send happened; the status write
+  // afterwards did not. Named, not left to render as a raw enum token.
+  SEND_UNCONFIRMED: 'Sent · unconfirmed',
 }
 
 interface ProcurementSendHistoryProps {
@@ -171,9 +174,11 @@ function ProcurementSendHistory({
                     {new Date(item.sentAt).toLocaleDateString()}
                   </span>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                    item.status === 'APPROVED' || item.status === 'AUTO_SENT'
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : 'bg-gray-100 text-gray-600'
+                    item.status === 'SEND_UNCONFIRMED'
+                      ? 'bg-red-100 text-red-700'
+                      : item.status === 'APPROVED' || item.status === 'AUTO_SENT'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-gray-100 text-gray-600'
                   }`}>
                     {OUTCOME_LABELS[item.status] ?? item.status}
                   </span>
