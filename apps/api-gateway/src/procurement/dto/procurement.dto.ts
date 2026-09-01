@@ -7,8 +7,10 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   Min,
+  ValidateNested,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { ORDER_UNIT_TYPES } from "../order-units";
@@ -194,7 +196,11 @@ export class UpdateOrderDto {
 /** One signed stock correction applied while verifying a receipt. */
 export class ReceiptAdjustmentDto {
   @ApiProperty()
-  @IsString()
+  // @IsUUID, not @IsString: this id is handed straight to apply_stock_movement,
+  // which derives restaurant_id from the target row rather than from the caller.
+  // Shape is the cheap half of that fix; the ownership check in
+  // ProcurementService.applyReceiptAdjustment is the half that actually closes it.
+  @IsUUID()
   inventoryId: string;
 
   @ApiProperty({
@@ -220,6 +226,11 @@ export class VerifyReceiptDto {
   @ApiPropertyOptional({ type: [ReceiptAdjustmentDto] })
   @IsArray()
   @IsOptional()
+  // @ValidateNested({ each: true }) is what makes @Type() mean anything.
+  // Without it, class-validator constructs ReceiptAdjustmentDto instances and
+  // then validates NONE of their decorators — `adjustments` was checked only for
+  // being an array, and every field inside it was accepted verbatim.
+  @ValidateNested({ each: true })
   @Type(() => ReceiptAdjustmentDto)
   adjustments?: ReceiptAdjustmentDto[];
 
