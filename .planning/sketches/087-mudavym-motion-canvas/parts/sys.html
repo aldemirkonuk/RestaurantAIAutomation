@@ -1,0 +1,905 @@
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   sys · System states — the cross-cutting furniture every Mudavym page
+   inherits: connection, honesty, failure, chrome.
+   Every selector is prefixed .mx-sys. No hard-coded colours.
+   ═══════════════════════════════════════════════════════════════════════ */
+.mx-sys{
+  --sys-settle:cubic-bezier(.16,1,.3,1);
+  --sys-turn:cubic-bezier(.32,.72,0,1);
+  --sys-out:cubic-bezier(.3,0,1,1);
+  --sys-tint:color-mix(in oklab, var(--m-accent) 12%, transparent);
+  --sys-ring:color-mix(in oklab, var(--m-accent) 40%, transparent);
+  --sys-no:color-mix(in oklab, var(--m-no) 14%, transparent);
+  --sys-nor:color-mix(in oklab, var(--m-no) 46%, transparent);
+  --sys-warn:color-mix(in oklab, var(--m-warn) 15%, transparent);
+  --sys-ok:color-mix(in oklab, var(--m-ok) 14%, transparent);
+  font-family:var(--m-sans);color:var(--m-ink);font-size:12.5px;line-height:1.42;
+  display:flex;flex-direction:column;justify-content:center;gap:8px;width:100%;
+}
+.mx-sys .k{font:500 9px/1 var(--m-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--m-mut)}
+.mx-sys .fig{font-family:var(--m-mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.mx-sys .cap{font:400 9.5px/1.5 var(--m-mono);color:var(--m-mut);letter-spacing:.02em}
+.mx-sys .say{font-family:var(--m-serif);font-variation-settings:'SOFT' 42,'WONK' 1;font-size:12.5px}
+.mx-sys b{font-weight:600}
+.mx-sys em{font-style:normal}
+
+/* ── sys-01 · offline, then the queue drains in the order it was made ── */
+.mx-sys-01 .s1-top{display:flex;align-items:center;gap:7px}
+.mx-sys-01 .s1-pill{display:inline-flex;align-items:center;gap:6px;padding:3px 8px 3px 6px;
+  border:1px solid var(--m-line);border-radius:99px;background:var(--m-surface);
+  transition:border-color 160ms var(--sys-settle),background 160ms var(--sys-settle)}
+.mx-sys-01 .s1-pill.up{border-color:var(--sys-ring);background:var(--sys-tint)}
+.mx-sys-01 .s1-dot{width:6px;height:6px;border-radius:99px;background:var(--m-mut);
+  transition:background 160ms var(--sys-settle),transform 160ms var(--sys-settle)}
+.mx-sys-01 .s1-pill.up .s1-dot{background:var(--m-accent)}
+.mx-sys-01 .s1-state{font:600 10.5px/1 var(--m-mono);letter-spacing:.04em}
+.mx-sys-01 .s1-note{font:400 10px/1 var(--m-mono);color:var(--m-mut);
+  transition:opacity 200ms var(--sys-settle)}
+.mx-sys-01 .s1-hold{height:2px;background:var(--m-sunk);border-radius:2px;overflow:hidden;opacity:0;
+  transition:opacity 160ms var(--sys-settle)}
+.mx-sys-01 .s1-hold.on{opacity:1}
+.mx-sys-01 .s1-hold i{display:block;height:100%;background:var(--m-mut);transform-origin:left;transform:scaleX(0)}
+.mx-sys-01 .s1-hold.run i{transform:scaleX(1);transition:transform 1000ms linear}
+.mx-sys-01 .s1-q{display:flex;flex-direction:column}
+.mx-sys-01 .q-row{display:grid;grid-template-rows:0fr;opacity:0;margin-bottom:0;
+  transition:grid-template-rows 320ms var(--sys-settle),opacity 200ms var(--sys-settle),
+             margin-bottom 320ms var(--sys-settle)}
+.mx-sys-01 .q-row.in{grid-template-rows:1fr;opacity:1;margin-bottom:4px}
+.mx-sys-01 .q-row > span{overflow:hidden;min-height:0;display:flex;align-items:center;gap:7px;
+  padding-left:8px;position:relative;font-size:11.5px}
+.mx-sys-01 .q-rail{position:absolute;left:0;top:1px;bottom:1px;width:2px;border-radius:2px;
+  background:var(--m-line2);overflow:hidden}
+.mx-sys-01 .q-rail::after{content:'';position:absolute;inset:0;background:var(--m-accent);
+  transform:scaleY(0);transform-origin:top}
+.mx-sys-01 .q-row.sent .q-rail::after{transform:scaleY(1);transition:transform 240ms var(--sys-settle)}
+.mx-sys-01 .q-t{font:500 10px/1 var(--m-mono);color:var(--m-mut);flex:none}
+.mx-sys-01 .q-l{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mx-sys-01 .q-g{flex:none;font:500 11px/1 var(--m-mono);color:var(--m-mut);opacity:0;
+  transition:opacity 180ms var(--sys-settle)}
+.mx-sys-01 .q-row.sent .q-g{opacity:1;color:var(--m-accent)}
+
+/* ── sys-02 · the rollback that says what the server said ────────────── */
+.mx-sys-02 .s2-card{position:relative;padding:9px 10px 9px 12px;border:1px solid var(--m-line);
+  border-radius:9px;background:var(--m-surface);overflow:hidden;
+  transition:border-color 200ms var(--sys-settle)}
+.mx-sys-02 .s2-card.bad{border-color:var(--sys-nor)}
+.mx-sys-02 .s2-rail{position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--m-no);
+  transform:scaleX(0);transform-origin:left;transition:transform 200ms var(--sys-settle)}
+.mx-sys-02 .s2-card.bad .s2-rail{transform:scaleX(1)}
+.mx-sys-02 .s2-hd{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.mx-sys-02 .s2-nm{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mx-sys-02 .s2-num{position:relative;flex:none;height:24px;min-width:52px;text-align:right}
+.mx-sys-02 .s2-num > i{position:absolute;right:0;top:0;font-style:normal;font-size:19px;font-weight:600;
+  font-family:var(--m-mono);font-variant-numeric:tabular-nums;line-height:24px;white-space:nowrap}
+.mx-sys-02 .s2-live{color:var(--m-ink)}
+.mx-sys-02 .s2-ghost{color:var(--m-mut);opacity:0;text-decoration:line-through;
+  text-decoration-color:var(--m-no);text-decoration-thickness:1.5px}
+.mx-sys-02 .s2-pend{height:2px;margin-top:1px;border-radius:2px;opacity:0;
+  background:linear-gradient(90deg,transparent,var(--m-warn),transparent);
+  background-size:240% 100%;transition:opacity 160ms var(--sys-settle)}
+.mx-sys-02 .s2-pend.on{opacity:.9;animation:mxsys-shim 1900ms cubic-bezier(.45,0,.55,1) infinite}
+.mx-sys-02 .s2-why{display:grid;grid-template-rows:0fr;transition:grid-template-rows 320ms var(--sys-settle)}
+.mx-sys-02 .s2-why.on{grid-template-rows:1fr}
+.mx-sys-02 .s2-why > span{overflow:hidden;min-height:0;display:block;
+  font:400 10px/1.5 var(--m-mono);color:var(--m-mut);padding-top:4px}
+.mx-sys-02 .s2-why b{color:var(--m-no);font-weight:500}
+@keyframes mxsys-shim{0%{background-position:135% 0}100%{background-position:-35% 0}}
+
+/* ── sys-03 · an error is not an empty room ──────────────────────────── */
+.mx-sys-03 .s3-box{position:relative;height:104px;border:1px solid var(--m-line);border-radius:9px;
+  background:var(--m-surface);overflow:hidden}
+.mx-sys-03 .s3-empty{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:5px;color:var(--m-mut);
+  transition:opacity 200ms var(--sys-out),transform 200ms var(--sys-out)}
+.mx-sys-03 .s3-empty.gone{opacity:0;transform:translateY(6px)}
+.mx-sys-03 .s3-ring{width:26px;height:26px;border-radius:99px;background:var(--m-sunk)}
+.mx-sys-03 .s3-err{position:absolute;left:0;right:0;top:0;padding:9px 11px 10px;
+  background:var(--m-surface);border-bottom:1px solid var(--sys-nor);
+  transform:translateY(-101%);transition:transform 420ms var(--sys-turn)}
+.mx-sys-03 .s3-err.in{transform:none}
+.mx-sys-03 .s3-err::before{content:'';position:absolute;left:0;right:0;top:0;height:2px;background:var(--m-no)}
+.mx-sys-03 .s3-code{font:600 9.5px/1 var(--m-mono);letter-spacing:.1em;color:var(--m-no);
+  text-transform:uppercase;display:block;margin-bottom:5px}
+.mx-sys-03 .s3-act{display:inline-flex;align-items:center;gap:5px;margin-top:7px;padding:3px 9px;
+  border:1px solid var(--m-line2);border-radius:6px;font:500 10.5px var(--m-mono);
+  background:var(--m-sunk);color:var(--m-ink)}
+.mx-sys-03 .s3-tag{position:absolute;left:9px;bottom:7px;font:400 9px/1 var(--m-mono);color:var(--m-mut);
+  transition:opacity 200ms var(--sys-settle)}
+
+/* ── sys-04 · a skeleton that resolves without a shift ───────────────── */
+.mx-sys-04 .s4-row{display:flex;align-items:center;justify-content:space-between;gap:10px;height:20px}
+.mx-sys-04 .s4-slot{position:relative;height:13px}
+.mx-sys-04 .s4-bone{position:absolute;inset:0;border-radius:3px;background:var(--m-sunk);
+  background-image:linear-gradient(90deg,transparent 20%,color-mix(in oklab,var(--m-ink) 9%,transparent) 50%,transparent 80%);
+  background-size:240% 100%;animation:mxsys-shim 1900ms cubic-bezier(.45,0,.55,1) infinite;
+  transition:opacity 220ms var(--sys-settle)}
+.mx-sys-04 .s4-real{position:absolute;inset:0;opacity:0;white-space:nowrap;font-size:12px;line-height:13px;
+  transition:opacity 220ms var(--sys-settle)}
+.mx-sys-04 .s4-slot.r .s4-bone{opacity:0;animation:none}
+.mx-sys-04 .s4-slot.r .s4-real{opacity:1}
+.mx-sys-04 .s4-v{text-align:right}
+.mx-sys-04 .s4-v .s4-real{text-align:right;font-family:var(--m-mono);font-variant-numeric:tabular-nums;font-weight:600}
+.mx-sys-04 .s4-meas{display:flex;align-items:baseline;gap:6px}
+.mx-sys-04 .s4-meas b{font:600 10px var(--m-mono);color:var(--m-accent)}
+
+/* ── sys-05 · session lapse, held in place ───────────────────────────── */
+.mx-sys-05 .s5-field{position:relative;padding:8px 10px;min-height:64px;border:1px solid var(--m-line);
+  border-radius:9px;background:var(--m-surface);overflow:hidden;
+  transition:border-color 200ms var(--sys-settle)}
+.mx-sys-05 .s5-field.held{border-color:var(--m-line2)}
+.mx-sys-05 .s5-txt{font-size:12px;line-height:1.5}
+.mx-sys-05 .s5-caret{display:inline-block;width:1.5px;height:12px;background:var(--m-accent);
+  vertical-align:-2px;margin-left:1px;animation:mxsys-blink 1080ms steps(1) infinite}
+.mx-sys-05 .s5-field.held .s5-caret{animation:none;opacity:.35}
+@keyframes mxsys-blink{0%,50%{opacity:1}51%,100%{opacity:0}}
+.mx-sys-05 .s5-band{position:absolute;left:0;right:0;top:0;padding:7px 10px;
+  background:color-mix(in oklab, var(--m-sunk) 88%, transparent);
+  border-bottom:1px solid var(--m-line2);
+  transform:translateY(-101%);transition:transform 420ms var(--sys-turn)}
+.mx-sys-05 .s5-band.up{transform:translateY(-101%);transition:transform 320ms var(--sys-settle)}
+.mx-sys-05 .s5-band.in{transform:none}
+.mx-sys-05 .s5-bl{display:flex;align-items:center;gap:7px;font:500 10.5px/1 var(--m-mono)}
+.mx-sys-05 .s5-sweep{height:2px;margin-top:6px;background:var(--m-sunk);border-radius:2px;overflow:hidden}
+.mx-sys-05 .s5-sweep i{display:block;height:100%;width:38%;border-radius:2px;background:var(--m-accent);
+  transform:translateX(-110%)}
+.mx-sys-05 .s5-band.in .s5-sweep i{animation:mxsys-sweep 900ms cubic-bezier(.45,0,.55,1)}
+@keyframes mxsys-sweep{to{transform:translateX(300%)}}
+.mx-sys-05 .s5-keep{opacity:0;transition:opacity 320ms var(--sys-settle)}
+.mx-sys-05 .s5-keep.on{opacity:1}
+
+/* ── sys-06 · switching branch re-bases the page ─────────────────────── */
+.mx-sys-06 .s6-hd{display:flex;align-items:center;gap:7px}
+.mx-sys-06 .s6-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:7px;
+  border:1px solid var(--m-line);background:var(--m-surface);cursor:pointer;
+  transition:border-color 160ms var(--sys-settle)}
+.mx-sys-06 .s6-chip:hover{border-color:var(--m-line2)}
+.mx-sys-06 .s6-ini{width:16px;height:16px;border-radius:5px;display:grid;place-items:center;
+  background:var(--sys-tint);color:var(--m-accent);font:600 9px var(--m-mono)}
+.mx-sys-06 .s6-swap{position:relative;display:block;height:14px;min-width:64px}
+.mx-sys-06 .s6-swap i{position:absolute;left:0;top:0;font-style:normal;font:600 11.5px/14px var(--m-sans);
+  white-space:nowrap;opacity:0;transform:translateY(2px);
+  transition:opacity 160ms var(--sys-settle),transform 160ms var(--sys-settle)}
+.mx-sys-06 .s6-swap i.show{opacity:1;transform:none}
+.mx-sys-06 .s6-fetch{flex:1;height:2px;background:var(--m-sunk);border-radius:2px;overflow:hidden}
+.mx-sys-06 .s6-fetch i{display:block;height:100%;background:var(--m-accent);transform-origin:left;transform:scaleX(0)}
+.mx-sys-06 .s6-fetch.run i{transform:scaleX(1);transition:transform 620ms cubic-bezier(.45,0,.55,1)}
+.mx-sys-06 .s6-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.mx-sys-06 .s6-cell .k{display:block;margin-bottom:2px}
+.mx-sys-06 .s6-cell .fig{font-size:16px;font-weight:600;display:block;
+  transition:opacity 140ms var(--sys-out),color 140ms var(--sys-out)}
+.mx-sys-06 .s6-cell.void .fig{color:var(--m-mut)}
+
+/* ── sys-07 · ⌘K, and the ranking you can watch ──────────────────────── */
+.mx-sys-07 .s7-panel{border:1px solid var(--m-line2);border-radius:9px;background:var(--m-surface);
+  padding:7px 8px 8px;opacity:0;transform:translateY(6px) scale(.985);transform-origin:50% 0}
+.mx-sys-07 .s7-panel.in{opacity:1;transform:none;
+  transition:opacity 200ms var(--sys-settle),transform 320ms var(--sys-settle)}
+.mx-sys-07 .s7-in{display:flex;align-items:center;gap:6px;padding:0 2px 6px;
+  border-bottom:1px solid var(--m-line)}
+.mx-sys-07 .s7-kbd{font:500 9px/1 var(--m-mono);color:var(--m-mut);border:1px solid var(--m-line);
+  border-radius:4px;padding:2px 4px;flex:none}
+.mx-sys-07 .s7-q{flex:1;font:400 12px/1 var(--m-mono);color:var(--m-ink);min-height:12px}
+.mx-sys-07 .s7-q i{display:inline-block;width:1.5px;height:11px;background:var(--m-accent);
+  vertical-align:-1px;animation:mxsys-blink 1080ms steps(1) infinite}
+.mx-sys-07 .s7-list{position:relative;padding-top:4px}
+.mx-sys-07 .s7-row{display:flex;align-items:center;gap:7px;padding:2px 5px;border-radius:5px;
+  height:19px;will-change:transform}
+.mx-sys-07 .s7-row.sel{background:var(--sys-tint)}
+.mx-sys-07 .s7-row.out{opacity:.28}
+.mx-sys-07 .s7-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px}
+.mx-sys-07 .s7-t u{text-decoration:none;color:var(--m-accent);font-weight:600}
+.mx-sys-07 .s7-sc{font:500 9.5px/1 var(--m-mono);color:var(--m-mut);flex:none;
+  font-variant-numeric:tabular-nums}
+.mx-sys-07 .s7-sh{font:500 9px/1 var(--m-mono);color:var(--m-mut);flex:none;letter-spacing:.06em}
+
+/* ── sys-08 · a change arriving on the row you are reading ───────────── */
+.mx-sys-08 .s8-row{position:relative;display:flex;align-items:center;gap:8px;height:22px;
+  padding:0 8px 0 9px;border-radius:6px;
+  transition:background 160ms var(--sys-settle)}
+.mx-sys-08 .s8-row.read{background:var(--m-surface)}
+.mx-sys-08 .s8-read{position:absolute;left:0;top:3px;bottom:3px;width:2px;border-radius:2px;
+  background:var(--m-accent);transform:scaleX(0);transform-origin:left;
+  transition:transform 160ms var(--sys-settle)}
+.mx-sys-08 .s8-row.read .s8-read{transform:scaleX(1)}
+.mx-sys-08 .s8-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px}
+.mx-sys-08 .s8-v{font-family:var(--m-mono);font-variant-numeric:tabular-nums;font-weight:600;font-size:12.5px;
+  flex:none;min-width:26px;text-align:right}
+.mx-sys-08 .s8-badge{flex:none;display:inline-flex;align-items:center;gap:4px;padding:1px 6px;border-radius:99px;
+  border:1px solid var(--sys-ring);background:var(--sys-tint);color:var(--m-accent);
+  font:500 9px/1.5 var(--m-mono);white-space:nowrap;
+  opacity:0;transform:translateX(6px);
+  transition:opacity 200ms var(--sys-settle),transform 320ms var(--sys-settle)}
+.mx-sys-08 .s8-badge.on{opacity:1;transform:none}
+.mx-sys-08 .s8-dot{width:4px;height:4px;border-radius:99px;background:var(--m-accent)}
+
+/* ── sys-09 · a toast queue, not a toast wall ────────────────────────── */
+.mx-sys-09 .s9-stack{display:flex;flex-direction:column;min-height:74px;justify-content:flex-end}
+.mx-sys-09 .s9-t{display:grid;grid-template-rows:0fr;opacity:0;margin-bottom:0;
+  transition:grid-template-rows 320ms var(--sys-settle),opacity 200ms var(--sys-settle),
+             margin-bottom 320ms var(--sys-settle),transform 320ms var(--sys-settle)}
+.mx-sys-09 .s9-t.in{grid-template-rows:1fr;opacity:1;margin-bottom:4px}
+.mx-sys-09 .s9-t > span{overflow:hidden;min-height:0;display:flex;align-items:center;gap:7px;
+  padding:5px 8px;border:1px solid var(--m-line);border-radius:7px;background:var(--m-surface);
+  font-size:11.5px}
+.mx-sys-09 .s9-t[data-v="ok"] > span{border-color:color-mix(in oklab,var(--m-ok) 40%,transparent)}
+.mx-sys-09 .s9-t[data-v="no"] > span{border-color:var(--sys-nor)}
+.mx-sys-09 .s9-g{width:5px;height:5px;border-radius:99px;background:var(--m-mut);flex:none}
+.mx-sys-09 .s9-t[data-v="ok"] .s9-g{background:var(--m-ok)}
+.mx-sys-09 .s9-t[data-v="no"] .s9-g{background:var(--m-no)}
+.mx-sys-09 .s9-spine{display:flex;align-items:center;gap:6px;padding:3px 8px;border-radius:99px;
+  border:1px dashed var(--m-line2);align-self:flex-start;background:var(--m-sunk);
+  font:500 9.5px/1.4 var(--m-mono);color:var(--m-mut);
+  opacity:0;transform:translateY(4px);
+  transition:opacity 200ms var(--sys-settle),transform 320ms var(--sys-settle)}
+.mx-sys-09 .s9-spine.on{opacity:1;transform:none}
+
+/* ── sys-10 · a theme change without the flash ───────────────────────── */
+.mx-sys-10 .s10-page{border-radius:9px;overflow:hidden;border:1px solid var(--m-line)}
+.mx-sys-10 .s10-l{padding:6px 9px;display:flex;align-items:center;justify-content:space-between;gap:8px;
+  transition:background var(--s10-d,220ms) var(--sys-settle),color var(--s10-d,220ms) var(--sys-settle),
+             border-color var(--s10-d,220ms) var(--sys-settle)}
+.mx-sys-10 .s10-a{background:var(--m-sunk);color:var(--m-ink);transition-delay:0ms}
+.mx-sys-10 .s10-b{background:var(--m-surface);color:var(--m-ink);border-top:1px solid var(--m-line);
+  transition-delay:40ms}
+.mx-sys-10 .s10-c{background:var(--m-surface);color:var(--m-ink);border-top:1px solid var(--m-line);
+  transition-delay:80ms}
+.mx-sys-10 .s10-page.day .s10-a{background:color-mix(in oklab,var(--m-ink) 86%,var(--m-surface));color:var(--m-bg)}
+.mx-sys-10 .s10-page.day .s10-b{background:color-mix(in oklab,var(--m-ink) 93%,var(--m-surface));color:var(--m-bg);
+  border-top-color:color-mix(in oklab,var(--m-ink) 74%,var(--m-surface))}
+.mx-sys-10 .s10-page.day .s10-c{background:color-mix(in oklab,var(--m-ink) 93%,var(--m-surface));color:var(--m-bg);
+  border-top-color:color-mix(in oklab,var(--m-ink) 74%,var(--m-surface))}
+.mx-sys-10 .s10-page.hard .s10-l{transition-duration:0ms;transition-delay:0ms}
+.mx-sys-10 .s10-t{font:600 10.5px/1 var(--m-mono)}
+.mx-sys-10 .s10-f{font-family:var(--m-mono);font-variant-numeric:tabular-nums;font-weight:600;font-size:12px}
+.mx-sys-10 .s10-foot{display:flex;align-items:center;gap:8px}
+.mx-sys-10 .s10-tog{position:relative;flex:none;width:36px;height:20px;border-radius:99px;
+  background:var(--m-sunk);border:1px solid var(--m-line);cursor:pointer;
+  transition:background 160ms var(--sys-settle),border-color 160ms var(--sys-settle)}
+.mx-sys-10 .s10-tog.on{background:var(--sys-tint);border-color:var(--sys-ring)}
+.mx-sys-10 .s10-thumb{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:99px;
+  background:var(--m-mut);will-change:transform;transition:background 160ms var(--sys-settle)}
+.mx-sys-10 .s10-tog.on .s10-thumb{background:var(--m-accent)}
+
+/* ── sys-11 · consent that admits it is collecting nothing ───────────── */
+.mx-sys-11 .s11-row{display:flex;align-items:flex-start;gap:9px}
+.mx-sys-11 .s11-tog{position:relative;flex:none;width:36px;height:20px;border-radius:99px;
+  background:var(--m-sunk);border:1px dashed var(--m-line2);cursor:pointer;
+  transition:background 160ms var(--sys-settle),border-color 160ms var(--sys-settle),
+             border-style 160ms var(--sys-settle)}
+.mx-sys-11 .s11-tog.on{background:var(--sys-tint);border-color:var(--sys-ring);border-style:solid}
+.mx-sys-11 .s11-thumb{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:99px;
+  background:var(--m-mut);will-change:transform;transition:background 160ms var(--sys-settle)}
+.mx-sys-11 .s11-tog.on .s11-thumb{background:var(--m-accent)}
+.mx-sys-11 .s11-state{position:relative;display:block;height:14px;margin-top:2px}
+.mx-sys-11 .s11-state i{position:absolute;inset:0;font-style:normal;font:400 10px/14px var(--m-mono);
+  color:var(--m-mut);white-space:nowrap;opacity:0;transform:translateY(4px);
+  transition:opacity 320ms var(--sys-settle),transform 320ms var(--sys-settle)}
+.mx-sys-11 .s11-state i.show{opacity:1;transform:none}
+.mx-sys-11 .s11-marks{display:flex;gap:3px;flex-wrap:wrap}
+.mx-sys-11 .s11-marks u{display:block;width:9px;height:3px;border-radius:2px;background:var(--m-line2);
+  text-decoration:none;transition:background 200ms var(--sys-settle),transform 200ms var(--sys-settle)}
+.mx-sys-11 .s11-marks u.lit{background:var(--m-accent);transform:scaleY(1.6)}
+.mx-sys-11 .s11-pay{display:grid;grid-template-rows:0fr;transition:grid-template-rows 420ms var(--sys-turn)}
+.mx-sys-11 .s11-pay.on{grid-template-rows:1fr}
+.mx-sys-11 .s11-pay > span{overflow:hidden;min-height:0;display:block;padding-top:5px}
+.mx-sys-11 .s11-f{font:400 9.5px/1.55 var(--m-mono);color:var(--m-mut)}
+.mx-sys-11 .s11-f b{color:var(--m-accent);font-weight:500}
+.mx-sys-11 .s11-f s{color:var(--m-mut);opacity:.62;text-decoration-color:var(--m-no)}
+
+/* ── reduced motion: collapse to end state ───────────────────────────── */
+@media (prefers-reduced-motion: reduce){
+  .mx-sys *,.mx-sys *::before,.mx-sys *::after{
+    transition-duration:1ms !important;transition-delay:0ms !important;
+    animation-duration:1ms !important;animation-delay:0ms !important;
+    animation-iteration-count:1 !important;
+  }
+}
+</style>
+<script>
+(function(){
+  "use strict";
+  var M = (window.MUDAVYM_MOTIONS = window.MUDAVYM_MOTIONS || []);
+  var FAM = 'System states';
+  function push(o){ o.family = FAM; M.push(o); }
+
+  /* ── helpers ─────────────────────────────────────────────────────── */
+  function q(r,s){ return r.querySelector(s); }
+  function qa(r,s){ return Array.prototype.slice.call(r.querySelectorAll(s)); }
+  function rm(){
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+  /* play() is called many times (hover + Replay). reset() kills every pending
+     timer and bumps a generation so in-flight rAF tickers abandon quietly. */
+  function reset(root){
+    (root.__sysT || []).forEach(clearTimeout);
+    root.__sysT = [];
+    root.__gen = (root.__gen || 0) + 1;
+    void root.offsetWidth;
+    return root.__gen;
+  }
+  function at(root, ms, fn){
+    if (rm()) ms = Math.min(ms, 1);
+    root.__sysT.push(setTimeout(fn, ms));
+  }
+
+  /* Explicit-Euler spring, sampled into a CSS linear() easing AND into a value
+     table the numeric tickers read. Same integrator the house motion.json used,
+     so the reported overshoot is measured, not asserted. */
+  function spring(k, c, m, restDelta){
+    var x = 0, v = 0, h = 1/1000, xs = [], peak = 0;
+    for (var i = 0; i < 9000; i++){
+      var F = -k*(x-1) - c*v; v += F/m*h; x += v*h; xs.push(x);
+      if (x > peak) peak = x;
+      if (Math.abs(v) < restDelta*20 && Math.abs(x-1) < restDelta) break;
+    }
+    var N = 40, out = [];
+    for (var j = 0; j <= N; j++){
+      var idx = Math.min(xs.length-1, Math.round(j/N*(xs.length-1)));
+      out.push(j === 0 ? '0' : (j === N ? '1' : xs[idx].toFixed(4)));
+    }
+    return {
+      ease: 'linear(' + out.join(',') + ')',
+      ms: Math.round(xs.length*h*1000),
+      over: Math.max(0, (peak-1)*100),
+      vals: xs
+    };
+  }
+  var TUCK  = spring(380, 32, 1, 0.002);    /* thumbs under a finger        */
+  var TALLY = spring(120, 26, 1, 0.00035);  /* figures arriving, 0% overshoot */
+  var F1 = function(n){ return n.toFixed(1); };
+
+  /* Numeric ticker driven by the TALLY sample table. */
+  function tick(root, el, from, to, fmt, S){
+    S = S || TALLY;
+    var gen = root.__gen;
+    if (rm()){ el.textContent = fmt(to); return; }
+    var t0 = performance.now();
+    (function step(now){
+      if (root.__gen !== gen) return;
+      var p = Math.min(1, (now - t0)/S.ms);
+      var i = Math.min(S.vals.length-1, Math.round(p*(S.vals.length-1)));
+      el.textContent = fmt(from + (to-from)*S.vals[i]);
+      if (p < 1) requestAnimationFrame(step); else el.textContent = fmt(to);
+    })(t0);
+  }
+  var INT = function(n){ return String(Math.round(n)); };
+  var TRY = function(n){ return '₺' + Math.round(n).toLocaleString('en-US'); };
+
+  /* ═══ sys-01 ══════════════════════════════════════════════════════ */
+  push({
+    id:'sys-01', name:'Offline, and the queue that drains in order',
+    purpose:'The one connection motion every page inherits. Work made in the walk-in keeps its own clock: mutations queue FIFO by timestamp, the reconnect waits a real 1000ms for the line to steady, then the queue drains oldest-first with each row ticking off before it leaves. Nothing jumps the line, so a porter can watch their three actions land in the order they made them.',
+    spec:'reconnect hold 1000ms linear (the real setTimeout) · rail fill 240ms settle · row collapse grid-rows 1fr→0fr 320ms cubic-bezier(.16,1,.3,1) · drain interval 190ms',
+    source:'apps/web/src/lib/sync-manager.ts:337 · offline-storage.ts:257',
+    html:'<div class="mx-sys mx-sys-01">'+
+      '<div class="s1-top"><span class="s1-pill up"><i class="s1-dot"></i><b class="s1-state">Online</b></span>'+
+      '<span class="s1-note">all synced</span></div>'+
+      '<div class="s1-hold"><i></i></div>'+
+      '<div class="s1-q">'+
+        '<div class="q-row"><span><i class="q-rail"></i><em class="q-t">20:41</em>'+
+          '<em class="q-l">count · Barbaresco 2019</em><em class="q-g">✓</em></span></div>'+
+        '<div class="q-row"><span><i class="q-rail"></i><em class="q-t">20:43</em>'+
+          '<em class="q-l">archive · low-stock alert</em><em class="q-g">✓</em></span></div>'+
+        '<div class="q-row"><span><i class="q-rail"></i><em class="q-t">20:47</em>'+
+          '<em class="q-l">provider · Bodega Álvaro</em><em class="q-g">✓</em></span></div>'+
+      '</div>'+
+      '<div class="cap">FIFO by timestamp · 3 retries then discarded</div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var pill=q(root,'.s1-pill'), st=q(root,'.s1-state'), note=q(root,'.s1-note'),
+          hold=q(root,'.s1-hold'), rows=qa(root,'.q-row');
+      pill.classList.add('up'); st.textContent='Online'; note.textContent='all synced';
+      hold.className='s1-hold';
+      rows.forEach(function(r){ r.className='q-row'; });
+
+      at(root, 340, function(){
+        pill.classList.remove('up'); st.textContent='Offline';
+        note.textContent='saved on this phone';
+      });
+      rows.forEach(function(r,i){ at(root, 620 + i*360, function(){ r.classList.add('in'); }); });
+
+      at(root, 2100, function(){
+        pill.classList.add('up'); st.textContent='Online'; note.textContent='steadying…1000ms';
+        hold.classList.add('on');
+        requestAnimationFrame(function(){ hold.classList.add('run'); });
+      });
+      at(root, 3160, function(){ hold.classList.remove('on','run'); note.textContent='sending'; });
+      rows.forEach(function(r,i){
+        at(root, 3200 + i*190, function(){ r.classList.add('sent'); });
+        at(root, 3460 + i*190, function(){ r.classList.remove('in'); });
+      });
+      at(root, 4180, function(){ note.textContent='3 sent, oldest first'; });
+    }
+  });
+
+  /* ═══ sys-02 ══════════════════════════════════════════════════════ */
+  push({
+    id:'sys-02', name:'The rollback that says what the server said',
+    purpose:'Six of the eight optimistic-write sites roll back by quietly restoring the previous cache and telling nobody — a manager types 42, sees 42, and finds 38 later with no account of why. This motion keeps the write visibly provisional while in flight, then rolls back in place: the rejected figure leaves struck through instead of vanishing, and the server’s own reason unfurls under the row and stays.',
+    spec:'provisional shimmer 1900ms loop · ghost exit 240ms cubic-bezier(.3,0,1,1) · restore 320ms settle · reason grid-rows 0fr→1fr 320ms',
+    source:'apps/web/src/hooks/queries/useInventoryQueries.ts:161 (no toast on rollback)',
+    html:'<div class="mx-sys mx-sys-02">'+
+      '<div class="s2-card"><i class="s2-rail"></i>'+
+        '<div class="s2-hd"><span class="s2-nm">Barbaresco 2019 · Cellar A</span>'+
+        '<span class="s2-num"><i class="s2-ghost">42</i><i class="s2-live">38</i></span></div>'+
+        '<div class="s2-pend"></div>'+
+        '<div class="s2-why"><span>server kept <b>38</b> · lot 4411 already depleted at 19:52</span></div>'+
+      '</div>'+
+      '<div class="cap">optimistic → rejected · restored in place, not silently</div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var card=q(root,'.s2-card'), live=q(root,'.s2-live'), ghost=q(root,'.s2-ghost'),
+          pend=q(root,'.s2-pend'), why=q(root,'.s2-why');
+      card.classList.remove('bad'); why.classList.remove('on'); pend.classList.remove('on');
+      live.textContent='38'; live.style.cssText='';
+      ghost.style.cssText='opacity:0;transform:none';
+
+      at(root, 380, function(){                       /* onMutate: 38 → 42 */
+        live.textContent='42'; pend.classList.add('on');
+      });
+      at(root, 1320, function(){                      /* onError */
+        ghost.textContent='42';
+        ghost.style.cssText='opacity:1;transform:none;transition:opacity 240ms cubic-bezier(.3,0,1,1),transform 240ms cubic-bezier(.3,0,1,1)';
+        live.style.cssText='opacity:0;transform:translateY(8px)';
+        pend.classList.remove('on');
+        requestAnimationFrame(function(){
+          ghost.style.opacity='0'; ghost.style.transform='translateY(-9px)';
+        });
+      });
+      at(root, 1500, function(){
+        live.textContent='38';
+        live.style.cssText='opacity:1;transform:none;transition:opacity 200ms cubic-bezier(.16,1,.3,1),transform 320ms cubic-bezier(.16,1,.3,1)';
+        card.classList.add('bad');
+      });
+      at(root, 1720, function(){ why.classList.add('on'); });
+    }
+  });
+
+  /* ═══ sys-03 ══════════════════════════════════════════════════════ */
+  push({
+    id:'sys-03', name:'An error is not an empty room',
+    purpose:'On /logs and the SimPOS order log, query.isError is never branched — a 500 renders the same centred "No events" as a quiet night, so an outage reads as calm. The fix has to be structural, not chromatic, because the neutral skin has no red: emptiness sits centred and still, failure arrives from the top edge, left-aligned, carrying a status code and a way out.',
+    spec:'empty exit 200ms cubic-bezier(.3,0,1,1) +6px · error band turn cubic-bezier(.32,.72,0,1) 420ms from -101%',
+    source:'06-pages/logs.md §9 · LogsTimelinePage.tsx:143-150',
+    html:'<div class="mx-sys mx-sys-03">'+
+      '<div class="s3-box">'+
+        '<div class="s3-empty"><span class="s3-ring"></span><span class="cap">No events</span></div>'+
+        '<div class="s3-err"><span class="s3-code">500 · /api/v1/logs</span>'+
+          '<span class="say">We could not reach the log — this is not a quiet night.</span>'+
+          '<span class="s3-act">↻ Retry</span></div>'+
+        '<span class="s3-tag">today: identical to empty</span>'+
+      '</div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var em=q(root,'.s3-empty'), er=q(root,'.s3-err'), tag=q(root,'.s3-tag');
+      em.classList.remove('gone'); er.classList.remove('in');
+      tag.style.opacity='1'; tag.textContent='today: a 500 renders as this';
+      at(root, 1250, function(){ em.classList.add('gone'); tag.style.opacity='0'; });
+      at(root, 1420, function(){ er.classList.add('in'); });
+      at(root, 1900, function(){ tag.textContent='proposed: anchored, coded, actionable'; tag.style.opacity='1'; });
+    }
+  });
+
+  /* ═══ sys-04 ══════════════════════════════════════════════════════ */
+  push({
+    id:'sys-04', name:'A skeleton that resolves without a shift',
+    purpose:'The shared loading triplet, held to one promise: every bone is cut to the exact metrics of the content that replaces it, so resolution is an opacity crossfade and nothing under the cursor moves. The card measures its own last row before and after and prints the shift — if it is ever not 0.0px, the skeleton is lying about the shape of the page.',
+    spec:'shimmer 1900ms cubic-bezier(.45,0,.55,1) loop · resolve opacity 220ms settle · stagger 28ms (house first-paint interval) · measured layout shift printed live',
+    source:'apps/web/src/components/ui/loading-skeleton.tsx:11',
+    html:'<div class="mx-sys mx-sys-04">'+
+      '<div class="s4-row"><span class="s4-slot" style="width:106px">'+
+        '<i class="s4-bone"></i><i class="s4-real">Covers tonight</i></span>'+
+        '<span class="s4-slot s4-v" style="width:56px"><i class="s4-bone"></i><i class="s4-real">214</i></span></div>'+
+      '<div class="s4-row"><span class="s4-slot" style="width:126px">'+
+        '<i class="s4-bone"></i><i class="s4-real">Cellar on hand</i></span>'+
+        '<span class="s4-slot s4-v" style="width:72px"><i class="s4-bone"></i><i class="s4-real">₺48,290</i></span></div>'+
+      '<div class="s4-row s4-last"><span class="s4-slot" style="width:94px">'+
+        '<i class="s4-bone"></i><i class="s4-real">Open POs</i></span>'+
+        '<span class="s4-slot s4-v" style="width:44px"><i class="s4-bone"></i><i class="s4-real">6</i></span></div>'+
+      '<div class="s4-meas cap">layout shift <b class="s4-out">—</b></div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var slots=qa(root,'.s4-slot'), last=q(root,'.s4-last'), out=q(root,'.s4-out');
+      slots.forEach(function(s){ s.classList.remove('r'); });
+      out.textContent='—';
+      var before = last.getBoundingClientRect().top;
+      at(root, 900, function(){
+        slots.forEach(function(s,i){ at(root, i*28, function(){ s.classList.add('r'); }); });
+      });
+      at(root, 1400, function(){
+        var after = last.getBoundingClientRect().top;
+        out.textContent = Math.abs(after-before).toFixed(1) + 'px';
+      });
+    }
+  });
+
+  /* ═══ sys-05 ══════════════════════════════════════════════════════ */
+  push({
+    id:'sys-05', name:'A session lapse, held in place',
+    purpose:'When the refresh call fails the client sets window.location.href = "/login" — a full navigation that destroys whatever was half-typed, at the hour when someone is writing a shortage note to a vendor. This holds the lapse in place instead: a lock band settles over the field, the text stays legible underneath, one refresh sweep runs, the band lifts and the caret is exactly where it was.',
+    spec:'lock band in: turn cubic-bezier(.32,.72,0,1) 420ms · refresh sweep 900ms cubic-bezier(.45,0,.55,1) · band out: settle 320ms · caret parks, never clears',
+    source:'apps/web/src/services/api/client.ts:105 (hard redirect on refresh failure)',
+    html:'<div class="mx-sys mx-sys-05">'+
+      '<div class="s5-field">'+
+        '<div class="s5-txt">Álvaro — we came up short 6 on the Barbaresco tonight. Can you credit'+
+        '<span class="s5-caret"></span></div>'+
+        '<div class="s5-band"><div class="s5-bl"><span>●</span>session expired · restoring</div>'+
+        '<div class="s5-sweep"><i></i></div></div>'+
+      '</div>'+
+      '<div class="cap s5-keep">draft kept · 69 characters · caret unmoved</div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var f=q(root,'.s5-field'), band=q(root,'.s5-band'), keep=q(root,'.s5-keep');
+      band.className='s5-band'; f.classList.remove('held'); keep.classList.remove('on');
+      at(root, 700, function(){ band.classList.add('in'); f.classList.add('held'); });
+      at(root, 1900, function(){ band.classList.remove('in'); band.classList.add('up'); });
+      at(root, 2180, function(){ f.classList.remove('held'); keep.classList.add('on'); });
+    }
+  });
+
+  /* ═══ sys-06 ══════════════════════════════════════════════════════ */
+  push({
+    id:'sys-06', name:'Switching branch re-bases the page',
+    purpose:'The switcher awaits the branch change behind a 14px spinner while every figure on the page keeps showing the old location’s numbers under the new location’s name. This makes the re-base honest: the instant the label changes, every branch-scoped figure evacuates to an em-dash — the house idiom for unknown, never a stale pass — and only re-arrives on the tally spring once the new data lands.',
+    spec:'label ink 160ms (2px) · evacuate to em-dash 140ms cubic-bezier(.3,0,1,1), stagger 28ms · fetch bar 620ms · re-arrival tally spring 120/26/1, '+TALLY.ms+'ms, '+F1(TALLY.over)+'% overshoot',
+    source:'apps/web/src/components/layout/RestaurantBranchSwitcher.tsx:43',
+    html:'<div class="mx-sys mx-sys-06">'+
+      '<div class="s6-hd"><span class="s6-chip" role="button" tabindex="0">'+
+        '<i class="s6-ini">K</i><span class="s6-swap">'+
+          '<i data-b="0" class="show">Kadıköy</i><i data-b="1">Beşiktaş</i>'+
+        '</span></span><span class="s6-fetch"><i></i></span></div>'+
+      '<div class="s6-grid">'+
+        '<span class="s6-cell"><em class="k">Covers</em><em class="fig" data-a="214" data-b="168">214</em></span>'+
+        '<span class="s6-cell"><em class="k">On hand</em><em class="fig" data-a="48290" data-b="31740" data-m="try">₺48,290</em></span>'+
+        '<span class="s6-cell"><em class="k">Open POs</em><em class="fig" data-a="6" data-b="9">6</em></span>'+
+      '</div>'+
+      '<div class="cap">no figure is ever shown under the wrong branch · click the chip</div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var chip=q(root,'.s6-chip'), ini=q(root,'.s6-ini'), fetch=q(root,'.s6-fetch'),
+          names=qa(root,'.s6-swap i'), cells=qa(root,'.s6-cell');
+      if(!root.__s6){
+        root.__s6 = true;
+        chip.addEventListener('click', function(){ swap(root.__s6b ? 0 : 1); });
+      }
+      function swap(to){
+        var gen = root.__gen;
+        root.__s6b = to;
+        names.forEach(function(n,i){ n.classList.toggle('show', i===to); });
+        ini.textContent = to ? 'B' : 'K';
+        cells.forEach(function(c,i){
+          var fig=q(c,'.fig');
+          at(root, i*28, function(){
+            if(root.__gen!==gen) return;
+            c.classList.add('void'); fig.style.opacity='0';
+            setTimeout(function(){
+              if(root.__gen!==gen) return;
+              fig.textContent='—'; fig.style.opacity='1';
+            }, rm()?1:145);
+          });
+        });
+        fetch.classList.remove('run'); void fetch.offsetWidth;
+        at(root, 180, function(){ fetch.classList.add('run'); });
+        at(root, 860, function(){
+          fetch.classList.remove('run');
+          cells.forEach(function(c,i){
+            var fig=q(c,'.fig');
+            at(root, i*28, function(){
+              c.classList.remove('void');
+              var to2 = Number(fig.dataset[ root.__s6b ? 'b' : 'a' ]);
+              var money = fig.dataset.m==='try';
+              tick(root, fig, 0, to2, money?TRY:INT);
+            });
+          });
+        });
+      }
+      /* reset to Kadıköy, then demonstrate one switch */
+      root.__s6b = 0;
+      names.forEach(function(n,i){ n.classList.toggle('show', i===0); });
+      ini.textContent='K';
+      cells.forEach(function(c){
+        c.classList.remove('void');
+        var fig=q(c,'.fig'); fig.style.opacity='1';
+        fig.textContent = fig.dataset.m==='try' ? TRY(Number(fig.dataset.a)) : fig.dataset.a;
+      });
+      at(root, 620, function(){ swap(1); });
+    }
+  });
+
+  /* ═══ sys-07 ══════════════════════════════════════════════════════ */
+  push({
+    id:'sys-07', name:'⌘K, and the ranking you can watch',
+    purpose:'The palette every page shares. The scores are real — fuzzyScore is ported verbatim from the registry, subsequence match with +4 at a word boundary, +2 per contiguous character, minus 0.2 per character of delay and 0.03 per character of target, title matches weighted +3. Rows FLIP to their new rank instead of jump-cutting, so an owner learns the ranking rather than being surprised by it.',
+    spec:'panel in: opacity 200ms + translate/scale 320ms cubic-bezier(.16,1,.3,1) · keystroke 130ms · FLIP re-rank transform 320ms settle · scorer = commands.ts fuzzyScore, verbatim',
+    source:'apps/web/src/components/command/commands.ts:147-176',
+    html:'<div class="mx-sys mx-sys-07">'+
+      '<div class="s7-panel"><div class="s7-in"><span class="s7-kbd">⌘K</span>'+
+        '<span class="s7-q"><b class="s7-txt"></b><i></i></span></div>'+
+        '<div class="s7-list"></div></div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      /* --- fuzzyScore, verbatim from commands.ts:147 --- */
+      function fuzzyScore(query, text){
+        var qq = query.toLowerCase().trim(), t = text.toLowerCase();
+        if (!qq) return 0;
+        var qi=0, score=0, run=0, lastMatch=-2, firstMatch=-1;
+        for (var ti=0; ti<t.length && qi<qq.length; ti++){
+          if (t[ti] === qq[qi]){
+            if (firstMatch === -1) firstMatch = ti;
+            var bonus = 1;
+            if (ti === lastMatch+1){ run += 1; bonus += run*2; } else { run = 0; }
+            if (ti === 0 || /[\s\-_\/]/.test(t[ti-1])) bonus += 4;
+            score += bonus; lastMatch = ti; qi += 1;
+          }
+        }
+        if (qi < qq.length) return null;
+        score -= firstMatch*0.2;
+        score -= t.length*0.03;
+        return score;
+      }
+      var CMDS = [
+        { id:'inv',  title:'Inventory',       sh:'g i', kw:'stock cellar bottles par' },
+        { id:'ord',  title:'New order',       sh:'',    kw:'create purchase po add' },
+        { id:'prov', title:'Providers',       sh:'g p', kw:'vendors suppliers distributors' },
+        { id:'rep',  title:'Reports',         sh:'g r', kw:'analytics charts dashboard kpi' },
+        { id:'recs', title:'Recommendations', sh:'',    kw:'actions insights suggestions' }
+      ];
+      function rank(query){
+        return CMDS.map(function(c){
+          var hay = c.title + ' ' + c.kw;
+          var ts = fuzzyScore(query, c.title), hs = fuzzyScore(query, hay);
+          var best = (ts != null && hs != null) ? Math.max(ts+3, hs) : (ts != null ? ts : hs);
+          return { c:c, s:best };
+        }).sort(function(a,b){
+          if (a.s == null && b.s == null) return 0;
+          if (a.s == null) return 1;
+          if (b.s == null) return -1;
+          return b.s - a.s;
+        });
+      }
+      function mark(title, query){
+        var qq = query.toLowerCase(), out='', qi=0;
+        for (var i=0;i<title.length;i++){
+          var ch = title[i];
+          if (qi < qq.length && ch.toLowerCase() === qq[qi]){ out += '<u>'+ch+'</u>'; qi++; }
+          else out += ch;
+        }
+        return out;
+      }
+      var panel=q(root,'.s7-panel'), list=q(root,'.s7-list'), txt=q(root,'.s7-txt');
+      panel.classList.remove('in');
+      list.innerHTML='';
+      txt.textContent='';
+      CMDS.forEach(function(c){
+        var r=document.createElement('div'); r.className='s7-row'; r.dataset.id=c.id;
+        r.innerHTML='<span class="s7-t">'+c.title+'</span><span class="s7-sc"></span>'+
+                    '<span class="s7-sh">'+c.sh+'</span>';
+        list.appendChild(r);
+      });
+      function paint(query){
+        var ranked = rank(query), rows = {};
+        qa(list,'.s7-row').forEach(function(r){ rows[r.dataset.id] = r; });
+        var first = {};
+        Object.keys(rows).forEach(function(k){ first[k] = rows[k].getBoundingClientRect().top; });
+        ranked.forEach(function(e){
+          var r = rows[e.c.id];
+          q(r,'.s7-t').innerHTML = query ? mark(e.c.title, query) : e.c.title;
+          q(r,'.s7-sc').textContent = e.s == null ? '—' : e.s.toFixed(1);
+          r.classList.toggle('out', e.s == null);
+          list.appendChild(r);
+        });
+        qa(list,'.s7-row').forEach(function(r,i){ r.classList.toggle('sel', i===0 && !!query); });
+        if (rm()) return;
+        Object.keys(rows).forEach(function(k){
+          var r = rows[k], d = first[k] - r.getBoundingClientRect().top;
+          if (!d) return;
+          r.style.transition='none'; r.style.transform='translateY('+d+'px)';
+          void r.offsetWidth;
+          r.style.transition='transform 320ms var(--sys-settle)';
+          r.style.transform='';
+        });
+      }
+      paint('');
+      at(root, 260, function(){ panel.classList.add('in'); });
+      ['r','re','rec'].forEach(function(sub,i){
+        at(root, 900 + i*430, function(){ txt.textContent = sub; paint(sub); });
+      });
+    }
+  });
+
+  /* ═══ sys-08 ══════════════════════════════════════════════════════ */
+  push({
+    id:'sys-08', name:'A change arriving on the row you are reading',
+    purpose:'A stock:updated frame from the agent bridge blanket-invalidates inventory, dashboard and wines at once, so the row under someone’s eye can change its number mid-sentence at 1am. Every other row updates immediately; the row being read does not. It grows a rail and a held badge, and the new figure only lands when the reader releases it — the page never edits the line you are on.',
+    spec:'unread rows: tally spring 120/26/1, '+TALLY.ms+'ms, '+F1(TALLY.over)+'% overshoot · read rail ink 160ms · held badge 6px slide 320ms settle · release on blur',
+    source:'apps/web/src/lib/websocket.tsx:489 (blanket invalidate on stock:updated)',
+    html:'<div class="mx-sys mx-sys-08">'+
+      '<div class="s8-row"><i class="s8-read"></i><span class="s8-n">Châteauneuf 2018</span>'+
+        '<span class="s8-v" data-a="12" data-b="9">12</span></div>'+
+      '<div class="s8-row read"><i class="s8-read"></i><span class="s8-n">Barbaresco 2019</span>'+
+        '<span class="s8-badge"><i class="s8-dot"></i>new: 34</span>'+
+        '<span class="s8-v" data-a="38" data-b="34">38</span></div>'+
+      '<div class="s8-row"><i class="s8-read"></i><span class="s8-n">Sancerre 2022</span>'+
+        '<span class="s8-v" data-a="7" data-b="5">7</span></div>'+
+      '<div class="cap">the row you are on is never rewritten under you</div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var rows=qa(root,'.s8-row'), badge=q(root,'.s8-badge');
+      rows.forEach(function(r,i){
+        r.classList.toggle('read', i===1);
+        q(r,'.s8-v').textContent = q(r,'.s8-v').dataset.a;
+      });
+      badge.classList.remove('on');
+      at(root, 800, function(){                    /* frame lands */
+        [0,2].forEach(function(i){
+          var v=q(rows[i],'.s8-v');
+          tick(root, v, Number(v.dataset.a), Number(v.dataset.b), INT);
+        });
+        badge.classList.add('on');
+      });
+      at(root, 2300, function(){                   /* reader looks away */
+        rows[1].classList.remove('read');
+        badge.classList.remove('on');
+        var v=q(rows[1],'.s8-v');
+        tick(root, v, Number(v.dataset.a), Number(v.dataset.b), INT);
+      });
+    }
+  });
+
+  /* ═══ sys-09 ══════════════════════════════════════════════════════ */
+  push({
+    id:'sys-09', name:'A toast queue, not a toast wall',
+    purpose:'The provider caps at three by slicing the array — a fourth toast silently destroys the oldest mid-life, and that toast’s five-second timer then fires against an id that no longer exists. Here the cap holds the eye but nothing is destroyed: overflow folds into a counted spine and promotes into the freed slot in order, so a burst of six alerts during service still gets read.',
+    spec:'enter 320ms settle · dismiss collapse grid-rows 1fr→0fr 320ms · promote 320ms settle · spine counter 200ms ink · 3 visible (the real MAX_VISIBLE_TOASTS)',
+    source:'apps/web/src/contexts/ToastContext.tsx:78 (slice(-3) drops the oldest)',
+    html:'<div class="mx-sys mx-sys-09">'+
+      '<div class="s9-stack"></div>'+
+      '<div class="s9-spine"><span class="s9-n">+0</span> waiting · none dropped</div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var stack=q(root,'.s9-stack'), spine=q(root,'.s9-spine'), n=q(root,'.s9-n');
+      var FEED=[
+        {v:'no', t:'Sancerre below par · 5 left'},
+        {v:'ok', t:'PO-1038 approved'},
+        {v:'',   t:'Álvaro replied — draft ready'},
+        {v:'no', t:'Toast desync · 3 checks'},
+        {v:'ok', t:'Spot count synced'}
+      ];
+      stack.innerHTML=''; spine.classList.remove('on'); n.textContent='+0';
+      var queue=[];
+      /* the cap is measured off the DOM, not a counter — so even when reduced
+         motion collapses every timer to a single frame, a fourth toast can
+         never appear on top of three. */
+      function live(){ return stack.querySelectorAll('.s9-t').length; }
+      function el(d){
+        var w=document.createElement('div'); w.className='s9-t'; w.dataset.v=d.v;
+        w.innerHTML='<span><i class="s9-g"></i>'+d.t+'</span>';
+        return w;
+      }
+      function bump(){
+        var k=queue.length;
+        n.textContent='+'+k;
+        spine.classList.toggle('on', k>0);
+      }
+      function admit(d){
+        if (live() >= 3){ queue.push(d); bump(); return; }
+        var w=el(d); stack.appendChild(w);
+        requestAnimationFrame(function(){ w.classList.add('in'); });
+      }
+      FEED.forEach(function(d,i){ at(root, 300 + i*300, function(){ admit(d); }); });
+      /* the oldest dismisses on its own; the queue promotes into the gap */
+      [0,1].forEach(function(j){
+        at(root, 2300 + j*760, function(){
+          var first=stack.firstChild;
+          if (first){ first.classList.remove('in');
+            at(root, 330, function(){
+              if(first.parentNode) first.parentNode.removeChild(first);
+              var d=queue.shift(); if(d){ admit(d); } bump();
+            });
+          }
+        });
+      });
+    }
+  });
+
+  /* ═══ sys-10 ══════════════════════════════════════════════════════ */
+  push({
+    id:'sys-10', name:'A theme change without the flash',
+    purpose:'The provider swaps a class on documentElement, so light↔dark is a single hard frame — fine at noon, a slap at 1am when a manager flips to dark in a lit office. This crossfades only colour tokens, in three depth steps 40ms apart, so the room dims rather than the light switching. Zero geometry animates: the whole change is under the house 2px ink ceiling, and the thumb is the only thing that travels.',
+    spec:'ink 220ms cubic-bezier(.16,1,.3,1) on background/color/border only · depth delays 0/40/80ms · thumb tuck spring 380/32/1, '+TUCK.ms+'ms, '+F1(TUCK.over)+'% overshoot · 0px of layout movement',
+    source:'apps/web/src/contexts/ThemeContext.tsx:74-76 (classList swap, no transition)',
+    html:'<div class="mx-sys mx-sys-10">'+
+      '<div class="s10-page">'+
+        '<div class="s10-l s10-a"><span class="s10-t">Kadıköy · tonight</span><span class="s10-t">21:07</span></div>'+
+        '<div class="s10-l s10-b"><span>Covers</span><span class="s10-f">214</span></div>'+
+        '<div class="s10-l s10-c"><span>Cellar on hand</span><span class="s10-f">₺48,290</span></div>'+
+      '</div>'+
+      '<div class="s10-foot"><span class="s10-tog" role="switch" tabindex="0"><span class="s10-thumb"></span></span>'+
+      '<span class="cap s10-cap">—</span></div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var page=q(root,'.s10-page'), tog=q(root,'.s10-tog'), thumb=q(root,'.s10-thumb'),
+          cap=q(root,'.s10-cap');
+      function set(day, hard){
+        page.classList.toggle('hard', !!hard);
+        page.classList.toggle('day', day);
+        tog.classList.toggle('on', !day);
+        if (rm()){ thumb.style.transform = day ? 'none' : 'translateX(16px)'; return; }
+        thumb.style.transition='transform '+TUCK.ms+'ms '+TUCK.ease;
+        thumb.style.transform = day ? 'none' : 'translateX(16px)';
+      }
+      if(!root.__s10){
+        root.__s10=true;
+        tog.addEventListener('click', function(){ set(page.classList.contains('day') ? false : true, false); });
+      }
+      page.classList.add('hard'); set(true, true);
+      cap.textContent='today · 0ms hard swap';
+      at(root, 700, function(){ set(false, true); });           /* the slap */
+      at(root, 1500, function(){ set(true, true); });
+      at(root, 2200, function(){
+        cap.textContent='proposed · 220ms, 0/40/80ms depth';
+        set(false, false);                                       /* the dimming */
+      });
+      at(root, 3400, function(){ set(true, false); });
+    }
+  });
+
+  /* ═══ sys-11 ══════════════════════════════════════════════════════ */
+  push({
+    id:'sys-11', name:'Consent that admits it collects nothing',
+    purpose:'The privacy page promises what the product does with analytics, and nothing guards that promise. Today it is true by accident: the reporter is gated off, zero files import it, and fifteen data-ux-key markers sit tagged with no one listening. The switch renders inert and says so; the markers pulse once to show exactly what is tagged; the payload names the four fields that would leave and strikes the three that never would — and the promise line moves with the switch, so text and behaviour cannot drift apart.',
+    spec:'marker pulse 200ms ink, stagger 28ms · payload turn cubic-bezier(.32,.72,0,1) 420ms · promise crossfade 320ms settle · thumb tuck '+TUCK.ms+'ms',
+    source:'apps/web/src/lib/uxSignals.ts:15 · 06-pages/privacy.md §9 (promise has no guard)',
+    html:'<div class="mx-sys mx-sys-11">'+
+      '<div class="s11-row"><span class="s11-tog" role="switch" tabindex="0"><span class="s11-thumb"></span></span>'+
+        '<span><b>Product analytics</b><span class="s11-state">'+
+          '<i data-s="off" class="show">collecting nothing · reporter dark</i>'+
+          '<i data-s="on">15 tagged elements · nothing else</i>'+
+        '</span></span></div>'+
+      '<div class="s11-marks"></div>'+
+      '<div class="s11-pay"><span class="s11-f">would send <b>page · event · elementKey · number</b><br>'+
+        'never <s>typed text</s> · <s>rendered text</s> · <s>DOM ids</s></span></div>'+
+    '</div>',
+    play:function(root){
+      reset(root);
+      var tog=q(root,'.s11-tog'), thumb=q(root,'.s11-thumb'), marks=q(root,'.s11-marks'),
+          pay=q(root,'.s11-pay'), states=qa(root,'.s11-state i');
+      if (!marks.childNodes.length){
+        for (var i=0;i<15;i++) marks.appendChild(document.createElement('u'));
+      }
+      var us=qa(marks,'u');
+      function set(on){
+        tog.classList.toggle('on', on);
+        states.forEach(function(s){ s.classList.toggle('show', (s.dataset.s==='on')===on); });
+        pay.classList.toggle('on', on);
+        if (rm()){ thumb.style.transform = on ? 'translateX(16px)' : 'none'; return; }
+        thumb.style.transition='transform '+TUCK.ms+'ms '+TUCK.ease;
+        thumb.style.transform = on ? 'translateX(16px)' : 'none';
+      }
+      if(!root.__s11){
+        root.__s11=true;
+        tog.addEventListener('click', function(){ set(!tog.classList.contains('on')); });
+      }
+      set(false);
+      us.forEach(function(u){ u.classList.remove('lit'); });
+      us.forEach(function(u,i){
+        at(root, 620 + i*28, function(){ u.classList.add('lit'); });
+        at(root, 1100 + i*28, function(){ u.classList.remove('lit'); });
+      });
+      at(root, 1800, function(){ set(true); });
+      at(root, 3600, function(){ set(false); });
+    }
+  });
+})();
+</script>
