@@ -5,7 +5,7 @@ department: engineering
 team: platform-api
 status: exists
 metrics: [platform.endpoints_protected_by_default_pct, platform.unguarded_reachable_routes, platform.public_decorator_count]
-updated: 2026-08-24
+updated: 2026-09-01
 links: ["[[engineering-charter]]", "[[platform-api-premortem]]", "[[platform-api-agenda-full]]", "[[platform-api-agenda-board]]", "[[platform-api-directive]]", "[[platform-api-loops]]", "[[platform-api-schedule]]", "[[platform-api-charter|eng-platform-api]]", "[[security-charter]]", "[[integration-engineering-charter]]", "[[procurement-vendor-network-charter]]", "[[messaging-delivery-charter]]", "[[ENDPOINTS]]"]
 ---
 
@@ -84,10 +84,19 @@ erosion counter.
 - `apps/api-gateway/src/openapi.ts`, `apps/api-gateway/src/app.module.ts`
 - 64 `.spec.ts` files
 
-**The state, without euphemism.** 448 routes; 137 unguarded; protection-by-default 0%.
-The unguarded set includes routes that place orders
-(`procurement/recurring-orders`, 6 — [[ENDPOINTS]]:428), send messages
+**The state, without euphemism**, as measured in the 2026-08-24 evidence pass. 448 routes;
+137 unguarded; protection-by-default 0%. The unguarded set as measured then included
+routes that place orders (`procurement/recurring-orders`, 6), send messages
 (`notifications` 24, `communications` 18), and read contact lists (`contacts` 8). Roughly
 51 of the 137 are **legitimately** public integration endpoints owned by
 [[integration-engineering-charter]] — so the remediable population is closer to 86, and
 knowing which is which is a prerequisite, not a detail.
+
+**One of those has since closed.** The 6 `recurring-orders` routes have carried a
+class-level `@UseGuards(JwtAuthGuard)` since 2026-08-25
+(`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`, commit `fdaa7fa0`,
+OD-20); no `@Public()` appears in the file, and [[ENDPOINTS]]:464-473 marks all six ✅.
+The counts above are deliberately **not** re-derived here — the corrected census is the E0
+auth reconciliation (`ECOSYSTEM-PLAN.md:80`), and until it lands the figures stand as
+their 2026-08-24 measurement. Nothing about the *default* changed: guarding is still
+opt-in per controller, which is the mandate above. The cluster closed; the class did not.

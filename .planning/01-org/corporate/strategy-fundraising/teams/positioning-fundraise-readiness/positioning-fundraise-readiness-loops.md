@@ -86,7 +86,7 @@ Three canonical rewrites, fixed now so they are not re-argued per artifact:
 | Wanted | Ships as | Because |
 |---|---|---|
 | *"$X recovered"* | *"$X in billing discrepancies identified"* — or *"$X recovered"* **only** for credits watched landing | `YC_WEDGE_PLAN.md:31-33` — until an 812 lands, it means *we asked* |
-| *"Security complete"* | *"ux-optimizer secured"* | `:339` is accurate in its body; the track **label** overstates while 94 endpoints are unguarded by omission |
+| *"Security complete"* | *"ux-optimizer secured"* | `:339` is accurate in its body; the track **label** overstates while the platform is unguarded **by default** — `app.module.ts:128-137` registers only `RateLimitGuard` and `TenantGuard`, no global `JwtAuthGuard`. The rewrite stands on that posture, **not** on ~~94 endpoints unguarded by omission~~, which OD-19 strikes itself (`OPEN-DECISIONS.md:31`); the reconciled count is pending the E0 auth census (`ECOSYSTEM-PLAN.md:80`, PR #194) and no figure ships until it lands |
 | *"$20k MRR"* — if OD-23 resolves to committed-not-collected | *"$20k MRR committed"*, permanently attached | A redefined metric is legitimate internally and an overstatement externally unless the redefinition travels with it |
 
 `strategy.weakened_claim_count` is tracked alongside the overstatement count on purpose:

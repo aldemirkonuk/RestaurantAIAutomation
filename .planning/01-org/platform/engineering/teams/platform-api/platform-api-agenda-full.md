@@ -5,7 +5,7 @@ department: engineering
 team: platform-api
 status: provisional
 metrics: [platform.endpoints_protected_by_default_pct, platform.unguarded_reachable_routes, platform.public_decorator_count]
-updated: 2026-08-24
+updated: 2026-09-01
 links: ["[[platform-api-charter]]", "[[platform-api-premortem]]", "[[platform-api-agenda-board]]", "[[platform-api-loops]]", "[[engineering-agenda-full]]", "[[security-charter]]", "[[integration-engineering-charter]]", "[[ENDPOINTS]]"]
 ---
 
@@ -40,10 +40,15 @@ first can reach 100% while the second is flat — that is M1 in one sentence, an
 the department watches both in [[engineering-loops]] L-ENG-5.
 
 **Consequence sets the order, not count.** The remediable population is ~86 routes (137
-minus ~51 legitimately public). The first tranche is not the easiest tranche: it is
-money-moving (`procurement/recurring-orders`, 6 — [[ENDPOINTS]]:428), message-sending
-(`notifications` 24, `communications` 18), and contact-reading (`contacts` 8). Those are
-**categorically excluded** from the allowlist.
+minus ~51 legitimately public), as measured 2026-08-24 and not re-derived here — the
+corrected census is E0 (`ECOSYSTEM-PLAN.md:80`). The first tranche is not the easiest
+tranche: it is money-moving (`procurement/recurring-orders`, 6 — **guarded since
+2026-08-25**: class-level `@UseGuards(JwtAuthGuard)` at
+`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`, commit `fdaa7fa0`,
+OD-20; [[ENDPOINTS]]:464-473 marks all six ✅), message-sending (`notifications` 24,
+`communications` 18), and contact-reading (`contacts` 8). Those are **categorically
+excluded** from the allowlist — the closed one included, because the exclusion is a
+standing rule about what the route does, not a task that a fix retires.
 
 **We build; Security finds.** The seam is explicit (`technology.md:864`).
 [[security-charter]] classifies the 137 and ranks them; this team makes the class
