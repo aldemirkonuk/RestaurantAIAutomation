@@ -5,7 +5,7 @@ department: engineering
 team: platform-api
 status: provisional
 metrics: [platform.endpoints_protected_by_default_pct, platform.unguarded_reachable_routes, platform.public_decorator_count]
-updated: 2026-08-24
+updated: 2026-09-01
 links: ["[[platform-api-charter]]", "[[platform-api-loops]]", "[[platform-api-directive]]", "[[engineering-premortem]]", "[[security-charter]]", "[[integration-engineering-charter]]", "[[red-team-charter]]"]
 ---
 
@@ -70,8 +70,14 @@ There are roughly 51 intentionally-public integration routes
 (`technology.md:257`), owned by another team, with a different correctness criterion —
 signature verification rather than `JwtAuthGuard`. If that set is never written down as a
 list, every unguarded route has a plausible story: "that's a webhook", "that one's
-internal", "the agent calls it". The `recurring-orders` cluster is exactly this — 6
-unguarded routes justified as "internal" ([[ENDPOINTS]]:428).
+internal", "the agent calls it". The `recurring-orders` cluster was exactly this — 6
+routes justified as "internal" — and that one is now **closed**: a class-level
+`@UseGuards(JwtAuthGuard)` has covered all six since 2026-08-25
+(`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`, commit `fdaa7fa0`,
+OD-20); no `@Public()` in the file, and [[ENDPOINTS]]:464-473 marks all six ✅. The example
+is kept rather than replaced, because M3 is about the **story**, not the cluster: the
+enumeration it demands still does not exist, so the next route with a plausible reason
+gets exactly the free pass this one had.
 
 **Earliest observable signal.** Any conversation about whether a specific route is
 legitimately public that cannot be resolved by looking something up. If the answer requires

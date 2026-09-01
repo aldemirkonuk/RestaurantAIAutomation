@@ -172,5 +172,5 @@ audit, not a clean month.
 | SimPOS ground-truth ledger (§44.7) | [[engineering-charter]] | T2 reads 0% until it ships. Our single most important escalation |
 | Candidate reach / requirement integrity | [[analytics-engine-loops]] | Their `requires` declarations feed a number we audit. One is already wrong (`goals`) |
 | Insight acceptance join definition | [[insight-narrative-generation-loops]] | We countersign the definition **before** any acceptance rate is published |
-| Endpoint guards (OD-20) | [[security-charter]] | A metrics department demoing behind an unguarded Opus route is itself a claim we cannot defend |
+| Endpoint guards (OD-20) | [[security-charter]] | A metrics department demoing behind an unguarded Opus route would itself be a claim we cannot defend. **Closed 2026-08-24** (PR #31, `analytics.controller.ts:51`) — the dependency stands for future routes, but there is no undefendable demo today |
 | Golden sets for nondeterministic output | [[agent-evaluation-gates-charter]] *(RM-2)* | Adjacent, deliberately separate. Their thresholds are judged; ours is exact equality |
