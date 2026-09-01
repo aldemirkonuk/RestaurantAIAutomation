@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
 import { creditsApi, type ProcurementCredit, type CreditStats } from '@/services/api/credits';
 import type { UnverifiedDelivery } from '@/services/api/receiving';
@@ -65,9 +66,22 @@ export interface StaffLaneData {
   refetch: () => void;
 }
 
+
+/**
+ * Every query key below carries the active restaurant id: the gateway scopes
+ * these endpoints by tenant, so an unkeyed cache would serve the PREVIOUS
+ * restaurant's deliveries/credits for a beat (or until refetch) after a
+ * restaurant switch — the cross-tenant leak class found on the p3 wave.
+ */
+function useActiveRestaurantId(): string {
+  const { activeRestaurantId, user } = useAuth();
+  return activeRestaurantId || user?.restaurantId || '';
+}
+
 export function useStaffDeliveries(): StaffLaneData {
+  const rid = useActiveRestaurantId();
   const q = useQuery({
-    queryKey: ['receiving-next-open-orders', ...IN_FLIGHT_STATUSES],
+    queryKey: ['receiving-next-open-orders', rid, ...IN_FLIGHT_STATUSES],
     queryFn: async () => {
       // One status per request (the DTO takes a single enum; the service does
       // `.eq("status", …)`). Disjoint by construction, so the merge cannot
@@ -200,8 +214,9 @@ export interface ManagerQueueData {
 }
 
 export function useManagerQueue(): ManagerQueueData {
+  const rid = useActiveRestaurantId();
   const q = useQuery({
-    queryKey: ['receiving-next-queue'],
+    queryKey: ['receiving-next-queue', rid],
     queryFn: async () => {
       const { data } = await apiClient.get('/procurement/receiving/queue');
       return data as {
@@ -254,8 +269,9 @@ export interface CreditDraftsData {
 }
 
 export function useCreditDrafts(): CreditDraftsData {
+  const rid = useActiveRestaurantId();
   const q = useQuery({
-    queryKey: ['receiving-next-credit-drafts'],
+    queryKey: ['receiving-next-credit-drafts', rid],
     queryFn: () => creditsApi.list({ state: 'open' }),
   });
   return {
@@ -298,15 +314,16 @@ export interface RecoveryData {
 }
 
 export function useOwnerRecovery(): RecoveryData {
+  const rid = useActiveRestaurantId();
   const statsQ = useQuery({
-    queryKey: ['receiving-next-recovery'],
+    queryKey: ['receiving-next-recovery', rid],
     queryFn: () => creditsApi.stats(),
   });
   // The trend is derived from the credited claims themselves (settled_at),
   // because /credits/stats carries totals only. If this list fails the trend
   // is a dash — the headline figure does not borrow certainty from it.
   const creditedQ = useQuery({
-    queryKey: ['receiving-next-credited-list'],
+    queryKey: ['receiving-next-credited-list', rid],
     queryFn: () => creditsApi.list({ state: 'credited' }),
   });
 
