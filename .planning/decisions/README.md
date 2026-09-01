@@ -41,6 +41,8 @@
 | [0042](0042-iznik-seal-and-warm-charcoal.md) | **İznik is the seal, Warm Charcoal is the dark ground** — `#1A5E6B`/`#5FB0BC` + `#15130F`, canonical tokens from sketch 059; both grounds ship. Supersedes 0041's `#CD2D5B` (answered on a stale premise). Applied to the makeover canvas 2026-08-29 and rolling onto dev.mudavym.com | 2026-08-29 |
 | [0043](0043-wordmark-interim-logo-search.md) | **Interim brand = Fraunces text wordmark**, "M." glyph where a mark is unavoidable; wine-glass BrandMark retired. The real logo stays open (OD-111) — two agent candidate waves (instrument · house) filed under this ADR for founder elimination | 2026-08-30 |
 
+| [0049](0049-rebuilt-pages-show-live-data-only.md) | **A rebuilt page shows live data or says it does not know** — no hardcoded values, seeded fixtures or placeholder numbers dressed as measurements; unknown is the em dash and never zero, a full window renders as a floor, a failure is said in words. Scopes [0020](0020-a-surface-with-no-data-says-so.md) to the ten-page rebuild after the dashboard was measured stating four things the backend cannot know. Legacy pages deliberately left alone | 2026-09-01 |
+
 ## Proposed — implemented, awaiting a founder lock
 
 > These carry `status: proposed`. The work has landed and the OPEN-DECISIONS rows are
