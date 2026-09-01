@@ -13,6 +13,13 @@ links: ["[[SCENARIO-CONTRACT]]", "[[TIER-MAP]]", "[[HOME]]"]
 > Roster: founder-approved 2026-08-24 (full library build). Add/cut/re-slice as the
 > product learns which rituals matter.
 
+> **Measured 2026-09-01 — [[DELIVERY-AUDIT]].** Four independent audits graded all 17
+> against the code with `file:line` evidence; two queried production read-only. Result:
+> **1 delivered · ~10 partial · 5 absent-by-design · 1 exemplary (S17)**, and **only 1 of
+> the 17 §9 simulation gates actually executes**. The audit also names six places where a
+> scenario doc asserts something untrue (S04, S06, S09, S13, S15, S17) — read it before
+> trusting a §3, §9 or §10 claim here.
+
 ## The five entities × their lifecycles
 
 The founder named the axes: restaurant · POS · customer · vendor · food — each with a
