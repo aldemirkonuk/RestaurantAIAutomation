@@ -14,6 +14,14 @@
 -- hold.
 --
 -- Every statement is idempotent; production may already be ahead of this file.
+--
+-- Plain CREATE INDEX, deliberately NOT CONCURRENTLY. Two reasons, and the
+-- second is the one that will not be obvious later: (1) Supabase runs each
+-- migration inside a transaction and CREATE INDEX CONCURRENTLY cannot run in
+-- one, so it would need a separate non-transactional path; (2) it would buy
+-- nothing — production holds 2 procurement_orders rows in total (and 26
+-- decision_log rows), so the table is tiny and the write lock is measured in
+-- milliseconds. Revisit only if that volume changes by orders of magnitude.
 
 -- 1. At most ONE in-flight send per order. This is the duplicate-send race
 --    itself: two claims for one order cannot both exist, so two sends cannot

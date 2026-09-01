@@ -1651,7 +1651,15 @@ export class ProcurementService {
     // part of the claim. If the process dies mid-send, the id on the row is
     // still the id on the wire, so the message is identifiable in the vendor
     // thread and a duplicate is detectable after the fact.
-    const outboundMessageId = this.mintRfc822MessageId();
+    //
+    // On a RETRY the stored id is reused rather than re-minted. If a previous
+    // attempt did deliver despite reporting failure, the vendor's mail server
+    // sees the same Message-ID and drops the second copy; a fresh id would
+    // arrive as a second, unrelated purchase order. Nothing else ever writes
+    // message_id on an outbound draft, so a value here is always a prior
+    // attempt of ours.
+    const outboundMessageId =
+      ((conv as any).message_id as string | null) || this.mintRfc822MessageId();
     const { data: claimed } = await this.databaseService.supabase
       .from("procurement_conversations")
       .update({ status: "SENDING", message_id: outboundMessageId })
@@ -1674,6 +1682,7 @@ export class ProcurementService {
 
     // ── Send ─────────────────────────────────────────────────────────────────
     const emailHtml = this.buildEmailHtml(rawEmailBody);
+    const attemptedAt = new Date().toISOString();
     let gmailMessageId: string | undefined;
     let gmailThreadId: string | undefined;
     let rfc822MessageId: string | undefined;
@@ -1693,10 +1702,32 @@ export class ProcurementService {
           messageId: outboundMessageId,
         }));
     } catch (sendError: any) {
-      // Delivery failed, so nothing reached the vendor: it is safe — and
-      // correct — to hand the draft back for a retry.
-      await this.releaseSendClaim(conversationId, sendError?.message);
-      throw sendError;
+      // "The send threw" does NOT mean "the vendor did not get it". A socket
+      // timeout, an ECONNRESET, or a hang-up after the server accepted DATA
+      // all surface here while the message is already on its way, and the
+      // client cannot tell them apart from a real refusal. Handing an
+      // ambiguous failure back as PENDING_APPROVAL would re-open this very
+      // bug through the error path — a human sees a re-approvable draft, taps
+      // again, and the vendor holds two purchase orders. That needs only an
+      // ordinary timeout, not two simultaneous taps.
+      //
+      // So: release only on a positively-identified refusal; park everything
+      // else as unconfirmed. The costs are asymmetric — a stuck draft costs a
+      // phone call, a duplicate PO costs money and a vendor relationship.
+      if (this.isDefiniteSendRefusal(sendError)) {
+        await this.releaseSendClaim(conversationId, sendError?.message);
+        throw sendError;
+      }
+      this.logger.error(
+        `approveDraft: ambiguous send failure for order ${orderId} (${sendError?.message}) — ` +
+          `parking ${conversationId} as SEND_UNCONFIRMED (Message-ID ${outboundMessageId}).`,
+      );
+      await this.parkSendUnconfirmed(conversationId, attemptedAt);
+      throw new InternalServerErrorException(
+        `The email for order ${orderId} may or may not have reached the vendor — the send failed in a way that ` +
+          `cannot distinguish the two (${sendError?.message}). Message-ID ${outboundMessageId}. ` +
+          "Do NOT approve it again; check the vendor thread first.",
+      );
     }
     if (gmailThreadId) {
       this.logger.log(
@@ -1740,15 +1771,7 @@ export class ProcurementService {
         messageId: outboundMessageId,
         error: error?.message,
       });
-      try {
-        await this.databaseService.supabase
-          .from("procurement_conversations")
-          .update({ status: "SEND_UNCONFIRMED", sent_at: sentAt })
-          .eq("id", conversationId)
-          .eq("status", "SENDING");
-      } catch {
-        /* best-effort — SENDING is already a safe terminal state here */
-      }
+      await this.parkSendUnconfirmed(conversationId, sentAt);
       throw new InternalServerErrorException(
         `The email for order ${orderId} WAS delivered to the vendor (Message-ID ${outboundMessageId}) ` +
           "but its status could not be recorded. Do NOT approve it again — check the vendor thread and reconcile manually.",
@@ -1787,9 +1810,78 @@ export class ProcurementService {
   }
 
   /**
+   * Did this failure PROVE the vendor did not get the email?
+   *
+   * Only an explicit refusal proves it. A timeout, a connection reset, or a
+   * hang-up can all occur after the remote server accepted the message, and
+   * an SMTP 4xx is a transient "try later" that may still have been relayed.
+   * This is therefore a deliberate allow-list of positively-identified
+   * refusals: anything unrecognised is ambiguous, because guessing wrong in
+   * that direction sends a real vendor a second purchase order.
+   */
+  private isDefiniteSendRefusal(error: any): boolean {
+    const text = `${error?.message ?? ""} ${error?.response?.data ? JSON.stringify(error.response.data) : ""}`;
+    if (!text.trim()) return false;
+
+    // No transport was ever attempted — GmailService says so in as many words.
+    if (/No email delivery method available/i.test(text)) return true;
+
+    // Credentials refused: the request never became a message.
+    if (
+      /invalid_grant|invalid_client|unauthorized_client|authentication failed|invalid credentials|Username and Password not accepted/i.test(
+        text,
+      )
+    ) {
+      return true;
+    }
+
+    // SMTP permanent failures (5xx) and the recipient rejections they carry.
+    // Explicitly NOT 4xx — those are transient and may still have been queued.
+    if (
+      /\b5\d{2}[ -]/.test(text) ||
+      /\b5\.\d\.\d\b/.test(text) ||
+      /user unknown|no such user|recipient address rejected|mailbox unavailable|address rejected|does not exist/i.test(
+        text,
+      )
+    ) {
+      return true;
+    }
+
+    // A malformed request we built — nothing deliverable left the process.
+    if (/invalid recipient|no recipients defined|invalid to header/i.test(text))
+      return true;
+
+    return false;
+  }
+
+  /**
+   * Park a claimed draft as sent-but-unconfirmed: the vendor may hold this
+   * email, so it must never become re-approvable, and a human has to reconcile
+   * it against the vendor thread. Best-effort — if this write fails the row
+   * stays SENDING, which is also not re-approvable.
+   */
+  private async parkSendUnconfirmed(
+    conversationId: string,
+    attemptedAt: string,
+  ): Promise<void> {
+    try {
+      await this.databaseService.supabase
+        .from("procurement_conversations")
+        .update({ status: "SEND_UNCONFIRMED", sent_at: attemptedAt })
+        .eq("id", conversationId)
+        .eq("status", "SENDING");
+    } catch (e: any) {
+      this.logger.error(
+        `Could not park ${conversationId} as SEND_UNCONFIRMED: ${e?.message}. Row remains SENDING (still not re-approvable).`,
+      );
+    }
+  }
+
+  /**
    * Hand a claimed draft back for one-tap approval. ONLY safe when the send
    * provably did not happen — once an email is at the vendor, returning the row
-   * to PENDING_APPROVAL is what invites a duplicate.
+   * to PENDING_APPROVAL is what invites a duplicate. Gated by
+   * isDefiniteSendRefusal; never call it on an ambiguous failure.
    */
   private async releaseSendClaim(
     conversationId: string,

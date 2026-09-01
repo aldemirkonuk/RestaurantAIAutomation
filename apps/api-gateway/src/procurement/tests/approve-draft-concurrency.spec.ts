@@ -271,11 +271,13 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
     expect(statusDuringSend).toBe("SENDING");
   });
 
-  it("releases the draft for retry when the send itself fails", async () => {
+  it("releases the draft for retry only on a DEFINITE refusal", async () => {
     const store = makeStore();
+    // GmailService says in as many words that no transport was attempted.
     const sendEmail = jest.fn(async () => ({
       success: false,
-      error: "Gmail refresh token expired",
+      error:
+        "No email delivery method available — OAuth failed and SMTP not configured",
     }));
     const service = await buildService(store, sendEmail);
 
@@ -285,6 +287,95 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
 
     // Nothing reached the vendor, so re-approval is safe and expected.
     expect(conversationRow(store).status).toBe("PENDING_APPROVAL");
+  });
+
+  // ── Ambiguous send failures ───────────────────────────────────────────────
+  // A timeout / reset / hang-up can land AFTER the remote server accepted the
+  // message. Treating those as "not sent" and releasing the draft re-opens the
+  // duplicate-send hole through the error path, on a far more ordinary event
+  // than two simultaneous taps.
+  describe.each([
+    ["a socket hang-up", "socket hang up"],
+    ["a connection reset", "read ECONNRESET"],
+    ["a timeout", "Client network socket disconnected: ETIMEDOUT"],
+    ["an SMTP 4xx transient", "451 4.3.0 Temporary server error, try again"],
+    ["an unclassifiable error", "something went sideways"],
+  ])("ambiguous failure — %s", (_label, errorText) => {
+    it("parks the draft as SEND_UNCONFIRMED, never back to PENDING_APPROVAL", async () => {
+      const store = makeStore();
+      const sendEmail = jest.fn(async () => {
+        throw new Error(errorText);
+      });
+      const service = await buildService(store, sendEmail);
+
+      await expect(
+        service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
+      ).rejects.toThrow(/may or may not have reached the vendor/i);
+
+      expect(conversationRow(store).status).toBe("SEND_UNCONFIRMED");
+      expect(conversationRow(store).status).not.toBe("PENDING_APPROVAL");
+    });
+
+    it("leaves the row un-re-approvable, so a second tap cannot send again", async () => {
+      const store = makeStore();
+      const sendEmail = jest.fn(async () => {
+        throw new Error(errorText);
+      });
+      const service = await buildService(store, sendEmail);
+
+      await expect(
+        service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
+      ).rejects.toThrow();
+
+      // The human taps approve again. There must be no draft left to send.
+      await expect(
+        service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
+      ).rejects.toThrow(/no pending draft/i);
+
+      // One attempt, one delivery-at-most. Never a second copy.
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("reuses the stored Message-ID on retry, so a delivered-but-unrecorded copy dedupes", async () => {
+    const store = makeStore();
+    const seenMessageIds: string[] = [];
+    // First attempt: a definite refusal, so the draft is legitimately released.
+    // If that classification is ever wrong and the mail DID go, the retry must
+    // carry the SAME Message-ID so the receiving server drops the duplicate.
+    let attempt = 0;
+    const sendEmail = jest.fn(async (opts: any) => {
+      seenMessageIds.push(opts.messageIdHeader);
+      attempt += 1;
+      if (attempt === 1) {
+        return {
+          success: false,
+          error:
+            "No email delivery method available — OAuth failed and SMTP not configured",
+        };
+      }
+      return {
+        success: true,
+        messageId: "gmail-1",
+        threadId: "thread-1",
+        rfc822MessageId: opts.messageIdHeader,
+      };
+    });
+    const service = await buildService(store, sendEmail);
+
+    await expect(
+      service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
+    ).rejects.toThrow();
+    expect(conversationRow(store).status).toBe("PENDING_APPROVAL");
+
+    // The manager retries the released draft.
+    await service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any);
+
+    expect(seenMessageIds).toHaveLength(2);
+    expect(seenMessageIds[0]).toMatch(/^<mudavym-[0-9a-f-]{36}@wineops\.ai>$/);
+    // The whole point: the retry is the SAME message, not a new one.
+    expect(seenMessageIds[1]).toBe(seenMessageIds[0]);
+    expect(conversationRow(store).status).toBe("SENT");
   });
 
   it("never returns a sent draft to PENDING_APPROVAL when the status write fails", async () => {
