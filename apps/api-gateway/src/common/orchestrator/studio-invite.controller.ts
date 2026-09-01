@@ -99,6 +99,7 @@ export class StudioInviteController {
           month: "short",
           day: "numeric",
           year: "numeric",
+          timeZone: "UTC",
         })
       : "in 7 days";
 
