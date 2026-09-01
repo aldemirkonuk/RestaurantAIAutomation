@@ -2,6 +2,7 @@
 type: page
 route: /login
 slug: login
+softwares: [auth-onboarding]
 component: apps/web/src/pages/Login.tsx
 audience: public
 tier: public
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[PAGE_MAP]]", "[[dashboard]]", "[[forgot-password
 ---
 
 # /login
+
+> **Part of** [[08-softwares/auth-onboarding|Auth & Onboarding]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

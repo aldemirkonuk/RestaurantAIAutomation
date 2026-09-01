@@ -2,6 +2,7 @@
 type: page
 route: /privacy
 slug: privacy
+softwares: [app-shell-support]
 component: apps/web/src/pages/Privacy.tsx
 audience: public
 tier: public
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[help]]", "[[settings]]", "[[profile]]"]
 ---
 
 # /privacy — privacy & data notice
+
+> **Part of** [[08-softwares/app-shell-support|App Shell & Support]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

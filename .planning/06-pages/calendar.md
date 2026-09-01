@@ -2,6 +2,7 @@
 type: page
 route: /calendar
 slug: calendar
+softwares: [calendar]
 component: apps/web/src/pages/CalendarModular.tsx
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]"]
 ---
 
 # /calendar — Calendar (modular)
+
+> **Part of** [[08-softwares/calendar|Calendar]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

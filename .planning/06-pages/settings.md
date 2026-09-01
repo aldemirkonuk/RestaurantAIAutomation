@@ -2,6 +2,7 @@
 type: page
 route: /settings
 slug: settings
+softwares: [settings-integrations]
 component: apps/web/src/pages/Settings.tsx
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[profile]]", "[[help]]", "[[privacy]]", "[[author
 ---
 
 # /settings — Settings
+
+> **Part of** [[08-softwares/settings-integrations|Settings & Integrations]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
