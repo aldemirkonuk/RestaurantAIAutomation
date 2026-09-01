@@ -2,6 +2,7 @@
 type: page
 route: /orders
 slug: orders
+softwares: [orders, recurring-orders]
 component: apps/web/src/pages/Orders.tsx
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[providers]]"]
 ---
 
 # /orders — Orders
+
+> **Part of** [[08-softwares/orders|Orders]] · [[08-softwares/recurring-orders|Recurring Orders]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

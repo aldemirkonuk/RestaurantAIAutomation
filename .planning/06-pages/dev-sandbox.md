@@ -2,6 +2,7 @@
 type: page
 route: /dev-sandbox
 slug: dev-sandbox
+softwares: [admin-health-sw]
 component: apps/web/src/pages/DevSandbox.tsx
 audience: dev
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]"]
 ---
 
 # /dev-sandbox
+
+> **Part of** [[08-softwares/admin-health|Admin & Health]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

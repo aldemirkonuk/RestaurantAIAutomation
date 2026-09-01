@@ -2,6 +2,7 @@
 type: page
 route: /receiving
 slug: receiving
+softwares: [receiving]
 component: apps/web/src/pages/receiving/ReceivingHome.tsx
 audience: staff
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[orders]]"]
 ---
 
 # /receiving — Receiving home (role-split)
+
+> **Part of** [[08-softwares/receiving|Receiving]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

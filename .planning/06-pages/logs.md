@@ -2,6 +2,7 @@
 type: page
 route: /logs
 slug: logs
+softwares: [reports-analytics]
 component: apps/web/src/pages/LogsTimelinePage.tsx
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[simpos-order-log]]"]
 ---
 
 # /logs
+
+> **Part of** [[08-softwares/reports-analytics|Reports & Analytics]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

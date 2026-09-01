@@ -268,6 +268,43 @@ jobs:
   # citations in this corpus that named both an id and a line, ZERO agreed. An id
   # alone renumbers and keeps resolving; a line alone moves under any of the 57
   # commits that touched OPEN-DECISIONS.md since Aug 1. Only the pair fails loudly.
+  # An ADR number is claimed at COMMIT time but verified by a human sweep minutes
+  # earlier, so a correct sweep still loses a race. It has happened three times:
+  # 0035 renumbered to 0040 (2026-08-28), and 0049 claimed twice on 2026-09-01 by
+  # a session that had swept every branch correctly and was overtaken mid-commit.
+  #
+  # A convention cannot fix this -- the obvious register to claim in is
+  # OPEN-DECISIONS.md, and ADR 0025 is locked precisely because a new row there
+  # re-anchors 27 citations across 24 files. So: a guard, where the sweep and the
+  # verdict are the same moment.
+  adr-numbers-unique:
+    name: An ADR number names one decision
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The guard refuses a verdict on a partial view, so give it the whole one.
+      # Default checkout is shallow AND single-branch: a guard running there
+      # would see one ref, find no collision, and certify a live one as clean.
+      - name: Fetch every branch the guard compares against
+        run: git fetch origin '+refs/heads/*:refs/remotes/origin/*' --quiet
+
+      - name: The guard still fires on the shape it exists to catch
+        run: ./scripts/check_adr_numbers_unique.py --self-test
+
+      - name: This branch's ADR numbers are not claimed elsewhere
+        run: ./scripts/check_adr_numbers_unique.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::COLLISION means two branches gave different decisions the same ADR number. Renumber on THIS branch, now: the file, its H1, its index row in .planning/decisions/README.md, and every internal citation. The guard prints the next free number, swept across every ref."
+          echo "::notice::Only the numbers THIS branch introduces are checked. A duplicate between two other branches is deliberately not your problem -- run --audit for the full picture."
+          echo "::notice::Exit 2 means CANNOT CHECK: the guard could not see every branch, so any verdict would be a guess. That is a failure, not a skip -- fix the fetch, do not disable the step."
+
   decision-claims:
     name: Decision register matches reality
     runs-on: ubuntu-latest
@@ -295,6 +332,17 @@ jobs:
 
       - name: A merged-away id resolves, and prose alone still does not
         run: ./scripts/check_od_ids_exist.py --self-test
+
+      # Added 2026-09-01. The three guards above all read *rows* — an id, a line,
+      # a claim — so all three ran green over `0032-vault-cleanup-cut-line.md`
+      # while it carried 12 unresolved conflict blocks inside its Tombstone index,
+      # the table whose whole job is making a deletion recoverable. A file that no
+      # longer parses as a document is a failure none of them can see.
+      - name: No planning document carries an unresolved conflict marker
+        run: ./scripts/check_no_conflict_markers.py
+
+      - name: A setext underline is not a conflict, and an empty corpus exits 2
+        run: ./scripts/check_no_conflict_markers.py --self-test
 
       - name: Every task type is graded or knowingly exempt
         run: ./scripts/check_task_types_are_graded.py
@@ -741,6 +789,9 @@ jobs:
         agent-card-contract,
         sentry-pii-scope,
         voice-gate-coverage,
+        # Added 2026-09-01 with the job itself, per the rule this list exists to
+        # enforce: a guard nobody depends on can fail while this prints success.
+        adr-numbers-unique,
       ]
     steps:
       - name: Checkout code
