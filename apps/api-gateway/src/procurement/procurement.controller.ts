@@ -50,9 +50,19 @@ export class ProcurementController {
         user.restaurantId,
         user.userId,
         dto,
+        // A request that arrived on this endpoint carried a JWT and a human
+        // pressed something. Stated here rather than read from the body: a
+        // client must not be able to claim an agent order was manual.
+        { source: "manual" },
       );
     } catch (error) {
-      // Re-throw ForbiddenException (no_vendors guard) as-is with 403
+      // Re-throw every deliberate HTTP refusal as-is. Flattening them to 500
+      // turned the unit guard's 400 ("an order in cases needs a pack size")
+      // into "Failed to create procurement order", which is unactionable and
+      // reads as a server fault rather than as a question for the caller.
+      if (error instanceof HttpException) {
+        throw error;
+      }
       if (error instanceof ForbiddenException) {
         throw error;
       }

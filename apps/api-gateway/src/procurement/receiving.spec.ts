@@ -223,11 +223,89 @@ describe("recordDoorReceipt", () => {
     const r = await new ReceivingService(db).recordDoorReceipt({
       ...base,
       countedQty: 24,
+      // Was omitted, and used to fall through to "case" — the multiplying unit.
+      // The unit is now stated because it must be; see the refusal tests below.
+      countedUom: "bottle",
       idempotencyKey: "tap-1",
     });
 
     expect(r.alreadyRecorded).toBe(true);
     expect(calls.rpc).toHaveLength(0);
+  });
+
+  // ==========================================================================
+  // Fail closed on the unit (ADR 0011 applied to the door).
+  //
+  // These are the regression tests for `normalizeUom(input.countedUom) ?? "case"`.
+  // `"case"` is the unit that MULTIPLIES, so the fallback turned an absent or
+  // misspelt unit into the worst possible answer: 24 counted against a 12-pack
+  // booked 288 bottles of live stock, silently.
+  // ==========================================================================
+
+  const twelvePackOrder = {
+    id: "o1",
+    order_number: "PO-1",
+    inventory_id: "inv1",
+    // 2 cases ordered, 24 bottles total -> the door derives a pack of 12.
+    quantity: 2,
+    bottles_total: 24,
+    quantity_received: 0,
+  };
+
+  it("refuses a count with no unit instead of assuming the one that multiplies", async () => {
+    const { db, calls } = makeDb({ order: twelvePackOrder });
+
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 24,
+      }),
+    ).rejects.toThrow(/not a unit this delivery can be counted in/);
+
+    // The point is not the exception, it is that NOTHING happened: no stock
+    // moved, no receipt event was written, the order was not touched. Booking
+    // 24 as cases against a 12-pack would have put 288 bottles on the shelf.
+    expect(calls.rpc).toHaveLength(0);
+    expect(calls.eventInserts).toHaveLength(0);
+    expect(calls.orderUpdates).toHaveLength(0);
+  });
+
+  it("refuses a unit it cannot read instead of assuming the one that multiplies", async () => {
+    const { db, calls } = makeDb({ order: twelvePackOrder });
+
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 24,
+        countedUom: "bxs",
+      }),
+    ).rejects.toThrow(/bxs/);
+
+    expect(calls.rpc).toHaveLength(0);
+    expect(calls.eventInserts).toHaveLength(0);
+  });
+
+  it("names the units a receiver may use, so the refusal is answerable", async () => {
+    // A refusal a caller cannot act on just moves the guessing to them.
+    const { db } = makeDb({ order: twelvePackOrder });
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 24,
+        countedUom: "",
+      }),
+    ).rejects.toThrow(/bottle, case, keg, pack, split_case, each, liter/);
+  });
+
+  it("still books a stated unit, so the refusal is not a blanket stop", async () => {
+    const { db, calls } = makeDb({ order: twelvePackOrder });
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 24,
+      countedUom: "bottle",
+    });
+    expect(r.countedQtyBottles).toBe(24);
+    expect(calls.rpc[0].args.p_delta).toBe(24);
   });
 
   it("uses transaction_type/source values that apply_stock_movement's enums actually accept", async () => {
