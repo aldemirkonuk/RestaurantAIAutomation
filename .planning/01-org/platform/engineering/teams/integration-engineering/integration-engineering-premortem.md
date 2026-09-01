@@ -5,7 +5,7 @@ department: engineering
 team: integration-engineering
 status: provisional
 metrics: [integration.verified_signature_coverage, integration.webhook_silence_duration]
-updated: 2026-08-24
+updated: 2026-09-01
 links: ["[[integration-engineering-charter]]", "[[integration-engineering-loops]]", "[[integration-engineering-directive]]", "[[engineering-premortem]]", "[[platform-api-charter]]", "[[pos-operational-telemetry-ingest-charter|dat-pos-telemetry-ingest]]", "[[red-team-charter]]", "[[EXTERNAL_CONNECTIONS]]"]
 ---
 
@@ -108,8 +108,13 @@ therefore a prerequisite rather than a nicety.
 
 This team owns ~51 legitimately-public routes, and that legitimacy is real. It is also the
 most useful precedent in the codebase for anyone who wants a route to skip auth. The
-`recurring-orders` cluster is already justified as "internal" ([[ENDPOINTS]]:428) — the same
-argument in a different costume. When [[platform-api-charter]] ships its allowlist, this
+`recurring-orders` cluster was justified as "internal" — the same argument in a different
+costume — and it has since been **closed**: all six routes have carried a class-level
+`@UseGuards(JwtAuthGuard)` since 2026-08-25
+(`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`, commit `fdaa7fa0`,
+OD-20); [[ENDPOINTS]]:464-473 marks all six ✅. That the argument lost once does not retire
+M5: "internal" is still the costume the next exemption request will arrive in, and this
+team is still where it will arrive. When [[platform-api-charter]] ships its allowlist, this
 team is the natural owner of entries, and every future exemption request will arrive here
 first, phrased as an integration need.
 

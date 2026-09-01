@@ -4,7 +4,7 @@ division: platform
 department: engineering
 team: procurement-vendor-network
 status: designed
-updated: 2026-08-27
+updated: 2026-09-01
 metrics: [procurement.order_to_delivery_reconciliation_rate, procurement.unguarded_money_moving_routes]
 links: ["[[procurement-vendor-network-charter]]", "[[procurement-vendor-network-schedule]]", "[[procurement-vendor-network-loops]]", "[[procurement-vendor-network-directive]]", "[[0034-agent-stack-artifact]]", "[[engineering-agent-stack]]", "[[skills-charter]]", "[[action-safety-the-human-gate-charter]]", "[[platform-api-charter]]"]
 ---
@@ -65,7 +65,7 @@ authority is premortem M4 arriving through the side door.
 
 | Skill (`.claude/skills/…`) | Tier | Trigger | Doneability | Past instance | Status |
 |---|---|---|---|---|---|
-| `spend-path-audit` | T2 | Monthly (L-PV-4), and any PR touching `procurement/**` or a procurement agent | Every code path that can reach an order placement is named with `path:line` — HTTP routes, scheduled executions, and agent tool calls alike — each marked guarded or not, and each with its spend threshold or the absence of one | The 2026-08-24 evidence pass found `procurement/recurring-orders` is 6 endpoints, **all unguarded** ([[ENDPOINTS]]:428), on the one module that places orders automatically, while `TenantGuard` passes unauthenticated requests through by design. The enumeration has not been repeated since | NEW |
+| `spend-path-audit` | T2 | Monthly (L-PV-4), and any PR touching `procurement/**` or a procurement agent | Every code path that can reach an order placement is named with `path:line` — HTTP routes, scheduled executions, and agent tool calls alike — each marked guarded or not, and each with its spend threshold or the absence of one | The 2026-08-24 evidence pass found `procurement/recurring-orders` is 6 endpoints, **all unguarded**, on the one module that places orders automatically, while `TenantGuard` passes unauthenticated requests through by design. Those six were **closed on 2026-08-25** by a class-level `@UseGuards(JwtAuthGuard)` (`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`, commit `fdaa7fa0`, OD-20; [[ENDPOINTS]]:464-473 marks all six ✅). The `TenantGuard` half stands. The full enumeration has not been repeated since, so this skill's finding is a spot-check, not a census | NEW |
 | `agent-authority-check` | T2 | Any change to an agent under `services/agent-orchestrator/agents/` that can reach spend | A verdict per agent: does it still only log, and does its lifecycle carry the harness guarantees (retry, idempotency, DLQ, health) or not — stated, not assumed | Two findings this check would have caught, both recorded in code: `negotiation_playbook_agent.py:11-16` declares `IS_STUB = True` because an agent that "consumes events and produces nothing… reads identically to a working one from every dashboard and health check"; and `recurring_order_agent.py:14` is a **plain class** — "Standalone scheduler — not a message-bus agent" — with no `BaseAgent` guarantees, while owning automatic purchasing | NEW |
 
 `reconciliation-exception-triage` and `vendor-price-dispute-packet` appear in
@@ -88,7 +88,9 @@ mechanism ([[platform-api-charter]]); the vendor wire and signatures
   episodic layer cannot distinguish a silent success from an eventual one, which is the entire
   point of the "without human repair" clause.
 - **Semantic** — `memory/` beside this file, `procurement-vendor-network-MEMORY.md` as index. Its
-  founding facts: the 6 unguarded `recurring-orders` endpoints and their date, the plain-class
+  founding facts: the 6 `recurring-orders` endpoints, unguarded at founding and guarded from
+  2026-08-25 (`recurring-orders.controller.ts:35`) — both dates, since the memory's value is the
+  transition and not either end of it — the plain-class
   lifecycle of the agent behind them, the stub declaration on `negotiation_playbook_agent`, and
   the spend-threshold register once L-PV-4 first runs. Provenance frontmatter per ADR 0034;
   every write is a PR, and here the audit trail is not merely inspectable — it is the record of
@@ -124,8 +126,10 @@ and skill candidates only. Gap rows:
   `negotiation_playbook_agent.py:11-16` now carries `IS_STUB = True` so the orchestrator refuses
   to start it. The hazard the schedule names — a logging-only agent that reads as a working one —
   is handled for that agent by declaration, not by discipline.
-- **PARTIAL — the exposure.** The 6 unguarded `recurring-orders` endpoints are live today rather
-  than hypothetical ([[ENDPOINTS]]:428), and `recurring_order_agent.py:14` confirms the executor
-  behind them runs outside `BaseAgent`'s retry, idempotency, DLQ and health guarantees.
+- **PARTIAL — the exposure, half closed.** The 6 `recurring-orders` endpoints are **guarded**
+  since 2026-08-25 (`recurring-orders.controller.ts:35`, [[ENDPOINTS]]:464-473), so the
+  unauthenticated-reach half is no longer live. The lifecycle half still is:
+  `recurring_order_agent.py:14` confirms the executor behind them runs outside `BaseAgent`'s
+  retry, idempotency, DLQ and health guarantees.
 - **NEW — `spend-path-auditor` and both skills.** No reconciliation measurement, no daily
   execution audit, no spend-threshold register exists.
