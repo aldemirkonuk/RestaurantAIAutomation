@@ -57,3 +57,36 @@ genuinely cross-cutting infrastructure sits in Platform/Admin.
   §3 verdict keeps its original segment anchor.
 - No `OPEN-DECISIONS.md` row is added (the decision is closed at birth; adding a
   register row re-anchors citations per ADR 0025).
+
+## Addendum — 2026-09-01: the taxonomy held, the census did not
+
+Hours after this ADR locked, a full census (two independent passes agreeing — this
+session's agent and a concurrent session's atlas writers) checked §3a's
+representative lists against the tree. **The eight-division frame survived
+unchanged. Eight of its row contents did not.** Recorded here rather than silently
+edited, because the failure mode is worth keeping: §3a was written from a fast read
+and presented as a map, and a map is trusted differently than a sketch.
+
+What was wrong: `integrations` was filed under POS but is Google/Microsoft OAuth
+(`integrations-oauth.constants.ts:39,70`); `wine-agent` was a page retired
+2026-08-26 (`RETIRED.md:19-20`); the four Studio pages had no division at all;
+`reports` appeared as a Restaurant module *and* an Intelligence page while
+`reporting_agent.py` appeared in neither; three `IS_STUB` agents were listed as
+live; and `apps/mobile`, `packages/*`, `services/api-gateway`, `services/database`
+and `common/orchestrator/` (7,256 LOC, no owner) had no home.
+
+Two findings change how the table should be *read*, not just what it says:
+
+- **Customer has zero application code** — one 564-line migration with no caller.
+  Eight divisions is **seven live plus one aspirational placeholder**, and saying
+  so is the difference between a map and a wish.
+- **Sommelier is broken, not thin.** Its main surface calls a route that does not
+  exist (`SommelierAI.tsx:172-173` → `POST /api/v1/sommelier/chat`, absent from
+  `services/agent-orchestrator`), and Wine Studio has no module of its own — it is
+  a proxy pair in `common/orchestrator/`.
+
+The corrected rows are in ECOSYSTEM-PLAN.md §3a; the evidence and the dead code
+found in passing are in
+[ECOSYSTEM-E0-MEASUREMENTS.md](../04-specs/ECOSYSTEM-E0-MEASUREMENTS.md) §8. The
+finer grain beneath these divisions — 25 small softwares, each carrying a
+`division:` key from this ADR's eight — is [ADR 0052](0052-software-catalog-layer.md).
