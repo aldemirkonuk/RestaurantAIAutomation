@@ -41,6 +41,7 @@
 | [0042](0042-iznik-seal-and-warm-charcoal.md) | **İznik is the seal, Warm Charcoal is the dark ground** — `#1A5E6B`/`#5FB0BC` + `#15130F`, canonical tokens from sketch 059; both grounds ship. Supersedes 0041's `#CD2D5B` (answered on a stale premise). Applied to the makeover canvas 2026-08-29 and rolling onto dev.mudavym.com | 2026-08-29 |
 | [0043](0043-wordmark-interim-logo-search.md) | **Interim brand = Fraunces text wordmark**, "M." glyph where a mark is unavoidable; wine-glass BrandMark retired. The real logo stays open (OD-111) — two agent candidate waves (instrument · house) filed under this ADR for founder elimination | 2026-08-30 |
 | [0049](0049-ecosystem-division-layer.md) | **The ecosystem is layered into eight divisions** — the five founder-named musts (Restaurant, Customer, Vendor, POS, Sommelier) + three the codebase demanded (Intelligence/Analytics, Platform/Admin, Agent fleet/runtime), recorded as ECOSYSTEM-PLAN.md §3a; an *amendment* — segments, spine, and the E1-after-E0 order stand. 0045–0048 are claimed on in-flight branches | 2026-09-01 |
+| [0052](0052-software-catalog-layer.md) | **The product is catalogued as small softwares, one note each** — new `08-softwares/` layer (contract + SOFTWARE-MAP) nesting under 0049's eight divisions; all 47 page notes gain a `softwares:` list, executing PV-12 early. `atlas-overlay.json` untouched by founder direction; retire-to-write waived for this wave. 0050–0051 are claimed on in-flight branches | 2026-09-01 |
 
 ## Proposed — implemented, awaiting a founder lock
 
