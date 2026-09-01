@@ -89,4 +89,4 @@ The corrected rows are in ECOSYSTEM-PLAN.md §3a; the evidence and the dead code
 found in passing are in
 [ECOSYSTEM-E0-MEASUREMENTS.md](../04-specs/ECOSYSTEM-E0-MEASUREMENTS.md) §8. The
 finer grain beneath these divisions — 25 small softwares, each carrying a
-`division:` key from this ADR's eight — is ADR 0052 (`0052-software-catalog-layer.md`, in flight as PR #193).
+`division:` key from this ADR's eight — is [ADR 0052](0052-software-catalog-layer.md).

@@ -91,8 +91,13 @@ So the reconciliation is **enumerated 573 vs implemented ≤24, gap ~549** — a
 whole catalogue categories (`efficiency` 108, `inventory` 34) are at zero.
 
 **The live defect this exposed:** the shipped "computable now" meter filters the
-573-space by *data availability only*, not by whether a generator exists — showing
-~513 computable against ≤24 real, a **~21× overstatement visible to users today**.
+573-space by *data availability only*, not by whether a generator exists. **Measured
+precisely during the fix: with all seven data sources connected it showed 573 of 573
+— its ceiling was the entire catalogue — against ≤24 real, a ~24× overstatement
+visible to users today.** (An earlier estimate of "~513" in this pass was **not
+reproducible** and is withdrawn; the true figures are 573 all-connected and 546
+without a venue. Recorded because a number nobody can re-derive is exactly what §1
+is about.)
 That violates locked **ADR 0020** ("a surface with no data says so; it never
 invents one"; a mislabelled number is a fabrication). Founder approved fixing it
 now; in flight.
