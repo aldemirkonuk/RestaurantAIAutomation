@@ -2,6 +2,11 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import * as E from "./engine";
 import { METRIC_REGISTRY, MetricDefinition, Persona } from "./metric-registry";
+import {
+  costBasisSentence,
+  resolveUnitCost,
+  summarizeCostBasis,
+} from "./inventory-cost";
 
 /**
  * AnalyticsService — the quantitative heart of WineOps.
@@ -107,28 +112,32 @@ export class AnalyticsService {
       for (const r of rollupRes.value.data || []) rollup.set(r.inventory_id, r);
     }
 
-    // Best available unit cost: lot WAC → unit_cost → 0.6·unit_price fallback.
+    // Unit cost: invoiced lot WAC → recorded last purchase price → UNKNOWN.
+    // The third branch used to be `unitPrice * 0.6`, a magic number with no
+    // ADR behind it, and it was the live path for ~70 of 72 production rows.
+    // See ./inventory-cost.ts for why cost is now `number | null`.
     return inventory.map((i: any) => {
       const lot = rollup.get(i.id);
       const unitPrice = Number(i.menu_price_current) || 0;
-      const wac =
-        lot?.has_invoice_cost && lot?.wac
-          ? lot.wac
-          : Number(i.last_purchase_price) || (unitPrice ? unitPrice * 0.6 : 0);
+      const { unitCost, costBasis } = resolveUnitCost(i, lot);
       const qty = lot?.live_qty ?? i.stock_live ?? 0;
       return {
         id: i.id,
         name: i.wine_name || i.master_wine_id || i.id,
         type: i.master_wine_library?.primary_type || "unknown",
         qty,
-        unitCost: wac,
+        unitCost,
+        costBasis,
         unitPrice,
         thresholdMin: i.threshold_min || 0,
         // This schema carries a single reorder trigger (threshold_min); there
         // is no separate reorder_point column.
         reorderPoint: i.threshold_min || 0,
         masterWineId: i.master_wine_id,
-        inventoryValue: qty * wac,
+        // A row we cannot cost has no value we can state. `qty × null` must
+        // not become 0 — that is the fabrication ADR 0051 names, wearing an
+        // arithmetic costume.
+        inventoryValue: unitCost == null ? null : qty * unitCost,
       };
     });
   }
@@ -352,25 +361,57 @@ export class AnalyticsService {
       this.loadConsumption(restaurantId, DEAD_STOCK_WINDOW_DAYS),
     ]);
 
-    const inventoryValue = E.stats.sum(inventory.map((i) => i.inventoryValue));
+    // A row holding no bottles contributes 0 to the valuation whatever it
+    // cost, so it cannot block the total. Only ON-HAND rows need a cost.
+    const onHand = inventory.filter((i) => i.qty > 0);
+    // NB `complete` is false for an EMPTY on-hand set, so an empty cellar
+    // reports null rather than $0. That is deliberate: `loadInventory` above
+    // degrades a failed PostgREST query to `[]` (see its comment), so `[]` is
+    // "no rows or no answer", and $0 for a dead query is precisely the silent
+    // zero this endpoint has already been burned by once.
+    const costCoverage = summarizeCostBasis(onHand);
+    // A total assembled from 2 of 72 SKUs is not "inventory value" — it is a
+    // different, much smaller number wearing that label. ADR 0051: say we do
+    // not know. `costCoverage` below says how far off complete we are, so the
+    // UI can name the gap instead of rendering a silent understatement.
+    const inventoryValue = costCoverage.complete
+      ? E.stats.sum(onHand.map((i) => i.inventoryValue as number))
+      : null;
     const cogs = E.stats.sum(orders.map((o) => o.cost));
 
     // Revenue basis: sell-price valuation of purchased bottles (proxy until a
-    // POS revenue feed lands). Clearly labelled below.
+    // POS revenue feed lands). Menu price is recorded, so this survives an
+    // unknown cost — it is the cost-derived fields below that go null.
     const revenue = E.stats.sum(
       inventory.map((i) => i.unitPrice * (i.qty || 0)),
     );
-    const marginDollars = revenue - inventoryValue;
+    const marginDollars =
+      inventoryValue == null ? null : revenue - inventoryValue;
 
-    const turnover = E.inventory.inventoryTurnover(cogs, inventoryValue);
-    const dio = E.inventory.daysInventoryOutstanding(cogs, inventoryValue);
-    const gmroi = E.inventory.gmroi(marginDollars, inventoryValue);
+    // Every one of these takes inventory value as its cost input. A null cost
+    // makes them unknown, not zero and not infinite.
+    const turnover =
+      inventoryValue == null
+        ? null
+        : E.inventory.inventoryTurnover(cogs, inventoryValue);
+    const dio =
+      inventoryValue == null
+        ? null
+        : E.inventory.daysInventoryOutstanding(cogs, inventoryValue);
+    const gmroi =
+      inventoryValue == null || marginDollars == null
+        ? null
+        : E.inventory.gmroi(marginDollars, inventoryValue);
     const grossMargin =
-      revenue > 0 ? E.finance.grossMargin(inventoryValue, revenue) : null;
+      inventoryValue != null && revenue > 0
+        ? E.finance.grossMargin(inventoryValue, revenue)
+        : null;
     const cogsRatioVal =
-      revenue > 0 ? E.finance.cogsRatio(inventoryValue, revenue) : null;
+      inventoryValue != null && revenue > 0
+        ? E.finance.cogsRatio(inventoryValue, revenue)
+        : null;
     const primeCost =
-      revenue > 0
+      inventoryValue != null && revenue > 0
         ? E.finance.primeCostRatio(inventoryValue, labor, revenue)
         : null;
 
@@ -410,19 +451,44 @@ export class AnalyticsService {
               !movedInventoryIds.has(i.id) &&
               !(i.masterWineId && movedMasterWineIds.has(i.masterWineId)),
           )
-          .map((i) => ({ name: i.name, value: i.inventoryValue, qty: i.qty }))
-          .sort((a, b) => b.value - a.value);
-    const deadStockCapital = hasMovementSignal
-      ? E.stats.sum(deadStock.map((d) => d.value))
-      : null;
+          .map((i) => ({
+            name: i.name,
+            value: i.inventoryValue,
+            qty: i.qty,
+            costBasis: i.costBasis,
+          }))
+          // Nulls sort last rather than poisoning the comparator with NaN;
+          // among themselves the unpriced rows rank by how many bottles are
+          // idle, which is the only thing about them we do know.
+          .sort((a, b) =>
+            a.value == null || b.value == null
+              ? (a.value == null ? 1 : 0) - (b.value == null ? 1 : 0) ||
+                b.qty - a.qty
+              : b.value - a.value,
+          );
+    // Same argument as inventoryValue: capital we cannot price is not $0 of
+    // capital. recommendations.service.ts guards this rule with
+    // `(deadStockCapital ?? 0) > 0`, so a null correctly withholds the
+    // "discount these to cost" advice rather than attaching it to a guess.
+    const deadStockPriced = deadStock.every((d) => d.value != null);
+    const deadStockCapital =
+      hasMovementSignal && deadStockPriced
+        ? E.stats.sum(deadStock.map((d) => d.value as number))
+        : null;
 
     return {
       basis: {
         cogs: "delivered procurement_orders (trailing 365d)",
         revenue: "unit_price × on-hand qty (POS-revenue proxy)",
-        inventoryValue: "on-hand qty × WAC (lot rollup)",
-        deadStock: `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d; null when the restaurant records no movement at all`,
+        // This string used to read "on-hand qty × WAC (lot rollup)"
+        // unconditionally while ~70 of 72 rows were valued off a fabricated
+        // 0.6 × menu price. A basis now describes the rows it covered.
+        inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
+        deadStock: `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d; null when the restaurant records no movement at all, or when any idle row has no recorded cost`,
+        costDerived:
+          "inventoryValue, grossMarginDollars, grossMargin, cogsRatio, primeCostRatio, inventoryTurnover, daysInventoryOutstanding, gmroi and deadStockCapital are null unless every on-hand row carries a recorded cost (ADR 0051)",
       },
+      costCoverage,
       inventoryValue,
       cogs,
       revenue,
@@ -491,9 +557,12 @@ export class AnalyticsService {
       const doc = E.inventory.daysOfCover(i.qty, profile.mean);
       const annualDemand = profile.mean * 365;
       const orderingCost = 25; // fixed cost per PO (assumption; configurable)
-      const holdingPerUnit = i.unitCost * this.HOLDING_RATE;
+      // EOQ's holding term is a fraction of unit cost. With no cost there is
+      // no holding cost and therefore no order quantity to state.
+      const holdingPerUnit =
+        i.unitCost == null ? null : i.unitCost * this.HOLDING_RATE;
       const eoq =
-        annualDemand > 0 && holdingPerUnit > 0
+        annualDemand > 0 && holdingPerUnit != null && holdingPerUnit > 0
           ? E.inventory.eoq(annualDemand, orderingCost, holdingPerUnit)
           : null;
 
@@ -510,16 +579,29 @@ export class AnalyticsService {
         stockoutProbability: stockoutProb,
         eoq: eoq?.eoq ?? null,
         needsReorder: rop ? i.qty <= rop.reorderPoint : false,
+        unitCost: i.unitCost,
+        costBasis: i.costBasis,
         inventoryValue: i.inventoryValue,
+        abcClass: null as "A" | "B" | "C" | null,
       };
     });
 
-    // ABC by inventory value.
-    const abc = E.inventory.abcClassify(
-      inventory.map((i) => ({ item: i.id, value: i.inventoryValue })),
-    );
-    const abcByItem = new Map(abc.map((a) => [a.item, a.class]));
-    for (const s of skus) (s as any).abcClass = abcByItem.get(s.id) || "C";
+    // ABC by inventory value. Every class is a cut on cumulative SHARE OF THE
+    // TOTAL, so one unpriced row moves every other row's class: the total is
+    // unknown, and a Pareto over an unknown total is not a Pareto. Rather than
+    // classify the priced subset and present it as the cellar's ABC, the whole
+    // column goes null and the basis says why (ADR 0051).
+    const costCoverage = summarizeCostBasis(inventory.filter((i) => i.qty > 0));
+    if (costCoverage.complete) {
+      // Rows holding no bottles are worth 0 whatever they cost — a knowable
+      // zero, not a guess — so they take part in the ranking without needing
+      // a price.
+      const abc = E.inventory.abcClassify(
+        inventory.map((i) => ({ item: i.id, value: i.inventoryValue ?? 0 })),
+      );
+      const abcByItem = new Map(abc.map((a) => [a.item, a.class]));
+      for (const s of skus) s.abcClass = abcByItem.get(s.id) || "C";
+    }
 
     const reorderList = skus
       .filter((s) => s.needsReorder)
@@ -533,11 +615,27 @@ export class AnalyticsService {
         leadTimeDays: leadTime,
         demandWindowDays: sinceDays,
       },
+      // This endpoint carried no `basis` at all, which made its cost-derived
+      // columns unreadable: nothing said where `inventoryValue` came from.
+      basis: {
+        demand: `wine_consumption_log units/day over ${sinceDays}d`,
+        reorderScience: `King safety stock at serviceLevel ${serviceLevel}, lead time ${leadTime}d — demand-derived, unaffected by cost`,
+        inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
+        costDerived:
+          "skus[].inventoryValue, skus[].unitCost and skus[].eoq are null for any row with no recorded cost; skus[].abcClass is null for EVERY row unless the whole cellar is priced, because ABC cuts on share of a total (ADR 0051)",
+      },
+      costCoverage,
       skuCount: skus.length,
       reorderCount: reorderList.length,
       reorderList: reorderList.slice(0, 25),
       skus: skus
-        .sort((a, b) => b.inventoryValue - a.inventoryValue)
+        // Unpriced rows sort last instead of turning the comparator into NaN.
+        .sort((a, b) =>
+          a.inventoryValue == null || b.inventoryValue == null
+            ? (a.inventoryValue == null ? 1 : 0) -
+                (b.inventoryValue == null ? 1 : 0) || b.onHand - a.onHand
+            : b.inventoryValue - a.inventoryValue,
+        )
         .slice(0, 200),
       generatedAt: new Date().toISOString(),
     };
