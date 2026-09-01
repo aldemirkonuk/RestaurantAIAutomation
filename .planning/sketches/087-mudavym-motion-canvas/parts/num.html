@@ -1,0 +1,682 @@
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   Numbers & data — how FIGURES move in Mudavym.
+   Every selector is prefixed .mx-num. No hard-coded colours. No font stacks.
+   House rule encoded throughout: an unknown is an em dash. It never counts,
+   never rolls, never eases from a number, and is never drawn as 0.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── shared shell ───────────────────────────────────────────────────────── */
+.mx-num{font-family:var(--m-sans);color:var(--m-ink);display:flex;flex-direction:column;
+  justify-content:center;gap:9px;width:100%;min-height:120px}
+.mx-num *{box-sizing:border-box}
+.mx-num .nlbl{font:500 9.5px/1.2 var(--m-sans);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--m-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mx-num .nsub{font:400 10.5px/1.4 var(--m-sans);color:var(--m-mut)}
+.mx-num .nfig{font-family:var(--m-mono);font-variant-numeric:tabular-nums lining-nums;
+  font-size:30px;font-weight:500;line-height:1.05;letter-spacing:-.015em;color:var(--m-ink);
+  display:flex;align-items:baseline;gap:3px}
+.mx-num .nfig .cur{font-size:.62em;color:var(--m-mut);transform:translateY(-.12em)}
+.mx-num .nunit{font:400 10.5px/1 var(--m-sans);color:var(--m-mut);letter-spacing:.02em}
+.mx-num .nrow{display:flex;align-items:center;justify-content:space-between;gap:8px}
+
+/* ── 01 · tally: the KPI arrives ────────────────────────────────────────── */
+.mx-num-01 .foot{display:flex;gap:5px;align-items:center}
+.mx-num-01 .pip{width:4px;height:4px;border-radius:50%;background:var(--m-ok);
+  opacity:0;transition:opacity 160ms cubic-bezier(.16,1,.3,1)}
+.mx-num-01.rest .pip{opacity:1}
+
+/* ── 02 · odometer: only the digits that changed roll ───────────────────── */
+/* an overflow:hidden inline-block takes its baseline from its bottom margin edge,
+   so the unit label would sit ~0.28em low next to the figure. Align on the box
+   bottom instead and lift the label back onto the digits' baseline. */
+.mx-num-02 .nfig{align-items:flex-end}
+.mx-num-02 .nunit{position:relative;top:-6px}
+.mx-num-02 .od{display:inline-flex;align-items:flex-start;--slh:1.16em}
+.mx-num-02 .od .sl{display:inline-block;height:var(--slh);overflow:hidden;line-height:var(--slh)}
+.mx-num-02 .od .sl .col{display:block;transition:transform 460ms cubic-bezier(.16,1,.3,1)}
+.mx-num-02 .od .sl .col i{display:block;height:var(--slh);line-height:var(--slh);font-style:normal}
+.mx-num-02 .od .fx{display:inline-block;height:var(--slh);line-height:var(--slh);color:var(--m-mut)}
+
+/* ── 03 · the trend chip turns round ────────────────────────────────────── */
+.mx-num-03 .chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px 5px 8px;
+  border-radius:999px;border:1px solid;font-family:var(--m-mono);font-size:13px;font-weight:500;
+  font-variant-numeric:tabular-nums;
+  transition:background-color 160ms cubic-bezier(.16,1,.3,1),
+             border-color 160ms cubic-bezier(.16,1,.3,1),color 160ms cubic-bezier(.16,1,.3,1)}
+.mx-num-03 .chip[data-dir="up"]{color:var(--m-ok);
+  border-color:color-mix(in oklab,var(--m-ok) 42%,transparent);
+  background:color-mix(in oklab,var(--m-ok) 13%,transparent)}
+.mx-num-03 .chip[data-dir="down"]{color:var(--m-no);
+  border-color:color-mix(in oklab,var(--m-no) 42%,transparent);
+  background:color-mix(in oklab,var(--m-no) 13%,transparent)}
+.mx-num-03 .arw{display:inline-block;font-size:9px;line-height:1;
+  transition:transform 320ms cubic-bezier(.16,1,.3,1)}
+.mx-num-03 .chip[data-dir="down"] .arw{transform:rotate(180deg)}
+.mx-num-03 .vw{display:inline-block;height:1.2em;overflow:hidden;min-width:3.5em}
+.mx-num-03 .vc{display:block;transition:transform 320ms cubic-bezier(.16,1,.3,1)}
+.mx-num-03 .vc b{display:block;height:1.2em;line-height:1.2em;font-weight:500}
+.mx-num-03 .chip[data-dir="down"] .vc{transform:translateY(-50%)}
+.mx-num-03 .base{font-family:var(--m-mono);font-size:11px;color:var(--m-mut);
+  font-variant-numeric:tabular-nums}
+
+/* ── 04 · money corrects downward, and shows why ────────────────────────── */
+.mx-num-04 .was{position:relative;display:inline-block;font-family:var(--m-mono);font-size:13px;
+  font-variant-numeric:tabular-nums;color:var(--m-ink);
+  transition:color 300ms cubic-bezier(.16,1,.3,1),transform 300ms cubic-bezier(.16,1,.3,1),
+             opacity 300ms cubic-bezier(.16,1,.3,1)}
+.mx-num-04 .was .sk{position:absolute;left:-1px;right:-1px;top:52%;height:1px;background:currentColor;
+  transform:scaleX(0);transform-origin:left;transition:transform 220ms linear}
+.mx-num-04.cut .was .sk{transform:scaleX(1)}
+.mx-num-04.moved .was{color:var(--m-mut);opacity:.72;transform:translateY(-2px)}
+.mx-num-04 .now{opacity:0;transform:translateY(7px);
+  transition:opacity 300ms cubic-bezier(.16,1,.3,1),transform 300ms cubic-bezier(.16,1,.3,1)}
+.mx-num-04.moved .now{opacity:1;transform:none}
+.mx-num-04 .why{display:grid;grid-template-rows:0fr;
+  transition:grid-template-rows 320ms cubic-bezier(.16,1,.3,1)}
+.mx-num-04.told .why{grid-template-rows:1fr}
+.mx-num-04 .why>div{overflow:hidden;min-height:0}
+.mx-num-04 .whyin{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:5px 8px;border-radius:5px;font:400 10.5px/1.3 var(--m-sans);
+  border:1px solid color-mix(in oklab,var(--m-warn) 40%,transparent);
+  background:color-mix(in oklab,var(--m-warn) 12%,transparent);color:var(--m-ink)}
+.mx-num-04 .whyin b{font-family:var(--m-mono);font-weight:500;color:var(--m-warn);
+  font-variant-numeric:tabular-nums}
+
+/* ── 05 · sparkline draws in, and breaks where data is missing ──────────── */
+.mx-num-05 svg{width:100%;height:auto;display:block;overflow:visible}
+.mx-num-05 .ln{fill:none;stroke:var(--m-accent);stroke-width:1.6;stroke-linecap:round;
+  stroke-linejoin:round;transition:stroke-dashoffset 430ms cubic-bezier(.16,1,.3,1)}
+.mx-num-05 .par{stroke:var(--m-line2);stroke-width:1;stroke-dasharray:2 3}
+.mx-num-05 .gapm{stroke:var(--m-mut);stroke-width:1.4;stroke-dasharray:3 3;opacity:0;
+  transition:opacity 200ms cubic-bezier(.16,1,.3,1)}
+.mx-num-05.gapon .gapm{opacity:1}
+.mx-num-05 .tip{fill:var(--m-accent);transform:scale(0);transform-origin:240px 7.2px;
+  transition:transform 300ms cubic-bezier(.16,1,.3,1)}
+.mx-num-05.tipon .tip{transform:scale(1)}
+
+/* ── 06 · bars arrive off the baseline ──────────────────────────────────── */
+.mx-num-06 .plot{display:flex;align-items:flex-end;gap:5px;height:58px;
+  border-bottom:1px solid var(--m-line)}
+.mx-num-06 .bar{flex:1;background:var(--m-line2);border-radius:2px 2px 0 0;
+  transform:scaleY(0);transform-origin:50% 100%;opacity:0;
+  transition:transform 420ms cubic-bezier(.16,1,.3,1),opacity 300ms cubic-bezier(.16,1,.3,1)}
+.mx-num-06 .bar.hi{background:var(--m-accent)}
+.mx-num-06.on .bar{transform:scaleY(1);opacity:1}
+.mx-num-06 .days{display:flex;gap:5px;font:400 9px/1 var(--m-mono);color:var(--m-mut)}
+.mx-num-06 .days span{flex:1;text-align:center}
+
+/* ── 07 · the stock bar crosses par — the moment it becomes a decision ──── */
+.mx-num-07 .ct{font-family:var(--m-mono);font-size:17px;font-weight:500;
+  font-variant-numeric:tabular-nums;color:var(--m-ink)}
+.mx-num-07 .nm{font:500 11px/1.2 var(--m-sans);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.mx-num-07 .track{position:relative;height:8px;border-radius:4px;background:var(--m-sunk);
+  border:1px solid var(--m-line)}
+.mx-num-07 .fill{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--m-ok);
+  transition:width 320ms cubic-bezier(.16,1,.3,1),background-color 320ms cubic-bezier(.16,1,.3,1)}
+.mx-num-07 .fill[data-s="warn"]{background:var(--m-warn)}
+.mx-num-07 .fill[data-s="no"]{background:var(--m-no)}
+.mx-num-07 .par{position:absolute;top:-4px;bottom:-4px;width:1px;background:var(--m-mut);
+  transition:background-color 160ms cubic-bezier(.16,1,.3,1)}
+.mx-num-07.below .par{background:var(--m-no)}
+.mx-num-07 .par.pulse{animation:mxnum-parpulse 360ms cubic-bezier(.16,1,.3,1) 1}
+@keyframes mxnum-parpulse{0%{box-shadow:0 0 0 0 color-mix(in oklab,var(--m-no) 55%,transparent)}
+  100%{box-shadow:0 0 0 7px color-mix(in oklab,var(--m-no) 0%,transparent)}}
+.mx-num-07 .meta{display:flex;justify-content:space-between;font:400 10px/1 var(--m-sans);
+  color:var(--m-mut)}
+.mx-num-07 .state{transition:color 160ms cubic-bezier(.16,1,.3,1)}
+.mx-num-07.below .state{color:var(--m-no)}
+.mx-num-07 .act{display:grid;grid-template-rows:0fr;
+  transition:grid-template-rows 320ms cubic-bezier(.16,1,.3,1)}
+.mx-num-07.below .act{grid-template-rows:1fr}
+.mx-num-07 .act>div{overflow:hidden;min-height:0}
+.mx-num-07 .act button{margin-top:2px;width:100%;font:500 10.5px/1 var(--m-sans);
+  padding:7px 9px;border-radius:5px;border:1px solid var(--m-accent);cursor:pointer;
+  background:var(--m-accent);color:var(--m-accent-ink);
+  transition:transform 160ms cubic-bezier(.16,1,.3,1),opacity 160ms cubic-bezier(.16,1,.3,1)}
+.mx-num-07 .act button:active{transform:translateY(1px)}
+
+/* ── 08 · one spring drives the ring and the numeral ────────────────────── */
+.mx-num-08 .gwrap{display:flex;align-items:center;gap:12px}
+.mx-num-08 .ring{position:relative;width:58px;height:58px;flex:none}
+.mx-num-08 svg{width:58px;height:58px;transform:rotate(-90deg);display:block}
+.mx-num-08 .trk{fill:none;stroke:var(--m-sunk);stroke-width:5}
+.mx-num-08 .arc{fill:none;stroke:var(--m-accent);stroke-width:5;stroke-linecap:round}
+.mx-num-08 .mid{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:var(--m-mono);font-size:13px;font-weight:500;font-variant-numeric:tabular-nums}
+.mx-num-08 .side{display:flex;flex-direction:column;gap:3px;min-width:0}
+
+/* ── 09 · a real upload: unknown reads —, never 0% ──────────────────────── */
+.mx-num-09 .track{position:relative;height:7px;border-radius:4px;background:var(--m-sunk);
+  border:1px solid var(--m-line);overflow:hidden}
+.mx-num-09 .fill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:3px;
+  background:var(--m-accent);opacity:0;transition:width 200ms cubic-bezier(.16,1,.3,1),opacity 120ms}
+.mx-num-09.det .fill{opacity:1}
+.mx-num-09 .shim{position:absolute;inset:0;opacity:0;
+  background:linear-gradient(90deg,transparent 0%,
+    color-mix(in oklab,var(--m-accent) 55%,transparent) 42%,
+    color-mix(in oklab,var(--m-accent) 55%,transparent) 58%,transparent 100%);
+  background-size:240% 100%}
+.mx-num-09.ind .shim{opacity:1;animation:mxnum-shim 1900ms cubic-bezier(.45,0,.55,1) infinite}
+@keyframes mxnum-shim{0%{background-position:140% 0}100%{background-position:-140% 0}}
+.mx-num-09 .foot{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.mx-num-09 .st{font:400 10.5px/1.3 var(--m-sans);color:var(--m-mut);
+  transition:color 160ms cubic-bezier(.16,1,.3,1)}
+.mx-num-09.stalled .st{color:var(--m-warn)}
+.mx-num-09 .pc{font-family:var(--m-mono);font-size:13px;font-weight:500;
+  font-variant-numeric:tabular-nums;color:var(--m-ink);min-width:4.2ch;text-align:right}
+.mx-num-09 .pc.dash{color:var(--m-mut)}
+
+/* ── 10 · cost drift shows its working ──────────────────────────────────── */
+.mx-num-10 .head{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;
+  font:500 11.5px/1.25 var(--m-sans);color:var(--m-ink);background:none;border:0;padding:0;
+  cursor:pointer;text-align:left}
+.mx-num-10 .head b{font-family:var(--m-mono);font-weight:500;color:var(--m-warn);
+  font-variant-numeric:tabular-nums}
+.mx-num-10 .chev{color:var(--m-mut);font-size:12px;display:inline-block;
+  transition:transform 420ms cubic-bezier(.32,.72,0,1)}
+.mx-num-10.open .chev{transform:rotate(90deg)}
+.mx-num-10 .work{display:grid;grid-template-rows:0fr;
+  transition:grid-template-rows 420ms cubic-bezier(.32,.72,0,1)}
+.mx-num-10.open .work{grid-template-rows:1fr}
+.mx-num-10 .work>div{overflow:hidden;min-height:0}
+.mx-num-10 .ln{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+  font:400 10.5px/1.7 var(--m-sans);color:var(--m-mut);
+  opacity:0;transform:translateY(5px);
+  transition:opacity 300ms cubic-bezier(.16,1,.3,1),transform 300ms cubic-bezier(.16,1,.3,1)}
+.mx-num-10.open .ln{opacity:1;transform:none}
+.mx-num-10 .ln b{font-family:var(--m-mono);font-weight:500;color:var(--m-ink);
+  font-variant-numeric:tabular-nums;font-size:11px}
+.mx-num-10 .ln.tot{color:var(--m-ink);font-weight:500}
+.mx-num-10 .ln.tot b{color:var(--m-warn)}
+.mx-num-10 .drule{height:3px;border-top:1px solid var(--m-line2);border-bottom:1px solid var(--m-line2);
+  margin:3px 0 2px;opacity:0;transition:opacity 300ms cubic-bezier(.16,1,.3,1)}
+.mx-num-10.open .drule{opacity:1}
+
+/* ── 11 · it changes while you watch — but not under your hand ──────────── */
+.mx-num-11{outline:none}
+.mx-num-11 .live{display:inline-flex;align-items:center;gap:5px}
+.mx-num-11 .dot{width:5px;height:5px;border-radius:50%;background:var(--m-ok);
+  animation:mxnum-breathe 2600ms cubic-bezier(.45,0,.55,1) infinite}
+@keyframes mxnum-breathe{0%,100%{opacity:.35}50%{opacity:1}}
+.mx-num-11 .figwrap{position:relative;display:inline-block;padding-bottom:5px}
+.mx-num-11 .ul{position:absolute;left:0;right:0;bottom:0;height:1.5px;border-radius:1px;
+  background:var(--m-accent);transform:scaleX(0);transform-origin:left;opacity:0}
+.mx-num-11 .ul.sweep{animation:mxnum-sweep 620ms cubic-bezier(.16,1,.3,1) 1}
+@keyframes mxnum-sweep{0%{transform:scaleX(0);opacity:1}
+  55%{transform:scaleX(1);opacity:1}100%{transform:scaleX(1);opacity:0}}
+.mx-num-11 .hold{font:400 10.5px/1.3 var(--m-sans);color:var(--m-mut);
+  transition:color 160ms cubic-bezier(.16,1,.3,1)}
+.mx-num-11.held .hold{color:var(--m-accent)}
+
+/* ── 12 · the unknown. It does not animate as a number. ─────────────────── */
+.mx-num-12 .dash{font-family:var(--m-mono);font-size:30px;font-weight:400;line-height:1.05;
+  color:var(--m-mut);display:inline-block;min-width:5.4ch;
+  opacity:0;transform:translateY(2px);
+  transition:opacity 160ms cubic-bezier(.16,1,.3,1),transform 160ms cubic-bezier(.16,1,.3,1)}
+.mx-num-12.shown .dash{opacity:1;transform:none}
+.mx-num-12 .skel{height:30px;width:5.4ch;border-radius:3px;background:var(--m-sunk);
+  border:1px solid var(--m-line)}
+.mx-num-12 .slot{height:31px;display:flex;align-items:center}
+.mx-num-12 .never{display:flex;align-items:center;gap:6px;font:400 9.5px/1 var(--m-sans);
+  color:var(--m-mut);letter-spacing:.06em;text-transform:uppercase}
+.mx-num-12 .never .x{font-family:var(--m-mono);font-size:11px;text-decoration:line-through;
+  text-transform:none;letter-spacing:0;color:var(--m-no);opacity:.75}
+
+/* ── reduced motion: collapse to the end state ──────────────────────────── */
+@media (prefers-reduced-motion: reduce){
+  .mx-num *,.mx-num *::before,.mx-num *::after{
+    transition-duration:1ms !important;transition-delay:0ms !important;
+    animation-duration:1ms !important;animation-iteration-count:1 !important}
+  .mx-num-11 .dot{animation:none !important;opacity:1}
+}
+</style>
+<script>
+(function(){
+"use strict";
+var M = window.MUDAVYM_MOTIONS;
+var REDUCED = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+var FAM = 'Numbers & data';
+
+/* ── spring integrator: semi-implicit Euler, 8ms substeps.
+      Same physics the house tokens were measured against (083/motion.json).
+      tally = 120/26/mass 1 → 0% overshoot, 840ms to within 1%, at rest 1408ms. ── */
+function spring(o){
+  if(REDUCED){ o.onUpdate(o.to); if(o.onComplete) o.onComplete(); return {cancel:function(){}}; }
+  var x = o.from, v = o.v0 || 0, m = o.mass || 1, rd = (o.restDelta==null?0.05:o.restDelta),
+      last = null, raf = 0, dead = false;
+  function step(now){
+    if(dead) return;
+    if(last === null) last = now;
+    var dt = Math.min((now - last)/1000, 0.064); last = now;
+    var n = Math.max(1, Math.ceil(dt/0.008)), h = dt/n;
+    for(var i=0;i<n;i++){ var F = -o.stiffness*(x - o.to) - o.damping*v; v += F/m*h; x += v*h; }
+    if(Math.abs(v) < rd*20 && Math.abs(x - o.to) < rd){
+      o.onUpdate(o.to); if(o.onComplete) o.onComplete(); return;
+    }
+    o.onUpdate(x); raf = requestAnimationFrame(step);
+  }
+  raf = requestAnimationFrame(step);
+  return {cancel:function(){ dead = true; cancelAnimationFrame(raf); }};
+}
+
+/* ── per-root timeline control. play() is called many times; nothing may leak. ── */
+function ctl(root){
+  if(root.__mxnum) root.__mxnum.kill();
+  var timers = [], ivals = [], springs = [], listeners = [];
+  var c = {
+    after: function(ms, fn){
+      timers.push(setTimeout(fn, REDUCED ? 0 : ms));
+    },
+    every: function(ms, fn){ ivals.push(setInterval(fn, ms)); },
+    spring: function(o){ var s = spring(o); springs.push(s); return s; },
+    on: function(el, ev, fn){ el.addEventListener(ev, fn); listeners.push([el, ev, fn]); },
+    kill: function(){
+      timers.forEach(clearTimeout); ivals.forEach(clearInterval);
+      springs.forEach(function(s){ s.cancel(); });
+      listeners.forEach(function(l){ l[0].removeEventListener(l[1], l[2]); });
+      timers = []; ivals = []; springs = []; listeners = [];
+    }
+  };
+  root.__mxnum = c;
+  return c;
+}
+
+function grp(s){ return s.replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+function intg(n){ return grp(String(Math.round(n))); }
+function money(n){
+  var neg = n < 0, p = Math.abs(n).toFixed(2).split('.');
+  return (neg?'−':'') + grp(p[0]) + '.' + p[1];
+}
+function reflow(el){ void el.offsetWidth; }
+
+/* ═══════════ 01 · Tally — the KPI arrives ═══════════════════════════════ */
+M.push({
+  id:'num-01', name:'Tally (KPI count-up)', family:FAM,
+  spec:'spring 120/26 · restDelta 1.5 · 0% overshoot · 840ms to 1%, at rest 1408ms',
+  purpose:'First paint of a dashboard KPI. Overdamped on purpose — money arrives and stops; it never bounces past the figure and corrects itself, because an owner reading a total at 1am should never see a number they must un-read. The value is known before it moves: this is arrival, not discovery (an unknown never counts — see num-12).',
+  html:'<div class="mx-num mx-num-01">'
+      +'<div class="nlbl">Revenue · tonight</div>'
+      +'<div class="nfig"><span class="cur">$</span><span data-t>0</span></div>'
+      +'<div class="nsub foot"><span class="pip"></span><span>17 checks closed · 4 open</span></div>'
+      +'</div>',
+  play:function(root){
+    var c = ctl(root), n = root.querySelector('.mx-num-01'), t = n.querySelector('[data-t]');
+    n.classList.remove('rest'); t.textContent = '0'; reflow(n);
+    c.after(90, function(){
+      c.spring({from:0, to:4280, stiffness:120, damping:26, mass:1, restDelta:1.5,
+        onUpdate:function(v){ t.textContent = intg(v); },
+        onComplete:function(){ t.textContent = intg(4280); n.classList.add('rest'); }});
+    });
+  }
+});
+
+/* ═══════════ 02 · Odometer — only what changed rolls ════════════════════ */
+M.push({
+  id:'num-02', name:'Odometer roll (per digit)', family:FAM,
+  spec:'per-slot transform 460ms cubic-bezier(.16,1,.3,1) · 44ms place stagger, left to right',
+  purpose:'The cellar count while a porter is scanning. Each place is its own column of figures; a digit that did not change does not move, so the eye only tracks what actually happened. Places resolve left to right — the direction the figure is read — rather than the mechanical units-first spin of a real odometer.',
+  html:'<div class="mx-num mx-num-02">'
+      +'<div class="nlbl">Cellar count · scanning</div>'
+      +'<div class="nfig"><span class="od"></span><span class="nunit">bottles</span></div>'
+      +'<div class="nsub">Unchanged places hold still.</div>'
+      +'</div>',
+  play:function(root){
+    var c = ctl(root), n = root.querySelector('.mx-num-02'), od = n.querySelector('.od');
+    var cur = '';
+    function render(str){
+      od.innerHTML = '';
+      for(var i=0;i<str.length;i++){
+        var ch = str.charAt(i);
+        if(ch < '0' || ch > '9'){
+          var f = document.createElement('span'); f.className = 'fx'; f.textContent = ch;
+          od.appendChild(f); continue;
+        }
+        var sl = document.createElement('span'); sl.className = 'sl';
+        var col = document.createElement('span'); col.className = 'col';
+        for(var d=0; d<10; d++){ var it = document.createElement('i'); it.textContent = String(d); col.appendChild(it); }
+        col.style.transform = 'translateY(' + (-10*parseInt(ch,10)) + '%)';
+        sl.appendChild(col); od.appendChild(sl);
+      }
+      cur = str;
+    }
+    function roll(str){
+      if(str.length !== cur.length){ render(str); return; }
+      var cols = od.querySelectorAll('.sl .col'), ci = 0, k = 0;
+      for(var i=0;i<str.length;i++){
+        var ch = str.charAt(i); if(ch < '0' || ch > '9') continue;
+        var col = cols[ci++]; var was = cur.charAt(i);
+        if(was === ch){ col.style.transitionDelay = '0ms'; continue; }
+        col.style.transitionDelay = (REDUCED ? 0 : k*44) + 'ms'; k++;
+        col.style.transform = 'translateY(' + (-10*parseInt(ch,10)) + '%)';
+      }
+      cur = str;
+    }
+    render('1,286'); reflow(n);
+    c.after(700,  function(){ roll('1,290'); });
+    c.after(1750, function(){ roll('1,294'); });
+    c.after(2800, function(){ roll('1,304'); });
+  }
+});
+
+/* ═══════════ 03 · The trend chip turns round ════════════════════════════ */
+M.push({
+  id:'num-03', name:'Delta chip reverses', family:FAM,
+  spec:'arrow rotate 320ms cubic-bezier(.16,1,.3,1) · value column slides on the same token · tint on ink 160ms',
+  purpose:'A week-over-week comparison flipping sign after the late covers land. The arrow physically turns through 180° rather than being swapped for a different glyph, so the reversal is a movement you catch peripherally; the figure rides a column so old and new are never on screen as two competing numbers. Colour follows the geometry, it does not lead it.',
+  html:'<div class="mx-num mx-num-03">'
+      +'<div class="nlbl">Covers · vs last Tuesday</div>'
+      +'<div class="nrow"><span class="chip" data-dir="up">'
+      +'<span class="arw">▲</span>'
+      +'<span class="vw"><span class="vc"><b>4.2%</b><b>1.8%</b></span></span>'
+      +'</span><span class="base">86 → 84</span></div>'
+      +'<div class="nsub">Direction is a shape, not a colour.</div>'
+      +'</div>',
+  play:function(root){
+    var c = ctl(root), n = root.querySelector('.mx-num-03'), chip = n.querySelector('.chip'),
+        base = n.querySelector('.base');
+    chip.setAttribute('data-dir','up'); base.textContent = '82 → 86'; reflow(n);
+    c.after(820, function(){ chip.setAttribute('data-dir','down'); base.textContent = '86 → 84'; });
+  }
+});
+
+/* ═══════════ 04 · Money corrects downward, and says why ════════════════ */
+M.push({
+  id:'num-04', name:'Correction after a discrepancy', family:FAM,
+  spec:'strike scaleX 220ms linear → swap 300ms cubic-bezier(.16,1,.3,1) → tally 120/26 downward → reason settle 320ms',
+  purpose:'Receiving finds two cases short against PO-1042. Money is never allowed to change silently: the old figure is struck (a linear rule, drawn like a pen), demoted to muted, and only then does the corrected total descend and tally down into its place — followed by the reason, which is the point of the whole sequence. The old number stays visible; a correction you cannot audit is a rewrite.',
+  html:'<div class="mx-num mx-num-04">'
+      +'<div class="nlbl">PO-1042 · Vinos del Norte</div>'
+      +'<div><span class="was">$1,860.00 invoiced<span class="sk"></span></span></div>'
+      +'<div class="nfig now"><span class="cur">$</span><span data-t>1,860.00</span></div>'
+      +'<div class="why"><div><div class="whyin"><span>2 cases short at the door</span><b>−$147.60</b></div></div></div>'
+      +'</div>',
+  play:function(root){
+    var c = ctl(root), n = root.querySelector('.mx-num-04'), t = n.querySelector('[data-t]');
+    n.classList.remove('cut','moved','told'); t.textContent = money(1860); reflow(n);
+    c.after(560,  function(){ n.classList.add('cut'); });
+    c.after(880,  function(){
+      n.classList.add('moved');
+      c.spring({from:1860, to:1712.40, stiffness:120, damping:26, mass:1, restDelta:0.6,
+        onUpdate:function(v){ t.textContent = money(v); },
+        onComplete:function(){ t.textContent = money(1712.40); }});
+    });
+    c.after(1320, function(){ n.classList.add('told'); });
+  }
+});
+
+/* ═══════════ 05 · Sparkline draws in — and breaks at the gap ═══════════ */
+M.push({
+  id:'num-05', name:'Sparkline draw (with a real gap)', family:FAM,
+  spec:'stroke-dashoffset draw 430ms per segment on cubic-bezier(.16,1,.3,1) · gap marker ink 200ms · tip 300ms',
+  purpose:'Fourteen nights of pours on one wine, drawn left to right in the order the nights happened. Day nine had a POS outage, so the line stops and starts again: the gap gets a dash marker, never an interpolated segment and never a point at zero. Two segments and a marker cost more code than one path — that cost is the honesty rule made structural.',
+  html:'<div class="mx-num mx-num-05">'
+      +'<div class="nlbl">Barolo 2019 · pours, 14 nights</div>'
+      +'<svg viewBox="0 0 244 52" preserveAspectRatio="none" aria-hidden="true">'
+      +'<line class="par" x1="0" y1="29.9" x2="244" y2="29.9"></line>'
+      +'<path class="ln s1" d="M4,42.8 L22.2,33.1 L40.3,39.5 L58.5,26.6 L76.6,36.3 L94.8,23.4 L112.9,29.9 L131.1,33.1"></path>'
+      +'<path class="ln s2" d="M167.4,20.2 L185.5,26.6 L203.7,13.7 L221.9,23.4 L240,7.2"></path>'
+      +'<line class="gapm" x1="142" y1="26.6" x2="157" y2="26.6"></line>'
+      +'<circle class="tip" cx="240" cy="7.2" r="3"></circle>'
+      +'</svg>'
+      +'<div class="nsub">Tue 12 — no POS data. The line breaks; it does not guess.</div>'
+      +'</div>',
+  play:function(root){
+    var c = ctl(root), n = root.querySelector('.mx-num-05'),
+        s1 = n.querySelector('.s1'), s2 = n.querySelector('.s2');
+    n.classList.remove('gapon','tipon');
+    [s1,s2].forEach(function(p){
+      var L = p.getTotalLength();
+      p.style.transition = 'none';
+      p.style.strokeDasharray = L + ' ' + L;
+      p.style.strokeDashoffset = L;
+    });
+    reflow(n);
+    s1.style.transition = ''; s2.style.transition = '';
+    c.after(90,   function(){ s1.style.strokeDashoffset = '0'; });
+    c.after(540,  function(){ n.classList.add('gapon'); });
+    c.after(720,  function(){ s2.style.strokeDashoffset = '0'; });
+    c.after(1120, function(){ n.classList.add('tipon'); });
+  }
+});
+
+/* ═══════════ 06 · Bars arrive off the baseline ═════════════════════════ */
+M.push({
+  id:'num-06', name:'Bars arrive (staggered)', family:FAM,
+  spec:'stagger 28ms · item scaleY 420ms cubic-bezier(.16,1,.3,1) · transform-origin 50% 100%',
+  purpose:'A week of covers landing on the reports page. Bars grow off the baseline, never in from the side and never from the middle, because the baseline is the zero the reader is measuring against. Twenty-eight milliseconds apart is enough to read as a sweep and not as seven separate events. First paint only — re-sorting or filtering must not re-stagger, or the chart becomes noise on every keystroke.',
+  html:'<div class="mx-num mx-num-06">'
+      +'<div class="nlbl">Covers · last week</div>'
+      +'<div class="plot">'
+      +'<span class="bar" style="height:44%"></span><span class="bar" style="height:51%"></span>'
+      +'<span class="bar" style="height:41%"></span><span class="bar" style="height:61%"></span>'
+      +'<span class="bar" style="height:67%"></span><span class="bar hi" style="height:94%"></span>'
+      +'<span class="bar" style="height:84%"></span></div>'
+      +'<div class="days"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>'
+      +'</div>',
+  play:function(root){
+    var c = ctl(root), n = root.querySelector('.mx-num-06'),
+        bars = n.querySelectorAll('.bar');
+    n.classList.remove('on');
+    Array.prototype.forEach.call(bars, function(b,i){
+      b.style.transitionDelay = (REDUCED ? 0 : i*28) + 'ms';
+    });
+    reflow(n);
+    c.after(80, function(){ n.classList.add('on'); });
+  }
+});
+
+/* ═══════════ 07 · The stock bar crosses par ════════════════════════════ */
+M.push({
+  id:'num-07', name:'Crossing par', family:FAM,
+  spec:'width + fill colour 320ms cubic-bezier(.16,1,.3,1) · par tick pulse 360ms once · action settle 320ms (grid-rows 0fr→1fr)',
+  purpose:'The single most important frame in inventory: a level stops being information and becomes a decision. Above par the bar is deliberately inert — pours retreat it and nothing else happens. On the frame the geometry crosses the par tick, the fill takes the negative colour, the tick pulses exactly once (never a loop — a looping alarm is ignored within a shift), and the reorder action settles open beneath. Silence, then one clear event.',
+  html:'<div class="mx-num mx-num-07">'
+      +'<div class="nrow"><span class="nm">Barolo 2019 · Produttori</span><span class="ct" data-t>14</span></div>'
+      +'<div class="track"><span class="fill" data-s="ok" style="width:70%"></span><span class="par" style="left:40%"></span></div>'
+      +'<div class="meta"><span>par 8 · shelf of 20</span><span class="state">holding</span></div>'
+      +'<div class="act"><div><button type="button">Add 6 to Tuesday’s order</button></div></div>'
+      +'</div>',
+  play:function(root){
+    var c = ctl(root), n = root.querySelector('.mx-num-07'),
+        fill = n.querySelector('.fill'), par = n.querySelector('.par'),
+        ct = n.querySelector('.ct'), st = n.querySelector('.state');
+    n.classList.remove('below'); par.classList.remove('pulse');
+    fill.style.width = '70%'; fill.setAttribute('data-s','ok');
+    ct.textContent = '14'; st.textContent = 'holding'; reflow(n);
+    function to(v, state, label){
+      fill.style.width = (v/20*100) + '%';
+      fill.setAttribute('data-s', state);
+      ct.textContent = String(v); st.textContent = label;
+    }
+    c.after(600,  function(){ to(11,'ok','holding'); });
+    c.after(1250, function(){ to(9,'warn','near par'); });
+    c.after(1950, function(){
+      to(7,'no','below par');
+      n.classList.add('below');
+      par.classList.remove('pulse'); reflow(par); par.classList.add('pulse');
+    });
+    c.on(n.querySelector('button'), 'click', function(){
+      st.textContent = 'queued for Tuesday';
+    });
+  }
+});
+
+/* ═══════════ 08 · One spring, ring and numeral ═════════════════════════ */
+M.push({
+  id:'num-08', name:'Ring fills on a shared clock', family:FAM,
+  spec:'one spring 120/26 drives stroke-dashoffset AND the numeral — same integrator, same frame',
+  purpose:'Receiving progress at the door. The arc and the count are not two animations that happen to take the same time — they are one spring, read twice per frame, so the ring can never be at 70% while the numeral still says 11 of 18. Two clocks on one fact is how a reader learns to distrust a readout.',
+  html:'<div class="mx-num mx-num-08">'
+      +'<div class="nlbl">Receiving · PO-1042</div>'
+      +'<div class="gwrap"><div class="ring">'
+      +'<svg viewBox="0 0 58 58" aria-hidden="true">'
+      +'<circle class="trk" cx="29" cy="29" r="22"></circle>'
+      +'<circle class="arc" cx="29" cy="29" r="22"></circle></svg>'
+      +'<span class="mid" data-t>0/18</span></div>'
+      +'<div class="side"><div class="nsub">Lines checked against the note</div>'
+      +'<div class="nsub">6 still to count</div></div></div>'
+      +'</div>',
+  play:function(root){
+    var c = ctl(root), n = root.querySelector('.mx-num-08'),
+        arc = n.querySelector('.arc'), mid = n.querySelector('.mid');
+    var C = 2*Math.PI*22;
+    arc.style.transition = 'none';
+    arc.style.strokeDasharray = C + ' ' + C;
+    arc.style.strokeDashoffset = C;
+    mid.textContent = '0/18'; reflow(n);
+    c.after(120, function(){
+      c.spring({from:0, to:12, stiffness:120, damping:26, mass:1, restDelta:0.02,
+        onUpdate:function(v){
+          arc.style.strokeDashoffset = (C*(1 - v/18)).toFixed(2);
+          mid.textContent = Math.round(v) + '/18';
+        },
+        onComplete:function(){
+          arc.style.strokeDashoffset = (C*(1 - 12/18)).toFixed(2);
+          mid.textContent = '12/18';
+        }});
+    });
+  }
+});
+
+/* ═══════════ 09 · A real upload ════════════════════════════════════════ */
+M.push({
+  id:'num-09', name:'Honest upload progress', family:FAM,
+  spec:'shimmer 1900ms loop (indeterminate) → determinate on real chunk timings, width 200ms ink · no interpolation, no creep',
+  purpose:'A porter photographing a delivery note on a bad connection, phone at 12%. Before the size is known the percentage is an em dash and the bar shimmers — it does not show 0%, because 0% is a claim. Once content-length arrives the bar snaps to the first real measurement and then moves only when bytes actually land: the stall at 44% is held, and labelled, rather than being smoothed over by a bar that keeps creeping to look busy.',
+  html:'<div class="mx-num mx-num-09">'
+      +'<div class="nlbl">Delivery note · IMG_4471.jpg</div>'
+      +'<div class="track"><span class="fill"></span><span class="shim"></span></div>'
+      +'<div class="foot"><span class="st">Preparing — size not known yet</span>'
+      +'<span class="pc dash">—</span></div>'
+      +'<div class="nsub">A stall is shown as a stall.</div>'
+      +'</div>',
+  play:function(root){
+    var c = ctl(root), n = root.querySelector('.mx-num-09'),
+        fill = n.querySelector('.fill'), st = n.querySelector('.st'), pc = n.querySelector('.pc');
+    n.classList.remove('det','stalled'); n.classList.add('ind');
+    fill.style.width = '0%';
+    pc.classList.add('dash'); pc.textContent = '—';
+    st.textContent = 'Preparing — size not known yet';
+    reflow(n);
+    function at(v, label){
+      fill.style.width = v + '%';
+      pc.classList.remove('dash'); pc.textContent = v + '%';
+      if(label) st.textContent = label;
+    }
+    /* real-ish chunk arrivals, uneven on purpose */
+    c.after(1100, function(){
+      n.classList.remove('ind'); n.classList.add('det');
+      at(12, '2.4 MB · uploading');
+    });
+    c.after(1420, function(){ at(23); });
+    c.after(1690, function(){ at(31); });
+    c.after(2050, function(){ at(44); });
+    c.after(2400, function(){ n.classList.add('stalled'); st.textContent = 'Still uploading · weak signal'; });
+    c.after(3600, function(){ n.classList.remove('stalled'); at(58, '2.4 MB · uploading'); });
+    c.after(3900, function(){ at(79); });
+    c.after(4260, function(){ at(96); });
+    c.after(4560, function(){ at(100, 'Attached to PO-1042'); });
+  }
+});
+
+/* ═══════════ 10 · Cost drift shows its working ═════════════════════════ */
+M.push({
+  id:'num-10', name:'Show the working', family:FAM,
+  spec:'turn — grid-template-rows 0fr→1fr, 420ms cubic-bezier(.32,.72,0,1) · lines stagger 28ms · chevron on the same token',
+  purpose:'Any figure the product asserts must be able to show the arithmetic that produced it. The pane opens on the slower turn curve rather than the row curve, because this is opening a record, not flicking a row. The lines are right-aligned in tabular figures so decimal points stack into a column, closed by the accountant’s double rule. Click the header to work it yourself.',
+  html:'<div class="mx-num mx-num-10">'
+      +'<button class="head" type="button">Short rib · <b>+11.4%</b> since June<span class="chev">›</span></button>'
+      +'<div class="work"><div>'
+      +'<div class="ln"><span>June price</span><b>$8.40 /lb</b></div>'
+      +'<div class="ln"><span>Today</span><b>$9.36 /lb</b></div>'
+      +'<div class="ln"><span>× 42 lb per week</span><b>+$40.32</b></div>'
+      +'<div class="drule"></div>'
+      +'<div class="ln tot"><span>Per month</span><b>+$174.72</b></div>'
+      +'</div></div>'
+      +'</div>',
+  play:function(root){
+    var c = ctl(root), n = root.querySelector('.mx-num-10'),
+        head = n.querySelector('.head'), lns = n.querySelectorAll('.ln');
+    n.classList.remove('open');
+    Array.prototype.forEach.call(lns, function(l,i){
+      l.style.transitionDelay = (REDUCED ? 0 : 120 + i*28) + 'ms';
+    });
+    reflow(n);
+    c.after(620, function(){ n.classList.add('open'); });
+    c.on(head, 'click', function(){ n.classList.toggle('open'); });
+  }
+});
+
+/* ═══════════ 11 · Live, but never under your hand ══════════════════════ */
+M.push({
+  id:'num-11', name:'Live figure that yields', family:FAM,
+  spec:'tally 120/26 on each arrival · underline sweep 620ms cubic-bezier(.16,1,.3,1) · held while hovered or focused',
+  purpose:'Covers ticking up during service on a screen nobody is staring at. No flash, no colour pop — a hairline sweeps under the figure and fades, which the eye catches peripherally and can equally ignore. Width is reserved in tabular figures so nothing reflows. And it yields: hover or focus the card and updates are held and counted, then applied in one tally when you leave, because a number must never change under a finger that is already moving toward it.',
+  html:'<div class="mx-num mx-num-11" tabindex="0">'
+      +'<div class="nlbl live">Covers · live<span class="dot"></span></div>'
+      +'<div class="nfig"><span class="figwrap"><span data-t>84</span><span class="ul"></span></span></div>'
+      +'<div class="nsub hold">Hover to hold — it won’t move under your hand.</div>'
+      +'</div>',
+  play:function(root){
+    var c = ctl(root), n = root.querySelector('.mx-num-11'),
+        t = n.querySelector('[data-t]'), ul = n.querySelector('.ul'),
+        hold = n.querySelector('.hold');
+    var val = 84, pending = 0, frozen = false;
+    var REST = 'Hover to hold — it won’t move under your hand.';
+    n.classList.remove('held'); t.textContent = '84'; hold.textContent = REST; reflow(n);
+
+    function apply(delta){
+      var from = val, to = val + delta; val = to;
+      c.spring({from:from, to:to, stiffness:120, damping:26, mass:1, restDelta:0.02,
+        onUpdate:function(v){ t.textContent = String(Math.round(v)); },
+        onComplete:function(){ t.textContent = String(to); }});
+      ul.classList.remove('sweep'); reflow(ul); ul.classList.add('sweep');
+    }
+    function freeze(){
+      frozen = true; n.classList.add('held');
+      hold.textContent = pending ? ('Held · ' + pending + ' waiting') : 'Held while you read.';
+    }
+    function thaw(){
+      frozen = false; n.classList.remove('held');
+      if(pending){ apply(pending); pending = 0; }
+      hold.textContent = REST;
+    }
+    c.on(n,'mouseenter',freeze); c.on(n,'mouseleave',thaw);
+    c.on(n,'focusin',freeze);    c.on(n,'focusout',thaw);
+
+    c.every(1900, function(){
+      var d = 1 + (Math.random() < 0.28 ? 1 : 0);
+      if(frozen){ pending += d; hold.textContent = 'Held · ' + pending + ' waiting'; }
+      else { apply(d); }
+    });
+    if(REDUCED){ t.textContent = '86'; }
+  }
+});
+
+/* ═══════════ 12 · The unknown does not animate as a number ═════════════ */
+M.push({
+  id:'num-12', name:'The em dash (unknown)', family:FAM,
+  spec:'ink 160ms — opacity + 2px rise ONLY. No interpolation, no roll, no easing from a figure. Ever.',
+  purpose:'The house rule with teeth. When there is nothing to compare against, the cell resolves to an em dash — and the dash must arrive as ink, not as motion: any count-up, roll or ease implies a magnitude was found and reduced, which is a lie told in 300ms. The dash also reserves the exact tabular width of the figure it stands in for, so the column never jumps when data does arrive. The struck 0.0% is what this replaces.',
+  html:'<div class="mx-num mx-num-12">'
+      +'<div class="nlbl">Covers · vs same night last year</div>'
+      +'<div class="slot"><span class="skel"></span><span class="dash" hidden>—</span></div>'
+      +'<div class="nsub">Not enough history to compare.</div>'
+      +'<div class="never"><span class="x">0.0%</span><span>never this</span></div>'
+      +'</div>',
+  play:function(root){
+    var c = ctl(root), n = root.querySelector('.mx-num-12'),
+        skel = n.querySelector('.skel'), dash = n.querySelector('.dash');
+    n.classList.remove('shown');
+    skel.hidden = false; dash.hidden = true; reflow(n);
+    c.after(700, function(){
+      skel.hidden = true; dash.hidden = false; reflow(dash);
+      n.classList.add('shown');
+    });
+  }
+});
+
+})();
+</script>
