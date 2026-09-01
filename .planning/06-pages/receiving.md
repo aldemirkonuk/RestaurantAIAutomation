@@ -40,6 +40,23 @@ One event, three renderings by role:
 - **Owner**: one number — money that actually came back (recovered credits)
 - 🚧 Nothing links here yet; the page is reachable by typed URL only (§9)
 
+Write-path behaviour behind the page, fixed 2026-09-01 ([ADR 0057](../decisions/0057-receiving-write-path-integrity.md)):
+- **A manager's verification note is saved.** It goes to `delivery_notes`, and is
+  **appended** to whatever the door already wrote rather than replacing it. It
+  previously went to a `notes` column that does not exist, so verifying a
+  delivery *with a note* — i.e. every discrepancy — failed after the ledger
+  correction and the credit claim had been written, leaving the order
+  half-verified with no way to finish it.
+- **An adjustment can only move this restaurant's stock.** Every `inventoryId` in
+  `adjustments[]` is proven to belong to the caller before the ledger RPC, which
+  otherwise takes the tenant from the target row. A foreign id is refused with a
+  403 that names the item; a failed ownership *lookup* is a 422, never a pass.
+- **Marking a delivery at the door cannot book it twice.** `quantity_received`
+  now records what was actually booked instead of NULL, so `recordDoorReceipt`'s
+  `alreadyBooked` sees it. `?quantityReceived=` is validated: a non-numeric,
+  fractional or negative value is a 400 that says which, not a 200 that marks
+  the order delivered with no stock booked.
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receiving`)
 
 Canonical source with curves: `apps/web/src/pages/receiving/next/MOTIONS-receiving.md` —
