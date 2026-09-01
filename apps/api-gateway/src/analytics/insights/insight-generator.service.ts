@@ -53,8 +53,12 @@ export class InsightGeneratorService {
 
   /**
    * Full enumerated catalog for the Browse-All explorer (NEW-707…NEW-728):
-   * every dimension, measure, comparator, and the 375 candidate type keys with
-   * their category + data requirements. Pure — no restaurant data touched.
+   * every dimension, measure, comparator, and every candidate type key with its
+   * category + data requirements. Pure — no restaurant data touched.
+   *
+   * The count is deliberately NOT written here. It is `INSIGHT_CANDIDATES.length`
+   * (573 as of 2026-09-01), and this comment said "375" for months while the line
+   * below already returned 573 — a number in prose is a claim nothing re-checks.
    */
   getCatalogTypes() {
     return {
@@ -125,6 +129,16 @@ export class InsightGeneratorService {
       restaurantId,
       insights: ranked,
       availability: Array.from(bundle.availability),
+      // UPPER BOUND, not a count of what this restaurant can receive.
+      // `availableCandidates` (insight-catalog.ts:557) filters on DATA
+      // REQUIREMENTS only — `c.requires.every(r => available.has(r))` — and
+      // never on whether a type has an implementation behind it. So with all
+      // seven data sources connected this equals the whole catalogue, which is
+      // how a "573 of 573" meter came to overstate a system where roughly two
+      // dozen types have a `record()` site and fewer than that could actually
+      // fire. What DID fire is `insights` below; the gap between them is the
+      // honest number, and it is deliberately left visible rather than papered
+      // over here (ADR 0020: a surface never asserts what it cannot support).
       candidateTypesAvailable: candidates.length,
       candidateTypesTotal: INSIGHT_CANDIDATES.length,
       computedIn: Date.now() - startedAt,
