@@ -1,0 +1,176 @@
+/* ============================================================
+   DashboardNext page styles. Every class is prefixed `dn-` and
+   used only inside pages/dashboard/next/** — nothing shared.
+   Colours come exclusively from the .mudavym tokens (ADR 0042),
+   so both grounds (paper / warm charcoal) resolve for free.
+   ============================================================ */
+
+/* ── settle expansion: the founder's named favourite (0fr → 1fr) ───────── */
+.dn-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.dn-expand[data-open='true'] {
+  grid-template-rows: 1fr;
+}
+.dn-expand > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── micro-states: nothing moves more than 2px, 160ms house curve ──────── */
+.dn-ink {
+  transition:
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── skeletons: quiet paper-2 bars with a slow sheen ───────────────────── */
+.dn-skel {
+  position: relative;
+  overflow: hidden;
+  background: var(--paper-2);
+  border-radius: 3px;
+}
+.dn-skel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--paper-1), transparent);
+  animation: dn-sheen 1.9s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes dn-sheen {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* ── the sales calendar ────────────────────────────────────────────────── */
+.dn-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.dn-cell {
+  position: relative;
+  min-height: 76px;
+  padding: 6px 7px;
+  text-align: left;
+  border: 1px solid var(--paper-2);
+  border-radius: 6px;
+  background: var(--paper-1);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.dn-cell:hover {
+  border-color: var(--seal-ring);
+}
+.dn-cell:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 1px;
+}
+.dn-cell[data-selected='true'] {
+  border-color: var(--seal);
+  box-shadow: inset 0 0 0 1px var(--seal);
+}
+.dn-cell[data-today='true'] .dn-cell-num {
+  color: var(--seal);
+  font-weight: 600;
+}
+.dn-cell[data-future='true'] {
+  background: transparent;
+  cursor: default;
+}
+.dn-cell[data-blank='true'] {
+  visibility: hidden;
+  pointer-events: none;
+}
+.dn-cell-num {
+  font-size: 11px;
+  line-height: 1;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.dn-cell-fig {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink-1);
+  font-variant-numeric: tabular-nums;
+}
+.dn-cell-marks {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  min-height: 6px;
+}
+.dn-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--seal);
+}
+
+@media (max-width: 720px) {
+  .dn-cell {
+    min-height: 56px;
+    padding: 4px 5px;
+  }
+  .dn-cell-fig {
+    font-size: 10px;
+  }
+}
+
+/* ── the day tape (scrub) — deliberately un-eased: it is a tape head ───── */
+.dn-tape {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 36px;
+  padding: 4px 2px;
+  cursor: ew-resize;
+  touch-action: none;
+  border-radius: 6px;
+}
+.dn-tape:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 1px;
+}
+.dn-tape-bar {
+  flex: 1 1 0;
+  min-width: 2px;
+  border-radius: 1px;
+  background: var(--seal-tint);
+}
+.dn-tape-bar[data-on='true'] {
+  background: var(--seal);
+}
+
+/* ── rows in queues and feeds ──────────────────────────────────────────── */
+.dn-row {
+  border: 1px solid var(--paper-2);
+  border-radius: 6px;
+  background: var(--paper-1);
+}
+.dn-row:hover {
+  border-color: var(--seal-ring);
+}
+
+/* ── reduced motion: changes still happen, they just don't travel ──────── */
+@media (prefers-reduced-motion: reduce) {
+  .dn-expand,
+  .dn-ink,
+  .dn-cell {
+    transition: none;
+  }
+  .dn-skel::after {
+    animation: none;
+  }
+}

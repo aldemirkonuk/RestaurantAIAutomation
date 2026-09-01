@@ -50,7 +50,7 @@ graph TD
   one line of code.
 - **Deletion of untracked content.** Git is the undo for tracked files. For gitignored
   files there is no undo, so the strongest available action is archive-with-manifest.
-- **OD-01's target shape.** The founder picks it (`OPEN-DECISIONS.md:72`); this team
+- **OD-01's target shape.** The founder picks it (`OPEN-DECISIONS.md:73`); this team
   executes it.
 
 ## The three hard rules

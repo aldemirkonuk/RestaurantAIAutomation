@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
+import { useAuth } from '../../contexts/AuthContext'
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
@@ -179,10 +180,17 @@ export function useConversations(filters: ConversationFilters = {}) {
 /**
  * List conversations paginated BY THREAD, so a thread is never split across pages.
  * Prefer this over `useConversations` for any grouped view.
+ *
+ * Keyed by the active restaurant: the request is scoped by the
+ * X-Restaurant-Id header (interceptor above), so an unkeyed cache would keep
+ * serving the previous tenant's threads after a restaurant switch while the
+ * consuming page stays mounted.
  */
 export function useConversationThreads(filters: ConversationFilters = {}) {
+  const { user, activeRestaurantId } = useAuth()
+  const restaurantId = activeRestaurantId ?? user?.restaurantId ?? ''
   return useQuery<ConversationThreadListResponse>({
-    queryKey: [...conversationKeys.lists(), 'byThread', filters],
+    queryKey: [...conversationKeys.lists(), 'byThread', restaurantId, filters],
     queryFn: async () => {
       const params = new URLSearchParams()
       Object.entries(filters).forEach(([key, value]) => {

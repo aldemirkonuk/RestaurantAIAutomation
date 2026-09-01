@@ -4,7 +4,7 @@ import { createHash } from "crypto";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
 import { SourceChannel } from "./document-types";
-import { ParsedDocument } from "./parsed-document";
+import { applyTieOut, ParsedDocument } from "./parsed-document";
 import { matchLines, MatchLinesResult } from "./line-matcher";
 import { looksLikeX12, parseX12 } from "./x12";
 import { runWithNewCorrelationId } from "../../common/model-client/correlation";
@@ -644,6 +644,225 @@ export class DocumentIntakeService {
     if (ingested)
       this.logger.log(`document backfill ingested ${ingested} attachment(s)`);
     return ingested;
+  }
+
+  /**
+   * Correct one extracted line by hand (ADR 0045 §5, the receipts brief:
+   * "we can edit, and we can just confirm it right away").
+   *
+   * Guards, in order of importance:
+   * - Only a PRE-verification document may be edited (`received` /
+   *   `needs_review`). A verified document is the record a vendor dispute
+   *   leans on; there is deliberately no un-verify here.
+   * - Edits are anonymous drafts: provenance is carried by the verify step,
+   *   which stamps who confirmed the FINAL transcription (verified_by).
+   * - The document's tie-out is recomputed through the same applyTieOut rule
+   *   extraction uses — an edited line must never leave a stale
+   *   ties-out/delta claim standing.
+   */
+  async editLine(
+    documentId: string,
+    lineId: string,
+    restaurantId: string,
+    patch: {
+      qty?: number;
+      unitPrice?: number | null;
+      lineTotal?: number | null;
+      description?: string | null;
+      vintage?: number | null;
+      packSize?: number;
+      qtyBottles?: number;
+      freeGoodsQty?: number;
+      allowance?: number | null;
+      uom?: string;
+      vendorSku?: string | null;
+    },
+  ): Promise<{
+    line: Record<string, unknown>;
+    tieOut: { computedLinesTotal: number; tieOutDelta: number | null; tiesOut: boolean | null };
+  }> {
+    const client = this.db.getClient();
+
+    const { data: doc, error: docErr } = await client
+      .from("procurement_documents")
+      .select(
+        "id, status, total, freight, fuel_surcharge, split_case_fee, delivery_fee, deposit_total, tax, other_charges, discount_total",
+      )
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (docErr) throw new Error(docErr.message);
+    if (!doc) throw new Error("NOT_FOUND");
+    if (doc.status !== "needs_review" && doc.status !== "received")
+      throw new Error(
+        `NOT_EDITABLE:${doc.status}`,
+      );
+
+    // Whitelisted columns only, with finite-number guards. A NaN is REJECTED,
+    // never coerced to NULL — "clear this value" is null in the patch, and
+    // junk must not masquerade as a deliberate clearing (receipts-audit.md).
+    const finite = (v: unknown): v is number =>
+      typeof v === "number" && Number.isFinite(v);
+    const nullable = (v: number | null, field: string): number | null => {
+      if (v === null) return null;
+      if (!finite(v)) throw new Error(`BAD_FIELD:${field}`);
+      return v;
+    };
+    const update: Record<string, unknown> = {};
+    if (patch.qty !== undefined) {
+      if (!finite(patch.qty) || patch.qty < 0) throw new Error("BAD_FIELD:qty");
+      update.qty = patch.qty;
+    }
+    if (patch.unitPrice !== undefined)
+      update.unit_price = nullable(patch.unitPrice, "unitPrice");
+    if (patch.lineTotal !== undefined)
+      update.line_total = nullable(patch.lineTotal, "lineTotal");
+    if (patch.description !== undefined) update.description = patch.description;
+    if (patch.vintage !== undefined)
+      update.vintage = nullable(patch.vintage, "vintage");
+    if (patch.packSize !== undefined) {
+      if (!finite(patch.packSize) || patch.packSize <= 0)
+        throw new Error("BAD_FIELD:packSize");
+      update.pack_size = patch.packSize;
+    }
+    if (patch.qtyBottles !== undefined) {
+      if (!finite(patch.qtyBottles) || patch.qtyBottles < 0)
+        throw new Error("BAD_FIELD:qtyBottles");
+      update.qty_bottles = patch.qtyBottles;
+    }
+    if (patch.freeGoodsQty !== undefined) {
+      if (!finite(patch.freeGoodsQty) || patch.freeGoodsQty < 0)
+        throw new Error("BAD_FIELD:freeGoodsQty");
+      update.free_goods_qty = patch.freeGoodsQty;
+    }
+    if (patch.allowance !== undefined)
+      update.allowance = nullable(patch.allowance, "allowance");
+    if (patch.uom !== undefined) update.uom = patch.uom;
+    if (patch.vendorSku !== undefined) update.vendor_sku = patch.vendorSku;
+    if (Object.keys(update).length === 0) throw new Error("EMPTY_PATCH");
+
+    // Capture the line as it stands, so a verify that lands mid-edit can be
+    // answered by restoring it (the TOCTOU window below).
+    const LINE_COLS =
+      "id, line_no, qty, uom, pack_size, qty_bottles, free_goods_qty, unit_price, line_total, allowance, description, vintage, vendor_sku, order_line_id";
+    const { data: before, error: beforeErr } = await client
+      .from("procurement_document_lines")
+      .select(LINE_COLS)
+      .eq("id", lineId)
+      .eq("document_id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (beforeErr) throw new Error(beforeErr.message);
+    if (!before) throw new Error("NOT_FOUND");
+
+    // qty_bottles is derived (qty × pack size) and the matcher quotes it — a
+    // qty or pack-size correction must carry it along unless the caller set
+    // it explicitly (Opus correctness review, DEFECT 4).
+    if (
+      patch.qtyBottles === undefined &&
+      (update.qty !== undefined || update.pack_size !== undefined)
+    ) {
+      const beforeRow = before as Record<string, unknown>;
+      const effQty = (update.qty ?? beforeRow.qty) as number | null;
+      const effPack = (update.pack_size ?? beforeRow.pack_size) as number | null;
+      if (finite(effQty) && finite(effPack))
+        update.qty_bottles = effQty * effPack;
+    }
+
+    const { data: line, error: lineErr } = await client
+      .from("procurement_document_lines")
+      .update(update)
+      .eq("id", lineId)
+      .eq("document_id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .select(LINE_COLS)
+      .maybeSingle();
+    if (lineErr) throw new Error(lineErr.message);
+    if (!line) throw new Error("NOT_FOUND");
+
+    // The status read above and the update here are two statements: a verify
+    // can land between them. Re-check, and if the document got verified while
+    // we wrote, restore the captured line (verify never touches lines, so the
+    // restore leaves pre-edit lines under a verified document — consistent)
+    // and refuse the edit.
+    const { data: statusNow } = await client
+      .from("procurement_documents")
+      .select("status")
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (
+      statusNow &&
+      statusNow.status !== "needs_review" &&
+      statusNow.status !== "received"
+    ) {
+      // Restore ONLY the columns this edit touched — a whole-row snapshot
+      // write-back would silently revert a concurrent edit's already-200'd
+      // correction, and rewriting order_line_id without its match_confidence/
+      // match_method companions strands a pairing (Opus correctness review,
+      // DEFECT 3).
+      const beforeRow = before as Record<string, unknown>;
+      const restore: Record<string, unknown> = {};
+      for (const col of Object.keys(update)) restore[col] = beforeRow[col];
+      await client
+        .from("procurement_document_lines")
+        .update(restore)
+        .eq("id", lineId)
+        .eq("document_id", documentId)
+        .eq("restaurant_id", restaurantId);
+      throw new Error(`NOT_EDITABLE:${statusNow.status}`);
+    }
+
+    // Recompute the tie-out over ALL lines with the one rule extraction uses.
+    const { data: allLines, error: allErr } = await client
+      .from("procurement_document_lines")
+      .select("qty, unit_price, line_total, allowance")
+      .eq("document_id", documentId)
+      .eq("restaurant_id", restaurantId);
+    if (allErr) throw new Error(allErr.message);
+
+    const recomputed = applyTieOut({
+      total: doc.total,
+      freight: doc.freight,
+      fuelSurcharge: doc.fuel_surcharge,
+      splitCaseFee: doc.split_case_fee,
+      deliveryFee: doc.delivery_fee,
+      depositTotal: doc.deposit_total,
+      tax: doc.tax,
+      otherCharges: doc.other_charges,
+      discountTotal: doc.discount_total,
+      lines: (allLines ?? []).map((l) => ({
+        qty: l.qty,
+        unitPrice: l.unit_price,
+        lineTotal: l.line_total,
+        allowance: l.allowance,
+      })),
+      // applyTieOut spreads doc.warnings on the does-not-tie-out branch —
+      // omitting it threw the moment an edit BROKE the tie-out, after the
+      // line had already committed (receipts-audit.md, BLOCKER 1). The cast
+      // keeps the tie-out rule single-sourced; warnings must ride along.
+      warnings: [],
+    } as unknown as ParsedDocument);
+
+    const { error: tieErr } = await client
+      .from("procurement_documents")
+      .update({
+        computed_lines_total: recomputed.computedLinesTotal,
+        tie_out_delta: recomputed.tieOutDelta,
+        ties_out: recomputed.tiesOut,
+      })
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId);
+    if (tieErr) throw new Error(tieErr.message);
+
+    return {
+      line,
+      tieOut: {
+        computedLinesTotal: recomputed.computedLinesTotal ?? 0,
+        tieOutDelta: recomputed.tieOutDelta,
+        tiesOut: recomputed.tiesOut,
+      },
+    };
   }
 }
 

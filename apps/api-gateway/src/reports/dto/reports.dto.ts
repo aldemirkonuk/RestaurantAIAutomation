@@ -128,6 +128,40 @@ export class ReportListResponseDto {
   total: number;
 }
 
+/** "File to…" — re-file a report under a different type (Sorting Office). */
+export class RefileReportDto {
+  @ApiProperty({ enum: ReportType })
+  @IsEnum(ReportType)
+  reportType: ReportType;
+}
+
+export class ReportCrossFileRegisterDto {
+  @ApiProperty()
+  count: number;
+
+  @ApiPropertyOptional()
+  sample?: string | null;
+}
+
+/**
+ * "Cross-filed under" — the other registers holding entries from this
+ * report's period. `paper`/`conversations` are null exactly when the report
+ * names no period: nothing is invented for a report that covers nothing.
+ */
+export class ReportCrossFileResponseDto {
+  @ApiPropertyOptional()
+  periodStart?: string | null;
+
+  @ApiPropertyOptional()
+  periodEnd?: string | null;
+
+  @ApiPropertyOptional({ type: ReportCrossFileRegisterDto })
+  paper?: ReportCrossFileRegisterDto | null;
+
+  @ApiPropertyOptional({ type: ReportCrossFileRegisterDto })
+  conversations?: ReportCrossFileRegisterDto | null;
+}
+
 export class ScheduledReportResponseDto {
   @ApiProperty()
   id: string;

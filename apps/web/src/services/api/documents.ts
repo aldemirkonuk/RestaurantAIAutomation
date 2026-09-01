@@ -103,6 +103,55 @@ export const documentsApi = {
   async verify(id: string): Promise<void> {
     await apiClient.post(`/procurement/documents/${id}/verify`, {})
   },
+
+  /**
+   * Correct one extracted line by hand (pre-verification only). Returns the
+   * updated line and the document's recomputed tie-out, so the caller can
+   * show the arithmetic move immediately.
+   */
+  async editLine(
+    documentId: string,
+    lineId: string,
+    patch: Partial<
+      Pick<
+        ProcurementDocumentLine,
+        'qty' | 'description' | 'vintage' | 'uom'
+      > & { unitPrice: number | null; lineTotal: number | null }
+    >,
+  ): Promise<{
+    line: ProcurementDocumentLine
+    tieOut: { computedLinesTotal: number; tieOutDelta: number | null; tiesOut: boolean | null }
+  }> {
+    const { data } = await apiClient.patch(
+      `/procurement/documents/${documentId}/lines/${lineId}`,
+      patch,
+    )
+    return data
+  },
+
+  /** Run the line matcher; suggestions come back for one-tap confirmation. */
+  async match(id: string): Promise<{
+    applied: unknown[]
+    suggested: Array<{
+      documentLineId: string
+      orderLineId: string
+      confidence: number
+      substitution: boolean
+      reason: string
+    }>
+    unmatchedDocumentLineIds: string[]
+    unmatchedOrderLineIds: string[]
+  }> {
+    const { data } = await apiClient.post(`/procurement/documents/${id}/match`, {})
+    return data
+  },
+
+  /** Confirm (or clear) one suggested line pairing. */
+  async linkLine(documentId: string, lineId: string, orderLineId: string | null): Promise<void> {
+    await apiClient.post(`/procurement/documents/${documentId}/lines/${lineId}/link`, {
+      orderLineId,
+    })
+  },
 }
 
 /**

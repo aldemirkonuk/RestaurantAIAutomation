@@ -51,6 +51,53 @@ My Shifts (staff, read-only):
 - See my week; acknowledge the published schedule
 - Take an open cover; request time off
 
+Mudavym redesign behind `mudavym_design_team` (OFF):
+- **Coverage gaps as the page's first object** — named countable rows ("2 unfilled · Saturday · line") with a real suggested cover and a one-tap Assign
+- **Labour cost as the week builds** — total vs target with overtime named before publish; withheld in words when tracking is off
+- **Credentials as blockers** — an expired card blocks the shifts it touches, with a one-tap renewal request and a cannot-publish-as-it-stands line
+- Week-at-a-glance day chips (staffed / open / status)
+- 🚧 Parity gap, deliberate: the full desk (editors, publish, time-off, performance, my-shifts) still lives on the legacy page while the flag is off — flip to judge the new layer, flip back to operate (§9)
+
+## 1b. Motions used — Mudavym redesign (flag `mudavym_design_team`)
+
+Canonical source with curves: `apps/web/src/pages/team/next/MOTIONS.md` — this
+list is the note-side index (ADR 0044 §2).
+
+| id | name | fires |
+|---|---|---|
+| `tm-ink` | Ink micro-state | day-chip borders and control hover/focus — colour only, nothing translates |
+
+Deliberate non-motions: gap rows never animate in (an unfilled shift is a
+standing fact, not an arrival); the labour figure never tallies; "assigned" /
+"requested" confirmations are a change of words, in place.
+
+**2026-08-31 wave polish (Sorting Office two-Opus review):** the Assign,
+"Request renewal" and error-banner "Try again" controls carried an inline
+`background: 'transparent'` (or a ternary resolving to it) that permanently
+outranked `.tm-ctl:hover` — dead hovers on every tm-ctl control; fixed by
+omitting the inline value instead of adding `!important` (verified via a
+static cascade repro, since the route sits behind auth). The week's-labour
+figure was resized 26px → 22px to match the page-level-figure convention set
+by `documents-reports/next/so-format.ts`'s `Count` component and
+CommunicationsNext's glance strip (no wave value had been recorded before
+this). `fmtWeekday`/`fmtDayShort` in `tm-format.ts` were checked against the
+same-day `so-format.ts` date-parser bug and found already correct — they
+append `T00:00:00` before parsing, which JS reads as local time (unlike a
+bare date-only string, which reads as UTC), so no backport was needed here.
+
+### Design used, and why (ADR 0045 §5 wave · MAKEOVER-VERDICTS: KEEP + three ideas)
+
+The verdict kept the redesign ("spot on") and asked for three additions; all
+three ship as the page's leading objects, each derived from endpoints that
+already exist — nothing invented. The suggested cover is a stated derivation
+(role-matching member, free that day, fewest scheduled hours this week — fair
+rotation), never an AI claim; when no candidate exists the row says why. The
+one-tap Assign creates a real cover shift only when the gap's period carries
+parseable clock times — otherwise the control is disabled with the reason,
+per the honesty rules. The renewal request rides the existing broadcast
+channel to exactly that member. Publish-blocking is stated in words on the
+page (the publish control itself stays with the desk until parity).
+
 ## 2. Entry
 
 - Sidebar "Team" (`components/layout/Sidebar.tsx:114`); command palette `g t`
