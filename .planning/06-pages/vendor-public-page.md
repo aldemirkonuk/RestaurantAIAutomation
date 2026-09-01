@@ -2,6 +2,7 @@
 type: page
 route: /v/:slug
 slug: vendor-public-page
+softwares: [vendor-portal]
 component: apps/web/src/pages/VendorPortal.tsx
 audience: public
 tier: public
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[providers]]", "[[vendor-prices]]"]
 ---
 
 # /v/:slug — public vendor catalogue
+
+> **Part of** [[08-softwares/vendor-portal|Vendor Portal]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

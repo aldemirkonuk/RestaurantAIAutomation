@@ -2,6 +2,7 @@
 type: page
 route: /vendor-prices
 slug: vendor-prices
+softwares: [vendor-price-compare]
 component: apps/web/src/pages/VendorPriceCompare.tsx
 audience: owner
 tier: plus
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[providers]]", "[[wines]]"]
 ---
 
 # /vendor-prices — cross-vendor price comparison
+
+> **Part of** [[08-softwares/vendor-price-compare|Vendor Price Compare]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

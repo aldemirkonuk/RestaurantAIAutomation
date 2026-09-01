@@ -2,6 +2,7 @@
 type: page
 route: /sommelier
 slug: sommelier
+softwares: [wine-library-sommelier]
 component: apps/web/src/pages/SommelierAI.tsx
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[help]]", "[[wines]]"]
 ---
 
 # /sommelier — Sommelier AI chat
+
+> **Part of** [[08-softwares/wine-library-sommelier|Wine Library & Sommelier]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

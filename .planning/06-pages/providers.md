@@ -2,6 +2,7 @@
 type: page
 route: /providers
 slug: providers
+softwares: [vendor-directory, global-vendor-search]
 component: apps/web/src/pages/Providers.tsx
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[distributors]]", "[[promotions]]", "[[vendor-pri
 ---
 
 # /providers — vendor roster + distributor discovery
+
+> **Part of** [[08-softwares/vendor-directory|Vendor Directory & Intel]] · [[08-softwares/global-vendor-search|Global Vendor Search]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

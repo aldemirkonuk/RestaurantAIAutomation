@@ -2,6 +2,7 @@
 type: page
 route: /studio/certify
 slug: studio-certify
+softwares: [wine-studio]
 component: apps/web/src/pages/studio/StudioCertify.tsx
 audience: dev
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[studio]]", "[[studio-queue]]"]
 ---
 
 # /studio/certify — certified contributors admin
+
+> **Part of** [[08-softwares/wine-studio|Wine Studio]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
