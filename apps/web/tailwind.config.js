@@ -19,6 +19,31 @@ export default {
     },
     extend: {
       colors: {
+        // ── Mudavym (ADR 0042) — ADDITIVE. Var-backed so the same utility
+        // follows light/charcoal ground inside a `.mudavym` scope; the
+        // fallbacks are the light column, so the classes are safe (light)
+        // outside one. var()-backed colors do not support Tailwind opacity
+        // modifiers (e.g. `bg-seal/50`) — use the tint/ring tokens instead.
+        // Existing scales below are untouched; old pages render identically.
+        seal: {
+          DEFAULT: 'var(--seal, #1A5E6B)',
+          deep: 'var(--seal-deep, #14515C)',
+          tint: 'var(--seal-tint, rgba(26, 94, 107, 0.10))',
+          ring: 'var(--seal-ring, rgba(26, 94, 107, 0.32))',
+        },
+        paper: {
+          0: 'var(--paper-0, #FAF7F1)',
+          1: 'var(--paper-1, #F3EFE6)',
+          2: 'var(--paper-2, #EAE4D8)',
+        },
+        // `inkm` (mudavym ink) — named to avoid colliding with any future
+        // generic `ink` scale.
+        inkm: {
+          1: 'var(--ink-1, #211C16)',
+          2: 'var(--ink-2, #4F473C)',
+          3: 'var(--ink-3, #7C7365)',
+          4: 'var(--ink-4, #665D50)',
+        },
         // ── Triad: İznik seal (brand) · Blue (info) · Yellow (signal) — ADR 0042
         // İznik seal — brand / CTAs (600 = #1A5E6B, the seal; 400 = dark-mode primary)
         wine: {

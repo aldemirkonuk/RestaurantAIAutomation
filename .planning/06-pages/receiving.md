@@ -37,6 +37,25 @@ One event, three renderings by role:
 - **Owner**: one number — money that actually came back (recovered credits)
 - 🚧 Nothing links here yet; the page is reachable by typed URL only (§9)
 
+## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receiving`)
+
+Canonical source with curves: `apps/web/src/pages/receiving/next/MOTIONS-receiving.md` —
+this list is the note-side index (ADR 0044 §2).
+
+| id | name | fires |
+|---|---|---|
+| `receiving.risk.tally` | At-risk / recovered figures arrive | a figure changes while open — never first paint, never from an em dash |
+| `receiving.lane.select` | Outcome lane select | accepted · short · refused lane press: colour + 2px underline |
+| `receiving.row.settle` | Queue row expand | 0fr→1fr with the chevron on the same token; body carries the facts and the /orders + /receipts hand-offs |
+| `receiving.credit.pour` / `.tuck` / `.stamp` | Hold-to-send → seal | the die on a drafted-unsent credit request — real open→requested transition; early release states what did not happen; the stamp is the only overshoot in the system |
+| `receiving.draft.turn` | The draft's working turns in | "Show the working" on a --calm credit draft, slower than settle on purpose |
+| `receiving.outbox.pin` | Nothing vanishes; the drop becomes a pin | a receipt flushDoorOutbox permanently dropped travels in on turn, lands on the stamp, and stays pinned by name until a person unpins it (inv-09) |
+| `receiving.micro.ink` | Micro-states | hovers, hand-off press, retry buttons, the attempt counter; ≤2px travel |
+
+Not used, on purpose: the queue item that stops existing gets no animation (the
+absence is the defect — the motion budget goes to the pin arriving); no shake,
+no bouncing checkmarks, no skeleton shimmer for unknowns.
+
 ## 2. Entry
 
 **No inbound in-app link.** Not in the sidebar (`components/layout/Sidebar.tsx:58-184`),

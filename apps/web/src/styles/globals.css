@@ -1,3 +1,8 @@
+/* Mudavym design tokens (ADR 0042) — scoped under `.mudavym`, inert for every
+   page that does not opt in. Must precede all rules per the CSS @import spec;
+   Vite inlines it at build time. */
+@import './mudavym.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

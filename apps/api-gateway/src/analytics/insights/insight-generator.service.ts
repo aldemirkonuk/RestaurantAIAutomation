@@ -305,7 +305,12 @@ export class InsightGeneratorService {
     const bundle: Bundle = {
       restaurantId,
       consumption: ok<any>(cons).map((c: any) => ({
-        wineId: c.master_wine_id,
+        // The select above resolves the wine through the inventory FK, because
+        // wine_consumption_log has no master_wine_id column of its own — so
+        // PostgREST returns it NESTED, and reading it at the top level yields
+        // undefined on every row. That made `if (!c.wineId) continue` (:394,
+        // :578) skip everything and silently emptied both per-wine families.
+        wineId: c.restaurant_inventory?.master_wine_id,
         qty: c.quantity || (c.volume_ml ? c.volume_ml / 750 : 0),
         date: (c.created_at || "").substring(0, 10),
       })),

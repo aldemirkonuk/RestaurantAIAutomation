@@ -35,6 +35,27 @@ Designed for a porter on a sidewalk with a phone at 12% and no signal in the wal
 - Works offline — submissions queue in an outbox and sync later, nothing is lost in the walk-in
 - No prices anywhere by design; the count and match happen later at a desk
 
+## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receiving_door`)
+
+Canonical source with curves: `apps/web/src/pages/receiving/next/MOTIONS-door.md` —
+this list is the note-side index (ADR 0044 §2).
+
+| id | name | fires |
+|---|---|---|
+| `head-settle` | Header entrance | the chrome bar, once on mount — 6px, quiet |
+| `count-tally` | The boxes figure ticks | a stepper tap or the paper's pre-fill; tabular, overdamped, never on first paint |
+| `match-ink` | The match line restates itself | "14 of 16 — two short" changing words; the delta is said, colour only underlines |
+| `rows-settle` | Rows open and close | refusal reasons, the drafted credit card, the broken count collapsing under refusal |
+| `seal-pour` | Hold-to-seal fill | `DoorSeal` — linear, the operator times it against their own thumb |
+| `seal-forgive` | The thumb seals even lifted early | release at ≥60% of the pour completes (sig-a lineage — mercy for a gloved hand) |
+| `seal-tuck` | Early release retreat | release below 60% — "Released at N% — nothing saved." |
+| `seal-stamp` | The seal lands | the pressed Seal on completion; the page's only overshoot, wired to the real submission |
+| `ink-micro` | Micro-states | outcome/reason chips, offline chip — nothing moves more than 2px |
+
+Deliberate non-motions: no spinner theatre around the offline queue (queued is
+SAVED, and says so), no shake on refusal, no first-paint tick, no celebration on
+done — the pressed seal at rest is the done state.
+
 ## 2. Entry
 
 From `/receiving` (staff view rows) — the only inbound edge

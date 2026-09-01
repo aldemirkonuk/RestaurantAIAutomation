@@ -334,5 +334,42 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
       expect(client.schemaErrors).toEqual([]);
       expect(out.availability).toContain("orders");
     });
+
+    // The select at :224 is CORRECT — wine_consumption_log has no
+    // master_wine_id column (analytics.service.ts:158 documents why), so it
+    // resolves the wine through the inventory FK and PostgREST returns the
+    // joined value NESTED under `restaurant_inventory`. The mapping then read
+    // `c.master_wine_id` at the TOP level, which is always undefined — so
+    // `if (!c.wineId) continue` at :394 and :578 skipped every row and both
+    // per-wine sub-families silently produced nothing on real data.
+    //
+    // This is the sibling of the 42703 bugs above and fails the same way: not
+    // an error, just permanent emptiness. A schema-aware stub cannot catch it,
+    // because the QUERY is valid — only the read of its result is wrong. So
+    // this asserts the mapped shape directly.
+    it("maps wineId from the nested inventory join, not a top-level column", async () => {
+      const client = makeClient({
+        wine_consumption_log: [
+          {
+            inventory_id: "inv-1",
+            quantity: 3,
+            volume_ml: null,
+            created_at: "2026-08-20T00:00:00.000Z",
+            // Exactly the shape PostgREST returns for
+            // `restaurant_inventory(master_wine_id)`.
+            restaurant_inventory: { master_wine_id: "mw-42" },
+          },
+        ],
+      });
+      const svc = new InsightGeneratorService({
+        getClient: () => client,
+      } as any);
+
+      const bundle = await (svc as any).loadBundle(RESTAURANT);
+
+      expect(client.schemaErrors).toEqual([]);
+      expect(bundle.consumption).toHaveLength(1);
+      expect(bundle.consumption[0].wineId).toBe("mw-42");
+    });
   });
 });

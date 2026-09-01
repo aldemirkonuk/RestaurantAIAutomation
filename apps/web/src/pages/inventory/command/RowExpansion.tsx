@@ -17,7 +17,9 @@ import { formatVolume } from '../../../utils/volumeUtils'
 import { useRestaurantSettingsStore } from '../../../stores/restaurantSettingsStore'
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
+import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign'
 import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, HoursHeatmap, runwayDays } from './bits'
+import { ReceiptDepth } from './ReceiptDepth'
 import { SpotCountPanel } from './SpotCountPanel'
 
 function Card({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
@@ -65,6 +67,9 @@ export function RowExpansion({
   // pinned an oz restaurant back to ml. Restored with the retirement (ADR 0019 §B).
   const measurementUnit = useRestaurantSettingsStore((s) => s.measurementUnit)
   const inventoryId = item.inventoryId || ''
+  // The founder's named gap: receipt/invoice depth in the dropdown, gated so
+  // the kept page renders byte-identically until the flag flips (ADR 0045 §5).
+  const receiptDepthOn = useMudavymDesign('inventory')
 
   const [delta, setDelta] = useState(0)
   const [reason, setReason] = useState('Count correction')
@@ -299,6 +304,8 @@ export function RowExpansion({
             </div>
           )}
         </Card>
+
+        {receiptDepthOn && <ReceiptDepth orders={orders} />}
       </div>
 
       {/* action bar */}
