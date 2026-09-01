@@ -1,0 +1,968 @@
+<style>
+/* ══ sig-c — Signature moments (12–16) ═══════════════════════════════════
+   The house's ceremonies: the moments Mudavym finds something, or speaks.
+   Sibling files own sig-02..sig-11 and share the .mx-sig stem, so every
+   selector here is namespaced .mx-sig-c or .mx-sig-1N — never a bare
+   .mx-sig descendant. Every colour is a host variable.                    */
+
+.mx-sig-c{
+  font-family:var(--m-sans);
+  font-size:11px;line-height:1.4;color:var(--m-ink);
+  position:relative;width:100%;
+  -webkit-font-smoothing:antialiased;
+}
+.mx-sig-c *{box-sizing:border-box}
+.mx-sig-c .g-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}
+.mx-sig-c .g-k{font:500 8.5px/1.2 var(--m-mono);letter-spacing:.13em;text-transform:uppercase;
+  color:var(--m-mut);white-space:nowrap;
+  transition:color 160ms cubic-bezier(.16,1,.3,1)}
+.mx-sig-c .g-k.ac{color:var(--m-accent)}
+.mx-sig-c .g-k.ok{color:var(--m-ok)}
+.mx-sig-c .g-k.wn{color:var(--m-warn)}
+.mx-sig-c .g-k.no{color:var(--m-no)}
+.mx-sig-c .g-n{font-family:var(--m-mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+/* The AI's only permitted motion while it is working (motion.json · shimmer). */
+.mx-sig-c .g-shim{
+  background:linear-gradient(90deg,var(--m-mut) 12%,var(--m-ink) 46%,var(--m-mut) 80%);
+  background-size:240% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:sigc-shim 1900ms cubic-bezier(.45,0,.55,1) infinite}
+@keyframes sigc-shim{from{background-position:120% 0}to{background-position:-120% 0}}
+/* The serif voice. It speaks only where the PRODUCT speaks — never as a label. */
+.mx-sig-c .g-say{font-family:var(--m-serif);font-style:italic;font-size:12.5px;line-height:1.25;
+  letter-spacing:-.008em;color:var(--m-ink);opacity:0}
+.mx-sig-c .g-btn{font:500 9px/1 var(--m-mono);letter-spacing:.09em;text-transform:uppercase;
+  color:var(--m-accent);background:transparent;border:1px solid var(--m-line2);
+  border-radius:4px;padding:5px 8px;cursor:pointer;
+  transition:border-color 160ms cubic-bezier(.16,1,.3,1),background-color 160ms cubic-bezier(.16,1,.3,1)}
+.mx-sig-c .g-btn:hover{border-color:var(--m-accent)}
+.mx-sig-c .g-btn:focus-visible{outline:2px solid var(--m-accent);outline-offset:2px}
+
+/* ── 12 · two candidates, one wine ─────────────────────────────────────
+   Confidence drawn as DISTANCE from the scanned line, not as a bar. The
+   margin between first and second is the only number that decides.      */
+.mx-sig-12 .m-line{display:flex;align-items:baseline;gap:6px;margin-bottom:7px;
+  padding-left:7px;border-left:2px solid var(--m-accent)}
+.mx-sig-12 .m-src{font:500 10.5px/1.2 var(--m-mono);letter-spacing:-.02em;color:var(--m-ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mx-sig-12 .m-field{position:relative;height:60px;margin-bottom:5px}
+.mx-sig-12 .m-row{position:absolute;left:0;right:0;height:17px}
+.mx-sig-12 .m-track{position:absolute;left:0;right:0;top:8px;height:1px;background:var(--m-line)}
+.mx-sig-12 .m-chip{position:absolute;right:0;top:0;height:17px;display:flex;align-items:center;
+  gap:5px;padding:0 5px;border:1px solid var(--m-line2);border-radius:3px;
+  background:var(--m-surface);white-space:nowrap;
+  transition:border-color 200ms cubic-bezier(.16,1,.3,1),opacity 200ms cubic-bezier(.16,1,.3,1)}
+.mx-sig-12 .m-chip b{font-weight:500;font-size:9.5px;color:var(--m-ink)}
+.mx-sig-12 .m-chip i{font:500 9px/1 var(--m-mono);font-style:normal;color:var(--m-mut);
+  font-variant-numeric:tabular-nums}
+.mx-sig-12 .m-chip.far{opacity:.45}
+.mx-sig-12 .m-chip.tied{border-color:var(--m-warn)}
+.mx-sig-12 .m-chip.tied i{color:var(--m-warn)}
+.mx-sig-12 .m-chip.won{border-color:var(--m-ok)}
+/* A box straddling the two ends, not a bar: the whole reading is "these two
+   stopped in the same place". */
+.mx-sig-12 .m-cal{position:absolute;width:0;border:1px solid var(--m-warn);
+  border-radius:1px;opacity:0}
+/* The readout goes in the empty run left of the chips — the only band on this
+   card guaranteed clear of a candidate at any similarity. */
+.mx-sig-12 .m-lab{position:absolute;left:1px;top:27px;font:500 8px/1 var(--m-mono);
+  letter-spacing:.07em;color:var(--m-warn);white-space:nowrap;opacity:0}
+.mx-sig-12 .m-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  min-height:24px}
+.mx-sig-12 .m-act{display:flex;align-items:center;gap:6px;flex:none}
+.mx-sig-12 .m-seal{width:13px;height:13px;border-radius:3px;background:var(--m-accent);
+  display:inline-grid;place-items:center;flex:none;opacity:0;
+  font:600 8px/1 var(--m-mono);color:var(--m-accent-ink)}
+
+/* ── 13 · the globe turns supply toward you ────────────────────────────
+   Not a dot-globe with arcs everywhere. The restaurant is the point the
+   sphere turns TOWARD; territory law is the front hemisphere.           */
+.mx-sig-13 .b-wrap{display:flex;gap:11px;align-items:center}
+.mx-sig-13 .b-sky{flex:none;width:118px;height:124px}
+.mx-sig-13 .b-limb{fill:none;stroke:var(--m-line2);stroke-width:.7}
+.mx-sig-13 .b-lat{fill:none;stroke:var(--m-line);stroke-width:.55}
+.mx-sig-13 .b-mer{fill:none;stroke:var(--m-line);stroke-width:.55}
+.mx-sig-13 .b-arc{fill:none;stroke:var(--m-accent);stroke-width:1.1;stroke-linecap:round;opacity:0}
+.mx-sig-13 .b-seal{fill:var(--m-accent)}
+.mx-sig-13 .b-halo{fill:none;stroke:var(--m-accent);stroke-width:.7;opacity:0}
+.mx-sig-13 .b-led{flex:1;min-width:0}
+.mx-sig-13 .b-cnt{display:flex;align-items:baseline;gap:5px;margin-bottom:2px}
+.mx-sig-13 .b-cnt b{font:500 17px/1 var(--m-mono);font-variant-numeric:tabular-nums;
+  letter-spacing:-.03em;color:var(--m-accent)}
+.mx-sig-13 .b-cnt.dim b{color:var(--m-mut);font-size:13px}
+.mx-sig-13 .b-cnt span{font-size:10px;color:var(--m-mut)}
+.mx-sig-13 .b-nm{font-family:var(--m-serif);font-size:12px;font-weight:600;letter-spacing:-.012em;
+  min-height:16px;opacity:0}
+.mx-sig-13 .b-sub{font:500 8.5px/1.3 var(--m-mono);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--m-mut);min-height:12px;opacity:0}
+.mx-sig-13 .b-rad{display:inline-block;margin-top:7px;font:500 8.5px/1 var(--m-mono);
+  letter-spacing:.09em;text-transform:uppercase;color:var(--m-mut);
+  border:1px solid var(--m-line2);border-radius:3px;padding:4px 6px}
+
+/* ── 14 · nothing is sent until a hand sends it ────────────────────────
+   The draft lives visibly OFF the outbound rail. Approval is the only
+   thing that puts it on.                                                */
+.mx-sig-14 .s-stage{position:relative;padding-right:13px}
+.mx-sig-14 .s-rail{position:absolute;right:4px;top:0;bottom:0;width:1px;background:var(--m-line2)}
+.mx-sig-14 .s-rail i{position:absolute;right:-2px;width:5px;height:5px;border-radius:50%;
+  background:var(--m-line2);top:6px}
+.mx-sig-14 .s-card{border:1px dashed var(--m-line2);border-radius:4px;padding:6px 7px;
+  background:var(--m-sunk);margin-bottom:7px;position:relative}
+.mx-sig-14 .s-card.on{border-style:solid;border-color:var(--m-line2);background:var(--m-surface);
+  border-left:2px solid var(--m-accent)}
+.mx-sig-14 .s-to{font:500 8.5px/1 var(--m-mono);letter-spacing:.09em;text-transform:uppercase;
+  color:var(--m-mut);margin-bottom:3px}
+.mx-sig-14 .s-body{font-size:10px;color:var(--m-ink);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.mx-sig-14 .s-tag{font:500 8px/1 var(--m-mono);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--m-warn);margin-top:4px}
+.mx-sig-14 .s-tag.ok{color:var(--m-ok)}
+.mx-sig-14 .s-stamp{position:absolute;right:5px;top:5px;width:14px;height:14px;border-radius:3px;
+  background:var(--m-accent);color:var(--m-accent-ink);display:grid;place-items:center;
+  font:600 8px/1 var(--m-mono);opacity:0}
+.mx-sig-14 .s-hold{position:relative;height:23px;border:1px solid var(--m-line2);border-radius:4px;
+  overflow:hidden;cursor:pointer;user-select:none;-webkit-user-select:none;
+  touch-action:none;background:var(--m-surface)}
+.mx-sig-14 .s-hold:focus-visible{outline:2px solid var(--m-accent);outline-offset:2px}
+.mx-sig-14 .s-fill{position:absolute;inset:0;background:var(--m-accent);opacity:.22;
+  transform:scaleX(0);transform-origin:0 50%}
+.mx-sig-14 .s-lab{position:absolute;inset:0;display:grid;place-items:center;
+  font:500 9px/1 var(--m-mono);letter-spacing:.11em;text-transform:uppercase;color:var(--m-ink)}
+.mx-sig-14 .s-undo{display:flex;align-items:center;gap:6px;margin-top:6px;min-height:14px;opacity:0}
+.mx-sig-14 .s-bar{flex:1;height:1px;background:var(--m-line)}
+.mx-sig-14 .s-bar i{display:block;height:100%;background:var(--m-accent);transform-origin:0 50%}
+.mx-sig-14 .s-pull{font:500 8.5px/1 var(--m-mono);letter-spacing:.09em;text-transform:uppercase;
+  color:var(--m-accent);background:none;border:0;padding:0;cursor:pointer;
+  border-bottom:1px dashed var(--m-accent)}
+
+/* ── 15 · the stencil fills where the house has facts ──────────────────*/
+.mx-sig-15 .t-chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--m-line2);
+  border-radius:4px;padding:4px 7px;font-size:9.5px;color:var(--m-ink);background:var(--m-surface);
+  margin-bottom:8px}
+.mx-sig-15 .t-chip u{text-decoration:none;font:500 8px/1 var(--m-mono);letter-spacing:.1em;
+  text-transform:uppercase;color:var(--m-mut)}
+/* padding-top gives the origin kickers (which sit above their slot) room to
+   appear on the first line instead of being clipped by the stage. */
+.mx-sig-15 .t-doc{font-size:10.5px;line-height:1.85;color:var(--m-mut);min-height:56px;
+  padding-top:9px}
+/* Fixed slot height: an unfilled slot must hold its own box, or its
+   placeholder falls out from under the value and reads as a second line. */
+.mx-sig-15 .t-slot{display:inline-block;position:relative;vertical-align:-3px;
+  height:15px;line-height:15px;
+  border-bottom:1px solid var(--m-line2);min-width:26px;text-align:center;
+  padding:0 3px;color:var(--m-ink);
+  transition:border-color 200ms cubic-bezier(.16,1,.3,1)}
+.mx-sig-15 .t-slot .t-v{display:inline-block;opacity:0;font-weight:600;
+  line-height:15px;font-variant-numeric:tabular-nums}
+.mx-sig-15 .t-slot .t-ph{position:absolute;left:0;right:0;top:0;
+  font:500 8px/15px var(--m-mono);color:var(--m-mut);opacity:.5;letter-spacing:-.03em}
+.mx-sig-15 .t-slot.done{border-color:var(--m-ok)}
+.mx-sig-15 .t-slot.open{border-bottom-width:2px;border-color:var(--m-warn)}
+.mx-sig-15 .t-slot .t-org{position:absolute;left:50%;bottom:100%;margin-bottom:1px;
+  transform:translateX(-50%);
+  font:500 7.5px/1 var(--m-mono);letter-spacing:.06em;text-transform:uppercase;
+  color:var(--m-accent);white-space:nowrap;opacity:0;pointer-events:none}
+.mx-sig-15 .t-slot .t-org.wn{color:var(--m-warn)}
+.mx-sig-15 .t-caret{display:inline-block;width:1px;height:11px;background:var(--m-warn);
+  vertical-align:-1px;margin-left:1px;opacity:0}
+.mx-sig-15 .t-foot{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+  margin-top:6px;min-height:14px}
+
+/* ── 16 · the house opens ──────────────────────────────────────────────*/
+.mx-sig-16 .h-facts{display:flex;gap:7px;margin-bottom:7px}
+.mx-sig-16 .h-f{flex:1;border:1px solid var(--m-line);border-radius:4px;padding:5px 7px;
+  background:var(--m-surface);opacity:0}
+.mx-sig-16 .h-f b{display:block;font:500 15px/1.1 var(--m-mono);font-variant-numeric:tabular-nums;
+  letter-spacing:-.03em;color:var(--m-ink)}
+.mx-sig-16 .h-f span{font:500 8px/1.3 var(--m-mono);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--m-mut)}
+.mx-sig-16 .h-beat{height:1px;background:var(--m-line);margin-bottom:6px;position:relative}
+.mx-sig-16 .h-beat i{position:absolute;inset:0;background:var(--m-accent);
+  transform:scaleX(0);transform-origin:50% 50%}
+.mx-sig-16 .h-book{position:relative;height:58px;perspective:520px;perspective-origin:50% 40%}
+.mx-sig-16 .h-page{position:absolute;inset:0;border:1px solid var(--m-line);border-radius:3px;
+  background:var(--m-surface);padding:6px 8px;opacity:0;overflow:hidden}
+.mx-sig-16 .h-rule{height:1px;background:var(--m-line);margin:4px 0}
+.mx-sig-16 .h-entry{font-size:10px;color:var(--m-ink);white-space:nowrap;overflow:hidden;
+  clip-path:inset(0 100% 0 0)}
+.mx-sig-16 .h-entry em{font-style:normal;color:var(--m-mut)}
+.mx-sig-16 .h-seal{position:absolute;right:7px;bottom:6px;width:16px;height:16px;border-radius:3px;
+  background:var(--m-accent);color:var(--m-accent-ink);display:grid;place-items:center;
+  font:600 9px/1 var(--m-mono);opacity:0}
+/* pointer-events:none because the swung-open cover's 3D bounding box reaches
+   outside the stage; it is decorative and must never catch a click there. */
+.mx-sig-16 .h-cover{position:absolute;inset:0;border:1px solid var(--m-line2);border-radius:3px;
+  background:var(--m-sunk);transform-origin:0% 50%;backface-visibility:hidden;
+  display:grid;place-items:center;pointer-events:none}
+.mx-sig-16 .h-cover u{text-decoration:none;font:500 8.5px/1 var(--m-mono);letter-spacing:.16em;
+  text-transform:uppercase;color:var(--m-mut)}
+/* The spine belongs to the BOOK, not to the cover — it must stay put while
+   the cover swings away from it. */
+.mx-sig-16 .h-spine{position:absolute;left:0;top:0;bottom:0;width:1px;background:var(--m-accent);
+  transform:scaleY(0);transform-origin:50% 0;z-index:2}
+.mx-sig-16 .h-say{margin-top:7px;display:flex;align-items:baseline;gap:5px;min-height:17px}
+.mx-sig-16 .h-mark{font-family:var(--m-serif);font-size:12px;font-weight:600;color:var(--m-mut);
+  opacity:0}
+.mx-sig-16 .h-mark i{color:var(--m-accent);font-style:normal;opacity:0}
+
+@media (prefers-reduced-motion: reduce){
+  .mx-sig-c *, .mx-sig-c *::before, .mx-sig-c *::after{
+    animation-duration:1ms !important;animation-iteration-count:1 !important;
+    transition-duration:1ms !important;
+  }
+}
+</style>
+
+<script>
+(function(){
+  var FAM = 'Signature moments';
+  window.MUDAVYM_MOTIONS = window.MUDAVYM_MOTIONS || [];
+  function push(o){ o.family = FAM; window.MUDAVYM_MOTIONS.push(o); }
+
+  var RM = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  function rate(){
+    var r = window.MUDAVYM_RATE && window.MUDAVYM_RATE();
+    return (typeof r === 'number' && r > 0) ? r : 1;
+  }
+  /* Every duration in this file goes through T(): the canvas speed control
+     scales it, reduced motion collapses it to the end state. */
+  function T(ms){ return RM ? 0 : ms / rate(); }
+
+  /* ── Spring sampler ──────────────────────────────────────────────────
+     Integrates a real mass-spring-damper at 600Hz and samples it into a CSS
+     linear() easing. Overshoot / rest figures quoted on the cards are
+     MEASURED off these runs, not asserted.                              */
+  function spring(k, c, m, rest){
+    m = m || 1; rest = rest || 0.0005;
+    var dt = 1/600, x = 1, v = 0, t = 0, raw = [0], peak = 0, guard = 0;
+    while (t < 4 && guard++ < 24000){
+      var a = (-k * x - c * v) / m;
+      v += a * dt; x += v * dt; t += dt;
+      var p = 1 - x;
+      if (p > peak) peak = p;
+      raw.push(p);
+      if (Math.abs(x) < rest && Math.abs(v) < rest) break;
+    }
+    var n = 48, pts = [];
+    for (var i = 0; i <= n; i++) pts.push(raw[Math.round(i / n * (raw.length - 1))]);
+    pts[0] = 0; pts[n] = 1;
+    return {
+      pts: pts,
+      css: 'linear(' + pts.map(function(p){ return Math.round(p * 10000) / 10000; }).join(',') + ')',
+      ms: Math.round(t * 1000),
+      over: Math.round((peak - 1) * 1000) / 10
+    };
+  }
+  var SPR = {
+    latch: spring(420, 34),  /* a candidate arriving, a fact landing      */
+    tuck:  spring(380, 32),  /* the house "under a finger" spring         */
+    stamp: spring(520, 26),  /* the seal — the one permitted overshoot    */
+    tally: spring(120, 26)   /* number tickers, overdamped, never bounce  */
+  };
+  var KC = { latch:'420/34', tuck:'380/32', stamp:'520/26', tally:'120/26' };
+  /* linear() is Chrome 113 / Safari 17.4 / Firefox 112. Older engines throw on
+     an unknown easing, so fall back to the house bezier rather than break. */
+  var LINEAR_OK = (function(){
+    try { document.createElement('div').animate([{opacity:0},{opacity:1}],
+          {duration:1, easing:'linear(0,0.5,1)'}); return true; }
+    catch(e){ return false; }
+  })();
+  var EASE = {
+    settle:'cubic-bezier(.16,1,.3,1)',   /* the house curve            */
+    turn:  'cubic-bezier(.32,.72,0,1)',  /* opening a record, a page   */
+    lin:   'linear'
+  };
+  function E(n){ return LINEAR_OK ? SPR[n].css : EASE.settle; }
+  function spec(n, label){
+    var s = SPR[n];
+    return label + ' spring ' + KC[n] + ' sampled to linear() 49pt, '
+      + s.over.toFixed(1) + '% overshoot, at rest ' + s.ms + 'ms';
+  }
+
+  /* ── Runner: cancels the previous pass so play() is idempotent ─────── */
+  function runner(root){
+    var prev = root.__sigcRun;
+    if (prev){
+      prev.dead = true;
+      prev.anims.forEach(function(a){ try { a.cancel(); } catch(e){} });
+      prev.timers.forEach(clearTimeout);
+      prev.rafs.forEach(function(id){ cancelAnimationFrame(id); });
+    }
+    var st = { dead:false, anims:[], timers:[], rafs:[] };
+    root.__sigcRun = st;
+    return {
+      st: st,
+      an: function(el, kf, o){ if (!el) return null; var a = el.animate(kf, o); st.anims.push(a); return a; },
+      at: function(ms, fn){ var id = setTimeout(function(){ if (!st.dead) fn(); }, T(ms));
+                            st.timers.push(id); return id; },
+      rf: function(fn){
+        function step(ts){ if (st.dead) return; if (fn(ts) !== false) st.rafs.push(requestAnimationFrame(step)); }
+        st.rafs.push(requestAnimationFrame(step));
+      }
+    };
+  }
+  function opt(dur, ease, extra){
+    var o = { duration: Math.max(1, T(dur)), easing: ease || EASE.settle, fill:'none' };
+    if (extra) for (var k in extra) o[k] = extra[k];
+    return o;
+  }
+  function q(root, s){ return root.querySelector(s); }
+  function qa(root, s){ return Array.prototype.slice.call(root.querySelectorAll(s)); }
+  function rise(r, el, dist, dur, ease){
+    if (!el) return;
+    el.style.opacity = '1'; el.style.transform = 'none';
+    r.an(el, [{ opacity:0, transform:'translateY(' + (dist == null ? 6 : dist) + 'px)' },
+              { opacity:1, transform:'none' }], opt(dur || 320, ease || EASE.settle));
+  }
+  /* Number ticker on the overdamped tally spring — figures arrive, they never
+     bounce past their target and correct themselves. */
+  function tick(r, el, from, to, dur, fmt){
+    if (!el) return;
+    fmt = fmt || function(v){ return String(Math.round(v)); };
+    var ms = T(dur);
+    if (!ms){ el.textContent = fmt(to); return; }
+    var pts = SPR.tally.pts, t0 = null;
+    r.rf(function(ts){
+      if (t0 === null) t0 = ts;
+      var p = Math.min(1, (ts - t0) / ms);
+      var i = p * (pts.length - 1), lo = Math.floor(i), hi = Math.ceil(i);
+      var v = pts[lo] + (pts[hi] - pts[lo]) * (i - lo);
+      el.textContent = fmt(from + (to - from) * v);
+      return p < 1;
+    });
+  }
+  /* Wire a real gesture exactly once; each play() refreshes the handlers it
+     points at, so the founder can try the interaction after any replay. */
+  function once(el, key, type, fn){
+    if (!el) return;
+    var flag = '__w_' + key;
+    if (el[flag]) return;
+    el[flag] = 1;
+    el.addEventListener(type, fn);
+  }
+
+  /* ══ 12 · Two candidates, one wine ═══════════════════════════════════
+     Confidence as DISTANCE, and the verdict withheld when the top two are
+     the same row entered twice.                                          */
+  push({
+    id:'sig-12',
+    name:'Two candidates, one wine',
+    purpose:'GAP — v3.0-TECH-DEBT 44.1b: the wine library holds duplicate identities, so a scanned menu line can match two rows that are the same wine. This draws confidence as DISTANCE travelled toward the scanned line rather than as ScanResultsPanel’s percentage bar, because 0.89 next to a 0.87 runner-up is a coin flip and 0.89 next to a 0.41 is a decision — the same bar renders both identically. When the margin collapses the house refuses to latch and hands the human the only correct verb: merge, not pick.',
+    spec:'travel = (1 − similarity) × 150px on ' + spec('latch','') + ' · caliper 320ms cubic-bezier(.16,1,.3,1) · merge seal ' + SPR.stamp.over.toFixed(1) + '% overshoot',
+    source:'apps/web/src/components/scanner/ScanResultsPanel.tsx:342 · services/wineDetection.ts:349 · v3.0-TECH-DEBT.md:48',
+    html:
+      '<div class="mx-sig-c mx-sig-12">' +
+        '<div class="g-h"><span class="g-k">Scanned line</span><span class="g-k m-st">Matching</span></div>' +
+        '<div class="m-line"><span class="m-src">Ch. Musar 2016 — Bekaa — 84</span></div>' +
+        '<div class="m-field">' +
+          '<div class="m-row" style="top:0px"><i class="m-track"></i>' +
+            '<span class="m-chip" data-s="89"><b>Château Musar 2016</b><i>.89</i></span></div>' +
+          '<div class="m-row" style="top:21px"><i class="m-track"></i>' +
+            '<span class="m-chip" data-s="87"><b>Chateau Musar 2016</b><i>.87</i></span></div>' +
+          '<div class="m-row" style="top:42px"><i class="m-track"></i>' +
+            '<span class="m-chip" data-s="41"><b>Musar Jeune 2016</b><i>.41</i></span></div>' +
+          '<i class="m-cal"></i><span class="m-lab">margin .02</span>' +
+        '</div>' +
+        '<div class="m-foot">' +
+          '<span class="g-say m-say">Two rows. One wine.</span>' +
+          '<span class="m-act"><span class="m-seal">✓</span>' +
+          '<button type="button" class="g-btn m-do">Same wine</button></span>' +
+        '</div>' +
+      '</div>',
+    play: function(root){
+      var r = runner(root);
+      var chips = qa(root, '.m-chip'), cal = q(root, '.m-cal'), st = q(root, '.m-st');
+      var lab = q(root, '.m-lab');
+      var say = q(root, '.m-say'), btn = q(root, '.m-do'), seal = q(root, '.m-seal');
+      var rows = qa(root, '.m-row');
+      var D = 150;                                   /* max travel, px    */
+      var ends = chips.map(function(c){ return -(+c.dataset.s / 100) * D; });
+
+      /* reset */
+      chips.forEach(function(c){
+        c.className = 'm-chip';
+        c.style.transform = 'translateX(0px)';
+        c.style.opacity = '0';
+      });
+      chips[0].querySelector('i').textContent = '.89';
+      rows[1].style.transform = 'none';
+      rows[1].style.opacity = '1';
+      cal.style.opacity = '0'; lab.style.opacity = '0';
+      say.style.opacity = '0'; say.textContent = 'Two rows. One wine.';
+      seal.style.opacity = '0';
+      btn.style.opacity = '0'; btn.textContent = 'Same wine'; btn.disabled = false;
+      st.textContent = 'Matching'; st.className = 'g-k m-st g-shim';
+      void root.offsetWidth;
+
+      /* Shazam's narrative status: the search is allowed to say it widened. */
+      r.at(560, function(){ st.textContent = 'Widening'; });
+
+      chips.forEach(function(c, i){
+        r.at(180 + i * 70, function(){ c.style.opacity = '1'; });
+        r.at(700 + i * 110, function(){
+          c.style.transform = 'translateX(' + ends[i] + 'px)';
+          r.an(c, [{ transform:'translateX(0px)' }, { transform:'translateX(' + ends[i] + 'px)' }],
+               opt(620, E('latch')));
+        });
+      });
+      r.at(1420, function(){ chips[2].classList.add('far'); });
+
+      /* The caliper measures the gap the product actually has to decide on. */
+      r.at(1500, function(){
+        var w = Math.abs(ends[0]) - Math.abs(ends[1]);
+        cal.style.right = Math.abs(ends[1]) + 'px';
+        cal.style.width = Math.max(w, 3) + 'px';
+        cal.style.top = '2px'; cal.style.height = '32px';
+        cal.style.opacity = '1';
+        r.an(cal, [{ opacity:0, transform:'scaleY(.4)' }, { opacity:1, transform:'none' }],
+             opt(320, EASE.settle));
+        lab.style.opacity = '1';
+        r.an(lab, [{ opacity:0, transform:'translateX(-4px)' }, { opacity:1, transform:'none' }],
+             opt(320, EASE.settle));
+        chips[0].classList.add('tied'); chips[1].classList.add('tied');
+        st.textContent = 'Will not choose'; st.className = 'g-k m-st wn';
+      });
+      r.at(1860, function(){
+        rise(r, say, 5, 320);
+        btn.style.opacity = '1';
+        r.an(btn, [{ opacity:0, transform:'translateY(5px)' }, { opacity:1, transform:'none' }],
+             opt(320, EASE.settle));
+      });
+
+      /* Real interaction: the human arbitrates by merging, not by picking. */
+      function merge(){
+        if (btn.disabled) return;
+        btn.disabled = true;
+        var r2 = root.__sigcRun;
+        var dy = rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().top;
+        cal.animate([{ opacity:1 }, { opacity:0 }], opt(200, EASE.settle));
+        lab.animate([{ opacity:1 }, { opacity:0 }], opt(200, EASE.settle));
+        cal.style.opacity = '0'; lab.style.opacity = '0';
+        rows[1].style.transform = 'translateY(' + (-dy) + 'px)';
+        rows[1].animate([{ transform:'translateY(0px)', opacity:1 },
+                         { transform:'translateY(' + (-dy) + 'px)', opacity:0 }],
+                        opt(420, E('tuck')));
+        setTimeout(function(){
+          if (r2 && r2.dead) return;
+          rows[1].style.opacity = '0';
+          chips[0].className = 'm-chip won';
+          chips[0].querySelector('i').textContent = '1 identity';
+          st.textContent = 'Merged'; st.className = 'g-k m-st ok';
+          say.textContent = 'One wine, entered twice.';
+          seal.style.opacity = '1';
+          seal.animate([{ transform:'scale(.6) rotate(-9deg)', opacity:0 },
+                        { transform:'none', opacity:1 }], opt(360, E('stamp')));
+          btn.style.opacity = '0';
+        }, T(400));
+      }
+      root.__sigcMerge = merge;
+      once(btn, 'm', 'click', function(){ if (root.__sigcMerge) root.__sigcMerge(); });
+      /* hands-free pass, so the card demonstrates itself on the canvas */
+      r.at(2900, merge);
+    }
+  });
+
+  /* ══ 13 · The globe turns supply toward you ══════════════════════════ */
+  push({
+    id:'sig-13',
+    name:'The globe turns supply toward you',
+    purpose:'/distributors discovery. The restaurant is not a pin on the globe — it is the point the sphere turns toward. Territory law is the front hemisphere: a vendor licensed to sell to this restaurant lights as it crosses into view and reaches a supply line in; one that cannot stays dark as it passes and is counted into the “can’t supply you” ledger the page already keeps. Rejects the Stripe/GitHub arc-swarm, which says “we are global”; this says who can reach this kitchen, and who cannot.',
+    spec:'1 revolution / 14s linear (a body in motion takes no easing) · axial tilt 16° · supply arc draws 460ms cubic-bezier(.32,.72,0,1), one at a time, queued not dropped · ledger ticks on ' + spec('tally',''),
+    source:'apps/web/src/pages/distributors/useDistributorsPage.ts:142 · command/DistributorMapPage.tsx:298',
+    html:
+      '<div class="mx-sig-c mx-sig-13">' +
+        '<div class="b-wrap">' +
+          '<svg class="b-sky" viewBox="0 0 118 124" aria-label="Rotating vendor sphere">' +
+            '<circle class="b-limb" cx="58" cy="62" r="52"></circle>' +
+            '<g class="b-lats"></g><g class="b-mers"></g>' +
+            '<path class="b-arc"></path>' +
+            '<g class="b-dots"></g>' +
+            '<circle class="b-halo" cx="58" cy="62" r="7"></circle>' +
+            '<rect class="b-seal" x="55" y="70" width="6" height="6" rx="1.4"></rect>' +
+          '</svg>' +
+          '<div class="b-led">' +
+            '<div class="b-cnt"><b class="b-y">0</b><span>can supply you</span></div>' +
+            '<div class="b-cnt dim"><b class="b-n">0</b><span>can’t reach you</span></div>' +
+            '<div class="b-nm">—</div><div class="b-sub">—</div>' +
+            '<span class="b-rad">Within 250 km · nearest first</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>',
+    play: function(root){
+      var r = runner(root);
+      var svg = q(root, '.b-sky');
+      var R = 52, CX = 58, CY = 62, TILT = 16 * Math.PI / 180;
+      var ct = Math.cos(TILT), stl = Math.sin(TILT);
+      /* Ten real US metros. supplies=false is the honest half of the ledger:
+         a distributor without a licence in this state cannot sell here. */
+      var V = [
+        { n:'Bacchus Wine Co.',    s:'Napa, CA',      la: 38.3, lo:-122.3, ok:true  },
+        { n:'Emerald Cellars',     s:'Seattle, WA',   la: 47.6, lo:-122.3, ok:true  },
+        { n:'Lakeshore Selections',s:'Chicago, IL',   la: 41.9, lo: -87.6, ok:true  },
+        { n:'Harbor & Vine',       s:'New York, NY',  la: 40.7, lo: -74.0, ok:true  },
+        { n:'Front Range Imports',  s:'Denver, CO',    la: 39.7, lo:-105.0, ok:true  },
+        { n:'Beacon Hill Wines',   s:'Boston, MA',    la: 42.4, lo: -71.1, ok:true  },
+        { n:'Biscayne Beverage',   s:'Miami, FL',     la: 25.8, lo: -80.2, ok:false },
+        { n:'Hill Country Cellars',s:'Austin, TX',    la: 30.3, lo: -97.7, ok:false },
+        { n:'Peachtree Portfolio', s:'Atlanta, GA',   la: 33.7, lo: -84.4, ok:false },
+        { n:'Willamette Direct',   s:'Portland, OR',  la: 45.5, lo:-122.7, ok:false }
+      ];
+      var lats = q(root, '.b-lats'), mers = q(root, '.b-mers'), dots = q(root, '.b-dots');
+      var arc = q(root, '.b-arc'), halo = q(root, '.b-halo');
+      var yes = q(root, '.b-y'), no = q(root, '.b-n'), nm = q(root, '.b-nm'), sub = q(root, '.b-sub');
+      var NS = 'http://www.w3.org/2000/svg';
+
+      /* Latitude circles are rotation-invariant, so they are static geometry:
+         centre (CX, CY - R sin(phi) cos t), rx = R cos(phi), ry = rx sin(t). */
+      if (!lats.childNodes.length){
+        [-40, 0, 40].forEach(function(d){
+          var p = d * Math.PI / 180, e = document.createElementNS(NS, 'ellipse');
+          e.setAttribute('class', 'b-lat');
+          e.setAttribute('cx', CX);
+          e.setAttribute('cy', (CY - R * Math.sin(p) * ct).toFixed(2));
+          e.setAttribute('rx', (R * Math.cos(p)).toFixed(2));
+          e.setAttribute('ry', Math.max(R * Math.cos(p) * stl, 0.6).toFixed(2));
+          lats.appendChild(e);
+        });
+      }
+      /* Meridians are sampled each frame — 3 x 21 points is nothing, and a
+         sampled path is provably the true projection rather than a fitted
+         ellipse that drifts at the limb. */
+      var MER = [0, 60, 120], merEls = [];
+      if (!mers.childNodes.length){
+        MER.forEach(function(){
+          var p = document.createElementNS(NS, 'path');
+          p.setAttribute('class', 'b-mer'); mers.appendChild(p);
+        });
+      }
+      merEls = Array.prototype.slice.call(mers.childNodes);
+      var dotEls = [];
+      if (!dots.childNodes.length){
+        V.forEach(function(){
+          var c = document.createElementNS(NS, 'circle');
+          c.setAttribute('r', '2'); dots.appendChild(c);
+        });
+      }
+      dotEls = Array.prototype.slice.call(dots.childNodes);
+
+      function proj(laDeg, loDeg, theta){
+        var p = laDeg * Math.PI / 180, l = (loDeg + theta) * Math.PI / 180;
+        var x = Math.cos(p) * Math.sin(l), y = Math.sin(p), z = Math.cos(p) * Math.cos(l);
+        var y2 = y * ct - z * stl, z2 = y * stl + z * ct;
+        return { x: CX + R * x, y: CY - R * y2, z: z2 };
+      }
+      var SEAL = proj(0, -90, 90);   /* the sphere's front point = the house */
+
+      /* reset */
+      V.forEach(function(v, i){
+        dotEls[i].setAttribute('fill', 'var(--m-mut)');
+        dotEls[i].setAttribute('r', '2');
+        v.seen = false;
+      });
+      arc.style.opacity = '0'; halo.style.opacity = '0';
+      yes.textContent = '0'; no.textContent = '0';
+      nm.style.opacity = '0'; sub.style.opacity = '0';
+      var nYes = 0, nNo = 0, busy = false, queue = [], curTheta = 104;
+      void root.offsetWidth;
+
+      if (RM){
+        /* Reduced motion: one honest frame, the ledger already settled. */
+        var th0 = 104;
+        V.forEach(function(v, i){
+          var pt = proj(v.la, v.lo, th0);
+          dotEls[i].setAttribute('cx', pt.x.toFixed(2));
+          dotEls[i].setAttribute('cy', pt.y.toFixed(2));
+          dotEls[i].setAttribute('fill', v.ok ? 'var(--m-accent)' : 'var(--m-mut)');
+          dotEls[i].setAttribute('opacity', pt.z > 0 ? '1' : '.18');
+        });
+        yes.textContent = '6'; no.textContent = '4';
+        nm.textContent = 'Lakeshore Selections'; nm.style.opacity = '1';
+        sub.textContent = 'Chicago, IL · can supply'; sub.style.opacity = '1';
+        return;
+      }
+
+      /* One arc at a time — a swarm is decoration — but a vendor is never
+         DROPPED for arriving while another is being drawn. Napa, Seattle and
+         Portland all sit near -122°, so they cross within a second of each
+         other; without the queue two of the three would silently lose their
+         line while still counting in the ledger. */
+      function pump(){
+        if (busy || !queue.length) return;
+        var v = queue.shift();
+        fire(v, proj(v.la, v.lo, curTheta));
+      }
+      function fire(v, pt){
+        busy = true;
+        /* The arc bows OFF the sphere on the way in — GitHub's bezier idea,
+           inbound only, one at a time. A swarm would be decoration. */
+        var mx = (pt.x + SEAL.x) / 2, my = (pt.y + SEAL.y) / 2;
+        var dx = SEAL.x - pt.x, dy = SEAL.y - pt.y;
+        var len = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
+        var bow = 12;
+        var cxp = mx - dy / len * bow, cyp = my + dx / len * bow;
+        arc.setAttribute('d', 'M' + pt.x.toFixed(1) + ' ' + pt.y.toFixed(1) +
+                              ' Q' + cxp.toFixed(1) + ' ' + cyp.toFixed(1) +
+                              ' ' + SEAL.x.toFixed(1) + ' ' + SEAL.y.toFixed(1));
+        var L = arc.getTotalLength ? arc.getTotalLength() : 60;
+        arc.style.strokeDasharray = L + ' ' + L;
+        arc.style.opacity = '1';
+        r.an(arc, [{ strokeDashoffset: L }, { strokeDashoffset: 0 }], opt(460, EASE.turn));
+        arc.style.strokeDashoffset = '0';
+        nm.textContent = v.n; sub.textContent = v.s + ' · can supply';
+        rise(r, nm, 4, 300); rise(r, sub, 4, 300);
+        r.at(460, function(){
+          /* transform-origin is a style, not an animation option: SVG defaults
+             to transform-box:view-box, so these are viewBox units. */
+          halo.style.transformOrigin = SEAL.x + 'px ' + SEAL.y + 'px';
+          halo.style.opacity = '0';
+          r.an(halo, [{ transform:'scale(.55)', opacity:.9 }, { transform:'scale(1.3)', opacity:0 }],
+               opt(560, EASE.settle));
+        });
+        r.at(900, function(){
+          r.an(arc, [{ opacity:1 }, { opacity:0 }], opt(320, EASE.settle));
+          arc.style.opacity = '0'; busy = false; pump();
+        });
+      }
+
+      var t0 = null, PERIOD = 14000, RUN = 10500;
+      r.rf(function(ts){
+        if (t0 === null) t0 = ts;
+        var el = (ts - t0) * rate();
+        /* Linear. A sphere is a physical body; easing its spin is a lie. */
+        var theta = 104 + el / PERIOD * 360;
+        curTheta = theta;
+        for (var m = 0; m < merEls.length; m++){
+          var d = '', L = MER[m];
+          for (var s = 0; s <= 20; s++){
+            var pt2 = proj(-90 + s * 9, L, theta);
+            d += (s ? 'L' : 'M') + pt2.x.toFixed(1) + ' ' + pt2.y.toFixed(1);
+          }
+          merEls[m].setAttribute('d', d);
+        }
+        for (var i = 0; i < V.length; i++){
+          var v = V[i], p = proj(v.la, v.lo, theta), e = dotEls[i];
+          e.setAttribute('cx', p.x.toFixed(2));
+          e.setAttribute('cy', p.y.toFixed(2));
+          var front = p.z > 0;
+          e.setAttribute('opacity', front ? (0.45 + 0.55 * p.z).toFixed(2) : '.14');
+          e.setAttribute('r', (v.ok && front ? 1.9 + 1.5 * p.z : 1.7).toFixed(2));
+          e.setAttribute('fill', v.ok && front ? 'var(--m-accent)' : 'var(--m-mut)');
+          /* Classified on its first crossing into the front hemisphere —
+             the ledger fills as the globe turns, which is what discovery is. */
+          if (!v.seen && p.z > 0.55){
+            v.seen = true;
+            if (v.ok){ nYes++; tick(r, yes, nYes - 1, nYes, 700); queue.push(v); pump(); }
+            else     { nNo++;  tick(r, no,  nNo  - 1, nNo,  700); }
+          }
+        }
+        return el < RUN;   /* park after one long look; do not burn a core */
+      });
+    }
+  });
+
+  /* ══ 14 · Nothing is sent until a hand sends it ══════════════════════ */
+  push({
+    id:'sig-14',
+    name:'Nothing is sent until a hand sends it',
+    purpose:'/communications, the moment a vendor reply actually goes. The AI draft sits visibly OFF the outbound rail — dashed, inset, labelled NOT SENT — and no machine motion ever puts it on; only the completed hold does. The ceremony is the human’s, and the house names them for it. Release early and the card simply drops back: no error, no toast, because not sending is the default state, not a failure. Then the real ten-second pull-back window from useCancelScheduledSend drains underneath.',
+    spec:'hold fill 620ms LINEAR (the operator times it against their own thumb) · seat on ' + spec('tuck','') + ' · seal ' + SPR.stamp.over.toFixed(1) + '% · pull-back hairline 10s linear (real window)',
+    source:'apps/web/src/hooks/queries/useDraftEmailQueries.ts:250 · :63 · :220',
+    html:
+      '<div class="mx-sig-c mx-sig-14">' +
+        '<div class="g-h"><span class="g-k">Vintner’s Grove</span><span class="g-k s-st wn">Awaiting you</span></div>' +
+        '<div class="s-stage">' +
+          '<i class="s-rail"><i></i></i>' +
+          '<div class="s-card">' +
+            '<div class="s-to">Re: PO-1038 · 6× Musar 2016</div>' +
+            '<div class="s-body">“Confirming six at $34 — Tuesday delivery works.”</div>' +
+            '<div class="s-tag">AI draft · not sent</div>' +
+            '<span class="s-stamp">✓</span>' +
+          '</div>' +
+          '<div class="s-hold" role="button" tabindex="0" aria-label="Hold to send">' +
+            '<i class="s-fill"></i><span class="s-lab">Hold to send</span>' +
+          '</div>' +
+          '<div class="s-undo"><button type="button" class="s-pull">Pull back</button>' +
+            '<i class="s-bar"><i></i></i></div>' +
+        '</div>' +
+      '</div>',
+    play: function(root){
+      var r = runner(root);
+      var card = q(root, '.s-card'), fill = q(root, '.s-fill'), lab = q(root, '.s-lab');
+      var hold = q(root, '.s-hold'), tag = q(root, '.s-tag'), stamp = q(root, '.s-stamp');
+      var st = q(root, '.s-st'), undo = q(root, '.s-undo'), bar = q(root, '.s-bar i');
+      var pull = q(root, '.s-pull');
+      var FILL = 620, WINDOW = 10000;
+      var sent = false, timer = null, anim = null;
+
+      function gutter(){
+        sent = false;
+        card.className = 's-card';
+        card.style.transform = 'none';
+        tag.className = 's-tag'; tag.textContent = 'AI draft · not sent';
+        stamp.style.opacity = '0';
+        st.textContent = 'Awaiting you'; st.className = 'g-k s-st wn';
+        lab.textContent = 'Hold to send';
+        fill.style.transform = 'scaleX(0)';
+        undo.style.opacity = '0';
+        bar.style.transform = 'scaleX(1)';
+      }
+      function release(){
+        if (sent || timer === null) return;
+        clearTimeout(timer); timer = null;
+        if (anim){ try { anim.cancel(); } catch(e){} anim = null; }
+        /* The retreat uses the house curve, not the linear fill: the fill was
+           the operator's clock, the retreat is the product letting go. */
+        var w = fill.getBoundingClientRect().width / Math.max(hold.getBoundingClientRect().width, 1);
+        fill.style.transform = 'scaleX(0)';
+        fill.animate([{ transform:'scaleX(' + w.toFixed(3) + ')' }, { transform:'scaleX(0)' }],
+                     opt(220, EASE.settle));
+        lab.textContent = 'Hold to send';
+      }
+      function begin(){
+        if (sent || timer !== null) return;
+        lab.textContent = 'Keep holding';
+        fill.style.transform = 'scaleX(1)';
+        anim = fill.animate([{ transform:'scaleX(0)' }, { transform:'scaleX(1)' }],
+                            opt(FILL, EASE.lin));
+        timer = setTimeout(function(){ timer = null; seat(); }, T(FILL));
+      }
+      function seat(){
+        if (sent) return;
+        sent = true;
+        card.classList.add('on');
+        card.style.transform = 'translateX(9px)';
+        card.animate([{ transform:'translateX(0px)' }, { transform:'translateX(9px)' }],
+                     opt(360, E('tuck')));
+        stamp.style.opacity = '1';
+        stamp.animate([{ transform:'scale(.6) rotate(-10deg)', opacity:0 }, { transform:'none', opacity:1 }],
+                      opt(360, E('stamp')));
+        tag.className = 's-tag ok';
+        /* Mono, not serif: this is a RECORD, not the product speaking, and the
+           serif voice is reserved for the latter. The line names the person
+           because the house never sends on its own behalf. */
+        tag.textContent = 'Sent by Rosa · 21:04';
+        st.textContent = 'On the rail'; st.className = 'g-k s-st ok';
+        lab.textContent = 'Sent';
+        undo.style.opacity = '1';
+        undo.animate([{ opacity:0 }, { opacity:1 }], opt(220, EASE.settle));
+        bar.style.transform = 'scaleX(0)';
+        bar.animate([{ transform:'scaleX(1)' }, { transform:'scaleX(0)' }], opt(WINDOW, EASE.lin));
+      }
+      root.__sigcSend = { begin: begin, release: release, back: gutter };
+
+      once(hold, 'd', 'pointerdown', function(e){ e.preventDefault(); if (root.__sigcSend) root.__sigcSend.begin(); });
+      once(hold, 'u', 'pointerup',   function(){ if (root.__sigcSend) root.__sigcSend.release(); });
+      once(hold, 'l', 'pointerleave',function(){ if (root.__sigcSend) root.__sigcSend.release(); });
+      once(hold, 'k', 'keydown',     function(e){ if (e.key === ' ' || e.key === 'Enter'){ e.preventDefault(); if (root.__sigcSend) root.__sigcSend.begin(); } });
+      once(hold, 'r', 'keyup',       function(){ if (root.__sigcSend) root.__sigcSend.release(); });
+      once(pull, 'p', 'click',       function(){ if (root.__sigcSend) root.__sigcSend.back(); });
+
+      gutter();
+      void root.offsetWidth;
+      /* hands-free pass: one complete hold, so the card plays itself */
+      r.at(620, begin);
+    }
+  });
+
+  /* ══ 15 · The stencil fills where the house has facts ════════════════ */
+  push({
+    id:'sig-15',
+    name:'The stencil fills where the house has facts',
+    purpose:'A saved template becoming a live draft (/documents → Use). It arrives as a stencil, not as finished prose: each {{variable}} is a hollow slot that fills in dependency order, carrying the origin that filled it — inventory, live count, settings. The fourth slot has no source, so it does not fill; it stays open and takes the caret. The house completes exactly as far as its facts reach and hands over the one hole, rather than inventing a delivery date and burying it in a paragraph.',
+    spec:'stencil arrival 420ms cubic-bezier(.32,.72,0,1) · slots on ' + spec('latch','') + ', 210ms stagger · count on ' + KC.tally + ' · open slot 1 pulse, caret 160ms ink',
+    source:'apps/web/src/components/documents/TemplateLibrary.tsx:70 · SavedTemplates.tsx:180 · 06-pages/communications.md §9',
+    html:
+      '<div class="mx-sig-c mx-sig-15">' +
+        '<span class="t-chip"><u>Template</u> Low stock alert</span>' +
+        '<div class="t-doc">Alert: ' +
+          '<span class="t-slot" data-w="62"><span class="t-org">inventory</span>' +
+            '<span class="t-ph">wine_name</span><span class="t-v">Musar 2016</span></span>' +
+          ' is running low (<span class="t-slot" data-w="15"><span class="t-org">live count</span>' +
+            '<span class="t-ph">stock</span><span class="t-v t-num">0</span></span> bottles). ' +
+          'Reorder at <span class="t-slot" data-w="13"><span class="t-org">settings</span>' +
+            '<span class="t-ph">thr</span><span class="t-v">6</span></span>. ' +
+          'Deliver by <span class="t-slot" data-w="46"><span class="t-org wn">no source</span>' +
+            '<span class="t-ph">delivery_date</span><span class="t-v"></span></span>' +
+          '<i class="t-caret"></i>.' +
+        '</div>' +
+        '<div class="t-foot"><span class="g-k t-st">Filling</span>' +
+          '<span class="g-say t-say">Three of four. The last one is yours.</span></div>' +
+      '</div>',
+    play: function(root){
+      var r = runner(root);
+      var doc = q(root, '.t-doc'), chip = q(root, '.t-chip'), slots = qa(root, '.t-slot');
+      var caret = q(root, '.t-caret'), st = q(root, '.t-st'), say = q(root, '.t-say');
+      var num = q(root, '.t-num');
+
+      slots.forEach(function(s){
+        s.className = 't-slot';
+        s.style.minWidth = s.dataset.w + 'px';
+        s.querySelector('.t-v').style.opacity = '0';
+        s.querySelector('.t-ph').style.opacity = '.5';
+        s.querySelector('.t-org').style.opacity = '0';
+      });
+      if (num) num.textContent = '0';
+      caret.style.opacity = '0';
+      say.style.opacity = '0';
+      st.textContent = 'Filling'; st.className = 'g-k t-st g-shim';
+      doc.style.opacity = '0';
+      chip.style.opacity = '0';
+      void root.offsetWidth;
+
+      rise(r, chip, 5, 320);
+      r.at(150, function(){
+        doc.style.opacity = '1';
+        /* turn, not settle: a template is a record being opened. */
+        r.an(doc, [{ opacity:0, transform:'translateY(7px)' }, { opacity:1, transform:'none' }],
+             opt(420, EASE.turn));
+      });
+
+      [0, 1, 2].forEach(function(i, k){
+        r.at(620 + k * 210, function(){
+          var s = slots[i], v = s.querySelector('.t-v'), ph = s.querySelector('.t-ph');
+          var org = s.querySelector('.t-org');
+          org.style.opacity = '1';
+          r.an(org, [{ opacity:0, transform:'translate(-50%,3px)' },
+                     { opacity:1, transform:'translate(-50%,0)' }], opt(200, EASE.settle));
+          ph.style.opacity = '0';
+          v.style.opacity = '1';
+          r.an(v, [{ opacity:0, transform:'scale(.84) translateY(-3px)' },
+                   { opacity:1, transform:'none' }], opt(320, E('latch')));
+          s.classList.add('done');
+          if (i === 1 && num) tick(r, num, 0, 4, 620);
+          r.at(560, function(){
+            org.style.opacity = '0';
+            r.an(org, [{ opacity:1 }, { opacity:0 }], opt(200, EASE.settle));
+          });
+        });
+      });
+
+      /* The one the house cannot fill. It says so, once, and then waits. */
+      r.at(1420, function(){
+        var s = slots[3], org = s.querySelector('.t-org');
+        s.classList.add('open');
+        org.style.opacity = '1';
+        r.an(org, [{ opacity:0, transform:'translate(-50%,3px)' },
+                   { opacity:1, transform:'translate(-50%,0)' }], opt(200, EASE.settle));
+        r.an(s, [{ transform:'translateY(0)' }, { transform:'translateY(-2px)' },
+                 { transform:'translateY(0)' }], opt(420, EASE.settle));
+        st.textContent = '3 of 4 filled'; st.className = 'g-k t-st wn';
+      });
+      r.at(1900, function(){
+        caret.style.opacity = '1';
+        r.an(caret, [{ opacity:0 }, { opacity:1 }], opt(160, EASE.settle));
+        var on = true;
+        var last = 0;
+        r.rf(function(ts){
+          if (ts - last > 520 / rate()){ last = ts; on = !on; caret.style.opacity = on ? '1' : '.15'; }
+          return true;
+        });
+        rise(r, say, 4, 320);
+      });
+    }
+  });
+
+  /* ══ 16 · The house opens ════════════════════════════════════════════ */
+  push({
+    id:'sig-16',
+    name:'The house opens',
+    purpose:'Activation completing — once per customer, never again. GetStarted defines activated as menu + threshold, and between the threshold saving and the success screen it returns null: a blank page while progress refetches (get-started.md §9). This turns that dead frame into the held beat of a ceremony — the two facts land, the spine draws, the cover swings, and the restaurant’s book is written into for the first time and sealed. The only moment the product speaks in its own voice, and the only place the wordmark’s full stop is animated.',
+    spec:'facts on ' + spec('latch','') + ', 150ms stagger · held beat 380ms (the real progress fetch) · spine 300ms linear · cover rotateY 0→−168° 480ms cubic-bezier(.32,.72,0,1) · seal ' + SPR.stamp.over.toFixed(1) + '%',
+    source:'apps/web/src/pages/GetStarted.tsx:252 · :240 · 06-pages/get-started.md §9',
+    html:
+      '<div class="mx-sig-c mx-sig-16">' +
+        '<div class="h-facts">' +
+          '<div class="h-f"><b class="h-a">0</b><span>wines in</span></div>' +
+          '<div class="h-f"><b class="h-b">0</b><span>bottle threshold</span></div>' +
+        '</div>' +
+        '<div class="h-beat"><i></i></div>' +
+        '<div class="h-book">' +
+          '<div class="h-page">' +
+            '<div class="g-k">Ledger · opening entry</div>' +
+            '<div class="h-rule"></div>' +
+            '<div class="h-entry">Bodega Álvaro — list activated <em>· 142 wines · 21:07</em></div>' +
+            '<span class="h-seal">◈</span>' +
+          '</div>' +
+          '<div class="h-cover"><u>Not yet open</u></div>' +
+          '<i class="h-spine"></i>' +
+        '</div>' +
+        '<div class="h-say"><span class="g-say h-line">The book is open.</span>' +
+          '<span class="h-mark">Mudavym<i>.</i></span></div>' +
+      '</div>',
+    play: function(root){
+      var r = runner(root);
+      var fs = qa(root, '.h-f'), a = q(root, '.h-a'), b = q(root, '.h-b');
+      var beat = q(root, '.h-beat i'), spine = q(root, '.h-spine');
+      var cover = q(root, '.h-cover'), page = q(root, '.h-page'), entry = q(root, '.h-entry');
+      var seal = q(root, '.h-seal'), line = q(root, '.h-line');
+      var mark = q(root, '.h-mark'), dot = q(root, '.h-mark i');
+
+      fs.forEach(function(f){ f.style.opacity = '0'; });
+      a.textContent = '0'; b.textContent = '0';
+      beat.style.transform = 'scaleX(0)';
+      spine.style.transform = 'scaleY(0)';
+      cover.style.transform = 'none'; cover.style.opacity = '1';
+      page.style.opacity = '0';
+      entry.style.clipPath = 'inset(0 100% 0 0)';
+      seal.style.opacity = '0';
+      line.style.opacity = '0';
+      mark.style.opacity = '0'; dot.style.opacity = '0';
+      void root.offsetWidth;
+
+      /* The two conditions of activation, in the order GetStarted checks them. */
+      fs.forEach(function(f, i){
+        r.at(140 + i * 150, function(){
+          f.style.opacity = '1';
+          r.an(f, [{ opacity:0, transform:'translateY(7px) scale(.97)' },
+                   { opacity:1, transform:'none' }], opt(420, E('latch')));
+        });
+      });
+      r.at(180, function(){ tick(r, a, 0, 142, 840); });
+      r.at(330, function(){ tick(r, b, 0, 6, 700); });
+
+      /* The blank `return null` frame, made deliberate: a held beat rather
+         than a white screen. This is the gap the motion answers. */
+      r.at(1180, function(){
+        beat.style.transform = 'scaleX(1)';
+        r.an(beat, [{ transform:'scaleX(0)' }, { transform:'scaleX(1)' }], opt(380, EASE.lin));
+      });
+      r.at(1560, function(){
+        spine.style.transform = 'scaleY(1)';
+        r.an(spine, [{ transform:'scaleY(0)' }, { transform:'scaleY(1)' }], opt(300, EASE.lin));
+      });
+      r.at(1870, function(){
+        page.style.opacity = '1';
+        r.an(page, [{ opacity:0 }, { opacity:1 }], opt(300, EASE.settle));
+        /* turn at full scale: motion.json says turn opens a record. Nothing
+           else in the product is ever allowed to use it this wide. */
+        cover.style.transform = 'rotateY(-168deg)';
+        cover.style.opacity = '0';
+        r.an(cover, [{ transform:'rotateY(0deg)', opacity:1 },
+                     { transform:'rotateY(-100deg)', opacity:.85, offset:.55 },
+                     { transform:'rotateY(-168deg)', opacity:0 }], opt(480, EASE.turn));
+      });
+      r.at(2280, function(){
+        entry.style.clipPath = 'inset(0 0 0 0)';
+        r.an(entry, [{ clipPath:'inset(0 100% 0 0)' }, { clipPath:'inset(0 0 0 0)' }],
+             opt(460, EASE.turn));
+      });
+      r.at(2700, function(){
+        seal.style.opacity = '1';
+        r.an(seal, [{ transform:'scale(.55) rotate(-12deg)', opacity:0 },
+                    { transform:'none', opacity:1 }], opt(360, E('stamp')));
+      });
+      r.at(2980, function(){ rise(r, line, 6, 320); });
+      r.at(3240, function(){
+        mark.style.opacity = '1';
+        r.an(mark, [{ opacity:0 }, { opacity:1 }], opt(320, EASE.settle));
+      });
+      /* The full stop lands last. It is the brand's punctuation, and this is
+         the one time it is allowed to arrive on its own. */
+      r.at(3480, function(){
+        dot.style.opacity = '1';
+        r.an(dot, [{ opacity:0, transform:'translateY(-3px)' }, { opacity:1, transform:'none' }],
+             opt(200, E('stamp')));
+      });
+    }
+  });
+})();
+</script>
