@@ -326,8 +326,17 @@ a criterion for finding one.
   rather than assumed identical. Sales files and diffs; [[decision-office-charter]] rules.
 - **close_time:** 21 days — **2026-09-18**. Filed *before* the 2026-11-22 trigger, not on it.
 - ⚠️ **Register-row caution (ADR 0025, locked).** Adding one `OPEN-DECISIONS` row
-  re-anchors every citation below it — 27 across 24 files, measured. **Both** register
-  guards run, not only the claims one.
+  re-anchors every citation below it. ~~27 across 24 files, measured.~~ **Figure
+  corrected 2026-09-01 — it was never ADR 0025's, and it understated the cost ~6×.**
+  That phrasing appears nowhere in ADR 0025; the "24 files" half was borrowed from an
+  unrelated population (CM-F3's *61 citations in 24 files*, [[FORK-REGISTRY]]). Measured
+  at `14503ced`: the register is **newest-first**, so a genuinely new fork lands at the
+  top of the Open table and breaks **165 citations across 86 files — every register
+  citation in the corpus**. (Inserting at the *end* of Open breaks only 45; that is the
+  number usually quoted, and it describes a position no new fork occupies.) **Budget the
+  full repoint and automate it** — `check_citation_pairing.py` prints the exact
+  replacement for every break. See ADR 0025's *Correction — 2026-09-01*. **Both**
+  register guards run, not only the claims one.
 
 ---
 
