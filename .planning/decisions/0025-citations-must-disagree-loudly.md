@@ -482,16 +482,29 @@ exactly one row; take the guard's own `== DISAGREEING (N)` total; restore; repea
 
 | one row inserted at | citations broken | files |
 |---|---|---|
-| **line 24 — top of Open, where a new fork actually lands** | **165** | **86** |
+| **line 24 — top of Open, where a new fork actually lands** | **173** | **89** |
 | line 48 | 58 | 41 |
 | line 72 — end of Open, before `## Resolved` | 45 | 34 |
 | line 101 — mid-Resolved | 37 | 28 |
 | line 148 — EOF | 0 | 0 |
 
 The register is newest-first, so **filing a genuine new fork breaks every register
-citation in the corpus — 165 of 165, across 86 files** — and that is a **floor**, not a
-total: the guard cannot see the 7 `.html` anchors in point 5, so they break unseen on top
-of it. Quote the floor, not the end-of-table figure: a figure measured by appending below every existing row describes a
+citation in the corpus — 173 of 173, across 89 files.**
+
+> **Figure raised 2026-09-01, same day — and then it moved again while being written.**
+> This first read **165 across 86 files**, hedged as a floor because the guard could not
+> see `.html`. Point 5's blind spot is now fixed, so the guard sees everything: **172 / 89**
+> at `9c7dc1b9` — the missing 7 were the canvas anchors, so the delta *is* the blind spot,
+> measured. Then **173 / 89** once this correction's own two new register citations were
+> written into the vault.
+>
+> That last increment is not noise, it is the finding: **this number is not a constant and
+> must never be quoted from a document — including this one.** It rises with every citation
+> added anywhere in the corpus, and it is dominated by insert position (see the table).
+> Re-measure it, at the position you are actually inserting, on the tree you are actually
+> on. The method is four lines and is given above.
+
+Quote this figure, not the end-of-table one: a figure measured by appending below every existing row describes a
 position no new decision is ever written to. The corollary for a future session is that
 this cost cannot be "re-measured anywhere" — the insert position *is* the measurement.
 
@@ -503,12 +516,27 @@ with 165 — substituting a differently-scoped number for an unsourced one would
 record worse, and doing it *here* would commit the exact conflation this ADR exists to
 make impossible.
 
-**5. Two guard defects found while measuring** (code, fixed separately — not in this
-change): `.html` is absent from the guard's `TEXT_SUFFIXES`, so **7 anchors across 3
-`sketches/*/canvas.html` files** are never checked and never repaired by `--fix` — they
-break silently on every Open-table insert. And the summary line prints
-`total - len(examples)` when `total` already excludes examples, under-reporting by one
-(prints 164 where 165 is correct).
+**5. Two guard defects found while measuring — ~~fixed separately~~ FIXED, same day.**
+`.html` was absent from the guard's `TEXT_SUFFIXES`, so **7 anchors across 3
+`sketches/*/canvas.html` files** were never checked and never repaired by `--fix` — they
+broke silently on every Open-table insert, and the run still printed PASS. And the summary
+line printed `total - len(examples)` when `total` already excludes examples,
+under-reporting by one. Both fixed; baseline header now reads **172**, not 164. HTML is
+scanned *and* repaired rather than report-only: `repoint()` substitutes a digit run for a
+digit run, so it cannot emit `<`, `>`, `"`, `&` or a newline, and the live anchors sit in
+element text and double-quoted `title` attributes with no `<script>` in any of the three
+files — verified before enabling. The self-test gained four invariants covering this, and
+they fail 4/4 against the pre-fix guard, so the blind spot cannot silently return.
+One anchor was also unfixable as written — `062-design-agenda-canvas/canvas.html:117`
+carried a bare `OPEN-DECISIONS.md:64` with no id beside it, which `--fix` cannot repoint. <!-- cite-example: this line quotes the defect; the anchor is deliberately id-less -->
+It is now `OD-106 (OPEN-DECISIONS.md:64)`.
+
+> **This paragraph broke the guard, which is the correct behaviour.** Describing an
+> unanchored citation produces an unanchored citation, so the now-sighted guard flagged
+> this very sentence and CI went red — it needed the same `cite-example` marker §2's
+> defect-#3 row carries. Noted rather than quietly marked: it is direct evidence the
+> fix works, and the second time in this ADR that the rule's own illustration failed
+> the rule.
 
 *Provenance: the misquotation was traced to durable session memory carried independently
 by two sessions, each of which reported it to its founder as this ADR's own text before
