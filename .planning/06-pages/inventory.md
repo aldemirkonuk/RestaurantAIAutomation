@@ -40,6 +40,27 @@ pinned task (not a popup), menu-scan intake, and per-branch views.
 - Add and remove wines; manage storage locations
 - Switch branches and see another branch's stock
 - Contextual insights rail (analytics engine)
+- **Receipts & invoices depth in the dropdown, behind `mudavym_design_inventory` (OFF)** — the founder's named gap (MAKEOVER: KEEP the dropdowns, deepen receipt/invoice actions): for the wine's recent orders, every attached invoice / delivery receipt / packing slip with total, tie-out state and review status, E49-honest (null tie-out = dash, never a pass), linking into `/receipts`
+
+## 1b. Motions used — Mudavym addition (flag `mudavym_design_inventory`)
+
+Deliberately none. This is a card added inside the KEPT page (the founder's
+verdict kept `/inventory` as it is — the addition is styled native to the
+page's own grey-card idiom, not the `.mudavym` tokens, and the İznik re-skin
+arrives with the page redesigns, not here). Recording zero motions is the
+motion map for this flag (ADR 0044 §2).
+
+### Design used, and why (ADR 0045 §5 wave · MAKEOVER-VERDICTS: KEEP + named gap)
+
+The dropdown the founder praised is untouched; the gap he named — "more
+detail for the receipt and invoice actions… where inventory meets /receipts,
+differentiated work, not a generic expander" — lands as the ReceiptDepth
+card: real paperwork per wine (via the item's recent orders →
+`documentsApi.forOrder`), each row carrying type, number, date, total,
+tie-out and review status. Known limitation, recorded: rows are doc-level;
+the per-item invoice LINE (this wine's qty × price inside the document) needs
+an order-line join the web API does not expose yet — filed in §9 rather than
+faked with description matching. Flag off = byte-identical page.
 
 ## 2. Entry
 
@@ -115,6 +136,11 @@ never renders. Shared layout chrome applies (see dashboard.md §7).
   running — against the *new* page".
 - Market-price columns render "—" until price enrichment exists
   (`v3.0-TECH-DEBT.md:436-441` — plumbing complete, data absent).
+- ReceiptDepth shows doc-level rows only: the per-item invoice LINE (this
+  wine's qty × price inside the document) needs an order-line join the web
+  API does not expose (`documentsApi.detail` has lines, but nothing maps an
+  inventory item → its order_line ids). Deliberately not faked with
+  description matching (§1b).
 
 ## 10. Maturity
 

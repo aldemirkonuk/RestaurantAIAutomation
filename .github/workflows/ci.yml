@@ -287,6 +287,9 @@ jobs:
       - name: Every OD id names a register row
         run: ./scripts/check_od_ids_exist.py
 
+      - name: Every ACTIVE flag's readBy anchor resolves to a real gate
+        run: ./scripts/check_flag_readby_anchors.py
+
       - name: The collision helper still catches what it claims to
         run: python3 ./scripts/_od_collisions.py --self-test
 

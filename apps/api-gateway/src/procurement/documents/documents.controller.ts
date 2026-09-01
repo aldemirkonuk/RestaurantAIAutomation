@@ -5,6 +5,7 @@ import {
   HttpException,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -253,6 +254,53 @@ export class DocumentsController {
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
     if (!data) throw new HttpException("Line not found", HttpStatus.NOT_FOUND);
     return data;
+  }
+
+  @Patch(":id/lines/:lineId")
+  @ApiOperation({
+    summary: "Correct one extracted line by hand",
+    description:
+      "The receipts brief's editable half (ADR 0045 §5): a manager fixes what the model misread, then confirms. Only a pre-verification document (received / needs_review) may be edited — a verified document is the record a vendor dispute leans on, and there is deliberately no un-verify. Edits are anonymous drafts; provenance is carried by verify, which stamps who confirmed the final transcription. The document's tie-out is recomputed through the same rule extraction uses, so an edit can never leave a stale ties-out claim standing. Note the tie-out arithmetic prefers a line's stated lineTotal over qty × unitPrice — that is the paper's own claim; correcting qty alone moves the tie-out only when the line has no stated total, which is the honest reading, not a bug. qty_bottles is derived and follows qty/packSize corrections automatically unless set explicitly.",
+  })
+  async editLine(
+    @Param("id") documentId: string,
+    @Param("lineId") lineId: string,
+    @Body()
+    body: {
+      qty?: number;
+      unitPrice?: number | null;
+      lineTotal?: number | null;
+      description?: string | null;
+      vintage?: number | null;
+      packSize?: number;
+      qtyBottles?: number;
+      freeGoodsQty?: number;
+      allowance?: number | null;
+      uom?: string;
+      vendorSku?: string | null;
+    },
+    @CurrentUser() user: AuthedUser,
+  ) {
+    try {
+      return await this.intake.editLine(
+        documentId,
+        lineId,
+        user.restaurantId,
+        body ?? {},
+      );
+    } catch (error) {
+      const msg: string = error?.message ?? "Failed to edit line";
+      if (msg === "NOT_FOUND")
+        throw new HttpException("Document or line not found", HttpStatus.NOT_FOUND);
+      if (msg.startsWith("NOT_EDITABLE:"))
+        throw new HttpException(
+          `Only a document awaiting review can be edited — this one is ${msg.slice(13)}.`,
+          HttpStatus.CONFLICT,
+        );
+      if (msg.startsWith("BAD_FIELD:") || msg === "EMPTY_PATCH")
+        throw new HttpException(msg, HttpStatus.BAD_REQUEST);
+      throw new HttpException(msg, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
   }
 
   @Post(":id/verify")
