@@ -9,6 +9,7 @@ import { MenuScannerFlow } from '../components/scanner/MenuScannerFlow'
 import { DevWinePhotoUpload } from '../components/wines/DevWinePhotoUpload'
 import { DevManualWineEntry } from '../components/wines/DevManualWineEntry'
 import { AddToInventoryFromLibraryModal } from '../components/wines/AddToInventoryFromLibraryModal'
+import { DeepLinkNotice } from '../components/common/DeepLinkNotice'
 import { useUserPreferences } from '../hooks/useUserPreferences'
 import {
   Search,
@@ -117,6 +118,8 @@ export function WineLibrary() {
     uniqueCountries,
     uniqueVintages,
     uniqueBottleSizes: rawUniqueBottleSizes,
+    deepLinkWine,
+    consumeDeepLinkWine,
   } = useWineLibraryPage()
 
   const uniqueBottleSizes = useMemo(
@@ -126,6 +129,28 @@ export function WineLibrary() {
 
   const [showFilters, setShowFilters] = useState(false)
   const [selectedWine, setSelectedWine] = useState<WineType | null>(null)
+
+  /* ── /wines?wineId=<id> opens that bottle's detail panel ────────────────
+   *
+   * The QR code printed on a bottle encodes exactly this URL
+   * (QRCodeGenerator.tsx:38), and the dashboard's top-wine rows use it too.
+   * Until now a scan opened the unfiltered library and the reader had to find
+   * the bottle by hand. A wineId that resolves to nothing is said in words
+   * rather than dropping the scanner back onto the ordinary list.
+   */
+  const [wineLinkNotice, setWineLinkNotice] = useState<string | null>(null)
+  const wineLinkHandled = useRef(false)
+  useEffect(() => {
+    if (wineLinkHandled.current) return
+    if (deepLinkWine.status === 'idle' || deepLinkWine.status === 'pending') return
+    wineLinkHandled.current = true
+    if (deepLinkWine.status === 'found') {
+      setSelectedWine(deepLinkWine.target)
+    } else {
+      setWineLinkNotice(deepLinkWine.message)
+    }
+    consumeDeepLinkWine()
+  }, [deepLinkWine, consumeDeepLinkWine])
 
   const favoritesArray: string[] = preferences.wineFavorites ?? []
   const removedWinesArray: string[] = preferences.removedWines ?? []
@@ -568,6 +593,16 @@ Redirecting to Orders page...`)
       </div>
 
       <div className="p-6">
+        {/* A `?wineId=` that resolves to nothing is said in words, not by
+            quietly rendering the ordinary library (ADR 0020). */}
+        {wineLinkNotice && (
+          <DeepLinkNotice
+            message={wineLinkNotice}
+            onDismiss={() => setWineLinkNotice(null)}
+            className="mb-6"
+          />
+        )}
+
         {/* Dev Mode Toolbar */}
         {devMode && (
           <motion.div

@@ -19,8 +19,10 @@
  * wired to NOTHING and says so.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { HoldToApprove, Wordmark } from '@/components/mudavym';
+import { DeepLinkNotice } from '@/components/common/DeepLinkNotice';
+import { useOrdersDeepLink } from '../useOrdersDeepLink';
 import { BulkApproveBar } from './BulkApproveBar';
 import { DraftRail } from './DraftRail';
 import { LedgerRow } from './LedgerRow';
@@ -30,6 +32,9 @@ import { EM, MONO, SANS, SERIF, fmtMoneyWhole } from './format';
 import { useOrdersNextData, type OrderRowVM } from './useOrdersNextData';
 
 const monthName = new Intl.DateTimeFormat('en-GB', { month: 'long' });
+
+/** Stable identity accessor for the deep-link resolver. */
+const rowId = (row: OrderRowVM) => row.id;
 
 /** The die with nothing behind it — clearly guarded demo state. */
 function RehearsalCard() {
@@ -119,6 +124,53 @@ export default function OrdersNext() {
 
   const pendingKnownEmpty = data.hasData && data.counts.pending === 0;
   const showRehearsal = data.isError || pendingKnownEmpty;
+
+  /* ── deep links: `?orderId=` · `?highlight=` · `&action=thread` ─────────
+   *
+   * DayDetail.tsx:199 and WaitingOnYou.tsx:124 both link here with
+   * `?highlight=<id>`, and the gateway's own alert payload
+   * (dashboard.service.ts:744) uses the same shape. Until now this page read
+   * no parameters at all, so those links opened the ordinary ledger.
+   *
+   * `?draft=new` is deliberately NOT honoured here: OrdersNext has no
+   * create-order flow to prefill. Saying so is the honest answer; silently
+   * dropping the payload is the one ADR 0020 forbids.
+   */
+  const deepLink = useOrdersDeepLink<OrderRowVM>({
+    orders: data.rows,
+    ready: data.hasData || data.isError,
+    idOf: rowId,
+  });
+  const [deepLinkNotice, setDeepLinkNotice] = useState<string | null>(null);
+  const deepLinkHandled = useRef(false);
+
+  useEffect(() => {
+    if (deepLinkHandled.current) return;
+    if (deepLink.order.status === 'pending') return;
+    if (
+      deepLink.order.status === 'idle' &&
+      deepLink.draft === null &&
+      deepLink.missingMessage === null
+    ) {
+      return;
+    }
+    deepLinkHandled.current = true;
+
+    if (deepLink.order.status === 'found') {
+      // Clear the station filter first — an order sitting at `delivered`
+      // would otherwise stay hidden behind whichever station is active.
+      setStation(null);
+      setExpandedId(deepLink.order.target.id);
+    }
+
+    const notice =
+      deepLink.draft !== null
+        ? 'This link carried a draft-order payload, and this page has no create-order ' +
+          'flow to put it in. Nothing has been drafted.'
+        : deepLink.missingMessage;
+    if (notice) setDeepLinkNotice(notice);
+    deepLink.consume();
+  }, [deepLink]);
 
   const setRowSelected = (id: string, next: boolean) =>
     setSelected((prev) => {
@@ -220,6 +272,15 @@ export default function OrdersNext() {
               Try again
             </button>
           </div>
+        )}
+
+        {/* ── a deep link that named something gone is said in words ───── */}
+        {deepLinkNotice && (
+          <DeepLinkNotice
+            message={deepLinkNotice}
+            onDismiss={() => setDeepLinkNotice(null)}
+            className="mb-4"
+          />
         )}
 
         {/* ── the five-stage spine the founder kept ────────────────────── */}

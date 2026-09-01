@@ -53,8 +53,13 @@ import { formatVolume } from '../utils/volumeUtils'
 import { useOrders } from '../hooks/queries/useOrderQueries'
 import { useUIStore, useRestaurantSettingsStore } from '../stores'
 import { useOrdersPage, OrderSummary, OrderFilters, CreateOrderModal } from './orders/index'
+import { useOrdersDeepLink, draftLinesMissingMessage } from './orders/useOrdersDeepLink'
+import { DeepLinkNotice } from '../components/common/DeepLinkNotice'
 import { ExportMenu } from '../components/ui/ExportMenu'
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../lib/tableExport'
+
+/** Stable identity accessor for the deep-link resolver (see useOrdersDeepLink). */
+const deepLinkOrderId = (order: Order) => order.order_id
 
 const API_URL = import.meta.env?.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 const isUuid = (value?: string | null) =>
@@ -175,6 +180,7 @@ export function Orders() {
     providers,
     wines: apiWines,
     inventory,
+    inventoryLoading,
     loading,
     error,
     filterStatus,
@@ -445,6 +451,106 @@ export function Orders() {
     window.addEventListener('notification_sent', handleNotification)
     return () => window.removeEventListener('notification_sent', handleNotification)
   }, [activeRestaurantName])
+
+  // ── Deep links (`/orders?orderId=…`, `?action=thread`, `?draft=new&…`) ────
+  //
+  // This page called useSearchParams nowhere, so every dashboard control that
+  // navigated here with a payload landed on the bare list. See
+  // pages/orders/useOrdersDeepLink.ts for the emitters this honours.
+  const deepLink = useOrdersDeepLink<Order>({
+    orders,
+    // `loading` is TanStack's isLoading for the orders query; once it clears,
+    // an id that still does not resolve is genuinely absent (ADR 0020).
+    ready: !loading,
+    idOf: deepLinkOrderId,
+  })
+  const [deepLinkNotice, setDeepLinkNotice] = useState<string | null>(null)
+  const deepLinkHandled = useRef(false)
+
+  useEffect(() => {
+    if (deepLinkHandled.current) return
+    // Nothing to do until the resolution has actually settled.
+    if (deepLink.order.status === 'pending') return
+    if (
+      deepLink.order.status === 'idle' &&
+      deepLink.draft === null &&
+      deepLink.missingMessage === null
+    ) {
+      return
+    }
+    // The draft path needs inventory to name the wines. Wait on the QUERY, not
+    // on the list being non-empty: a genuinely empty inventory must still
+    // produce the "these rows are gone" sentence rather than waiting forever.
+    if (deepLink.draft && inventoryLoading) return
+
+    deepLinkHandled.current = true
+
+    if (deepLink.order.status === 'found') {
+      const target = deepLink.order.target
+      setSelectedOrder(target)
+      // Land ON the order, not merely near it. The list groups by wine or
+      // vendor and every group starts collapsed, so simply selecting the row
+      // would leave it unmounted. Narrow the list to this order (the search
+      // box shows the id, so the reader can see why it is short and clear it),
+      // drop any status filter that would exclude it, and open its group.
+      setFilterStatus('all')
+      setOrderSearch(target.order_id)
+      const groupKey =
+        groupBy === 'wine'
+          ? (resolveOrderWineName(target) ?? 'Unknown Wine')
+          : resolveOrderProviderName(target)
+      setExpandedGroups((prev) => new Set(prev).add(groupKey))
+      if (deepLink.openThread) {
+        setCommsDrawerOrder({
+          orderId: target.order_id,
+          wineName: resolveOrderWineName(target) ?? target.wine_name ?? 'Order',
+          orderStatus: target.status,
+        })
+      }
+    }
+
+    let notice = deepLink.missingMessage
+
+    if (deepLink.draft) {
+      const recommended = getRecommendedProviders(providers)
+      const resolved: CreateOrderItem[] = []
+      const unknown: string[] = []
+      for (const line of deepLink.draft) {
+        const item = inventoryById.get(line.inventoryId)
+        if (!item) {
+          unknown.push(line.inventoryId)
+          continue
+        }
+        resolved.push({
+          wineId: item.wineId || line.inventoryId,
+          wineName: item.wineName || wineNameById.get(item.wineId) || 'Unnamed wine',
+          bottleSizeMl: item.bottleSizeMl,
+          quantity: line.qty,
+          unitType: 'bottle',
+          price: item.wac ?? item.retailPriceAvg ?? 0,
+          providers: {
+            primary: recommended.primary,
+            alternatives: recommended.alternatives,
+            selected: recommended.primary ? [recommended.primary.id] : [],
+          },
+          notes: '',
+        })
+      }
+      if (unknown.length > 0) notice = draftLinesMissingMessage(unknown)
+      if (resolved.length > 0) {
+        setCreateOrderItems(resolved)
+        setShowCreateOrderModal(true)
+      }
+    }
+
+    if (notice) setDeepLinkNotice(notice)
+    // Strip the parameters so a refresh does not re-open what was just closed.
+    deepLink.consume()
+  }, [
+    deepLink, inventoryLoading, inventoryById, wineNameById, providers, groupBy,
+    setSelectedOrder, setFilterStatus, setOrderSearch, setExpandedGroups,
+    resolveOrderWineName, resolveOrderProviderName,
+  ])
 
   // Check for pending reorder from Wine Library (using Zustand store instead of sessionStorage)
   useEffect(() => {
@@ -1459,6 +1565,17 @@ Shadow stock has been moved to Live Stock.`)
               <X className="w-4 h-4 text-red-600" />
             </button>
           </motion.div>
+        )}
+
+        {/* A deep link that named something gone says so, rather than
+            rendering the ordinary list and letting the reader assume it
+            worked (ADR 0020). */}
+        {deepLinkNotice && (
+          <DeepLinkNotice
+            message={deepLinkNotice}
+            onDismiss={() => setDeepLinkNotice(null)}
+            className="mb-6"
+          />
         )}
 
         {/* engine insights in context (NEW-738) */}

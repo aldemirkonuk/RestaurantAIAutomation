@@ -46,6 +46,7 @@ import { useContextMenu } from '../hooks/useContextMenu'
 import { useRealtimeDispatch, CalendarEventPayload } from '../contexts/RealtimeContext'
 import { storeAIDateContext, importantDateToAIContext } from '../utils/aiDateContext'
 import { formatMoney, formatNumber as fmtNumber } from '../lib/utils'
+import { formatLocalDateKey } from '../lib/calendar-dates'
 import { formatVolume } from '../utils/volumeUtils'
 import { useAuthStore, useRestaurantSettingsStore } from '../stores'
 import { useInventoryData } from '../hooks/useInventoryData'
@@ -772,10 +773,18 @@ export function Dashboard() {
                 </div>
               </div>
               
-              {/* Quick Add */}
+              {/* Quick Add.
+                  The literal string `today` used to be passed here; CalendarPage
+                  does `new Date(dateStr)` on it (CalendarPage.tsx:236), which
+                  yields Invalid Date and opened the create-event modal with an
+                  unusable date. Send the real local day instead —
+                  formatLocalDateKey, not toISOString, so a UTC-offset evening
+                  does not name tomorrow. */}
               <button
                 type="button"
-                onClick={() => navigate('/calendar?openModal=true&date=today')}
+                onClick={() =>
+                  navigate(`/calendar?openModal=true&date=${formatLocalDateKey(new Date())}`)
+                }
                 className="mt-4 flex items-center justify-center gap-2 w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-wine-400 hover:text-wine-600 transition-colors text-xs font-medium"
               >
                 <Plus className="w-3 h-3" />

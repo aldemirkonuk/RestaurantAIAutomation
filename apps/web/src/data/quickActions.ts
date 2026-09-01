@@ -78,7 +78,11 @@ export const BUILTIN_QUICK_ACTIONS: BuiltinQuickActionDef[] = [
   {
     key: 'add_calendar',
     label: 'Add to Calendar',
-    href: '/calendar?openModal=true&date=today',
+    // No `date` parameter: this href is a constant, so it cannot carry today's
+    // date, and the literal string `today` reached CalendarPage as
+    // `new Date('today')` — Invalid Date. Omitting it makes CalendarPage take
+    // its documented default of `new Date()` (CalendarPage.tsx:236).
+    href: '/calendar?openModal=true',
     icon: Calendar,
   },
   {

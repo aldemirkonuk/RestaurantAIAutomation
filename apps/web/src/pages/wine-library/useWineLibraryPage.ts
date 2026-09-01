@@ -1,8 +1,10 @@
 import { useState, useMemo, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Wine } from '../../data/wineData'
-import { useWines, useInventory, useProviders } from '../../hooks/queries'
+import { useWines, useWinesByIds, useInventory, useProviders } from '../../hooks/queries'
 import { useAuth } from '../../contexts/AuthContext'
 import { mapApiWinesToUiWines } from '../../lib/wine-library'
+import { resolveDeepLinkTarget, type DeepLinkResolution } from '../../lib/deepLink'
 
 export type SortField = 'name' | 'price' | 'market' | 'vintage' | 'type' | 'country' | 'format'
 export type SortOrder = 'asc' | 'desc'
@@ -70,9 +72,21 @@ const matchesTotalSize = (stock: number, size: string): boolean => {
 export function useWineLibraryPage() {
   const { user } = useAuth()
 
+  /* ── Deep links: /wines?search=<q> and /wines?wineId=<id> ───────────────
+   *
+   * Emitters: Dashboard.tsx:1054,1057,1063,1814-1815 (top-wine rows and their
+   * context menu) and QRCodeGenerator.tsx:38,379 (the bottle QR code, which
+   * encodes `?wineId=`). This page called useSearchParams nowhere, so a
+   * scanned bottle and a clicked wine both opened the unfiltered library.
+   *
+   * `search` seeds the box on first paint only — a lazy initialiser, not an
+   * effect — so typing over it is never fought by the URL.
+   */
+  const [searchParams, setSearchParams] = useSearchParams()
+
   // View state
   const [viewMode, setViewMode] = useState<ViewMode>('list')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search')?.trim() ?? '')
 
   // Filter state
   const [filters, setFilters] = useState<FilterState>({
@@ -130,6 +144,41 @@ export function useWineLibraryPage() {
       return wine
     })
   }, [apiWines, inventoryByWineId])
+
+  /* ── /wines?wineId=<id> ────────────────────────────────────────────────
+   *
+   * Resolved against a DIRECT fetch of that one id, not against the visible
+   * list: `useWines` is capped at 500 rows and is itself narrowed by the
+   * search box, so "not in the list" is not evidence the wine does not exist.
+   * Reporting it missing on that basis would be exactly the fabricated answer
+   * ADR 0020 forbids — in the other direction.
+   */
+  const deepLinkWineId = searchParams.get('wineId')?.trim() || null
+  const linkedWineQuery = useWinesByIds(deepLinkWineId ? [deepLinkWineId] : [])
+
+  const deepLinkWine: DeepLinkResolution<Wine> = useMemo(() => {
+    if (!deepLinkWineId) return { status: 'idle' }
+    const inLibrary = libraryWines.find((w) => w.id === deepLinkWineId)
+    if (inLibrary) return { status: 'found', value: deepLinkWineId, target: inLibrary }
+    return resolveDeepLinkTarget<Wine>({
+      value: deepLinkWineId,
+      items: mapApiWinesToUiWines(linkedWineQuery.data ?? []),
+      ready: !linkedWineQuery.isPending,
+      match: (wine, value) => wine.id === value,
+      noun: 'the wine',
+    })
+  }, [deepLinkWineId, libraryWines, linkedWineQuery.data, linkedWineQuery.isPending])
+
+  /** Strip `wineId` once the detail panel has opened, so closing it sticks. */
+  const consumeDeepLinkWine = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        prev.delete('wineId')
+        return prev
+      },
+      { replace: true },
+    )
+  }, [setSearchParams])
 
   // Computed values
   const uniqueRegions = useMemo(
@@ -349,5 +398,9 @@ export function useWineLibraryPage() {
     uniqueCountries,
     uniqueVintages,
     uniqueBottleSizes,
+
+    // Deep links (`?search=` seeded above; `?wineId=` resolved here)
+    deepLinkWine,
+    consumeDeepLinkWine,
   }
 }

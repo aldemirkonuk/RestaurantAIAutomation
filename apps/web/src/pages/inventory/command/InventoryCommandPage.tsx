@@ -12,6 +12,8 @@ import {
   Power,
 } from 'lucide-react'
 import { useInventoryPage, type InventoryItem } from '../index'
+import { resolveDeepLinkChoice, resolveDeepLinkTarget } from '../../../lib/deepLink'
+import { DeepLinkNotice } from '../../../components/common/DeepLinkNotice'
 import { ContextualInsights } from '../../../components/insights/ContextualInsights'
 import { useStorageLocations } from '../../../hooks/useStorageLocations'
 import { useCreateInventoryItem } from '../../../hooks/queries'
@@ -87,6 +89,7 @@ export function InventoryCommandPage() {
     searchQuery, setSearchQuery, filterType, setFilterType,
     selectedLocationFilter, setSelectedLocationFilter,
     inventory, filteredInventory, stats, refetchInventory, updateInventoryItem,
+    isLoading: inventoryLoading,
   } = page
 
   // See RowExpansion: the retired `/inventory-legacy` honoured the Settings
@@ -201,6 +204,86 @@ export function InventoryCommandPage() {
     const match = (toVerify as any[]).find((o) => o.id === id)
     if (match) setVerifyOrder(match)
   }, [searchParams, toVerify, verifyOrder])
+
+  /* ── Deep-link: ?filter=<flag> and ?highlight=<id> ──────────────────────
+   *
+   * Emitters: Dashboard.tsx:320 (`?filter=low`), Dashboard.tsx:978/988/1781
+   * and OneTapActionCenter.tsx:184 (`?highlight=<id>`), plus the gateway's own
+   * low-stock and out-of-stock alerts (dashboard.service.ts:723,762).
+   * Notifications.tsx:1355 spells the filter `low-stock`, so both spellings
+   * are accepted rather than one of them quietly doing nothing.
+   *
+   * `highlight` matches either the `restaurant_inventory` row id or the master
+   * wine id, because the dashboard emits `wine.id || wine.wineId` and those are
+   * different keys (Dashboard.tsx:973).
+   */
+  const filterParam = searchParams.get('filter')
+  const highlightParam = searchParams.get('highlight')
+
+  const flagIntent = useMemo(
+    () =>
+      resolveDeepLinkChoice<RowFlag>({
+        value: filterParam,
+        allowed: FLAG_DEFS.map((f) => f.key),
+        aliases: { 'low-stock': 'low', 'below-par': 'low', reconcile: 'recon' },
+        noun: 'the view',
+      }),
+    [filterParam],
+  )
+
+  const highlightIntent = useMemo(
+    () =>
+      resolveDeepLinkTarget<InventoryItem>({
+        value: highlightParam,
+        items: inventory,
+        // `inventory` is [] both while loading and when genuinely empty; only
+        // the settled query can tell those apart (ADR 0020).
+        ready: !inventoryLoading,
+        match: (item, value) => item.inventoryId === value || item.id === value,
+        noun: 'the inventory item',
+      }),
+    [highlightParam, inventory, inventoryLoading],
+  )
+
+  const [deepLinkNotice, setDeepLinkNotice] = useState<string | null>(null)
+  const deepLinkHandled = useRef(false)
+
+  useEffect(() => {
+    if (deepLinkHandled.current) return
+    if (flagIntent.status === 'idle' && highlightIntent.status === 'idle') return
+    if (highlightIntent.status === 'pending') return
+    deepLinkHandled.current = true
+
+    if (flagIntent.status === 'found') setActiveFlag(flagIntent.target)
+    if (highlightIntent.status === 'found') {
+      const target = highlightIntent.target
+      // The row is only reachable when it is not filtered out — a highlight
+      // that arrives alongside a stale search box would otherwise land on
+      // nothing. Clear the search, then expand the row.
+      setSearchQuery('')
+      setExpandedId(target.inventoryId ?? target.id)
+    }
+
+    const notice =
+      highlightIntent.status === 'missing'
+        ? highlightIntent.message
+        : flagIntent.status === 'missing'
+          ? flagIntent.message
+          : null
+    if (notice) setDeepLinkNotice(notice)
+  }, [flagIntent, highlightIntent, setSearchQuery])
+
+  // Scroll the highlighted row into view once it has actually rendered.
+  useEffect(() => {
+    if (!expandedId || highlightIntent.status !== 'found') return
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    const frame = requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-inv-row-id="${CSS.escape(expandedId)}"]`)
+        ?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [expandedId, highlightIntent.status])
 
   const closeVerify = () => {
     setVerifyOrder(null)
@@ -555,6 +638,16 @@ export function InventoryCommandPage() {
 
   return (
     <div className="p-6 max-w-[1500px] mx-auto">
+      {/* A link that named a row or a view this page does not have says so,
+          instead of rendering the ordinary table (ADR 0020). */}
+      {deepLinkNotice && (
+        <DeepLinkNotice
+          message={deepLinkNotice}
+          onDismiss={() => setDeepLinkNotice(null)}
+          className="mb-4"
+        />
+      )}
+
       {/* header */}
       <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
         <div data-tour="inventory-filters">
@@ -785,7 +878,10 @@ export function InventoryCommandPage() {
                   const loc = locName(item)
                   const status = classifyStock(item.liveStock, item.threshold)
                   return (
-                    <div key={item.inventoryId} data-inv-row={idx}>
+                    // `data-inv-row-id` is the scroll anchor for
+                    // `/inventory?highlight=<id>`; `data-inv-row` stays the
+                    // keyboard-navigation index it always was.
+                    <div key={item.inventoryId} data-inv-row={idx} data-inv-row-id={item.inventoryId}>
                       <div
                         onClick={() => setExpandedId(isOpen ? null : item.inventoryId!)}
                         onContextMenu={(e) => { e.preventDefault(); if (item.inventoryId) setMenu({ id: item.inventoryId, x: e.clientX, y: e.clientY }) }}

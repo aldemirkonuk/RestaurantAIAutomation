@@ -3,8 +3,9 @@
  * Uses react-grid-layout for drag/resize blocks with inline configuration.
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { DeepLinkNotice } from '../components/common/DeepLinkNotice'
 import { Reorder } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
 import { useRealtimeDispatch } from '../contexts/RealtimeContext'
@@ -254,6 +255,9 @@ export function Reports() {
 
   // AI Command Palette state
   const [showAIPalette, setShowAIPalette] = useState(false)
+
+  // Deep-link parameters (`?focus=…`). See the focus effect below.
+  const [reportsSearchParams, setReportsSearchParams] = useSearchParams()
 
   // Reorderable section IDs (below the canvas)
   const [sectionOrder, setSectionOrder] = useState<string[]>([
@@ -636,6 +640,59 @@ export function Reports() {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section as keyof typeof prev] }))
   }, [])
 
+  /* ── Deep-link: /reports?focus=<section> ────────────────────────────────
+   *
+   * `focus=revenue` is emitted by the dashboard's spend modal
+   * (Dashboard.tsx:1162, "View full spend report →"). This page read no
+   * parameters, and EngineInsightsPanel's own effect consumed ANY `focus`
+   * value and scrolled to the insight list — so the one control that used it
+   * landed on the wrong section and looked like it had worked.
+   *
+   * `focus=insights` stays owned by EngineInsightsPanel. A `focus` naming
+   * neither is said in words rather than silently ignored (ADR 0020).
+   */
+  const FOCUS_ANCHORS: Record<string, string> = useMemo(
+    () => ({
+      // "revenue" is the caller's word; the section is vendor SPEND, and the
+      // parameter name is kept only because the emitter is already deployed.
+      revenue: 'spend-report',
+      spend: 'spend-report',
+      consumption: 'consumption-report',
+      reconciliation: 'reconciliation-report',
+    }),
+    [],
+  )
+  const [focusNotice, setFocusNotice] = useState<string | null>(null)
+  const focusHandled = useRef(false)
+
+  useEffect(() => {
+    if (focusHandled.current) return
+    const focus = reportsSearchParams.get('focus')
+    if (!focus) return
+    // EngineInsightsPanel owns this one and clears it itself.
+    if (focus === 'insights') return
+    focusHandled.current = true
+
+    const anchorId = FOCUS_ANCHORS[focus]
+    if (!anchorId) {
+      setFocusNotice(
+        `This link asked to open the “${focus}” section, and this page has no such section. ` +
+          'Nothing below has been filtered or hidden.',
+      )
+    } else {
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      requestAnimationFrame(() => {
+        document
+          .getElementById(anchorId)
+          ?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+      })
+    }
+
+    const next = new URLSearchParams(reportsSearchParams)
+    next.delete('focus')
+    setReportsSearchParams(next, { replace: true })
+  }, [reportsSearchParams, setReportsSearchParams, FOCUS_ANCHORS])
+
   /** Renders one below-the-dashboard section (used both in static view and reorder mode). */
   function renderSectionContent(sectionId: string) {
     return (
@@ -653,24 +710,29 @@ export function Reports() {
             is connected, and the tile then says so rather than dividing
             procurement spend by itself and always printing ~100%. */}
         {sectionId === 'dataTable' && (
-          <DataTablesSection
-            dailyData={purchaseDayData}
-            purchaseData={purchaseData}
-            purchaseMetrics={purchaseMetrics}
-            posRevenue={pos.posConnected ? pos.revenue : null}
-            checkScans={checkScans}
-            expandedSections={expandedSections}
-            onToggle={handleSectionToggle}
-            onCheckUpload={(file) => console.log('Check uploaded:', file.name)}
-          />
+          // `spend-report` is the scroll anchor for `/reports?focus=revenue`.
+          <div id="spend-report">
+            <DataTablesSection
+              dailyData={purchaseDayData}
+              purchaseData={purchaseData}
+              purchaseMetrics={purchaseMetrics}
+              posRevenue={pos.posConnected ? pos.revenue : null}
+              checkScans={checkScans}
+              expandedSections={expandedSections}
+              onToggle={handleSectionToggle}
+              onCheckUpload={(file) => console.log('Check uploaded:', file.name)}
+            />
+          </div>
         )}
 
         {sectionId === 'reconciliation' && (
-          <MonthlyReconciliation totalBottlesSold={metrics.totalBottles} totalInventoryValue={metrics.inventoryValue} />
+          <div id="reconciliation-report">
+            <MonthlyReconciliation totalBottlesSold={metrics.totalBottles} totalInventoryValue={metrics.inventoryValue} />
+          </div>
         )}
 
         {sectionId === 'consumption' && (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div id="consumption-report" className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-pink-50">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-purple-100 rounded-lg">
@@ -938,6 +1000,11 @@ export function Reports() {
       <Header title="Reports & Analytics" subtitle="Track your wine operations performance" />
 
       <div className="p-6 space-y-6">
+        {/* A `?focus=` naming a section this page does not have says so. */}
+        {focusNotice && (
+          <DeepLinkNotice message={focusNotice} onDismiss={() => setFocusNotice(null)} />
+        )}
+
         {/* Purchasing-data indicator. NOTE: this page charts vendor spend from
             purchase orders only — it never reads POS sales. The banner is gated
             on purchasing data, so it says nothing about POS connectivity. */}

@@ -123,10 +123,17 @@ export function EngineInsightsPanel({
 
   // Deep-link support for Quick Actions: /reports?focus=insights scrolls here,
   // /reports?openGoal=true additionally opens the "Add Goal" form.
+  //
+  // This used to fire on ANY `focus` value and then delete the parameter, so
+  // `/reports?focus=revenue` (Dashboard.tsx:1162, "View full spend report")
+  // scrolled to the insight list instead of the spend report and consumed the
+  // parameter before Reports.tsx could see it. It now claims only the value it
+  // actually serves; Reports.tsx owns the rest (see its own focus effect).
   useEffect(() => {
     const focus = searchParams.get("focus");
     const openGoal = searchParams.get("openGoal") === "true";
-    if (!focus && !openGoal) return;
+    const focusesInsights = focus === "insights";
+    if (!focusesInsights && !openGoal) return;
 
     if (openGoal) setShowGoalForm(true);
 
@@ -138,7 +145,9 @@ export function EngineInsightsPanel({
     });
 
     const next = new URLSearchParams(searchParams);
-    next.delete("focus");
+    // Only what this panel consumed. A `focus` naming another section must
+    // survive for the page that owns it.
+    if (focusesInsights) next.delete("focus");
     next.delete("openGoal");
     setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps

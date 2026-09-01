@@ -233,7 +233,14 @@ export default function CalendarPage() {
   useEffect(() => {
     if (searchParams.get('openModal') === 'true') {
       const dateStr = searchParams.get('date')
-      const date = dateStr ? new Date(dateStr) : new Date()
+      // `new Date(dateStr)` was taken on trust, so a caller sending anything
+      // that is not a date — the literal `today` was the one in production —
+      // opened the create-event modal on Invalid Date. Parse in LOCAL time
+      // (parseCalendarDateString; `new Date('2026-09-01')` is UTC midnight and
+      // lands on the previous day west of Greenwich) and fall back to today
+      // when the value is not a date at all.
+      const parsed = dateStr ? parseCalendarDateString(dateStr) : null
+      const date = parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date()
       openCreateModal(date)
       setSearchParams(prev => {
         prev.delete('openModal')

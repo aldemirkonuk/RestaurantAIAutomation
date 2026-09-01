@@ -52,7 +52,10 @@ const isPlaceholderName = (v?: string) => !v || v.trim().length === 0 || v.trim(
 export function useOrdersPage() {
   const { user, activeRestaurantId } = useAuth()
   const { data: apiProviders = [] } = useProviders(activeRestaurantId || user?.restaurantId || '')
-  const { inventory } = useInventoryData()
+  // `inventoryLoading` is exposed because the `/orders?draft=new&inventoryId=`
+  // deep link resolves ids against this list: an empty array while the query
+  // is in flight must not be read as "that inventory row is gone".
+  const { inventory, isLoading: inventoryLoading } = useInventoryData()
   const { data: apiWines = [] } = useWines({ limit: 200 })
 
   const providers = apiProviders
@@ -188,7 +191,7 @@ export function useOrdersPage() {
   }), [])
 
   return {
-    orders, providers, wines: apiWines, inventory, loading, error,
+    orders, providers, wines: apiWines, inventory, inventoryLoading, loading, error,
     filterStatus, filterOrderType, orderSearch, setFilterStatus, setFilterOrderType, setOrderSearch, toggleStatusFilter,
     viewMode, selectedOrder, groupBy, expandedGroups, showRecurringSection, recurringGroupBy,
     setViewMode, setSelectedOrder, setGroupBy, setExpandedGroups, setShowRecurringSection, setRecurringGroupBy, toggleGroup,
