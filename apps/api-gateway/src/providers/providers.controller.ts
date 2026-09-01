@@ -662,22 +662,34 @@ export class ProvidersController {
       "Create retroactive order from off-app invoice (D-32-15 Scenario C)",
   })
   @ApiResponse({ status: 201, description: "Retroactive order created" })
+  @ApiResponse({
+    status: 400,
+    description:
+      "The invoice cannot be booked as stated — an unreadable unit, or a case " +
+      "quantity with no pack size, so the invoice total cannot be spread across bottles",
+  })
   async createRetroactiveOrder(
     @Param("id") providerId: string,
     @Body() dto: RetroactiveOrderDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<{
     orderId: string;
+    orderNumber: string;
     conversationId: string;
-    interactionId: string;
   }> {
     try {
       return await this.providersService.createRetroactiveOrder(
         providerId,
         user.restaurantId,
+        user.userId,
         dto,
       );
     } catch (error: any) {
+      // A refusal is not a server error. `createOrder` throws
+      // BadRequestException for an unresolvable unit and ForbiddenException
+      // when the restaurant has no active vendors; collapsing both to 500 threw
+      // away the sentence telling the operator what to fix.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to create retroactive order",
         HttpStatus.INTERNAL_SERVER_ERROR,

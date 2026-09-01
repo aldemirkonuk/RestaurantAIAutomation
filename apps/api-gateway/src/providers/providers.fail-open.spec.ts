@@ -58,8 +58,29 @@ function makeDb(opts: { dupeCheckFails?: boolean; existing?: any } = {}) {
   return { supabase, inserted };
 }
 
+// ProvidersService gained a required ProcurementService dependency when
+// `createRetroactiveOrder` stopped hand-rolling its own insert. Nothing under
+// test here touches it, so the stub throws rather than returning undefined —
+// a silent stub would let a future call to it pass this suite unnoticed, which
+// is the same fail-open shape these tests exist to close.
+const unusedProcurement = new Proxy(
+  {},
+  {
+    get(_t, prop) {
+      throw new Error(
+        `providers.fail-open.spec: ProcurementService.${String(prop)} was called; ` +
+          `these tests cover createProvider only and must not reach the order path.`,
+      );
+    },
+  },
+) as any;
+
 const svc = (supabase: any) =>
-  new ProvidersService({ supabase } as any, { track: async () => undefined } as any);
+  new ProvidersService(
+    { supabase } as any,
+    { track: async () => undefined } as any,
+    unusedProcurement,
+  );
 
 const DTO: any = { catalogue_vendor_id: "vend-1" };
 
