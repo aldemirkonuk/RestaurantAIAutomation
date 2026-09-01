@@ -2,6 +2,7 @@
 type: page
 route: /recommendations/catalog
 slug: recommendations-catalog
+softwares: [recommendations]
 component: apps/web/src/pages/InsightCatalog.tsx
 audience: owner
 tier: plus
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[recommendations]]", "[[settings]]"]
 ---
 
 # /recommendations/catalog — Insight Catalog
+
+> **Part of** [[08-softwares/recommendations|Recommendations]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

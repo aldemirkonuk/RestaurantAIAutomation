@@ -70,9 +70,20 @@ import { InviteLanding } from './pages/InviteLanding'
 import { NoAccess } from './pages/NoAccess'
 import { InventoryCommandPage } from './pages/inventory/command/InventoryCommandPage'
 import { Orders } from './pages/Orders'
+import { PageGate } from './components/mudavym'
 import { TeamCommandPage } from './pages/team/command/TeamCommandPage'
 
 // Onboarding pages (lazy loaded)
+// Mudavym redesign variants (ADR 0044) — reachable only behind their per-page flag
+const DashboardNext = lazyWithRefresh(() => import('./pages/dashboard/next/DashboardNext'))
+const OrdersNext = lazyWithRefresh(() => import('./pages/orders/next/OrdersNext'))
+const ReceivingNext = lazyWithRefresh(() => import('./pages/receiving/next/ReceivingNext'))
+const DoorNext = lazyWithRefresh(() => import('./pages/receiving/next/DoorNext'))
+const ProvidersNext = lazyWithRefresh(() => import('./pages/providers/next/ProvidersNext'))
+const CommunicationsNext = lazyWithRefresh(() => import('./pages/communications/next/CommunicationsNext'))
+const TeamNext = lazyWithRefresh(() => import('./pages/team/next/TeamNext'))
+const ReceiptsNext = lazyWithRefresh(() => import('./pages/receipts/next/ReceiptsNext'))
+const DocumentsReportsNext = lazyWithRefresh(() => import('./pages/documents-reports/next/DocumentsReportsNext'))
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
 const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
@@ -213,7 +224,7 @@ function App() {
                   path="/receiving/:orderId/door"
                   element={
                     <ProtectedRoute>
-                      <DoorReceipt />
+                      <PageGate page="receiving_door" legacy={<DoorReceipt />} next={<DoorNext />} />
                     </ProtectedRoute>
                   }
                 />
@@ -264,7 +275,7 @@ function App() {
                     </ProtectedRoute>
                   }
                 >
-                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/" element={<PageGate page="dashboard" legacy={<Dashboard />} next={<DashboardNext />} />} />
                   <Route path="/inventory" element={<InventoryCommandPage />} />
                   {/* `/inventory-legacy` is retired (ADR 0019 §B). It redirects
                       rather than 404s because every capability it had was ported
@@ -272,14 +283,14 @@ function App() {
                       still do the job. Without this it fell to the catch-all and
                       landed on the Dashboard, which reads as a broken app. */}
                   <Route path="/inventory-legacy" element={<Navigate to="/inventory" replace />} />
-                  <Route path="/orders" element={<Orders />} />
+                  <Route path="/orders" element={<PageGate page="orders" legacy={<Orders />} next={<OrdersNext />} />} />
                   {/* One event, three renderings, chosen by role — see ReceivingHome. */}
-                  <Route path="/receiving" element={<ReceivingHome />} />
+                  <Route path="/receiving" element={<PageGate page="receiving" legacy={<ReceivingHome />} next={<ReceivingNext />} />} />
                   <Route path="/wines" element={<WineLibrary />} />
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/recommendations" element={<Recommendations />} />
                   <Route path="/recommendations/catalog" element={<InsightCatalog />} />
-                  <Route path="/providers" element={<Providers />} />
+                  <Route path="/providers" element={<PageGate page="providers" legacy={<Providers />} next={<ProvidersNext />} />} />
                   {/* Vendor price comparison. Role gate is enforced server-side
                       too (owner/manager on /vendor-intel/*) — a hidden route is
                       not access control. */}
@@ -291,15 +302,15 @@ function App() {
                     element={<Navigate to="/providers?tab=discover" replace />}
                   />
                   <Route path="/promotions" element={<Promotions />} />
-                  <Route path="/team" element={<TeamCommandPage />} />
+                  <Route path="/team" element={<PageGate page="team" legacy={<TeamCommandPage />} next={<TeamNext />} />} />
                   <Route path="/calendar" element={<CalendarModular />} />
                   {/* Same reasoning as `/inventory-legacy` above: `/calendar-classic`
                       is retired (ADR 0019 §B) and its one exclusive — reminders that
                       actually fire — was ported onto `/calendar` first. */}
                   <Route path="/calendar-classic" element={<Navigate to="/calendar" replace />} />
-                  <Route path="/communications" element={<Communications />} />
-                  <Route path="/documents-reports" element={<DocumentsPage />} />
-                  <Route path="/receipts" element={<ReceiptsPage />} />
+                  <Route path="/communications" element={<PageGate page="communications" legacy={<Communications />} next={<CommunicationsNext />} />} />
+                  <Route path="/documents-reports" element={<PageGate page="documents_reports" legacy={<DocumentsPage />} next={<DocumentsReportsNext />} />} />
+                  <Route path="/receipts" element={<PageGate page="receipts" legacy={<ReceiptsPage />} next={<ReceiptsNext />} />} />
                   <Route path="/credits" element={<Navigate to="/receipts?tab=credits" replace />} />
                   <Route path="/logs" element={<LogsTimelinePage />} />
                   <Route path="/notifications" element={<Notifications />} />
