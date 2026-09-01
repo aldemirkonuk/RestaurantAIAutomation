@@ -7,9 +7,11 @@ import {
 
 describe("normalizeUom", () => {
   it("reconciles the schema's own inconsistency", () => {
-    // procurement_order_items.unit_type defaults to the PLURAL 'bottles' with no
-    // CHECK; procurement_orders stores the singular; document lines CHECK for
-    // singulars only. All three must land on the same unit.
+    // Historically: procurement_order_items.unit_type defaulted to the PLURAL
+    // 'bottles' with no CHECK, procurement_orders had no CHECK either, and only
+    // document lines CHECKed for singulars. One migration later all four columns
+    // share the singular vocabulary — but the INPUTS still arrive in every
+    // spelling, so all of them must land on the same unit.
     expect(normalizeUom("bottles")).toBe("bottle");
     expect(normalizeUom("bottle")).toBe("bottle");
     expect(normalizeUom("BOTTLES")).toBe("bottle");

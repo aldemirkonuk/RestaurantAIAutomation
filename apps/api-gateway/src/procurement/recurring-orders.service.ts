@@ -40,6 +40,15 @@ interface RecurringOrderRow {
   provider_id: string;
   wine_name: string | null;
   quantity: number;
+  /** CHECK-constrained to 'case' | 'bottle' (`baseline:4967`). */
+  unit_type: string | null;
+  /**
+   * Bottles in one purchase unit. Added alongside the order-line capture fix —
+   * without it a schedule that says "5 cases weekly" cannot be materialised at
+   * all, because `createOrder` refuses a case order that does not state its pack
+   * size rather than guessing 12 (or, as it used to, silently ordering 5).
+   */
+  bottles_per_unit: number | null;
   target_price: number | null;
   frequency: string;
   frequency_day: number | null;
@@ -347,11 +356,18 @@ export class RecurringOrdersService {
         inventoryId: recurringOrder.inventory_id,
         providerId: recurringOrder.provider_id,
         quantity: recurringOrder.quantity,
+        // `recurring_orders.unit_type` is CHECK-constrained to case|bottle
+        // (`baseline:4967`) and was never carried across, so a schedule for five
+        // CASES every Monday materialised as five BOTTLES — the same unit wound
+        // as `createOrder`'s old `bottles_total = quantity`, one layer up.
+        unitType: recurringOrder.unit_type ?? undefined,
+        bottlesPerUnit: recurringOrder.bottles_per_unit ?? undefined,
         quotedPrice: recurringOrder.target_price || undefined,
         finalPrice: recurringOrder.target_price || undefined,
         isEmergency: false,
         managerNotes: `Auto-created from recurring order (${recurringOrder.frequency})`,
       },
+      { source: "recurring", recurringOrderId: recurringOrder.id },
     );
 
     // 2. Auto-approve if configured, otherwise notify for approval

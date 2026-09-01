@@ -33,6 +33,28 @@ import {
 import { computeMatch, isDiscrepancy, MatchResult } from "./invoice-match";
 import { draftClaimFromMatch } from "./documents/credit-ledger";
 import { ApproveDraftDto } from "./dto/approve-draft.dto";
+import {
+  OrderSource,
+  PriceHistorySource,
+  resolveOrderUnits,
+} from "./order-units";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * A uuid column takes a uuid or nothing.
+ *
+ * `executeRecurringOrder` passes the literal string `"system"` as the actor when
+ * a recurring order has no creator (`recurring-orders.service.ts`), and the
+ * WebSocket-only use of `userId` never noticed. Writing it to `created_by` would
+ * fail the insert with a 22P02 and take the whole order down with it, so a
+ * non-uuid actor becomes NULL — "we do not know who" is true, and an order that
+ * exists beats an order that 500s over an attribution field.
+ */
+function asUuid(value: string | null | undefined): string | null {
+  return typeof value === "string" && UUID_RE.test(value) ? value : null;
+}
 
 interface ProcurementOrderRow {
   id: string;
@@ -210,10 +232,37 @@ export class ProcurementService {
     }
   }
 
+  /**
+   * Place an order, and write down what was actually ordered.
+   *
+   * THREE THINGS THIS DOES THAT IT DID NOT BEFORE
+   *
+   * 1. It writes a `procurement_order_items` row. Nothing in the repository ever
+   *    wrote that table, and `matchDocumentLines` returns early when an order
+   *    has no lines (`document-intake.service.ts:449`) — so the whole invoice
+   *    line-matching engine was unreachable and no order carried a wine identity
+   *    at line level. Production held 1 line row against 2 orders and 0
+   *    documents; every row that will ever exist is written from here.
+   *
+   * 2. It multiplies by the pack size. `bottles_total` was `dto.quantity`
+   *    regardless of `unit_type`, so five CASES booked five bottles — and the
+   *    receiving door back-derives pack size from `bottles_total / quantity`,
+   *    which therefore always came out as 1. See `order-units.ts`.
+   *
+   * 3. It records where the order came from. A manual order, an Ask-AI order and
+   *    a recurring materialisation produced byte-identical rows, so "did the AI
+   *    place this?" was unanswerable — the first question anyone asks of an
+   *    autonomous ordering system.
+   *
+   * `provenance` is a service argument and deliberately NOT a DTO field: it is
+   * an assertion about which code path ran, and a client must not be able to
+   * claim an order was manual when the agent placed it.
+   */
   async createOrder(
     restaurantId: string,
     userId: string,
     dto: CreateOrderDto,
+    provenance?: { source: OrderSource; recurringOrderId?: string | null },
   ): Promise<OrderResponseDto> {
     // Guard: restaurant must have at least one active provider before placing orders
     const { count: providerCount, error: countError } =
@@ -240,9 +289,35 @@ export class ProcurementService {
       });
     }
 
+    // Units first: everything downstream — bottles booked, total cost, the line
+    // row, the pack size the receiving door will back-derive — is wrong if this
+    // is wrong, and it was unconditionally `bottles_total = dto.quantity`.
+    const units = resolveOrderUnits({
+      quantity: dto.quantity,
+      unitType: dto.unitType,
+      bottlesPerUnit: dto.bottlesPerUnit,
+    });
+    if (!units.ok) {
+      this.logger.warn("Refused an order whose units cannot be resolved", {
+        restaurantId,
+        inventoryId: dto.inventoryId,
+        reason: units.reason,
+        unitType: dto.unitType ?? null,
+      });
+      throw new BadRequestException({
+        reason: units.reason,
+        message: units.message,
+      });
+    }
+
     const finalPrice = dto.finalPrice ?? dto.quotedPrice ?? 0;
-    const totalCost = dto.totalCost ?? finalPrice * dto.quantity;
-    const bottlesTotal = dto.quantity;
+    const bottlesTotal = units.bottlesTotal;
+    // Prices in this table are per BOTTLE — `confirmDeal` emails the vendor
+    // "$X per bottle" from the same column. Multiplying by `quantity` therefore
+    // understated a case order by the pack size, which is the same wound as
+    // `bottles_total` seen through the money. An opaque unit (keg, litre) has no
+    // bottle count, so its quantity is the only multiplier available.
+    const totalCost = dto.totalCost ?? finalPrice * bottlesTotal;
 
     // Dedup guard: a price/quantity change for the same wine+vendor should
     // update the existing open order, not spawn a second one. Match on
@@ -284,7 +359,7 @@ export class ProcurementService {
           .from("procurement_orders")
           .update({
             quantity: dto.quantity,
-            unit_type: dto.unitType ?? "bottles",
+            unit_type: units.unitType,
             bottles_total: bottlesTotal,
             quoted_price: dto.quotedPrice ?? existing.quoted_price ?? null,
             negotiated_price:
@@ -317,6 +392,18 @@ export class ProcurementService {
         providerId: dto.providerId,
       });
 
+      // The line has to move with the header. A merge that left the old line
+      // behind would produce an order whose header says 5 cases and whose only
+      // line says 2 — and the invoice matcher reads the LINE, so the discrepancy
+      // would surface as a vendor overage rather than as our own stale row.
+      await this.upsertOrderLine({
+        restaurantId,
+        orderId: existing.id,
+        dto,
+        units,
+        finalPrice,
+      });
+
       const updatedRow = updated as any;
       const mergedRow: ProcurementOrderRow = {
         ...updatedRow,
@@ -343,7 +430,7 @@ export class ProcurementService {
       inventory_id: dto.inventoryId,
       provider_id: dto.providerId,
       quantity: dto.quantity,
-      unit_type: dto.unitType ?? "bottles",
+      unit_type: units.unitType,
       bottles_total: bottlesTotal,
       quoted_price: dto.quotedPrice ?? null,
       negotiated_price: dto.negotiatedPrice ?? null,
@@ -355,6 +442,16 @@ export class ProcurementService {
       priority_level: dto.priorityLevel ?? 5,
       manager_notes: dto.managerNotes ?? null,
       expected_delivery_date: dto.expectedDeliveryDate ?? null,
+      // Provenance. `userId` reached this method already and was spent only on a
+      // WebSocket event; nothing durable recorded who or what placed the order.
+      //
+      // `source` is NULL rather than 'manual' when the caller did not state one.
+      // A default of 'manual' would label an unlabelled agent path as a human
+      // decision — the exact false claim this column exists to prevent — whereas
+      // NULL reads correctly as "placed before anyone recorded this".
+      created_by: asUuid(userId),
+      source: provenance?.source ?? null,
+      recurring_order_id: asUuid(provenance?.recurringOrderId),
     };
 
     const { data, error } = await this.databaseService.supabase
@@ -379,6 +476,17 @@ export class ProcurementService {
     };
 
     const order = this.mapOrderRow(orderRow);
+
+    // The line row. Not best-effort: an order with no line is invisible to the
+    // invoice matcher and carries no wine identity, which is the state every
+    // order in production was in before this change.
+    await this.upsertOrderLine({
+      restaurantId,
+      orderId: order.id,
+      dto,
+      units,
+      finalPrice,
+    });
 
     // Emit order_change event for cross-page sync
     await this.emitOrderChangeEvent(restaurantId, userId, order, "created");
@@ -449,6 +557,243 @@ export class ProcurementService {
     }
 
     return order;
+  }
+
+  /**
+   * Write (or move) the order's one line row.
+   *
+   * WHY AN ORDER NEEDS A LINE WHEN THE HEADER ALREADY HAS THE QUANTITY
+   *
+   * Because an invoice does not arrive as a header. `matchDocumentLines` pairs
+   * each `procurement_document_lines` row against a `procurement_order_items`
+   * row and returns early when the order has none
+   * (`document-intake.service.ts:449`), so with an empty line table the entire
+   * matching engine — vendor SKU, description, quantity/price triangulation, the
+   * credit claims that come out of it — was unreachable code. Production ran
+   * with 1 line row against 2 orders and 0 documents, which is why nothing had
+   * yet failed visibly.
+   *
+   * The line also carries the only wine IDENTITY an invoice can be matched on.
+   * `procurement_orders` names an `inventory_id`, which is this restaurant's
+   * shelf slot; `master_wine_id` is the wine itself, and it is what a vendor's
+   * paperwork and any cross-restaurant price series have to agree about.
+   *
+   * `total_bottles` is GENERATED ALWAYS AS (quantity * bottles_per_unit)
+   * (`baseline:4488`) and must never be written — it is the database re-deriving
+   * the same arithmetic `resolveOrderUnits` did, which is a free consistency
+   * check on every insert.
+   *
+   * `vendor_sku` comes only from the caller. There is no table in this schema
+   * that maps (provider, wine) to a vendor's SKU, and inferring one from another
+   * vendor's paperwork would put vendor A's part number on a vendor B order —
+   * the strongest match method pointed at the wrong wine, which is worse than no
+   * match at all.
+   */
+  private async upsertOrderLine(args: {
+    restaurantId: string;
+    orderId: string;
+    dto: CreateOrderDto;
+    units: { unitType: string; bottlesPerUnit: number; bottlesTotal: number };
+    finalPrice: number;
+  }): Promise<void> {
+    const { restaurantId, orderId, dto, units, finalPrice } = args;
+
+    // The wine identity. `restaurant_inventory.master_wine_id` is NOT NULL
+    // (`baseline`), so a resolvable inventory row always yields one.
+    let masterWineId: string | null = null;
+    let wineName: string | null = null;
+    let sku: string | null = null;
+    let producer: string | null = null;
+    let vintage: number | null = null;
+
+    try {
+      const { data: inv, error: invErr } = await this.databaseService.supabase
+        .from("restaurant_inventory")
+        .select(
+          "master_wine_id, wine_name, sku, master_wine_library(name, producer, vintage)",
+        )
+        .eq("id", dto.inventoryId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      if (invErr) throw new Error(invErr.message);
+      const row = inv as any;
+      masterWineId = asUuid(row?.master_wine_id);
+      const mw = Array.isArray(row?.master_wine_library)
+        ? row.master_wine_library[0]
+        : row?.master_wine_library;
+      wineName = row?.wine_name || mw?.name || null;
+      sku = row?.sku ?? null;
+      producer = mw?.producer ?? null;
+      vintage = mw?.vintage ?? null;
+    } catch (e: any) {
+      // A lookup failure must not strand the order, but it must not be silent
+      // either: a line with no master_wine_id is a line no invoice can be
+      // matched to, and that is exactly the state this method exists to end.
+      this.logger.warn("Order line could not resolve its wine identity", {
+        restaurantId,
+        orderId,
+        inventoryId: dto.inventoryId,
+        error: e?.message,
+      });
+    }
+
+    const lineTotal = Number.isFinite(finalPrice)
+      ? Math.round(finalPrice * units.bottlesTotal * 100) / 100
+      : null;
+
+    const line = {
+      order_id: orderId,
+      restaurant_id: restaurantId,
+      inventory_id: dto.inventoryId,
+      master_wine_id: masterWineId,
+      // NOT NULL in the schema. Falling back to the order number keeps the row
+      // writable when the inventory lookup failed, and reads as the placeholder
+      // it is rather than as a wine nobody stocks.
+      wine_name: wineName || `Order ${orderId}`,
+      producer,
+      vintage,
+      sku,
+      vendor_sku: dto.vendorSku ?? null,
+      quantity: dto.quantity,
+      unit_type: units.unitType,
+      bottles_per_unit: units.bottlesPerUnit,
+      // total_bottles is GENERATED — writing it raises 428C9.
+      quoted_unit_price: dto.quotedPrice ?? null,
+      negotiated_unit_price: dto.negotiatedPrice ?? null,
+      final_unit_price: finalPrice || null,
+      line_total: lineTotal,
+      line_no: 1,
+    };
+
+    // One line per order today: CreateOrderDto carries exactly one inventory id.
+    // Delete-then-insert rather than an upsert because there is no unique
+    // constraint on (order_id, line_no) to conflict against, and a merge that
+    // left a stale second line behind would make the matcher pair an invoice
+    // against a quantity nobody ordered.
+    const { error: delErr } = await this.databaseService.supabase
+      .from("procurement_order_items")
+      .delete()
+      .eq("order_id", orderId)
+      .eq("restaurant_id", restaurantId);
+    if (delErr)
+      this.logger.warn("Could not clear previous order lines", {
+        orderId,
+        error: delErr.message,
+      });
+
+    const { error } = await this.databaseService.supabase
+      .from("procurement_order_items")
+      .insert(line);
+
+    if (error) {
+      this.logger.error("Failed to write the order line", {
+        restaurantId,
+        orderId,
+        error: error.message,
+      });
+      throw error;
+    }
+
+    this.logger.log("Order line written", {
+      orderId,
+      masterWineId,
+      unitType: units.unitType,
+      bottlesPerUnit: units.bottlesPerUnit,
+      totalBottles: units.bottlesTotal,
+    });
+  }
+
+  /**
+   * Record what a wine cost from a vendor on a date.
+   *
+   * `price_history` has existed since the production baseline (`baseline:4274`),
+   * is keyed exactly right — (restaurant, master wine, provider, price,
+   * effective date, source, order) — carries an index on
+   * (master_wine_id, provider_id, effective_date DESC), and had **zero writers
+   * anywhere in the repository**. Production holds 0 rows. No price series has
+   * ever existed, so nothing that depends on one — vendor comparison, "you are
+   * paying more than you were", any forecast of what a reorder will cost — could
+   * be built at all.
+   *
+   * Two sources, and they are not interchangeable: `order_confirmed` is what a
+   * vendor AGREED to charge, `receipt_verified` is what they actually DID charge
+   * once the invoice was checked. Collapsing them would make a vendor who quotes
+   * low and bills high indistinguishable from one who does neither.
+   *
+   * Best-effort by design. A delivery that has been counted and an order a
+   * manager has confirmed are facts; failing either of them because an analytics
+   * row would not write is the wrong trade.
+   */
+  private async recordPriceHistory(args: {
+    restaurantId: string;
+    orderId: string;
+    providerId: string | null;
+    masterWineId: string | null;
+    /** Per bottle. */
+    price: number | null | undefined;
+    source: PriceHistorySource;
+    quantity?: number | null;
+    notes?: string | null;
+  }): Promise<void> {
+    const price = Number(args.price);
+    // A zero or absent price is not an observation. Writing one would put a
+    // fabricated $0 into the series and drag every average through it.
+    if (!Number.isFinite(price) || price <= 0) return;
+
+    try {
+      const { error } = await this.databaseService.supabase
+        .from("price_history")
+        .insert({
+          restaurant_id: args.restaurantId,
+          master_wine_id: args.masterWineId,
+          provider_id: args.providerId,
+          price: Math.round(price * 100) / 100,
+          quantity: args.quantity ?? 1,
+          // The vocabulary of the column, not of this codebase: price_history
+          // predates the canonical singular unit list and defaults to 'BOTTLE'.
+          unit: "BOTTLE",
+          effective_date: new Date().toISOString().slice(0, 10),
+          source: args.source,
+          order_id: args.orderId,
+          notes: args.notes ?? null,
+        });
+      if (error) throw new Error(error.message);
+
+      if (!args.masterWineId)
+        // Still worth keeping — it is a real observation of what this vendor
+        // charged, joinable through order_id — but it cannot join a
+        // cross-restaurant price series, so say so rather than let the gap be
+        // discovered as a hole in the data months later.
+        this.logger.warn("price_history row written without a wine identity", {
+          orderId: args.orderId,
+          source: args.source,
+        });
+    } catch (e: any) {
+      this.logger.warn("Could not record price history", {
+        orderId: args.orderId,
+        source: args.source,
+        error: e?.message,
+      });
+    }
+  }
+
+  /** The wine this order is for, as the price series needs to key it. */
+  private async resolveOrderMasterWineId(
+    restaurantId: string,
+    inventoryId: string | null | undefined,
+  ): Promise<string | null> {
+    if (!inventoryId) return null;
+    try {
+      const { data } = await this.databaseService.supabase
+        .from("restaurant_inventory")
+        .select("master_wine_id")
+        .eq("id", inventoryId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      return asUuid((data as any)?.master_wine_id);
+    } catch {
+      return null;
+    }
   }
 
   async listOrders(
@@ -1354,6 +1699,30 @@ export class ProcurementService {
       .eq("restaurant_id", restaurantId)
       .eq("group_key", `receipt_verify:${orderId}`)
       .eq("status", "unread");
+
+    // What the vendor actually charged, once a human checked the invoice against
+    // the delivery. `effectiveUnitCost` is the landed cost the match computed —
+    // the same number written onto the corrected inventory lot — so the price
+    // series and the cost of goods agree by construction rather than by luck.
+    //
+    // Written only when there WAS an invoice: `verdict === 'unmatched'` means
+    // nobody has seen a document, and recording the PO price as an observation
+    // of what was charged would manufacture a confirmation that never happened.
+    if (match && hasInvoice) {
+      await this.recordPriceHistory({
+        restaurantId,
+        orderId,
+        providerId: (orderRow as any).provider_id ?? null,
+        masterWineId: await this.resolveOrderMasterWineId(
+          restaurantId,
+          (orderRow as any).inventory_id,
+        ),
+        price: match.effectiveUnitCost ?? body.invoiceUnitPrice,
+        source: "receipt_verified",
+        quantity: body.invoiceQuantity ?? null,
+        notes: `Verified against the invoice: ${match.verdict}.`,
+      });
+    }
 
     const row = data as any;
     const order = this.mapOrderRow({
@@ -2514,7 +2883,7 @@ export class ProcurementService {
     const { data: order } = await this.databaseService.supabase
       .from("procurement_orders")
       .select(
-        "id, provider_id, quantity, providers!left(name, contact_email, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)",
+        "id, provider_id, inventory_id, quantity, bottles_total, final_price, negotiated_price, quoted_price, providers!left(name, contact_email, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)",
       )
       .eq("id", orderId)
       .eq("restaurant_id", restaurantId)
@@ -2558,6 +2927,28 @@ export class ProcurementService {
       .eq("id", orderId)
       .eq("restaurant_id", restaurantId);
     if (upErr) throw upErr;
+
+    // The agreed price, recorded the moment it becomes a commitment. This is the
+    // first of the two writers `price_history` has ever had; before this the
+    // table was correctly designed, correctly indexed and permanently empty, so
+    // no price series could exist for any wine from any vendor.
+    await this.recordPriceHistory({
+      restaurantId,
+      orderId,
+      providerId: (order as any).provider_id ?? null,
+      masterWineId: await this.resolveOrderMasterWineId(
+        restaurantId,
+        (order as any).inventory_id,
+      ),
+      price:
+        finalPrice ??
+        (order as any).final_price ??
+        (order as any).negotiated_price ??
+        (order as any).quoted_price,
+      source: "order_confirmed",
+      quantity: (order as any).bottles_total ?? quantity ?? 1,
+      notes: `Agreed on order confirmation${finalPrice != null ? "" : " (price unchanged from the order)"}.`,
+    });
 
     // Send the vendor a confirmation (manager-authorized, so commitment language is fine).
     let sentConfirmation = false;
