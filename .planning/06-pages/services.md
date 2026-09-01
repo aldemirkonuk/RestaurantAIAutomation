@@ -2,6 +2,7 @@
 type: page
 route: /services
 slug: services
+softwares: [settings-integrations]
 component: none (inline <Navigate> redirect)
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[help]]", "[[settings]]"]
 ---
 
 # /services — redirect → /settings?tab=services
+
+> **Part of** [[08-softwares/settings-integrations|Settings & Integrations]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

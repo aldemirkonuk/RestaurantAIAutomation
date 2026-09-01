@@ -2,6 +2,7 @@
 type: page
 route: /promotions
 slug: promotions
+softwares: [promotions]
 component: apps/web/src/pages/Promotions.tsx
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[providers]]", "[[orders]]"]
 ---
 
 # /promotions — vendor offers, trusted senders, prospects
+
+> **Part of** [[08-softwares/promotions|Promotions]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

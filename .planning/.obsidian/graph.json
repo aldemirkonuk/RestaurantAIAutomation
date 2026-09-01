@@ -78,6 +78,13 @@
       }
     },
     {
+      "query": "path:08-softwares",
+      "color": {
+        "a": 1,
+        "rgb": 15048717
+      }
+    },
+    {
       "query": "path:00-index",
       "color": {
         "a": 1,
