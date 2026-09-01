@@ -65,10 +65,36 @@ functions, without their findings-only limit, because this team builds and runs 
 
 ## Evidence today — NEW, honestly
 
-Nothing exists. No harness, no backtest, no replay. What exists to build on:
-`services/agent-orchestrator` synthetic engine work (phase 37), SimPOS (now dev-only,
-`app.module.ts`), and the 17 scenarios' §9 simulation gates — which specify the runs this
-team would execute but which nothing currently executes.
+~~Nothing exists. No harness, no backtest, no replay.~~ **First gate executed 2026-09-01.**
+`apps/api-gateway/src/analytics/insights/insight-catalog.reach.spec.ts` runs S15 §9's
+reach ladder in CI — 10 assertions, **no database, no fixtures, no network**, because the
+catalogue is a pure function of the source. That deliberately picks the one gate that
+needs no replay corpus, so this team stops being a plan on its first day rather than on
+the day production has data.
+
+**It booked a `bt.claim_falsification_rate` entry on its first run**, which is the whole
+point of the metric: three of S15 §9's own published baselines did not survive execution
+(consumption-only **34 not 38**, no-POS **132 not 144**, the `checks` gate **434 not
+429**), and a fourth claim in `03-scenarios/DELIVERY-AUDIT.md` — that `requires goals` was
+0 of 573 — was falsified too; it is **22**, exactly as S15 §3 had said. Four published
+numbers corrected by one run of one file, including one in the audit that commissioned it.
+
+Metric movement, stated precisely: `bt.scenario_coverage_pct` goes from **1/17 to 2/17**
+gates executing — and only *partly* for S15, since its synthetic-week half (quiet week,
+false-spike week, honest copy) still needs a corpus and remains unexecuted. Claiming S15
+as covered would be the overstatement this team exists to catch.
+
+**The harness's own anti-vacuous guard is the part worth copying.** Every assertion here
+is a count, and a count over an empty catalogue passes trivially — so the first test
+asserts the catalogue is populated and every requirement token is in use *before* any
+reach number is interpreted, and that guard was proven to fire against a mocked-empty
+catalogue. Two baseline mutations were also proven to fail the suite. A gate never seen
+to fail is not evidence.
+
+What else exists to build on: `services/agent-orchestrator` synthetic engine work
+(phase 37), SimPOS (now dev-only, `app.module.ts`) — noting it **cannot manufacture
+history**, since it stamps `opened_at`/`closed_at` at wall-clock now — and the remaining
+15 scenarios' §9 gates, which specify runs nothing currently executes.
 
 **Entry trigger:** the first `neural_footprint_event` rows landing with
 `outcome_basis: call_level_v0`. Before that there is nothing to re-grade.

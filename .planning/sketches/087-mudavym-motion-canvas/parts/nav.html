@@ -1,0 +1,798 @@
+<style>
+/* ══════════════════════════════════════════════════════════════════════════
+   087 · parts/nav.html — NAVIGATION & STRUCTURE
+   How the page restructures. Twelve mechanisms, one vocabulary.
+   Every selector is prefixed .mx-nav. No colour literals — tokens only.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.mx-nav{
+  /* ── house tokens, carried from 083/motion.json, never redefined ── */
+  --nv-e-settle:cubic-bezier(.16,1,.3,1);
+  --nv-e-turn:cubic-bezier(.32,.72,0,1);
+  --nv-settle:320ms cubic-bezier(.16,1,.3,1);
+  --nv-turn:420ms cubic-bezier(.32,.72,0,1);
+  --nv-ink:160ms cubic-bezier(.16,1,.3,1);
+  /* tuck — spring k=380 c=32 m=1 simulated and sampled at 24 stops over 480ms.
+     ζ=0.8208, ωd=11.136 rad/s, first peak +1.10% at 282ms, at rest by 423ms. */
+  --nv-tuck-e:linear(0.0000 0.0%,0.0613 4.2%,0.1977 8.3%,0.3586 12.5%,0.5145 16.7%,0.6506 20.8%,0.7610 25.0%,0.8458 29.2%,0.9076 33.3%,0.9504 37.5%,0.9785 41.7%,0.9957 45.8%,1.0052 50.0%,1.0097 54.2%,1.0109 58.3%,1.0104 62.5%,1.0090 66.7%,1.0072 70.8%,1.0055 75.0%,1.0040 79.2%,1.0027 83.3%,1.0018 87.5%,1.0011 91.7%,1.0006 95.8%,1.0000 100.0%);
+
+  width:100%;
+  font:400 11.5px/1.42 var(--m-sans);
+  color:var(--m-ink);
+  -webkit-font-smoothing:antialiased;
+}
+.mx-nav *{box-sizing:border-box;margin:0;padding:0}
+.mx-nav button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-align:left}
+.mx-nav input{font:inherit;color:inherit;background:none;border:0;outline:none;width:100%}
+
+/* ── shared furniture ─────────────────────────────────────────────────── */
+.mx-nav .nv-vp{position:relative;overflow:hidden;height:140px;
+  border:1px solid var(--m-line);border-radius:9px;background:var(--m-surface)}
+.mx-nav .nv-list{border:1px solid var(--m-line);border-radius:9px;
+  background:var(--m-surface);overflow:hidden}
+.mx-nav .nv-head{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:7px 9px;cursor:pointer;user-select:none;-webkit-user-select:none}
+.mx-nav .nv-t{font-size:11.5px;font-weight:500;letter-spacing:-.01em;white-space:nowrap}
+.mx-nav .nv-m{font:400 9.5px/1.5 var(--m-mono);color:var(--m-mut);margin-top:1px;white-space:nowrap}
+.mx-nav .nv-fig{font:500 11px var(--m-mono);font-variant-numeric:tabular-nums}
+.mx-nav .nv-chev{flex:none;color:var(--m-mut);transition:transform var(--nv-settle)}
+
+/* the settle expander — grid-rows 0fr→1fr, chevron on the same token */
+.mx-nav .nv-exp{display:grid;grid-template-rows:0fr;transition:grid-template-rows var(--nv-settle)}
+.mx-nav .nv-exp>div{overflow:hidden;min-height:0}
+.mx-nav .is-open>.nv-exp,.mx-nav .nv-exp.is-open{grid-template-rows:1fr}
+.mx-nav .is-open>.nv-head .nv-chev,.mx-nav .is-open .nv-chev{transform:rotate(180deg)}
+
+.mx-nav .nv-body{padding:0 9px 8px}
+.mx-nav .nv-ln{display:flex;justify-content:space-between;gap:10px;
+  font:400 9.5px/1.85 var(--m-mono);color:var(--m-mut);font-variant-numeric:tabular-nums}
+.mx-nav .nv-ln em{font-style:normal;opacity:.7}
+.mx-nav .nv-tot{border-top:2px double var(--m-line2);color:var(--m-ink);margin-top:2px;padding-top:2px}
+.mx-nav .nv-warn{color:var(--m-warn)}
+.mx-nav .nv-no{color:var(--m-no)}
+.mx-nav .nv-ok{color:var(--m-ok)}
+.mx-nav .nv-rule{border-bottom:1px solid var(--m-line)}
+
+/* rows that leave a list: fade + 9px of travel, then the survivors FLIP */
+.mx-nav .nv-out{opacity:0;transform:translateX(9px);
+  transition:opacity var(--nv-ink),transform var(--nv-ink)}
+
+.mx-nav .nv-scrim{position:absolute;inset:0;background:var(--m-bg);opacity:0;
+  pointer-events:none;transition:opacity 200ms var(--nv-e-settle)}
+.mx-nav .nv-scrim.on{opacity:.66;pointer-events:auto}
+
+.mx-nav .nv-chip{display:inline-flex;align-items:center;gap:5px;
+  border:1px solid var(--m-line2);border-radius:99px;padding:2px 8px;
+  font:500 9.5px var(--m-mono);color:var(--m-mut);
+  transition:background var(--nv-ink),border-color var(--nv-ink),color var(--nv-ink)}
+.mx-nav .nv-chip.on{background:var(--m-accent);border-color:var(--m-accent);color:var(--m-accent-ink)}
+
+/* ── 01 · settle — the row that opens ─────────────────────────────────── */
+.mx-nav-01 .nv-list>div+div{border-top:1px solid var(--m-line)}
+.mx-nav-01 .nv-head{padding:6px 9px}
+.mx-nav-01 .nv-body{padding-bottom:6px}
+.mx-nav-01 .nv-ln{line-height:1.65}
+
+/* ── 02 · turn — show the working ─────────────────────────────────────── */
+.mx-nav-02 .nv2-top{display:flex;align-items:flex-end;justify-content:space-between;
+  gap:8px;padding:9px 9px 7px;cursor:pointer;user-select:none}
+.mx-nav-02 .nv2-big{font:500 19px/1 var(--m-mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.mx-nav-02 .nv2-cap{font:400 9.5px var(--m-mono);color:var(--m-mut);margin-top:3px}
+.mx-nav-02 .nv2-why{display:flex;align-items:center;gap:4px;font:500 9.5px var(--m-mono);color:var(--m-accent)}
+.mx-nav-02 .nv2-exp{transition:grid-template-rows var(--nv-turn)}
+.mx-nav-02.is-open .nv2-exp{grid-template-rows:1fr}
+.mx-nav-02 .nv2-why .nv-chev{transition:transform var(--nv-turn);color:var(--m-accent)}
+.mx-nav-02.is-open .nv2-why .nv-chev{transform:rotate(180deg)}
+.mx-nav-02 .nv2-body .nv-ln{opacity:0;transform:translateY(4px);
+  transition:opacity 260ms linear,transform 260ms var(--nv-e-turn)}
+.mx-nav-02.is-open .nv2-body .nv-ln{opacity:1;transform:none}
+.mx-nav-02.is-open .nv2-body .nv-ln:nth-child(1){transition-delay:110ms}
+.mx-nav-02.is-open .nv2-body .nv-ln:nth-child(2){transition-delay:150ms}
+.mx-nav-02.is-open .nv2-body .nv-ln:nth-child(3){transition-delay:190ms}
+
+/* ── 03 · the indicator travels ───────────────────────────────────────── */
+.mx-nav-03 .nv3-bar{position:relative;display:flex;gap:2px;padding:0 4px;
+  border-bottom:1px solid var(--m-line)}
+.mx-nav-03 .nv3-tab{padding:7px 7px 8px;font-size:11px;color:var(--m-mut);
+  white-space:nowrap;transition:color var(--nv-ink)}
+.mx-nav-03 .nv3-tab .n{font:500 9px var(--m-mono);opacity:.7;margin-left:3px}
+.mx-nav-03 .nv3-tab.on{color:var(--m-ink);font-weight:500}
+/* two nested transforms: the outer travels, the inner scales. Different
+   curves on the same 320ms make the bar stretch on the way and settle flat. */
+.mx-nav-03 .nv3-ind{position:absolute;left:0;bottom:-1px;width:10px;height:2px;
+  transform:translateX(0);transition:transform 320ms var(--nv-e-settle);will-change:transform}
+.mx-nav-03 .nv3-ind i{display:block;width:10px;height:2px;background:var(--m-accent);
+  transform-origin:left center;transform:scaleX(1);
+  transition:transform 320ms var(--nv-e-turn);will-change:transform}
+.mx-nav-03 .nv3-panes{position:relative;height:88px}
+.mx-nav-03 .nv3-pane{position:absolute;inset:0;padding:8px 9px;opacity:0;
+  pointer-events:none;transition:opacity 150ms linear,transform 260ms var(--nv-e-settle)}
+.mx-nav-03 .nv3-pane.on{opacity:1;transform:none !important;pointer-events:auto;
+  transition:opacity 200ms linear 60ms,transform 300ms var(--nv-e-settle) 60ms}
+
+/* ── 04 · the vendor thread arrives ───────────────────────────────────── */
+.mx-nav-04 .nv4-behind{padding:7px 9px;transition:opacity var(--nv-settle)}
+.mx-nav-04 .nv4-dim{position:absolute;inset:0;background:var(--m-bg);opacity:0;
+  transition:opacity 240ms var(--nv-e-settle);pointer-events:none}
+.mx-nav-04.open .nv4-dim{opacity:.42}
+.mx-nav-04 .nv4-dr{position:absolute;top:0;right:0;bottom:0;width:70%;
+  background:var(--m-surface);border-left:1px solid var(--m-line2);
+  padding:8px 9px;transform:translateX(101%);touch-action:none;cursor:grab;
+  transition:transform 480ms var(--nv-e-settle);transition-timing-function:var(--nv-tuck-e);
+  will-change:transform}
+.mx-nav-04.open .nv4-dr{transform:translateX(0)}
+.mx-nav-04 .nv4-grip{position:absolute;left:3px;top:50%;width:3px;height:26px;margin-top:-13px;
+  border-radius:99px;background:var(--m-line2)}
+.mx-nav-04 .nv4-msg{border:1px solid var(--m-line);border-radius:7px;padding:5px 7px;margin-top:5px;
+  font:400 9.5px/1.5 var(--m-mono);color:var(--m-mut);
+  opacity:0;transform:translateY(5px);
+  transition:opacity 300ms linear,transform 300ms var(--nv-e-settle)}
+.mx-nav-04 .nv4-msg.them{background:var(--m-sunk)}
+.mx-nav-04.open .nv4-msg{opacity:1;transform:none}
+.mx-nav-04.open .nv4-msg:nth-of-type(1){transition-delay:150ms}
+.mx-nav-04.open .nv4-msg:nth-of-type(2){transition-delay:178ms}
+.mx-nav-04.open .nv4-msg:nth-of-type(3){transition-delay:206ms}
+
+/* ── 05 · the sheet and its scrim ─────────────────────────────────────── */
+.mx-nav-05 .nv5-sheet{position:absolute;left:10px;right:10px;top:28px;
+  background:var(--m-surface);border:1px solid var(--m-line2);border-radius:10px;
+  padding:10px 11px 9px;opacity:0;transform:translateY(10px) scale(.97);
+  transform-origin:50% 0;pointer-events:none;
+  transition:opacity 180ms linear,transform 180ms var(--nv-e-settle)}
+.mx-nav-05.open .nv5-sheet{opacity:1;transform:none;pointer-events:auto;
+  transition:opacity 240ms linear 40ms,transform 320ms var(--nv-e-settle) 40ms}
+.mx-nav-05 .nv5-acts{display:flex;gap:6px;margin-top:9px}
+.mx-nav-05 .nv5-b{flex:1;text-align:center;border:1px solid var(--m-line2);border-radius:7px;
+  padding:5px 0;font:500 10px var(--m-mono);transition:background var(--nv-ink),border-color var(--nv-ink)}
+.mx-nav-05 .nv5-b.danger{background:var(--m-no);border-color:var(--m-no);color:var(--m-accent-ink)}
+
+/* ── 06 · route transition ────────────────────────────────────────────── */
+.mx-nav-06 .nv6-crumb{display:flex;align-items:center;padding:6px 9px;
+  border-bottom:1px solid var(--m-line);font:400 9.5px var(--m-mono);color:var(--m-mut);
+  position:relative;z-index:3;background:var(--m-surface)}
+.mx-nav-06 .nv6-c2{display:grid;grid-template-columns:0fr;
+  transition:grid-template-columns var(--nv-settle)}
+.mx-nav-06 .nv6-c2>span{overflow:hidden;white-space:nowrap}
+.mx-nav-06.b .nv6-c2{grid-template-columns:1fr}
+.mx-nav-06.b .nv6-c2>span{color:var(--m-ink)}
+.mx-nav-06 .nv6-stage{position:relative;height:113px;overflow:hidden}
+.mx-nav-06 .nv6-pg{position:absolute;inset:0;padding:7px 9px;background:var(--m-surface)}
+.mx-nav-06 .nv6-a{transition:opacity 180ms var(--nv-e-settle),transform 180ms var(--nv-e-settle)}
+.mx-nav-06 .nv6-b{opacity:0;transform:translateX(18px);pointer-events:none;
+  transition:opacity 320ms var(--nv-e-settle) 80ms,transform 320ms var(--nv-e-settle) 80ms}
+.mx-nav-06.b .nv6-a{opacity:0;transform:translateX(-14px);pointer-events:none}
+.mx-nav-06.b .nv6-b{opacity:1;transform:none;pointer-events:auto}
+.mx-nav-06.back .nv6-a{transition:opacity 320ms var(--nv-e-settle) 80ms,transform 320ms var(--nv-e-settle) 80ms}
+.mx-nav-06.back .nv6-b{transition:opacity 180ms var(--nv-e-settle),transform 180ms var(--nv-e-settle)}
+.mx-nav-06 .nv6-r{display:flex;justify-content:space-between;padding:4px 0;
+  border-bottom:1px solid var(--m-line);font-size:10.5px;cursor:pointer}
+.mx-nav-06 .nv6-back{font:500 9.5px var(--m-mono);color:var(--m-accent);margin-bottom:5px}
+
+/* ── 07 · accordion — one closes as another opens ─────────────────────── */
+.mx-nav-07 .nv7-i+.nv7-i{border-top:1px solid var(--m-line)}
+.mx-nav-07 .nv7-i .nv-head{padding:6px 9px}
+.mx-nav-07 .nv7-n{font:500 9px var(--m-mono);color:var(--m-accent);
+  border:1px solid var(--m-line2);border-radius:99px;padding:0 5px}
+
+/* ── 08 · sticky chrome condensing (scroll-linked) ────────────────────── */
+.mx-nav-08 .nv8-sc{height:100%;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none}
+.mx-nav-08 .nv8-sc::-webkit-scrollbar{width:0}
+.mx-nav-08 .nv8-h{--p:0;position:sticky;top:0;z-index:2;background:var(--m-surface);
+  padding:calc(9px - 4px*var(--p)) 10px calc(8px - 4px*var(--p))}
+.mx-nav-08 .nv8-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.mx-nav-08 .nv8-title{font-weight:500;letter-spacing:-.01em;
+  font-size:calc(14.5px - 3.4px*var(--p));line-height:1.25}
+.mx-nav-08 .nv8-po{font:500 9.5px var(--m-mono);color:var(--m-accent);flex:none}
+.mx-nav-08 .nv8-sub{overflow:hidden;font:400 9.5px/13px var(--m-mono);color:var(--m-mut);
+  height:calc(13px*(1 - var(--p)));opacity:calc(max(0, 1 - var(--p)*1.7))}
+.mx-nav-08 .nv8-rule{position:absolute;left:0;right:0;bottom:0;height:1px;
+  background:var(--m-line2);opacity:var(--p)}
+.mx-nav-08 .nv8-l{display:flex;justify-content:space-between;padding:4px 10px;
+  font:400 10px/1.4 var(--m-mono);color:var(--m-mut);border-bottom:1px solid var(--m-line)}
+
+/* ── 09 · a filter is a subtraction ───────────────────────────────────── */
+.mx-nav-09 .nv9-bar{display:flex;align-items:center;justify-content:space-between;
+  padding:6px 9px;border-bottom:1px solid var(--m-line)}
+.mx-nav-09 .nv9-r{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:4px 9px;font:400 10px var(--m-mono);border-bottom:1px solid var(--m-line);
+  background:var(--m-surface)}
+.mx-nav-09 .nv9-r:last-child{border-bottom:0}
+.mx-nav-09 .nv9-n{font:400 10.5px var(--m-sans);color:var(--m-ink)}
+
+/* ── 10 · rows travel to their new places ─────────────────────────────── */
+.mx-nav-10 .nv10-h{display:flex;justify-content:space-between;padding:5px 9px;
+  border-bottom:1px solid var(--m-line2);font:500 9px var(--m-mono);color:var(--m-mut);
+  text-transform:uppercase;letter-spacing:.06em}
+.mx-nav-10 .nv10-sort{display:flex;align-items:center;gap:4px;color:var(--m-accent)}
+.mx-nav-10 .nv10-car{transition:transform var(--nv-settle)}
+.mx-nav-10.asc .nv10-car{transform:rotate(180deg)}
+.mx-nav-10 .nv10-b{position:relative}
+.mx-nav-10 .nv10-r{position:relative;display:flex;justify-content:space-between;gap:8px;
+  padding:4px 9px;border-bottom:1px solid var(--m-line);background:var(--m-surface);
+  font:400 10.5px var(--m-sans)}
+.mx-nav-10 .nv10-v{font:500 10px var(--m-mono);font-variant-numeric:tabular-nums}
+
+/* ── 11 · the row you chose becomes the header ────────────────────────── */
+.mx-nav-11 .nv11{position:relative}
+.mx-nav-11 .nv11-r{display:flex;align-items:center;gap:6px;
+  padding:6px 9px;border-bottom:1px solid var(--m-line);background:var(--m-surface);
+  cursor:pointer;transition:background var(--nv-ink),border-color var(--nv-ink)}
+.mx-nav-11 .nv11-r.hdr{background:var(--m-sunk);border-bottom-color:var(--m-line2)}
+.mx-nav-11 .nv11-back{display:grid;grid-template-columns:0fr;
+  transition:grid-template-columns var(--nv-settle);color:var(--m-accent)}
+.mx-nav-11 .nv11-back>span{overflow:hidden;white-space:nowrap;
+  font:500 11px var(--m-mono);padding-right:2px}
+.mx-nav-11 .nv11-r.hdr .nv11-back{grid-template-columns:1fr}
+.mx-nav-11 .nv11-sp{flex:1}
+.mx-nav-11 .nv11-d{display:grid;grid-template-rows:0fr;
+  transition:grid-template-rows var(--nv-turn)}
+.mx-nav-11 .nv11-d>div{overflow:hidden;min-height:0}
+.mx-nav-11 .nv11-d.is-open{grid-template-rows:1fr}
+
+/* ── 12 · the command palette ─────────────────────────────────────────── */
+.mx-nav-12 .nv12-page{padding:7px 9px}
+.mx-nav-12 .nv12-scrim{transition-duration:170ms}
+.mx-nav-12 .nv12-pal{position:absolute;left:9px;right:9px;top:12px;z-index:3;
+  background:var(--m-surface);border:1px solid var(--m-line2);border-radius:9px;
+  overflow:hidden;opacity:0;transform:translateY(-10px) scale(.98);transform-origin:50% 0;
+  pointer-events:none;transition:opacity 170ms linear,transform 170ms var(--nv-e-settle)}
+.mx-nav-12.open .nv12-pal{opacity:1;transform:none;pointer-events:auto;
+  transition:opacity 220ms linear,transform 320ms var(--nv-e-settle)}
+.mx-nav-12 .nv12-in{display:flex;align-items:center;gap:6px;padding:6px 9px;
+  border-bottom:1px solid var(--m-line)}
+.mx-nav-12 .nv12-in input{font:400 11px var(--m-mono)}
+.mx-nav-12 .nv12-in input::placeholder{color:var(--m-mut)}
+.mx-nav-12 .nv12-res{padding:3px 0 4px}
+.mx-nav-12 .nv12-o{display:flex;align-items:center;gap:6px;padding:3px 9px;
+  font:400 10.5px var(--m-sans);background:var(--m-surface)}
+.mx-nav-12 .nv12-o .k{font:500 8.5px var(--m-mono);color:var(--m-mut);
+  border:1px solid var(--m-line);border-radius:3px;padding:0 3px;flex:none}
+.mx-nav-12 .nv12-o.sel{background:var(--m-sunk)}
+.mx-nav-12 .nv12-o.appear{opacity:0;transform:translateY(4px)}
+.mx-nav-12.open .nv12-o{opacity:1;transform:none;
+  transition:opacity 260ms linear,transform 260ms var(--nv-e-settle)}
+.mx-nav-12.open .nv12-o:nth-child(1){transition-delay:120ms}
+.mx-nav-12.open .nv12-o:nth-child(2){transition-delay:148ms}
+.mx-nav-12.open .nv12-o:nth-child(3){transition-delay:176ms}
+.mx-nav-12.open .nv12-o:nth-child(4){transition-delay:204ms}
+.mx-nav-12.open .nv12-o:nth-child(5){transition-delay:232ms}
+
+/* ── reduced motion: collapse to the end state, keep the structure ────── */
+@media (prefers-reduced-motion: reduce){
+  .mx-nav *,.mx-nav *::before,.mx-nav *::after{
+    transition-duration:1ms !important;transition-delay:0ms !important;
+    animation-duration:1ms !important;animation-delay:0ms !important;
+    animation-iteration-count:1 !important;scroll-behavior:auto !important}
+}
+</style>
+
+<script>
+(function(){
+  'use strict';
+  window.MUDAVYM_MOTIONS = window.MUDAVYM_MOTIONS || [];
+  var FAM = 'Navigation & structure';
+  var RM  = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var SETTLE = 'cubic-bezier(.16,1,.3,1)';
+  var TURN   = 'cubic-bezier(.32,.72,0,1)';
+
+  /* ── tiny kit ───────────────────────────────────────────────────────── */
+  function q(r,s){ return (r.matches && r.matches(s)) ? r : r.querySelector(s); }
+  function qa(r,s){ return Array.prototype.slice.call(r.querySelectorAll(s)); }
+  function stop(r){
+    (r.__nvT||[]).forEach(clearTimeout); r.__nvT=[];
+    if(r.__nvRaf){ cancelAnimationFrame(r.__nvRaf); r.__nvRaf=0; }
+  }
+  function at(r,ms,fn){ (r.__nvT=r.__nvT||[]).push(setTimeout(fn, RM?0:ms)); }
+  function reflow(n){ if(n) void n.offsetWidth; }
+  function wire(n,ev,fn){ if(!n) return; var k='__nvw_'+ev; if(n[k]) return; n[k]=1; n.addEventListener(ev,fn); }
+
+  /* FLIP: measure, mutate, invert, play. Rows keep their identity across a
+     layout change instead of the list repainting under the reader. */
+  function flip(nodes, mutate, o){
+    o = o || {};
+    var first = nodes.map(function(n){ return n.getBoundingClientRect(); });
+    mutate();
+    if(RM) return;
+    nodes.forEach(function(n,i){
+      var a=first[i], b=n.getBoundingClientRect();
+      if(!b.width && !b.height) return;
+      var dx=a.left-b.left, dy=a.top-b.top;
+      if(Math.abs(dx)<0.5 && Math.abs(dy)<0.5) return;
+      if(o.lift) n.style.zIndex = dy>0 ? '3' : '2';   /* the row moving up passes in front */
+      var an = n.animate(
+        [{transform:'translate('+dx.toFixed(2)+'px,'+dy.toFixed(2)+'px)'},{transform:'translate(0,0)'}],
+        {duration:o.duration||320, easing:o.easing||SETTLE}
+      );
+      if(o.lift) an.onfinish = function(){ n.style.zIndex=''; };
+    });
+  }
+
+  /* cubic-bezier solver — used only to drive the scroll-tween in nav-08 with
+     the same curve the CSS uses, rather than eyeballing an approximation. */
+  function bez(x1,y1,x2,y2){
+    function A(a,b){return 1-3*b+3*a} function B(a,b){return 3*b-6*a} function C(a){return 3*a}
+    function cv(t,a,b){return ((A(a,b)*t+B(a,b))*t+C(a))*t}
+    function sl(t,a,b){return 3*A(a,b)*t*t+2*B(a,b)*t+C(a)}
+    return function(x){ var t=x,s; for(var i=0;i<6;i++){ s=sl(t,x1,x2); if(!s) break; t-=(cv(t,x1,x2)-x)/s; }
+      return cv(Math.min(1,Math.max(0,t)),y1,y2); };
+  }
+  var easeSettle = bez(.16,1,.3,1);
+
+  var CHEV = '<svg class="nv-chev" width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true">'
+           + '<path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function add(o){ o.family = FAM; window.MUDAVYM_MOTIONS.push(o); }
+
+  /* ══ 01 ═══ settle — the row that opens ════════════════════════════════ */
+  add({
+    id:'nav-01', name:'Row settles open',
+    purpose:'The receiving queue. A manager opens one line to check what actually came through the door without losing the rows either side of it — the sibling glides down rather than jumping, so the place they were reading is never lost.',
+    spec:'settle · 320ms cubic-bezier(.16,1,.3,1) — grid-template-rows 0fr→1fr and the chevron rotate share one token',
+    html:'<div class="mx-nav mx-nav-01"><div class="nv-list">'
+      + '<div class="nv1-i"><div class="nv-head nv1-h"><div><div class="nv-t">PO-1038 · Bodega Alvaro</div>'
+      + '<div class="nv-m">18 bottles · delivered Tue</div></div>'+CHEV+'</div>'
+      + '<div class="nv-exp"><div><div class="nv-body">'
+      + '<div class="nv-ln"><span>Albarino 2023 <em>x12</em></span><span>540.00</span></div>'
+      + '<div class="nv-ln"><span>Mencia 2022 <em>x6</em></span><span>372.00</span></div>'
+      + '<div class="nv-ln nv-tot"><span>Received &amp; shelved</span><span>912.00</span></div>'
+      + '</div></div></div></div>'
+      + '<div class="nv-head" style="cursor:default"><div><div class="nv-t">PO-1039 · Frutas Sol</div>'
+      + '<div class="nv-m">awaiting the door</div></div><span class="nv-chip">queued</span></div>'
+      + '</div></div>',
+    play:function(root){
+      stop(root);
+      var el=q(root,'.mx-nav-01'), it=q(el,'.nv1-i');
+      it.classList.remove('is-open'); reflow(it);
+      wire(q(el,'.nv1-h'),'click',function(){ it.classList.toggle('is-open'); });
+      at(root,300,function(){ it.classList.add('is-open'); });
+    }
+  });
+
+  /* ══ 02 ═══ turn — show the working ════════════════════════════════════ */
+  add({
+    id:'nav-02', name:'Show the working',
+    purpose:'Nobody approves money they cannot see the arithmetic for. Tapping the figure turns the page under it: unit x count, what the same case cost last time, and the total re-stated so the number you approve is the number you read.',
+    spec:'turn · 420ms cubic-bezier(.32,.72,0,1) on grid-rows and the chevron; the three lines rise 4px over 260ms, 40ms apart (first paint of that pane, not a re-stagger)',
+    html:'<div class="mx-nav mx-nav-02"><div class="nv-list">'
+      + '<div class="nv2-top nv2-h"><div><div class="nv2-big">$1,860.00</div>'
+      + '<div class="nv2-cap">PO-1042 · Vinos del Norte · net 30</div></div>'
+      + '<span class="nv2-why">how'+CHEV+'</span></div>'
+      + '<div class="nv-exp nv2-exp"><div><div class="nv-body nv2-body">'
+      + '<div class="nv-ln"><span>24 x 77.50 <em>Rioja Crianza 2021</em></span><span>1,860.00</span></div>'
+      + '<div class="nv-ln"><span>last paid 76.20 <em>· 12 Jul</em></span><span class="nv-warn">+1.7%</span></div>'
+      + '<div class="nv-ln nv-tot"><span>Stands as entered</span><span>1,860.00</span></div>'
+      + '</div></div></div></div></div>',
+    play:function(root){
+      stop(root);
+      var el=q(root,'.mx-nav-02');
+      el.classList.remove('is-open'); reflow(el);
+      wire(q(el,'.nv2-h'),'click',function(){ el.classList.toggle('is-open'); });
+      at(root,340,function(){ el.classList.add('is-open'); });
+    }
+  });
+
+  /* ══ 03 ═══ the indicator travels ══════════════════════════════════════ */
+  add({
+    id:'nav-03', name:'Indicator travels',
+    purpose:'The vendor-email inbox has three states and the counts change all day. The bar carries the eye from the tab you left to the tab you chose, so a manager knows which direction they moved — a cut would make Sent and Settled interchangeable.',
+    spec:'320ms, two nested transforms: the wrapper translates on cubic-bezier(.16,1,.3,1), the 2px bar scales on cubic-bezier(.32,.72,0,1). Different curves on one duration make it stretch mid-travel and land flat. Panes cross-fade 200ms and slide 6px along the direction of travel.',
+    html:'<div class="mx-nav mx-nav-03"><div class="nv-list">'
+      + '<div class="nv3-bar">'
+      + '<button class="nv3-tab on" data-i="0">Open<span class="n">6</span></button>'
+      + '<button class="nv3-tab" data-i="1">Sent<span class="n">12</span></button>'
+      + '<button class="nv3-tab" data-i="2">Settled<span class="n">40</span></button>'
+      + '<span class="nv3-ind"><i></i></span></div>'
+      + '<div class="nv3-panes">'
+      + '<div class="nv3-pane on"><div class="nv-t">Bodega Alvaro</div><div class="nv-m">short 2 cases · needs a reply</div>'
+      + '<div class="nv-m" style="margin-top:6px">Frutas Sol</div><div class="nv-m">price query open 2d</div></div>'
+      + '<div class="nv3-pane"><div class="nv-t">Molino Vega</div><div class="nv-m">sent 09:12 · awaiting confirm</div>'
+      + '<div class="nv-m" style="margin-top:6px">Pesca Duran</div><div class="nv-m">sent 09:14 · awaiting confirm</div></div>'
+      + '<div class="nv3-pane"><div class="nv-t">Lacteos Rivas</div><div class="nv-m nv-ok">settled 22:41 · matched</div>'
+      + '<div class="nv-m" style="margin-top:6px">Panaderia Ortiz</div><div class="nv-m nv-ok">settled 22:38 · matched</div></div>'
+      + '</div></div></div>',
+    play:function(root){
+      stop(root);
+      var el=q(root,'.mx-nav-03');
+      var tabs=qa(el,'.nv3-tab'), panes=qa(el,'.nv3-pane');
+      var ind=q(el,'.nv3-ind'), inner=q(ind,'i');
+      var cur=0;
+      function go(i,animate){
+        var dir = i>cur ? 1 : -1;
+        tabs.forEach(function(t,n){ t.classList.toggle('on', n===i); });
+        panes.forEach(function(p,n){
+          if(n===i){ p.style.transform='translateX('+(dir*6)+'px)'; reflow(p); p.classList.add('on'); }
+          else if(p.classList.contains('on')){ p.classList.remove('on'); p.style.transform='translateX('+(-dir*6)+'px)'; }
+        });
+        var t=tabs[i];
+        var x=t.offsetLeft, w=t.offsetWidth;
+        if(!animate){ ind.style.transition='none'; inner.style.transition='none'; }
+        ind.style.transform='translateX('+x+'px)';
+        inner.style.transform='scaleX('+(w/10)+')';
+        if(!animate){ reflow(ind); ind.style.transition=''; inner.style.transition=''; }
+        cur=i;
+      }
+      el.__go=go;
+      tabs.forEach(function(t,n){ wire(t,'click',function(){ if(n!==cur) el.__go(n,true); }); });
+      go(0,false);
+      at(root,420,function(){ go(1,true); });
+      at(root,1500,function(){ go(2,true); });
+    }
+  });
+
+  /* ══ 04 ═══ the vendor thread arrives ══════════════════════════════════ */
+  add({
+    id:'nav-04', name:'Thread drawer arrives',
+    purpose:'The vendor replied and you need to read them without leaving the order you are judging. The thread arrives beside the PO, never on top of it, and it drags back out under a thumb the way a real drawer does.',
+    spec:'tuck · spring k=380 c=32 m=1, simulated and sampled into a 24-stop linear() over 480ms. Measured +1.10% overshoot at 282ms, at rest by 423ms — weight, not bounce. Behind: dim to 42% over 240ms; three lines rise 5px, 28ms apart. Drag past 52px to dismiss; under it, the same spring returns it.',
+    html:'<div class="mx-nav mx-nav-04"><div class="nv-vp nv4-vp">'
+      + '<div class="nv4-behind"><div class="nv-t">PO-1042 · Vinos del Norte</div>'
+      + '<div class="nv-m">24 x Rioja Crianza · $1,860.00</div>'
+      + '<div class="nv-m" style="margin-top:8px">PO-1043 · Frutas Sol</div>'
+      + '<div class="nv-m">11 crates · $402.10</div>'
+      + '<div style="margin-top:9px"><span class="nv-chip nv4-open">open thread</span></div></div>'
+      + '<div class="nv4-dim"></div>'
+      + '<div class="nv4-dr"><div class="nv4-grip"></div>'
+      + '<div class="nv-t">Vinos del Norte</div><div class="nv-m">Re: PO-1042</div>'
+      + '<div class="nv4-msg them">Two cases short. Rest ships Thu.</div>'
+      + '<div class="nv4-msg">Credit the two, hold the Thu leg?</div>'
+      + '<div class="nv4-msg them"><span class="nv-ok">AI draft ready</span> · not sent</div>'
+      + '</div></div></div>',
+    play:function(root){
+      stop(root);
+      var el=q(root,'.mx-nav-04'), dr=q(el,'.nv4-dr');
+      el.classList.remove('open'); dr.style.transform=''; dr.style.transition=''; reflow(dr);
+      wire(q(el,'.nv4-open'),'click',function(){ el.classList.add('open'); });
+      wire(q(el,'.nv4-dim'),'click',function(){ el.classList.remove('open'); });
+      wire(dr,'pointerdown',function(e){
+        if(!el.classList.contains('open')) return;
+        var x0=e.clientX, dx=0;
+        try{ dr.setPointerCapture(e.pointerId); }catch(err){}
+        dr.style.transition='none';
+        function mv(ev){ dx=Math.max(0, ev.clientX-x0); dr.style.transform='translateX('+dx+'px)'; }
+        function up(){
+          dr.removeEventListener('pointermove',mv); dr.removeEventListener('pointerup',up);
+          dr.removeEventListener('pointercancel',up);
+          dr.style.transition=''; dr.style.transform='';
+          if(dx>52) el.classList.remove('open');
+        }
+        dr.addEventListener('pointermove',mv); dr.addEventListener('pointerup',up);
+        dr.addEventListener('pointercancel',up);
+        e.preventDefault();
+      });
+      at(root,380,function(){ el.classList.add('open'); });
+    }
+  });
+
+  /* ══ 05 ═══ the sheet and its scrim ════════════════════════════════════ */
+  add({
+    id:'nav-05', name:'Sheet over its scrim',
+    purpose:'The one place we interrupt: discarding a half-counted receiving session. The scrim keeps the count visible behind the question so the porter can see nothing has been taken away yet, and leaving is faster than arriving.',
+    spec:'in — scrim opacity 200ms, sheet 320ms settle + 10px/0.97 at 40ms delay (the room dims first, the question arrives after). out — 180ms on both, no delay: an exit should never make you wait.',
+    html:'<div class="mx-nav mx-nav-05"><div class="nv-vp nv5-vp">'
+      + '<div style="padding:7px 9px"><div class="nv-t">Receiving · door 2</div>'
+      + '<div class="nv-m">14 of 22 lines counted</div>'
+      + '<div class="nv-ln" style="margin-top:6px"><span>Tomatoes, vine <em>6 crates</em></span><span class="nv-ok">ok</span></div>'
+      + '<div class="nv-ln"><span>Lemons <em>4 crates</em></span><span class="nv-warn">short 1</span></div>'
+      + '<div style="margin-top:8px"><span class="nv-chip nv5-open">discard session</span></div></div>'
+      + '<div class="nv-scrim nv5-scrim"></div>'
+      + '<div class="nv5-sheet"><div class="nv-t">Discard this count?</div>'
+      + '<div class="nv-m" style="margin-top:3px">14 counted lines are not yet entered.</div>'
+      + '<div class="nv5-acts"><span class="nv5-b nv5-keep">Keep counting</span>'
+      + '<span class="nv5-b danger nv5-kill">Discard</span></div></div>'
+      + '</div></div>',
+    play:function(root){
+      stop(root);
+      var el=q(root,'.mx-nav-05'), sc=q(el,'.nv5-scrim');
+      function close(){ el.classList.remove('open'); sc.classList.remove('on'); }
+      function open(){ el.classList.add('open'); sc.classList.add('on'); }
+      close(); reflow(el);
+      el.__open=open;
+      wire(q(el,'.nv5-open'),'click',open);
+      wire(sc,'click',close);
+      wire(q(el,'.nv5-keep'),'click',close);
+      wire(q(el,'.nv5-kill'),'click',close);
+      at(root,340,open);
+    }
+  });
+
+  /* ══ 06 ═══ route transition ═══════════════════════════════════════════ */
+  add({
+    id:'nav-06', name:'Route travels forward',
+    purpose:'/orders to /orders/PO-1042. A porter on a phone at 12% battery has to know they went forward, not sideways — so the list leaves left, the record enters from the right, and the crumb grows the segment it just gained.',
+    spec:'exit 180ms cubic-bezier(.16,1,.3,1) to -14px; enter 320ms settle from +18px at 80ms delay — the outgoing page is gone before the incoming one commits, so they never cross-fade into mud. Back mirrors it exactly. Crumb: grid-template-columns 0fr→1fr on settle.',
+    html:'<div class="mx-nav mx-nav-06"><div class="nv-vp">'
+      + '<div class="nv6-crumb"><span>Orders</span><span class="nv6-c2"><span>&nbsp;/ PO-1042</span></span></div>'
+      + '<div class="nv6-stage">'
+      + '<div class="nv6-pg nv6-a">'
+      + '<div class="nv6-r nv6-go"><span>PO-1042 · Vinos del Norte</span><span class="nv-fig">1,860</span></div>'
+      + '<div class="nv6-r"><span>PO-1043 · Frutas Sol</span><span class="nv-fig">402</span></div>'
+      + '<div class="nv6-r"><span>PO-1044 · Molino Vega</span><span class="nv-fig">288</span></div>'
+      + '</div>'
+      + '<div class="nv6-pg nv6-b"><div class="nv6-back">&lsaquo; Orders</div>'
+      + '<div class="nv-t">Vinos del Norte</div><div class="nv-m">net 30 · ordered 09:12</div>'
+      + '<div class="nv-ln" style="margin-top:5px"><span>24 x 77.50 <em>Rioja Crianza</em></span><span>1,860.00</span></div>'
+      + '<div class="nv-ln nv-tot"><span>Awaiting the door</span><span>1,860.00</span></div>'
+      + '</div></div></div></div>',
+    play:function(root){
+      stop(root);
+      var el=q(root,'.mx-nav-06');
+      el.classList.remove('b'); el.classList.remove('back'); reflow(el);
+      wire(q(el,'.nv6-go'),'click',function(){ el.classList.remove('back'); el.classList.add('b'); });
+      wire(q(el,'.nv6-back'),'click',function(){ el.classList.add('back'); el.classList.remove('b'); });
+      at(root,420,function(){ el.classList.remove('back'); el.classList.add('b'); });
+    }
+  });
+
+  /* ══ 07 ═══ accordion — one closes as another opens ════════════════════ */
+  add({
+    id:'nav-07', name:'Accordion exchanges',
+    purpose:'The 1am discrepancy queue, grouped by category. Only one group is ever open, so the counts stay on screen — and because both panels move on the same token in the same frame, it reads as one exchange rather than a close followed by an open.',
+    spec:'settle · 320ms on both expanders simultaneously. The closing panel and the opening panel share a frame and a curve; their heights hand over instead of the list twitching twice.',
+    html:'<div class="mx-nav mx-nav-07"><div class="nv-list">'
+      + '<div class="nv7-i"><div class="nv-head"><div class="nv-t">Produce</div><span class="nv7-n">2</span></div>'
+      + '<div class="nv-exp"><div><div class="nv-body">'
+      + '<div class="nv-ln"><span>Lemons</span><span class="nv-warn">short 1 crate</span></div>'
+      + '<div class="nv-ln"><span>Basil</span><span class="nv-no">not delivered</span></div>'
+      + '</div></div></div></div>'
+      + '<div class="nv7-i"><div class="nv-head"><div class="nv-t">Dairy</div><span class="nv7-n">1</span></div>'
+      + '<div class="nv-exp"><div><div class="nv-body">'
+      + '<div class="nv-ln"><span>Butter, unsalted</span><span class="nv-warn">price +9%</span></div>'
+      + '</div></div></div></div>'
+      + '<div class="nv7-i"><div class="nv-head"><div class="nv-t">Wine</div><span class="nv7-n">3</span></div>'
+      + '<div class="nv-exp"><div><div class="nv-body">'
+      + '<div class="nv-ln"><span>Rioja Crianza</span><span class="nv-warn">2 cases short</span></div>'
+      + '<div class="nv-ln"><span>Albarino 2023</span><span class="nv-warn">vintage swap</span></div>'
+      + '<div class="nv-ln"><span>Mencia 2022</span><span class="nv-no">broken x2</span></div>'
+      + '</div></div></div></div>'
+      + '</div></div>',
+    play:function(root){
+      stop(root);
+      var el=q(root,'.mx-nav-07'), items=qa(el,'.nv7-i');
+      function only(i){ items.forEach(function(it,n){ it.classList.toggle('is-open', n===i); }); }
+      items.forEach(function(it,n){
+        wire(q(it,'.nv-head'),'click',function(){ only(it.classList.contains('is-open') ? -1 : n); });
+      });
+      only(-1); reflow(el);
+      at(root,320, function(){ only(0); });
+      at(root,1600,function(){ only(2); });
+    }
+  });
+
+  /* ══ 08 ═══ sticky chrome condenses ════════════════════════════════════ */
+  add({
+    id:'nav-08', name:'Chrome condenses',
+    purpose:'The receiving-door screen on a phone held in one hand. As the porter scrolls into the lines, the header gives its space back to the list — but the PO number never leaves, because that is the one thing they must be able to read out loud to the driver.',
+    spec:'scroll-linked, no easing at all: p = clamp(scrollTop/56, 0, 1) and every property reads p — padding, title 14.5→11.1px, subtitle height 13→0px, rule opacity 0→1. Tracks the thumb exactly, both ways, and cannot be caught mid-threshold. The autoplay scroll is tweened through the same cubic-bezier(.16,1,.3,1) so it reads like a hand.',
+    html:'<div class="mx-nav mx-nav-08"><div class="nv-vp"><div class="nv8-sc">'
+      + '<div class="nv8-h"><div class="nv8-row"><div class="nv8-title">Vinos del Norte</div>'
+      + '<div class="nv8-po">PO-1042</div></div>'
+      + '<div class="nv8-sub">arrived 07:48 · door 2 · 24 lines</div>'
+      + '<div class="nv8-rule"></div></div>'
+      + '<div class="nv8-l"><span>Rioja Crianza 2021</span><span>24 / 24</span></div>'
+      + '<div class="nv8-l"><span>Albarino 2023</span><span>12 / 12</span></div>'
+      + '<div class="nv8-l"><span>Mencia 2022</span><span class="nv-warn">4 / 6</span></div>'
+      + '<div class="nv8-l"><span>Verdejo 2023</span><span>6 / 6</span></div>'
+      + '<div class="nv8-l"><span>Godello 2022</span><span>6 / 6</span></div>'
+      + '<div class="nv8-l"><span>Cava Brut NV</span><span>12 / 12</span></div>'
+      + '<div class="nv8-l"><span>Tempranillo 2020</span><span class="nv-no">0 / 6</span></div>'
+      + '<div class="nv8-l"><span>Garnacha 2021</span><span>6 / 6</span></div>'
+      + '</div></div></div>',
+    play:function(root){
+      stop(root);
+      var el=q(root,'.mx-nav-08'), sc=q(el,'.nv8-sc'), hd=q(el,'.nv8-h');
+      function sync(){ hd.style.setProperty('--p', Math.min(1, Math.max(0, sc.scrollTop/56)).toFixed(4)); }
+      wire(sc,'scroll',sync);
+      sc.scrollTop=0; sync();
+      if(RM){ sc.scrollTop=58; sync(); return; }
+      at(root,380,function(){
+        var t0=0, dur=780, from=0, to=58;
+        function step(ts){
+          if(!t0) t0=ts;
+          var k=Math.min(1,(ts-t0)/dur);
+          sc.scrollTop = from + (to-from)*easeSettle(k);
+          sync();
+          if(k<1) root.__nvRaf=requestAnimationFrame(step); else root.__nvRaf=0;
+        }
+        root.__nvRaf=requestAnimationFrame(step);
+      });
+    }
+  });
+
+  /* ══ 09 ═══ a filter is a subtraction ══════════════════════════════════ */
+  add({
+    id:'nav-09', name:'Filter subtracts',
+    purpose:'"Discrepancies only" on the receiving queue. A filter removes rows; it does not deliver a new page. The two rows that leave are seen leaving, and the three that stay are demonstrably the same three you were already reading.',
+    spec:'leave 160ms ink (opacity + 9px), then FLIP the survivors 320ms settle. Deliberately no re-stagger on the survivors — stagger is first-paint only, and a list that re-staggers on every keystroke is noise.',
+    html:'<div class="mx-nav mx-nav-09"><div class="nv-list">'
+      + '<div class="nv9-bar"><span class="nv-m">Receiving · 22 Aug</span>'
+      + '<span class="nv-chip nv9-chip">discrepancies only</span></div>'
+      + '<div class="nv9-rows">'
+      + '<div class="nv9-r"><span class="nv9-n">Rioja Crianza</span><span class="nv-ok">24 / 24</span></div>'
+      + '<div class="nv9-r" data-flag="1"><span class="nv9-n">Mencia 2022</span><span class="nv-warn">4 / 6</span></div>'
+      + '<div class="nv9-r"><span class="nv9-n">Verdejo 2023</span><span class="nv-ok">6 / 6</span></div>'
+      + '<div class="nv9-r" data-flag="1"><span class="nv9-n">Tempranillo</span><span class="nv-no">0 / 6</span></div>'
+      + '<div class="nv9-r" data-flag="1"><span class="nv9-n">Lemons</span><span class="nv-warn">short 1</span></div>'
+      + '<div class="nv9-r"><span class="nv9-n">Cava Brut NV</span><span class="nv-ok">12 / 12</span></div>'
+      + '</div></div></div>',
+    play:function(root){
+      stop(root);
+      var el=q(root,'.mx-nav-09'), chip=q(el,'.nv9-chip');
+      var rows=qa(el,'.nv9-r');
+      var keep=rows.filter(function(r){ return r.dataset.flag==='1'; });
+      var drop=rows.filter(function(r){ return r.dataset.flag!=='1'; });
+      function off(){
+        chip.classList.remove('on');
+        flip(keep, function(){ drop.forEach(function(r){ r.style.display=''; }); }, {duration:320});
+        requestAnimationFrame(function(){ drop.forEach(function(r){ r.classList.remove('nv-out'); }); });
+      }
+      function on(){
+        chip.classList.add('on');
+        drop.forEach(function(r){ r.classList.add('nv-out'); });
+        at(root,170,function(){
+          flip(keep, function(){ drop.forEach(function(r){ r.style.display='none'; }); }, {duration:320});
+        });
+      }
+      /* reset */
+      chip.classList.remove('on');
+      drop.forEach(function(r){ r.style.display=''; r.classList.remove('nv-out'); });
+      reflow(el);
+      el.__t=function(){ chip.classList.contains('on') ? off() : on(); };
+      wire(chip,'click',function(){ el.__t(); });
+      at(root,420,on);
+    }
+  });
+
+  /* ══ 10 ═══ rows travel to their new places ════════════════════════════ */
+  add({
+    id:'nav-10', name:'Sort travels',
+    purpose:'Sorting the discrepancy queue by dollar impact at 1am. If rows teleport you have to re-read all six; if they travel you keep the two you had already decided about and only read the ones that moved past them.',
+    spec:'FLIP 320ms settle, every row leaving at once and arriving together — travel distance does not change the duration. Rows moving up take z-index 3 so they pass in front of the ones coming down. The caret flips on the same token.',
+    html:'<div class="mx-nav mx-nav-10"><div class="nv-list">'
+      + '<div class="nv10-h"><span>item</span><span class="nv10-sort">variance'
+      + '<svg class="nv10-car" width="9" height="9" viewBox="0 0 14 14" fill="none" aria-hidden="true">'
+      + '<path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      + '</span></div>'
+      + '<div class="nv10-b">'
+      + '<div class="nv10-r" data-v="42"><span>Albarino 2023</span><span class="nv10-v">-42</span></div>'
+      + '<div class="nv10-r" data-v="318"><span>Rioja Crianza</span><span class="nv10-v nv-no">-318</span></div>'
+      + '<div class="nv10-r" data-v="9"><span>Cava Brut NV</span><span class="nv10-v">-9</span></div>'
+      + '<div class="nv10-r" data-v="164"><span>Tempranillo</span><span class="nv10-v nv-warn">-164</span></div>'
+      + '<div class="nv10-r" data-v="27"><span>Verdejo 2023</span><span class="nv10-v">-27</span></div>'
+      + '</div></div></div>',
+    play:function(root){
+      stop(root);
+      var el=q(root,'.mx-nav-10'), body=q(el,'.nv10-b'), head=q(el,'.nv10-sort');
+      var rows=qa(el,'.nv10-r');
+      if(!el.__orig) el.__orig=rows.slice();
+      function apply(list){
+        flip(rows, function(){ list.forEach(function(r){ body.appendChild(r); }); },
+             {duration:320, lift:true});
+      }
+      function byVar(){ el.classList.remove('asc');
+        apply(rows.slice().sort(function(a,b){ return b.dataset.v-a.dataset.v; })); }
+      function byName(){ el.classList.add('asc'); apply(el.__orig); }
+      /* reset to the entered order */
+      el.classList.add('asc');
+      el.__orig.forEach(function(r){ body.appendChild(r); r.style.zIndex=''; });
+      reflow(el);
+      el.__t=function(){ el.classList.contains('asc') ? byVar() : byName(); };
+      wire(head,'click',function(){ el.__t(); });
+      at(root,460,byVar);
+    }
+  });
+
+  /* ══ 11 ═══ the row you chose becomes the header ═══════════════════════ */
+  add({
+    id:'nav-11', name:'Row becomes the header',
+    purpose:'Master to detail without the "wait, which order am I in?" beat. The row you picked is literally the element that becomes the detail header — same text, same weight, only its position and its ground change — so the record you open is provably the row you tapped.',
+    spec:'siblings leave 150ms ink, then the chosen row FLIPs to the top on turn (420ms, cubic-bezier(.32,.72,0,1)) because this opens a record. Its ground swaps on ink 160ms and the back chevron grows via grid-template-columns 0fr→1fr on settle. Body opens on turn at 60ms. Nothing about the row is re-typeset — a shared element that changes size is a cross-fade wearing a costume.',
+    html:'<div class="mx-nav mx-nav-11"><div class="nv-list"><div class="nv11">'
+      + '<div class="nv11-r" data-k="0"><span class="nv11-back"><span>&lsaquo;</span></span>'
+      + '<span class="nv-t">PO-1042 · Vinos del Norte</span><span class="nv11-sp"></span>'
+      + '<span class="nv-fig">1,860</span></div>'
+      + '<div class="nv11-r" data-k="1"><span class="nv11-back"><span>&lsaquo;</span></span>'
+      + '<span class="nv-t">PO-1043 · Frutas Sol</span><span class="nv11-sp"></span>'
+      + '<span class="nv-fig">402</span></div>'
+      + '<div class="nv11-r" data-k="2"><span class="nv11-back"><span>&lsaquo;</span></span>'
+      + '<span class="nv-t">PO-1044 · Molino Vega</span><span class="nv11-sp"></span>'
+      + '<span class="nv-fig">288</span></div>'
+      + '<div class="nv11-d"><div><div class="nv-body" style="padding-top:6px">'
+      + '<div class="nv-ln"><span>11 crates <em>· stone fruit, citrus</em></span><span>402.10</span></div>'
+      + '<div class="nv-ln"><span>door 2 <em>· 07:48</em></span><span class="nv-warn">short 1</span></div>'
+      + '<div class="nv-ln nv-tot"><span>Held for the manager</span><span>402.10</span></div>'
+      + '</div></div></div>'
+      + '</div></div></div>',
+    play:function(root){
+      stop(root);
+      var el=q(root,'.mx-nav-11'), rows=qa(el,'.nv11-r'), det=q(el,'.nv11-d');
+      function reset(){
+        det.classList.remove('is-open');
+        rows.forEach(function(r){ r.style.display=''; r.classList.remove('nv-out','hdr'); });
+      }
+      function open(sel){
+        var others=rows.filter(function(r){ return r!==sel; });
+        others.forEach(function(r){ r.classList.add('nv-out'); });
+        at(root,155,function(){
+          flip([sel], function(){
+            others.forEach(function(r){ r.style.display='none'; });
+            sel.classList.add('hdr');
+          }, {duration:420, easing:TURN});
+          at(root,60,function(){ det.classList.add('is-open'); });
+        });
+      }
+      function back(sel){
+        det.classList.remove('is-open');
+        var others=rows.filter(function(r){ return r!==sel; });
+        at(root,220,function(){
+          flip([sel], function(){
+            sel.classList.remove('hdr');
+            others.forEach(function(r){ r.style.display=''; });
+          }, {duration:420, easing:TURN});
+          at(root,140,function(){ others.forEach(function(r){ r.classList.remove('nv-out'); }); });
+        });
+      }
+      reset(); reflow(el);
+      rows.forEach(function(r){
+        wire(r,'click',function(){ r.classList.contains('hdr') ? back(r) : open(r); });
+      });
+      at(root,520,function(){ open(rows[1]); });
+    }
+  });
+
+  /* ══ 12 ═══ the command palette ════════════════════════════════════════ */
+  add({
+    id:'nav-12', name:'Palette opens',
+    purpose:'The manager who already knows where they are going should not have to navigate there. Cmd-K drops the palette over the page it came from — the page stays visible behind it, because the palette is a shortcut through the app, not a departure from it.',
+    spec:'scrim 170ms, panel 320ms settle from -10px / 0.98 with the origin at the top edge so it reads as dropping from the chrome. Results appear 28ms apart on first paint only. Typing filters with the same subtraction rule as nav-09 — rows leave, survivors FLIP, nothing re-staggers. No autofocus during autoplay: a page of demos must never steal the caret.',
+    html:'<div class="mx-nav mx-nav-12"><div class="nv-vp">'
+      + '<div class="nv12-page"><div class="nv-t">Dashboard</div>'
+      + '<div class="nv-m">3 vendor replies · 2 discrepancies</div>'
+      + '<div style="margin-top:9px"><span class="nv-chip nv12-k">Cmd K</span></div></div>'
+      + '<div class="nv-scrim nv12-scrim"></div>'
+      + '<div class="nv12-pal"><div class="nv12-in"><span class="nv-m" style="margin:0">&rsaquo;</span>'
+      + '<input class="nv12-q" type="text" placeholder="go to, or do" spellcheck="false"></div>'
+      + '<div class="nv12-res">'
+      + '<div class="nv12-o appear sel" data-s="receiving open door log"><span class="k">go</span>Receiving · door log</div>'
+      + '<div class="nv12-o appear" data-s="reconcile invoice po-1042"><span class="k">do</span>Reconcile invoice PO-1042</div>'
+      + '<div class="nv12-o appear" data-s="team tonight rota"><span class="k">go</span>Team · tonight rota</div>'
+      + '<div class="nv12-o appear" data-s="recount walk-in cooler"><span class="k">do</span>Recount · walk-in cooler</div>'
+      + '<div class="nv12-o appear" data-s="vendor threads unread"><span class="k">go</span>Vendor threads · 3 unread</div>'
+      + '</div></div></div></div>',
+    play:function(root){
+      stop(root);
+      var el=q(root,'.mx-nav-12'), sc=q(el,'.nv12-scrim'), inp=q(el,'.nv12-q');
+      var opts=qa(el,'.nv12-o');
+      function filter(term){
+        var t=(term||'').trim().toLowerCase();
+        var keep=opts.filter(function(o){ return !t || o.dataset.s.indexOf(t)>=0; });
+        var drop=opts.filter(function(o){ return keep.indexOf(o)<0; });
+        drop.forEach(function(o){ o.classList.add('nv-out'); });
+        at(root,t?170:0,function(){
+          flip(keep, function(){
+            drop.forEach(function(o){ o.style.display='none'; });
+            keep.forEach(function(o){ o.style.display=''; });
+          }, {duration:320});
+          requestAnimationFrame(function(){ keep.forEach(function(o){ o.classList.remove('nv-out'); }); });
+        });
+        keep.forEach(function(o,i){ o.classList.toggle('sel', i===0); });
+      }
+      function close(){ el.classList.remove('open'); sc.classList.remove('on'); }
+      function open(){ el.classList.add('open'); sc.classList.add('on'); }
+      /* reset */
+      close();
+      inp.value='';
+      opts.forEach(function(o){ o.style.display=''; o.classList.remove('nv-out'); o.classList.add('appear'); });
+      opts.forEach(function(o,i){ o.classList.toggle('sel', i===0); });
+      reflow(el);
+      wire(q(el,'.nv12-k'),'click',function(){ open(); inp.focus(); });
+      wire(sc,'click',close);
+      wire(inp,'input',function(){ filter(inp.value); });
+      wire(inp,'keydown',function(e){ if(e.key==='Escape'){ close(); inp.blur(); } });
+      at(root,400,open);
+      /* typed for you — value only, never focus */
+      ['r','re','rec'].forEach(function(v,i){
+        at(root,1150+i*130,function(){ inp.value=v; filter(v); });
+      });
+    }
+  });
+})();
+</script>
