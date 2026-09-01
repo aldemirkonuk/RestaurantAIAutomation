@@ -75,10 +75,22 @@ DEFAULT_AGENT_SPECS: Dict[str, dict] = {
         "dependencies": [],
         "description": "Communication layer",
     },
+    # CORE, and it stays CORE — but read the tier together with the agent's
+    # autonomy. It is CORE because it owns the order state machine for vendor
+    # replies on orders humans already placed, which must be running whenever
+    # the gateway is. It is *not* CORE because it is allowed to buy things: a
+    # par crossing (`stock.threshold.breached`) now stages a one_tap_actions
+    # proposal and stops. See agents/procurement_agent.py's module docstring —
+    # this agent used to create a NEGOTIATING order and publish the vendor
+    # intent straight off that event, and only the dormant POS pipeline that
+    # feeds buffer_manager kept it from firing.
     "procurement_agent": {
         "tier": AgentTier.CORE,
         "dependencies": ["inventory_engine", "notification_agent"],
-        "description": "Procurement logic",
+        "description": (
+            "Procurement logic — stages reorder proposals (never creates orders "
+            "or contacts vendors); owns the order state machine for replies"
+        ),
     },
     "calendar_agent": {
         "tier": AgentTier.CORE,
