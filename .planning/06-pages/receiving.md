@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: broken
 status: documented
-updated: 2026-08-26
+updated: 2026-09-01
 links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[orders]]"]
 ---
 
@@ -187,3 +187,93 @@ delivery day while the request behind it is rejected.
 4. Link the manager queue's rows to the match workspace on [[inventory]] rather than to
    `/orders?order=` — the decision the row asks for is made there.
 5. Turn on the reporter for the two `data-ux-key` markers already placed (§5).
+
+## 14. Pipeline review — 2026-09-01
+
+§1–13 above document the **legacy** `ReceivingHome.tsx`. This section covers the
+**pipeline underneath both renderings** and the rebuilt `receiving/next` surface, from a
+four-way pass (three extraction agents plus a direct read of `receiving.service.ts`).
+Every entry marked ✅ was re-verified by hand against source and, where the claim is
+about the database, against **production** — not against the migrations, because CI
+builds from migrations onto a fresh database and cannot see a write to a column
+production does not have.
+
+### 14a. The framing fact
+
+**The receiving pipeline has never run in production.** Measured 2026-09-01:
+
+| table | rows |
+|---|---:|
+| `procurement_receipt_events` | **0** |
+| `procurement_credits` | **0** |
+| `procurement_documents` | **0** |
+| `procurement_orders` | 2 (`APPROVED`, `PENDING` — neither delivered) |
+| `procurement_order_items` | 1 |
+| orders with a `match_status` | **0** |
+
+Nothing below is a salvage job on a live corpus. Every schema decision here is being
+taken at the cheapest moment it will ever be taken — the same argument ADR 0054 made for
+its CHECK constraints.
+
+### 14b. Verified defects
+
+| # | Defect | `path:line` | Verified |
+|---|---|---|---|
+| **P1** | `verifyReceipt` writes `notes:` to `procurement_orders`, which **has no `notes` column** in production (it has `delivery_notes`, `manager_notes`, `discrepancy_notes`). `?? undefined` drops the key when absent, so it throws **only when a manager typed a note** — i.e. only on a discrepancy, and only *after* the ledger correction and the credit claim have already been written. Status, `match_status`, `accepted_quantity`, `invoice_*` and `price_history` never land. A retry fails identically. There is **no `verifyReceipt` test in the repo**. | `procurement.service.ts:1653` | ✅ code + prod `information_schema` |
+| **P2** | `adjustments[]` can write stock into **another tenant**. `ReceiptAdjustmentDto.inventoryId` is `@IsString()` only, and `VerifyReceiptDto.adjustments` carries `@IsArray() @IsOptional() @Type(...)` with **no `@ValidateNested({each:true})`** — so the nested DTO is never validated at all. `applyReceiptAdjustment` passes the id straight to `apply_stock_movement`, which derives `restaurant_id` from the target row. | `dto/procurement.dto.ts:194-210`; `procurement.service.ts:~1510` | ✅ code |
+| **P3** | `markDelivered` writes `quantity_received: quantityReceived ?? null` while booking `order.quantity` into the ledger. The web client sends no quantity. The door's anti-double-book guard reads exactly that column (`alreadyBooked = quantity_received ?? 0` → 0) and books the full count on top. | `procurement.service.ts:1262` vs `receiving.service.ts:194` | ✅ code |
+| **P4** | **Nine read sites compare `procurement_orders.status` to lowercase `"delivered"`.** The write path sets the enum value `DELIVERED` (uppercase); production holds `APPROVED`/`PENDING`, both uppercase. So every vendor scorecard, lead-time statistic, on-time rate and procurement-spend figure reads **structurally zero** — not because there is no data, but because of case. Two *backfills* insert lowercase (`providers.service.ts:959`, `provider-intelligence.service.ts:626`), so any repaired history would be mixed-case. **The tests lock in the wrong case** (`dashboard.spend.spec.ts:59,68`; `order-schema-drift.spec.ts:221,234`) — they are green because the fixtures feed the code the case the code expects rather than the case the app writes. | `advanced-analytics.service.ts:290,437`; `dashboard.service.ts:322,438,569,832`; `goals.service.ts:320`; `analytics.service.ts:154`; `insight-generator.service.ts:239` | ✅ code + prod status values |
+| **P5** | A door receipt whose `apply_stock_movement` fails is reported as a **success**: the RPC error is `logger.warn`ed, then `quantity_received`, `status` and `delivered_at` are written anyway and the response returns a non-zero `stockDelta`. Same hole when `inventory_id` is null — nothing is booked and a non-zero delta is still reported. | `receiving.service.ts:198-248` | ✅ code · *owned by another session* |
+| **P6** | `openCreditClaim` sets **no `provider_id`, `document_id`, `document_line_id` or `claimed_qty`**. So a claim knows which *order* but not which *vendor*, *invoice* or *line*. This kills the `?providerId` filter and the `idx_pc_provider` index that already exist, and it makes the `uq_pc_line_reason` dedupe index (`WHERE document_line_id IS NOT NULL`) **unreachable** — the "23505 = already claimed" branch is dead code, and every re-verify manufactures another open claim, inflating `outstanding` and `totalAtRisk`. | `procurement.service.ts:1461-1477` | ✅ code |
+| **P7** | Both door clients **hardcode `countedUom: 'case'`** and send no `packSize`. The fail-closed unit refusal shipped in #208 is therefore unreachable, and the multiplying unit is now *asserted* on every door count. `resolvePackSize` falls back to **1** when the order cannot supply a ratio — so "3 cases" books 3 bottles, an under-count presented as a measured receipt. | `DoorNext.tsx:286`, `DoorReceipt.tsx:124`; `receiving.service.ts:441-453` | ✅ code |
+| **P8** | Three of four `stage` values have **no writer anywhere**. Only `case_count` is ever written; `signed_at_door`, `bottle_count` and `reconciled` exist in the CHECK and in tests only. `listUnverified` needs `bottle_count` or `reconciled` to close a delivery, so the only real exit is the order reaching `COMPLETED` — which `verifyReceipt` grants only when an invoice quantity was supplied. **A delivery counted to the bottle against a packing slip ages to `overdue` forever**, and the queue's loudest alarm fires hardest on correctly-handled deliveries. `receiving.spec.ts:449` asserts this works by mocking a row no code path can produce. | `receiving.service.ts:170,297,322-327`; `procurement.service.ts:1645-1649` | ✅ code |
+| **P9** | **Two cross-tenant holes on the count path.** `getBalanceAt` accepts `restaurantId` and never uses it; `get_inventory_balance_at` takes no restaurant argument, so any authenticated user can read any inventory item's historical balance by id. `recordSpotCount` calls `set_stock_absolute` with a path-supplied `inventoryId` before any ownership check — only the follow-up `last_counted_at` touch is scoped. | `inventory-ledger.service.ts:332`; `inventory.service.ts:363-379` | agent-reported, function signatures confirmed in prod |
+| **P10** | The landed-cost mechanism **does not fire on a correct delivery**. `applyReceiptAdjustment` runs only when `ledgerDelta !== 0`, and `ledgerDelta = acceptedQty − stockedQty`. On the happy path the delta is 0, no movement occurs, and `effectiveUnitCost` is never written — the lot keeps its estimate precisely when nothing went wrong. Conversely `markDelivered` passes the **PO estimate** as `p_unit_cost`, which stamps `cost_provenance='invoice'` on a price nobody verified. | `procurement.service.ts:1614`, `:1355` | agent-reported |
+| **P11** | Reservations leak on the entire new door flow. Shadow stock is released only in `markDelivered` and `releaseOrderShadowStock`; **neither `recordDoorReceipt` nor `verifyReceipt` touches shadow or `in_transit_quantity`** — and door→verify is the flow the two-stage design exists for. `cancelOrder` also releases only from `APPROVED\|CONFIRMED\|IN_TRANSIT`, so cancelling a `PARTIALLY_RECEIVED` order (the status the door always leaves) leaks too. | `procurement.service.ts:1094,1204,1336,1014-1022` | agent-reported |
+| **P12** | Every windowed read is rendered as a total. `totalAtRisk` sums a 100-order slice joined to an **unordered** 200-credit slice; `/procurement/credits` returns the **oldest** 200 by `opened_at ASC`, so `creditedThisMonth` on the owner ledger silently reads `$0` past 200 lifetime settlements — and renders `$0`, not `—`, because the array arrived successfully. `recoveryStats` sums an unordered 5000-row slice. `listUnverified` caps at 500 lifetime events, so the oldest — i.e. the `overdue` ones — fall off first. ADR 0051 requires a floor marker (`≥ n`). | `receiving.service.ts:271,383,428`; `credits.controller.ts:112,137`; `useReceivingNextData.ts:308-330`; `RcOwnerLedger.tsx:90-91` | agent-reported |
+| **P13** | Dashboard procurement spend returns **hard zeros on query error** — a dead gateway and an empty cellar render identically. `getVendorTrust` likewise returns `{score: 0, eligible: false}` on any exception. This is the literal defect ADR 0051 was written from. | `dashboard.service.ts:326-331`; `procurement.service.ts:2872-2874` | agent-reported |
+| **P14** | The discrepancy verdict is a **mutable column set, not a record**. `verifyReceipt` overwrites `match_status`/`discrepancy_notes` on the order row with no re-verify guard, and sets `discrepancy_notes = null` when the verdict lands on `matched` — erasing the prior narrative. Meanwhile the ledger *refuses* to move on a re-verify (idempotency key `receipt-verify:{orderId}:{inventoryId}`), so a second verify changes what the system **says** happened without changing what it **did**. | `procurement.service.ts:1656-1676`, `:1518` | agent-reported |
+
+### 14c. What is genuinely well built — do not "fix"
+
+- The fail-closed unit refusal and its error text (`receiving.service.ts:131-145`) — ADR 0011 applied at the door, with a 400 that names the question a human can answer in two seconds.
+- No `p_unit_cost` at the door, so the lot lands `cost_provenance='estimated'` rather than wearing an unverified price (`:216-218`).
+- The two-stage model, and provisional-ness **derived** rather than stored as a third stock state (`:29-48`).
+- `procurement_credits.evidence` — a full `MatchResult` snapshot frozen at claim time, never overwritten (`procurement.service.ts:1476`).
+- The credit **settlement** chain: `credited` requires both a document and an amount, is terminal, counts `creditedAmount` not `claimedAmount`, and the database enforces it independently (`procurement_credits_credited_needs_proof`). Best-built thing in the domain.
+- `price_verified` is `NULL`-not-`false` when unverifiable (`procurement.service.ts:1671`).
+- Content-addressed documents (`sha256` per restaurant), original bytes retained, original parse kept in `extracted` jsonb.
+- The owner view's honest numbers, and the role split as the permission model (§12).
+
+### 14d. Receiving as a label factory
+
+Receiving is the only place in the product where a number is produced by a person
+touching an object. Six machine-proposes/human-judges pairs exist, and **four of them
+destroy the machine's half at the moment it becomes a label**:
+
+1. Confirming a suggested line match overwrites the model's score (`match_confidence → 1`, `match_method → "manual"`) — `documents.controller.ts:244-245`.
+2. Suggested matches are **never persisted at all** — the rejected candidates, i.e. the entire negative class, vanish on the HTTP response (`document-intake.service.ts:497-502`).
+3. The door's paper pre-fill never leaves the browser; whether the receiver accepted or overrode the machine's reading of the packing slip is not transmitted (`DoorNext.tsx:236-246`).
+4. The verify form's pre-fill overwrite is untracked — a manager correcting a misread `invoiceQty` leaves no trace (`ReceivingWorkspace.tsx:202-223`).
+5. `editLine` overwrites the extracted line in place and is deliberately anonymous — no actor, no timestamp, no diff (`document-intake.service.ts:653-656,772-780`).
+6. The damage photograph is **never taken**: `damage_photo_path` is a write-only column with no producer and no consumer, and no client sends it, despite three docblocks promising it.
+
+Plus: `extraction_model` has no writer; `procurement_documents` has no `event_id`, so no
+extraction can ever be attributed to a model; and **no `operator` Neural Footprint event
+is written anywhere in the repo**, though `subject_type` has allowed it since 2026-08-24
+for exactly this purpose.
+
+Every one of these is one instance of one missing rule: *a machine proposal shown to a
+human is written before the human answers, and the answer is appended, never
+substituted.* The corpus is empty today, which is the only moment adopting that rule is
+free.
+
+### 14e. Forks for the founder
+
+Open, not decided. See `.planning/decisions/OPEN-DECISIONS.md` once filed.
+
+1. **P4's blast radius.** Fixing the lowercase status is nine read sites, two backfills that write the wrong case, and four test files that lock it in. It is not a receiving fix — it is every procurement number in the product. Sweep now, or file and continue?
+2. **How an honest delivery leaves the unverified queue** (P8) — write a `bottle_count` event from `verifyReceipt`, let a manager say "counted, no invoice yet", or both?
+3. **Whether a verdict is a record or a column** (P14) — append-only match history, forbid re-verify, or accept overwriting?
+4. **Whether to adopt the label-preservation rule now** (14d), while the corpus is empty.
+
