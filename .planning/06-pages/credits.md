@@ -2,6 +2,7 @@
 type: page
 route: /credits
 slug: credits
+softwares: [app-shell-support]
 component: none (inline <Navigate> redirect)
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[receipts]]"]
 ---
 
 # /credits — redirect → /receipts?tab=credits
+
+> **Part of** [[08-softwares/app-shell-support|App Shell & Support]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

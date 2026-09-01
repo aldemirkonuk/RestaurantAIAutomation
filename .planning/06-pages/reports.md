@@ -2,6 +2,7 @@
 type: page
 route: /reports
 slug: reports
+softwares: [reports-analytics]
 component: apps/web/src/pages/Reports.tsx
 audience: owner
 tier: plus
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[settings]]", "[[orders]]", "[[inventory]]", "[[t
 ---
 
 # /reports — Reports
+
+> **Part of** [[08-softwares/reports-analytics|Reports & Analytics]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

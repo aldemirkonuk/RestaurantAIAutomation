@@ -2,6 +2,7 @@
 type: page
 route: /
 slug: dashboard
+softwares: [dashboard-home]
 component: apps/web/src/pages/Dashboard.tsx
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[reports]]", "[[inventory]]", "[[orders]]", "[[ca
 ---
 
 # / — Dashboard
+
+> **Part of** [[08-softwares/dashboard-home|Dashboard Home]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

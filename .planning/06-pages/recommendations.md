@@ -2,6 +2,7 @@
 type: page
 route: /recommendations
 slug: recommendations
+softwares: [recommendations]
 component: apps/web/src/pages/Recommendations.tsx
 audience: owner
 tier: plus
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[orders]]", "[[promotions]]", "[[reports]]", "[[p
 ---
 
 # /recommendations — Recommendations
+
+> **Part of** [[08-softwares/recommendations|Recommendations]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

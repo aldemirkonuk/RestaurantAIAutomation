@@ -2,6 +2,7 @@
 type: page
 route: /receipts
 slug: receipts
+softwares: [receipts-invoice-match]
 component: apps/web/src/pages/ReceiptsPage.tsx
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]"]
 ---
 
 # /receipts — Receipts & Credits
+
+> **Part of** [[08-softwares/receipts-invoice-match|Receipts & Invoice Match]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
