@@ -136,7 +136,7 @@ changes: [analytics_insight_prefs.enabled, consultants.system_prompt]
 inputs_from: [security, sales]
 outputs_to: [security, decision-office, metric-contract-truth-assurance]
 close_time: weekly
-baseline: "default OFF by design (consultants.service.ts:11,18); no expiry mechanism exists; the toggle route (analytics.controller.ts:516) and the Opus consult route (:531) are both unguarded — OD-20"
+baseline: "default OFF by design (consultants.service.ts:11,18); no expiry mechanism exists; the toggle route and the Opus consult route were both unguarded (OD-20) until PR #31 guarded the controller on 2026-08-24 — analytics.controller.ts:51 now carries a class-level @UseGuards(JwtAuthGuard) over every route handler"
 status: proposed
 ```
 
@@ -152,7 +152,7 @@ the code's own default. The third measure —
 |---|---|---|
 | Candidate reach | [[analytics-engine-loops]] | We can only narrate what is computable — 25.1% today |
 | False-discovery estimate | [[analytics-engine-loops]] | If the underlying findings are noise, ranking them better is worse, not better |
-| Endpoint guards (OD-20) | [[security-charter]] / [[platform-api-charter]] | N5 is not fully mitigable from inside this team until it closes |
+| Endpoint guards (OD-20) | [[security-charter]] / [[platform-api-charter]] | N5 was not fully mitigable from inside this team until it closed. **Closed 2026-08-24** (PR #31, `analytics.controller.ts:51`); what remains of N5 — enablement expiry — is entirely ours |
 | NF `subject_type` for operators (INTEL-F3) | [[decision-office-charter]] / OD-11 | N1's signal has no home in the footprint |
 | Cost telemetry on NestJS model calls | [[neural-footprint-instrumentation-charter]] *(RM-3)* | Consultant spend is invisible today; the NestJS surface emits none (`intelligence.md:165-167`) |
 | Guest personalization | [[guest-experience-charter]] *(Product)* | We consume NF-B in aggregate; the guest-facing narrative is theirs |

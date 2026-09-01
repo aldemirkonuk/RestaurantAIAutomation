@@ -85,11 +85,15 @@ These are the rules that make the graph above executable rather than decorative.
    published one is the weaker. `"dollars recovered"` means *we asked* until a credit memo
    is modelled (`YC_WEDGE_PLAN.md:31-33`). This rule is the register's first entry.
 
-7. **We do not fix other people's routes; we refuse to stand on them.** OD-20 leaves 39
-   analytics routes unguarded, including the consultant toggle
-   (`analytics.controller.ts:516`) and the consult call (`:531`). [[security-charter]] and
-   [[platform-api-charter]] own the fix. This department owns (a) escalating it every
-   close-time and (b) not demonstrating the consultant layer while it stands.
+7. **We do not fix other people's routes; we refuse to stand on them.** OD-20 recorded the
+   analytics routes as unguarded, including the consultant toggle and the consult call;
+   [[security-charter]] and [[platform-api-charter]] owned the fix, and this department
+   owned (a) escalating it every close-time and (b) not demonstrating the consultant layer
+   while it stood. *Corrected 2026-09-01: the OD-20 instance is discharged — PR #31
+   (2026-08-24) put a class-level `@UseGuards(JwtAuthGuard)` on `AnalyticsController`
+   (`analytics.controller.ts:51`) covering every route handler on the file, and OD-20 is
+   marked resolved. Neither (a) nor (b) has a subject any more.* **The rule itself stands**
+   for the next surface this department is asked to demo behind.
 
 ## Escalation trigger
 
