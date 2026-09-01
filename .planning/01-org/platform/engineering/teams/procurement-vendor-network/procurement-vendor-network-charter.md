@@ -77,16 +77,20 @@ Secondary: `procurement.unguarded_money_moving_routes` — **0 across the `recur
 cluster**, which is the only sub-module this charter ever counted into it. The six routes
 were closed on 2026-08-25 by a class-level guard
 (`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`), landed under OD-20 (`OPEN-DECISIONS.md:116`);
-[[ENDPOINTS]]:464-473 marks all six ✅. The **team-wide** value across the other ~91 routes
-is deliberately not stated here: it depends on the E0 auth census (`ECOSYSTEM-PLAN.md:80`),
-which had not merged when this line was written. Do not re-derive it in passing — that is
-how the competing repo-wide counts this charter inherited were produced in the first place.
+[[ENDPOINTS]]:464-473 marks all six ✅. The **team-wide** value is no longer withheld: the
+E0 auth census merged 2026-09-01 (`ECOSYSTEM-PLAN.md:83`, method at
+[[ECOSYSTEM-E0-MEASUREMENTS]] §2) and measured **468 route handlers, 444 authenticated, 23
+deliberately public with evidence, 0 unauthenticated by omission, 1 unclear** — repo-wide,
+so this team's other ~91 routes contribute **zero**. Take that number from the census; do
+not re-derive it in passing — re-derivation is how the competing repo-wide counts this
+charter inherited were produced in the first place. **And read the zero with its second
+half: the defect count is zero while the defect generator is fully intact.**
 
 The metric outlives the fix because what it measures is a **default, not a backlog**. There
 is no global `JwtAuthGuard`: the only `APP_GUARD`s are `RateLimitGuard` and `TenantGuard`
-(`apps/api-gateway/src/app.module.ts:128-137`), so authentication is opt-in per controller
-and the *next* money-moving route this team adds is unguarded until someone remembers the
-decorator. Read it as a regression counter on money-moving routes carrying no explicit
+(`apps/api-gateway/src/app.module.ts:130-137`), so authentication is opt-in per controller
+and the *next* money-moving route this team adds — endpoint 469 — is unguarded until
+someone remembers the decorator. That is the generator, and the census did not touch it. Read it as a regression counter on money-moving routes carrying no explicit
 guard decision, and expect it to sit at 0 rather than to trend downward. This number is
 tracked here, not only in [[platform-api-charter]], because the consequence lands on this
 team.

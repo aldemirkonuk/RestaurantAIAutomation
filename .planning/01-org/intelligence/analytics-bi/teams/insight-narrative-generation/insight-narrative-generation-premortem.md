@@ -29,11 +29,15 @@ everything the deterministic engine earned. As `intelligence.md:434-435` puts it
 existing default-OFF design is the guardrail; the premortem is that someone flips it for a
 demo and forgets."*
 
-The compounding factor is external and live: `PUT /analytics/consultants/:id/toggle`
-(`analytics.controller.ts:516`) and `POST /analytics/consult/:id` (`:531`) are two of **39
-unguarded routes** on that controller. **Anyone on the internet can flip the toggle and
-drive the Opus call** (foundation README:41-49, OD-20). So the failure does not even require
-an internal mistake.
+The compounding factor was external: `PUT /analytics/consultants/:id/toggle` and
+`POST /analytics/consult/:id` sat on a controller that carried no guard at all, so
+**anyone on the internet could flip the toggle and drive the Opus call** (foundation
+README:41-49, OD-20) — the failure did not even require an internal mistake.
+*Corrected 2026-09-01: this compounding factor is gone. PR #31 (2026-08-24) added a
+class-level `@UseGuards(JwtAuthGuard)` to `AnalyticsController`
+(`analytics.controller.ts:51`), covering every route handler on the file, and OD-20 is
+resolved. M1 now requires the internal mistake again — which is the mechanism the rest of
+this entry describes, and it stands unchanged.*
 
 **Earliest observable signal.** An `analytics_insight_prefs` row with
 `category = 'consultants'`, `enabled = true`, older than one close-time, with no named
@@ -44,9 +48,10 @@ contradict)"*.
 **What would have prevented it.** Enablement carries a **named human and an expiry**. The
 weekly job ([[insight-narrative-generation-schedule]]) lists every enabled row with its
 age; unowned rows revert to the default, which is OFF — so reverting requires no
-permission. And this team does not demo the consultant layer while OD-20 stands, which
-makes the security escalation *this team's* problem rather than an abstract one owned
-elsewhere.
+permission. And this team did not demo the consultant layer while OD-20 stood, which made
+the security escalation *this team's* problem rather than an abstract one owned
+elsewhere. *Corrected 2026-09-01: OD-20 closed 2026-08-24, so the demo refusal is
+discharged; the named-human-and-expiry prevention is the live half.*
 
 ---
 
@@ -170,8 +175,10 @@ by a rate movement.
 - **[[red-team-charter]] should attack M1** — it is the mechanism with a demo incentive
   behind it, which is exactly the class of decision advisory exists to attack
   ([[ORG_STRUCTURE]] §3).
-- **[[security-charter]] carries OD-20 with a close-time.** Until then, M1 is not fully
-  mitigable from inside this team, and the board says so rather than implying otherwise.
+- ~~**[[security-charter]] carries OD-20 with a close-time.** Until then, M1 is not fully
+  mitigable from inside this team, and the board says so rather than implying otherwise.~~
+  **Closed 2026-08-24** (PR #31, `analytics.controller.ts:51`). M1's external half is
+  mitigated; its internal half — enablement with no expiry — is fully inside this team.
 - **INTEL-F3 remains open.** Until `subject_type` has a home for the operator, this team's
   primary signal lives outside the neural footprint and cannot feed the loop graph
   (foundation §7).

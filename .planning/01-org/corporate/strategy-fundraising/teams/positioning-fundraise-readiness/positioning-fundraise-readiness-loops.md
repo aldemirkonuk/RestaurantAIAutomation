@@ -5,7 +5,7 @@ department: strategy-fundraising
 team: positioning-fundraise-readiness
 status: provisional
 metrics: [strategy.claim_to_evidence_coverage, strategy.citation_drift_rate, strategy.claim_overstatement_count, strategy.wedge_metric_instrumentation, strategy.diligence_pack_completeness]
-updated: 2026-08-24
+updated: 2026-09-01
 links: ["[[positioning-fundraise-readiness-charter]]", "[[positioning-fundraise-readiness-premortem]]", "[[positioning-fundraise-readiness-directive]]", "[[positioning-fundraise-readiness-schedule]]", "[[strategy-fundraising-loops]]", "[[metric-contract-truth-assurance-charter]]", "[[design-partner-operations-charter]]", "[[narrative-collateral-charter]]", "[[standards-verification-charter]]", "[[instruments-equity-charter]]", "[[decision-office-charter]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_ids: ["pfr-register-entry", "pfr-verb-strength", "pfr-citation-drift", "pfr-wedge-reduction", "pfr-readiness-balance"]
@@ -86,7 +86,7 @@ Three canonical rewrites, fixed now so they are not re-argued per artifact:
 | Wanted | Ships as | Because |
 |---|---|---|
 | *"$X recovered"* | *"$X in billing discrepancies identified"* — or *"$X recovered"* **only** for credits watched landing | `YC_WEDGE_PLAN.md:31-33` — until an 812 lands, it means *we asked* |
-| *"Security complete"* | *"ux-optimizer secured"* | `:339` is accurate in its body; the track **label** overstates while 94 endpoints are unguarded by omission |
+| *"Security complete"* | *"ux-optimizer secured"* | `:339` is accurate in its body; the track **label** overstates while the platform is unguarded **by default** — `app.module.ts:130-137` registers only `RateLimitGuard` and `TenantGuard`, no global `JwtAuthGuard`. The rewrite stands on that posture, **not** on a count, and the census now proves why that distinction was the right one. ~~94 endpoints unguarded by omission~~ is struck by OD-19 itself (`OPEN-DECISIONS.md:31`); the E0 census has since **landed and measured zero** (`ECOSYSTEM-PLAN.md:83`, 2026-09-01): 468 route handlers, 444 authenticated, 23 deliberately public with evidence, **0 unauthenticated by omission**, 1 unclear. **The zero does not retire this rewrite. The defect *count* is zero while the defect *generator* is fully intact** — `JwtAuthGuard` is per-controller, not a global `APP_GUARD`, so a controller that declares nothing is unauthenticated by default and endpoint 469 arrives unguarded. A label claiming security is complete still overstates a platform that is unguarded by default, and ships weakened |
 | *"$20k MRR"* — if OD-23 resolves to committed-not-collected | *"$20k MRR committed"*, permanently attached | A redefined metric is legitimate internally and an overstatement externally unless the redefinition travels with it |
 
 `strategy.weakened_claim_count` is tracked alongside the overstatement count on purpose:
