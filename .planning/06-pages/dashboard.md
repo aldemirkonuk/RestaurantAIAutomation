@@ -47,6 +47,25 @@ plainly: "Today's KPIs, alerts, and the actions worth doing first"
 - Switch between restaurants/branches
 - Live updates while the page is open (realtime calendar/inventory events)
 
+## 1b. Motions used — Mudavym redesign (flag `mudavym_design_dashboard`)
+
+Canonical source with curves: `apps/web/src/pages/dashboard/next/MOTIONS.md` —
+this list is the note-side index (ADR 0044 §2).
+
+| id | name | fires |
+|---|---|---|
+| `open-arrive` | Opening line entrance | the Fraunces "Good evening / before service" header, once on mount |
+| `cal-arrive` | Staggered arrival | every real day cell of the sales calendar, per month paint |
+| `kpi-tally` | Figures arrive | the five KPIs + "Waiting on you" count; an em dash never counts |
+| `day-open` | Settle expansion | the day-detail panel; each Waiting-on-you row into its HoldToApprove |
+| `day-scrub` | Scrub the day | the tape strip in day detail — un-eased on purpose, per-day samples |
+| `hold-pour` / `seal-stamp` | Hold-to-approve → the seal lands | the approvals queue, wired to the real mutation |
+| `ink-micro` | Micro-states | hovers/focus, nothing moves more than 2px |
+| `skel-sheen` | Honest skeletons | genuinely in-flight fetches only — never for "unknown" |
+
+Deliberate non-motions: unknowns never animate; month navigation does not slide;
+scrubbed figures do not tween.
+
 ## 2. Entry
 
 Most-linked page after `/login` — in-degree 5 ([PAGE_MAP](../foundation/PAGE_MAP.md):139):

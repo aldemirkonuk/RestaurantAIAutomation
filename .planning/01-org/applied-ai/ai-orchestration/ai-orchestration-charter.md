@@ -88,7 +88,7 @@ survives the copy. Duplication is the worse outcome than either answer
 (`technology.md:845`).
 
 > ✅ **ID collision resolved — this fork is `TECH-F3`.** `technology.md:845` originally
-> numbered it **OD-21**, but `.planning/decisions/OPEN-DECISIONS.md:142` already uses
+> numbered it **OD-21**, but `.planning/decisions/OPEN-DECISIONS.md:138` already uses
 > **OD-21** for the Obsidian structural workflow (locked in [[OBSIDIAN_VAULT]]). The
 > Decision Office renamespaced the evaluation-seam fork to **TECH-F3**
 > ([[FORK-REGISTRY]]). Raised in [[ai-orchestration-agenda-full]] §Questions.

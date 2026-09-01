@@ -130,7 +130,7 @@ correction handoffs. Gap rows:
   the three generated companion documents have no regeneration guard.
 - **Closed since the charter — recorded because this team must not repeat a stale claim.**
   OD-14 is **resolved**: root `SKILLS.md` was retired to a tombstone on 2026-08-24
-  (OD-14, `OPEN-DECISIONS.md:129`, Resolved table; `SKILLS.md:1-3`), the path kept because
+  (OD-14, `OPEN-DECISIONS.md:125`, Resolved table; `SKILLS.md:1-3`), the path kept because
   `.github/copilot-instructions.md` referenced it. The charter's OD-14 line is superseded.
 - **NEW — the agent and the five unbuilt skills.** `.claude/skills/` now exists
   (`.claude/skills/README.md`) and holds zero committed skills — CORP-F7 closed by creating

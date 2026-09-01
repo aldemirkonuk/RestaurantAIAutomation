@@ -5,6 +5,12 @@
  * Use it to set up global test utilities and mocks.
  */
 
+// Pin the suite's timezone to a non-UTC zone BEFORE anything touches Date.
+// CI runners are UTC, where a naive UTC-midnight parse of a date-only value
+// is indistinguishable from a correct local-calendar-day parse — every
+// date-rendering assertion would be a no-op there (Opus review 2026-08-31).
+process.env.TZ = 'America/New_York';
+
 import { expect, afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import * as matchers from '@testing-library/jest-dom/matchers';

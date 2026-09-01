@@ -6,6 +6,7 @@ import {
   HttpException,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -15,6 +16,8 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import {
   GenerateReportDto,
+  RefileReportDto,
+  ReportCrossFileResponseDto,
   ReportListResponseDto,
   ReportResponseDto,
   ScheduleReportDto,
@@ -95,6 +98,52 @@ export class ReportsController {
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch report",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get(":id/cross-file")
+  @ApiOperation({
+    summary:
+      "Registers cross-filed with this report's period (Sorting Office)",
+  })
+  @ApiResponse({ status: 200, type: ReportCrossFileResponseDto })
+  async getReportCrossFile(
+    @Param("id") reportId: string,
+    @CurrentUser() user: { restaurantId: string },
+  ): Promise<ReportCrossFileResponseDto> {
+    try {
+      return await this.reportsService.getReportCrossFile(
+        user.restaurantId,
+        reportId,
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to cross-file report",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Patch(":id")
+  @ApiOperation({ summary: "Re-file a report under a different type" })
+  @ApiResponse({ status: 200, type: ReportResponseDto })
+  async refileReport(
+    @Param("id") reportId: string,
+    @Body() dto: RefileReportDto,
+    @CurrentUser() user: { restaurantId: string; userId?: string },
+  ): Promise<ReportResponseDto> {
+    try {
+      return await this.reportsService.refileReport(
+        user.restaurantId,
+        reportId,
+        dto.reportType,
+        user.userId ?? null,
+      );
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to refile report",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

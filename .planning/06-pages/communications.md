@@ -38,6 +38,71 @@ outbound-email audit trail, labelled by `outbound_email_type`).
 - **Procurement History** tab: audit trail of outbound procurement emails, labelled by type
 - Filter by channel: all / email / SMS
 
+### Redesign feature summary (behind the flag)
+
+- **Mudavym redesign behind `mudavym_design_communications` (OFF)**: four-figure glance strip (threads · drafts waiting · sent-30d · report schedules), the conversation book as a short-row ledger with prose inside the expansion, honest channel-state line (Gmail inbound watch queried, never asserted), template workshops behind a what's-going-on banner, scheduled-reports rail
+
+## 1b. Motions used — Mudavym redesign (flag `mudavym_design_communications`)
+
+Canonical source with curves: `apps/web/src/pages/communications/next/MOTIONS.md`
+— this list is the note-side index (ADR 0044 §2).
+
+| id | name | fires |
+|---|---|---|
+| `cm-row-settle` | Row settles open | a ledger row's expansion — `settle`, 320ms house curve, 4px drop |
+| `cm-ink` | Ink micro-state | row and rail-button hover/focus — one paper step, nothing translates |
+
+Deliberate non-motions: glance figures never tally; the template sheet appears
+in place; draft chips never pulse (a draft drawing attention to itself starts
+to look like activity — prc-02).
+
+**2026-08-31 wave polish (Sorting Office two-Opus review):** the ledger row's
+expand/collapse toggle carried an inline `background: 'transparent'` that
+permanently outranked `.cm-row:hover` — a dead hover; fixed by removing the
+inline value rather than adding `!important` (verified via a static cascade
+repro, since the route sits behind auth). The two template-workshop buttons
+in the channels rail (`setSheet('gmail')`/`setSheet('sms')`) also carry
+`.cm-row` with a static inline background, but theirs is `var(--paper-0,…)`,
+a deliberate card fill, not `'transparent'` — deferred to a design call in
+this pass, and **fixed later the same day** in the follow-up below. `fmtWhen`
+in `cm-format.ts` was checked against the same-day `so-format.ts` date-parser
+bug: `sentAt`/`createdAt`/`nextRunAt` are all `timestamp with time zone`
+columns, not date-only, so the bare `new Date(iso)` it uses is already
+correct — no backport needed here.
+
+**2026-08-31 dead-hover follow-up (channels-rail template-workshop
+buttons):** the "Email template workshop" / "SMS template workshop" buttons
+carry `.cm-row` but rested on a static inline `background: 'var(--paper-0,
+…)'`, which — like the ledger-row toggle's inline `'transparent'` fixed in
+the same day's wave-polish pass — permanently outranked `.cm-row:hover`
+regardless of selector specificity, so hovering did nothing. Unlike the
+ledger row, this resting value is a deliberate paper-0 card fill, not a bare
+`'transparent'`, so it couldn't just be deleted without changing the resting
+look. Fixed by moving the resting value into a new `.cm-card` class (kept
+alongside `.cm-row` on both buttons) instead of the inline style — the
+existing `.cm-row:hover` rule now governs them, and the resting appearance
+is unchanged (verified via computed-style diff: same `rgb(26,26,26)` at
+rest, `.cm-row:hover`'s value while `:hover` matches). Still no
+`!important` used anywhere on this page.
+
+### Design used, and why (ADR 0045 §5 wave · MAKEOVER-VERDICTS: MERGE, warning on both sides)
+
+The founder liked **today's page** because "it shows basically everything" and
+rejected the redesign as "too much text" — while calling today's template-ish
+UI also to be avoided. The build takes both warnings structurally: a
+four-figure **glance strip** (threads · drafts waiting · sent 30d · report
+schedules — each derived from a live query and shown as an em dash until that
+query answers) restores at-a-glance completeness; the conversation book is a
+**ledger of short rows** (date · vendor · type · wine · state chip) with all
+prose held inside the settle-open expansion; and the founder's two named
+additions are built in — the **channels rail** makes the page's integrations
+visible in words, and the template builders open inside a **TemplateSheet**
+whose header answers "what's going on" before anything renders: *"You are
+editing a saved template. Nothing is sent from here."* prc-02 carried: a
+DRAFT/PENDING_APPROVAL exchange wears a dashed "AI draft · not sent" chip and
+its body renders in a dashed frame. Legacy page untouched; flag defaults OFF;
+override `mudavym.design.communications`.
+
 ## 2. Entry
 
 - Sidebar (`components/layout/Sidebar.tsx:120`); command palette
@@ -94,6 +159,13 @@ chrome per dashboard.md §7.
   DB CHECK constraint (memory: procurement-conversations-schema-gotchas).
 
 ## 9. Gaps
+
+- ReceiptsNext-style parity, deliberate: with the flag ON, three legacy
+  surfaces are not carried yet — the saved-templates lists (workshops open,
+  but the saved library isn't browsable), the classified-history tab's
+  filter controls, and the report-scheduler's create/delete forms (schedules
+  render read-only). Flip the flag back to operate them; carrying them over
+  is the flag-ON exit criterion (§1b).
 
 - **Scheduled report *sending* is feature-flagged off server-side** — "no mailer —
   scheduled send is feature-flagged" ([TIER-MAP](../03-scenarios/TIER-MAP.md):51, S15

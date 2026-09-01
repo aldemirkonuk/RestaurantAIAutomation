@@ -10,11 +10,8 @@ links: ["[[research-math-premortem]]", "[[research-math-agenda-full]]", "[[resea
 
 # Research & Math — Charter
 
-**Research & Math is its own division** ([[ORG_STRUCTURE]] §2, promoted 2026-08-24)
-— a division of one department, deliberately: the point is insulation from shipping
-priorities, not span of control. It is **not** a department inside Intelligence; that
-was an earlier draft, corrected in `ORG_STRUCTURE` the same day and corrected here
-2026-08-31 ([[0048-domain-quant-under-research-math]]).
+Parent division: **Intelligence** ([[ORG_STRUCTURE]] §2). Siblings in-division:
+[[security-charter]], [[analytics-bi-charter]].
 
 ## Mandate
 
@@ -26,32 +23,6 @@ done (doneability criteria, golden sets, CI gates), and the event contract that 
 both (NF-A). It is the department that turns "the agent worked" from an assertion into a
 number — and it is the only department chartered to say that number is worse than someone
 claimed.
-
-**Widened 2026-08-31 ([[0048-domain-quant-under-research-math]]): it is also accountable
-for how well we model a restaurant.** The founder's goal — *"turn food into math"* — has
-no other home in 99 units. The division's identity is therefore *"how well do we reason,
-and can we prove it"*, over two subjects that share one method: the agent that reasons,
-and the restaurant it reasons about. The second subject is structured in
-[[FOOD-REASONING-GRAPH]] as seven layers with a forced execution order, whose keystone
-is **L2 transformation** — yield factors plus recipe/BOM, the only bridge between
-*ingredient* and *dish*, and therefore the simultaneous gate on usage variance, on
-turning a demand forecast into an order, and on the margin axis of every pricing and
-menu decision.
-
-Three things make this fold cheap rather than a new division:
-
-1. The four structural compensations from [[0001-mudavym-single-entity]] (below) are
-   exactly what domain research needs, and already exist here.
-2. [[backtests-charter]] already reads on this work **unchanged** — its mandate names
-   *"forecast accuracy"* as fair game and covers "every unit, not only models". The
-   validation layer was chartered before the thing it validates.
-3. The method is the same method. A doneability verdict on a model's output and a
-   walk-forward backtest of a reorder point are the same discipline pointed at
-   different subjects.
-
-**The carve into teams is NOT decided** — three (deterministic · stochastic · decision
-economics) is argued in ADR 0048 §4 against one-that-splits-on-evidence, and sits with
-the founder as an open fork. Until it closes, this work is department-level.
 
 ## Why this department is structurally protected — read this before anything else
 
@@ -85,15 +56,14 @@ model, where it is cheap, not in corporate structure, where it is expensive.* Th
 department owns that research store. The artifact that answered the separate-company
 question is the artifact this department is chartered to build.
 
-> **⬦ CLOSED 2026-08-31 — this fork was already settled and the charter had not caught
-> up.** It read: [[0001-mudavym-single-entity]]'s review trail says "Research & Math
-> holds its own **division**", while [[ORG_STRUCTURE]] §2 files it as a **department**
-> inside Intelligence. That was true of an *earlier draft* of `ORG_STRUCTURE`. The
-> live §2 states the opposite explicitly — *"Research & Math is a division, not a
-> department (promoted 2026-08-24)"* — and names the earlier filing as the error. So
-> there was no live contradiction to decide, only a stale header in this file, fixed
-> above. Recorded rather than deleted because it stood for two months and was cited as
-> open. See [[0048-domain-quant-under-research-math]].
+> **⬦ Fork this charter must raise.** [[0001-mudavym-single-entity]]'s review trail says
+> "Research & Math holds its own **division**". [[ORG_STRUCTURE]] §2 — locked the same
+> day — places Research & Math as a **department** inside the Intelligence division,
+> alongside Security and Analytics & BI. Either the compensation was satisfied in
+> substance (division-level separation from Platform and Product, which Intelligence
+> does provide) or the ADR's wording is now inaccurate. Both readings are defensible;
+> only one can be written down. Raised in [[research-math-agenda-full]] as a founder
+> question and pushed to [[decision-office-charter]].
 
 ## Boundaries
 
@@ -151,26 +121,9 @@ been revoked in practice whatever the org chart says. That is the tell in
 | Agent behavior and prompts | `[[agent-fleet-charter|aio-agent-fleet]]` *(Applied AI)* | We measure the fleet; we do not staff it |
 | Adopting the model wrapper in the seven NestJS callsites | [[engineering-charter]] *(Platform)* | We own the wrapper and the deprecation date; Engineering owns the migration |
 | The physical NF tables and migrations | [[data-charter]] *(Platform)* | We own the **schema contract**; Data owns the DDL and the pipeline (`intelligence.md:486`) |
-| Grading deterministic arithmetic against a ledger | [[analytics-bi-charter]] AB-3 | RM-2 grades **nondeterministic** model output with judges and thresholds; AB-3 grades exact equality. Shared vocabulary, different work (`intelligence.md:460-464`). ⚠ **Sharpened and re-opened 2026-08-31 — see below** |
+| Grading deterministic arithmetic against a ledger | [[analytics-bi-charter]] AB-3 | RM-2 grades **nondeterministic** model output with judges and thresholds; AB-3 grades exact equality. Shared vocabulary, different work (`intelligence.md:460-464`) |
 | Whether an attacker *can* abuse a model surface | [[security-charter]] SEC-3 | We instrument the spend; they own the exposure. SEC-3's primary metric is unmeasurable until we emit (`intelligence.md:488`) |
 | Training first-party models | Parked under [[harness-model-routing-charter]] | `services/agent-orchestrator/training/` holds three scripts, no live loop, no served checkpoint. Entry trigger: a first-party model beats the API baseline on an RM-2 golden set *and* the cost delta justifies serving it (`intelligence.md:502`) |
-
-### ⚠️ The costing seam — added 2026-08-31, filed as OD-114
-
-The non-goals row above was written when this division owned only agent
-infrastructure. Domain quant breaks its axis. Recipe costing *is* deterministic
-arithmetic against a ledger, so by the letter of that row it belongs to AB-3 — but
-the butcher's-test by-product credit returns **$21.78/kg vs $23.35/kg for the same
-pork loin** depending on method: a 7.3% difference on the plate, both textbook-correct,
-both surviving any exact-equality check. AB-3's instrument is silent on *which
-definition is right*, because it takes the definition as given.
-
-So the axis is not determinism. **Proposed line: research owns the definition,
-Analytics & BI owns conformance to it.** Not adopted unilaterally — this widens
-Research & Math relative to the row as written, which is the founder's call, and two
-units chartered on one mandate is the defect shape this org has already hit twice
-(OD-29, and the evaluation seam below). Filed as **OD-114**; until it closes, neither
-unit may claim costing methodology.
 
 ### ⚠️ The evaluation seam, stated plainly
 
@@ -192,7 +145,7 @@ token accounting, and the routing policy itself"* with primary metric **"NF-A
 both own the routing policy. See [[research-math-agenda-full]] §Questions.
 
 **ID note (collision resolved):** `technology.md` originally numbered the evaluation
-seam "OD-21", but `OPEN-DECISIONS.md:142` already assigns OD-21 to the Obsidian
+seam "OD-21", but `OPEN-DECISIONS.md:138` already assigns OD-21 to the Obsidian
 structural workflow. [[decision-office-charter]] reconciled the local numbering; the
 seam is **TECH-F3** ([[FORK-REGISTRY]]) and should be cited by that ID.
 

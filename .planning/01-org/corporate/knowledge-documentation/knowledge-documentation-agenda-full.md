@@ -13,7 +13,7 @@ links: ["[[knowledge-documentation-charter]]", "[[knowledge-documentation-direct
 **Dated 2026-08-28.** Written under [ADR 0039](../../decisions/0039-activation-plan-of-record.md)
 Track B. This replaces the 2026-08-24 forecast, which is superseded rather than amended:
 its spine was OD-01, and OD-01 closed on 2026-08-27
-([OD-01, `OPEN-DECISIONS.md:77`](../../decisions/OPEN-DECISIONS.md), ADR 0032).
+([OD-01, `OPEN-DECISIONS.md:73`](../../decisions/OPEN-DECISIONS.md), ADR 0032).
 
 ## The one sentence
 

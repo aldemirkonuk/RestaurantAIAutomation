@@ -346,15 +346,23 @@ export class TeamController {
       ? roster.filter((m: any) => dto.memberIds!.includes(m.id))
       : roster.filter((m: any) => m.status === "active" && m.accountLinked);
 
-    // Always land in the in-app inbox.
-    await this.notifications.persistForRestaurant(rid, {
-      type: "system",
-      title: dto.title ?? "📣 Team broadcast",
-      message: dto.message,
-      priority: "high",
-      actionUrl: "/team",
-      actionLabel: "Open Team",
-    });
+    // Always land in the in-app inbox — but ONLY the addressed members' inboxes
+    // when the caller named targets. A renewal request addressed to one person
+    // must never read as a restaurant-wide announcement (team-audit.md).
+    await this.notifications.persistForRestaurant(
+      rid,
+      {
+        type: "system",
+        title: dto.title ?? "📣 Team broadcast",
+        message: dto.message,
+        priority: "high",
+        actionUrl: "/team",
+        actionLabel: "Open Team",
+      },
+      dto.memberIds?.length
+        ? { onlyUserIds: targets.map((m: any) => m.user_id).filter(Boolean) }
+        : {},
+    );
 
     const userIds = targets.map((m: any) => m.user_id).filter(Boolean);
     if (userIds.length) {

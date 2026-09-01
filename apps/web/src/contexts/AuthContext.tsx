@@ -463,8 +463,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch { /* malformed token */ }
       setUser({ ...userResponse.data.user, studioRoles })
     } catch (err: any) {
+      // A network-level failure says what the person can do about it, and
+      // nothing else. It used to read "Start the API Gateway: cd
+      // apps/api-gateway && pnpm start:dev" — a developer instruction that
+      // shipped to production and told a customer on mudavym.com to run a
+      // terminal command. It was also misleading in the case that actually
+      // occurred: the gateway was running fine and the real cause was a
+      // CORS-blocked origin, which a browser reports as an indistinguishable
+      // network error. Say the honest thing — we could not reach it — and
+      // leave the diagnosis to the logs.
       const message = err?.code === 'ERR_NETWORK' && !err?.response
-        ? 'Cannot reach server. Start the API Gateway: cd apps/api-gateway && pnpm start:dev'
+        ? "We couldn't reach the server. Check your connection and try again — if this keeps happening, it's on our side, not yours."
         : (err?.response?.data?.message || err?.message || 'Login failed.')
       setError(message)
       // Preserve the structured { code, provider } the backend sends for

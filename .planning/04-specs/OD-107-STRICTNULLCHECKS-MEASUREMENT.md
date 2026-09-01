@@ -8,7 +8,7 @@
 (P3.C, one commit later) landed while this was being written and added **one more
 error**, in `ask-ai`. Every figure below is from the re-run — see §9, because that
 one-commit drift is itself a finding.
-**Answers:** `OD-107 (OPEN-DECISIONS.md:78)`, which says *"A measurement first:
+**Answers:** `OD-107 (OPEN-DECISIONS.md:74)`, which says *"A measurement first:
 how many errors does `tsc --noEmit --strictNullChecks` actually report? Nobody
 has run it. That number decides whether this is a week or an afternoon."*
 
