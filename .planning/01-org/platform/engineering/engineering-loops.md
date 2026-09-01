@@ -4,7 +4,7 @@ division: platform
 department: engineering
 status: provisional
 metrics: [identity.false_merge_count, inventory.projection_divergence_rows, platform.endpoints_protected_by_default_pct, schema.days_since_hand_applied_ddl, integration.verified_signature_coverage]
-updated: 2026-08-24
+updated: 2026-09-01
 links: ["[[engineering-charter]]", "[[engineering-premortem]]", "[[engineering-directive]]", "[[catalogue-identity-loops]]", "[[inventory-ledger-loops]]", "[[procurement-vendor-network-loops]]", "[[messaging-delivery-loops]]", "[[client-surfaces-loops]]", "[[platform-api-loops]]", "[[integration-engineering-loops]]", "[[schema-migrations-loops]]", "[[LOOP-MAP]]"]
 loop_count: 5
 loop_ids: ["eng-wrongness-board", "eng-seam-arbitration", "eng-guard-outcome-reconciliation", "eng-irreversible-class-review", "eng-public-surface-exposure"]
@@ -119,8 +119,11 @@ status: proposed
 
 Counters premortem M2. Tracks the two numbers **side by side**, because
 "routes carrying the global guard" can reach 100% while "unguarded reachable routes" is
-flat. Weekly because the 137 unguarded endpoints and the 6 unguarded `recurring-orders`
-routes ([[ENDPOINTS]]:428) are live exposure, not debt.
+flat. Weekly because the 137 unguarded endpoints are live exposure, not debt. The 6
+`recurring-orders` routes this line used to name alongside them are **guarded** as of
+2026-08-25 (`apps/api-gateway/src/procurement/recurring-orders.controller.ts:35`,
+[[ENDPOINTS]]:464-473) and no longer belong in that count. The repo-wide figure is being
+reconciled separately under E0 and is deliberately left as written here.
 
 ---
 
