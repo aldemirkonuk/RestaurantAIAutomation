@@ -4,7 +4,7 @@
 - **Date:** 2026-08-30
 - **Decider:** Aldemir (founder), 2026-08-30 — four explicit answers, recorded verbatim below
 - **Keywords:** implementation, feature flag, dashboard, orders, wordmark, motion map, TradeZella, seal
-- **Links:** [[0042-iznik-seal-and-warm-charcoal]] (palette, locked), [[0043-mudavym-mark]] (mark, withdrawn — 41–43 land from the parallel design session's branch), `06-pages/MAKEOVER-VERDICTS.md`, `06-pages/DESIGN-FOUNDATION.md`, sketch `063-mudavym-motion-canvas`
+- **Links:** [[0042-iznik-seal-and-warm-charcoal]] (palette, locked), [[0043-mudavym-mark]] (mark, withdrawn — 41–43 land from the parallel design session's branch), `06-pages/MAKEOVER-VERDICTS.md`, `06-pages/DESIGN-FOUNDATION.md`, sketch `087-mudavym-motion-canvas`
 
 ## Context
 
