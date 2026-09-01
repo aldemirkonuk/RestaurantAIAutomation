@@ -92,3 +92,67 @@ describe("assertTenantMatch", () => {
     ).not.toThrow();
   });
 });
+
+/**
+ * The switch-restaurant exemption.
+ *
+ * Found 2026-09-01: `POST /auth/switch-restaurant` carries the TARGET
+ * restaurant in its body, and this function refused any body naming a
+ * restaurant other than the caller's current one — so the single route whose
+ * job is to change tenants was dead by construction, and threw before
+ * `switchRestaurant()` could run the membership check that authorises the
+ * move. Verified against production: three users hold access to more than one
+ * restaurant and none of them could switch.
+ *
+ * Every test below was run against the un-exempted implementation and observed
+ * to FAIL before being kept.
+ */
+describe("assertTenantMatch — allowBodyTenantChange", () => {
+  const user = { userId: "u1", restaurantId: "rest-a" };
+
+  it("lets the switch route name another restaurant in the body", () => {
+    expect(() =>
+      assertTenantMatch(req({ user, body: { restaurantId: "rest-b" } }), {
+        allowBodyTenantChange: true,
+      }),
+    ).not.toThrow();
+  });
+
+  it("still refuses that same body without the exemption", () => {
+    // The exemption must be opt-in per route, never the default.
+    expect(() =>
+      assertTenantMatch(req({ user, body: { restaurantId: "rest-b" } })),
+    ).toThrow();
+  });
+
+  it("still refuses a PATH naming another restaurant, even when exempt", () => {
+    // The exemption covers body-derived names ONLY. A route may change the
+    // caller's tenant; it may not read another tenant's data on the way.
+    expect(() =>
+      assertTenantMatch(
+        req({ user, params: { restaurantId: "rest-b" } }),
+        { allowBodyTenantChange: true },
+      ),
+    ).toThrow();
+  });
+
+  it("still refuses a QUERY naming another restaurant, even when exempt", () => {
+    expect(() =>
+      assertTenantMatch(
+        req({ user, query: { restaurantId: "rest-b" } }),
+        { allowBodyTenantChange: true },
+      ),
+    ).toThrow();
+  });
+
+  it("still refuses a tenantless session naming a restaurant, even when exempt", () => {
+    // A session with no tenant may not reach into one by naming it — the
+    // exemption is about CHANGING tenant, not about acquiring one for free.
+    expect(() =>
+      assertTenantMatch(
+        req({ user: { userId: "u1" }, body: { restaurantId: "rest-b" } }),
+        { allowBodyTenantChange: true },
+      ),
+    ).toThrow();
+  });
+});
