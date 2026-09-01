@@ -464,10 +464,16 @@ export class PosHubService {
         errors: ["No recognizable checks in payload"],
       };
 
-    const [mappings, tables] = await Promise.all([
+    const [mappings, tableLookup] = await Promise.all([
       this.loadItemMappings(restaurantId, providerKey),
       this.loadTables(restaurantId),
     ]);
+    const tables = tableLookup.tables;
+    // Degrade, do not reject: table resolution is an enrichment, so a failed
+    // lookup must not turn into a 500 the POS retries forever. But it is SAID,
+    // through the same `errors` channel a failed check upsert uses, so the
+    // ingest can no longer report a clean success over a lookup that failed.
+    if (tableLookup.error) errors.push(tableLookup.error);
 
     let upserted = 0;
     let wineItems = 0;
@@ -947,7 +953,7 @@ export class PosHubService {
       //
       // `notes` is the idempotency key verbatim. It used to be `pos:${key}`
       // while the key already began with "pos:", rendering "pos:pos:…".
-      await db.from("wine_consumption_log").upsert(
+      const { error } = await db.from("wine_consumption_log").upsert(
         {
           restaurant_id: restaurantId,
           inventory_id: item.inventory_id,
@@ -962,6 +968,26 @@ export class PosHubService {
         },
         { onConflict: "restaurant_id,notes", ignoreDuplicates: true },
       );
+
+      // This result used to be discarded, which made the comment above a claim
+      // the code did not honour. supabase-js RESOLVES with `{ data, error }` on
+      // a database error rather than throwing, so the `catch` below only ever
+      // caught client/network faults — a rejected upsert vanished in silence.
+      //
+      // That is a SILENT OMISSION, not a corruption, and it is the harder of the
+      // two to live with: a wrong row can be found and repaired by querying for
+      // it, whereas a missing row leaves no trace at all. Nothing records that
+      // the event failed to land, so the damage cannot be enumerated, bounded or
+      // repaired — while velocity, XYZ, reorder points, Holt-Winters and goal
+      // progress all quietly under-count over a ledger that looks complete.
+      if (error) {
+        this.logger.error(
+          `wine_consumption_log upsert FAILED for ${item.name} ` +
+            `(r=${restaurantId}, key=${idempotencyKey}): ${error.message} ` +
+            `[${error.code ?? "no-code"}] — the demand series is now short one ` +
+            `event and nothing else records that.`,
+        );
+      }
     } catch (err: any) {
       this.logger.warn(
         `Consumption log write failed for ${item.name}: ${err?.message}`,
@@ -1066,14 +1092,39 @@ export class PosHubService {
   // Table resolution + status
   // =========================================================================
 
-  private async loadTables(restaurantId: string) {
-    const { data } = await this.dbService
+  /**
+   * Returns the tables AND whether the lookup failed, because those are
+   * different facts and the caller writes a row either way.
+   *
+   * supabase-js RESOLVES with `{ data, error }` on a database error rather than
+   * throwing, so the previous `const { data } = await …; return data || []`
+   * turned a failed query into an empty table list. Every check then resolved
+   * `table_id: null` (`resolveTable` finds nothing in an empty array) while the
+   * ingest reported success with zero errors — indistinguishable from a
+   * restaurant that genuinely has no tables, and the mechanism that manufactures
+   * the "table_id is null on every row" symptom the POS bridge was diagnosed on.
+   *
+   * An empty result is NOT an error and must not be reported as one; only a real
+   * failure is. Conflating them would trade a silent failure for a false alarm.
+   */
+  private async loadTables(
+    restaurantId: string,
+  ): Promise<{ tables: any[]; error: string | null }> {
+    const { data, error } = await this.dbService
       .getClient()
       .from("restaurant_tables")
       .select("id, label, pos_refs")
       .eq("restaurant_id", restaurantId)
       .eq("is_active", true);
-    return data || [];
+
+    if (error) {
+      this.logger.error(
+        `restaurant_tables lookup failed for r=${restaurantId} — checks will be ` +
+          `written without a table_id rather than with a wrong one: ${error.message}`,
+      );
+      return { tables: [], error: `restaurant_tables: ${error.message}` };
+    }
+    return { tables: data || [], error: null };
   }
 
   private resolveTable(

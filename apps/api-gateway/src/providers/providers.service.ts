@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
@@ -114,13 +115,30 @@ export class ProvidersService {
       // every later "which of these is the real Breakthru?" question — orders,
       // invoices, conversations — becomes ambiguous.
       if (restaurantId) {
-        const { data: alreadyLinked } = await this.databaseService.supabase
-          .from("providers")
-          .select("id, name")
-          .eq("restaurant_id", restaurantId)
-          .eq("catalogue_vendor_id", dto.catalogue_vendor_id)
-          .is("deleted_at", null)
-          .maybeSingle();
+        const { data: alreadyLinked, error: dupeCheckError } =
+          await this.databaseService.supabase
+            .from("providers")
+            .select("id, name")
+            .eq("restaurant_id", restaurantId)
+            .eq("catalogue_vendor_id", dto.catalogue_vendor_id)
+            .is("deleted_at", null)
+            .maybeSingle();
+
+        // The error used to be discarded, and that made this guard FAIL OPEN.
+        // `maybeSingle()` returns `data: null` for BOTH "no row matched" and
+        // "the query failed" — supabase-js resolves with `{ data, error }`
+        // rather than throwing — so a failed lookup read as "no duplicate
+        // exists" and the insert below proceeded. A guard that cannot check
+        // must refuse, never wave through: the whole point of this one is that
+        // two rows for the same vendor make every later "which of these is the
+        // real Breakthru?" question ambiguous, and that is exactly the state a
+        // silent failure would create.
+        if (dupeCheckError) {
+          throw new ServiceUnavailableException(
+            "Could not verify whether this vendor is already in your providers. " +
+              "Nothing was added — please try again.",
+          );
+        }
 
         if (alreadyLinked) {
           throw new ConflictException(
