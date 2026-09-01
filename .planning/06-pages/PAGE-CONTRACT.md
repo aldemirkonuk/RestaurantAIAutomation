@@ -48,6 +48,8 @@ page ↔ endpoint ↔ service and every page carries its own build plan.
 type: page
 route: /orders
 slug: orders
+softwares: [orders, recurring-orders]   # 2026-09-01 — the small software(s) this screen
+                                        # belongs to, primary first; see [[SOFTWARE-CONTRACT]]
 component: apps/web/src/pages/Orders.tsx
 audience: owner | staff | guest | dev | public
 tier: core | plus | pro | public
@@ -69,5 +71,12 @@ links: []
   the index counts instrumented pages, and that number is currently ~0.
 - Files: `.planning/06-pages/<slug>.md`, slug from the route (`/wine-library` → `wine-library.md`,
   `/simpos/:restaurantId` → `simpos-terminal.md`).
+- **`softwares:` is a list, primary first** *(added 2026-09-01)*. A page can host two small
+  softwares behind a `?tab=` (`providers` hosts both the vendor directory and vendor search),
+  so the mapping is N:M by design. Every route note carries the key and a `> **Part of** …`
+  line under its H1 — deliberately *not* inside §0, which stays buttons-only so the graph
+  keeps rendering real page→page flows. Six software slugs share a basename with a page note
+  (`orders`, `receiving`, `notifications`, `calendar`, `promotions`, `recommendations`), so
+  links to the software layer are **path-qualified**: `[[08-softwares/orders|Orders]]`.
 
 Index: [[PAGES-MAP]] (Dataview over `type: page`).

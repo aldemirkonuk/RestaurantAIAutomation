@@ -2,6 +2,7 @@
 type: page
 route: /notifications
 slug: notifications
+softwares: [notifications]
 component: apps/web/src/pages/Notifications.tsx
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[orders]]", "[[inventory]]"]
 ---
 
 # /notifications — Notifications
+
+> **Part of** [[08-softwares/notifications|Notifications]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

@@ -50,6 +50,22 @@ one point, and so the loop graph (§4) has readable clusters instead of a dense 
 > of this document contradicted that by filing it under Intelligence. The promise is now
 > honoured: it is a division of one department, deliberately — the point is insulation
 > from shipping priorities, not span of control.
+>
+> *Trailing correction 2026-08-31:* `research-math-charter.md` still opened with
+> "Parent division: **Intelligence**" and carried a fork box asking which reading was
+> right. There was no live contradiction — only this file's earlier draft, already
+> corrected above — so the charter was made to agree rather than the fork decided.
+> Recorded because it stood for two months and was cited as open.
+
+> **Scope widened 2026-08-31 — [ADR 0048](../decisions/0048-domain-quant-under-research-math.md).**
+> Research & Math now also owns **domain quantitative research** — the founder's
+> "turn food into math": yield and portion costing, demand forecasting, inventory
+> optimisation, menu engineering and pricing science. Folded in rather than given its
+> own division, because this division already carries the four structural compensations
+> such work needs and already contains the **Backtests** team, whose mandate covers
+> forecast accuracy unchanged. The division's subject is now *how well we reason* over
+> two objects: the agent, and the restaurant. **The team carve is open (OD-116)** —
+> until it closes this is department-level work, so the counts below are unchanged.
 
 > Correction 2026-08-24: earlier drafts said "20 departments". The list has always
 > been 19 (5+3+3+3+5); the count was wrong, not the roster. Technology was split into

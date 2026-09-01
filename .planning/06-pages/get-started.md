@@ -2,6 +2,7 @@
 type: page
 route: /get-started
 slug: get-started
+softwares: [auth-onboarding]
 component: apps/web/src/pages/GetStarted.tsx
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[onboarding]]", "[[verify-email]]", "[[dashboard]
 ---
 
 # /get-started
+
+> **Part of** [[08-softwares/auth-onboarding|Auth & Onboarding]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
