@@ -58,7 +58,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // flipping that on existing restaurants would silently stop vendor replies
     // being analysed at all.
     defaultValue: true,
-    readBy: "common/orchestrator/inbound-responder.service.ts:985",
+    readBy: "common/orchestrator/inbound-responder.service.ts:987",
   },
   {
     key: "enable_ai_autonomous_send",
@@ -66,7 +66,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // leaves for a vendor with no human approval. A restaurant gets that only
     // by deliberately asking for it.
     defaultValue: false,
-    readBy: "common/orchestrator/inbound-responder.service.ts:1009",
+    readBy: "common/orchestrator/inbound-responder.service.ts:1011",
   },
   {
     key: "mudavym_design_dashboard",

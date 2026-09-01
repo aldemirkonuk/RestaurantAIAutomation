@@ -92,6 +92,29 @@ const STATUS_CONFIG: Record<string, {
     dotBorder: 'border-amber-300',
     icon: Loader2,
   },
+  // A manager-approved send is in flight. Claimed, so no approve control.
+  SENDING: {
+    label: 'Sending…',
+    textColor: 'text-amber-700',
+    bgColor: 'bg-amber-50',
+    borderColor: 'border-amber-200',
+    dotBg: 'bg-amber-500',
+    dotBorder: 'border-amber-300',
+    icon: Loader2,
+  },
+  // Delivered to the vendor, but the status write failed afterwards. Red and
+  // explicit on purpose: without an entry here this fell to the generic
+  // fallback and rendered the raw token under a Clock icon, which reads as
+  // "still waiting" for an email the vendor already has.
+  SEND_UNCONFIRMED: {
+    label: 'Sent · unconfirmed',
+    textColor: 'text-red-700',
+    bgColor: 'bg-red-50',
+    borderColor: 'border-red-200',
+    dotBg: 'bg-red-500',
+    dotBorder: 'border-red-300',
+    icon: AlertTriangle,
+  },
   APPROVED: {
     label: 'Sent',
     textColor: 'text-emerald-700',
@@ -211,7 +234,10 @@ export function CommsThreadDrawer({
   // Header trust signal: did the vendor's most recent inbound email pass DKIM/DMARC?
   // null when there is no inbound yet or the row predates Phase 0 transport capture.
   const senderVerified = [...conversations].reverse().find(c => c.direction === 'INBOUND')?.senderVerified ?? null
-  const sentConvs = conversations.filter(c => ['SENT', 'AUTO_SENT', 'APPROVED', 'COMPLETED', 'CLOSED'].includes(c.status))
+  // SEND_UNCONFIRMED belongs here: the email left the building. Omitting it
+  // would delete a real vendor email from the thread — an error rendering as
+  // emptiness (ADR 0020) on the state that most needs to be seen.
+  const sentConvs = conversations.filter(c => ['SENT', 'AUTO_SENT', 'APPROVED', 'COMPLETED', 'CLOSED', 'SEND_UNCONFIRMED'].includes(c.status))
 
   // The latest message being a vendor reply (with no AI draft waiting yet) is the
   // cue that it's our move — surface a one-tap "Draft AI Reply" action.
@@ -1155,7 +1181,7 @@ function ThreadEvent({ conv, attachments, isLast, isLatest, isCancelled, onOpenD
   const StatusIcon = cfg.icon
   const isPending = conv.status === 'PENDING_APPROVAL' && !isInbound
   const isDiscarded = conv.status === 'DISCARDED'
-  const isSent = ['SENT', 'AUTO_SENT', 'APPROVED'].includes(conv.status) && !isInbound
+  const isSent = ['SENT', 'AUTO_SENT', 'APPROVED', 'SEND_UNCONFIRMED'].includes(conv.status) && !isInbound
   const bodyText = conv.draftContent || conv.rollingSummary || ''
 
   const handleCopy = () => {

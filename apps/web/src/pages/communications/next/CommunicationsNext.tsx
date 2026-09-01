@@ -86,11 +86,22 @@ function StateChip({ status }: { status: string }) {
   const looks =
     state === 'draft'
       ? { text: draftChipText(status), bg: 'var(--paper-2, #EAE4D8)', fg: 'var(--ink-2, #4F473C)', dashed: true }
-      : state === 'sent'
-        ? { text: 'Sent', bg: 'var(--seal-tint, rgba(26,94,107,.10))', fg: 'var(--seal-deep, #14515C)', dashed: false }
-        : state === 'closed'
-          ? { text: 'Closed', bg: 'transparent', fg: 'var(--ink-3, #7C7365)', dashed: false }
-          : { text: status.toLowerCase(), bg: 'transparent', fg: 'var(--ink-3, #7C7365)', dashed: false };
+      : state === 'sending'
+        ? { text: 'Sending…', bg: 'var(--paper-2, #EAE4D8)', fg: 'var(--ink-2, #4F473C)', dashed: false }
+        : state === 'sent'
+          ? { text: 'Sent', bg: 'var(--seal-tint, rgba(26,94,107,.10))', fg: 'var(--seal-deep, #14515C)', dashed: false }
+          : state === 'unconfirmed'
+            ? {
+                // Delivered, recording failed. Never the calm "Sent" seal — a
+                // human has to reconcile this against the vendor thread.
+                text: 'Sent · unconfirmed',
+                bg: 'var(--alarm-tint, rgba(155,58,42,.10))',
+                fg: 'var(--alarm-deep, #8C3322)',
+                dashed: false,
+              }
+            : state === 'closed'
+              ? { text: 'Closed', bg: 'transparent', fg: 'var(--ink-3, #7C7365)', dashed: false }
+              : { text: status.toLowerCase(), bg: 'transparent', fg: 'var(--ink-3, #7C7365)', dashed: false };
   return (
     <span
       style={{
