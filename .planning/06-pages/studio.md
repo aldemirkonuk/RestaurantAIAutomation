@@ -2,6 +2,7 @@
 type: page
 route: /studio
 slug: studio
+softwares: [wine-studio]
 component: apps/web/src/pages/studio/Studio.tsx
 audience: dev
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[studio-queue]]", "[[studio-certify]]", "[[wines]
 ---
 
 # /studio — data ingestion workbench
+
+> **Part of** [[08-softwares/wine-studio|Wine Studio]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

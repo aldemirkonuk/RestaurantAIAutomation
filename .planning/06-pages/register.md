@@ -2,6 +2,7 @@
 type: page
 route: /register
 slug: register
+softwares: [auth-onboarding]
 component: apps/web/src/pages/Register.tsx
 audience: public
 tier: public
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[login]]", "[[invite-landing]]", "[[verify-email]
 ---
 
 # /register
+
+> **Part of** [[08-softwares/auth-onboarding|Auth & Onboarding]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

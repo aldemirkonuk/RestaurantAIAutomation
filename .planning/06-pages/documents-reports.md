@@ -2,6 +2,7 @@
 type: page
 route: /documents-reports
 slug: documents-reports
+softwares: [receipts-invoice-match]
 component: apps/web/src/pages/DocumentsPage.tsx # legacy default; flag-gated next: pages/documents-reports/next/DocumentsReportsNext.tsx
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[receipts]]", "[[communications]]", "[[logs]]"]
 ---
 
 # /documents-reports — Documents & Reports
+
+> **Part of** [[08-softwares/receipts-invoice-match|Receipts & Invoice Match]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

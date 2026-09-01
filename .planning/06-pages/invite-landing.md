@@ -2,6 +2,7 @@
 type: page
 route: /invite/:code
 slug: invite-landing
+softwares: [auth-onboarding]
 component: apps/web/src/pages/InviteLanding.tsx
 audience: public
 tier: public
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[register]]", "[[no-access]]", "[[login]]", "[[da
 ---
 
 # /invite/:code
+
+> **Part of** [[08-softwares/auth-onboarding|Auth & Onboarding]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

@@ -21,6 +21,14 @@ the interconnection map the founder asked for. 13 pages have no outbound page
 navigation (see findings feed below) — the two retired placeholders came off that
 list without being wired.
 
+**Software layer (2026-09-01, [ADR 0052](../decisions/0052-software-catalog-layer.md)):**
+every route note now carries a `softwares:` frontmatter list and a `> **Part of** …` line
+under its H1, naming the small software the screen belongs to. Pages are *screens*;
+[[SOFTWARE-MAP]] is the *product* layer above them, and it in turn nests under the eight
+divisions of [ECOSYSTEM-PLAN §3a](../04-specs/ECOSYSTEM-PLAN.md) ([ADR 0049](../decisions/0049-ecosystem-division-layer.md)).
+The mapping is N:M — `providers` hosts two softwares behind its `?tab=` — and all 47 notes
+are assigned, none left unowned. This is the [[PAGE-CONTRACT]] half of PV-12.
+
 **§1a Features (2026-08-26, founder mandate):** every page note now carries a
 `## 1a. Features` list — what the page presents to the user, in plain product
 language, one bullet per capability. Broken or dark features are marked, never
