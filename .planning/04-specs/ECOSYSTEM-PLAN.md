@@ -42,6 +42,23 @@ Full evidence in `eco-research/01-04`.
 
 **Customer / guest** (`04`) — *the demand-side flywheel input; almost entirely potential, not built, and held.* The NF store ships with the guest slot open but **zero emitters, zero rows**; the 564-line consent slice has **zero callers**; guest keys are HMAC-*derived* from one master (can't be crypto-shredded — needs *stored* per-guest keys, ADR 0037 addendum); `erasure_receipt_id` dangles; the only POS↔guest seam is `guest_check_links.pos_check_id`, unwired. Activation prereqs (all founder-gated): OD-05/OD-07, the erasure model, A15 dish-identity vs wine-only taste, the k=20 anonymity gate as code.
 
+## 3a. The division layer — the founder's taxonomy over the segments
+
+**✅ Locked by the founder 2026-09-01 (ADR 0049): the ecosystem is layered into eight divisions** — five named as musts (**Restaurant, Customer, Vendor, POS, Sommelier**) plus three the codebase demanded (**Intelligence/Analytics, Platform/Admin, Agent fleet/runtime**). The layer *amends* this plan; the segment frame (§3) and the locked E-ordering (§7.1) stand unchanged. *(Considered and not chosen: leaving the 4-segment frame as-is; restructuring the whole plan around divisions; five-divisions-only with analytics folded into Restaurant.)*
+
+Tie-break rule, stated once: an ambiguous module is assigned to its primary consumer; genuinely cross-cutting infrastructure sits in Platform/Admin.
+
+| Division | Owns (representative, on origin/main) | Spine hops (§2) | Segment (§3) | Phases (§6) |
+|---|---|---|---|---|
+| **POS** | `apps/api-gateway/src/pos-hub`, `toast`, `simpos`, `integrations`; the dormant `services/agent-orchestrator/agents/pos_integration_agent.py`; pages `simpos-terminal`, `simpos-order-log`, `authorize-integration` | 1 | POS → data spine | E0 (webhook secrets), E1 (pipeline unification), E4 (real-venue onboarding) |
+| **Restaurant** | `inventory`, `inventory-ledger`, `procurement`, `storage-locations`, `menus`, `restaurants`, `calendar`, `dashboard`, `reports`, `notifications`, `one-tap-actions`; agents `buffer_manager`, `procurement_agent`, `recurring_order_agent`, `ghost_inventory_agent`, `shrinkage_detective_agent`, `inventory_engine`; pages `inventory`, `receiving(-door)`, `orders`, `receipts`, `credits` | 2–5, 7–8 | Restaurant ops loop | E1 (the hop-4 bridge), E4 (hop-10 write-back) |
+| **Vendor** | `vendor-catalogue`, `vendor-intel`, `vendor-portal`, `distributor-discovery`, `providers`, `contacts`, `conversations`, `communications`; agents `rfq_agent`, `negotiation_playbook_agent`, `provider_communication_agent`, `provider_conversation_agent`, `email_intel_agent`, `email_parsing_agent`; pages `distributors`, `vendor-prices`, `vendor-public-page`, `promotions` | 6 | carved out of Restaurant ops — the buy-side's outward face | E1 (cross-runtime send reliability; voice stays gated) |
+| **Customer** | the NF guest slot (zero emitters), the 564-line consent slice (zero callers), `guest_check_links` | demand origin, pre-hop-1 | Customer / guest | E3 only — HELD behind its founder gates |
+| **Sommelier** | `apps/api-gateway/src/wines`; `sommelier_agent.py`; the wine ontology corpora (`datasets/`); pages `sommelier`, `wine-agent` (`SommelierAI.tsx`, `WineLibrary.tsx`) | serves 9–10 | carved out of Sales/analytics — the wine-intelligence product face | E2 (honest intelligence), E4 (the wine→beverages expansion) |
+| **Intelligence/Analytics** | `analytics` (engine + insight generator + goals), `ask-ai`; pages `recommendations(-catalog)`, `reports` | 9–10 | Sales / analytics | E2 (573/375/~19 reconciliation, feedback loop, Ask AI merge) |
+| **Platform/Admin** | `auth`, `team`, `organizations`, `settings`, `health`, `logs`, `user-preferences`, `push`, `websocket`, `events`, `ux-optimizer`, `mobile`; pages `admin(-health)`, `login`/`register`, `settings`, `team`, `profile` | under all hops | cross-cutting — §4.3 auth-by-omission lives here | E0 (auth census + map true-up) |
+| **Agent fleet/runtime** | `services/agent-orchestrator` (24 agents incl. the `auto_pilot_agent` stub), `services/self-evolution`, `core/base_agent.py` | the hop-4 seam | cross-cutting — §4.2 two-runtime split lives here | E1 (AutoPilot behind the gate; OD-03 bake-off decides its runtime) |
+
 ## 4. Cross-cutting faults no single segment owns
 
 1. **The sense→act seam (hop 4).** The buy-side has no autonomous trigger; the core "autonomous operations" promise breaks exactly here. Owner: nobody today.
@@ -78,4 +95,4 @@ These are put to the founder before this becomes a locked ADR. They are in the c
 
 ---
 
-*Companion research: `eco-research/01-pos-spine.md`, `02-restaurant-ops.md`, `03-sales-analytics.md`, `04-customer-guest.md`, `05-end-to-end.md`. This plan becomes a numbered ADR once §7.1 is locked and the PR-chain ordering (0034–0039 in flight) is settled.*
+*Companion research: `eco-research/01-pos-spine.md`, `02-restaurant-ops.md`, `03-sales-analytics.md`, `04-customer-guest.md`, `05-end-to-end.md`. This plan becomes a numbered ADR once §7.1 is locked and the PR-chain ordering (0034–0039 in flight) is settled. The division layer (§3a) is recorded in [ADR 0049](../decisions/0049-ecosystem-division-layer.md).*
