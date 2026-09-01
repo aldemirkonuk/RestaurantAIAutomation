@@ -1,5 +1,9 @@
 /**
- * InsightCatalog — "Browse all 375 insight types" explorer.
+ * InsightCatalog — the enumerated insight-type explorer.
+ *
+ * The count is NOT hardcoded here: the page renders `catalog.total` from the
+ * API, so it cannot drift. It was "375" in prose for months while the code
+ * already computed 573 — a number written into a string is a claim that rots.
  *
  * UX paths (UX_PATHS_CATALOG.md §Z1):
  *   NEW-707 full-screen explorer · NEW-708 dimensions w/ counts

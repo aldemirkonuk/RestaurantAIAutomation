@@ -223,7 +223,7 @@ export class AnalyticsController {
 
   @Get("insight-catalog/types")
   @ApiOperation({
-    summary: "Full enumerated insight catalog (Browse All 375 Types)",
+    summary: "Full enumerated insight catalog (Browse All types)",
     description:
       "Every dimension × measure × comparator candidate type with category and data requirements. Pass restaurantId to also receive which requirements this restaurant satisfies (computable vs blocked).",
   })

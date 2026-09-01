@@ -81,7 +81,7 @@ const NAVIGATION: Command[] = [
   { id: "nav-promotions", title: "Promotions", section: "Navigation", icon: Tag, href: "/promotions", keywords: "offers deals prospects" },
   { id: "nav-reports", title: "Reports", section: "Navigation", icon: BarChart3, href: "/reports", shortcut: "g r", keywords: "analytics charts dashboard kpi" },
   { id: "nav-recs", title: "Recommendations", section: "Navigation", icon: Lightbulb, href: "/recommendations", keywords: "actions insights suggestions" },
-  { id: "nav-catalog", title: "Insight Catalog", section: "Navigation", icon: Layers, href: "/recommendations/catalog", keywords: "browse 375 types dimension measure comparator" },
+  { id: "nav-catalog", title: "Insight Catalog", section: "Navigation", icon: Layers, href: "/recommendations/catalog", keywords: "browse types dimension measure comparator 573" },
   { id: "nav-calendar", title: "Calendar", section: "Navigation", icon: Calendar, href: "/calendar", shortcut: "g c", keywords: "events schedule" },
   { id: "nav-team", title: "Team", section: "Navigation", icon: Users, href: "/team", shortcut: "g t", keywords: "staff shifts labor" },
   { id: "nav-comms", title: "Communications", section: "Navigation", icon: Mail, href: "/communications", keywords: "email sms templates" },
@@ -102,7 +102,7 @@ const CREATE: Command[] = [
 ];
 
 const INSIGHTS: Command[] = [
-  { id: "insight-browse", title: "Browse all 375 insight types", section: "Insights", icon: Layers, href: "/recommendations/catalog", keywords: "catalog dimension measure comparator explorer" },
+  { id: "insight-browse", title: "Browse all insight types", section: "Insights", icon: Layers, href: "/recommendations/catalog", keywords: "catalog dimension measure comparator explorer" },
   { id: "insight-recs", title: "View recommendations", section: "Insights", icon: Lightbulb, href: "/recommendations", keywords: "actions what to do" },
 ];
 
