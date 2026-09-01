@@ -1,10 +1,10 @@
-# 0049 — A rebuilt page shows live data or says it does not know
+# 0051 — A rebuilt page shows live data or says it does not know
 
 - **Status:** Locked
 - **Date:** 2026-09-01
 - **Decider:** Aldemir (founder) — *"new pages won't show any hard coded or anything, pre-installed data. Everything will be live data from now on."*
 - **Keywords:** live data, hardcoded, mock, seed, placeholder, honesty, em dash, dashboard, page rebuild, redesign, fixtures
-- **Links:** [[0020-a-surface-with-no-data-says-so]], [[0024-identity-first-signin]], [[0044-mudavym-implementation-kickoff]], `.planning/06-pages/dashboard.md`
+- **Links:** [[0020-no-fabricated-answers]], [[0024-identity-first-signin]], [[0044-mudavym-implementation-kickoff]], `.planning/06-pages/dashboard.md`
 
 ## Context
 
@@ -24,7 +24,7 @@ backend cannot know:
   fetch, and the error string is destructured then discarded
   (`Dashboard.tsx:119`) — a dead gateway and an empty cellar render identically.
 
-This is the same class [ADR 0020](0020-a-surface-with-no-data-says-so.md) named
+This is the same class [ADR 0020](0020-no-fabricated-answers.md) named
 ("a surface with no data says so; it never invents one") and the same class
 [ADR 0024](0024-identity-first-signin.md) removed from auth. It keeps recurring
 because 0020 was written as a principle without a scope, so each page re-decided
