@@ -2,6 +2,7 @@
 type: page
 route: /verify-email
 slug: verify-email
+softwares: [auth-onboarding]
 component: apps/web/src/pages/VerifyEmail.tsx
 audience: public
 tier: public
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[register]]", "[[get-started]]", "[[login]]", "[[
 ---
 
 # /verify-email
+
+> **Part of** [[08-softwares/auth-onboarding|Auth & Onboarding]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

@@ -2,6 +2,7 @@
 type: page
 route: /no-access
 slug: no-access
+softwares: [auth-onboarding]
 component: apps/web/src/pages/NoAccess.tsx
 audience: public
 tier: public
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[invite-landing]]", "[[login]]"]
 ---
 
 # /no-access
+
+> **Part of** [[08-softwares/auth-onboarding|Auth & Onboarding]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

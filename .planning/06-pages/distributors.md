@@ -2,6 +2,7 @@
 type: page
 route: /distributors
 slug: distributors
+softwares: [global-vendor-search]
 component: none (inline <Navigate> redirect)
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[providers]]"]
 ---
 
 # /distributors — legacy redirect → /providers?tab=discover
+
+> **Part of** [[08-softwares/global-vendor-search|Global Vendor Search]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

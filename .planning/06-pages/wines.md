@@ -2,6 +2,7 @@
 type: page
 route: /wines
 slug: wines
+softwares: [wine-library-sommelier]
 component: apps/web/src/pages/WineLibrary.tsx
 audience: owner
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[TIER-MAP]]", "[[orders]]"]
 ---
 
 # /wines — Wine Library
+
+> **Part of** [[08-softwares/wine-library-sommelier|Wine Library & Sommelier]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 

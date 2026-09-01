@@ -2,6 +2,7 @@
 type: page
 route: /studio/invite/:token
 slug: studio-invite-redeem
+softwares: [wine-studio]
 component: apps/web/src/pages/studio/StudioInviteRedeem.tsx
 audience: dev
 tier: core
@@ -15,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[studio]]", "[[studio-certify]]", "[[login]]"]
 ---
 
 # /studio/invite/:token — accept a studio invite
+
+> **Part of** [[08-softwares/wine-studio|Wine Studio]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
