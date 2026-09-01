@@ -11,6 +11,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
+  IsBoolean,
   IsInt,
   IsISO8601,
   IsNotEmpty,
@@ -99,6 +100,25 @@ export class DoorReceiptDto {
   @IsString()
   @MaxLength(500)
   notes?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "What the machine read off the photographed paper, in countedUom, at the moment the count screen was pre-filled (ADR 0059). " +
+      "Absent = no suggestion was offered (offline, unreadable, or no photo), which is NOT the same as a suggestion of zero.",
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  suggestedQty?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "TRUE = the receiver sealed the number the machine proposed; FALSE = they overrode it; absent = there was no proposal to accept (ADR 0059). " +
+      "Absence is not agreement.",
+  })
+  @IsOptional()
+  @IsBoolean()
+  suggestionAccepted?: boolean;
 }
 
 /**
@@ -149,6 +169,29 @@ export class ReceivingController {
         idempotencyKey: body.idempotencyKey ?? null,
         clientCapturedAt: body.clientCapturedAt ?? null,
         notes: body.notes ?? null,
+        // ============================================================
+        // TODO(ADR 0059, L3) — NOT YET FORWARDED. DELIBERATE, NOT AN OVERSIGHT.
+        //
+        //     suggestedQty: body.suggestedQty ?? null,
+        //     suggestionAccepted: body.suggestionAccepted ?? null,
+        //
+        // The client sends both (DoorNext.tsx `seal()`), the DTO above accepts
+        // and validates both, and the columns exist
+        // (20260901200000_receiving_preserves_the_pair.sql adds
+        // procurement_receipt_events.suggested_qty / .suggestion_accepted).
+        // The only missing link is `DoorReceiptInput` and the insert in
+        // receiving.service.ts, which was owned by a concurrent session when
+        // this landed and could not be edited without a collision.
+        //
+        // UNTIL THAT IS DONE, THE DOOR'S LABEL IS STILL DISCARDED — it now
+        // reaches the gateway and is dropped there instead of in the browser.
+        // That is a shorter fall, not a fix.
+        //
+        // The remaining work is three lines: two fields on `DoorReceiptInput`
+        // and two columns on the `procurement_receipt_events` insert. The test
+        // that proves it is written and skipped in proposal-preservation-deferred.spec.ts, tagged
+        // "ADR 0059 L3" — un-skip it, and it fails until the insert is added.
+        // ============================================================
       });
     } catch (error) {
       // A refusal keeps its own body. Re-wrapping it flattened the structured

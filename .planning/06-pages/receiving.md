@@ -187,3 +187,44 @@ delivery day while the request behind it is rejected.
 4. Link the manager queue's rows to the match workspace on [[inventory]] rather than to
    `/orders?order=` — the decision the row asks for is made there.
 5. Turn on the reporter for the two `data-ux-key` markers already placed (§5).
+
+## 14. Pipeline review — 2026-09-01
+
+> **Rebase note.** §14a–14e (the full pipeline review) arrive with PR #216 on
+> branch `docs/receiving-review`, which was still open when this section was
+> written. This branch was cut from `origin/main`, where §14 does not exist yet,
+> so it adds the heading in order to hang §14f from it. **On rebase: keep #216's
+> §14 heading and §14a–14e, keep §14f below §14e, and drop this duplicate
+> heading and this note.** Nothing else here conflicts.
+
+### 14f. Label preservation — status after ADR 0059
+
+[[0059-receiving-preserves-the-pair]] adopts §14d's rule verbatim:
+
+> A machine proposal shown to a human is written before the human answers, and
+> the answer is appended, never substituted.
+
+Held by `scripts/check_proposal_preservation.py`, blocking in CI, proven to exit
+1 against pristine `origin/main` at the two pre-fix sites and 0 after. Adopted
+while production held **0 documents, 0 document lines, 0 receipt events and 0
+credits** — the only moment the rule was free, since the proposal half cannot be
+back-filled from the confirmed half.
+
+Against §14d's six destruction points plus its two capture holes:
+
+| # | §14d destruction point | Status |
+|---|---|---|
+| 1 | Confirming a suggested line match overwrites the model's score | **CLOSED.** `proposed_confidence` / `proposed_method` written at proposal time; confirmation adds `confirmed_by` / `confirmed_at` and never touches the match columns for a previously-proposed row. A pairing no machine proposed still gets `manual` — there is no proposal there to destroy. |
+| 2 | Suggested matches are never persisted at all | **CLOSED.** New `procurement_line_match_suggestions` — one row per candidate with confidence, method, substitution and reason, `resolved_as` filled on accept/reject. Losing candidates resolve `superseded`, never `rejected`: no human judged them. |
+| 3 | The door's paper pre-fill never leaves the browser | **PARTIAL — still lost.** `DoorNext.tsx` now sends `suggestedQty` / `suggestionAccepted`, `DoorReceiptDto` validates both, and `procurement_receipt_events` has the columns. The insert in `receiving.service.ts` is a marked `TODO(ADR 0059, L3)` — that file was owned by a concurrent session. **The label now reaches the gateway and is dropped there instead of in the browser: a shorter fall, not a fix.** |
+| 4 | The verify form's pre-fill overwrite is untracked | **PARTIAL — still lost.** Same shape: `ReceivingWorkspace.tsx` sends four `prefilled*` values frozen at pre-fill time, `VerifyReceiptDto` validates them, `procurement_orders` has the columns; the write in `procurement.service.ts` is a marked `TODO(ADR 0059, L4)`. |
+| 5 | `editLine` overwrites the extracted line in place, anonymously | **OPEN.** Not in scope here. Note the guard already covers the tie-out columns `editLine` recomputes, so a future fix inherits enforcement. |
+| 6 | The damage photograph is never taken | **OPEN.** Untouched — `damage_photo_path` still has no producer and no consumer. |
+| — | `extraction_model` has no writer | **CLOSED.** `ParsedDocument.extractionModel` carries it from the extractor (which always knew it) to the insert. NULL stays honest for EDI and for an unreadable document: no model ran. |
+| — | `procurement_documents` has no `event_id` | **CLOSED.** Column added, `ON DELETE SET NULL` (not CASCADE — [[0037-nfb-erasure-is-crypto-shredding]] erasure must cost attribution, never the label), populated from the extractor's `NfEventRef` with a bounded 2s wait so the instrument can never hang the extraction it measures. |
+
+Three failing-by-design `it.skip` tests in
+`apps/api-gateway/src/procurement/proposal-preservation-deferred.spec.ts` name
+the exact lines that finish rows 3 and 4. §14d's remark that **no `operator`
+Neural Footprint event is written anywhere in the repo** is unaddressed and
+remains true.
