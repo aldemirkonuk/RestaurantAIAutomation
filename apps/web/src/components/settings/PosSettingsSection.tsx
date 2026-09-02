@@ -130,8 +130,13 @@ export function PosSettingsSection() {
       ? `${window.location.origin}/api/v1/pos-hub/webhook/${selected.key}/${restaurantId}`
       : null
 
-  const ingestionCount =
-    statusQuery.data?.sources?.find((s) => s.source === selected?.key)?.checks ?? 0
+  // `null` = the status read failed, and this renders as an em dash. A real
+  // measured zero still renders `0`. These used to be the same sentence
+  // ("0 checks from this source"), which reads as "quiet POS" over a dead one.
+  // ADR 0067 / ADR 0051.
+  const ingestionCount: number | null = statusQuery.data?.unavailable
+    ? null
+    : (statusQuery.data?.sources?.find((s) => s.source === selected?.key)?.checks ?? 0)
 
   return (
     <div
@@ -307,6 +312,11 @@ export function PosSettingsSection() {
                   {statusQuery.isLoading ? (
                     <span className="inline-flex items-center gap-1.5">
                       <Loader2 className="w-3 h-3 animate-spin" /> Checking ingestion…
+                    </span>
+                  ) : ingestionCount === null ? (
+                    <span>
+                      Ingestion (30d): <strong className="text-gray-900">—</strong> · we could not
+                      read the ingestion log, so this is unknown rather than zero.
                     </span>
                   ) : (
                     <span>
