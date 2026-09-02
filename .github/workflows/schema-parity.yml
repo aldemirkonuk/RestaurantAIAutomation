@@ -57,7 +57,25 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
+      # fetch-depth: 0 is load-bearing, not hygiene, and it is not optional:
+      # actions/checkout's default is shallow AND single-branch, which leaves no
+      # `origin/<base_ref>` ref at all. MEASURED on a real shallow clone of
+      # fix/lot-cost-truth: the helper exits 2 both before and AFTER a
+      # `git fetch origin main --depth 1`, because a single-branch clone's
+      # restricted refspec does not create the remote-tracking ref — so the
+      # fetch in the step below cannot substitute for this line.
+      #
+      # The failure mode is a red job, never a silent hole: the helper refuses
+      # to answer from a partial view rather than reporting "this PR added
+      # nothing", which would quietly turn a relaxed comparison into a strict
+      # one and reintroduce the very block this change removes.
+      #
+      # (One degenerate case is genuinely fine: a shallow clone OF the base
+      # branch itself, where base and head are the same commit and the honest
+      # answer is the empty list. That is the push shape, and it exits 0.)
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
@@ -108,6 +126,66 @@ jobs:
             --against-database \
             --dsn "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
 
+      # ---------------------------------------------------------------------
+      # Everything above ran against the FULL migration set, and still does —
+      # `supabase db reset` above is what proves this PR's own migrations apply,
+      # and the fk-repoint check needs the schema they introduce.
+      #
+      # Only the COMPARISON below changes. It diffs a database built from
+      # migrations against production, which on a pull request is asking a
+      # question nobody posed: migrations auto-apply on MERGE, so a PR that adds
+      # one compares a local database that HAS the new objects against a
+      # production that correctly does not. The new table lands under "IN LOCAL,
+      # NOT IN REMOTE", the job exits 1, and since this job is a required
+      # context the PR cannot merge at all. Three of six open PRs were stuck on
+      # exactly that on 2026-09-02.
+      #
+      # So for the comparison, and ONLY the comparison, rebuild from the
+      # migrations as they stand on the PR's merge base. The check then asks its
+      # real question — has production drifted from what has been MERGED — and
+      # is insensitive to what this PR proposes.
+      #
+      # What deliberately does NOT relax:
+      #   * a MODIFIED migration is not held back (`--diff-filter=A` only), so
+      #     editing an already-applied migration still shows as drift;
+      #   * on push/schedule there is no base ref, nothing is held back, and
+      #     this is byte-for-byte the old behaviour — `main` is as strict as it
+      #     was;
+      #   * an unresolvable base is exit 2, not a quiet strict or a quiet
+      #     vacuous run.
+      # ---------------------------------------------------------------------
+      - name: The held-back list is computed by a guard that can fail
+        run: ./scripts/parity_migrations_added_by_pr.py --self-test
+
+      - name: Hold this PR's own migrations back from the comparison
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/parity-held-back
+          if [ -n "${{ github.base_ref }}" ]; then
+            git fetch origin "${{ github.base_ref }}" --quiet
+            ./scripts/parity_migrations_added_by_pr.py \
+              --base "origin/${{ github.base_ref }}" > /tmp/parity-added.txt
+          else
+            : > /tmp/parity-added.txt
+            echo "push/schedule: nothing held back — this is the strict run."
+          fi
+          held=0
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            mv "$f" /tmp/parity-held-back/
+            echo "held back: $f"
+            held=$((held + 1))
+          done < /tmp/parity-added.txt
+          echo "held back ${held} migration(s) added by this PR."
+          # Stated on every run, including the zero case, so "nothing was held
+          # back" is a reported measurement rather than an absence.
+          if [ "$held" -eq 0 ]; then
+            echo "This is therefore a STRICT comparison over the full migration set."
+          fi
+
+      - name: Rebuild the comparison database from the merge base
+        run: supabase db reset --no-seed
+
       - name: Compare against remote
         env:
           # Pooler first: db.<ref>.supabase.co is IPv6-only and runners are IPv4-only.
@@ -115,6 +193,12 @@ jobs:
         run: |
           ./scripts/check_db_reachable.sh
           ./scripts/check_schema_parity.sh
+
+      - name: Put the held-back migrations back
+        if: always()
+        run: |
+          cp /tmp/parity-held-back/*.sql supabase/migrations/ 2>/dev/null || true
+          git status --porcelain -- supabase/migrations/ || true
 
       - name: Explain a failure
         if: failure()
