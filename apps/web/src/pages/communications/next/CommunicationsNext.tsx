@@ -23,9 +23,9 @@ import { useState } from 'react';
 import { Wordmark } from '@/components/mudavym';
 import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
 import { ink, settle } from '../../../lib/mudavym/motion';
-import { EM, MONO, SANS, SERIF, draftChipText, fmtCadence, fmtWhen, sendState } from './cm-format';
+import { EM, GE, MONO, SANS, SERIF, draftChipText, fmtCadence, fmtWhen, sendState } from './cm-format';
 import { TemplateSheet, type TemplateChannel } from './TemplateSheet';
-import { useCommsNextData } from './useCommsNextData';
+import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 
 const TYPE_LABELS: Record<string, string> = {
   PRICE_INQUIRY: 'Price inquiry',
@@ -44,12 +44,27 @@ function GlanceFigure({
   label,
   value,
   floor = false,
+  failed = false,
+  floorNote,
 }: {
   label: string;
   value: number | null;
+  /** Says, on hover, WHY the figure is a floor — the cap and where it comes from. */
+  floorNote?: string;
   /** True when the figure is a floor (its source window was truncated). */
   floor?: boolean;
+  /**
+   * True when this figure's query FAILED, as distinct from not having answered.
+   * Both render the em dash — the figure is genuinely unknown either way — but
+   * they must not be the same state to a reader (ADR 0051 clause 3), so a
+   * failed figure carries its own accessible name and colour, and the banner
+   * above names the source in words. The alternative, four failure sentences
+   * inside a strip built to be scanned, would bury the distinction it exists
+   * to draw.
+   */
+  failed?: boolean;
 }) {
+  const unknown = value === null;
   return (
     <div style={{ minWidth: 96 }}>
       <span
@@ -60,22 +75,31 @@ function GlanceFigure({
           fontWeight: 500,
           letterSpacing: '0.12em',
           textTransform: 'uppercase',
-          color: 'var(--ink-3, #7C7365)',
+          color: failed ? 'var(--alarm-deep, #8C3322)' : 'var(--ink-3, #7C7365)',
         }}
       >
         {label}
       </span>
       <span
+        data-state={failed ? 'failed' : unknown ? 'unanswered' : 'measured'}
+        aria-label={
+          failed
+            ? `${label}: could not be loaded`
+            : unknown
+              ? `${label}: has not answered yet`
+              : undefined
+        }
+        title={failed ? `${label}: could not be loaded` : floor ? floorNote : undefined}
         style={{
           fontFamily: MONO,
           fontSize: 22,
           fontWeight: 600,
           letterSpacing: '-0.02em',
           fontVariantNumeric: 'tabular-nums',
-          color: 'var(--ink-1, #211C16)',
+          color: failed ? 'var(--alarm-deep, #8C3322)' : 'var(--ink-1, #211C16)',
         }}
       >
-        {value === null ? EM : floor ? `≥${value}` : value}
+        {unknown ? EM : floor ? `${GE}${value}` : value}
       </span>
     </div>
   );
@@ -240,18 +264,36 @@ export default function CommunicationsNext() {
           </div>
           {/* the at-a-glance strip the old page earned its keep with */}
           <div className="flex flex-wrap gap-6">
-            <GlanceFigure label="Threads" value={data.glance.threads} />
-            <GlanceFigure label="Drafts waiting" value={data.glance.draftsPending} />
+            <GlanceFigure label="Threads" value={data.glance.threads} failed={data.failed.threads} />
+            <GlanceFigure
+              label="Drafts waiting"
+              value={data.glance.draftsPending}
+              failed={data.failed.drafts}
+            />
             <GlanceFigure
               label="Sent · 30 days"
               value={data.glance.sentLast30}
               floor={data.glance.sentLast30Truncated}
+              floorNote={`At least this many: the history endpoint serves at most ${COMMS_SERVER_WINDOWS.HISTORY_ROWS} rows, and that window is full.`}
+              failed={data.failed.history}
             />
-            <GlanceFigure label="Report schedules" value={data.glance.schedules} />
+            <GlanceFigure
+              label="Report schedules"
+              value={data.glance.schedules}
+              failed={data.failed.schedules}
+            />
           </div>
         </header>
 
-        {data.isError && (
+        {/* The banner covers ALL FIVE sources, not just the conversation book.
+            Before this it read `historyQ.isError` alone, so a failed thread
+            index, drafts fetch, schedule list or Gmail status each rendered as
+            a bare em dash — the mark ADR 0051 reserves for "has not answered".
+            Extending the one banner rather than giving each figure its own
+            sentence keeps the strip scannable AND puts every failure in words
+            in one place; it also makes "Try again" reachable when something
+            other than the history failed, which it previously was not. */}
+        {data.failedSources.length > 0 && (
           <div
             role="alert"
             className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3"
@@ -262,9 +304,20 @@ export default function CommunicationsNext() {
             }}
           >
             <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-              {data.hasData
-                ? `The conversation book could not be refreshed (${data.errorMessage}) — its rows and figures show the last answer, not the present. Figures from other sources keep their own state.`
-                : `The conversation book could not be reached (${data.errorMessage}) — its figures show ${EM}; the other figures come from their own sources and keep their own state.`}
+              {data.failed.history
+                ? data.hasData
+                  ? `The conversation book could not be refreshed (${data.errorMessage}) — its rows and figures show the last answer, not the present.`
+                  : `The conversation book could not be reached (${data.errorMessage}) — its figures show ${EM}.`
+                : null}
+              {data.failed.history && data.failedSources.length > 1 ? ' ' : null}
+              {data.failedSources.length > (data.failed.history ? 1 : 0) ? (
+                <>
+                  {data.failed.history ? 'These also failed' : 'Could not be loaded'}:{' '}
+                  {data.failedSources.filter((s) => s !== 'the conversation book').join(', ')} — those
+                  figures show {EM} because they failed, not because they are still in flight. Any
+                  figure that did answer keeps its answer.
+                </>
+              ) : null}
             </span>
             <button
               type="button"
@@ -325,13 +378,26 @@ export default function CommunicationsNext() {
                 Channels & templates
               </h2>
               <p style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '0 0 10px' }}>
-                {data.gmailWatchConfigured === null
-                  ? `Gmail inbound watch: ${EM} — the gateway hasn't answered yet.`
-                  : data.gmailWatchConfigured
-                    ? 'Gmail inbound watch: configured — vendor replies reach this page.'
-                    : 'Gmail inbound watch: NOT configured — vendor replies will not arrive until it is.'}
-                {' '}SMS templates stage for the messaging channel; its connection state is not
-                reported here.
+                {data.failed.gmail
+                  ? `Gmail inbound watch: ${EM} — the status check failed, so whether vendor replies reach this page is unknown.`
+                  : data.gmailWatchConfigured === null
+                    ? `Gmail inbound watch: ${EM} — the gateway hasn't answered yet.`
+                    : data.gmailWatchConfigured
+                      ? 'Gmail inbound watch: configured — vendor replies reach this page.'
+                      : 'Gmail inbound watch: NOT configured — vendor replies will not arrive until it is.'}
+              </p>
+              {/* P5. The previous line said SMS templates "stage for the
+                  messaging channel", which implies a channel this page can
+                  reach. It cannot: every recorded conversation is
+                  `channel='email'`, and while the gateway does expose
+                  `POST /communications/sms`, NO web client calls it — a
+                  repo-wide grep over apps/web finds zero callers. The workshop
+                  is kept because after this change Save genuinely stores an
+                  SMS template (type='sms' in communication_templates); what is
+                  removed is the claim about a downstream sender. */}
+              <p style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '0 0 10px' }}>
+                SMS: no SMS sender is reachable from this page, and every conversation recorded so
+                far is email. An SMS template saved here is stored and nothing more.
               </p>
               <div className="flex flex-col gap-2">
                 <button type="button" onClick={() => setSheet('gmail')} className="cm-row cm-card rounded-lg px-3 py-2 text-left"
@@ -362,7 +428,23 @@ export default function CommunicationsNext() {
               >
                 Scheduled reports
               </h2>
-              {!data.schedulesKnown ? (
+              {/* THREE states, never two. `schedulesKnown` alone made a
+                  permanent failure indistinguishable from a request in flight,
+                  so this rail printed "hasn't answered yet" FOREVER:
+                  `public.scheduled_reports` is created by no migration in
+                  supabase/migrations/ and `GET /reports/schedules` fails every
+                  time. The legacy page held this distinction
+                  (Communications.tsx:269, 293-299) with a 12-line comment
+                  explaining exactly this, and the rebuild deleted it. ADR 0051
+                  clause 3: a failure is said in words, and "could not be
+                  refreshed" and "nothing below is claimed" are different
+                  sentences that must not be interchanged. */}
+              {data.schedulesError ? (
+                <p style={{ fontSize: 11.5, color: 'var(--alarm-deep, #8C3322)', margin: 0 }}>
+                  Saved schedules could not be loaded, so this list is not a record of what exists
+                  ({data.schedulesError}).
+                </p>
+              ) : !data.schedulesKnown ? (
                 <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', margin: 0 }}>
                   The schedule list hasn’t answered yet — {EM}.
                 </p>
