@@ -9,7 +9,7 @@
   copy-week, schedule receipts, swap_requests, tenant scoping
 - **Links:** [[0051-rebuilt-pages-show-live-data-only]], [[0020-no-fabricated-answers]],
   [[0080-the-app-does-not-invent-cellar-zones]], [[0027-push-recipients-are-not-resolved-here]],
-  `.planning/06-pages/team.md`, `supabase/migrations/20260902160000_team_access_role_is_a_known_role.sql`
+  `.planning/06-pages/team.md`, `supabase/migrations/20260902200000_team_access_role_is_a_known_role.sql`
 
 ## Context
 
