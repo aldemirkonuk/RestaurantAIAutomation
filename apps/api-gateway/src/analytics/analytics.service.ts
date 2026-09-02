@@ -749,6 +749,8 @@ export class AnalyticsService {
     const { dates, values } = this.toDailySeries(rows, sinceDays);
 
     // Try weekly-seasonal Holt-Winters; fall back to Holt then SES.
+    // `warmup` is the seeding window each model reads before its recursion can
+    // predict anything out-of-sample — accuracy is scored past it (ADR 0064).
     const period = 7;
     let model = "holt_winters";
     let result = E.forecast.holtWintersAdditive(
@@ -760,7 +762,8 @@ export class AnalyticsService {
     if (!result) {
       model = "holt_linear";
       const holt = E.forecast.holtLinear(values, 0.4, 0.1, horizon);
-      result = holt ? { ...holt, seasonals: [] as number[] } : null;
+      // Holt seeds level from y0 and trend from y1-y0 → two points consumed.
+      result = holt ? { ...holt, seasonals: [] as number[], warmup: 2 } : null;
     }
     if (!result) {
       model = "ses";
@@ -772,24 +775,35 @@ export class AnalyticsService {
             level: 0,
             trend: 0,
             seasonals: [],
+            warmup: 1, // fitted[0] is the seed y0, not a prediction
           }
         : null;
     }
 
-    // Backtest accuracy on the fitted series.
-    const accuracy = result
-      ? {
-          mae: E.forecast.mae(values, result.fitted),
-          rmse: E.forecast.rmse(values, result.fitted),
-          mape: E.forecast.mape(values, result.fitted),
-          maseVsSeasonalNaive: E.forecast.mase(
-            values,
-            result.fitted,
-            values,
-            period,
-          ),
-        }
-      : null;
+    // Rolling one-step-ahead accuracy: each fitted[i] is a prediction of
+    // values[i] made from values[0..i-1] only. The seeding window is excluded
+    // because those fitted values are in-sample by construction.
+    let accuracy: {
+      mae: number | null;
+      rmse: number | null;
+      mape: number | null;
+      maseVsSeasonalNaive: number | null;
+      basis: string;
+      scoredPoints: number;
+    } | null = null;
+    if (result) {
+      const w = Math.min(result.warmup, values.length);
+      const actual = values.slice(w);
+      const predicted = result.fitted.slice(w);
+      accuracy = {
+        mae: E.forecast.mae(actual, predicted),
+        rmse: E.forecast.rmse(actual, predicted),
+        mape: E.forecast.mape(actual, predicted),
+        maseVsSeasonalNaive: E.forecast.mase(actual, predicted, values, period),
+        basis: "rolling_one_step_ahead",
+        scoredPoints: Math.min(actual.length, predicted.length),
+      };
+    }
 
     const futureDates: string[] = [];
     const today = new Date();

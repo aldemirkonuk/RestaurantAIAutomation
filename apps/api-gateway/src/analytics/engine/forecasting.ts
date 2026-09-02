@@ -54,6 +54,10 @@ export function simpleExponentialSmoothing(
  *   level_t = α·y_t + (1-α)·(level_{t-1} + trend_{t-1})
  *   trend_t = β·(level_t - level_{t-1}) + (1-β)·trend_{t-1}
  *   forecast_{t+h} = level_t + h·trend_t
+ *
+ * `fitted[i]` is the one-step-ahead ℓ_{t−1}+b_{t−1}. It used to be
+ * ℓ_{t−1}+b_t — the *updated* trend — which leaked y_t into its own
+ * prediction with coefficient α·β (ADR 0064).
  */
 export function holtLinear(
   series: number[],
@@ -73,9 +77,11 @@ export function holtLinear(
   const fitted: number[] = [series[0]];
   for (let i = 1; i < series.length; i++) {
     const prevLevel = level;
-    level = alpha * series[i] + (1 - alpha) * (prevLevel + trend);
-    trend = beta * (level - prevLevel) + (1 - beta) * trend;
-    fitted.push(prevLevel + trend);
+    const prevTrend = trend;
+    // Predict index i before absorbing series[i].
+    fitted.push(prevLevel + prevTrend);
+    level = alpha * series[i] + (1 - alpha) * (prevLevel + prevTrend);
+    trend = beta * (level - prevLevel) + (1 - beta) * prevTrend;
   }
   const forecast: number[] = [];
   for (let h = 1; h <= horizon; h++) forecast.push(level + h * trend);
@@ -91,6 +97,17 @@ export function holtLinear(
  * seasonality on daily data). Seeds seasonal factors from the first full
  * cycle. Additive is the right choice when seasonal swings are roughly
  * constant in magnitude (a Friday adds ~N covers regardless of level).
+ *
+ * `fitted[i]` is the ONE-STEP-AHEAD prediction ℓ_{t−1}+b_{t−1}+s_{t−m} — it is
+ * computed before index i's observation is absorbed, so it is a function of
+ * series[0..i-1] only. See ADR 0064: it used to be pushed *after* the update
+ * and was therefore a function of series[i], which made every accuracy number
+ * scored against it optimistic by construction.
+ *
+ * `warmup` (= 2·period) is the seeding window. Level, trend and the initial
+ * seasonals are read off the first two seasons, so fitted values below that
+ * index are in-sample no matter how the recursion is written. Score accuracy
+ * on `fitted.slice(warmup)` against `series.slice(warmup)`.
  */
 export function holtWintersAdditive(
   series: number[],
@@ -103,6 +120,7 @@ export function holtWintersAdditive(
   level: number;
   trend: number;
   seasonals: number[];
+  warmup: number;
 } | null {
   const { alpha, beta, gamma } = params;
   if (
@@ -123,20 +141,20 @@ export function holtWintersAdditive(
 
   const fitted: number[] = [];
   for (let i = 0; i < series.length; i++) {
-    const s = seasonals[i % period];
-    if (i === 0) {
-      fitted.push(level + trend + s);
-      continue;
-    }
-    const prevLevel = level;
     const seasonalIdx = i % period;
+
+    // Predict index i FIRST, from state that has seen only series[0..i-1].
+    fitted.push(level + trend + seasonals[seasonalIdx]);
+
+    // Only then absorb series[i] into level / trend / seasonal.
+    const prevLevel = level;
+    const prevTrend = trend;
     level =
       alpha * (series[i] - seasonals[seasonalIdx]) +
-      (1 - alpha) * (prevLevel + trend);
-    trend = beta * (level - prevLevel) + (1 - beta) * trend;
+      (1 - alpha) * (prevLevel + prevTrend);
+    trend = beta * (level - prevLevel) + (1 - beta) * prevTrend;
     seasonals[seasonalIdx] =
       gamma * (series[i] - level) + (1 - gamma) * seasonals[seasonalIdx];
-    fitted.push(level + trend + seasonals[seasonalIdx]);
   }
 
   const forecast: number[] = [];
@@ -144,7 +162,7 @@ export function holtWintersAdditive(
     const s = seasonals[(series.length + h - 1) % period];
     forecast.push(level + h * trend + s);
   }
-  return { fitted, forecast, level, trend, seasonals };
+  return { fitted, forecast, level, trend, seasonals, warmup: 2 * period };
 }
 
 // ---------------------------------------------------------------------------
