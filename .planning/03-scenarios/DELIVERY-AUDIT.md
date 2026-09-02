@@ -120,24 +120,47 @@ repo's own rule is that a guard which cannot check must exit 2, never 0.
 
 Four independent auditors hunting the same pattern found **~29 live instances**. The
 pattern: a query fails → the error is discarded → `[]` or `null` is returned → the feature
-reads as *"nothing to report"* forever. Two were fixed today; the population is far larger.
+reads as *"nothing to report"* forever.
+
+**The ~29 was a triaged subset, not the population.** A mechanical sweep of `apps/`,
+`services/` and `packages/` (995 first-party `.ts`/`.tsx` files, tests excluded) at
+`origin/main` 1f4717cc measured the real denominator:
+
+| | Silent reads (`data` bound, `error` discarded) | Files |
+|---|---|---|
+| At 1f4717cc, before this work | **215** | 47 |
+| Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
+| **Remaining, baselined and non-growing** | **207 of 215** | 44 |
+
+Plus **37** further sites that bind `data`, discard `error`, and immediately refuse on a
+falsy value (`if (!x) throw NotFoundException`). Those report a failed read as a *missing
+row* — a 404 for a 503. Wrong, but not silent, and deliberately out of scope: see
+[ADR 0067](../decisions/0067-a-failed-read-is-never-an-empty-one.md) §Consequences.
+
+The 207 are recorded in `scripts/read_error_baseline.json` and held by
+`scripts/check_read_errors_not_swallowed.py`, a blocking CI job. A site outside the
+baseline fails the build, and a baseline row the tree no longer contains **also** fails it
+— so the number above can only shrink, and it cannot rot in prose the way the "~29" did.
+Re-measure with `python3 scripts/check_read_errors_not_swallowed.py`; the header line
+prints found / baselined / allowlisted.
 
 **Worse than silence — these read as good news or as success:**
 
-| Site | What it does |
-|---|---|
-| `providers.service.ts:116-130` | The 409 dedup guard discards `error`, and `maybeSingle()` returns `null` for both "no rows" and "query failed" — so it **fails open and inserts the duplicate**. Exactly what S13's §9 gate exists to prevent |
-| `vendor-catalogue.service.ts:75-95` | On error runs a silently **different** query that drops every filter — returns **wrong** results, not empty ones |
-| `performance.service.ts:134-144` | Failed benchmark → `percentile([])` → **peer median 0**, so every restaurant renders above average |
-| `pos-hub.service.ts:1069-1077` | `loadTables` fails → every check gets `table_id: null` **while the ingest reports success** |
-| `pos-hub.service.ts:950-964` | Upserts `wine_consumption_log` **with no error check at all**; the wrapping `try/catch` is inert because supabase-js resolves rather than throws. The entire "we fixed the demand series" claim rests on a write whose failure is invisible |
-| `pos-hub.service.ts:1098-1128` | "Is my connection live?" returns `0 checks, 0 sources` on query failure |
-| `receiving.service.ts:321-346` | The manager's money-recovery queue reads `totalAtRisk: 0` forever |
-| `insight-scheduler.service.ts:58-62` | A failed `restaurants` query silently no-ops the **entire weekly digest for every tenant** |
+| Site | What it does | State |
+|---|---|---|
+| `providers.service.ts:116-130` | The 409 dedup guard discards `error`, and `maybeSingle()` returns `null` for both "no rows" and "query failed" — so it **fails open and inserts the duplicate**. Exactly what S13's §9 gate exists to prevent | **Fixed**, merged |
+| `pos-hub.service.ts:1069-1077` | `loadTables` fails → every check gets `table_id: null` **while the ingest reports success** | **Fixed**, merged |
+| `pos-hub.service.ts:950-964` | Upserts `wine_consumption_log` **with no error check at all**; the wrapping `try/catch` is inert because supabase-js resolves rather than throws. The entire "we fixed the demand series" claim rests on a write whose failure is invisible | **Fixed**, merged |
+| `vendor-catalogue.service.ts:75-95` | On error runs a silently **different** query that drops every filter — returns **wrong** results, not empty ones. Its stated hypothesis (a missing `listing_tier` column) was also false: the column has existed since `20260807001652_vendor_listing_tier.sql` | **Fixed** — 503 |
+| `performance.service.ts:134-144` | Failed benchmark → `percentile([])` → **peer median 0**, so every restaurant renders above average | **Fixed** — median/band null, em dash |
+| `pos-hub.service.ts:1098-1128` | "Is my connection live?" returns `0 checks, 0 sources` on query failure | **Fixed** — `unavailable: true` |
+| `insight-scheduler.service.ts:58-62` | A failed `restaurants` query silently no-ops the **entire weekly digest for every tenant** | **Fixed** — throws |
+| `analytics.service.ts` (`loadInventory`, `loadDeliveredOrders`) | The sibling of `advanced-analytics.service.ts`, same directory and same tables, never hardened; its `allSettled` loaders turn both a rejection and an `{ error }` into an empty inventory | **Fixed** — `logQueryFailure` |
+| `receiving.service.ts:321-346` | The manager's money-recovery queue reads `totalAtRisk: 0` forever | **Open** — file owned by PRs #226/#228/#229 |
 
-The correct pattern already exists in-repo (`insight-generator.service.ts:276-300`, and
-`advanced-analytics.service.ts` was hardened with `logQueryFailure`) — while its sibling
-`analytics.service.ts`, same directory, same tables, was not.
+The correct pattern already exists in-repo (`insight-generator.service.ts:305-315`, and
+`advanced-analytics.service.ts:150` `logQueryFailure`) — its sibling `analytics.service.ts`
+now follows it too.
 
 ## 7. Real-life robustness, where it was tested
 
