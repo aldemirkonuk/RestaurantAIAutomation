@@ -7,6 +7,15 @@
 
 export const EM = '—';
 
+/**
+ * The floor marker. ADR 0051 clause 2: a windowed count renders as a floor
+ * (`≥ n`) when its window is full, never as a total it cannot know. Every
+ * figure on this page that comes out of a capped server query is a floor —
+ * the queue caps items at 100, the uncounted list at 500, the credit rows at
+ * 200 (unordered) and the recovery stats at 5000 (also unordered).
+ */
+export const GE = '≥';
+
 /** A finite number or null. Guards against NaN and the API's occasional string. */
 export function num(v: unknown): number | null {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
@@ -41,6 +50,58 @@ export function fmtMoneyWhole(v: number | null | undefined): string {
 export function fmtInt(v: number | null | undefined): string {
   const n = num(v);
   return n === null ? EM : String(Math.round(n));
+}
+
+/**
+ * A count that may be a floor. `atFloor` is the caller's claim that the
+ * server's window was full, so the true figure is at least this one.
+ *
+ * Unknown still wins over the marker: `≥ —` would assert a bound on a number
+ * nobody has.
+ */
+export function fmtIntFloor(v: number | null | undefined, atFloor: boolean): string {
+  const n = num(v);
+  if (n === null) return EM;
+  return atFloor ? `${GE}${Math.round(n)}` : String(Math.round(n));
+}
+
+/** Whole-dollar form of the same. A summed window is a lower bound on the sum. */
+export function fmtMoneyWholeFloor(v: number | null | undefined, atFloor: boolean): string {
+  const n = num(v);
+  if (n === null) return EM;
+  return atFloor ? `${GE}${moneyWhole.format(n)}` : moneyWhole.format(n);
+}
+
+/**
+ * The unit a procurement order is actually denominated in
+ * (`procurement_orders.unit_type`: bottle|case|keg|pack|split_case|each|liter).
+ *
+ * This exists because the door counts BOTTLES and the order is placed in
+ * whatever the distributor sells — so "5" on a case order is five cases, not
+ * five bottles. ADR 0054 fixed that arithmetic server-side; the pack size lives
+ * on the order row and is NOT re-derivable here, so this function never
+ * multiplies. It only names the unit it was given.
+ */
+const UNIT_PLURAL: Record<string, [string, string]> = {
+  bottle: ['bottle', 'bottles'],
+  case: ['case', 'cases'],
+  keg: ['keg', 'kegs'],
+  pack: ['pack', 'packs'],
+  split_case: ['split case', 'split cases'],
+  each: ['unit', 'units'],
+  liter: ['litre', 'litres'],
+};
+
+export function fmtUnits(qty: number | null | undefined, unitType: string | null | undefined): string {
+  const n = num(qty);
+  if (n === null) return EM;
+  const rounded = Math.round(n);
+  const key = (unitType ?? '').trim().toLowerCase();
+  const pair = UNIT_PLURAL[key];
+  // An unrecognised unit is shown verbatim rather than folded into "bottles":
+  // guessing the unit is the whole defect this replaced.
+  if (!pair) return key ? `${rounded} ${key}` : `${rounded} (unit unknown)`;
+  return `${rounded} ${rounded === 1 ? pair[0] : pair[1]}`;
 }
 
 const sameYear = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
