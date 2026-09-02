@@ -53,6 +53,11 @@
 #      four `old_/new_stock_live:` entries never matched at all: `\b` before
 #      `stock_live` cannot match inside `old_stock_live`, `_` being a word
 #      character. They are dropped rather than kept as decoration.
+#   4. `.cts` and `.mts` JOIN THE CORPUS. Carried over from an independent
+#      repair of this same guard on fix/lot-cost-truth, which also recorded
+#      the fact that made the original flag redundant as well as invalid:
+#      ripgrep's built-in `ts` type already covers `.tsx`, `.cts` and `.mts`,
+#      so `--type ts --type tsx` was never two types, it was one plus an error.
 #
 # 2026-09-02, SECOND PASS — THE REPAIRED GUARD STILL EXAMINED NOTHING.
 #
@@ -120,7 +125,7 @@ done
 
 # Corpus assertion FIRST: prove the globs match real files before believing any
 # count over them. This is the line that would have caught the `--type tsx` bug.
-corpus="$(find apps -type f \( -name '*.ts' -o -name '*.tsx' \) \
+corpus="$(find apps -type f \( -name '*.ts' -o -name '*.tsx' -o -name '*.cts' -o -name '*.mts' \) \
   -not -path '*/node_modules/*' -not -path '*/dist/*' -not -path '*/build/*' \
   -not -name '*.spec.ts' -not -name '*.test.ts' \
   -not -name '*.spec.tsx' -not -name '*.test.tsx')"
@@ -141,7 +146,7 @@ fi
 # would then read as ">= 2, the search broke" — swapping one exit-code confusion
 # for another in the file that exists because of exit-code confusion.
 matches="$(grep -rn -E "$PATTERN" apps \
-  --include='*.ts' --include='*.tsx' \
+  --include='*.ts' --include='*.tsx' --include='*.cts' --include='*.mts' \
   --exclude='*.spec.ts' --exclude='*.test.ts' \
   --exclude='*.spec.tsx' --exclude='*.test.tsx' \
   --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=build)"

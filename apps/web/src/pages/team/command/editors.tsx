@@ -84,6 +84,7 @@ export function ShiftEditor({
   const remove = useMutation({
     mutationFn: () => deleteShift(shift!.id),
     onSuccess: () => { toast.success('Shift removed'); invalidate(); onClose() },
+    onError: () => toast.error('Could not remove the shift — it is still on the schedule'),
   })
 
   return (
@@ -202,6 +203,8 @@ export function MemberEditor({ member, wageVisible = true, ownerCount = 1, onClo
   const remove = useMutation({
     mutationFn: () => deleteTeamMember(member!.id),
     onSuccess: () => { toast.success('Member removed'); invalidate(); onClose() },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message ?? 'Could not remove the member — they are still on the roster'),
   })
 
   return (
