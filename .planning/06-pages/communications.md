@@ -211,11 +211,26 @@ never had:
 | ~~"Generate report now" produces a report~~ **FIXED 2026-08-26 (OD-81)** | Was: `POST /reports/generate` inserts one row with `status: "pending"` and NULL file urls (`reports.service.ts:42-71`) — **the only writer of `generated_reports` in the repo**, and there is no `UPDATE` on that table anywhere, so `pending` was permanent. The toast claimed "Report generated · Filed in Documents & Reports". Now: `handleGenerateReportNow` is **deleted**, the button is disabled and carries the reason, and no toast claims a generation. Production check: `generated_reports` holds **0 rows** |
 | ~~A schedule causes a send~~ **CORRECTED + FIXED 2026-08-26 (OD-81)** | The dossier said the table "appears in three places, all in this one service". Two corrections. (a) It has a **web reader** too — `GET /reports/schedules` → `services/api/reports.ts:116` → this page → `ReportScheduler` (NEW-359). (b) **`public.scheduled_reports` does not exist in production** — verified against the live DB; it lives only in `supabase/migrations_archive/20260208024921_baseline_schema.sql:408`, never applied. So both the insert and the list fail 100% of the time, and the list failure used to render as an empty list. Still true: no cron, no consumer, no `next_run_at` writer. The UI now says "Saved schedules (n) · not running", and a failed read is shown as a failure rather than as "none" |
 | The only weekly report that *does* send is unrelated | `@Cron("0 8 * * 1")` `sendWeeklyEmailReport` (`apps/api-gateway/src/communications/scheduled-tasks.service.ts:162-215`) is a **hardcoded single-restaurant** job gated on `DEFAULT_RESTAURANT_ID` + `MANAGER_EMAIL` env vars (`:70-79`, `:167-172`). It never reads `scheduled_reports` |
+| ~~"The one place a manager sees every vendor conversation" (§12) — it showed **1 of 26**~~ **FIXED 2026-09-02 (ADR 0084)** | Was: `getConversationHistory` filtered `status IN (AUTO_SENT, APPROVED, SENT, COMPLETED, CLOSED, SEND_UNCONFIRMED)` **and** embedded `procurement_orders!inner`. Measured on production 2026-09-02: **27** rows, **12** pass the status filter, **2** survive the inner join, and 2 is what the query returned — because **25 of 27 carry `order_id IS NULL`**, so the join was the binding constraint and the status filter was not. On the one real tenant: **26 rows, 1 shown**. Every inbound vendor reply was excluded twice over (null `order_id`, and `DRAFT` — the column DEFAULT the inbound path never overwrites). Now: `!left` embed, and a **deny-list** withholding only `PENDING_APPROVAL` and outbound `DRAFT`, which are live in the approval queue on `/orders`. **25 of 26 visible** |
+| ~~A conversation body renders as "No message body was recorded for this exchange"~~ **FIXED 2026-09-02 (ADR 0084)** | Was: `draftContent: row.content`, and **`content` is NULL on all ten inbound rows in production** — their body is in `message_text`, the `NOT NULL` column. So the page said no body was recorded about ten messages whose bodies were recorded. `getActiveConversations` (`:3584`) and `getOrderConversations` both already read `content ?? message_text`; this one method did not |
 | "Regenerate" summary | `POST /conversations/:id/summarize` publishes `email.summarize.requested` (`apps/api-gateway/src/conversations/conversations.service.ts:438-446`) and returns `{success:true, message:"Summary regeneration requested"}` (:451-455). **That routing key has zero subscribers** — `EmailParsingAgent.get_subscribed_routing_keys()` returns only `email.inbound.received` (`services/agent-orchestrator/agents/email_parsing_agent.py:81-84`), and the string appears nowhere else in the repo |
 
 What **is** real: templates persist server-side (`useTemplates` → `GET/POST/PATCH/DELETE /restaurants/:rid/templates`, `apps/web/src/hooks/useTemplates.ts:15-50`; controller `apps/api-gateway/src/restaurant-templates/restaurant-templates.controller.ts:23-83`, JWT-guarded) — **§9's "saved templates persist client-side" is stale and wrong**. Classified threads and procurement history read live rows.
 
 The nine `@Public` communications test routes named in the P3 brief are confirmed closed: `communications.controller.ts:216,286,329,406,589,704,786,840,897,964` now carry `@UseGuards(NonProductionGuard)`; only `POST /webhooks/gmail` stays `@Public()` (:1030), authenticated by a Google OIDC token instead.
+
+**Still open, and now written down (ADR 0084, 2026-09-02).** `POST /communications/email`
+is an open relay: `@Body()` only, no `@CurrentUser()`, no tenant, no ownership
+check on the destination address, and no record written — so any authenticated
+user of any of the ten restaurants can send arbitrary HTML to any address on the
+internet from the OAuth-verified sender domain, untraceably. It was scheduled for
+deletion alongside its SMS twin. **The SMS twin was deleted; this one has a live
+caller** — `services/agent-orchestrator/services/email_composer_service.py:354`
+← `agents/provider_conversation_agent.py:3074`, the path every approved vendor
+email travels — and it sends no `Authorization` header, so any check tight enough
+to close the hole also stops vendor mail. Giving the orchestrator a caller
+identity is a service-to-service auth decision, filed for the founder. Until it
+lands, this route is open.
 
 ## 11. Data flow
 
@@ -230,7 +245,7 @@ The nine `@Public` communications test routes named in the P3 brief are confirme
 | GET | `/conversations/threads` | JWT (class, `conversations.controller.ts:48`) | `:145-211` | Threads with `detected_sentiment`, `conversation_summary` |
 | GET | `/conversations/thread/:id`, `/stats/overview` | JWT | `:216-237`, `:308-325` | Thread messages; sentiment counts |
 | POST | `/conversations/:id/summarize` | JWT | `:291-304` | `{success:true}` — see §10 |
-| GET | `/procurement/conversations/history` | JWT | `procurement.controller.ts` (svc `procurement.service.ts:2928-2997`) | Phase-34 outbound audit rows |
+| GET | `/procurement/conversations/history` | JWT | `procurement.controller.ts:726-744` (svc `procurement.service.ts` `getConversationHistory`) | **Every** vendor conversation except the approval queue, since ADR 0084. Was: 2 rows out of production's 27 |
 | GET/POST/PATCH/DELETE | `/restaurants/:rid/templates` | JWT (class) | `restaurant-templates.controller.ts:23-90` | Saved email templates |
 
 ### Fed by

@@ -47,20 +47,9 @@ export class SendEmailDto {
   bcc?: string[];
 }
 
-export class SendSmsDto {
-  @ApiProperty({
-    description: "Phone number in E.164 format",
-    example: "+14155551234",
-  })
-  @IsString()
-  to: string;
-
-  @ApiProperty({
-    description: "SMS message content (max 160 chars recommended)",
-  })
-  @IsString()
-  message: string;
-}
+// SendSmsDto was deleted with POST /communications/sms on 2026-09-02
+// (ADR 0084). It was the whole of the validation on an open SMS relay: `to` is
+// a string, `message` is a string. Nothing else references it.
 
 export class LowStockAlertDto {
   @ApiProperty({
@@ -146,9 +135,10 @@ export class DailySummaryDto {
   @IsNumber()
   pendingOrders: number;
 
-  @ApiProperty({ description: "Number of deliveries expected today" })
-  @IsNumber()
-  deliveriesToday: number;
+  // `deliveriesToday` was removed 2026-09-02 (ADR 0084). The scheduled sender
+  // fed it a hardcoded 0 and the SMS printed it beside two measured figures.
+  // The field is gone rather than made optional: an accepted-and-ignored
+  // parameter is the next reader's false lead.
 }
 
 export class WeeklyReportDto {

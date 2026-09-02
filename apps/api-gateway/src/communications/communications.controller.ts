@@ -14,12 +14,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from "@nestjs/common";
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiHeader,
-} from "@nestjs/swagger";
+import { ApiTags, ApiOperation, ApiResponse, ApiHeader } from "@nestjs/swagger";
 import { ConfigService } from "@nestjs/config";
 import { CommunicationsService } from "./communications.service";
 import { GmailService } from "./gmail.service";
@@ -30,7 +25,6 @@ import { OrchestratorService } from "../common/orchestrator/orchestrator.service
 import { DatabaseService } from "../database/database.service";
 import {
   SendEmailDto,
-  SendSmsDto,
   LowStockAlertDto,
   DailySummaryDto,
   SendTemplateTestDto,
@@ -39,6 +33,7 @@ import {
   CommunicationStatusDto,
 } from "./dto/communication.dto";
 import { Public } from "../auth/decorators/public.decorator";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { NonProductionGuard } from "./guards/non-production.guard";
 
@@ -105,7 +100,31 @@ export class CommunicationsController {
   }
 
   /**
-   * Send a raw email
+   * Send a raw email.
+   *
+   * ⚠️ KEPT DELIBERATELY, AND IT IS NOT SAFE. 2026-09-02, ADR 0084.
+   *
+   * This route has the same shape as the raw-SMS route deleted below — body
+   * only, no `@CurrentUser()`, no tenant, no ownership check on the
+   * destination address, and no record written — so any authenticated user of
+   * any tenant can send arbitrary HTML to any address on the internet from the
+   * OAuth-verified sender domain, leaving no trace. It was scheduled for
+   * deletion for exactly that reason.
+   *
+   * It was not deleted because it has a LIVE CALLER, found by grep before the
+   * deletion rather than after:
+   *
+   *   services/agent-orchestrator/services/email_composer_service.py:354
+   *     `send_via_gateway()` POSTs `{api_gateway_url}/communications/email`
+   *   ← agents/provider_conversation_agent.py:3074 (`_send_message`)
+   *
+   * That is the path every approved vendor email travels. Deleting the route
+   * would silently stop vendor mail, which is a worse outcome than the hole it
+   * closes. Fixing it properly means giving the orchestrator a caller identity
+   * (it sends no `Authorization` header today) and writing a
+   * `procurement_conversations` row for each send — a service-to-service auth
+   * decision, not a repair. Filed for the founder; do not delete this route
+   * until that caller has somewhere else to go.
    */
   @Post("email")
   @HttpCode(HttpStatus.OK)
@@ -131,28 +150,25 @@ export class CommunicationsController {
     };
   }
 
-  /**
-   * Send a raw SMS
-   */
-  @Post("sms")
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Send an SMS via Plivo" })
-  @ApiResponse({ status: 200, type: CommunicationResultDto })
-  async sendSms(@Body() dto: SendSmsDto): Promise<CommunicationResultDto> {
-    this.logger.log(`Sending SMS to: ${dto.to}`);
-
-    const result = await this.smsService.sendSms({
-      to: dto.to,
-      message: dto.message,
-    });
-
-    return {
-      success: result.success,
-      messageId: result.messageId,
-      error: result.error,
-      channel: "sms",
-    };
-  }
+  // POST /communications/sms was DELETED 2026-09-02 (ADR 0084).
+  //
+  // It took `@Body()` and nothing else — no `@CurrentUser()`, no tenant, no
+  // ownership check on the destination number — and it wrote no record. Any
+  // authenticated user of any tenant could send arbitrary text to any phone
+  // number on earth from the platform's own Plivo sender, leaving no trace.
+  // `SendSmsDto` validated that `to` was a string and `message` was a string;
+  // that is the whole of what stood between a session token and the carrier.
+  //
+  // Deleted rather than guarded because it had no caller. Verified across the
+  // whole tree before deletion: `apps/web`, `apps/mobile`, `packages`,
+  // `scripts`, every `*.spec.ts`, and the Python orchestrator (which sends SMS
+  // through `services/plivo_client.py` directly and has never used this
+  // route). Every SMS the product actually sends goes through `SmsService`
+  // from a typed method — low-stock, daily summary, delivery, approval —
+  // each of which knows what it is sending and to whom.
+  //
+  // The sibling raw-email route is NOT deleted: it has a live caller. See the
+  // note on `sendEmail` above.
 
   /**
    * Send a low stock alert via all channels
@@ -165,6 +181,7 @@ export class CommunicationsController {
   @ApiResponse({ status: 200, type: MultiChannelResultDto })
   async sendLowStockAlert(
     @Body() dto: LowStockAlertDto,
+    @CurrentUser() user: { userId: string; restaurantId?: string },
   ): Promise<MultiChannelResultDto> {
     this.logger.log(`Sending low stock alert for: ${dto.wineName}`);
 
@@ -183,10 +200,46 @@ export class CommunicationsController {
         recommendedQty: dto.recommendedQty,
         preferredSupplier: dto.preferredSupplier,
         estimatedDelivery: dto.estimatedDelivery,
-        restaurantId: dto.restaurantId,
+        // ADR 0084. The tenant is DERIVED, never accepted.
+        //
+        // `payload.restaurantId` is the room this alert is broadcast into
+        // (`communications.service.ts` emits `notification:new` to
+        // `restaurant:${restaurantId}`), so a body-supplied value is a
+        // body-supplied broadcast target: pick another tenant's id and your
+        // chosen title and body appear in their live UI.
+        //
+        // `assertTenantMatch`, which `JwtAuthGuard` runs on every request to
+        // this controller, already refuses a top-level `restaurantId` that
+        // disagrees with the JWT — verified, not assumed
+        // (`common/tenant/assert-tenant-match.ts`, reached from
+        // `auth/guards/jwt-auth.guard.ts`). So this is not the only lock on
+        // the door. It is the one that does not depend on a decorator staying
+        // where it is: derive the room from the token and the body cannot name
+        // it at all, whatever happens to the guard chain above.
+        restaurantId: this.resolveAlertTenant(dto.restaurantId, user),
       },
       recipients,
     );
+  }
+
+  /**
+   * The tenant an alert may be broadcast into: the caller's own, always.
+   *
+   * A body value is permitted only when it agrees with the token — kept so a
+   * disagreement is REFUSED rather than silently rewritten, which would hide
+   * a caller that thinks it is addressing someone else.
+   */
+  private resolveAlertTenant(
+    fromBody: string | undefined,
+    user: { restaurantId?: string } | undefined,
+  ): string | undefined {
+    const fromToken = user?.restaurantId;
+    if (fromBody && fromBody !== fromToken) {
+      throw new BadRequestException(
+        "restaurantId does not match the authenticated tenant",
+      );
+    }
+    return fromToken;
   }
 
   /**
@@ -206,7 +259,6 @@ export class CommunicationsController {
       restaurantName: dto.restaurantName,
       lowStockCount: dto.lowStockCount,
       pendingOrders: dto.pendingOrders,
-      deliveriesToday: dto.deliveriesToday,
     });
   }
 
