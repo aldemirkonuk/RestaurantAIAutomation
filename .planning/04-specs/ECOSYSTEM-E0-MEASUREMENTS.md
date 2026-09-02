@@ -113,6 +113,7 @@ The plan named one break. There are four, any one sufficient.
 
 1. `pos.sale.completed` has exactly **one producer in the repo** — `pos_integration_agent.py:837`. Zero producers in `apps/`.
 2. The NestJS Toast door POSTs to a route that **does not exist**: `toast.service.ts:697` → `{ORCH}/api/v1/toast/webhooks/order`, but the orchestrator registers only `/api/v1/pos` (`api/pos_routes.py:22`). It 404s and **the error is swallowed** at `:708-715`. Six `/api/v1/toast/*` calls affected.
+   **Fixed 2026-09-01 (branch `fix/orchestrator-route-404s`): the forward is deleted, not repointed.** Re-verified: it is *omission, not corruption* — the `events` row and the inventory effects are both written before the forward runs, so nothing was ever lost or wrong, only un-forwarded. Repointing at `/api/v1/pos/webhook/toast` fails four ways (no `Toast-Signature` → the adapter fails closed; wrong envelope shape for `normalize_event`; no matching key in the agent's handler map; and it is a parallel ingress, so re-feeding would risk double-counting the sale). Guarded by `toast.service.spec.ts` — three tests, proven to fail on the pre-fix tree. **Still open:** the other five `/api/v1/toast/*` calls (menus/orders/sales/statistics) also 404 outside mock mode and fall back to mock data — same class, untouched here.
 3. The pos-hub spine has **no orchestrator wiring at all** (zero `orchestrator`/`httpClient` hits in `src/pos-hub/`).
 4. **Previously unnamed — envelope shape.** NestJS publishes flat (`orchestrator.service.ts:78-88`); Python wraps as `{event_type, payload}` (`message_bus.py:693-701`); `buffer_manager.py:231` reads `message["payload"]` and bails at `:242`.
 
@@ -182,6 +183,19 @@ Founder approved a hotfix; in flight.
 because its one UI caller is orphaned: it POSTs to `/api/v1/events/publish` (a
 FastAPI route that does not exist), writes five columns that exist nowhere in the
 schema, and returns `messageSent: true` after swallowing the failure (`:677-682`).
+
+**One of the three fixed 2026-09-01** (branch `fix/orchestrator-route-404s`): the
+fabricated `messageSent: true` is gone. All three publish call sites now go through
+`publishEvent()`, which logs the outbound call at **error** level, marks a 404 as
+PERMANENT, and **throws**; approve/reject/regenerate-summary return
+`success: false` with a message saying what was recorded and what was not sent.
+`messageSent` can no longer be `true` on any path, because nothing in the gateway
+sends a message. Five tests, proven to fail on the pre-fix tree
+(`conversations.service.spec.ts`). **Deliberately NOT fixed:** the 404 itself and
+the five phantom columns (`manager_approval_status`, `resumed_at`,
+`manager_approved_message`, `time_to_approval_seconds`, `paused_at` — absent from
+`supabase/migrations/`). Building `/api/v1/events/publish` versus retiring the
+`conversations.*` approve path is a founder decision and was not taken.
 
 ---
 
