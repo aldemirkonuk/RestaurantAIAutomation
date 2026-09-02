@@ -5,6 +5,17 @@
 
 export const EM = '—';
 
+/**
+ * The floor mark. A figure derived from a capped server window is a FLOOR, not
+ * a total: `≥97` says "at least 97 and the window was full", which is the only
+ * honest reading when the query could not see past its own cap (ADR 0051
+ * clause 2). Exported rather than inlined so `check_windowed_figures.py` (W2)
+ * can prove the marker still exists in the renderer that knows about
+ * COMMS_SERVER_WINDOWS — deleting the `≥` while keeping the constant is the
+ * cheapest way to silently undo this.
+ */
+export const GE = '≥';
+
 export const SERIF = '"Fraunces", Georgia, "Times New Roman", serif';
 export const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 export const SANS = '"DM Sans", "Plus Jakarta Sans", system-ui, sans-serif';

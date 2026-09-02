@@ -314,13 +314,19 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
         // undefined, not a fallback. The server reads an absent invoice quantity as
         // "unknown" and returns `unmatched`, which keeps the order open until the
         // paperwork actually turns up.
-        invoiceQuantity: invoiceQty ?? undefined,
+        // No unit is declared, and that is correct here: every number on this
+        // screen is in the order's own unit — the physical count is seeded from
+        // `order.quantityReceived ?? order.quantity` — and an absent unit means
+        // exactly that to the server. The field names say which declaration each
+        // quantity would belong to, so a future unit picker has one obvious place
+        // to write to rather than a bare number nobody can interpret.
+        invoiceQuantityInInvoiceUom: invoiceQty ?? undefined,
         invoiceUnitPrice: invoiceUnitPrice ?? undefined,
-        shippedQuantity: shippedQty ?? undefined,
-        freeGoodsQuantity: freeGoodsQty || undefined,
+        shippedQuantityInShippedUom: shippedQty ?? undefined,
+        freeGoodsQuantityInCountedUom: freeGoodsQty || undefined,
         allocatedCharges: allocatedCharges || undefined,
-        acceptedQuantity: acceptedQty,
-        rejectedQuantity: rejectedQty,
+        acceptedQuantityInCountedUom: acceptedQty,
+        rejectedQuantityInCountedUom: rejectedQty,
         rejectedReason: rejectedQty > 0 ? rejectedReason || 'damaged on arrival' : undefined,
         priceOverrideReason: priceDiffers ? priceOverrideReason : undefined,
         // ADR 0059. What the machine put in these fields before the manager
@@ -328,10 +334,10 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
         // `undefined` where the document proposed nothing: absence of a proposal
         // is not a proposal of zero, and the final value there is an original
         // answer rather than a correction.
-        prefilledInvoiceQuantity: proposed.invoiceQty ?? undefined,
+        prefilledInvoiceQuantityInInvoiceUom: proposed.invoiceQty ?? undefined,
         prefilledInvoiceUnitPrice: proposed.invoiceUnitPrice ?? undefined,
-        prefilledShippedQuantity: proposed.shippedQty ?? undefined,
-        prefilledFreeGoodsQuantity: proposed.freeGoodsQty ?? undefined,
+        prefilledShippedQuantityInShippedUom: proposed.shippedQty ?? undefined,
+        prefilledFreeGoodsQuantityInCountedUom: proposed.freeGoodsQty ?? undefined,
         adjustments: extras.map((l) => ({
           inventoryId: l.inventoryId,
           delta: l.countedQty,
