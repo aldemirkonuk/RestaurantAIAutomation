@@ -1,5 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AnalyticsController } from "./analytics.controller";
+import { DevTruthController } from "./dev-truth.controller";
+import { DevTruthService } from "./dev-truth.service";
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { RecommendationsService } from "./recommendations.service";
@@ -25,7 +27,11 @@ import { AuthModule } from "../auth/auth.module";
   // guard resolves in *this* module's context, so without this import the whole
   // app fails to boot — not just this route. AuthModule is not @Global().
   imports: [DatabaseModule, AuthModule],
-  controllers: [AnalyticsController],
+  // DevTruthController guards itself with a 404 in production rather than
+  // being conditionally registered — a route that vanishes is indistinguishable
+  // from one that never existed, which is the confusion these surfaces exist to
+  // remove rather than add to.
+  controllers: [AnalyticsController, DevTruthController],
   providers: [
     AnalyticsService,
     AdvancedAnalyticsService,
@@ -35,6 +41,7 @@ import { AuthModule } from "../auth/auth.module";
     GoalsService,
     ConsultantsService,
     InsightGeneratorService,
+    DevTruthService,
     InsightSchedulerService,
   ],
   exports: [AnalyticsService, InsightGeneratorService, GoalsService],

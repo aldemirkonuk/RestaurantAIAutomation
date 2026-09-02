@@ -47,6 +47,32 @@ import { Persona } from "./metric-registry";
  *   • /risk/:id                 — HHI, Gini, VaR/CVaR, Sharpe, drawdown
  *   • /forecast/:id             — Holt-Winters demand projection
  */
+/**
+ * `horizon` reaches `new Array(horizon)` in the smoothers, so an unbounded
+ * value is a resource-exhaustion vector, not just a silly input — CodeQL
+ * flagged it as js/resource-exhaustion at forecasting.ts:49.
+ *
+ * Two failure modes, both closed here rather than in the engine, because the
+ * boundary is where untrusted input should stop:
+ *  - `?horizon=999999999` allocated a billion-element array.
+ *  - `?horizon=abc` produced NaN. The previous `parseInt(...) ?? 14` did NOT
+ *    catch that: `??` tests for null/undefined, and NaN is neither, so the NaN
+ *    flowed through and `new Array(NaN)` yields an empty forecast reported as
+ *    a successful one.
+ *
+ * Anything unparseable or out of range returns undefined so the service applies
+ * its own default, rather than this silently substituting a number the caller
+ * did not ask for.
+ */
+const MAX_FORECAST_HORIZON = 365;
+
+function parseHorizon(raw?: string): number | undefined {
+  if (raw === undefined || raw === "") return undefined;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1 || n > MAX_FORECAST_HORIZON) return undefined;
+  return n;
+}
+
 @ApiTags("analytics")
 @Controller("analytics")
 // Every route here is tenant-scoped and several cost money: POST /consult/:id
@@ -202,7 +228,7 @@ export class AnalyticsController {
     try {
       return await this.analyticsService.getDemandForecast(restaurantId, {
         masterWineId,
-        horizon: horizonStr ? parseInt(horizonStr, 10) : undefined,
+        horizon: parseHorizon(horizonStr),
       });
     } catch (error) {
       throw new HttpException(
