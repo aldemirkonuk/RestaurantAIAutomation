@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { BadRequestException } from "@nestjs/common";
@@ -53,15 +54,11 @@ function unconfiguredSms(): SmsService {
 
 describe("C1 — POST /communications/sms is gone", () => {
   it("has no handler on the controller", () => {
-    expect(
-      (CommunicationsController.prototype as any).sendSms,
-    ).toBeUndefined();
+    expect((CommunicationsController.prototype as any).sendSms).toBeUndefined();
   });
 
   it("has no route registered at 'sms'", () => {
-    const paths = Object.getOwnPropertyNames(
-      CommunicationsController.prototype,
-    )
+    const paths = Object.getOwnPropertyNames(CommunicationsController.prototype)
       .map((name) =>
         Reflect.getMetadata(
           PATH_METADATA,
@@ -262,12 +259,10 @@ describe("C5 — the SMS promises nothing it cannot do", () => {
   const capture = () => {
     const service = unconfiguredSms();
     const sent: string[] = [];
-    jest
-      .spyOn(service, "sendSms")
-      .mockImplementation(async (o: any) => {
-        sent.push(o.message);
-        return { success: false, error: "SMS not configured" };
-      });
+    jest.spyOn(service, "sendSms").mockImplementation(async (o: any) => {
+      sent.push(o.message);
+      return { success: false, error: "SMS not configured" };
+    });
     return { service, sent };
   };
 
@@ -307,9 +302,6 @@ describe("C5 — the SMS promises nothing it cannot do", () => {
     // removed prompts and name the missing webhook, and a search that counted
     // its own explanation would report a handler that does not exist — the
     // shape of fault this whole change is about.
-    const { execFileSync } = require("node:child_process") as {
-      execFileSync: (f: string, a: string[], o: any) => string;
-    };
     const repo = join(__dirname, "..", "..", "..", "..");
 
     let raw = "";
@@ -363,6 +355,8 @@ describe("C5 — the SMS promises nothing it cannot do", () => {
 
   it("no longer accepts a deliveries count anywhere on the SMS path", () => {
     expect(SMS_CODE).not.toContain("deliveriesToday");
-    expect((dto.DailySummaryDto.prototype as any).deliveriesToday).toBeUndefined();
+    expect(
+      (dto.DailySummaryDto.prototype as any).deliveriesToday,
+    ).toBeUndefined();
   });
 });

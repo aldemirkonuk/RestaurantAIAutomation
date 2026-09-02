@@ -23,7 +23,10 @@ import { ScheduledTasksService } from "./scheduled-tasks.service";
  * there, and nothing said so.
  */
 
-const SOURCE = readFileSync(join(__dirname, "scheduled-tasks.service.ts"), "utf8");
+const SOURCE = readFileSync(
+  join(__dirname, "scheduled-tasks.service.ts"),
+  "utf8",
+);
 
 /** Comments quote the removed names; a source check must not read its own prose. */
 const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, "")

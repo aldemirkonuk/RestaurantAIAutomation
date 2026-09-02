@@ -14,12 +14,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from "@nestjs/common";
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiHeader,
-} from "@nestjs/swagger";
+import { ApiTags, ApiOperation, ApiResponse, ApiHeader } from "@nestjs/swagger";
 import { ConfigService } from "@nestjs/config";
 import { CommunicationsService } from "./communications.service";
 import { GmailService } from "./gmail.service";

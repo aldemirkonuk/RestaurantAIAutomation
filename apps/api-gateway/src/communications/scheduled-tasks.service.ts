@@ -1387,7 +1387,6 @@ export class ScheduledTasksService implements OnModuleInit {
           ? `"${latestSubject}"`
           : preview || "(no subject or body recorded)";
 
-
         const latestIntent = latestConvo.detected_intent || "general";
         const latestStatus = latestConvo.delivery_status || "active";
 
