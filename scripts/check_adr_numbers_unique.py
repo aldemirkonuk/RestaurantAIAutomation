@@ -343,25 +343,24 @@ def _shallow_clone_must_exit_2() -> str | None:
             ["git", *args], cwd=cwd, capture_output=True, text=True
         )
 
-    try:
-        root = git("rev-parse", "--show-toplevel").strip()
-    except CannotCheck as exc:
-        return f"could not locate the repo root to build the fixture: {exc}"
-
-    # Two real ADR files, so the only reachable CANNOT-CHECK is the ref one.
-    src = os.path.join(root, DECISIONS_DIR)
-    try:
-        adrs = sorted(
-            f for f in os.listdir(src)
-            if ADR_RE.match(f"{DECISIONS_DIR}/{f}")
-        )[:2]
-    except OSError as exc:
-        return f"could not read {DECISIONS_DIR} to seed the fixture: {exc}"
-    if len(adrs) < 2:
-        return (
-            f"need 2 ADR files under {DECISIONS_DIR} to seed the fixture, found "
-            f"{len(adrs)}. Without them the child would exit 2 for the wrong reason."
-        )
+    # Two SYNTHETIC ADRs. Nothing here is read from the enclosing checkout --
+    # not the repo root, not its decisions directory, not its files. A self-test
+    # that can see the real repo can be made to pass by the real repo, and this
+    # fixture's whole subject is a test that was answering about its environment
+    # instead of its guard. They exist only so the child's single reachable
+    # CANNOT-CHECK path is the ref one; two distinct numbers, so they can never
+    # read as a collision. 9xxx is chosen to stay clear of any real number.
+    SYNTHETIC_ADRS = {
+        "9001-synthetic-fixture-alpha.md": "# 9001 - synthetic fixture ADR\n",
+        "9002-synthetic-fixture-beta.md": "# 9002 - synthetic fixture ADR\n",
+    }
+    for name in SYNTHETIC_ADRS:
+        if not ADR_RE.match(f"{DECISIONS_DIR}/{name}"):
+            return (
+                f"the fixture's own synthetic ADR name {name!r} no longer matches "
+                f"{ADR_RE.pattern!r}. The filename convention changed; the fixture "
+                "would seed a tree the guard cannot read and prove nothing."
+            )
 
     with tempfile.TemporaryDirectory() as td:
         seed = os.path.join(td, "seed")
@@ -369,10 +368,8 @@ def _shallow_clone_must_exit_2() -> str | None:
         clone = os.path.join(td, "shallow")
 
         os.makedirs(os.path.join(seed, DECISIONS_DIR))
-        for name in adrs:
-            with open(os.path.join(src, name), "rb") as fh:
-                body = fh.read()
-            with open(os.path.join(seed, DECISIONS_DIR, name), "wb") as fh:
+        for name, body in SYNTHETIC_ADRS.items():
+            with open(os.path.join(seed, DECISIONS_DIR, name), "w", encoding="utf-8") as fh:
                 fh.write(body)
 
         steps = [

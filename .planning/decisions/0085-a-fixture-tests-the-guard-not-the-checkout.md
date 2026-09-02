@@ -61,11 +61,21 @@ silently reintroduces it.
 
 **The fixture constructs its own remote, and asserts why the child failed.**
 
-A scratch repo seeded with two real ADR files → a **bare** repo carrying **two**
-branches → a shallow single-branch clone of it over **`file://`** (a bare path
-silently ignores `--depth`). Origin then advertises 2 while the child holds 1 —
-the real condition, owned entirely by the fixture, identical on `push`, on
+A scratch repo seeded with two **synthetic** ADR files → a **bare** repo carrying
+**two** branches → a shallow single-branch clone of it over **`file://`** (a bare
+path silently ignores `--depth`). Origin then advertises 2 while the child holds
+1 — the real condition, owned entirely by the fixture, identical on `push`, on
 `pull_request`, and on a laptop.
+
+**Synthetic, not copied from the checkout.** The first draft of this fix seeded
+the scratch repo with two *real* ADR files, which left the fixture still reading
+the enclosing tree. A reviewer put the principle better than the first draft
+had: *a self-test that can see the real repo can always be made to pass by the
+real repo* — and a test answering about its environment instead of its guard is
+the precise fault this ADR exists to fix. The fixture now reads **nothing** from
+the checkout: not the repo root, not the decisions directory, not a file. It
+also asserts its own synthetic names still match `ADR_RE`, so a filename-convention
+change fails loudly instead of seeding a tree the guard cannot read.
 
 **And it asserts the reason, not just the exit code.** There are **six** distinct
 `CannotCheck` raises in this file. An empty or malformed fixture trips a
@@ -101,6 +111,8 @@ whole file exists to prevent, one level up.
 | The **guard's own** behaviour in that checkout, after | **exit 2**, `210 branch(es) on origin have no local ref` — unchanged |
 | Fixture **still catches a weakened guard** — `if missing:` replaced with `if False:` | **FAILS**, as it must: *"a shallow single-branch clone exited 0, want 2"* |
 | `--self-test` on a full local checkout | OK |
+| The CI condition rebuilt **offline** (bare repo with 1 branch → single-branch clone; origin advertises 1, local holds 1) — **old fixture** | **exit 1**, the live defect |
+| Same offline shape, **new fixture** | **SELF-TEST OK**, in a tree whose `.planning/decisions/` is **empty** — proving it reads nothing from the checkout |
 | All **46** script invocations extracted from `ci.yml` | every one exit 0 |
 | Push CI on `main`, 14 runs 10:05Z–13:00Z | `failure` on all 14; `Deploy to Production` `skipped` on all 14 |
 
