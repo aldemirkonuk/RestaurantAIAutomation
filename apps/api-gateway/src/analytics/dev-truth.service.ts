@@ -212,8 +212,12 @@ export class DevTruthService {
         "supabase-js RESOLVES with { data, error } rather than throwing, so a " +
         "caller writing `const { data } = await …` sees [] for BOTH a failed query " +
         "and an empty table. Every row here is distinguishable only because the " +
-        "error was read. BROKEN vs GENUINELY EMPTY is the distinction ~29 call " +
-        "sites in this codebase cannot make.",
+        "error was read. BROKEN vs GENUINELY EMPTY is a distinction the call " +
+        "sites still on scripts/read_error_baseline.json cannot make — run " +
+        "scripts/check_read_errors_not_swallowed.py for the live count rather " +
+        "than trusting a number written here (the '~29' this line used to " +
+        "quote was a triaged subset; the mechanical sweep measured 215). " +
+        "ADR 0067.",
       generatedAt: new Date().toISOString(),
     };
   }
@@ -285,8 +289,9 @@ export class DevTruthService {
         "wine_consumption_log has 0 rows, so no demand series can be truncated at all.",
         "The engine is NOT re-run against the truncated world here; this shows the " +
           "INPUTS either side of the cut. A forecast computed on the left and scored " +
-          "on the right is the next step, and it needs the leak fixed first " +
-          "(forecasting.ts pushes fitted[i] after the state absorbs series[i]).",
+          "on the right is the next step. The look-ahead leak that used to block it " +
+          "is fixed (ADR 0064, 2026-09-02): fitted[i] is now pushed BEFORE the state " +
+          "absorbs series[i], so what is missing here is the harness, not the engine.",
       ],
       generatedAt: new Date().toISOString(),
     };
