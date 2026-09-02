@@ -17,6 +17,8 @@ function makeSupabaseStub(result: { data?: unknown; error?: unknown } = {}) {
     operation: null as string | null,
     filters: [] as Filter[],
     order: null as string | null,
+    limit: null as number | null,
+    range: null as [number, number] | null,
   };
 
   const builder: Record<string, unknown> = {};
@@ -36,6 +38,14 @@ function makeSupabaseStub(result: { data?: unknown; error?: unknown } = {}) {
     }),
     order: jest.fn((column: string) => {
       calls.order = column;
+      return builder;
+    }),
+    limit: jest.fn((n: number) => {
+      calls.limit = n;
+      return builder;
+    }),
+    range: jest.fn((from: number, to: number) => {
+      calls.range = [from, to];
       return builder;
     }),
     single: jest.fn(() => Promise.resolve(result)),
@@ -119,6 +129,41 @@ describe("ReportsService — generated_reports (OD-45)", () => {
         periodEnd: "2026-03-31",
         pdfUrl: "https://example.test/r.pdf",
       });
+    });
+
+    it("bounds the read, so the browser does not download every row to render twenty", async () => {
+      // The Sorting Office lists the newest 20 and the legacy page lists a
+      // page at a time; neither has ever needed the whole table. The read was
+      // unbounded, so a restaurant with ten thousand reports shipped ten
+      // thousand rows over the wire on every page load.
+      const { calls, databaseService } = makeSupabaseStub({
+        data: [ROW],
+        error: null,
+        count: 4_000,
+      } as never);
+      const service = new ReportsService(databaseService);
+
+      const { total } = await service.listReports("restaurant-1");
+
+      expect(calls.limit).not.toBeNull();
+      expect(calls.limit).toBeLessThanOrEqual(200);
+      // `count: "exact"` is a COUNT over the whole filtered set, not over the
+      // page — so bounding the rows costs the drawer nothing. Its figure stays
+      // the exact total and never becomes a page length.
+      expect(total).toBe(4_000);
+    });
+
+    it("clamps a caller-supplied limit instead of trusting it", async () => {
+      const { calls, databaseService } = makeSupabaseStub({
+        data: [],
+        error: null,
+        count: 0,
+      } as never);
+      const service = new ReportsService(databaseService);
+
+      await service.listReports("restaurant-1", { limit: 100_000 });
+
+      expect(calls.limit).toBeLessThanOrEqual(200);
     });
   });
 });
