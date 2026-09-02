@@ -1,5 +1,6 @@
 import { Controller, Get } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
+import { Public } from "../auth/decorators/public.decorator";
 
 /**
  * Liveness — the one route that answers "did this process come up?"
@@ -94,6 +95,11 @@ const BOOTED_AT: string = new Date().toISOString();
 @ApiTags("health")
 @Controller("health")
 export class LivenessController {
+  // Public by DECISION, not by omission (ADR 0096): the deploy audit polls
+  // this unauthenticated (`deploy.yml:171` — `${API_GATEWAY_URL}/api/v1/health/live`),
+  // and a liveness probe that needs a token cannot answer "did the process
+  // come up?" when the thing that failed to come up is auth.
+  @Public()
   @Get("live")
   @ApiOperation({
     summary:
