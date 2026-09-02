@@ -29,7 +29,13 @@ import { ApproveDraftDto } from "./dto/approve-draft.dto";
 import { ProcurementService } from "./procurement.service";
 
 /**
- * `?quantityReceived=` -> a whole non-negative count, or a 400 that says why.
+ * `?quantityReceivedInOrderUom=` -> a whole non-negative count, or a 400 that
+ * says why.
+ *
+ * The count is IN THE ORDER'S OWN unit_type — the same unit `quantity` is stated
+ * in — which is why the parameter says so in its own name. The old
+ * `?quantityReceived=` named no unit and is accepted as a deprecated alias; see
+ * `readDeliveredQuantity` below for the conflict rule.
  *
  * Exported so the failure cases can be asserted directly. Absent stays absent:
  * `undefined` means "the caller did not say", which is a real and common answer
@@ -39,6 +45,7 @@ import { ProcurementService } from "./procurement.service";
  */
 export function parseDeliveredQuantity(
   raw: string | undefined,
+  paramName = "quantityReceivedInOrderUom",
 ): number | undefined {
   if (raw === undefined || raw === null || String(raw).trim() === "")
     return undefined;
@@ -47,19 +54,53 @@ export function parseDeliveredQuantity(
   const value = Number(text);
 
   if (!Number.isFinite(value))
-    throw new BadRequestException(
-      `quantityReceived must be a number; got "${text}".`,
-    );
+    throw new BadRequestException(`${paramName} must be a number; got "${text}".`);
   if (!Number.isInteger(value))
     throw new BadRequestException(
-      `quantityReceived must be a whole number of units; got "${text}".`,
+      `${paramName} must be a whole number of units; got "${text}".`,
     );
   if (value < 0)
     throw new BadRequestException(
-      `quantityReceived cannot be negative; got "${text}".`,
+      `${paramName} cannot be negative; got "${text}".`,
     );
 
   return value;
+}
+
+/**
+ * Read the delivered count from either the canonical query parameter or its
+ * deprecated unitless alias.
+ *
+ * Both present and EQUAL is fine; both present and DIFFERENT is a 400 naming
+ * both. A server that quietly preferred one would be choosing a delivered
+ * quantity by a rule nobody can see, which is the same defect class as the
+ * unitless parameter itself.
+ *
+ * Exported for direct assertion, like `parseDeliveredQuantity`.
+ */
+export function readDeliveredQuantity(
+  canonical: string | undefined,
+  deprecatedAlias: string | undefined,
+): number | undefined {
+  const fromCanonical = parseDeliveredQuantity(
+    canonical,
+    "quantityReceivedInOrderUom",
+  );
+  const fromAlias = parseDeliveredQuantity(deprecatedAlias, "quantityReceived");
+
+  if (
+    fromCanonical !== undefined &&
+    fromAlias !== undefined &&
+    fromCanonical !== fromAlias
+  ) {
+    throw new BadRequestException(
+      `quantityReceivedInOrderUom=${fromCanonical} disagrees with its deprecated alias ` +
+        `quantityReceived=${fromAlias}. They name the same quantity, so one of them is wrong ` +
+        `and the server must not choose. Send only quantityReceivedInOrderUom.`,
+    );
+  }
+
+  return fromCanonical ?? fromAlias;
 }
 
 @ApiTags("procurement")
@@ -265,6 +306,11 @@ export class ProcurementController {
   @ApiResponse({ status: 200, type: OrderResponseDto })
   async markDelivered(
     @Param("id") orderId: string,
+    @Query("quantityReceivedInOrderUom")
+    quantityReceivedInOrderUom: string | undefined,
+    // DEPRECATED ALIAS of the parameter above; it named no unit. Kept so a
+    // deployed client still holding the old name keeps working. Removable once
+    // no such client can reach this endpoint.
     @Query("quantityReceived") quantityReceived: string | undefined,
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<OrderResponseDto> {
@@ -278,7 +324,10 @@ export class ProcurementController {
     // Parsed OUTSIDE the try below on purpose: that catch rewrites everything it
     // sees, so a BadRequestException thrown inside it would reach the client as
     // a 500.
-    const parsedQuantity = parseDeliveredQuantity(quantityReceived);
+    const parsedQuantity = readDeliveredQuantity(
+      quantityReceivedInOrderUom,
+      quantityReceived,
+    );
 
     try {
       return await this.procurementService.markDelivered(

@@ -34,7 +34,10 @@ export function LocationPickerCell({
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  const isFull = (loc: StorageLocation) => loc.currentCount >= loc.capacity
+  // Unknown capacity is not "full". A zone whose capacity nobody recorded
+  // cannot be known to be at it, so it stays assignable.
+  const isFull = (loc: StorageLocation) =>
+    loc.capacity != null && loc.currentCount >= loc.capacity
 
   const handleAssign = (loc: StorageLocation) => {
     if (isFull(loc)) return

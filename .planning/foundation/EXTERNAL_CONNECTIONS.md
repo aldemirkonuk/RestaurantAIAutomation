@@ -91,7 +91,7 @@ pricing rows only.
 | `0 8 * * *` | execute due recurring orders | `procurement/recurring-orders.service.ts:225` |
 | `0 8 * * *` | `recurring-order-reminder`, `event-prep-check` | `communications/scheduled-tasks.service.ts:336,666` |
 | `0 8 * * 1` | `weekly-email-report` | `communications/scheduled-tasks.service.ts:162` |
-| `0 9 * * *` | `daily-sms-summary`, `payment-due-reminder`, promotion digests | `communications/scheduled-tasks.service.ts:127,517`; `common/orchestrator/promotion-extractor.service.ts:179` |
+| `0 9 * * *` | `daily-sms-summary`, promotion digests | `communications/scheduled-tasks.service.ts:127`; `common/orchestrator/promotion-extractor.service.ts:179` — `payment-due-reminder` was deleted 2026-09-02, having never sent one email ([ADR 0077](../decisions/0077-there-is-no-payment-due-reminder.md)) |
 | `0 17 * * *` | `delivery-eta-notification` | `communications/scheduled-tasks.service.ts:431` |
 | every 30 s | scheduled auto-sends | `procurement/procurement.service.ts:1902` |
 | every 60 s / 5 min | websocket heartbeat / cleanup | `websocket/websocket.gateway.ts:606,631` |

@@ -69,7 +69,14 @@ describe("liveness serves at /api/v1/health/live", () => {
     );
 
     expect(live.code).toBe(200);
-    expect(JSON.parse(live.body)).toEqual({ status: "ok" });
+    // `commit` and `bootedAt` were added so a deploy audit can tell the build it
+    // just shipped from the one still serving; `commit` is the literal
+    // "unknown" when no build variable is set, never omitted.
+    const body = JSON.parse(live.body);
+    expect(body.status).toBe("ok");
+    expect(typeof body.commit).toBe("string");
+    expect(body.commit.length).toBeGreaterThan(0);
+    expect(Number.isNaN(Date.parse(body.bootedAt))).toBe(false);
     expect(guarded.code).toBe(401); // still guarded, unchanged
     expect(old.code).toBe(404); // the URL the audit polled for months
     await app.close();
