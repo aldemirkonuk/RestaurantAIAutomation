@@ -102,7 +102,12 @@ export class AnalyticsService {
         .eq("is_active", true),
       client
         .from("inventory_lot_rollup")
-        .select("inventory_id, live_qty, wac, has_invoice_cost")
+        .select(
+          // wac_qty / live_qty added 2026-09-02 (ADR 0078) so resolveUnitCost
+          // can tell a WAC that covers every on-hand bottle from one that
+          // covers a single invoiced bottle in twenty-one.
+          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
+        )
         .eq("restaurant_id", restaurantId),
     ]);
 

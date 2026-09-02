@@ -1427,7 +1427,33 @@ export class ProcurementService {
             const currentShadow = currentStock?.shadow_stock ?? 0;
             const currentInTransit = currentStock?.in_transit_quantity ?? 0;
             const shadowRelease = Math.min(resolvedQuantity, currentShadow);
-            const unitCost = row.final_price ?? row.suggested_price ?? null;
+
+            // WHAT KIND OF PRICE THIS IS.
+            //
+            // `final_price` is the price we AGREED at ordering time. Nobody has
+            // read an invoice at this point — markDelivered runs when the goods
+            // arrive, and verifyReceipt is the step where a human compares the
+            // vendor's document against what is on the floor. So this number is
+            // an expectation, and the lot must say so.
+            //
+            // It used to be passed with no provenance at all, and
+            // apply_stock_movement inferred `'invoice'` from the mere presence
+            // of a number — so every delivery booked a lot stamped
+            // invoice-verified, `inventory_lot_rollup.has_invoice_cost` went
+            // true, and analytics labelled the PO's own quote "invoiced lot
+            // WAC". `receiving.service.ts:215-218` refuses to guess a cost for
+            // exactly this reason; this path guessed one and then dressed it up.
+            //
+            // A `suggested_price` fallback was also read off the order row
+            // here. `procurement_orders` has no such column (production
+            // information_schema, 2026-09-02:
+            // the price columns are final_price, negotiated_price,
+            // quoted_price, invoice_unit_price, final_confirmed_cost,
+            // prefilled_invoice_unit_price) — so it was always `undefined` and
+            // the `??` chain fell through it silently. Reading a column that
+            // does not exist is not a fallback, it is a no-op wearing one.
+            const unitCost = row.final_price ?? null;
+            const costProvenance = unitCost == null ? null : "estimated";
 
             if (shadowRelease > 0) {
               await this.databaseService.supabase.rpc("apply_stock_movement", {
@@ -1449,6 +1475,7 @@ export class ProcurementService {
               p_source: "order",
               p_reason: "order delivered — physical receipt",
               p_unit_cost: unitCost,
+              p_cost_provenance: costProvenance,
               p_order_id: orderId,
               p_idempotency_key: `order-delivered-live:${orderId}`,
             });
@@ -1588,10 +1615,15 @@ export class ProcurementService {
    * @param unitCost What the bottle VERIFIABLY cost, from the invoice — landed,
    *   including allocated freight and fees. Passing it is the difference between
    *   a match that means something and a match that is decoration: without it
-   *   apply_stock_movement writes cost_provenance='estimated' and the lot keeps
-   *   the price we hoped for at ordering time, so catching a $2 overcharge
-   *   changes a badge on a screen and leaves inventory valuation, WAC, pour cost
-   *   and COGS all still quoting the old number.
+   *   the lot keeps the price we hoped for at ordering time, so catching a $2
+   *   overcharge changes a badge on a screen and leaves inventory valuation,
+   *   WAC, pour cost and COGS all still quoting the old number. Non-null only
+   *   when an invoice was actually read (`computeMatch` returns
+   *   `effectiveUnitCost = null` without one), which is why `'invoice'` is a
+   *   safe provenance for it and would not be for anything markDelivered has.
+   * @param userId Who verified the receipt. Recorded on the revaluation so the
+   *   valuation change has an author. Resolves to `public.users(user_id)` —
+   *   `auth.users` is a disjoint table and an FK to it 23503s on every write.
    */
   private async applyReceiptAdjustment(
     restaurantId: string,
@@ -1600,6 +1632,7 @@ export class ProcurementService {
     delta: number,
     reason: string,
     unitCost?: number | null,
+    userId?: string | null,
   ): Promise<void> {
     // TENANCY. `apply_stock_movement` derives restaurant_id from the inventory
     // row it is pointed at, not from the caller — so an id this method does not
@@ -1644,27 +1677,112 @@ export class ProcurementService {
       );
     }
 
-    const { error } = await this.databaseService.supabase.rpc(
-      "apply_stock_movement",
-      {
-        p_inventory_id: inventoryId,
-        p_stock_state: "live",
-        p_delta: delta,
-        p_transaction_type: "adjustment",
-        p_source: "receiving",
-        p_reason: reason,
-        p_unit_cost: unitCost ?? null,
-        p_order_id: orderId,
-        p_idempotency_key: `receipt-verify:${orderId}:${inventoryId}`,
-      },
-    );
-    if (error) {
-      this.logger.error(
-        `verifyReceipt adjustment failed for ${inventoryId}: ${error.message}`,
+    // QUANTITY FIRST, THEN PRICE. The two are separate writes because they are
+    // separate facts: `apply_stock_movement` only ever creates or consumes
+    // bottles, and `revalue_lot` only ever restates what bottles cost.
+    //
+    // Order matters. A negative delta consumes lots FIFO, so revaluing before
+    // adjusting would restate lots that are about to be deleted and the
+    // revaluation receipt would overstate what it covered.
+    if (delta !== 0) {
+      const { error } = await this.databaseService.supabase.rpc(
+        "apply_stock_movement",
+        {
+          p_inventory_id: inventoryId,
+          p_stock_state: "live",
+          p_delta: delta,
+          p_transaction_type: "adjustment",
+          // `inventory_transaction_source` is exactly (pos, manual, order,
+          // mobile_count, reconciliation, system, import, api) — read from
+          // production 2026-09-02. There is no 'receiving'. The RPC casts
+          // `p_source::inventory_transaction_source`, so this raised on EVERY
+          // call and verifyReceipt returned 422 for every stock correction it
+          // ever attempted. `receiving.service.ts:205-212` hit the identical
+          // bug on the door path and settled on 'order' — a receipt correction
+          // is sourced from a procurement order in exactly the same sense.
+          //
+          // `verify-receipt.spec.ts` stubs rpc() as always-succeeds, which is
+          // why the enum never got a chance to say no. `lot-cost-truth.spec.ts`
+          // checks these literals against the enum in the production dump
+          // instead of against a mock.
+          p_source: "order",
+          p_reason: reason,
+          // A price only rides along when it CREATES bottles: those extra
+          // bottles are covered by the same invoice, so the lot is genuinely
+          // invoice-priced. On a negative delta the price would land on a
+          // ledger row nothing values stock from, so it is left off entirely
+          // and the correction below carries it to the lot instead.
+          p_unit_cost: delta > 0 ? (unitCost ?? null) : null,
+          p_cost_provenance: delta > 0 && unitCost != null ? "invoice" : null,
+          p_order_id: orderId,
+          p_idempotency_key: `receipt-verify:${orderId}:${inventoryId}`,
+        },
       );
-      throw new UnprocessableEntityException(
-        `Adjustment failed for item ${inventoryId}: ${error.message}`,
-      );
+      if (error) {
+        this.logger.error(
+          `verifyReceipt adjustment failed for ${inventoryId}: ${error.message}`,
+        );
+        throw new UnprocessableEntityException(
+          `Adjustment failed for item ${inventoryId}: ${error.message}`,
+        );
+      }
+    }
+
+    // THE CORRECTION ITSELF.
+    //
+    // Before this, a verified invoice price could not reach the lot it
+    // corrected. A negative ledgerDelta only DELETEd lots, so the price landed
+    // on a ledger row and inventory valuation kept quoting the estimate. A
+    // positive one created a SECOND lot at invoice cost beside the estimated
+    // original, and `inventory_lot_rollup.wac` blended the guess with the
+    // correction forever — under the label "invoiced lot WAC". A zero delta,
+    // the commonest case of all (the count matched, only the price differed),
+    // wrote nothing anywhere.
+    //
+    // `revalue_lot` restates the lots THIS order created, preserving the prior
+    // cost in `inventory_lot_revaluations` rather than overwriting it.
+    if (unitCost != null) {
+      const { data: receipt, error: revalError } =
+        await this.databaseService.supabase.rpc("revalue_lot", {
+          p_inventory_id: inventoryId,
+          p_source_order_id: orderId,
+          p_unit_cost: unitCost,
+          p_cost_provenance: "invoice",
+          p_performed_by: userId ?? null,
+          p_reason: reason,
+        });
+
+      if (revalError) {
+        this.logger.error(
+          `verifyReceipt revaluation failed for ${inventoryId}: ${revalError.message}`,
+        );
+        throw new UnprocessableEntityException(
+          `The count was corrected but the price was not, for item ${inventoryId}: ${revalError.message}`,
+        );
+      }
+
+      // A revaluation that reached nothing is reported, not assumed away. It
+      // is a legitimate outcome — every bottle from this delivery has already
+      // been poured — but "the correction covered no bottles" and "the
+      // correction covered them all" must not look identical in the log.
+      const covered = (receipt as any)?.lots_revalued ?? 0;
+      const matched = (receipt as any)?.lots_matched ?? 0;
+      if (matched === 0) {
+        this.logger.warn(
+          `verifyReceipt: no live lot from order ${orderId} remains for ${inventoryId}, ` +
+            `so the verified unit cost ${unitCost} was recorded on the order but corrected no stock.`,
+        );
+      } else {
+        this.logger.log({
+          message: "Receipt verification revalued stock",
+          orderId,
+          inventoryId,
+          unitCost,
+          lotsMatched: matched,
+          lotsRevalued: covered,
+          bottlesRevalued: (receipt as any)?.bottles_revalued ?? 0,
+        });
+      }
     }
   }
 
@@ -1751,7 +1869,18 @@ export class ProcurementService {
     }
 
     // Correct the ordered line to the accepted count, then apply any unlisted extras.
-    if (match && match.ledgerDelta !== 0 && (orderRow as any).inventory_id) {
+    //
+    // The gate used to be `match.ledgerDelta !== 0` alone, which silently
+    // dropped the entire point of the three-way match: when the count was right
+    // and only the PRICE was wrong — the commonest discrepancy there is, and
+    // the one this screen exists to catch — ledgerDelta is 0, so nothing ran
+    // and the verified landed cost never reached the books. A verified price is
+    // now reason enough to write, on its own.
+    if (
+      match &&
+      (match.ledgerDelta !== 0 || match.effectiveUnitCost != null) &&
+      (orderRow as any).inventory_id
+    ) {
       await this.applyReceiptAdjustment(
         restaurantId,
         orderId,
@@ -1761,6 +1890,7 @@ export class ProcurementService {
         // Verified landed cost, so the corrected lot carries what the bottle
         // really cost rather than what we expected it to.
         match.effectiveUnitCost,
+        userId,
       );
     }
 
@@ -1774,6 +1904,12 @@ export class ProcurementService {
         adj.delta,
         adj.reason ||
           `receipt verification for order ${orderId}${body.note ? `: ${body.note}` : ""}`,
+        // No unit cost: a free-form adjustment is a count correction on an item
+        // the invoice line does not describe, so there is no verified price to
+        // put on it. Passing one would be inventing the number the whole of
+        // this change exists to stop inventing.
+        null,
+        userId,
       );
     }
 

@@ -716,6 +716,25 @@ jobs:
       - name: Guard against direct stock_live/shadow_stock writes
         run: ./scripts/check_no_direct_stock_writes.sh
 
+      # ADR 0078. `apply_stock_movement` used to infer cost provenance from the
+      # mere presence of a price, so any caller passing a number without saying
+      # what kind of number it was got 'invoice' free — and markDelivered
+      # passed the purchase order's own quote. The RPC now raises; this is the
+      # static arm that catches it at review time instead of at runtime.
+      #
+      # --self-test first, and it is not ceremony: it proves the guard reaches
+      # this repo's real call sites, which is precisely what
+      # check_no_direct_stock_writes.sh could not do while it was passing an
+      # invalid ripgrep type and printing PASS over zero examined lines.
+      # `if: !cancelled()` so it reports even when a step above has failed.
+      - name: Provenance guard proves it can see the tree
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_lot_cost_provenance.py --self-test
+
+      - name: A price crossing into a lot states its provenance
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_lot_cost_provenance.py
+
       - name: Guard against direct beverages.type_attributes access
         run: ./scripts/check_no_direct_type_attributes_access.sh
 
