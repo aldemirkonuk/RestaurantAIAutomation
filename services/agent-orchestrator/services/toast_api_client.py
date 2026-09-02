@@ -51,6 +51,19 @@ def _require_safe_id(value: str, kind: str) -> None:
     value that somehow reached the template could not introduce a slash and
     escape its path segment. The allowlist rejects nonsense early with a clear
     error; the encoding is what makes the escape structurally impossible.
+
+    NOTE ON THE RESIDUAL CodeQL ALERT. `py/partial-ssrf` still fires on the two
+    request lines that use these ids, and it is expected to. That query flags
+    *any* caller-influenced value appearing in a URL path — `quote()` is what
+    downgrades py/full-ssrf to py/partial-ssrf, not what clears it — so it
+    cannot be satisfied by any fetch-a-resource-by-id client. What is actually
+    closed here is the escape: the host is never caller-influenced, the id is
+    constrained to [A-Za-z0-9._~-]{1,256}, and it is percent-encoded at the
+    sink. This is the same allowlist OD-90 used to close the identical defect
+    on the gateway side (apps/api-gateway/src/common/http/safe-path.ts).
+    Per the precedent OD-93 set, a residual false positive is dismissed in
+    CodeQL by the repo owner and recorded in OPEN-DECISIONS — it is
+    deliberately not suppressed in code here.
     """
     if not is_safe_path_segment(value):
         raise ToastInvalidIdentifier(f"Invalid Toast {kind} id")
