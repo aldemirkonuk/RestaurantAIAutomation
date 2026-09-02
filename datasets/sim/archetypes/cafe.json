@@ -31,6 +31,50 @@
     "name": "Sim Cafe",
     "timezone": "America/Chicago",
     "city": "Chicago",
-    "country": "USA"
+    "country": "USA",
+    "operating_hours": {
+      "mon": [
+        {
+          "open": "07:00",
+          "close": "18:00"
+        }
+      ],
+      "tue": [
+        {
+          "open": "07:00",
+          "close": "18:00"
+        }
+      ],
+      "wed": [
+        {
+          "open": "07:00",
+          "close": "18:00"
+        }
+      ],
+      "thu": [
+        {
+          "open": "07:00",
+          "close": "18:00"
+        }
+      ],
+      "fri": [
+        {
+          "open": "07:00",
+          "close": "18:00"
+        }
+      ],
+      "sat": [
+        {
+          "open": "07:00",
+          "close": "18:00"
+        }
+      ],
+      "sun": [
+        {
+          "open": "07:00",
+          "close": "18:00"
+        }
+      ]
+    }
   }
 }
