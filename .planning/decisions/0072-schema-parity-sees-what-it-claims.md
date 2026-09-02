@@ -209,14 +209,32 @@ back (base type only, no typmod / nullability / default; function keyed on
 - **Revisit when:** the first real run against production produces a red that is
   not drift. That is the signal that a category needs narrowing, and it should be
   narrowed by name in this ADR, never by deleting the category quietly.
-- **Fork PRs cannot merge (deliberate, not a bug).** `main` now requires four of
-  this workflow's job names as status checks with `strict: true`: `Fresh database
-  equals remote`, `Code queries only relations production has`, `Beverage identity
-  key — SQL matches Python`, and `Guest merge policy — zero false merges`. Each job
-  carries `if: github.event_name != 'pull_request' || github.event.pull_request
-  .head.repo.full_name == github.repository`, so on a PR opened from a fork the
-  condition is false and the job never runs — the required context never posts,
-  and GitHub blocks a required context that never reports permanently. This is
+- **Fork PRs cannot merge whatever of this file is required (deliberate, not a
+  bug).** Every job in this workflow carries `if: github.event_name !=
+  'pull_request' || github.event.pull_request.head.repo.full_name ==
+  github.repository`, so on a PR opened from a fork the condition is false and the
+  job never runs — and a required context that never reports blocks the PR
+  permanently rather than skipping. **Which of them are required has changed
+  twice in one day, so read the live list rather than this sentence** (`gh api
+  repos/aldemirkonuk/RestaurantAIAutomation/branches/main/protection --jq
+  '.required_status_checks.contexts'`):
+
+  | when | required contexts from this file |
+  |---|---|
+  | when this bullet was written (#259, 2026-09-02 19:41Z) | all four — `Fresh database equals remote`, `Code queries only relations production has`, `Beverage identity key — SQL matches Python`, `Guest merge policy — zero false merges` |
+  | now (read 2026-09-02, after #264) | **two** — only `Beverage identity key — SQL matches Python` and `Guest merge policy — zero false merges` |
+
+  The two migration-sensitive contexts were **removed from the required list** to
+  unblock three PRs that a merge-base-blind comparison had made unmergeable; that
+  is the "unblock now, fix properly next" the founder chose, and the "properly"
+  is [ADR 0092](0092-parity-compares-against-what-was-merged.md), which is now
+  merged. **Restoring them is a branch-protection change and therefore the
+  founder's, not a session's** — ADR 0092's "Restoring the required list" names
+  the snapshot to restore from. Until then `Fresh database equals remote` and
+  `Code queries only relations production has` run and can go red without
+  blocking anything, which is the state the Open question below describes.
+
+  The fork guard itself stays exactly as-is. This is
   intentional, not an oversight: these jobs read `SUPABASE_POOLER_URL` /
   `SUPABASE_DIRECT_CONNECTION_STRING`, and GitHub does not expose repository
   secrets to workflow runs triggered from a fork, so a fork PR can only ever make
@@ -234,19 +252,25 @@ back (base type only, no typmod / nullability / default; function keyed on
 **A red parity job does not block a merge, and never has.**
 
 - `.github/workflows/schema-parity.yml:39` defines job `parity`
-  ("Fresh database equals remote"). `ci.yml:917` defines `ci-complete`
-  ("CI Complete") with 18 `needs:`. GitHub `needs:` cannot cross workflow files,
-  so `parity` **structurally cannot** be a dependency of `CI Complete`.
-- `ci-complete`'s own coverage step (`ci.yml:961`) loads **`ci.yml` only**, so it
+  ("Fresh database equals remote"). `ci.yml:1171` defines `ci-complete`
+  ("CI Complete") with **22** `needs:`. GitHub `needs:` cannot cross workflow
+  files, so `parity` **structurally cannot** be a dependency of `CI Complete`.
+  (Re-anchored 2026-09-02: this bullet shipped citing `ci.yml:917` and 18
+  `needs:`, which named `merge-identity-gate` and an older count on the very
+  commit that merged it. The structural point survives; the anchors did not.)
+- `ci-complete`'s own coverage step (`ci.yml:1224`, `wf = yaml.safe_load(open(".github/workflows/ci.yml"))` at `:1229`) loads **`ci.yml` only**, so it
   proves nothing about the four jobs in `schema-parity.yml`.
-- Branch protection on `main`, read 2026-09-02:
-  `required_status_checks.contexts = ["CI Complete"]`, `strict: true`,
-  `enforce_admins: false`. **"Fresh database equals remote" is not a required
-  check.**
+- Branch protection on `main`, re-read 2026-09-02 after #264:
+  `required_status_checks.contexts = ["CI Complete", "Beverage identity key —
+  SQL matches Python", "Guest merge policy — zero false merges"]`,
+  `strict: true`, `enforce_admins: false`. **"Fresh database equals remote" is
+  still not a required check** — it was added to the list and then removed again
+  the same day (see the Consequences bullet above).
 
-So the guard being fixed here has been *both blind and non-blocking*. The same is
-true of `queried-tables-exist-in-production`, `beverage-identity-parity` and
-`guest-merge-gate`, which also live in `schema-parity.yml`.
+So the guard being fixed here has been *both blind and non-blocking*. Blindness is
+what this ADR closes. Non-blocking is still true of `parity` and
+`queried-tables-exist-in-production`; `beverage-identity-parity` and
+`guest-merge-gate` **are** required contexts today.
 
 Making it blocking is a real trade, not an oversight to correct silently: the job
 needs a remote secret, so it cannot run on fork PRs (it carries an `if:` guard for

@@ -39,14 +39,23 @@ jobs:
   parity:
     name: Fresh database equals remote
     runs-on: ubuntu-latest
-    # This job's `name:` is a required status check on `main` (branch protection,
-    # `contexts`, `strict: true`) — so are the other three jobs in this file that
-    # carry the same fork guard below. Renaming a job or changing this `if:` changes
-    # whether PRs can merge at all: a renamed job is the same failure as a skipped
-    # one — the required context stops reporting and the PR is blocked forever.
-    # See ADR 0072 (Consequences) for why the guard itself stays as-is: a fork PR
-    # has no access to the DB secret, so a check that ran "successfully" on a fork
-    # would be vacuously green — the exact fault ADR 0072 exists to close. The
+    # SOME of this file's job `name:` values are required status checks on `main`
+    # (branch protection, `contexts`, `strict: true`) — read the live list, never
+    # this comment:
+    #   gh api repos/aldemirkonuk/RestaurantAIAutomation/branches/main/protection \
+    #     --jq '.required_status_checks.contexts'
+    # As of 2026-09-02 that is `Beverage identity key — SQL matches Python` and
+    # `Guest merge policy — zero false merges`. THIS job and
+    # `Code queries only relations production has` were required for part of the
+    # same day and were removed again to unblock PRs that add a migration; ADR 0092
+    # is the repair, and restoring them is the founder's branch-protection call.
+    #
+    # Renaming a required job or changing its `if:` changes whether PRs can merge
+    # at all: a renamed job is the same failure as a skipped one — the required
+    # context stops reporting and the PR is blocked forever, not merely skipped.
+    # See ADR 0072 (Consequences) for why the fork guard itself stays as-is: a fork
+    # PR has no access to the DB secret, so a check that ran "successfully" on a
+    # fork would be vacuously green — the exact fault ADR 0072 exists to close. The
     # remedy for a real fork contribution is a maintainer re-pushing the branch to
     # this repo, not faking a green check.
     #
