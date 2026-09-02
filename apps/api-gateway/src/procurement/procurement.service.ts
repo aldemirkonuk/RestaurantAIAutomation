@@ -54,7 +54,7 @@ const UUID_RE =
  * non-uuid actor becomes NULL — "we do not know who" is true, and an order that
  * exists beats an order that 500s over an attribution field.
  */
-function asUuid(value: string | null | undefined): string | null {
+export function asUuid(value: string | null | undefined): string | null {
   return typeof value === "string" && UUID_RE.test(value) ? value : null;
 }
 
@@ -259,13 +259,42 @@ export class ProcurementService {
    * `provenance` is a service argument and deliberately NOT a DTO field: it is
    * an assertion about which code path ran, and a client must not be able to
    * claim an order was manual when the agent placed it.
+   *
+   * ORDERS THAT RECORD RATHER THAN REQUEST
+   *
+   * `provenance.alreadyFulfilled` says this order documents a purchase that has
+   * already happened off-app — a paper or emailed invoice being entered after
+   * the wine is in the cellar. Everything that distinguishes it follows from
+   * that one fact, which is why it is one flag and not four:
+   *
+   *   - it opens DELIVERED, not PENDING. A PENDING order for wine already on
+   *     the shelf is a request the restaurant will act on twice.
+   *   - `requested_at` is the invoice date, not now. Otherwise the order's
+   *     delivery precedes its own request.
+   *   - no dedup merge. The merge exists to fold a re-quote into an open
+   *     REQUEST; an off-app purchase is a different purchase, and folding it in
+   *     would overwrite a live order's quantity and price with an unrelated
+   *     invoice's.
+   *   - no AI draft. `triggerDraftHttp` opens a negotiation with the vendor.
+   *     Negotiating the price of wine that has been delivered and invoiced is
+   *     the one thing this path must never do.
    */
   async createOrder(
     restaurantId: string,
     userId: string,
     dto: CreateOrderDto,
-    provenance?: { source: OrderSource; recurringOrderId?: string | null },
+    provenance?: {
+      source: OrderSource;
+      recurringOrderId?: string | null;
+      alreadyFulfilled?: {
+        /** ISO date/timestamp from the invoice. Absent means "we know only that it happened". */
+        deliveredAt?: string | null;
+        /** The total printed on the invoice, stored verbatim in final_confirmed_cost. */
+        invoiceTotal?: number | null;
+      };
+    },
   ): Promise<OrderResponseDto> {
+    const fulfilled = provenance?.alreadyFulfilled;
     // Guard: restaurant must have at least one active provider before placing orders
     const { count: providerCount, error: countError } =
       await this.databaseService.supabase
@@ -335,25 +364,33 @@ export class ProcurementService {
       ProcurementOrderStatus.FAILED,
     ];
 
-    const { data: existingRows, error: existingError } =
-      await this.databaseService.supabase
-        .from("procurement_orders")
-        .select("*, inventory:inventory_id(wine_name)")
-        .eq("restaurant_id", restaurantId)
-        .eq("inventory_id", dto.inventoryId)
-        .eq("provider_id", dto.providerId ?? "")
-        .not("status", "in", `(${TERMINAL_STATUSES.join(",")})`)
-        .order("requested_at", { ascending: false })
-        .limit(1);
+    // Skipped entirely for an order that RECORDS a completed purchase. The
+    // merge folds a re-quote into an open REQUEST; an off-app invoice is a
+    // second, separate purchase, and folding it into a live pending order would
+    // silently replace that order's quantity and price with the invoice's — one
+    // delivery recorded, one real order destroyed, no trace of either.
+    let existing: any | undefined;
+    if (!fulfilled) {
+      const { data: existingRows, error: existingError } =
+        await this.databaseService.supabase
+          .from("procurement_orders")
+          .select("*, inventory:inventory_id(wine_name)")
+          .eq("restaurant_id", restaurantId)
+          .eq("inventory_id", dto.inventoryId)
+          .eq("provider_id", dto.providerId ?? "")
+          .not("status", "in", `(${TERMINAL_STATUSES.join(",")})`)
+          .order("requested_at", { ascending: false })
+          .limit(1);
 
-    if (existingError) {
-      this.logger.warn("Dedup lookup for procurement order failed", {
-        restaurantId,
-        error: existingError.message,
-      });
+      if (existingError) {
+        this.logger.warn("Dedup lookup for procurement order failed", {
+          restaurantId,
+          error: existingError.message,
+        });
+      }
+
+      existing = existingRows?.[0] as any | undefined;
     }
-
-    const existing = existingRows?.[0] as any | undefined;
 
     if (existing && dto.providerId) {
       const { data: updated, error: updateError } =
@@ -426,6 +463,14 @@ export class ProcurementService {
 
     const orderNumber = this.generateOrderNumber();
 
+    // An order that RECORDS a delivery opens DELIVERED and is dated from the
+    // invoice. `requested_at` takes the same timestamp rather than now(),
+    // because an order whose delivery predates its own request reads as a
+    // data error to every report that sorts on either column.
+    const fulfilledAt = fulfilled
+      ? (fulfilled.deliveredAt ?? new Date().toISOString())
+      : null;
+
     const payload = {
       order_number: orderNumber,
       restaurant_id: restaurantId,
@@ -438,8 +483,15 @@ export class ProcurementService {
       negotiated_price: dto.negotiatedPrice ?? null,
       final_price: finalPrice,
       total_cost: totalCost,
-      status: ProcurementOrderStatus.PENDING,
-      requested_at: new Date().toISOString(),
+      status: fulfilled
+        ? ProcurementOrderStatus.DELIVERED
+        : ProcurementOrderStatus.PENDING,
+      requested_at: fulfilledAt ?? new Date().toISOString(),
+      delivered_at: fulfilledAt,
+      // The number printed on the invoice, kept verbatim beside the derived
+      // per-bottle arithmetic so a rounding difference between them is visible
+      // rather than absorbed.
+      final_confirmed_cost: fulfilled?.invoiceTotal ?? null,
       is_emergency: dto.isEmergency ?? false,
       priority_level: dto.priorityLevel ?? 5,
       manager_notes: dto.managerNotes ?? null,
@@ -494,7 +546,14 @@ export class ProcurementService {
     await this.emitOrderChangeEvent(restaurantId, userId, order, "created");
 
     // Phase 32: Trigger silent AI draft pre-computation when provider_id is set (D-32-01)
-    if (dto.providerId && this.orchestratorService) {
+    //
+    // Never for an order that records a completed purchase. `triggerDraftHttp`
+    // opens a price negotiation with the vendor; running it here would email a
+    // vendor asking them to reconsider the price of wine they have already
+    // delivered and invoiced. That is the single most damaging thing this
+    // method could do, and before `alreadyFulfilled` existed the retroactive
+    // path had no way to say "do not".
+    if (dto.providerId && this.orchestratorService && !fulfilled) {
       // Resolve provider name and restaurant name in parallel.
       let resolvedProviderName = "";
       let resolvedRestaurantName = "";
@@ -1253,13 +1312,52 @@ export class ProcurementService {
     userId: string,
     quantityReceived?: number,
   ): Promise<OrderResponseDto> {
+    // What the ledger is about to be told, decided ONCE and written down in the
+    // same breath. `resolvedQuantity` below used to be computed separately and
+    // the column written as `quantityReceived ?? null` — so the web client,
+    // which sends no quantity (useOrdersData.ts:68), booked `order.quantity`
+    // into the ledger and left the column NULL.
+    //
+    // That gap is the door's anti-double-book guard, defeated. recordDoorReceipt
+    // reads `alreadyBooked = Number(order.quantity_received ?? 0)`
+    // (receiving.service.ts:194) to work out what is left to book; a NULL reads
+    // as 0, so the door books the full count a second time on top of what this
+    // method already booked. The column has to record what was BOOKED, not what
+    // the caller happened to say.
+    //
+    // Read before the update so `resolvedQuantity` is available to write. A
+    // failed read is raised, not defaulted to 0: silently booking nothing and
+    // recording nothing is how this defect stayed invisible the first time.
+    const { data: existingOrder, error: existingError } =
+      await this.databaseService.supabase
+        .from("procurement_orders")
+        .select("quantity")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .maybeSingle();
+
+    if (existingError) {
+      this.logger.error("Failed to read order before marking delivered", {
+        restaurantId,
+        orderId,
+        error: existingError.message,
+      });
+      throw existingError;
+    }
+    if (!existingOrder) {
+      throw new NotFoundException(`Order ${orderId} not found`);
+    }
+
+    const resolvedQuantity =
+      quantityReceived ?? (existingOrder as any).quantity ?? 0;
+
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .update({
         status: ProcurementOrderStatus.DELIVERED,
         delivered_at: new Date().toISOString(),
         received_by: userId,
-        quantity_received: quantityReceived ?? null,
+        quantity_received: resolvedQuantity,
       })
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
@@ -1283,8 +1381,6 @@ export class ProcurementService {
     };
 
     const order = this.mapOrderRow(orderRow);
-
-    const resolvedQuantity = quantityReceived ?? order.quantity ?? 0;
 
     if (!order.inventoryId) {
       this.logger.warn(
@@ -1498,12 +1594,56 @@ export class ProcurementService {
    *   and COGS all still quoting the old number.
    */
   private async applyReceiptAdjustment(
+    restaurantId: string,
     orderId: string,
     inventoryId: string,
     delta: number,
     reason: string,
     unitCost?: number | null,
   ): Promise<void> {
+    // TENANCY. `apply_stock_movement` derives restaurant_id from the inventory
+    // row it is pointed at, not from the caller — so an id this method does not
+    // check is an id that writes stock wherever it happens to live. The
+    // adjustments array arrives from the client, which means the caller chooses
+    // the id. Every one of them is proven to belong to THIS restaurant here,
+    // before the RPC, because this method is the only choke point both the
+    // matched line and the free-form adjustments pass through.
+    //
+    // The DTO's @IsUUID only rejects ids that are not UUID-shaped. A well-formed
+    // UUID belonging to another restaurant is exactly the case that matters, and
+    // no decorator can see it.
+    const { data: owned, error: ownershipError } =
+      await this.databaseService.supabase
+        .from("restaurant_inventory")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", inventoryId)
+        .maybeSingle();
+
+    // A failed lookup is NOT permission. Saying so out loud rather than falling
+    // through is the whole point (ADR 0051): the alternative reports the absence
+    // of an answer as a yes.
+    if (ownershipError) {
+      this.logger.error(
+        `verifyReceipt ownership check failed for ${inventoryId}: ${ownershipError.message}`,
+      );
+      throw new UnprocessableEntityException(
+        `Could not confirm that item ${inventoryId} belongs to this restaurant, ` +
+          `so no stock was moved: ${ownershipError.message}`,
+      );
+    }
+
+    if (!owned) {
+      this.logger.warn(
+        `verifyReceipt rejected a foreign inventory id on order ${orderId}: ${inventoryId}`,
+      );
+      throw new ForbiddenException(
+        `Item ${inventoryId} does not belong to this restaurant. ` +
+          `A receipt adjustment can only move stock on this restaurant's own ` +
+          `inventory, so nothing was written.`,
+      );
+    }
+
     const { error } = await this.databaseService.supabase.rpc(
       "apply_stock_movement",
       {
@@ -1613,6 +1753,7 @@ export class ProcurementService {
     // Correct the ordered line to the accepted count, then apply any unlisted extras.
     if (match && match.ledgerDelta !== 0 && (orderRow as any).inventory_id) {
       await this.applyReceiptAdjustment(
+        restaurantId,
         orderId,
         (orderRow as any).inventory_id,
         match.ledgerDelta,
@@ -1627,6 +1768,7 @@ export class ProcurementService {
       // Skip the ordered line when the match already corrected it.
       if (match && adj.inventoryId === (orderRow as any).inventory_id) continue;
       await this.applyReceiptAdjustment(
+        restaurantId,
         orderId,
         adj.inventoryId,
         adj.delta,
@@ -1650,8 +1792,33 @@ export class ProcurementService {
 
     const update: Record<string, any> = {
       status,
-      notes: body.note ?? undefined,
     };
+
+    // `procurement_orders` has NO `notes` column. It has delivery_notes,
+    // manager_notes and discrepancy_notes, and this note — what the person
+    // holding the delivery typed while verifying it — is a delivery note; the
+    // same column `updateOrder` writes `dto.deliveryNotes` into (:934).
+    //
+    // Writing `notes` was worse than a no-op. `?? undefined` drops the key from
+    // the JSON body when no note was typed, so the update only ever reached
+    // PostgREST with a `notes` key — and only ever failed — on the runs where a
+    // manager DID type one, i.e. exactly the discrepancy runs. By then the
+    // ledger correction and the credit claim above have already been written, so
+    // a PGRST204 here leaves the order permanently half-verified: status,
+    // match_status, accepted_quantity, the invoice_* columns and the price
+    // history below never land, and the retry fails identically.
+    //
+    // Appended rather than assigned. A note left at the door and a note left at
+    // verification are two different observations of the same delivery, and the
+    // second one silently erasing the first is the kind of data loss nobody
+    // reports because nobody sees it happen. `orderRow` is already in hand, so
+    // the merge costs no extra read.
+    if (body.note != null && String(body.note).trim() !== "") {
+      const existingNote = ((orderRow as any).delivery_notes ?? "").trim();
+      update.delivery_notes = existingNote
+        ? `${existingNote}\n${body.note}`
+        : body.note;
+    }
 
     if (match) {
       const acceptedQty = body.acceptedQuantity ?? stockedQty;

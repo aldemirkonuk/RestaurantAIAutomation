@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { DashboardService } from "./dashboard.service";
 import { DatabaseService } from "../database/database.service";
+import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
 
 /**
  * The dashboard summed `procurement_orders` — vendor invoices, money the
@@ -56,7 +57,7 @@ function makeClient(rowsByTable: Record<string, any[]>) {
 
 const DELIVERED_ORDERS = [
   {
-    status: "delivered",
+    status: ProcurementOrderStatus.DELIVERED,
     total_cost: 1000,
     final_price: 900,
     bottles_total: 12,
@@ -65,7 +66,7 @@ const DELIVERED_ORDERS = [
     created_at: "2026-07-01T00:00:00Z",
   },
   {
-    status: "delivered",
+    status: ProcurementOrderStatus.DELIVERED,
     total_cost: 250,
     final_price: null,
     bottles_total: 6,

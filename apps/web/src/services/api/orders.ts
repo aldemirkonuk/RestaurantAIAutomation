@@ -187,6 +187,25 @@ export async function verifyOrderReceipt(
     rejectedReason?: string;
     priceOverrideReason?: string;
     note?: string;
+
+    /**
+     * What the extraction PROPOSED in the form, before the human answered
+     * (ADR 0059).
+     *
+     * The four fields above are what the manager submitted; these four are what
+     * the machine put there first. A manager correcting a misread invoice
+     * quantity from 22 to 24 used to leave no trace at all — the submitted 24
+     * was indistinguishable from a 24 the model had read correctly, which makes
+     * every correction invisible in exactly the corpus that needs them.
+     *
+     * Omitted when the form was not pre-filled from a document: then the final
+     * value is not a correction of anything, and claiming otherwise would
+     * manufacture a label.
+     */
+    prefilledInvoiceQuantity?: number;
+    prefilledInvoiceUnitPrice?: number;
+    prefilledShippedQuantity?: number;
+    prefilledFreeGoodsQuantity?: number;
   }
 ): Promise<Order> {
   const response = await apiClient.post<Order>(

@@ -28,6 +28,40 @@ import {
 import { ApproveDraftDto } from "./dto/approve-draft.dto";
 import { ProcurementService } from "./procurement.service";
 
+/**
+ * `?quantityReceived=` -> a whole non-negative count, or a 400 that says why.
+ *
+ * Exported so the failure cases can be asserted directly. Absent stays absent:
+ * `undefined` means "the caller did not say", which is a real and common answer
+ * (the web client never sends one) and is resolved from the order downstream.
+ * It is NOT the same as a value that could not be understood, and the whole
+ * point of this function is that the two stop looking alike.
+ */
+export function parseDeliveredQuantity(
+  raw: string | undefined,
+): number | undefined {
+  if (raw === undefined || raw === null || String(raw).trim() === "")
+    return undefined;
+
+  const text = String(raw).trim();
+  const value = Number(text);
+
+  if (!Number.isFinite(value))
+    throw new BadRequestException(
+      `quantityReceived must be a number; got "${text}".`,
+    );
+  if (!Number.isInteger(value))
+    throw new BadRequestException(
+      `quantityReceived must be a whole number of units; got "${text}".`,
+    );
+  if (value < 0)
+    throw new BadRequestException(
+      `quantityReceived cannot be negative; got "${text}".`,
+    );
+
+  return value;
+}
+
 @ApiTags("procurement")
 @Controller("procurement")
 @UseGuards(JwtAuthGuard)
@@ -234,10 +268,19 @@ export class ProcurementController {
     @Query("quantityReceived") quantityReceived: string | undefined,
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<OrderResponseDto> {
+    // A raw @Query string is not a number, and `Number("abc")` is NaN. NaN is
+    // not null or undefined, so `quantityReceived ?? order.quantity` does NOT
+    // fall through it: the service used to resolve NaN, fail its `> 0` test,
+    // and mark the order DELIVERED with no stock booked — and answer 200 OK.
+    // The caller is told what is wrong instead of being quietly given a
+    // successful-looking no-op.
+    //
+    // Parsed OUTSIDE the try below on purpose: that catch rewrites everything it
+    // sees, so a BadRequestException thrown inside it would reach the client as
+    // a 500.
+    const parsedQuantity = parseDeliveredQuantity(quantityReceived);
+
     try {
-      const parsedQuantity = quantityReceived
-        ? Number(quantityReceived)
-        : undefined;
       return await this.procurementService.markDelivered(
         user.restaurantId,
         orderId,
@@ -247,7 +290,9 @@ export class ProcurementController {
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to mark order delivered",
-        HttpStatus.INTERNAL_SERVER_ERROR,
+        // Preserve the status the service chose. Without this a 404 for a
+        // missing order is reported as a 500, which is a different claim.
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
