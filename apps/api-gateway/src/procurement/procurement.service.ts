@@ -81,6 +81,36 @@ export function asUuid(value: string | null | undefined): string | null {
   return typeof value === "string" && UUID_RE.test(value) ? value : null;
 }
 
+/**
+ * How much was ordered, in the unit it was actually ordered in.
+ *
+ * `procurement_orders.quantity` is stated in the order's own `unit_type` — the
+ * column sits directly beside it, is CHECK-constrained to
+ * `bottle | case | keg | pack | split_case | each | liter`
+ * (`20260901150000_order_line_capture_and_units.sql:122`), and ADR 0062 named
+ * the whole class: a quantity that does not say what unit it is in.
+ *
+ * The two delivery-calendar descriptions said `(${order.quantity} bottles)`
+ * unconditionally, so a five-CASE order of a twelve-pack read "5 bottles" on
+ * `/calendar` for a sixty-bottle delivery — off by the pack size, in the one
+ * sentence a manager reads to decide whether the right thing turned up. It is
+ * the same defect ADR 0068 fixed in the sibling recurring-order path on the
+ * same day ("`5 bottles` for a five-case schedule is the unit bug wearing a
+ * notification"), left standing here because the two lanes were separate PRs.
+ *
+ * When `unitType` is absent — the column is nullable, and `mapOrderRow` maps a
+ * blank to `undefined` — this says "units" rather than defaulting to bottles.
+ * `bottle` is the column DEFAULT, so guessing it would be right most of the
+ * time and silently wrong exactly where it matters; "units" claims nothing.
+ */
+export function describeOrderedQuantity(order: {
+  quantity: number;
+  unitType?: string | null;
+}): string {
+  const unit = (order.unitType ?? "").trim() || "unit";
+  return `${order.quantity} ${unit}${order.quantity === 1 ? "" : "s"}`;
+}
+
 interface ProcurementOrderRow {
   id: string;
   order_number: string;
@@ -2462,7 +2492,7 @@ export class ProcurementService {
 
     const description =
       `Expected delivery for order ${order.orderNumber} ` +
-      `(${order.quantity} bottles). Created on order ${trigger}.` +
+      `(${describeOrderedQuantity(order)}). Created on order ${trigger}.` +
       (order.isEmergency ? " Emergency order." : "");
 
     try {
@@ -2557,7 +2587,7 @@ export class ProcurementService {
     return this.closeDeliveryCalendarEvent(restaurantId, orderId, order, {
       status: CalendarEventStatus.COMPLETED,
       leaveAlone: [CalendarEventStatus.COMPLETED],
-      description: `Delivered: ${order.orderNumber} (${order.quantity} bottles). Actual delivery: ${order.deliveredAt}`,
+      description: `Delivered: ${order.orderNumber} (${describeOrderedQuantity(order)}). Actual delivery: ${order.deliveredAt}`,
     });
   }
 

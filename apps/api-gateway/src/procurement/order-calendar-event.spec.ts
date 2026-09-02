@@ -280,6 +280,41 @@ describe("ProcurementService.createCalendarEventForOrder — writes a row the ta
     expect(payload().provider_id).toBeNull();
   });
 
+  // ADR 0062's rule, applied to the sentence a manager actually reads.
+  //
+  // The description said `(${order.quantity} bottles)` unconditionally, but
+  // `procurement_orders.quantity` is stated in the order's own `unit_type`.
+  // A five-case order of a twelve-pack therefore announced "5 bottles" on
+  // /calendar for a sixty-bottle delivery. ADR 0068 fixed exactly this in the
+  // recurring-order path on the same day; this lane was a separate PR and kept
+  // the literal.
+  it("states the ORDER's own unit, not the word bottles", async () => {
+    await call({ ...order, quantity: 5, unitType: "case" });
+    const d = String(payload().description);
+    expect(d).toContain("5 cases");
+    expect(d).not.toContain("bottles");
+  });
+
+  it("does not pluralise a single unit", async () => {
+    await call({ ...order, quantity: 1, unitType: "case" });
+    expect(String(payload().description)).toContain("1 case)");
+  });
+
+  it("says bottles when the order really is in bottles", async () => {
+    await call({ ...order, quantity: 12, unitType: "bottle" });
+    expect(String(payload().description)).toContain("12 bottles");
+  });
+
+  // The column is nullable. Falling back to the column DEFAULT (`bottle`)
+  // would be right most of the time and silently wrong precisely where the
+  // unit matters, which is the failure this whole area exists to refuse.
+  it("claims no unit at all when the order does not state one", async () => {
+    await call({ ...order, quantity: 5, unitType: undefined });
+    const d = String(payload().description);
+    expect(d).toContain("5 units");
+    expect(d).not.toContain("bottles");
+  });
+
   it("keeps the emergency signal, which had no column to go to", async () => {
     await call({ ...order, isEmergency: true });
     const p = payload();
