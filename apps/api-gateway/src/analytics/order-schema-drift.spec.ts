@@ -281,6 +281,63 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
       expect(out.spendLast30d).toBe(2000);
     });
 
+    // ADR 0058 fixed the nine `=== "delivered"` sites and the four literals on
+    // dashboard.service.ts. This one carried the SAME four literals — written
+    // as `["pending", "awaiting_approval", "ordered", "in_transit"].includes(
+    // o.status)` — and survived, because a membership test spelled as an array
+    // is not a comparison and neither the sweep nor the guard read it.
+    // `awaiting_approval` and `ordered` were never members under any casing.
+    //
+    // Rows below are UPPERCASE, as `ProcurementOrderStatus` writes them, so
+    // reverting to the literals returns 0 and 0 rather than 900 and 2.
+    it("counts committed open orders instead of reporting a structural zero", async () => {
+      const client = makeClient({
+        procurement_orders: [
+          ...ORDER_ROWS,
+          {
+            id: "o3",
+            provider_id: "p1",
+            providers: { name: "Rioja Imports" },
+            total_cost: 500,
+            final_price: 500,
+            bottles_total: 6,
+            quantity: 6,
+            created_at: day(3),
+            delivered_at: null,
+            expected_delivery_date: day(-4).substring(0, 10),
+            status: ProcurementOrderStatus.IN_TRANSIT,
+          },
+          {
+            id: "o4",
+            provider_id: "p2",
+            providers: { name: "Loire Direct" },
+            total_cost: 400,
+            final_price: 400,
+            bottles_total: 12,
+            quantity: 12,
+            created_at: day(1),
+            delivered_at: null,
+            expected_delivery_date: day(-6).substring(0, 10),
+            status: ProcurementOrderStatus.APPROVAL_NEEDED,
+          },
+        ],
+      });
+      const svc = new AdvancedAnalyticsService(
+        { getClient: () => client } as any,
+        {} as any,
+        {} as any,
+        {} as any,
+      );
+
+      const out = await svc.getCashflow(RESTAURANT);
+      expect(client.schemaErrors).toEqual([]);
+      expect(out.openOrderCount).toBe(2);
+      expect(out.committedOpenOrders).toBe(900);
+      // A delivered order is money already spent, never committed outflow —
+      // the two figures must not double-count the same order.
+      expect(out.spendLast30d).toBe(2000);
+    });
+
     it("logs, rather than swallows, a query that really does fail", async () => {
       // A column that does not exist anywhere: the loader must still degrade to
       // an empty lens (one dead query must not 500 the page) but must say so.
