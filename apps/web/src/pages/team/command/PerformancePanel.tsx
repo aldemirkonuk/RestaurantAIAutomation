@@ -8,6 +8,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { BarChart3, Plus, Upload } from 'lucide-react'
 import { getMemberPerformance, ingestSales, ingestSalesBatch, type TeamMember } from '../../../services/api/team'
+import { useAuth } from '../../../contexts/AuthContext'
+import { TEAM_SERVER_WINDOWS } from '../next/useTeamNextData'
+import { LE } from '../next/tm-format'
 import { ExportMenu } from '../../../components/ui/ExportMenu'
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport'
 import { TABULAR_ACCEPT } from '../../../lib/uploadAccept'
@@ -18,10 +21,13 @@ export function PerformancePanel({ member }: { member: TeamMember | null }) {
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ serviceDate: new Date().toISOString().slice(0, 10), covers: '', netSales: '', wineSales: '', checks: '' })
 
+  // Tenant-keyed: a member id is unique, but the cache bucket is not evicted
+  // on a branch switch and the gateway scopes this read by restaurant header.
+  const { activeRestaurantId } = useAuth()
   const { data, isLoading } = useQuery({
-    queryKey: ['team', 'performance', member?.id],
+    queryKey: ['team', 'performance', activeRestaurantId, member?.id],
     queryFn: () => getMemberPerformance(member!.id),
-    enabled: !!member,
+    enabled: !!member && !!activeRestaurantId,
   })
 
   /** NEW-529: export this member's performance series in shared formats. */
@@ -213,6 +219,16 @@ export function PerformancePanel({ member }: { member: TeamMember | null }) {
               <Metric label="Wine attach" value={`${data.metrics!.wineAttachPct}%`} />
             </div>
             <Sparkline analytic={data.analytic!} />
+            {/* The dashed line and grey band are the TEAM benchmark, and it is
+                a window: performance.service.ts:139 computes the median and
+                quartiles over the most recent
+                TEAM_SERVER_WINDOWS.BENCHMARK_SERVICES logged services across
+                the whole restaurant, not over all of them. Drawn without that
+                sentence it reads as "the team", which it is not. */}
+            <div className="mt-1.5 text-[9px] text-gray-400">
+              Median and band over the restaurant&apos;s most recent services,{' '}
+              {LE}{TEAM_SERVER_WINDOWS.BENCHMARK_SERVICES} of them — not the whole history.
+            </div>
           </>
         )}
       </div>
