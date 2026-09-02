@@ -582,8 +582,15 @@ jobs:
       # to a database, where both sides correctly agree the column does not
       # exist.
       #
+      # GENERALISED 2026-09-02 (ADR 0068). The same defect then appeared on
+      # `calendar_events` -- `priority` and `tags`, neither a column, plus an
+      # omitted NOT NULL `source` -- across three write sites that had therefore
+      # never written a row. The guard now carries a table registry rather than
+      # a second copy of itself (CLAUDE.md 4), and calendar_events is registered
+      # with its INSERT paths enforced, because that is where its defect lives.
+      #
       # `if: !cancelled()` for the same reason as the steps above.
-      - name: Every key written to procurement_orders is a real column
+      - name: Every key written to a registered table is a real column of it
         if: ${{ !cancelled() }}
         run: ./scripts/check_orders_column_writes.py
 
