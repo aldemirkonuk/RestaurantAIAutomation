@@ -474,6 +474,24 @@ export class ReceivingService {
       delivered_at: new Date().toISOString(),
       received_by: input.userId,
     };
+    // ⚠️ THIS WRITE IS IN BOTTLES, AND IT IS THE ONLY ONE THAT IS.
+    //
+    // `markDelivered` and `updateOrder` write `quantity_received` in the
+    // ORDER's own unit — the DTO field is literally called
+    // `quantityReceivedInOrderUom` — and `verifyReceipt` reads it back as
+    // `stockedQtyInCountedUom`, where `computeMatch` multiplies it by the pack
+    // size a second time. MEASURED on a 5-case order of a twelve-pack counted
+    // at the door: stocked reads 720 bottles instead of 60, `ledgerDelta` is
+    // −660, and the verdict is "matched".
+    //
+    // Left as bottles rather than converted, because choosing between the two
+    // units has costs on both sides and this column is `integer`, so a
+    // bottles→cases conversion rounds a part-case delivery away. Filed in
+    // `.planning/v3.0-TECH-DEBT.md` for the founder rather than guessed at.
+    //
+    // Nothing here depends on the choice: the read at `alreadyBookedElsewhere`
+    // above only ever fires on the FIRST door receipt for an order, so this
+    // path never reads back its own write.
     if (stockBooked) orderUpdate.quantity_received = totals.receivedBottles;
 
     await this.db

@@ -2126,8 +2126,42 @@ export class ProcurementService {
       throw new NotFoundException(`Order ${orderId} not found`);
     }
 
-    // What markDelivered already pushed into the ledger; corrections are relative to it.
-    // Stated in the ORDER's unit, like `quantity` beside it.
+    // What was already pushed into the ledger; corrections are relative to it.
+    //
+    // ⚠️ ITS UNIT IS NOT AGREED, AND THIS LINE ASSUMES ONE. Read this before
+    // trusting any verdict this method produces on a door-counted order.
+    //
+    // Three of the four parties say `procurement_orders.quantity_received` is
+    // stated in the ORDER's own unit, beside `quantity`:
+    //
+    //   * `markDelivered` writes `quantityReceived ?? orderRow.quantity` (:1572)
+    //   * `updateOrder` writes it from `quantityReceivedInOrderUom` (:1098) —
+    //     the DTO field name is itself the claim
+    //   * this method writes back `acceptedQty + rejectedQty` in the COUNTED
+    //     unit as submitted, and says so (:2300)
+    //
+    // The fourth writes BOTTLES. `ReceivingService.recordDoorReceipt` sets
+    // `quantity_received = totals.receivedBottles` (receiving.service.ts:477),
+    // a sum of `counted_qty_bottles - rejected_qty_bottles` (ADR 0062, #228).
+    //
+    // So on a door-counted order this number is already in bottles, and the
+    // line below hands it to `computeMatch` as `stockedQtyInCountedUom`, where
+    // it is multiplied by the pack size a SECOND time. MEASURED on a 5-case
+    // order of a twelve-pack, door-counted at 5 cases, desk-verified at 5:
+    //
+    //   accepted 60 bottles, stocked 720 bottles, ledgerDelta -660,
+    //   verdict "matched"
+    //
+    // — a 660-bottle removal from live stock, under a verdict that says the
+    // delivery was fine. The `?? quantity` fallback carries the same
+    // assumption for an order nothing has booked at all.
+    //
+    // NOT REPAIRED HERE, because the repair is a choice between the two
+    // writers and it has consequences either way: bottles is the more precise
+    // unit and the one the ledger speaks, while the order's unit is what the
+    // column name, three writers and every client that renders it assume, and
+    // `quantity_received` is an `integer`, so converting bottles→cases rounds
+    // a part-case delivery away. Filed for the founder rather than guessed at.
     const stockedQty =
       (orderRow as any).quantity_received ?? (orderRow as any).quantity ?? 0;
     const orderedQty = (orderRow as any).quantity ?? 0;
