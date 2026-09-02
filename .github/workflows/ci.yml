@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Guard against loop vocabulary drift and a stale loop index
         run: python3 scripts/build_loop_index.py --check
@@ -57,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Ensure PyYAML
         run: python3 -m pip install --quiet pyyaml
@@ -89,7 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Guard against the two runtimes' guardrails diverging
         run: python3 scripts/sync_commitment_patterns.py --check
@@ -126,7 +126,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: No identity reaches a Sentry user scope
         run: ./scripts/check_sentry_pii_scope.py
@@ -167,7 +167,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Every voice emitter reaches assert_order_voice_allowed()
         run: python3 scripts/check_voice_gate_coverage.py
@@ -206,7 +206,7 @@ jobs:
     steps:
       - name: Checkout code
         # Full history: the scope step diffs this PR against its merge base.
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -282,7 +282,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -327,12 +327,51 @@ jobs:
   # Stdlib only, no install step. Exit 2 (cannot check) blocks like exit 1: this
   # fabrication reached 70 of 72 production rows under a green CI, which is
   # exactly what a vacuous pass buys.
+  # Six figures on the rebuilt /receiving were server-side windows rendered as
+  # totals -- the staff count (a 25-row page printed as "N out for delivery"
+  # while the gateway's exact `total` was destructured away), the lane counts
+  # and at-risk total behind .limit(100), the uncounted strip behind .limit(500)
+  # and every owner figure behind an unordered .limit(5000). There was not one
+  # `>=` on the page. Beside them, `dollarsAtRisk > 0 ? money : EM` printed a
+  # MEASURED $0 as an unknown next to a literal `0`, and `unverified: known ? ...
+  # : []` made a failed fetch read as "nothing uncounted".
+  #
+  # One rule wearing seven hats, which is what a command should hold. The guard
+  # does NOT trace a .limit() to a JSX node -- that is undecidable across two
+  # languages and an HTTP hop, and its header says so in full. It holds five
+  # checkable things instead; read that header before widening or narrowing it.
+  #
+  # Stdlib only, no install step. Exit 2 (cannot check) blocks like exit 1.
+  windowed-figures:
+    name: A windowed figure is a floor, an unknown is not a zero
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: The guard still fires on the shapes it exists to catch
+        run: python3 scripts/check_windowed_figures.py --self-test
+
+      - name: No window rendered as a total, no unknown rendered as a zero
+        run: python3 scripts/check_windowed_figures.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::[window drift] means a declared cap in SERVER_WINDOWS no longer matches the .limit() it cites. The page's floor prose now names a cap the server does not use -- update the register AND the sentences that quote it, in the same change."
+          echo "::notice::[unconsumed window] means a cap is declared but nothing reads it, or a renderer that knows about the register carries no floor marker. Deleting the >= while keeping the constant is the cheapest way to silently undo this."
+          echo "::notice::[zero as unknown] means a measured 0 renders as an em dash. ADR 0051 clause 1: a real zero and an absent figure must be distinguishable. Run the value through num() and format the null-or-number, do not gate on > 0."
+          echo "::notice::[empty as unknown] means a view-model field falls back to [] when its query did not answer. A failed fetch then renders as an empty list -- which is how the uncounted-delivery safety net went silent exactly when it was needed."
+          echo "::notice::[unknown lost] means a field whose job is to say 'the query did not answer' lost its | null. Widen it back deliberately or the page can only ever say 'empty', which is a measurement."
+          echo "::notice::[cardinality discarded] means a queryFn sends a limit but reads neither total nor hasMore. The exact count is in the payload; without it the page renders a page length dressed as a total."
+          echo "::notice::Exit 2 is CANNOT CHECK, not a skip: an anchor moved (the register, a cited gateway file, a guarded interface field). Fix the anchor, do not delete the step."
+
   analytics-cost-honesty:
     name: Analytics never invents a cost
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: The guard still fires on the shape it exists to catch
         run: python3 scripts/check_analytics_cost_honesty.py --self-test
@@ -351,12 +390,102 @@ jobs:
           echo "::notice::WHICH price should value inventory is OPEN-DECISIONS OD-100 and is the founder's call. This guard is about not answering it silently -- do not resolve OD-100 by editing resolveUnitCost in a bug-fix PR."
           echo "::notice::CANNOT CHECK (exit 2) means inventory-cost.ts is gone or gutted, nothing was scanned, or no cost basis label is derived any more. That is a move or a rename, not a pass; repoint the guard."
 
+  # ADR 0059: a machine proposal shown to a human is written BEFORE the human
+  # answers, and the answer is APPENDED, never substituted.
+  #
+  # Receiving is the only place in the product where a number is produced by a
+  # person touching an object. Four of its six machine-proposes/human-judges
+  # pairs destroyed the machine's half at the instant it became a label. The
+  # cleanest instance was two lines in documents.controller.ts:
+  #
+  #     // A person confirmed it, so confidence is not a model's estimate any more.
+  #     match_confidence: body?.orderLineId ? 1 : null,
+  #     match_method:     body?.orderLineId ? "manual" : null,
+  #
+  # The comment is CORRECT about live state and the write is still the defect:
+  # the proposal and the confirmation shared two columns, so confirming a
+  # pairing deleted the model's score at the one moment it could never be
+  # reconstructed. Nothing looks wrong in the diff and nothing looks wrong in
+  # the row -- the corpus is simply empty of every case the model got right.
+  #
+  # That is why this is a guard: the violating line is short, plausible,
+  # well-commented, and identical in form to the legitimate write six files
+  # away. A reviewer cannot reliably tell them apart; an allowlist can.
+  #
+  # Stdlib only, no install step. Exit 2 (cannot check) blocks like exit 1.
+  proposal-preservation:
+    name: A proposal is never overwritten by the answer
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: The guard still fires on the shape it exists to catch
+        run: python3 scripts/check_proposal_preservation.py --self-test
+
+      - name: No write outside a declared writer touches a proposal column
+        run: python3 scripts/check_proposal_preservation.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::PROPOSAL OVERWRITTEN means a database write outside the declared writer set assigns a protected column -- match_confidence, match_method, ties_out, tie_out_delta, computed_lines_total, or any proposed_* column."
+          echo "::notice::If the write is the HUMAN'S ANSWER, give the answer its own columns (confirmed_by / confirmed_at, or a proposed_* twin) and leave the machine's half alone. ADR 0059: append, never substitute."
+          echo "::notice::If the write really is a PROPOSAL -- a machine recording its own suggestion -- add the file to ALLOWLIST in scripts/check_proposal_preservation.py with the reason it is one. That edit is the mechanism: it is deliberate, reviewable, and a sentence someone has to be willing to write."
+          echo "::notice::Do NOT widen the allowlist to a directory to make this pass. 'This module may write it' is a much weaker claim than 'this function may', and the weaker claim is how the defect returns."
+          echo "::notice::CANNOT CHECK (exit 2) means the guard scanned nothing, found zero write sites at all, or a declared writer stopped writing the column it is declared for. That is a move or a rename, not a pass; repoint the guard rather than deleting the step."
+          echo "::notice::Context: production held 0 procurement_documents / 0 document_lines / 0 receipt_events when this rule was adopted on 2026-09-01. The corpus being empty is why the rule was free to adopt -- and why a regression is expensive: the proposal half cannot be back-filled from the confirmed half, by construction."
+
+  # ── A read that fails must not read as a read that found nothing ─────────
+  #
+  # `supabase-js` RESOLVES with `{ data, error }`; it never throws. So
+  # `const { data } = await client.from(t).select()` yields `[]` for BOTH a
+  # failed query and an empty table, `maybeSingle()` yields `null` for both "no
+  # row" and "query failed", and the try/catch wrapped around either is inert.
+  #
+  # Four auditors found ~29 consequential instances; the mechanical sweep found
+  # 215. What made them expensive is that several read as GOOD NEWS: a 409
+  # dedup guard that failed open and inserted the duplicate, a vendor search
+  # that silently re-ran a different query with every filter dropped, a peer
+  # median of 0 that put every restaurant above average, and an insight
+  # scheduler that no-opped the entire product for every tenant in silence.
+  #
+  # This is a RATCHET, not a wall. `scripts/read_error_baseline.json` records
+  # the pre-existing sites; a site outside it fails the build, and a baseline
+  # row the tree no longer contains ALSO fails it, so the number can only go
+  # down. See ADR 0067 for why the baseline was chosen over both "fix all 215
+  # now" and "warn only".
+  #
+  # Stdlib only, no install step. Exit 2 (cannot check) blocks like exit 1.
+  swallowed-read-errors:
+    name: A failed read is never reported as an empty one
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: The guard still fires on the shape it exists to catch
+        run: python3 scripts/check_read_errors_not_swallowed.py --self-test
+
+      - name: No new code discards a supabase read's error
+        run: python3 scripts/check_read_errors_not_swallowed.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::A new destructure binds \`data\` from an awaited supabase query and does not bind \`error\`. supabase-js resolves rather than throws, so the failure becomes an empty array or a null and nothing anywhere records that the read failed."
+          echo "::notice::Fix: bind the error, then either propagate it or return an explicit unavailable state. ADR 0051 -- an unknown value renders as an em dash, NEVER as 0. Turning a swallowed error into a displayed zero has not fixed anything."
+          echo "::notice::House idiom: \`logQueryFailure\` in apps/api-gateway/src/analytics/advanced-analytics.service.ts:150, and the allSettled variant in apps/api-gateway/src/analytics/insights/insight-generator.service.ts:305-315."
+          echo "::notice::If the destructure genuinely does not need its error, add its key to ALLOWLIST in scripts/check_read_errors_not_swallowed.py WITH the reason. Do NOT add it to read_error_baseline.json -- the baseline is a record of pre-existing debt and only ever shrinks."
+          echo "::notice::A 'baseline row no longer describes the tree' failure is the GOOD direction: a site was fixed or moved. Lower or delete the row, and update the denominator in .planning/03-scenarios/DELIVERY-AUDIT.md section 6."
+          echo "::notice::CANNOT CHECK (exit 2) means the guard scanned zero files, the baseline is missing or unparseable, or the detector matched zero sites while the baseline lists hundreds -- i.e. the pattern rotted. That is a failure, not a skip: a guard reporting its own absence as health is the fault this one exists to stop."
+
   decision-claims:
     name: Decision register matches reality
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Re-verify every executable claim
         run: ./scripts/check_decision_claims.sh
@@ -406,7 +535,7 @@ jobs:
           echo "::notice::If the fork was MERGED into another, the fix belongs in the register, never in the citing document: write '**Absorbs OD-43 (merged 2026-08-27)**' in the absorbing row. Dated audits are snapshots — do not edit them to make a guard pass, and do not exempt them."
           echo "::notice::RESOLVES TWO WAYS means an id both owns a row and is declared absorbed into another. Delete whichever half is stale; a reference to it currently resolves two ways."
           echo "::notice::UNGRADED means a task type records only call_level_v0 — 'the HTTP request returned 200'. Grade it, or add it to EXEMPT with the reason. On 2026-08-27 six of the gateway's seven task types were in that state."
-          echo "::notice::UNANCHORED means a bare OPEN-DECISIONS.md:N with no id beside it. ADR 0025 §6 requires both: write OD-88 (OPEN-DECISIONS.md:53)."
+          echo "::notice::UNANCHORED means a bare OPEN-DECISIONS.md:N with no id beside it. ADR 0025 §6 requires both: write OD-88 (OPEN-DECISIONS.md:54)."
           echo "::notice::Do NOT add a citation to PAIRING_DEBT. That list is a two-PR handoff for six page dossiers owned by a concurrent branch, and it only ever shrinks."
           echo "::notice::Exit 2 means the guard could not check what it claims to. That is a failure, not a skip."
 
@@ -445,10 +574,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Every relation the code queries is declared by supabase/migrations
         run: ./scripts/check_queried_tables_exist.py
+
+      # The column-level counterpart, added 2026-09-02 (ADR 0074). The guard
+      # above asks whether the TABLE a read names exists; this asks whether its
+      # COLUMNS do. A bad column in a select list or a filter is a 42703 that
+      # fails the WHOLE query -- exactly as fatal as a bad insert column, and
+      # invisible for the same reason: Supabase returns {data, error} rather
+      # than throwing, so a caller that destructures only `data` sees an empty
+      # result and reports health. check_order_capture_contract.py reads write
+      # payloads only and was green at exit 0 through the entire life of the
+      # defect that prompted this.
+      - name: Every column a read names is declared by supabase/migrations
+        run: ./scripts/check_read_columns_exist.py
+
+      - name: ...and that guard's own failure path fires
+        run: ./scripts/check_read_columns_exist.py --self-test
 
       - name: Schema lives in exactly one place
         run: ./scripts/check_migrations_single_home.py
@@ -483,12 +627,114 @@ jobs:
         if: ${{ !cancelled() }}
         run: ./scripts/check_order_capture_contract.py --self-test
 
+      # COLUMN granularity, which the relation-level guard above explicitly does
+      # not cover (its own docstring: "WHAT IT DOES NOT CATCH: 1. COLUMNS").
+      #
+      # verifyReceipt wrote `notes` to procurement_orders, which has never had a
+      # `notes` column. `?? undefined` meant the key only reached PostgREST when
+      # a manager actually typed a note -- i.e. only when documenting a
+      # discrepancy -- and by then the ledger correction and the vendor credit
+      # claim had already been written. PGRST204 then rejected the whole update,
+      # so status, match_status, accepted_quantity and invoice_* never landed and
+      # the retry failed identically. Nothing else in CI could see it: TypeScript
+      # cannot type a Record<string, any>, and schema-parity compares a database
+      # to a database, where both sides correctly agree the column does not
+      # exist.
+      #
+      # GENERALISED 2026-09-02 (ADR 0068). The same defect then appeared on
+      # `calendar_events` -- `priority` and `tags`, neither a column, plus an
+      # omitted NOT NULL `source` -- across three write sites that had therefore
+      # never written a row. The guard now carries a table registry rather than
+      # a second copy of itself (CLAUDE.md 4), and calendar_events is registered
+      # with its INSERT paths enforced, because that is where its defect lives.
+      #
+      # `if: !cancelled()` for the same reason as the steps above.
+      - name: Every key written to a registered table is a real column of it
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_orders_column_writes.py
+
+      - name: The column-write guard can actually fail
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_orders_column_writes.py --self-test
+
+      # procurement_orders.status is written from the ProcurementOrderStatus
+      # enum (UPPERCASE) and was read against the lowercase "delivered" at nine
+      # sites, so every vendor scorecard, lead-time statistic, spend total and
+      # goal series returned a structural zero that rendered as a measurement.
+      # 21 violations across 8 files when this guard landed. ADR 0058.
+      - name: Guard order status literals (the enum is the vocabulary)
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_order_status_literals.py
+
+      - name: The status guard can actually fail
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_order_status_literals.py --self-test
+
+      # merge_library_wines discovers the foreign keys it repoints from
+      # pg_constraint, which is right -- and both loops unnested `conkey`
+      # WITHOUT `confkey`, which threw away which column each component
+      # references. For a composite key that emits one UPDATE per COMPONENT.
+      # Measured on Postgres 17: a text component aborts the whole merge on
+      # `42883 operator does not exist: text = uuid`; a uuid component with all
+      # parts non-null is rejected 23503; a uuid component with another part
+      # NULL is written SILENTLY, because MATCH SIMPLE does not enforce a
+      # partially null key. Latent when found -- no composite FK to either merge
+      # target exists outside `inventory_lots`, which the loop excludes -- and
+      # invisible in review, which is why it gets a guard and not just a fix.
+      # ADR 0076. `if: !cancelled()` for the same reason as the steps above.
+      - name: A catalog-driven repoint names the referencing column
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_fk_repoint_by_referenced_column.py
+
+      - name: The repoint guard can actually fail
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_fk_repoint_by_referenced_column.py --self-test
+
       - name: Explain a failure
         if: failure()
         run: |
+          echo "::notice::[fk repoint] means SQL unnests pg_constraint.conkey without pairing it to confkey by ordinality. conkey lists the REFERENCING columns; confkey lists what they reference. Unnest one alone and a composite key yields one row per component, so a repoint loop rewrites columns that reference nothing."
+          echo "::notice::Fix it by joining unnest(conkey) and unnest(confkey) on matching ORDINALITY and keeping only the component whose referenced attribute is the key -- or just call public.fk_repoint_plan(), which does exactly that and also REPORTS every FK it cannot plan instead of skipping it."
+          echo "::notice::The four allowlisted migrations are applied and superseded; editing an applied migration is drift, not a fix. A new file carrying the shape is the failure this catches."
+          echo "::notice::'the live definition calls fk_repoint_plan 0 times' means a later CREATE OR REPLACE dropped the fix. That is the realistic regression, and the text scan alone cannot see it."
+          echo "::notice::Exit 2 is CANNOT CHECK, not a skip: the migrations directory, an allowlisted file, or the merge_library_wines anchor is gone. Fix the anchor, do not delete the step."
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::[order status] means code compared procurement_orders.status to a string literal that is not a ProcurementOrderStatus member. Do NOT just retype it in uppercase -- import a set from apps/api-gateway/src/procurement/order-status.ts. Which set is a real question: ORDER_SPEND_STATUSES excludes PARTIALLY_RECEIVED (its money columns describe the PO, not the short delivery), ORDER_ARRIVED_STATUSES includes it (the truck did come). ADR 0058."
+          echo "::notice::A mis-cased status filter matches NOTHING, so the figure reads 0 rather than erroring. On a .not(...in...) gate it inverts: nothing matches, so NOT IN matches EVERYTHING and the gate fails OPEN."
+          echo "::notice::Exit 2 from that guard is CANNOT CHECK, not a skip: the enum could not be parsed, or the chain extractor found no procurement_orders queries. Fix the anchor, do not delete the step."
+
+      # A quantity that crosses the wire with no declared unit.
+      #
+      # `DoorReceiptDto.rejectedQty` stated its unit nowhere — the door sent it
+      # in BOXES beside `countedQty` + `countedUom`, and the gateway converted
+      # only `countedQty` before computing `countedBottles - rejectedQty`. Three
+      # refused boxes at pack 12 booked 33 bottles of LIVE STOCK for wine turned
+      # away at the door. It survived review because the only test covering the
+      # path used `countedUom: "bottle"`, where the conversion is the identity —
+      # the test did not fail because it COULD not fail.
+      - name: Every quantity crossing the wire declares its unit
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_quantity_units.py
+
+      - name: The unit guard can actually fail
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_quantity_units.py --self-test
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::[column write] means the gateway sends procurement_orders a key that is not one of its columns. PostgREST answers PGRST204 and rejects the ENTIRE update, including every other column in the same payload."
+          echo "::notice::Write it to the column that exists, or add a migration. Do NOT add it to KNOWN_BAD -- that list is shrink-only and records what was already broken when the guard landed."
+          echo "::notice::'blind spot grew' means a payload the guard could not read. Build it as an object literal or a local const; raising DYNAMIC_CEILING silently is how a guard stops covering its own input."
           echo "::notice::[order line capture] means createOrder can produce an order with no procurement_order_items row. matchDocumentLines returns early when an order has no lines, so the whole invoice matching engine goes dark and nothing fails visibly."
           echo "::notice::[unit defaults] means a unit fallback landed on case/pack/split_case. Those MULTIPLY: an absent or misspelt unit books quantity x pack size. ADR 0011 decided this class -- refuse, do not guess."
           echo "::notice::[price_history writer] means the price series has no writer again. The table is correctly keyed and indexed; with no writer it stays empty forever."
+          echo "::notice::'does not say what unit it is in' means a *Qty*/*Quantity* DTO field crossed the wire with no unit in its name and no same-prefix unit sibling. Put the unit in the NAME (xQtyBottles, or xQtyInCountedUom when it must match another field). A comment is not a declaration -- JSON does not carry comments."
+          echo "::notice::'exempted as a DEPRECATED ALIAS, but the declared field it aliases is gone' means the properly-named field was deleted and only the unitless alias remains. That is the original defect back under its own name, not an alias."
+          echo "::notice::The unit guard does NOT verify that a declared unit is the CORRECT one -- only a test at a real pack size does that. Never let it stand in for one."
           echo "::notice::Exit 2 from that guard is CANNOT CHECK, not a skip: a file it reads is missing or a method it anchors on was renamed. Fix the anchor, do not delete the step."
           echo "::notice::RLS NEVER ENABLED means a migration creates a public table that no migration ever puts RLS on. Add it in the CREATING migration -- unless that migration has already shipped to production, in which case a follow-up is the only fix that reaches both production and a fresh build."
           echo "::notice::anon/authenticated STILL GRANTED means a table is client-reachable over PostgREST. The OD-72 default-privileges ratchet covers tables created after 20260825210000; an explicit GRANT after that undoes it."
@@ -518,13 +764,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
@@ -549,13 +795,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
@@ -578,8 +824,63 @@ jobs:
       - name: Guard against direct stock_live/shadow_stock writes
         run: ./scripts/check_no_direct_stock_writes.sh
 
+      # ADR 0078. `apply_stock_movement` used to infer cost provenance from the
+      # mere presence of a price, so any caller passing a number without saying
+      # what kind of number it was got 'invoice' free — and markDelivered
+      # passed the purchase order's own quote. The RPC now raises; this is the
+      # static arm that catches it at review time instead of at runtime.
+      #
+      # --self-test first, and it is not ceremony: it proves the guard reaches
+      # this repo's real call sites, which is precisely what
+      # check_no_direct_stock_writes.sh could not do while it was passing an
+      # invalid ripgrep type and printing PASS over zero examined lines.
+      # `if: !cancelled()` so it reports even when a step above has failed.
+      - name: Provenance guard proves it can see the tree
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_lot_cost_provenance.py --self-test
+
+      - name: A price crossing into a lot states its provenance
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_lot_cost_provenance.py
+
       - name: Guard against direct beverages.type_attributes access
         run: ./scripts/check_no_direct_type_attributes_access.sh
+
+  # ADR 0078. A count that AGREED with the books used to write nothing at all:
+  # set_stock_absolute returns NULL on a zero delta and inventory_transactions
+  # CHECKs quantity_change <> 0, so the ledger could only hold counts that
+  # disagreed and every variance rate over it was 1.0 BY CONSTRUCTION — a
+  # property of the schema that reads exactly like a measurement of the
+  # restaurant. reconcileInventory went further and answered a manager who had
+  # counted correctly with HTTP 400.
+  #
+  # Its own job rather than a step in lint-typescript, because it also reads the
+  # migration corpus and must run when only SQL changed.
+  #
+  # Stdlib only, no install step. Exit 2 (cannot check) blocks too: the guard
+  # this one replaces printed PASS having examined zero lines, which is what a
+  # vacuous pass looks like from the outside.
+  a-count-is-recorded:
+    name: A count is recorded whether or not it changed anything
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: No count is committed through a write that vanishes on a zero delta
+        run: python3 scripts/check_a_count_is_recorded.py
+
+      - name: The guard reads the real tree and still fires on the real fault
+        run: python3 scripts/check_a_count_is_recorded.py --self-test
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::ARM A means a count path calls set_stock_absolute or apply_stock_movement with transaction_type=reconciliation. Those writes VANISH when the delta is zero, so a count that agreed leaves no trace and the variance rate over the resulting rows is 1.0 by construction. Call record_stock_count instead — it records the count first and moves stock only as a consequence."
+          echo "::notice::ARM B means the INSERT into stock_counts sits at or below the delta branch inside record_stock_count. Below the branch it fires only when the count disagreed, which is the pre-ADR 0078 state exactly. Move it above."
+          echo "::notice::ARM C means stock_counts grew a CHECK forbidding a zero variance — the literal shape of inventory_transactions' CHECK (quantity_change <> 0), which is half of how this fault was built the first time."
+          echo "::notice::CANNOT CHECK (exit 2) means the corpus was empty or zero record_stock_count call sites were found. That is a move, a rename, or a broken scan — never a pass. A guard with nothing to look at gives the same answer as one that looked and found health."
+          echo "::notice::A PASS here is STATIC ONLY. It proves the shipped code has the shape ADR 0078 claims; it cannot prove a row reached Postgres. Runtime coverage is apps/api-gateway/src/inventory/stock-count-is-a-record.spec.ts and the two service specs, and those are mocked."
 
   # Lint Python code
   lint-python:
@@ -587,7 +888,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -618,13 +919,13 @@ jobs:
     needs: [lint-typescript, lint-python]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
@@ -651,13 +952,13 @@ jobs:
     needs: [lint-typescript]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
@@ -677,13 +978,13 @@ jobs:
     needs: [build]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
@@ -704,7 +1005,7 @@ jobs:
     needs: [lint-python]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -726,7 +1027,7 @@ jobs:
           pytest tests/ -v --cov=. --cov-report=xml
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           file: ./services/agent-orchestrator/coverage.xml
           flags: python
@@ -746,7 +1047,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -768,7 +1069,7 @@ jobs:
       security-events: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
@@ -822,6 +1123,51 @@ jobs:
   # are listed now, and the first step below asserts the list stays complete:
   # three separate commits added a job and none updated this list, so a
   # hand-maintained list is exactly what needs a check, not a promise.
+  # ADR 00XX: a rebuilt surface never installs data a tenant did not create.
+  #
+  # `useStorageLocations.ts` shipped four invented cellar zones and used them
+  # three ways at once -- as `placeholderData`, as the queryFn's return value on
+  # an empty server response, and as the `??` fallback on error. Because the
+  # queryFn RETURNED them, a companion effect could not tell a fallback from a
+  # measurement and POSTed all four into the tenant's own `storage_locations`
+  # table. Production held 87 rows across 7 tenants on 2026-09-02; 84 of them
+  # carried one of those four names, across 6 tenants, re-seeded since 2026-05-20.
+  #
+  # The guard holds four checkable shapes (a module-level table of rows, any
+  # placeholderData that is not keepPreviousData, a `CONST.map(... .post ...)`
+  # write loop, and the fixed hook keeping its nullable capacity and its
+  # `locationsUnavailable` flag). It does NOT trace a rendered figure back to a
+  # measurement -- read its header for the full boundary.
+  #
+  # The --self-test asserts against the REAL repository that every scan root
+  # resolved to files and that the rules fire on a seed injected into a real
+  # file. That is deliberate: check_no_direct_stock_writes.sh calls
+  # `rg --type tsx`, which is not a ripgrep type, so rg exits 2, the error is
+  # swallowed, and it has printed PASS over zero lines for its entire life.
+  #
+  # Stdlib only, no install step. Exit 2 (cannot check) blocks like exit 1.
+  no-seeded-defaults:
+    name: A rebuilt surface installs nothing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: The guard can see the tree, and fires on the shapes it exists to catch
+        run: python3 scripts/check_no_seeded_defaults.py --self-test
+
+      - name: No seeded, defaulted or placeholder data on a rebuilt surface
+        run: python3 scripts/check_no_seeded_defaults.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::FABRICATED ROW SET means a module-level array of id-bearing objects carrying domain fields (capacity, temperature, ...) sits in a rebuilt surface. Rows come from the server; delete the literal and render the empty state. A two-field {id,label} vocabulary is NOT this and does not fire."
+          echo "::notice::PLACEHOLDER means a placeholderData other than keepPreviousData. A placeholder enters the tree shaped exactly like a measurement, so nothing downstream can tell them apart -- including placeholderData: [], which makes 'still loading' and 'measured, none' identical. Use the query's pending state."
+          echo "::notice::A LITERAL WRITTEN INTO A TENANT DATABASE means CONST.map(x => api.post(...)). 84 rows across 6 production tenants came from exactly that loop; there is no version of it that is correct."
+          echo "::notice::THE HOOK CAN NO LONGER SAY UNKNOWN means useStorageLocations lost its nullable capacity or its locationsUnavailable flag, or names one of the four invented zones in code. A capacity nobody entered is unknown, not 100 -- it is the denominator of the cellar map's fill bar."
+          echo "::notice::Exit 2 is CANNOT CHECK, not a skip: a scan root moved, a root holds no source file, the pinned hook is gone, or a file would not parse. Repoint the anchor; do not delete the step."
+
   ci-complete:
     name: CI Complete
     runs-on: ubuntu-latest
@@ -856,10 +1202,20 @@ jobs:
         # enforce: a guard nobody depends on can fail while this prints success.
         adr-numbers-unique,
         analytics-cost-honesty,
+        proposal-preservation,
+        # Added 2026-09-02 with the job itself (ADR 0067).
+        swallowed-read-errors,
+        windowed-figures,
+        # Added 2026-09-02 with the job itself, per the rule this list enforces.
+        no-seeded-defaults,
+
+        # Added 2026-09-02 with the job itself (ADR 0078), per the rule this
+        # list exists to enforce.
+        a-count-is-recorded,
       ]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # The gate polices its own coverage. `toJSON(needs)` removed one
       # hand-maintained list; `needs:` itself is still one, and it had already

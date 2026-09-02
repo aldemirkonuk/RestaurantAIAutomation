@@ -7,8 +7,10 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   Min,
+  ValidateNested,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { ORDER_UNIT_TYPES } from "../order-units";
@@ -165,7 +167,30 @@ export class UpdateOrderDto {
   @IsOptional()
   trackingNumber?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description:
+      "Units received, IN THE ORDER'S OWN unit_type — the same unit `quantity` is stated in, " +
+      "which is the unit this value is stored beside in procurement_orders. The server reads " +
+      "that unit from the order record; a client may not restate it, because a client-asserted " +
+      "unit that disagreed with the order's would be a second way to book a wrong quantity.",
+  })
+  @IsInt()
+  @IsOptional()
+  quantityReceivedInOrderUom?: number;
+
+  /**
+   * @deprecated Unitless. Use `quantityReceivedInOrderUom`.
+   *
+   * DEPRECATED ALIAS. Kept so a deployed client that still holds the old name
+   * keeps working; see `quantity-aliases.ts` for why aliasing rather than a hard
+   * rename, and for the condition under which this may be deleted. Sending both
+   * names with DIFFERENT values is a 400, not a silent choice.
+   */
+  @ApiPropertyOptional({
+    deprecated: true,
+    description:
+      "DEPRECATED ALIAS of quantityReceivedInOrderUom. Named no unit. Sending both with different values is refused.",
+  })
   @IsInt()
   @IsOptional()
   quantityReceived?: number;
@@ -194,7 +219,11 @@ export class UpdateOrderDto {
 /** One signed stock correction applied while verifying a receipt. */
 export class ReceiptAdjustmentDto {
   @ApiProperty()
-  @IsString()
+  // @IsUUID, not @IsString: this id is handed straight to apply_stock_movement,
+  // which derives restaurant_id from the target row rather than from the caller.
+  // Shape is the cheap half of that fix; the ownership check in
+  // ProcurementService.applyReceiptAdjustment is the half that actually closes it.
+  @IsUUID()
   inventoryId: string;
 
   @ApiProperty({
@@ -220,18 +249,111 @@ export class VerifyReceiptDto {
   @ApiPropertyOptional({ type: [ReceiptAdjustmentDto] })
   @IsArray()
   @IsOptional()
+  // @ValidateNested({ each: true }) is what makes @Type() mean anything.
+  // Without it, class-validator constructs ReceiptAdjustmentDto instances and
+  // then validates NONE of their decorators — `adjustments` was checked only for
+  // being an array, and every field inside it was accepted verbatim.
+  @ValidateNested({ each: true })
   @Type(() => ReceiptAdjustmentDto)
   adjustments?: ReceiptAdjustmentDto[];
 
+  // -------------------------------------------------------------------------
+  // THE UNIT DECLARATIONS.
+  //
+  // Three documents can each count in their own unit, and until this shipped
+  // none of them said which. An order placed in cases of 12 and invoiced in
+  // bottles produced a CONFIDENT WRONG VERDICT — 2 vs 24 reads as a 22-unit
+  // overage — which was then stamped into the landed cost and the price series,
+  // where nothing downstream could identify it as doubtful.
+  //
+  // Each declaration shares the prefix of the quantities it governs, and every
+  // quantity below names the declaration it belongs to in its OWN name. That is
+  // deliberate and it is the lesson of a real bug: `countedQty`/`countedUom`
+  // sat beside a `rejectedQty` that named no unit, the server converted only the
+  // first, and a delivery refused at the door booked 33 bottles of live stock.
+  // "The DTO has a unit field somewhere" is not enough; the field has to say
+  // which one is ITS unit.
+  //
+  // Absent means "the unit the order was placed in", which is what every current
+  // client already means — each seeds its count from the order's own quantity.
+  // An UNRECOGNISED unit is refused rather than assumed, and a case/pack/
+  // split_case with no pack size anywhere is refused too: guessing 12 multiplies
+  // the delivery twelvefold and guessing 1 divides it by twelve, and neither is
+  // knowledge.
+  // -------------------------------------------------------------------------
+
   @ApiPropertyOptional({
-    description: "Quantity the vendor invoice bills for.",
+    description:
+      "Unit the INVOICE bills in — governs invoiceQuantityInInvoiceUom and its prefilled twin. " +
+      "Absent means the unit the order was placed in. An unrecognised unit is refused rather than assumed.",
+    enum: ORDER_UNIT_TYPES as unknown as string[],
+  })
+  @IsString()
+  @IsOptional()
+  invoiceUom?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Bottles in one invoiced unit. Required when invoiceUom is case, pack or split_case and the order is not in that same unit.",
+    minimum: 1,
+  })
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  invoiceBottlesPerUnit?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Unit the PACKING SLIP counts in — governs shippedQuantityInShippedUom and its prefilled twin. " +
+      "Absent means the unit the order was placed in.",
+    enum: ORDER_UNIT_TYPES as unknown as string[],
+  })
+  @IsString()
+  @IsOptional()
+  shippedUom?: string;
+
+  @ApiPropertyOptional({
+    description: "Bottles in one shipped unit. Required when shippedUom multiplies.",
+    minimum: 1,
+  })
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  shippedBottlesPerUnit?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Unit the PHYSICAL COUNT was taken in — governs acceptedQuantityInCountedUom, " +
+      "rejectedQuantityInCountedUom and freeGoodsQuantityInCountedUom. Absent means the unit the " +
+      "order was placed in, which is what the receiving screens already show.",
+    enum: ORDER_UNIT_TYPES as unknown as string[],
+  })
+  @IsString()
+  @IsOptional()
+  countedUom?: string;
+
+  @ApiPropertyOptional({
+    description: "Bottles in one counted unit. Required when countedUom multiplies.",
+    minimum: 1,
+  })
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  countedBottlesPerUnit?: number;
+
+  @ApiPropertyOptional({
+    description: "Quantity the vendor invoice bills for, in invoiceUom.",
   })
   @IsInt()
   @Min(0)
   @IsOptional()
-  invoiceQuantity?: number;
+  invoiceQuantityInInvoiceUom?: number;
 
-  @ApiPropertyOptional({ description: "Unit price the vendor invoice bills." })
+  @ApiPropertyOptional({
+    description:
+      "Unit price the vendor invoice bills, PER BOTTLE. It is compared directly against the agreed " +
+      "price, which the order line derives per bottle (line_total = final_unit_price * total_bottles).",
+  })
   @IsNumber()
   @Min(0)
   @IsOptional()
@@ -239,21 +361,21 @@ export class VerifyReceiptDto {
 
   @ApiPropertyOptional({
     description:
-      "Quantity the vendor's own packing slip / ASN says shipped. When this disagrees with the invoice, the overbill is proven by the vendor's own paperwork and the claim needs no argument.",
+      "Quantity the vendor's own packing slip / ASN says shipped, in shippedUom. When this disagrees with the invoice, the overbill is proven by the vendor's own paperwork and the claim needs no argument.",
   })
   @IsInt()
   @Min(0)
   @IsOptional()
-  shippedQuantity?: number;
+  shippedQuantityInShippedUom?: number;
 
   @ApiPropertyOptional({
     description:
-      "Units supplied free under an agreed deal (11 for the price of 10). Netted out of quantity comparisons so a negotiated bonus stops reading as an overage.",
+      "Units supplied free under an agreed deal (11 for the price of 10), in countedUom. Netted out of quantity comparisons so a negotiated bonus stops reading as an overage.",
   })
   @IsInt()
   @Min(0)
   @IsOptional()
-  freeGoodsQuantity?: number;
+  freeGoodsQuantityInCountedUom?: number;
 
   @ApiPropertyOptional({
     description:
@@ -264,19 +386,23 @@ export class VerifyReceiptDto {
   @IsOptional()
   allocatedCharges?: number;
 
-  @ApiPropertyOptional({ description: "Units accepted into stock." })
-  @IsInt()
-  @Min(0)
-  @IsOptional()
-  acceptedQuantity?: number;
-
   @ApiPropertyOptional({
-    description: "Units that arrived but were refused (damaged).",
+    description: "Units accepted into stock, in countedUom.",
   })
   @IsInt()
   @Min(0)
   @IsOptional()
-  rejectedQuantity?: number;
+  acceptedQuantityInCountedUom?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Units that arrived but were refused (damaged), in countedUom. Same unit as acceptedQuantityInCountedUom — " +
+      "converting only one of the pair is precisely how a delivery refused at the door once booked 33 bottles of live stock.",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  rejectedQuantityInCountedUom?: number;
 
   @ApiPropertyOptional()
   @IsString()
@@ -295,6 +421,189 @@ export class VerifyReceiptDto {
   @IsString()
   @IsOptional()
   note?: string;
+
+  // =========================================================================
+  // ADR 0059 — what the machine PROPOSED, before the human answered.
+  //
+  // The fields above are the manager's answer and remain the record. These are
+  // the extraction's pre-fill, sent alongside so a correction is distinguishable
+  // from a confirmation. A manager fixing a misread 22 to 24 used to leave the
+  // submitted 24 indistinguishable from a 24 the model read correctly — which
+  // makes every extraction correction invisible in the only corpus that could
+  // grade the extractor.
+  //
+  // ABSENT means the form was not pre-filled from a document, so the final value
+  // is not a correction of anything. It never means "proposed zero".
+  //
+  // TODO(ADR 0059, L4) — ACCEPTED HERE, NOT YET PERSISTED. DELIBERATE.
+  // `ReceivingWorkspace.tsx` sends all four, this DTO validates all four, and
+  // the columns exist (20260901200000_receiving_preserves_the_pair.sql adds
+  // procurement_orders.prefilled_invoice_quantity and its three siblings). The
+  // write belongs in procurement.service.ts `verifyReceipt`, in the same
+  // `Object.assign(update, {...})` that already writes invoice_quantity — four
+  // lines:
+  //
+  //     prefilled_invoice_quantity:    body.prefilledInvoiceQuantity ?? null,
+  //     prefilled_invoice_unit_price:  body.prefilledInvoiceUnitPrice ?? null,
+  //     prefilled_shipped_quantity:    body.prefilledShippedQuantity ?? null,
+  //     prefilled_free_goods_quantity: body.prefilledFreeGoodsQuantity ?? null,
+  //
+  // That file was owned by a concurrent session when this landed and could not
+  // be edited without a collision. UNTIL IT IS DONE, THE MANAGER'S CORRECTION IS
+  // STILL LOST — it now reaches the gateway and is dropped there rather than in
+  // the browser, which is a shorter fall, not a fix. The skipped test tagged
+  // "ADR 0059 L4" in proposal-preservation-deferred.spec.ts fails until the write
+  // exists; un-skip it with the change.
+  // =========================================================================
+
+  @ApiPropertyOptional({
+    description:
+      "What the extraction proposed for invoiceQuantityInInvoiceUom before the human answered (ADR 0059), " +
+      "in the same invoiceUom as its twin. Absent = the form was not pre-filled.",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  prefilledInvoiceQuantityInInvoiceUom?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "As prefilledInvoiceQuantityInInvoiceUom, for the unit price. Per bottle, like its twin.",
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  prefilledInvoiceUnitPrice?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "As prefilledInvoiceQuantityInInvoiceUom, for the shipped quantity, in shippedUom.",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  prefilledShippedQuantityInShippedUom?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "As prefilledInvoiceQuantityInInvoiceUom, for free goods, in countedUom.",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  prefilledFreeGoodsQuantityInCountedUom?: number;
+
+  // =========================================================================
+  // DEPRECATED ALIASES — the old unitless names.
+  //
+  // WHY ALIASES AND NOT A HARD RENAME. `apps/mobile/app/(tabs)/cellar/receive/
+  // [orderId].tsx` runs on a phone that updates on the App Store's schedule and
+  // queues receipts in an offline outbox, so a payload composed before this
+  // change can still arrive weeks later. A bare rename would answer those with
+  // "acceptedQuantity is not a known field" and stop receiving working on every
+  // phone that had not updated — a worse outage than the bug being fixed.
+  //
+  // AN ALIAS MAY NOT LIE. Supplying an alias AND its canonical twin with
+  // DIFFERENT values is refused with a 400 naming both fields and both values
+  // (`quantity-aliases.ts#readAliasedQuantity`). A server that quietly picked
+  // one would be committing the same defect these renames exist to end: a number
+  // chosen by a rule nobody can see. Equal values are accepted — a client
+  // mid-migration may legitimately send both.
+  //
+  // REMOVAL CONDITION, so a future session knows what to wait for rather than
+  // reading "someday": delete these once no DEPLOYED client can still hold the
+  // old name — when the oldest mobile build in the wild sends the canonical
+  // names AND no queued offline receipt predating that build can still be
+  // replayed. In-repo callers are not the gate; they moved in this change.
+  // =========================================================================
+
+  /** @deprecated Named no unit. Use `invoiceQuantityInInvoiceUom` with `invoiceUom`. */
+  @ApiPropertyOptional({
+    deprecated: true,
+    description:
+      "DEPRECATED ALIAS of invoiceQuantityInInvoiceUom. Sending both with different values is refused.",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  invoiceQuantity?: number;
+
+  /** @deprecated Named no unit. Use `shippedQuantityInShippedUom` with `shippedUom`. */
+  @ApiPropertyOptional({
+    deprecated: true,
+    description:
+      "DEPRECATED ALIAS of shippedQuantityInShippedUom. Sending both with different values is refused.",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  shippedQuantity?: number;
+
+  /** @deprecated Named no unit. Use `freeGoodsQuantityInCountedUom` with `countedUom`. */
+  @ApiPropertyOptional({
+    deprecated: true,
+    description:
+      "DEPRECATED ALIAS of freeGoodsQuantityInCountedUom. Sending both with different values is refused.",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  freeGoodsQuantity?: number;
+
+  /** @deprecated Named no unit. Use `acceptedQuantityInCountedUom` with `countedUom`. */
+  @ApiPropertyOptional({
+    deprecated: true,
+    description:
+      "DEPRECATED ALIAS of acceptedQuantityInCountedUom. Sending both with different values is refused.",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  acceptedQuantity?: number;
+
+  /** @deprecated Named no unit. Use `rejectedQuantityInCountedUom` with `countedUom`. */
+  @ApiPropertyOptional({
+    deprecated: true,
+    description:
+      "DEPRECATED ALIAS of rejectedQuantityInCountedUom. Sending both with different values is refused.",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  rejectedQuantity?: number;
+
+  /** @deprecated Named no unit. Use `prefilledInvoiceQuantityInInvoiceUom`. */
+  @ApiPropertyOptional({
+    deprecated: true,
+    description:
+      "DEPRECATED ALIAS of prefilledInvoiceQuantityInInvoiceUom. Sending both with different values is refused.",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  prefilledInvoiceQuantity?: number;
+
+  /** @deprecated Named no unit. Use `prefilledShippedQuantityInShippedUom`. */
+  @ApiPropertyOptional({
+    deprecated: true,
+    description:
+      "DEPRECATED ALIAS of prefilledShippedQuantityInShippedUom. Sending both with different values is refused.",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  prefilledShippedQuantity?: number;
+
+  /** @deprecated Named no unit. Use `prefilledFreeGoodsQuantityInCountedUom`. */
+  @ApiPropertyOptional({
+    deprecated: true,
+    description:
+      "DEPRECATED ALIAS of prefilledFreeGoodsQuantityInCountedUom. Sending both with different values is refused.",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  prefilledFreeGoodsQuantity?: number;
 }
 
 export class OrderFilterDto {

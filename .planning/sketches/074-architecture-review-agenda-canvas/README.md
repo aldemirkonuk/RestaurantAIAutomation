@@ -75,7 +75,7 @@ Listed in the canvas footer as well:
 - `apps/api-gateway/src/common/tenant/tenant.guard.ts:34-58` — AR-5's moved enforcement;
   no endpoint count asserted, OD-19 owns the recount
 - `find .planning -name "*-questions.md"` — **100**, which is AR-0 closed (OD-41)
-- `OPEN-DECISIONS.md:26` (OD-03) and `:40` (OD-52's reframe); ADRs 0035, 0036, 0039
+- `OPEN-DECISIONS.md:27` (OD-03) and `:40` (OD-52's reframe); ADRs 0035, 0036, 0039
 
 ## View
 

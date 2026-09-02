@@ -412,11 +412,372 @@ def check_actor_fk_targets(root: Path) -> list[str]:
     return bad
 
 
+# ---------------------------------------------------------------------------
+# Contract E — a write may not name a column the schema does not have.
+# ---------------------------------------------------------------------------
+# WHY THIS IS THE FIFTH CHECK AND NOT A SIXTH GUARD
+#
+# `scripts/check_queried_tables_exist.py` compares the RELATIONS the code
+# queries against the ones migrations declare, and its own docstring names the
+# hole: "WHAT IT DOES NOT CATCH -- 1. COLUMNS". Two defects fixed on 2026-09-01
+# fell straight through it, because both tables exist and only their shapes were
+# wrong:
+#
+#   providers.service.ts::createRetroactiveOrder wrote `wine_name` and
+#   `actual_delivery` to `procurement_orders`, which has neither, and omitted
+#   five NOT NULL columns. Every call had failed since the endpoint was written.
+#
+#   recurring-orders.service.ts wrote `inventory_id`, `provider_id`,
+#   `wine_name`, `target_price`, `created_by`, `notes` and `execution_count` to
+#   `recurring_orders`, which had none of them, and omitted `unit_type`, which
+#   is NOT NULL. Production held 0 rows — the symptom, not a coincidence.
+#
+# PostgREST answers 42703/PGRST204 and the caller usually logs a warning and
+# carries on, so the feature is dead and CI is green. Nothing in the tree could
+# say so, which is why this is a guard and not a comment.
+#
+# WHAT IT DOES, PRECISELY
+#
+#   C = column names written by `.from("<literal>").insert|update|upsert({...})`
+#       under apps/api-gateway/src
+#   L = columns supabase/migrations/ declares for that table, replayed in
+#       version order (CREATE TABLE, ADD COLUMN, DROP COLUMN, RENAME COLUMN)
+#   fail on C - L
+#
+# NOT COVERED, and each is measured rather than assumed:
+#   * a payload built as a variable and passed by name (`.insert(payload)`).
+#     Counted as unresolved, ceilinged below.
+#   * a spread (`{...updates}`) or a computed key (`{[col]: v}`). The keys are
+#     genuinely unknowable from the file; counted, never silently dropped.
+#   * writes from apps/web, apps/mobile and the Python orchestrator. The two
+#     defects were both in the gateway and widening the scope means importing
+#     three more debt lists; the root list is one line to extend when someone
+#     wants that.
+#   * NOT NULL columns a write OMITS. Both defects did that too, and it is the
+#     harder half — an omission is only wrong if the column has no default, and
+#     that needs the full column metadata rather than the name set. Left open
+#     deliberately; the ADR records it.
+WRITTEN_COLUMN_ROOTS = ["apps/api-gateway/src"]
+
+# Sanity floor for the column parse. The production baseline alone declares
+# ~170 tables; if this ever returns a handful the SQL patterns have rotted and
+# every column in the codebase would look missing.
+MIN_TABLES_WITH_COLUMNS = 150
+
+# The measured size of the blind spot: write sites whose keys cannot be read
+# from the file (a named payload variable, a spread, a computed key).
+#
+# MEASURED 2026-09-01: 13 of 254 sites (5.1%) on this tree, and 13 of 259 on the
+# pre-fix tree — the same thirteen, so this change neither opened nor closed any
+# of them. Not a budget, a measurement: the guard fails if it grows, so the hole
+# cannot widen without someone saying so. Lowering it is always fine.
+#
+# Eleven are a named payload variable or a `{...spread}` (including
+# `updateRecurringOrder`'s allow-list patch, which is deliberately built rather
+# than written inline). Two are computed keys — `menus.service.ts:591` does
+# `{ [column]: value }` where `column` is a union-typed parameter, and
+# `providers.service.ts:1202` the same. In every one the key set is genuinely
+# not in the file, and inventing one would report a wrong column name
+# confidently, which is the failure this whole guard exists to prevent.
+UNREADABLE_WRITE_CEILING = 13
+
+# KNOWN_BAD_COLUMNS — the shrink-only debt ratchet.
+#
+# NOT approved. These are writes already broken when this check landed, recorded
+# so the check can be green-on-arrival and therefore actually block the next one.
+# Every entry was verified against production on 2026-09-01 by querying
+# information_schema, not inferred from the migrations.
+#
+# Enforced in both directions: an entry that is now valid is a FAILURE (delete
+# it), and an entry nothing writes any more is a FAILURE (delete it). The only
+# way to touch this list is to make it shorter.
+KNOWN_BAD_COLUMNS: dict[str, str] = {
+    # procurement_conversations.{sender_email,recipient_email,subject,
+    # message_body} were here. FIXED 2026-09-02, ADR 0065:
+    # communications.service.ts storeOutboundConversation (the entries called it
+    # logConversation; that method name has never existed in the tree) now
+    # writes `message_text` and folds the three email-metadata fields into the
+    # jsonb `email_headers` under the shape the live inbound path already uses.
+    # Deleted per the shrink-only rule — leaving them would be a hole this guard
+    # ignores next time.
+}
+
+CREATE_TABLE_HEAD_RE = re.compile(
+    r"\bCREATE\s+(?:UNLOGGED\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:ONLY\s+)?"
+    r"(?:\"?public\"?\.)?\"?([a-zA-Z_][a-zA-Z0-9_]*)\"?\s*\(",
+    re.I,
+)
+ALTER_TABLE_RE = re.compile(
+    r"\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?:\"?public\"?\.)?"
+    r"\"?([a-zA-Z_][a-zA-Z0-9_]*)\"?([\s\S]*?);",
+    re.I,
+)
+ADD_COLUMN_RE = re.compile(
+    r"\bADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?\"?([a-zA-Z_][a-zA-Z0-9_]*)\"?", re.I
+)
+DROP_COLUMN_RE = re.compile(
+    r"\bDROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?\"?([a-zA-Z_][a-zA-Z0-9_]*)\"?", re.I
+)
+RENAME_COLUMN_RE = re.compile(
+    r"\bRENAME\s+COLUMN\s+\"?([a-zA-Z_][a-zA-Z0-9_]*)\"?\s+TO\s+"
+    r"\"?([a-zA-Z_][a-zA-Z0-9_]*)\"?",
+    re.I,
+)
+# Things inside a CREATE TABLE body that are constraints, not columns.
+NOT_A_COLUMN_RE = re.compile(
+    r"^(?:constraint|primary\s+key|unique|check|foreign\s+key|exclude|like)\b", re.I
+)
+
+# `.from("table")` ... `.insert({` — with NO other `.from(` and no `;` between
+# them. Without that the 600-character window pairs a `.from(A)` with the
+# `.insert(` of an unrelated later statement, which reported 97 phantom findings
+# on the first run of this check.
+WRITE_SITE_RE = re.compile(
+    r"""\.from\(\s*["']([a-z][a-z0-9_]*)["']\s*\)"""
+    r"""(?:(?!\.from\(|;)[\s\S]){0,600}?"""
+    r"""\.(?:insert|update|upsert)\(\s*\{"""
+)
+
+
+def _split_top_level(text: str) -> list[str]:
+    """Split on commas that are not inside brackets or string literals."""
+    parts: list[str] = []
+    seg: list[str] = []
+    depth = 0
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c in "\"'`":
+            q = c
+            seg.append(c)
+            i += 1
+            while i < n:
+                seg.append(text[i])
+                if text[i] == "\\":
+                    if i + 1 < n:
+                        seg.append(text[i + 1])
+                    i += 2
+                    continue
+                if text[i] == q:
+                    break
+                i += 1
+            i += 1
+            continue
+        if c in "{[(":
+            depth += 1
+        elif c in "}])":
+            depth -= 1
+        if c == "," and depth == 0:
+            parts.append("".join(seg))
+            seg = []
+            i += 1
+            continue
+        seg.append(c)
+        i += 1
+    parts.append("".join(seg))
+    return parts
+
+
+def _object_literal_span(src: str, brace: int) -> int:
+    """Index of the `}` closing the object literal that opens at src[brace]."""
+    depth = 0
+    i, n = brace, len(src)
+    while i < n:
+        c = src[i]
+        if c in "\"'`":
+            q = c
+            i += 1
+            while i < n:
+                if src[i] == "\\":
+                    i += 2
+                    continue
+                if src[i] == q:
+                    break
+                i += 1
+            i += 1
+            continue
+        if c in "{[(":
+            depth += 1
+        elif c in "}])":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
+PLAIN_KEY_RE = re.compile(r'^["\']?([A-Za-z_][A-Za-z0-9_]*)["\']?\s*:')
+SHORTHAND_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)$")
+
+
+def payload_keys(body: str) -> tuple[list[str], bool]:
+    """(top-level column names, contained_something_unreadable)."""
+    keys: list[str] = []
+    unreadable = False
+    for part in _split_top_level(body):
+        p = part.strip()
+        if not p:
+            continue
+        if p.startswith("..."):
+            unreadable = True  # a spread: keys come from elsewhere
+            continue
+        if p.startswith("["):
+            unreadable = True  # a computed key: `{ [column]: value }`
+            continue
+        m = PLAIN_KEY_RE.match(p)
+        if m:
+            keys.append(m.group(1))
+            continue
+        if SHORTHAND_RE.match(p):
+            keys.append(p)
+            continue
+        unreadable = True
+    return keys, unreadable
+
+
+def declared_columns(root: Path) -> dict[str, set[str]]:
+    """table -> column names, replaying supabase/migrations/ in version order."""
+    mig_dir = root / MIGRATIONS
+    if not mig_dir.is_dir():
+        raise CannotCheck(f"{MIGRATIONS} is not a directory under {root}")
+    files = sorted(mig_dir.glob("*.sql"))
+    if not files:
+        raise CannotCheck(f"{MIGRATIONS} contains no .sql files")
+
+    cols: dict[str, set[str]] = {}
+    for f in files:
+        text = re.sub(
+            r"/\*.*?\*/",
+            lambda m: "\n" * m.group(0).count("\n"),
+            f.read_text(encoding="utf-8", errors="replace"),
+            flags=re.S,
+        )
+        text = "\n".join(re.sub(r"--.*$", "", line) for line in text.split("\n"))
+
+        for m in CREATE_TABLE_HEAD_RE.finditer(text):
+            name = m.group(1).lower()
+            close = _object_literal_span(text, text.index("(", m.end() - 1))
+            if close < 0:
+                continue
+            body = text[text.index("(", m.end() - 1) + 1 : close]
+            bucket = cols.setdefault(name, set())
+            for part in _split_top_level(body):
+                p = part.strip()
+                if not p or NOT_A_COLUMN_RE.match(p):
+                    continue
+                cm = re.match(r'^"?([a-zA-Z_][a-zA-Z0-9_]*)"?\s', p)
+                if cm:
+                    bucket.add(cm.group(1).lower())
+
+        for m in ALTER_TABLE_RE.finditer(text):
+            name = m.group(1).lower()
+            rest = m.group(2)
+            bucket = cols.setdefault(name, set())
+            for a in ADD_COLUMN_RE.finditer(rest):
+                bucket.add(a.group(1).lower())
+            for a in DROP_COLUMN_RE.finditer(rest):
+                bucket.discard(a.group(1).lower())
+            for a in RENAME_COLUMN_RE.finditer(rest):
+                bucket.discard(a.group(1).lower())
+                bucket.add(a.group(2).lower())
+
+    populated = {t: c for t, c in cols.items() if c}
+    if len(populated) < MIN_TABLES_WITH_COLUMNS:
+        raise CannotCheck(
+            f"only {len(populated)} tables parsed out of {len(files)} migration "
+            f"file(s), below the {MIN_TABLES_WITH_COLUMNS} floor. The SQL patterns "
+            f"have rotted and every written column would look missing."
+        )
+    return populated
+
+
+def check_written_columns_exist(root: Path) -> list[str]:
+    cols = declared_columns(root)
+
+    bad: list[str] = []
+    seen_keys: set[str] = set()
+    unreadable = 0
+    sites = 0
+
+    for rel_root in WRITTEN_COLUMN_ROOTS:
+        for rel, raw in ts_sources(root, rel_root):
+            src = strip_comments(raw)
+            for m in WRITE_SITE_RE.finditer(src):
+                table = m.group(1).lower()
+                if table not in cols:
+                    # Relation-level absence is check_queried_tables_exist.py's
+                    # job and it has its own debt list. Not repeated here, or the
+                    # two guards would fight over the same ratchet.
+                    continue
+                sites += 1
+                brace = src.index("{", m.end() - 1)
+                close = _object_literal_span(src, brace)
+                if close < 0:
+                    unreadable += 1
+                    continue
+                keys, had_unreadable = payload_keys(src[brace + 1 : close])
+                if had_unreadable:
+                    unreadable += 1
+                line = src.count("\n", 0, m.start()) + 1
+                for k in keys:
+                    if k.lower() in cols[table]:
+                        continue
+                    key = f"{table}.{k.lower()}"
+                    seen_keys.add(key)
+                    if key in KNOWN_BAD_COLUMNS:
+                        continue
+                    bad.append(
+                        f"{rel}:{line} writes {table}.{k}, which no migration in "
+                        f"{MIGRATIONS} declares. PostgREST answers 42703/PGRST204 "
+                        f"and the write fails — silently, if the caller only logs. "
+                        f"Add the column in a migration, or write the column the "
+                        f"table actually has."
+                    )
+
+    if not sites:
+        raise CannotCheck(
+            f"no `.from(\"table\").insert({{...}})` sites found under "
+            f"{', '.join(WRITTEN_COLUMN_ROOTS)} — the extraction pattern has rotted, "
+            f"and a check that inspects nothing must never read as a pass"
+        )
+
+    if unreadable > UNREADABLE_WRITE_CEILING:
+        bad.append(
+            f"the unreadable-payload set grew from {UNREADABLE_WRITE_CEILING} to "
+            f"{unreadable} of {sites} write sites. These are writes whose column "
+            f"names cannot be read from the file (a named payload variable, a "
+            f"spread, a computed key), and this check is blind to every one of "
+            f"them. Prefer an inline object literal; if it genuinely cannot be "
+            f"one, raise UNREADABLE_WRITE_CEILING and say which site was added. "
+            f"Raising it silently is how a guard stops covering its input."
+        )
+
+    # Shrink-only, both directions.
+    for entry in sorted(KNOWN_BAD_COLUMNS):
+        table, _, column = entry.partition(".")
+        if table in cols and column in cols[table]:
+            bad.append(
+                f"KNOWN_BAD_COLUMNS lists {entry}, but {MIGRATIONS} now declares "
+                f"that column. Delete the entry — a fixed write left on the debt "
+                f"list is a hole the guard will ignore next time."
+            )
+        elif entry not in seen_keys:
+            bad.append(
+                f"KNOWN_BAD_COLUMNS lists {entry}, but nothing under "
+                f"{', '.join(WRITTEN_COLUMN_ROOTS)} writes it any more. Delete the "
+                f"entry — a debt list nobody prunes stops being a record of debt "
+                f"and becomes a list of writes the guard has quietly stopped "
+                f"looking at."
+            )
+    return bad
+
+
 CHECKS = (
     ("order line capture", check_order_writes_a_line),
     ("unit defaults", check_no_multiplying_default),
     ("price_history writer", check_price_history_has_a_writer),
     ("actor FK target", check_actor_fk_targets),
+    ("written columns exist", check_written_columns_exist),
 )
 
 
@@ -449,8 +810,39 @@ def main() -> int:
 # ---------------------------------------------------------------------------
 # Self-test
 # ---------------------------------------------------------------------------
+def _synthetic_schema(extra: str = "") -> str:
+    """Enough CREATE TABLEs to clear MIN_TABLES_WITH_COLUMNS.
+
+    The floor exists so a rotted SQL parse reads as CANNOT CHECK rather than as
+    "every column is missing"; a fixture that cannot clear it could only ever
+    exercise the blind path, so the fixture generates real tables instead of the
+    floor being lowered for it.
+    """
+    out = [
+        "create table public.procurement_orders (\n"
+        "  id uuid not null,\n"
+        "  order_number varchar(50) not null,\n"
+        "  restaurant_id uuid not null,\n"
+        "  inventory_id uuid not null,\n"
+        "  status varchar(50) not null,\n"
+        "  constraint procurement_orders_pkey primary key (id)\n"
+        ");\n",
+        "create table public.procurement_order_items (\n"
+        "  id uuid not null,\n"
+        "  order_id uuid not null,\n"
+        "  master_wine_id uuid,\n"
+        "  bottles_per_unit integer\n"
+        ");\n",
+        "create table public.price_history (id uuid not null, price numeric);\n",
+    ]
+    for i in range(MIN_TABLES_WITH_COLUMNS + 5):
+        out.append(f"create table public.filler_{i} (id uuid not null, name text);\n")
+    out.append(extra)
+    return "".join(out)
+
+
 def _fixture(tmp: Path) -> Path:
-    """A minimal tree that satisfies all three contracts."""
+    """A minimal tree that satisfies all five contracts."""
     root = tmp / "tree"
     (root / PROCUREMENT).mkdir(parents=True)
     (root / MIGRATIONS).mkdir(parents=True)
@@ -514,10 +906,46 @@ export class ReceivingService {
         f"foreign key (c) references auth.users(id) on delete set null;\n"
         for name in sorted(GRANDFATHERED_AUTH_USERS_FKS)
     )
+    # The schema lives in its OWN file: the B4 arm blanks the units migration to
+    # prove a missing CHECK is a finding, and if the tables went with it every
+    # later arm would hit the MIN_TABLES_WITH_COLUMNS floor and exit 2 instead of
+    # testing what it claims to.
+    (root / MIGRATIONS / "20260101000001_schema.sql").write_text(
+        _synthetic_schema(), encoding="utf-8"
+    )
     (root / MIGRATIONS / "20260901150000_units.sql").write_text(
         "alter table public.procurement_orders "
         "add constraint procurement_orders_unit_type_check check (true);\n"
         + grandfathered,
+        encoding="utf-8",
+    )
+    # The debt ratchet is shrink-only in BOTH directions, so a clean tree has to
+    # contain the debt it excuses — an entry matching nothing is a finding.
+    #
+    # The column here is SYNTHETIC and the self-test injects a matching
+    # KNOWN_BAD_COLUMNS entry for it. It used to borrow whichever real entries
+    # happened to be on the list — first `procurement_conversations.*`, then
+    # `calendar_events.priority`/`.tags` — and each time the last real writer was
+    # repaired, this fixture became the violation and the whole self-test broke
+    # (ADR 0065 removed one arm for exactly this reason; ADR 0073 emptied the
+    # list entirely and broke the rest). A self-test that fails whenever the
+    # debt it borrows is PAID OFF punishes the only change the ratchet exists to
+    # encourage. It is now independent of what the live list holds, including
+    # nothing.
+    (root / f"{PROCUREMENT}/debt.ts").write_text(
+        "export class Debt {\n"
+        "  async writeCalendar() {\n"
+        "    await this.db.supabase.from(\"calendar_events\").insert({\n"
+        "      restaurant_id: r,\n"
+        "      zzz_debt_column: 1,\n"
+        "    });\n"
+        "  }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    (root / MIGRATIONS / "20260101000000_debt_tables.sql").write_text(
+        "create table public.calendar_events (id uuid not null, restaurant_id uuid not null, title varchar not null);\n"
+        "create table public.procurement_conversations (id uuid not null, message_text text not null, content text);\n",
         encoding="utf-8",
     )
     return root
@@ -529,6 +957,15 @@ def self_test() -> int:
     def expect(label: str, got: int, want: int) -> None:
         if got != want:
             failures.append(f"{label}: exit {got}, expected {want}")
+
+    # The debt cases below run against a SYNTHETIC entry, never the live list.
+    # See _fixture(). Restored in the finally at the end of this function.
+    real_debt = KNOWN_BAD_COLUMNS
+    globals()["KNOWN_BAD_COLUMNS"] = {
+        "calendar_events.zzz_debt_column": (
+            "synthetic, self-test only — see _fixture(). Never a real debt entry."
+        )
+    }
 
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
@@ -673,6 +1110,118 @@ def self_test() -> int:
         expect("price_history has no writer", run(root)[0], 1)
         (root / SERVICE).write_text(svc, encoding="utf-8")
 
+        # E. a write naming a column the schema does not have. These are the two
+        # real defects of 2026-09-01, reduced: `wine_name` on procurement_orders
+        # (the retroactive path) and a phantom column on the line table.
+        (root / SERVICE).write_text(
+            svc.replace(
+                'await this.databaseService.supabase.from("procurement_orders").insert(payload);',
+                'await this.databaseService.supabase.from("procurement_orders")\n'
+                "      .insert({ order_number: n, wine_name: w, actual_delivery: d });",
+            ),
+            encoding="utf-8",
+        )
+        code, findings = run(root)
+        expect("write names a column the table does not have", code, 1)
+        if not any("wine_name" in f and "actual_delivery" in " ".join(findings) for f in findings):
+            failures.append(f"phantom column not named in the finding: {findings}")
+
+        # E2. the same write against columns that DO exist is not a finding.
+        (root / SERVICE).write_text(
+            svc.replace(
+                'await this.databaseService.supabase.from("procurement_orders").insert(payload);',
+                'await this.databaseService.supabase.from("procurement_orders")\n'
+                '      .insert({ order_number: n, status: "PENDING", inventory_id: i });',
+            ),
+            encoding="utf-8",
+        )
+        code, findings = run(root)
+        expect("write names only real columns", code, 0)
+        if findings:
+            failures.append(f"valid write flagged: {findings}")
+
+        # E3. a `.from(A)` followed by an unrelated `.insert(` on B must NOT be
+        # paired. The first draft of this check did exactly that and reported 97
+        # phantom findings — a guard with false positives is worse than none,
+        # because the next reader learns to skip its output.
+        (root / SERVICE).write_text(
+            svc.replace(
+                'await this.databaseService.supabase.from("procurement_orders").insert(payload);',
+                'const { count } = await this.databaseService.supabase\n'
+                '      .from("procurement_orders").select("*", { head: true });\n'
+                "    await other.from(\"procurement_order_items\")\n"
+                "      .insert({ order_id: o, master_wine_id: m });",
+            ),
+            encoding="utf-8",
+        )
+        code, findings = run(root)
+        expect("unrelated .from and .insert are not paired", code, 0)
+        if findings:
+            failures.append(f"cross-statement pairing produced a finding: {findings}")
+
+        # E4. a `{...spread}` is counted as unreadable, never silently treated
+        # as an empty key set — that would make the guard pass by seeing nothing.
+        (root / SERVICE).write_text(
+            svc.replace(
+                'await this.databaseService.supabase.from("procurement_orders").insert(payload);',
+                'await this.databaseService.supabase.from("procurement_orders")\n'
+                "      .insert({ ...payload, wine_name: w });",
+            ),
+            encoding="utf-8",
+        )
+        cols_before = UNREADABLE_WRITE_CEILING
+        try:
+            globals()["UNREADABLE_WRITE_CEILING"] = 0
+            code, findings = run(root)
+            expect("spread payload counted as unreadable", code, 1)
+            if not any("unreadable-payload set grew" in f for f in findings):
+                failures.append(f"spread not counted as unreadable: {findings}")
+        finally:
+            globals()["UNREADABLE_WRITE_CEILING"] = cols_before
+        (root / SERVICE).write_text(svc, encoding="utf-8")
+
+        # E5. the debt list is shrink-only in both directions.
+        debt = root / f"{PROCUREMENT}/debt.ts"
+        debt_src = debt.read_text(encoding="utf-8")
+        debt.write_text("export class Debt {}\n", encoding="utf-8")
+        code, findings = run(root)
+        expect("debt entry nothing writes any more", code, 1)
+        if not any("writes it any more" in f for f in findings):
+            failures.append(f"stale debt entry not reported: {findings}")
+        debt.write_text(debt_src, encoding="utf-8")
+
+        # E6. a debt entry the schema now declares must also be a finding.
+        debt_mig = root / MIGRATIONS / "20260101000000_debt_tables.sql"
+        debt_sql = debt_mig.read_text(encoding="utf-8")
+        debt_mig.write_text(
+            debt_sql
+            + "alter table public.calendar_events add column zzz_debt_column int;\n",
+            encoding="utf-8",
+        )
+        code, findings = run(root)
+        expect("debt entry now declared by the schema", code, 1)
+        if not any("now declares that column" in f for f in findings):
+            failures.append(f"satisfied debt entry not reported: {findings}")
+        debt_mig.write_text(debt_sql, encoding="utf-8")
+
+        # E7. an EMPTY debt list is a legal state, not a broken one. This is the
+        # real state of the tree as of ADR 0073 — every entry has been paid off —
+        # and nothing asserted it was reachable until the day it arrived and the
+        # self-test failed instead of the guard.
+        debt = root / f"{PROCUREMENT}/debt.ts"
+        debt_src = debt.read_text(encoding="utf-8")
+        empty_before = KNOWN_BAD_COLUMNS
+        try:
+            globals()["KNOWN_BAD_COLUMNS"] = {}
+            debt.write_text("export class Debt {}\n", encoding="utf-8")
+            code, findings = run(root)
+            expect("an empty debt list is clean", code, 0)
+            if findings:
+                failures.append(f"empty debt list reported: {findings}")
+        finally:
+            globals()["KNOWN_BAD_COLUMNS"] = empty_before
+            debt.write_text(debt_src, encoding="utf-8")
+
         # CANNOT CHECK, not PASS: every way the guard can go blind. Each runs
         # against its own fresh tree so one mutation cannot mask the next.
         def blind(label: str, mutate) -> None:
@@ -717,6 +1266,8 @@ def self_test() -> int:
             ],
         )
 
+    globals()["KNOWN_BAD_COLUMNS"] = real_debt
+
     print("== --self-test: order capture contract")
     if failures:
         for f in failures:
@@ -736,6 +1287,14 @@ def self_test() -> int:
     print("   an actor FK pointed at auth.users exits 1 (the 23503 trap)")
     print("   the same FK pointed at public.users(user_id) exits 0")
     print("   a grandfather entry that matches no migration exits 1")
+    print("   a write naming a column the table does not have exits 1")
+    print("   the same write against real columns exits 0")
+    print("   an unrelated .from(A) and .insert(B) are NOT paired (no false positive)")
+    print("   a {...spread} payload counts as unreadable, never as zero keys")
+    print("   a debt entry nothing writes any more exits 1")
+    print("   a debt entry the schema now declares exits 1")
+    print("   an EMPTY debt list is clean, not broken (the state as of ADR 0073)")
+    print("   the debt cases use a synthetic entry, not whatever the live list holds")
     print("   a missing file, a renamed method, or a missing migrations dir exits 2")
     print("PASS")
     return 0

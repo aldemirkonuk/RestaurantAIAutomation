@@ -28,6 +28,81 @@ import {
 import { ApproveDraftDto } from "./dto/approve-draft.dto";
 import { ProcurementService } from "./procurement.service";
 
+/**
+ * `?quantityReceivedInOrderUom=` -> a whole non-negative count, or a 400 that
+ * says why.
+ *
+ * The count is IN THE ORDER'S OWN unit_type — the same unit `quantity` is stated
+ * in — which is why the parameter says so in its own name. The old
+ * `?quantityReceived=` named no unit and is accepted as a deprecated alias; see
+ * `readDeliveredQuantity` below for the conflict rule.
+ *
+ * Exported so the failure cases can be asserted directly. Absent stays absent:
+ * `undefined` means "the caller did not say", which is a real and common answer
+ * (the web client never sends one) and is resolved from the order downstream.
+ * It is NOT the same as a value that could not be understood, and the whole
+ * point of this function is that the two stop looking alike.
+ */
+export function parseDeliveredQuantity(
+  raw: string | undefined,
+  paramName = "quantityReceivedInOrderUom",
+): number | undefined {
+  if (raw === undefined || raw === null || String(raw).trim() === "")
+    return undefined;
+
+  const text = String(raw).trim();
+  const value = Number(text);
+
+  if (!Number.isFinite(value))
+    throw new BadRequestException(`${paramName} must be a number; got "${text}".`);
+  if (!Number.isInteger(value))
+    throw new BadRequestException(
+      `${paramName} must be a whole number of units; got "${text}".`,
+    );
+  if (value < 0)
+    throw new BadRequestException(
+      `${paramName} cannot be negative; got "${text}".`,
+    );
+
+  return value;
+}
+
+/**
+ * Read the delivered count from either the canonical query parameter or its
+ * deprecated unitless alias.
+ *
+ * Both present and EQUAL is fine; both present and DIFFERENT is a 400 naming
+ * both. A server that quietly preferred one would be choosing a delivered
+ * quantity by a rule nobody can see, which is the same defect class as the
+ * unitless parameter itself.
+ *
+ * Exported for direct assertion, like `parseDeliveredQuantity`.
+ */
+export function readDeliveredQuantity(
+  canonical: string | undefined,
+  deprecatedAlias: string | undefined,
+): number | undefined {
+  const fromCanonical = parseDeliveredQuantity(
+    canonical,
+    "quantityReceivedInOrderUom",
+  );
+  const fromAlias = parseDeliveredQuantity(deprecatedAlias, "quantityReceived");
+
+  if (
+    fromCanonical !== undefined &&
+    fromAlias !== undefined &&
+    fromCanonical !== fromAlias
+  ) {
+    throw new BadRequestException(
+      `quantityReceivedInOrderUom=${fromCanonical} disagrees with its deprecated alias ` +
+        `quantityReceived=${fromAlias}. They name the same quantity, so one of them is wrong ` +
+        `and the server must not choose. Send only quantityReceivedInOrderUom.`,
+    );
+  }
+
+  return fromCanonical ?? fromAlias;
+}
+
 @ApiTags("procurement")
 @Controller("procurement")
 @UseGuards(JwtAuthGuard)
@@ -231,13 +306,30 @@ export class ProcurementController {
   @ApiResponse({ status: 200, type: OrderResponseDto })
   async markDelivered(
     @Param("id") orderId: string,
+    @Query("quantityReceivedInOrderUom")
+    quantityReceivedInOrderUom: string | undefined,
+    // DEPRECATED ALIAS of the parameter above; it named no unit. Kept so a
+    // deployed client still holding the old name keeps working. Removable once
+    // no such client can reach this endpoint.
     @Query("quantityReceived") quantityReceived: string | undefined,
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<OrderResponseDto> {
+    // A raw @Query string is not a number, and `Number("abc")` is NaN. NaN is
+    // not null or undefined, so `quantityReceived ?? order.quantity` does NOT
+    // fall through it: the service used to resolve NaN, fail its `> 0` test,
+    // and mark the order DELIVERED with no stock booked — and answer 200 OK.
+    // The caller is told what is wrong instead of being quietly given a
+    // successful-looking no-op.
+    //
+    // Parsed OUTSIDE the try below on purpose: that catch rewrites everything it
+    // sees, so a BadRequestException thrown inside it would reach the client as
+    // a 500.
+    const parsedQuantity = readDeliveredQuantity(
+      quantityReceivedInOrderUom,
+      quantityReceived,
+    );
+
     try {
-      const parsedQuantity = quantityReceived
-        ? Number(quantityReceived)
-        : undefined;
       return await this.procurementService.markDelivered(
         user.restaurantId,
         orderId,
@@ -247,7 +339,9 @@ export class ProcurementController {
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to mark order delivered",
-        HttpStatus.INTERNAL_SERVER_ERROR,
+        // Preserve the status the service chose. Without this a 404 for a
+        // missing order is reported as a 500, which is a different claim.
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
