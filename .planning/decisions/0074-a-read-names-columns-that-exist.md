@@ -33,13 +33,16 @@ theoretical. Across `apps/api-gateway/src`:
 
 | | Count |
 |---|---|
-| readable `.select()` sites | 604 |
-| filter arguments naming a column | 1364 |
+| readable `.select()` sites | 607 |
+| filter arguments naming a column | 1371 |
 | **select columns that do not exist** | **17** |
 | **filter columns that do not exist** | **8** |
 | **distinct `table.column` behind them** | **16** |
 
-Re-measured on the post-#227 tree, not carried forward: the first pass found
+The two site counts are a **snapshot that moves with the codebase** — they were
+604/1364 one merge earlier and will drift again; only the findings, the keys and
+the blind spot are ratcheted. Re-measured on the current tree, not carried
+forward: the first pass found
 **27** findings over 17 keys, and `procurement_orders.next_order_date` was
 repaired on `main` by [[0061-recurring-reminder-reads-the-recurrence-table]]
 between the two runs. **The ratchet caught that itself** — see Consequences.
@@ -89,7 +92,7 @@ was false positives — embedded filters (`.eq("providers.name", …)`) and alia
 would need FK resolution.
 
 **That argument was measured rather than believed, and it did not survive.** Of
-the 1364 filter arguments in the gateway, **zero** are dotted/embedded and one
+the 1371 filter arguments in the gateway, **zero** are dotted/embedded and one
 is a non-identifier. Excluding filters would have left 8 live instances of
 exactly this defect unseen, on a theory the codebase contradicts.
 
@@ -184,6 +187,17 @@ exactly why it would have survived indefinitely.
   CI beside it, with 13 assertions including the exact ADR 0073 defect, the
   comment false-positive, the cross-statement mis-pairing case, both ratchet
   directions, an empty ratchet, and six ways of going blind.
+
+**A third instance, in the guard's own regex.** CodeQL flagged `py/redos` on the
+first push: the concatenation pattern was written `(?:\s*<lit>\s*\+?)+`, whose
+`+` is optional and whose `\s*` can match empty on either side, so one input has
+exponentially many parses. Measured on `let $="" ""…`: **0.002s at 12
+repetitions, 1.675s at 22.** It is not reachable from user input — the regex
+reads repo source in CI — but **a guard that can be made to hang is a guard that
+can fail to check**, which is this file's whole subject. Rewritten so each
+further literal is introduced *by* a `+`, giving one parse per input: 5000
+repetitions in 0.0001s, and the old and new forms produce **identical** results
+on the tree (607/1371/2/25/16), so the fix changed nothing but the worst case.
 
 ## Verification
 

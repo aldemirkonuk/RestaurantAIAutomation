@@ -80,7 +80,6 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
-import pathlib
 import re
 import sys
 import tempfile
@@ -254,9 +253,21 @@ FILTER_ARG_RE = re.compile(
     r"""\(\s*["']([^"'\n]+)["']"""
 )
 
+# One string literal: double, single, or a template with no `${}` interpolation.
+_STRING_LITERAL = r'''(?:"[^"]*"|'[^']*'|`[^`$]*`)'''
+
+# `const NAME = "a" + "b";`
+#
+# The concatenation is written as `<lit>(\s*\+\s*<lit>)*` — one literal, then
+# each further literal introduced BY a `+`. The obvious form,
+# `(?:\s*<lit>\s*\+?)+`, is a REDOS: the `+` is optional and the `\s*` can
+# match empty on either side, so one input has exponentially many parses.
+# Measured on `let $="" ""…` — 0.002s at 12 repetitions, 1.675s at 22 (CodeQL
+# py/redos, flagged on this file's first push). This form has one parse per
+# input. Keep it that way: never make the `+` optional here.
 CONST_RE = re.compile(
     r"""(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*(?::[^=]+)?=\s*"""
-    r"""((?:\s*(?:"[^"]*"|'[^']*'|`[^`$]*`)\s*\+?)+)\s*;"""
+    r"""(""" + _STRING_LITERAL + r"""(?:\s*\+\s*""" + _STRING_LITERAL + r""")*)\s*;"""
 )
 STRING_PIECE_RE = re.compile(r"""(?:"([^"]*)"|'([^']*)'|`([^`$]*)`)""")
 IDENT_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
