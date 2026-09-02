@@ -165,6 +165,25 @@ them, deleting the preference check outright would satisfy the suite.
 0 failed. This branch 1894 passed / 14 skipped / 1908 total, 0 failed.
 `npx tsc --noEmit -p tsconfig.spec.json` exits 0.
 
+## A consequence worth stating plainly
+
+**If `DEFAULT_RESTAURANT_ID` is unset, no restaurant gets the env fallback any
+more** — where previously *every* restaurant did.
+
+That is deliberate and it is the fail-closed direction: `MANAGER_EMAIL` names one
+restaurant's manager, and with no `DEFAULT_RESTAURANT_ID` there is nothing that
+says *which*, so there is no restaurant it can be sent to safely. But it is a real
+behaviour change for any environment configured that way (a dev or staging box
+with `MANAGER_EMAIL` set and `DEFAULT_RESTAURANT_ID` not), where low-stock email
+will now go nowhere.
+
+It does not go nowhere *silently*: every such case logs `RECIPIENTS_NONE` with the
+restaurant id and the reason, which is the whole point — the previous behaviour
+was silent and wrong, this one is loud and safe. `DEFAULT_RESTAURANT_ID` appears
+in no workflow file in `.github/`, so this was not verified against any deployed
+environment's actual configuration; it is stated here so the first person to see
+an empty low-stock inbox finds the answer.
+
 ## Rejected alternatives
 
 **Rename the columns and stop.** The brief's literal ask, and it leaves SMS
