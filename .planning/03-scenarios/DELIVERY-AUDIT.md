@@ -130,7 +130,7 @@ reads as *"nothing to report"* forever.
 |---|---|---|
 | At 1f4717cc, before this work | **215** | 47 |
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
-| **Remaining, baselined and non-growing** | **199 of 215** | 43 |
+| **Remaining, baselined and non-growing** | **195 of 215** | 43 |
 
 > Was 207 across 44 files at adoption. Concurrent sessions fixed 4 of them
 > (`scheduled-tasks`/`procurement_orders`, `procurement`/`calendar_events` ×2,
@@ -156,13 +156,21 @@ reads as *"nothing to report"* forever.
 > this PR's scope; the `SeatingDensityPanel.tsx` false trigger is a known
 > detector limitation (ASI/missing-semicolon statement boundaries), separate
 > from the comment-stripping fix landed in the same PR.
+>
+> **199 → 195 (2026-09-02, after PR #246 merged.)** PR #256 (ADR 0088, `/team`)
+> retired four rows — `schedule.service.ts::shifts`, and `team.service.ts` on
+> `swap_requests`, `team_certifications` and `time_off_requests` — and lowered
+> the baseline with them, but did not update this table. The number
+> above is re-derived from `scripts/read_error_baseline.json`
+> (`total_sites: 195`, `total_files: 43`); the guard is the authority and this
+> row follows it, never the other way round.
 
 Plus **37** further sites that bind `data`, discard `error`, and immediately refuse on a
 falsy value (`if (!x) throw NotFoundException`). Those report a failed read as a *missing
 row* — a 404 for a 503. Wrong, but not silent, and deliberately out of scope: see
 [ADR 0067](../decisions/0067-a-failed-read-is-never-an-empty-one.md) §Consequences.
 
-The 199 are recorded in `scripts/read_error_baseline.json` and held by
+The 195 are recorded in `scripts/read_error_baseline.json` and held by
 `scripts/check_read_errors_not_swallowed.py`, a blocking CI job. A site outside the
 baseline fails the build, and a baseline row the tree no longer contains **also** fails it
 — so the number above can only shrink, and it cannot rot in prose the way the "~29" did.
@@ -256,10 +264,17 @@ off zero, and books the first `bt.claim_falsification_rate` entry from a *run* r
 an argument.
 
 **Three traps any harness must design around, all verified in source:**
-1. The existing "backtest" scores an in-sample fit — `fitted[i]` is pushed *after* the
-   state absorbs `series[i]`, and `mase()` uses the same series as actual *and* denominator.
-   Answer: physical truncation, plus a **leak probe** — perturb the future, assert the
-   fitted prefix is bit-identical.
+1. ~~The existing "backtest" scores an in-sample fit — `fitted[i]` is pushed *after* the
+   state absorbs `series[i]`, and `mase()` uses the same series as actual *and*
+   denominator.~~ **CLOSED 2026-09-02 by PR #247 / [ADR 0064](../decisions/0064-a-fitted-value-is-a-prediction-not-a-memory.md).**
+   `fitted[i]` is now the one-step-ahead prediction pushed *before* the update in all
+   three smoothers, each reports its own `warmup`, and `mase()` takes a `from` bound so
+   numerator and denominator score the same window
+   (`engine/forecasting.ts:150-166, 308-325`; `analytics.service.ts:821-867`). The
+   answer stands as the *harness's* obligation regardless: physical truncation plus a
+   **leak probe** — perturb the future, assert the fitted prefix is bit-identical. That
+   probe now exists at `engine/forecasting.spec.ts` ("no model leaks series[k] into
+   fitted[k]") and fails against the pre-fix engine.
 2. **Regression to the mean.** The architecture flags outliers, acts on outliers, measures
    outliers — so *random* recommendations report a win. `rolloutBucket()` already splits
    users deterministically and `countEvents` has no bucket parameter, so the control arm
