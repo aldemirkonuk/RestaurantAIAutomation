@@ -309,13 +309,27 @@ export class ReceivingService {
       // applied (apply_stock_movement is idempotent on p_idempotency_key,
       // `20260805130000:71-74`) and is the actual repair when it did not.
       alreadyRecorded = true;
-      const { data: existing } = await this.db
+      // The error is bound on purpose (ADR 0067). `maybeSingle()` returns
+      // `data: null` for BOTH "no row" and "the query failed", and the branch
+      // below reads a null `eventId` as a contradiction worth throwing over. So
+      // without this, a transient read failure is reported to the operator as
+      // "the unique index fired but the row is not visible" — a data-integrity
+      // accusation standing in for a query that simply did not run.
+      const { data: existing, error: existingError } = await this.db
         .getClient()
         .from("procurement_receipt_events")
         .select("id")
         .eq("restaurant_id", input.restaurantId)
         .eq("idempotency_key", idempotencyKey)
         .maybeSingle();
+      if (existingError) {
+        throw new Error(
+          `door receipt for order ${input.orderId} collided on its idempotency ` +
+            `key, and the lookup for the existing event failed: ` +
+            `${existingError.message}. The receipt was NOT recorded; retry is safe ` +
+            `(apply_stock_movement is idempotent on p_idempotency_key).`,
+        );
+      }
       eventId = existing?.id ?? null;
       if (!eventId) {
         // The unique index fired but the row is not visible to this query. That
