@@ -7,8 +7,10 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   Min,
+  ValidateNested,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { ORDER_UNIT_TYPES } from "../order-units";
@@ -194,7 +196,11 @@ export class UpdateOrderDto {
 /** One signed stock correction applied while verifying a receipt. */
 export class ReceiptAdjustmentDto {
   @ApiProperty()
-  @IsString()
+  // @IsUUID, not @IsString: this id is handed straight to apply_stock_movement,
+  // which derives restaurant_id from the target row rather than from the caller.
+  // Shape is the cheap half of that fix; the ownership check in
+  // ProcurementService.applyReceiptAdjustment is the half that actually closes it.
+  @IsUUID()
   inventoryId: string;
 
   @ApiProperty({
@@ -220,6 +226,11 @@ export class VerifyReceiptDto {
   @ApiPropertyOptional({ type: [ReceiptAdjustmentDto] })
   @IsArray()
   @IsOptional()
+  // @ValidateNested({ each: true }) is what makes @Type() mean anything.
+  // Without it, class-validator constructs ReceiptAdjustmentDto instances and
+  // then validates NONE of their decorators — `adjustments` was checked only for
+  // being an array, and every field inside it was accepted verbatim.
+  @ValidateNested({ each: true })
   @Type(() => ReceiptAdjustmentDto)
   adjustments?: ReceiptAdjustmentDto[];
 
@@ -295,6 +306,73 @@ export class VerifyReceiptDto {
   @IsString()
   @IsOptional()
   note?: string;
+
+  // =========================================================================
+  // ADR 0059 — what the machine PROPOSED, before the human answered.
+  //
+  // The fields above are the manager's answer and remain the record. These are
+  // the extraction's pre-fill, sent alongside so a correction is distinguishable
+  // from a confirmation. A manager fixing a misread 22 to 24 used to leave the
+  // submitted 24 indistinguishable from a 24 the model read correctly — which
+  // makes every extraction correction invisible in the only corpus that could
+  // grade the extractor.
+  //
+  // ABSENT means the form was not pre-filled from a document, so the final value
+  // is not a correction of anything. It never means "proposed zero".
+  //
+  // TODO(ADR 0059, L4) — ACCEPTED HERE, NOT YET PERSISTED. DELIBERATE.
+  // `ReceivingWorkspace.tsx` sends all four, this DTO validates all four, and
+  // the columns exist (20260901200000_receiving_preserves_the_pair.sql adds
+  // procurement_orders.prefilled_invoice_quantity and its three siblings). The
+  // write belongs in procurement.service.ts `verifyReceipt`, in the same
+  // `Object.assign(update, {...})` that already writes invoice_quantity — four
+  // lines:
+  //
+  //     prefilled_invoice_quantity:    body.prefilledInvoiceQuantity ?? null,
+  //     prefilled_invoice_unit_price:  body.prefilledInvoiceUnitPrice ?? null,
+  //     prefilled_shipped_quantity:    body.prefilledShippedQuantity ?? null,
+  //     prefilled_free_goods_quantity: body.prefilledFreeGoodsQuantity ?? null,
+  //
+  // That file was owned by a concurrent session when this landed and could not
+  // be edited without a collision. UNTIL IT IS DONE, THE MANAGER'S CORRECTION IS
+  // STILL LOST — it now reaches the gateway and is dropped there rather than in
+  // the browser, which is a shorter fall, not a fix. The skipped test tagged
+  // "ADR 0059 L4" in proposal-preservation-deferred.spec.ts fails until the write
+  // exists; un-skip it with the change.
+  // =========================================================================
+
+  @ApiPropertyOptional({
+    description:
+      "What the extraction proposed for invoiceQuantity before the human answered (ADR 0059). Absent = the form was not pre-filled.",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  prefilledInvoiceQuantity?: number;
+
+  @ApiPropertyOptional({
+    description: "As prefilledInvoiceQuantity, for the unit price.",
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  prefilledInvoiceUnitPrice?: number;
+
+  @ApiPropertyOptional({
+    description: "As prefilledInvoiceQuantity, for the shipped quantity.",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  prefilledShippedQuantity?: number;
+
+  @ApiPropertyOptional({
+    description: "As prefilledInvoiceQuantity, for free goods.",
+  })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  prefilledFreeGoodsQuantity?: number;
 }
 
 export class OrderFilterDto {

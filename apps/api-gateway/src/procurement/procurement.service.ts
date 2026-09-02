@@ -40,9 +40,25 @@ import {
   PriceHistorySource,
   resolveOrderUnits,
 } from "./order-units";
+// The calendar owns the vocabulary of calendar_events. Importing the enums
+// rather than restating the strings makes a divergence a compile error instead
+// of a row nothing can read (see ADR 0066).
+import {
+  CalendarEventSource,
+  CalendarEventStatus,
+  CalendarEventType,
+} from "../calendar/dto/calendar.dto";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// The two terminal states of a calendar event, built from `CalendarEventStatus`
+// rather than restated as literals so a divergence is a compile error (ADR
+// 0066).
+const TERMINAL_CALENDAR_STATUSES = [
+  CalendarEventStatus.COMPLETED,
+  CalendarEventStatus.CANCELLED,
+] as const;
 
 /**
  * A uuid column takes a uuid or nothing.
@@ -54,7 +70,7 @@ const UUID_RE =
  * non-uuid actor becomes NULL — "we do not know who" is true, and an order that
  * exists beats an order that 500s over an attribution field.
  */
-function asUuid(value: string | null | undefined): string | null {
+export function asUuid(value: string | null | undefined): string | null {
   return typeof value === "string" && UUID_RE.test(value) ? value : null;
 }
 
@@ -259,13 +275,42 @@ export class ProcurementService {
    * `provenance` is a service argument and deliberately NOT a DTO field: it is
    * an assertion about which code path ran, and a client must not be able to
    * claim an order was manual when the agent placed it.
+   *
+   * ORDERS THAT RECORD RATHER THAN REQUEST
+   *
+   * `provenance.alreadyFulfilled` says this order documents a purchase that has
+   * already happened off-app — a paper or emailed invoice being entered after
+   * the wine is in the cellar. Everything that distinguishes it follows from
+   * that one fact, which is why it is one flag and not four:
+   *
+   *   - it opens DELIVERED, not PENDING. A PENDING order for wine already on
+   *     the shelf is a request the restaurant will act on twice.
+   *   - `requested_at` is the invoice date, not now. Otherwise the order's
+   *     delivery precedes its own request.
+   *   - no dedup merge. The merge exists to fold a re-quote into an open
+   *     REQUEST; an off-app purchase is a different purchase, and folding it in
+   *     would overwrite a live order's quantity and price with an unrelated
+   *     invoice's.
+   *   - no AI draft. `triggerDraftHttp` opens a negotiation with the vendor.
+   *     Negotiating the price of wine that has been delivered and invoiced is
+   *     the one thing this path must never do.
    */
   async createOrder(
     restaurantId: string,
     userId: string,
     dto: CreateOrderDto,
-    provenance?: { source: OrderSource; recurringOrderId?: string | null },
+    provenance?: {
+      source: OrderSource;
+      recurringOrderId?: string | null;
+      alreadyFulfilled?: {
+        /** ISO date/timestamp from the invoice. Absent means "we know only that it happened". */
+        deliveredAt?: string | null;
+        /** The total printed on the invoice, stored verbatim in final_confirmed_cost. */
+        invoiceTotal?: number | null;
+      };
+    },
   ): Promise<OrderResponseDto> {
+    const fulfilled = provenance?.alreadyFulfilled;
     // Guard: restaurant must have at least one active provider before placing orders
     const { count: providerCount, error: countError } =
       await this.databaseService.supabase
@@ -335,25 +380,33 @@ export class ProcurementService {
       ProcurementOrderStatus.FAILED,
     ];
 
-    const { data: existingRows, error: existingError } =
-      await this.databaseService.supabase
-        .from("procurement_orders")
-        .select("*, inventory:inventory_id(wine_name)")
-        .eq("restaurant_id", restaurantId)
-        .eq("inventory_id", dto.inventoryId)
-        .eq("provider_id", dto.providerId ?? "")
-        .not("status", "in", `(${TERMINAL_STATUSES.join(",")})`)
-        .order("requested_at", { ascending: false })
-        .limit(1);
+    // Skipped entirely for an order that RECORDS a completed purchase. The
+    // merge folds a re-quote into an open REQUEST; an off-app invoice is a
+    // second, separate purchase, and folding it into a live pending order would
+    // silently replace that order's quantity and price with the invoice's — one
+    // delivery recorded, one real order destroyed, no trace of either.
+    let existing: any | undefined;
+    if (!fulfilled) {
+      const { data: existingRows, error: existingError } =
+        await this.databaseService.supabase
+          .from("procurement_orders")
+          .select("*, inventory:inventory_id(wine_name)")
+          .eq("restaurant_id", restaurantId)
+          .eq("inventory_id", dto.inventoryId)
+          .eq("provider_id", dto.providerId ?? "")
+          .not("status", "in", `(${TERMINAL_STATUSES.join(",")})`)
+          .order("requested_at", { ascending: false })
+          .limit(1);
 
-    if (existingError) {
-      this.logger.warn("Dedup lookup for procurement order failed", {
-        restaurantId,
-        error: existingError.message,
-      });
+      if (existingError) {
+        this.logger.warn("Dedup lookup for procurement order failed", {
+          restaurantId,
+          error: existingError.message,
+        });
+      }
+
+      existing = existingRows?.[0] as any | undefined;
     }
-
-    const existing = existingRows?.[0] as any | undefined;
 
     if (existing && dto.providerId) {
       const { data: updated, error: updateError } =
@@ -426,6 +479,14 @@ export class ProcurementService {
 
     const orderNumber = this.generateOrderNumber();
 
+    // An order that RECORDS a delivery opens DELIVERED and is dated from the
+    // invoice. `requested_at` takes the same timestamp rather than now(),
+    // because an order whose delivery predates its own request reads as a
+    // data error to every report that sorts on either column.
+    const fulfilledAt = fulfilled
+      ? (fulfilled.deliveredAt ?? new Date().toISOString())
+      : null;
+
     const payload = {
       order_number: orderNumber,
       restaurant_id: restaurantId,
@@ -438,8 +499,15 @@ export class ProcurementService {
       negotiated_price: dto.negotiatedPrice ?? null,
       final_price: finalPrice,
       total_cost: totalCost,
-      status: ProcurementOrderStatus.PENDING,
-      requested_at: new Date().toISOString(),
+      status: fulfilled
+        ? ProcurementOrderStatus.DELIVERED
+        : ProcurementOrderStatus.PENDING,
+      requested_at: fulfilledAt ?? new Date().toISOString(),
+      delivered_at: fulfilledAt,
+      // The number printed on the invoice, kept verbatim beside the derived
+      // per-bottle arithmetic so a rounding difference between them is visible
+      // rather than absorbed.
+      final_confirmed_cost: fulfilled?.invoiceTotal ?? null,
       is_emergency: dto.isEmergency ?? false,
       priority_level: dto.priorityLevel ?? 5,
       manager_notes: dto.managerNotes ?? null,
@@ -494,7 +562,14 @@ export class ProcurementService {
     await this.emitOrderChangeEvent(restaurantId, userId, order, "created");
 
     // Phase 32: Trigger silent AI draft pre-computation when provider_id is set (D-32-01)
-    if (dto.providerId && this.orchestratorService) {
+    //
+    // Never for an order that records a completed purchase. `triggerDraftHttp`
+    // opens a price negotiation with the vendor; running it here would email a
+    // vendor asking them to reconsider the price of wine they have already
+    // delivered and invoiced. That is the single most damaging thing this
+    // method could do, and before `alreadyFulfilled` existed the retroactive
+    // path had no way to say "do not".
+    if (dto.providerId && this.orchestratorService && !fulfilled) {
       // Resolve provider name and restaurant name in parallel.
       let resolvedProviderName = "";
       let resolvedRestaurantName = "";
@@ -1005,7 +1080,7 @@ export class ProcurementService {
     }
 
     // Cancel any pending calendar delivery event linked to this order.
-    await this.cancelCalendarEventForOrder(restaurantId, orderId);
+    await this.cancelCalendarEventForOrder(restaurantId, orderId, order);
 
     // Release shadow stock if the order had already been approved/sent and
     // inventory was reserved (shadow_stock was incremented for this order).
@@ -1033,41 +1108,144 @@ export class ProcurementService {
     return order;
   }
 
-  /** Cancel the calendar delivery event tagged with orderId (non-fatal). */
+  /**
+   * Close the open delivery calendar event for an order — the one
+   * implementation behind both `cancelCalendarEventForOrder` and
+   * `updateCalendarEventForDelivery`.
+   *
+   * Those two are the same job in two directions, and before this they were
+   * the same job written twice. Both were broken the same two ways, and
+   * neither fault could be seen. They are the read/update counterparts of the
+   * write ADR 0066 repaired:
+   *
+   *  1. Each located the event with `.select("id, tags")` and JSON-parsed
+   *     `tags` looking for an `order_id`. `calendar_events` has no `tags`
+   *     column, so PostgREST answered 42703 for the whole query — and the
+   *     destructure took only `data`, so the error was never read. Supabase
+   *     *returns* `{data, error}` rather than throwing, which made the
+   *     wrapping `try`/`catch` inert for exactly the failure that was
+   *     occurring. `events` came back `undefined`, `(events || [])` was empty,
+   *     and the function returned having done nothing — indistinguishable
+   *     from a run that legitimately found no event. `order_id` is a real
+   *     uuid column with an FK to `procurement_orders`, and since ADR 0066 it
+   *     is written, so the scan is replaced by `.eq("order_id", orderId)`.
+   *  2. Each wrote and filtered on uppercase `COMPLETED`/`CANCELLED`. The
+   *     column carries no CHECK, so the write would have *succeeded* and
+   *     produced a row no reader recognises, while the filters matched
+   *     nothing. The real vocabulary is `CalendarEventStatus` — all lowercase;
+   *     production holds `active`, `completed`, `pending` — and it is
+   *     imported, not restated.
+   *
+   * Until ADR 0066 there was never an event to find, so failing cost nothing.
+   * Now that events are created for real, an unclosed event leaves a `pending`
+   * delivery on `/calendar` for an order that has long since arrived or been
+   * cancelled.
+   *
+   * Sharing one body is not only deduplication. Written twice, the two drifted:
+   * one excluded the terminal statuses with `.not("status", "in", ...)` and the
+   * other with `.neq(...)`, for no reason either recorded. Here the one thing
+   * that legitimately differs — which statuses are already closed and must not
+   * be reopened — is an argument with a name, so the difference is a decision
+   * instead of an accident.
+   *
+   * One statement, not select-then-update: it cannot match a row it then fails
+   * to write, and `.select("id")` makes the success branch unreachable without
+   * rows to name. All three outcomes are reported, and "nothing matched" is
+   * stated rather than being indistinguishable from success.
+   */
+  private async closeDeliveryCalendarEvent(
+    restaurantId: string,
+    orderId: string,
+    order: OrderResponseDto,
+    close: {
+      /** The status to write. Also reads as the verb in every log line. */
+      status: CalendarEventStatus;
+      /** Statuses already closed for this transition; never reopened. */
+      leaveAlone: readonly CalendarEventStatus[];
+      description: string;
+    },
+  ): Promise<void> {
+    // PostgREST wants an `in` value as a parenthesised, quoted list. A
+    // one-element list is valid, so this covers both callers.
+    const alreadyClosed = `(${close.leaveAlone.map((s) => `"${s}"`).join(",")})`;
+
+    const context = {
+      restaurantId,
+      orderId,
+      orderNumber: order.orderNumber,
+    };
+
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("calendar_events")
+        .update({
+          status: close.status,
+          description: close.description,
+        })
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .eq("event_type", CalendarEventType.DELIVERY)
+        .not("status", "in", alreadyClosed)
+        .select("id");
+
+      if (error) {
+        this.logger.error(
+          `Calendar delivery event NOT ${close.status} for order ${order.orderNumber}`,
+          {
+            ...context,
+            code: (error as { code?: string }).code,
+            error: error.message,
+          },
+        );
+        return;
+      }
+
+      const ids = (data ?? []).map((row: { id: string }) => row.id);
+      if (ids.length === 0) {
+        // Legitimate in two known cases: an order cancelled before approval
+        // never had an event, and any order approved before ADR 0066 shipped
+        // never got one either. Said out loud regardless — reporting nothing
+        // here is precisely what kept the 42703 above invisible for the whole
+        // life of both functions.
+        this.logger.warn(
+          `No open delivery calendar event matched this order — nothing was ${close.status}`,
+          context,
+        );
+        return;
+      }
+
+      this.logger.log(
+        `Calendar event(s) ${ids.join(", ")} ${close.status} for order ${order.orderNumber}`,
+      );
+    } catch (e: any) {
+      this.logger.error(
+        `Calendar delivery event NOT ${close.status} for order ${order.orderNumber}`,
+        { ...context, error: e?.message },
+      );
+    }
+  }
+
+  /**
+   * Close the delivery event when its order is cancelled (non-fatal — the
+   * order is already cancelled by the time this runs).
+   *
+   * A **completed** event is left alone: a recorded delivery is a physical
+   * fact, and a later administrative cancellation should not erase it. That is
+   * why `leaveAlone` here is both terminal statuses and only one of them in
+   * `updateCalendarEventForDelivery` — see that function for the other side.
+   */
   private async cancelCalendarEventForOrder(
     restaurantId: string,
     orderId: string,
+    order: OrderResponseDto,
   ): Promise<void> {
-    try {
-      const { data: events } = await this.databaseService.supabase
-        .from("calendar_events")
-        .select("id, tags")
-        .eq("restaurant_id", restaurantId)
-        .eq("event_type", "delivery")
-        .not("status", "in", '("COMPLETED","CANCELLED")');
-
-      const match = (events || []).find((e) => {
-        try {
-          const tags = typeof e.tags === "string" ? JSON.parse(e.tags) : e.tags;
-          return tags?.order_id === orderId;
-        } catch {
-          return false;
-        }
-      });
-
-      if (match) {
-        await this.databaseService.supabase
-          .from("calendar_events")
-          .update({
-            status: "CANCELLED",
-            description: `Order ${orderId} was cancelled.`,
-          })
-          .eq("id", (match as any).id);
-        this.logger.log(`Calendar event cancelled for order ${orderId}`);
-      }
-    } catch (e: any) {
-      this.logger.warn(`cancelCalendarEventForOrder failed: ${e?.message}`);
-    }
+    return this.closeDeliveryCalendarEvent(restaurantId, orderId, order, {
+      status: CalendarEventStatus.CANCELLED,
+      leaveAlone: TERMINAL_CALENDAR_STATUSES,
+      // The pre-fix text was the raw uuid, which is nothing a manager reading
+      // /calendar can use. The order number is already in hand at the caller.
+      description: `Order ${order.orderNumber} was cancelled — this delivery is not coming.`,
+    });
   }
 
   /** Subtract order quantity from shadow_stock + in_transit_quantity, flooring at 0. Non-fatal. */
@@ -1253,13 +1431,52 @@ export class ProcurementService {
     userId: string,
     quantityReceived?: number,
   ): Promise<OrderResponseDto> {
+    // What the ledger is about to be told, decided ONCE and written down in the
+    // same breath. `resolvedQuantity` below used to be computed separately and
+    // the column written as `quantityReceived ?? null` — so the web client,
+    // which sends no quantity (useOrdersData.ts:68), booked `order.quantity`
+    // into the ledger and left the column NULL.
+    //
+    // That gap is the door's anti-double-book guard, defeated. recordDoorReceipt
+    // reads `alreadyBooked = Number(order.quantity_received ?? 0)`
+    // (receiving.service.ts:194) to work out what is left to book; a NULL reads
+    // as 0, so the door books the full count a second time on top of what this
+    // method already booked. The column has to record what was BOOKED, not what
+    // the caller happened to say.
+    //
+    // Read before the update so `resolvedQuantity` is available to write. A
+    // failed read is raised, not defaulted to 0: silently booking nothing and
+    // recording nothing is how this defect stayed invisible the first time.
+    const { data: existingOrder, error: existingError } =
+      await this.databaseService.supabase
+        .from("procurement_orders")
+        .select("quantity")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .maybeSingle();
+
+    if (existingError) {
+      this.logger.error("Failed to read order before marking delivered", {
+        restaurantId,
+        orderId,
+        error: existingError.message,
+      });
+      throw existingError;
+    }
+    if (!existingOrder) {
+      throw new NotFoundException(`Order ${orderId} not found`);
+    }
+
+    const resolvedQuantity =
+      quantityReceived ?? (existingOrder as any).quantity ?? 0;
+
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .update({
         status: ProcurementOrderStatus.DELIVERED,
         delivered_at: new Date().toISOString(),
         received_by: userId,
-        quantity_received: quantityReceived ?? null,
+        quantity_received: resolvedQuantity,
       })
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
@@ -1283,8 +1500,6 @@ export class ProcurementService {
     };
 
     const order = this.mapOrderRow(orderRow);
-
-    const resolvedQuantity = quantityReceived ?? order.quantity ?? 0;
 
     if (!order.inventoryId) {
       this.logger.warn(
@@ -1498,12 +1713,56 @@ export class ProcurementService {
    *   and COGS all still quoting the old number.
    */
   private async applyReceiptAdjustment(
+    restaurantId: string,
     orderId: string,
     inventoryId: string,
     delta: number,
     reason: string,
     unitCost?: number | null,
   ): Promise<void> {
+    // TENANCY. `apply_stock_movement` derives restaurant_id from the inventory
+    // row it is pointed at, not from the caller — so an id this method does not
+    // check is an id that writes stock wherever it happens to live. The
+    // adjustments array arrives from the client, which means the caller chooses
+    // the id. Every one of them is proven to belong to THIS restaurant here,
+    // before the RPC, because this method is the only choke point both the
+    // matched line and the free-form adjustments pass through.
+    //
+    // The DTO's @IsUUID only rejects ids that are not UUID-shaped. A well-formed
+    // UUID belonging to another restaurant is exactly the case that matters, and
+    // no decorator can see it.
+    const { data: owned, error: ownershipError } =
+      await this.databaseService.supabase
+        .from("restaurant_inventory")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("id", inventoryId)
+        .maybeSingle();
+
+    // A failed lookup is NOT permission. Saying so out loud rather than falling
+    // through is the whole point (ADR 0051): the alternative reports the absence
+    // of an answer as a yes.
+    if (ownershipError) {
+      this.logger.error(
+        `verifyReceipt ownership check failed for ${inventoryId}: ${ownershipError.message}`,
+      );
+      throw new UnprocessableEntityException(
+        `Could not confirm that item ${inventoryId} belongs to this restaurant, ` +
+          `so no stock was moved: ${ownershipError.message}`,
+      );
+    }
+
+    if (!owned) {
+      this.logger.warn(
+        `verifyReceipt rejected a foreign inventory id on order ${orderId}: ${inventoryId}`,
+      );
+      throw new ForbiddenException(
+        `Item ${inventoryId} does not belong to this restaurant. ` +
+          `A receipt adjustment can only move stock on this restaurant's own ` +
+          `inventory, so nothing was written.`,
+      );
+    }
+
     const { error } = await this.databaseService.supabase.rpc(
       "apply_stock_movement",
       {
@@ -1613,6 +1872,7 @@ export class ProcurementService {
     // Correct the ordered line to the accepted count, then apply any unlisted extras.
     if (match && match.ledgerDelta !== 0 && (orderRow as any).inventory_id) {
       await this.applyReceiptAdjustment(
+        restaurantId,
         orderId,
         (orderRow as any).inventory_id,
         match.ledgerDelta,
@@ -1627,6 +1887,7 @@ export class ProcurementService {
       // Skip the ordered line when the match already corrected it.
       if (match && adj.inventoryId === (orderRow as any).inventory_id) continue;
       await this.applyReceiptAdjustment(
+        restaurantId,
         orderId,
         adj.inventoryId,
         adj.delta,
@@ -1650,8 +1911,33 @@ export class ProcurementService {
 
     const update: Record<string, any> = {
       status,
-      notes: body.note ?? undefined,
     };
+
+    // `procurement_orders` has NO `notes` column. It has delivery_notes,
+    // manager_notes and discrepancy_notes, and this note — what the person
+    // holding the delivery typed while verifying it — is a delivery note; the
+    // same column `updateOrder` writes `dto.deliveryNotes` into (:934).
+    //
+    // Writing `notes` was worse than a no-op. `?? undefined` drops the key from
+    // the JSON body when no note was typed, so the update only ever reached
+    // PostgREST with a `notes` key — and only ever failed — on the runs where a
+    // manager DID type one, i.e. exactly the discrepancy runs. By then the
+    // ledger correction and the credit claim above have already been written, so
+    // a PGRST204 here leaves the order permanently half-verified: status,
+    // match_status, accepted_quantity, the invoice_* columns and the price
+    // history below never land, and the retry fails identically.
+    //
+    // Appended rather than assigned. A note left at the door and a note left at
+    // verification are two different observations of the same delivery, and the
+    // second one silently erasing the first is the kind of data loss nobody
+    // reports because nobody sees it happen. `orderRow` is already in hand, so
+    // the merge costs no extra read.
+    if (body.note != null && String(body.note).trim() !== "") {
+      const existingNote = ((orderRow as any).delivery_notes ?? "").trim();
+      update.delivery_notes = existingNote
+        ? `${existingNote}\n${body.note}`
+        : body.note;
+    }
 
     if (match) {
       const acceptedQty = body.acceptedQuantity ?? stockedQty;
@@ -1775,101 +2061,167 @@ export class ProcurementService {
   }
 
   /**
-   * Create a calendar event when an order is approved (expected delivery date)
+   * Create the expected-delivery calendar event for an order.
+   *
+   * This function had never once succeeded. It wrote four things
+   * `calendar_events` does not accept, and every one of them was invisible
+   * because the whole body was a `try`/`catch` that logged a warning:
+   *
+   *  1. `priority` — the column does not exist (PostgREST `PGRST204`).
+   *  2. `tags` — the column does not exist. Identity was JSON-stuffed into it
+   *     while the real `order_id`/`provider_id` uuid columns sat unused, both
+   *     with foreign keys (`calendar_events_order_id_fkey` →
+   *     `procurement_orders`, `calendar_events_provider_id_fkey` →
+   *     `providers`) and `idx_calendar_events_provider` on the second.
+   *  3. `source` was omitted — it is `varchar(50) NOT NULL` with **no default**
+   *     (`supabase/migrations/20260805000000_baseline_from_production.sql:2353`),
+   *     so this alone is a `23502` even with the column names corrected.
+   *  4. `status: "SCHEDULED"` — not a constraint failure (the column carries no
+   *     CHECK), which makes it the worse kind: the write would have *succeeded*
+   *     and produced a row no reader recognises. The table's real vocabulary is
+   *     `CalendarEventStatus` (pending/approved/dismissed/completed/cancelled);
+   *     production holds `active`, `completed`, `pending`, all lowercase, and
+   *     has never held `SCHEDULED` in any case.
+   *
+   * The values chosen here, and why (evidence in ADR 0066):
+   *  - `source: system_generated` — one of the two values production actually
+   *    holds, and true: not a person, not an inference from a conversation.
+   *  - `status: pending` — the column's own default, in `CalendarEventStatus`
+   *    (so the calendar's own update endpoint can transition it, which `active`
+   *    could not), live in production, and mapped to iCal `TENTATIVE`
+   *    (`calendar.service.ts:1276`). A +7-day estimate is exactly tentative.
+   *  - `event_type: delivery` — live in production, and the value
+   *    `dashboard.service.ts:288` counts `deliveriesThisWeek` on. That counter
+   *    has been reading zero for want of this row.
+   *
+   * On failure this does **not** throw. Its one caller reaches it only after
+   * the purchase order has been emailed to the vendor and committed; taking the
+   * order down over a calendar row would ask a manager to re-approve an order
+   * the vendor already has. But it no longer reads as success either: the
+   * failure is `logger.error` with structured context, and the insert selects
+   * the new id back so the success branch is unreachable without a row to point
+   * at — a bare insert cannot tell "wrote a row" from "wrote nothing", and
+   * reporting the second as the first is how this went unnoticed. The id (or
+   * `null`) is returned so the omission is enumerable by a caller.
    */
   private async createCalendarEventForOrder(
     restaurantId: string,
     order: OrderResponseDto,
     trigger: "approved" | "created",
-  ): Promise<void> {
-    try {
-      // Calculate expected delivery date (7 days from now if not specified)
-      const expectedDate = new Date();
-      expectedDate.setDate(expectedDate.getDate() + 7);
-      const eventDate = expectedDate.toISOString().split("T")[0];
+  ): Promise<string | null> {
+    // Expected delivery: 7 days out. An estimate, not a vendor commitment.
+    const expectedDate = new Date();
+    expectedDate.setDate(expectedDate.getDate() + 7);
+    const eventDate = expectedDate.toISOString().split("T")[0];
 
-      const { error } = await this.databaseService.supabase
+    // `calendar_events` has no priority column and this change must not add
+    // one, so the emergency flag rides in the two human-visible text columns
+    // rather than being dropped. title is varchar(255).
+    const title = (
+      order.isEmergency
+        ? `URGENT — Delivery: ${order.orderNumber}`
+        : `Delivery: ${order.orderNumber}`
+    ).slice(0, 255);
+
+    const description =
+      `Expected delivery for order ${order.orderNumber} ` +
+      `(${order.quantity} bottles). Created on order ${trigger}.` +
+      (order.isEmergency ? " Emergency order." : "");
+
+    try {
+      const { data, error } = await this.databaseService.supabase
         .from("calendar_events")
         .insert({
           restaurant_id: restaurantId,
-          title: `Delivery: ${order.orderNumber}`,
-          description: `Expected delivery for order ${order.orderNumber} (${order.quantity} bottles)`,
-          event_type: "delivery",
+          // Identity in the real columns, not a JSON blob in a column that
+          // does not exist. Both are FK-checked; providerId may be absent.
+          order_id: order.id,
+          provider_id: order.providerId ?? null,
+          title,
+          description,
+          event_type: CalendarEventType.DELIVERY,
           event_date: eventDate,
           event_time: "10:00",
           all_day: false,
-          status: "SCHEDULED",
-          priority: order.isEmergency ? "HIGH" : "MEDIUM",
-          tags: JSON.stringify({
-            order_id: order.id,
-            order_number: order.orderNumber,
-            provider_id: order.providerId,
-            quantity: order.quantity,
-            trigger,
-          }),
+          source: CalendarEventSource.SYSTEM_GENERATED,
+          status: CalendarEventStatus.PENDING,
           reminder_enabled: true,
           reminder_days_before: 1,
-        });
+        })
+        .select("id")
+        .single();
 
       if (error) {
-        this.logger.warn(
-          `Failed to create calendar event for order ${order.id}: ${error.message}`,
+        this.logger.error(
+          "Calendar delivery event NOT created for an order that was approved",
+          {
+            restaurantId,
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            trigger,
+            code: (error as { code?: string }).code,
+            error: error.message,
+          },
         );
-      } else {
-        this.logger.log(
-          `Calendar event created for order ${order.orderNumber} delivery`,
-        );
+        return null;
       }
-    } catch (e) {
-      this.logger.warn(`Calendar event creation failed: ${e?.message}`);
+
+      // No error and no row is the shape that hid this defect for its whole
+      // life: absence read as health. It is a failure, and it is reported.
+      if (!data?.id) {
+        this.logger.error(
+          "Calendar delivery event insert reported no error and returned no row",
+          {
+            restaurantId,
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            trigger,
+          },
+        );
+        return null;
+      }
+
+      this.logger.log(
+        `Calendar event ${data.id} created for order ${order.orderNumber} delivery`,
+      );
+      return data.id;
+    } catch (e: any) {
+      this.logger.error(
+        "Calendar delivery event NOT created for an order that was approved",
+        {
+          restaurantId,
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          trigger,
+          error: e?.message,
+        },
+      );
+      return null;
     }
   }
 
   /**
-   * Update calendar event when order is delivered
+   * Close the delivery event when its order arrives (non-fatal).
+   *
+   * Only a **completed** event is left alone here, so a `cancelled` one is
+   * still eligible. That asymmetry with `cancelCalendarEventForOrder` is
+   * deliberate and it is the pre-fix intent preserved: an arrival is a
+   * physical fact and outranks an earlier administrative cancellation.
+   * `markDelivered` does not require the order to be un-cancelled either, so
+   * refusing here would leave a delivered order facing a `cancelled` event
+   * with nothing to reconcile the two. Cancellation is the weaker claim and
+   * yields; delivery is the stronger one and wins.
    */
   private async updateCalendarEventForDelivery(
     restaurantId: string,
     orderId: string,
     order: OrderResponseDto,
   ): Promise<void> {
-    try {
-      // Find the calendar event for this order using tags
-      const { data: events } = await this.databaseService.supabase
-        .from("calendar_events")
-        .select("id, tags")
-        .eq("restaurant_id", restaurantId)
-        .eq("event_type", "delivery")
-        .neq("status", "COMPLETED");
-
-      // Find the event that references this order
-      const matchingEvent = (events || []).find((e) => {
-        try {
-          const tags = typeof e.tags === "string" ? JSON.parse(e.tags) : e.tags;
-          return tags?.order_id === orderId;
-        } catch {
-          return false;
-        }
-      });
-
-      if (matchingEvent) {
-        await this.databaseService.supabase
-          .from("calendar_events")
-          .update({
-            status: "COMPLETED",
-            description: `Delivered: ${order.orderNumber} (${order.quantity} bottles). Actual delivery: ${order.deliveredAt}`,
-          })
-          .eq("id", matchingEvent.id);
-
-        this.logger.log(
-          `Calendar event updated to COMPLETED for order ${order.orderNumber}`,
-        );
-      }
-    } catch (e) {
-      this.logger.warn(
-        `Calendar event update on delivery failed: ${e?.message}`,
-      );
-    }
+    return this.closeDeliveryCalendarEvent(restaurantId, orderId, order, {
+      status: CalendarEventStatus.COMPLETED,
+      leaveAlone: [CalendarEventStatus.COMPLETED],
+      description: `Delivered: ${order.orderNumber} (${order.quantity} bottles). Actual delivery: ${order.deliveredAt}`,
+    });
   }
 
   async listPendingOrders(restaurantId: string): Promise<OrderResponseDto[]> {
