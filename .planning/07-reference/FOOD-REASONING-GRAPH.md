@@ -219,9 +219,25 @@ production row:
   inventory table. The only `valid_until` in the schema is a vendor-promotion end
   date.
 
-What remains at L5 inventory is therefore **cost coverage, not maths**: ~70 of 72
-production rows have no recorded cost, so most rows now honestly report
-`serviceLevel: null`. That is OD-100's question, not this layer's.
+What remains at L5 inventory is **inputs, not maths** — and there are three
+independent ones missing, all measured against production 2026-09-02:
+
+| Input | State | Consequence |
+|---|---|---|
+| Cost + price | `last_purchase_price` and `menu_price_current` NULL on **72 of 72**; both `inventory_lot_rollup` rows have `has_invoice_cost = false` | no row can produce a critical ratio |
+| Deliveries | `procurement_orders`: **2 rows, 0 delivered** | lead time unknown → reorder point, safety stock and stockout probability null everywhere |
+| Consumption | `wine_consumption_log` **empty** | demand 0 everywhere |
+
+So the endpoint currently computes **no reorder science at all, for any tenant**,
+and says so through `scienceAvailability.missingInputs` rather than letting
+`reorderCount: 0` read as "nothing needs reordering". Fixing any one of the three
+leaves the other two blocking. The cost half is OD-100's question, not this
+layer's.
+
+*Two figures that circulated here and elsewhere were wrong, both flattering, and
+are corrected above: "~70 of 72 rows have no cost" (it is 72 of 72, and the
+"2 measured" rows fail `has_invoice_cost`), and the omission of the delivery and
+consumption zeroes entirely.*
 
 **Pricing.** Elasticity is a **category-level, partially-pooled, cross-tenant**
 estimand, never per-dish. Pinning one dish to ±0.5 at 95% needs ~960 units per arm at
@@ -314,7 +330,7 @@ to run first.
 | L2 BOM | **Absent in the repo**; a public-domain prior of the right shape exists (FNDDS, 18,584 rows / 5,431 dishes) | The keystone — but seeded, not from zero |
 | L3 variance | **Unreachable** | Requires L2 |
 | L4 demand | Primitives correct; plumbing leaks (UTC bucketing, write-time filter, in-sample backtest) | Method commitments in §L4 |
-| L5 inventory | **Wired 2026-09-02** ([[0069-service-level-is-derived-not-asserted]]). ~~Built, zero callers, hardcoded service level~~ — the "zero callers" half was **wrong when written**: `getInventoryScience` had 4 of 4 non-test call sites (the HTTP route + `advanced-analytics`, `consultants`, `recommendations`), none passing an option. The *unwired* half was right and worse than stated: `serviceLevel` is now the per-SKU critical ratio Cu/(Cu+Co), `leadTimeStdev` is measured and passed, and a SKU missing an input reports `null` + a reason instead of borrowing a constant | Cost coverage — ~70 of 72 production rows have no recorded cost, so most rows now report `serviceLevel: null` (OD-100) |
+| L5 inventory | **Wired 2026-09-02** ([[0069-service-level-is-derived-not-asserted]]). ~~Built, zero callers, hardcoded service level~~ — the "zero callers" half was **wrong when written**: `getInventoryScience` had 4 of 4 non-test call sites (the HTTP route + `advanced-analytics`, `consultants`, `recommendations`), none passing an option. The *unwired* half was right and worse than stated: `serviceLevel` is now the per-SKU critical ratio Cu/(Cu+Co), `leadTimeStdev` is measured and passed, and a SKU missing an input reports `null` + a reason instead of borrowing a constant | **Inputs, not maths** — three independent zeroes in production (cost/price NULL on 72 of 72; 0 delivered orders; empty consumption log), so the endpoint computes no science for any tenant today and reports which inputs are missing (OD-100) |
 | L5 pricing | **Still fully unwired — re-verified 2026-09-02.** `analyzePricing`, `estimateElasticity`, `priceForMargin`, `admissiblePoints` have **0 callers outside `pricing-agility.spec.ts`**; `engine/index.ts:28,41` re-exports the module and nothing imports it. Nothing reads `menu_price_versions` either — the table exists (`20260805123951_pricing_agility.sql`) and its only mention in TypeScript is a comment | Lane A, **plus OD-115**: elasticity is a partially-pooled estimand and cross-tenant pooling is contractually unrecorded |
 | L5 menu | Live path median-splits while citing Kasavana–Smith; no sample-size gate | — |
 | L6 validation | Ledger migrated, **nothing writes to it**; no backtest of any numeric claim | Backtests team's entry trigger |

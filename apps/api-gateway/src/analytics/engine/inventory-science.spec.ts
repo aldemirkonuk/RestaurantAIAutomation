@@ -95,6 +95,125 @@ describe("inventory-science engine", () => {
     approx(r!.reorderPoint, 80 + (r!.safetyStock as number));
   });
 
+  // The regime the hardcoded 0.95 made unreachable: it pinned z at +1.645, so
+  // safety stock could never go negative. A derived ratio can be below 0.5.
+  describe("service level below 0.5 — z goes negative", () => {
+    const demand = {
+      avgDemandPerPeriod: 0.02,
+      demandStdev: 0.02,
+      avgLeadTime: 7,
+      leadTimeStdev: 1,
+    };
+
+    it("returns a negative safety stock rather than flooring it", () => {
+      const ss = I.safetyStock({ serviceLevel: 0.251, ...demand });
+      expect(ss).not.toBeNull();
+      expect(ss as number).toBeLessThan(0);
+    });
+
+    it("reorderPoint flags the regime instead of leaving a bare negative", () => {
+      const r = I.reorderPoint({ serviceLevel: 0.251, ...demand })!;
+      expect(r.z).toBeLessThan(0);
+      expect(r.understockOptimal).toBe(true);
+      expect(r.safetyStock).toBeLessThan(0);
+      // Here |SS| < lead-time demand, so the reorder point survives positive.
+      // The flag is what tells the caller which regime produced it.
+      expect(r.reorderPoint).toBeGreaterThan(0);
+    });
+
+    it("the reorder point itself goes negative once |SS| exceeds lead-time demand", () => {
+      // Erratic demand (CV 5) on the same thin-margin wine.
+      const r = I.reorderPoint({
+        serviceLevel: 0.251,
+        avgDemandPerPeriod: 0.02,
+        demandStdev: 0.1,
+        avgLeadTime: 7,
+        leadTimeStdev: 1,
+      })!;
+      expect(r.safetyStock).toBeLessThan(0);
+      expect(r.reorderPoint).toBeLessThan(0);
+      // `qty <= negativeReorderPoint` is false for every real on-hand
+      // quantity — which is exactly how a SKU drops off a reorder list with
+      // nothing on the row saying why. `understockOptimal` is that why.
+      expect(0 <= r.reorderPoint).toBe(false);
+      expect(5 <= r.reorderPoint).toBe(false);
+      expect(r.understockOptimal).toBe(true);
+    });
+
+    it("z is positive and the flag is false above 0.5", () => {
+      const r = I.reorderPoint({ serviceLevel: 0.95, ...demand })!;
+      expect(r.z).toBeGreaterThan(0);
+      expect(r.understockOptimal).toBe(false);
+      expect(r.safetyStock).toBeGreaterThan(0);
+    });
+
+    it("the flag flips exactly at 0.5", () => {
+      expect(
+        I.reorderPoint({ serviceLevel: 0.499, ...demand })!.understockOptimal,
+      ).toBe(true);
+      expect(
+        I.reorderPoint({ serviceLevel: 0.501, ...demand })!.understockOptimal,
+      ).toBe(false);
+    });
+
+    it("the whole wired chain reaches it from real costs", () => {
+      // $22 menu on a $20 bottle, moving 0.02/day, ordering cost $25.
+      const annualDemand = 0.02 * 365;
+      const eoq = I.eoq(annualDemand, 25, 20 * 0.26)!;
+      const sl = I.serviceLevelFromCosts({
+        unitPrice: 22,
+        unitCost: 20,
+        annualHoldingRate: 0.26,
+        cycleDays: eoq.cycleTime * 365,
+      });
+      expect(sl.ok).toBe(true);
+      if (!sl.ok) return;
+      expect(sl.serviceLevel).toBeLessThan(0.5);
+      const r = I.reorderPoint({ serviceLevel: sl.serviceLevel, ...demand })!;
+      expect(r.understockOptimal).toBe(true);
+    });
+  });
+
+  describe("input validation is symmetric", () => {
+    const base = {
+      serviceLevel: 0.95,
+      avgDemandPerPeriod: 20,
+      demandStdev: 10,
+      avgLeadTime: 4,
+      leadTimeStdev: 1,
+    };
+
+    it("rejects a negative demand stdev, as it always did for lead-time stdev", () => {
+      // The formula squares it, so -1 used to sail through and return a
+      // number. A negative standard deviation is a caller that has lost
+      // track of its units, not a small input error.
+      expect(I.safetyStock({ ...base, demandStdev: -1 })).toBeNull();
+      expect(I.safetyStock({ ...base, leadTimeStdev: -1 })).toBeNull();
+      expect(I.reorderPoint({ ...base, demandStdev: -1 })).toBeNull();
+    });
+
+    it("rejects negative demand and negative lead time", () => {
+      expect(I.safetyStock({ ...base, avgDemandPerPeriod: -5 })).toBeNull();
+      expect(I.safetyStock({ ...base, avgLeadTime: -3 })).toBeNull();
+    });
+
+    it("rejects NaN in any position", () => {
+      for (const k of [
+        "avgDemandPerPeriod",
+        "demandStdev",
+        "avgLeadTime",
+        "leadTimeStdev",
+      ] as const) {
+        expect(I.safetyStock({ ...base, [k]: NaN })).toBeNull();
+      }
+    });
+
+    it("still accepts a legitimate zero", () => {
+      expect(I.safetyStock({ ...base, demandStdev: 0 })).not.toBeNull();
+      expect(I.safetyStock({ ...base, leadTimeStdev: 0 })).not.toBeNull();
+    });
+  });
+
   describe("leadTimeProfile", () => {
     it("mean and sample stdev from observed durations", () => {
       const p = I.leadTimeProfile([2, 4, 4, 4, 5, 5, 7, 9]);
@@ -108,6 +227,24 @@ describe("inventory-science engine", () => {
       approx(p!.meanDays, 6);
       expect(p!.stdevDays).toBeNull();
       expect(p!.n).toBe(1);
+      expect(p!.stdevRelativeStandardError).toBeNull();
+    });
+
+    it("reports the sampling noise in its own stdev, and it shrinks with n", () => {
+      // SE(sigma-hat)/sigma = 1/sqrt(2(n-1)).
+      approx(I.leadTimeProfile([5, 9])!.stdevRelativeStandardError, 0.70711);
+      approx(I.leadTimeProfile([5, 9, 7])!.stdevRelativeStandardError, 0.5);
+      const errs = [2, 3, 5, 11, 51].map(
+        (n) =>
+          I.leadTimeProfile(Array.from({ length: n }, (_, k) => 5 + (k % 3)))!
+            .stdevRelativeStandardError!,
+      );
+      for (let k = 1; k < errs.length; k++)
+        expect(errs[k]).toBeLessThan(errs[k - 1]);
+      // n = 2 is the only gate, and it is a definition, not a policy: a
+      // sample stdev needs two points. Any cutoff above it is an unchosen
+      // number, so the uncertainty is reported instead.
+      approx(errs[3], 1 / Math.sqrt(2 * 10));
     });
 
     it("no observations is null, and junk is filtered out", () => {

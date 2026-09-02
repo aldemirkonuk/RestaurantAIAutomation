@@ -181,7 +181,21 @@ export function safetyStock(params: {
   if (z === null) return null;
   // null → the term drops out, but reorderPoint reports that it did.
   const sigmaLT = params.leadTimeStdev ?? 0;
-  if (!Number.isFinite(sigmaLT) || sigmaLT < 0) return null;
+  // Validation used to be asymmetric: σ_LT rejected negatives while
+  // `demandStdev: -1` sailed through and returned a number, because the
+  // formula squares it. A negative standard deviation is not a small input
+  // error, it is a caller that has lost track of its own units.
+  if (
+    !Number.isFinite(sigmaLT) ||
+    sigmaLT < 0 ||
+    !Number.isFinite(params.demandStdev) ||
+    params.demandStdev < 0 ||
+    !Number.isFinite(params.avgDemandPerPeriod) ||
+    params.avgDemandPerPeriod < 0 ||
+    !Number.isFinite(params.avgLeadTime) ||
+    params.avgLeadTime < 0
+  )
+    return null;
   const variance =
     params.avgLeadTime * params.demandStdev ** 2 +
     params.avgDemandPerPeriod ** 2 * sigmaLT ** 2;
@@ -200,11 +214,32 @@ export interface ReorderPointResult {
    * unmeasured input as a measured zero.
    */
   leadTimeVarianceIncluded: boolean;
+  /** Φ⁻¹(serviceLevel). Negative whenever the service level is below 0.5. */
+  z: number;
+  /**
+   * True when z < 0, i.e. the service level is below 50% and the model is
+   * saying **hold less than lead-time demand** — plan to stock out more often
+   * than not, because carrying a spare costs more than missing a sale.
+   *
+   * WHY THIS FLAG EXISTS. It is a real newsvendor answer, not an error, and it
+   * is reachable the moment the service level stops being pinned at 0.95:
+   * Cu < Co gives CR < 0.5. But it makes `safetyStock` NEGATIVE and can make
+   * `reorderPoint` negative too, and `qty <= negativeReorderPoint` is false
+   * for every non-negative quantity — so without this flag the SKU drops off
+   * the reorder list *silently*, wearing an otherwise healthy-looking result.
+   * A caller must either surface it or floor it deliberately; it must not
+   * discover it by noticing an empty list.
+   */
+  understockOptimal: boolean;
 }
 
 /**
  * Reorder point = expected demand over lead time + safety stock.
  * The stock level that should trigger a purchase order.
+ *
+ * `reorderPoint` and `safetyStock` are returned UNFLOORED — a negative value
+ * is the model's actual answer and flooring it here would hide the regime
+ * change. `understockOptimal` says when you are in it.
  */
 export function reorderPoint(params: {
   serviceLevel: number;
@@ -215,12 +250,16 @@ export function reorderPoint(params: {
 }): ReorderPointResult | null {
   const ss = safetyStock(params);
   if (ss === null) return null;
+  const z = serviceLevelZ(params.serviceLevel);
+  if (z === null) return null;
   const leadTimeDemand = params.avgDemandPerPeriod * params.avgLeadTime;
   return {
     reorderPoint: leadTimeDemand + ss,
     safetyStock: ss,
     leadTimeDemand,
     leadTimeVarianceIncluded: params.leadTimeStdev != null,
+    z,
+    understockOptimal: z < 0,
   };
 }
 
@@ -239,6 +278,21 @@ export interface LeadTimeProfile {
   stdevDays: number | null;
   /** Observations the profile was built from. */
   n: number;
+  /**
+   * Relative standard error of `stdevDays` — how much of it is sampling noise.
+   * For a normal sample, SE(σ̂)/σ ≈ 1/√(2(n−1)): **70.7% at n = 2**, 50% at
+   * n = 3, 22% at n = 11. `null` when `stdevDays` is.
+   *
+   * WHY THIS IS A COMPUTED FACT AND NOT A THRESHOLD. `n ≥ 2` is the only gate
+   * here, and it is not a policy — it is the definition of a sample standard
+   * deviation. Any gate ABOVE 2 ("trust σ_LT only from 5 deliveries") is a
+   * policy number nobody has chosen, so this reports the uncertainty instead
+   * of inventing a cutoff. It matters because the King formula SQUARES σ_LT
+   * and multiplies it by d̄²: at n = 2 that term carries roughly a 3× spread
+   * of its own, with nothing on the surface saying so. When the founder wants
+   * a cutoff, this is the number to set it against.
+   */
+  stdevRelativeStandardError: number | null;
 }
 
 /**
@@ -255,7 +309,14 @@ export function leadTimeProfile(
   if (clean.length === 0) return null;
   const m = mean(clean);
   if (m === null) return null;
-  return { meanDays: m, stdevDays: stdev(clean, true), n: clean.length };
+  const sd = stdev(clean, true);
+  return {
+    meanDays: m,
+    stdevDays: sd,
+    n: clean.length,
+    stdevRelativeStandardError:
+      sd === null ? null : 1 / Math.sqrt(2 * (clean.length - 1)),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -374,11 +435,14 @@ export type PackRoundingResult =
  *
  * Refuses when the pack size is unknown, matching
  * `procurement/order-units.ts:173-183`: guessing 12 orders twelve times the
- * intent, guessing 1 orders a twelfth of it, and neither is knowledge. Note
- * that the vendor tables store `pack_size integer DEFAULT 1 NOT NULL`, so an
- * unknown pack size arrives from the database looking like a single — the
- * caller, not this function, has to know whether its 1 was recorded or
- * defaulted.
+ * intent, guessing 1 orders a twelfth of it, and neither is knowledge.
+ *
+ * All three tables that store one — `vendor_price_observations`,
+ * `vendor_portal_listings` and `procurement_document_lines` — declare it
+ * `pack_size integer DEFAULT 1 NOT NULL`, so an unrecorded pack arrives from
+ * the database looking exactly like a genuine single. The caller, not this
+ * function, has to know whether its 1 was recorded or defaulted; passing the
+ * column through unchecked is how an absence becomes a measurement.
  */
 export function roundUpToPack(
   requestedUnits: number,

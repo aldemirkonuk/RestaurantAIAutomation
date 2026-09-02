@@ -147,25 +147,63 @@ export class RecommendationsService {
 
     // ---- Inventory rules --------------------------------------------------
     const reorderTop = ctx.invSci?.reorderList?.[0];
+    // Every row on this rule's path is now nullable, and `?? 0` on any of them
+    // is a fabrication wearing a default: `?? 0` on `leadTimeDays` printed
+    // "a 0.0-day replenishment", and `?? 0` on `reorderPoint` printed "reorder
+    // point is 0 bottles". The gate reads the value, not a coalesced stand-in.
+    const measuredLeadTime = ctx.invSci?.params?.leadTimeDays;
+    const stockoutRisk = reorderTop?.stockoutProbability;
     rule(
       "stockout_imminent",
-      (reorderTop?.stockoutProbability ?? 0) > 0.4,
+      stockoutRisk != null && measuredLeadTime != null && stockoutRisk > 0.4,
       () => ({
         // "a 7-day replenishment" used to be written here as a fact. It was
         // an echo of the `leadTimeDays ?? 7` literal that getInventoryScience
         // no longer carries: lead time is now measured from this restaurant's
         // own deliveries, so the sentence quotes the measurement.
-        observation: `${reorderTop.name} has a ${pct(reorderTop.stockoutProbability)} chance of stocking out before a ${(ctx.invSci?.params?.leadTimeDays ?? 0).toFixed(1)}-day replenishment, this restaurant's measured mean over ${ctx.invSci?.params?.leadTimeObservations ?? 0} delivered order(s) (on hand: ${reorderTop.onHand}).`,
-        // A null reorder point printed as `?? 0` would read "reorder point is
-        // 0 bottles" — a fabricated instruction. Say which trigger fired.
-        recommendation:
-          reorderTop.reorderPoint != null
-            ? `Place the order today — reorder point is ${Math.ceil(reorderTop.reorderPoint)} bottles. If the vendor is slow, split the order across two vendors.`
-            : `Place the order today — it is under the reorder threshold set for it. A computed reorder point is not available for this wine (${reorderTop.serviceLevelBasis ?? "service level unavailable"}), so the trigger is the recorded threshold, not the safety-stock maths.`,
+        observation: `${reorderTop.name} has a ${pct(stockoutRisk)} chance of stocking out before a ${measuredLeadTime!.toFixed(1)}-day replenishment, this restaurant's measured mean over ${ctx.invSci?.params?.leadTimeObservations ?? 0} delivered order(s) (on hand: ${reorderTop.onHand}).`,
+        recommendation: `Place the order today — reorder point is ${Math.ceil(reorderTop.reorderPoint)} bottles. If the vendor is slow, split the order across two vendors.`,
         rationale: `Stockout probability is computed from this wine's own demand variance over the measured lead time; above 40%, waiting for the next order cycle usually means an empty slot on the list.${reorderTop.leadTimeVarianceIncluded === false ? " Lead-time variance is unmeasured (fewer than two deliveries on record), so the safety stock behind this is a lower bound." : ""}`,
         category: "inventory",
         urgency: "now",
         score: 3,
+      }),
+    );
+
+    // The other half of the same coin, and the reason this rule exists at all.
+    //
+    // `stockout_imminent` is the only rule that offers "Draft PO"
+    // (`apps/web/src/pages/Recommendations.tsx:113`). Before the service level
+    // and lead time became measured, `leadTimeDays` defaulted to 7 so
+    // `stockoutProbability` was always a number and the rule could fire — off
+    // an invented lead time. Now it is honestly null in every production
+    // tenant, which is correct, and would mean the Recommendations page simply
+    // shows one fewer card with nothing saying why. A capability that
+    // disappears silently is indistinguishable from one that decided there was
+    // nothing to do. So the absence gets a card of its own, naming the inputs
+    // that would switch the science back on.
+    const gaps: string[] = ctx.invSci?.scienceAvailability?.missingInputs ?? [];
+    const GAP_TEXT: Record<string, string> = {
+      cost_and_price:
+        "no bottle has both a recorded cost and a menu price, so no service level can be derived",
+      delivered_orders:
+        "no purchase order has been marked delivered, so vendor lead time and its variability are unknown",
+      consumption: "no consumption has been logged, so demand is unknown",
+    };
+    rule(
+      "reorder_science_unavailable",
+      gaps.length > 0 && (ctx.invSci?.skuCount ?? 0) > 0,
+      () => ({
+        observation: `Reorder points cannot be computed for any of the ${ctx.invSci.skuCount} wines on the list: ${gaps.map((g) => GAP_TEXT[g] ?? g).join("; ")}.`,
+        recommendation:
+          gaps.includes("cost_and_price") || gaps.includes("delivered_orders")
+            ? "Record what you paid on the next delivery and mark the order delivered. One priced, received order is enough to switch the reorder maths on for those wines."
+            : "Log consumption for a week — pours and bottle sales — and the reorder maths will start producing reorder points.",
+        rationale:
+          "This is a missing measurement, not a clean bill of health. An empty reorder list here means NOT MEASURED: the safety-stock formula needs a cost, a menu price, a delivered order and some consumption, and it reports nothing rather than guessing any of them.",
+        category: "inventory",
+        urgency: "this_week",
+        score: 2.5,
       }),
     );
 

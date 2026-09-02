@@ -745,11 +745,30 @@ export class AnalyticsService {
 
       // A trigger, or an honest absence — never `false` standing in for
       // "we could not tell", which is what the old `rop ? … : false` did.
-      const needsReorder = rop
-        ? i.qty <= rop.reorderPoint
-        : i.thresholdMin > 0
-          ? i.qty <= i.thresholdMin
-          : null;
+      //
+      // THIS DELIBERATELY HAS NO `threshold_min` FALLBACK. An earlier version
+      // of this branch fell back to `qty <= thresholdMin` and labelled it
+      // `operator_threshold_min`. That label was false, and the argument
+      // against it is the same one this file already makes about pack size:
+      // `threshold_min` is `integer DEFAULT 3 NOT NULL` and every write site
+      // is a literal (`5` = the import default, `baseline_from_production
+      // .sql:1614`; `6` = `inventory.service.ts:815,1088,1327`; `3` =
+      // `menus.service.ts:18`). Production, all 5 tenants, measured
+      // 2026-09-02: `count(distinct threshold_min) = 1` for EVERY tenant —
+      // 50 rows at 5, 18 at 10, 2 at 6, 1 at 6, 1 at 10. No operator sets an
+      // identical trigger for a house pour and a collectible; uniformity
+      // within a tenant is the signature of a default that was never touched.
+      // With `stock_live = 0` on 63 of 64 active rows, `qty <= thresholdMin`
+      // was true for 100% of rows in 100% of tenants, so the fallback made
+      // `reorderList` the entire cellar, every row stamped with a provenance
+      // claim that was not true. An unattested default is not an operator
+      // decision, and refusing pack_size while accepting this one would have
+      // been the same defect twice with opposite verdicts.
+      //
+      // The column is still reported below as a raw recorded value, labelled
+      // for what it is, so a UI can show it without this service treating it
+      // as evidence of intent.
+      const needsReorder = rop ? i.qty <= rop.reorderPoint : null;
 
       return {
         id: i.id,
@@ -766,6 +785,13 @@ export class AnalyticsService {
         reorderPoint: rop?.reorderPoint ?? null,
         safetyStock: rop?.safetyStock ?? null,
         leadTimeVarianceIncluded: rop?.leadTimeVarianceIncluded ?? null,
+        // Below 0.5 the critical ratio says HOLD LESS than lead-time demand,
+        // which makes safety stock negative and can make the reorder point
+        // negative too. That is a real answer, but `qty <= negativeRop` is
+        // false for every quantity, so without this the SKU would vanish from
+        // the reorder list with nothing on the row explaining why.
+        understockOptimal: rop?.understockOptimal ?? null,
+        serviceLevelZ: rop?.z ?? null,
         stockoutProbability: stockoutProb,
         eoq: eoq?.eoq ?? null,
         orderQuantity: packed.ok ? packed.units : null,
@@ -773,11 +799,15 @@ export class AnalyticsService {
         shelfLifeCappedQuantity: shelfLife.ok ? shelfLife.cappedUnits : null,
         shelfLifeBlockedBy: shelfLife.ok ? null : shelfLife.reason,
         needsReorder,
-        reorderTriggerBasis: rop
-          ? "king_reorder_point"
-          : i.thresholdMin > 0
-            ? "operator_threshold_min"
-            : "none",
+        reorderTriggerBasis: !rop
+          ? "unavailable"
+          : rop.understockOptimal
+            ? "king_reorder_point_understock_optimal"
+            : "king_reorder_point",
+        // Recorded, and labelled as the system default it is in every
+        // production tenant. Reported so a reader can see it; never used as a
+        // trigger. See the note above `needsReorder`.
+        thresholdMin: i.thresholdMin,
         unitCost: i.unitCost,
         unitPrice: i.unitPrice > 0 ? i.unitPrice : null,
         costBasis: i.costBasis,
@@ -814,7 +844,46 @@ export class AnalyticsService {
       (s) => s.serviceLevelBasis === "critical_ratio Cu/(Cu+Co)",
     ).length;
 
+    // Three INDEPENDENT inputs gate the reorder science, and in production
+    // today all three are absent at once (measured 2026-09-02 against
+    // Restaurant_Wine_Ops): `last_purchase_price` and `menu_price_current` are
+    // NULL on 72 of 72 rows and both `inventory_lot_rollup` rows have
+    // `has_invoice_cost = false`, so NO row can produce a critical ratio;
+    // `procurement_orders` holds 2 rows, 0 with `delivered_at`, so lead time
+    // is unknown; `wine_consumption_log` is empty, so demand is 0.
+    //
+    // A caller that saw only `reorderCount: 0` would read that as "nothing
+    // needs reordering", which is the absence-as-health fault this endpoint
+    // was rebuilt to stop committing. So the endpoint states which inputs it
+    // is missing, by name, instead of leaving it to be inferred from nulls.
+    const withDemand = skus.filter((s) => s.avgDailyDemand > 0).length;
+    const scienceAvailability = {
+      computable: skus.filter((s) => s.reorderPoint !== null).length,
+      total: skus.length,
+      missingInputs: [
+        ...(derivedSlCount === 0 && statedServiceLevel == null
+          ? ["cost_and_price"]
+          : []),
+        ...(leadTime == null ? ["delivered_orders"] : []),
+        ...(withDemand === 0 ? ["consumption"] : []),
+      ],
+      rowsWithDemand: withDemand,
+      note:
+        "Each entry in missingInputs independently nulls the reorder science " +
+        "for every row. reorderCount: 0 with a non-empty missingInputs means " +
+        "NOT MEASURED, never 'nothing needs reordering'.",
+    };
+
+    // Percent for the basis sentence, as its own statement: the guard in
+    // scripts/check_analytics_cost_honesty.py reads a whole statement with
+    // string literals stripped, so an inline `* 100` next to cost fields
+    // looks exactly like a magic-number cost fallback.
+    const sigmaLtNoisePct = (
+      (measuredLeadTime?.stdevRelativeStandardError ?? 0) * 100
+    ).toFixed(0);
+
     return {
+      scienceAvailability,
       params: {
         // No single service level any more — it is per SKU. `null` here when
         // the caller did not state one is the honest shape: the old scalar
@@ -827,6 +896,11 @@ export class AnalyticsService {
         leadTimeDays: leadTime,
         leadTimeStdevDays: leadTimeStdev,
         leadTimeObservations: measuredLeadTime?.n ?? 0,
+        // How much of leadTimeStdevDays is sampling noise: 1/√(2(n−1)).
+        // ±71% at n = 2, and the King formula squares σ_LT. Reported rather
+        // than gated on, because any minimum-n above 2 is a policy number.
+        leadTimeStdevRelativeStandardError:
+          measuredLeadTime?.stdevRelativeStandardError ?? null,
         demandWindowDays: sinceDays,
         annualHoldingRate: this.HOLDING_RATE,
         orderingCostPerPo: this.ORDERING_COST,
@@ -846,11 +920,13 @@ export class AnalyticsService {
         leadTimeVariance:
           leadTimeStdev == null
             ? "UNMEASURED — fewer than two delivered orders, so σ_LT is undefined. Safety stock omits the d̄²·σ_LT² term and is therefore a LOWER BOUND, flagged per row as leadTimeVarianceIncluded: false."
-            : `σ_LT = ${leadTimeStdev.toFixed(2)}d over ${measuredLeadTime?.n ?? 0} delivered order(s), included in the King formula's d̄²·σ_LT² term`,
+            : `σ_LT = ${leadTimeStdev.toFixed(2)}d over ${measuredLeadTime?.n ?? 0} delivered order(s), included in the King formula's d̄²·σ_LT² term. Sampling noise in that σ_LT is ±${sigmaLtNoisePct}% (relative standard error 1/√(2(n−1))), and the formula SQUARES it — at n = 2 that is ±71%. There is no minimum-n gate above 2, deliberately: 2 is the definition of a sample stdev, anything higher is a policy number nobody has chosen.`,
         reorderScience:
-          "King safety stock SS = z·sqrt(LT·σ_d² + d̄²·σ_LT²); z from the per-SKU critical ratio, so unlike before this IS cost-dependent",
+          "King safety stock SS = z·sqrt(LT·σ_d² + d̄²·σ_LT²); z from the per-SKU critical ratio, so unlike before this IS cost-dependent. z is NEGATIVE when the critical ratio is below 0.5 (Cu < Co, i.e. holding a spare costs more than missing a sale) — safety stock and possibly the reorder point go negative, which is the model saying plan to stock out. Those rows carry understockOptimal: true and reorderTriggerBasis: king_reorder_point_understock_optimal rather than silently dropping off reorderList.",
+        reorderTrigger:
+          "needsReorder comes ONLY from the King reorder point. It does NOT fall back to restaurant_inventory.threshold_min: that column is `integer DEFAULT 3 NOT NULL`, every write site in the repo is a literal, and production has count(distinct threshold_min) = 1 in all 5 tenants (measured 2026-09-02) — an untouched default, not an operator decision. skus[].thresholdMin is reported as a recorded value for display, never used as a trigger.",
         orderQuantity:
-          "skus[].orderQuantity is null on every row: case-pack rounding needs a pack size, and nothing reachable from restaurant_inventory records one. vendor_price_observations.pack_size exists but is `integer DEFAULT 1 NOT NULL`, so an unrecorded pack is stored as a single and cannot be told from a real one — reading it would report an absence as a measurement. skus[].eoq is the unrounded quantity.",
+          "skus[].orderQuantity is null on every row: case-pack rounding needs a pack size, and nothing reachable from restaurant_inventory records one. All three tables that store one — vendor_price_observations, vendor_portal_listings, procurement_document_lines — declare it `integer DEFAULT 1 NOT NULL`, so an unrecorded pack is stored as a single and cannot be told from a real one; reading it would report an absence as a measurement. skus[].eoq is the unrounded quantity.",
         shelfLife:
           "skus[].shelfLifeCappedQuantity is null on every row: no shelf-life, expiry or best-before column exists in the schema. The seam is wired to E.inventory.shelfLifeCap and needs only a column.",
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,

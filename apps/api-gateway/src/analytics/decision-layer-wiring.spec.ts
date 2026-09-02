@@ -1,5 +1,6 @@
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
+import { RecommendationsService } from "./recommendations.service";
 
 /**
  * Regression guard — the L5 decision layer is actually CALLED with real inputs.
@@ -77,6 +78,40 @@ const advanced = (rows: Rows) =>
     {} as any,
   );
 
+const recommendations = (rows: Rows) => {
+  const db = { getClient: () => makeClient(rows) } as any;
+  const analyticsSvc = new AnalyticsService(db);
+  return new RecommendationsService(
+    analyticsSvc,
+    {
+      getMenuEngineering: async () => null,
+      getSeasonality: async () => null,
+      getCashflow: async () => null,
+    } as any,
+    { generate: async () => ({ insights: [] }) } as any,
+    { listGoals: async () => [] } as any,
+    {
+      getStateMap: async () => new Map(),
+      logImpressions: async () => {},
+    } as any,
+    db,
+  );
+};
+
+/**
+ * `threshold_min` is 5 on every fixture ON PURPOSE.
+ *
+ * An earlier version of these fixtures used 2 and 4 — values that look like
+ * per-wine operator choices, and which made a `threshold_min` reorder
+ * fallback look reasonable in the tests while being false in production.
+ * 5 is the actual import default (`baseline_from_production.sql:1614`), and
+ * production has `count(distinct threshold_min) = 1` in all five tenants
+ * (measured 2026-09-02) — the column has never been touched by anyone.
+ * A fixture that disagrees with production is how a false claim gets a
+ * passing test.
+ */
+const SYSTEM_DEFAULT_THRESHOLD_MIN = 5;
+
 /** Invoiced cost and a menu price — everything the critical ratio needs. */
 const COSTED = {
   id: "inv-costed",
@@ -84,7 +119,7 @@ const COSTED = {
   stock_live: 5,
   menu_price_current: 60,
   last_purchase_price: 20,
-  threshold_min: 2,
+  threshold_min: SYSTEM_DEFAULT_THRESHOLD_MIN,
   master_wine_id: "mw-costed",
 };
 
@@ -95,7 +130,7 @@ const UNCOSTED = {
   stock_live: 1,
   menu_price_current: 100,
   last_purchase_price: null,
-  threshold_min: 4,
+  threshold_min: SYSTEM_DEFAULT_THRESHOLD_MIN,
   master_wine_id: "mw-uncosted",
 };
 
@@ -190,10 +225,12 @@ describe("service level is derived, not asserted", () => {
     expect(row.serviceLevelBasis).toContain("unit_cost_unknown");
     expect(row.reorderPoint).toBeNull();
     expect(row.safetyStock).toBeNull();
-    // ...but the operator's own recorded trigger still works, so the reorder
-    // list does not empty out. stock_live 1 <= threshold_min 4.
-    expect(row.needsReorder).toBe(true);
-    expect(row.reorderTriggerBasis).toBe("operator_threshold_min");
+    // And it does NOT fall through to threshold_min. `stock_live` 1 is under
+    // the threshold of 5, so a fallback would have fired here and stamped the
+    // row `operator_threshold_min` — a provenance claim that is false for
+    // every row in production.
+    expect(row.needsReorder).toBeNull();
+    expect(row.reorderTriggerBasis).toBe("unavailable");
     expect(out.serviceLevelCoverage.unavailable).toBe(1);
   });
 
@@ -277,8 +314,12 @@ describe("lead-time variance is measured and passed", () => {
     const row = costedRow(out);
     expect(row.reorderPoint).toBeNull();
     expect(row.stockoutProbability).toBeNull();
-    // The operator's threshold still drives the trigger.
-    expect(row.reorderTriggerBasis).toBe("operator_threshold_min");
+    expect(row.reorderTriggerBasis).toBe("unavailable");
+    expect(row.needsReorder).toBeNull();
+    // And the endpoint says WHICH input is missing, rather than leaving a
+    // reader to infer it from a page of nulls.
+    expect(out.scienceAvailability.missingInputs).toContain("delivered_orders");
+    expect(out.scienceAvailability.computable).toBe(0);
   });
 
   it("an undelivered order contributes no lead time", async () => {
@@ -295,6 +336,160 @@ describe("lead-time variance is measured and passed", () => {
     ];
     const out = await analytics(rows).getInventoryScience(RESTAURANT);
     expect(out.params.leadTimeObservations).toBe(STEADY.length);
+  });
+
+  it("reports how much of σ_LT is sampling noise instead of gating on an invented n", async () => {
+    const two = await analytics(base([5, 9])).getInventoryScience(RESTAURANT);
+    expect(two.params.leadTimeObservations).toBe(2);
+    // 1/sqrt(2*(2-1)) = 0.7071 — the σ_LT from two deliveries is ±71%, and
+    // the King formula squares it.
+    expect(two.params.leadTimeStdevRelativeStandardError).toBeCloseTo(
+      0.7071,
+      3,
+    );
+    expect(two.basis.leadTimeVariance).toContain("71%");
+    const many = await analytics(
+      base([5, 9, 6, 8, 7, 7, 4, 10, 6, 8, 7]),
+    ).getInventoryScience(RESTAURANT);
+    expect(many.params.leadTimeStdevRelativeStandardError).toBeLessThan(0.25);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// threshold_min is a system default and must never be read as a decision
+// ---------------------------------------------------------------------------
+
+describe("threshold_min never becomes a reorder trigger", () => {
+  // The production shape, reproduced: no cost, no menu price, no delivered
+  // order, no consumption, stock at 0, and a threshold every row shares.
+  const productionShape = (): Rows => ({
+    restaurant_inventory: [
+      {
+        ...UNCOSTED,
+        id: "p1",
+        stock_live: 0,
+        menu_price_current: null,
+        master_wine_id: "mw-p1",
+      },
+      {
+        ...UNCOSTED,
+        id: "p2",
+        stock_live: 0,
+        menu_price_current: null,
+        master_wine_id: "mw-p2",
+      },
+    ],
+    wine_consumption_log: [],
+    procurement_orders: [],
+    inventory_lot_rollup: [],
+  });
+
+  it("does not turn the whole cellar into a reorder list", async () => {
+    const out =
+      await analytics(productionShape()).getInventoryScience(RESTAURANT);
+    // Every row is at or below its threshold (0 <= 5). A threshold fallback
+    // would return reorderCount === skuCount here, each row claiming an
+    // operator set that trigger.
+    expect(out.skuCount).toBe(2);
+    expect(out.reorderCount).toBe(0);
+    expect(out.reorderList).toHaveLength(0);
+    for (const s of out.skus as any[]) {
+      expect(s.needsReorder).toBeNull();
+      expect(s.reorderTriggerBasis).toBe("unavailable");
+    }
+  });
+
+  it("no row anywhere claims operator provenance for a trigger", async () => {
+    const out =
+      await analytics(productionShape()).getInventoryScience(RESTAURANT);
+    const bases = (out.skus as any[]).map((s) => s.reorderTriggerBasis);
+    expect(bases).not.toContain("operator_threshold_min");
+    expect(JSON.stringify(out)).not.toContain("operator_threshold_min");
+  });
+
+  it("still reports the recorded value, labelled as the default it is", async () => {
+    const out =
+      await analytics(productionShape()).getInventoryScience(RESTAURANT);
+    expect((out.skus[0] as any).thresholdMin).toBe(
+      SYSTEM_DEFAULT_THRESHOLD_MIN,
+    );
+    expect(out.basis.reorderTrigger).toContain("DEFAULT 3 NOT NULL");
+    expect(out.basis.reorderTrigger).toContain("not an operator decision");
+  });
+
+  it("names all three missing inputs, so an empty list is not read as health", async () => {
+    const out =
+      await analytics(productionShape()).getInventoryScience(RESTAURANT);
+    expect(out.scienceAvailability.missingInputs.sort()).toEqual([
+      "consumption",
+      "cost_and_price",
+      "delivered_orders",
+    ]);
+    expect(out.scienceAvailability.computable).toBe(0);
+    expect(out.scienceAvailability.note).toContain("NOT MEASURED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The below-0.5 regime the hardcoded 0.95 made unreachable
+// ---------------------------------------------------------------------------
+
+describe("a critical ratio under 0.5 is surfaced, not silently dropped", () => {
+  // Thin margin ($22 menu on a $20 bottle) and slow movement, so the cost of
+  // holding a spare exceeds the margin lost on a miss: Cu < Co, CR < 0.5,
+  // z < 0, and safety stock goes negative.
+  const thinMargin = (): Rows => ({
+    restaurant_inventory: [
+      {
+        ...COSTED,
+        menu_price_current: 22,
+        last_purchase_price: 20,
+        stock_live: 3,
+      },
+    ],
+    wine_consumption_log: [
+      {
+        inventory_id: COSTED.id,
+        quantity: 1,
+        created_at: daysAgo(40),
+        restaurant_inventory: { master_wine_id: COSTED.master_wine_id },
+      },
+    ],
+    procurement_orders: deliveries(ERRATIC),
+    inventory_lot_rollup: [],
+  });
+
+  it("flags understockOptimal rather than vanishing from the list", async () => {
+    const row = costedRow(
+      await analytics(thinMargin()).getInventoryScience(RESTAURANT),
+    );
+    expect(row.serviceLevel).toBeLessThan(0.5);
+    expect(row.serviceLevelZ).toBeLessThan(0);
+    expect(row.safetyStock).toBeLessThan(0);
+    // It is NOT on the reorder list — correctly, because the model says hold
+    // less than lead-time demand. The defect would be arriving there with no
+    // way to tell this from a healthy well-stocked row.
+    expect(row.needsReorder).toBe(false);
+    expect(row.reorderTriggerBasis).toBe(
+      "king_reorder_point_understock_optimal",
+    );
+    expect(row.understockOptimal).toBe(true);
+  });
+
+  it("an explicit caller service level below 0.5 is flagged the same way", async () => {
+    const row = costedRow(
+      await analytics(base(ERRATIC)).getInventoryScience(RESTAURANT, {
+        serviceLevel: 0.4,
+      }),
+    );
+    expect(row.understockOptimal).toBe(true);
+    expect(row.serviceLevelZ).toBeLessThan(0);
+  });
+
+  it("the basis explains the regime before a reader meets a negative number", async () => {
+    const out = await analytics(thinMargin()).getInventoryScience(RESTAURANT);
+    expect(out.basis.reorderScience).toContain("NEGATIVE");
+    expect(out.basis.reorderScience).toContain("understockOptimal");
   });
 });
 
@@ -316,9 +511,18 @@ describe("case pack and shelf life are refusals, not guesses", () => {
 
   it("the basis explains why, including the DEFAULT 1 NOT NULL trap", async () => {
     const out = await analytics(base(STEADY)).getInventoryScience(RESTAURANT);
-    expect(out.basis.orderQuantity).toContain("pack_size");
     expect(out.basis.orderQuantity).toContain("DEFAULT 1 NOT NULL");
     expect(out.basis.shelfLife).toContain("no shelf-life");
+    // All three tables, named. `vendor_price_list_items` does not exist and
+    // an earlier version of this basis cited it.
+    for (const table of [
+      "vendor_price_observations",
+      "vendor_portal_listings",
+      "procurement_document_lines",
+    ]) {
+      expect(out.basis.orderQuantity).toContain(table);
+    }
+    expect(out.basis.orderQuantity).not.toContain("vendor_price_list_items");
   });
 });
 
@@ -381,5 +585,61 @@ describe("scorecard and safety stock quote the same lead time", () => {
     const card = await advanced(base([7])).getVendorScorecard(RESTAURANT);
     expect(card.vendors[0].leadTimeDays.stdev).toBeNull();
     expect(card.vendors[0].leadTimeDays.n).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The recommendation that drafts a PO, and the one that says why it cannot
+// ---------------------------------------------------------------------------
+
+describe("a capability that switches off says so", () => {
+  const keysOf = (out: any) => out.recommendations.map((r: any) => r.ruleKey);
+
+  const productionShape = (): Rows => ({
+    restaurant_inventory: [
+      { ...UNCOSTED, stock_live: 0, menu_price_current: null },
+    ],
+    wine_consumption_log: [],
+    procurement_orders: [],
+    inventory_lot_rollup: [],
+  });
+
+  it("stockout_imminent cannot fire without a measured lead time", async () => {
+    const out =
+      await recommendations(productionShape()).getRecommendations(RESTAURANT);
+    // Correct: its stockout probability is null, not low. On `main` this fired
+    // off a lead time that defaulted to 7 with nothing behind it.
+    expect(keysOf(out)).not.toContain("stockout_imminent");
+  });
+
+  it("...and the absence gets its own card naming the missing inputs", async () => {
+    const out =
+      await recommendations(productionShape()).getRecommendations(RESTAURANT);
+    // `stockout_imminent` is the ONLY rule mapped to "Draft PO"
+    // (apps/web/src/pages/Recommendations.tsx:113). Without this card the
+    // action just disappears from the page with nothing explaining it.
+    expect(keysOf(out)).toContain("reorder_science_unavailable");
+    const card = out.recommendations.find(
+      (r: any) => r.ruleKey === "reorder_science_unavailable",
+    )!;
+    expect(card.category).toBe("inventory");
+    expect(card.observation).toContain("recorded cost");
+    expect(card.observation).toContain("delivered");
+    expect(card.rationale).toContain("NOT MEASURED");
+  });
+
+  it("no card ever prints a 0.0-day replenishment or a 0-bottle reorder point", async () => {
+    const out =
+      await recommendations(productionShape()).getRecommendations(RESTAURANT);
+    const text = JSON.stringify(out.recommendations);
+    expect(text).not.toContain("0.0-day");
+    expect(text).not.toContain("reorder point is 0 bottles");
+  });
+
+  it("the unavailable card stands down once the science can be computed", async () => {
+    const out = await recommendations(base(ERRATIC)).getRecommendations(
+      RESTAURANT,
+    );
+    expect(keysOf(out)).not.toContain("reorder_science_unavailable");
   });
 });

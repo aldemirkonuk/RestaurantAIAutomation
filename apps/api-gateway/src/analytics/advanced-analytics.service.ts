@@ -596,6 +596,11 @@ export class AdvancedAnalyticsService {
       leadTimeDays: leadTime,
       leadTimeStdevDays: ltProfile?.stdevDays ?? null,
       leadTimeVarianceIncluded: rop?.leadTimeVarianceIncluded ?? null,
+      // A critical ratio below 0.5 makes safety stock negative — a real
+      // answer ("plan to stock out"), but one that must never arrive as a
+      // bare number. See ReorderPointResult.understockOptimal.
+      understockOptimal: rop?.understockOptimal ?? null,
+      serviceLevelZ: rop?.z ?? null,
       onHand: item?.qty ?? null,
       unitPrice: item?.unitPrice ?? null,
       unitCost: item?.unitCost ?? null,
@@ -663,6 +668,12 @@ export class AdvancedAnalyticsService {
             reorderCount: inventoryScience.reorderCount,
             reorderTop: inventoryScience.reorderList?.slice(0, 5),
             skuCount: inventoryScience.skuCount,
+            // Without this, `reorderCount: 0` reads as "nothing needs
+            // reordering" when the truth is "no reorder point could be
+            // computed for any row". The overview is the surface most likely
+            // to be skimmed, so it is the one that can least afford to let an
+            // absent measurement look like a clean result.
+            scienceAvailability: inventoryScience.scienceAvailability,
           }
         : null,
       menuEngineering: menuFull
