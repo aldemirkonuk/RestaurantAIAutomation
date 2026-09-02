@@ -130,14 +130,23 @@ reads as *"nothing to report"* forever.
 |---|---|---|
 | At 1f4717cc, before this work | **215** | 47 |
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
-| **Remaining, baselined and non-growing** | **207 of 215** | 44 |
+| **Remaining, baselined and non-growing** | **203 of 215** | 43 |
+
+> Was 207 across 44 files at adoption. Concurrent sessions fixed 4 of them
+> (`scheduled-tasks`/`procurement_orders`, `procurement`/`calendar_events` ×2,
+> `recurring-orders`/`calendar_events`) while this branch waited to merge, and
+> the guard **failed the build** until the baseline was lowered to match — the
+> ratchet working in the good direction. In the same run it caught **2 new**
+> swallowed reads that had just landed on `main`
+> (`scheduled-tasks.service.ts:434`, `receiving.service.ts:312`); both were
+> fixed rather than baselined, per the rule that the baseline only shrinks.
 
 Plus **37** further sites that bind `data`, discard `error`, and immediately refuse on a
 falsy value (`if (!x) throw NotFoundException`). Those report a failed read as a *missing
 row* — a 404 for a 503. Wrong, but not silent, and deliberately out of scope: see
 [ADR 0067](../decisions/0067-a-failed-read-is-never-an-empty-one.md) §Consequences.
 
-The 207 are recorded in `scripts/read_error_baseline.json` and held by
+The 203 are recorded in `scripts/read_error_baseline.json` and held by
 `scripts/check_read_errors_not_swallowed.py`, a blocking CI job. A site outside the
 baseline fails the build, and a baseline row the tree no longer contains **also** fails it
 — so the number above can only shrink, and it cannot rot in prose the way the "~29" did.

@@ -431,13 +431,29 @@ export class ScheduledTasksService implements OnModuleInit {
         const twoDaysStr = twoDaysFromNow.toISOString().split("T")[0];
 
         // Schedules coming due within two days, for this tenant only.
-        const { data: schedules } = await client
+        //
+        // The error is bound on purpose (ADR 0067). supabase-js RESOLVES with
+        // { data, error }, so reading `data` alone makes a failed query
+        // indistinguishable from "no schedules are due" — and this job's
+        // response to both would be to send nothing and log nothing. A tenant
+        // whose reminders stopped because the query broke would look exactly
+        // like a tenant with nothing due, forever.
+        const { data: schedules, error: schedulesError } = await client
           .from("recurring_orders")
           .select("*")
           .eq("restaurant_id", tenant.id)
           .eq("active", true)
           .lte("next_order_date", twoDaysStr)
           .order("next_order_date", { ascending: true });
+
+        if (schedulesError) {
+          // Throw rather than return: runPerTenant records a per-tenant failure,
+          // so this surfaces as a broken tenant instead of a quiet one.
+          throw new Error(
+            `recurring-order-reminder could not read recurring_orders for ` +
+              `restaurant ${tenant.id}: ${schedulesError.message}`,
+          );
+        }
 
         if (!schedules || schedules.length === 0) return;
 

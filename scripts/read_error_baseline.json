@@ -1,7 +1,7 @@
 {
   "_comment": "Pre-existing swallowed supabase reads, recorded at adoption of scripts/check_read_errors_not_swallowed.py (ADR 0067). This list only ever SHRINKS: a key absent from the tree fails the build so the row gets removed. Never add a row to silence a new finding -- fix it, or allowlist it with a written reason in the guard.",
-  "total_sites": 207,
-  "total_files": 44,
+  "total_sites": 203,
+  "total_files": 43,
   "sites": {
     "apps/api-gateway/src/analytics/consultants.service.ts::analytics_insight_prefs::data": 1,
     "apps/api-gateway/src/analytics/recommendation-actions.service.ts::recommendation_digest_prefs::data": 1,
@@ -68,7 +68,6 @@
     "apps/api-gateway/src/communications/scheduled-tasks.service.ts::notification_preferences::data": 1,
     "apps/api-gateway/src/communications/scheduled-tasks.service.ts::procurement_orders::deliveries": 1,
     "apps/api-gateway/src/communications/scheduled-tasks.service.ts::procurement_orders::invoices": 1,
-    "apps/api-gateway/src/communications/scheduled-tasks.service.ts::procurement_orders::orders": 1,
     "apps/api-gateway/src/communications/scheduled-tasks.service.ts::providers::providers": 1,
     "apps/api-gateway/src/contacts/contacts.service.ts::contact_addresses::addresses": 2,
     "apps/api-gateway/src/dashboard/dashboard.service.ts::calendar_events::events": 1,
@@ -110,7 +109,6 @@
     "apps/api-gateway/src/procurement/documents/document-intake.service.ts::procurement_order_items::orderLines": 1,
     "apps/api-gateway/src/procurement/documents/document-intake.service.ts::procurement_orders::data": 1,
     "apps/api-gateway/src/procurement/documents/documents.controller.ts::vendor-attachments::signed": 1,
-    "apps/api-gateway/src/procurement/procurement.service.ts::calendar_events::events": 2,
     "apps/api-gateway/src/procurement/procurement.service.ts::communication_templates::t": 1,
     "apps/api-gateway/src/procurement/procurement.service.ts::conversation_attachments::rows": 1,
     "apps/api-gateway/src/procurement/procurement.service.ts::inventory_events::existingEvent": 1,
@@ -130,7 +128,6 @@
     "apps/api-gateway/src/procurement/procurement.service.ts::vendor-attachments::blob": 1,
     "apps/api-gateway/src/procurement/procurement.service.ts::vendor-attachments::signed": 1,
     "apps/api-gateway/src/procurement/receiving.service.ts::procurement_orders::orders": 1,
-    "apps/api-gateway/src/procurement/recurring-orders.service.ts::calendar_events::existingEvents": 1,
     "apps/api-gateway/src/providers/providers.service.ts::provider_locations::locs": 1,
     "apps/api-gateway/src/providers/providers.service.ts::providers::existingProvider": 1,
     "apps/api-gateway/src/restaurants/members.service.ts::restaurants::restaurant": 1,
