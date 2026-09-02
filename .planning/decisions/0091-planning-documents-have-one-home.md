@@ -1,27 +1,34 @@
 ---
 type: adr
-id: 0028
+id: 0091
 title: Planning documents have one home, and CI keeps them there
 status: proposed
-updated: 2026-08-26
+updated: 2026-09-02
 links: ["[[0026-schema-has-one-home]]", "[[0002-documentation-first-operating-mode]]", "[[0003-session-output-discipline]]", "[[OPEN-DECISIONS]]"]
 ---
 
-# 0028 — Planning documents have one home, and CI keeps them there
+# 0091 — Planning documents have one home, and CI keeps them there
 
 - **Status:** Proposed
-- **Date:** 2026-08-26
+- **Date:** 2026-08-26 (renumbered 0028 → 0091 on 2026-09-02, see note below)
 - **Decider:** Aldemir (founder) — not yet locked
 - **Keywords:** retire-to-write, archive, duplication, milestone close, gsd-complete-milestone, corpus, single home, guard, drift
 - **Links:** `scripts/check_planning_single_home.py`,
   `.github/workflows/ci.yml` (`planning-single-home`),
   CLAUDE.md §4, [0026 — Schema has one home](0026-schema-has-one-home.md)
 
-> **Number.** 0025 is held by an unmerged branch (`docs/od-citation-sweep`, PR #93)
-> and 0027 by another (`fix/od-95-push-subscription-source`). Both were found by
-> scanning every worktree and remote branch before choosing, which is the check
-> ADR 0026 introduced after four numbering collisions in one day. This takes
-> **0028** — a gap over a collision.
+> **Number.** Originally taken as **0028** on 2026-08-26 — 0025 was held by an
+> unmerged branch (`docs/od-citation-sweep`, PR #93) and 0027 by another
+> (`fix/od-95-push-subscription-source`); this branch (`chore/planning-archive-dedupe`)
+> itself then sat unmerged long enough that **0028 was independently spent on
+> [0028 — Phantom relations are repointed or deleted](0028-phantom-relations-repoint-or-delete.md)**,
+> which reached `main`. `scripts/check_adr_numbers_unique.py --audit` caught the
+> collision on 2026-09-02 (572+ refs swept); this file keeps its content and
+> takes the next free number, **0091**, per that guard — never inferred from
+> `git log`. Anything citing this decision as **ADR 0028** predates the rename.
+> This branch is otherwise unchanged since 2026-08-26 and has not been
+> re-verified against the current `.planning/` tree, which has moved
+> substantially since — that verification is separate from fixing the number.
 
 ## Context
 
