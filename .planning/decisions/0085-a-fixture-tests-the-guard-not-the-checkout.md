@@ -96,11 +96,18 @@ whole file exists to prevent, one level up.
   skip needs someone asking whether it **ran**, not whether it failed. Nothing
   currently asks that of `Deploy to Production`, and this ADR does not add it —
   that is a workflow-graph decision and wants its own record.
-- **Not fixed here, and named rather than left implicit:** there is no version
-  or sha endpoint on the gateway, so *"is production running the code we just
-  merged"* is unanswerable. `/api/v1/health/live` is dependency-free by design,
-  so its 200 proves the process is up and nothing about whether the injector
-  built; a guarded route returning 401 is the real evidence. Raised separately.
+- **Closed while this ADR was open — by someone else.** The draft named a second
+  gap: no version or sha endpoint on the gateway, so *"is production running the
+  code we just merged"* was unanswerable. **PR #254 (`8bacb131`) fixed it**
+  before this merged. `/api/v1/health/live` now returns `commit` — resolved from
+  `RAILWAY_GIT_COMMIT_SHA` / `GIT_COMMIT_SHA` / `VERCEL_GIT_COMMIT_SHA` — and
+  `bootedAt`, with the literal `"unknown"` when no build variable is set,
+  *"never omitted and never invented"*. The rest of the observation stands and is
+  worth keeping: the route is **dependency-free by design**, so its 200 proves
+  the process started and Nest resolved its injector, and nothing about the
+  database; a guarded route returning **401** remains the evidence that the
+  injector built. Corrected here rather than left to merge as a false statement
+  about the tree it lands in.
 
 ## Verification
 
