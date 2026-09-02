@@ -118,13 +118,27 @@ W7  AN IMPORTED QUERY HOOK THE PAGE DEPENDS ON IS ALSO TENANT-KEYED. W6 reads
       holds `useConversations`, whose filter-keyed cache belongs to a different
       page and is not this page's to judge.
 
-SCOPE. Three pages: `apps/web/src/pages/receiving/next`,
-`apps/web/src/pages/receipts/next` and `apps/web/src/pages/communications/next`,
-plus the gateway files their registers cite and the shared query hooks they
-name. Each page declares its own register, renderers and nullable contract in
-PAGES below; adding a fourth page means adding a fourth entry, not a second
+SCOPE. Four pages: `apps/web/src/pages/receiving/next`,
+`apps/web/src/pages/receipts/next`, `apps/web/src/pages/communications/next`
+and `apps/web/src/pages/team` (BOTH halves — the `next/` redesign and the
+`command/` legacy desk are one route behind one flag, and the tenant leak this
+guard's W6 exists for was on the redesigned half while the legacy half had it
+right), plus the gateway files their registers cite and the shared query hooks
+they name. Each page declares its own register, renderers and nullable contract
+in PAGES below; adding a fifth page means adding a fifth entry, not a second
 script. A page absent from PAGES is NOT checked, and this guard makes no claim
 about it.
+
+A NOTE ON /team's MARKER, BECAUSE THE WRONG ONE WOULD BE A LIE
+--------------------------------------------------------------
+`floor_markers` is a per-page tuple for a reason. /team has exactly one
+server-side window and it does not bound a COUNT: `performance.service.ts:139`
+computes a median and an inter-quartile band over the most recent 200
+`server_sales` rows. The honest mark on a statistic drawn from a capped sample
+is a ceiling on the sample ("over ≤200 services"), never a floor on a total, so
+/team's marker is `LE` and not `GE`. Forcing `≥` there to satisfy a guard would
+have produced a precise-looking falsehood, which is the class this file exists
+to stop.
 
 NEVER VACUOUS
 -------------
@@ -177,6 +191,8 @@ class PageSpec:
 _RECEIVING = Path("apps/web/src/pages/receiving/next")
 _RECEIPTS = Path("apps/web/src/pages/receipts/next")
 _COMMS = Path("apps/web/src/pages/communications/next")
+_TEAM_NEXT = Path("apps/web/src/pages/team/next")
+_TEAM_CMD = Path("apps/web/src/pages/team/command")
 _QUERY_HOOKS = Path("apps/web/src/hooks/queries/useConversationQueries.ts")
 _DRAFT_HOOKS = Path("apps/web/src/hooks/queries/useDraftEmailQueries.ts")
 
@@ -248,6 +264,45 @@ PAGES = (
             (_DRAFT_HOOKS, "useActiveConversations"),
         ),
     ),
+    PageSpec(
+        name="/team",
+        hooks=_TEAM_NEXT / "useTeamNextData.ts",
+        # BOTH halves. /team is one route behind one flag, and the two halves
+        # disagreed about this exact rule: the legacy desk keyed every query by
+        # `activeRestaurantId` from the day it shipped, and the redesign that
+        # replaces it shipped three bare keys. Listing only the half being
+        # rebuilt would have made a green run mean "the half that was already
+        # right is still right".
+        renderers=(
+            _TEAM_NEXT / "TeamNext.tsx",
+            _TEAM_CMD / "ManagerShiftDesk.tsx",
+            _TEAM_CMD / "MyShifts.tsx",
+            _TEAM_CMD / "OpsRulesPanel.tsx",
+            _TEAM_CMD / "PerformancePanel.tsx",
+        ),
+        register="TEAM_SERVER_WINDOWS",
+        # A ceiling, not a floor — see the header note. /team's one window caps
+        # the SAMPLE a median is computed over, not a count being reported.
+        floor_markers=("LE",),
+        nullable_contract={
+            # `shiftsThisWeek` used to be `blockedShifts: number`, which could
+            # only ever say "0 blocked" when the week had not answered; and
+            # `coverageRules` used to not exist at all, which is why an empty
+            # rule file and a staffed week printed the same sentence.
+            "CertExposureVM": ["shiftsThisWeek"],
+            "TeamNextData": ["week", "coverageRules", "membersCount", "certsOnFile"],
+        },
+        # `activeRestaurantId` is spelled out because 'restaurantId' is NOT a
+        # substring of it (capital R) — the legacy half would have failed a
+        # token list that only carried the other two.
+        tenant_tokens=("rid", "restaurantId", "activeRestaurantId"),
+        tenant_keyed=True,
+        # W7 checks shared hooks a page DECLARES. /team declares none: every
+        # query it reads is a `useQuery` in one of its own five files above, so
+        # W6 sees all of them. That is a measurement, not an omission, and it is
+        # printed on every clean run so it cannot be read as "checked and fine".
+        imported_query_hooks=(),
+    ),
 )
 
 # `x > 0 ? something : EM` — a measured zero rendered as an unknown.
@@ -313,9 +368,19 @@ QUERY_KEY_CALL = re.compile(
 )
 
 
-# Whole `import … from '…'` statements, single- or multi-line. Stripped before
-# W2 looks for a floor marker, so an unused import cannot stand in for a use.
-IMPORT_LINE = re.compile(r"^\s*import\s[^;]*?;\s*$", re.MULTILINE | re.DOTALL)
+# Whole `import … from '…'` statements, single- or multi-line, WITH OR WITHOUT
+# the trailing semicolon. Stripped before W2 looks for a floor marker, so an
+# unused import cannot stand in for a use.
+#
+# The optional semicolon is not cosmetic. The first version of this required
+# one, and /team's legacy half is written semicolon-free — so on that page a
+# leftover `import { LE }` would have satisfied the marker check after every
+# use of it was deleted, which is vacuity #3 in this file's collection. It is
+# tested below on a semicolon-free renderer for exactly that reason.
+IMPORT_LINE = re.compile(
+    r"^\s*import\s(?:[\s\S]*?from\s*)?['\"][^'\"]+['\"];?[ \t]*$",
+    re.MULTILINE,
+)
 
 
 def query_keys(text: str) -> list[str]:
@@ -808,9 +873,99 @@ export class ProcurementService {
 }
 """
 
+# /team's hook. Note the semicolons here and their ABSENCE in the legacy
+# renderers below: the page is written in both styles and the guard has to cope
+# with both, which is why CLEAN_TEAM_PERF carries a semicolon-free import.
+CLEAN_TEAM_HOOKS = """
+export const TEAM_SERVER_WINDOWS = {
+  /** performance.service.ts:139 — the team benchmark ends `.limit(200)`. */
+  BENCHMARK_SERVICES: 200,
+} as const;
+
+export interface CertExposureVM {
+  shiftsThisWeek: number | null;
+}
+
+export interface TeamNextData {
+  week: WeekPayload | null;
+  coverageRules: CoverageRule[] | null;
+  membersCount: number | null;
+  certsOnFile: number | null;
+}
+
+export function useTeamNextData() {
+  const rid = useActiveRestaurantId();
+  const weekQ = useQuery({ queryKey: ['team-next-week', rid, weekStart], queryFn: f });
+  const rulesQ = useQuery({ queryKey: ['team-next-coverage-rules', rid], queryFn: f });
+  return { week: weekQ.data ?? null, coverageRules: rulesQ.data === undefined ? null : rulesQ.data };
+}
+"""
+
+CLEAN_TEAM_NEXT = """
+import { EM } from './tm-format';
+import { useTeamNextData } from './useTeamNextData';
+export default function TeamNext() {
+  const data = useTeamNextData();
+  return <span>{data.membersCount === null ? EM : data.membersCount}</span>;
+}
+"""
+
+# Semicolon-free, like the real legacy desk.
+CLEAN_TEAM_DESK = """
+import { useAuth } from '../../../contexts/AuthContext'
+export function ManagerShiftDesk() {
+  const { activeRestaurantId } = useAuth()
+  const weekQ = useQuery<WeekPayload>({
+    queryKey: ['team', 'week', activeRestaurantId, weekStart],
+    queryFn: () => getWeek(weekStart),
+  })
+  return <div>{weekQ.isError ? 'unknown' : 'ok'}</div>
+}
+"""
+
+CLEAN_TEAM_MYSHIFTS = """
+import { useAuth } from '../../../contexts/AuthContext'
+export function MyShifts() {
+  const { activeRestaurantId } = useAuth()
+  const q = useQuery({ queryKey: ['team', 'my-week', activeRestaurantId, weekStart], queryFn: f })
+  return <div>{q.isError ? 'not known' : 'Off'}</div>
+}
+"""
+
+CLEAN_TEAM_OPS = """
+import { useAuth } from '../../../contexts/AuthContext'
+export function OpsRulesPanel() {
+  const { activeRestaurantId } = useAuth()
+  const t = useQuery({ queryKey: ['team', 'coverage-templates', activeRestaurantId], queryFn: f })
+  const c = useQuery({ queryKey: ['team', 'certs', activeRestaurantId], queryFn: f })
+  return <div>{t.data?.length}{c.data?.length}</div>
+}
+"""
+
+# The semicolon-free import is deliberate: strip it and the marker must be gone.
+CLEAN_TEAM_PERF = """
+import { useAuth } from '../../../contexts/AuthContext'
+import { TEAM_SERVER_WINDOWS } from '../next/useTeamNextData'
+import { LE } from '../next/tm-format'
+export function PerformancePanel({ member }) {
+  const { activeRestaurantId } = useAuth()
+  const q = useQuery({ queryKey: ['team', 'performance', activeRestaurantId, member?.id], queryFn: f })
+  return <div>{LE}{TEAM_SERVER_WINDOWS.BENCHMARK_SERVICES} of them{q.data ? '' : ''}</div>
+}
+"""
+
+CLEAN_PERF_GATEWAY = """
+export class PerformanceService {
+  async member() {
+    return this.sb.from("server_sales").select("*").limit(200);
+  }
+}
+"""
+
 _RCV = PAGES[0]
 _RCP = PAGES[1]
 _CMS = PAGES[2]
+_TEAM = PAGES[3]
 
 
 def _scaffold(tmp: Path) -> None:
@@ -838,6 +993,18 @@ def _scaffold(tmp: Path) -> None:
     )
     (tmp / GATEWAY_ROOT / "procurement" / "procurement.service.ts").write_text(
         CLEAN_PROCUREMENT_GATEWAY, encoding="utf-8"
+    )
+    (tmp / _TEAM.hooks.parent).mkdir(parents=True, exist_ok=True)
+    (tmp / _TEAM_CMD).mkdir(parents=True, exist_ok=True)
+    (tmp / GATEWAY_ROOT / "team").mkdir(parents=True, exist_ok=True)
+    (tmp / _TEAM.hooks).write_text(CLEAN_TEAM_HOOKS, encoding="utf-8")
+    for rel, body in zip(
+        _TEAM.renderers,
+        (CLEAN_TEAM_NEXT, CLEAN_TEAM_DESK, CLEAN_TEAM_MYSHIFTS, CLEAN_TEAM_OPS, CLEAN_TEAM_PERF),
+    ):
+        (tmp / rel).write_text(body, encoding="utf-8")
+    (tmp / GATEWAY_ROOT / "team" / "performance.service.ts").write_text(
+        CLEAN_PERF_GATEWAY, encoding="utf-8"
     )
 
 
@@ -1114,6 +1281,117 @@ def self_test() -> int:
         "cannot-check",
     )
 
+    # ── /team ────────────────────────────────────────────────────────────────
+    print("\n-- /team --\n")
+    case(
+        "W6 the redesign's week key lost its tenant",
+        lambda t: (t / _TEAM.hooks).write_text(
+            CLEAN_TEAM_HOOKS.replace("'team-next-week', rid, weekStart]", "'team-next-week', weekStart]"),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W6 the redesign's coverage-rules key lost its tenant",
+        lambda t: (t / _TEAM.hooks).write_text(
+            CLEAN_TEAM_HOOKS.replace(
+                "'team-next-coverage-rules', rid]", "'team-next-coverage-rules']"
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W6 the LEGACY desk's week key lost its tenant (the half that was right)",
+        lambda t: (t / _TEAM.renderers[1]).write_text(
+            CLEAN_TEAM_DESK.replace(
+                "'team', 'week', activeRestaurantId, weekStart]", "'team', 'week', weekStart]"
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W6 the Ops drawer's rule key lost its tenant",
+        lambda t: (t / _TEAM.renderers[3]).write_text(
+            CLEAN_TEAM_OPS.replace(
+                "'coverage-templates', activeRestaurantId]", "'coverage-templates']"
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W6 the performance key lost its tenant",
+        lambda t: (t / _TEAM.renderers[4]).write_text(
+            CLEAN_TEAM_PERF.replace(
+                "'team', 'performance', activeRestaurantId, member?.id]",
+                "'team', 'performance', member?.id]",
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W2 the benchmark's window mark was deleted but its SEMICOLON-FREE import stayed",
+        lambda t: (t / _TEAM.renderers[4]).write_text(
+            CLEAN_TEAM_PERF.replace("{LE}{TEAM_SERVER_WINDOWS.BENCHMARK_SERVICES} of them", "{TEAM_SERVER_WINDOWS.BENCHMARK_SERVICES}"),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W1 the benchmark window drifted from the server's .limit(200)",
+        lambda t: (t / GATEWAY_ROOT / "team" / "performance.service.ts").write_text(
+            CLEAN_PERF_GATEWAY.replace("limit(200)", "limit(500)"), encoding="utf-8"
+        ),
+        "violation",
+    )
+    case(
+        "W4 CertExposureVM.shiftsThisWeek widened back to a plain number",
+        lambda t: (t / _TEAM.hooks).write_text(
+            CLEAN_TEAM_HOOKS.replace("shiftsThisWeek: number | null;", "shiftsThisWeek: number;"),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W4 coverageRules widened away, so an empty rule file cannot be told from a silent one",
+        lambda t: (t / _TEAM.hooks).write_text(
+            CLEAN_TEAM_HOOKS.replace("coverageRules: CoverageRule[] | null;", "coverageRules: CoverageRule[];"),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W3 the rule list falls back to [] when its query has not answered",
+        lambda t: (t / _TEAM.hooks).write_text(
+            CLEAN_TEAM_HOOKS.replace(
+                "  return { week: weekQ.data ?? null, coverageRules: rulesQ.data === undefined ? null : rulesQ.data };",
+                "  return {\n    coverageRules: known ? rulesQ.data : [],\n  };",
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "the team register was deleted",
+        lambda t: (t / _TEAM.hooks).write_text("export const nothing = 1;\n", encoding="utf-8"),
+        "cannot-check",
+    )
+    case(
+        "a team renderer is missing",
+        lambda t: (t / _TEAM.renderers[2]).unlink(),
+        "cannot-check",
+    )
+    case(
+        "the cited performance service lost every .limit()",
+        lambda t: (t / GATEWAY_ROOT / "team" / "performance.service.ts").write_text(
+            "export class PerformanceService {}\n", encoding="utf-8"
+        ),
+        "cannot-check",
+    )
+
     print("\n-- and CANNOT CHECK must not read as a pass --\n")
     case(
         "the register was deleted",
@@ -1211,6 +1489,19 @@ def main(argv: list[str]) -> int:
                 f"({pg.tenant_note}). Enforced on: "
                 + ", ".join(x.name for x in PAGES if x.tenant_keyed)
             )
+    # W7 reads only what a page DECLARES. A page that declares nothing gets a
+    # vacuous W7, and a vacuous rule printed as part of a clean run is exactly
+    # the absence-reported-as-health shape this guard was written against — so
+    # it is named, every time, rather than folded into the tick above.
+    bare = [pg.name for pg in PAGES if not pg.imported_query_hooks]
+    if bare:
+        print(
+            "  NOT checked: W7 (shared query hooks outside the page tree) on "
+            + ", ".join(bare)
+            + " — those pages declare none, so W7 evaluated zero hooks there. "
+            "If one starts importing a shared query hook, add it to that "
+            "PageSpec: W6 structurally cannot see it."
+        )
     print("  See this file's header for the full boundary.")
     return 0
 
