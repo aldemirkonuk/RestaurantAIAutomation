@@ -23,6 +23,10 @@ import {
   editVerdict,
   proposalVerdict,
 } from "./ask-ai-verdict";
+import {
+  ORDER_CLOSED_STATUSES,
+  toPostgrestInList,
+} from "../procurement/order-status";
 
 /** Caps on the candidate set put in the prompt. Big enough to be useful, small
  *  enough that the prompt stays cheap and the model is not asked to scan a
@@ -184,7 +188,7 @@ export class AskAiService {
         .from("procurement_orders")
         .select("id, provider_id, status")
         .eq("restaurant_id", restaurantId)
-        .not("status", "in", '("delivered","cancelled")')
+        .not("status", "in", toPostgrestInList(ORDER_CLOSED_STATUSES))
         .order("created_at", { ascending: false })
         .order("id", { ascending: true })
         .limit(MAX_ORDER_CANDIDATES),
@@ -832,7 +836,7 @@ export class AskAiService {
           .select("id")
           .eq("id", payload.orderId)
           .eq("restaurant_id", restaurantId)
-          .not("status", "in", '("delivered","cancelled")'),
+          .not("status", "in", toPostgrestInList(ORDER_CLOSED_STATUSES)),
       );
       if (!orderLive) return gone("order");
 
