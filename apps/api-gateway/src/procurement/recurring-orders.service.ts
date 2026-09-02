@@ -120,38 +120,209 @@ interface RecurringOrderRow {
   updated_at: string;
   /**
    * NOT a column. Lifted by `projectRow` out of the embedded
-   * `restaurant_inventory` row, so every consumer still reads `wine_name` while
-   * the table keeps exactly one copy of the name.
+   * `restaurant_inventory` row — falling through to `master_wine_library.name`,
+   * which is where 53 of production's 72 inventory rows actually keep it — so
+   * every consumer still reads `wine_name` while the table keeps exactly one
+   * copy of the name.
+   *
+   * NULL is a real answer and callers must handle it. See
+   * `describeScheduleSubject`.
    */
   wine_name: string | null;
+  /** NOT a column. Lifted out of the `providers` embed. NULL is a real answer. */
+  provider_name: string | null;
 }
 
 /**
- * Every column of `recurring_orders` this service reads, plus the one embed.
+ * Every column of `recurring_orders` this service reads, plus the embeds.
  *
  * A literal rather than `*` so that a column removed from the table breaks this
  * query loudly instead of arriving as `undefined` — which is precisely how the
  * eight phantom fields survived unnoticed for as long as they did.
+ *
+ * TWO HOPS TO THE NAME, NOT ONE, AND THE SECOND ONE IS THE COMMON CASE.
+ *
+ * `restaurant_inventory.wine_name` is NULLABLE (baseline:`restaurant_inventory`
+ * declares `wine_name character varying(500)` with no NOT NULL). Measured in
+ * production on 2026-09-02: **53 of 72 inventory rows have a NULL wine_name**,
+ * and all 53 carry a `master_wine_id` whose `master_wine_library.name` — a NOT
+ * NULL column — holds the real one. So a single-hop embed resolves the name for
+ * 19 of 72 rows and returns null for 74% of the catalogue. That is not an edge
+ * case to guard, it is the majority path, and it is what turned the reminder
+ * below into a machine for mailing the word "Unknown".
+ *
+ * `provider:provider_id(name)` is here for the same reason one layer over: the
+ * reminder's consumer renders a provider list, and with the key absent it
+ * substitutes the literal string "Default provider"
+ * (`notification_agent.py:1772`). Sending the true one removes that fabrication
+ * at the source without touching the agent.
  */
 const RECURRING_SELECT =
   "id, restaurant_id, inventory_id, provider_id, quantity, unit_type, " +
   "bottles_per_unit, target_price, frequency, frequency_day, auto_approve, " +
   "next_order_date, last_order_date, active, created_by, notes, " +
-  "execution_count, created_at, updated_at, inventory:inventory_id(wine_name)";
+  "execution_count, created_at, updated_at, " +
+  "inventory:inventory_id(wine_name, master_wine_library(name)), " +
+  "provider:provider_id(name)";
+
+/** First non-blank string, or null. Never a placeholder. */
+function firstNonBlank(
+  ...candidates: (string | null | undefined)[]
+): string | null {
+  for (const c of candidates) {
+    if (typeof c === "string" && c.trim().length > 0) return c.trim();
+  }
+  return null;
+}
+
+/** PostgREST returns a to-one embed as an object, or as a 1-element array. */
+function one(embed: any): any {
+  return Array.isArray(embed) ? (embed[0] ?? null) : (embed ?? null);
+}
 
 /**
- * The response shape callers get: the row, plus `wine_name` lifted out of the
- * embed to the top level.
+ * The response shape callers get: the row, plus `wine_name` and
+ * `provider_name` lifted out of the embeds to the top level.
  *
  * `apps/web/src/pages/RecurringOrders.tsx` renders `order.wine_name` as the
  * card heading. Projecting it here keeps that working without giving the table
  * a second, staleable copy of a name it can already reach.
+ *
+ * `wine_name` stays NULL when neither hop has a name. It is never "Unknown",
+ * never "Wine", never an em dash. A null here is a fact the callers below are
+ * required to handle; a placeholder is a lie they cannot detect.
  */
 function projectRow(row: any): any {
   if (!row) return row;
-  const { inventory, ...rest } = row;
-  const embedded = Array.isArray(inventory) ? inventory[0] : inventory;
-  return { ...rest, wine_name: embedded?.wine_name ?? null };
+  const { inventory, provider, ...rest } = row;
+  const inv = one(inventory);
+  const master = one(inv?.master_wine_library);
+  return {
+    ...rest,
+    wine_name: firstNonBlank(inv?.wine_name, master?.name),
+    provider_name: firstNonBlank(provider?.name),
+  };
+}
+
+/**
+ * The vocabulary `calendar_events` actually speaks.
+ *
+ * MEASURED, NOT ASSUMED. Production on 2026-09-02 holds 19 rows with exactly
+ * three distinct `status` values — `pending` (16), `active` (2), `completed`
+ * (1) — all lowercase. The column default is `'pending'`. `CalendarEventStatus`
+ * (calendar/dto/calendar.dto.ts:36-42) enumerates pending, approved, dismissed,
+ * completed, cancelled; `CalendarEventSource` (:61-67) enumerates manual,
+ * ai_detected, system_generated, order, communications.
+ *
+ * This file wrote `"SCHEDULED"` and `"COMPLETED"`, and filtered on
+ * `.eq("status", "SCHEDULED")`. `SCHEDULED` is not a member of that enum in any
+ * casing and has never existed in that table; `COMPLETED` is the wrong case for
+ * the `completed` that does. There is no CHECK constraint on the column, so
+ * every one of those writes was accepted silently and every read matched
+ * nothing.
+ *
+ * `scheduled` is deliberately NOT invented here. Nothing else uses it, and
+ * `pending` is both the column default and what 16 of the 19 real rows say —
+ * a not-yet-happened event.
+ */
+const CALENDAR_STATUS = {
+  /** Written, not yet materialised. Column default; 16 of 19 production rows. */
+  PENDING: "pending",
+  /** The schedule fired and the order exists. */
+  COMPLETED: "completed",
+} as const;
+
+/**
+ * `source` is `character varying(50) NOT NULL` with **no default**. Every write
+ * from this file omitted it, so even without the phantom columns the insert
+ * would have failed 23502. `system_generated` is the right member: a cron wrote
+ * it. (`order` exists in the enum but means "created by the order flow", which
+ * is procurement.service.ts's site, not this one.)
+ */
+const CALENDAR_SOURCE_SYSTEM = "system_generated";
+
+/**
+ * How to name this schedule in outbound content, without inventing anything.
+ *
+ * Returns the wine's real name when either hop has one. When neither does, it
+ * returns the schedule's own uuid — which is TRUE, is the primary key the
+ * notification's own action buttons already carry (`recurring_order_id` is in
+ * every payload below, and `notification_agent.py` renders Confirm / Edit /
+ * Cancel against it), and is therefore something the recipient can act on.
+ *
+ * This is the one place this file deliberately diverges from ADR 0061, which
+ * refuses to send at all when a field is missing. 0061 is right for its own
+ * template because that subject line also needs a PROVIDER and a PRICE, and
+ * neither has a truthful substitute. An identity does: the row's id is not a
+ * placeholder standing in for an unknown, it is the thing itself. Sending
+ * nothing for a schedule that is genuinely due two days from now trades a
+ * fabricated reminder for an absent one, and an absent reminder is the failure
+ * this whole path exists to prevent.
+ *
+ * `resolved` is returned alongside so callers can count how often the fallback
+ * fires instead of discovering it in a screenshot.
+ */
+export function describeScheduleSubject(row: {
+  id: string;
+  wine_name?: string | null;
+}): { label: string; resolved: boolean } {
+  const name = firstNonBlank(row.wine_name);
+  if (name) return { label: name, resolved: true };
+  // "schedule <uuid>", not "recurring order <uuid>": every template that
+  // interpolates this already says "Recurring order for {wine_name}", and the
+  // doubled phrase reads as a bug even when the value is correct.
+  return { label: `schedule ${row.id}`, resolved: false };
+}
+
+/**
+ * The gate PR #227 / ADR 0061 introduced for the OTHER recurring-order
+ * reminder, applied to this one as well.
+ *
+ * TWO CRONS, ONE CONCEPT. `ScheduledTasksService.sendRecurringOrderReminders()`
+ * (08:00, email) and this service's `sendRecurringOrderReminders()` (06:00,
+ * RabbitMQ → NotificationAgent → push + email) both read `recurring_orders` for
+ * schedules due within two days and both tell the same person the same thing.
+ * Gating one and not the other is not a smaller change, it is a worse one: it
+ * leaves the UNREVIEWED path live and the reviewed, fail-closed path dark.
+ *
+ * Allow-list, not deny-list, and checked before any query: `"true"` and `"1"`
+ * arm it, everything else — `"yes"`, `"on"`, `""`, a typo, unset — reads as
+ * off. A typo that silently arms a mailer is unrecoverable; a typo that
+ * silences it is not.
+ *
+ * DEFINED LOCALLY rather than imported from
+ * `communications/recurring-order-reminder.ts`, because that module lives on an
+ * unmerged branch (PR #227) and this branch must build against `main`. When
+ * #227 lands, the two should collapse onto one exported constant — the
+ * duplicate is recorded here rather than left to be discovered.
+ */
+export const RECURRING_REMINDER_FLAG = "RECURRING_ORDER_REMINDERS_ENABLED";
+
+export function recurringRemindersArmed(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const raw = (env[RECURRING_REMINDER_FLAG] ?? "").trim().toLowerCase();
+  return raw === "true" || raw === "1";
+}
+
+/** What one calendar write attempt actually did. Never inferred from silence. */
+export interface CalendarWriteOutcome {
+  requested: number;
+  written: number;
+  error: string | null;
+}
+
+/** What one reminder sweep actually did. Every row lands in exactly one bucket. */
+export interface ReminderSweepOutcome {
+  armed: boolean;
+  scanned: number;
+  sent: number;
+  /** Sent, but named by schedule id because no wine name was reachable. */
+  sentUnnamed: number;
+  /** Publish threw. The recipient got nothing and nobody would have known. */
+  failed: number;
+  /** The query itself failed. `scanned` is not a count of anything. */
+  queryFailed: boolean;
 }
 
 @Injectable()
@@ -236,17 +407,26 @@ export class RecurringOrdersService {
       `Recurring order created: ${row.id} (${template.frequency})`,
     );
 
-    // Pre-create calendar events for the next 12 months
-    try {
-      await this.preCreateCalendarEvents(row);
-    } catch (calErr) {
-      this.logger.warn(
-        `Failed to pre-create calendar events: ${calErr?.message}`,
+    // Pre-create calendar events for the next 12 months.
+    //
+    // NOT allowed to fail the create, and NOT allowed to read as success.
+    // Throwing here would 500 a request whose schedule row is already
+    // committed, and the client's retry would create a SECOND schedule — a
+    // duplicate standing order is a strictly worse outcome than a missing diary
+    // entry. So the outcome is attached to the response and logged at error
+    // level instead of being swallowed into a warn nobody reads.
+    const calendar = await this.preCreateCalendarEvents(row);
+    if (calendar.error || calendar.written < calendar.requested) {
+      this.logger.error(
+        `Recurring order ${row.id} was created but its calendar was not: ` +
+          `${calendar.written}/${calendar.requested} events written` +
+          (calendar.error ? ` — ${calendar.error}` : ""),
       );
     }
 
     // Publish approval_needed event if auto_approve is false
     if (!template.auto_approve) {
+      const subject = describeScheduleSubject(row);
       try {
         await this.orchestratorService.publishEvent(
           "recurring.events",
@@ -254,22 +434,27 @@ export class RecurringOrdersService {
           {
             restaurant_id: restaurantId,
             recurring_order_id: row.id,
-            wine_name: row.wine_name || "Unknown",
+            // The name, or null. `notification_agent.py` puts this in the
+            // notification TITLE; "Unknown" there is not a degraded subject
+            // line, it is a confidently wrong one (ADR 0020 / 0051).
+            wine_name: row.wine_name,
             quantity: template.quantity,
+            unit_type: row.unit_type,
+            preferred_providers: row.provider_name ? [row.provider_name] : [],
             frequency: template.frequency,
             frequency_day: template.frequency_day,
             next_order_date: template.next_order_date,
-            message: `New recurring order for ${row.wine_name || "wine"} (${template.quantity} ${template.frequency}) requires approval`,
+            message: `New recurring order for ${subject.label} (${template.quantity} ${template.frequency}) requires approval`,
           },
         );
       } catch (pubErr) {
-        this.logger.warn(
-          `Failed to publish approval_needed event: ${pubErr?.message}`,
+        this.logger.error(
+          `Failed to publish approval_needed event for ${row.id}: ${pubErr?.message}`,
         );
       }
     }
 
-    return row;
+    return { ...row, calendar };
   }
 
   async listRecurringOrders(restaurantId: string) {
@@ -476,10 +661,53 @@ export class RecurringOrdersService {
   }
 
   /**
-   * Daily at 6:00 AM - Send reminders for orders due in 2 days
+   * Daily at 6:00 AM — remind about schedules due in 2 days.
+   *
+   * WHAT THIS USED TO SEND
+   *
+   * `wine_name: order.wine_name || "Unknown"`, straight into
+   * `notification_agent.py`'s `recurring_order_reminder` template, whose TITLE
+   * is `"Recurring Order Reminder: {wine_name}"` and whose body opens `"Your
+   * {frequency} recurring order for {wine_name} is coming up"`. Both channels
+   * are live: `push` and `email` (notification_agent.py:171), and the
+   * `recurring.events` exchange was declared under ADR 0039 Track A3, so this
+   * is not an inert path.
+   *
+   * The name was resolved through a single-hop embed, and 53 of production's 72
+   * inventory rows carry a NULL `wine_name` (measured 2026-09-02). So the
+   * majority outcome was an email and a push notification titled "Recurring
+   * Order Reminder: Unknown" — a fabricated value in outbound content, which
+   * ADR 0051 forbids. Three more came from the CONSUMER's own defaults, which
+   * this producer activated by omitting the keys: `frequency` → "scheduled",
+   * `unit_type` → "bottles", `preferred_providers` → "Default provider"
+   * (notification_agent.py:1766-1772). All three are now sent truthfully.
+   *
+   * Returns a tally rather than void. Nest ignores it; the tests do not, and
+   * neither does anyone asking "did this actually do anything" — which, of the
+   * four ways this method could previously do nothing, was answerable for zero
+   * of them.
    */
   @Cron("0 6 * * *")
-  async sendRecurringOrderReminders(): Promise<void> {
+  async sendRecurringOrderReminders(): Promise<ReminderSweepOutcome> {
+    const out: ReminderSweepOutcome = {
+      armed: false,
+      scanned: 0,
+      sent: 0,
+      sentUnnamed: 0,
+      failed: 0,
+      queryFailed: false,
+    };
+
+    // The gate, before any query, any read, any recipient. See
+    // RECURRING_REMINDER_FLAG above for why this cron shares ADR 0061's flag.
+    if (!recurringRemindersArmed()) {
+      this.logger.log(
+        `Recurring order reminders are not armed (${RECURRING_REMINDER_FLAG} is not "true"/"1"); skipping.`,
+      );
+      return out;
+    }
+    out.armed = true;
+
     this.logger.log("Checking for upcoming recurring order reminders...");
 
     const twoDaysFromNow = new Date();
@@ -495,20 +723,45 @@ export class RecurringOrdersService {
           .eq("next_order_date", reminderDate);
 
       if (error) {
-        this.logger.warn(
-          `Failed to query upcoming recurring orders: ${error.message}`,
+        // LOUD, and countable. A failed query is not "no reminders due" — it
+        // is an unknown number of people who were not told. Supabase returns
+        // `{data, error}` rather than throwing, so nothing above this line
+        // would ever have noticed.
+        out.queryFailed = true;
+        this.logger.error(
+          `Recurring order reminder sweep could not read its own input: ` +
+            `${error.message}. Zero reminders sent, and the number that SHOULD ` +
+            `have been sent is unknown.`,
         );
-        return;
+        return out;
       }
 
-      if (!upcomingOrders || upcomingOrders.length === 0) {
-        this.logger.log("No recurring orders due in 2 days");
-        return;
-      }
-
-      for (const order of upcomingOrders.map(
+      const rows = (upcomingOrders || []).map(
         projectRow,
-      ) as RecurringOrderRow[]) {
+      ) as RecurringOrderRow[];
+      out.scanned = rows.length;
+
+      if (rows.length === 0) {
+        this.logger.log("No recurring orders due in 2 days");
+        return out;
+      }
+
+      for (const order of rows) {
+        // Never "Unknown". Either the wine's real name — from
+        // restaurant_inventory, or from master_wine_library one hop further,
+        // which is where three quarters of them actually live — or the
+        // schedule's own id, which is true and is what the notification's
+        // Confirm / Edit / Cancel buttons already key on.
+        const subject = describeScheduleSubject(order);
+        if (!subject.resolved) {
+          out.sentUnnamed += 1;
+          this.logger.warn(
+            `Recurring order ${order.id} has no reachable wine name ` +
+              `(inventory_id=${order.inventory_id}); the reminder names the ` +
+              `schedule instead. This should be zero: inventory_id is NOT NULL ` +
+              `with an ON DELETE CASCADE, so the wine row must exist.`,
+          );
+        }
         try {
           await this.orchestratorService.publishEvent(
             "recurring.events",
@@ -516,27 +769,45 @@ export class RecurringOrdersService {
             {
               restaurant_id: order.restaurant_id,
               recurring_order_id: order.id,
-              wine_name: order.wine_name || "Unknown",
+              wine_name: subject.label,
               quantity: order.quantity,
+              // Sent, not omitted. An absent key here is what made the consumer
+              // substitute "bottles", "scheduled" and "Default provider".
+              unit_type: order.unit_type,
+              frequency: order.frequency,
+              preferred_providers: order.provider_name
+                ? [order.provider_name]
+                : [],
               next_order_date: order.next_order_date,
               days_until: 2,
               // The unit is the schedule's own, not the word "bottles". A
               // reminder that says "5 bottles" for a five-CASE schedule is the
               // unit bug wearing a notification.
-              message: `Recurring order for ${order.wine_name || "wine"} (${order.quantity} ${order.unit_type}${order.quantity === 1 ? "" : "s"}) is due in 2 days`,
+              message: `Recurring order for ${subject.label} (${order.quantity} ${order.unit_type}${order.quantity === 1 ? "" : "s"}) is due in 2 days`,
             },
           );
+          out.sent += 1;
           this.logger.log(`Reminder sent for recurring order ${order.id}`);
         } catch (err) {
-          this.logger.warn(
+          out.failed += 1;
+          this.logger.error(
             `Failed to send reminder for ${order.id}: ${err?.message}`,
           );
         }
       }
+
+      if (out.failed > 0) {
+        this.logger.error(
+          `Recurring order reminders: ${out.failed} of ${out.scanned} were not delivered.`,
+        );
+      }
+      return out;
     } catch (err) {
+      out.queryFailed = true;
       this.logger.error(
         `Recurring order reminder cron failed: ${err?.message}`,
       );
+      return out;
     }
   }
 
@@ -549,7 +820,8 @@ export class RecurringOrdersService {
   ): Promise<void> {
     this.logger.log(
       `Executing recurring order ${recurringOrder.id}: ` +
-        `${recurringOrder.wine_name} x${recurringOrder.quantity}`,
+        `${describeScheduleSubject(recurringOrder).label} ` +
+        `x${recurringOrder.quantity} ${recurringOrder.unit_type}`,
     );
 
     const userId = recurringOrder.created_by || "system";
@@ -598,6 +870,7 @@ export class RecurringOrdersService {
       );
       this.logger.log(`Recurring order ${order.id} auto-approved`);
     } else {
+      const subject = describeScheduleSubject(recurringOrder);
       try {
         await this.orchestratorService.publishEvent(
           "recurring.events",
@@ -609,69 +882,132 @@ export class RecurringOrdersService {
             order_number: order.orderNumber,
             wine_name: recurringOrder.wine_name,
             quantity: recurringOrder.quantity,
-            message: `Recurring order ${order.orderNumber} for ${recurringOrder.wine_name || "wine"} requires your approval`,
+            unit_type: recurringOrder.unit_type,
+            preferred_providers: recurringOrder.provider_name
+              ? [recurringOrder.provider_name]
+              : [],
+            message: `Recurring order ${order.orderNumber} for ${subject.label} requires your approval`,
           },
         );
       } catch (pubErr) {
-        this.logger.warn(
-          `Failed to publish approval_needed event: ${pubErr?.message}`,
+        // LOUD. This is the only thing that tells a human an order is sitting
+        // unapproved; losing it silently means the order never ships and
+        // nobody knows why.
+        this.logger.error(
+          `Order ${order.orderNumber} needs approval but the notification was ` +
+            `not published: ${pubErr?.message}`,
         );
       }
     }
 
-    // 3. Update pre-created calendar event to COMPLETED + create delivery event
+    // 3. Complete the pre-created calendar event + create the delivery event.
+    //
+    // WHY THIS BLOCK STILL DOES NOT THROW, AND WHAT CHANGED INSTEAD
+    //
+    // An order has been created above, and possibly auto-approved. Step 5 —
+    // advancing `next_order_date` — has not run yet. Throwing here would leave
+    // the order placed and the schedule still due, so tomorrow's 08:00 cron
+    // would place the SAME ORDER AGAIN. A missing diary entry is recoverable; a
+    // duplicate purchase order is not. So the calendar stays non-fatal.
+    //
+    // What it no longer does is read as success. Every one of the four ways
+    // this block could fail was previously invisible: the lookup's `error` was
+    // destructured away entirely, the update's and the insert's were never
+    // requested at all, and Supabase returns `{data, error}` rather than
+    // throwing — so the wrapping try/catch was inert for every database error
+    // it appeared to cover.
     try {
-      // Mark the order calendar event as completed
-      const { data: existingEvents } = await this.databaseService.supabase
-        .from("calendar_events")
-        .select("id")
-        .eq("restaurant_id", recurringOrder.restaurant_id)
-        .eq("event_date", recurringOrder.next_order_date)
-        .eq("status", "SCHEDULED")
-        .like("tags", `%${recurringOrder.id}%`)
-        .limit(1);
-
-      if (existingEvents && existingEvents.length > 0) {
+      // The keyed lookup. Was `.like("tags", '%<uuid>%')` — a leading-wildcard
+      // substring scan, against a column this table does not have, filtered on
+      // a status value it has never held. It could not match, and could not
+      // have used an index if it had.
+      const { data: existingEvents, error: lookupError } =
         await this.databaseService.supabase
           .from("calendar_events")
+          .select("id")
+          .eq("restaurant_id", recurringOrder.restaurant_id)
+          .eq("recurring_order_id", recurringOrder.id)
+          .eq("event_date", recurringOrder.next_order_date)
+          .eq("status", CALENDAR_STATUS.PENDING)
+          .limit(1);
+
+      if (lookupError) {
+        this.logger.error(
+          `Could not look up the calendar event for recurring order ` +
+            `${recurringOrder.id} on ${recurringOrder.next_order_date}: ` +
+            `${lookupError.message}. Order ${order.orderNumber} was still placed.`,
+        );
+      } else if (!existingEvents || existingEvents.length === 0) {
+        // Distinct from an error, and distinct from success. A pre-created
+        // event should exist for this date; none does. Silence here is what let
+        // an empty calendar look like a working one for as long as it did.
+        this.logger.warn(
+          `No pending calendar event to complete for recurring order ` +
+            `${recurringOrder.id} on ${recurringOrder.next_order_date} — the ` +
+            `pre-create either never ran or never landed. Order ` +
+            `${order.orderNumber} was still placed.`,
+        );
+      } else {
+        const { error: updateError } = await this.databaseService.supabase
+          .from("calendar_events")
           .update({
-            status: "COMPLETED",
-            tags: JSON.stringify({
-              recurring_order_id: recurringOrder.id,
-              order_id: order.id,
-              is_recurring: true,
-              executed: true,
-            }),
+            status: CALENDAR_STATUS.COMPLETED,
+            // The link the `tags` blob was pretending to be. `order_id` is a
+            // real uuid column with an FK to procurement_orders.
+            order_id: order.id,
+            updated_at: new Date().toISOString(),
           })
           .eq("id", existingEvents[0].id);
+        if (updateError) {
+          this.logger.error(
+            `Calendar event ${existingEvents[0].id} could not be marked ` +
+              `completed for order ${order.orderNumber}: ${updateError.message}`,
+          );
+        }
       }
 
       // Create a delivery calendar event (+7 days)
       const expectedDelivery = new Date();
       expectedDelivery.setDate(expectedDelivery.getDate() + 7);
+      const subject = describeScheduleSubject(recurringOrder);
 
-      await this.databaseService.supabase.from("calendar_events").insert({
-        restaurant_id: recurringOrder.restaurant_id,
-        title: `Recurring Delivery: ${recurringOrder.wine_name || order.orderNumber}`,
-        description: `Recurring order ${order.orderNumber} - ${recurringOrder.quantity} bottles`,
-        event_type: "delivery",
-        event_date: expectedDelivery.toISOString().split("T")[0],
-        event_time: "10:00",
-        all_day: false,
-        status: "SCHEDULED",
-        priority: "MEDIUM",
-        tags: JSON.stringify({
+      const { error: insertError } = await this.databaseService.supabase
+        .from("calendar_events")
+        .insert({
+          restaurant_id: recurringOrder.restaurant_id,
+          title: `Recurring Delivery: ${subject.resolved ? subject.label : order.orderNumber}`,
+          // The unit is the schedule's own. "5 bottles" for a five-case
+          // schedule is the same unit bug one layer up, in prose.
+          description:
+            `Recurring order ${order.orderNumber} — ${recurringOrder.quantity} ` +
+            `${recurringOrder.unit_type}${recurringOrder.quantity === 1 ? "" : "s"}`,
+          event_type: "delivery",
+          event_date: expectedDelivery.toISOString().split("T")[0],
+          event_time: "10:00",
+          all_day: false,
+          // NOT NULL with no default; omitted by every previous write here.
+          source: CALENDAR_SOURCE_SYSTEM,
+          status: CALENDAR_STATUS.PENDING,
+          // Three real uuid columns, replacing a JSON string in a column that
+          // does not exist.
           order_id: order.id,
-          recurring_order_id: recurringOrder.id,
           provider_id: recurringOrder.provider_id,
+          recurring_order_id: recurringOrder.id,
           is_recurring: true,
-        }),
-        reminder_enabled: true,
-        reminder_days_before: 1,
-      });
+          reminder_enabled: true,
+          reminder_days_before: 1,
+        });
+
+      if (insertError) {
+        this.logger.error(
+          `Delivery calendar event for order ${order.orderNumber} was not ` +
+            `written: ${insertError.message}. The order exists; the calendar ` +
+            `does not show it.`,
+        );
+      }
     } catch (calErr) {
-      this.logger.warn(
-        `Calendar event update failed for recurring order: ${calErr?.message}`,
+      this.logger.error(
+        `Calendar event update failed for recurring order ${recurringOrder.id}: ${calErr?.message}`,
       );
     }
 
@@ -709,15 +1045,22 @@ export class RecurringOrdersService {
           recurring_order_id: recurringOrder.id,
           order_id: order.id,
           order_number: order.orderNumber,
-          wine_name: recurringOrder.wine_name,
+          // `recurring_order_executed`'s template titles itself
+          // "Order Placed: {wine_name}" and lists {unit_type} and
+          // {provider_name}. Omitting the last two made the consumer print
+          // "bottles" for a case order and nothing for the vendor.
+          wine_name: describeScheduleSubject(recurringOrder).label,
           quantity: recurringOrder.quantity,
+          unit_type: recurringOrder.unit_type,
+          provider_name: recurringOrder.provider_name,
           auto_approved: recurringOrder.auto_approve,
           next_order_date: nextDate,
         },
       );
     } catch (pubErr) {
-      this.logger.warn(
-        `Failed to publish recurring order event: ${pubErr?.message}`,
+      this.logger.error(
+        `Order ${order.orderNumber} was placed but its "executed" event was ` +
+          `not published: ${pubErr?.message}`,
       );
     }
 
@@ -729,9 +1072,21 @@ export class RecurringOrdersService {
 
   /**
    * Pre-create calendar events for all future recurrences (up to 12 months).
-   * Tags each event with recurring_order_id + is_recurring for later status updates.
+   *
+   * Each event carries `recurring_order_id` — a real uuid column with an FK and
+   * a partial index (ADR 0068) — so `executeRecurringOrder` can find its own
+   * occurrence with one index probe. The previous version serialised the id
+   * into a `tags` JSON string and searched for it with `LIKE '%uuid%'`; neither
+   * `tags` nor `priority` is a column of this table, so every insert here
+   * failed with PGRST204 and the read could never have matched.
+   *
+   * Returns what it actually wrote. `void` was the problem: the insert's error
+   * was logged at warn and discarded, so a caller could not distinguish "60
+   * events created" from "none, and the calendar is empty forever".
    */
-  private async preCreateCalendarEvents(recurringOrder: any): Promise<void> {
+  private async preCreateCalendarEvents(
+    recurringOrder: any,
+  ): Promise<CalendarWriteOutcome> {
     const maxMonths = 12;
     const endDate = new Date();
     endDate.setMonth(endDate.getMonth() + maxMonths);
@@ -748,56 +1103,93 @@ export class RecurringOrdersService {
     let currentDate = recurringOrder.next_order_date;
     const frequency = recurringOrder.frequency;
     const frequencyDay = recurringOrder.frequency_day ?? undefined;
+    // The wine's real name, from either hop — or the schedule's own id. Never
+    // the literal "Wine", which is what this title used to fall back to and
+    // which is indistinguishable from a wine actually called Wine.
+    const subject = describeScheduleSubject(recurringOrder);
 
-    // Generate all future dates within the window
-    // eslint-disable-next-line no-constant-condition -- break when dates exceed endDate
-    while (true) {
-      if (events.length >= MAX_EVENTS) break;
-      const dateObj = new Date(currentDate);
-      if (dateObj > endDate) break;
+    // Generate all future dates within the window.
+    //
+    // `calculateNextOrderDate` THROWS on an unknown frequency or a malformed
+    // date. Caught here rather than in the caller, so that a schedule which
+    // committed successfully cannot be reported as a failed create — the
+    // outcome says the calendar did not happen, which is the true statement.
+    try {
+      // eslint-disable-next-line no-constant-condition -- break when dates exceed endDate
+      while (true) {
+        if (events.length >= MAX_EVENTS) break;
+        const dateObj = new Date(currentDate);
+        if (dateObj > endDate) break;
 
-      events.push({
-        restaurant_id: recurringOrder.restaurant_id,
-        title: `Recurring Order: ${recurringOrder.wine_name || "Wine"} (${recurringOrder.quantity} units)`,
-        description: `Auto-scheduled recurring order - ${frequency}`,
-        event_type: "order",
-        event_date: currentDate,
-        event_time: "08:00",
-        all_day: false,
-        status: "SCHEDULED",
-        priority: "MEDIUM",
-        tags: JSON.stringify({
+        events.push({
+          restaurant_id: recurringOrder.restaurant_id,
+          // `(N units)` was wrong for every schedule that is not counted in
+          // units. The schedule's own unit_type is NOT NULL and right here.
+          title:
+            `Recurring Order: ${subject.label} (${recurringOrder.quantity} ` +
+            `${recurringOrder.unit_type}${recurringOrder.quantity === 1 ? "" : "s"})`,
+          description: `Auto-scheduled recurring order — ${frequency}`,
+          event_type: "order",
+          event_date: currentDate,
+          event_time: "08:00",
+          all_day: false,
+          // `source` is varchar(50) NOT NULL with NO DEFAULT. Omitting it was a
+          // second, independent reason every one of these inserts failed.
+          source: CALENDAR_SOURCE_SYSTEM,
+          // `pending`, the column default and 16 of the 19 real rows — not the
+          // invented `SCHEDULED`, which this table has never held in any casing.
+          status: CALENDAR_STATUS.PENDING,
+          // The link, as a column. No `order_id` yet: no order exists until the
+          // 08:00 cron materialises this occurrence.
           recurring_order_id: recurringOrder.id,
+          provider_id: recurringOrder.provider_id,
           is_recurring: true,
-          frequency,
-          frequency_day: frequencyDay,
-        }),
-        reminder_enabled: true,
-        reminder_days_before: 2,
-      });
+          reminder_enabled: true,
+          reminder_days_before: 2,
+        });
 
-      currentDate = this.calculateNextOrderDate(
-        currentDate,
-        frequency,
-        frequencyDay,
+        currentDate = this.calculateNextOrderDate(
+          currentDate,
+          frequency,
+          frequencyDay,
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `Could not lay out the calendar for recurring order ` +
+          `${recurringOrder.id}: ${err?.message}. The schedule exists; its ` +
+          `calendar does not.`,
       );
+      return {
+        requested: events.length,
+        written: 0,
+        error: err?.message ?? String(err),
+      };
     }
 
-    if (events.length === 0) return;
+    if (events.length === 0) {
+      return { requested: 0, written: 0, error: null };
+    }
 
     const { error } = await this.databaseService.supabase
       .from("calendar_events")
       .insert(events);
 
     if (error) {
-      this.logger.warn(
-        `Failed to bulk-insert calendar events: ${error.message}`,
+      // Reported to the caller, not just to the log. This is a bulk insert:
+      // PostgREST rejects the whole statement, so the failure is all-or-nothing
+      // and `written` is genuinely 0.
+      this.logger.error(
+        `Failed to bulk-insert ${events.length} calendar events for recurring ` +
+          `order ${recurringOrder.id}: ${error.message}`,
       );
-    } else {
-      this.logger.log(
-        `Pre-created ${events.length} calendar events for recurring order ${recurringOrder.id}`,
-      );
+      return { requested: events.length, written: 0, error: error.message };
     }
+
+    this.logger.log(
+      `Pre-created ${events.length} calendar events for recurring order ${recurringOrder.id}`,
+    );
+    return { requested: events.length, written: events.length, error: null };
   }
 
   /**

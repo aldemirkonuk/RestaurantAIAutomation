@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guard: every key written to `procurement_orders` must be a real column of it.
+"""Guard: every key written to a REGISTERED table must be a real column of it.
 
 WHY THIS EXISTS
 ---------------
@@ -63,16 +63,21 @@ the `absence-reported-as-health` note in project memory.
 
 WHAT IT DOES NOT CATCH -- read this before trusting it
 ------------------------------------------------------
-1. INSERTS. Scoped to `.update()` on purpose: this is the write path the defect
-   was found in, and the insert paths carry separate, already-documented debt
+1. INSERTS, ON TABLES WHOSE SPEC SAYS `enforce_inserts=False`. For
+   `procurement_orders` that is deliberate: `.update()` is the write path its
+   defect was found in, and its insert paths carry separate, already-documented debt
    (`20260901150000_order_line_capture_and_units.sql:190` records two agent
    paths that write `wine_name` and `actual_delivery`, neither a column). They
    are COUNTED and REPORTED on every run under `--report-inserts`, so the hole
    is measured rather than hidden, but they do not fail the build here. Closing
    them is a separate change with a separate decision behind it.
-2. OTHER TABLES. One table, deliberately. The extractor generalises, the column
-   census does not -- and a guard that half-covers twenty tables is worse than
-   one that fully covers the table a defect was just found in.
+2. TABLES NOT IN `TABLES`. Every table not registered below is invisible here.
+   This is a registry, not a sweep: each entry carries its own measured floors,
+   its own debt list and its own decision about whether inserts FAIL or are
+   merely reported, and none of those can be guessed. `check_order_capture_contract.py`
+   Contract E is the wide, shallow pass over every table -- but only over INLINE
+   `.insert({...})` object literals, so it cannot see an update, a payload built
+   in a local `const`, or an array built by `.push()`. The two are complements.
 3. NON-LITERAL KEYS. `update[someVar] = x` cannot be resolved by reading the
    file. Counted, reported, and ratcheted by DYNAMIC_CEILING.
 4. RAW SQL. Anything issued as a SQL string is invisible here.
@@ -85,27 +90,61 @@ import pathlib
 import re
 import sys
 from dataclasses import dataclass, field
+from functools import lru_cache
 
-TABLE = "procurement_orders"
 MIGRATIONS_DIR = "supabase/migrations"
 
 TS_ROOTS = [
     "apps/api-gateway/src",
     # Scanned rather than dropped: if the web app ever grows a direct PostgREST
-    # write to this table, that is precisely when someone needs to be told.
+    # write to one of these tables, that is precisely when someone needs to be told.
     "apps/web/src",
 ]
 
 TS_SKIP_RE = re.compile(r"(\.spec\.tsx?$|\.test\.tsx?$|/__tests__/|/__mocks__/|/e2e/)")
 
-# Sanity floors. Production has 56 columns; the repo's migrations replay to the
-# same 56. If this parse ever returns a handful, the SQL patterns have rotted
-# and every key in the codebase would look like a violation.
-MIN_COLUMNS = 40
-# Measured 2026-09-01: 12 update sites across the gateway. A floor well under
-# that catches "the extraction pattern stopped matching" without tripping on
-# ordinary refactors.
-MIN_UPDATE_SITES = 6
+
+@dataclass(frozen=True)
+class Debt:
+    """One already-broken write, pinned to the FILE it is broken in.
+
+    Keyed by column alone, a debt entry silently covers every other site that
+    writes the same column -- including one added tomorrow. `calendar_events`
+    made that concrete: `priority` and `tags` were written from TWO files, and a
+    column-only entry would have gone green over both while only one was
+    actually being tracked. So an entry names its files, and a write of the same
+    column from anywhere else is NEW.
+    """
+
+    reason: str
+    #: Path suffixes this debt covers. A site outside them is a NEW violation.
+    files: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class TableSpec:
+    """One registered table, with the floors and the debt that belong to IT.
+
+    Nothing here is shared between tables by default. A floor measured on
+    `procurement_orders` says nothing about `calendar_events`, and a debt entry
+    is always about a specific site in a specific file.
+    """
+
+    name: str
+    #: Below this, the SQL parse has rotted and every written key would look
+    #: like a violation. Measured, then floored well under the measurement.
+    min_columns: int
+    #: Below this, the extractor has stopped finding call sites -- which reads
+    #: as a clean tree, the same lie in a new place.
+    min_update_sites: int
+    min_insert_sites: int
+    #: True -> an insert naming a phantom column FAILS. False -> reported only.
+    enforce_inserts: bool
+    #: Shrink-only debt ratchet, enforced in both directions. See KNOWN_BAD below.
+    known_bad: dict[str, Debt]
+    #: Payloads this guard cannot read. A measurement, not a budget.
+    dynamic_ceiling: int
+
 
 # ---------------------------------------------------------------------------
 # KNOWN_BAD -- the shrink-only debt ratchet.
@@ -118,8 +157,10 @@ MIN_UPDATE_SITES = 6
 # fails, and an entry nothing writes any more fails. The only way to touch it is
 # to make it shorter.
 # ---------------------------------------------------------------------------
-KNOWN_BAD: dict[str, str] = {
-    "location_id": (
+PROCUREMENT_ORDERS_KNOWN_BAD: dict[str, Debt] = {
+    "location_id": Debt(
+        files=("procurement/procurement.service.ts",),
+        reason=(
         "procurement.service.ts updateOrder. Same defect class as `notes`, found "
         "by this guard while it was being written for `notes`. `location_id` is "
         "not a column of procurement_orders in supabase/migrations/ OR in "
@@ -131,13 +172,49 @@ KNOWN_BAD: dict[str, str] = {
         "FIXED HERE: the fix is either a migration adding the column or deleting "
         "the feature, and that is a decision, not a default (CLAUDE.md 0.1). "
         "Filed for the founder; delete this line when it is settled."
+        ),
     ),
 }
 
-# Payload arguments the extractor could not read (`.update(buildIt())`, a spread
-# from an unknown source). A measurement, not a budget: the guard fails if it
-# grows, so the blind spot cannot expand unnoticed. Measured 2026-09-01: 0.
-DYNAMIC_CEILING = 0
+CALENDAR_EVENTS_KNOWN_BAD: dict[str, Debt] = {}
+# Emptied 2026-09-02. Both entries said "DELETE BOTH ENTRIES the moment that
+# site is fixed -- the ratchet fails if they stop matching", and ADR 0073
+# removed the last procurement.service.ts writer (recurring-orders was
+# already done by ADR 0068). The same two entries in
+# check_order_capture_contract.py KNOWN_BAD_COLUMNS went with them, exactly
+# as this file's own failure message instructs.
+
+TABLES: tuple[TableSpec, ...] = (
+    TableSpec(
+        name="procurement_orders",
+        # Production has 56 columns; the repo's migrations replay to the same 56.
+        min_columns=40,
+        # Measured 2026-09-01: 12 update sites across the gateway.
+        min_update_sites=6,
+        min_insert_sites=1,
+        # Reported, not enforced -- see WHAT IT DOES NOT CATCH #1.
+        enforce_inserts=False,
+        known_bad=PROCUREMENT_ORDERS_KNOWN_BAD,
+        dynamic_ceiling=0,
+    ),
+    TableSpec(
+        name="calendar_events",
+        # Production has 33 columns before this change's migration, 34 after
+        # (verified 2026-09-02). A floor of 20 catches a rotted parse without
+        # tripping on an ordinary ALTER.
+        min_columns=20,
+        # Measured 2026-09-02 on this branch.
+        min_update_sites=4,
+        min_insert_sites=3,
+        # ENFORCED. Unlike procurement_orders, this table's defect WAS in the
+        # insert path -- `preCreateCalendarEvents` bulk-inserts, and the delivery
+        # event is a single insert. A guard that reported them without failing
+        # would have been green across the entire outage it exists to prevent.
+        enforce_inserts=True,
+        known_bad=CALENDAR_EVENTS_KNOWN_BAD,
+        dynamic_ceiling=0,
+    ),
+)
 
 
 # ---------------------------------------------------------------------------
@@ -180,18 +257,34 @@ def strip_sql_comments(text: str) -> str:
 
 # ---------------------------------------------------------------------------
 # What supabase/migrations/ says the columns ARE
+#
+# The patterns are built PER TABLE. They used to be module-level constants with
+# the one table name interpolated in; making them a function is the whole of the
+# generalisation on this side.
 # ---------------------------------------------------------------------------
-CREATE_TABLE_RE = re.compile(
-    r"\bCREATE\s+(?:UNLOGGED\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:ONLY\s+)?"
-    r"(?:\"?public\"?\.)?\"?(" + TABLE + r")\"?\s*\(",
-    re.I,
-)
-ALTER_TABLE_RE = re.compile(
-    r"\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?:\"?public\"?\.)?\"?"
-    + TABLE
-    + r"\"?\b",
-    re.I,
-)
+@lru_cache(maxsize=None)
+def _table_sql_patterns(table: str) -> tuple[re.Pattern, ...]:
+    return (
+        re.compile(
+            r"\bCREATE\s+(?:UNLOGGED\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:ONLY\s+)?"
+            r"(?:\"?public\"?\.)?\"?(" + re.escape(table) + r")\"?\s*\(",
+            re.I,
+        ),
+        re.compile(
+            r"\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?:\"?public\"?\.)?\"?"
+            + re.escape(table)
+            + r"\"?\b",
+            re.I,
+        ),
+        re.compile(
+            r"\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:\"?public\"?\.)?\"?"
+            + re.escape(table)
+            + r"\"?",
+            re.I,
+        ),
+    )
+
+
 ADD_COLUMN_RE = re.compile(
     r"\bADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?\"?([a-z_][a-z0-9_]*)\"?", re.I
 )
@@ -201,9 +294,6 @@ DROP_COLUMN_RE = re.compile(
 RENAME_COLUMN_RE = re.compile(
     r"\bRENAME\s+(?:COLUMN\s+)?\"?([a-z_][a-z0-9_]*)\"?\s+TO\s+\"?([a-z_][a-z0-9_]*)\"?",
     re.I,
-)
-DROP_TABLE_RE = re.compile(
-    r"\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:\"?public\"?\.)?\"?" + TABLE + r"\"?", re.I
 )
 
 # Words that open a table CONSTRAINT rather than a column, inside CREATE TABLE.
@@ -247,8 +337,11 @@ def _balanced_paren(text: str, open_idx: int) -> tuple[str, int]:
     return "", -1
 
 
-def declared_columns(migrations: pathlib.Path) -> tuple[set[str], list[str], int]:
+def declared_columns(
+    migrations: pathlib.Path, table: str
+) -> tuple[set[str], list[str], int]:
     """Replay the migration directory in version order. (columns, problems, files)."""
+    create_re, alter_re, drop_table_re = _table_sql_patterns(table)
     columns: set[str] = set()
     problems: list[str] = []
     created = False
@@ -261,7 +354,7 @@ def declared_columns(migrations: pathlib.Path) -> tuple[set[str], list[str], int
             problems.append(f"could not read {f.name}: {exc}")
             continue
 
-        for m in CREATE_TABLE_RE.finditer(text):
+        for m in create_re.finditer(text):
             body, end = _balanced_paren(text, m.end() - 1)
             if end == -1:
                 problems.append(f"unbalanced CREATE TABLE parens in {f.name}")
@@ -275,14 +368,14 @@ def declared_columns(migrations: pathlib.Path) -> tuple[set[str], list[str], int
                 if name:
                     columns.add(name.group(1).lower())
 
-        if DROP_TABLE_RE.search(text):
+        if drop_table_re.search(text):
             columns.clear()
             created = False
 
         # ALTER TABLE <table> ... up to the terminating semicolon. One statement
         # can carry several `add column if not exists` clauses -- migration
         # 20260901150000 adds created_by, source and recurring_order_id in one.
-        for m in ALTER_TABLE_RE.finditer(text):
+        for m in alter_re.finditer(text):
             semi = text.find(";", m.end())
             stmt = text[m.end() : semi if semi != -1 else len(text)]
             for clause in _split_top_level(stmt):
@@ -299,7 +392,7 @@ def declared_columns(migrations: pathlib.Path) -> tuple[set[str], list[str], int
 
     if not created:
         problems.append(
-            f"no CREATE TABLE for '{TABLE}' found in {MIGRATIONS_DIR} -- either the "
+            f"no CREATE TABLE for '{table}' found in {MIGRATIONS_DIR} -- either the "
             f"table was renamed or the SQL patterns have rotted"
         )
     return columns, problems, len(files)
@@ -320,7 +413,11 @@ class WriteSite:
     dynamic_keys: int = 0
 
 
-FROM_TABLE_RE = re.compile(r"\.from\s*\(\s*[\"'`]" + TABLE + r"[\"'`]\s*\)")
+@lru_cache(maxsize=None)
+def _from_table_re(table: str) -> re.Pattern:
+    return re.compile(r"\.from\s*\(\s*[\"'`]" + re.escape(table) + r"[\"'`]\s*\)")
+
+
 OP_RE = re.compile(r"\.(update|insert)\s*\(")
 IDENT_RE = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*$")
 
@@ -487,10 +584,78 @@ def resolve_identifier_payload(
     return sorted(set(keys)), dynamic, True
 
 
-def extract_sites(text: str, path: str) -> list[WriteSite]:
-    """Every `.from("procurement_orders")....update|insert({...})` in one file."""
+def resolve_array_payload(
+    text: str, name: str, call_at: int
+) -> tuple[list[str], int, bool]:
+    """Keys of the object literals pushed into a local array. (keys, unreadable, found).
+
+    WHY THIS EXISTS. `preCreateCalendarEvents` builds its payload as
+
+        const events: any[] = [];
+        while (...) { events.push({ ...one event... }); }
+        await ...from("calendar_events").insert(events);
+
+    An extractor that understands only object literals and `const x = {...}`
+    reports that site as UNREADABLE. That is not a false pass -- the ceiling
+    turns it into a failure -- but it is the wrong failure: the guard would say
+    "I cannot see this" about the single site the whole change is for, and the
+    obvious way to make the message go away is to raise the ceiling. So the
+    shape is read instead of merely counted.
+
+    Scoped to the region between the array's nearest preceding declaration and
+    the call, for the same reason `resolve_identifier_payload` is: two arrays
+    with the same name in two methods must not pool their keys.
+    """
+    decl_end = -1
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+" + re.escape(name) + r"\b[^=;{]*=\s*\[", text
+    ):
+        if m.start() >= call_at:
+            break
+        _, end = _balanced(text, m.end() - 1, "[", "]")
+        if end == -1:
+            continue
+        decl_end = end
+
+    if decl_end == -1:
+        return [], 0, False
+
+    keys: list[str] = []
+    dynamic = 0
+
+    # Elements of the initial literal, plus everything pushed before the call.
+    region = text[decl_end:call_at]
+    for m in re.finditer(
+        r"\b" + re.escape(name) + r"\.(?:push|unshift)\s*\(", region
+    ):
+        arg, end = _balanced(region, m.end() - 1, "(", ")")
+        if end == -1:
+            dynamic += 1
+            continue
+        arg = arg.strip()
+        if not arg.startswith("{"):
+            # `events.push(buildOne())` -- unreadable, and counted as such.
+            dynamic += 1
+            continue
+        body, e = _balanced(arg, 0, "{", "}")
+        if e == -1:
+            dynamic += 1
+            continue
+        k, d = object_literal_keys(body)
+        keys.extend(k)
+        dynamic += d
+
+    if not keys and not dynamic:
+        # An array that is declared and never pushed to is not something this
+        # guard can say anything about. Report it rather than passing it.
+        return [], 1, True
+    return sorted(set(keys)), dynamic, True
+
+
+def extract_sites(text: str, path: str, table: str) -> list[WriteSite]:
+    """Every `.from("<table>")....update|insert(payload)` in one file."""
     sites: list[WriteSite] = []
-    for m in FROM_TABLE_RE.finditer(text):
+    for m in _from_table_re(table).finditer(text):
         # The chain belongs to this .from() until the statement ends or another
         # .from() begins. Without that bound, a later `.update()` on a different
         # table would be attributed here.
@@ -533,20 +698,45 @@ def extract_sites(text: str, path: str) -> list[WriteSite]:
             else:
                 site.keys, site.dynamic_keys = object_literal_keys(body)
         elif IDENT_RE.match(arg):
-            keys, dyn, found = resolve_identifier_payload(
-                text, arg, m.end() + op_m.end()
-            )
+            at = m.end() + op_m.end()
+            keys, dyn, found = resolve_identifier_payload(text, arg, at)
+            if not found:
+                # Not an object -- try the array shape (`const rows = []` plus
+                # `rows.push({...})`), which is how a bulk insert is built.
+                keys, dyn, found = resolve_array_payload(text, arg, at)
             if not found:
                 site.resolved = False
                 site.why = (
-                    f"payload variable '{arg}' is not declared as an object "
-                    f"literal earlier in this file"
+                    f"payload variable '{arg}' is not declared as an object or "
+                    f"array literal earlier in this file"
                 )
             else:
                 site.keys, site.dynamic_keys = keys, dyn
-        elif arg.startswith("[") or arg.startswith("..."):
+        elif arg.startswith("["):
+            # An inline array of object literals: `.insert([{...}, {...}])`.
+            body, e = _balanced(arg, 0, "[", "]")
+            if e == -1:
+                site.resolved = False
+                site.why = "unbalanced array literal"
+            else:
+                keys: list[str] = []
+                dyn = 0
+                for part in _split_top_level(body):
+                    part = part.strip()
+                    if part.startswith("{"):
+                        ob, oe = _balanced(part, 0, "{", "}")
+                        if oe == -1:
+                            dyn += 1
+                            continue
+                        k, d = object_literal_keys(ob)
+                        keys.extend(k)
+                        dyn += d
+                    elif part:
+                        dyn += 1
+                site.keys, site.dynamic_keys = sorted(set(keys)), dyn
+        elif arg.startswith("..."):
             site.resolved = False
-            site.why = "array / spread payload"
+            site.why = "spread payload"
         else:
             site.resolved = False
             site.why = f"payload expression is not a literal or an identifier: {arg[:60]}"
@@ -565,7 +755,7 @@ def collect_files(root: pathlib.Path) -> list[pathlib.Path]:
     return sorted(out)
 
 
-def scan(repo: pathlib.Path) -> tuple[list[WriteSite], list[str]]:
+def scan(repo: pathlib.Path, table: str) -> tuple[list[WriteSite], list[str]]:
     sites: list[WriteSite] = []
     problems: list[str] = []
     for r in TS_ROOTS:
@@ -579,10 +769,10 @@ def scan(repo: pathlib.Path) -> tuple[list[WriteSite], list[str]]:
             except OSError as exc:
                 problems.append(f"could not read {f}: {exc}")
                 continue
-            if TABLE not in raw:
+            if table not in raw:
                 continue
             sites.extend(
-                extract_sites(strip_ts_comments(raw), str(f.relative_to(repo)))
+                extract_sites(strip_ts_comments(raw), str(f.relative_to(repo)), table)
             )
     return sites, problems
 
@@ -647,6 +837,43 @@ export class Weird {
 }
 """
 
+SELF_TEST_ARRAY = """
+export class Bulk {
+  async run() {
+    const events: any[] = [];
+    while (true) {
+      events.push({ restaurant_id: r, status: "pending", priority: "MEDIUM" });
+    }
+    await this.db.supabase.from("calendar_events").insert(events);
+  }
+}
+"""
+
+SELF_TEST_ARRAY_SCOPING = """
+export class TwoArrays {
+  async first() {
+    const rows: any[] = [];
+    rows.push({ status: "pending" });
+    await this.db.supabase.from("calendar_events").insert(rows);
+  }
+  async second() {
+    const rows: any[] = [];
+    rows.push({ leaked_from_second: 1 });
+    await this.db.supabase.from("calendar_events").insert(rows);
+  }
+}
+"""
+
+SELF_TEST_INLINE_ARRAY = """
+export class InlineArray {
+  async run() {
+    await this.db.supabase
+      .from("calendar_events")
+      .insert([{ status: "pending" }, { bogus_inline: 1 }]);
+  }
+}
+"""
+
 SELF_TEST_SQL = """
 create table public.procurement_orders (
   id uuid not null,
@@ -691,7 +918,7 @@ def self_test() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         d = pathlib.Path(tmp)
         (d / "0001_x.sql").write_text(SELF_TEST_SQL, encoding="utf-8")
-        cols, probs, n = declared_columns(d)
+        cols, probs, n = declared_columns(d, "procurement_orders")
     check("CREATE TABLE columns parsed", {"id", "status", "delivery_notes"} <= cols, sorted(cols))
     check("table CONSTRAINT is not read as a column", "constraint" not in cols)
     check("multi-clause ADD COLUMN IF NOT EXISTS parsed", "source" not in cols and "placed_by" in cols)
@@ -704,7 +931,9 @@ def self_test() -> int:
 
     print()
     print("== --self-test: call-site extraction")
-    bad = extract_sites(strip_ts_comments(SELF_TEST_BAD), "self_test_bad.ts")
+    bad = extract_sites(
+        strip_ts_comments(SELF_TEST_BAD), "self_test_bad.ts", "procurement_orders"
+    )
     check("one update site found in the bad fixture", len(bad) == 1, f"got {len(bad)}")
     bad_keys = set(bad[0].keys) if bad else set()
     check("literal key read", "notes" in bad_keys)
@@ -721,23 +950,87 @@ def self_test() -> int:
         str(violations),
     )
 
-    good = extract_sites(strip_ts_comments(SELF_TEST_GOOD), "self_test_good.ts")
+    good = extract_sites(
+        strip_ts_comments(SELF_TEST_GOOD), "self_test_good.ts", "procurement_orders"
+    )
     good_keys = set(good[0].keys) if good else set()
     check("good fixture yields a site", len(good) == 1)
     check("good fixture is CLEAN", not [k for k in good_keys if k not in schema], sorted(good_keys))
 
-    other = extract_sites(strip_ts_comments(SELF_TEST_OTHER_TABLE), "self_test_other.ts")
+    other = extract_sites(
+        strip_ts_comments(SELF_TEST_OTHER_TABLE), "self_test_other.ts", "procurement_orders"
+    )
     check("another table's update is not attributed here", other == [], str(other))
 
-    commented = extract_sites(strip_ts_comments(SELF_TEST_COMMENTED), "self_test_comment.ts")
+    commented = extract_sites(
+        strip_ts_comments(SELF_TEST_COMMENTED), "self_test_comment.ts", "procurement_orders"
+    )
     com_keys = set(k for s in commented for k in s.keys)
     check("commented-out call sites ignored", com_keys == {"status"}, sorted(com_keys))
 
-    weird = extract_sites(strip_ts_comments(SELF_TEST_UNRESOLVABLE), "self_test_weird.ts")
+    weird = extract_sites(
+        strip_ts_comments(SELF_TEST_UNRESOLVABLE), "self_test_weird.ts", "procurement_orders"
+    )
     check(
         "an unreadable payload is reported, not silently skipped",
         len(weird) == 1 and not weird[0].resolved,
         str(weird),
+    )
+
+    print()
+    print("== --self-test: the generalisation (a second table, and bulk inserts)")
+    # The whole point of parameterising the table: a write to calendar_events
+    # must be found when calendar_events is asked for, and NOT when
+    # procurement_orders is.
+    arr_cal = extract_sites(
+        strip_ts_comments(SELF_TEST_ARRAY), "self_test_array.ts", "calendar_events"
+    )
+    arr_po = extract_sites(
+        strip_ts_comments(SELF_TEST_ARRAY), "self_test_array.ts", "procurement_orders"
+    )
+    arr_keys = set(arr_cal[0].keys) if arr_cal else set()
+    check("a bulk insert built by .push() is READ, not just counted", len(arr_cal) == 1 and arr_cal[0].resolved, str(arr_cal))
+    check("pushed object keys are extracted", {"restaurant_id", "status", "priority"} <= arr_keys, sorted(arr_keys))
+    check("the same file yields nothing for a table it does not write", arr_po == [], str(arr_po))
+
+    scoped = extract_sites(
+        strip_ts_comments(SELF_TEST_ARRAY_SCOPING), "self_test_scope.ts", "calendar_events"
+    )
+    check("two same-named arrays yield two sites", len(scoped) == 2, str(len(scoped)))
+    check(
+        "a later array's keys are not attributed to the earlier insert",
+        bool(scoped) and "leaked_from_second" not in set(scoped[0].keys),
+        str(scoped[0].keys) if scoped else "no sites",
+    )
+
+    inline = extract_sites(
+        strip_ts_comments(SELF_TEST_INLINE_ARRAY), "self_test_inline.ts", "calendar_events"
+    )
+    inline_keys = set(inline[0].keys) if inline else set()
+    check("an inline array of literals is read", {"status", "bogus_inline"} <= inline_keys, sorted(inline_keys))
+
+    check("the registry has at least two tables", len(TABLES) >= 2, str([s.name for s in TABLES]))
+    check(
+        "every debt entry pins itself to at least one file",
+        all(e.files for spec in TABLES for e in spec.known_bad.values()),
+    )
+    # The hole a column-only debt list leaves: the SAME column written from a
+    # DIFFERENT file must still be NEW.
+    fake = TableSpec(
+        name="calendar_events", min_columns=1, min_update_sites=0,
+        min_insert_sites=0, enforce_inserts=True,
+        known_bad={"tags": Debt(reason="x", files=("owned/by_someone_else.ts",))},
+        dynamic_ceiling=0,
+    )
+    entry = fake.known_bad["tags"]
+    check(
+        "debt covers only the file it names",
+        any("elsewhere/mine.ts".endswith(f) for f in entry.files) is False
+        and any("owned/by_someone_else.ts".endswith(f) for f in entry.files) is True,
+    )
+    check(
+        "every registered table enforces or explicitly waives inserts",
+        all(isinstance(s.enforce_inserts, bool) for s in TABLES),
     )
 
     print()
@@ -750,105 +1043,120 @@ def self_test() -> int:
 
 
 # ---------------------------------------------------------------------------
-def main() -> int:
-    ap = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    ap.add_argument("--self-test", action="store_true", help="prove the guard detects a known-bad input")
-    ap.add_argument("--list-sites", action="store_true", help="print every write site found")
-    ap.add_argument(
-        "--report-inserts",
-        action="store_true",
-        help="also list insert-path violations (reported, never failed -- see the docstring)",
-    )
-    args = ap.parse_args()
-
-    if args.self_test:
-        return self_test()
-
-    repo = pathlib.Path(__file__).resolve().parent.parent
+def check_table(
+    repo: pathlib.Path, spec: TableSpec, args: argparse.Namespace
+) -> tuple[int, list[str]]:
+    """Run the whole comparison for one table. (fail_flag, blocked_reasons)."""
     blocked: list[str] = []
     fail = 0
 
-    # --- what the schema says --------------------------------------------
     migrations = repo / MIGRATIONS_DIR
-    if not migrations.is_dir():
-        print(f"BLOCKED: '{MIGRATIONS_DIR}' does not exist -- nothing to check against.")
-        print("FAIL (exit 2)")
-        return 2
-    columns, sql_problems, nfiles = declared_columns(migrations)
+    columns, sql_problems, nfiles = declared_columns(migrations, spec.name)
     blocked.extend(sql_problems)
 
-    print(f"== {MIGRATIONS_DIR} declares {len(columns)} columns on '{TABLE}' "
-          f"(replayed across {nfiles} file(s))")
-    if len(columns) < MIN_COLUMNS:
+    print()
+    print(f"########## {spec.name} ##########")
+    print(
+        f"== {MIGRATIONS_DIR} declares {len(columns)} columns on '{spec.name}' "
+        f"(replayed across {nfiles} file(s))"
+    )
+    if len(columns) < spec.min_columns:
         blocked.append(
-            f"only {len(columns)} columns parsed for '{TABLE}', below the "
-            f"{MIN_COLUMNS} floor. The SQL patterns have rotted, and every key "
-            f"the code writes would look like a violation."
+            f"only {len(columns)} columns parsed for '{spec.name}', below the "
+            f"{spec.min_columns} floor. The SQL patterns have rotted, and every "
+            f"key the code writes would look like a violation."
         )
 
-    # --- what the code writes ---------------------------------------------
-    sites, scan_problems = scan(repo)
+    sites, scan_problems = scan(repo, spec.name)
     blocked.extend(scan_problems)
     updates = [s for s in sites if s.op == "update"]
     inserts = [s for s in sites if s.op == "insert"]
 
-    print(f"== code writes to '{TABLE}': {len(updates)} update site(s), "
-          f"{len(inserts)} insert site(s)")
+    enforced = updates + (inserts if spec.enforce_inserts else [])
+    reported_only = [] if spec.enforce_inserts else inserts
+
+    print(
+        f"== code writes to '{spec.name}': {len(updates)} update site(s), "
+        f"{len(inserts)} insert site(s); inserts are "
+        f"{'ENFORCED' if spec.enforce_inserts else 'reported only'}"
+    )
     if args.list_sites:
         for s in sites:
-            print(f"     {s.path}:{s.line}  .{s.op}({s.arg[:40]}...)  "
-                  f"{'keys=' + ','.join(sorted(s.keys)) if s.resolved else 'UNRESOLVED: ' + s.why}")
+            detail = (
+                "keys=" + ",".join(sorted(s.keys))
+                if s.resolved
+                else "UNRESOLVED: " + s.why
+            )
+            print(f"     {s.path}:{s.line}  .{s.op}({s.arg[:40]}...)  {detail}")
 
     if not updates:
         blocked.append(
-            f"ZERO `.from(\"{TABLE}\").update(...)` sites found. This tree has "
+            f"ZERO `.from(\"{spec.name}\").update(...)` sites found. This tree has "
             f"had them since the baseline; finding none means the extraction "
             f"pattern rotted, not that the code is clean."
         )
-    elif len(updates) < MIN_UPDATE_SITES:
+    elif len(updates) < spec.min_update_sites:
         blocked.append(
-            f"only {len(updates)} update site(s) found, below the "
-            f"{MIN_UPDATE_SITES} floor. The extractor is missing call sites."
+            f"only {len(updates)} update site(s) found for '{spec.name}', below "
+            f"the {spec.min_update_sites} floor. The extractor is missing call sites."
+        )
+    if len(inserts) < spec.min_insert_sites:
+        blocked.append(
+            f"only {len(inserts)} insert site(s) found for '{spec.name}', below "
+            f"the {spec.min_insert_sites} floor. The extractor is missing call sites."
         )
 
     # --- the blind spot, always printed ------------------------------------
-    #
-    # Ratcheted over the UPDATE sites only, because updates are what this guard
-    # enforces. An unreadable insert payload is printed below it, in the same
-    # breath as the insert violations it belongs with -- claiming to ratchet a
-    # blind spot on a path the guard does not check would be its own small lie.
-    unresolved = [s for s in sites if not s.resolved and s.op == "update"]
-    unresolved_inserts = [s for s in sites if not s.resolved and s.op == "insert"]
-    dynamic_keys = sum(s.dynamic_keys for s in sites if s.op == "update")
-    print(f"== blind spot (update paths): {len(unresolved)} unreadable payload(s), "
-          f"{dynamic_keys} unreadable key(s); ceiling is {DYNAMIC_CEILING}")
+    unresolved = [s for s in enforced if not s.resolved]
+    unresolved_reported = [s for s in reported_only if not s.resolved]
+    dynamic_keys = sum(s.dynamic_keys for s in enforced)
+    print(
+        f"== blind spot (enforced paths): {len(unresolved)} unreadable payload(s), "
+        f"{dynamic_keys} unreadable key(s); ceiling is {spec.dynamic_ceiling}"
+    )
     for s in unresolved:
         print(f"     {s.path}:{s.line}  .{s.op}()  {s.why}")
-    if len(unresolved) + dynamic_keys > DYNAMIC_CEILING:
+    if len(unresolved) + dynamic_keys > spec.dynamic_ceiling:
         fail = 1
         print()
-        print(f"FAIL: the unreadable set grew from {DYNAMIC_CEILING} to "
-              f"{len(unresolved) + dynamic_keys}.")
+        print(
+            f"FAIL: '{spec.name}' unreadable set grew from {spec.dynamic_ceiling} "
+            f"to {len(unresolved) + dynamic_keys}."
+        )
         print("   -> Build the payload as an object literal, or as a local `const`")
         print("      this guard can follow.")
-        print("   -> If it genuinely cannot be static, raise DYNAMIC_CEILING and say")
-        print("      in the comment which site was added and why. Raising it silently")
-        print("      is how a guard stops covering its own input.")
+        print("   -> If it genuinely cannot be static, raise the spec's")
+        print("      dynamic_ceiling and say which site was added and why. Raising")
+        print("      it silently is how a guard stops covering its own input.")
 
     # --- the comparison ----------------------------------------------------
     violations: dict[str, list[WriteSite]] = {}
-    for s in updates:
+    for s in enforced:
         for k in s.keys:
             if k not in columns:
                 violations.setdefault(k, []).append(s)
 
-    new = {k: v for k, v in violations.items() if k not in KNOWN_BAD}
-    debt = {k: v for k, v in violations.items() if k in KNOWN_BAD}
+    # Split per SITE, not per column: a column on the debt list is only debt in
+    # the files that entry names.
+    def _covered(column: str, site: WriteSite) -> bool:
+        entry = spec.known_bad.get(column)
+        return bool(entry) and any(site.path.endswith(f) for f in entry.files)
 
-    print(f"== {len(violations)} key(s) written that are not columns "
-          f"({len(debt)} known debt, {len(new)} NEW)")
+    new: dict[str, list[WriteSite]] = {}
+    debt: dict[str, list[WriteSite]] = {}
+    matched_debt: set[str] = set()
+    for k, ss in violations.items():
+        for s in ss:
+            if _covered(k, s):
+                debt.setdefault(k, []).append(s)
+                matched_debt.add(k)
+            else:
+                new.setdefault(k, []).append(s)
+
+    print(
+        f"== {len(violations)} key(s) written that are not columns "
+        f"({len(debt)} known debt, {len(new)} NEW)"
+    )
 
     if debt:
         print()
@@ -861,54 +1169,128 @@ def main() -> int:
     if new:
         fail = 1
         print()
-        print(f"FAIL: {len(new)} key(s) written to '{TABLE}' that no migration declares:")
+        print(
+            f"FAIL: {len(new)} key(s) written to '{spec.name}' that no migration declares:"
+        )
         for k, ss in sorted(new.items()):
             print(f"     {k}")
             for s in ss:
-                print(f"       {s.path}:{s.line}")
+                print(f"       {s.path}:{s.line}  (.{s.op})")
         print()
-        print("   -> PostgREST answers PGRST204 and the whole update is rejected --")
+        print("   -> PostgREST answers PGRST204 and the whole write is rejected --")
         print("      including every other column in the same payload.")
         print("   -> Write it to the column that exists, or add a migration. Do NOT")
-        print("      add it to KNOWN_BAD: that list records what was already broken")
-        print("      when this guard landed, not a way to keep adding to it.")
+        print("      add it to the spec's known_bad: that list records what was")
+        print("      already broken when this guard landed, not a way to keep adding.")
 
     # Ratchet, both directions.
-    for k in KNOWN_BAD:
+    for k in spec.known_bad:
         if k in columns:
             fail = 1
             print()
-            print(f"FAIL: '{k}' is on the debt list but {MIGRATIONS_DIR} now declares it.")
+            print(
+                f"FAIL: '{spec.name}.{k}' is on the debt list but {MIGRATIONS_DIR} "
+                f"now declares it."
+            )
             print("   -> Delete the entry. A fixed write left on the list is a hole the")
             print("      guard will happily ignore the next time it reappears.")
-        elif k not in violations:
+        elif k not in matched_debt:
             fail = 1
             print()
-            print(f"FAIL: '{k}' is on the debt list but no code writes it any more.")
+            print(
+                f"FAIL: '{spec.name}.{k}' is on the debt list but no code in "
+                f"{', '.join(spec.known_bad[k].files)} writes it any more."
+            )
             print("   -> Delete the entry. An entry the guard never matches is one")
             print("      nobody notices is wrong.")
+            print("   -> If this is calendar_events.priority/.tags: ADR 0066 "
+                  "(fix/order-calendar-event)")
+            print("      just removed the last writer. Delete BOTH entries here AND "
+                  "the two in")
+            print("      scripts/check_order_capture_contract.py KNOWN_BAD_COLUMNS. "
+                  "See ADR 0068.")
 
     # --- the measured, non-failing hole ------------------------------------
-    insert_violations: dict[str, list[WriteSite]] = {}
-    for s in inserts:
-        for k in s.keys:
-            if k not in columns:
-                insert_violations.setdefault(k, []).append(s)
-    print()
-    print(f"== INSERT paths (reported, not enforced -- see the docstring): "
-          f"{len(insert_violations)} key(s) that are not columns, "
-          f"{len(unresolved_inserts)} unreadable payload(s)")
-    for s in unresolved_inserts:
-        print(f"     {s.path}:{s.line}  .insert()  {s.why}")
-    if insert_violations and args.report_inserts:
-        for k, ss in sorted(insert_violations.items()):
-            print(f"     {k}")
-            for s in ss:
-                print(f"       {s.path}:{s.line}")
-    elif insert_violations:
-        print(f"     {', '.join(sorted(insert_violations))}   (--report-inserts for sites)")
+    if reported_only:
+        reported_violations: dict[str, list[WriteSite]] = {}
+        for s in reported_only:
+            for k in s.keys:
+                if k not in columns:
+                    reported_violations.setdefault(k, []).append(s)
+        print()
+        print(
+            f"== INSERT paths (reported, not enforced -- see the docstring): "
+            f"{len(reported_violations)} key(s) that are not columns, "
+            f"{len(unresolved_reported)} unreadable payload(s)"
+        )
+        for s in unresolved_reported:
+            print(f"     {s.path}:{s.line}  .insert()  {s.why}")
+        if reported_violations and args.report_inserts:
+            for k, ss in sorted(reported_violations.items()):
+                print(f"     {k}")
+                for s in ss:
+                    print(f"       {s.path}:{s.line}")
+        elif reported_violations:
+            print(
+                f"     {', '.join(sorted(reported_violations))}   "
+                f"(--report-inserts for sites)"
+            )
 
-    # --- verdict -----------------------------------------------------------
+    return fail, blocked
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument("--self-test", action="store_true", help="prove the guard detects a known-bad input")
+    ap.add_argument("--list-sites", action="store_true", help="print every write site found")
+    ap.add_argument(
+        "--table",
+        action="append",
+        help="check only these registered tables (default: all)",
+    )
+    ap.add_argument(
+        "--report-inserts",
+        action="store_true",
+        help="also list insert-path violations on tables where they are reported, never failed",
+    )
+    args = ap.parse_args()
+
+    if args.self_test:
+        return self_test()
+
+    repo = pathlib.Path(__file__).resolve().parent.parent
+
+    migrations = repo / MIGRATIONS_DIR
+    if not migrations.is_dir():
+        print(f"BLOCKED: '{MIGRATIONS_DIR}' does not exist -- nothing to check against.")
+        print("FAIL (exit 2)")
+        return 2
+
+    specs = TABLES
+    if args.table:
+        wanted = {t.lower() for t in args.table}
+        specs = tuple(s for s in TABLES if s.name.lower() in wanted)
+        unknown = wanted - {s.name.lower() for s in TABLES}
+        if unknown:
+            # Asking for a table that is not registered must never look like a
+            # clean run over it.
+            print(f"BLOCKED: not registered in TABLES: {', '.join(sorted(unknown))}")
+            print("FAIL (exit 2)")
+            return 2
+    if not specs:
+        print("BLOCKED: no tables selected -- a run that checks nothing is not a pass.")
+        print("FAIL (exit 2)")
+        return 2
+
+    fail = 0
+    blocked: list[str] = []
+    for spec in specs:
+        f, b = check_table(repo, spec, args)
+        fail |= f
+        blocked.extend(f"[{spec.name}] {x}" for x in b)
+
     print()
     if blocked:
         print("BLOCKED: this guard could not check what it claims to check.")
@@ -920,10 +1302,11 @@ def main() -> int:
         print("       the defect it was written to catch.")
         return 2
     if fail:
-        print(f"FAIL (exit 1) -- the code writes a key '{TABLE}' does not have.")
+        print("FAIL (exit 1) -- the code writes a key its table does not have.")
         return 1
-    print(f"PASS -- every key written to '{TABLE}' is a real column of it,")
-    print(f"       or is on the shrink-only debt list ({len(KNOWN_BAD)} entries).")
+    names = ", ".join(s.name for s in specs)
+    print(f"PASS -- every enforced key written to {names} is a real column of it,")
+    print("       or is on that table's shrink-only debt list.")
     return 0
 
 

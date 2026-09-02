@@ -124,24 +124,40 @@ export function inWords(n: number): string {
 /**
  * The live line under the count. Spec point 1: the delta as the count is
  * entered — "14 of 16, two short" — while the driver is still there.
+ *
+ * `alreadyReceivedBoxes` is what earlier trucks on this order already brought.
+ * Split deliveries are normal in wine, and without it the second truck's six
+ * boxes were compared against the WHOLE purchase order and called ten short
+ * while the driver stood there — an accusation the paperwork does not support.
+ * Zero when nothing has arrived yet, which is the ordinary case and the shape
+ * every existing caller had.
  */
-export function matchLine(counted: number, order: DoorOrderVM | null): MatchLine | null {
+export function matchLine(
+  counted: number,
+  order: DoorOrderVM | null,
+  alreadyReceivedBoxes = 0,
+): MatchLine | null {
   if (!order) return null;
   if (order.expectedBoxes !== null) {
     const expected = order.expectedBoxes;
-    const delta = counted - expected;
+    const prior = Math.max(0, Math.round(alreadyReceivedBoxes));
+    const running = counted + prior;
+    const delta = running - expected;
+    // Only name the earlier truck when there was one — the ordinary delivery's
+    // line must not grow a clause about a second truck that does not exist.
+    const total = prior > 0 ? `${running} of ${expected} with the earlier ${prior}` : `${counted} of ${expected}`;
     if (delta === 0) {
-      return { text: `${counted} of ${expected} — all there.`, tone: 'even', deltaBoxes: 0 };
+      return { text: `${total} — all there.`, tone: 'even', deltaBoxes: 0 };
     }
     if (delta < 0) {
       return {
-        text: `${counted} of ${expected} — ${inWords(delta)} short.`,
+        text: `${total} — ${inWords(delta)} short.`,
         tone: 'short',
         deltaBoxes: delta,
       };
     }
     return {
-      text: `${counted} of ${expected} — ${inWords(delta)} more than ordered.`,
+      text: `${total} — ${inWords(delta)} more than ordered.`,
       tone: 'over',
       deltaBoxes: delta,
     };
@@ -254,6 +270,12 @@ export interface CreditDraftInput {
   hasPhoto: boolean;
   driverName: string;
   initials: string;
+  /**
+   * Boxes earlier trucks on this order already brought. A credit letter that
+   * ignores them claims a shortfall the vendor's own paperwork disproves, which
+   * is the fastest way to lose a claim that was otherwise good.
+   */
+  alreadyReceivedBoxes?: number;
 }
 
 /**
@@ -269,10 +291,15 @@ export function creditDraft(input: CreditDraftInput): string | null {
   const wine = order?.wineName ? ` (${order.wineName})` : '';
   const expected = order?.expectedBoxes;
 
+  const prior = Math.max(0, Math.round(input.alreadyReceivedBoxes ?? 0));
+  const running = counted + prior;
+  const arrived =
+    prior > 0 ? `arrived ${counted} boxes, ${running} of` : `arrived ${counted} of`;
+
   const what =
     outcome === 'short'
       ? expected !== null && expected !== undefined
-        ? `arrived ${counted} of ${expected} boxes — ${inWords(counted - expected)} short at the door`
+        ? `${arrived} ${expected} boxes — ${inWords(running - expected)} short at the door`
         : `arrived ${counted} boxes — short of what was ordered`
       : `was refused at the door${reason ? ` — ${refusalLabel(reason)?.toLowerCase()}` : ''}`;
 
@@ -289,7 +316,7 @@ export function creditDraft(input: CreditDraftInput): string | null {
   );
 }
 
-/* ── The notes field — everything the schema has no column for ───────────── */
+/* ── The notes field — free prose, and nothing else ──────────────────────── */
 
 export interface DoorNotesInput extends CreditDraftInput {
   broken: number;
@@ -297,20 +324,98 @@ export interface DoorNotesInput extends CreditDraftInput {
 }
 
 /**
- * The door endpoint stores `notes` verbatim on the receipt event. Outcome,
- * reason, signature and the drafted credit ride there — structured enough to
- * grep, readable enough for the desk that verifies the receipt.
+ * The gateway's `notes` column is `@MaxLength(500)`, and `doorOutbox.ts` treats
+ * a 4xx as PERMANENT — so one character too many is not a retry, it is a
+ * receiver who cannot save the delivery at all while a driver waits.
+ *
+ * MEASURED, before this changed: the fixed skeleton of a short-shipped note was
+ * 344 characters (every name empty, one-character driver and initials), leaving
+ * ~156 for a provider name, a wine name, an order number and a driver name. A
+ * real distributor and a real Bordeaux —
+ * "Southern Glazer's Wine & Spirits of New York, LLC" and
+ * "Château Pichon Longueville Comtesse de Lalande, Pauillac 2ème Cru Classé
+ * 2016" — measured 546. Blocked, permanently, with no way through.
+ *
+ * Two things fix it, and only the second one is a guarantee:
+ *
+ *  1. outcome, reason, counted, expected, broken, signedBy and driver are now
+ *     COLUMNS on procurement_receipt_events, so the structured half of the blob
+ *     is gone from here entirely;
+ *  2. every remaining interpolated name is clamped to a budget, and the whole
+ *     string is clamped after composition. The bound is structural — it does
+ *     not depend on anyone re-doing the arithmetic when a sentence changes.
+ *
+ * MEASURED after: skeleton 259, worst case with every budget saturated 449, and
+ * the same distributor-plus-Bordeaux pair that produced 546 now produces 431.
+ */
+export const NOTES_MAX = 500;
+/** Room under the cap for the clamp's own ellipsis and any future sentence. */
+const NOTES_BUDGET = 480;
+
+const VENDOR_MAX = 60;
+const WINE_MAX = 60;
+const ORDER_REF_MAX = 32;
+const DRIVER_MAX = 40;
+
+/** Trim to `max`, ending on a word where one is near, and say it was trimmed. */
+export function clamp(s: string, max: number): string {
+  const t = s.trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max - 1);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
+/**
+ * The credit request, drafted at the door — the one thing here that is prose and
+ * has no column. Everything structured travels as a field now.
  */
 export function composeDoorNotes(input: DoorNotesInput): string {
-  const parts: string[] = [`[door] outcome=${input.outcome}`];
-  if (input.reason && input.outcome === 'refused') parts.push(`reason=${input.reason}`);
-  parts.push(`counted=${input.counted} boxes`);
-  const expected = input.order?.expectedBoxes;
-  if (expected !== null && expected !== undefined) parts.push(`expected=${expected} boxes`);
-  if (input.broken > 0) parts.push(`broken=${input.broken}`);
-  if (input.initials.trim()) parts.push(`signedBy=${input.initials.trim().toUpperCase()}`);
-  if (input.driverName.trim()) parts.push(`driver=${input.driverName.trim()}`);
-  const head = parts.join('; ');
-  const draft = creditDraft(input);
-  return draft ? `${head}\ncredit-draft (unsent): ${draft}` : head;
+  const draft = creditDraft({
+    ...input,
+    order: input.order && {
+      ...input.order,
+      providerName: input.order.providerName && clamp(input.order.providerName, VENDOR_MAX),
+      wineName: input.order.wineName && clamp(input.order.wineName, WINE_MAX),
+      orderNumber: input.order.orderNumber && clamp(input.order.orderNumber, ORDER_REF_MAX),
+    },
+    driverName: clamp(input.driverName, DRIVER_MAX),
+  });
+  if (!draft) return '';
+  return clamp(`credit-draft (unsent): ${draft}`, NOTES_BUDGET);
+}
+
+/* ── The structured facts — columns now, not prose ───────────────────────── */
+
+/**
+ * What the door knows, in the shape the gateway stores it.
+ *
+ * `expectedQtyInCountedUom` and `rejectedQtyInCountedUom` carry their unit in
+ * their names, because the door counts BOXES and the server converts to bottles:
+ * a quantity that crossed this boundary without saying what it was is precisely
+ * how a refused delivery came to book stock.
+ */
+export interface DoorFacts {
+  outcome: DoorOutcome;
+  refusalReason: RefusalReason | null;
+  signedByInitials: string | null;
+  driverName: string | null;
+  expectedQtyInCountedUom: number | null;
+  rejectedQtyInCountedUom: number;
+}
+
+export function doorFacts(input: DoorNotesInput): DoorFacts {
+  return {
+    outcome: input.outcome,
+    refusalReason: input.outcome === 'refused' ? input.reason : null,
+    signedByInitials: input.initials.trim() ? input.initials.trim().toUpperCase().slice(0, 8) : null,
+    driverName: input.driverName.trim() ? clamp(input.driverName, 120) : null,
+    // Only when the order's own unit is cases. `expectedBoxes` is already null
+    // otherwise — normalizeDoorOrder never derives it — and a null here is the
+    // door declining to state an expectation it cannot compare against.
+    expectedQtyInCountedUom: input.order?.expectedBoxes ?? null,
+    // A refusal takes nothing in; otherwise only the visibly broken. Both in
+    // BOXES, the unit the door counts in, which is what the field name says.
+    rejectedQtyInCountedUom: input.outcome === 'refused' ? input.counted : input.broken,
+  };
 }
