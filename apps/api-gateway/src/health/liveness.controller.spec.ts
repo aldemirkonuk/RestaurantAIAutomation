@@ -19,7 +19,20 @@ describe("LivenessController", () => {
     // and a liveness check that reports readiness is a liveness check that
     // pages you at 3am about a slow database.
     expect(LivenessController.length).toBe(0);
-    expect(new LivenessController().live()).toEqual({ status: "ok" });
+
+    // The payload gained `commit` and `bootedAt` so the route can say WHICH
+    // build answered — a constant `{status:"ok"}` cannot tell a new deploy from
+    // the previous instance still serving. Both are read once at module load
+    // from `process.env`, so the handler is still constant and still touches
+    // nothing; that is what this test protects, not the exact key set.
+    const payload = new LivenessController().live();
+    expect(payload.status).toBe("ok");
+    expect(typeof payload.commit).toBe("string");
+    expect(payload.commit.length).toBeGreaterThan(0);
+    expect(Number.isNaN(Date.parse(payload.bootedAt))).toBe(false);
+
+    // Constant means constant: two calls agree.
+    expect(new LivenessController().live()).toEqual(payload);
   });
 
   it("is registered on the real AppModule, not just exported", () => {
