@@ -22,6 +22,16 @@ export interface ProcurementDocument {
   doc_number: string | null
   doc_date: string | null
   status: 'received' | 'extracting' | 'needs_review' | 'verified' | 'rejected' | 'superseded'
+  /**
+   * ISO 4217 code the document is denominated in. Real column
+   * (`procurement_documents.currency`, `varchar(3)`, defaulted to 'USD' but
+   * NOT NULL-free), returned by the `select("*")` list endpoint and simply
+   * absent from this type — which is why every money figure this client fed a
+   * screen was printed with a hardcoded `$`. Nullable here because the column
+   * is: a row inserted with an explicit NULL records no unit, and that is a
+   * fact to state, not a dollar sign to assume.
+   */
+  currency?: string | null
   total: number | null
   freight: number | null
   fuel_surcharge: number | null
