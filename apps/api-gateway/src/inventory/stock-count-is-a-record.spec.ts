@@ -27,7 +27,7 @@ import * as path from "path";
 
 const MIGRATION = path.resolve(
   __dirname,
-  "../../../../supabase/migrations/20260902160000_a_count_is_a_record.sql",
+  "../../../../supabase/migrations/20260902190000_a_count_is_a_record.sql",
 );
 
 describe("stock_counts migration (ADR 0078)", () => {

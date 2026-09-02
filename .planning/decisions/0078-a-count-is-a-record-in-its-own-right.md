@@ -4,7 +4,7 @@
 - **Date:** 2026-09-02
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** stock_counts, spot count, reconciliation, variance, D14, attribution, performed_by, idempotency, absence-reported-as-health
-- **Links:** `.planning/07-reference/INVENTORY_SOTA_PLAN.md:63` (D14), `[[0025-executable-decision-claims]]`, `supabase/migrations/20260902160000_a_count_is_a_record.sql`, `scripts/check_a_count_is_recorded.py`
+- **Links:** `.planning/07-reference/INVENTORY_SOTA_PLAN.md:63` (D14), `[[0025-executable-decision-claims]]`, `supabase/migrations/20260902190000_a_count_is_a_record.sql`, `scripts/check_a_count_is_recorded.py`
 
 ## Context
 
@@ -107,7 +107,7 @@ It is written in Python and reads the files itself, rather than shelling out to 
 - **Easier:** a variance rate over `stock_counts` is a measurement rather than a tautology. "Counted and agreed" is distinguishable from "never counted" by a row, not a timestamp. Counting correctly stops being an error condition. `reconcileInventory` no longer races the projection.
 - **Harder / given up:** two count paths must stay routed through one RPC, which the guard enforces but which also means a new count surface has one more thing to get right. `stock_counts` grows without bound (one row per count per item) with no retention policy yet — deliberately deferred rather than guessed. The reconcile response shape changed; nothing reads it today, but a future consumer must handle `transaction: null`.
 - **Not done here, and named:** `stock_counts` is written and nothing reads it yet. D14's second half — making the *displayed* number a count re-based against the ledger rather than the raw projection — is a read-path change this ADR does not make. This ADR makes that change *possible* by creating the record it would have to read; it does not make it. Saying otherwise would be the same overclaim this ADR exists to remove.
-- **Migration is UNAPPLIED.** `supabase/migrations/20260902160000_a_count_is_a_record.sql` has not been run against production. The Supabase GitHub integration tracks `main` and applies on merge using the version from the repo filename; hand-applying is the only way to manufacture a version mismatch.
+- **Migration is UNAPPLIED.** `supabase/migrations/20260902190000_a_count_is_a_record.sql` has not been run against production. The Supabase GitHub integration tracks `main` and applies on merge using the version from the repo filename; hand-applying is the only way to manufacture a version mismatch.
 - **Revisit when:** `stock_counts` is being read by a product surface (that read is D14's other half and wants its own ADR), or when the table needs a retention policy, or if a count path appears that legitimately cannot supply an idempotency key.
 
 ## Review trail
