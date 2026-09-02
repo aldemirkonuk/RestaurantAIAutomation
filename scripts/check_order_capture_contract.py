@@ -927,7 +927,7 @@ export class ReceivingService {
     # happened to be on the list — first `procurement_conversations.*`, then
     # `calendar_events.priority`/`.tags` — and each time the last real writer was
     # repaired, this fixture became the violation and the whole self-test broke
-    # (ADR 0065 removed one arm for exactly this reason; ADR 0070 emptied the
+    # (ADR 0065 removed one arm for exactly this reason; ADR 0073 emptied the
     # list entirely and broke the rest). A self-test that fails whenever the
     # debt it borrows is PAID OFF punishes the only change the ratchet exists to
     # encourage. It is now independent of what the live list holds, including
@@ -1205,7 +1205,7 @@ def self_test() -> int:
         debt_mig.write_text(debt_sql, encoding="utf-8")
 
         # E7. an EMPTY debt list is a legal state, not a broken one. This is the
-        # real state of the tree as of ADR 0070 — every entry has been paid off —
+        # real state of the tree as of ADR 0073 — every entry has been paid off —
         # and nothing asserted it was reachable until the day it arrived and the
         # self-test failed instead of the guard.
         debt = root / f"{PROCUREMENT}/debt.ts"
@@ -1293,7 +1293,7 @@ def self_test() -> int:
     print("   a {...spread} payload counts as unreadable, never as zero keys")
     print("   a debt entry nothing writes any more exits 1")
     print("   a debt entry the schema now declares exits 1")
-    print("   an EMPTY debt list is clean, not broken (the state as of ADR 0070)")
+    print("   an EMPTY debt list is clean, not broken (the state as of ADR 0073)")
     print("   the debt cases use a synthetic entry, not whatever the live list holds")
     print("   a missing file, a renamed method, or a missing migrations dir exits 2")
     print("PASS")

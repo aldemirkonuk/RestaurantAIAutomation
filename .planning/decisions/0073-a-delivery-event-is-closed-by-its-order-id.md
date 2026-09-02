@@ -1,4 +1,4 @@
-# 0070 — A delivery event is closed by its order id, in the calendar's own words, once
+# 0073 — A delivery event is closed by its order id, in the calendar's own words, once
 
 - **Status:** Proposed
 - **Date:** 2026-09-02
