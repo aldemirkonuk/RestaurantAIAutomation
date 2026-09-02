@@ -84,9 +84,9 @@ describe("ADR 0059 L3 — the door records whether the paper's reading was accep
   /**
    * TO MAKE THIS PASS (three edits, all in receiving.service.ts):
    *
-   *   1. add `suggestedQty?: number | null` and
+   *   1. add `suggestedQtyInCountedUom?: number | null` and
    *      `suggestionAccepted?: boolean | null` to `DoorReceiptInput`;
-   *   2. add `suggested_qty: input.suggestedQty ?? null` and
+   *   2. add `suggested_qty: input.suggestedQtyInCountedUom ?? null` and
    *      `suggestion_accepted: input.suggestionAccepted ?? null` to the
    *      `procurement_receipt_events` insert;
    *   3. uncomment the two forwarding lines in `receiving.controller.ts`,
@@ -107,7 +107,7 @@ describe("ADR 0059 L3 — the door records whether the paper's reading was accep
       // The receiver was shown 2 and sealed 3: the machine misread the packing
       // slip and a person standing in front of the pallet corrected it. That is
       // the label, and it is worth more than a hundred agreements.
-      suggestedQty: 2,
+      suggestedQtyInCountedUom: 2,
       suggestionAccepted: false,
     } as any);
 

@@ -9,9 +9,9 @@ tier: core
 archetype: command # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
-maturity: complete
+maturity: live
 status: documented
-updated: 2026-08-26
+updated: 2026-09-02
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
@@ -56,8 +56,10 @@ My Shifts (staff, read-only):
 
 Mudavym redesign behind `mudavym_design_team` (OFF):
 - **Coverage gaps as the page's first object** — named countable rows ("2 unfilled · Saturday · line") with a real suggested cover and a one-tap Assign
+- **The page can start the staffing engine** — with `coverage_templates` empty (which is production) the panel says the engine is idle rather than claiming a staffed week, and carries the role/day/service/min-staff form that creates the first rule (ADR 0089)
+- **Role split on the redesigned half too** — a non-manager gets My Shifts, not the manager desk; previously `App.tsx:305` gated the whole route and `GET certifications` has no server-side role requirement (`team.service.ts:397`), so the credential file rendered to any member
 - **Labour cost as the week builds** — total vs target with overtime named before publish; withheld in words when tracking is off
-- **Credentials as blockers** — an expired card blocks the shifts it touches, with a one-tap renewal request and a cannot-publish-as-it-stands line
+- **Credentials as exposure** — an expired card names the member, how many shifts they hold this week, and that *which* shifts require it is not recorded, with a one-tap renewal request (ADR 0089; `team_certifications` has no role or applies-to column, baseline `:5609-5620`, so the old "blocks N shifts / should not be published" line asserted a link the schema does not have)
 - Week-at-a-glance day chips (staffed / open / status)
 - 🚧 Parity gap, deliberate: the full desk (editors, publish, time-off, performance, my-shifts) still lives on the legacy page while the flag is off — flip to judge the new layer, flip back to operate (§9)
 
@@ -118,9 +120,10 @@ page (the publish control itself stays with the desk until parity).
 ## 4. Endpoints
 
 Everything under `/restaurants/:rid/team` (`services/api/team.ts:7-11` builds the
-base). Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):565 (`team`, 33 — the
-largest module any of these pages consumes), :516 (`restaurants/members`), :87
-(`calendar`).
+base). Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):565 (`team`, 33 at the
+time of that scan — the largest module any of these pages consumes; **32 since
+ADR 0088 deleted `GET …/swaps`**, which no client called and which read a table
+nothing in the repository writes), :516 (`restaurants/members`), :87 (`calendar`).
 
 | Method | Path | Call site |
 |---|---|---|
@@ -167,20 +170,61 @@ dashboard.md §7.
   until POS depth exists — the S04 ⚠ wine-only depletion caveat applies
   ([TIER-MAP](../03-scenarios/TIER-MAP.md):40).
 - No debt-register entries name `/team` (checked `v3.0-TECH-DEBT.md` — no hits).
+- **The whole scheduling domain is empty in production** (measured 2026-09-02):
+  `coverage_templates` 0, `schedules` 0, `shifts` 0, `team_certifications` 0,
+  `server_sales` 0, `team_settings` 0, `schedule_receipts` 0. Only the 11-row
+  roster exists. Nothing on this page below the roster has ever run against real
+  data, so a green test here proves the code, never the behaviour.
+- **No wage is on file for anyone.** ADR 0088 stopped the server inventing one,
+  and the 11 existing rows still carry the invented $32.00/$28.00 literals — they
+  are *not* deleted by that change. Until someone enters real wages, the week
+  total, the Tonight pulse and the CSV "Labor cost" column read `—`, by design.
+- **`team_settings.labor_target_pct` is `numeric(5,2) DEFAULT 28 NOT NULL`**, so
+  the first restaurant to toggle `wage_visible` gets a stored 28% target it never
+  chose. ADR 0088 fixed the code-side default (no row → `null` + `configured:
+  false`); making the column nullable is a separate migration against a table
+  with 0 rows.
+- **Three controls need a client half before they work again** (ADR 0088 T3/T7,
+  owned by the `/team` page session, not the gateway): "Copy last week" and
+  "Re-publish" now answer 409 until the client sends `replaceTarget` /
+  `resetReceipts` with a confirmation, and the legacy desk's broadcast answers
+  400 until it sends an `audience`.
 
 ## 10. Maturity
 
-**complete.** The only page in this cluster where every advertised action reaches a
-real, role-enforced endpoint and produces a downstream effect.
+**live.** Every advertised action reaches a real, role-enforced endpoint and produces a
+downstream effect — which is not the same as complete, and the frontmatter said
+`complete` until 2026-09-02. ADR 0089 measured eight defects on this page in one pass,
+seven of them sentences that were false over the tenant the page actually runs in
+(`coverage_templates` 0 rows, `team_certifications` 0, `schedule_receipts` 0, no `staff`
+role). A page whose every button works can still say untrue things about what it found.
+**live.** Corrected from `complete` on 2026-09-02 (ADR 0088). Every advertised
+action does reach a real, role-enforced endpoint — but a 2026-09-02 gateway audit
+found seven defects, three of the six evidence rows below were false as written,
+and "complete" was reading the absence of a bug report as the absence of bugs.
+
+### The three rows that were wrong, and why
+
+| Was claimed | What was true on 2026-09-02 |
+|---|---|
+| "Role gate is enforced server-side" | `assertAccess` (`team.service.ts:56-64`) fell back to `users.restaurant_id` + `users.role`, and `users.role` is `varchar(20) DEFAULT 'manager' NOT NULL` — so **a user row with a restaurant id and an untouched role was a manager of /team**. `listCertifications` (`:397`) required no role at all and `listTimeOff` (`:477`) exposed every member's dates and free-text reasons to any member. `assertAccess(..., "owner")` was defined at `:71-72` and **called nowhere in the module**. Fixed by ADR 0088 T5 |
+| "Every mutation carries an `onError` toast" | **Seven do not.** Not re-verified since 2026-08-26; the six line citations were real, the word "every" was not |
+| "Where the UI misleads: nothing found" | The Tonight-labor pulse renders `$${...(s.labor_cost ?? 0)}` (`ManagerShiftDesk.tsx:429`) — an unpriced shift and a free shift print identically — and until ADR 0088 the wage feeding it was invented by the server (`team.service.ts:205-207`): **11 of 11 production rows carried the literal**, so 100% of the labour figures on this page were fiction |
+
+### The rows that still hold
 
 | Check | Evidence |
 |---|---|
-| Role gate is enforced server-side, not just in the UI | `assertAccess(userId, rid, "manager")` guards every manager action — publish (`team/schedule.service.ts:232`), broadcast (`team/team.controller.ts:346`), etc. The client split (`TeamCommandPage.tsx:1-4`) is convenience on top, not the control |
-| Publishing a week is a real event | `schedule.service.ts:231-265` sets `status:'published'`, **clears `schedule_receipts`** so "seen" reflects the new version (`:247-251`), and writes a restaurant-wide notification deep-linked back to `/team?schedule=…&week=…` (`:254-263`) |
-| Broadcast reaches four channels | In-app notification + web push + email + SMS, targeted at active linked members, best-effort per channel (`team.controller.ts:335-380`) |
+| Publishing a week is a real event | `schedule.service.ts` sets `status:'published'` and writes a restaurant-wide notification deep-linked back to `/team?schedule=…&week=…`. It also **clears `schedule_receipts`** — which the old row listed as a feature; since ADR 0088 that clearing requires `resetReceipts: true` and reports `receiptsCleared`, because destroying the record of who has seen the schedule is not a side effect a click should have |
+| Broadcast reaches four channels | In-app notification + web push + email + SMS (`team.controller.ts`). Since ADR 0088 it must name its audience, and it honours `notification_preferences` opt-outs the scheduled mailer already honoured |
 | Performance numbers are not invented | `PerformancePanel.tsx:3` states the rule explicitly — *"'no data yet' state (never mock numbers) until sales are attributed"* — and honours it. Contrast `/reports` (reports.md §10) |
-| Mutations report failure | Every mutation carries an `onError` toast (`ManagerShiftDesk.tsx:204,209,295,300,329,344`) |
+| Mutations report failure | Every mutation says so — an `onError` toast on the legacy half, an on-screen `role="alert"` line on the redesigned half, which mounts no toaster (`TeamNext.tsx` `CoverageRuleForm`/`GapRow`/`CertRow`). **True since ADR 0089, false when this row was first written.** Seven had none: call-out (`ManagerShiftDesk.tsx:303-306`), assign cover (`:331-334`), delete shift (`editors.tsx:84-87`), remove member (`:202-205`), delete rule (`OpsRulesPanel.tsx:97-104`), delete cert (`:212-218`), acknowledge (`MyShifts.tsx:38-44`). A failed delete showed the user nothing at all |
+| Reads report failure | Since ADR 0089. The four legacy desk queries and `MyShifts`'s `my-week` had no `isError` branch, so a dead gateway rendered *"No team members yet"*, `0 active`, an empty task rail under a green tick, *"Publish readiness: Clear"* on all three `?? 0` rows, and seven days of *"Off"*. Both halves now carry the two-sentence banner |
+| A message addressed to one person reaches one person | Since ADR 0089. *"Message {firstName}"* called `doBroadcast` with **no `memberIds`** (`ManagerShiftDesk.tsx:335-345`), so `team.controller.ts:345-347` fell through to every active linked member across four channels. Replaced by a composer that lists recipients before the send control and counts them on it |
+| Destructive actions confirm | Since ADR 0089. Copy-week DELETEs the whole target week (`schedule.service.ts:202-207`) and re-publish wipes every `schedule_receipts` row (`:248-251`); both were one click |
+| Every read is tenant-keyed | Since ADR 0089, and held by `scripts/check_windowed_figures.py` (W6/W7, `/team` is its fourth page, both halves). Five keys carried no restaurant id — all on the REDESIGNED half plus `PerformancePanel.tsx:22`; the legacy desk had it right |
 | Debt register | No `v3.0-TECH-DEBT.md` entry names `/team` (§9, re-verified) |
+| Debt register | No `v3.0-TECH-DEBT.md` entry names `/team` (§9, re-verified 2026-09-02) |
 
 The one dependency worth naming is not a defect on this page: performance metrics
 come from **manually ingested** sales rows (`POST …/sales`, `…/sales/batch`,
@@ -199,15 +243,15 @@ All under `/restaurants/:restaurantId/team`, JWT-guarded at class level
 |---|---|---|---|---|
 | GET/POST/PATCH/DELETE | `…/members` | JWT + role | `team.controller.ts` → `team.service.ts` | Roster |
 | GET | `…/week`, `…/my-week` | JWT | `team.controller.ts` | Grid / staff week |
-| POST | `…/schedules`, `…/schedules/copy-week` | JWT + manager | `schedule.service.ts` | Draft week |
-| POST | `…/schedules/:id/publish` | JWT + manager | `schedule.service.ts:231-265` | Published schedule + notification |
+| POST | `…/schedules`, `…/schedules/copy-week` | JWT + manager | `schedule.service.ts` | Draft week; copy-week returns `{copied, deleted, schedule}` and **409**s on a non-empty target unless the body says `replaceTarget: true` (ADR 0088) |
+| POST | `…/schedules/:id/publish` | JWT + manager | `schedule.service.ts` | `{schedule, receiptsCleared, republished}` + notification. **409** on a re-publish that would erase read receipts, unless the body says `resetReceipts: true` (ADR 0088) |
 | POST | `…/schedules/:id/acknowledge` | JWT | `schedule.service.ts:268-...` | Read receipt |
 | POST/PATCH/DELETE | `…/shifts` (+`/callout`, `/offer-cover`, `/assign`) | JWT | `team.controller.ts` | Shift rows |
 | GET/POST/PATCH/DELETE | `…/certifications`, `…/coverage-templates` | JWT | `team.controller.ts` | Ops rules |
 | GET/POST/PATCH | `…/time-off` | JWT | `team.controller.ts` | Requests |
 | GET | `…/members/:id/performance` | JWT | `team/performance.service.ts` | Attributed sales, or an honest empty |
 | POST | `…/sales`, `…/sales/batch` | JWT | `performance.service.ts` | Ingested rows |
-| POST | `…/broadcast` | JWT + manager | `team.controller.ts:335-380` | Fan-out result |
+| POST | `…/broadcast` | JWT + manager | `team.controller.ts` | `{audience, recipients, suppressed, preferencesUnavailable, …}`. **400** unless the body names exactly one of `memberIds` or `audience:"everyone"` (ADR 0088) |
 | GET/PATCH | `…/settings` | JWT | `team.controller.ts` | Labor/goal settings (edited from `/settings`) |
 | GET | `/calendar/events` | JWT | `calendar.controller.ts:94` | Desk overlay |
 
@@ -243,11 +287,34 @@ the manager, and "what am I working" for everyone else.
 |---|---|---|
 | Loading | Yes | `TeamCommandPage.tsx:18,32` |
 | Empty | Yes | `PerformancePanel.tsx:3` — the deliberate no-data state |
-| Error | Partial | Every **write** toasts on failure (`ManagerShiftDesk.tsx:204+`); read queries have no `isError` branch, so a failed roster fetch reads as an empty roster |
+| Error | Yes, since ADR 0089 | Both halves carry the two-sentence banner that separates *"could not be refreshed — this is the last answer"* from *"nothing below is claimed"*, and every derived figure can say `—`. Was **Partial**: reads had no `isError` branch at all, so a failed roster fetch read as an empty roster |
 | Permission-denied | Yes, structurally | Non-managers get `MyShifts` rather than a denied Manager desk (`TeamCommandPage.tsx:1-4`), backed by server-side `assertAccess` |
 
-**Where the UI misleads:** nothing found. Print-week opens a real window; import is a
-real upload; the performance panel refuses to draw numbers it does not have.
+**Where the UI misleads:** *"nothing found" was wrong* — it was written against the
+surface, not against the tenant. ADR 0089 found eight, and the page is the fix; they are
+recorded here because a page note that only ever records the current state teaches
+nothing about how it got wrong:
+
+1. *"Every required slot this week is staffed"* over **zero coverage rules** — an idle
+   engine reported as a result (`TeamNext.tsx:296-299`).
+2. *"Every credential on file is valid through this week"* over an **empty file**
+   (`:377-380`).
+3. *"N shifts are held by an expired credential — should not be published"* over a table
+   with no role and no applies-to column (`:394-397`, `useTeamNextData.ts:186`).
+4. *"Message {firstName}"* sending to the entire crew (`ManagerShiftDesk.tsx:710-718`).
+5. A dead gateway drawn as a healthy, empty restaurant — four all-clears and a green tick
+   (`ManagerShiftDesk.tsx:519-521, 376, 613-617, 640-644`; `MyShifts.tsx:122`).
+6. *"Rule removed"* after a delete that no-opped against the previous tenant's id
+   (`OpsRulesPanel.tsx:97-104` with an untenanted key at `:70-73`).
+7. *"covered"* on a day whose own coverage status was `gap` (`TeamNext.tsx:434-436`).
+8. A whole week's urgent count printed under a heading that said *"Tonight's board"*
+   (`ManagerShiftDesk.tsx:436`), and `sum(labor_cost ?? 0)` rendering an unpriced night
+   as a measured **$0** (`:429`).
+
+What was *already* honest and is preserved: print-week opens a real window; import is a
+real upload; the performance panel refuses to draw numbers it does not have and prints
+the rule (`PerformancePanel.tsx:200-207`); `TeamNext`'s error banner, its `— ` for an
+unanswered count, and its *"a withheld number, not a zero"* labour copy.
 
 The boundary to defend: TIER-MAP:104-105 — Floor Checker scenarios (S05/S07/S16)
 "must never be sold as staff performance analytics". `PerformancePanel` is
@@ -258,8 +325,18 @@ sales-ingest based, which is the permitted kind. Keep them apart.
 1. **Attribute sales from POS** instead of manual ingest (`services/api/team.ts:240-244`)
    — turns the performance panel from a data-entry chore into a by-product. Blocked
    on POS depth (S04 ⚠, TIER-MAP:40).
-2. **`isError` branches on the read queries** so a failed roster does not read as an
-   empty restaurant — the one state gap on the page.
+2. ~~**`isError` branches on the read queries**~~ — **done**, ADR 0089. Both halves now
+   distinguish a stale answer from no answer.
+2a. **A credential that knows what it certifies.** `team_certifications` has no role or
+   applies-to column, so the strongest true sentence about an expired card is "this
+   person works N shifts this week". Add the column and the blocker claim becomes
+   available again (ADR 0089, "revisit when").
+2b. **Record that a renewal was requested.** The redesign's *Request renewal* has no
+   server-side trace, so it can only report what it just did, never a state. Gateway
+   work, marked `TODO` in `TeamNext.tsx`.
+2c. **A role requirement on `GET certifications`.** `team.service.ts:397` calls
+   `assertAccess` with no required role, so the client-side split ADR 0089 added is
+   defence in depth, not access control. Gateway work.
 3. Instrument this page first when signals land (§5): publish→acknowledge latency and
    cover-claim time are the two numbers a manager would actually act on, and both are
    already in the schema (`schedule_receipts`).
