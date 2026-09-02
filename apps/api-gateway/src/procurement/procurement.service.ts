@@ -40,6 +40,14 @@ import {
   PriceHistorySource,
   resolveOrderUnits,
 } from "./order-units";
+// The calendar owns the vocabulary of calendar_events. Importing the enums
+// rather than restating the strings makes a divergence a compile error instead
+// of a row nothing can read (see ADR 0066).
+import {
+  CalendarEventSource,
+  CalendarEventStatus,
+  CalendarEventType,
+} from "../calendar/dto/calendar.dto";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1942,53 +1950,142 @@ export class ProcurementService {
   }
 
   /**
-   * Create a calendar event when an order is approved (expected delivery date)
+   * Create the expected-delivery calendar event for an order.
+   *
+   * This function had never once succeeded. It wrote four things
+   * `calendar_events` does not accept, and every one of them was invisible
+   * because the whole body was a `try`/`catch` that logged a warning:
+   *
+   *  1. `priority` — the column does not exist (PostgREST `PGRST204`).
+   *  2. `tags` — the column does not exist. Identity was JSON-stuffed into it
+   *     while the real `order_id`/`provider_id` uuid columns sat unused, both
+   *     with foreign keys (`calendar_events_order_id_fkey` →
+   *     `procurement_orders`, `calendar_events_provider_id_fkey` →
+   *     `providers`) and `idx_calendar_events_provider` on the second.
+   *  3. `source` was omitted — it is `varchar(50) NOT NULL` with **no default**
+   *     (`supabase/migrations/20260805000000_baseline_from_production.sql:2353`),
+   *     so this alone is a `23502` even with the column names corrected.
+   *  4. `status: "SCHEDULED"` — not a constraint failure (the column carries no
+   *     CHECK), which makes it the worse kind: the write would have *succeeded*
+   *     and produced a row no reader recognises. The table's real vocabulary is
+   *     `CalendarEventStatus` (pending/approved/dismissed/completed/cancelled);
+   *     production holds `active`, `completed`, `pending`, all lowercase, and
+   *     has never held `SCHEDULED` in any case.
+   *
+   * The values chosen here, and why (evidence in ADR 0066):
+   *  - `source: system_generated` — one of the two values production actually
+   *    holds, and true: not a person, not an inference from a conversation.
+   *  - `status: pending` — the column's own default, in `CalendarEventStatus`
+   *    (so the calendar's own update endpoint can transition it, which `active`
+   *    could not), live in production, and mapped to iCal `TENTATIVE`
+   *    (`calendar.service.ts:1276`). A +7-day estimate is exactly tentative.
+   *  - `event_type: delivery` — live in production, and the value
+   *    `dashboard.service.ts:288` counts `deliveriesThisWeek` on. That counter
+   *    has been reading zero for want of this row.
+   *
+   * On failure this does **not** throw. Its one caller reaches it only after
+   * the purchase order has been emailed to the vendor and committed; taking the
+   * order down over a calendar row would ask a manager to re-approve an order
+   * the vendor already has. But it no longer reads as success either: the
+   * failure is `logger.error` with structured context, and the insert selects
+   * the new id back so the success branch is unreachable without a row to point
+   * at — a bare insert cannot tell "wrote a row" from "wrote nothing", and
+   * reporting the second as the first is how this went unnoticed. The id (or
+   * `null`) is returned so the omission is enumerable by a caller.
    */
   private async createCalendarEventForOrder(
     restaurantId: string,
     order: OrderResponseDto,
     trigger: "approved" | "created",
-  ): Promise<void> {
-    try {
-      // Calculate expected delivery date (7 days from now if not specified)
-      const expectedDate = new Date();
-      expectedDate.setDate(expectedDate.getDate() + 7);
-      const eventDate = expectedDate.toISOString().split("T")[0];
+  ): Promise<string | null> {
+    // Expected delivery: 7 days out. An estimate, not a vendor commitment.
+    const expectedDate = new Date();
+    expectedDate.setDate(expectedDate.getDate() + 7);
+    const eventDate = expectedDate.toISOString().split("T")[0];
 
-      const { error } = await this.databaseService.supabase
+    // `calendar_events` has no priority column and this change must not add
+    // one, so the emergency flag rides in the two human-visible text columns
+    // rather than being dropped. title is varchar(255).
+    const title = (
+      order.isEmergency
+        ? `URGENT — Delivery: ${order.orderNumber}`
+        : `Delivery: ${order.orderNumber}`
+    ).slice(0, 255);
+
+    const description =
+      `Expected delivery for order ${order.orderNumber} ` +
+      `(${order.quantity} bottles). Created on order ${trigger}.` +
+      (order.isEmergency ? " Emergency order." : "");
+
+    try {
+      const { data, error } = await this.databaseService.supabase
         .from("calendar_events")
         .insert({
           restaurant_id: restaurantId,
-          title: `Delivery: ${order.orderNumber}`,
-          description: `Expected delivery for order ${order.orderNumber} (${order.quantity} bottles)`,
-          event_type: "delivery",
+          // Identity in the real columns, not a JSON blob in a column that
+          // does not exist. Both are FK-checked; providerId may be absent.
+          order_id: order.id,
+          provider_id: order.providerId ?? null,
+          title,
+          description,
+          event_type: CalendarEventType.DELIVERY,
           event_date: eventDate,
           event_time: "10:00",
           all_day: false,
-          status: "SCHEDULED",
-          priority: order.isEmergency ? "HIGH" : "MEDIUM",
-          tags: JSON.stringify({
-            order_id: order.id,
-            order_number: order.orderNumber,
-            provider_id: order.providerId,
-            quantity: order.quantity,
-            trigger,
-          }),
+          source: CalendarEventSource.SYSTEM_GENERATED,
+          status: CalendarEventStatus.PENDING,
           reminder_enabled: true,
           reminder_days_before: 1,
-        });
+        })
+        .select("id")
+        .single();
 
       if (error) {
-        this.logger.warn(
-          `Failed to create calendar event for order ${order.id}: ${error.message}`,
+        this.logger.error(
+          "Calendar delivery event NOT created for an order that was approved",
+          {
+            restaurantId,
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            trigger,
+            code: (error as { code?: string }).code,
+            error: error.message,
+          },
         );
-      } else {
-        this.logger.log(
-          `Calendar event created for order ${order.orderNumber} delivery`,
-        );
+        return null;
       }
-    } catch (e) {
-      this.logger.warn(`Calendar event creation failed: ${e?.message}`);
+
+      // No error and no row is the shape that hid this defect for its whole
+      // life: absence read as health. It is a failure, and it is reported.
+      if (!data?.id) {
+        this.logger.error(
+          "Calendar delivery event insert reported no error and returned no row",
+          {
+            restaurantId,
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            trigger,
+          },
+        );
+        return null;
+      }
+
+      this.logger.log(
+        `Calendar event ${data.id} created for order ${order.orderNumber} delivery`,
+      );
+      return data.id;
+    } catch (e: any) {
+      this.logger.error(
+        "Calendar delivery event NOT created for an order that was approved",
+        {
+          restaurantId,
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          trigger,
+          error: e?.message,
+        },
+      );
+      return null;
     }
   }
 
