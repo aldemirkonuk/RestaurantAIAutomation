@@ -100,7 +100,7 @@ moved ([[decision-office-premortem]] M2).
 - **The finding this produces on day one:** **two of the four are red**, and the one
   DISAGREEING citation is a sibling wave-3 agenda. `finance-pricing-agenda-full.md:103`
   anchors its OD-23 reference at register line **122**, which holds OD-48's row; the
-  pair that agrees is OD-23 (`OPEN-DECISIONS.md:32`).
+  pair that agrees is OD-23 (`OPEN-DECISIONS.md:33`).
   The second red guard is older and entirely internal: **two register ids that no longer
   exist** are still cited seven times, every one of them inside
   `04-specs/REGISTER-AUDIT-2026-08-26.md` (`:58`, `:69`, `:71`, `:566`, `:593`, `:600`).
@@ -160,7 +160,7 @@ now looks obvious, which is the more dangerous of the two.
 - **Evidence, re-verified 2026-08-28:** `foundation/README.md:269` still assigns
   *"Weekly · Skill health — what fired, what went stale"* to **Research & Math**;
   `foundation/teams/technology.md:498` still routes the same job through **Skills**.
-  OD-25 (`OPEN-DECISIONS.md:33`) records that the 2026-08-24 call fixed the *principle*
+  OD-25 (`OPEN-DECISIONS.md:34`) records that the 2026-08-24 call fixed the *principle*
   and not the department, and that neither source document was amended.
 - **The complication that makes this urgent rather than tidy:**
   [[0039-activation-plan-of-record]] Track A4 assigns *"`nf_a.skill_id` + a weekly runner
@@ -168,8 +168,8 @@ now looks obvious, which is the more dangerous of the two.
   weekly skill-health mechanism in a third place. The fork did not get easier; it got a
   new claimant, and this office reports that rather than reconciling it.
 - **Register defect found in the same pass — filed, not fixed:** **OD-25 appears in both
-  tables.** It is open at OD-25 (`OPEN-DECISIONS.md:33`).
-  It is also resolved at OD-25 (`OPEN-DECISIONS.md:33`).
+  tables.** It is open at OD-25 (`OPEN-DECISIONS.md:34`).
+  It is also resolved at OD-25 (`OPEN-DECISIONS.md:34`).
   One identifier, two states, and the only such row in the file. No guard catches it:
   `check_od_ids_exist.py` checks that an id resolves, `check_citation_pairing.py` checks
   that an id and a line agree, and neither asks whether one id appears twice.
@@ -214,7 +214,7 @@ now looks obvious, which is the more dangerous of the two.
   edge (`G ⇢ T`, *"one side is obviously right, so routing it is the same as resolving
   it"*). Writing the refusal down before the pressure is real is the whole method.
 - **Evidence:** `0036-cost-routing-two-plans-in-harmony.md:24,47`;
-  OD-29 (`OPEN-DECISIONS.md:35`); [[decision-office-directive]] §Tie-break rule.
+  OD-29 (`OPEN-DECISIONS.md:36`); [[decision-office-directive]] §Tie-break rule.
 
 ### DO-8 · The re-raise ladder, with dates on it
 
@@ -275,9 +275,9 @@ office's contradiction register pointed at its own log.
 - **Evidence, verified 2026-08-28:**
   `0023-email-verification-is-enforced.md:12` reads *"Status: Proposed — closes
   [OD-106](OPEN-DECISIONS.md)"*, and repeats it at `:16`. But today
-  OD-106 (`OPEN-DECISIONS.md:64`) is **Design foundation direction**, still open.
+  OD-106 (`OPEN-DECISIONS.md:65`) is **Design foundation direction**, still open.
   The row that ADR actually closed is
-  OD-79 (`OPEN-DECISIONS.md:98`) — *"Resolved 2026-08-26 — enforced"*.
+  OD-79 (`OPEN-DECISIONS.md:99`) — *"Resolved 2026-08-26 — enforced"*.
   `0025-citations-must-disagree-loudly.md:385-388` records this exact
   renumber — OD-79 was refiled as OD-106 — and says `check_od_ids_exist.py` *"blocks the
   names-nothing half and says in its own docstring that it cannot catch
@@ -301,7 +301,7 @@ office's contradiction register pointed at its own log.
   RT-F1 (NF-B erasability) is largely answered by
   [[0037-nfb-erasure-is-crypto-shredding]], Locked 2026-08-28, with NF-B still HELD; and
   RT-F3 (symmetric merge triggers) is a restatement of
-  OD-26 (`OPEN-DECISIONS.md:34`).
+  OD-26 (`OPEN-DECISIONS.md:35`).
   That row absorbed a second duplicate of itself on the same grounds in August.
 - **Method rule this pass adopts:** dedupe against the ADR log **first**, then against
   the register. The 2026-08-24 sweep deduped against the register only, which is how
@@ -442,8 +442,8 @@ rights). Filed, not assumed. The first two are the ones this agenda was asked to
    `foundation/teams/technology.md:498`), and [[0039-activation-plan-of-record]] A4 has
    now put a weekly skill-health mechanism with **RM-3 + SRE**. Three candidates, one
    job. The 2026-08-24 call fixed the principle and not the department, and the row is
-   open at OD-25 (`OPEN-DECISIONS.md:33`) while its twin sits resolved
-   at OD-25 (`OPEN-DECISIONS.md:33`). One pick closes both.
+   open at OD-25 (`OPEN-DECISIONS.md:34`) while its twin sits resolved
+   at OD-25 (`OPEN-DECISIONS.md:34`). One pick closes both.
 2. **TECH-F3 — does ADR 0036's principle transfer to the evaluation seam?**
    [[0036-cost-routing-two-plans-in-harmony]] settled the routing seam as *methodology
    and operation, two plans in harmony; if the line fails, merge, never duplicate*, and
@@ -465,7 +465,7 @@ rights). Filed, not assumed. The first two are the ones this agenda was asked to
    not. Still needs a founder yes or no to close either way. A **second** such offer
    would mean the boundary is being tested rather than misunderstood.
 6. **OD-26 — merge triggers org-wide?** Re-measured 2026-08-27 at **23 split triggers vs
-   6 merge/retirement** at OD-26 (`OPEN-DECISIONS.md:34`) — the asymmetry widened while
+   6 merge/retirement** at OD-26 (`OPEN-DECISIONS.md:35`) — the asymmetry widened while
    the row sat open. The register calls this *"likely a Decision Office standing rule."*
    **This office declines to write it as one**: a standing rule authored by its own
    enforcer has no independent author.
