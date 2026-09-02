@@ -535,6 +535,21 @@ jobs:
       - name: Every relation the code queries is declared by supabase/migrations
         run: ./scripts/check_queried_tables_exist.py
 
+      # The column-level counterpart, added 2026-09-02 (ADR 0074). The guard
+      # above asks whether the TABLE a read names exists; this asks whether its
+      # COLUMNS do. A bad column in a select list or a filter is a 42703 that
+      # fails the WHOLE query -- exactly as fatal as a bad insert column, and
+      # invisible for the same reason: Supabase returns {data, error} rather
+      # than throwing, so a caller that destructures only `data` sees an empty
+      # result and reports health. check_order_capture_contract.py reads write
+      # payloads only and was green at exit 0 through the entire life of the
+      # defect that prompted this.
+      - name: Every column a read names is declared by supabase/migrations
+        run: ./scripts/check_read_columns_exist.py
+
+      - name: ...and that guard's own failure path fires
+        run: ./scripts/check_read_columns_exist.py --self-test
+
       - name: Schema lives in exactly one place
         run: ./scripts/check_migrations_single_home.py
 
@@ -999,6 +1014,51 @@ jobs:
   # are listed now, and the first step below asserts the list stays complete:
   # three separate commits added a job and none updated this list, so a
   # hand-maintained list is exactly what needs a check, not a promise.
+  # ADR 00XX: a rebuilt surface never installs data a tenant did not create.
+  #
+  # `useStorageLocations.ts` shipped four invented cellar zones and used them
+  # three ways at once -- as `placeholderData`, as the queryFn's return value on
+  # an empty server response, and as the `??` fallback on error. Because the
+  # queryFn RETURNED them, a companion effect could not tell a fallback from a
+  # measurement and POSTed all four into the tenant's own `storage_locations`
+  # table. Production held 87 rows across 7 tenants on 2026-09-02; 84 of them
+  # carried one of those four names, across 6 tenants, re-seeded since 2026-05-20.
+  #
+  # The guard holds four checkable shapes (a module-level table of rows, any
+  # placeholderData that is not keepPreviousData, a `CONST.map(... .post ...)`
+  # write loop, and the fixed hook keeping its nullable capacity and its
+  # `locationsUnavailable` flag). It does NOT trace a rendered figure back to a
+  # measurement -- read its header for the full boundary.
+  #
+  # The --self-test asserts against the REAL repository that every scan root
+  # resolved to files and that the rules fire on a seed injected into a real
+  # file. That is deliberate: check_no_direct_stock_writes.sh calls
+  # `rg --type tsx`, which is not a ripgrep type, so rg exits 2, the error is
+  # swallowed, and it has printed PASS over zero lines for its entire life.
+  #
+  # Stdlib only, no install step. Exit 2 (cannot check) blocks like exit 1.
+  no-seeded-defaults:
+    name: A rebuilt surface installs nothing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: The guard can see the tree, and fires on the shapes it exists to catch
+        run: python3 scripts/check_no_seeded_defaults.py --self-test
+
+      - name: No seeded, defaulted or placeholder data on a rebuilt surface
+        run: python3 scripts/check_no_seeded_defaults.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::FABRICATED ROW SET means a module-level array of id-bearing objects carrying domain fields (capacity, temperature, ...) sits in a rebuilt surface. Rows come from the server; delete the literal and render the empty state. A two-field {id,label} vocabulary is NOT this and does not fire."
+          echo "::notice::PLACEHOLDER means a placeholderData other than keepPreviousData. A placeholder enters the tree shaped exactly like a measurement, so nothing downstream can tell them apart -- including placeholderData: [], which makes 'still loading' and 'measured, none' identical. Use the query's pending state."
+          echo "::notice::A LITERAL WRITTEN INTO A TENANT DATABASE means CONST.map(x => api.post(...)). 84 rows across 6 production tenants came from exactly that loop; there is no version of it that is correct."
+          echo "::notice::THE HOOK CAN NO LONGER SAY UNKNOWN means useStorageLocations lost its nullable capacity or its locationsUnavailable flag, or names one of the four invented zones in code. A capacity nobody entered is unknown, not 100 -- it is the denominator of the cellar map's fill bar."
+          echo "::notice::Exit 2 is CANNOT CHECK, not a skip: a scan root moved, a root holds no source file, the pinned hook is gone, or a file would not parse. Repoint the anchor; do not delete the step."
+
   ci-complete:
     name: CI Complete
     runs-on: ubuntu-latest
@@ -1036,6 +1096,8 @@ jobs:
         proposal-preservation,
 
         windowed-figures,
+        # Added 2026-09-02 with the job itself, per the rule this list enforces.
+        no-seeded-defaults,
       ]
     steps:
       - name: Checkout code
