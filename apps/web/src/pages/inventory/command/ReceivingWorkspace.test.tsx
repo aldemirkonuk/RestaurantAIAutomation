@@ -120,7 +120,7 @@ describe('ReceivingWorkspace — canonical Mudavym invoice', () => {
     await user.click(submit())
 
     const [, body] = verifyOrderReceipt.mock.calls[0]
-    expect(body.invoiceQuantity).toBeUndefined()
+    expect(body.invoiceQuantityInInvoiceUom).toBeUndefined()
   })
 
   it('submits the counts as evidence and closes', async () => {
@@ -133,10 +133,10 @@ describe('ReceivingWorkspace — canonical Mudavym invoice', () => {
     expect(verifyOrderReceipt).toHaveBeenCalledWith(
       'order-1',
       expect.objectContaining({
-        invoiceQuantity: 24,
+        invoiceQuantityInInvoiceUom: 24,
         invoiceUnitPrice: 22,
-        acceptedQuantity: 24,
-        rejectedQuantity: 0,
+        acceptedQuantityInCountedUom: 24,
+        rejectedQuantityInCountedUom: 0,
       }),
     )
     expect(onClose).toHaveBeenCalled()
@@ -180,7 +180,7 @@ describe('ReceivingWorkspace — canonical Mudavym invoice', () => {
     await user.click(submit())
     expect(verifyOrderReceipt).toHaveBeenCalledWith(
       'order-1',
-      expect.objectContaining({ acceptedQuantity: 23, rejectedQuantity: 1 }),
+      expect.objectContaining({ acceptedQuantityInCountedUom: 23, rejectedQuantityInCountedUom: 1 }),
     )
   })
 
@@ -245,7 +245,7 @@ describe('reading the vendor’s own paperwork', () => {
 
     expect(verifyOrderReceipt).toHaveBeenCalledWith(
       'order-1',
-      expect.objectContaining({ shippedQuantity: 22, invoiceQuantity: 24 }),
+      expect.objectContaining({ shippedQuantityInShippedUom: 22, invoiceQuantityInInvoiceUom: 24 }),
     )
   })
 
@@ -303,9 +303,9 @@ describe('ReceivingWorkspace — ADR 0059, the correction is visible', () => {
     expect(verifyOrderReceipt).toHaveBeenCalledTimes(1)
     const [, body] = verifyOrderReceipt.mock.calls[0]
     // The answer.
-    expect(body.invoiceQuantity).toBe(24)
+    expect(body.invoiceQuantityInInvoiceUom).toBe(24)
     // The proposal it overrode — frozen at pre-fill time, unmoved by the edit.
-    expect(body.prefilledInvoiceQuantity).toBe(22)
+    expect(body.prefilledInvoiceQuantityInInvoiceUom).toBe(22)
     expect(body.prefilledInvoiceUnitPrice).toBe(22)
   })
 
@@ -319,8 +319,8 @@ describe('ReceivingWorkspace — ADR 0059, the correction is visible', () => {
     const [, body] = verifyOrderReceipt.mock.calls[0]
     // Equal values are not a redundant write: "the human looked and agreed" is
     // a positive label, and it is only visible because both halves are sent.
-    expect(body.invoiceQuantity).toBe(24)
-    expect(body.prefilledInvoiceQuantity).toBe(24)
+    expect(body.invoiceQuantityInInvoiceUom).toBe(24)
+    expect(body.prefilledInvoiceQuantityInInvoiceUom).toBe(24)
   })
 
   it('sends no proposal when no document pre-filled the form', async () => {
@@ -334,7 +334,7 @@ describe('ReceivingWorkspace — ADR 0059, the correction is visible', () => {
     const [, body] = verifyOrderReceipt.mock.calls[0]
     // A hand-keyed invoice is an original answer, not a correction of one.
     // Sending 0 or null here would fabricate a proposal nobody made.
-    expect(body.prefilledInvoiceQuantity).toBeUndefined()
-    expect(body.prefilledShippedQuantity).toBeUndefined()
+    expect(body.prefilledInvoiceQuantityInInvoiceUom).toBeUndefined()
+    expect(body.prefilledShippedQuantityInShippedUom).toBeUndefined()
   })
 })

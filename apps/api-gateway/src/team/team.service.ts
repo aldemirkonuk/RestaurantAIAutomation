@@ -6,6 +6,11 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { recordAccessChange } from "./access-audit";
+import {
+  ChannelPreferences,
+  loadChannelOptOuts,
+} from "./broadcast-preferences";
 import {
   CreateCertDto,
   CreateCoverageTemplateDto,
@@ -35,6 +40,22 @@ export class TeamService {
     return this.db.supabase;
   }
 
+  /**
+   * `user_restaurant_access` is the register of record for privilege here.
+   *
+   * The legacy `users.restaurant_id` row is still honoured — one production
+   * user reaches /team through it and nothing else (measured 2026-09-02) — but
+   * it proves MEMBERSHIP ONLY, never privilege. `users.role` is
+   * `varchar(20) DEFAULT 'manager' NOT NULL` (baseline `:5854`), so the column
+   * cannot distinguish "an owner set this to manager" from "nobody ever
+   * touched it": a user row with a restaurant id and an untouched role used to
+   * be a manager of /team. That production user's role is exactly `manager`,
+   * i.e. the default, which is why it is read as `staff` from here.
+   *
+   * No real owner is demoted by this: all 11 access rows in production live in
+   * `user_restaurant_access` (8 owner, 3 manager), which still decides.
+   * See ADR 0088.
+   */
   async assertAccess(
     userId: string,
     restaurantId: string,
@@ -60,7 +81,8 @@ export class TeamService {
         .maybeSingle();
 
       if (user && user.restaurant_id === restaurantId) {
-        accessRole = user.role || "staff";
+        // Deliberately NOT `user.role`. See the comment above.
+        accessRole = "staff";
       }
     }
 
@@ -76,6 +98,17 @@ export class TeamService {
       );
 
     return { role };
+  }
+
+  /**
+   * Per-channel opt-outs for these users, read from `notification_preferences`
+   * — the register the scheduled mailer already honours. `null` means the read
+   * failed; the caller must not read that as "nobody opted out". See
+   * `broadcast-preferences.ts` for why the rule is restated rather than
+   * imported from the resolver.
+   */
+  async channelOptOuts(userIds: string[]): Promise<ChannelPreferences | null> {
+    return loadChannelOptOuts(this.sb, userIds);
   }
 
   // ── Members ────────────────────────────────────────────────────────────
@@ -202,9 +235,24 @@ export class TeamService {
               : "Staff",
         employment_type: "full_time",
         status: "active",
-        // Seed mock wage so labor lens has something when tracking is on;
-        // managers can edit/clear. Settings toggle can hide wages.
-        hourly_wage: a.role === "staff" ? 22 : a.role === "manager" ? 28 : 32,
+        /**
+         * A wage nobody entered is UNKNOWN (ADR 0051, ADR 0088).
+         *
+         * This line used to read
+         * `a.role === "staff" ? 22 : a.role === "manager" ? 28 : 32`, described
+         * in its own comment as a "mock wage". It was not a fallback for
+         * missing data: measured on production 2026-09-02, all 11
+         * `team_members` rows carried exactly those literals — 8 at $32.00
+         * (owner), 3 at $28.00 (manager) — so 100% of the wage data in the
+         * database was invented by this backfill, and it was the sole input to
+         * `laborCost()`, `shifts.labor_cost`, the week total, the Tonight-labor
+         * pulse, the per-shift labour lens and the CSV export's "Labor cost"
+         * column.
+         *
+         * The backfill itself stays — creating an ops profile from an access
+         * row is real work. Only the invented number goes.
+         */
+        hourly_wage: null,
       };
     });
     const { error } = await this.sb.from("team_members").insert(rows);
@@ -327,20 +375,41 @@ export class TeamService {
     return data;
   }
 
+  /**
+   * Remove a member from the roster, and — when they have an account — revoke
+   * their access to the restaurant.
+   *
+   * This is manager-gated and STAYS manager-gated: the founder's decision
+   * (ADR 0088) was that the problem is not who may do it, it is that nobody
+   * could afterwards find out who did. So the removal now writes a
+   * `system_audit_log` row carrying actor, target and the role lost, and tells
+   * the person whose access it revoked. The receipt says whether each of those
+   * two writes actually happened, because a removal that silently failed to
+   * file itself looks identical to one that filed itself correctly.
+   */
   async deleteMember(
     userId: string,
     restaurantId: string,
     memberId: string,
-  ): Promise<void> {
+  ): Promise<{
+    removed: true;
+    audited: boolean;
+    notified: boolean;
+    accessRevoked: boolean;
+  }> {
     await this.assertAccess(userId, restaurantId, "manager");
 
-    // Fetch the member to get their user_id and check their role.
+    // Capture the before-state while it still exists. Nothing below can
+    // reconstruct it once the rows are gone.
     const { data: member } = await this.sb
       .from("team_members")
-      .select("user_id")
+      .select("user_id, display_name, position, email")
       .eq("id", memberId)
       .eq("restaurant_id", restaurantId)
       .single();
+
+    let previousRole: string | null = null;
+    let accessRevoked = false;
 
     // If member has a linked user, check their access role — owners cannot be removed.
     if (member?.user_id) {
@@ -350,6 +419,7 @@ export class TeamService {
         .eq("user_id", member.user_id)
         .eq("restaurant_id", restaurantId)
         .single();
+      previousRole = access?.role ?? null;
 
       if (access?.role === "owner") {
         const { count } = await this.sb
@@ -359,7 +429,9 @@ export class TeamService {
           .eq("role", "owner");
 
         if (count && count <= 1) {
-          throw new ForbiddenException("Cannot remove the last owner of the restaurant.");
+          throw new ForbiddenException(
+            "Cannot remove the last owner of the restaurant.",
+          );
         }
       }
 
@@ -369,6 +441,7 @@ export class TeamService {
         .delete()
         .eq("user_id", member.user_id)
         .eq("restaurant_id", restaurantId);
+      accessRevoked = true;
     }
 
     // Remove from team_members roster.
@@ -379,6 +452,29 @@ export class TeamService {
       .eq("restaurant_id", restaurantId);
     if (error)
       throw new InternalServerErrorException("Failed to remove member");
+
+    const receipt = await recordAccessChange(this.sb, this.logger, {
+      restaurantId,
+      actorUserId: userId,
+      targetUserId: member?.user_id ?? null,
+      action: "team_member_removed",
+      entityType: "team_member",
+      entityId: memberId,
+      changes: {
+        access_role: { from: previousRole, to: null },
+        user_id: member?.user_id ?? null,
+        display_name: member?.display_name ?? null,
+        position: member?.position ?? null,
+      },
+      notice: {
+        title: "Your access to this restaurant was removed",
+        message:
+          "A manager removed you from the team, so your access to this restaurant has ended. " +
+          "Talk to them if this was not expected.",
+      },
+    });
+
+    return { removed: true, accessRevoked, ...receipt };
   }
 
   // ── Certifications ───────────────────────────────────────────────────────
@@ -390,16 +486,61 @@ export class TeamService {
     return "valid";
   }
 
+  /**
+   * The member row this user is, in this restaurant. `null` when they have no
+   * ops profile yet (an account-less roster entry, or a brand-new account).
+   */
+  private async ownMemberId(
+    userId: string,
+    restaurantId: string,
+  ): Promise<string | null> {
+    // `null` here means "no ops profile", and callers scope a staff member's
+    // credential file by it. A discarded error made a failed lookup return the
+    // same `null`, so a database hiccup silently became "this person has no
+    // member row" — an answer about the data, manufactured from an answer about
+    // the query. Raised rather than returned so the caller cannot read a
+    // failure as an absence; the doc comment's `null` keeps its one meaning.
+    const { data, error } = await this.sb
+      .from("team_members")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) {
+      this.logger.error(
+        `ownMemberId: lookup failed for user ${userId} in ${restaurantId}: ` +
+          error.message,
+      );
+      throw new InternalServerErrorException(
+        "Could not look up your team profile, so the request was not answered.",
+      );
+    }
+    return data?.id ?? null;
+  }
+
+  /**
+   * The credential file. Managers see the restaurant's; **staff see only their
+   * own** (ADR 0088). It carried no role requirement at all, so any member
+   * could read every colleague's certificates, issue and expiry dates.
+   *
+   * Scoping rather than manager-gating, because "when does my own card
+   * expire?" is a real staff question and a 403 would take it away.
+   */
   async listCertifications(
     userId: string,
     restaurantId: string,
   ): Promise<any[]> {
-    await this.assertAccess(userId, restaurantId);
-    const { data } = await this.sb
+    const { role } = await this.assertAccess(userId, restaurantId);
+    let q = this.sb
       .from("team_certifications")
       .select("*")
-      .eq("restaurant_id", restaurantId)
-      .order("expires_at", { ascending: true });
+      .eq("restaurant_id", restaurantId);
+    if (role === "staff") {
+      const mine = await this.ownMemberId(userId, restaurantId);
+      if (!mine) return [];
+      q = q.eq("member_id", mine);
+    }
+    const { data } = await q.order("expires_at", { ascending: true });
     return (data ?? []).map((c: any) => ({
       ...c,
       status: this.certStatus(c.expires_at),
@@ -473,13 +614,24 @@ export class TeamService {
   }
 
   // ── Time off & swaps (Phase 2 workflow: create + review) ─────────────────
+  /**
+   * Time-off requests. Managers see the restaurant's — they have to, to review
+   * them. **Staff see only their own** (ADR 0088): the table carries a free-text
+   * `reason`, and every member could read every colleague's dates and the
+   * sentence explaining them.
+   */
   async listTimeOff(userId: string, restaurantId: string): Promise<any[]> {
-    await this.assertAccess(userId, restaurantId);
-    const { data } = await this.sb
+    const { role } = await this.assertAccess(userId, restaurantId);
+    let q = this.sb
       .from("time_off_requests")
       .select("*")
-      .eq("restaurant_id", restaurantId)
-      .order("created_at", { ascending: false });
+      .eq("restaurant_id", restaurantId);
+    if (role === "staff") {
+      const mine = await this.ownMemberId(userId, restaurantId);
+      if (!mine) return [];
+      q = q.eq("member_id", mine);
+    }
+    const { data } = await q.order("created_at", { ascending: false });
     return data ?? [];
   }
 
@@ -545,15 +697,19 @@ export class TeamService {
     return data;
   }
 
-  async listSwaps(userId: string, restaurantId: string): Promise<any[]> {
-    await this.assertAccess(userId, restaurantId);
-    const { data } = await this.sb
-      .from("swap_requests")
-      .select("*")
-      .eq("restaurant_id", restaurantId)
-      .order("created_at", { ascending: false });
-    return data ?? [];
-  }
+  /*
+   * `listSwaps` / `GET …/team/swaps` was deleted here (ADR 0088).
+   *
+   * `swap_requests` has no writer anywhere in the repository — grepped across
+   * `apps/`, `services/` and `supabase/`, the only reference outside the
+   * baseline DDL was this read — and no client called the route. It could
+   * therefore only ever answer `[]`, which a caller reads as "no swap requests
+   * pending" rather than "this feature does not exist"
+   * ([[absence-reported-as-health]]). Production holds 0 rows.
+   *
+   * The table is left in place: a swap workflow is a reasonable thing to build,
+   * and when it is built it will need a writer first.
+   */
 
   // ── Coverage templates ───────────────────────────────────────────────────
   async listCoverageTemplates(
@@ -604,6 +760,27 @@ export class TeamService {
   }
 
   // ── Settings (labor toggle) ──────────────────────────────────────────────
+  /**
+   * Labour settings, and whether anyone ever chose them.
+   *
+   * This returned `{labor_tracking_enabled: true, wage_visible: true,
+   * labor_target_pct: 28}` for a restaurant with no row, and the week payload
+   * printed that as "target 28% of sales" — a figure nobody chose, rendered as
+   * a decision (ADR 0051). Production holds **0** `team_settings` rows, so
+   * every restaurant was reading the invented target.
+   *
+   * The two booleans keep their defaults: they are *feature* defaults (is the
+   * lens on, are wages visible), not measurements, and turning the lens off by
+   * default would hide a real figure rather than stop inventing one. The target
+   * becomes `null`, and `configured` says which of the two you are looking at
+   * so a caller can render `—` rather than a number.
+   *
+   * RESIDUAL, stated: `team_settings.labor_target_pct` is
+   * `numeric(5,2) DEFAULT 28 NOT NULL` in the schema, so the first restaurant to
+   * toggle `wage_visible` gets a stored 28 it never chose. Making that column
+   * nullable is a separate migration against a table with no rows; it is named
+   * in `.planning/06-pages/team.md` §9 rather than silently carried.
+   */
   async getSettings(userId: string, restaurantId: string): Promise<any> {
     await this.assertAccess(userId, restaurantId);
     const { data } = await this.sb
@@ -611,14 +788,14 @@ export class TeamService {
       .select("*")
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
-    return (
-      data ?? {
-        restaurant_id: restaurantId,
-        labor_tracking_enabled: true,
-        wage_visible: true,
-        labor_target_pct: 28,
-      }
-    );
+    if (data) return { ...data, configured: true };
+    return {
+      restaurant_id: restaurantId,
+      labor_tracking_enabled: true,
+      wage_visible: true,
+      labor_target_pct: null,
+      configured: false,
+    };
   }
 
   async updateSettings(

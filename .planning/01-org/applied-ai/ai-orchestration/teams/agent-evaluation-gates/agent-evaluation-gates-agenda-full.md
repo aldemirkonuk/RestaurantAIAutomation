@@ -118,7 +118,7 @@ possible in a month or in six.
    (`technology.md:406`). We would rather merge now than discover duplication in six
    months, and the backlog above survives either answer.
 2. **✅ The fork now has a usable ID: `TECH-F3`.** `technology.md:845` originally
-   called it OD-21; `OPEN-DECISIONS.md:143` already spends OD-21 on the Obsidian
+   called it OD-21; `OPEN-DECISIONS.md:145` already spends OD-21 on the Obsidian
    workflow, so the Decision Office renamespaced it ([[FORK-REGISTRY]]). It can now
    enter the decision log — a fork that cannot be cited cannot be closed.
    → [[decision-office-charter]].

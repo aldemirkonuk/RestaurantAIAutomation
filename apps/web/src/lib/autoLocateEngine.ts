@@ -82,8 +82,12 @@ export function computeAutoLocatePlan(
     let bestReasons: string[] = []
 
     for (const loc of locations) {
-      const available = loc.capacity - runningCount[loc.id]
-      if (available <= 0) continue
+      // A zone whose capacity nobody recorded is not full and not empty — it is
+      // unknown. Skipping it would silently drop a real zone from the plan;
+      // treating the unknown as a number would score it against a fiction. So
+      // it stays a candidate and simply earns no capacity points (Signal 3).
+      const available = loc.capacity == null ? null : loc.capacity - runningCount[loc.id]
+      if (available !== null && available <= 0) continue
 
       const reasons: string[] = []
       let score = 0
@@ -108,10 +112,14 @@ export function computeAutoLocatePlan(
         reasons.push('Location name suggests wine type')
       }
 
-      // Signal 3: Capacity availability (+0–20 proportional)
-      const capScore = Math.round((available / loc.capacity) * 20)
+      // Signal 3: Capacity availability (+0–20 proportional; 0 when unrecorded)
+      const capScore =
+        available == null || loc.capacity == null
+          ? 0
+          : Math.round((available / loc.capacity) * 20)
       score += capScore
-      if (capScore >= 15) reasons.push('High capacity available')
+      if (loc.capacity == null) reasons.push('Capacity not recorded')
+      else if (capScore >= 15) reasons.push('High capacity available')
       else if (capScore >= 8) reasons.push('Moderate capacity available')
 
       // Signal 4: Accessibility (+10)
