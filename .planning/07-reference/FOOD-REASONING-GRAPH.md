@@ -89,15 +89,27 @@ and lines with tie-out deltas, UoM, pack and freight split; `inventory_lots` car
 cost provenance; `cost-basis.ts` reporting coverage rather than silently averaging a
 partial set.
 
-**But the ledger is beverage-shaped at the column level.** Verified across all 64
+**But the ledger is beverage-shaped at the column level.** Verified across all
 migrations in their latest state: `restaurant_inventory.master_wine_id`,
 `inventory_lots.master_wine_id` and `inventory_transactions.wine_id` are `NOT NULL`;
 quantity columns are `integer`. No generic item path, no polymorphic type column, no
 food table; `beverage_kind`'s CHECK list is all drinks.
 
+> **Superseded in part, 2026-09-02 — see [[LEDGER-FOOD-MIGRATION-OPTIONS]].** The
+> structural claim above survives re-measurement; two things around it did not. The
+> denominator was **"all 64 migrations"** and there are now **87** — corrected in place
+> above rather than carried forward, per [[0025-citations-must-disagree-loudly]]. And
+> the scoping correction below is **false at the API boundary**: `procurement_document_lines.qty`
+> is indeed `numeric(12,3)`, but **14 `@IsInt()` quantity fields across 5 DTO files**
+> reject `4.5` with a 400 before it ever reaches that column. Intake cannot accept 4.5 kg
+> of flour today either. Also material to any plan built on this section: the tables in
+> question hold **72 / 2 / 4 production rows**, so the migration OD-113 describes as an
+> `ALTER` against live data is nearly free — the constraint here is modelling, not cost.
+
 **Scoping correction, and it narrows the migration materially:**
 `procurement_document_lines` is already `numeric(12,3)` with a seven-value `uom`
-CHECK. **Intake is fine. The break is specifically at the ledger.** → **OD-113**.
+CHECK. **The break is at the ledger** — and, per the note above, at the API boundary.
+→ **OD-113**.
 
 ### L2 — Transformation · the keystone
 
@@ -286,7 +298,7 @@ to run first.
 | Layer | State | Blocker |
 |---|---|---|
 | L0 identity | Beverage: strong, falsified at scale. Food: **unfalsifiable** | No negative-label source ([[DISH_IDENTITY_DESIGN]]) |
-| L0 units | Intake correct (`numeric(12,3)` + UoM CHECK); ledger integer-only | OD-113 |
+| L0 units | Intake *column* correct (`numeric(12,3)` + UoM CHECK) but its **DTOs are `@IsInt()`** (14 fields, 5 files); ledger integer-only | OD-113 |
 | L1 ledger | Strong for beverage; **cannot represent food** | OD-113 |
 | L2 yield | Column exists for trim yield; **no cooking-yield column** — though FNDDS `Moisture change (%)` supplies that quantity free for 976 dishes | AH-102's finer-grained data needs OCR (3–5 days; three free integrity checks make it a safe target) |
 | L2 BOM | **Absent in the repo**; a public-domain prior of the right shape exists (FNDDS, 18,584 rows / 5,431 dishes) | The keystone — but seeded, not from zero |
