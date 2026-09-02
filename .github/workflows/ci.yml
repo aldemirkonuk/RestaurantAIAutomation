@@ -483,9 +483,35 @@ jobs:
         if: ${{ !cancelled() }}
         run: ./scripts/check_order_capture_contract.py --self-test
 
+      # COLUMN granularity, which the relation-level guard above explicitly does
+      # not cover (its own docstring: "WHAT IT DOES NOT CATCH: 1. COLUMNS").
+      #
+      # verifyReceipt wrote `notes` to procurement_orders, which has never had a
+      # `notes` column. `?? undefined` meant the key only reached PostgREST when
+      # a manager actually typed a note -- i.e. only when documenting a
+      # discrepancy -- and by then the ledger correction and the vendor credit
+      # claim had already been written. PGRST204 then rejected the whole update,
+      # so status, match_status, accepted_quantity and invoice_* never landed and
+      # the retry failed identically. Nothing else in CI could see it: TypeScript
+      # cannot type a Record<string, any>, and schema-parity compares a database
+      # to a database, where both sides correctly agree the column does not
+      # exist.
+      #
+      # `if: !cancelled()` for the same reason as the steps above.
+      - name: Every key written to procurement_orders is a real column
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_orders_column_writes.py
+
+      - name: The column-write guard can actually fail
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_orders_column_writes.py --self-test
+
       - name: Explain a failure
         if: failure()
         run: |
+          echo "::notice::[column write] means the gateway sends procurement_orders a key that is not one of its columns. PostgREST answers PGRST204 and rejects the ENTIRE update, including every other column in the same payload."
+          echo "::notice::Write it to the column that exists, or add a migration. Do NOT add it to KNOWN_BAD -- that list is shrink-only and records what was already broken when the guard landed."
+          echo "::notice::'blind spot grew' means a payload the guard could not read. Build it as an object literal or a local const; raising DYNAMIC_CEILING silently is how a guard stops covering its own input."
           echo "::notice::[order line capture] means createOrder can produce an order with no procurement_order_items row. matchDocumentLines returns early when an order has no lines, so the whole invoice matching engine goes dark and nothing fails visibly."
           echo "::notice::[unit defaults] means a unit fallback landed on case/pack/split_case. Those MULTIPLY: an absent or misspelt unit books quantity x pack size. ADR 0011 decided this class -- refuse, do not guess."
           echo "::notice::[price_history writer] means the price series has no writer again. The table is correctly keyed and indexed; with no writer it stays empty forever."
