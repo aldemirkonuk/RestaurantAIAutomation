@@ -15,6 +15,13 @@ import {
   ProcurementSpendSummaryDto,
   ServiceErrorDto,
 } from "./dto/dashboard-summary.dto";
+import {
+  ORDER_AWAITING_APPROVAL_STATUSES,
+  ORDER_OPEN_WITH_VENDOR_STATUSES,
+  ORDER_OUTSTANDING_STATUSES,
+  ORDER_SPEND_STATUSES,
+  hasStatus,
+} from "../procurement/order-status";
 
 /**
  * Dashboard Service - Aggregates data from multiple services in parallel
@@ -137,12 +144,12 @@ export class DashboardService {
     const orders = await this.dbService.getProcurementOrders(restaurantId);
 
     const pending =
-      orders?.filter(
-        (o) => o.status === "pending" || o.status === "awaiting_approval",
+      orders?.filter((o) =>
+        hasStatus(o.status, ORDER_AWAITING_APPROVAL_STATUSES),
       ) || [];
     const inTransit =
-      orders?.filter(
-        (o) => o.status === "in_transit" || o.status === "ordered",
+      orders?.filter((o) =>
+        hasStatus(o.status, ORDER_OPEN_WITH_VENDOR_STATUSES),
       ) || [];
 
     return {
@@ -319,7 +326,7 @@ export class DashboardService {
           "final_price, total_cost, bottles_total, quantity, delivered_at, created_at, status",
         )
         .eq("restaurant_id", restaurantId)
-        .eq("status", "delivered");
+        .in("status", ORDER_SPEND_STATUSES);
 
       if (error) {
         this.logger.warn(`Procurement spend query error: ${error.message}`);
@@ -435,7 +442,7 @@ export class DashboardService {
           "id, final_price, total_cost, bottles_total, quantity, delivered_at, wine_name, status",
         )
         .eq("restaurant_id", restaurantId)
-        .eq("status", "delivered")
+        .in("status", ORDER_SPEND_STATUSES)
         .gte("delivered_at", startDate)
         .lt("delivered_at", endDate);
 
@@ -544,8 +551,8 @@ export class DashboardService {
       );
       const totalVolumeOz = Math.round(totalVolumeMl * 0.033814 * 100) / 100;
       const lowStockItems = lowStock.length;
-      const pendingOrders = orders.filter(
-        (o) => o.status === "pending" || o.status === "awaiting_approval",
+      const pendingOrders = orders.filter((o) =>
+        hasStatus(o.status, ORDER_AWAITING_APPROVAL_STATUSES),
       ).length;
 
       const now = new Date();
@@ -566,7 +573,9 @@ export class DashboardService {
           .filter((o) => o.created_at && o.created_at >= since)
           .reduce((sum, o) => sum + (o.total_cost || o.final_price || 0), 0);
 
-      const deliveredOrders = orders.filter((o) => o.status === "delivered");
+      const deliveredOrders = orders.filter((o) =>
+        hasStatus(o.status, ORDER_SPEND_STATUSES),
+      );
 
       return {
         totalWines,
@@ -701,7 +710,7 @@ export class DashboardService {
             .from("procurement_orders")
             .select("id, status, expected_delivery_date, created_at")
             .eq("restaurant_id", restaurantId)
-            .in("status", ["pending", "awaiting_approval", "ordered"]),
+            .in("status", ORDER_OUTSTANDING_STATUSES),
           client
             .from("restaurant_inventory")
             .select("id, master_wine_id, stock_live, updated_at, wine_name")
@@ -829,7 +838,7 @@ export class DashboardService {
             "id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
           )
           .eq("restaurant_id", restaurantId)
-          .eq("status", "delivered")
+          .in("status", ORDER_SPEND_STATUSES)
           .gte("delivered_at", sinceStr),
         client
           .from("wine_consumption_log")
