@@ -25,7 +25,8 @@ import {
 } from "./dto/providers.dto";
 import { UpdateIntelligenceDto } from "./dto/update-intelligence.dto";
 import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
-import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
+import { ProcurementService } from "../procurement/procurement.service";
+import { resolveOrderUnits } from "../procurement/order-units";
 
 function normalizeToE164(phone: string | null | undefined): string | null {
   if (!phone) return null;
@@ -83,6 +84,11 @@ export class ProvidersService {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly eventsService: EventsService,
+    // Required, not @Optional(). `createRetroactiveOrder` is the one path here
+    // that writes a procurement order, and it must go through the same method
+    // every other order does — an optional dependency that silently resolves to
+    // undefined would put this endpoint straight back to hand-rolling an insert.
+    private readonly procurementService: ProcurementService,
   ) {}
 
   async createProvider(
@@ -954,89 +960,147 @@ export class ProvidersService {
   }
 
   /**
-   * D-32-15 Scenario C: Create retroactive order from off-app invoice.
+   * D-32-15 Scenario C: record an off-app invoice as a delivered order.
+   *
+   * WHAT THIS USED TO DO, AND WHY IT COULD NEVER HAVE WORKED
+   *
+   * It hand-rolled an insert into `procurement_orders` that named two columns
+   * the table does not have (`wine_name`, `actual_delivery` — confirmed absent
+   * in production 2026-09-01) and omitted five that are NOT NULL
+   * (`order_number`, `inventory_id`, `bottles_total`, `final_price`,
+   * `total_cost`). Every call has failed at the first statement since the
+   * endpoint was written; the two follow-on inserts have never once run, which
+   * is why nobody noticed that they were broken too:
+   *
+   *   - `procurement_conversations.message_text` is NOT NULL and was not written.
+   *   - `order_interactions` has no `channel` and no `content` column, its
+   *     `interaction_type` is CHECK-constrained to VOICE|SMS|EMAIL|WHATSAPP
+   *     (so the literal `"invoice_received"` raises 23514), and its
+   *     `interaction_direction` is NOT NULL and was not written.
+   *
+   * WHAT IT DOES NOW
+   *
+   * It calls `ProcurementService.createOrder` with
+   * `provenance.alreadyFulfilled`, which is the only path in this codebase that
+   * satisfies every NOT NULL column, generates an `order_number`, resolves the
+   * wine's `master_wine_id`, does the pack-size arithmetic, and writes the
+   * `procurement_order_items` line an arriving invoice can be matched against.
+   * Duplicating that here is what produced the two divergent copies of this
+   * method in the first place.
+   *
+   * The `order_interactions` write is GONE rather than repaired. The table has
+   * zero rows, zero other writers anywhere in the repository, and no column for
+   * a message body — the invoice text has a home in
+   * `procurement_conversations`, which is where every other email path in this
+   * service already puts it. A second, body-less row recording the same event
+   * in a table nothing reads adds no information and one more thing to drift.
+   * `interactionId` therefore leaves the response; no client can be relying on
+   * it, because no call has ever returned one.
    */
   async createRetroactiveOrder(
     providerId: string,
     restaurantId: string,
+    userId: string,
     dto: RetroactiveOrderDto,
   ): Promise<{
     orderId: string;
+    orderNumber: string;
     conversationId: string;
-    interactionId: string;
   }> {
-    const { data: orderData, error: orderError } =
-      await this.databaseService.supabase
-        .from("procurement_orders")
-        .insert({
-          restaurant_id: restaurantId,
-          provider_id: providerId,
-          wine_name: dto.wineName,
-          quantity: dto.quantity ?? null,
-          final_confirmed_cost: dto.finalConfirmedCost ?? null,
-          actual_delivery: dto.invoiceDate ?? null,
-          status: ProcurementOrderStatus.DELIVERED,
-          source: "retroactive",
-        })
-        .select("id")
-        .single();
-
-    if (orderError) {
-      this.logger.error("createRetroactiveOrder: order insert failed", {
-        error: orderError.message,
+    // Pack size first: it decides how many bottles the invoice total is spread
+    // across, and `createOrder` refuses a case order that does not state one.
+    // Resolving it here rather than after the order exists means an invoice we
+    // cannot price is refused before anything is written.
+    const units = resolveOrderUnits({
+      quantity: dto.quantity,
+      unitType: dto.unitType,
+      bottlesPerUnit: dto.bottlesPerUnit,
+    });
+    if (!units.ok) {
+      throw new BadRequestException({
+        reason: units.reason,
+        message: units.message,
       });
-      throw orderError;
     }
 
-    const orderId = (orderData as any).id as string;
+    // `final_price` on this table is PER BOTTLE — `confirmDeal` emails the
+    // vendor "$X per bottle" out of the same column. The invoice states a
+    // TOTAL. Dividing here is the whole reason `invoiceTotal` replaced the old
+    // `finalConfirmedCost`, which was documented as a total and written to a
+    // per-bottle column: a $600 case invoice became $600/bottle, $7,200.
+    //
+    // An opaque unit (keg, litre) has no bottle count, so `bottlesTotal` is a
+    // count of kegs and the division yields a per-keg price. That is the honest
+    // answer available and it is what the column will hold; nothing here can
+    // invent a bottle equivalence a receiver would accept.
+    const unitPrice =
+      Math.round((dto.invoiceTotal / units.bottlesTotal) * 100) / 100;
 
+    const order = await this.procurementService.createOrder(
+      restaurantId,
+      userId,
+      {
+        inventoryId: dto.inventoryId,
+        providerId,
+        quantity: dto.quantity,
+        unitType: dto.unitType,
+        bottlesPerUnit: dto.bottlesPerUnit,
+        vendorSku: dto.vendorSku,
+        finalPrice: unitPrice,
+        // The exact invoice total, not `unitPrice * bottlesTotal`. Passing the
+        // derived product would let a half-cent rounding difference become the
+        // number the books are kept on.
+        totalCost: dto.invoiceTotal,
+        managerNotes: dto.invoiceNumber
+          ? `Off-app invoice ${dto.invoiceNumber}`
+          : "Off-app invoice entered retroactively",
+      },
+      {
+        source: "retroactive",
+        alreadyFulfilled: {
+          deliveredAt: dto.invoiceDate ?? null,
+          invoiceTotal: dto.invoiceTotal,
+        },
+      },
+    );
+
+    // The invoice text, on the thread for this order. Best-effort: the delivery
+    // is a fact once the order row exists, and losing the audit copy of the
+    // email body is not a reason to fail it back to the operator.
+    const summary = `Retroactive order from off-app invoice ${dto.invoiceNumber ?? "(no number)"}.`;
     const { data: convData, error: convError } =
       await this.databaseService.supabase
         .from("procurement_conversations")
         .insert({
-          order_id: orderId,
+          order_id: order.id,
           provider_id: providerId,
           restaurant_id: restaurantId,
           direction: "INBOUND",
           channel: "email",
-          content: dto.rawInvoiceContent ?? "",
+          // NOT NULL, and the previous version did not write it. `content` is
+          // the newer nullable column every recent path also fills; both are
+          // set so neither reader sees an empty thread.
+          message_text: dto.rawInvoiceContent || summary,
+          content: dto.rawInvoiceContent ?? null,
           status: "DELIVERED",
-          ai_summary: `Retroactive order created from off-app invoice ${dto.invoiceNumber ?? ""}.`,
+          received_at: dto.invoiceDate ?? new Date().toISOString(),
+          conversation_summary: summary,
+          order_number_snapshot: order.orderNumber ?? null,
         })
         .select("id")
         .single();
 
     if (convError) {
       this.logger.warn("createRetroactiveOrder: conversation insert failed", {
+        orderId: order.id,
         error: convError.message,
       });
     }
 
-    const conversationId = convData ? ((convData as any).id as string) : "";
-
-    const { data: intData, error: intError } =
-      await this.databaseService.supabase
-        .from("order_interactions")
-        .insert({
-          order_id: orderId,
-          interaction_type: "invoice_received",
-          channel: "email",
-          content: dto.rawInvoiceContent ?? "",
-          ai_summary: `Invoice ${dto.invoiceNumber ?? "unknown"} received; retroactive order created.`,
-        })
-        .select("id")
-        .single();
-
-    if (intError) {
-      this.logger.warn("createRetroactiveOrder: interaction insert failed", {
-        error: intError.message,
-      });
-    }
-
     return {
-      orderId,
-      conversationId,
-      interactionId: intData ? ((intData as any).id as string) : "",
+      orderId: order.id,
+      orderNumber: order.orderNumber ?? "",
+      conversationId: convData ? ((convData as any).id as string) : "",
     };
   }
 
@@ -1071,8 +1135,14 @@ export class ProvidersService {
       isPrimary: row.is_primary,
       // Numeric columns arrive as strings over PostgREST; Number() here keeps
       // the API contract numeric so callers do not compare "40.7" to 40.7.
-      latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
-      longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
+      latitude:
+        row.latitude === null || row.latitude === undefined
+          ? null
+          : Number(row.latitude),
+      longitude:
+        row.longitude === null || row.longitude === undefined
+          ? null
+          : Number(row.longitude),
       geocodedAt: row.geocoded_at ?? null,
       geocodeSource: row.geocode_source ?? null,
       createdAt: row.created_at,
@@ -1131,8 +1201,14 @@ export class ProvidersService {
       type: row.type,
       address: row.address,
       isPrimary: row.is_primary,
-      latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
-      longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
+      latitude:
+        row.latitude === null || row.latitude === undefined
+          ? null
+          : Number(row.latitude),
+      longitude:
+        row.longitude === null || row.longitude === undefined
+          ? null
+          : Number(row.longitude),
       geocodedAt: row.geocoded_at ?? null,
       geocodeSource: row.geocode_source ?? null,
     };
@@ -1189,8 +1265,14 @@ export class ProvidersService {
       type: row.type,
       address: row.address,
       isPrimary: row.is_primary,
-      latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
-      longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
+      latitude:
+        row.latitude === null || row.latitude === undefined
+          ? null
+          : Number(row.latitude),
+      longitude:
+        row.longitude === null || row.longitude === undefined
+          ? null
+          : Number(row.longitude),
       geocodedAt: row.geocoded_at ?? null,
       geocodeSource: row.geocode_source ?? null,
     };
@@ -1252,8 +1334,14 @@ export class ProvidersService {
       if (typeof direct === "string" && direct) return direct;
       // Otherwise assemble whatever parts are present rather than dropping the
       // address entirely — a partial address is more useful than none.
-      const parts = [o.street, o.line2, o.city, o.state, o.postalCode, o.country]
-        .filter((p): p is string => typeof p === "string" && p.length > 0);
+      const parts = [
+        o.street,
+        o.line2,
+        o.city,
+        o.state,
+        o.postalCode,
+        o.country,
+      ].filter((p): p is string => typeof p === "string" && p.length > 0);
       return parts.length ? parts.join(", ") : undefined;
     }
     return undefined;

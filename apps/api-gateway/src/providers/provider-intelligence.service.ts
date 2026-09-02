@@ -1,9 +1,16 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { UpdateIntelligenceDto } from "./dto/update-intelligence.dto";
-import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
-import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
 
+/**
+ * NOTE — `createRetroactiveOrder` used to live here as well, as a near-copy of
+ * the one in `providers.service.ts`. It was deleted on 2026-09-01: nothing
+ * called it (no controller, no service, no test — grepped repo-wide), and the
+ * two copies had already diverged, so a fix applied to the routed one would
+ * have left a broken twin behind for the next reader to fix again. The live
+ * implementation is `ProvidersService.createRetroactiveOrder`, routed from
+ * `providers.controller.ts` `POST :id/retroactive-order`.
+ */
 @Injectable()
 export class ProviderIntelligenceService {
   private readonly logger = new Logger(ProviderIntelligenceService.name);
@@ -594,100 +601,5 @@ export class ProviderIntelligenceService {
         value: String(profileDynamic[k]).slice(0, 20),
       }))
       .slice(0, 3);
-  }
-
-  /**
-   * D-32-15 Scenario C: Create retroactive order from off-app invoice.
-   * Inserts procurement_orders (status=delivered, source=retroactive),
-   * procurement_conversations (direction=INBOUND), order_interactions (invoice_received).
-   */
-  async createRetroactiveOrder(
-    providerId: string,
-    restaurantId: string,
-    dto: RetroactiveOrderDto,
-  ): Promise<{
-    orderId: string;
-    conversationId: string;
-    interactionId: string;
-  }> {
-    // 1. Insert retroactive procurement_order
-    const retroOrderNumber = `RETRO-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
-
-    const { data: orderData, error: orderError } =
-      await this.databaseService.supabase
-        .from("procurement_orders")
-        .insert({
-          restaurant_id: restaurantId,
-          provider_id: providerId,
-          order_number: retroOrderNumber,
-          wine_name: dto.wineName,
-          quantity: dto.quantity ?? null,
-          final_confirmed_cost: dto.finalConfirmedCost ?? null,
-          actual_delivery: dto.invoiceDate ?? null,
-          status: ProcurementOrderStatus.DELIVERED,
-          source: "retroactive",
-        })
-        .select("id")
-        .single();
-
-    if (orderError) {
-      this.logger.error("createRetroactiveOrder: order insert failed", {
-        error: orderError.message,
-      });
-      throw orderError;
-    }
-
-    const orderId = (orderData as any).id as string;
-
-    // 2. Insert procurement_conversation (direction=INBOUND, contains email body)
-    const { data: convData, error: convError } =
-      await this.databaseService.supabase
-        .from("procurement_conversations")
-        .insert({
-          order_id: orderId,
-          provider_id: providerId,
-          restaurant_id: restaurantId,
-          direction: "INBOUND",
-          channel: "email",
-          content: dto.rawInvoiceContent ?? "",
-          status: "DELIVERED",
-          ai_summary: `Retroactive order created from off-app invoice ${dto.invoiceNumber ?? ""}.`,
-        })
-        .select("id")
-        .single();
-
-    if (convError) {
-      this.logger.warn("createRetroactiveOrder: conversation insert failed", {
-        error: convError.message,
-      });
-    }
-
-    const conversationId = convData ? ((convData as any).id as string) : "";
-
-    // 3. Insert order_interaction (interaction_type=invoice_received)
-    const { data: intData, error: intError } =
-      await this.databaseService.supabase
-        .from("order_interactions")
-        .insert({
-          order_id: orderId,
-          interaction_type: "invoice_received",
-          channel: "email",
-          content: dto.rawInvoiceContent ?? "",
-          ai_summary: `Invoice ${dto.invoiceNumber ?? "unknown"} received; retroactive order created.`,
-        })
-        .select("id")
-        .single();
-
-    if (intError) {
-      this.logger.warn("createRetroactiveOrder: interaction insert failed", {
-        error: intError.message,
-      });
-    }
-
-    return {
-      orderId,
-      conversationId,
-      interactionId: intData ? ((intData as any).id as string) : "",
-    };
   }
 }
