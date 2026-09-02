@@ -309,6 +309,13 @@ function App() {
                     element={<Navigate to="/providers?tab=discover" replace />}
                   />
                   <Route path="/promotions" element={<Promotions />} />
+                  {/* Both halves split by role INSIDE the element: the legacy
+                      entry always did (TeamCommandPage.tsx:36-37) and TeamNext
+                      now does too. Routed straight to the manager surface, a
+                      non-manager with the flag on got the shift desk — and
+                      `GET certifications` carries no role requirement
+                      server-side, so the whole credential file rendered to any
+                      member. */}
                   <Route path="/team" element={<PageGate page="team" legacy={<TeamCommandPage />} next={<TeamNext />} />} />
                   <Route path="/calendar" element={<CalendarModular />} />
                   {/* Same reasoning as `/inventory-legacy` above: `/calendar-classic`

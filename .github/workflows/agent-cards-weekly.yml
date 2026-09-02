@@ -40,7 +40,7 @@ jobs:
     name: Mechanical card census
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Ensure PyYAML
         # build_agent_card_index.py exits 2 without it — "cannot check" is a

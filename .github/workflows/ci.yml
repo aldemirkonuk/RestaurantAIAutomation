@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Guard against loop vocabulary drift and a stale loop index
         run: python3 scripts/build_loop_index.py --check
@@ -57,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Ensure PyYAML
         run: python3 -m pip install --quiet pyyaml
@@ -89,7 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Guard against the two runtimes' guardrails diverging
         run: python3 scripts/sync_commitment_patterns.py --check
@@ -126,7 +126,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: No identity reaches a Sentry user scope
         run: ./scripts/check_sentry_pii_scope.py
@@ -167,7 +167,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Every voice emitter reaches assert_order_voice_allowed()
         run: python3 scripts/check_voice_gate_coverage.py
@@ -206,7 +206,7 @@ jobs:
     steps:
       - name: Checkout code
         # Full history: the scope step diffs this PR against its merge base.
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -282,7 +282,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -347,7 +347,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: The guard still fires on the shapes it exists to catch
         run: python3 scripts/check_windowed_figures.py --self-test
@@ -371,7 +371,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: The guard still fires on the shape it exists to catch
         run: python3 scripts/check_analytics_cost_honesty.py --self-test
@@ -418,7 +418,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: The guard still fires on the shape it exists to catch
         run: python3 scripts/check_proposal_preservation.py --self-test
@@ -462,7 +462,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: The guard still fires on the shape it exists to catch
         run: python3 scripts/check_read_errors_not_swallowed.py --self-test
@@ -485,7 +485,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Re-verify every executable claim
         run: ./scripts/check_decision_claims.sh
@@ -535,7 +535,7 @@ jobs:
           echo "::notice::If the fork was MERGED into another, the fix belongs in the register, never in the citing document: write '**Absorbs OD-43 (merged 2026-08-27)**' in the absorbing row. Dated audits are snapshots — do not edit them to make a guard pass, and do not exempt them."
           echo "::notice::RESOLVES TWO WAYS means an id both owns a row and is declared absorbed into another. Delete whichever half is stale; a reference to it currently resolves two ways."
           echo "::notice::UNGRADED means a task type records only call_level_v0 — 'the HTTP request returned 200'. Grade it, or add it to EXEMPT with the reason. On 2026-08-27 six of the gateway's seven task types were in that state."
-          echo "::notice::UNANCHORED means a bare OPEN-DECISIONS.md:N with no id beside it. ADR 0025 §6 requires both: write OD-88 (OPEN-DECISIONS.md:53)."
+          echo "::notice::UNANCHORED means a bare OPEN-DECISIONS.md:N with no id beside it. ADR 0025 §6 requires both: write OD-88 (OPEN-DECISIONS.md:54)."
           echo "::notice::Do NOT add a citation to PAIRING_DEBT. That list is a two-PR handoff for six page dossiers owned by a concurrent branch, and it only ever shrinks."
           echo "::notice::Exit 2 means the guard could not check what it claims to. That is a failure, not a skip."
 
@@ -574,7 +574,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Every relation the code queries is declared by supabase/migrations
         run: ./scripts/check_queried_tables_exist.py
@@ -764,13 +764,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
@@ -795,13 +795,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
@@ -823,6 +823,25 @@ jobs:
 
       - name: Guard against direct stock_live/shadow_stock writes
         run: ./scripts/check_no_direct_stock_writes.sh
+
+      # ADR 0078. `apply_stock_movement` used to infer cost provenance from the
+      # mere presence of a price, so any caller passing a number without saying
+      # what kind of number it was got 'invoice' free — and markDelivered
+      # passed the purchase order's own quote. The RPC now raises; this is the
+      # static arm that catches it at review time instead of at runtime.
+      #
+      # --self-test first, and it is not ceremony: it proves the guard reaches
+      # this repo's real call sites, which is precisely what
+      # check_no_direct_stock_writes.sh could not do while it was passing an
+      # invalid ripgrep type and printing PASS over zero examined lines.
+      # `if: !cancelled()` so it reports even when a step above has failed.
+      - name: Provenance guard proves it can see the tree
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_lot_cost_provenance.py --self-test
+
+      - name: A price crossing into a lot states its provenance
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_lot_cost_provenance.py
 
       - name: Guard against direct beverages.type_attributes access
         run: ./scripts/check_no_direct_type_attributes_access.sh
@@ -846,7 +865,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: No count is committed through a write that vanishes on a zero delta
         run: python3 scripts/check_a_count_is_recorded.py
@@ -869,7 +888,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -900,13 +919,13 @@ jobs:
     needs: [lint-typescript, lint-python]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
@@ -933,13 +952,13 @@ jobs:
     needs: [lint-typescript]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
@@ -959,13 +978,13 @@ jobs:
     needs: [build]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
@@ -986,7 +1005,7 @@ jobs:
     needs: [lint-python]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -1008,7 +1027,7 @@ jobs:
           pytest tests/ -v --cov=. --cov-report=xml
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           file: ./services/agent-orchestrator/coverage.xml
           flags: python
@@ -1028,7 +1047,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -1050,7 +1069,7 @@ jobs:
       security-events: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
@@ -1132,7 +1151,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: The guard can see the tree, and fires on the shapes it exists to catch
         run: python3 scripts/check_no_seeded_defaults.py --self-test
@@ -1196,7 +1215,7 @@ jobs:
       ]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # The gate polices its own coverage. `toJSON(needs)` removed one
       # hand-maintained list; `needs:` itself is still one, and it had already
