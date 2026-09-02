@@ -51,6 +51,7 @@
  */
 
 import { useMemo, useState } from 'react'
+import { isMeasuredUnit } from '../../lib/units'
 import {
   AlertTriangle,
   Check,
@@ -240,7 +241,17 @@ export function ProposalCard({ proposal, candidates }: Props) {
   const edited = useMemo<AskAiPayload | null>(() => {
     if (isReorder) {
       const n = Number(quantity)
-      if (!quantity.trim() || !Number.isInteger(n) || n < 1) return null
+      // A fraction is legal for a unit that MEASURES and illegal for one that
+      // COUNTS, so this cannot be decided without the unit (ADR 0071). It used
+      // to be: `!Number.isInteger(n)` greyed out the confirm button for 4.5 kg
+      // of flour exactly as it did for 4.5 bottles.
+      //
+      // The client only decides whether the card is submittable. The gateway
+      // decides whether the order is legal, through resolveOrderUnits, and its
+      // refusal is the one the operator reads — so this test stays deliberately
+      // looser than the server's rather than trying to mirror it and drifting.
+      if (!quantity.trim() || !Number.isFinite(n) || n <= 0) return null
+      if (!isMeasuredUnit(unitType) && !Number.isInteger(n)) return null
       if (!inventoryId || !providerId) return null
       const unit = unitType.trim()
       return {
@@ -291,11 +302,16 @@ export function ProposalCard({ proposal, candidates }: Props) {
     if (isReorder) {
       if (!inventoryId) return 'Pick the item to reorder.'
       if (!providerId) return 'Pick the vendor to order from.'
-      return 'Quantity must be a whole number of at least 1.'
+      // The reason has to name the unit, or it is wrong half the time: "must be
+      // a whole number" is simply untrue of 4.5 kg, and an operator reading it
+      // against a flour order learns the form is broken rather than what to fix.
+      return isMeasuredUnit(unitType)
+        ? `Quantity must be a positive number in ${unitType.trim()}, to at most three decimal places.`
+        : 'Quantity must be a whole number of at least 1.'
     }
     if (!orderId) return 'Pick the order to reply on.'
     return 'The draft needs an instruction.'
-  }, [edited, isReorder, inventoryId, providerId, orderId])
+  }, [edited, isReorder, inventoryId, providerId, orderId, unitType])
 
   const busy = phase === 'working'
   const settled =
@@ -402,9 +418,15 @@ export function ProposalCard({ proposal, candidates }: Props) {
                 <input
                   id={`qty-${proposal.actionId}`}
                   type="number"
-                  min={1}
-                  max={MAX_REORDER_QUANTITY}
-                  step={1}
+                  min={isMeasuredUnit(unitType) ? 0.001 : 1}
+                  // The 500-unit cap was reasoned about as a COUNT ceiling —
+                  // "12 cases misparsed as 1200". It is meaningless against a
+                  // mass, where 500 g of saffron is a fortune and 500 kg of
+                  // flour is a Tuesday, so it does not apply to a measured unit.
+                  max={isMeasuredUnit(unitType) ? undefined : MAX_REORDER_QUANTITY}
+                  // step=1 is what made the browser refuse 4.5 before any code
+                  // ran. 0.001 is the quantity column's real precision.
+                  step={isMeasuredUnit(unitType) ? 0.001 : 1}
                   value={quantity}
                   disabled={busy}
                   onChange={(e) => setQuantity(e.target.value)}

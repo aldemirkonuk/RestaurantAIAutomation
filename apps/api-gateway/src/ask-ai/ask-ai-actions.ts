@@ -28,6 +28,8 @@
  * gate, the constraint checks — still runs, unchanged and unbypassed.
  */
 
+import { resolveOrderUnits } from "../procurement/order-units";
+
 /** Families in the MVP. Founder call 2026-08-27; widening this is a decision. */
 export const ACTION_FAMILIES = ["procurement", "communications"] as const;
 export type ActionFamily = (typeof ACTION_FAMILIES)[number];
@@ -153,25 +155,42 @@ export function validateAction(raw: unknown): ActionValidation {
       };
 
     const quantity = payload.quantity;
-    if (
-      typeof quantity !== "number" ||
-      !Number.isFinite(quantity) ||
-      !Number.isInteger(quantity) ||
-      quantity < 1
-    ) {
-      return {
-        ok: false,
-        reason: "Quantity must be a whole number of at least 1.",
-      };
+    if (typeof quantity !== "number" || !Number.isFinite(quantity)) {
+      return { ok: false, reason: "Quantity must be a number." };
     }
-    if (quantity > MAX_REORDER_QUANTITY) {
+
+    const unitType = str(payload.unitType);
+
+    // Whether a fraction is legal depends on the unit, and this gate used to
+    // decide it without looking: `!Number.isInteger(quantity)` refused 4.5 kg of
+    // flour the same way it refused 4.5 bottles. `resolveOrderUnits` is the one
+    // place that rule lives (ADR 0071) — reusing it here rather than restating
+    // it means Ask AI cannot drift from what the Orders page enforces, which is
+    // the drift that produced two different unit vocabularies in the first
+    // place.
+    const units = resolveOrderUnits({
+      quantity,
+      unitType,
+      bottlesPerUnit:
+        typeof payload.bottlesPerUnit === "number"
+          ? payload.bottlesPerUnit
+          : undefined,
+    });
+    if (!units.ok) {
+      return { ok: false, reason: units.message };
+    }
+
+    // The ceiling is a COUNT ceiling — 500 bottles is a sane cap on what a model
+    // may propose unattended. It is meaningless against a mass: 500 g of saffron
+    // is a fortune and 500 kg of flour is a Tuesday, so the limit is applied to
+    // the thing it was reasoned about and a measured unit is capped by the
+    // column's own ceiling instead.
+    if (!units.opaque && quantity > MAX_REORDER_QUANTITY) {
       return {
         ok: false,
         reason: `Quantity ${quantity} is above the ${MAX_REORDER_QUANTITY} limit for a proposed order — place it on the Orders page instead.`,
       };
     }
-
-    const unitType = str(payload.unitType);
     return {
       ok: true,
       action: {

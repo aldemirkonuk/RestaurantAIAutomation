@@ -9,6 +9,7 @@ import {
   Min,
 } from "class-validator";
 import { ORDER_UNIT_TYPES } from "../../procurement/order-units";
+import { IsIntakeQuantity } from "../../procurement/dto/intake-quantity.decorator";
 
 /**
  * An invoice for wine that was bought outside the app, entered after the fact.
@@ -44,11 +45,12 @@ export class RetroactiveOrderDto {
   inventoryId: string;
 
   @ApiProperty({
-    description: "Quantity on the invoice, in the unit stated by unitType.",
-    minimum: 1,
+    description:
+      "Quantity on the invoice, in the unit stated by unitType. Fractional for a mass " +
+      "or volume unit (ADR 0071) — a retroactive invoice for 4.5 kg of flour is exactly " +
+      "the case this import exists for.",
   })
-  @IsInt()
-  @Min(1)
+  @IsIntakeQuantity()
   quantity: number;
 
   @ApiPropertyOptional({

@@ -674,6 +674,29 @@ jobs:
           echo "::notice::AuthModule is not @Global(); a guard resolves in the context of the module declaring the controller."
           echo "::notice::Fix: add AuthModule to that module's imports — see conversations.module.ts for the house pattern."
 
+  intake-units:
+    name: Intake admits mass, and a quantity is not integer-only
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: The guard still fires on the shapes it exists to catch
+        run: python3 scripts/check_intake_units.py --self-test
+
+      - name: One unit vocabulary, containing mass, with no @IsInt() on a quantity
+        run: python3 scripts/check_intake_units.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::VOCABULARY DIFFERS means the unit list in document-types.ts, apps/web/src/lib/units.ts and the newest unit CHECK migration are not the same set. A unit in the code but not the CHECK is a 23514 in production; one in the CHECK but not the code is a unit no screen can offer."
+          echo "::notice::NO MASS UNIT is the original defect (ADR 0071): a 25 kg sack of flour had no expressible unit anywhere, so a receiver could not record the delivery at all. Add the unit in all three places, in one migration."
+          echo "::notice::@IsInt() ON AN INTAKE QUANTITY refuses 4.5 with a 400 before it reaches a numeric(12,3) column that stores it exactly. Use @IsIntakeQuantity(); the whole-number rule for COUNT units lives in resolveOrderUnits, where the unit is known."
+          echo "::notice::If the field really is a count (a pack size, a page number), add it to COUNT_EXCEPTIONS in the guard WITH THE REASON — do not widen the name pattern."
+          echo "::notice::STALE DEFERRAL means a field in DEFERRED_PENDING_PR_233 no longer carries @IsInt(), i.e. PR #233 landed and renamed it. Apply @IsIntakeQuantity() to the new name and delete the entry. That staleness check is the reason the deferral cannot quietly become permanent."
+          echo "::notice::Exit 2 is CANNOT CHECK, not a skip: a file the guard reads was moved, emptied, or restructured past its parser. Repoint the guard; do not delete the step."
+
   # Lint and type-check TypeScript/React code
   lint-typescript:
     name: Lint TypeScript
@@ -988,6 +1011,11 @@ jobs:
         adr-numbers-unique,
         analytics-cost-honesty,
         proposal-preservation,
+        # Added 2026-09-02 with the job itself (ADR 0071). It is a root job with
+        # no dependents, so without this line it could fail while this gate
+        # printed success — which is the exact drift the coverage step below
+        # catches, and the reason that step exists.
+        intake-units,
 
         windowed-figures,
       ]

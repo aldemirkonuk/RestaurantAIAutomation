@@ -1,5 +1,6 @@
 import { ReceivingService } from "./receiving.service";
 import { DatabaseService } from "../database/database.service";
+import { UOMS } from "./documents/document-types";
 
 /**
  * Door-stage receiving.
@@ -294,7 +295,25 @@ describe("recordDoorReceipt", () => {
         countedQty: 24,
         countedUom: "",
       }),
-    ).rejects.toThrow(/bottle, case, keg, pack, split_case, each, liter/);
+      // Asserted against UOMS itself rather than a copied list. The literal used
+      // to be spelled out here, and ADR 0071's mass units made it stale the
+      // moment the vocabulary grew — a test that has to be edited every time the
+      // thing it guards changes is a test that will eventually be edited without
+      // being read.
+    ).rejects.toThrow(new RegExp(UOMS.join(", ")));
+  });
+
+  it("offers the receiver a mass unit, so a flour delivery is countable", async () => {
+    // The vocabulary had no mass unit at all before ADR 0071: a 25 kg sack could
+    // not be counted at the door under ANY spelling.
+    const { db } = makeDb({ order: twelvePackOrder });
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 24,
+        countedUom: "",
+      }),
+    ).rejects.toThrow(/\bkg\b/);
   });
 
   it("still books a stated unit, so the refusal is not a blanket stop", async () => {

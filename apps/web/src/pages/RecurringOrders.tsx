@@ -570,11 +570,29 @@ function RecurringOrderModal({ isOpen, onClose, editingOrder, restaurantId, onSu
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
+                {/*
+                  Two independent reasons this field could not accept 4.5 kg of
+                  flour, and both had to go (ADR 0071):
+
+                    1. No `step`. HTML defaults `step=1`, so the browser reports
+                       a stepMismatch on 2.5 and the value never reaches the
+                       server at all — below any DTO, below any validator.
+                    2. `parseInt`, which truncates "4.5" to 4 SILENTLY. That is
+                       worse than the block: a refusal is answerable, a quietly
+                       different number is not.
+
+                  `step="0.001"` is the column's real precision — numeric(12,3) —
+                  so the browser refuses a fourth decimal place with its own
+                  message rather than letting Postgres round it. Whether a
+                  fraction is legal at all depends on the unit, which the server
+                  decides in resolveOrderUnits; the input does not guess.
+                */}
                 <input
                   type="number"
-                  min="1"
+                  min="0.001"
+                  step="0.001"
                   value={formData.quantity}
-                  onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) })}
+                  onChange={(e) => setFormData({ ...formData, quantity: e.target.value === '' ? NaN : Number(e.target.value) })}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg"
                   required
                 />

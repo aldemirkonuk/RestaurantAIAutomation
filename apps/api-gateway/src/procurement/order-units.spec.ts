@@ -113,7 +113,7 @@ describe("resolveOrderUnits", () => {
     if (!r.ok) expect(r.reason).toBe("pack_size_conflict");
   });
 
-  it("refuses quantities that are not whole and positive", () => {
+  it("refuses quantities that are not whole and positive, IN A COUNT UNIT", () => {
     for (const quantity of [0, -3, 1.5, NaN, Infinity]) {
       const r = resolveOrderUnits({ quantity, unitType: "bottle" });
       expect(r.ok).toBe(false);
@@ -123,7 +123,7 @@ describe("resolveOrderUnits", () => {
 
   it("only ever emits units the database CHECK constraint accepts", () => {
     // ORDER_UNIT_TYPES is the code half of a pair whose other half is a CHECK in
-    // supabase/migrations. If normalizeUom grew an eighth output, this fails
+    // supabase/migrations. If normalizeUom grew an eleventh output, this fails
     // here rather than as a 23514 in production.
     const emitted = new Set<string>();
     for (const spelling of [
@@ -134,11 +134,80 @@ describe("resolveOrderUnits", () => {
       "split case",
       "each",
       "liters",
+      "ml",
+      "grams",
+      "kg",
     ]) {
       const u = normalizeUom(spelling);
       if (u) emitted.add(u);
     }
     for (const u of emitted) expect(ORDER_UNIT_TYPES).toContain(u as any);
     expect(emitted.size).toBe(ORDER_UNIT_TYPES.length);
+  });
+
+  // ---------------------------------------------------------------------------
+  // ADR 0071 — the receiving door accepts mass.
+  //
+  // Every test below fails against the pre-fix tree, which is the point: the
+  // defect was that a fraction was refused before anything looked at what it was
+  // a fraction OF.
+  // ---------------------------------------------------------------------------
+
+  it("accepts a fractional quantity in a mass unit — the defect this repairs", () => {
+    const r = ok(resolveOrderUnits({ quantity: 4.5, unitType: "kg" }));
+    expect(r.unitType).toBe("kg");
+    expect(r.bottlesTotal).toBe(4.5);
+    // 4.5 kg is not 4.5 bottles, and nothing downstream may price it per bottle.
+    expect(r.opaque).toBe(true);
+  });
+
+  it("accepts the 25 kg sack of flour that had no expressible unit at all", () => {
+    const r = ok(resolveOrderUnits({ quantity: 25, unitType: "kg" }));
+    expect(r.bottlesTotal).toBe(25);
+    expect(r.opaque).toBe(true);
+  });
+
+  it("still refuses a fraction of a count unit", () => {
+    for (const unitType of ["bottle", "case", "each", "keg"]) {
+      const r = resolveOrderUnits({
+        quantity: 4.5,
+        unitType,
+        ...(unitType === "case" ? { bottlesPerUnit: 12 } : {}),
+      });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.reason).toBe("bad_quantity");
+    }
+  });
+
+  it("refuses a mass quantity finer than numeric(12,3), rather than letting it round", () => {
+    // 0.5 g of saffron stated in kg. numeric(12,3) would store 0.001 — DOUBLE
+    // the real quantity, with no error anywhere. The refusal names the fix.
+    const r = resolveOrderUnits({ quantity: 0.0005, unitType: "kg" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.reason).toBe("bad_quantity");
+      expect(r.message).toContain("decimal places");
+      expect(r.message).toContain("0.5 g");
+    }
+  });
+
+  it("accepts that same saffron dose stated in the finer unit", () => {
+    const r = ok(resolveOrderUnits({ quantity: 0.5, unitType: "g" }));
+    expect(r.bottlesTotal).toBe(0.5);
+  });
+
+  it("accepts exactly three decimal places, the column's full precision", () => {
+    const r = ok(resolveOrderUnits({ quantity: 12.345, unitType: "kg" }));
+    expect(r.bottlesTotal).toBe(12.345);
+  });
+
+  it("refuses a pack size on a mass unit — a kilogram does not come in twelves", () => {
+    const r = resolveOrderUnits({
+      quantity: 4.5,
+      unitType: "kg",
+      bottlesPerUnit: 12,
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("pack_size_conflict");
   });
 });

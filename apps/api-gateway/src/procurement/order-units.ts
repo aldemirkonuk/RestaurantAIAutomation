@@ -1,4 +1,12 @@
-import { normalizeUom, Uom } from "./documents/document-types";
+import {
+  bottleOpaque,
+  fitsIntakePrecision,
+  INTAKE_DECIMAL_PLACES,
+  isFractionalUnit,
+  normalizeUom,
+  UOMS,
+  Uom,
+} from "./documents/document-types";
 
 /**
  * Order-line arithmetic: how many bottles a quantity in some unit actually is.
@@ -55,20 +63,20 @@ import { normalizeUom, Uom } from "./documents/document-types";
  * `procurement_document_lines.uom` (`baseline:4401`) and
  * `procurement_receipt_events.counted_uom` (`baseline:4593`).
  *
- * Kept as a literal list rather than derived from `UOMS` so that a change to the
- * document vocabulary cannot silently widen what an order may store — the CHECK
- * constraint in the database is the other half of this pair and only a migration
- * can move it.
+ * This USED to be a literal list, duplicated from `UOMS` on the reasoning that a
+ * change to the document vocabulary should not silently widen what an order may
+ * store. That reasoning inverted in practice: the two lists were identical, the
+ * duplication was invisible, and when ADR 0071 had to add a mass unit the
+ * literal list was a second place to forget. A vocabulary that differs between
+ * the order and the document it is matched against is not a safety property —
+ * it is the unit mismatch this whole module exists to prevent.
+ *
+ * So it is now DERIVED, and the four database CHECK constraints are held to it
+ * by `scripts/check_intake_units.py` rather than by a copied list. The guard
+ * fails the build when they disagree, which is the protection the copy was
+ * pretending to give.
  */
-export const ORDER_UNIT_TYPES = [
-  "bottle",
-  "case",
-  "keg",
-  "pack",
-  "split_case",
-  "each",
-  "liter",
-] as const;
+export const ORDER_UNIT_TYPES = UOMS;
 
 /** Units where quantity x pack size is the bottle count. */
 const MULTIPLYING: ReadonlySet<Uom> = new Set<Uom>([
@@ -76,9 +84,6 @@ const MULTIPLYING: ReadonlySet<Uom> = new Set<Uom>([
   "pack",
   "split_case",
 ]);
-
-/** Units that are not bottle-convertible at all. See `toBottles`. */
-const OPAQUE: ReadonlySet<Uom> = new Set<Uom>(["keg", "liter"]);
 
 export interface ResolvedOrderUnits {
   ok: true;
@@ -124,14 +129,11 @@ export interface OrderUnitInput {
  */
 export function resolveOrderUnits(input: OrderUnitInput): OrderUnitResolution {
   const qty = Number(input.quantity);
-  if (!Number.isFinite(qty) || !Number.isInteger(qty) || qty < 1) {
-    return {
-      ok: false,
-      reason: "bad_quantity",
-      message: `Order quantity must be a whole number of at least 1 (got ${JSON.stringify(input.quantity)}).`,
-    };
-  }
 
+  // The unit is resolved BEFORE the quantity is judged, because whether a
+  // fraction is legal depends entirely on the unit. This used to be the other
+  // way round, and that ordering was the defect: `!Number.isInteger(qty)`
+  // refused 4.5 without ever looking at what 4.5 was 4.5 OF.
   const raw =
     typeof input.unitType === "string" ? input.unitType.trim() : input.unitType;
 
@@ -151,6 +153,48 @@ export function resolveOrderUnits(input: OrderUnitInput): OrderUnitResolution {
         `Unit "${String(input.unitType)}" is not one we can convert to bottles. ` +
         `Use one of: ${ORDER_UNIT_TYPES.join(", ")}. ` +
         `Refusing rather than guessing — a guessed unit books a wrong quantity that nothing later can detect.`,
+    };
+  }
+
+  // NOW the quantity, judged against the unit it is stated in.
+  //
+  // A count unit still demands a whole number: half a bottle is not a purchase
+  // quantity and half a case is a receiving mistake, so the old constraint is
+  // kept exactly where it was earning something.
+  //
+  // A mass or volume unit admits fractions, because 4.5 kg of flour is an
+  // ordinary delivery and refusing it is the defect this repairs. What it does
+  // NOT admit is more precision than the column can hold: `numeric(12,3)` does
+  // not reject a fourth decimal place, it ROUNDS it, so 0.0005 kg of saffron
+  // would be stored as 0.001 kg — double the real quantity, recorded as fact.
+  // The refusal names the finer unit, because that is always the fix.
+  if (!Number.isFinite(qty) || qty <= 0) {
+    return {
+      ok: false,
+      reason: "bad_quantity",
+      message: `Order quantity must be a positive number (got ${JSON.stringify(input.quantity)}).`,
+    };
+  }
+
+  if (!isFractionalUnit(unitType)) {
+    if (!Number.isInteger(qty) || qty < 1) {
+      return {
+        ok: false,
+        reason: "bad_quantity",
+        message:
+          `An order in ${unitType.replace("_", " ")}s must be a whole number of at least 1 ` +
+          `(got ${JSON.stringify(input.quantity)}). ` +
+          `Fractions are only meaningful for a unit that measures rather than counts — order in g, kg or ml for those.`,
+      };
+    }
+  } else if (!fitsIntakePrecision(qty)) {
+    return {
+      ok: false,
+      reason: "bad_quantity",
+      message:
+        `${qty} ${unitType} has more than ${INTAKE_DECIMAL_PLACES} decimal places, and the quantity column ` +
+        `stores three by ROUNDING — so this would be recorded as a different quantity than the one entered. ` +
+        `State it in a finer unit instead (0.5 g, not 0.0005 kg).`,
     };
   }
 
@@ -208,7 +252,7 @@ export function resolveOrderUnits(input: OrderUnitInput): OrderUnitResolution {
     unitType,
     bottlesPerUnit: 1,
     bottlesTotal: qty,
-    opaque: OPAQUE.has(unitType),
+    opaque: bottleOpaque(unitType),
   };
 }
 

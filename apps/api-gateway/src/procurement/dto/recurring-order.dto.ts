@@ -14,6 +14,7 @@ import {
 } from "class-validator";
 import { ORDER_UNIT_TYPES } from "../order-units";
 import { RECURRING_FREQUENCIES } from "../recurring-orders.service";
+import { IsIntakeQuantity } from "./intake-quantity.decorator";
 
 /**
  * A standing order: what to re-buy, from whom, and how often.
@@ -54,9 +55,12 @@ export class CreateRecurringOrderDto {
   @IsUUID()
   provider_id: string;
 
-  @ApiProperty({ minimum: 1 })
-  @IsInt()
-  @Min(1)
+  @ApiProperty({
+    description:
+      "Quantity per occurrence, in unit_type. Fractional for mass/volume (ADR 0071); " +
+      "resolveOrderUnits still refuses a fraction of a count unit when the schedule materialises.",
+  })
+  @IsIntakeQuantity()
   quantity: number;
 
   @ApiPropertyOptional({
@@ -142,9 +146,11 @@ export class UpdateRecurringOrderDto {
   @IsOptional()
   provider_id?: string;
 
-  @ApiPropertyOptional({ minimum: 1 })
-  @IsInt()
-  @Min(1)
+  @ApiPropertyOptional({
+    description:
+      "As CreateRecurringOrderDto.quantity. Fractional for mass/volume (ADR 0071).",
+  })
+  @IsIntakeQuantity()
   @IsOptional()
   quantity?: number;
 

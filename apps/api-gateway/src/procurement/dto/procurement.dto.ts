@@ -14,6 +14,7 @@ import {
 } from "class-validator";
 import { Type } from "class-transformer";
 import { ORDER_UNIT_TYPES } from "../order-units";
+import { IsIntakeQuantity } from "./intake-quantity.decorator";
 
 export enum ProcurementOrderStatus {
   PENDING = "PENDING",
@@ -40,14 +41,18 @@ export class CreateOrderDto {
   @IsString()
   providerId: string;
 
-  @ApiProperty()
-  @IsInt()
-  @Min(1)
+  @ApiProperty({
+    description:
+      "Quantity ordered, in unitType. Fractional for a mass or volume unit " +
+      "(4.5 kg of flour); still whole for a count unit, which resolveOrderUnits enforces " +
+      "once it knows which unit this is. Three decimal places, matching the column.",
+  })
+  @IsIntakeQuantity()
   quantity: number;
 
   @ApiPropertyOptional({
     description:
-      "Purchase unit: bottle | case | keg | pack | split_case | each | liter. " +
+      "Purchase unit: bottle | case | keg | pack | split_case | each | ml | liter | g | kg. " +
       "Omitted means bottles. An unrecognised unit is refused rather than assumed — " +
       "a guessed unit books a wrong quantity that nothing downstream can detect.",
     enum: ORDER_UNIT_TYPES as unknown as string[],
