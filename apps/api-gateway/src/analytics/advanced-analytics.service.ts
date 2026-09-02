@@ -10,6 +10,11 @@ import {
   resolveUnitCost,
   summarizeCostBasis,
 } from "./inventory-cost";
+import {
+  ORDER_ARRIVED_STATUSES,
+  ORDER_SPEND_STATUSES,
+  hasStatus,
+} from "../procurement/order-status";
 
 /**
  * AdvancedAnalyticsService — the second wave of catalogue features.
@@ -287,7 +292,11 @@ export class AdvancedAnalyticsService {
     }
 
     const vendors = Array.from(byVendor.entries()).map(([vendorId, os]) => {
-      const delivered = os.filter((o) => o.status === "delivered");
+      // Timing question: a short delivery still came through the door, so
+      // PARTIALLY_RECEIVED counts here. See order-status.ts.
+      const delivered = os.filter((o) =>
+        hasStatus(o.status, ORDER_ARRIVED_STATUSES),
+      );
       const leadTimes = delivered
         .filter((o) => o.delivered_at && o.created_at)
         .map(
@@ -434,7 +443,11 @@ export class AdvancedAnalyticsService {
 
   async getCashflow(restaurantId: string) {
     const orders = await this.loadOrders(restaurantId, 180);
-    const delivered = orders.filter((o: any) => o.status === "delivered");
+    // Money question: PARTIALLY_RECEIVED carries PO-value columns, not
+    // received-value ones, so it is excluded here. See order-status.ts.
+    const delivered = orders.filter((o: any) =>
+      hasStatus(o.status, ORDER_SPEND_STATUSES),
+    );
     const spendRows = delivered.map((o: any) => ({
       date: (o.delivered_at || o.created_at || "").substring(0, 10),
       value: o.total_cost || o.final_price || 0,
