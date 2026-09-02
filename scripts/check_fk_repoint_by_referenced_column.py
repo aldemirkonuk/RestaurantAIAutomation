@@ -542,6 +542,22 @@ def self_test():
     """Prove both checks still fire on the shapes they exist to catch."""
     failures = []
 
+    # Several assertions below read the committed tree, and three of them pass
+    # trivially on an EMPTY one: check_shape([]) finds nothing,
+    # check_index_reconstruction([]) finds nothing, and SELF is not in an empty
+    # list. Today check_fix_is_live() happens to fail loudly there -- but that
+    # is luck, not design: relax or rename its anchor and the empty-tree case
+    # becomes a silent pass with nothing left to catch it. State the
+    # precondition instead of relying on the accident.
+    if not sql_files():
+        print(
+            "SELF-TEST FAILED: the tree assertions have nothing to read -- "
+            "no file under " + ", ".join(SCAN_DIRS) + " matched. A self-test "
+            "that passes on an empty tree is not testing this guard.",
+            file=sys.stderr,
+        )
+        return 1
+
     pre_fix = """
     FOR v_fk IN
       SELECT c.conrelid::regclass::text AS tbl, a.attname AS col

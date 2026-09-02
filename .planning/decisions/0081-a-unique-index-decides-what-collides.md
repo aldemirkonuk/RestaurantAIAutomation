@@ -82,6 +82,23 @@ drops to per-row, bounded by the rows referencing the loser in that one table.
 The reported step now names the constraint that **actually fired**
 (`GET STACKED DIAGNOSTICS CONSTRAINT_NAME`) rather than one the loop guessed.
 
+## The idiom to reach for instead
+
+Two clean answers, not one prohibition — and the first already has an in-repo
+precedent, found by `restaurant-ai-automation-fa` while checking whether their
+queue would trip the new guard:
+
+- **To COMPARE** two schemas, render the definition and diff the text.
+  `scripts/check_schema_parity.sh` (rewritten by #239) compares constraints and
+  indexes via `pg_get_constraintdef()` and `pg_get_indexdef()` and contains zero
+  occurrences of `conkey`, `confkey` or `indkey`. It therefore cannot
+  desynchronise the two arrays and cannot mis-model an index — the whole defect
+  class is unreachable by construction, not avoided by care.
+- **To REPOINT**, call `public.fk_repoint_plan()`, which pairs the arrays by
+  ordinality and reports every key it cannot plan.
+- **To decide what COLLIDES**, attempt the write and read the error. Nothing
+  models the index.
+
 ## Consequences
 
 - **Easier.** Every index shape is handled, including ones added later — a

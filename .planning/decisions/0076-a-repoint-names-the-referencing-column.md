@@ -123,6 +123,14 @@ and a partial index's `indpred` is ignored — both of which make the collision
 UNIQUE index exists on any table referencing `master_wine_library`, checked
 2026-09-02). Different catalog, different evidence, its own change.
 
+## The idiom to reach for instead
+
+For *comparison*, render and diff: `scripts/check_schema_parity.sh` compares
+constraints and indexes through `pg_get_constraintdef()` / `pg_get_indexdef()`
+and never touches `conkey`/`confkey`, so this defect class cannot arise there.
+For *repointing*, call `public.fk_repoint_plan()`. See
+[[0081-a-unique-index-decides-what-collides]].
+
 ## Consequences
 
 - **Easier.** A composite FK to either merge target is now handled correctly —
