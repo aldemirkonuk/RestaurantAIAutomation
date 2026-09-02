@@ -5,6 +5,15 @@
 
 export const EM = '—';
 
+/**
+ * The floor mark. A windowed count renders `≥ n`, never a total it cannot
+ * know (ADR 0051 clause 2). It is a named export rather than a bare '≥' in
+ * JSX so `scripts/check_windowed_figures.py` can see that the renderers which
+ * know about SO_SERVER_WINDOWS still carry a floor marker — deleting the ≥
+ * while keeping the constant is the cheapest way to silently undo this.
+ */
+export const GE = '≥';
+
 export const SERIF = '"Fraunces", Georgia, "Times New Roman", serif';
 export const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 export const SANS = '"DM Sans", "Plus Jakarta Sans", system-ui, sans-serif';
@@ -42,6 +51,28 @@ export function sortKey(iso: string): number {
   const d = parseDay(iso) ?? new Date(iso);
   const t = d.getTime();
   return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
+}
+
+/**
+ * An amount, in the currency the row actually records.
+ *
+ * `procurement_documents.currency` has existed since the baseline
+ * (`character varying(3)`, defaulted to 'USD' but not NOT NULL). The page
+ * printed a hardcoded `$`, so a euro-denominated invoice's tie-out gap read
+ * as dollars off — a unit invented for a quantity that carries its own
+ * (ADR 0062). When the row records no currency the number keeps its digits
+ * and says the unit is missing, rather than borrowing one.
+ */
+export function fmtMoney(amount: number, currency: string | null | undefined): string {
+  if (!currency) return `${amount.toFixed(2)} (currency not recorded)`;
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount);
+  } catch {
+    // Intl throws on a code it does not recognise; the code itself is still
+    // the truest thing we hold about the unit, so it is printed rather than
+    // swapped for a guess.
+    return `${amount.toFixed(2)} ${currency}`;
+  }
 }
 
 /** 'inventory_summary' → 'inventory summary' — a DB enum is never shown raw. */
