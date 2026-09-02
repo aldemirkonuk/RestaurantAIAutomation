@@ -492,38 +492,14 @@ UNREADABLE_WRITE_CEILING = 13
 # it), and an entry nothing writes any more is a FAILURE (delete it). The only
 # way to touch this list is to make it shorter.
 KNOWN_BAD_COLUMNS: dict[str, str] = {
-    "calendar_events.priority": (
-        "prod:absent. calendar_events has no `priority` and no `tags` (verified "
-        "2026-09-01). procurement.service.ts createCalendarEventForOrder and "
-        "recurring-orders.service.ts both write them, and both also omit `source`, "
-        "which is NOT NULL — so every calendar event these two paths have ever "
-        "tried to write has failed. Both are wrapped in a try/catch that logs a "
-        "warning, which is why nobody noticed. Owned by the calendar domain "
-        "(calendar.service.ts has 15 more call sites); repairing it means deciding "
-        "where a recurring_order_id link lives, which is a calendar-schema "
-        "decision, not a procurement one."
-    ),
-    "calendar_events.tags": (
-        "prod:absent. Same site and same fix as calendar_events.priority. The "
-        "recurring materialiser also SELECTs on it (`.like(\"tags\", ...)`) to find "
-        "the event it pre-created, so the linkage is dead in both directions."
-    ),
-    "procurement_conversations.sender_email": (
-        "prod:absent. communications.service.ts logConversation writes four columns "
-        "the table does not have — sender_email, recipient_email, subject, "
-        "message_body — and the real ones are `message_text` (NOT NULL) plus the "
-        "jsonb `email_headers`. Every call to it has failed."
-    ),
-    "procurement_conversations.recipient_email": (
-        "prod:absent. Same site as procurement_conversations.sender_email."
-    ),
-    "procurement_conversations.subject": (
-        "prod:absent. Same site as procurement_conversations.sender_email."
-    ),
-    "procurement_conversations.message_body": (
-        "prod:absent. Same site as procurement_conversations.sender_email; the "
-        "column that holds a body is `message_text`."
-    ),
+    # procurement_conversations.{sender_email,recipient_email,subject,
+    # message_body} were here. FIXED 2026-09-02, ADR 0065:
+    # communications.service.ts storeOutboundConversation (the entries called it
+    # logConversation; that method name has never existed in the tree) now
+    # writes `message_text` and folds the three email-metadata fields into the
+    # jsonb `email_headers` under the shape the live inbound path already uses.
+    # Deleted per the shrink-only rule — leaving them would be a hole this guard
+    # ignores next time.
 }
 
 CREATE_TABLE_HEAD_RE = re.compile(
@@ -945,21 +921,23 @@ export class ReceivingService {
     )
     # The debt ratchet is shrink-only in BOTH directions, so a clean tree has to
     # contain the debt it excuses — an entry matching nothing is a finding.
+    #
+    # The column here is SYNTHETIC and the self-test injects a matching
+    # KNOWN_BAD_COLUMNS entry for it. It used to borrow whichever real entries
+    # happened to be on the list — first `procurement_conversations.*`, then
+    # `calendar_events.priority`/`.tags` — and each time the last real writer was
+    # repaired, this fixture became the violation and the whole self-test broke
+    # (ADR 0065 removed one arm for exactly this reason; ADR 0070 emptied the
+    # list entirely and broke the rest). A self-test that fails whenever the
+    # debt it borrows is PAID OFF punishes the only change the ratchet exists to
+    # encourage. It is now independent of what the live list holds, including
+    # nothing.
     (root / f"{PROCUREMENT}/debt.ts").write_text(
         "export class Debt {\n"
         "  async writeCalendar() {\n"
         "    await this.db.supabase.from(\"calendar_events\").insert({\n"
         "      restaurant_id: r,\n"
-        "      priority: \"MEDIUM\",\n"
-        "      tags: JSON.stringify({}),\n"
-        "    });\n"
-        "  }\n"
-        "  async logConversation() {\n"
-        "    await this.db.supabase.from(\"procurement_conversations\").insert({\n"
-        "      sender_email: a,\n"
-        "      recipient_email: b,\n"
-        "      subject: c,\n"
-        "      message_body: d,\n"
+        "      zzz_debt_column: 1,\n"
         "    });\n"
         "  }\n"
         "}\n",
@@ -979,6 +957,15 @@ def self_test() -> int:
     def expect(label: str, got: int, want: int) -> None:
         if got != want:
             failures.append(f"{label}: exit {got}, expected {want}")
+
+    # The debt cases below run against a SYNTHETIC entry, never the live list.
+    # See _fixture(). Restored in the finally at the end of this function.
+    real_debt = KNOWN_BAD_COLUMNS
+    globals()["KNOWN_BAD_COLUMNS"] = {
+        "calendar_events.zzz_debt_column": (
+            "synthetic, self-test only — see _fixture(). Never a real debt entry."
+        )
+    }
 
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
@@ -1207,7 +1194,8 @@ def self_test() -> int:
         debt_mig = root / MIGRATIONS / "20260101000000_debt_tables.sql"
         debt_sql = debt_mig.read_text(encoding="utf-8")
         debt_mig.write_text(
-            debt_sql + "alter table public.calendar_events add column priority varchar;\n",
+            debt_sql
+            + "alter table public.calendar_events add column zzz_debt_column int;\n",
             encoding="utf-8",
         )
         code, findings = run(root)
@@ -1215,6 +1203,24 @@ def self_test() -> int:
         if not any("now declares that column" in f for f in findings):
             failures.append(f"satisfied debt entry not reported: {findings}")
         debt_mig.write_text(debt_sql, encoding="utf-8")
+
+        # E7. an EMPTY debt list is a legal state, not a broken one. This is the
+        # real state of the tree as of ADR 0070 — every entry has been paid off —
+        # and nothing asserted it was reachable until the day it arrived and the
+        # self-test failed instead of the guard.
+        debt = root / f"{PROCUREMENT}/debt.ts"
+        debt_src = debt.read_text(encoding="utf-8")
+        empty_before = KNOWN_BAD_COLUMNS
+        try:
+            globals()["KNOWN_BAD_COLUMNS"] = {}
+            debt.write_text("export class Debt {}\n", encoding="utf-8")
+            code, findings = run(root)
+            expect("an empty debt list is clean", code, 0)
+            if findings:
+                failures.append(f"empty debt list reported: {findings}")
+        finally:
+            globals()["KNOWN_BAD_COLUMNS"] = empty_before
+            debt.write_text(debt_src, encoding="utf-8")
 
         # CANNOT CHECK, not PASS: every way the guard can go blind. Each runs
         # against its own fresh tree so one mutation cannot mask the next.
@@ -1260,6 +1266,8 @@ def self_test() -> int:
             ],
         )
 
+    globals()["KNOWN_BAD_COLUMNS"] = real_debt
+
     print("== --self-test: order capture contract")
     if failures:
         for f in failures:
@@ -1285,6 +1293,8 @@ def self_test() -> int:
     print("   a {...spread} payload counts as unreadable, never as zero keys")
     print("   a debt entry nothing writes any more exits 1")
     print("   a debt entry the schema now declares exits 1")
+    print("   an EMPTY debt list is clean, not broken (the state as of ADR 0070)")
+    print("   the debt cases use a synthetic entry, not whatever the live list holds")
     print("   a missing file, a renamed method, or a missing migrations dir exits 2")
     print("PASS")
     return 0

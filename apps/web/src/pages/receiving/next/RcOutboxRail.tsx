@@ -29,12 +29,15 @@ function PinnedDrop({
   label,
   droppedAt,
   exact,
+  tenantUnknown,
   isNew,
   onDismiss,
 }: {
   label: string;
   droppedAt: string;
   exact: boolean;
+  /** Inherited from the pre-scoping global key — restaurant never recorded. */
+  tenantUnknown?: boolean;
   isNew: boolean;
   onDismiss: () => void;
 }) {
@@ -130,6 +133,13 @@ function PinnedDrop({
             candidate, not a certainty.)
           </em>
         )}
+        {tenantUnknown && (
+          <em>
+            {' '}
+            (Pinned before this page recorded which restaurant a drop belonged to, so it is shown
+            here without being claimed as this restaurant's.)
+          </em>
+        )}
       </p>
     </div>
   );
@@ -169,6 +179,7 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
               label={d.label}
               droppedAt={d.droppedAt}
               exact={d.exact}
+              tenantUnknown={d.tenantUnknown}
               isNew={newIds.has(d.id)}
               onDismiss={() => dismissDrop(d.id)}
             />
@@ -256,10 +267,17 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
           marginTop: 8,
         }}
       >
+        {/* Three states, and the middle one is the fix (F4). `flushDoorOutbox`
+            returns {sent:0, failed:0} without touching the network when the
+            device is offline, and stamping that as a sync printed
+            "last sync 14:32 · sent 0 · failed 0" directly under this rail's own
+            header reading "offline — holding". A non-attempt now says so. */}
         <span style={{ fontSize: 10.5, color: 'var(--ink-3, #7C7365)', fontFamily: MONO }}>
-          {lastFlush
-            ? `last sync ${timeShort.format(new Date(lastFlush.at))} · sent ${lastFlush.sent} · failed ${lastFlush.failed}`
-            : 'no sync attempted yet this visit'}
+          {lastFlush === null
+            ? 'no sync attempted yet this visit'
+            : lastFlush.attempted
+              ? `last sync ${timeShort.format(new Date(lastFlush.at))} · sent ${lastFlush.sent} · failed ${lastFlush.failed}`
+              : `holding since ${timeShort.format(new Date(lastFlush.at))} · no sync attempted — offline`}
         </span>
         <button
           type="button"
