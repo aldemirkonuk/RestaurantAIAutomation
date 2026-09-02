@@ -529,6 +529,10 @@ describe("Toast mock data is unreachable in production (ADR 0020)", () => {
         service.getSalesData("r1", new Date(0), new Date(3600000)),
       ).rejects.toThrow(/Failed to fetch sales data from Toast/);
     });
+  });
+});
+
+/**
  * Defect A — the dead orchestrator forward.
  *
  * `forwardToOrchestrator()` POSTed every order and stock webhook to
