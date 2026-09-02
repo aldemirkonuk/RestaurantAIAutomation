@@ -351,6 +351,52 @@ jobs:
           echo "::notice::WHICH price should value inventory is OPEN-DECISIONS OD-100 and is the founder's call. This guard is about not answering it silently -- do not resolve OD-100 by editing resolveUnitCost in a bug-fix PR."
           echo "::notice::CANNOT CHECK (exit 2) means inventory-cost.ts is gone or gutted, nothing was scanned, or no cost basis label is derived any more. That is a move or a rename, not a pass; repoint the guard."
 
+  # ADR 0059: a machine proposal shown to a human is written BEFORE the human
+  # answers, and the answer is APPENDED, never substituted.
+  #
+  # Receiving is the only place in the product where a number is produced by a
+  # person touching an object. Four of its six machine-proposes/human-judges
+  # pairs destroyed the machine's half at the instant it became a label. The
+  # cleanest instance was two lines in documents.controller.ts:
+  #
+  #     // A person confirmed it, so confidence is not a model's estimate any more.
+  #     match_confidence: body?.orderLineId ? 1 : null,
+  #     match_method:     body?.orderLineId ? "manual" : null,
+  #
+  # The comment is CORRECT about live state and the write is still the defect:
+  # the proposal and the confirmation shared two columns, so confirming a
+  # pairing deleted the model's score at the one moment it could never be
+  # reconstructed. Nothing looks wrong in the diff and nothing looks wrong in
+  # the row -- the corpus is simply empty of every case the model got right.
+  #
+  # That is why this is a guard: the violating line is short, plausible,
+  # well-commented, and identical in form to the legitimate write six files
+  # away. A reviewer cannot reliably tell them apart; an allowlist can.
+  #
+  # Stdlib only, no install step. Exit 2 (cannot check) blocks like exit 1.
+  proposal-preservation:
+    name: A proposal is never overwritten by the answer
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: The guard still fires on the shape it exists to catch
+        run: python3 scripts/check_proposal_preservation.py --self-test
+
+      - name: No write outside a declared writer touches a proposal column
+        run: python3 scripts/check_proposal_preservation.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::PROPOSAL OVERWRITTEN means a database write outside the declared writer set assigns a protected column -- match_confidence, match_method, ties_out, tie_out_delta, computed_lines_total, or any proposed_* column."
+          echo "::notice::If the write is the HUMAN'S ANSWER, give the answer its own columns (confirmed_by / confirmed_at, or a proposed_* twin) and leave the machine's half alone. ADR 0059: append, never substitute."
+          echo "::notice::If the write really is a PROPOSAL -- a machine recording its own suggestion -- add the file to ALLOWLIST in scripts/check_proposal_preservation.py with the reason it is one. That edit is the mechanism: it is deliberate, reviewable, and a sentence someone has to be willing to write."
+          echo "::notice::Do NOT widen the allowlist to a directory to make this pass. 'This module may write it' is a much weaker claim than 'this function may', and the weaker claim is how the defect returns."
+          echo "::notice::CANNOT CHECK (exit 2) means the guard scanned nothing, found zero write sites at all, or a declared writer stopped writing the column it is declared for. That is a move or a rename, not a pass; repoint the guard rather than deleting the step."
+          echo "::notice::Context: production held 0 procurement_documents / 0 document_lines / 0 receipt_events when this rule was adopted on 2026-09-01. The corpus being empty is why the rule was free to adopt -- and why a regression is expensive: the proposal half cannot be back-filled from the confirmed half, by construction."
+
   decision-claims:
     name: Decision register matches reality
     runs-on: ubuntu-latest
@@ -483,9 +529,35 @@ jobs:
         if: ${{ !cancelled() }}
         run: ./scripts/check_order_capture_contract.py --self-test
 
+      # COLUMN granularity, which the relation-level guard above explicitly does
+      # not cover (its own docstring: "WHAT IT DOES NOT CATCH: 1. COLUMNS").
+      #
+      # verifyReceipt wrote `notes` to procurement_orders, which has never had a
+      # `notes` column. `?? undefined` meant the key only reached PostgREST when
+      # a manager actually typed a note -- i.e. only when documenting a
+      # discrepancy -- and by then the ledger correction and the vendor credit
+      # claim had already been written. PGRST204 then rejected the whole update,
+      # so status, match_status, accepted_quantity and invoice_* never landed and
+      # the retry failed identically. Nothing else in CI could see it: TypeScript
+      # cannot type a Record<string, any>, and schema-parity compares a database
+      # to a database, where both sides correctly agree the column does not
+      # exist.
+      #
+      # `if: !cancelled()` for the same reason as the steps above.
+      - name: Every key written to procurement_orders is a real column
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_orders_column_writes.py
+
+      - name: The column-write guard can actually fail
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_orders_column_writes.py --self-test
+
       - name: Explain a failure
         if: failure()
         run: |
+          echo "::notice::[column write] means the gateway sends procurement_orders a key that is not one of its columns. PostgREST answers PGRST204 and rejects the ENTIRE update, including every other column in the same payload."
+          echo "::notice::Write it to the column that exists, or add a migration. Do NOT add it to KNOWN_BAD -- that list is shrink-only and records what was already broken when the guard landed."
+          echo "::notice::'blind spot grew' means a payload the guard could not read. Build it as an object literal or a local const; raising DYNAMIC_CEILING silently is how a guard stops covering its own input."
           echo "::notice::[order line capture] means createOrder can produce an order with no procurement_order_items row. matchDocumentLines returns early when an order has no lines, so the whole invoice matching engine goes dark and nothing fails visibly."
           echo "::notice::[unit defaults] means a unit fallback landed on case/pack/split_case. Those MULTIPLY: an absent or misspelt unit books quantity x pack size. ADR 0011 decided this class -- refuse, do not guess."
           echo "::notice::[price_history writer] means the price series has no writer again. The table is correctly keyed and indexed; with no writer it stays empty forever."
@@ -856,6 +928,7 @@ jobs:
         # enforce: a guard nobody depends on can fail while this prints success.
         adr-numbers-unique,
         analytics-cost-honesty,
+        proposal-preservation,
       ]
     steps:
       - name: Checkout code

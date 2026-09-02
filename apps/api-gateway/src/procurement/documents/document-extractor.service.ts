@@ -14,6 +14,39 @@ import {
 import { DocType } from "./document-types";
 
 /**
+ * How long an extraction will wait for its own footprint row id before giving
+ * up and recording no attribution (ADR 0059).
+ *
+ * The emit is already in flight when this is called — the model call it belongs
+ * to has returned — so in the normal case the ref is settled or about to be,
+ * and this never actually waits. It exists for the abnormal case: a footprint
+ * insert that stalls must not stall the extraction. Attribution is the cheap
+ * thing to lose here, and it is the one that gets lost.
+ */
+export const EVENT_ID_WAIT_MS = 2_000;
+
+/** The ref's id, or null if it has not settled within EVENT_ID_WAIT_MS. */
+export async function settledEventId(
+  ref: NfEventRef,
+  waitMs: number = EVENT_ID_WAIT_MS,
+): Promise<string | null> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      ref.id,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), waitMs);
+        // Do not hold the event loop open for an instrument. A process that
+        // is otherwise finished must be allowed to exit.
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
  * DocumentExtractorService — vision extraction for documents that are not EDI.
  *
  * Mirrors the shipped menus/parsers/scan-parser.service.ts pattern, and produces
@@ -168,6 +201,18 @@ export class DocumentExtractorService {
     if (verdict)
       this.nfVerdicts.record(eventRef, RECONCILIATION_BASIS, verdict);
 
+    // ADR 0059 (L6). Carry the footprint row id out with the document so the
+    // extraction can be attributed to the call that produced it.
+    //
+    // BOUNDED, not a plain await. `emit` is fire-and-forget precisely so that
+    // "emission latency never rides a user path" (model-client.service.ts:326),
+    // and the ref settles only when that background insert finishes. Awaiting it
+    // outright would hand the instrument the power to hang the extraction it is
+    // measuring — the exact inversion this module's own comments forbid. So:
+    // wait briefly, then give up and record no attribution. A missing event_id
+    // costs gradability; a hung request costs the delivery.
+    doc.eventId = await settledEventId(eventRef);
+
     return doc;
   }
 
@@ -211,6 +256,10 @@ export class DocumentExtractorService {
         tiesOut: null,
         confidence: 0,
         warnings: ["The extractor did not return readable JSON."],
+        // A model DID run and DID answer — badly. Recording which one is the
+        // whole point on this branch: an unattributed failure cannot be
+        // compared against the same model's successes (ADR 0059).
+        extractionModel: model,
       });
     }
 
@@ -287,6 +336,11 @@ export class DocumentExtractorService {
       // that may have been taken in a stairwell, and the confidence should say so.
       confidence: Math.max(0.1, 0.8 - warnings.length * 0.1),
       warnings,
+      // ADR 0059 (L5). The value was already in hand — `model` is this
+      // function's own parameter and has been logged on the line below since
+      // the spine shipped. It simply never reached the insert, so
+      // `extraction_model` was NULL on every row that ever existed.
+      extractionModel: model,
     };
 
     const withTieOut = applyTieOut(doc);
