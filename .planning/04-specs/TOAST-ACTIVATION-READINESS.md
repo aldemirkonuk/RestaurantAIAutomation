@@ -312,6 +312,6 @@ against production and code on 2026-09-02.
   and re-confirmed absent on both services in production Railway, not merely in `.env`.
 - ❌ "**If Toast: the webhook signing secret + `TOAST_API_KEY` from the Toast dashboard**" —
   **`TOAST_API_KEY` is read by no code in this repository.** The only occurrences are prose:
-  OD-64 at OPEN-DECISIONS.md:46, and REGISTER-AUDIT-2026-08-26.md:293. Asking for it sends
+  OD-64 at OPEN-DECISIONS.md:47, and REGISTER-AUDIT-2026-08-26.md:293. Asking for it sends
   them to a dashboard for a key nothing consumes. The real second item is `TOAST_MOCK_MODE`
   — which no register entry mentions, and which is the actual master switch.
