@@ -72,7 +72,9 @@ export class StorageLocationsService {
       id: row.id,
       name,
       description: row.full_location ?? undefined,
-      capacity: row.capacity_bottles ?? 100,
+      // ADR 0051: a capacity nobody recorded is unknown. `?? 100` handed the
+      // web a fabricated denominator for the cellar map's fill bar.
+      capacity: row.capacity_bottles ?? null,
       current_count: row.current_occupancy ?? 0,
       temperature,
       humidity:
@@ -140,7 +142,10 @@ export class StorageLocationsService {
     const payload: Record<string, unknown> = {
       restaurant_id: restaurantId,
       zone: dto.name ?? "New Location",
-      capacity_bottles: dto.capacity ?? 100,
+      // capacity_bottles is NOT NULL, so this column cannot hold "unknown".
+      // The honest consequence is that the caller must supply one — the DTO
+      // now requires it — rather than the server inventing 100 on their behalf.
+      capacity_bottles: dto.capacity,
       current_occupancy: 0,
       color_code: dto.color ?? "#6b7280",
       notes: dto.notes ?? null,
