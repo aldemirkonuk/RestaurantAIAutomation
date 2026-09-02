@@ -72,12 +72,40 @@ export class ReportsService {
     return this.mapReportRow(data as GeneratedReportRow);
   }
 
-  async listReports(restaurantId: string): Promise<ReportListResponseDto> {
-    const { data, error, count } = await this.databaseService.supabase
+  /**
+   * The newest `limit` reports, plus the EXACT total.
+   *
+   * This read used to be unbounded, so every caller downloaded the whole
+   * table — the Sorting Office to render twenty rows, the legacy page to
+   * render a list. The bound costs the drawers nothing: `count: "exact"` is a
+   * COUNT over the whole filtered set, not over the returned page, so the
+   * register still prints the real total rather than a page length (which is
+   * the mistake ADR 0051 clause 2 exists to stop). The clamp mirrors the
+   * documents controller's, so the two list endpoints bound the same way.
+   */
+  async listReports(
+    restaurantId: string,
+    opts: { limit?: number; offset?: number } = {},
+  ): Promise<ReportListResponseDto> {
+    // Literal bounds, matching documents.controller.ts:117 exactly. They are
+    // literals rather than named constants because the web client's
+    // SO_SERVER_WINDOWS register cites this file by line and
+    // scripts/check_windowed_figures.py re-reads the number here on every CI
+    // run — a cap hidden behind an identifier is a cap that guard cannot see.
+    const limit = Math.min(200, Math.max(1, Math.trunc(opts.limit ?? 100) || 100));
+    const offset = Math.max(0, Math.trunc(opts.offset ?? 0) || 0);
+
+    let query = this.databaseService.supabase
       .from("generated_reports")
       .select("*", { count: "exact" })
       .eq("restaurant_id", restaurantId)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    // `range` carries the offset — and restates the identical limit — so it is
+    // only issued when a caller actually asks for a page past the first.
+    if (offset > 0) query = query.range(offset, offset + limit - 1);
+
+    const { data, error, count } = await query;
 
     if (error) {
       this.logger.error("Failed to list reports", {

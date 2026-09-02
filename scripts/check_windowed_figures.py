@@ -118,13 +118,19 @@ W7  AN IMPORTED QUERY HOOK THE PAGE DEPENDS ON IS ALSO TENANT-KEYED. W6 reads
       holds `useConversations`, whose filter-keyed cache belongs to a different
       page and is not this page's to judge.
 
-SCOPE. Three pages: `apps/web/src/pages/receiving/next`,
-`apps/web/src/pages/receipts/next` and `apps/web/src/pages/communications/next`,
-plus the gateway files their registers cite and the shared query hooks they
-name. Each page declares its own register, renderers and nullable contract in
-PAGES below; adding a fourth page means adding a fourth entry, not a second
-script. A page absent from PAGES is NOT checked, and this guard makes no claim
-about it.
+SCOPE. Four pages: `apps/web/src/pages/receiving/next`,
+`apps/web/src/pages/receipts/next`, `apps/web/src/pages/communications/next`
+and `apps/web/src/pages/documents-reports/next`, plus the gateway files their
+registers cite and the shared query hooks they name. Each page declares its own
+register, renderers and nullable contract in PAGES below; adding a fifth page
+means adding a fifth entry, not a second script. A page absent from PAGES is
+NOT checked, and this guard makes no claim about it.
+
+The Sorting Office (`/documents-reports`) was added after it shipped a routine
+count out of a 100-row timeline window with no `≥` on it, twelve lines below a
+sentence promising the floor rule — while the four drawers and the header
+above it all carried the mark correctly. One figure missed by a reviewer on a
+page whose own prose states the rule is the argument for holding it here.
 
 NEVER VACUOUS
 -------------
@@ -134,6 +140,43 @@ files, the `.limit(` calls inside them, the interfaces W4 reads — is verified 
 exist before any rule is evaluated, because a guard that passes because its
 anchor moved is a green check mark over an unexamined surface. That is how six
 windowed figures shipped as totals in the first place.
+
+REGISTERING A PAGE MEANS GIVING IT FIXTURES — READ THIS BEFORE RESOLVING A
+CONFLICT IN THIS FILE
+-------------------------------------------------------------------------
+Two branches once grew this guard at the same time and each added a different
+fourth page. The naive union — take the newer file, paste in the other side's
+`PageSpec` — parses, covers every rule, and exits 0 against the real tree. Then
+`--self-test` reports `cannot-check` for EVERY case, because `_scaffold` builds
+a synthetic tree with no files for the newly registered page and the exit-2
+branch fires on all of them.
+
+That output is not a broken self-test. It is the self-test STOPPING and SAYING
+SO — the exact behaviour the section above buys, working in our favour. Which
+makes the hazard not the red run but the two ways of turning it green that are
+both worse than leaving it red:
+
+  1. Dropping the page from PAGES. Instant green, bought by shrinking what is
+     checked, with nothing recording that the page left the guard's scope.
+  2. Softening the fixture-less case to exit 0. Also instant green, and it
+     retires the exit-2 branch entirely: from then on ANY page registered
+     without fixtures passes. That is the vacuity this guard family has
+     produced five times, this file's own `"GE" in src` — satisfied by the
+     word `MERGE` — among them.
+
+The resolution is neither. It is to ADD THE FIXTURES: a `CLEAN_*` hook and
+renderer for the page, `CLEAN_*` sources for every gateway file its register
+cites, the `_scaffold` writes for all of them, and one self-test case per rule
+the page actually exercises — including any rule that did not exist when the
+page's own branch was written (W7 is how this happened: the Sorting Office's
+`threadsTotal` and `draftsPending` both live in shared hooks W6 cannot see, and
+a `PageSpec` carrying `imported_query_hooks=()` would have been a green tick
+over both).
+
+And `--self-test` passes only when EVERY CASE passes. The command exiting 0 is
+not the claim; `self_test()` returns 1 on any failure, so read the case lines.
+A green `guard exit=0` against the real tree says nothing about whether the
+guard can still fail — that is what the self-test is for.
 """
 
 from __future__ import annotations
@@ -177,6 +220,7 @@ class PageSpec:
 _RECEIVING = Path("apps/web/src/pages/receiving/next")
 _RECEIPTS = Path("apps/web/src/pages/receipts/next")
 _COMMS = Path("apps/web/src/pages/communications/next")
+_SORTING_OFFICE = Path("apps/web/src/pages/documents-reports/next")
 _QUERY_HOOKS = Path("apps/web/src/hooks/queries/useConversationQueries.ts")
 _DRAFT_HOOKS = Path("apps/web/src/hooks/queries/useDraftEmailQueries.ts")
 
@@ -244,6 +288,42 @@ PAGES = (
             # The conversation book — the page's largest bucket, and the one W6
             # structurally cannot see because it lives in a shared file.
             (_QUERY_HOOKS, "useProcurementConversationHistory"),
+            (_QUERY_HOOKS, "useConversationThreads"),
+            (_DRAFT_HOOKS, "useActiveConversations"),
+        ),
+    ),
+    PageSpec(
+        name="/documents-reports",
+        hooks=_SORTING_OFFICE / "useSortingOfficeData.ts",
+        renderers=(_SORTING_OFFICE / "DocumentsReportsNext.tsx",),
+        register="SO_SERVER_WINDOWS",
+        floor_markers=("GE",),
+        nullable_contract={
+            # Every figure on the Sorting Office is a count, so every one of
+            # them has to be able to say the register did not answer. The page
+            # renders `—` for null and a digit for a measurement, which is the
+            # only thing separating a dead gateway from an empty cellar here.
+            "SortingOfficeData": [
+                "waiting",
+                "reportsTotal",
+                "paperCount",
+                "paperNeedsReviewCount",
+                "threadsTotal",
+                "draftsPending",
+                "timelineCount",
+                "todayRoutine",
+            ],
+        },
+        tenant_tokens=("rid", "restaurantId"),
+        tenant_keyed=True,
+        # W7 did not exist when this page was added, and it is not optional
+        # here: TWO of the eight fields in the contract above —
+        # `threadsTotal` (useSortingOfficeData.ts:352) and `draftsPending`
+        # (:353) — are served entirely from these shared hooks, which live
+        # outside the page tree where W6 structurally cannot reach them.
+        # Leaving this tuple empty would have registered the page while
+        # leaving a quarter of its glance figures unchecked.
+        imported_query_hooks=(
             (_QUERY_HOOKS, "useConversationThreads"),
             (_DRAFT_HOOKS, "useActiveConversations"),
         ),
@@ -808,17 +888,99 @@ export class ProcurementService {
 }
 """
 
+CLEAN_SO_HOOKS = """
+export const SO_SERVER_WINDOWS = {
+  /** documents.controller.ts:117 — `Math.min(200, …)` hard-caps every list. */
+  PAPER: 100,
+  /** logs-timeline.service.ts:99 — `Math.min(200, …)` clamps the feed. */
+  TIMELINE: 100,
+  /** reports.service.ts:95 — `Math.min(200, …)` bounds the report page. */
+  REPORTS: 100,
+} as const;
+
+export interface TodayRoutine {
+  count: number;
+  countCapped: boolean;
+}
+
+export interface SortingOfficeData {
+  waiting: WaitingRow[] | null;
+  reportsTotal: number | null;
+  paperCount: number | null;
+  paperNeedsReviewCount: number | null;
+  threadsTotal: number | null;
+  draftsPending: number | null;
+  timelineCount: number | null;
+  todayRoutine: TodayRoutine | null;
+}
+
+export function useSortingOfficeData(): SortingOfficeData {
+  const rid = useAuth().activeRestaurantId ?? '';
+  const threadsQ = useConversationThreads();
+  const activeQ = useActiveConversations();
+  const reportsQ = useQuery<{ reports: GeneratedReport[]; total: number }>({
+    queryKey: ['sorting-office', 'reports', rid],
+    queryFn: () => listReportsWithTotal({ limit: SO_SERVER_WINDOWS.REPORTS }),
+  });
+  const paperQ = useQuery<ProcurementDocument[]>({
+    queryKey: ['sorting-office', 'paper', rid],
+    queryFn: () => documentsApi.list({ limit: SO_SERVER_WINDOWS.PAPER }),
+  });
+  const timelineQ = useQuery<TimelineResponse>({
+    queryKey: ['sorting-office', 'timeline', rid],
+    queryFn: async () =>
+      apiClient.get(`/logs/timeline/${rid}`, { params: { limit: SO_SERVER_WINDOWS.TIMELINE } }),
+  });
+  return { paperCapped: paper.length >= SO_SERVER_WINDOWS.PAPER };
+}
+"""
+
+CLEAN_SO_RENDERER = """
+import { EM, GE } from './so-format';
+import { SO_SERVER_WINDOWS } from './useSortingOfficeData';
+export function R() {
+  const crossQ = useQuery({ queryKey: ['sorting-office', 'cross-file', rid, report.id], queryFn: f });
+  return (
+    <span title={`at most ${SO_SERVER_WINDOWS.TIMELINE} events`}>
+      {value === null ? EM : `${capped ? GE : ''}${value}`}
+    </span>
+  );
+}
+"""
+
+CLEAN_TIMELINE_GATEWAY = """
+export class LogsTimelineService {
+  async getTimeline(restaurantId: string, opts: { limit?: number } = {}) {
+    const limit = Math.min(200, Math.max(1, opts.limit ?? 50));
+    return this.db.from("pos_checks").select("*").limit(limit);
+  }
+}
+"""
+
+CLEAN_REPORTS_GATEWAY = """
+export class ReportsService {
+  async listReports(restaurantId: string, opts: { limit?: number } = {}) {
+    const limit = Math.min(200, Math.max(1, Math.trunc(opts.limit ?? 100) || 100));
+    return this.supabase.from("generated_reports").select("*", { count: "exact" }).limit(limit);
+  }
+}
+"""
+
 _RCV = PAGES[0]
 _RCP = PAGES[1]
 _CMS = PAGES[2]
+_SO = PAGES[3]
 
 
 def _scaffold(tmp: Path) -> None:
     (tmp / _RCV.hooks.parent).mkdir(parents=True, exist_ok=True)
     (tmp / _RCP.hooks.parent).mkdir(parents=True, exist_ok=True)
     (tmp / _CMS.hooks.parent).mkdir(parents=True, exist_ok=True)
+    (tmp / _SO.hooks.parent).mkdir(parents=True, exist_ok=True)
     (tmp / _QUERY_HOOKS.parent).mkdir(parents=True, exist_ok=True)
     (tmp / GATEWAY_ROOT / "procurement").mkdir(parents=True, exist_ok=True)
+    (tmp / GATEWAY_ROOT / "logs").mkdir(parents=True, exist_ok=True)
+    (tmp / GATEWAY_ROOT / "reports").mkdir(parents=True, exist_ok=True)
     (tmp / _RCV.hooks).write_text(CLEAN_HOOKS, encoding="utf-8")
     for r in _RCV.renderers:
         (tmp / r).write_text(CLEAN_RENDERER, encoding="utf-8")
@@ -828,6 +990,9 @@ def _scaffold(tmp: Path) -> None:
     (tmp / _CMS.hooks).write_text(CLEAN_COMMS_HOOKS, encoding="utf-8")
     for r in _CMS.renderers:
         (tmp / r).write_text(CLEAN_COMMS_RENDERER, encoding="utf-8")
+    (tmp / _SO.hooks).write_text(CLEAN_SO_HOOKS, encoding="utf-8")
+    for r in _SO.renderers:
+        (tmp / r).write_text(CLEAN_SO_RENDERER, encoding="utf-8")
     (tmp / _QUERY_HOOKS).write_text(CLEAN_QUERY_HOOKS, encoding="utf-8")
     (tmp / _DRAFT_HOOKS).write_text(CLEAN_DRAFT_HOOKS, encoding="utf-8")
     (tmp / GATEWAY_ROOT / "procurement" / "receiving.service.ts").write_text(
@@ -839,12 +1004,27 @@ def _scaffold(tmp: Path) -> None:
     (tmp / GATEWAY_ROOT / "procurement" / "procurement.service.ts").write_text(
         CLEAN_PROCUREMENT_GATEWAY, encoding="utf-8"
     )
+    (tmp / GATEWAY_ROOT / "logs" / "logs-timeline.service.ts").write_text(
+        CLEAN_TIMELINE_GATEWAY, encoding="utf-8"
+    )
+    (tmp / GATEWAY_ROOT / "reports" / "reports.service.ts").write_text(
+        CLEAN_REPORTS_GATEWAY, encoding="utf-8"
+    )
 
 
 def self_test() -> int:
     failures: list[str] = []
 
-    def case(name: str, mutate, expect: str) -> None:
+    def case(name: str, mutate, expect: str, expect_text: str | None = None) -> None:
+        """
+        `expect_text` must appear in the reported detail. It exists because a
+        mutation to a SHARED fixture is caught by every page that declares it,
+        so the verdict alone cannot distinguish "this page's declaration is
+        live" from "some other page's declaration caught it and this one is
+        decoration". W7 on /documents-reports is exactly that shape: the two
+        hooks it names are also named by /communications, so without asserting
+        on the message these cases would pass with the declaration deleted.
+        """
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             _scaffold(tmp)
@@ -856,7 +1036,12 @@ def self_test() -> int:
             else:
                 got, detail = verdict(rep), "; ".join(rep.violations())
             ok = got == expect
+            missing = ok and expect_text is not None and expect_text not in detail
+            if missing:
+                ok = False
             print(f"   {'ok  ' if ok else 'FAIL'}  {name}: expected {expect}, got {got}")
+            if missing:
+                print(f"           but no message mentioned {expect_text!r}")
             if detail and (not ok or got != "clean"):
                 print(f"           {detail.splitlines()[0][:150]}")
             if not ok:
@@ -1114,6 +1299,112 @@ def self_test() -> int:
         "cannot-check",
     )
 
+    # ── /documents-reports (the Sorting Office) ──────────────────────────────
+    print("\n-- /documents-reports --\n")
+    case(
+        "W1 the timeline clamp fell below the Sorting Office's declared window",
+        lambda t: (t / GATEWAY_ROOT / "logs" / "logs-timeline.service.ts").write_text(
+            CLEAN_TIMELINE_GATEWAY.replace("Math.min(200", "Math.min(25"), encoding="utf-8"
+        ),
+        "violation",
+    )
+    case(
+        "W1 the reports page bound fell below the Sorting Office's declared window",
+        lambda t: (t / GATEWAY_ROOT / "reports" / "reports.service.ts").write_text(
+            CLEAN_REPORTS_GATEWAY.replace("Math.min(200", "Math.min(20"), encoding="utf-8"
+        ),
+        "violation",
+    )
+    case(
+        "W2 the Sorting Office's floor marker was deleted",
+        lambda t: (t / _SO.renderers[0]).write_text(
+            CLEAN_SO_RENDERER.replace("${capped ? GE : ''}", "").replace(
+                "import { EM, GE } from './so-format';\n", "import { EM } from './so-format';\n"
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W2 a Sorting Office window nobody reads",
+        lambda t: (t / _SO.hooks).write_text(
+            CLEAN_SO_HOOKS.replace("SO_SERVER_WINDOWS.REPORTS", "100"), encoding="utf-8"
+        ),
+        "violation",
+    )
+    case(
+        "W4 the Sorting Office's waiting queue lost its unknown",
+        lambda t: (t / _SO.hooks).write_text(
+            CLEAN_SO_HOOKS.replace("waiting: WaitingRow[] | null;", "waiting: WaitingRow[];"),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W4 the routine roll lost its unknown",
+        lambda t: (t / _SO.hooks).write_text(
+            CLEAN_SO_HOOKS.replace(
+                "todayRoutine: TodayRoutine | null;", "todayRoutine: TodayRoutine;"
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W6 the Sorting Office's cross-file key lost its tenant",
+        lambda t: (t / _SO.renderers[0]).write_text(
+            CLEAN_SO_RENDERER.replace("'cross-file', rid, report.id]", "'cross-file', report.id]"),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W6 sees the Sorting Office's GENERIC-annotated hook queries",
+        # Every query in this hook is `useQuery<T>({`. The matcher that could
+        # not see that form is what made W5 and W6 pass on a file they never
+        # read, so the page that is written entirely in it gets its own case.
+        lambda t: (t / _SO.hooks).write_text(
+            CLEAN_SO_HOOKS.replace("'paper', rid]", "'paper']"), encoding="utf-8"
+        ),
+        "violation",
+    )
+    case(
+        "W3 a Sorting Office register whose unanswered branch is an empty list",
+        lambda t: (t / _SO.hooks).write_text(
+            CLEAN_SO_HOOKS.replace(
+                "  return { paperCapped:",
+                "  return {\n    waiting: known ? rows : [],\n    paperCapped:",
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    # W7 arrived on the other branch, AFTER this page was written. These two
+    # cases assert on the message text, not just the verdict: both hooks are
+    # also declared by /communications, so a verdict-only case would stay green
+    # with this page's `imported_query_hooks` deleted — a case that cannot fail
+    # for the reason it names is the vacuity this file exists to prevent.
+    case(
+        "W7 the shared thread hook is checked FOR THE SORTING OFFICE too",
+        lambda t: (t / _QUERY_HOOKS).write_text(
+            CLEAN_QUERY_HOOKS.replace("'byThread', restaurantId, filters]", "'byThread', filters]"),
+            encoding="utf-8",
+        ),
+        "violation",
+        expect_text="/documents-reports",
+    )
+    case(
+        "W7 the shared drafts hook is checked FOR THE SORTING OFFICE too",
+        lambda t: (t / _DRAFT_HOOKS).write_text(
+            CLEAN_DRAFT_HOOKS.replace(
+                "activeConversationKeys.list(restaurantId)", "activeConversationKeys.all"
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+        expect_text="/documents-reports",
+    )
+
     print("\n-- and CANNOT CHECK must not read as a pass --\n")
     case(
         "the register was deleted",
@@ -1147,6 +1438,36 @@ def self_test() -> int:
     case(
         "the receipts register was deleted",
         lambda t: (t / _RCP.hooks).write_text("export const nothing = 1;\n", encoding="utf-8"),
+        "cannot-check",
+    )
+    case(
+        "the Sorting Office register was deleted",
+        lambda t: (t / _SO.hooks).write_text("export const nothing = 1;\n", encoding="utf-8"),
+        "cannot-check",
+    )
+    case(
+        "the cited timeline service is gone",
+        lambda t: (t / GATEWAY_ROOT / "logs" / "logs-timeline.service.ts").unlink(),
+        "cannot-check",
+    )
+    case(
+        "a Sorting Office nullable field was renamed",
+        lambda t: (t / _SO.hooks).write_text(
+            CLEAN_SO_HOOKS.replace("timelineCount:", "logCount:"), encoding="utf-8"
+        ),
+        "cannot-check",
+    )
+    case(
+        "a registered page with NO fixtures at all reports cannot-check",
+        # The conflict this file's header warns about, as a case. Deleting the
+        # page's whole tree is what a `PageSpec` merged in without fixtures
+        # looks like to `_scaffold`. It must NOT read as a pass — and the
+        # resolution is to add the fixtures, never to soften this branch.
+        lambda t: (
+            (t / _SO.hooks).unlink(),
+            [(t / r).unlink() for r in _SO.renderers],
+        )
+        and None,
         "cannot-check",
     )
     case(
