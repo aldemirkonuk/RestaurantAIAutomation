@@ -1,6 +1,6 @@
 ---
 name: pr-audit-gate
-description: Use before merging ANY PR to main — invoke it directly, or it runs because the require_sonnet_audit PreToolUse hook blocks `gh pr merge`/a direct push to main until it has. Fans out 3 Sonnet auditor angles + a mandatory adversarial pass over the PR's diff and CI reports (ADR 0090); on approval it auto-merges via `gh pr merge --auto`, on block it posts findings and stops. Never call gh pr merge directly — call this skill, it calls gh pr merge for you once it approves.
+description: Use before merging ANY PR to main — invoke it directly, or it runs because the require_pr_audit PreToolUse hook blocks `gh pr merge`/a direct push to main until it has. Fans out 3 Opus auditor angles + a mandatory adversarial pass over the PR's diff and CI reports (ADR 0090 — model corrected from the original "Sonnet max" ask to Opus per ADR 0050's production/ADR/outward-send override); on approval it auto-merges via `gh pr merge --auto`, on block it posts findings and stops. Never call gh pr merge directly — call this skill, it calls gh pr merge for you once it approves.
 ---
 
 # pr-audit-gate
@@ -13,8 +13,8 @@ judgment-class agent in the repo; see ADR 0090 §"Options considered" note on
 ## Trigger
 
 - Manually: `/pr-audit-gate [pr-number]` (defaults to the PR for the current branch).
-- Automatically: the `require_sonnet_audit` `PreToolUse` hook
-  (`scripts/hooks/require_sonnet_audit.py`) blocks any Bash call shaped like
+- Automatically: the `require_pr_audit` `PreToolUse` hook
+  (`scripts/hooks/require_pr_audit.py`) blocks any Bash call shaped like
   `gh pr merge` or a direct `git push` to `main` unless a PASS report already exists
   for the PR's exact head SHA — so attempting to merge without having run this
   skill fails with a message telling you to run it first.
@@ -46,8 +46,8 @@ individually while what they don't cover reaches production — this gate exists
 2. **Confirm existing CI is green first.** `gh pr checks <n>`. This audit is a
    semantic layer on top of green CI, never a replacement for it — if any of the 5
    existing required contexts (`CI Complete`, the 3 schema-parity checks, the
-   beverage/guest-merge checks) are red or pending, stop and say so. Do not spend a
-   Sonnet call auditing a PR that can't merge anyway.
+   beverage/guest-merge checks) are red or pending, stop and say so. Do not spend an
+   Opus call auditing a PR that can't merge anyway.
 3. **Gather the report bundle:**
    - `gh pr diff <n>` — the actual diff.
    - `gh pr checks <n> --json name,state,link` — per-check state and links.
@@ -55,7 +55,7 @@ individually while what they don't cover reaches production — this gate exists
      head SHA's workflow runs, if you can fetch them cheaply. Don't block on a slow
      artifact fetch — note what you couldn't get and let the auditors know.
 4. **Fan out the 3 auditor angles in parallel** — three `Agent` calls,
-   `subagent_type: pr-sonnet-auditor`, each prompt carrying: the FOCUS ANGLE
+   `subagent_type: pr-merge-auditor`, each prompt carrying: the FOCUS ANGLE
    (correctness & regression risk / CLAUDE.md-and-ADR compliance /
    security & production blast-radius), the PR number + head SHA, the diff, and the
    report bundle from step 3. Run them in the same response (independent, no
@@ -64,7 +64,7 @@ individually while what they don't cover reaches production — this gate exists
 5. **If any angle returns BLOCK:** skip the adversarial pass — verdict is BLOCK.
    Go to step 7.
 6. **If all three lean APPROVE / APPROVE WITH NOTES:** spawn one
-   `pr-sonnet-adversary` agent with all three reports + the diff. Its OVERTURNED
+   `pr-merge-adversary` agent with all three reports + the diff. Its OVERTURNED
    verdict wins over the three APPROVEs; its HOLDS verdict makes the overall verdict
    PASS.
 7. **Write the report** to
@@ -84,10 +84,13 @@ individually while what they don't cover reaches production — this gate exists
 ## Known limitations (state these if asked, don't bury them)
 
 - This skill's own fan-out only runs inside a Claude Code session. The
-  `.github/workflows/sonnet-audit-gate.yml` CI job is the backstop for merges that
+  `.github/workflows/pr-audit-gate.yml` CI job is the backstop for merges that
   happen outside one — see ADR 0090 for what that job still needs (an
   `ANTHROPIC_API_KEY` secret, and a founder-approved branch-protection PATCH to make
   it a hard required check rather than advisory).
-- "Sonnet max": `reasoning_effort: max` in the two agent definitions is a
-  best-effort frontmatter signal, not a verified reasoning-budget guarantee — see
-  ADR 0090's decision section.
+- Model choice corrected 2026-09-02: the original ask was "Sonnet max"; ADR 0090
+  now runs `model: opus` / `reasoning_effort: high` per ADR 0050's own override
+  rule (production/ADR/outward-send → Opus, and "never score effort" as a
+  substitute for the tier the consequence calls for). `reasoning_effort: high` in
+  the two agent definitions is a best-effort frontmatter signal, not a verified
+  reasoning-budget guarantee — see ADR 0090's decision section.

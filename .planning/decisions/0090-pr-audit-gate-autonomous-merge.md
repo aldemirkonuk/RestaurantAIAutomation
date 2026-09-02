@@ -1,21 +1,22 @@
-# 0090 — A Sonnet audit gate reviews every PR before it merges to main, and an approval merges + deploys with no human click
+# 0090 — An Opus audit gate reviews every PR before it merges to main, and an approval merges + deploys with no human click
 
 - **Status:** Proposed (founder answered the two forks live via `AskUserQuestion` on
   2026-09-02; formal lock is a separate founder action per this log's convention —
   see Review trail)
 - **Date:** 2026-09-02
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
-- **Keywords:** audit, merge-gate, autonomous-deploy, sonnet, branch-protection, ci,
-  agent-stack, judgment-class
+- **Keywords:** audit, merge-gate, autonomous-deploy, opus, branch-protection, ci,
+  agent-stack, judgment-class, model-dispatch
 - **Links:** [[main-is-branch-protected]], [[merge-races-need-sequencing]],
-  [[agent-dispatch-hardness-threshold]] (0050), [[absence-reported-as-health]],
-  ADR 0072 (schema-parity-sees-what-it-claims), the fork-PR precedent it set for
-  secret-gated required checks
+  [[agent-dispatch-hardness-threshold]] (0050 — governs the model correction below),
+  [[absence-reported-as-health]], ADR 0072 (schema-parity-sees-what-it-claims), the
+  fork-PR precedent it set for secret-gated required checks
 
 ## Context
 
-The founder asked for a standing gate: before any PR merges to `main`, a Sonnet-based
-audit reviews the CI reports and diff, and on approval the PR merges and ships to
+The founder asked for a standing gate: before any PR merges to `main`, an
+Opus-based audit (originally asked as "Sonnet max"; corrected same day — see
+Decision) reviews the CI reports and diff, and on approval the PR merges and ships to
 production with **no human confirming in the moment**. This repo currently has ~90
 concurrent branches/worktrees in flight (`git worktree list` at time of writing, ~628
 refs seen by the ADR-number guard) — the volume that makes a manual per-PR review step
@@ -84,17 +85,17 @@ Ship both layers, gated on the founder's two live answers ("both" locations, "fu
 autonomous" merge), with the autonomy scoped as narrowly as those answers allow:
 
 - **Claude Code side:** `.claude/skills/pr-audit-gate/SKILL.md` orchestrates 3
-  Sonnet auditor subagents (`.claude/agents/pr-sonnet-auditor.md`, fanned out across
+  auditor subagents (`.claude/agents/pr-merge-auditor.md`, fanned out across
   correctness/regression, CLAUDE.md-and-ADR compliance, and
   security/blast-radius angles) plus a mandatory adversarial pass
-  (`.claude/agents/pr-sonnet-adversary.md`) on any approve-leaning verdict — the
+  (`.claude/agents/pr-merge-adversary.md`) on any approve-leaning verdict — the
   fan-out-then-adversary shape CLAUDE.md §3 already requires for any decision this
-  weighty. A `PreToolUse` hook (`scripts/hooks/require_sonnet_audit.py`) blocks any
+  weighty. A `PreToolUse` hook (`scripts/hooks/require_pr_audit.py`) blocks any
   Bash call shaped like `gh pr merge` or a direct push to `main` unless a passing
   audit report exists for that exact PR head SHA — this is the "you call it, make it
   a constraint" half of the request: I cannot skip it from inside a session.
-- **CI side:** `.github/workflows/sonnet-audit-gate.yml` runs the same fan-out as
-  four Anthropic Messages API calls (`scripts/sonnet_audit_gate.py`), gated on the
+- **CI side:** `.github/workflows/pr-audit-gate.yml` runs the same fan-out as
+  four Anthropic Messages API calls (`scripts/pr_audit_gate.py`), gated on the
   PR's existing 5 required checks having already gone green (this is a semantic
   layer on top of green CI, never a replacement for it). On approval it runs
   `gh pr merge --auto --squash` — GitHub's native auto-merge, which waits on the
@@ -105,13 +106,25 @@ autonomous" merge), with the autonomy scoped as narrowly as those answers allow:
   health).
 - Both write the same report shape to `.planning/07-reference/pr-audits/`.
 
-**"Sonnet max"**, taken literally: the Agent tool's `model` param only accepts
-`sonnet`/`opus`/`haiku`/`fable`, and the mapping from "max" to a concrete effort
-knob is not documented where I could verify it. Both agent definitions carry
-`reasoning_effort: max` in frontmatter as a best-effort signal (harmless if the
-harness ignores unknown frontmatter keys) and instruct uncapped depth in prose; the
-CI-side script requests extended thinking with a large token budget as the closest
-verifiable equivalent. This is stated as a limitation, not a verified guarantee.
+**Model corrected from "Sonnet max" to Opus, same day, before merge.** The
+original ask specified Sonnet at maximum reasoning effort. [[agent-dispatch-hardness-threshold]]
+(ADR 0050, locked) already answers this: it scores model dispatch on judgment +
+consequence, ≤3 Sonnet / ≥4 Opus, with an explicit override to Opus for
+**auth, production, ADRs, or outward sends** — and "never score effort" as a
+substitute for the tier the consequence calls for. This role hits three of
+those four overrides at once (it is itself an ADR's implementation, it decides
+what reaches production, and its output is an outward send — a merge + deploy).
+Sonnet-at-max-effort was not a defensible reading of the repo's own locked
+dispatch rule; Opus is. Within Opus, effort is set to **high** rather than
+"max": ADR 0050 governs model *tier*, not effort, and a per-PR CI gate calling
+this on every push needs a bounded, predictable latency/cost — "high" is the
+practical ceiling, not "max" run unboundedly on every merge forever. Both
+agent definitions carry `reasoning_effort: high` in frontmatter as a
+best-effort signal (harmless if the harness ignores unknown frontmatter keys);
+the mapping from "high" to a concrete effort knob is not documented where I
+could verify it. The CI-side script requests extended thinking with a bounded
+token budget as the closest verifiable equivalent. This is stated as a
+limitation, not a verified guarantee.
 
 ## Consequences
 
@@ -120,12 +133,17 @@ verifiable equivalent. This is stated as a limitation, not a verified guarantee.
 - What becomes harder / given up: a bad audit call now ships to production
   unattended. The adversarial pass and fail-closed error handling are the
   mitigations; they are not a proof of safety.
-- **What this does NOT yet do:** it does not add `Sonnet Audit Gate` to `main`'s
+- **What this does NOT yet do:** it does not add `PR Audit Gate` to `main`'s
   required status contexts (that PATCH is a persistent-config change needing
   explicit founder permission per this session's operating rules — command is
-  ready, not run) and it does not have an `ANTHROPIC_API_KEY` secret yet (the
-  founder has to add it; `gh secret set ANTHROPIC_API_KEY` or the GitHub UI). Until
-  both happen, the CI half posts findings and will still attempt its own
+  ready, not run) and, as of 2026-09-02, it does not yet have an
+  `ANTHROPIC_API_KEY` **Actions secret** — the founder has the key in a local,
+  gitignored `.env`, which is a different store: GitHub Actions reads only its
+  own secret store, never a repo's `.env` file, and I do not read a credential's
+  value out of `.env` and enter it anywhere myself (prohibited regardless of
+  authorization). The founder still needs to run
+  `gh secret set ANTHROPIC_API_KEY` (or the GitHub UI) themselves. Until both
+  happen, the CI half posts findings and will still attempt its own
   `gh pr merge --auto`, but nothing stops a merge that bypasses this workflow
   entirely — only the Claude-side hook is a hard constraint, and only inside a
   Claude Code session.
@@ -147,3 +165,4 @@ verifiable equivalent. This is stated as a limitation, not a verified guarantee.
 |---|---|---|
 | 2026-09-02 | Aldemir (via `AskUserQuestion`) | Both enforcement layers; fully autonomous merge — answered live, this ADR records it |
 | 2026-09-02 | — | Created; status left `Proposed` pending the founder's explicit lock per this log's own convention |
+| 2026-09-02 | Aldemir (chat) | Asked "sonnet ultrathink or opus high" — corrected model from "Sonnet max" to **Opus / high** per ADR 0050's own override rule, before merge. Files/branding renamed off "sonnet" to match (`pr-merge-{auditor,adversary}.md`, `pr-audit-gate.yml`, `pr_audit_gate.py`, `require_pr_audit.py`) |

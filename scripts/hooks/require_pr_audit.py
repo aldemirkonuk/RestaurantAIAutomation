@@ -14,7 +14,7 @@ already follow: absence of evidence is a FAILURE (exit 2), not a pass.
 
 Usage: invoked by Claude Code itself, not by hand. To exercise it manually:
     echo '{"tool_name": "Bash", "tool_input": {"command": "gh pr merge 42"}}' \
-        | python3 scripts/hooks/require_sonnet_audit.py
+        | python3 scripts/hooks/require_pr_audit.py
 """
 from __future__ import annotations
 
@@ -77,7 +77,7 @@ def main() -> int:
         # malformed payload from the harness itself is not evidence this PR was
         # audited, but blocking every single Bash call on a parse failure would
         # make the hook itself the outage. Log loudly instead.
-        print("require_sonnet_audit: could not parse hook payload, allowing "
+        print("require_pr_audit: could not parse hook payload, allowing "
               "(this hook only restricts merge commands, nothing else)",
               file=sys.stderr)
         return 0
@@ -127,7 +127,7 @@ def main() -> int:
             "BLOCK-verdict PR by hand."
         )
 
-    _allow(f"require_sonnet_audit: PASS report found for PR #{pr_number} at {sha7}, allowing.")
+    _allow(f"require_pr_audit: PASS report found for PR #{pr_number} at {sha7}, allowing.")
     return 0
 
 

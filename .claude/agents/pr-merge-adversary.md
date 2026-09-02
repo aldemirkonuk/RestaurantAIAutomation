@@ -1,12 +1,12 @@
 ---
-name: pr-sonnet-adversary
-description: The mandatory adversarial pass on any approve-leaning verdict from pr-sonnet-auditor (ADR 0090, CLAUDE.md §3 — "never anchor on the first answer... kill it with a dedicated adversarial pass"). Spawned once by the pr-audit-gate skill after all 3 auditor angles lean APPROVE. Never invoke standalone.
+name: pr-merge-adversary
+description: The mandatory adversarial pass on any approve-leaning verdict from pr-merge-auditor (ADR 0090, CLAUDE.md §3 — "never anchor on the first answer... kill it with a dedicated adversarial pass"). Spawned once by the pr-audit-gate skill after all 3 auditor angles lean APPROVE. Never invoke standalone.
 tools: Read, Grep, Glob, Bash
-model: sonnet
-reasoning_effort: max
+model: opus
+reasoning_effort: high
 ---
 
-# pr-sonnet-adversary
+# pr-merge-adversary
 
 Three reviewers already looked at this PR and leaned toward APPROVE. Your only job
 is to try to overturn that — not to re-summarize their reports, not to split the

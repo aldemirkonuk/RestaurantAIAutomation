@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ADR 0090 — the CI-side half of the pre-merge audit gate.
 
-Two modes, run as separate workflow steps (.github/workflows/sonnet-audit-gate.yml):
+Two modes, run as separate workflow steps (.github/workflows/pr-audit-gate.yml):
 
     --wait-upstream   poll main's 5 pre-existing required contexts until they
                        reach a terminal state (bounded wait); writes
@@ -10,8 +10,8 @@ Two modes, run as separate workflow steps (.github/workflows/sonnet-audit-gate.y
                        a replacement for it — it does not run at all if upstream
                        CI hasn't already passed.
 
-    --audit           fan out 3 Sonnet angles + 1 mandatory adversarial pass
-                       (mirrors .claude/agents/pr-sonnet-{auditor,adversary}.md,
+    --audit           fan out 3 Opus angles + 1 mandatory adversarial pass
+                       (mirrors .claude/agents/pr-merge-{auditor,adversary}.md,
                        since this path can't use the Agent tool's subagent
                        framework — it's plain Anthropic API calls instead) over
                        the PR diff + check states, write the report, comment on
@@ -47,10 +47,12 @@ REQUIRED_CONTEXTS = [
 MAX_WAIT_SECONDS = 20 * 60  # bounded — see merge-races-need-sequencing: never poll forever
 POLL_INTERVAL_SECONDS = 30
 
-MODEL = "claude-sonnet-5"
-# "sonnet max" taken as the closest verifiable, CI-cost-bounded proxy for
-# uncapped reasoning effort — see ADR 0090's decision section for why this is
-# stated as a limitation rather than a guarantee.
+MODEL = "claude-opus-5"
+# Corrected 2026-09-02: the original ask was "Sonnet max"; ADR 0050 (locked)
+# overrides to Opus for production/ADR/outward-send consequence, all three of
+# which this role hits, and says never substitute effort for the model tier
+# that calls for. THINKING_BUDGET_TOKENS is a bounded, CI-cost-aware proxy for
+# "high" effort, not a verified reasoning-budget guarantee — see ADR 0090.
 THINKING_BUDGET_TOKENS = 8000
 MAX_TOKENS = 12000
 
@@ -237,7 +239,7 @@ def run_audit(pr_number: str) -> int:
     report_path.write_text("\n".join(lines))
 
     comment_body = (
-        f"## Sonnet Audit Gate — {overall}\n\n"
+        f"## PR Audit Gate — {overall}\n\n"
         f"Full report: `{report_path.relative_to(ROOT)}`\n\n"
         + "\n".join(f"- **{a}**: {v}" for a, v in angle_verdicts.items())
         + (f"\n- **adversarial pass**: {_verdict_of(adversary_report)}" if adversary_report else "")
@@ -262,7 +264,7 @@ def _fail_closed(pr_number: str, sha7: str | None, reason: str) -> int:
     (REPORT_DIR / name).write_text(
         f"# PR #{pr_number} audit\n\n**VERDICT: COULD NOT RUN**\n\n{reason}\n"
     )
-    body = f"## Sonnet Audit Gate — COULD NOT RUN\n\n{reason}\n\nNot merging — see ADR 0090."
+    body = f"## PR Audit Gate — COULD NOT RUN\n\n{reason}\n\nNot merging — see ADR 0090."
     _run(["gh", "pr", "comment", pr_number, "--body", body])
     print(f"CANNOT CHECK: {reason}", file=sys.stderr)
     return 1

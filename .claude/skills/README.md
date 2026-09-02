@@ -7,7 +7,9 @@ Skills live here — auto-discovered by Claude Code, committed, and reviewable i
 the §3.3 gate — `fleet-census`, `harness-contract-audit`, `model-pin-census`,
 `registry-index-refresh`) each wrap `scripts/agents/run_card.py`, a *mechanical*
 (no model call) card runner per ADR 0034. `pr-audit-gate` (2026-09-02, ADR 0090) is
-the first **judgment-class** skill — it calls Sonnet, and deliberately does not
+the first **judgment-class** skill — it calls Opus (corrected from the original
+"Sonnet max" ask per ADR 0050's production/ADR/outward-send override), and
+deliberately does not
 run through `run_card.py`, which is mechanical-only by design (see that script's
 own docstring) and stays that way so it never biases the open OD-03 harness
 choice. The census is `python3 scripts/agents/run_card.py --agent registry-clerk`

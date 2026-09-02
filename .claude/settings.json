@@ -9,7 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/hooks/require_sonnet_audit.py"
+            "command": "python3 scripts/hooks/require_pr_audit.py"
           }
         ]
       }
