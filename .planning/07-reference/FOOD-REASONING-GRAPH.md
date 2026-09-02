@@ -1,9 +1,9 @@
 ---
 type: reference
 title: Food Reasoning Graph
-status: adversarially verified 2026-08-31 — layer model locked by ADR 0048; per-layer state is point-in-time
-updated: 2026-08-31
-links: ["[[0048-domain-quant-under-research-math]]", "[[DISH_IDENTITY_DESIGN]]", "[[ANALYTICS_FEATURE_CATALOG]]", "[[research-math-charter]]", "[[backtests-charter]]", "[[OPEN-DECISIONS]]"]
+status: adversarially verified 2026-08-31 — layer model locked by ADR 0048; per-layer state is point-in-time. §3/§L5 L5-inventory rows re-measured and corrected 2026-09-02 (ADR 0069); the "zero callers" claim was wrong when written
+updated: 2026-09-02
+links: ["[[0048-domain-quant-under-research-math]]", "[[0069-service-level-is-derived-not-asserted]]", "[[DISH_IDENTITY_DESIGN]]", "[[ANALYTICS_FEATURE_CATALOG]]", "[[research-math-charter]]", "[[backtests-charter]]", "[[OPEN-DECISIONS]]"]
 ---
 
 # The food-reasoning graph — what must be computed, in what order
@@ -195,11 +195,33 @@ onto one date.
 
 ### L5 — Decision
 
-**Inventory.** Newsvendor with a critical ratio computed from real overage/underage
-costs — not the hardcoded `serviceLevel = 0.95` that currently asserts `Cu/Co = 19`
-for every SKU. Plus case-pack constraints (you cannot order 1.4 cases), shelf life,
-and per-vendor lead-time variance — which is *already computed* in the repo and never
-passed to the safety-stock function that accepts it. The cheapest correctness win.
+**Inventory.** ~~Newsvendor with a critical ratio computed from real overage/underage
+costs — not the hardcoded `serviceLevel = 0.95`… plus case-pack constraints, shelf
+life, and per-vendor lead-time variance, already computed and never passed.~~
+**Done 2026-09-02, [[0069-service-level-is-derived-not-asserted]].** The service
+level is the per-SKU critical ratio Cu/(Cu+Co); the lead-time mean *and* standard
+deviation are measured from delivered `procurement_orders` and both reach the King
+formula, whose `leadTimeStdev` is now required and explicitly nullable so no caller
+can omit it again. Proof it was genuinely unwired, measured on the pre-fix tree:
+with demand, costs and mean lead time held fixed and only the dispersion moved
+(σ_LT = 0 vs ≈ 5.37d), safety stock was **identical to the last digit**.
+
+Two of the four are **refused rather than implemented, because the data is not
+there** — the functions exist and are tested, and return a named reason on every
+production row:
+
+- **Case pack.** Nothing reachable from `restaurant_inventory` records one.
+  `vendor_price_observations.pack_size` and `vendor_price_list_items.pack_size` are
+  `integer DEFAULT 1 NOT NULL`, so **an unrecorded pack is stored as a single and
+  cannot be told from a real one**. Reading them would report an absence as a
+  measurement — the fault this vault has measured nine times over.
+- **Shelf life.** No shelf-life, expiry or best-before column exists on any
+  inventory table. The only `valid_until` in the schema is a vendor-promotion end
+  date.
+
+What remains at L5 inventory is therefore **cost coverage, not maths**: ~70 of 72
+production rows have no recorded cost, so most rows now honestly report
+`serviceLevel: null`. That is OD-100's question, not this layer's.
 
 **Pricing.** Elasticity is a **category-level, partially-pooled, cross-tenant**
 estimand, never per-dish. Pinning one dish to ±0.5 at 95% needs ~960 units per arm at
@@ -292,7 +314,7 @@ to run first.
 | L2 BOM | **Absent in the repo**; a public-domain prior of the right shape exists (FNDDS, 18,584 rows / 5,431 dishes) | The keystone — but seeded, not from zero |
 | L3 variance | **Unreachable** | Requires L2 |
 | L4 demand | Primitives correct; plumbing leaks (UTC bucketing, write-time filter, in-sample backtest) | Method commitments in §L4 |
-| L5 inventory | Built, **zero callers**, hardcoded service level | Lane A |
-| L5 pricing | Best module in the repo, **fully unwired** | Lane A |
+| L5 inventory | **Wired 2026-09-02** ([[0069-service-level-is-derived-not-asserted]]). ~~Built, zero callers, hardcoded service level~~ — the "zero callers" half was **wrong when written**: `getInventoryScience` had 4 of 4 non-test call sites (the HTTP route + `advanced-analytics`, `consultants`, `recommendations`), none passing an option. The *unwired* half was right and worse than stated: `serviceLevel` is now the per-SKU critical ratio Cu/(Cu+Co), `leadTimeStdev` is measured and passed, and a SKU missing an input reports `null` + a reason instead of borrowing a constant | Cost coverage — ~70 of 72 production rows have no recorded cost, so most rows now report `serviceLevel: null` (OD-100) |
+| L5 pricing | **Still fully unwired — re-verified 2026-09-02.** `analyzePricing`, `estimateElasticity`, `priceForMargin`, `admissiblePoints` have **0 callers outside `pricing-agility.spec.ts`**; `engine/index.ts:28,41` re-exports the module and nothing imports it. Nothing reads `menu_price_versions` either — the table exists (`20260805123951_pricing_agility.sql`) and its only mention in TypeScript is a comment | Lane A, **plus OD-115**: elasticity is a partially-pooled estimand and cross-tenant pooling is contractually unrecorded |
 | L5 menu | Live path median-splits while citing Kasavana–Smith; no sample-size gate | — |
 | L6 validation | Ledger migrated, **nothing writes to it**; no backtest of any numeric claim | Backtests team's entry trigger |

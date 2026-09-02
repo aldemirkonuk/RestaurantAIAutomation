@@ -1,7 +1,11 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import * as E from "./engine";
-import { AnalyticsService } from "./analytics.service";
+import {
+  ANNUAL_HOLDING_RATE,
+  AnalyticsService,
+  ORDERING_COST_PER_PO,
+} from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
 import {
@@ -306,6 +310,9 @@ export class AdvancedAnalyticsService {
             86400000,
         )
         .filter((d) => d >= 0 && d < 120);
+      // Same derivation the safety-stock path uses, from the same pure
+      // function, so the two surfaces cannot quote different σ_LT.
+      const ltProfile = E.leadTimeProfile(leadTimes);
       const onTime = delivered.filter(
         (o) =>
           o.expected_delivery_date &&
@@ -332,11 +339,11 @@ export class AdvancedAnalyticsService {
         delivered: delivered.length,
         spend,
         leadTimeDays: {
-          mean: E.mean(leadTimes),
+          mean: ltProfile?.meanDays ?? null,
           median: E.median(leadTimes),
           p90: E.percentile(leadTimes, 90),
-          stdev: E.stdev(leadTimes, true),
-          n: leadTimes.length,
+          stdev: ltProfile?.stdevDays ?? null,
+          n: ltProfile?.n ?? 0,
         },
         onTimeRate: withEta > 0 ? onTime / withEta : null,
         unitPrice: {
@@ -355,7 +362,7 @@ export class AdvancedAnalyticsService {
         hhi: E.herfindahlIndex(spendShare),
         effectiveVendors: E.effectiveCount(spendShare),
       },
-      note: "Lead-time stdev feeds the King safety-stock formula (leadTimeStdev param on /inventory-science).",
+      note: "Lead-time stdev feeds the King safety-stock formula. It is now actually passed: /inventory-science derives σ_LT from the same deliveries via E.leadTimeProfile and includes the d̄²·σ_LT² term. Until 2026-09-02 this sentence described a wire that did not exist.",
       generatedAt: new Date().toISOString(),
     };
   }
@@ -494,13 +501,14 @@ export class AdvancedAnalyticsService {
   // =========================================================================
 
   async getWine360(restaurantId: string, masterWineId: string) {
-    const [inventory, consumption, forecast] = await Promise.all([
+    const [inventory, consumption, forecast, orders] = await Promise.all([
       this.loadInventoryWithCost(restaurantId),
       this.loadConsumption(restaurantId, 90),
       this.analyticsService.getDemandForecast(restaurantId, {
         masterWineId,
         horizon: 14,
       }),
+      this.loadOrders(restaurantId, 365),
     ]);
     const item = inventory.find((i) => i.masterWineId === masterWineId);
     const mine = consumption.filter((c) => c.wineId === masterWineId);
@@ -517,13 +525,51 @@ export class AdvancedAnalyticsService {
     );
     const standing = standings.find((s) => s.entity === masterWineId);
 
+    // Lead time from this restaurant's own deliveries, not the literal 7 that
+    // used to sit here. σ_LT is passed, which is the whole point.
+    const ltProfile = E.leadTimeProfile(
+      orders
+        .filter((o) => hasStatus(o.status, ORDER_ARRIVED_STATUSES))
+        .filter((o) => o.delivered_at && o.created_at)
+        .map(
+          (o) =>
+            (new Date(o.delivered_at).getTime() -
+              new Date(o.created_at).getTime()) /
+            86400000,
+        )
+        .filter((d) => d >= 0 && d < 120),
+    );
+    const leadTime = ltProfile?.meanDays ?? null;
+
+    // Service level from this wine's economics, not from a literal 0.95.
+    const annualDemand = profile ? profile.mean * 365 : 0;
+    const holdingPerUnit =
+      item?.unitCost == null ? null : item.unitCost * ANNUAL_HOLDING_RATE;
+    const eoq =
+      annualDemand > 0 && holdingPerUnit != null && holdingPerUnit > 0
+        ? E.eoq(annualDemand, ORDERING_COST_PER_PO, holdingPerUnit)
+        : null;
+    // EOQ's cycleTime is in years, because annualDemand is annual.
+    const cycleDays = eoq === null ? null : eoq.cycleTime * 365;
+    // `menu_price_current` is coerced with `|| 0` in loadInventoryWithCost, so
+    // a 0 is an absent price, not a free bottle.
+    const menuPrice =
+      item?.unitPrice != null && item.unitPrice > 0 ? item.unitPrice : null;
+    const derivedSl = E.serviceLevelFromCosts({
+      unitPrice: menuPrice,
+      unitCost: item?.unitCost ?? null,
+      annualHoldingRate: ANNUAL_HOLDING_RATE,
+      cycleDays,
+    });
+
     const rop =
-      profile && profile.mean > 0
+      profile && profile.mean > 0 && derivedSl.ok && leadTime != null
         ? E.reorderPoint({
-            serviceLevel: 0.95,
+            serviceLevel: derivedSl.serviceLevel,
             avgDemandPerPeriod: profile.mean,
             demandStdev: profile.stdev,
-            avgLeadTime: 7,
+            avgLeadTime: leadTime,
+            leadTimeStdev: ltProfile?.stdevDays ?? null,
           })
         : null;
 
@@ -538,7 +584,18 @@ export class AdvancedAnalyticsService {
           ? `${COST_BASIS_LABEL[item.costBasis]}${item.unitCost == null ? " — unitCost and marginPerBottle are null (ADR 0051)" : ""}`
           : "wine not found in active inventory",
         unitPrice: "restaurant_inventory.menu_price_current",
+        serviceLevel: derivedSl.ok
+          ? `newsvendor critical ratio Cu/(Cu+Co) = ${derivedSl.serviceLevel.toFixed(4)} (Cu $${derivedSl.underageCost.toFixed(2)}, Co $${derivedSl.overageCost.toFixed(4)} over a ${derivedSl.cycleDays.toFixed(1)}d cycle)`
+          : `unavailable — ${derivedSl.reason}; reorderPoint and safetyStock are null rather than computed at an asserted service level`,
+        leadTime:
+          leadTime == null
+            ? "no delivered orders with both timestamps in 365d — reorderPoint and stockoutProbability are null"
+            : `measured mean ${leadTime.toFixed(2)}d over ${ltProfile?.n ?? 0} delivered order(s); σ_LT ${ltProfile?.stdevDays == null ? "UNMEASURED (n < 2), so safety stock omits the d̄²·σ_LT² term and is a lower bound" : `${ltProfile.stdevDays.toFixed(2)}d, included`}`,
       },
+      serviceLevel: derivedSl.ok ? derivedSl.serviceLevel : null,
+      leadTimeDays: leadTime,
+      leadTimeStdevDays: ltProfile?.stdevDays ?? null,
+      leadTimeVarianceIncluded: rop?.leadTimeVarianceIncluded ?? null,
       onHand: item?.qty ?? null,
       unitPrice: item?.unitPrice ?? null,
       unitCost: item?.unitCost ?? null,
@@ -550,12 +607,12 @@ export class AdvancedAnalyticsService {
           ? E.daysOfCover(item.qty, profile.mean)
           : null,
       stockoutProbability:
-        item && profile
+        item && profile && leadTime != null
           ? E.stockoutProbability({
               onHand: item.qty,
               avgDemandPerPeriod: profile.mean,
               demandStdev: profile.stdev,
-              leadTime: 7,
+              leadTime,
             })
           : null,
       reorderPoint: rop?.reorderPoint ?? null,

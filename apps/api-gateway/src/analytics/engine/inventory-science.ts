@@ -149,23 +149,57 @@ export function eoq(
  * per period, σ_LT = lead-time stdev. This is the statistically correct
  * safety stock most POS systems get wrong by ignoring lead-time variance.
  *
- * @param serviceLevel cycle service level, e.g. 0.95
+ * WHY `leadTimeStdev` IS REQUIRED AND NULLABLE
+ * --------------------------------------------
+ * It used to be `leadTimeStdev?: number`, defaulting to 0. That default is the
+ * σ_LT²-term silently vanishing: every caller in the repo omitted it, so the
+ * "statistically correct safety stock most POS systems get wrong by ignoring
+ * lead-time variance" was, in this repo, computed by ignoring lead-time
+ * variance. The measurement existed the whole time — `getVendorScorecard`
+ * computes per-vendor lead-time stdev and its own payload note said it "feeds
+ * the King safety-stock formula" — it was simply never passed.
+ *
+ * An optional parameter cannot distinguish "lead time is perfectly reliable"
+ * (σ_LT = 0, a real measurement) from "nobody measured it" (σ_LT unknown), and
+ * those produce the same number while meaning opposite things. So the parameter
+ * is now required and explicitly nullable: `null` means unmeasured, and the
+ * result is a demand-only LOWER BOUND that `reorderPoint` labels as such.
+ *
+ * @param serviceLevel cycle service level in (0,1) — no default; see
+ *   `serviceLevelFromCosts` for deriving one from real overage/underage costs.
+ * @param leadTimeStdev σ_LT in the same period units as `avgLeadTime`, or
+ *   `null` when lead-time variance has not been measured.
  */
 export function safetyStock(params: {
   serviceLevel: number;
   avgDemandPerPeriod: number;
   demandStdev: number;
   avgLeadTime: number;
-  leadTimeStdev?: number;
+  leadTimeStdev: number | null;
 }): number | null {
   const z = serviceLevelZ(params.serviceLevel);
   if (z === null) return null;
+  // null → the term drops out, but reorderPoint reports that it did.
   const sigmaLT = params.leadTimeStdev ?? 0;
+  if (!Number.isFinite(sigmaLT) || sigmaLT < 0) return null;
   const variance =
     params.avgLeadTime * params.demandStdev ** 2 +
     params.avgDemandPerPeriod ** 2 * sigmaLT ** 2;
   if (variance < 0) return null;
   return z * Math.sqrt(variance);
+}
+
+export interface ReorderPointResult {
+  reorderPoint: number;
+  safetyStock: number;
+  leadTimeDemand: number;
+  /**
+   * False when `leadTimeStdev` was null — the σ_LT² term is absent, so
+   * `safetyStock` is a lower bound on the correct figure, not the figure.
+   * A caller that prints the number without printing this is reporting an
+   * unmeasured input as a measured zero.
+   */
+  leadTimeVarianceIncluded: boolean;
 }
 
 /**
@@ -177,12 +211,8 @@ export function reorderPoint(params: {
   avgDemandPerPeriod: number;
   demandStdev: number;
   avgLeadTime: number;
-  leadTimeStdev?: number;
-}): {
-  reorderPoint: number;
-  safetyStock: number;
-  leadTimeDemand: number;
-} | null {
+  leadTimeStdev: number | null;
+}): ReorderPointResult | null {
   const ss = safetyStock(params);
   if (ss === null) return null;
   const leadTimeDemand = params.avgDemandPerPeriod * params.avgLeadTime;
@@ -190,6 +220,235 @@ export function reorderPoint(params: {
     reorderPoint: leadTimeDemand + ss,
     safetyStock: ss,
     leadTimeDemand,
+    leadTimeVarianceIncluded: params.leadTimeStdev != null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Lead-time observation profile
+// ---------------------------------------------------------------------------
+
+export interface LeadTimeProfile {
+  /** Mean observed order→delivery time, in days. */
+  meanDays: number;
+  /**
+   * Sample standard deviation, or `null` with fewer than two observations.
+   * `null` is not 0: one delivery tells you nothing about variability, and
+   * reporting 0 there is the exact error this module exists to avoid.
+   */
+  stdevDays: number | null;
+  /** Observations the profile was built from. */
+  n: number;
+}
+
+/**
+ * Build a lead-time profile from observed order→delivery durations in days.
+ *
+ * Pure, so the same derivation can back both the vendor scorecard and the
+ * safety-stock call without the two drifting apart — which is how the
+ * scorecard ended up computing a σ_LT that nothing consumed.
+ */
+export function leadTimeProfile(
+  observedDays: number[],
+): LeadTimeProfile | null {
+  const clean = observedDays.filter((d) => Number.isFinite(d) && d >= 0);
+  if (clean.length === 0) return null;
+  const m = mean(clean);
+  if (m === null) return null;
+  return { meanDays: m, stdevDays: stdev(clean, true), n: clean.length };
+}
+
+// ---------------------------------------------------------------------------
+// Service level from real costs — the critical ratio
+// ---------------------------------------------------------------------------
+
+export type ServiceLevelUnavailableReason =
+  /** No usable menu price, so the margin lost per unit short is unknown. */
+  | "unit_price_unknown"
+  /** No recorded cost (ADR 0051) — both Cu and Co need it. */
+  | "unit_cost_unknown"
+  /** Price ≤ cost: the item loses money per unit sold, so Cu ≤ 0. */
+  | "underage_not_positive"
+  /** Co ≤ 0 (e.g. an invoiced cost of exactly 0 — a sample bottle). */
+  | "overage_not_positive"
+  /** No replenishment cycle length, so holding cost per cycle is unknown. */
+  | "cycle_length_unknown";
+
+export interface ServiceLevelFromCosts {
+  ok: true;
+  /**
+   * Cu / (Cu + Co) — the newsvendor critical ratio, used as the cycle service
+   * level. Strictly inside (0,1), so `serviceLevelZ` is always finite.
+   */
+  serviceLevel: number;
+  /** Cu — contribution margin forgone on one unit of unmet demand. */
+  underageCost: number;
+  /** Co — cost of carrying one excess unit for one replenishment cycle. */
+  overageCost: number;
+  /** The cycle Co was accrued over. */
+  cycleDays: number;
+}
+
+export interface ServiceLevelUnavailable {
+  ok: false;
+  reason: ServiceLevelUnavailableReason;
+}
+
+export type ServiceLevelResult =
+  | ServiceLevelFromCosts
+  | ServiceLevelUnavailable;
+
+/**
+ * Derive a cycle service level from what over- and under-stocking actually
+ * cost, instead of asserting one.
+ *
+ *   Cu = unitPrice − unitCost      margin lost on a unit of unmet demand
+ *   Co = unitCost × h × cycle/365  cost of holding one excess unit a cycle
+ *   CR = Cu / (Cu + Co)
+ *
+ * A hardcoded 0.95 is not a policy, it is a claim: it asserts Cu/Co = 19 for
+ * every SKU simultaneously. On a bottle costing $20, held at 26%/yr on a
+ * 30-day cycle, Co ≈ $0.43, so 0.95 asserts a lost margin of $8.12 on every
+ * item — true for some of the list and false for the rest, and never checked.
+ *
+ * Returns a REASON rather than a number when an input is missing. There is no
+ * fallback constant here on purpose (ADR 0051): a service level invented to
+ * keep a column populated is exactly the fabrication the null exists to
+ * prevent, and it propagates into an order quantity someone will pay for.
+ */
+export function serviceLevelFromCosts(params: {
+  unitPrice: number | null;
+  unitCost: number | null;
+  /** Fraction of unit value per year: capital + storage + spoilage. */
+  annualHoldingRate: number;
+  /** Length of one replenishment cycle in days (e.g. EOQ cycle time × 365). */
+  cycleDays: number | null;
+}): ServiceLevelResult {
+  const { unitPrice, unitCost, annualHoldingRate, cycleDays } = params;
+  if (unitCost == null || !Number.isFinite(unitCost))
+    return { ok: false, reason: "unit_cost_unknown" };
+  // `menu_price_current` is coerced with `|| 0` upstream, so 0 here means
+  // "no price recorded", not "given away free".
+  if (unitPrice == null || !Number.isFinite(unitPrice) || unitPrice <= 0)
+    return { ok: false, reason: "unit_price_unknown" };
+  if (cycleDays == null || !Number.isFinite(cycleDays) || cycleDays <= 0)
+    return { ok: false, reason: "cycle_length_unknown" };
+
+  const underageCost = unitPrice - unitCost;
+  if (underageCost <= 0) return { ok: false, reason: "underage_not_positive" };
+
+  const overageCost = carryingCost(unitCost, annualHoldingRate, cycleDays);
+  // Co = 0 sends the critical ratio to exactly 1 and z to infinity. It happens
+  // for real: receiving records sample bottles at an invoiced cost of 0.
+  if (!(overageCost > 0)) return { ok: false, reason: "overage_not_positive" };
+
+  return {
+    ok: true,
+    serviceLevel: underageCost / (underageCost + overageCost),
+    underageCost,
+    overageCost,
+    cycleDays,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Order-shaping constraints — case packs and shelf life
+// ---------------------------------------------------------------------------
+
+export type PackRoundingResult =
+  | {
+      ok: true;
+      /** Whole packs to order. */
+      packs: number;
+      /** packs × unitsPerPack — what will actually arrive. */
+      units: number;
+      unitsPerPack: number;
+      /** units − requested; always ≥ 0. */
+      overshoot: number;
+    }
+  | { ok: false; reason: "pack_size_unknown" | "bad_quantity" };
+
+/**
+ * Round an order quantity up to whole purchase units. You cannot order 1.4
+ * cases.
+ *
+ * Refuses when the pack size is unknown, matching
+ * `procurement/order-units.ts:173-183`: guessing 12 orders twelve times the
+ * intent, guessing 1 orders a twelfth of it, and neither is knowledge. Note
+ * that the vendor tables store `pack_size integer DEFAULT 1 NOT NULL`, so an
+ * unknown pack size arrives from the database looking like a single — the
+ * caller, not this function, has to know whether its 1 was recorded or
+ * defaulted.
+ */
+export function roundUpToPack(
+  requestedUnits: number,
+  unitsPerPack: number | null,
+): PackRoundingResult {
+  if (!Number.isFinite(requestedUnits) || requestedUnits < 0)
+    return { ok: false, reason: "bad_quantity" };
+  if (
+    unitsPerPack == null ||
+    !Number.isFinite(unitsPerPack) ||
+    !Number.isInteger(unitsPerPack) ||
+    unitsPerPack < 1
+  )
+    return { ok: false, reason: "pack_size_unknown" };
+  const packs = Math.ceil(requestedUnits / unitsPerPack);
+  const units = packs * unitsPerPack;
+  return {
+    ok: true,
+    packs,
+    units,
+    unitsPerPack,
+    overshoot: units - requestedUnits,
+  };
+}
+
+export type ShelfLifeCapResult =
+  | {
+      ok: true;
+      /** min(proposed, what will sell before it spoils). */
+      cappedUnits: number;
+      /** True when shelf life, not demand, set the quantity. */
+      capped: boolean;
+      /** avgDailyDemand × shelfLifeDays. */
+      unitsSoldWithinShelfLife: number;
+    }
+  | { ok: false; reason: "shelf_life_unknown" | "demand_unknown" };
+
+/**
+ * Cap an order at what will sell before it spoils.
+ *
+ * TYPED SEAM, NOT A LIVE CONSTRAINT. Nothing in this repo records shelf life:
+ * `restaurant_inventory` has no shelf-life, expiry or best-before column, and
+ * the only `valid_until` in the schema is a vendor-promotion end date
+ * (`supabase/migrations/20260807001252_distributor_geo_foundation.sql:123`).
+ * So every caller today passes `null` and gets `shelf_life_unknown`. The
+ * function exists so that the day a shelf-life column lands there is one
+ * place to wire it, and so the absence is visible in the payload rather than
+ * silently equivalent to "nothing ever spoils".
+ */
+export function shelfLifeCap(params: {
+  proposedUnits: number;
+  avgDailyDemand: number;
+  shelfLifeDays: number | null;
+}): ShelfLifeCapResult {
+  const { proposedUnits, avgDailyDemand, shelfLifeDays } = params;
+  if (
+    shelfLifeDays == null ||
+    !Number.isFinite(shelfLifeDays) ||
+    shelfLifeDays <= 0
+  )
+    return { ok: false, reason: "shelf_life_unknown" };
+  if (!Number.isFinite(avgDailyDemand) || avgDailyDemand <= 0)
+    return { ok: false, reason: "demand_unknown" };
+  const unitsSoldWithinShelfLife = avgDailyDemand * shelfLifeDays;
+  const cappedUnits = Math.min(proposedUnits, unitsSoldWithinShelfLife);
+  return {
+    ok: true,
+    cappedUnits,
+    capped: cappedUnits < proposedUnits,
+    unitsSoldWithinShelfLife,
   };
 }
 

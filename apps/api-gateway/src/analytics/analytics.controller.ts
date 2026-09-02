@@ -128,18 +128,20 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Inventory-science replenishment analytics",
     description:
-      "Per-SKU EOQ, dynamic safety stock, reorder point, stockout probability, days-of-cover, and ABC-XYZ classification.",
+      "Per-SKU EOQ, dynamic safety stock, reorder point, stockout probability, days-of-cover, and ABC-XYZ classification. The cycle service level is DERIVED per SKU as the newsvendor critical ratio Cu/(Cu+Co) from menu price, recorded cost and holding rate; rows missing an input report serviceLevel: null with a reason rather than borrowing one. Lead time and its standard deviation are measured from delivered procurement_orders.",
   })
   @ApiParam({ name: "restaurantId", description: "Restaurant UUID" })
   @ApiQuery({
     name: "serviceLevel",
     required: false,
-    description: "Cycle service level 0-1 (default 0.95)",
+    description:
+      "Override the derived critical ratio with an explicit cycle service level, strictly between 0 and 1. Applies to every row and is labelled `caller_specified` in the payload. There is NO default: omitting it means each SKU uses its own Cu/(Cu+Co), and a SKU that cannot produce one reports null.",
   })
   @ApiQuery({
     name: "leadTimeDays",
     required: false,
-    description: "Average vendor lead time in days (default 7)",
+    description:
+      "Override the measured mean lead time, in days. The measured standard deviation is still used for the King formula's variance term. Omit to use the mean measured from delivered orders; with no delivered orders the reorder science reports null.",
   })
   async getInventoryScience(
     @Param("restaurantId") restaurantId: string,

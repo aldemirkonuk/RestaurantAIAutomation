@@ -151,10 +151,18 @@ export class RecommendationsService {
       "stockout_imminent",
       (reorderTop?.stockoutProbability ?? 0) > 0.4,
       () => ({
-        observation: `${reorderTop.name} has a ${pct(reorderTop.stockoutProbability)} chance of stocking out before a 7-day replenishment (on hand: ${reorderTop.onHand}).`,
-        recommendation: `Place the order today — reorder point is ${Math.ceil(reorderTop.reorderPoint ?? 0)} bottles. If the vendor is slow, split the order across two vendors.`,
-        rationale:
-          "Stockout probability is computed from this wine's own demand variance; above 40%, waiting for the weekly order cycle usually means an empty slot on the list.",
+        // "a 7-day replenishment" used to be written here as a fact. It was
+        // an echo of the `leadTimeDays ?? 7` literal that getInventoryScience
+        // no longer carries: lead time is now measured from this restaurant's
+        // own deliveries, so the sentence quotes the measurement.
+        observation: `${reorderTop.name} has a ${pct(reorderTop.stockoutProbability)} chance of stocking out before a ${(ctx.invSci?.params?.leadTimeDays ?? 0).toFixed(1)}-day replenishment, this restaurant's measured mean over ${ctx.invSci?.params?.leadTimeObservations ?? 0} delivered order(s) (on hand: ${reorderTop.onHand}).`,
+        // A null reorder point printed as `?? 0` would read "reorder point is
+        // 0 bottles" — a fabricated instruction. Say which trigger fired.
+        recommendation:
+          reorderTop.reorderPoint != null
+            ? `Place the order today — reorder point is ${Math.ceil(reorderTop.reorderPoint)} bottles. If the vendor is slow, split the order across two vendors.`
+            : `Place the order today — it is under the reorder threshold set for it. A computed reorder point is not available for this wine (${reorderTop.serviceLevelBasis ?? "service level unavailable"}), so the trigger is the recorded threshold, not the safety-stock maths.`,
+        rationale: `Stockout probability is computed from this wine's own demand variance over the measured lead time; above 40%, waiting for the next order cycle usually means an empty slot on the list.${reorderTop.leadTimeVarianceIncluded === false ? " Lead-time variance is unmeasured (fewer than two deliveries on record), so the safety stock behind this is a lower bound." : ""}`,
         category: "inventory",
         urgency: "now",
         score: 3,

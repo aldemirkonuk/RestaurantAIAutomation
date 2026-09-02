@@ -7,7 +7,33 @@ import {
   resolveUnitCost,
   summarizeCostBasis,
 } from "./inventory-cost";
-import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
+import {
+  ORDER_ARRIVED_STATUSES,
+  ORDER_SPEND_STATUSES,
+  hasStatus,
+} from "../procurement/order-status";
+
+/**
+ * Fraction of a unit's value consumed per year by holding it: capital cost +
+ * storage + insurance + spoilage.
+ *
+ * Exported because two services now need the SAME number. It is an input to
+ * the newsvendor overage cost Co, so two copies drifting apart would make two
+ * endpoints recommend different order quantities for one bottle and give no
+ * clue why.
+ */
+export const ANNUAL_HOLDING_RATE = 0.26;
+
+/**
+ * Fixed cost of raising one purchase order. An assumption, and since the
+ * service level became cost-derived, a load-bearing one: it sets the EOQ, the
+ * EOQ sets the replenishment cycle, and the cycle sets Co in the critical
+ * ratio Cu/(Cu+Co). Surfaced in `/inventory-science`'s `params` so a reader
+ * can see the input rather than having to find this line. Whether it should be
+ * per-restaurant is a genuine open question, not a drive-by — see ADR 0069,
+ * "An open fork this ADR deliberately did not file".
+ */
+export const ORDERING_COST_PER_PO = 25;
 
 /**
  * AnalyticsService — the quantitative heart of WineOps.
@@ -56,7 +82,8 @@ export interface PosConsumptionRow {
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
-  private readonly HOLDING_RATE = 0.26; // capital+storage+spoilage, %/yr
+  private readonly HOLDING_RATE = ANNUAL_HOLDING_RATE;
+  private readonly ORDERING_COST = ORDERING_COST_PER_PO;
 
   constructor(private readonly dbService: DatabaseService) {}
 
@@ -160,6 +187,56 @@ export class AnalyticsService {
       bottles: o.bottles_total || o.quantity || 0,
       date: (o.delivered_at || o.created_at || "").substring(0, 10),
     }));
+  }
+
+  /**
+   * Observed order→delivery durations, in days, for the King safety-stock
+   * formula's σ_LT term.
+   *
+   * `loadDeliveredOrders` above already reads this table but discards both
+   * timestamps in its projection, so the durations were not recoverable from
+   * it. This loader exists rather than widening that one because its callers
+   * (COGS, spend) must not start paying for columns they do not read.
+   *
+   * Returns per-order rows, not a summary: `inventory_id` is carried so a
+   * future per-SKU lead time can be derived without another query, even though
+   * only the pooled restaurant-level profile is consumed today (see
+   * `getInventoryScience`).
+   */
+  private async loadLeadTimeObservations(
+    restaurantId: string,
+    sinceDays = 365,
+  ) {
+    const client = this.dbService.getClient();
+    const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
+    const { data, error } = await client
+      .from("procurement_orders")
+      .select("inventory_id, created_at, delivered_at, status")
+      .eq("restaurant_id", restaurantId)
+      .gte("created_at", since);
+    if (error)
+      this.logger.error(
+        `analytics query on procurement_orders (lead time) failed — safety ` +
+          `stock will report its lead-time variance as UNMEASURED rather ` +
+          `than as zero: ${error.code ?? "?"} ${error.message ?? error}`,
+      );
+    return (data || [])
+      .filter((o: any) => hasStatus(o.status, ORDER_ARRIVED_STATUSES))
+      .map((o: any) => ({
+        inventoryId: o.inventory_id ?? null,
+        // Same window and same sanity bounds as getVendorScorecard, so the
+        // two surfaces cannot quote different lead times for one restaurant.
+        days:
+          o.delivered_at && o.created_at
+            ? (new Date(o.delivered_at).getTime() -
+                new Date(o.created_at).getTime()) /
+              86400000
+            : null,
+      }))
+      .filter(
+        (o): o is { inventoryId: string | null; days: number } =>
+          o.days !== null && o.days >= 0 && o.days < 120,
+      );
   }
 
   private async loadConsumption(restaurantId: string, sinceDays = 90) {
@@ -510,18 +587,76 @@ export class AnalyticsService {
   // 2. Inventory science — per-SKU replenishment & classification
   // =========================================================================
 
+  /**
+   * Per-SKU replenishment science.
+   *
+   * TWO ASSERTED CONSTANTS WERE REMOVED HERE, AND THEY WERE NOT THE SAME KIND
+   * OF THING.
+   *
+   * `serviceLevel = 0.95` looked like a policy default and was not one. A
+   * cycle service level of 0.95 is the newsvendor critical ratio Cu/(Cu+Co) =
+   * 0.95, i.e. the assertion that being one unit short costs exactly 19× what
+   * holding one spare unit costs — for every SKU on the list at once, from a
+   * $12 house pour to a $400 collectible. Nobody chose that ratio; it was a
+   * literal. It is now derived per SKU from the menu price, the recorded cost
+   * and the holding rate (`E.inventory.serviceLevelFromCosts`), and where an
+   * input is missing the row reports `serviceLevel: null` with the reason
+   * rather than borrowing a number (ADR 0051).
+   *
+   * `leadTimeDays = 7` was a placeholder for a quantity the repo measures.
+   * Delivered `procurement_orders` carry `created_at` and `delivered_at`, and
+   * `getVendorScorecard` has been computing the mean AND the standard
+   * deviation of that duration all along — its payload note even says the
+   * stdev "feeds the King safety-stock formula". It never reached it. Both
+   * moments now come from `loadLeadTimeObservations`.
+   *
+   * WHAT THIS COSTS. Rows that cannot produce a critical ratio lose
+   * `reorderPoint` and `safetyStock` — they used to carry numbers computed at
+   * the asserted 0.95, which is worse than carrying none. They keep everything
+   * that does not depend on a service level (days of cover, stockout
+   * probability, XYZ class), and `needsReorder` falls back to the operator's
+   * own `threshold_min`, which is recorded data rather than a substitute
+   * guess.
+   */
   async getInventoryScience(
     restaurantId: string,
     opts: { serviceLevel?: number; leadTimeDays?: number } = {},
   ) {
-    const serviceLevel = opts.serviceLevel ?? 0.95;
-    const leadTime = opts.leadTimeDays ?? 7;
     const sinceDays = 90;
 
-    const [inventory, consumption] = await Promise.all([
+    const [inventory, consumption, leadTimeObs] = await Promise.all([
       this.loadInventory(restaurantId),
       this.loadConsumption(restaurantId, sinceDays),
+      this.loadLeadTimeObservations(restaurantId),
     ]);
+
+    // ---- Lead time: measured from deliveries, or stated, or unknown. -------
+    const measuredLeadTime = E.inventory.leadTimeProfile(
+      leadTimeObs.map((o) => o.days),
+    );
+    const statedLeadTime =
+      opts.leadTimeDays != null &&
+      Number.isFinite(opts.leadTimeDays) &&
+      opts.leadTimeDays > 0
+        ? opts.leadTimeDays
+        : null;
+    const leadTime = statedLeadTime ?? measuredLeadTime?.meanDays ?? null;
+    // THE WIRING. `leadTimeStdev` is the σ_LT that advanced-analytics has been
+    // computing and discarding. It stays measured even when the caller
+    // overrides the mean: dispersion is a property of the delivery process,
+    // not of whatever mean the caller wants to model.
+    const leadTimeStdev = measuredLeadTime?.stdevDays ?? null;
+
+    // A caller may still state a service level (the endpoint exposes it as a
+    // query param) — an operator overriding the maths is a decision, not a
+    // fabrication. What is gone is the code doing it silently on their behalf.
+    const statedServiceLevel =
+      opts.serviceLevel != null &&
+      Number.isFinite(opts.serviceLevel) &&
+      opts.serviceLevel > 0 &&
+      opts.serviceLevel < 1
+        ? opts.serviceLevel
+        : null;
 
     // Demand series per master wine.
     const demandByWine = new Map<
@@ -543,28 +678,77 @@ export class AnalyticsService {
         stdev: 0,
         cv: null,
       };
-      const rop = E.inventory.reorderPoint({
-        serviceLevel,
-        avgDemandPerPeriod: profile.mean,
-        demandStdev: profile.stdev,
-        avgLeadTime: leadTime,
-      });
-      const stockoutProb = E.inventory.stockoutProbability({
-        onHand: i.qty,
-        avgDemandPerPeriod: profile.mean,
-        demandStdev: profile.stdev,
-        leadTime,
-      });
       const doc = E.inventory.daysOfCover(i.qty, profile.mean);
       const annualDemand = profile.mean * 365;
-      const orderingCost = 25; // fixed cost per PO (assumption; configurable)
       // EOQ's holding term is a fraction of unit cost. With no cost there is
       // no holding cost and therefore no order quantity to state.
       const holdingPerUnit =
         i.unitCost == null ? null : i.unitCost * this.HOLDING_RATE;
       const eoq =
         annualDemand > 0 && holdingPerUnit != null && holdingPerUnit > 0
-          ? E.inventory.eoq(annualDemand, orderingCost, holdingPerUnit)
+          ? E.inventory.eoq(annualDemand, this.ORDERING_COST, holdingPerUnit)
+          : null;
+      // EOQ's cycleTime is in the demand series' period, and annualDemand is
+      // annual — so it is in years. The overage cost is what one spare unit
+      // costs to hold for exactly one of these cycles.
+      const cycleDays = eoq ? eoq.cycleTime * 365 : null;
+
+      // The critical ratio, per SKU, from this SKU's own economics.
+      const derivedSl = E.inventory.serviceLevelFromCosts({
+        // `menu_price_current` is coerced with `|| 0` in loadInventory, so a 0
+        // is an absent price, not a free bottle.
+        unitPrice: i.unitPrice > 0 ? i.unitPrice : null,
+        unitCost: i.unitCost,
+        annualHoldingRate: this.HOLDING_RATE,
+        cycleDays,
+      });
+      const serviceLevel =
+        statedServiceLevel ?? (derivedSl.ok ? derivedSl.serviceLevel : null);
+      const serviceLevelBasis: string =
+        statedServiceLevel != null
+          ? "caller_specified"
+          : derivedSl.ok
+            ? "critical_ratio Cu/(Cu+Co)"
+            : `unavailable — ${derivedSl.reason}`;
+
+      const rop =
+        serviceLevel != null && leadTime != null
+          ? E.inventory.reorderPoint({
+              serviceLevel,
+              avgDemandPerPeriod: profile.mean,
+              demandStdev: profile.stdev,
+              avgLeadTime: leadTime,
+              // The orphaned measurement, finally connected.
+              leadTimeStdev,
+            })
+          : null;
+      const stockoutProb =
+        leadTime == null
+          ? null
+          : E.inventory.stockoutProbability({
+              onHand: i.qty,
+              avgDemandPerPeriod: profile.mean,
+              demandStdev: profile.stdev,
+              leadTime,
+            });
+
+      // You cannot order 1.4 cases. Nothing reachable from this row records a
+      // pack size, so this is a refusal today rather than a rounding — see
+      // `basis.orderQuantity`.
+      const packed = E.inventory.roundUpToPack(eoq?.eoq ?? 0, null);
+      // Nothing in the schema records shelf life either.
+      const shelfLife = E.inventory.shelfLifeCap({
+        proposedUnits: eoq?.eoq ?? 0,
+        avgDailyDemand: profile.mean,
+        shelfLifeDays: null,
+      });
+
+      // A trigger, or an honest absence — never `false` standing in for
+      // "we could not tell", which is what the old `rop ? … : false` did.
+      const needsReorder = rop
+        ? i.qty <= rop.reorderPoint
+        : i.thresholdMin > 0
+          ? i.qty <= i.thresholdMin
           : null;
 
       return {
@@ -575,12 +759,27 @@ export class AnalyticsService {
         demandCv: profile.cv,
         xyzClass: E.inventory.xyzClassify(profile.cv),
         daysOfCover: doc,
+        serviceLevel,
+        serviceLevelBasis,
+        underageCost: derivedSl.ok ? derivedSl.underageCost : null,
+        overageCost: derivedSl.ok ? derivedSl.overageCost : null,
         reorderPoint: rop?.reorderPoint ?? null,
         safetyStock: rop?.safetyStock ?? null,
+        leadTimeVarianceIncluded: rop?.leadTimeVarianceIncluded ?? null,
         stockoutProbability: stockoutProb,
         eoq: eoq?.eoq ?? null,
-        needsReorder: rop ? i.qty <= rop.reorderPoint : false,
+        orderQuantity: packed.ok ? packed.units : null,
+        orderQuantityBlockedBy: packed.ok ? null : packed.reason,
+        shelfLifeCappedQuantity: shelfLife.ok ? shelfLife.cappedUnits : null,
+        shelfLifeBlockedBy: shelfLife.ok ? null : shelfLife.reason,
+        needsReorder,
+        reorderTriggerBasis: rop
+          ? "king_reorder_point"
+          : i.thresholdMin > 0
+            ? "operator_threshold_min"
+            : "none",
         unitCost: i.unitCost,
+        unitPrice: i.unitPrice > 0 ? i.unitPrice : null,
         costBasis: i.costBasis,
         inventoryValue: i.inventoryValue,
         abcClass: null as "A" | "B" | "C" | null,
@@ -605,25 +804,65 @@ export class AnalyticsService {
     }
 
     const reorderList = skus
-      .filter((s) => s.needsReorder)
+      // `needsReorder` is now tri-state; only a measured `true` is a reorder.
+      .filter((s) => s.needsReorder === true)
       .sort(
         (a, b) => (b.stockoutProbability ?? 0) - (a.stockoutProbability ?? 0),
       );
 
+    const derivedSlCount = skus.filter(
+      (s) => s.serviceLevelBasis === "critical_ratio Cu/(Cu+Co)",
+    ).length;
+
     return {
       params: {
-        serviceLevel,
+        // No single service level any more — it is per SKU. `null` here when
+        // the caller did not state one is the honest shape: the old scalar
+        // 0.95 in this position was the whole defect, printed.
+        serviceLevel: statedServiceLevel,
+        serviceLevelSource:
+          statedServiceLevel != null
+            ? "caller_specified"
+            : "per-SKU critical ratio; see skus[].serviceLevel",
         leadTimeDays: leadTime,
+        leadTimeStdevDays: leadTimeStdev,
+        leadTimeObservations: measuredLeadTime?.n ?? 0,
         demandWindowDays: sinceDays,
+        annualHoldingRate: this.HOLDING_RATE,
+        orderingCostPerPo: this.ORDERING_COST,
       },
       // This endpoint carried no `basis` at all, which made its cost-derived
       // columns unreadable: nothing said where `inventoryValue` came from.
       basis: {
         demand: `wine_consumption_log units/day over ${sinceDays}d`,
-        reorderScience: `King safety stock at serviceLevel ${serviceLevel}, lead time ${leadTime}d — demand-derived, unaffected by cost`,
+        serviceLevel:
+          statedServiceLevel != null
+            ? `caller-specified ${statedServiceLevel} applied to every row`
+            : `newsvendor critical ratio Cu/(Cu+Co) per SKU, where Cu = menu_price_current − recorded cost and Co = cost × ${this.HOLDING_RATE}/yr over the EOQ cycle — derivable for ${derivedSlCount} of ${skus.length} row(s); the rest carry serviceLevel: null and a reason (ADR 0051). NOT a 0.95 default: that literal asserted Cu/Co = 19 for every SKU.`,
+        leadTime:
+          leadTime == null
+            ? "no delivered procurement_orders with both created_at and delivered_at in the trailing 365d — mean lead time is unknown, so reorderPoint and stockoutProbability are null for every row"
+            : `${statedLeadTime != null ? "caller-specified" : "measured"} mean ${leadTime.toFixed(2)}d from ${measuredLeadTime?.n ?? 0} delivered order(s)`,
+        leadTimeVariance:
+          leadTimeStdev == null
+            ? "UNMEASURED — fewer than two delivered orders, so σ_LT is undefined. Safety stock omits the d̄²·σ_LT² term and is therefore a LOWER BOUND, flagged per row as leadTimeVarianceIncluded: false."
+            : `σ_LT = ${leadTimeStdev.toFixed(2)}d over ${measuredLeadTime?.n ?? 0} delivered order(s), included in the King formula's d̄²·σ_LT² term`,
+        reorderScience:
+          "King safety stock SS = z·sqrt(LT·σ_d² + d̄²·σ_LT²); z from the per-SKU critical ratio, so unlike before this IS cost-dependent",
+        orderQuantity:
+          "skus[].orderQuantity is null on every row: case-pack rounding needs a pack size, and nothing reachable from restaurant_inventory records one. vendor_price_observations.pack_size exists but is `integer DEFAULT 1 NOT NULL`, so an unrecorded pack is stored as a single and cannot be told from a real one — reading it would report an absence as a measurement. skus[].eoq is the unrounded quantity.",
+        shelfLife:
+          "skus[].shelfLifeCappedQuantity is null on every row: no shelf-life, expiry or best-before column exists in the schema. The seam is wired to E.inventory.shelfLifeCap and needs only a column.",
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
         costDerived:
-          "skus[].inventoryValue, skus[].unitCost and skus[].eoq are null for any row with no recorded cost; skus[].abcClass is null for EVERY row unless the whole cellar is priced, because ABC cuts on share of a total (ADR 0051)",
+          "skus[].inventoryValue, skus[].unitCost, skus[].eoq, skus[].serviceLevel, skus[].reorderPoint and skus[].safetyStock are null for any row with no recorded cost; skus[].abcClass is null for EVERY row unless the whole cellar is priced, because ABC cuts on share of a total (ADR 0051)",
+      },
+      serviceLevelCoverage: {
+        total: skus.length,
+        derived: derivedSlCount,
+        stated: statedServiceLevel != null ? skus.length : 0,
+        unavailable:
+          statedServiceLevel != null ? 0 : skus.length - derivedSlCount,
       },
       costCoverage,
       skuCount: skus.length,
