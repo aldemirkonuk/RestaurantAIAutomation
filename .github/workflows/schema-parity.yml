@@ -108,7 +108,8 @@ jobs:
       - name: Explain a failure
         if: failure()
         run: |
-          echo "::notice::If the log names fk_repoint_plan or a PASS assertion, this is the ADR 0076 behavioural check, not drift — see ci.yml's 'fk repoint' notices."
+          echo "::notice::Read WHICH step failed before reading this. A 'PASS shape/accounting/refusal/merge' line missing, or psql erroring under 'A catalog-driven repoint works', is the ADR 0076 behavioural check — see ci.yml's 'fk repoint' notices, not the drift advice below."
+          echo "::notice::fk_repoint_plan / fk_repoint_blockers listed under IN LOCAL, NOT IN REMOTE is NOT that check failing. It is ADR 0076's migration not yet pushed, which is what every unmerged migration looks like here, and it clears on merge."
           echo "::notice::If the log says 'Network is unreachable', this is CONNECTIVITY, not drift —"
           echo "::notice::see scripts/check_db_reachable.sh. Otherwise:"
           echo "::notice::Local and remote schemas disagree."
