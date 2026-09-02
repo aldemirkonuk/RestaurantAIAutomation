@@ -65,7 +65,7 @@ opencv-python==4.9.0.80  # Image processing
 # disabled itself. requirements only said torch>=2.4.1, so a fresh venv resolved
 # torch 2.13 and broke label detection with nothing but a warning in the log.
 ultralytics==8.3.253
-pillow==10.2.0  # Image manipulation
+pillow==12.3.0  # Image manipulation
 pytesseract==0.3.10  # Alternative OCR backend
 pytz==2024.1  # Timezone support for manager preferences
 
