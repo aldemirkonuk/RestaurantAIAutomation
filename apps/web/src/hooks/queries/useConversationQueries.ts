@@ -281,12 +281,35 @@ export interface ProcurementHistoryItem {
 }
 
 export const procurementHistoryKeys = {
+  /** Invalidation PREFIX only — never a bucket anything is stored under. */
   all: ['procurement', 'history'] as const,
+  forRestaurant: (restaurantId: string) =>
+    ['procurement', 'history', restaurantId] as const,
 }
 
+/**
+ * Keyed by the active restaurant, for the same reason `useConversationThreads`
+ * above is — and more sharply here.
+ *
+ * `GET /procurement/conversations/history` is scoped ENTIRELY from the JWT:
+ * `procurement.controller.ts:737` reads `user.restaurantId` and the gateway
+ * never reads the `X-Restaurant-Id` header this client stamps (a repo-wide
+ * grep finds that header only in test fixtures). So the token is re-minted on
+ * a restaurant switch — and `AuthContext.tsx` catches a FAILED switch and
+ * proceeds, logging that it will continue "with X-Restaurant-Id header only",
+ * a fallback the gateway does not implement. A failed switch plus a constant
+ * cache key therefore renders the PREVIOUS tenant's conversation book under
+ * the new tenant's name, with no banner. The key literal is the only thing
+ * separating the two.
+ */
 export function useProcurementConversationHistory() {
+  const { user, activeRestaurantId } = useAuth()
+  // Prefer the runtime-updated activeRestaurantId: user.restaurantId comes
+  // from the JWT and is stale for the whole window between a switch and a
+  // re-mint.
+  const restaurantId = activeRestaurantId ?? user?.restaurantId ?? ''
   return useQuery({
-    queryKey: procurementHistoryKeys.all,
+    queryKey: procurementHistoryKeys.forRestaurant(restaurantId),
     queryFn: () =>
       api
         .get<ProcurementHistoryItem[]>('/procurement/conversations/history')

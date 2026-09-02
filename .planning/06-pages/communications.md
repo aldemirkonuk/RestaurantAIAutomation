@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 3
 maturity: hollow
 status: documented
-updated: 2026-08-26
+updated: 2026-09-02
 links: ["[[PAGE-CONTRACT]]", "[[documents-reports]]"]
 ---
 
@@ -101,7 +101,9 @@ prose held inside the settle-open expansion; and the founder's two named
 additions are built in — the **channels rail** makes the page's integrations
 visible in words, and the template builders open inside a **TemplateSheet**
 whose header answers "what's going on" before anything renders: *"You are
-editing a saved template. Nothing is sent from here."* prc-02 carried: a
+editing a new template. Nothing is sent from here."* (it said "a saved
+template" until 2026-09-02 — the sheet never passes `editingTemplate`, so the
+builder always opens on a new, unsaved one; ADR 0083). prc-02 carried: a
 DRAFT/PENDING_APPROVAL exchange wears a dashed "AI draft · not sent" chip and
 its body renders in a dashed frame. Legacy page untouched; flag defaults OFF;
 override `mudavym.design.communications`.
@@ -173,9 +175,15 @@ chrome per dashboard.md §7.
 - **Scheduled report *sending* is feature-flagged off server-side** — "no mailer —
   scheduled send is feature-flagged" ([TIER-MAP](../03-scenarios/TIER-MAP.md):51, S15
   Plus). The scheduler UI here creates schedules a mailer never executes.
-- Saved templates persist client-side through the builder components rather than a
-  server store — check before promising cross-device templates (no debt-register
-  entry; observed from the component tree).
+- ~~Saved templates persist client-side through the builder components rather than a
+  server store~~ — **stale and wrong, corrected 2026-09-02.** The builders persisted
+  *nowhere*: they made no network call and touched no storage (§10). A server store
+  has existed all along (`useTemplates` → `/restaurants/:rid/templates`); the
+  redesign's workshops are wired to it as of [ADR 0083](../decisions/0083-a-page-may-not-claim-a-write-it-never-makes.md).
+  The **legacy** page's workshops are still no-ops (they do not claim otherwise).
+- An email template's panel layout is stored as JSON in `body` and **cannot be
+  re-opened in the builder** — the row is a record, not a document the workshop
+  can reload (ADR 0083).
 
 ## 10. Maturity
 
@@ -183,6 +191,20 @@ chrome per dashboard.md §7.
 
 Three of the four tabs are real. The **Scheduled Reports** tab — the tab this page
 is named for in the sidebar subtitle — is a UI over two tables nothing consumes.
+
+**That was only half the story until 2026-09-02.** The reason recorded above is
+entirely about the *legacy* page's Scheduled Reports tab. It said nothing about
+the **template workshops**, on either page, which claimed a persistence they
+never had:
+
+| Claim | Evidence | Status |
+|---|---|---|
+| ~~The redesign's template workshop stores what you save~~ | `TemplateSheet.tsx:85` read *"Saving stores it for later"* while both builders were mounted `onSave={onClose}` (`:106,108`) — the template object handed to a function that ignores its argument. `GmailTemplateBuilder.handleSaveTemplate:482-537` made no network call and wrote no storage; `SMSTemplateBuilder:378` said `// Simulate save delay`. Both set `saveSuccess` and closed on a 1500 ms timer, so Save showed a green tick and **discarded the work**. Legacy has the same no-op and does *not* claim otherwise — a regression the rebuild introduced | **FIXED 2026-09-02 ([ADR 0083](../decisions/0083-a-page-may-not-claim-a-write-it-never-makes.md))**. `onSave` now posts through `useTemplates().createTemplate`; both builders `await` it and confirm only after the server accepts; a rejection keeps the builder open and says why |
+| The saved template is re-openable in the builder | **No such round trip exists.** `communication_templates` holds `name`, `subject`, `body`, `type` and nothing else — no panels, thumbnail, category or usage count — and the global pipe is `whitelist: true, forbidNonWhitelisted: true` (`main.ts:52-56`), so the builder's own object would 400. SMS stores its message verbatim; email stores the panel structure as JSON in `body`. The sheet says so rather than implying an edit-later flow | **Stated, not fixed** — a real document store is a founder decision (ADR 0083, "revisit when") |
+| The redesign's schedule rail distinguishes a failure from a wait | `schedulesKnown = data !== undefined` (`useCommsNextData.ts:94`) could not, so the rail printed *"The schedule list hasn't answered yet — —"* **forever**: `scheduled_reports` is created by no migration in `supabase/migrations/` and the endpoint 500s every time. The **legacy page held this distinction** (`Communications.tsx:269,293-299`) and the rebuild deleted it | **FIXED 2026-09-02 (ADR 0083)** — `schedulesError` restored, with legacy's sentence |
+| The redesign's error banner covers the page | It covered **one query of five** (`isError: historyQ.isError`, `:96`); the other four rendered a failure as the em dash reserved for "has not answered", and "Try again" was unreachable unless the history itself failed | **FIXED 2026-09-02 (ADR 0083)** — one banner naming every failed source, a per-figure failed state, and a retry that refetches all five |
+| The redesign's caches are tenant-scoped | Two were not — `['procurement','history']` and `['report-schedules']` — while the sibling hook in the same file was. The gateway **never reads `X-Restaurant-Id`** (grep finds it only in test fixtures), so scoping is JWT-only, and `AuthContext.tsx:433` catches a failed switch and proceeds on a fallback that does nothing | **FIXED 2026-09-02 (ADR 0083)**, and held by `scripts/check_windowed_figures.py` W6 + the new W7 |
+| SMS templates "stage for the messaging channel" (`CommunicationsNext.tsx:333`) | All 27 production `procurement_conversations` rows are `channel='email'`; `POST /communications/sms` exists in the gateway but **no web client calls it** | **FIXED 2026-09-02 (ADR 0083)** — workshop kept (Save is now real), copy states no SMS sender is reachable from this page |
 
 | Claim | Evidence |
 |---|---|
