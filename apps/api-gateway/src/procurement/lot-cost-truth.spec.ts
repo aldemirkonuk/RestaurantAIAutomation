@@ -217,7 +217,15 @@ describe("D1 — no price is promoted to 'invoice' by silence", () => {
     // The exemption is asserted to still be REAL. If the sibling fixes that
     // call site, this fails and the exemption gets deleted rather than
     // outliving the reason for it.
-    expect(offenders).toContain(`${OWNED_ELSEWHERE}:98`);
+    //
+    // BY PATH, NOT BY PATH:LINE. This asserted `:98` and broke on a merge that
+    // added two lines above the call — the exemption had not changed, only its
+    // position had. A line number is a fact about everything above a call site,
+    // so pinning one makes an unrelated edit look like a fixed bug; the sibling
+    // guard `scripts/check_lot_cost_provenance.py:83` keys on the path alone
+    // for the same reason, and this is the same mistake the stock-writes
+    // allowlist was re-keyed off file:line to escape.
+    expect(offenders.some((o) => o.startsWith(`${OWNED_ELSEWHERE}:`))).toBe(true);
   });
 
   it("markDelivered books the delivery at a stated, non-invoice provenance", async () => {
