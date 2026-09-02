@@ -30,6 +30,35 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class ToastError(RuntimeError):
+    """Base class for Toast failures that must be surfaced, never papered over."""
+
+
+class ToastNotConfigured(ToastError):
+    """No usable Toast credentials, so no real call could even be attempted.
+
+    Raised only in `strict=True` mode. The permissive default keeps falling back
+    to mock data for the demo scripts that want it.
+    """
+
+
+class ToastUnavailable(ToastError):
+    """A real Toast call was attempted and failed (auth, network, HTTP status).
+
+    Raised only in `strict=True` mode, in place of the mock fallback.
+    """
+
+
+class ToastNotFound(ToastError):
+    """Toast answered, and the answer was that the resource does not exist.
+
+    Split out from ToastUnavailable because "this menu is not there" is a real,
+    trustworthy answer that must reach the caller as 404 — while "we could not
+    reach Toast" must reach it as 503. Collapsing the two would let an outage
+    read as a deletion.
+    """
+
+
 class ToastAPIClient:
     """
     Hybrid Toast POS API Client
@@ -38,6 +67,13 @@ class ToastAPIClient:
     - Real: Uses actual Toast API with credentials
     - Mock: Generates realistic wine sales data
     - Hybrid: Tries real API, falls back to mock
+
+    `strict=True` disables every mock fallback: each operation raises
+    ToastNotConfigured (no credentials) or ToastUnavailable (the real call
+    failed) instead of returning invented data. Required by ADR 0020 for any
+    caller that puts the result in front of a user — see
+    `.planning/decisions/0020-no-fabricated-answers.md`. Default stays False so
+    existing callers (demo/, tests/) behave exactly as before.
     """
 
     # Wine items for mock data generation
@@ -127,12 +163,14 @@ class ToastAPIClient:
         toast_restaurant_guid: Optional[str] = None,
         mock_mode: bool = True,
         base_url: str = "https://api.toasttab.com",
+        strict: bool = False,
     ):
         self.client_id = toast_client_id
         self.client_secret = toast_client_secret
         self.restaurant_guid = toast_restaurant_guid
         self.mock_mode = mock_mode
         self.base_url = base_url
+        self.strict = strict
 
         # HTTP client
         self.http_client: Optional[httpx.AsyncClient] = None
@@ -155,6 +193,10 @@ class ToastAPIClient:
         self.http_client = httpx.AsyncClient(timeout=30.0)
 
         if self.mock_mode:
+            if self.strict:
+                raise ToastNotConfigured(
+                    "Toast client is in mock mode; strict callers must not serve mock data."
+                )
             logger.info("✓ Toast API client initialized (MOCK mode)")
             return True
 
@@ -166,10 +208,19 @@ class ToastAPIClient:
                 return True
             except Exception as e:
                 logger.warning(f"Toast API authentication failed: {e}")
+                if self.strict:
+                    # Do NOT flip mock_mode — that is the exact silent
+                    # degradation this mode exists to prevent.
+                    raise ToastUnavailable(f"Toast authentication failed: {e}") from e
                 logger.info("Falling back to MOCK mode")
                 self.mock_mode = True
                 return True
         else:
+            if self.strict:
+                raise ToastNotConfigured(
+                    "Toast credentials are not configured "
+                    "(TOAST_CLIENT_ID / TOAST_CLIENT_SECRET)."
+                )
             logger.info("No Toast credentials provided, using MOCK mode")
             self.mock_mode = True
             return True
@@ -214,11 +265,31 @@ class ToastAPIClient:
 
         return self.access_token
 
+    def _refuse_mock(self, operation: str) -> None:
+        """Strict mode: refuse to answer `operation` with fabricated data."""
+        if self.strict:
+            raise ToastNotConfigured(
+                f"Toast is not configured; refusing to serve mock data for {operation}."
+            )
+
+    def _refuse_fallback(self, operation: str, exc: Exception) -> None:
+        """Strict mode: surface a real failure instead of falling back to mock."""
+        if not self.strict:
+            return
+        if (
+            isinstance(exc, httpx.HTTPStatusError)
+            and exc.response is not None
+            and exc.response.status_code == 404
+        ):
+            raise ToastNotFound(f"Toast {operation}: not found") from exc
+        raise ToastUnavailable(f"Toast {operation} failed: {exc}") from exc
+
     async def fetch_menus(self, restaurant_id: Optional[str] = None) -> Dict[str, Any]:
         """Fetch menus from Toast API (or mock data)."""
         self.total_api_calls += 1
 
         if self.mock_mode:
+            self._refuse_mock("fetch_menus")
             return {"menus": self.MOCK_MENUS}
 
         try:
@@ -233,11 +304,13 @@ class ToastAPIClient:
             return response.json()
         except Exception as e:
             logger.warning(f"Toast menus fetch failed: {e}. Falling back to mock.")
+            self._refuse_fallback("menus fetch", e)
             return {"menus": self.MOCK_MENUS}
 
     async def fetch_menu(self, menu_id: str) -> Dict[str, Any]:
         """Fetch a single menu by ID (or mock data)."""
         if self.mock_mode:
+            self._refuse_mock("fetch_menu")
             for menu in self.MOCK_MENUS:
                 if menu["guid"] == menu_id:
                     return menu
@@ -254,16 +327,58 @@ class ToastAPIClient:
             return response.json()
         except Exception as e:
             logger.warning(f"Toast menu fetch failed: {e}. Falling back to mock.")
+            self._refuse_fallback("menu fetch", e)
             for menu in self.MOCK_MENUS:
                 if menu["guid"] == menu_id:
                     return menu
             raise
+
+    async def fetch_order(self, order_id: str) -> Dict[str, Any]:
+        """Fetch a single order by GUID from Toast's orders API.
+
+        Endpoint: GET /orders/v2/orders/{guid}
+
+        Unlike its siblings this method has NO mock fallback in either mode, and
+        that is deliberate. `create_order`'s mock path mints a random uuid that is
+        never stored, so there is no mock order any caller could legitimately read
+        back — a mock `fetch_order` could only invent an order that does not
+        exist, at a vendor, with money attached. ADR 0020 forbids exactly that.
+        Non-strict callers therefore get ToastNotConfigured rather than a fiction.
+        """
+        self.total_api_calls += 1
+
+        if self.mock_mode:
+            raise ToastNotConfigured(
+                "Toast is not configured; order lookup has no mock answer "
+                "(an invented order is never a safe fallback)."
+            )
+
+        try:
+            token = await self._authenticate()
+            order_url = f"{self.base_url}/orders/v2/orders/{order_id}"
+            response = await self.http_client.get(
+                order_url,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            response.raise_for_status()
+            return response.json()
+        except ToastError:
+            raise
+        except httpx.HTTPStatusError as e:
+            logger.warning(f"Toast order fetch failed: {e}")
+            if e.response is not None and e.response.status_code == 404:
+                raise ToastNotFound(f"Toast order '{order_id}' not found") from e
+            raise ToastUnavailable(f"Toast order fetch failed: {e}") from e
+        except Exception as e:
+            logger.warning(f"Toast order fetch failed: {e}")
+            raise ToastUnavailable(f"Toast order fetch failed: {e}") from e
 
     async def create_order(
         self, restaurant_id: str, payload: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Create an order (mock or API)."""
         if self.mock_mode:
+            self._refuse_mock("create_order")
             return {
                 "order_id": str(uuid4()),
                 "restaurant_id": restaurant_id,
@@ -284,6 +399,9 @@ class ToastAPIClient:
             return response.json()
         except Exception as e:
             logger.warning(f"Toast order create failed: {e}. Falling back to mock.")
+            # Strict mode refuses hardest here: a fabricated "mock_created" order
+            # tells the caller a real order was placed at a vendor when none was.
+            self._refuse_fallback("order create", e)
             return {
                 "order_id": str(uuid4()),
                 "restaurant_id": restaurant_id,
@@ -312,6 +430,7 @@ class ToastAPIClient:
         self.total_api_calls += 1
 
         if self.mock_mode:
+            self._refuse_mock("fetch_sales_data")
             return self._generate_mock_sales(start_time, end_time)
 
         # Real API call
@@ -344,6 +463,7 @@ class ToastAPIClient:
 
         except Exception as e:
             logger.error(f"Toast API error: {e}, falling back to mock")
+            self._refuse_fallback("sales fetch", e)
             return self._generate_mock_sales(start_time, end_time)
 
     def _extract_wine_items(self, order: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -527,22 +647,50 @@ class ToastAPIClient:
         self.is_streaming = False
 
     def get_statistics(self) -> Dict[str, Any]:
-        """Get client statistics"""
+        """Get client statistics.
+
+        `credentials_present` reports only whether the keys are set — never any
+        part of their value.
+        """
         return {
             "mode": "mock" if self.mock_mode else "real",
             "total_api_calls": self.total_api_calls,
             "total_sales_fetched": self.total_sales_fetched,
             "mock_sales_generated": self.mock_sales_generated,
             "is_streaming": self.is_streaming,
+            "strict": self.strict,
+            "credentials_present": bool(self.client_id and self.client_secret),
         }
 
 
 # Convenience function to create client from settings
-def create_toast_client_from_settings(settings) -> ToastAPIClient:
-    """Create Toast API client from application settings"""
+def create_toast_client_from_settings(settings, strict: bool = False) -> ToastAPIClient:
+    """Create Toast API client from application settings.
+
+    `settings.toast_mock_mode` does not exist in config/settings.py (verified:
+    the only Toast keys there are toast_api_url / client_id / client_secret /
+    restaurant_guid / webhook_secret / environment), so the previous direct
+    attribute access raised AttributeError on every call. Nothing called it, so
+    the crash was never observed. Mock mode is now derived from what is actually
+    configured: no credentials means no real call is possible.
+    """
+    mock_mode = getattr(
+        settings,
+        "toast_mock_mode",
+        not (settings.toast_client_id and settings.toast_client_secret),
+    )
     return ToastAPIClient(
         toast_client_id=settings.toast_client_id,
         toast_client_secret=settings.toast_client_secret,
         toast_restaurant_guid=settings.toast_restaurant_guid,
-        mock_mode=settings.toast_mock_mode,
+        mock_mode=mock_mode,
+        # NOT wired to settings.toast_api_url on purpose. That setting defaults to
+        # "https://ws-api.toasttab.com" (config/settings.py:152-154) while this
+        # client has always used "https://api.toasttab.com". The two disagree, and
+        # which host is correct cannot be settled without a live Toast call, which
+        # this work is forbidden from making. Changing the effective host as a side
+        # effect of wiring a router would be an unverified behaviour change, so the
+        # client keeps its own long-standing constant and the discrepancy is filed
+        # rather than guessed at.
+        strict=strict,
     )
