@@ -40,8 +40,23 @@ theoretical. Across `apps/api-gateway/src`:
 | **distinct `table.column` behind them** | **16** |
 
 The two site counts are a **snapshot that moves with the codebase** — they were
-604/1364 one merge earlier and will drift again; only the findings, the keys and
-the blind spot are ratcheted. Re-measured on the current tree, not carried
+604/1364 before this branch merged `b185a1fa`
+([[0062-a-quantity-declares-its-unit]], PR #228), whose
+`receiving.service.ts` rewrite added the +3 selects and +7 filter arguments
+(`git log -1 -- apps/api-gateway/src/procurement/receiving.service.ts` names that
+commit). They will drift again; only the findings, the keys and the blind spot
+are ratcheted.
+
+> **Correction.** Commit `6fc1288d`'s message attributes that delta to **#229**.
+> That is wrong: #229 (`ce4432c6`, the receipts page) is **not** in this branch,
+> and #228 (`b185a1fa`) is. The measurement and its proof are unaffected — the
+> delta was shown not to be the regex change by running the old and new forms
+> over the same tree — but the number in that commit message does not resolve,
+> and a citation that resolves to the wrong thing is worse than one that is
+> merely vague ([[0025-citations-must-disagree-loudly]]). Recorded here because
+> the message is already pushed and cannot be corrected in place.
+
+Re-measured on the current tree, not carried
 forward: the first pass found
 **27** findings over 17 keys, and `procurement_orders.next_order_date` was
 repaired on `main` by [[0061-recurring-reminder-reads-the-recurrence-table]]
