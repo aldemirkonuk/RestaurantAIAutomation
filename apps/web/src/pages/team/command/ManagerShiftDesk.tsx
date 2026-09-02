@@ -10,7 +10,7 @@ import { toast } from 'sonner'
 import {
   Plus, Copy, Send, Megaphone, ChevronLeft, ChevronRight, UserPlus,
   Users, ClipboardCheck, AlertTriangle, CheckCircle2, Sparkles, SlidersHorizontal,
-  Pencil, Trash2, MessageSquare, Printer, FileSpreadsheet,
+  Pencil, Trash2, MessageSquare, Printer, FileSpreadsheet, X,
 } from 'lucide-react'
 import { useAuth } from '../../../contexts/AuthContext'
 import { InviteTeamDialog } from '../../../components/team/InviteTeamDialog'
@@ -21,7 +21,7 @@ import { exportTable, type TableExportColumn, type TableExportFormat } from '../
 import { fetchCalendarEvents } from '../../../services/api/calendar'
 import {
   getWeek, getTeamMembers, getCertifications, copyWeek, publishSchedule, createSchedule,
-  reportCallout, offerCover, assignCover, broadcast, createShift, deleteShift,
+  reportCallout, offerCover, broadcast, createShift, deleteShift,
   type WeekPayload, type Shift, type TeamMember, type Certification,
 } from '../../../services/api/team'
 import { cn } from '../../../lib/utils'
@@ -30,8 +30,22 @@ import {
   Avatar, Pill, PulseCell, todayIso,
 } from './bits'
 import { ShiftEditor, MemberEditor } from './editors'
+import { EM } from '../next/tm-format'
 import { PerformancePanel } from './PerformancePanel'
 import { OpsRulesPanel } from './OpsRulesPanel'
+
+/**
+ * The gateway's own words when it has them. The three verbs this is used on are
+ * about to start REFUSING unqualified requests (see the TODO in
+ * `services/api/team.ts`), and "Could not copy last week" would hide a 409 that
+ * says exactly what is missing.
+ */
+function serverMessage(e: any): string | null {
+  const m = e?.response?.data?.message
+  if (typeof m === 'string' && m.trim()) return m
+  if (Array.isArray(m) && typeof m[0] === 'string') return m[0]
+  return null
+}
 
 type Lens = 'coverage' | 'labor' | 'fairness' | 'compliance'
 type DeskTab = 'all' | 'now' | 'publish' | 'people'
@@ -54,6 +68,15 @@ export function ManagerShiftDesk() {
   const [opsOpen, setOpsOpen] = useState(false)
   /** NEW-521: right-click a shift chip. */
   const [shiftMenu, setShiftMenu] = useState<{ shift: Shift; x: number; y: number } | null>(null)
+  /**
+   * Who a message is addressed to, shown before it is sent (P2). The state
+   * holds the ADDRESS, not a snapshot of the roster: recipients are resolved
+   * at render, so a roster that arrives while the composer is open corrects
+   * the list rather than leaving "reaches 0 people" on screen.
+   */
+  const [composer, setComposer] = useState<{ scope: 'crew' } | { scope: 'one'; memberId: string } | null>(null)
+  /** A destructive action names what it destroys and waits for a second click (P7). */
+  const [pendingConfirm, setPendingConfirm] = useState<'copy' | 'republish' | null>(null)
 
   // Honor publish deep-link: /team?week=YYYY-MM-DD
   useEffect(() => {
@@ -63,26 +86,54 @@ export function ManagerShiftDesk() {
 
   const days = useMemo(() => weekDays(weekStart), [weekStart])
 
-  const { data: week } = useQuery<WeekPayload>({
+  const weekQ = useQuery<WeekPayload>({
     queryKey: ['team', 'week', activeRestaurantId, weekStart],
     queryFn: () => getWeek(weekStart),
     enabled: !!activeRestaurantId,
   })
-  const { data: members = [] } = useQuery<TeamMember[]>({
+  const membersQ = useQuery<TeamMember[]>({
     queryKey: ['team', 'members', activeRestaurantId],
     queryFn: () => getTeamMembers(),
     enabled: !!activeRestaurantId,
   })
-  const { data: certs = [] } = useQuery<Certification[]>({
+  const certsQ = useQuery<Certification[]>({
     queryKey: ['team', 'certs', activeRestaurantId],
     queryFn: () => getCertifications(),
     enabled: !!activeRestaurantId,
   })
-  const { data: calEvents = [] } = useQuery({
+  const calQ = useQuery({
     queryKey: ['team', 'cal', activeRestaurantId, weekStart],
     queryFn: () => fetchCalendarEvents(activeRestaurantId!, { startDate: days[0], endDate: days[6] }),
     enabled: !!activeRestaurantId,
   })
+
+  const week = weekQ.data
+  const members = membersQ.data ?? []
+  const certs = certsQ.data ?? []
+  const calEvents = calQ.data ?? []
+
+  /**
+   * A dead gateway is not a healthy, empty restaurant.
+   *
+   * With no error branch this desk drew a FAILED read as a measured all-clear:
+   * "No team members yet", "0 active", an empty task rail under a green tick,
+   * and "Publish readiness: Clear" on all three rows — every one of them a
+   * `?? 0` standing in for an answer nobody gave. The two sentences below are
+   * the pattern the redesigned half already uses (TeamNext.tsx:259-287): a
+   * register that answered keeps its answer and says it is stale; a register
+   * that did not answer claims nothing (ADR 0051).
+   */
+  const readFailed = weekQ.isError || membersQ.isError || certsQ.isError
+  const weekKnown = weekQ.data !== undefined
+  const rosterKnown = membersQ.data !== undefined
+  const firstError = [weekQ.error, membersQ.error, certsQ.error].find(Boolean)
+  const errorMessage = firstError instanceof Error ? firstError.message : 'unknown error'
+  const retryReads = () => {
+    void weekQ.refetch()
+    void membersQ.refetch()
+    void certsQ.refetch()
+    void calQ.refetch()
+  }
 
   const shifts = week?.shifts ?? []
   const membersById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
@@ -116,7 +167,8 @@ export function ManagerShiftDesk() {
   }, [shifts])
 
   const receiptsSeen = week?.receipts.length ?? 0
-  const staffCount = members.filter((m) => m.status === 'active').length
+  /** null when the roster did not answer — an unknown, never a measured 0. */
+  const staffCount = rosterKnown ? members.filter((m) => m.status === 'active').length : null
   const today = todayIso()
   const tonightShifts = useMemo(() => shifts.filter((s) => s.shift_date === today), [shifts, today])
   const tonightOpen = tonightShifts.filter((s) => s.state === 'open' || !s.member_id).length
@@ -173,7 +225,7 @@ export function ManagerShiftDesk() {
         list.push({ id: `gap-${d.date}-${g.role}-${g.period}`, group: 'publish', priority: 'soon', title: `${g.role} short on ${new Date(d.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}`, meta: `${g.staffed}/${g.required} staffed for ${g.period} service.` })
       }
     }
-    if (week?.schedule?.status === 'published' && staffCount > receiptsSeen) {
+    if (week?.schedule?.status === 'published' && staffCount !== null && staffCount > receiptsSeen) {
       list.push({ id: 'receipts', group: 'publish', priority: 'normal', title: `${staffCount - receiptsSeen} haven’t opened the schedule`, meta: `${receiptsSeen} of ${staffCount} have seen the published week.` })
     }
     for (const c of certs) {
@@ -201,12 +253,12 @@ export function ManagerShiftDesk() {
       return publishSchedule(scheduleId)
     },
     onSuccess: () => { toast.success('Schedule published & team notified'); invalidateWeek() },
-    onError: () => toast.error('Could not publish schedule'),
+    onError: (e: any) => toast.error(serverMessage(e) ?? 'Could not publish schedule'),
   })
   const doCopy = useMutation({
     mutationFn: () => copyWeek(addDays(weekStart, -7), weekStart),
     onSuccess: (r: any) => { toast.success(`Copied ${r?.copied ?? 0} shifts from last week`); invalidateWeek() },
-    onError: () => toast.error('Could not copy last week'),
+    onError: (e: any) => toast.error(serverMessage(e) ?? 'Could not copy last week'),
   })
   /** NEW-529: export the visible week in shared formats. */
   const exportWeek = async (format: TableExportFormat) => {
@@ -303,6 +355,7 @@ export function ManagerShiftDesk() {
   const doCallout = useMutation({
     mutationFn: (shiftId: string) => reportCallout(shiftId),
     onSuccess: () => { toast.success('Call-out reported — shift opened'); invalidateWeek() },
+    onError: () => toast.error('Could not report the call-out — the shift is unchanged'),
   })
   const doOffer = useMutation({
     mutationFn: (shiftId: string) => {
@@ -328,20 +381,28 @@ export function ManagerShiftDesk() {
     onSuccess: (r: any) => toast.success(`Offered to ${r?.offered ?? 0}, notified ${r?.notified ?? 0}`),
     onError: () => toast.error('Could not offer cover'),
   })
-  const doAssign = useMutation({
-    mutationFn: ({ shiftId, memberId }: { shiftId: string; memberId: string }) => assignCover(shiftId, memberId),
-    onSuccess: () => { toast.success('Cover assigned'); invalidateWeek() },
-  })
+  /**
+   * P2: a message addressed to one person reaches one person.
+   *
+   * `broadcast` without `memberIds` is a RESTAURANT-WIDE send: the gateway
+   * falls back to every active linked member across inbox, push, email and SMS
+   * (team.controller.ts:345-347). The right-click "Message {firstName}" item
+   * sent exactly that — no targeting, no recipient list, no confirmation, from
+   * a `prompt()`. The targeting already existed and the redesigned half used it
+   * correctly; this caller simply never passed it.
+   */
   const doBroadcast = useMutation({
-    mutationFn: (message: string) => broadcast({ message, title: '📣 Message from your manager' }),
+    mutationFn: ({ message, memberIds }: { message: string; memberIds?: string[] }) =>
+      broadcast({ message, title: '📣 Message from your manager', memberIds }),
     onSuccess: (r: any) => {
       const parts = [`inbox`]
       if (r?.notified) parts.push(`${r.notified} push`)
       if (r?.emailed) parts.push(`${r.emailed} email`)
       if (r?.texted) parts.push(`${r.texted} SMS`)
-      toast.success(`Broadcast sent (${parts.join(' · ')})`)
+      toast.success(`Message sent (${parts.join(' · ')})`)
+      setComposer(null)
     },
-    onError: () => toast.error('Could not send broadcast'),
+    onError: (e: any) => toast.error(serverMessage(e) ?? 'Could not send the message'),
   })
 
   const openInspector = (shiftId: string) => {
@@ -362,9 +423,36 @@ export function ManagerShiftDesk() {
   }, [calEvents])
 
   const tonightEvents = eventsByDay.get(today) ?? []
-  const tonightTasks = tasks.filter((t) => t.group === 'now' || (t.shiftId && tonightShifts.some((s) => s.id === t.shiftId))).length
+  // Tonight means tonight: a task about tomorrow's open shift is a task, but
+  // it is not on tonight's board. (`group === 'now'` covers every open shift in
+  // the week, which is why the old expression was never tonight-scoped.)
+  const tonightTasks = tasks.filter(
+    (t) =>
+      (t.shiftId && tonightShifts.some((s) => s.id === t.shiftId)) ||
+      t.id.startsWith(`gap-${today}-`),
+  ).length
+  /**
+   * A wage that is null is not a wage of zero. `sum(labor_cost ?? 0)` printed
+   * "$0" for a week nobody had priced, and it will start printing it for every
+   * week once wages are nullable. Unknown until the whole night is priced.
+   */
+  const tonightLabor =
+    tonightShifts.length === 0
+      ? '$0'
+      : tonightShifts.some((s) => s.labor_cost == null)
+        ? EM
+        : `$${Math.round(tonightShifts.reduce((sum, s) => sum + (s.labor_cost ?? 0), 0)).toLocaleString()}`
   const tonightStaffed = tonightShifts.filter((s) => s.member_id && s.state !== 'callout').length
   const published = week?.schedule?.status === 'published'
+  // Exactly the gateway's own fallback set (team.controller.ts:347), computed
+  // here so the manager sees WHO before pressing send rather than after.
+  const crewRecipients = members.filter((m) => m.status === 'active' && m.accountLinked)
+  const composerRecipients =
+    composer === null
+      ? []
+      : composer.scope === 'crew'
+        ? crewRecipients
+        : members.filter((m) => m.id === composer.memberId)
 
   return (
     <div className="p-4 md:p-6 max-w-[1500px] mx-auto">
@@ -373,8 +461,9 @@ export function ManagerShiftDesk() {
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">Team</h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            {staffCount} active · <span className="tabular-nums">{fmtWeekRange(weekStart)}</span>
-            {published ? <Pill tone="green">Published</Pill> : <span className="ml-2"><Pill tone="amber">Draft</Pill></span>}
+            {staffCount === null ? `${EM} active` : `${staffCount} active`} ·{' '}
+            <span className="tabular-nums">{fmtWeekRange(weekStart)}</span>
+            {!weekKnown ? null : published ? <Pill tone="green">Published</Pill> : <span className="ml-2"><Pill tone="amber">Draft</Pill></span>}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -387,6 +476,25 @@ export function ManagerShiftDesk() {
           </button>
         </div>
       </div>
+
+      {readFailed && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 mb-3 px-4 py-3 rounded-2xl border border-gray-200 bg-gray-50 text-xs text-gray-700"
+        >
+          <span>
+            {weekKnown
+              ? `The desk could not be refreshed (${errorMessage}) — what is below is the last answer, not the present.`
+              : `The gateway could not be reached (${errorMessage}). The week, the roster and the credential file are unknown — nothing below is claimed.`}
+          </span>
+          <button
+            onClick={retryReads}
+            className="h-8 px-3 shrink-0 border border-gray-200 bg-white rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-100"
+          >
+            Try again
+          </button>
+        </div>
+      )}
 
       {/* Service Pulse — tonight board */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 rounded-2xl border border-gray-100 bg-white overflow-hidden mb-3 shadow-sm">
@@ -424,18 +532,18 @@ export function ManagerShiftDesk() {
         />
         <PulseCell
           label={laborEnabled ? 'Tonight labor' : 'Tonight hours'}
-          value={
-            laborEnabled
-              ? `$${Math.round(tonightShifts.reduce((sum, s) => sum + (s.labor_cost ?? 0), 0)).toLocaleString()}`
-              : `${tonightShifts.reduce((sum, s) => sum + shiftHours(s), 0).toFixed(0)}h`
-          }
-          sub={`${tonightShifts.length} shifts`}
+          value={laborEnabled ? tonightLabor : `${tonightShifts.reduce((sum, s) => sum + shiftHours(s), 0).toFixed(0)}h`}
+          sub={laborEnabled && tonightLabor === EM ? `${tonightShifts.length} shifts, not priced` : `${tonightShifts.length} shifts`}
         />
+        {/* This cell sits under a heading that says "Tonight's board", so it
+            counts tonight. It used to fall back to the WHOLE WEEK's urgent
+            count the moment tonight was clean — the number changed meaning
+            without changing its label. The week is still here, in the sub. */}
         <PulseCell
           label="Desk actions"
-          value={`${tonightTasks || tasks.filter((t) => t.priority === 'urgent').length} open`}
-          sub="Needs you"
-          tone={(tonightTasks || tasks.some((t) => t.priority === 'urgent')) ? 'danger' : 'default'}
+          value={`${tonightTasks} tonight`}
+          sub={`${tasks.length} this week`}
+          tone={tonightTasks ? 'danger' : 'default'}
           onClick={() => setDeskTab('all')}
         />
       </div>
@@ -445,8 +553,8 @@ export function ManagerShiftDesk() {
         <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mr-1">Quick actions</span>
         <ActionBtn onClick={() => setShiftEditor({ date: today })}><Plus className="w-3.5 h-3.5" /> Add shift</ActionBtn>
         <ActionBtn onClick={() => setImportModalOpen(true)}><FileSpreadsheet className="w-3.5 h-3.5 text-wine-600" /> Import sheet</ActionBtn>
-        <ActionBtn onClick={() => doCopy.mutate()}><Copy className="w-3.5 h-3.5" /> Copy last week</ActionBtn>
-        <ActionBtn onClick={() => { const m = prompt('Broadcast to the crew (inbox + push + email/SMS):'); if (m) doBroadcast.mutate(m) }}><Megaphone className="w-3.5 h-3.5" /> Broadcast crew</ActionBtn>
+        <ActionBtn onClick={() => setPendingConfirm('copy')}><Copy className="w-3.5 h-3.5" /> Copy last week</ActionBtn>
+        <ActionBtn onClick={() => setComposer({ scope: 'crew' })}><Megaphone className="w-3.5 h-3.5" /> Broadcast crew</ActionBtn>
         <ActionBtn onClick={() => setInviteOpen(true)}><UserPlus className="w-3.5 h-3.5" /> Add staff</ActionBtn>
         <ActionBtn onClick={() => setOpsOpen(true)}><SlidersHorizontal className="w-3.5 h-3.5" /> Ops rules</ActionBtn>
         <ExportMenu
@@ -458,7 +566,7 @@ export function ManagerShiftDesk() {
           title="Export this week's schedule"
         />
         <ActionBtn onClick={printWeek}><Printer className="w-3.5 h-3.5" /> Print sheet</ActionBtn>
-        <ActionBtn onClick={() => doPublish.mutate()} primary><Send className="w-3.5 h-3.5" /> {published ? 'Re-publish' : 'Publish week'}</ActionBtn>
+        <ActionBtn onClick={() => (published ? setPendingConfirm('republish') : doPublish.mutate())} primary><Send className="w-3.5 h-3.5" /> {published ? 'Re-publish' : 'Publish week'}</ActionBtn>
       </div>
 
       <ShiftImportModal
@@ -517,7 +625,11 @@ export function ManagerShiftDesk() {
 
                 {/* member rows */}
                 {members.length === 0 && (
-                  <div className="p-10 text-center text-sm text-gray-400">No team members yet. Use “Add staff”.</div>
+                  <div className="p-10 text-center text-sm text-gray-400">
+                    {rosterKnown
+                      ? 'No team members yet. Use “Add staff”.'
+                      : 'The roster could not be read — who is on this team is unknown, not empty.'}
+                  </div>
                 )}
                 {members.map((m) => {
                   const hrs = weeklyHours.get(m.id) ?? 0
@@ -612,8 +724,22 @@ export function ManagerShiftDesk() {
           <div className="max-h-[360px] overflow-y-auto divide-y divide-gray-50">
             {visibleTasks.length === 0 && (
               <div className="flex flex-col items-center gap-1.5 py-8 text-center">
-                <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                <div className="text-xs font-semibold text-gray-500">Nothing needs you right now</div>
+                {readFailed ? (
+                  <>
+                    <AlertTriangle className="w-5 h-5 text-gray-400" />
+                    <div className="text-xs font-semibold text-gray-500">
+                      Nothing could be read, so nothing is listed
+                    </div>
+                    <div className="text-[10px] text-gray-400 max-w-[220px]">
+                      This is a silent rail, not a clear one.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                    <div className="text-xs font-semibold text-gray-500">Nothing needs you right now</div>
+                  </>
+                )}
               </div>
             )}
             {visibleTasks.map((t) => (
@@ -637,11 +763,25 @@ export function ManagerShiftDesk() {
           <div className="m-2 p-2.5 rounded-xl border border-gray-100">
             <div className="flex items-center justify-between">
               <strong className="text-[10px] font-extrabold text-gray-900 uppercase tracking-wide">Publish readiness</strong>
-              <span className={cn('text-[9px] font-bold', (week?.coverage.totalGaps ?? 0) > 0 ? 'text-rose-600' : 'text-emerald-600')}>{(week?.coverage.totalGaps ?? 0) > 0 ? `${week?.coverage.totalGaps} blockers` : 'Clear'}</span>
+              <span
+                className={cn(
+                  'text-[9px] font-bold',
+                  !weekKnown ? 'text-gray-500' : (week?.coverage.totalGaps ?? 0) > 0 ? 'text-rose-600' : 'text-emerald-600',
+                )}
+              >
+                {!weekKnown
+                  ? 'Unknown'
+                  : (week?.coverage.totalGaps ?? 0) > 0
+                    ? `${week?.coverage.totalGaps} blockers`
+                    : 'Clear'}
+              </span>
             </div>
-            <Readiness label="Role coverage" ok={(week?.coverage.totalGaps ?? 0) === 0} bad={`${week?.coverage.totalGaps ?? 0} gap`} />
-            <Readiness label="Overtime" ok={(week?.labor.overtime?.length ?? 0) === 0} bad={`${week?.labor.overtime?.length ?? 0} over 40h`} />
-            <Readiness label="Open shifts" ok={!shifts.some((s) => !s.member_id)} bad={`${shifts.filter((s) => !s.member_id).length} open`} />
+            {/* Every row here was `?? 0` — a week the gateway never answered
+                read as three green ticks. `known` is the difference between a
+                measurement and a silence. */}
+            <Readiness known={weekKnown} label="Role coverage" ok={(week?.coverage.totalGaps ?? 0) === 0} bad={`${week?.coverage.totalGaps ?? 0} gap`} />
+            <Readiness known={weekKnown} label="Overtime" ok={(week?.labor.overtime?.length ?? 0) === 0} bad={`${week?.labor.overtime?.length ?? 0} over 40h`} />
+            <Readiness known={weekKnown} label="Open shifts" ok={!shifts.some((s) => !s.member_id)} bad={`${shifts.filter((s) => !s.member_id).length} open`} />
           </div>
 
           {/* Shift inspector */}
@@ -660,8 +800,11 @@ export function ManagerShiftDesk() {
                   <SmallBtn onClick={() => setShiftEditor({ shift: selectedShift })}>Edit shift</SmallBtn>
                   <SmallBtn onClick={() => doCallout.mutate(selectedShift.id)}>Report call-out</SmallBtn>
                   <SmallBtn onClick={() => doOffer.mutate(selectedShift.id)} tone="wine">Find cover</SmallBtn>
-                  {selectedShift.state === 'open' && members[0] && (
-                    <SmallBtn onClick={() => doAssign.mutate({ shiftId: selectedShift.id, memberId: members[0].id })}>Assign first</SmallBtn>
+                  {/* Was "Assign first", which assigned members[0] — the first
+                      row of an arbitrarily ordered roster, with no regard for
+                      role, availability or hours. The editor asks who. */}
+                  {selectedShift.state === 'open' && members.length > 0 && (
+                    <SmallBtn onClick={() => setShiftEditor({ shift: selectedShift })}>Assign someone</SmallBtn>
                   )}
                 </div>
               </div>
@@ -711,9 +854,8 @@ export function ManagerShiftDesk() {
                 icon={MessageSquare}
                 label={`Message ${m?.display_name?.split(' ')[0] ?? 'staff'}`}
                 onClick={() => {
-                  const msg = prompt(`Message to ${m?.display_name ?? 'this member'}:`)
-                  if (msg) doBroadcast.mutate(msg)
                   setShiftMenu(null)
+                  if (m) setComposer({ scope: 'one', memberId: m.id })
                 }}
               />
               <Item
@@ -729,6 +871,46 @@ export function ManagerShiftDesk() {
           </>
         )
       })()}
+
+      {composer && (
+        <MessageComposer
+          recipients={composerRecipients}
+          scope={composer.scope}
+          pending={doBroadcast.isPending}
+          onCancel={() => setComposer(null)}
+          onSend={(message) =>
+            doBroadcast.mutate({
+              message,
+              // A crew broadcast deliberately sends NO memberIds so the gateway
+              // uses its own live roster; a one-person message always names its
+              // recipient, which is the whole bug this replaces.
+              memberIds: composer.scope === 'one' ? [composer.memberId] : undefined,
+            })
+          }
+        />
+      )}
+
+      {pendingConfirm === 'copy' && (
+        <ConfirmSheet
+          title="Copy last week"
+          body={`Copying replaces this week first: every shift already on ${fmtWeekRange(weekStart)} is deleted before last week's ${'\u2014'} including anything added by hand. This cannot be undone.`}
+          confirmLabel="Replace the week"
+          pending={doCopy.isPending}
+          onCancel={() => setPendingConfirm(null)}
+          onConfirm={() => { setPendingConfirm(null); doCopy.mutate() }}
+        />
+      )}
+
+      {pendingConfirm === 'republish' && (
+        <ConfirmSheet
+          title="Re-publish this week"
+          body={`Re-publishing clears every read receipt, so the record of who has seen this schedule (${receiptsSeen} so far) is deleted and everyone is notified again. This cannot be undone.`}
+          confirmLabel="Re-publish and clear receipts"
+          pending={doPublish.isPending}
+          onCancel={() => setPendingConfirm(null)}
+          onConfirm={() => { setPendingConfirm(null); doPublish.mutate() }}
+        />
+      )}
 
       {/* Modals */}
       {shiftEditor && (
@@ -754,6 +936,136 @@ export function ManagerShiftDesk() {
 }
 
 // ── Small presentational helpers ──────────────────────────────────────────
+
+/**
+ * Sending a message is not an undoable act, so the recipients are on screen
+ * before the send control is, and the send control counts them. The previous
+ * surface was a `prompt()` whose text said "this member" while the request it
+ * produced went to the entire crew across four channels.
+ */
+function MessageComposer({
+  recipients, scope, pending, onCancel, onSend,
+}: {
+  recipients: TeamMember[]
+  scope: 'crew' | 'one'
+  pending: boolean
+  onCancel: () => void
+  onSend: (message: string) => void
+}) {
+  const [message, setMessage] = useState('')
+  const n = recipients.length
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30" onClick={onCancel}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={scope === 'crew' ? 'Message the crew' : 'Message one member'}
+        className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h3 className="text-base font-bold text-gray-900">
+            {scope === 'crew' ? 'Message the crew' : 'Message one member'}
+          </h3>
+          <button onClick={onCancel} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div>
+            <div className="text-[10px] font-extrabold uppercase tracking-wide text-gray-500 mb-1">
+              Reaches {n} {n === 1 ? 'person' : 'people'} — inbox, push, email and SMS
+            </div>
+            {n === 0 ? (
+              <p className="text-xs text-gray-500">
+                Nobody on this roster has a linked account, so this message would reach nobody.
+              </p>
+            ) : (
+              <ul className="flex flex-wrap gap-1.5">
+                {recipients.map((r) => (
+                  <li key={r.id}>
+                    <Pill>{r.display_name}</Pill>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <label className="block">
+            <span className="block text-xs font-semibold text-gray-600 mb-1">Message</span>
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={4}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-wine-100 focus:border-wine-500 outline-none"
+            />
+          </label>
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button onClick={onCancel} className="h-9 px-3 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50">
+              Cancel
+            </button>
+            <button
+              onClick={() => onSend(message)}
+              disabled={pending || !message.trim() || n === 0}
+              className="h-9 px-4 bg-wine-600 text-white rounded-lg text-xs font-bold hover:bg-wine-700 disabled:opacity-50"
+            >
+              {pending ? 'Sending…' : `Send to ${n} ${n === 1 ? 'person' : 'people'}`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Both actions this guards DELETE rows before they write any: copy-week wipes
+ * the target week first (schedule.service.ts:202-207) and publish wipes every
+ * `schedule_receipts` row (schedule.service.ts:248-251), destroying the record
+ * of who has seen the schedule. Member removal on this page has confirmed
+ * properly for a while (editors.tsx:265-284); these two were single clicks.
+ */
+function ConfirmSheet({
+  title, body, confirmLabel, pending, onCancel, onConfirm,
+}: {
+  title: string
+  body: string
+  confirmLabel: string
+  pending: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30" onClick={onCancel}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h3 className="text-base font-bold text-gray-900">{title}</h3>
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-sm text-gray-700">{body}</p>
+          <div className="flex items-center justify-end gap-2">
+            <button onClick={onCancel} className="h-9 px-3 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50">
+              Cancel
+            </button>
+            <button
+              onClick={onConfirm}
+              disabled={pending}
+              className="h-9 px-4 bg-wine-600 text-white rounded-lg text-xs font-bold hover:bg-wine-700 disabled:opacity-50"
+            >
+              {confirmLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ActionBtn({ children, onClick, primary }: { children: React.ReactNode; onClick: () => void; primary?: boolean }) {
   return (
     <button onClick={onClick} className={cn('inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[11px] font-bold border shrink-0', primary ? 'bg-gray-900 border-gray-900 text-white hover:bg-gray-800' : 'bg-white border-gray-200 text-gray-600 hover:border-wine-300 hover:text-wine-700')}>
@@ -774,11 +1086,13 @@ function SmallBtn({ children, onClick, tone }: { children: React.ReactNode; onCl
     <button onClick={onClick} className={cn('h-7 rounded-md text-[9.5px] font-bold border', tone === 'wine' ? 'bg-wine-50 border-wine-200 text-wine-700' : 'bg-gray-50 border-gray-100 text-gray-700 hover:bg-gray-100')}>{children}</button>
   )
 }
-function Readiness({ label, ok, bad }: { label: string; ok: boolean; bad: string }) {
+function Readiness({ label, ok, bad, known = true }: { label: string; ok: boolean; bad: string; known?: boolean }) {
   return (
     <div className="flex items-center justify-between mt-1.5 text-[9.5px] font-semibold text-gray-500">
       <span>{label}</span>
-      <b className={ok ? 'text-emerald-600' : 'text-rose-600'}>{ok ? 'Clear' : bad}</b>
+      <b className={!known ? 'text-gray-400' : ok ? 'text-emerald-600' : 'text-rose-600'}>
+        {!known ? `${EM} not read` : ok ? 'Clear' : bad}
+      </b>
     </div>
   )
 }
