@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -31,6 +32,7 @@ import {
   BulkTransactionDto,
   BulkTransactionResponseDto,
   StockType,
+  ReconcileResultDto,
 } from "./dto/inventory-ledger.dto";
 
 @ApiTags("inventory-ledger")
@@ -285,18 +287,29 @@ export class InventoryLedgerController {
   // ==========================================================================
 
   @Post("inventory/:inventoryId/reconcile")
-  @ApiOperation({ summary: "Reconcile inventory with physical count" })
+  @ApiOperation({
+    summary: "Reconcile inventory with physical count",
+    description:
+      "ADR 0078: the count is recorded whether or not it changed anything. A count that MATCHES stock returns 200 with `transaction: null` — it used to return 400 (\"No adjustment needed - counts match\"), so a manager who counted a shelf and found it correct got an error and the correct outcome left no record anywhere.",
+  })
   @ApiParam({ name: "inventoryId", description: "Inventory item ID" })
   @ApiResponse({
     status: 201,
-    description: "Reconciliation recorded",
-    type: InventoryTransactionResponseDto,
+    description:
+      "The count, always. `transaction` is null when the books were already right.",
+    type: ReconcileResultDto,
   })
   async reconcileInventory(
     @Param("inventoryId") inventoryId: string,
-    @Body() body: { wineId: string; actualCount: number; notes?: string },
+    @Body()
+    body: {
+      wineId: string;
+      actualCount: number;
+      notes?: string;
+      clientCountId?: string;
+    },
     @CurrentUser() user: { userId: string; restaurantId: string },
-  ): Promise<InventoryTransactionResponseDto> {
+  ): Promise<ReconcileResultDto> {
     try {
       return await this.ledgerService.reconcileInventory(
         user.restaurantId,
@@ -305,6 +318,7 @@ export class InventoryLedgerController {
         body.wineId,
         body.actualCount,
         body.notes,
+        body.clientCountId,
       );
     } catch (error) {
       this.logger.error({
@@ -313,7 +327,9 @@ export class InventoryLedgerController {
         error: error.message,
       });
 
-      if (error.message?.includes("No adjustment needed")) {
+      // The "No adjustment needed" re-throw that used to live here is gone with
+      // the exception that produced it (ADR 0078). Agreement is a 200.
+      if (error instanceof BadRequestException) {
         throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
       }
 
