@@ -36,13 +36,13 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 REPORT_DIR = ROOT / ".planning" / "07-reference" / "pr-audits"
 
-REQUIRED_CONTEXTS = [
-    "CI Complete",
-    "Fresh database equals remote",
-    "Code queries only relations production has",
-    "Beverage identity key — SQL matches Python",
-    "Guest merge policy — zero false merges",
-]
+# Deliberately NOT hardcoded: this list changed under this exact PR while it was
+# in flight (5 contexts -> 3, "Fresh database equals remote" and "Code queries
+# only relations production has" dropped per ADR 0092's schema-parity rework). A
+# frozen list here would either wait forever on a context that no longer exists
+# or silently stop covering a new one. Fetched fresh from branch protection on
+# every --wait-upstream call instead — see _required_contexts().
+REPO = "aldemirkonuk/RestaurantAIAutomation"
 
 MAX_WAIT_SECONDS = 20 * 60  # bounded — see merge-races-need-sequencing: never poll forever
 POLL_INTERVAL_SECONDS = 30
@@ -107,21 +107,44 @@ def _write_github_output(key: str, value: str) -> None:
 # --wait-upstream
 # --------------------------------------------------------------------------- #
 
+def _required_contexts() -> list[str]:
+    """Read main's actual required status contexts, fresh, every call. Never
+    inferred/cached/hardcoded — see the module-level note on why."""
+    out = _run(["gh", "api", f"repos/{REPO}/branches/main/protection",
+                "--jq", ".required_status_checks.contexts"])
+    if out.returncode != 0:
+        raise RuntimeError(f"could not read branch protection: {out.stderr}")
+    contexts = json.loads(out.stdout)
+    if not contexts:
+        # A guard that reads "no required contexts" as "nothing to wait for"
+        # would wave every PR through the moment protection is briefly empty
+        # mid-edit — CANNOT CHECK, not a green light.
+        raise RuntimeError("branch protection reported zero required contexts")
+    return contexts
+
+
 def wait_upstream(pr_number: str) -> int:
+    try:
+        required = _required_contexts()
+    except (RuntimeError, json.JSONDecodeError) as exc:
+        print(f"CANNOT CHECK: {exc}", file=sys.stderr)
+        _write_github_output("status", "upstream_red")
+        return 0
+
     deadline = time.monotonic() + MAX_WAIT_SECONDS
     while True:
         checks = _gh_json(["gh", "pr", "checks", pr_number, "--json", "name,state"])
         by_name = {c["name"]: c["state"] for c in checks}
-        missing = [c for c in REQUIRED_CONTEXTS if c not in by_name]
-        pending = [c for c in REQUIRED_CONTEXTS if by_name.get(c) in ("PENDING", "IN_PROGRESS", "QUEUED")]
-        failed = [c for c in REQUIRED_CONTEXTS if by_name.get(c) in ("FAILURE", "ERROR", "CANCELLED")]
+        missing = [c for c in required if c not in by_name]
+        pending = [c for c in required if by_name.get(c) in ("PENDING", "IN_PROGRESS", "QUEUED")]
+        failed = [c for c in required if by_name.get(c) in ("FAILURE", "ERROR", "CANCELLED")]
 
         if failed:
             print(f"Upstream red: {failed}")
             _write_github_output("status", "upstream_red")
             return 0
         if not missing and not pending:
-            print("Upstream green: all 5 required contexts succeeded.")
+            print(f"Upstream green: all {len(required)} required contexts succeeded ({required}).")
             _write_github_output("status", "upstream_green")
             return 0
 

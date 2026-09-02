@@ -95,9 +95,11 @@ autonomous" merge), with the autonomy scoped as narrowly as those answers allow:
   audit report exists for that exact PR head SHA — this is the "you call it, make it
   a constraint" half of the request: I cannot skip it from inside a session.
 - **CI side:** `.github/workflows/pr-audit-gate.yml` runs the same fan-out as
-  four Anthropic Messages API calls (`scripts/pr_audit_gate.py`), gated on the
-  PR's existing 5 required checks having already gone green (this is a semantic
-  layer on top of green CI, never a replacement for it). On approval it runs
+  four Anthropic Messages API calls (`scripts/pr_audit_gate.py`), gated on
+  `main`'s required status contexts — read fresh from branch protection on
+  every run, never hardcoded, since that list moved from 5 to 3 while this ADR
+  was still open — having already gone green (this is a semantic layer on top
+  of green CI, never a replacement for it). On approval it runs
   `gh pr merge --auto --squash` — GitHub's native auto-merge, which waits on the
   pre-existing required contexts and never uses `--admin`. On any error (API
   failure, can't reach the reports, ambiguous verdict) it fails closed: no merge,

@@ -28,7 +28,7 @@ concurrency:
 permissions:
   contents: write        # gh pr merge on PASS
   pull-requests: write    # gh pr comment
-  checks: read            # read the 5 pre-existing required contexts
+  checks: read            # read the required contexts (fetched fresh from branch protection, never hardcoded)
 
 jobs:
   audit:
@@ -48,7 +48,7 @@ jobs:
       - name: Install dependencies
         run: pip install anthropic
 
-      - name: Wait for the 5 existing required checks
+      - name: Wait for the existing required checks
         id: upstream
         env:
           GH_TOKEN: ${{ github.token }}

@@ -43,11 +43,13 @@ individually while what they don't cover reaches production — this gate exists
 1. **Resolve the PR.** `gh pr view [<n>] --json number,headRefOid,baseRefName,url,title`.
    If it targets anything other than `main`, or doesn't exist (a direct push
    scenario), say so and stop — this gate is for PRs into `main`.
-2. **Confirm existing CI is green first.** `gh pr checks <n>`. This audit is a
-   semantic layer on top of green CI, never a replacement for it — if any of the 5
-   existing required contexts (`CI Complete`, the 3 schema-parity checks, the
-   beverage/guest-merge checks) are red or pending, stop and say so. Do not spend an
-   Opus call auditing a PR that can't merge anyway.
+2. **Confirm existing CI is green first.** Read `main`'s *current* required
+   status contexts (`gh api repos/.../branches/main/protection --jq
+   '.required_status_checks.contexts'` — this list moves; it changed from 5 to
+   3 while this skill itself was being built, so never hardcode it) against
+   `gh pr checks <n>`. This audit is a semantic layer on top of green CI, never
+   a replacement for it — if any required context is red or pending, stop and
+   say so. Do not spend an Opus call auditing a PR that can't merge anyway.
 3. **Gather the report bundle:**
    - `gh pr diff <n>` — the actual diff.
    - `gh pr checks <n> --json name,state,link` — per-check state and links.

@@ -108,12 +108,23 @@ not. Gap row for [[SOFTWARE-MAP]].
 
 ## §7 Maturity & seams
 
-**live.** The page note's verdict is `complete` and it is the strongest in this division:
-every advertised action reaches a real, role-enforced endpoint and produces a downstream
-effect — publishing clears `schedule_receipts` so "seen" tracks the new version and writes
-a deep-linked notification (`schedule.service.ts:231-265`); the performance panel refuses
-to invent numbers (`PerformancePanel.tsx:3`); every mutation has an `onError` toast
-(`team.md` §10).
+**live**, and the page note now says `live` too — it said `complete` until 2026-09-02,
+which was the stronger word for the same evidence. Every advertised action does reach a
+real, role-enforced endpoint and produce a downstream effect: publishing clears
+`schedule_receipts` so "seen" tracks the new version and writes a deep-linked
+notification (`schedule.service.ts:231-265`), and the performance panel refuses to invent
+numbers (`PerformancePanel.tsx:3`).
+
+**Every mutation reports its own failure — true since ADR 0089, and false when this
+line was first written.** (A toast on the legacy half; an on-screen `role="alert"` line on
+the redesigned half, which mounts no toaster.) Seven had none (call-out, assign cover, delete shift, remove
+member, delete rule, delete cert, acknowledge), so a failed delete showed the user
+nothing; the same pass found four legacy reads with no `isError` branch at all, drawing a
+dead gateway as `0 active` with a green tick. The instructive part is that both this file
+and `team.md` §10 asserted the opposite, in prose, unchecked — which is why the tenant
+rule from the same ADR went into `scripts/check_windowed_figures.py` instead
+(`/team` is its fourth page, covering **both** halves of the flagged route) rather than
+into another sentence.
 
 Seams:
 1. **`organizations` belongs to nobody.** Eight endpoints serving a branch switcher here
@@ -122,9 +133,13 @@ Seams:
 2. **Performance is fed by hand.** `POST …/sales` and `…/sales/batch` are manual ingest
    until POS depth exists. The panel says so rather than filling the gap — a dependency,
    not a defect.
-3. **Two live layouts.** The redesign ships behind `mudavym_design_team` with a declared
-   parity gap; the operable desk is the legacy one. Any claim about this page has to name
-   the flag state.
+3. **Two live layouts, and they disagreed about the rules.** The redesign ships behind
+   `mudavym_design_team` with a declared parity gap; the operable desk is the legacy one.
+   Any claim about this page has to name the flag state — and ADR 0089 showed the halves
+   are not merely different sizes: the legacy desk was tenant-keyed from day one and the
+   redesign was not, while the legacy desk had no read-error branch and the redesign did.
+   Each half held a rule the other dropped. Coverage-rule creation now exists on both
+   until the flag flips.
 4. **No scheduled sweep.** See §4.
 
 ## §8 Where it's going
