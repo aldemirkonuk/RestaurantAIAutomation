@@ -87,7 +87,7 @@ restaurant, this is what is genuinely on the table:
 - **The mislabel to correct, not inherit:** the shipped UI says *"Browse all 375 insight
   types"* (`commands.ts:78,99`; `InsightCatalog.tsx:2`) while the enumerated space is **573**
   (`insight-catalog.ts:547`) and only 132 are satisfiable without POS. The digest must show the *reachable*
-  count for *this* restaurant, never a headline 375/573 (OD-33; `OPEN-DECISIONS.md:37`).
+  count for *this* restaurant, never a headline 375/573 (OD-33; `OPEN-DECISIONS.md:38`).
 
 ## 7. Decisions
 Human: the owner acts on, snoozes, or dismisses each insight, and sets which categories and
