@@ -263,7 +263,13 @@ def test_dry_run_opens_no_socket(checks, monkeypatch):
             restaurant_id="r-1", restaurant_guid="g-1", toast_secret="x", apply=False
         )
     )
-    for check in checks[:40]:
+    # Count what was actually sent rather than a literal. The fixture's length is
+    # a property of the traffic generator — it changed when ADR 0093 added coffee
+    # to FOOD_ITEMS, because `random.choice` draws a variable number of bits for a
+    # different pool size and the whole stream shifts. The property under test is
+    # "every send was skipped", not "there were forty of them".
+    sent = checks[:40]
+    for check in sent:
         bridge.send(check)
 
     assert called == []
@@ -271,7 +277,8 @@ def test_dry_run_opens_no_socket(checks, monkeypatch):
     assert summary["applied"] is False
     assert summary["analytics"]["posted"] == 0
     assert summary["stock"]["posted"] == 0
-    assert summary["analytics"]["skipped"] == 40
+    assert summary["analytics"]["skipped"] == len(sent)
+    assert len(sent) > 0
 
 
 def test_ingress_selection_skips_the_other_side(checks):
