@@ -48,7 +48,7 @@ export class SendEmailDto {
 }
 
 // SendSmsDto was deleted with POST /communications/sms on 2026-09-02
-// (ADR 0081). It was the whole of the validation on an open SMS relay: `to` is
+// (ADR 0084). It was the whole of the validation on an open SMS relay: `to` is
 // a string, `message` is a string. Nothing else references it.
 
 export class LowStockAlertDto {
@@ -135,7 +135,7 @@ export class DailySummaryDto {
   @IsNumber()
   pendingOrders: number;
 
-  // `deliveriesToday` was removed 2026-09-02 (ADR 0081). The scheduled sender
+  // `deliveriesToday` was removed 2026-09-02 (ADR 0084). The scheduled sender
   // fed it a hardcoded 0 and the SMS printed it beside two measured figures.
   // The field is gone rather than made optional: an accepted-and-ignored
   // parameter is the next reader's false lead.

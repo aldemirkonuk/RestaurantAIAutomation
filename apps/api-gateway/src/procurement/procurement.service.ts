@@ -3782,7 +3782,7 @@ export class ProcurementService {
    *
    * D-03: Used by the Procurement Emails tab on /communications, the page that
    * describes itself as the one place a manager sees every vendor
-   * conversation. ADR 0081 — it was showing ONE row out of twenty-six.
+   * conversation. ADR 0084 — it was showing ONE row out of twenty-six.
    *
    * MEASURED ON PRODUCTION (`exzueerziesmczwlhomd`, 2026-09-02), because the
    * two constraints below have very different sizes and only one of them was
@@ -3893,7 +3893,7 @@ export class ProcurementService {
       roundCount: row.round_count,
       createdAt: row.created_at,
       sentAt: row.sent_at ?? row.created_at,
-      // `content` only, until ADR 0081. `content` is NULL on all ten inbound
+      // `content` only, until ADR 0084. `content` is NULL on all ten inbound
       // rows in production — their body is in `message_text`, which is the
       // NOT NULL column — so the page printed "No message body was recorded
       // for this exchange" about ten messages whose bodies were recorded.

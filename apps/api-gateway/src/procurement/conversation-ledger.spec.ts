@@ -1,7 +1,7 @@
 import { ProcurementService } from "./procurement.service";
 
 /**
- * ADR 0081 — the conversation ledger can see its own rows.
+ * ADR 0084 — the conversation ledger can see its own rows.
  *
  * `/communications` calls itself the one place a manager sees every vendor
  * conversation. MEASURED ON PRODUCTION (`exzueerziesmczwlhomd`, 2026-09-02):
@@ -244,7 +244,7 @@ function serviceOver(rows: Row[]) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("getConversationHistory — the ledger sees its own rows (ADR 0081)", () => {
+describe("getConversationHistory — the ledger sees its own rows (ADR 0084)", () => {
   it("returns 26 of production's 27 rows, where the old query returned 2", async () => {
     const rows = productionShapedRows();
     expect(rows).toHaveLength(27);

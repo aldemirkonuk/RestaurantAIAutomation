@@ -1048,7 +1048,7 @@ export class ScheduledTasksService implements OnModuleInit {
    * manager as fact. The same fabrication was removed from the weekly email
    * under OD-85; the SMS path was missed.
    *
-   * WHERE THE THROW COMES FROM (ADR 0081 — the comment used to say "it now
+   * WHERE THE THROW COMES FROM (ADR 0084 — the comment used to say "it now
    * throws" without saying that, and a reader checking the body found no
    * `throw` and reasonably concluded the fix had never landed). There is no
    * `throw` here and there should not be: both reads throw for us.
@@ -1058,7 +1058,7 @@ export class ScheduledTasksService implements OnModuleInit {
    * reached only on a SUCCESSFUL read that returned no rows, where zero is the
    * measured answer.
    *
-   * `deliveriesToday` is gone (ADR 0081). It was the literal `0` that the
+   * `deliveriesToday` is gone (ADR 0084). It was the literal `0` that the
    * removed fixture's `1` had been replaced with, carrying the comment "Would
    * need to query deliveries table", and `SmsService.sendDailySummary` printed
    * it to the manager beside two real figures as though it were a third.
@@ -1237,7 +1237,7 @@ export class ScheduledTasksService implements OnModuleInit {
    * Fetch recent conversation summaries for the weekly report.
    * Groups by provider and includes the latest message summary.
    *
-   * ADR 0081 — this select named `message_body` and `subject`. The table has
+   * ADR 0084 — this select named `message_body` and `subject`. The table has
    * neither: `procurement_conversations` stores the body in `message_text`
    * (`text NOT NULL`) and the subject inside `email_headers` (`jsonb`).
    * Measured against production 2026-09-02, not inferred from migrations.
@@ -1276,7 +1276,7 @@ export class ScheduledTasksService implements OnModuleInit {
       // read here naming the same two phantoms, so every weekly report has been
       // summarising an empty list.
       //
-      // `message_text` is selected as well (ADR 0081). ADR 0073 dropped
+      // `message_text` is selected as well (ADR 0084). ADR 0073 dropped
       // `message_body` outright on the grounds that nothing below read it,
       // which was true — and left `latestSubject` as `email_headers.subject
       // ?? ""`, so the 14 of production's 27 rows that carry no subject print

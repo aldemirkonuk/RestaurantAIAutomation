@@ -8,7 +8,7 @@ import { SmsService } from "./sms.service";
 import * as dto from "./dto/communication.dto";
 
 /**
- * ADR 0081 — the communications gateway says what it did.
+ * ADR 0084 — the communications gateway says what it did.
  *
  * C1 the open SMS relay is gone
  * C2 an SMS nobody sent does not report success

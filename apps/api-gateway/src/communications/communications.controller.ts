@@ -107,7 +107,7 @@ export class CommunicationsController {
   /**
    * Send a raw email.
    *
-   * ⚠️ KEPT DELIBERATELY, AND IT IS NOT SAFE. 2026-09-02, ADR 0081.
+   * ⚠️ KEPT DELIBERATELY, AND IT IS NOT SAFE. 2026-09-02, ADR 0084.
    *
    * This route has the same shape as the raw-SMS route deleted below — body
    * only, no `@CurrentUser()`, no tenant, no ownership check on the
@@ -155,7 +155,7 @@ export class CommunicationsController {
     };
   }
 
-  // POST /communications/sms was DELETED 2026-09-02 (ADR 0081).
+  // POST /communications/sms was DELETED 2026-09-02 (ADR 0084).
   //
   // It took `@Body()` and nothing else — no `@CurrentUser()`, no tenant, no
   // ownership check on the destination number — and it wrote no record. Any
@@ -205,7 +205,7 @@ export class CommunicationsController {
         recommendedQty: dto.recommendedQty,
         preferredSupplier: dto.preferredSupplier,
         estimatedDelivery: dto.estimatedDelivery,
-        // ADR 0081. The tenant is DERIVED, never accepted.
+        // ADR 0084. The tenant is DERIVED, never accepted.
         //
         // `payload.restaurantId` is the room this alert is broadcast into
         // (`communications.service.ts` emits `notification:new` to

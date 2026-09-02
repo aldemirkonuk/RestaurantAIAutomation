@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { ScheduledTasksService } from "./scheduled-tasks.service";
 
 /**
- * ADR 0081 — the Vendor Communication Summary reads columns that exist, and a
+ * ADR 0084 — the Vendor Communication Summary reads columns that exist, and a
  * failed read does not pass for a quiet week.
  *
  * `getRecentConversationSummaries` selected `message_body, subject` from
@@ -241,8 +241,16 @@ describe("weekly report — the Vendor Communication Summary can read its table"
     // The line that hid this for as long as it hid: `if (error || !rows ||
     // rows.length === 0) return []` served two facts with one branch, and only
     // one of them is a fact about the restaurant.
+    //
+    // The separation itself arrived on main from ADR 0073 while this change was
+    // in flight, as the shared `readRows` helper. Asserting against THAT is the
+    // point — a second, private error path here would be the duplicate the
+    // CLAIMS rule warns about, and the merged one says more.
     const { service } = makeService({
-      conversationsError: { code: "42703", message: "column ... does not exist" },
+      conversationsError: {
+        code: "42703",
+        message: "column ... does not exist",
+      },
     });
     const errors: string[] = [];
     jest
@@ -254,21 +262,28 @@ describe("weekly report — the Vendor Communication Summary can read its table"
 
     expect(out).toEqual([]);
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain("UNREADABLE");
+    expect(errors[0]).toContain("procurement_conversations");
+    expect(errors[0]).toContain("FAILED");
     expect(errors[0]).toContain("42703");
-    expect(errors[0]).toMatch(/does NOT\s+mean there were no conversations/);
+    expect(errors[0]).toMatch(/FAILED read, not an empty one/);
   });
 
-  it("does not log an error when the week is genuinely quiet", async () => {
+  it("distinguishes a quiet week from a failed one, and logs no error", async () => {
     const { service } = makeService({ conversations: [] });
     const errors: string[] = [];
+    const logs: string[] = [];
     jest
       .spyOn((service as any).logger, "error")
       .mockImplementation((m: any) => void errors.push(String(m)));
-    jest.spyOn((service as any).logger, "log").mockImplementation(() => {});
+    jest
+      .spyOn((service as any).logger, "log")
+      .mockImplementation((m: any) => void logs.push(String(m)));
 
     expect(await summaries(service)).toEqual([]);
     expect(errors).toEqual([]);
+    // Both branches return `[]`; only the log says which one happened, so the
+    // quiet branch has to speak too or the two are indistinguishable again.
+    expect(logs.join("\n")).toMatch(/read SUCCEEDED and found nothing/);
   });
 
   it("still returns the rest of the weekly report when this section fails", async () => {
