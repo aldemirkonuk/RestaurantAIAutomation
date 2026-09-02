@@ -5,7 +5,7 @@ import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
 import { SourceChannel } from "./document-types";
 import { applyTieOut, ParsedDocument } from "./parsed-document";
-import { matchLines, MatchLinesResult } from "./line-matcher";
+import { LineMatch, matchLines, MatchLinesResult } from "./line-matcher";
 import { looksLikeX12, parseX12 } from "./x12";
 import { runWithNewCorrelationId } from "../../common/model-client/correlation";
 
@@ -297,6 +297,16 @@ export class DocumentIntakeService {
             : null,
         extracted: parsed as unknown as Record<string, unknown>,
         extraction_confidence: parsed.confidence,
+        // ADR 0059 (L5, L6). Both were reachable all along and neither was
+        // written: `extraction_model` has had a column and no writer since the
+        // document spine, and there was no `event_id` column at all — so no
+        // extraction in this product could ever be attributed to a model.
+        //
+        // NULL on both is honest and expected for EDI and for an unreadable
+        // document: no model ran. It is the invoice photograph reading NULL
+        // that was the defect.
+        extraction_model: parsed.extractionModel ?? null,
+        event_id: parsed.eventId ?? null,
         currency: parsed.currency,
         subtotal: parsed.subtotal,
         freight: parsed.freight,
@@ -485,6 +495,13 @@ export class DocumentIntakeService {
           order_line_id: m.orderLineId,
           match_confidence: m.confidence,
           match_method: m.method,
+          // ADR 0059. The same two numbers, written a second time into columns
+          // nothing else may touch. match_confidence/match_method are LIVE
+          // STATE and a human confirmation legitimately overwrites them; these
+          // are the proposal, and the proposal is what used to be destroyed at
+          // the exact instant the pair became a label.
+          proposed_confidence: m.confidence,
+          proposed_method: m.method,
         })
         .eq("id", m.documentLineId)
         .eq("restaurant_id", restaurantId);
@@ -494,12 +511,283 @@ export class DocumentIntakeService {
         );
     }
 
+    // ADR 0059. Everything the matcher considered and did not write, recorded
+    // before anyone answers. These are the near-misses: the negative class of
+    // the line-matching dataset, which is the half that teaches a matcher where
+    // its boundary is. Until now they came back on the HTTP response and were
+    // gone the moment the tab closed.
+    //
+    // Fire-and-forget, deliberately: a suggestion that cannot be recorded must
+    // not fail the matching run a human is waiting on. The instrument never
+    // breaks the thing it measures.
+    void this.recordMatchSuggestions(
+      documentId,
+      restaurantId,
+      result.suggested,
+    );
+
     if (result.applied.length || result.suggested.length)
       this.logger.log(
         `document ${documentId}: ${result.applied.length} lines paired, ${result.suggested.length} awaiting confirmation`,
       );
 
     return result;
+  }
+
+  /**
+   * Persist the pairings the matcher proposed but did not write (ADR 0059).
+   *
+   * One row per candidate, keyed on the pair. Re-running the matcher RESTATES a
+   * suggestion rather than making a new one — the intake sweep runs every five
+   * minutes, and without that a single unresolved suggestion would become a
+   * pile. A duplicate key is therefore the design working, not an error.
+   *
+   * Never throws. Every failure is a warn.
+   */
+  private async recordMatchSuggestions(
+    documentId: string,
+    restaurantId: string,
+    suggested: LineMatch[],
+  ): Promise<void> {
+    if (!suggested.length) return;
+    try {
+      const { error } = await this.db
+        .getClient()
+        .from("procurement_line_match_suggestions")
+        .upsert(
+          suggested.map((m) => ({
+            restaurant_id: restaurantId,
+            document_id: documentId,
+            document_line_id: m.documentLineId,
+            order_line_id: m.orderLineId,
+            confidence: m.confidence,
+            method: m.method,
+            substitution: m.substitution,
+            reason: m.reason,
+          })),
+          { onConflict: "document_line_id,order_line_id", ignoreDuplicates: true },
+        );
+      if (error)
+        this.logger.warn(
+          `match suggestions not recorded for document ${documentId}: ${error.message}`,
+        );
+    } catch (err: any) {
+      this.logger.warn(
+        `match suggestions not recorded for document ${documentId}: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  /**
+   * The human half of line matching (ADR 0059).
+   *
+   * THE RULE: a machine proposal shown to a human is written before the human
+   * answers, and the answer is APPENDED, never substituted.
+   *
+   * This endpoint used to write `match_confidence: 1, match_method: "manual"`
+   * unconditionally. As live state that is not wrong — a person really did
+   * confirm it — but it wrote over the model's estimate, in the same two
+   * columns, at the exact instant the pair became a label. The proposal half was
+   * deleted by the act of labelling it, which is the only moment it could never
+   * be recovered afterwards.
+   *
+   * So:
+   *
+   *  - A pairing the MATCHER APPLIED already carries proposed_confidence /
+   *    proposed_method. Confirming it adds confirmed_by / confirmed_at and
+   *    touches neither match column: the machine's number stands, and a human
+   *    standing behind it is a separate, additional fact.
+   *
+   *  - A pairing the matcher SUGGESTED was never written to the line, so the
+   *    proposal lives in `procurement_line_match_suggestions`. Accepting it
+   *    copies that proposal onto the line first, then records the confirmation.
+   *    The match columns are set from the SUGGESTION's own numbers — not from
+   *    `1`/`"manual"` — because the machine is what proposed this pairing and
+   *    the confidence it had is the thing worth keeping.
+   *
+   *  - A pairing NO machine proposed is genuinely manual. `match_confidence: 1,
+   *    match_method: "manual"` is then the honest live state and nothing is
+   *    being destroyed by writing it.
+   *
+   * Unlinking clears the live pairing and the confirmation, and NEVER clears
+   * proposed_*: "the model proposed this and a human rejected it" is the single
+   * most valuable row in an entity-resolution corpus, and erasing the proposal
+   * on rejection would keep only the examples the model already got right.
+   */
+  async confirmLineMatch(
+    documentId: string,
+    lineId: string,
+    restaurantId: string,
+    userId: string | null,
+    orderLineId: string | null,
+  ): Promise<Record<string, unknown>> {
+    const client = this.db.getClient();
+
+    const { data: before, error: readErr } = await client
+      .from("procurement_document_lines")
+      .select("id, order_line_id, proposed_confidence, proposed_method")
+      .eq("id", lineId)
+      .eq("document_id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (readErr) throw new Error(readErr.message);
+    if (!before) throw new Error("NOT_FOUND");
+
+    const now = new Date().toISOString();
+
+    if (!orderLineId) {
+      const { data, error } = await client
+        .from("procurement_document_lines")
+        .update({
+          order_line_id: null,
+          match_confidence: null,
+          match_method: null,
+          confirmed_by: null,
+          confirmed_at: null,
+        })
+        .eq("id", lineId)
+        .eq("document_id", documentId)
+        .eq("restaurant_id", restaurantId)
+        .select(
+          "id, order_line_id, match_method, match_confidence, proposed_method, proposed_confidence, confirmed_at",
+        )
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) throw new Error("NOT_FOUND");
+
+      // The pairing that WAS on the line has just been rejected by a person.
+      // Record that against the suggestion it came from, if there was one.
+      if (before.order_line_id)
+        void this.resolveSuggestion(
+          lineId,
+          before.order_line_id as string,
+          "rejected",
+          userId,
+          now,
+        );
+      return data;
+    }
+
+    // Was this pairing proposed? Either it is already on the line (the matcher
+    // applied it) or it is sitting in the suggestions table.
+    const alreadyProposed = before.proposed_method != null;
+    let suggestion: { confidence: number | null; method: string | null } | null =
+      null;
+    if (!alreadyProposed) {
+      const { data } = await client
+        .from("procurement_line_match_suggestions")
+        .select("confidence, method")
+        .eq("document_line_id", lineId)
+        .eq("order_line_id", orderLineId)
+        .maybeSingle();
+      suggestion = data ?? null;
+    }
+
+    const update: Record<string, unknown> = {
+      order_line_id: orderLineId,
+      confirmed_by: userId,
+      confirmed_at: now,
+    };
+
+    if (alreadyProposed) {
+      // Nothing else. match_confidence / match_method already hold the
+      // matcher's own answer and this endpoint must not overwrite them.
+    } else if (suggestion) {
+      // Promote the suggestion onto the line, into BOTH halves at once, so the
+      // proposal is recorded in the same write that makes it live.
+      update.match_confidence = suggestion.confidence;
+      update.match_method = suggestion.method;
+      update.proposed_confidence = suggestion.confidence;
+      update.proposed_method = suggestion.method;
+    } else {
+      // A pairing no machine ever proposed. There is no proposal half here, so
+      // proposed_* stay NULL — which is the true statement "the machine never
+      // offered an opinion on this pair", not a missing value.
+      update.match_confidence = 1;
+      update.match_method = "manual";
+    }
+
+    const { data, error } = await client
+      .from("procurement_document_lines")
+      .update(update)
+      .eq("id", lineId)
+      .eq("document_id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .select(
+        "id, order_line_id, match_method, match_confidence, proposed_method, proposed_confidence, confirmed_at",
+      )
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error("NOT_FOUND");
+
+    void this.resolveSuggestion(lineId, orderLineId, "accepted", userId, now);
+    // A different pairing being confirmed for this line invalidates every other
+    // suggestion on it — but that is not a human rejection and must never be
+    // scored as one, so it lands as `superseded`.
+    void this.supersedeOtherSuggestions(lineId, orderLineId, now);
+
+    return data;
+  }
+
+  /**
+   * Record what a human did with one suggestion (ADR 0059).
+   *
+   * Fire-and-forget. A pairing a person just confirmed must not fail because
+   * the instrument that grades it could not write.
+   */
+  private async resolveSuggestion(
+    documentLineId: string,
+    orderLineId: string,
+    resolvedAs: "accepted" | "rejected",
+    userId: string | null,
+    at: string,
+  ): Promise<void> {
+    try {
+      const { error } = await this.db
+        .getClient()
+        .from("procurement_line_match_suggestions")
+        .update({
+          resolved_as: resolvedAs,
+          resolved_at: at,
+          resolved_by: userId,
+        })
+        .eq("document_line_id", documentLineId)
+        .eq("order_line_id", orderLineId)
+        .is("resolved_at", null);
+      if (error)
+        this.logger.warn(
+          `suggestion not resolved for line ${documentLineId}: ${error.message}`,
+        );
+    } catch (err: any) {
+      this.logger.warn(
+        `suggestion not resolved for line ${documentLineId}: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  /** Mark the losing candidates on a line `superseded`, never `rejected`. */
+  private async supersedeOtherSuggestions(
+    documentLineId: string,
+    keptOrderLineId: string,
+    at: string,
+  ): Promise<void> {
+    try {
+      const { error } = await this.db
+        .getClient()
+        .from("procurement_line_match_suggestions")
+        .update({ resolved_as: "superseded", resolved_at: at })
+        .eq("document_line_id", documentLineId)
+        .neq("order_line_id", keptOrderLineId)
+        .is("resolved_at", null);
+      if (error)
+        this.logger.warn(
+          `suggestions not superseded for line ${documentLineId}: ${error.message}`,
+        );
+    } catch (err: any) {
+      this.logger.warn(
+        `suggestions not superseded for line ${documentLineId}: ${err?.message ?? err}`,
+      );
+    }
   }
 
   /**
