@@ -27,6 +27,7 @@ from fastapi import FastAPI
 from api.toast_routes import get_toast_client, router
 from services.toast_api_client import (
     ToastAPIClient,
+    ToastInvalidIdentifier,
     ToastNotConfigured,
     ToastNotFound,
     ToastUnavailable,
@@ -653,3 +654,164 @@ async def test_fetch_order_has_no_mock_fallback_even_when_not_strict():
 
     with pytest.raises(ToastNotConfigured):
         await client.fetch_order("o1")
+
+
+# ── 6. Path-segment safety (CodeQL py/partial-ssrf) ──────────────────────────
+# The gateway fixed this class on its side in
+# apps/api-gateway/src/common/http/safe-path.ts. The orchestrator is reachable
+# server-to-server in its own right, so it validates rather than assuming every
+# caller came through the gateway.
+
+# The full hostile set, checked against the allowlist itself. This is the real
+# unit under test: it is deterministic, and it does not depend on which of
+# httpx / Starlette / the route happens to reject a given payload first.
+_HOSTILE_IDS = [
+    "../../admin",
+    "..%2f..%2fadmin",
+    "menu/../../secret",
+    "..",
+    ".",
+    "",
+    "abc def",
+    "id\nX-Injected: 1",
+    "http://evil.example.com",
+    "a" * 257,
+    "%2e%2e%2fadmin",
+    "a:b",
+    "a\\b",
+]
+
+
+@pytest.mark.parametrize("bad", _HOSTILE_IDS)
+def test_allowlist_rejects_every_hostile_id(bad):
+    from services.safe_path import is_safe_path_segment
+
+    assert not is_safe_path_segment(bad), f"{bad!r} passed the allowlist"
+
+
+# Ids that actually reach the route handler. The rest never get that far, and
+# not because of anything this router does: httpx refuses to build a URL
+# containing a bare newline, and dot-segments (`.`, `..`, `%2e%2e%2f…`) are
+# resolved away during URL normalisation, so they land on the collection route
+# or on no route at all (404). Asserting a status for those would be testing
+# someone else's stack; the invariant test below covers them instead.
+_HOSTILE_IDS_REACHING_HANDLER = [
+    "abc def",
+    "a" * 257,
+    "a:b",
+]
+
+
+@pytest.mark.parametrize("bad", _HOSTILE_IDS_REACHING_HANDLER)
+async def test_menu_id_that_could_escape_the_path_is_rejected(api, stub, bad):
+    resp = await api.get(f"/api/v1/toast/menus/{bad}", headers=AUTH)
+
+    assert resp.status_code == 400, f"{bad!r} was not rejected"
+    # The offending id is never echoed back into the caller's logs.
+    assert bad not in resp.json()["detail"]
+    stub.fetch_menu.assert_not_awaited()
+
+
+@pytest.mark.parametrize("bad", _HOSTILE_IDS_REACHING_HANDLER)
+async def test_order_id_that_could_escape_the_path_is_rejected(api, stub, bad):
+    resp = await api.get(f"/api/v1/toast/orders/{bad}", headers=AUTH)
+
+    assert resp.status_code == 400, f"{bad!r} was not rejected"
+    stub.fetch_order.assert_not_awaited()
+
+
+@pytest.mark.parametrize("bad", _HOSTILE_IDS)
+async def test_no_hostile_id_ever_reaches_the_toast_client(api, stub, bad):
+    """The invariant that actually matters, whoever rejects it first.
+
+    Some payloads are refused by httpx, some normalise onto the collection
+    route, some 400 here. What must hold in every case is that no unsafe value
+    is ever handed to the Toast client to interpolate into a URL.
+    """
+    stub.fetch_menus.return_value = {"menus": []}
+
+    for path in (f"/api/v1/toast/menus/{bad}", f"/api/v1/toast/orders/{bad}"):
+        try:
+            await api.get(path, headers=AUTH)
+        except httpx.InvalidURL:
+            pass  # refused before a request was even built
+
+    passed_ids = [c.args[0] for c in stub.fetch_menu.await_args_list]
+    passed_ids += [c.args[0] for c in stub.fetch_order.await_args_list]
+    assert passed_ids == [], f"unsafe id reached the client: {passed_ids!r}"
+
+
+@pytest.mark.parametrize("bad", ["../../x", "a b", "..", ""])
+async def test_client_rejects_unsafe_ids_at_the_sink(bad):
+    """Enforced in the client too — a sink is only closed if closed at the sink."""
+    client = _strict_client()
+    client.http_client = MagicMock()
+    client.http_client.get = AsyncMock()
+
+    with pytest.raises(ToastInvalidIdentifier):
+        await client.fetch_menu(bad)
+    with pytest.raises(ToastInvalidIdentifier):
+        await client.fetch_order(bad)
+
+    client.http_client.get.assert_not_awaited()
+
+
+def test_safe_path_accepts_real_toast_guids():
+    """The allowlist must not reject the ids Toast actually issues."""
+    from services.safe_path import is_safe_path_segment
+
+    assert is_safe_path_segment("3f2504e0-4f89-11d3-9a0c-0305e82c3301")
+    assert is_safe_path_segment("menu-001")
+    assert is_safe_path_segment("item_101")
+
+
+# ── 7. Factory: the two defects that blocked any first caller ────────────────
+
+
+class _FakeSettings:
+    """Mirrors config/settings.py's plain-class shape (no toast_mock_mode)."""
+
+    toast_client_id = "id"
+    toast_client_secret = "secret"
+    toast_restaurant_guid = "guid"
+    toast_api_url = "https://ws-api.toasttab.com"
+
+
+def test_factory_does_not_crash_when_toast_mock_mode_is_undefined():
+    """It read settings.toast_mock_mode directly and AttributeError'd every call."""
+    from services.toast_api_client import create_toast_client_from_settings
+
+    client = create_toast_client_from_settings(_FakeSettings())
+
+    assert isinstance(client, ToastAPIClient)
+
+
+def test_factory_wires_base_url_from_settings():
+    """settings.toast_api_url was dead config — never passed to the client."""
+    from services.toast_api_client import create_toast_client_from_settings
+
+    client = create_toast_client_from_settings(_FakeSettings())
+
+    assert client.base_url == "https://ws-api.toasttab.com"
+
+
+def test_factory_defers_to_toast_mock_mode_when_it_is_defined():
+    from services.toast_api_client import create_toast_client_from_settings
+
+    class WithFlag(_FakeSettings):
+        toast_mock_mode = True
+
+    assert create_toast_client_from_settings(WithFlag()).mock_mode is True
+
+
+def test_strict_callers_are_forced_out_of_mock_mode():
+    """strict + mock is a contradiction that could only ever produce a 503."""
+    from services.toast_api_client import create_toast_client_from_settings
+
+    class WithFlag(_FakeSettings):
+        toast_mock_mode = True
+
+    client = create_toast_client_from_settings(WithFlag(), strict=True)
+
+    assert client.mock_mode is False
+    assert client.strict is True

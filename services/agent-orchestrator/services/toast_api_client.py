@@ -29,6 +29,25 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# The client's long-standing constant. NOTE: config/settings.py:152-154 defaults
+# TOAST_API_URL to "https://ws-api.toasttab.com" instead, and the two have never
+# agreed. Neither has been checked against a live Toast call. This value is only
+# the last-resort fallback now that the factory passes the setting through.
+DEFAULT_TOAST_BASE_URL = "https://api.toasttab.com"
+
+
+def _require_safe_id(value: str, kind: str) -> None:
+    """Reject an id that cannot be safely interpolated into an outbound URL.
+
+    Enforced in the client rather than only in the router because the client is
+    importable by agents and scripts too, and a sink is only closed if it is
+    closed at the sink.
+    """
+    from services.safe_path import is_safe_path_segment  # noqa: PLC0415
+
+    if not is_safe_path_segment(value):
+        raise ToastInvalidIdentifier(f"Invalid Toast {kind} id")
+
 
 class ToastError(RuntimeError):
     """Base class for Toast failures that must be surfaced, never papered over."""
@@ -46,6 +65,15 @@ class ToastUnavailable(ToastError):
     """A real Toast call was attempted and failed (auth, network, HTTP status).
 
     Raised only in `strict=True` mode, in place of the mock fallback.
+    """
+
+
+class ToastInvalidIdentifier(ToastError):
+    """A caller-supplied id cannot be safely interpolated into an outbound URL.
+
+    Raised before any request is made, in every mode. See services/safe_path.py:
+    an id that is not a single literal path segment can escape the path it was
+    meant to be confined to (CodeQL py/partial-ssrf).
     """
 
 
@@ -309,6 +337,7 @@ class ToastAPIClient:
 
     async def fetch_menu(self, menu_id: str) -> Dict[str, Any]:
         """Fetch a single menu by ID (or mock data)."""
+        _require_safe_id(menu_id, "menu")
         if self.mock_mode:
             self._refuse_mock("fetch_menu")
             for menu in self.MOCK_MENUS:
@@ -345,6 +374,7 @@ class ToastAPIClient:
         exist, at a vendor, with money attached. ADR 0020 forbids exactly that.
         Non-strict callers therefore get ToastNotConfigured rather than a fiction.
         """
+        _require_safe_id(order_id, "order")
         self.total_api_calls += 1
 
         if self.mock_mode:
@@ -667,30 +697,49 @@ class ToastAPIClient:
 def create_toast_client_from_settings(settings, strict: bool = False) -> ToastAPIClient:
     """Create Toast API client from application settings.
 
-    `settings.toast_mock_mode` does not exist in config/settings.py (verified:
-    the only Toast keys there are toast_api_url / client_id / client_secret /
-    restaurant_guid / webhook_secret / environment), so the previous direct
-    attribute access raised AttributeError on every call. Nothing called it, so
-    the crash was never observed. Mock mode is now derived from what is actually
-    configured: no credentials means no real call is possible.
+    Two defects fixed here, both of which had to be fixed before this factory
+    could have a first caller:
+
+    1. It read `settings.toast_mock_mode` directly. `Settings` is a plain class
+       (config/settings.py:13-16) that never defined that attribute, so the read
+       raised AttributeError on every call. There were zero callers, which is
+       why nobody hit it. The read is now via `getattr` with a
+       credentials-derived default: when `toast_mock_mode` is defined the
+       setting wins, and when it is not this factory still works instead of
+       500ing. That deference is deliberate — it must not depend on a
+       particular settings revision to avoid crashing.
+
+    2. It never passed `base_url`, so `settings.toast_api_url` was dead config
+       and every call went to the client's hardcoded constant regardless of what
+       the operator had set. The setting is now wired through, which is what
+       makes the host operator-controlled rather than baked in.
+
+    `strict` callers are forced out of mock mode. Strict means "never serve
+    invented data", so strict-plus-mock is a contradiction that could only ever
+    produce a 503 — an operator with valid credentials would otherwise find the
+    integration dead because an unrelated mock flag defaulted on.
     """
     mock_mode = getattr(
         settings,
         "toast_mock_mode",
         not (settings.toast_client_id and settings.toast_client_secret),
     )
+    if strict:
+        mock_mode = False
+
     return ToastAPIClient(
         toast_client_id=settings.toast_client_id,
         toast_client_secret=settings.toast_client_secret,
         toast_restaurant_guid=settings.toast_restaurant_guid,
         mock_mode=mock_mode,
-        # NOT wired to settings.toast_api_url on purpose. That setting defaults to
-        # "https://ws-api.toasttab.com" (config/settings.py:152-154) while this
-        # client has always used "https://api.toasttab.com". The two disagree, and
-        # which host is correct cannot be settled without a live Toast call, which
-        # this work is forbidden from making. Changing the effective host as a side
-        # effect of wiring a router would be an unverified behaviour change, so the
-        # client keeps its own long-standing constant and the discrepancy is filed
-        # rather than guessed at.
+        # UNVERIFIED which host is correct. The settings default
+        # ("https://ws-api.toasttab.com", config/settings.py:152-154) and this
+        # client's own constant ("https://api.toasttab.com") disagree, and that
+        # cannot be settled without a live Toast call, which this work is
+        # forbidden from making. Wiring the setting through is nonetheless
+        # right regardless of which string wins: it makes the host something an
+        # operator sets via TOAST_API_URL instead of dead config next to a
+        # hardcoded constant.
+        base_url=getattr(settings, "toast_api_url", None) or DEFAULT_TOAST_BASE_URL,
         strict=strict,
     )

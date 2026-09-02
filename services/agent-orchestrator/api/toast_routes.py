@@ -41,6 +41,15 @@ those fallbacks into a raised error, and maps it to an honest status:
 
 No route on this module can return an empty list, a zero, or a synthesized body
 as if it were Toast data.
+
+Path-segment safety
+-------------------
+`menu_id` and `order_id` arrive from the URL and are interpolated into outbound
+Toast URLs, which is the CodeQL py/partial-ssrf shape the gateway already fixed
+on its side (`apps/api-gateway/src/common/http/safe-path.ts`). Both are checked
+against the Python mirror of that allowlist (`services/safe_path.py`) and
+rejected with 400 before any request is made — enforced again inside the client
+itself, because the client has non-HTTP callers too.
 """
 
 import logging
@@ -52,8 +61,11 @@ from pydantic import BaseModel, Field
 
 from api.auth import verify_admin_key
 from config.settings import get_settings
+from services.log_safety import sanitize_for_log
+from services.safe_path import is_safe_path_segment
 from services.toast_api_client import (
     ToastAPIClient,
+    ToastInvalidIdentifier,
     ToastNotConfigured,
     ToastNotFound,
     ToastUnavailable,
@@ -149,9 +161,18 @@ def _raise_http_for(exc: Exception, operation: str) -> NoReturn:
 
     Never returns; always raises. The detail names the operation and the reason
     so the gateway logs something actionable rather than "Failed to fetch".
+
+    `operation` is a static label chosen by the caller — request-derived ids are
+    never interpolated into it, because this function logs it (CodeQL
+    py/log-injection). Where an id genuinely helps, it is passed separately and
+    escaped with sanitize_for_log.
     """
     if isinstance(exc, HTTPException):
         raise exc
+    if isinstance(exc, ToastInvalidIdentifier):
+        # Never echo the offending id back: it is attacker-controlled and would
+        # be reflected straight into the caller's own logs.
+        raise HTTPException(status_code=400, detail=str(exc))
     if isinstance(exc, ToastNotFound):
         raise HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, ToastNotConfigured):
@@ -170,6 +191,22 @@ def _raise_http_for(exc: Exception, operation: str) -> NoReturn:
     raise HTTPException(
         status_code=502, detail=f"Unexpected failure during {operation}"
     )
+
+
+def _reject_unsafe_id(value: str, kind: str) -> None:
+    """400 on an id that could escape the outbound path. Fails before any call.
+
+    Duplicated at the client sink on purpose: this check protects the route
+    regardless of which client instance is injected, and the client's protects
+    its non-HTTP callers. Neither is redundant.
+    """
+    if not is_safe_path_segment(value):
+        logger.warning(
+            "Rejected Toast %s lookup for unsafe id: %s",
+            kind,
+            sanitize_for_log(value),
+        )
+        raise HTTPException(status_code=400, detail=f"Invalid Toast {kind} id")
 
 
 # ── Toast → gateway DTO mapping ──────────────────────────────────────────────
@@ -405,13 +442,15 @@ async def get_menu(
     client: ToastAPIClient = Depends(get_toast_client),
 ) -> Dict[str, Any]:
     """Fetch one menu. Matches `toast.service.ts:807` → ToastMenuDto."""
+    _reject_unsafe_id(menu_id, "menu")
     try:
         raw = await client.fetch_menu(menu_id)
     except ValueError as exc:
         # The client's own "Menu not found" signal in mock mode.
         raise HTTPException(status_code=404, detail=str(exc) or "Menu not found")
     except Exception as exc:
-        _raise_http_for(exc, f"menu lookup for '{menu_id}'")
+        logger.info("Toast menu lookup failed for id %s", sanitize_for_log(menu_id))
+        _raise_http_for(exc, "menu lookup")
 
     return _map_menu(raw)
 
@@ -455,10 +494,12 @@ async def get_order(
     Backed by `fetch_order`, added alongside this router — it was the one
     gateway call with no client method at all.
     """
+    _reject_unsafe_id(order_id, "order")
     try:
         raw = await client.fetch_order(order_id)
     except Exception as exc:
-        _raise_http_for(exc, f"order lookup for '{order_id}'")
+        logger.info("Toast order lookup failed for id %s", sanitize_for_log(order_id))
+        _raise_http_for(exc, "order lookup")
 
     return _map_order(raw)
 
