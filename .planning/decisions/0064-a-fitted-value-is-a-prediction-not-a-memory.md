@@ -67,12 +67,51 @@ seasonality, trend, multiplicative noise; the same shape `toDailySeries` produce
 The honest model still beats the naive benchmark, but by 11%, not by 2.5×. The
 reported error was **less than half** the real one.
 
+**Which window each number describes.** Both post-fix figures are scored over
+`t ∈ [warmup, n)` — 106 of 120 days. That qualifier is load-bearing for MASE
+specifically, because MASE is a *ratio* of two error series and they must be
+measured over the same stretch of trade. The first cut of this fix moved the
+numerator to the scored window and left the denominator on the full series, so
+0.889's benchmark silently included days 7–13 that its numerator refused to
+score. `mase` now takes a `from` bound and the caller passes `warmup`; the
+seasonal-naive denominator is the naive MAE over exactly `t ∈ [max(warmup,
+period), n)`.
+
+That mismatch is not a rounding error, and it runs in **both** directions
+depending on what the excluded head did. Measured over 400 simulated series of
+each shape:
+
+| head shape | effect of the mismatch on MASE | beats-naive verdict flips |
+|---|---|---|
+| opening blitz (busy first fortnight, then settled) | flatters, mean 4.5%, worst 13.9% | 22 / 400 |
+| POS went live on day 20 (leading zeros) | punishes, mean 6.6% | 143 / 400 |
+
+Both shapes are ones `toDailySeries` produces directly — it zero-fills to
+exactly `sinceDays` points, so a mid-window POS rollout *is* a leading-zero
+series. An independent adversarial pass measured the same two effects on its
+own generator at different magnitudes (14.8% / 31.3% worst, 128/400 flips);
+the direction and the order of magnitude reproduce, the exact figures do not
+transfer between generators and are not copied here.
+
 **Second-order finding: the recursion is not the only leak path.** Holt-Winters
 seeds `level`, `trend` and `seasonals` from the first two seasons. Those fitted
 values are in-sample no matter how the loop is written — verified: after the fix
 ∂fitted[3]/∂series[3] is still non-zero while ∂fitted[k]/∂series[k] is zero for
 k ∈ {14, 21, 33, 55}. Fixing the loop alone would have left a smaller version of
 the same dishonesty at the head of every series.
+
+**Third-order finding: the no-data series certified itself.** `toDailySeries`
+zero-fills, so a restaurant or `masterWineId` with no consumption yields 120
+zeros — not a short series. Holt-Winters therefore never returns null, and
+MAE and RMSE over the scored window both evaluate to **0**: a perfect forecast,
+reported over a series holding no observation. `mape` and `mase` already
+refused (both divide by zero); `mae` and `rmse` answered. The zeros predate
+this ADR, but the `scoredPoints` and `basis` fields it introduced made them
+*worse* — they turned an unqualified zero into a zero backed by a stated
+evidence count of 106. The claim got more confident while staying equally
+empty. Per [[0051-rebuilt-pages-show-live-data-only]], an unknown is an em
+dash and never a zero, so all four metrics now return null with
+`basis: "no_observations_in_scored_window"` and `scoredPoints: 0`.
 
 ## Options considered
 
@@ -98,19 +137,21 @@ the same dishonesty at the head of every series.
 
 **Option 1, extended to `holtLinear`, plus an explicit `warmup` boundary.**
 `fitted[i]` on every model in `forecasting.ts` is now contracted to be the
-one-step-ahead prediction of `series[i]` from `series[0..i-1]` only, and
-`holtWintersAdditive` additionally returns `warmup = 2·period` so the seeding
-window can be excluded rather than merely regretted.
+one-step-ahead prediction of `series[i]` from `series[0..i-1]` only, and **every
+model returns its own `warmup`** (SES 1, Holt 2, Holt-Winters 2·period) so the
+seeding window can be excluded rather than merely regretted.
 
 What carried it: the repo was checked for who actually consumes `fitted`, and
 the answer decided the question. `fitted` **never leaves the API** —
 `getDemandForecast` returns `history`, `forecast`, `totalForecastDemand` and
 `accuracy`, never `fitted` (`analytics.service.ts:801-816`); it has zero hits in
 `apps/web`, `apps/mobile`, `services/` and `packages/`. The two `holtLinear`
-callers (`advanced-analytics.service.ts:465`, `goals.service.ts:210`) read only
-`.forecast` and `.trend`. So the *only* consumer of `fitted` anywhere is the
-accuracy block being corrected. Option 2's entire benefit — not breaking other
-callers — is worth nothing, and its cost (a correctly-named leaky array) is real.
+callers read only `.forecast` — `advanced-analytics.service.ts:485`
+(`holt?.forecast.map(...)`) and `goals.service.ts:211`
+(`holt.forecast[holt.forecast.length - 1]`); neither touches `.trend`, `.level`
+or `.fitted`. So the *only* consumer of `fitted` anywhere is the accuracy block
+being corrected. Option 2's entire benefit — not breaking other callers — is
+worth nothing, and its cost (a correctly-named leaky array) is real.
 
 Option 1 is also the standard meaning: `fittedvalues` in statsmodels' ETS is the
 one-step-ahead in-sample prediction. This is not a redefinition so much as
@@ -118,22 +159,37 @@ making Holt-Winters agree with SES, which was right all along.
 
 The `warmup` boundary is what makes the fix non-cosmetic. Without it the head of
 every series stays in-sample through the seed, and a 120-point series would
-report 120 scored points when only 106 are honest.
+report 120 scored points when only 106 are honest. Each model returns its own
+rather than the caller hardcoding them: the number that bounds the honesty
+window is determined by the seeding code, so it belongs beside it — a caller
+holding a literal `2` is a second source of truth that goes stale the moment
+seeding changes. The spec pins all three at the boundary itself (`warmup − 1`
+must still leak, `warmup` must not), so a value that is merely *large enough*
+does not pass.
 
 ## Consequences
 
 - **Easier:** an accuracy number from `getDemandForecast` now means what a
-  manager would assume it means. `accuracy` carries `basis:
-  "rolling_one_step_ahead"` and `scoredPoints` so the claim is self-describing
-  and the ADR 0048 Lane A work can build on it.
+  manager would assume it means. `accuracy` carries `basis` and `scoredPoints`
+  so the claim is self-describing and the ADR 0048 Lane A work can build on it.
+  Note the trap those two fields set on the way in — a stated evidence count
+  makes an *empty* claim read as a well-grounded one, which is why the no-data
+  refusal above had to land in the same change rather than after it. A field
+  that qualifies a number is only an honesty feature while the number exists.
 - **Easier:** the leak is now guarded, not just fixed. `forecasting.spec.ts`
   asserts ∂fitted[k]/∂series[k] = 0 for all three models as one object, so a
   regression names every model that broke rather than short-circuiting on the
-  first.
+  first, and pins each model's `warmup` at its exact boundary.
 - **Harder / given up:** every forecast accuracy figure gets visibly worse. On
   the simulated series MAPE roughly doubles and MASE moves 0.40 → 0.89. Nothing
   regressed; the old figure was wrong. Anyone who saw a pre-fix number should
   discard it.
+- **Harder:** `mase` grew a fifth parameter. It defaults to `0`, so every
+  existing call keeps its old behaviour — which means the mismatched-window
+  bug is *reachable* by anyone who omits it. Accepted over a required
+  parameter because `mase` is a general metric with legitimate whole-series
+  uses; the guard is that the one production caller passes `warmup` and a spec
+  asserts the two windows agree.
 - **Given up:** the smoothed in-sample series is no longer available from these
   functions. Nothing used it; `seasonalDecompose` remains for that purpose.
 - **Behaviour change beyond `fitted`:** Holt-Winters now absorbs `series[0]`
@@ -150,3 +206,4 @@ report 120 scored points when only 106 are honest.
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-02 | — | Created. Leak re-derived by perturbation *before* any code change. Evidence: 3 of the 4 new spec cases proven failing against the pristine `origin/main` engine (engine reverted, suite re-run — not projected); 11/11 green post-fix; full api-gateway suite 128 suites / 1585 tests passing, `tsc --noEmit` clean. Next-free ADR number confirmed as 0064 by `scripts/check_adr_numbers_unique.py` across 437 refs |
+| 2026-09-02 | Independent adversarial pass | **Confirmed the core, found two real defects.** Rebuilt every check on its own harness: 300 Holt-Winters configurations (5 periods × 5 α/β/γ corners × 3 zero-densities × 4 lengths) with **zero** leak violations, warmups exact rather than off by one, `fitted.length === series.length` structural, and the impact table if anything understating the leak. Rider analysis held — `holtLinear` outputs bit-identical old vs new, 0 sign flips on the insight path. **Defect A:** MASE's numerator and denominator spanned different windows (see the window table above) — closed by `mase(…, from)`. **Defect B:** the all-zero no-data series reported MAE 0 / RMSE 0 over 106 scored points — closed by the null refusal. Both re-verified on an independent harness here before fixing; 4 of the 6 added cases proven failing against the pre-adversary commit. Post-fix: full suite 129 suites / 1592 tests passing, `tsc --noEmit` clean, no expectation moved |

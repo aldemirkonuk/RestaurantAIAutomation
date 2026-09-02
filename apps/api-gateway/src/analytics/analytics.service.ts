@@ -762,8 +762,7 @@ export class AnalyticsService {
     if (!result) {
       model = "holt_linear";
       const holt = E.forecast.holtLinear(values, 0.4, 0.1, horizon);
-      // Holt seeds level from y0 and trend from y1-y0 → two points consumed.
-      result = holt ? { ...holt, seasonals: [] as number[], warmup: 2 } : null;
+      result = holt ? { ...holt, seasonals: [] as number[] } : null;
     }
     if (!result) {
       model = "ses";
@@ -775,14 +774,17 @@ export class AnalyticsService {
             level: 0,
             trend: 0,
             seasonals: [],
-            warmup: 1, // fitted[0] is the seed y0, not a prediction
+            warmup: ses.warmup,
           }
         : null;
     }
 
     // Rolling one-step-ahead accuracy: each fitted[i] is a prediction of
     // values[i] made from values[0..i-1] only. The seeding window is excluded
-    // because those fitted values are in-sample by construction.
+    // because those fitted values are in-sample by construction, and `from: w`
+    // holds the seasonal-naive denominator to that same window — scoring the
+    // numerator on [w, n) against a benchmark drawn from [period, n) would
+    // compare two different stretches of trade (ADR 0064).
     let accuracy: {
       mae: number | null;
       rmse: number | null;
@@ -795,14 +797,34 @@ export class AnalyticsService {
       const w = Math.min(result.warmup, values.length);
       const actual = values.slice(w);
       const predicted = result.fitted.slice(w);
-      accuracy = {
-        mae: E.forecast.mae(actual, predicted),
-        rmse: E.forecast.rmse(actual, predicted),
-        mape: E.forecast.mape(actual, predicted),
-        maseVsSeasonalNaive: E.forecast.mase(actual, predicted, values, period),
-        basis: "rolling_one_step_ahead",
-        scoredPoints: Math.min(actual.length, predicted.length),
-      };
+      // `toDailySeries` zero-fills, so a restaurant (or SKU) with no
+      // consumption yields an all-zero window. MAE and RMSE would both answer
+      // 0 there — a *perfect forecast* claimed over a series holding no
+      // observation. An unknown is an em dash, never a zero (ADR 0051).
+      const hasSignal = actual.some((v) => v !== 0);
+      accuracy = hasSignal
+        ? {
+            mae: E.forecast.mae(actual, predicted),
+            rmse: E.forecast.rmse(actual, predicted),
+            mape: E.forecast.mape(actual, predicted),
+            maseVsSeasonalNaive: E.forecast.mase(
+              actual,
+              predicted,
+              values,
+              period,
+              w,
+            ),
+            basis: "rolling_one_step_ahead",
+            scoredPoints: actual.length,
+          }
+        : {
+            mae: null,
+            rmse: null,
+            mape: null,
+            maseVsSeasonalNaive: null,
+            basis: "no_observations_in_scored_window",
+            scoredPoints: 0,
+          };
     }
 
     const futureDates: string[] = [];
