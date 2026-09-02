@@ -24,8 +24,11 @@ import random
 import httpx
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Callable
+from urllib.parse import quote
 from uuid import uuid4
 import logging
+
+from services.safe_path import is_safe_path_segment
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +45,13 @@ def _require_safe_id(value: str, kind: str) -> None:
     Enforced in the client rather than only in the router because the client is
     importable by agents and scripts too, and a sink is only closed if it is
     closed at the sink.
-    """
-    from services.safe_path import is_safe_path_segment  # noqa: PLC0415
 
+    Belt and braces: callers additionally pass these ids through
+    `urllib.parse.quote(..., safe="")` at the interpolation site, so even a
+    value that somehow reached the template could not introduce a slash and
+    escape its path segment. The allowlist rejects nonsense early with a clear
+    error; the encoding is what makes the escape structurally impossible.
+    """
     if not is_safe_path_segment(value):
         raise ToastInvalidIdentifier(f"Invalid Toast {kind} id")
 
@@ -347,7 +354,7 @@ class ToastAPIClient:
 
         try:
             token = await self._authenticate()
-            menu_url = f"{self.base_url}/config/v2/menus/{menu_id}"
+            menu_url = f"{self.base_url}/config/v2/menus/{quote(menu_id, safe='')}"
             response = await self.http_client.get(
                 menu_url,
                 headers={"Authorization": f"Bearer {token}"},
@@ -385,7 +392,7 @@ class ToastAPIClient:
 
         try:
             token = await self._authenticate()
-            order_url = f"{self.base_url}/orders/v2/orders/{order_id}"
+            order_url = f"{self.base_url}/orders/v2/orders/{quote(order_id, safe='')}"
             response = await self.http_client.get(
                 order_url,
                 headers={"Authorization": f"Bearer {token}"},

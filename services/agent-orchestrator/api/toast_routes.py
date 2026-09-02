@@ -169,6 +169,8 @@ def _raise_http_for(exc: Exception, operation: str) -> NoReturn:
     """
     if isinstance(exc, HTTPException):
         raise exc
+    if isinstance(exc, ToastUnmappableResponse):
+        raise HTTPException(status_code=502, detail=str(exc))
     if isinstance(exc, ToastInvalidIdentifier):
         # Never echo the offending id back: it is attacker-controlled and would
         # be reflected straight into the caller's own logs.
@@ -191,6 +193,15 @@ def _raise_http_for(exc: Exception, operation: str) -> NoReturn:
     raise HTTPException(
         status_code=502, detail=f"Unexpected failure during {operation}"
     )
+
+
+class ToastUnmappableResponse(RuntimeError):
+    """Toast answered, but the answer cannot be expressed as the gateway's DTO.
+
+    Surfaces as 502. Distinct from "Toast is down" (503) and from "Toast says it
+    does not exist" (404): this one means we got something and will not guess at
+    what it meant.
+    """
 
 
 def _reject_unsafe_id(value: str, kind: str) -> None:
@@ -355,6 +366,14 @@ def _map_order(
     `fallback_items` is used only on create, where the request body is a
     truthful record of what was sent if Toast's response echoes no selections.
 
+    The DTO demands `subtotal`, `tax` and `total`, and Toast's own order object
+    carries them on `checks[]` (`amount` / `taxAmount` / `totalAmount`). Where a
+    figure is absent it is *derived arithmetically* from figures that are
+    present — never defaulted to zero. If Toast returns an order with no money
+    information at all, this raises rather than reporting an order that cost
+    nothing: a zero total is a claim about money, and inventing one here would
+    be the same fabrication this router exists to prevent, in a new costume.
+
     UNVERIFIED: the real-Toast branch of this mapping has never been exercised
     against a live Toast response — see the module docstring and the PR body.
     """
@@ -363,6 +382,16 @@ def _map_order(
         items = fallback_items
 
     checks = raw.get("checks") or []
+    has_money = (
+        any(k in raw for k in ("subtotal", "tax", "total", "totalAmount"))
+        or any(k in c for c in checks for k in ("amount", "taxAmount", "totalAmount"))
+        or bool(items)
+    )
+    if not has_money:
+        raise ToastUnmappableResponse(
+            "Toast order response carries no order total and no line items; "
+            "refusing to report an order as costing nothing."
+        )
     subtotal = raw.get("subtotal")
     if subtotal is None:
         subtotal = sum(c.get("amount") or 0 for c in checks) or sum(
@@ -477,10 +506,16 @@ async def create_order(
     except Exception as exc:
         _raise_http_for(exc, "order creation")
 
-    return _map_order(
-        raw,
-        fallback_items=[i.model_dump(exclude_none=True) for i in body.items],
-    )
+    try:
+        return _map_order(
+            raw,
+            fallback_items=[i.model_dump(exclude_none=True) for i in body.items],
+        )
+    except Exception as exc:
+        # The order may well have been placed — mapping failed, not the call.
+        # Say so, and do NOT retry.
+        logger.error("Toast accepted an order whose response could not be mapped")
+        _raise_http_for(exc, "order creation")
 
 
 @router.get("/orders/{order_id}")
@@ -501,7 +536,10 @@ async def get_order(
         logger.info("Toast order lookup failed for id %s", sanitize_for_log(order_id))
         _raise_http_for(exc, "order lookup")
 
-    return _map_order(raw)
+    try:
+        return _map_order(raw)
+    except Exception as exc:
+        _raise_http_for(exc, "order lookup")
 
 
 @router.get("/sales")

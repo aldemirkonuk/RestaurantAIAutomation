@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from typing import Any, Dict
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -754,6 +754,79 @@ async def test_client_rejects_unsafe_ids_at_the_sink(bad):
         await client.fetch_order(bad)
 
     client.http_client.get.assert_not_awaited()
+
+
+async def test_outbound_url_encodes_the_id_so_it_cannot_escape_its_segment():
+    """Structural fix, not just a guard: `/` can never survive interpolation."""
+    client = _strict_client()
+    response = MagicMock()
+    response.raise_for_status = MagicMock()
+    response.json = MagicMock(return_value={"guid": "x", "checks": []})
+    client.http_client = MagicMock()
+    client.http_client.get = AsyncMock(return_value=response)
+    client.access_token = "tok"
+    client.token_expires_at = datetime.utcnow() + timedelta(hours=1)
+
+    # Bypasses the allowlist to prove the encoding is independently sufficient.
+    with patch("services.toast_api_client.is_safe_path_segment", return_value=True):
+        await client.fetch_order("../../admin")
+
+    url = client.http_client.get.await_args.args[0]
+    assert url == "https://api.toasttab.com/orders/v2/orders/..%2F..%2Fadmin"
+    assert "/../" not in url
+
+
+# ── 6b. An order that cost nothing is a claim, not a default ─────────────────
+
+
+async def test_order_with_no_money_information_is_502_not_a_zero_total(api, stub):
+    """ADR 0020: a zero total would be an invented claim about money."""
+    stub.fetch_order.return_value = {"guid": "o1", "displayNumber": 5}
+
+    resp = await api.get("/api/v1/toast/orders/o1", headers=AUTH)
+
+    assert resp.status_code == 502
+    assert "costing nothing" in resp.json()["detail"]
+    assert "total" not in resp.json()
+
+
+async def test_order_totals_are_derived_from_line_items_when_absent(api, stub):
+    """Derived from real figures is fine; defaulted to zero is not."""
+    stub.fetch_order.return_value = {
+        "guid": "o2",
+        "displayNumber": 6,
+        "checks": [
+            {
+                "selections": [
+                    {"itemGuid": "i", "displayName": "n", "quantity": 3, "price": 100}
+                ]
+            }
+        ],
+    }
+
+    body = (await api.get("/api/v1/toast/orders/o2", headers=AUTH)).json()
+
+    assert body["subtotal"] == 300
+    assert body["total"] == 300
+
+
+async def test_unmappable_create_response_does_not_retry_the_order(api, stub):
+    """The order may have been placed. Report it; never re-send."""
+    stub.create_order.return_value = {"guid": "o3"}
+
+    resp = await api.post(
+        "/api/v1/toast/orders",
+        json={
+            "restaurant_id": "r1",
+            "items": [{"itemGuid": "i", "name": "n", "quantity": 1, "unitPrice": 250}],
+        },
+        headers=AUTH,
+    )
+
+    # Line items came from the request, so totals are derivable and this maps.
+    assert resp.status_code == 201
+    assert resp.json()["subtotal"] == 250
+    assert stub.create_order.await_count == 1
 
 
 def test_safe_path_accepts_real_toast_guids():
