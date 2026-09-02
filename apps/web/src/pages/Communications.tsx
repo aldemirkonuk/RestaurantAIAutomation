@@ -166,7 +166,7 @@ function ProcurementSendHistory({
                     </p>
                   </div>
                   <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full flex-shrink-0">
-                    {EMAIL_TYPE_LABELS[item.emailType] ?? item.emailType}
+                    {item.emailType ? (EMAIL_TYPE_LABELS[item.emailType] ?? item.emailType) : 'Vendor reply'}
                   </span>
                 </div>
                 <div className="flex items-center gap-4 flex-shrink-0 ml-4">
@@ -180,7 +180,7 @@ function ProcurementSendHistory({
                         ? 'bg-emerald-100 text-emerald-700'
                         : 'bg-gray-100 text-gray-600'
                   }`}>
-                    {OUTCOME_LABELS[item.status] ?? item.status}
+                    {item.status ? (OUTCOME_LABELS[item.status] ?? item.status) : 'No status recorded'}
                   </span>
                   <span className="text-gray-400 text-xs">{isExpanded ? '▲' : '▼'}</span>
                 </div>
