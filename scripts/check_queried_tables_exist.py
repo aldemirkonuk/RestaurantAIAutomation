@@ -1254,6 +1254,33 @@ def self_test() -> int:  # noqa: PLR0915  (a flat list of cases reads better her
                 f"intro={intro} unexplained={unex}",
             )
 
+            # THE SHAPE CI ACTUALLY CHECKS OUT. actions/checkout on a
+            # pull_request gives `refs/pull/N/merge` -- a MERGE COMMIT of the
+            # branch into the base -- not the branch head. Every case above
+            # runs on a branch head, so without this the suite would be green
+            # while proving nothing about the tree the job really sees.
+            #
+            # Three-dot still holds: merge-base(main, merge-commit) is main's
+            # tip, because main is one of the merge commit's parents.
+            run(g, "git", "checkout", "-q", "main")
+            run(g, "git", "merge", "--no-ff", "-q", "-m", "pr/merge",
+                "feat/stock-counts-are-records")
+            merge_parents = subprocess.run(
+                ["git", "log", "-1", "--format=%P", "HEAD"],
+                cwd=g, check=True, capture_output=True, text=True,
+            ).stdout.split()
+            rels, fns, used, _s = introduced_by_this_pr(g, "main~1")
+            check(
+                "on a MERGE COMMIT (the shape CI checks out) the answer is the same",
+                len(merge_parents) == 2
+                and "record_stock_count" in fns
+                and "stock_counts" in rels
+                and len(used) == 1,
+                f"parents={len(merge_parents)} rels={sorted(rels)} "
+                f"fns={sorted(fns)} used={used}",
+            )
+            run(g, "git", "reset", "-q", "--hard", "HEAD~1")
+
             # a MODIFIED migration exempts nothing -- the property ADR 0092's
             # helper owns, re-asserted here because THIS guard depends on it.
             run(g, "git", "checkout", "-q", "main")

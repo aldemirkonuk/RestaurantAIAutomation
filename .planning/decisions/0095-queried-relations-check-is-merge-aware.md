@@ -112,12 +112,20 @@ become quietly vacuous — the fault ADR 0072 exists to close, one layer out.
 
 ## Verification
 
-### 1. `--self-test` — 22 cases, all asserting
+### 1. `--self-test` — 23 cases, all asserting
 
-`./scripts/check_queried_tables_exist.py --self-test` → **22/22 pass**, in four
+`./scripts/check_queried_tables_exist.py --self-test` → **23/23 pass**, in four
 sections: the pure three-way decision (8), the SQL replay against real
 throwaway migration directories (6), the refusals (2), and end-to-end through
-**real git repositories** reusing the real ADR 0092 helper (6).
+**real git repositories** reusing the real ADR 0092 helper (7).
+
+One of those seven is the shape CI actually checks out and nothing else covers:
+`actions/checkout` on a `pull_request` gives `refs/pull/N/merge`, a **merge
+commit**, not the branch head. Every other case runs on a branch head, so
+without it the suite would be green while proving nothing about the tree the
+job really sees. It asserts the fixture has **two parents**, which is what makes
+it non-vacuous: removing `--no-ff` fast-forwards instead, and the case then
+fails with `parents=1`.
 
 Two rules this suite obeys, both from faults this repo has already had to write
 an ADR about:
@@ -141,7 +149,7 @@ one-directional assertion here would prove nothing.
 
 ### 2. Mutation — a passing suite is not evidence until a broken guard fails it
 
-Seven mutations, each applied, run, reverted:
+Eight mutations, each applied, run, reverted:
 
 | mutation | result |
 |---|---|
@@ -152,6 +160,7 @@ Seven mutations, each applied, run, reverted:
 | the shared helper's `--diff-filter=A` → `AM` | FAILS *"a MODIFIED migration exempts nothing"* |
 | the `MIN_DECLARED` floor on the base parse removed | FAILS *"a base parse under the 150-relation floor raises"* |
 | the "added file is not on disk" refusal removed | FAILS *"a file git calls added that is not on disk raises"* |
+| `--no-ff` removed, so the merge fixture fast-forwards | FAILS *"on a MERGE COMMIT (the shape CI checks out)"* |
 
 An eighth was attempted — mutating `--diff-filter` **inside this guard** — and
 is recorded as **inapplicable, not as a passing control**: the flag does not
