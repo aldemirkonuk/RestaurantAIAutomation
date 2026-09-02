@@ -246,10 +246,10 @@ grep hit is not absence of a dependency** — the same failure shape as
 
 ### Dependabot PRs — 19 open
 
-**Recommended merge (8), not executed here.** Merging to `main` auto-deploys to
-Railway production; that is a production change and is left for a human to
-trigger deliberately rather than performed by an agent on an agent's
-instruction.
+**Recommended merge (8), deliberately NOT executed.** Merging to `main`
+auto-deploys to Railway production. A production deployment is a human
+decision; this pass stops at recommending, with the evidence attached to each
+PR. The eight are listed so acting on them is a single pass, not a re-triage.
 
 `#22` jspdf (critical fix, real dep, patch) · `#166` `@types/google.maps`
 (types only) · `#6` sqlalchemy 2.0.25 → 2.0.49 (**patch within 2.0, not a
@@ -258,7 +258,10 @@ prometheus-client 0.19 → 0.25 (real, try/except-guarded) · `#8` pytest-mock �
 `#87` python-dotenv (self-evolution only) · `#88` scikit-learn 1.4 → 1.5
 (self-evolution only) · `#168` `@tanstack/react-query` (minor within v5).
 
-**Closed with reason (4).**
+Each of these carries an analysis comment on the PR itself, so the reasoning
+survives where the decision gets made rather than only here.
+
+**Closed with reason (4) — done, not proposed.**
 
 - `#165` **express 4.22.1 → 5.2.1** — the gateway runs `@nestjs/core` and
   `@nestjs/platform-express` `^10.3.0`. Express 5 support arrived in NestJS 11.
@@ -282,12 +285,38 @@ by convention) · `#89` pillow 10.2 → 12.3 (touches `requirements.prod.txt`; n
 so not production-facing) · `#20` pytest-cov 4 → 7 (test-only) · `#2`
 pnpm/action-setup 2 → 6 (changes the pnpm major CI validates the lockfile with).
 
-### The class that will not be fixed
+### The class that will not be fixed — and the one that already was
 
-`ecdsa` `GHSA-wj6h-64fc-37mp` is upstream-wontfix: the maintainers state that
-side-channel resistance is out of scope for a pure-Python implementation.
-Counted, not hidden. This is **1 advisory**; it is not a large class, and the
-brief's framing of it as one should not be carried forward.
+The brief named `ecdsa` `GHSA-wj6h-64fc-37mp` as a known unfixable advisory
+here. **It is not present in any state.** Measured: zero `ecdsa` alerts (open,
+fixed or dismissed), zero occurrences of that GHSA id, and `ecdsa` is not
+pinned in any requirements file.
+
+The reason is that **ADR 0087 already fixed it, and the fact was carried
+forward past its own fix.** `ecdsa` reached this repo only as a transitive of
+`python-jose`; 0087 deleted `python-jose` as a phantom dependency, and all four
+of its advisories now read `fixed`. `requirements.prod.txt:52-57` still carries
+0087's note explaining the upstream-wontfix issue as the *reason* it was
+removed — which is exactly the sentence that got re-read as a live problem.
+This is the "numbers get re-measured, never copied forward" rule (CLAUDE.md
+§5b) catching a stale claim in the brief that commissioned the audit.
+
+The genuinely unpatchable set is **5 open advisories with no
+`first_patched_version` at all**:
+
+| Package | GHSA | Severity | Note |
+|---|---|---|---|
+| `image-size` | `GHSA-5p2g-fcmc-qvqq` | high | transitive |
+| `image-size` | `GHSA-w3rx-r6r6-pgpr` | high | transitive |
+| `react-router-dom` | `GHSA-jjmj-jmhj-qwj2` | medium | **direct dependency of `apps/web`** |
+| `request` | `GHSA-p8p7-x288-28g6` | medium | SSRF; `request` is deprecated/EOL, so no patch will come |
+| `dompurify` | `GHSA-x4vx-rjvf-j5p4` | low | transitive |
+
+`request` is worth naming twice: it is EOL, it is unpatchable, **and** it is the
+package pulling in the vulnerable `form-data@2.3.3` that accounts for one of the
+nine criticals. Removing whatever depends on `request` closes two advisories at
+once and is the highest-leverage dependency work available. It was not attempted
+here because it needs a lockfile regeneration this worktree cannot verify.
 
 ## Consequences
 
