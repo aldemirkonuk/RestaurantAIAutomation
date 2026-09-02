@@ -484,7 +484,9 @@ export class InsightGeneratorService {
       }
     }
 
-    // Forecast gap: Holt-Winters fitted vs actual over last week.
+    // Forecast gap: train Holt-Winters on everything but the last 7 days, then
+    // compare its out-of-sample forecast against what actually happened. This
+    // is a genuine holdout — it scores `forecast`, never `fitted` (ADR 0064).
     const hw = E.holtWintersAdditive(
       values.slice(0, -7),
       7,

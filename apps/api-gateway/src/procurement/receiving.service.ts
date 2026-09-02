@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { normalizeUom, toBottles, Uom } from "./documents/document-types";
@@ -48,6 +49,19 @@ import { ORDER_UNIT_TYPES } from "./order-units";
  * gets surfaced.
  */
 
+/** The outcomes a receiver may record. Mirrors DoorModel.DoorOutcome. */
+export const DOOR_OUTCOMES = ["accepted", "short", "refused"] as const;
+export type DoorOutcome = (typeof DOOR_OUTCOMES)[number];
+
+/** Why a delivery was turned away. Mirrors DoorModel.RefusalReason. */
+export const DOOR_REFUSAL_REASONS = [
+  "wrong_wine",
+  "broken_case",
+  "temperature",
+  "other",
+] as const;
+export type DoorRefusalReason = (typeof DOOR_REFUSAL_REASONS)[number];
+
 export interface DoorReceiptInput {
   restaurantId: string;
   orderId: string;
@@ -57,6 +71,35 @@ export interface DoorReceiptInput {
   countedUom?: string | null;
   /** Bottles per case, when the receiver knows it. Falls back to the order line. */
   packSize?: number | null;
+  /**
+   * Units refused, IN THE SAME UNIT AS `countedQty` — the name says so because
+   * nothing else did.
+   *
+   * This field used to be `rejectedQty`, with its unit stated nowhere: not in
+   * the type, not in the DTO, not in the column. The door sends both numbers in
+   * BOXES and the service converted only one of them, so
+   * `countedBottles - rejectedQty` subtracted boxes from bottles. Three refused
+   * boxes at pack 12 booked 33 bottles of live stock for wine that was turned
+   * away at the door; one broken box out of fourteen booked 167 instead of 156.
+   *
+   * The unit lives in the NAME rather than in a sibling `rejectedUom` field
+   * because a second unit is a second thing that can disagree, and the physical
+   * act has one unit: the receiver counting boxes rejects boxes. A name cannot
+   * disagree with itself, and unlike a branded type it survives JSON — which is
+   * the boundary this bug actually crossed.
+   */
+  rejectedQtyInCountedUom?: number;
+  /**
+   * DEPRECATED, and read only for receipts already sitting in a phone's outbox.
+   *
+   * A client shipped before this change queued `rejectedQty` in IndexedDB, in
+   * the counted unit. Ignoring that field on the way in would make the fix
+   * WORSE than the bug: a queued refusal would arrive with nothing rejected and
+   * book the whole refused delivery into live stock. So it is read, interpreted
+   * in `countedUom` — which is what that client always meant — and converted.
+   *
+   * Removable once no phone can still hold a receipt written by that client.
+   */
   rejectedQty?: number;
   /** Photo of damage, rather than a typed reason. */
   damagePhotoPath?: string | null;
@@ -67,6 +110,39 @@ export interface DoorReceiptInput {
   /** When the tap actually happened, which may be well before it synced. */
   clientCapturedAt?: string | null;
   notes?: string | null;
+  /** The receiver's word on how the delivery stands. */
+  outcome?: DoorOutcome | null;
+  /** Only ever set alongside `outcome: 'refused'`. */
+  refusalReason?: DoorRefusalReason | null;
+  /** Who signed. Initials, no ceremony. */
+  signedByInitials?: string | null;
+  /** The driver present, as the receiver typed it. */
+  driverName?: string | null;
+  /** What the order expected, IN THE SAME UNIT AS `countedQty`. */
+  expectedQtyInCountedUom?: number | null;
+}
+
+/**
+ * What the door is told back.
+ *
+ * `stockBooked` is the field that used to be a lie. The service warned on a
+ * failed `apply_stock_movement` and then wrote `quantity_received`, the status
+ * and `delivered_at` anyway, returning `stockDelta` as though the bottles were
+ * on the shelf. Two facts have to be reported separately because they can
+ * genuinely differ: the delivery is recorded (durable, the receiver is done)
+ * and the shelf count moved (or did not).
+ */
+export interface DoorReceiptResult {
+  alreadyRecorded: boolean;
+  eventId?: string | null;
+  countedQtyBottles: number;
+  /** Every door receipt for this order so far, in bottles. */
+  receivedQtyBottles?: number;
+  /** Null — never 0 — when the movement did not happen. ADR 0016. */
+  stockDelta: number | null;
+  stockBooked: boolean;
+  /** A sentence for the receiver when the stock did not move. Never a code. */
+  stockIssue?: string;
 }
 
 export interface UnverifiedDelivery {
@@ -99,7 +175,7 @@ export class ReceivingService {
    * question they cannot answer, and the price of a wrong answer is a wrong
    * vendor claim.
    */
-  async recordDoorReceipt(input: DoorReceiptInput) {
+  async recordDoorReceipt(input: DoorReceiptInput): Promise<DoorReceiptResult> {
     const { data: order, error: orderErr } = await this.db
       .getClient()
       .from("procurement_orders")
@@ -154,48 +230,177 @@ export class ReceivingService {
       uom,
       packSize,
     );
-    const rejectedQty = Math.max(0, input.rejectedQty ?? 0);
 
+    // BOTH quantities go through the SAME conversion. This is the whole of the
+    // corruption that was here: `rejectedQty` was taken raw, in boxes, and
+    // subtracted from a bottle count. See the field's doc comment.
+    const rejectedInCountedUom = Math.max(
+      0,
+      input.rejectedQtyInCountedUom ?? input.rejectedQty ?? 0,
+    );
+    const rejectedBottles = toBottles(rejectedInCountedUom, uom, packSize);
+    const expectedInCountedUom =
+      input.expectedQtyInCountedUom == null
+        ? null
+        : Math.max(0, input.expectedQtyInCountedUom);
+    const expectedBottles =
+      expectedInCountedUom === null
+        ? null
+        : toBottles(expectedInCountedUom, uom, packSize);
+
+    // The fallback key still exists for a caller that sends none, but it now
+    // carries the rejected figure and a timestamp as well. `door:{orderId}:{n}`
+    // alone silently swallowed a genuine SECOND TRUCK whose count happened to
+    // match the first — which is exactly the case D3 exists to make work.
     const idempotencyKey =
-      input.idempotencyKey ?? `door:${input.orderId}:${countedBottles}`;
+      input.idempotencyKey ??
+      `door:${input.orderId}:${countedBottles}:${rejectedBottles}:${
+        input.clientCapturedAt ?? new Date().toISOString()
+      }`;
+
+    const eventRow = {
+      restaurant_id: input.restaurantId,
+      order_id: input.orderId,
+      document_id: input.documentId ?? null,
+      stage: "case_count",
+      counted_qty: input.countedQty,
+      counted_uom: uom,
+      counted_qty_bottles: countedBottles,
+      // The pair now says the same thing on both sides: `*_qty` in counted_uom,
+      // `*_qty_bottles` in bottles. The row no longer mixes units.
+      rejected_qty: rejectedInCountedUom,
+      rejected_qty_bottles: rejectedBottles,
+      damage_photo_path: input.damagePhotoPath ?? null,
+      received_by: input.userId,
+      client_captured_at: input.clientCapturedAt ?? null,
+      idempotency_key: idempotencyKey,
+      notes: input.notes ?? null,
+      // The door's structured facts, in columns rather than in prose nothing
+      // reads back. The CHECK constraints carry the same closed vocabularies.
+      outcome: input.outcome ?? null,
+      refusal_reason:
+        input.outcome === "refused" ? (input.refusalReason ?? null) : null,
+      signed_by_initials: input.signedByInitials ?? null,
+      driver_name: input.driverName ?? null,
+      expected_qty_bottles: expectedBottles,
+    };
 
     const { data: event, error: evErr } = await this.db
       .getClient()
       .from("procurement_receipt_events")
-      .insert({
-        restaurant_id: input.restaurantId,
-        order_id: input.orderId,
-        document_id: input.documentId ?? null,
-        stage: "case_count",
-        counted_qty: input.countedQty,
-        counted_uom: uom,
-        counted_qty_bottles: countedBottles,
-        rejected_qty: rejectedQty,
-        damage_photo_path: input.damagePhotoPath ?? null,
-        received_by: input.userId,
-        client_captured_at: input.clientCapturedAt ?? null,
-        idempotency_key: idempotencyKey,
-        notes: input.notes ?? null,
-      })
+      .insert(eventRow)
       .select("id, occurred_at")
       .maybeSingle();
 
-    // 23505 on the idempotency index = this tap already landed. Returning the
-    // existing state is the correct response to a retry, not an error.
+    let eventId = event?.id ?? null;
+    let alreadyRecorded = false;
+
     if (evErr) {
-      if (evErr.code === "23505")
-        return { alreadyRecorded: true, countedQtyBottles: countedBottles };
-      throw new Error(evErr.message);
+      if (evErr.code !== "23505") throw new Error(evErr.message);
+
+      // 23505 on the idempotency index = this tap already landed.
+      //
+      // This used to return immediately, and that early return was the reason a
+      // throw could not be the answer to a failed stock movement: attempt one
+      // writes the event and fails the RPC, attempt two short-circuits here and
+      // reports "already recorded" — so the retry that was supposed to fix the
+      // stock instead certified the absence of it. Now the retry re-derives the
+      // same totals and re-attempts the movement, which is free when it already
+      // applied (apply_stock_movement is idempotent on p_idempotency_key,
+      // `20260805130000:71-74`) and is the actual repair when it did not.
+      alreadyRecorded = true;
+      // The error is bound on purpose (ADR 0067). `maybeSingle()` returns
+      // `data: null` for BOTH "no row" and "the query failed", and the branch
+      // below reads a null `eventId` as a contradiction worth throwing over. So
+      // without this, a transient read failure is reported to the operator as
+      // "the unique index fired but the row is not visible" — a data-integrity
+      // accusation standing in for a query that simply did not run.
+      const { data: existing, error: existingError } = await this.db
+        .getClient()
+        .from("procurement_receipt_events")
+        .select("id")
+        .eq("restaurant_id", input.restaurantId)
+        .eq("idempotency_key", idempotencyKey)
+        .maybeSingle();
+      if (existingError) {
+        throw new Error(
+          `door receipt for order ${input.orderId} collided on its idempotency ` +
+            `key, and the lookup for the existing event failed: ` +
+            `${existingError.message}. The receipt was NOT recorded; retry is safe ` +
+            `(apply_stock_movement is idempotent on p_idempotency_key).`,
+        );
+      }
+      eventId = existing?.id ?? null;
+      if (!eventId) {
+        // The unique index fired but the row is not visible to this query. That
+        // is a contradiction, not a retry, and reporting a receipt off the back
+        // of it would be a guess.
+        throw new Error(
+          `door receipt for order ${input.orderId} collided on its idempotency key ` +
+            `but the existing event could not be read back — nothing was booked.`,
+        );
+      }
     }
 
-    // Book only the difference against what this order has already put on the
-    // shelf, so a door count that follows markDelivered corrects rather than
-    // doubles.
-    const alreadyBooked = Number(order.quantity_received ?? 0);
-    const acceptedBottles = Math.max(0, countedBottles - rejectedQty);
-    const delta = acceptedBottles - alreadyBooked;
+    // THE RUNNING TOTAL COMES FROM THE EVENTS, NOT FROM A MUTABLE COLUMN.
+    //
+    // Split deliveries are normal in wine. `quantity_received = acceptedBottles`
+    // set the column ABSOLUTELY, so truck two with six boxes after truck one's
+    // eight recorded six received, not fourteen, and the match line called truck
+    // two short against the whole PO while the driver waited.
+    //
+    // Summing the events instead makes the total reconstructible from durable
+    // rows, and makes a retry converge rather than accumulate: the sum is over a
+    // SET of events, so re-running it after a duplicate key produces the same
+    // number it produced the first time.
+    const totals = await this.doorTotals(
+      input.restaurantId,
+      input.orderId,
+      eventId,
+    );
 
-    if (delta !== 0 && order.inventory_id) {
+    // The ledger delta is THIS EVENT's accepted bottles, booked once under this
+    // event's own idempotency key — except on the first door receipt for an
+    // order, which must also reconcile against whatever the one-shot
+    // markDelivered path already put on the shelf. That is the behaviour the
+    // old `acceptedBottles - quantity_received` line existed for, kept, and now
+    // scoped to the only receipt where it is correct.
+    const acceptedBottles = Math.max(0, countedBottles - rejectedBottles);
+    const alreadyBookedElsewhere = totals.priorEventCount
+      ? 0
+      : Number(order.quantity_received ?? 0);
+    const delta = acceptedBottles - alreadyBookedElsewhere;
+
+    let stockBooked = true;
+    let stockIssue: string | undefined;
+
+    if (!order.inventory_id) {
+      // A null inventory_id books nothing. The old code's `if (delta !== 0 &&
+      // order.inventory_id)` skipped the RPC and returned `stockDelta: delta`
+      // regardless, so an order with no shelf reported a non-zero movement that
+      // never happened.
+      //
+      // NOT a throw, unlike the RPC failure below. No number of retries links an
+      // order to a shelf, so queueing this would put a permanently stuck item in
+      // an outbox the receiver is meant to watch — and a queue that never drains
+      // stops being read, which is how the next real failure hides. It is a 200
+      // whose body says, in words the screen renders, that the delivery is
+      // recorded and the shelf count is not.
+      stockBooked = false;
+      stockIssue =
+        "The delivery is recorded, but this order is not linked to a shelf, " +
+        "so the stock count did not move. A manager has to link it.";
+      this.logger.warn(
+        `door receipt for order ${input.orderId} has no inventory_id — ` +
+          `${delta} bottles were NOT booked`,
+      );
+    } else if (delta === 0) {
+      // Genuinely nothing to move: a full refusal, or a retry that already
+      // booked. `apply_stock_movement` returns early on a zero delta anyway
+      // (`20260805130000:58`), so this is the same outcome, stated rather than
+      // inferred.
+      stockBooked = true;
+    } else {
       const { error: rpcErr } = await this.db
         .getClient()
         .rpc("apply_stock_movement", {
@@ -217,34 +422,164 @@ export class ReceivingService {
           // cost once the paperwork is in hand. Guessing a cost here would put an
           // unverified price into the books wearing the authority of a real one.
           p_order_id: input.orderId,
-          p_idempotency_key: `door-receipt:${event?.id}`,
+          // One movement per EVENT, so two trucks book twice and eight retries
+          // of one truck book once.
+          p_idempotency_key: `door-receipt:${eventId}`,
         });
-      if (rpcErr)
-        this.logger.warn(
+      if (rpcErr) {
+        // THE FAILURE IS MADE REAL, AND IT IS MADE RETRYABLE.
+        //
+        // This used to warn and fall through, then write `quantity_received`,
+        // the status and `delivered_at`, and return `stockDelta` as though the
+        // bottles were on the shelf. Nothing downstream could tell that receipt
+        // from one that worked.
+        //
+        // 503 rather than a distinct 200 body, because a stock-movement failure
+        // is the kind that a retry fixes and this one now converges: the event
+        // row is already durable, the insert dedupes on the idempotency key, and
+        // `apply_stock_movement` dedupes on `door-receipt:{eventId}`. So the
+        // outbox re-sends and the second attempt books the stock that the first
+        // could not.
+        //
+        // And the receiver never sees a bare 500. `doorOutbox.submitDoorReceipt`
+        // treats a non-4xx as retryable, queues the receipt and returns
+        // `synced: false`, so the screen says "Saved on this phone — it will send
+        // itself when you are back inside." The tap still succeeds in one second
+        // with a driver double-parked; only the ledger waits.
+        //
+        // Nothing is written to `procurement_orders` on this path. The order
+        // stays as it was and the event row surfaces through `listUnverified`,
+        // so the delivery is visible as outstanding rather than as complete.
+        this.logger.error(
           `door receipt stock movement failed for ${input.orderId}: ${rpcErr.message}`,
         );
+        throw new ServiceUnavailableException({
+          reason: "stock_movement_failed",
+          message:
+            `The delivery was recorded but the shelf count could not be updated ` +
+            `(${rpcErr.message}). Nothing was lost — this will be retried, and the ` +
+            `delivery is already listed as counted-but-unverified.`,
+        });
+      }
     }
+
+    // Only claim the shelf when the shelf actually moved. Writing
+    // `quantity_received` on a failed movement is what made the screen agree
+    // with a ledger that had never been touched.
+    const orderUpdate: Record<string, unknown> = {
+      // The order is NOT completed here. A case count is not a verified
+      // receipt, and closing on it would strand the bottle count that catches
+      // the short case.
+      status: "PARTIALLY_RECEIVED",
+      delivered_at: new Date().toISOString(),
+      received_by: input.userId,
+    };
+    if (stockBooked) orderUpdate.quantity_received = totals.receivedBottles;
 
     await this.db
       .getClient()
       .from("procurement_orders")
-      .update({
-        quantity_received: acceptedBottles,
-        // The order is NOT completed here. A case count is not a verified
-        // receipt, and closing on it would strand the bottle count that catches
-        // the short case.
-        status: "PARTIALLY_RECEIVED",
-        delivered_at: new Date().toISOString(),
-        received_by: input.userId,
-      })
+      .update(orderUpdate)
       .eq("restaurant_id", input.restaurantId)
       .eq("id", input.orderId);
 
     return {
-      alreadyRecorded: false,
-      eventId: event?.id ?? null,
+      alreadyRecorded,
+      eventId,
       countedQtyBottles: countedBottles,
-      stockDelta: delta,
+      receivedQtyBottles: totals.receivedBottles,
+      // Null, not 0. A number here is a claim about the ledger, and there is no
+      // number to make when the movement did not happen (ADR 0016).
+      stockDelta: stockBooked ? delta : null,
+      stockBooked,
+      ...(stockIssue ? { stockIssue } : {}),
+    };
+  }
+
+  /**
+   * Accepted bottles across every door receipt for one order.
+   *
+   * Reads `counted_qty_bottles` and `rejected_qty_bottles` — both in bottles,
+   * both NOT NULL for the rejected side since
+   * `20260901220000_door_facts_are_columns.sql` — so the sum cannot repeat the
+   * mixed-unit subtraction it exists to replace.
+   *
+   * `priorEventCount` counts the door events that are NOT the one just written,
+   * which is what tells a first receipt (reconcile against markDelivered) from a
+   * second truck (add to the running total).
+   */
+  private async doorTotals(
+    restaurantId: string,
+    orderId: string,
+    currentEventId: string | null,
+  ): Promise<{ receivedBottles: number; priorEventCount: number }> {
+    const { data, error } = await this.db
+      .getClient()
+      .from("procurement_receipt_events")
+      .select("id, counted_qty_bottles, rejected_qty_bottles")
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .eq("stage", "case_count");
+    if (error) throw new Error(error.message);
+
+    const rows = data ?? [];
+    let receivedBottles = 0;
+    let priorEventCount = 0;
+    for (const r of rows) {
+      const accepted = Math.max(
+        0,
+        Number(r.counted_qty_bottles ?? 0) -
+          Number(r.rejected_qty_bottles ?? 0),
+      );
+      receivedBottles += accepted;
+      if (r.id !== currentEventId) priorEventCount += 1;
+    }
+    return { receivedBottles, priorEventCount };
+  }
+
+  /**
+   * What earlier trucks on this order already brought.
+   *
+   * The door asks this before the count so the match line can say "14 of 16 with
+   * the earlier 8" instead of calling a second truck ten short against the whole
+   * purchase order while the driver waits.
+   *
+   * It reads the receipt events rather than `procurement_orders.quantity_received`
+   * for the same reason the write path does: the column is a cache, the events
+   * are the record, and the column was being set absolutely by the very bug this
+   * answers.
+   *
+   * `boxes` is null — never 0 — when the pack size is not knowable, because a
+   * box count derived from a guessed pack is the error this whole area exists to
+   * refuse.
+   */
+  async doorReceivedSoFar(restaurantId: string, orderId: string) {
+    const { data: order, error: orderErr } = await this.db
+      .getClient()
+      .from("procurement_orders")
+      .select("id, quantity, bottles_total, unit_type")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .maybeSingle();
+    if (orderErr) throw new Error(orderErr.message);
+    if (!order) throw new NotFoundException("Order not found");
+
+    const totals = await this.doorTotals(restaurantId, orderId, null);
+    const packSize = this.resolvePackSize(null, order);
+    // resolvePackSize falls to 1 rather than to 12, so a pack of 1 is either a
+    // genuine bottle order or "not knowable". Only a case-unit order can be
+    // stated in boxes at all, which is the same rule normalizeDoorOrder applies.
+    const unit = String(order.unit_type ?? "").toLowerCase();
+    const boxes =
+      unit.startsWith("case") && packSize >= 1
+        ? Math.round(totals.receivedBottles / packSize)
+        : null;
+
+    return {
+      receivedQtyBottles: totals.receivedBottles,
+      doorEventCount: totals.priorEventCount,
+      packSize,
+      receivedBoxes: boxes,
     };
   }
 
@@ -273,7 +608,12 @@ export class ReceivingService {
 
     const byOrder = new Map<
       string,
-      { counted: number; at: string; verified: boolean; caseCountAt: number | null }
+      {
+        counted: number;
+        at: string;
+        verified: boolean;
+        caseCountAt: number | null;
+      }
     >();
     for (const e of data ?? []) {
       if (!e.order_id) continue;

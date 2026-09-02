@@ -118,6 +118,7 @@ const Privacy = lazyWithRefresh(() => import('./pages/Privacy'))
 const VendorPortal = lazyWithRefresh(() => import('./pages/VendorPortal'))
 // Owner/manager only — vendor pricing is the restaurant's negotiating position.
 const VendorPriceCompare = lazyWithRefresh(() => import('./pages/VendorPriceCompare'))
+const DevTruth = lazyWithRefresh(() => import('./pages/DevTruth'))
 
 // Dev/Test pages
 const DevSandbox = lazyWithRefresh(() => import('./pages/DevSandbox'))
@@ -295,6 +296,12 @@ function App() {
                       too (owner/manager on /vendor-intel/*) — a hidden route is
                       not access control. */}
                   <Route path="/vendor-prices" element={<VendorPriceCompare />} />
+                  {/* dev/truth — three instruments that make the product's own
+                      numbers checkable (reach · as-of · swallow). The gateway
+                      routes behind them 404 in production, so this renders its
+                      own failure there rather than a blank screen. Throwaway:
+                      delete when the claims stop needing checking. */}
+                  <Route path="/dev/truth" element={<DevTruth />} />
                   {/* Discovery moved into Providers as a tab; keep the old path
                       working so existing links and bookmarks land in the right place. */}
                   <Route
@@ -302,6 +309,13 @@ function App() {
                     element={<Navigate to="/providers?tab=discover" replace />}
                   />
                   <Route path="/promotions" element={<Promotions />} />
+                  {/* Both halves split by role INSIDE the element: the legacy
+                      entry always did (TeamCommandPage.tsx:36-37) and TeamNext
+                      now does too. Routed straight to the manager surface, a
+                      non-manager with the flag on got the shift desk — and
+                      `GET certifications` carries no role requirement
+                      server-side, so the whole credential file rendered to any
+                      member. */}
                   <Route path="/team" element={<PageGate page="team" legacy={<TeamCommandPage />} next={<TeamNext />} />} />
                   <Route path="/calendar" element={<CalendarModular />} />
                   {/* Same reasoning as `/inventory-legacy` above: `/calendar-classic`

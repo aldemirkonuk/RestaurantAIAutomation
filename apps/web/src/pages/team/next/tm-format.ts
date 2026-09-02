@@ -5,6 +5,18 @@
 
 export const EM = '—';
 
+/**
+ * The mark a windowed figure carries. /team's one server-side window
+ * (TEAM_SERVER_WINDOWS.BENCHMARK_SERVICES) bounds the SAMPLE a statistic is
+ * computed over, not a count being reported, so its honest mark is a ceiling
+ * — "over ≤200 services" — and never a floor. `GE` is kept alongside it for
+ * the day a count on this page becomes windowed; using the wrong one would be
+ * a precise-looking falsehood, which is the thing ADR 0051 clause 2 exists to
+ * stop.
+ */
+export const GE = '≥';
+export const LE = '≤';
+
 export const SERIF = '"Fraunces", Georgia, "Times New Roman", serif';
 export const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 export const SANS = '"DM Sans", "Plus Jakarta Sans", system-ui, sans-serif';
