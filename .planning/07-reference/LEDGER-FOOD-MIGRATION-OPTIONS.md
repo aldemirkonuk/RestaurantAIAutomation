@@ -6,9 +6,15 @@
 > make that call *ready*, not to make it. No option below is recommended as settled;
 > §9 states the one question that remains.
 >
-> **Measured 2026-09-02** against `origin/main` @ `a645c06a`, 87 migrations, and the
+> **Measured 2026-09-02** against `origin/main` @ `a645c06a`, **86 migrations**, and the
 > live production database (`exzueerziesmczwlhomd`, read-only). No migration was
 > written and nothing was applied.
+>
+> **§10 supersedes §9.** A five-lens audit (premortem · scalability · longevity ·
+> operator reality · blast radius) plus an independent adversarial pass ran after §1–§9
+> were written. It **killed this document's own conclusion** and surfaced a sixth
+> option. Read §10 first; §1–§8 remain the evidence base, §9 is kept as the superseded
+> question so the change of mind is legible rather than silently overwritten.
 
 **Retire-to-write (CLAUDE.md §4).** This document **supersedes the ledger paragraph of
 [`FOOD-REASONING-GRAPH.md`](FOOD-REASONING-GRAPH.md):92–100** and takes over OD-113's
@@ -19,6 +25,15 @@ disagreeing numbers ([ADR 0025](../decisions/0025-citations-must-disagree-loudly
 No whole document is retired: nothing in `07-reference/` covers ledger shape, and
 `INVENTORY_ADD_REMOVE_SCENARIOS.md` — the nearest neighbour — is a UI-flow brief whose
 content this would destroy rather than absorb.
+
+**Migration-count corrections, kept on purpose.** OD-113 said 64. This document first
+said 87. A session counting `supabase/migrations/*.sql` said 91. The true figure at
+`a645c06a` is **86**, plus 5 files under `migrations/seed/` which are not migrations —
+that is where 91 came from, and where 87 was simply off by one. Four numbers for one
+`ls`. They are recorded rather than quietly replaced because the discrepancy is the
+point: this is the same corpus that documents "numbers get re-measured, never copied
+forward" (CLAUDE.md §5b), and it happened anyway, four times, inside the document
+written to fix a stale denominator.
 
 ---
 
@@ -437,7 +452,11 @@ might find an option-space branch not represented here. Stated per §0.5.
 
 ---
 
-## 9. The question for the founder
+## 9. The question for the founder — ⚠️ SUPERSEDED BY §10
+
+> **Kept deliberately, not deleted.** The audit in §10 killed the "widen quantity now"
+> half of this section. It is preserved so the reasoning that was abandoned stays
+> visible; ADR 0025's rule is that citations must disagree loudly rather than silently.
 
 Everything above reduces to one fork. It is genuinely open and it is not mine to take.
 
@@ -458,3 +477,179 @@ cheaper and should not be dismissed silently.
 
 *Measured and written 2026-09-02 against `origin/main` @ `a645c06a`. Read-only against
 production; no migration written, nothing applied.*
+
+---
+
+## 10. Five-lens audit — the decision as it actually stands
+
+Commissioned by the founder on 2026-09-02: *"deploy 5 audit agents — each agent serves a
+different purpose: premortem, scalability, longevity…"* Five independent auditors each
+ranked every option through **one lens only**, with no visibility of each other, on a
+shared fact base re-verified against live production. A separate adversary attacked §1–§9
+beforehand. The single-reasoner limitation §8 admits to is what this section repairs.
+
+### 10.1 What the audit changed
+
+**The quantity axis is settled. The identity axis is not, and the two are severable — so
+only one of them has to be decided now.**
+
+| Lens | Quantity ranking | Identity ranking |
+|---|---|---|
+| Premortem | **F** > Q2 > Q1 | A > D > B > C > **E refused outright** |
+| Scalability | **F** > Q2 > Q1 | C > A > B > D > E |
+| Longevity | **F** > Q2 > Q1 *(revised under challenge — see 10.3)* | A > C > B > D > E |
+| Operator reality | **F** > Q1 > Q2 | C ≈ A > B > E > D |
+| Blast radius (counted, not judged) | **F** — 0 SQL objects, 0 gateway files, 0 inputs | not swept — gap declared |
+
+**Option F wins the quantity axis 5–0.** It is not in §5's list of three; it emerged from
+the adversarial pass. **Option E is refused by every lens that ranked it.**
+
+### 10.2 Option F, stated
+
+**Keep `qty` as `integer`. Add `uom NOT NULL` to the three ledger tables with a
+CHECK-constrained vocabulary including mass and volume base units, and store each row in
+its own stated base unit.**
+
+The precedent is already one table away: `procurement_document_lines` pairs `qty` with a
+`NOT NULL uom`. F adopts the pairing and drops the `numeric`.
+
+Why it beat `numeric(12,3)` on every lens:
+
+- **Conservation is exact.** Under integer arithmetic `before + change = after` holds
+  exactly, so `valid_quantity_after` starts meaning what it claims. Under
+  `numeric(12,3)` that CHECK **passes over both the create and the destroy case** (§10.4)
+  — the ledger's flagship integrity constraint certifies its own corruption.
+- **It rebuilds nothing.** Counted, not estimated: 0 columns altered, 0 of 9 views
+  dropped, 0 of 93 functions resignatured, 0 `@IsInt()` decorators touched, 0 front-end
+  inputs broken — because no column changes type. Q1 by contrast needs 8 views, **≥11
+  function signatures** (not the 7 §1.4 claims — three more carry an integer *return*
+  type holding a live quantity), **≥6 internal `int` locals** across
+  `set_stock_absolute`, `transfer_stock`, `record_glass_pour`,
+  `record_inventory_transaction` and the `log_inventory_change` trigger, and **15**
+  `@IsInt()` fields across 5 files (not 14 across 4).
+- **It removes the bolt-on pattern instead of generalising it.** `open_bottle_ml` exists
+  only because bottles are counted, so a partial bottle needs a special column. If a
+  quantity is always "current amount, in the stated base unit", a half-used flour sack is
+  `12500 g` and no future item needs its own bolt-on.
+- **It is more legible, not less.** A row reading `(qty: 600, uom: 'mg')` is
+  self-describing to a cold reader in three years. A row reading `(qty: 0.001)` whose
+  unit is an implicit convention of which table it sits in is tribal knowledge — the same
+  shape as the `close_time` sprawl (102 values, 67 free text) that a closed vocabulary
+  fixed.
+
+### 10.3 The reversal, kept on the record
+
+The longevity lens initially ranked **Q1 first** and was challenged for not applying the
+rounding evidence it had been given. It revised to **F** and separated two failure modes
+that this document had treated as one:
+
+- **Floor mismatch is fixable.** A coarse base unit puts the floor at 1 g; a finer one
+  removes it. This is a choice, not a property of `numeric`.
+- **Repeating-decimal residue is not.** One third has no finite decimal representation at
+  *any* scale, so a fixed-point column leaves a permanent residue on any equal three-way
+  split forever, however many places are allowed. It needs remainder-safe integer
+  allocation (333 + 333 + 334) or a tolerance rule. `valid_quantity_after` has neither.
+
+It also conceded it had argued against F using the very precedent that supports it. **F
+does not escape the residue mode for free** — it needs remainder-safe allocation in the
+write path — but the error is then bounded by one atomic unit, where under a coarse Q1
+floor a 1 g residue against a 0.6 g saffron receipt is a **167% error on the transaction
+itself**.
+
+### 10.4 The finding to read before anything else
+
+Executed directly in production Postgres, not simulated:
+
+| Operation | Stored | Physical consequence |
+|---|---|---|
+| receive 0.6 g saffron | `0.001` | **0.4 g created from nothing** (67% of the movement) |
+| pour 0.6 g from a 1.000 kg lot | `0.999` | **0.4 g destroyed** |
+| 1.000 depleted in three 0.333 draws | `0.001` | permanent residue lot, never depletes, never deletes |
+| a real 0.4 g movement | `0.000` | trips the nonzero CHECK; a legitimate movement is rejected |
+
+`valid_quantity_after` passes in **both** the create and the destroy case, because
+`v_before` is always exactly 3dp, which makes the rounding translation-invariant.
+
+Then the money. `inventory_lot_rollup`'s weighted-average cost is guarded only by
+`sum(qty) > 0`. With `integer` the divisor floors at 1. With `numeric` the `0.001`
+residue above passes that guard and becomes the divisor — **WAC inflated ~1000×**,
+feeding COGS and menu pricing through three services that call it "a real measurement".
+
+The premortem's verdict on this stands as the audit's headline: every other failure in
+the set is eventually caught by something a restaurant already does — a physical count, a
+UI glance, a month-end reconciliation. **This one has no catch mechanism anywhere in the
+stack**, lies dormant at today's 2 lots, and fires when the founder is scaling and least
+likely to be auditing rounding artefacts. It will be **misdiagnosed as theft or waste
+before anyone suspects arithmetic**, and a stored `0.999` cannot tell you afterwards
+whether the truth was 0.9994 or 0.9990.
+
+### 10.5 F's own failure mode, and its fix
+
+The premortem found it: **`uom NOT NULL` requires *a* unit, not a *consistent* one.** The
+same flour logged in `g` on one delivery and `kg` on the next makes
+`trg_project_stock_from_lots`' `SUM(qty)` add 25 to 25000 and project a nonsense on-hand
+figure. No constraint violation, no error.
+
+It is also the only failure in the entire audit with a one-query detector:
+
+```sql
+SELECT item_id, COUNT(DISTINCT uom) FROM inventory_lots
+GROUP BY item_id HAVING COUNT(DISTINCT uom) > 1;
+```
+
+**Therefore F must carry a per-item canonical unit, not per-row freedom** — the unit
+belongs to the item, and lot rows must match it. That refinement is part of the option,
+not an optimisation of it.
+
+### 10.6 Identity — genuinely unresolved, and it does not block F
+
+**A** places 1st or 2nd on every lens that ranked it. **C** has the higher ceiling —
+best query shape, a real FK, and the only option that gives a future transformation table
+something solid to point at — and the worst floor, 5th on premortem. The disagreement is
+principled and neither lens is wrong: C is structurally better but forces a food identity
+key to exist while `FOOD-REASONING-GRAPH`:288 records food L0 as **unfalsifiable**, and
+that mistake would not surface until L2 recipe costing is built on top of it.
+
+The §8 argument that killed C — that a supertype forces an identity model up front — was
+itself refuted: `master_wine_library.id` is a **surrogate uuid** and its `identity_key`
+arrived twelve days later, so this codebase has already iterated an identity model on top
+of an existing table. C is revivable. It is not thereby correct.
+
+**F is additive and touches no identity column, so shipping F decides nothing here.**
+
+### 10.7 What no option delivers, and what breaks first regardless
+
+- **No option provides L2.** There is no transformation primitive anywhere — no
+  `parent_lot_id`, no input→output link. "10 kg whole carrot → 7 kg peeled" is two
+  unrelated transactions under every option including F. The keystone stays unbuilt until
+  it is designed deliberately.
+- **The receiving door is broken today and no ledger option fixes it.** The intake `uom`
+  CHECK is `{bottle, case, keg, pack, split_case, each, liter}` — **no mass unit at all**
+  — so a receiver cannot select "kg" for a flour delivery. Past that, `@IsInt()` rejects
+  `4.5` before it reaches the `numeric(12,3)` column that would hold it fine. This is the
+  first wall an operator hits under **any** decision, and it sits outside OD-113's scope.
+- **The 1-gram floor bites narrowly but really**: saffron at 0.1–0.5 g doses, truffle at
+  2–5 g, vanilla, gold leaf. Flour, carrots and proteins do not care. The auditor stated
+  plainly that the dosing figures are general culinary knowledge, not this repo's data.
+
+### 10.8 What the audit could not do
+
+Four of five auditors reasoned from the shared fact base rather than re-querying
+production; the row counts, rounding results, unit vocabularies and WAC guard in that
+base were verified directly against live Postgres before the audit ran. The blast-radius
+lens **declared its own gap**: it swept the quantity axis only, so A and C's gateway-query
+surface is unmeasured — which is precisely the evidence the A-versus-C fork would need.
+Its gateway file count (29–30 of 339 non-spec) is ~2.5× this document's claimed 12 and it
+could not reconstruct the methodology behind 12; both numbers are recorded rather than
+one being picked. No auditor benchmarked the projection trigger or ran a `numeric`
+migration locally. `services/` (Python) was swept by nobody.
+
+### 10.9 The question that is actually left
+
+> **Ratify F — integer quantities with a CHECK-constrained `uom NOT NULL` and a per-item
+> canonical unit — and keep the identity axis (A vs C) open until food L0 is answerable?**
+
+Choosing F is not a way of deferring. It is the only quantity option that restores the
+ledger's own integrity constraint to being true, and it is the cheapest by measurement.
+Deferring identity remains deliberate rather than accidental, and A-vs-C should not be
+taken until the blast-radius gap in §10.8 is filled.
