@@ -824,7 +824,7 @@ jobs:
       - name: Guard against direct stock_live/shadow_stock writes
         run: ./scripts/check_no_direct_stock_writes.sh
 
-      # ADR 0078. `apply_stock_movement` used to infer cost provenance from the
+      # ADR 0079. `apply_stock_movement` used to infer cost provenance from the
       # mere presence of a price, so any caller passing a number without saying
       # what kind of number it was got 'invoice' free — and markDelivered
       # passed the purchase order's own quote. The RPC now raises; this is the

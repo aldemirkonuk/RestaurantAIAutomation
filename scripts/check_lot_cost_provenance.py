@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A price crossing into a lot must state its provenance (ADR 0078).
+"""A price crossing into a lot must state its provenance (ADR 0079).
 
 `apply_stock_movement` used to infer cost provenance from the mere presence of
 a price:
@@ -30,16 +30,24 @@ EXIT CODES
        missing, or the scan examined zero call sites. Exit 2 is not a pass.
 
 WHY 2 EXISTS, AND WHY THIS IS PYTHON
-    `scripts/check_no_direct_stock_writes.sh:63` calls
+    `scripts/check_no_direct_stock_writes.sh` USED TO call
     `rg -n -P "$PATTERN" --type ts --type tsx ...`. `tsx` is not a ripgrep type
-    (rg's `ts` type already covers *.ts, *.cts, *.mts and *.tsx), so rg exits 2
-    with "unrecognized file type: tsx", `2>/dev/null || true` swallows both the
-    message and the status, `matches` is empty, and the script prints
+    (rg's `ts` type already covers *.ts, *.cts, *.mts and *.tsx), so rg exited 2
+    with "unrecognized file type: tsx", `2>/dev/null || true` swallowed both the
+    message and the status, `matches` came back empty, and the script printed
     "PASS -- no direct stock_live/shadow_stock writes outside the allowlist"
-    having examined zero lines. Confirmed by running it on this tree.
+    having examined zero lines. Confirmed by running it on this tree, and that
+    reading is why this file was written in Python with an exit 2 at all.
 
-    That is the house fault: a checker that reports ABSENCE as HEALTH. This
-    script therefore has no external tool to be wrong about, counts what it
+    It was repaired on 2026-09-02 by #243 and this PR jointly: the search is
+    now `grep -rn -E` (present on ubuntu-latest and on a Mac, neither of which
+    has ripgrep), the corpus is counted and asserted, and the search's exit
+    status is inspected. So the sentence above is HISTORY, not a live defect —
+    it is kept because deleting the reason a guard exists is how the next one
+    gets written without it.
+
+    That fault is the house fault: a checker that reports ABSENCE as HEALTH.
+    This script therefore has no external tool to be wrong about, counts what it
     actually examined, and refuses to say "clean" from a scan that found
     nothing to scan.
 """
@@ -400,7 +408,7 @@ def main() -> int:
         print("FAIL: apply_stock_movement infers 'invoice' from a price again:")
         for w in r.inference:
             print(f"  {w}")
-        print("\nThis is the original defect. See ADR 0078.\n")
+        print("\nThis is the original defect. See ADR 0079.\n")
 
     coverage = (
         f"{r.files_scanned} file(s) scanned, {r.calls_seen} {RPC_NAME} call site(s), "
