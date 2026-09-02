@@ -78,6 +78,25 @@ jobs:
         # condition that made local development impossible before the baseline.
         run: supabase db reset --no-seed
 
+      # The behavioural half of ci.yml's `fk repoint` guard. That one reads
+      # text: it can say the fix is PRESENT, never that it WORKS. This builds a
+      # real composite foreign key -- (inventory_id, uom) -> (id, uom), the shape
+      # ADR 0070 introduces -- against the database that was just rebuilt from
+      # migrations, and asserts the behaviour: one plan row per constraint
+      # rather than one per component, a stated problem for a key that
+      # references no id, a refusal that names the constraint when a composite
+      # key would reject the repointed rows, and a merge that still completes
+      # once they are reconciled. Verified to FAIL against the pre-fix schema.
+      #
+      # Here rather than in ci.yml because this is the workflow that already has
+      # a database. It needs no secret: the local stack above is enough, and
+      # everything it does runs in a transaction that is rolled back.
+      - name: A catalog-driven repoint works, not just reads correctly
+        run: |
+          ./scripts/check_fk_repoint_by_referenced_column.py \
+            --against-database \
+            --dsn "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+
       - name: Compare against remote
         env:
           # Pooler first: db.<ref>.supabase.co is IPv6-only and runners are IPv4-only.
@@ -89,6 +108,7 @@ jobs:
       - name: Explain a failure
         if: failure()
         run: |
+          echo "::notice::If the log names fk_repoint_plan or a PASS assertion, this is the ADR 0076 behavioural check, not drift — see ci.yml's 'fk repoint' notices."
           echo "::notice::If the log says 'Network is unreachable', this is CONNECTIVITY, not drift —"
           echo "::notice::see scripts/check_db_reachable.sh. Otherwise:"
           echo "::notice::Local and remote schemas disagree."
