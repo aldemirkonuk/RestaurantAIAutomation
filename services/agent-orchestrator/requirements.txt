@@ -121,7 +121,21 @@ prometheus-client==0.19.0  # Metrics export
 # =============================================================================
 # SECURITY
 # =============================================================================
-python-jose[cryptography]==3.3.0
+# PyJWT is pinned here because production code imports it: api/studio_routes.py
+# and services/override_service.py both `import jwt as pyjwt`. Until 2026-09-02 it
+# was declared in NO requirements file and arrived only transitively through
+# `supabase>=2.10.0` — an unpinned range, so the real JWT dependency could shift
+# or vanish on any rebuild. Both imports are lazy (inside functions), so that
+# would surface as a request-time 500 on studio auth, not a boot failure.
+#
+# python-jose was removed in the same change (ADR 0087). It was pinned in both
+# files and imported by nothing — `jose` appears in no Python source in this
+# repo — while carrying CVE-2024-33663 (critical, algorithm confusion),
+# CVE-2024-33664, and an unreviewed alg=none advisory (GHSA-28pv-f4g7-364j) with
+# no declared fixed version. It also pulls `ecdsa`, whose GHSA-wj6h-64fc-37mp
+# upstream will not fix, so no version of python-jose escapes it. Do not
+# reintroduce it to get a JWT library: PyJWT is the one this code actually uses.
+PyJWT>=2.8.0
 passlib[bcrypt]==1.7.4
 cryptography==50.0.0
 

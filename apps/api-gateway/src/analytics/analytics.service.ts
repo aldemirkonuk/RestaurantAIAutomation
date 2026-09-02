@@ -80,6 +80,28 @@ export class AnalyticsService {
   // Shared data loaders
   // =========================================================================
 
+  /**
+   * Say so when a read fails. Mirrors
+   * advanced-analytics.service.ts:150 `logQueryFailure` — same wording on
+   * purpose, so both halves of this directory are greppable as one thing.
+   *
+   * An empty result is NOT an error and is never logged as one; only a real
+   * failure is.
+   */
+  private logQueryFailure(table: string, error: any) {
+    this.logger.error(
+      `analytics query on ${table} failed — this lens will report empty ` +
+        `rather than wrong: ${error?.code ?? "?"} ${error?.message ?? error}`,
+    );
+  }
+
+  /** The allSettled variant: a rejection is a failure too. */
+  private reportSlice(table: string, r: PromiseSettledResult<any>) {
+    if (r.status === "rejected")
+      this.logger.error(`analytics query on ${table} rejected: ${r.reason}`);
+    else if (r.value?.error) this.logQueryFailure(table, r.value.error);
+  }
+
   private async loadInventory(restaurantId: string) {
     const client = this.dbService.getClient();
     const [invRes, rollupRes] = await Promise.allSettled([
@@ -105,6 +127,14 @@ export class AnalyticsService {
         .select("inventory_id, live_qty, wac, has_invoice_cost")
         .eq("restaurant_id", restaurantId),
     ]);
+
+    // allSettled makes a REJECTION invisible and `{ data, error }` makes a
+    // FAILED QUERY invisible; both land as `[]` here, which every metric below
+    // reads as "this restaurant has no inventory". Its sibling
+    // advanced-analytics.service.ts was hardened with logQueryFailure and this
+    // file, same directory and same tables, was not. See ADR 0067.
+    this.reportSlice("restaurant_inventory", invRes);
+    this.reportSlice("inventory_lot_rollup", rollupRes);
 
     const inventory =
       invRes.status === "fulfilled" ? invRes.value.data || [] : [];
@@ -146,7 +176,7 @@ export class AnalyticsService {
   private async loadDeliveredOrders(restaurantId: string, sinceDays = 365) {
     const client = this.dbService.getClient();
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
-    const { data } = await client
+    const { data, error } = await client
       .from("procurement_orders")
       .select(
         "id, provider_id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
@@ -154,6 +184,10 @@ export class AnalyticsService {
       .eq("restaurant_id", restaurantId)
       .in("status", ORDER_SPEND_STATUSES)
       .gte("delivered_at", since);
+    // Every spend, COGS-ratio and vendor-concentration figure is built on this
+    // list. Discarding the error made a failed read report a restaurant that
+    // bought nothing all year — the exact shape ADR 0053 named for cost.
+    if (error) this.logQueryFailure("procurement_orders", error);
     return (data || []).map((o: any) => ({
       providerId: o.provider_id || "unknown",
       cost: o.total_cost || o.final_price || 0,
