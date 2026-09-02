@@ -489,27 +489,30 @@ export class CommunicationsController {
       });
 
       // Step 4: Store outbound conversation record
-      const { data: convoData, error: convoError } =
-        await this.communicationsService.storeOutboundConversation({
-          restaurantId,
-          providerId: provider?.id,
-          orderId: null,
-          direction: "outbound",
-          channel: "email",
-          sender_email: managerEmail,
-          recipient_email: vendorEmail,
-          subject: `Wine Order Inquiry: ${wineName} x${quantity} - ${orderNumber}`,
-          message_body: emailHtml,
-          detected_intent: "order_inquiry",
-          detected_sentiment: "professional",
-          status: "sent",
-        });
+      const {
+        stored: convoStored,
+        data: convoData,
+        error: convoError,
+      } = await this.communicationsService.storeOutboundConversation({
+        restaurantId,
+        providerId: provider?.id,
+        orderId: null,
+        direction: "outbound",
+        channel: "email",
+        senderEmail: managerEmail,
+        recipientEmail: vendorEmail,
+        subject: `Wine Order Inquiry: ${wineName} x${quantity} - ${orderNumber}`,
+        body: emailHtml,
+        detected_intent: "order_inquiry",
+        detected_sentiment: "professional",
+        status: "sent",
+      });
 
       steps.push({
         step: 2,
         action: "conversation_stored",
         conversationId: convoData?.id,
-        success: !convoError,
+        success: convoStored,
         error: convoError?.message,
       });
 
@@ -544,8 +547,22 @@ export class CommunicationsController {
         });
       }
 
+      // ADR 0065. This block used to log "completed successfully" and return
+      // `scenario_executed` unconditionally, while step 2 — the only DB write
+      // in the scenario — had failed on every run since the endpoint was
+      // written. The summary now reports what the steps actually say.
+      const failedSteps = steps.filter((s) => s.success === false);
       this.logger.log("=".repeat(60));
-      this.logger.log("Messaging scenario completed successfully");
+      if (failedSteps.length > 0) {
+        this.logger.error(
+          `Messaging scenario completed with ${failedSteps.length} failed step(s): ` +
+            failedSteps
+              .map((s) => `${s.action} (${s.error ?? "no reason given"})`)
+              .join("; "),
+        );
+      } else {
+        this.logger.log("Messaging scenario completed successfully");
+      }
       this.logger.log(
         `Next: Vendor (${vendorEmail}) should reply to the email.`,
       );
@@ -555,7 +572,15 @@ export class CommunicationsController {
       this.logger.log("=".repeat(60));
 
       return {
-        status: "scenario_executed",
+        status:
+          failedSteps.length > 0
+            ? "scenario_executed_with_failures"
+            : "scenario_executed",
+        failedSteps: failedSteps.map((s) => ({
+          step: s.step,
+          action: s.action,
+          error: s.error ?? null,
+        })),
         manager: managerEmail,
         vendor: vendorEmail,
         orderNumber,
