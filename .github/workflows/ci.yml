@@ -719,6 +719,42 @@ jobs:
       - name: Guard against direct beverages.type_attributes access
         run: ./scripts/check_no_direct_type_attributes_access.sh
 
+  # ADR 0078. A count that AGREED with the books used to write nothing at all:
+  # set_stock_absolute returns NULL on a zero delta and inventory_transactions
+  # CHECKs quantity_change <> 0, so the ledger could only hold counts that
+  # disagreed and every variance rate over it was 1.0 BY CONSTRUCTION — a
+  # property of the schema that reads exactly like a measurement of the
+  # restaurant. reconcileInventory went further and answered a manager who had
+  # counted correctly with HTTP 400.
+  #
+  # Its own job rather than a step in lint-typescript, because it also reads the
+  # migration corpus and must run when only SQL changed.
+  #
+  # Stdlib only, no install step. Exit 2 (cannot check) blocks too: the guard
+  # this one replaces printed PASS having examined zero lines, which is what a
+  # vacuous pass looks like from the outside.
+  a-count-is-recorded:
+    name: A count is recorded whether or not it changed anything
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: No count is committed through a write that vanishes on a zero delta
+        run: python3 scripts/check_a_count_is_recorded.py
+
+      - name: The guard reads the real tree and still fires on the real fault
+        run: python3 scripts/check_a_count_is_recorded.py --self-test
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::ARM A means a count path calls set_stock_absolute or apply_stock_movement with transaction_type=reconciliation. Those writes VANISH when the delta is zero, so a count that agreed leaves no trace and the variance rate over the resulting rows is 1.0 by construction. Call record_stock_count instead — it records the count first and moves stock only as a consequence."
+          echo "::notice::ARM B means the INSERT into stock_counts sits at or below the delta branch inside record_stock_count. Below the branch it fires only when the count disagreed, which is the pre-ADR 0078 state exactly. Move it above."
+          echo "::notice::ARM C means stock_counts grew a CHECK forbidding a zero variance — the literal shape of inventory_transactions' CHECK (quantity_change <> 0), which is half of how this fault was built the first time."
+          echo "::notice::CANNOT CHECK (exit 2) means the corpus was empty or zero record_stock_count call sites were found. That is a move, a rename, or a broken scan — never a pass. A guard with nothing to look at gives the same answer as one that looked and found health."
+          echo "::notice::A PASS here is STATIC ONLY. It proves the shipped code has the shape ADR 0078 claims; it cannot prove a row reached Postgres. Runtime coverage is apps/api-gateway/src/inventory/stock-count-is-a-record.spec.ts and the two service specs, and those are mocked."
+
   # Lint Python code
   lint-python:
     name: Lint Python
@@ -997,6 +1033,9 @@ jobs:
         proposal-preservation,
 
         windowed-figures,
+        # Added 2026-09-02 with the job itself (ADR 0078), per the rule this
+        # list exists to enforce.
+        a-count-is-recorded,
       ]
     steps:
       - name: Checkout code
