@@ -204,7 +204,7 @@ SEC-3 is different in kind and should exist from day one regardless.
 
 The corpus circulates **"~86"** non-webhook endpoints lacking `JwtAuthGuard` and **≈51**
 webhook routes (`technology.md:257`), while `foundation README.md:33-37` and
-OD-19 (`OPEN-DECISIONS.md:31`) put those two at **94** and **32**. Summing `ENDPOINTS.md`'s
+OD-19 (`OPEN-DECISIONS.md:32`) put those two at **94** and **32**. Summing `ENDPOINTS.md`'s
 own per-module ⚠️ counts gives a third pair of numbers:
 
 | Class | Modules | Routes |

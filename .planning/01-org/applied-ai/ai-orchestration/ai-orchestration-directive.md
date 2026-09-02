@@ -64,7 +64,7 @@ cannot waive it — a team that could waive its own gate is not a gate.
 
 ## The harness fork — OD-03 stays open here
 
-`OD-03 (OPEN-DECISIONS.md:26)` leaves the orchestration base open between
+`OD-03 (OPEN-DECISIONS.md:27)` leaves the orchestration base open between
 `NousResearch/hermes-agent`, `deepseek-ai/deepseek-harness`, and extending in-house
 `services/agent-orchestrator/core/base_agent.py`, and names the resolution path:
 *"A scoped bake-off on this repo's actual workloads. No pick from repute."*
