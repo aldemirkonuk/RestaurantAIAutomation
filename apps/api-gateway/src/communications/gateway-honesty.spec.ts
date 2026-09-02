@@ -73,10 +73,17 @@ describe("C1 — POST /communications/sms is gone", () => {
     expect((dto as any).SendSmsDto).toBeUndefined();
   });
 
-  it("keeps POST /communications/email, which has a live caller", () => {
-    // Not an oversight and not safe: `email_composer_service.py:354` POSTs to
-    // it on the approved-vendor-email path. Deleting it would stop vendor
-    // mail. Pinned so a later sweep does not remove it without reading why.
+  it("keeps POST /communications/email, which has a caller", () => {
+    // Not an oversight: `email_composer_service.py:354` POSTs to it on the
+    // approved-vendor-email path. Pinned so a later sweep does not remove it
+    // without reading why.
+    //
+    // ADR 0099 CORRECTION to this test's original wording ("a LIVE caller"):
+    // that caller had been refused with a 401 since `fdaa7fa0` (2026-08-25),
+    // and production shows zero rows ever written by its success path. It is
+    // authenticated now (ServiceKeyGuard, see vendor-email-gateway-auth.spec),
+    // which is what makes "keep it" a defensible answer rather than a
+    // restatement of the assumption.
     expect(
       Reflect.getMetadata(
         PATH_METADATA,
