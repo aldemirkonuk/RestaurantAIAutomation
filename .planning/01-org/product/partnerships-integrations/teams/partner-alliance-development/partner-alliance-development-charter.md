@@ -72,7 +72,7 @@ signature-shaped problem in front of a team whose only tool is code.
 ## Explicit non-goals
 
 1. **We do not decide OD-07.** *"Build the guest consumer experience independently vs explore
-   collaboration"* is the founder's call (`OD-07, OPEN-DECISIONS.md:31`, unblocked by *"Founder call
+   collaboration"* is the founder's call (`OD-07, OPEN-DECISIONS.md:32`, unblocked by *"Founder call
    after guest MVP scope exists (FUTURES.md §7.5)"*). This team owns the exploration that
    makes the call **answerable**; [[consumer-app-points-economy-charter]] owns the build. Both
    are gated on the same call, and neither should be advanced as a way of pre-empting it.
@@ -115,7 +115,7 @@ dressing it up"* — the honest grade is:
 |---|---|---|
 | The blocker list | **EXISTS** | 9 verified `authModel: "partner_agreement"` entries; registry sequencing at `:10` |
 | The Türkiye motion as an enumerated set | **EXISTS** | `pos-provider.registry.ts:268-322`, 5 named providers |
-| OD-07 as a live, documented fork | **EXISTS** | `OPEN-DECISIONS.md:31` |
+| OD-07 as a live, documented fork | **EXISTS** | `OPEN-DECISIONS.md:32` |
 | **The partnership function itself** | **NEW** | **Zero outreach. Zero agreements. Zero recorded contact with any counterparty. Nothing in the repo backs this activity.** |
 
 Searched and not found this session: any partner agreement artifact, any outreach log, any
