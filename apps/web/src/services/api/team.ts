@@ -115,7 +115,11 @@ export interface TeamSettings {
 export interface MemberPerformance {
   hasData: boolean
   metrics?: { salesPerShift: number; avgCheck: number; wineAttachPct: number }
-  analytic?: { unit: string; series: number[]; median: number; band: [number, number] }
+  // median/band are null when the peer benchmark is UNKNOWN — either the
+  // server_sales read failed or the restaurant has no other servers with
+  // covers. They used to arrive as 0, which drew the peer line at the bottom
+  // of the chart and put every server above it. ADR 0067.
+  analytic?: { unit: string; series: number[]; median: number | null; band: readonly [number, number] | null }
   services?: Array<{ date: string; covers: number }>
 }
 

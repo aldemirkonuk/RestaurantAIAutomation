@@ -25,7 +25,7 @@ minutes apart.
 So the fix is not a better convention. Two conventions were considered and
 rejected:
 
-  * "Claim the number in OPEN-DECISIONS.md the moment you start." This is
+  * "Claim the number in OPEN-DECISIONS_DIR.md the moment you start." This is
     actively worse. ADR 0025 is locked precisely because adding a register row
     re-anchors every citation below it -- 27 across 24 files, measured. That
     trades a rare renumber for a frequent citation break.
@@ -303,39 +303,118 @@ def _shallow_clone_must_exit_2() -> str | None:
     version of this guard would enumerate one ref, find no collision, and exit 0
     on a live collision. So build that condition on purpose and assert it fails.
 
+    HOW THIS USED TO BE WRONG, because the failure was expensive and silent.
+    The fixture cloned the *enclosing checkout* and asserted the child exited 2.
+    But the child's `origin` is then the parent, and `remote_heads()` asks
+    `origin` what exists. On a `pull_request` checkout the parent carries many
+    refs, the child is missing them, and the child exits 2 -- green. On a `push`
+    checkout the parent is single-branch, so origin advertises ONE head, the
+    child has that one head, nothing is missing, and the child correctly exits
+    0 -- while this fixture demanded 2. git also warns `--depth is ignored in
+    local clones`, so it was never shallow either.
+
+    The result: **every PR was green and every push to main was red**, for 14
+    consecutive merges on 2026-09-02. And because `Deploy to Production` is
+    gated `workflow_run` on CI, a red CI made it `skipped` -- so the post-merge
+    health audit, which exists precisely because CI cannot see Nest DI
+    failures, did not run for any of them, and a `skipped` row reads as "not
+    applicable" rather than "the check that catches production crashes did not
+    run". A fixture that depends on the shape of the enclosing checkout is
+    testing the environment, not the guard.
+
+    So the condition is now built from nothing and owned entirely by this
+    function: a scratch repo, a bare "remote" carrying TWO branches, and a
+    shallow single-branch clone of it over `file://` (a path-form local clone
+    silently ignores `--depth`). origin then advertises 2 while the child holds
+    1, which is the real condition rather than a coincidence of the enclosing
+    checkout, and it holds identically on `push`, on `pull_request` and on a
+    developer's laptop.
+
+    It also asserts WHY the child exited 2. There are six distinct CANNOT-CHECK
+    paths in this file, and an empty or malformed fixture would trip a
+    different one -- passing this test while proving nothing about the ref
+    completeness it claims to cover.
+
     Returns an error string, or None when the guard behaved correctly.
     """
-    try:
-        root = git("rev-parse", "--show-toplevel").strip()
-    except CannotCheck as exc:
-        return f"could not locate the repo root to build the fixture: {exc}"
+
+    def run(*args: str, cwd: str | None = None) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["git", *args], cwd=cwd, capture_output=True, text=True
+        )
+
+    # Two SYNTHETIC ADRs. Nothing here is read from the enclosing checkout --
+    # not the repo root, not its decisions directory, not its files. A self-test
+    # that can see the real repo can be made to pass by the real repo, and this
+    # fixture's whole subject is a test that was answering about its environment
+    # instead of its guard. They exist only so the child's single reachable
+    # CANNOT-CHECK path is the ref one; two distinct numbers, so they can never
+    # read as a collision. 9xxx is chosen to stay clear of any real number.
+    SYNTHETIC_ADRS = {
+        "9001-synthetic-fixture-alpha.md": "# 9001 - synthetic fixture ADR\n",
+        "9002-synthetic-fixture-beta.md": "# 9002 - synthetic fixture ADR\n",
+    }
+    for name in SYNTHETIC_ADRS:
+        if not ADR_RE.match(f"{DECISIONS_DIR}/{name}"):
+            return (
+                f"the fixture's own synthetic ADR name {name!r} no longer matches "
+                f"{ADR_RE.pattern!r}. The filename convention changed; the fixture "
+                "would seed a tree the guard cannot read and prove nothing."
+            )
 
     with tempfile.TemporaryDirectory() as td:
+        seed = os.path.join(td, "seed")
+        bare = os.path.join(td, "origin.git")
         clone = os.path.join(td, "shallow")
-        built = None
-        for args in (
-            ["--depth", "1", "--single-branch", "--branch", "main"],
-            ["--depth", "1", "--single-branch"],
-        ):
-            r = subprocess.run(
-                ["git", "clone", "--quiet", *args, root, clone],
-                capture_output=True, text=True,
-            )
-            if r.returncode == 0:
-                built = args
-                break
-        if built is None:
-            return "could not build a shallow clone to test the CANNOT-CHECK path"
 
-        run = subprocess.run(
+        os.makedirs(os.path.join(seed, DECISIONS_DIR))
+        for name, body in SYNTHETIC_ADRS.items():
+            with open(os.path.join(seed, DECISIONS_DIR, name), "w", encoding="utf-8") as fh:
+                fh.write(body)
+
+        steps = [
+            (["init", "--quiet", seed], None),
+            (["config", "user.email", "guard@invalid"], seed),
+            (["config", "user.name", "guard"], seed),
+            (["add", "-A"], seed),
+            (["commit", "--quiet", "-m", "seed"], seed),
+            (["init", "--bare", "--quiet", bare], None),
+            # TWO branches on the remote; the clone will take one.
+            (["push", "--quiet", bare, "HEAD:refs/heads/main"], seed),
+            (["push", "--quiet", bare, "HEAD:refs/heads/second-branch"], seed),
+            # file:// so --depth is honoured; a bare path is silently ignored.
+            (
+                [
+                    "clone", "--quiet", "--depth", "1", "--single-branch",
+                    "--branch", "main", f"file://{bare}", clone,
+                ],
+                None,
+            ),
+        ]
+        for args, cwd in steps:
+            r = run(*args, cwd=cwd)
+            if r.returncode != 0:
+                return (
+                    f"could not build the fixture at `git {' '.join(args)}`: "
+                    f"{(r.stderr or r.stdout).strip()}"
+                )
+
+        proc = subprocess.run(
             [sys.executable, os.path.abspath(__file__)],
             cwd=clone, capture_output=True, text=True,
         )
-        if run.returncode != 2:
+        if proc.returncode != 2:
             return (
-                f"a shallow single-branch clone exited {run.returncode}, want 2. "
+                f"a shallow single-branch clone exited {proc.returncode}, want 2. "
                 "In CI the guard would then certify a real collision as clean, "
                 "which is the exact failure this guard exists to prevent."
+            )
+        blob = proc.stdout + proc.stderr
+        if "no local ref" not in blob:
+            return (
+                "the shallow clone exited 2, but not for the missing-ref reason "
+                "this fixture exists to prove -- so it would pass while covering "
+                f"nothing. Got: {blob.strip()[:300]}"
             )
     return None
 
