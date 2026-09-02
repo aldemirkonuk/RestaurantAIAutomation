@@ -451,12 +451,15 @@ export default function CommunicationsNext() {
               {/* P5. The previous line said SMS templates "stage for the
                   messaging channel", which implies a channel this page can
                   reach. It cannot: every recorded conversation is
-                  `channel='email'`, and while the gateway does expose
-                  `POST /communications/sms`, NO web client calls it — a
-                  repo-wide grep over apps/web finds zero callers. The workshop
-                  is kept because after this change Save genuinely stores an
-                  SMS template (type='sms' in communication_templates); what is
-                  removed is the claim about a downstream sender. */}
+                  `channel='email'`. As written this comment added "and while
+                  the gateway does expose `POST /communications/sms`, NO web
+                  client calls it" — ADR 0084 DELETED that route four hours
+                  later, for exactly the reason named here (zero callers, plus
+                  no tenant and no ownership check on the destination number).
+                  There is now no raw SMS route at all. The workshop is kept
+                  because Save genuinely stores an SMS template (type='sms' in
+                  communication_templates); what is removed is the claim about
+                  a downstream sender. */}
               <p style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '0 0 10px' }}>
                 SMS: no SMS sender is reachable from this page, and every conversation recorded so
                 far is email. An SMS template saved here is stored and nothing more.
