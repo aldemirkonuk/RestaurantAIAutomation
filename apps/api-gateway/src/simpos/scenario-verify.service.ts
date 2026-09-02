@@ -13,7 +13,6 @@ import {
 import {
   EXPECTATION_CONTRACT_VERSION,
   type ExpectedCheck,
-  type ExpectedDepletion,
   type ExpectedLine,
   type ReadRecord,
   type ScenarioExpectation,
@@ -1219,7 +1218,7 @@ export class ScenarioVerifyService {
 
     // ---- low_stock.notified / low_stock.emailed ---------------------------
     const expectedLowStock = exp.low_stock ?? [];
-    let matchedNotifications: any[] = [];
+    const matchedNotifications: any[] = [];
     if (!notifications.ok) {
       const why = (notifications as any).error;
       push(
@@ -1319,7 +1318,19 @@ export class ScenarioVerifyService {
     }
 
     // ---- insights.generated -----------------------------------------------
-    if (!insightRows.ok) {
+    if (emptyRun) {
+      // A closed day rang nothing, so an insight about "this run" is not a
+      // thing that could exist. Insights that ARE present belong to other
+      // days; counting them either way would be a verdict about someone
+      // else's data.
+      push(
+        "insights.generated",
+        "unverifiable",
+        0,
+        insightRows.ok ? insightRows.rows.length : null,
+        NOTHING,
+      );
+    } else if (!insightRows.ok) {
       push(
         "insights.generated",
         "unverifiable",
@@ -1509,6 +1520,20 @@ export class ScenarioVerifyService {
   ): Promise<void> {
     const want = exp.totals?.revenue;
     const date = run.service_date;
+    if ((exp.checks ?? []).length === 0) {
+      // A closed-day run expects no revenue — but this sim tenant may carry
+      // other runs on the same calendar date, so a non-zero figure here is
+      // not evidence that THIS run misbehaved. Same reasoning as
+      // `hours.closed_day`, and the same refusal to guess.
+      push(
+        "analytics.pos_revenue",
+        "unverifiable",
+        want ?? 0,
+        null,
+        "nothing to compare — this run's expectation has no checks, and any revenue on this date belongs to other runs against the same sim tenant",
+      );
+      return;
+    }
     if (want == null || !date) {
       push(
         "analytics.pos_revenue",
