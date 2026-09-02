@@ -493,20 +493,29 @@ UNREADABLE_WRITE_CEILING = 13
 # way to touch this list is to make it shorter.
 KNOWN_BAD_COLUMNS: dict[str, str] = {
     "calendar_events.priority": (
-        "prod:absent. calendar_events has no `priority` and no `tags` (verified "
-        "2026-09-01). procurement.service.ts createCalendarEventForOrder and "
-        "recurring-orders.service.ts both write them, and both also omit `source`, "
-        "which is NOT NULL — so every calendar event these two paths have ever "
-        "tried to write has failed. Both are wrapped in a try/catch that logs a "
-        "warning, which is why nobody noticed. Owned by the calendar domain "
-        "(calendar.service.ts has 15 more call sites); repairing it means deciding "
-        "where a recurring_order_id link lives, which is a calendar-schema "
-        "decision, not a procurement one."
+        "prod:absent. calendar_events has no `priority` and no `tags` (re-verified "
+        "2026-09-02 against information_schema: 0 of 2 present). BOTH sites also "
+        "omitted `source`, which is varchar(50) NOT NULL with no default — so "
+        "every calendar event either path ever tried to write failed, behind a "
+        "try/catch that logged a warning. "
+        "SHRUNK, NOT CLEARED, 2026-09-02 (ADR 0068): recurring-orders.service.ts "
+        "is FIXED — it now writes source, the real status vocabulary and a real "
+        "`recurring_order_id` column. The ONE remaining writer is "
+        "procurement.service.ts createCalendarEventForOrder (~:1969), owned by a "
+        "concurrent change. The entry stays because this list is keyed by "
+        "table.column across ALL files, so deleting it while that site still "
+        "writes the key makes Contract E fail with a NEW violation on a file this "
+        "change does not own — measured, not assumed. Delete BOTH calendar_events "
+        "entries in the change that fixes procurement.service.ts."
     ),
     "calendar_events.tags": (
-        "prod:absent. Same site and same fix as calendar_events.priority. The "
-        "recurring materialiser also SELECTs on it (`.like(\"tags\", ...)`) to find "
-        "the event it pre-created, so the linkage is dead in both directions."
+        "prod:absent. Same remaining site and same fix as calendar_events.priority "
+        "— procurement.service.ts createCalendarEventForOrder only, as of "
+        "2026-09-02. The recurring materialiser USED to SELECT on it as well "
+        "(`.like(\"tags\", '%uuid%')`, an unindexable substring scan against a "
+        "column that does not exist), so the linkage was dead in both directions; "
+        "ADR 0068 replaced that read with a keyed lookup on the new "
+        "`calendar_events.recurring_order_id` column."
     ),
     "procurement_conversations.sender_email": (
         "prod:absent. communications.service.ts logConversation writes four columns "
