@@ -388,6 +388,13 @@ function CertRow({ block }: { block: CertExposureVM }) {
  * credential file rendered to any member. A hidden route is not access control:
  * the gateway half of this is a separate branch's, and until it lands the
  * client must not ask for what it should not show.
+ *
+ * TODO(gateway, not this branch): `listCertifications` calls
+ * `assertAccess(userId, restaurantId)` with NO required role
+ * (`apps/api-gateway/src/team/team.service.ts:397`). Until it requires
+ * owner/manager, the split below is defence in depth and not access control —
+ * any member who calls `GET /restaurants/:rid/team/certifications` directly
+ * still gets the whole credential file.
  */
 export default function TeamNext() {
   const { activeRole, user, activeRestaurantId } = useAuth();
