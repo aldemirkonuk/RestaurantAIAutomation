@@ -74,6 +74,15 @@ individually while what they don't cover reaches production — this gate exists
    angle's findings, the adversarial pass's findings, and what (if anything) you
    could not check (report this as a limitation, never silently omit it — see
    [[absence-reported-as-health]]).
+   **Commit and push this file, on the PR's own branch, before step 9.** An
+   uncommitted report only satisfies `require_pr_audit.py`'s existence check
+   for the rest of *this* session's working tree — it does not survive a fresh
+   checkout, a different session, or a squash/rebase, and the whole point of
+   writing it to `.planning/07-reference/pr-audits/` instead of a scratch path
+   is that it's a durable artifact. (The CI-side script cannot do this — its
+   runner's filesystem is discarded when the job ends — so it puts the full
+   report in the PR comment instead; this is the one path that can commit it
+   for real, and should.)
 8. **Post the report to the PR:** `gh pr comment <n> --body-file <report>` (or a
    summary + a note that the full report lives at that path, if the report is long).
 9. **Act on the verdict:**

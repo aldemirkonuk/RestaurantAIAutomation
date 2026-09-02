@@ -289,8 +289,6 @@ def run_audit(pr_number: str) -> int:
         adv_verdict = _verdict_of(adversary_report)
         overall = "BLOCK" if adv_verdict in ("OVERTURNED", "UNPARSEABLE") else "PASS"
 
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    report_path = REPORT_DIR / f"{pr_number}-{sha7}.md"
     lines = [
         f"# PR #{pr_number} audit — {sha7}",
         "",
@@ -302,13 +300,24 @@ def run_audit(pr_number: str) -> int:
         lines += [f"### {angle} — {angle_verdicts[angle]}", "", text, ""]
     if adversary_report is not None:
         lines += ["## Adversarial pass", "", adversary_report, ""]
-    report_path.write_text("\n".join(lines))
+    full_report = "\n".join(lines)
 
+    # The CI runner's filesystem is thrown away when the job ends -- a path
+    # under REPORT_DIR here would never exist for anyone reading the comment
+    # later (confirmed: the first live run wrote it, then it vanished with the
+    # runner). Nothing here commits it back to the branch, so the PR comment
+    # IS the durable record; the full report goes in the comment body, not a
+    # path pointer to a file nobody can ever fetch again. The Claude-Code-side
+    # skill is the one path that can commit REPORT_DIR for real, since a
+    # session's own worktree survives past the tool call that wrote it.
     comment_body = (
         f"## PR Audit Gate — {overall}\n\n"
-        f"Full report: `{report_path.relative_to(ROOT)}`\n\n"
         + "\n".join(f"- **{a}**: {v}" for a, v in angle_verdicts.items())
         + (f"\n- **adversarial pass**: {_verdict_of(adversary_report)}" if adversary_report else "")
+        + "\n\n<details><summary>Full report</summary>\n\n"
+        + full_report[:60000]
+        + ("\n\n[truncated at 60000 chars]" if len(full_report) > 60000 else "")
+        + "\n\n</details>\n"
     )
     _run(["gh", "pr", "comment", pr_number, "--body", comment_body])
 
