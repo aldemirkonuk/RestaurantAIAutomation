@@ -104,11 +104,26 @@ W6  A PAGE HOOK'S QUERY KEY CARRIES THE TENANT. Every `queryKey` in a guarded
       It does NOT prove the token holds the right value, only that the key is
       tenant-shaped. A hook that resolves the id incorrectly passes W6.
 
-SCOPE. Three pages: `apps/web/src/pages/receiving/next`,
-`apps/web/src/pages/receipts/next` and `apps/web/src/pages/documents-reports/next`,
-plus the gateway files their registers cite. Each page declares its own
-register, renderers and nullable contract in PAGES below; adding a fourth page
-means adding a fourth entry, not a second script. A page absent from PAGES is
+W7  AN IMPORTED QUERY HOOK THE PAGE DEPENDS ON IS ALSO TENANT-KEYED. W6 reads
+      only the page's own files, and that is not where a page's cache
+      necessarily lives: /communications gets its conversation book from
+      `useProcurementConversationHistory` in the SHARED
+      `hooks/queries/useConversationQueries.ts`, whose key was the constant
+      `['procurement','history']`. W6 could never have seen it, so a green W6
+      would have been a green tick over the page's largest cache bucket.
+
+      Each page therefore names the imported hooks it depends on, BY FUNCTION,
+      and the guard extracts that one function body and checks its key. Naming
+      the function rather than the file is deliberate: the same shared file
+      holds `useConversations`, whose filter-keyed cache belongs to a different
+      page and is not this page's to judge.
+
+SCOPE. Four pages: `apps/web/src/pages/receiving/next`,
+`apps/web/src/pages/receipts/next`, `apps/web/src/pages/communications/next`
+and `apps/web/src/pages/documents-reports/next`, plus the gateway files their
+registers cite and the shared query hooks they name. Each page declares its own
+register, renderers and nullable contract in PAGES below; adding a fifth page
+means adding a fifth entry, not a second script. A page absent from PAGES is
 NOT checked, and this guard makes no claim about it.
 
 The Sorting Office (`/documents-reports`) was added after it shipped a routine
@@ -125,6 +140,43 @@ files, the `.limit(` calls inside them, the interfaces W4 reads — is verified 
 exist before any rule is evaluated, because a guard that passes because its
 anchor moved is a green check mark over an unexamined surface. That is how six
 windowed figures shipped as totals in the first place.
+
+REGISTERING A PAGE MEANS GIVING IT FIXTURES — READ THIS BEFORE RESOLVING A
+CONFLICT IN THIS FILE
+-------------------------------------------------------------------------
+Two branches once grew this guard at the same time and each added a different
+fourth page. The naive union — take the newer file, paste in the other side's
+`PageSpec` — parses, covers every rule, and exits 0 against the real tree. Then
+`--self-test` reports `cannot-check` for EVERY case, because `_scaffold` builds
+a synthetic tree with no files for the newly registered page and the exit-2
+branch fires on all of them.
+
+That output is not a broken self-test. It is the self-test STOPPING and SAYING
+SO — the exact behaviour the section above buys, working in our favour. Which
+makes the hazard not the red run but the two ways of turning it green that are
+both worse than leaving it red:
+
+  1. Dropping the page from PAGES. Instant green, bought by shrinking what is
+     checked, with nothing recording that the page left the guard's scope.
+  2. Softening the fixture-less case to exit 0. Also instant green, and it
+     retires the exit-2 branch entirely: from then on ANY page registered
+     without fixtures passes. That is the vacuity this guard family has
+     produced five times, this file's own `"GE" in src` — satisfied by the
+     word `MERGE` — among them.
+
+The resolution is neither. It is to ADD THE FIXTURES: a `CLEAN_*` hook and
+renderer for the page, `CLEAN_*` sources for every gateway file its register
+cites, the `_scaffold` writes for all of them, and one self-test case per rule
+the page actually exercises — including any rule that did not exist when the
+page's own branch was written (W7 is how this happened: the Sorting Office's
+`threadsTotal` and `draftsPending` both live in shared hooks W6 cannot see, and
+a `PageSpec` carrying `imported_query_hooks=()` would have been a green tick
+over both).
+
+And `--self-test` passes only when EVERY CASE passes. The command exiting 0 is
+not the claim; `self_test()` returns 1 on any failure, so read the case lines.
+A green `guard exit=0` against the real tree says nothing about whether the
+guard can still fail — that is what the self-test is for.
 """
 
 from __future__ import annotations
@@ -159,11 +211,18 @@ class PageSpec:
     # read as "checked and fine".
     tenant_keyed: bool
     tenant_note: str = ""
+    # W7 — (file, exported function name) pairs: shared query hooks this page's
+    # cache actually lives in. Named by FUNCTION so a shared file's other hooks,
+    # which belong to other pages, are not judged here.
+    imported_query_hooks: tuple[tuple[Path, str], ...] = ()
 
 
 _RECEIVING = Path("apps/web/src/pages/receiving/next")
 _RECEIPTS = Path("apps/web/src/pages/receipts/next")
+_COMMS = Path("apps/web/src/pages/communications/next")
 _SORTING_OFFICE = Path("apps/web/src/pages/documents-reports/next")
+_QUERY_HOOKS = Path("apps/web/src/hooks/queries/useConversationQueries.ts")
+_DRAFT_HOOKS = Path("apps/web/src/hooks/queries/useDraftEmailQueries.ts")
 
 PAGES = (
     PageSpec(
@@ -211,6 +270,29 @@ PAGES = (
         tenant_keyed=True,
     ),
     PageSpec(
+        name="/communications",
+        hooks=_COMMS / "useCommsNextData.ts",
+        renderers=(_COMMS / "CommunicationsNext.tsx",),
+        register="COMMS_SERVER_WINDOWS",
+        floor_markers=("GE",),
+        nullable_contract={
+            # Every glance figure must be able to say it does not know. The page
+            # has FIVE sources and only one of them used to have a failure
+            # surface, so four figures rendered a failure as the em dash the ADR
+            # reserves for "has not answered".
+            "CommsGlance": ["threads", "draftsPending", "sentLast30", "schedules"],
+        },
+        tenant_tokens=("rid", "restaurantId"),
+        tenant_keyed=True,
+        imported_query_hooks=(
+            # The conversation book — the page's largest bucket, and the one W6
+            # structurally cannot see because it lives in a shared file.
+            (_QUERY_HOOKS, "useProcurementConversationHistory"),
+            (_QUERY_HOOKS, "useConversationThreads"),
+            (_DRAFT_HOOKS, "useActiveConversations"),
+        ),
+    ),
+    PageSpec(
         name="/documents-reports",
         hooks=_SORTING_OFFICE / "useSortingOfficeData.ts",
         renderers=(_SORTING_OFFICE / "DocumentsReportsNext.tsx",),
@@ -234,6 +316,17 @@ PAGES = (
         },
         tenant_tokens=("rid", "restaurantId"),
         tenant_keyed=True,
+        # W7 did not exist when this page was added, and it is not optional
+        # here: TWO of the eight fields in the contract above —
+        # `threadsTotal` (useSortingOfficeData.ts:352) and `draftsPending`
+        # (:353) — are served entirely from these shared hooks, which live
+        # outside the page tree where W6 structurally cannot reach them.
+        # Leaving this tuple empty would have registered the page while
+        # leaving a quarter of its glance figures unchecked.
+        imported_query_hooks=(
+            (_QUERY_HOOKS, "useConversationThreads"),
+            (_DRAFT_HOOKS, "useActiveConversations"),
+        ),
     ),
 )
 
@@ -287,6 +380,27 @@ CITE = re.compile(r"([A-Za-z0-9_.-]+\.ts):(\d+)")
 
 # `queryKey: [ … ]` — the literal array, which either names the tenant or does not.
 QUERY_KEY = re.compile(r"queryKey:\s*\[([^\]]*)\]")
+
+# `queryKey: someKeys.forRestaurant(rid)` and `queryKey: someKeys.all` — a key
+# FACTORY or a shared constant. Without this the matcher saw only array
+# literals, so a hook that moved its key behind either became invisible to
+# W6/W7 while still looking checked: the same vacuity class as the
+# `useQuery<T>({` bug above, and the reason both are tested below. At least one
+# dot is required so a bare local (`queryKey: key`) still trips the
+# no-keys-found CannotCheck rather than being judged on its variable name.
+QUERY_KEY_CALL = re.compile(
+    r"queryKey:\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+(?:\s*\([^()]*\))?)"
+)
+
+
+# Whole `import … from '…'` statements, single- or multi-line. Stripped before
+# W2 looks for a floor marker, so an unused import cannot stand in for a use.
+IMPORT_LINE = re.compile(r"^\s*import\s[^;]*?;\s*$", re.MULTILINE | re.DOTALL)
+
+
+def query_keys(text: str) -> list[str]:
+    """Every key EXPRESSION in `text` — array literals and factory calls alike."""
+    return QUERY_KEY.findall(text) + QUERY_KEY_CALL.findall(text)
 
 
 def parse_register(src: str, page: PageSpec) -> list[tuple[str, int, str]]:
@@ -361,6 +475,46 @@ def query_bodies(src: str) -> list[str]:
     return bodies
 
 
+def function_body(src: str, name: str) -> str | None:
+    """
+    The body of `export function <name>(…) { … }`, by brace matching.
+
+    The parameter list is stepped over rather than searched past: these hooks are
+    declared `useConversationThreads(filters: ConversationFilters = {})`, so the
+    first `{` after the name belongs to a DEFAULT ARGUMENT. Matching on it would
+    return an empty body and W7 would then report "holds no queryKey" on a hook
+    whose key is fine — a guard crying wolf is on its way to being switched off.
+    """
+    m = re.search(rf"export\s+function\s+{re.escape(name)}\s*\(", src)
+    if not m:
+        return None
+    # Walk the parameter list to its closing paren.
+    depth, i = 0, m.end() - 1
+    while i < len(src):
+        if src[i] == "(":
+            depth += 1
+        elif src[i] == ")":
+            depth -= 1
+            if depth == 0:
+                break
+        i += 1
+    else:
+        return None
+    brace = src.find("{", i)
+    if brace < 0:
+        return None
+    depth, i = 0, brace
+    while i < len(src):
+        if src[i] == "{":
+            depth += 1
+        elif src[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return src[brace : i + 1]
+        i += 1
+    return None
+
+
 def run(root: Path) -> Report:
     """Every rule, for every page in PAGES. A page is never skipped silently."""
     rep = Report()
@@ -408,7 +562,23 @@ def run_page(root: Path, page: PageSpec, rep: Report) -> None:
                 "never referenced. A cap nobody reads cannot be marking any figure."
             )
     for rel, src in renderer_src.items():
-        if page.register in src and not any(mk in src for mk in page.floor_markers):
+        # A marker must be USED, not merely named. Two vacuities were measured
+        # here while extending this guard to /communications, both by deleting
+        # the ≥ from the live strip and watching the guard print "clean":
+        #
+        #   1. `"GE" in src` was a SUBSTRING test, so any file containing
+        #      `MERGE` or `GET` satisfied it — and this page's own header
+        #      comment says MERGE.
+        #   2. Even matched as an identifier, the leftover `import { GE }`
+        #      satisfied it after every use was gone.
+        #
+        # So imports are stripped before the search. tsc would also catch (2) as
+        # TS6133, but a guard that passes because another tool might fail is not
+        # holding the rule it claims to hold.
+        body = IMPORT_LINE.sub("", src)
+        if page.register in src and not any(
+            re.search(rf"\b{re.escape(mk)}\b", body) for mk in page.floor_markers
+        ):
             rep.unconsumed.append(
                 f"[no floor marker] {rel} knows about {page.register} but uses none of "
                 f"{', '.join(page.floor_markers)}. ADR 0051 clause 2: a windowed count "
@@ -494,7 +664,7 @@ def run_page(root: Path, page: PageSpec, rep: Report) -> None:
             "would both pass on a file they never read."
         )
     bodies = hook_bodies + [b for src in renderer_src.values() for b in query_bodies(src)]
-    keys = [k for b in bodies for k in QUERY_KEY.findall(b)]
+    keys = [k for b in bodies for k in query_keys(b)]
     if not keys:
         raise CannotCheck(
             f"no `queryKey: [...]` found in any parsed useQuery in {page.name}'s hook "
@@ -510,6 +680,34 @@ def run_page(root: Path, page: PageSpec, rep: Report) -> None:
                 "endpoint by restaurant through a header the key never sees, so after a "
                 "restaurant switch this cache bucket serves the PREVIOUS tenant's rows."
             )
+
+    # ── W7 — the shared hooks this page's cache actually lives in ────────────
+    for rel, fname in page.imported_query_hooks:
+        src = read(root, rel)
+        body = function_body(src, fname)
+        if body is None:
+            raise CannotCheck(
+                f"{page.name}: `export function {fname}` not found in {rel}. This page "
+                "declares it as a query hook it depends on; if it was renamed or moved, "
+                "update the declaration — do not drop the check, because W6 cannot see "
+                "this file at all."
+            )
+        hook_keys = query_keys(body)
+        if not hook_keys:
+            raise CannotCheck(
+                f"{page.name}: {rel}::{fname} holds no `queryKey: [...]`. W7 would pass "
+                "vacuously on the bucket it exists to check."
+            )
+        for k in hook_keys:
+            flat = k.replace("\n", " ").strip()
+            if not any(tok in flat for tok in page.tenant_tokens):
+                rep.untenanted_key.append(
+                    f"[untenanted key] {page.name}: {rel}::{fname} uses "
+                    f"`queryKey: [{flat}]`, which names no tenant (looked for "
+                    f"{', '.join(page.tenant_tokens)}). This hook lives OUTSIDE the page "
+                    "tree, so W6 never sees it — and it is where this page's conversation "
+                    "book is cached."
+                )
 
 
 def verdict(rep: Report) -> str:
@@ -607,6 +805,89 @@ export class DocumentsController {
 }
 """
 
+CLEAN_COMMS_HOOKS = """
+export const COMMS_SERVER_WINDOWS = {
+  /** procurement.service.ts:3635 — getConversationHistory ends `.limit(100)`. */
+  HISTORY_ROWS: 100,
+} as const;
+
+export interface CommsGlance {
+  threads: number | null;
+  draftsPending: number | null;
+  sentLast30: number | null;
+  sentLast30Truncated: boolean;
+  schedules: number | null;
+}
+
+export function useCommsNextData() {
+  const restaurantId = activeRestaurantId ?? user?.restaurantId ?? '';
+  const schedulesQ = useQuery<ScheduledReport[]>({
+    queryKey: ['report-schedules', restaurantId],
+    queryFn: listReportSchedules,
+  });
+  const gmailQ = useQuery<{ configured: boolean }>({
+    queryKey: ['comms-gmail-watch-status', restaurantId],
+    queryFn: async () => (await apiClient.get('/x')).data,
+  });
+  const truncated = (historyQ.data?.length ?? 0) >= COMMS_SERVER_WINDOWS.HISTORY_ROWS;
+  return { truncated, schedulesQ, gmailQ };
+}
+"""
+
+# The header deliberately says MERGE and the body calls GET: both contain the
+# substring "GE", which is how the marker check went vacuous the first time.
+CLEAN_COMMS_RENDERER = """
+/** MAKEOVER-VERDICTS: MERGE with a warning on both sides. */
+import { EM, GE, MONO } from './cm-format';
+import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
+export function R() {
+  const t = `cap ${COMMS_SERVER_WINDOWS.HISTORY_ROWS}`;
+  return <span title={t}>{unknown ? EM : floor ? `${GE}${value}` : value}</span>;
+}
+"""
+
+CLEAN_QUERY_HOOKS = """
+export const procurementHistoryKeys = {
+  all: ['procurement', 'history'] as const,
+  forRestaurant: (restaurantId: string) => ['procurement', 'history', restaurantId] as const,
+}
+
+export function useConversations(filters: ConversationFilters = {}) {
+  return useQuery({ queryKey: conversationKeys.list(filters), queryFn: f })
+}
+
+export function useConversationThreads(filters: ConversationFilters = {}) {
+  const restaurantId = activeRestaurantId ?? user?.restaurantId ?? ''
+  return useQuery({
+    queryKey: [...conversationKeys.lists(), 'byThread', restaurantId, filters],
+    queryFn: f,
+  })
+}
+
+export function useProcurementConversationHistory() {
+  const restaurantId = activeRestaurantId ?? user?.restaurantId ?? ''
+  return useQuery({
+    queryKey: procurementHistoryKeys.forRestaurant(restaurantId),
+    queryFn: f,
+  })
+}
+"""
+
+CLEAN_DRAFT_HOOKS = """
+export function useActiveConversations() {
+  const restaurantId = activeRestaurantId ?? user?.restaurantId ?? ''
+  return useQuery({ queryKey: activeConversationKeys.list(restaurantId), queryFn: f })
+}
+"""
+
+CLEAN_PROCUREMENT_GATEWAY = """
+export class ProcurementService {
+  async getConversationHistory(restaurantId: string) {
+    return this.db.from("procurement_conversations").select("*").limit(100);
+  }
+}
+"""
+
 CLEAN_SO_HOOKS = """
 export const SO_SERVER_WINDOWS = {
   /** documents.controller.ts:117 — `Math.min(200, …)` hard-caps every list. */
@@ -635,6 +916,8 @@ export interface SortingOfficeData {
 
 export function useSortingOfficeData(): SortingOfficeData {
   const rid = useAuth().activeRestaurantId ?? '';
+  const threadsQ = useConversationThreads();
+  const activeQ = useActiveConversations();
   const reportsQ = useQuery<{ reports: GeneratedReport[]; total: number }>({
     queryKey: ['sorting-office', 'reports', rid],
     queryFn: () => listReportsWithTotal({ limit: SO_SERVER_WINDOWS.REPORTS }),
@@ -685,13 +968,16 @@ export class ReportsService {
 
 _RCV = PAGES[0]
 _RCP = PAGES[1]
-_SO = PAGES[2]
+_CMS = PAGES[2]
+_SO = PAGES[3]
 
 
 def _scaffold(tmp: Path) -> None:
     (tmp / _RCV.hooks.parent).mkdir(parents=True, exist_ok=True)
     (tmp / _RCP.hooks.parent).mkdir(parents=True, exist_ok=True)
+    (tmp / _CMS.hooks.parent).mkdir(parents=True, exist_ok=True)
     (tmp / _SO.hooks.parent).mkdir(parents=True, exist_ok=True)
+    (tmp / _QUERY_HOOKS.parent).mkdir(parents=True, exist_ok=True)
     (tmp / GATEWAY_ROOT / "procurement").mkdir(parents=True, exist_ok=True)
     (tmp / GATEWAY_ROOT / "logs").mkdir(parents=True, exist_ok=True)
     (tmp / GATEWAY_ROOT / "reports").mkdir(parents=True, exist_ok=True)
@@ -701,14 +987,22 @@ def _scaffold(tmp: Path) -> None:
     (tmp / _RCP.hooks).write_text(CLEAN_RECEIPTS_HOOKS, encoding="utf-8")
     for r in _RCP.renderers:
         (tmp / r).write_text(CLEAN_RECEIPTS_RENDERER, encoding="utf-8")
+    (tmp / _CMS.hooks).write_text(CLEAN_COMMS_HOOKS, encoding="utf-8")
+    for r in _CMS.renderers:
+        (tmp / r).write_text(CLEAN_COMMS_RENDERER, encoding="utf-8")
     (tmp / _SO.hooks).write_text(CLEAN_SO_HOOKS, encoding="utf-8")
     for r in _SO.renderers:
         (tmp / r).write_text(CLEAN_SO_RENDERER, encoding="utf-8")
+    (tmp / _QUERY_HOOKS).write_text(CLEAN_QUERY_HOOKS, encoding="utf-8")
+    (tmp / _DRAFT_HOOKS).write_text(CLEAN_DRAFT_HOOKS, encoding="utf-8")
     (tmp / GATEWAY_ROOT / "procurement" / "receiving.service.ts").write_text(
         CLEAN_GATEWAY, encoding="utf-8"
     )
     (tmp / GATEWAY_ROOT / "procurement" / "documents.controller.ts").write_text(
         CLEAN_DOCS_GATEWAY, encoding="utf-8"
+    )
+    (tmp / GATEWAY_ROOT / "procurement" / "procurement.service.ts").write_text(
+        CLEAN_PROCUREMENT_GATEWAY, encoding="utf-8"
     )
     (tmp / GATEWAY_ROOT / "logs" / "logs-timeline.service.ts").write_text(
         CLEAN_TIMELINE_GATEWAY, encoding="utf-8"
@@ -721,7 +1015,16 @@ def _scaffold(tmp: Path) -> None:
 def self_test() -> int:
     failures: list[str] = []
 
-    def case(name: str, mutate, expect: str) -> None:
+    def case(name: str, mutate, expect: str, expect_text: str | None = None) -> None:
+        """
+        `expect_text` must appear in the reported detail. It exists because a
+        mutation to a SHARED fixture is caught by every page that declares it,
+        so the verdict alone cannot distinguish "this page's declaration is
+        live" from "some other page's declaration caught it and this one is
+        decoration". W7 on /documents-reports is exactly that shape: the two
+        hooks it names are also named by /communications, so without asserting
+        on the message these cases would pass with the declaration deleted.
+        """
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             _scaffold(tmp)
@@ -733,7 +1036,12 @@ def self_test() -> int:
             else:
                 got, detail = verdict(rep), "; ".join(rep.violations())
             ok = got == expect
+            missing = ok and expect_text is not None and expect_text not in detail
+            if missing:
+                ok = False
             print(f"   {'ok  ' if ok else 'FAIL'}  {name}: expected {expect}, got {got}")
+            if missing:
+                print(f"           but no message mentioned {expect_text!r}")
             if detail and (not ok or got != "clean"):
                 print(f"           {detail.splitlines()[0][:150]}")
             if not ok:
@@ -894,6 +1202,105 @@ def self_test() -> int:
         "violation",
     )
 
+    # ── /communications ──────────────────────────────────────────────────────
+    print("\n-- /communications --\n")
+    case(
+        "W7 the SHARED history hook lost its tenant (W6 cannot see this file)",
+        lambda t: (t / _QUERY_HOOKS).write_text(
+            CLEAN_QUERY_HOOKS.replace(
+                "queryKey: procurementHistoryKeys.forRestaurant(restaurantId),",
+                "queryKey: procurementHistoryKeys.all,",
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W7 the shared thread hook lost its tenant",
+        lambda t: (t / _QUERY_HOOKS).write_text(
+            CLEAN_QUERY_HOOKS.replace("'byThread', restaurantId, filters]", "'byThread', filters]"),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W7 does NOT judge a shared file's OTHER hooks (useConversations)",
+        lambda _: None,
+        "clean",
+    )
+    case(
+        "W6 the comms schedules key lost its tenant",
+        lambda t: (t / _CMS.hooks).write_text(
+            CLEAN_COMMS_HOOKS.replace("'report-schedules', restaurantId]", "'report-schedules']"),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W2 the comms floor marker was deleted but its IMPORT remained",
+        lambda t: (t / _CMS.renderers[0]).write_text(
+            CLEAN_COMMS_RENDERER.replace(
+                "{unknown ? EM : floor ? `${GE}${value}` : value}", "{unknown ? EM : value}"
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W2 `MERGE` and `GET` do not count as the marker `GE`",
+        lambda t: (t / _CMS.renderers[0]).write_text(
+            CLEAN_COMMS_RENDERER.replace(
+                "import { EM, GE, MONO } from './cm-format';\n", ""
+            ).replace("{unknown ? EM : floor ? `${GE}${value}` : value}", "{await GET(x)}"),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W4 a comms glance figure widened away from | null",
+        lambda t: (t / _CMS.hooks).write_text(
+            CLEAN_COMMS_HOOKS.replace("threads: number | null;", "threads: number;"),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W1 the comms cap drifts from the server's .limit(100)",
+        lambda t: (t / _CMS.hooks).write_text(
+            CLEAN_COMMS_HOOKS.replace("HISTORY_ROWS: 100,", "HISTORY_ROWS: 250,"),
+            encoding="utf-8",
+        ),
+        "violation",
+    )
+    case(
+        "W7 a declared shared hook was renamed",
+        lambda t: (t / _QUERY_HOOKS).write_text(
+            CLEAN_QUERY_HOOKS.replace(
+                "export function useProcurementConversationHistory()",
+                "export function useProcurementHistory()",
+            ),
+            encoding="utf-8",
+        ),
+        "cannot-check",
+    )
+    case(
+        "W7 a declared shared hook holds no queryKey at all",
+        lambda t: (t / _QUERY_HOOKS).write_text(
+            CLEAN_QUERY_HOOKS.replace(
+                "    queryKey: procurementHistoryKeys.forRestaurant(restaurantId),\n", ""
+            ),
+            encoding="utf-8",
+        ),
+        "cannot-check",
+    )
+    case(
+        "the comms register was deleted",
+        lambda t: (t / _CMS.hooks).write_text("export const nothing = 1;\n", encoding="utf-8"),
+        "cannot-check",
+    )
+
+    # ── /documents-reports (the Sorting Office) ──────────────────────────────
+    print("\n-- /documents-reports --\n")
     case(
         "W1 the timeline clamp fell below the Sorting Office's declared window",
         lambda t: (t / GATEWAY_ROOT / "logs" / "logs-timeline.service.ts").write_text(
@@ -972,6 +1379,31 @@ def self_test() -> int:
         ),
         "violation",
     )
+    # W7 arrived on the other branch, AFTER this page was written. These two
+    # cases assert on the message text, not just the verdict: both hooks are
+    # also declared by /communications, so a verdict-only case would stay green
+    # with this page's `imported_query_hooks` deleted — a case that cannot fail
+    # for the reason it names is the vacuity this file exists to prevent.
+    case(
+        "W7 the shared thread hook is checked FOR THE SORTING OFFICE too",
+        lambda t: (t / _QUERY_HOOKS).write_text(
+            CLEAN_QUERY_HOOKS.replace("'byThread', restaurantId, filters]", "'byThread', filters]"),
+            encoding="utf-8",
+        ),
+        "violation",
+        expect_text="/documents-reports",
+    )
+    case(
+        "W7 the shared drafts hook is checked FOR THE SORTING OFFICE too",
+        lambda t: (t / _DRAFT_HOOKS).write_text(
+            CLEAN_DRAFT_HOOKS.replace(
+                "activeConversationKeys.list(restaurantId)", "activeConversationKeys.all"
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+        expect_text="/documents-reports",
+    )
 
     print("\n-- and CANNOT CHECK must not read as a pass --\n")
     case(
@@ -1023,6 +1455,19 @@ def self_test() -> int:
         lambda t: (t / _SO.hooks).write_text(
             CLEAN_SO_HOOKS.replace("timelineCount:", "logCount:"), encoding="utf-8"
         ),
+        "cannot-check",
+    )
+    case(
+        "a registered page with NO fixtures at all reports cannot-check",
+        # The conflict this file's header warns about, as a case. Deleting the
+        # page's whole tree is what a `PageSpec` merged in without fixtures
+        # looks like to `_scaffold`. It must NOT read as a pass — and the
+        # resolution is to add the fixtures, never to soften this branch.
+        lambda t: (
+            (t / _SO.hooks).unlink(),
+            [(t / r).unlink() for r in _SO.renderers],
+        )
+        and None,
         "cannot-check",
     )
     case(
