@@ -261,12 +261,36 @@ export function Communications() {
   // /reports/schedule endpoint already existed. Schedules are saved and listed;
   // they are never executed (nothing reads `next_run_at`).
   const [schedules, setSchedules] = useState<ScheduledReport[]>([])
+  const [schedulesError, setSchedulesError] = useState<string | null>(null)
 
+  /**
+   * OD-81 / ADR 0020 — "an error must never render as emptiness".
+   *
+   * The old body swallowed the failure with the comment "listing is additive —
+   * a failure shouldn't blank the tab". It blanked the tab anyway: `schedules`
+   * stayed `[]`, which the UI draws identically to "you have no schedules".
+   *
+   * That is not hypothetical here. Verified against the production database
+   * (Restaurant_Wine_Ops / exzueerziesmczwlhomd) on 2026-08-26:
+   * `public.scheduled_reports` DOES NOT EXIST. It was only ever defined in
+   * `supabase/migrations_archive/20260208024921_baseline_schema.sql:408` and
+   * `services/database/migrations_archive/008_providers_and_reports.sql:23` —
+   * both archived, neither applied. So `GET /reports/schedules` fails 100% of
+   * the time in production and this catch was the only thing the user ever saw.
+   *
+   * The failure is now surfaced instead of hidden, and it is kept distinct from
+   * the genuine empty case so the two cannot be confused.
+   */
   const refreshSchedules = useCallback(async () => {
     try {
       setSchedules(await listReportSchedules())
-    } catch {
-      /* listing is additive — a failure shouldn't blank the tab */
+      setSchedulesError(null)
+    } catch (err: any) {
+      setSchedules([])
+      setSchedulesError(
+        err?.response?.data?.message ||
+          'Saved schedules could not be loaded, so this list is not a record of what exists.',
+      )
     }
   }, [])
 
@@ -519,6 +543,7 @@ export function Communications() {
           <ReportScheduler
             onSchedule={handleScheduleReport}
             schedules={schedules}
+            schedulesError={schedulesError}
             onDeleteSchedule={handleDeleteSchedule}
           />
         </div>

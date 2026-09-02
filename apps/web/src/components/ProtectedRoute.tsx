@@ -39,7 +39,27 @@ export function ProtectedRoute({
   }
 
   // Email verification gate — Path B users must verify before accessing dashboard (D-05, T-26-05-02)
-  if (user?.emailVerified === false) {
+  //
+  // OD-79. This comparison was inert for a structural reason, not a logic one:
+  // `/auth/me` never returned `emailVerified`, so `user.emailVerified` was
+  // ALWAYS `undefined` and `undefined === false` is `false`. The gate had
+  // never fired for any user.
+  //
+  // The field is now surfaced honestly (auth.service.ts `getProfileForUser`,
+  // strategies/jwt.strategy.ts). That alone would have switched this gate on
+  // for real accounts, which is NOT a side effect a plumbing change gets to
+  // have: 4 of 10 production accounts are unverified, and 3 of them have no
+  // `email_verifications` row at all, so `POST /auth/resend-verification`
+  // throws "No pending verification found" for them
+  // (auth.service.ts `resendVerification`). They would be locked out with no
+  // self-serve way back in.
+  //
+  // So enforcement stays OFF and now SAYS it is off, instead of being off by
+  // accident because the data never arrived — ADR 0020: a check that cannot
+  // fail is a fabrication, and so is one that silently never runs. Flipping
+  // this constant is the whole of the enforcement decision on the web side.
+  const ENFORCE_EMAIL_VERIFICATION = false
+  if (ENFORCE_EMAIL_VERIFICATION && user?.emailVerified === false) {
     return <Navigate to="/verify-email" replace />
   }
 

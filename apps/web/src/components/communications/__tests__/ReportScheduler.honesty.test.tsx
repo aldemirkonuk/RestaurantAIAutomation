@@ -79,4 +79,34 @@ describe('ReportScheduler — ADR 0020', () => {
     expect(screen.getByText(/Saved schedules \(1\)/i)).toBeInTheDocument()
     expect(screen.queryByText(/Active schedules/i)).not.toBeInTheDocument()
   })
+
+  /*
+   * ADR 0020: "an error must never render as emptiness". This is not a
+   * hypothetical path — `public.scheduled_reports` does not exist in the
+   * production database (verified 2026-08-26), so `GET /reports/schedules`
+   * fails every single time and the error branch is the ONLY branch a real user
+   * reaches. Before the fix, `refreshSchedules` swallowed it and the tab drew
+   * exactly as though the user had no schedules.
+   */
+  it('says a failed read failed, instead of drawing it as "none"', () => {
+    render(
+      <ReportScheduler schedules={[]} schedulesError="relation does not exist" />,
+    )
+    expect(
+      screen.getByText(/Saved schedules — could not be read/i),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/relation does not exist/i)).toBeInTheDocument()
+  })
+
+  /*
+   * Asserted on the row's own title, not on the list heading. Checking the
+   * heading would pass against the pre-fix component for the wrong reason — it
+   * headed the list "Active schedules", so a query for "Saved schedules" was
+   * absent there too. The title is rendered either way, so this discriminates.
+   */
+  it('does not present stale rows as current when the read failed', () => {
+    render(<ReportScheduler schedules={[schedule]} schedulesError="boom" />)
+    expect(screen.queryByText(schedule.title)).not.toBeInTheDocument()
+    expect(screen.getByText(/could not be read/i)).toBeInTheDocument()
+  })
 })

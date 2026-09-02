@@ -1437,7 +1437,7 @@ export class AuthService {
     const { data: user, error } = await this.databaseService.supabase
       .from("users")
       .select(
-        "user_id, email, name, phone, role, password_hash, oauth_provider, restaurant_id",
+        "user_id, email, name, phone, role, password_hash, oauth_provider, restaurant_id, email_verified",
       )
       .eq("user_id", userId)
       .single();
@@ -1456,6 +1456,12 @@ export class AuthService {
       role: user.role,
       restaurantId: user.restaurant_id ?? null,
       hasPassword: !!user.password_hash,
+      // OD-79. `email_verified` was absent from BOTH the select list and this
+      // object, so `/auth/me` could never report it and the web reader
+      // (ProtectedRoute) compared `undefined === false` forever. Surfacing it
+      // is the half that is true whichever way the enforcement fork is
+      // decided; it deliberately does NOT gate anything on its own.
+      emailVerified: user.email_verified ?? false,
       linkedProviders,
     };
   }
