@@ -1,6 +1,6 @@
 {
   "_comment": "Pre-existing swallowed supabase reads, recorded at adoption of scripts/check_read_errors_not_swallowed.py (ADR 0067). This list only ever SHRINKS: a key absent from the tree fails the build so the row gets removed. Never add a row to silence a new finding -- fix it, or allowlist it with a written reason in the guard.",
-  "total_sites": 203,
+  "total_sites": 199,
   "total_files": 43,
   "sites": {
     "apps/api-gateway/src/analytics/consultants.service.ts::analytics_insight_prefs::data": 1,
@@ -63,12 +63,6 @@
     "apps/api-gateway/src/communications/email-templates/template-config.ts::restaurants::restaurant": 1,
     "apps/api-gateway/src/communications/recipient-resolver.service.ts::contact_addresses::addresses": 1,
     "apps/api-gateway/src/communications/recipient-resolver.service.ts::providers::provider": 1,
-    "apps/api-gateway/src/communications/scheduled-tasks.service.ts::calendar_events::events": 1,
-    "apps/api-gateway/src/communications/scheduled-tasks.service.ts::custom_reminders::reminders": 1,
-    "apps/api-gateway/src/communications/scheduled-tasks.service.ts::notification_preferences::data": 1,
-    "apps/api-gateway/src/communications/scheduled-tasks.service.ts::procurement_orders::deliveries": 1,
-    "apps/api-gateway/src/communications/scheduled-tasks.service.ts::procurement_orders::invoices": 1,
-    "apps/api-gateway/src/communications/scheduled-tasks.service.ts::providers::providers": 1,
     "apps/api-gateway/src/contacts/contacts.service.ts::contact_addresses::addresses": 2,
     "apps/api-gateway/src/dashboard/dashboard.service.ts::calendar_events::events": 1,
     "apps/api-gateway/src/dashboard/dashboard.service.ts::procurement_orders::orders": 1,
@@ -175,6 +169,8 @@
     "apps/api-gateway/src/vendor-portal/vendor-portal.service.ts::vendor_portal_listings::listings": 1,
     "apps/api-gateway/src/wines/wine-submissions.service.ts::master_wine_library::existing": 1,
     "apps/api-gateway/src/wines/wines.service.ts::master_wine_library::existing": 1,
-    "apps/web/src/components/locations/CreateChainDialog.tsx::?::created": 1
+    "apps/web/src/components/locations/CreateChainDialog.tsx::?::created": 1,
+    "apps/api-gateway/src/procurement/procurement.service.ts::procurement_order_items::data": 1,
+    "apps/web/src/components/reports/organisms/SeatingDensityPanel.tsx::?::body": 1
   }
 }

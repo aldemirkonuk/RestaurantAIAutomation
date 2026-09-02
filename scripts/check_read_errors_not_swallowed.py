@@ -102,6 +102,7 @@ EXIT CODES
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import sys
@@ -112,6 +113,40 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE_ROOTS = ("apps", "services", "packages")
 BASELINE = ROOT / "scripts" / "read_error_baseline.json"
+
+
+class CannotCheck(Exception):
+    """The guard cannot see what it claims to. Exit 2, never 0."""
+
+
+# ---------------------------------------------------------------------------
+# `strip_comments` is loaded BY PATH from check_order_capture_contract.py --
+# the repo's own idiom (see check_read_columns_exist.py, ADR 0074) -- so exactly
+# one comment stripper exists rather than a second hand-rolled one. Without it
+# this guard flags illustrative anti-patterns written INSIDE a doc comment as
+# real violations -- exactly the trap ADR 0074 named. `except BaseException`
+# because a stray module-level `sys.exit()` over there is a SystemExit, which
+# `except Exception` would not catch, letting that file's exit status silently
+# terminate this guard instead.
+# ---------------------------------------------------------------------------
+def _load_strip_comments(root: Path):
+    path = root / "scripts" / "check_order_capture_contract.py"
+    if not path.is_file():
+        raise CannotCheck(f"{path} is missing; the shared comment stripper is gone")
+    try:
+        spec = importlib.util.spec_from_file_location("_occ_shared_rens", path)
+        if spec is None or spec.loader is None:
+            raise CannotCheck(f"{path} could not be loaded as a module")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    except BaseException as e:  # noqa: BLE001 - SystemExit is the point
+        raise CannotCheck(f"{path} would not import: {e!r}") from e
+    if not hasattr(mod, "strip_comments"):
+        raise CannotCheck(f"{path} no longer exports strip_comments")
+    return mod.strip_comments
+
+
+STRIP_COMMENTS = _load_strip_comments(ROOT)
 
 SUFFIXES = {".ts", ".tsx"}
 SKIP_DIRS = {"node_modules", "dist", "build", ".next", "coverage", "tests", "__tests__"}
@@ -219,7 +254,10 @@ def scan(root: Path) -> tuple[int, dict[str, list[int]]]:
                 continue
             scanned += 1
             rel = path.relative_to(root).as_posix()
-            for lineno, table, var in find_sites(text):
+            # Comments stripped before the regex scan, line-count preserved, so
+            # a JSDoc paragraph illustrating this exact anti-pattern is not
+            # itself flagged as one. See STRIP_COMMENTS above.
+            for lineno, table, var in find_sites(STRIP_COMMENTS(text)):
                 found.setdefault(key_of(rel, table, var), []).append(lineno)
     return scanned, found
 
@@ -494,6 +532,59 @@ def self_test() -> int:
         if len(find_sites('const { data, count } = await c.from("v").select("*");\n')) != 1:
             failures.append("`count` was accepted as an error binding")
 
+        # --- comment-stripping: the illustrative anti-pattern in a JSDoc block
+        # must be ignored, while the identical shape in real code is still
+        # caught. Both directions proven on the same statement text.
+        COMMENTED = (
+            "/**\n"
+            " * BAD:\n"
+            ' *   const { data } = await client.from("restaurants").select("id");\n'
+            " */\n"
+            "async function f(client: any) {\n"
+            '  const { data, error } = await client.from("restaurants").select("id");\n'
+            "  if (error) throw error;\n"
+            "  return data || [];\n"
+            "}\n"
+        )
+        if find_sites(STRIP_COMMENTS(COMMENTED)):
+            failures.append("a swallowed read INSIDE a /** */ comment was flagged")
+        LINE_COMMENTED = (
+            "async function f(client: any) {\n"
+            '  // const { data } = await client.from("restaurants").select("id");\n'
+            '  const { data, error } = await client.from("restaurants").select("id");\n'
+            "  if (error) throw error;\n"
+            "  return data || [];\n"
+            "}\n"
+        )
+        if find_sites(STRIP_COMMENTS(LINE_COMMENTED)):
+            failures.append("a swallowed read INSIDE a // comment was flagged")
+        REAL_CODE_NEXT_TO_COMMENT = (
+            "async function f(client: any) {\n"
+            "  // this comment describes the defect below, not an example of it\n"
+            '  const { data } = await client.from("restaurants").select("id");\n'
+            "  return data || [];\n"
+            "}\n"
+        )
+        stripped = STRIP_COMMENTS(REAL_CODE_NEXT_TO_COMMENT)
+        real_sites = find_sites(stripped)
+        if len(real_sites) != 1:
+            failures.append(
+                "comment-stripping made the guard blind to a real swallowed "
+                f"read next to a comment: {real_sites}"
+            )
+        elif real_sites[0][0] != 3:
+            failures.append(
+                f"comment-stripping shifted the line number: got {real_sites[0][0]}, want 3"
+            )
+        # A `//` inside a string literal must not be treated as a comment start.
+        URL_IN_STRING = (
+            'const { data, error } = await client.from("t").select("id")\n'
+            '  .eq("url", "https://example.com/x");\n'
+            "if (error) throw error;\n"
+        )
+        if STRIP_COMMENTS(URL_IN_STRING) != URL_IN_STRING:
+            failures.append("a // inside a string literal was stripped as a comment")
+
         # --- the real tree still scans, and the key shape is stable -------
         real_scanned, real_found = scan(ROOT)
         if real_scanned < 100:
@@ -503,7 +594,7 @@ def self_test() -> int:
         if any(k.count("::") != 2 for k in real_found):
             failures.append("a key did not have exactly two :: separators")
 
-    print("== --self-test: 18 invariants")
+    print("== --self-test: 22 invariants")
     if failures:
         for f in failures:
             print(f"   FAIL -- {f}")
@@ -520,6 +611,10 @@ def self_test() -> int:
     print("   a non-supabase await is not flagged; `count` is not an error binding")
     print("   a multi-line chain with a comma inside .select() resolves to one site")
     print("   the real tree scans >=100 files and matches sites, with stable keys")
+    print("   a swallowed read inside a /** */ or // comment is NOT flagged")
+    print("   the identical shape in real code next to a comment IS still flagged,")
+    print("      at its correct line number")
+    print("   a // inside a string literal is not stripped as a comment")
     print("PASS")
     return 0
 

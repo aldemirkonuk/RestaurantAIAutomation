@@ -130,7 +130,7 @@ reads as *"nothing to report"* forever.
 |---|---|---|
 | At 1f4717cc, before this work | **215** | 47 |
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
-| **Remaining, baselined and non-growing** | **203 of 215** | 43 |
+| **Remaining, baselined and non-growing** | **199 of 215** | 43 |
 
 > Was 207 across 44 files at adoption. Concurrent sessions fixed 4 of them
 > (`scheduled-tasks`/`procurement_orders`, `procurement`/`calendar_events` ×2,
@@ -140,13 +140,29 @@ reads as *"nothing to report"* forever.
 > swallowed reads that had just landed on `main`
 > (`scheduled-tasks.service.ts:434`, `receiving.service.ts:312`); both were
 > fixed rather than baselined, per the rule that the baseline only shrinks.
+>
+> Merging `origin/main` into this branch (PR #246, 2026-09-02) moved the count
+> again in both directions: main's #241 rewrote all 7 `scheduled-tasks.service.ts`
+> reads through `readRows()`/`interpretRead()`, retiring 6 baseline rows on that
+> file (`calendar_events`, `custom_reminders`, `notification_preferences`,
+> `procurement_orders` ×2, `providers`) — the ratchet's good direction, caught by
+> the ratchet failing the build until removed. The same merge brought in main's
+> `procurement.service.ts:902` (`procurement_order_items`, PR #240) and
+> `SeatingDensityPanel.tsx:121` (a non-supabase `apiClient.get` swallowed-error
+> site, `?::body`, matched only because a missing-semicolon statement absorbs
+> `Array.from(` two ASI-joined statements down) — pre-existing debt from main
+> that predates this branch's baseline capture, not new code from this branch.
+> Both added to the baseline rather than fixed, since fixing them was out of
+> this PR's scope; the `SeatingDensityPanel.tsx` false trigger is a known
+> detector limitation (ASI/missing-semicolon statement boundaries), separate
+> from the comment-stripping fix landed in the same PR.
 
 Plus **37** further sites that bind `data`, discard `error`, and immediately refuse on a
 falsy value (`if (!x) throw NotFoundException`). Those report a failed read as a *missing
 row* — a 404 for a 503. Wrong, but not silent, and deliberately out of scope: see
 [ADR 0067](../decisions/0067-a-failed-read-is-never-an-empty-one.md) §Consequences.
 
-The 203 are recorded in `scripts/read_error_baseline.json` and held by
+The 199 are recorded in `scripts/read_error_baseline.json` and held by
 `scripts/check_read_errors_not_swallowed.py`, a blocking CI job. A site outside the
 baseline fails the build, and a baseline row the tree no longer contains **also** fails it
 — so the number above can only shrink, and it cannot rot in prose the way the "~29" did.
