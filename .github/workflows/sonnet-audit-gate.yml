@@ -1,0 +1,74 @@
+name: Sonnet Audit Gate
+
+# ADR 0090. The CI-side half of the pre-merge audit — the backstop that holds
+# even when no Claude Code session (and therefore no PreToolUse hook) is driving
+# the merge. Advisory today: it posts a verdict and, on PASS, attempts its own
+# `gh pr merge --auto` — but it is NOT yet in main's required status contexts
+# (that PATCH needs the founder's explicit go, see ADR 0090 "What this does NOT
+# yet do"), so nothing here stops a merge that bypasses this workflow entirely.
+#
+# Needs the ANTHROPIC_API_KEY secret, which does not exist in this repo yet —
+# add it with `gh secret set ANTHROPIC_API_KEY` or via the GitHub UI before this
+# workflow can do anything other than fail closed at the "Call the audit" step.
+#
+# Fork PRs cannot see this secret (see docs/fork-prs-cannot-satisfy-required-checks,
+# merged as the precedent for the schema-parity checks) — not an issue while this
+# repo has no forks; would need the same treatment those checks got if that changes.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# One run per PR head SHA — a new push supersedes an in-flight audit of the old one.
+concurrency:
+  group: sonnet-audit-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write        # gh pr merge on PASS
+  pull-requests: write    # gh pr comment
+  checks: read            # read the 5 pre-existing required contexts
+
+jobs:
+  audit:
+    name: Sonnet Audit Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install anthropic
+
+      - name: Wait for the 5 existing required checks
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python3 scripts/sonnet_audit_gate.py --wait-upstream
+
+      - name: Explain a skip
+        if: steps.upstream.outputs.status == 'upstream_red'
+        run: |
+          echo "::notice::Upstream CI is red or still pending — nothing for the audit to review yet. This is not a PASS; it is a no-op until CI turns green on its own."
+
+      - name: Run the Sonnet audit gate
+        if: steps.upstream.outputs.status == 'upstream_green'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python3 scripts/sonnet_audit_gate.py --audit
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::The audit either returned BLOCK, or could not run (missing ANTHROPIC_API_KEY, an API error, or an unreadable report bundle). Either way this job fails rather than reporting green — see the PR comment scripts/sonnet_audit_gate.py posted for which one, and never treat this job's absence of a green check as the PR being fine."
