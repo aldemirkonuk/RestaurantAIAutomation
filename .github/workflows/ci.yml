@@ -898,14 +898,14 @@ jobs:
         run: pip install "pytest==7.4.4" "httpx==0.28.1"
 
       # Until 2026-09-02 no workflow ran anything under scripts/ — `Test Python`
-      # runs services/agent-orchestrator/tests only — so the simulator's 36 tests
-      # and the operating-hours fixture guarded nothing. pytest exits 5 when it
+      # runs services/agent-orchestrator/tests only — so the simulator's 36 tests,
+      # the scenario engine's 72 and the operating-hours fixture guarded nothing. pytest exits 5 when it
       # collects zero tests, so an empty run cannot pass (ADR 0093).
       # scripts/test_docgen.py is NOT here: measured in a clean venv it errors at
       # collection (it imports cv2/PIL/jinja2 through scripts/docgen). It stays
       # unguarded and is named here so that is a known gap, not a forgotten one.
       - name: scripts/ unit tests (simulator, operating hours)
-        run: python3 -m pytest scripts/test_simulate.py scripts/test_simulate_hours.py -q -p no:cacheprovider
+        run: python3 -m pytest scripts/test_simulate.py scripts/test_simulate_hours.py scripts/test_simulate_scenarios.py -q -p no:cacheprovider
 
   # Lint Python code
   lint-python:
