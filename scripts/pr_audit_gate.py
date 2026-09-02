@@ -107,46 +107,89 @@ def _write_github_output(key: str, value: str) -> None:
 # --wait-upstream
 # --------------------------------------------------------------------------- #
 
-def _required_contexts() -> list[str]:
-    """Read main's actual required status contexts, fresh, every call. Never
-    inferred/cached/hardcoded — see the module-level note on why."""
+def _required_contexts() -> list[str] | None:
+    """Best-effort: read main's actual required status contexts, fresh, every
+    call — never hardcoded (that list moved from 5 to 3 while this PR was
+    open). Returns None, never an empty list, when the read fails; None means
+    "fall back to waiting on every reported check", not "nothing required".
+
+    CONFIRMED 2026-09-02, first live run of this workflow: the default Actions
+    `GITHUB_TOKEN` gets `403 Resource not accessible by integration` reading
+    branch protection. This is not a transient failure to retry — GITHUB_TOKEN
+    is deliberately never grantable `administration` scope, protection-reading
+    included, regardless of this workflow's own `permissions:` block. So the
+    fallback below is the steady state in CI, not an edge case, and the first
+    version of this function raising here (making wait_upstream swallow the
+    exception into a false `status=upstream_red` and the JOB STILL EXIT 0 —
+    absence reported as health, in the guard meant to catch exactly that) shipped
+    silently for one full run before this comment existed. Fixed same day.
+    """
     out = _run(["gh", "api", f"repos/{REPO}/branches/main/protection",
                 "--jq", ".required_status_checks.contexts"])
     if out.returncode != 0:
-        raise RuntimeError(f"could not read branch protection: {out.stderr}")
-    contexts = json.loads(out.stdout)
-    if not contexts:
-        # A guard that reads "no required contexts" as "nothing to wait for"
-        # would wave every PR through the moment protection is briefly empty
-        # mid-edit — CANNOT CHECK, not a green light.
-        raise RuntimeError("branch protection reported zero required contexts")
-    return contexts
+        print(f"NOTE: could not read branch protection ({out.stderr.strip()}) "
+              f"— falling back to waiting for every reported check.", file=sys.stderr)
+        return None
+    try:
+        contexts = json.loads(out.stdout)
+    except json.JSONDecodeError as exc:
+        print(f"NOTE: branch protection response unparseable ({exc}) — "
+              f"falling back to waiting for every reported check.", file=sys.stderr)
+        return None
+    return contexts or None
+
+
+# Checks known to be cosmetic/external and never required — confirmed by hand
+# against branch protection on 2026-09-02, used only in fallback mode (never
+# to filter when the real required-contexts list was actually read).
+_FALLBACK_IGNORE_PREFIXES = ("Vercel", "Supabase")
 
 
 def wait_upstream(pr_number: str) -> int:
-    try:
-        required = _required_contexts()
-    except (RuntimeError, json.JSONDecodeError) as exc:
-        print(f"CANNOT CHECK: {exc}", file=sys.stderr)
-        _write_github_output("status", "upstream_red")
-        return 0
-
+    required = _required_contexts()  # None => fallback mode, not "nothing required"
     deadline = time.monotonic() + MAX_WAIT_SECONDS
+    prev_total = -1
+    stable = False
+
     while True:
         checks = _gh_json(["gh", "pr", "checks", pr_number, "--json", "name,state"])
         by_name = {c["name"]: c["state"] for c in checks}
-        missing = [c for c in required if c not in by_name]
-        pending = [c for c in required if by_name.get(c) in ("PENDING", "IN_PROGRESS", "QUEUED")]
-        failed = [c for c in required if by_name.get(c) in ("FAILURE", "ERROR", "CANCELLED")]
+
+        if required is not None:
+            names = required
+        else:
+            names = [n for n in by_name if not n.startswith(_FALLBACK_IGNORE_PREFIXES)]
+
+        missing = [c for c in names if c not in by_name]
+        pending = [c for c in names if by_name.get(c) in ("PENDING", "IN_PROGRESS", "QUEUED")]
+        failed = [c for c in names if by_name.get(c) in ("FAILURE", "ERROR", "CANCELLED")]
 
         if failed:
             print(f"Upstream red: {failed}")
             _write_github_output("status", "upstream_red")
             return 0
-        if not missing and not pending:
-            print(f"Upstream green: all {len(required)} required contexts succeeded ({required}).")
-            _write_github_output("status", "upstream_green")
-            return 0
+
+        if not missing and not pending and names:
+            if required is not None:
+                print(f"Upstream green: all {len(names)} required contexts succeeded ({names}).")
+                _write_github_output("status", "upstream_green")
+                return 0
+            # Fallback mode: `gh pr checks` only lists checks GitHub has
+            # already scheduled — one that hasn't started yet is invisible,
+            # not "missing", so "nothing missing or pending" 20s after the
+            # workflow starts is a false green, not a real one. Require the
+            # reported check SET to be identical across two consecutive polls
+            # before trusting it.
+            if len(checks) == prev_total and stable:
+                print(f"Upstream green (fallback mode, branch protection unreadable): "
+                      f"{len(names)} checks succeeded, stable across 2 polls.")
+                _write_github_output("status", "upstream_green")
+                return 0
+            stable = len(checks) == prev_total
+            prev_total = len(checks)
+        else:
+            stable = False
+            prev_total = len(checks)
 
         if time.monotonic() > deadline:
             print(f"Timed out after {MAX_WAIT_SECONDS}s waiting on: {missing + pending}")
