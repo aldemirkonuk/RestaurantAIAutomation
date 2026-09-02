@@ -438,14 +438,13 @@ whoever owns `purchase_reasons` so they renumber before CI tells them.
 
 ## Not verified — stated plainly
 
-- **The `supabase db reset` path itself was not exercised** — the local side was
-  built by applying the 89 migration files directly with psql, which is what
-  `db reset` does but is not literally the same command, and it needed a
-  hand-written prelude (schemas, extensions, a stub `auth.users`) that the real
-  CLI provides. The fact counts match production exactly in all 12 categories,
-  which is strong evidence the reconstruction is faithful, but CI's own run on
-  PR #239 is the authoritative confirmation and has not completed at the time of
-  writing.
+- ~~The `supabase db reset` path itself was not exercised.~~ **Closed** — CI ran
+  it. Run `33624432905` on PR #239, job *Fresh database equals remote*:
+  **success**, with `local : 5516 facts` and `remote : 5516 facts` and
+  `PASS — local and remote agree on every compared object.` The counts are
+  identical, category for category, to the hand-built reconstruction above,
+  which retrospectively validates the reconstruction method as well as the fix.
+  All four jobs in `schema-parity.yml` are green.
 - The fixture was built on PostgreSQL 16; production is 17. No PG17-only
   behaviour is relied on, and PG17's `pg_constraint` was checked on production
   for `contype = 'n'` rows (there are none, so NOT NULL is reported once, by the
