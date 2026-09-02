@@ -51,9 +51,18 @@ MODEL = "claude-opus-5"
 # Corrected 2026-09-02: the original ask was "Sonnet max"; ADR 0050 (locked)
 # overrides to Opus for production/ADR/outward-send consequence, all three of
 # which this role hits, and says never substitute effort for the model tier
-# that calls for. THINKING_BUDGET_TOKENS is a bounded, CI-cost-aware proxy for
-# "high" effort, not a verified reasoning-budget guarantee — see ADR 0090.
-THINKING_BUDGET_TOKENS = 8000
+# that calls for.
+#
+# CONFIRMED live, run 33695630472, first real call with a working API key:
+# claude-opus-5 rejects the old thinking.type="enabled"/budget_tokens shape --
+# "Use thinking.type.adaptive and output_config.effort to control thinking
+# behavior." So "reasoning_effort: high" from the ADR 0090 decision maps onto
+# a REAL API parameter after all (output_config.effort), not just a
+# best-effort frontmatter signal on the Claude-Code side. Uncaught at the
+# time -- the whole call crashed with a raw traceback and posted no PR
+# comment, which run_audit()'s try/except (added the same fix) now prevents
+# for any future API-shape drift.
+EFFORT = "high"
 MAX_TOKENS = 12000
 
 ANGLES = {
@@ -216,7 +225,8 @@ def _call_claude(client, system: str, user: str) -> str:
     resp = client.messages.create(
         model=MODEL,
         max_tokens=MAX_TOKENS,
-        thinking={"type": "enabled", "budget_tokens": THINKING_BUDGET_TOKENS},
+        thinking={"type": "adaptive"},
+        output_config={"effort": EFFORT},
         system=system,
         messages=[{"role": "user", "content": user}],
     )
@@ -231,16 +241,34 @@ def _verdict_of(report_text: str) -> str:
 
 
 def run_audit(pr_number: str) -> int:
+    """Thin wrapper: _run_audit_inner() does the real work and can raise
+    anything (an SDK error, a malformed response, a network blip). CONFIRMED
+    live, run 33695630472: an uncaught anthropic.BadRequestError crashed with
+    a bare traceback, no PR comment posted -- the exact "never vacuous"
+    failure this whole script exists to prevent, just one layer further in
+    than the ANTHROPIC_API_KEY check already guarded. Every exception now
+    reaches _fail_closed with the real message, so the PR always gets a
+    comment explaining why, never silence plus a red X."""
+    try:
+        return _run_audit_inner(pr_number)
+    except Exception as exc:  # noqa: BLE001 - deliberately broad, see docstring
+        sha7 = None
+        try:
+            pr = _gh_json(["gh", "pr", "view", pr_number, "--json", "headRefOid"])
+            sha7 = pr["headRefOid"][:7]
+        except Exception:
+            pass
+        return _fail_closed(pr_number, sha7, f"{type(exc).__name__}: {exc}")
+
+
+def _run_audit_inner(pr_number: str) -> int:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         return _fail_closed(pr_number, None,
             "ANTHROPIC_API_KEY is not set. Add it with `gh secret set "
             "ANTHROPIC_API_KEY` (or the GitHub UI) — see ADR 0090.")
 
-    try:
-        import anthropic
-    except ImportError:
-        return _fail_closed(pr_number, None, "the `anthropic` package is not installed.")
+    import anthropic  # required install step already ran; let ImportError surface to run_audit()'s catch-all
 
     client = anthropic.Anthropic(api_key=api_key)
 
