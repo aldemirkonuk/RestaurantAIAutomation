@@ -135,7 +135,9 @@ jobs:
             echo "Set the names listed above as repository secrets"
             echo "(Settings > Secrets and variables > Actions), then re-run."
             echo "E2E_BASE_URL is mapped from the secret VERCEL_PRODUCTION_URL."
-            exit 1
+            # exit 2 = "the check itself could not run", the repo-wide guard convention
+            # (scripts/check_*.py); exit 1 is reserved for "the check ran and failed".
+            exit 2
           fi
 
           echo "All 8 required secrets present -- this run's result is a real production signal."
