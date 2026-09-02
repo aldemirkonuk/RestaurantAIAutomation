@@ -16,6 +16,14 @@
  * table declares (ADR 0077). Each ran daily for its whole life, sent nothing,
  * and logged nothing.
  *
+ * The same envelope-not-exception trap sits on the WRITE side, where it is
+ * worse. A `try { await client.from(t).insert(row) } catch { warn }` reads as
+ * covered and is inert for every database error, because there is nothing to
+ * catch. Nothing is corrupted — a good row is simply never written, and nothing
+ * records that it failed. That absence cannot be enumerated afterwards or
+ * repaired, so the only remedy is to say, at the moment it happens, exactly what
+ * was lost.
+ *
  * These helpers are pure so the decision — failed, or merely empty — can be
  * tested without NestJS DI, a database, or a clock. The service supplies the
  * logger; this module supplies the words.
@@ -118,4 +126,93 @@ export function interpretRead<T>(
     };
   }
   return { ok: true, rows: envelope.data };
+}
+
+// ---------------------------------------------------------------------------
+// Writes
+// ---------------------------------------------------------------------------
+
+/** What supabase-js hands back from an `.insert()` / `.update()`. */
+export interface WriteEnvelope {
+  error: ReadEnvelope<unknown>["error"];
+}
+
+export type WriteOutcome = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Write-side codes. Deliberately a separate table from the read one: `PGRST204`
+ * means something different when you are sending a payload than when you are
+ * asking for columns, and `23503` has a specific, expensive history here.
+ */
+const WRITE_CODE_MEANINGS: Record<string, string> = {
+  PGRST204: "the payload names a COLUMN the table does not have",
+  "42703": "the statement names a column that does not exist",
+  "42P01": "the statement names a table that does not exist",
+  "23502": "a NOT NULL column was sent no value and has no default",
+  "23503":
+    "a foreign key points at a row that does not exist — if this is an actor " +
+    "column, check it targets public.users(user_id) and NOT auth.users, which " +
+    "are disjoint sets of ids",
+  "23505": "a unique constraint was violated",
+  "42501": "permission denied — check RLS for this role",
+};
+
+/**
+ * Say what was lost, not just that something went wrong.
+ *
+ * `what` describes the rows that did not land — "3 notification rows for
+ * restaurant <id> (type=payment_due)", "next_fire_at for reminder <id>". A
+ * missing row cannot be found by querying for it later, so this message is the
+ * only record that it was ever supposed to exist. It is the whole remedy.
+ */
+export function describeWriteFailure(
+  job: string,
+  table: string,
+  what: string,
+  error: ReadEnvelope<unknown>["error"],
+): string {
+  const code = (error?.code ?? "").trim();
+  const meaning = code ? WRITE_CODE_MEANINGS[code] : undefined;
+  const parts = [
+    `${job}: write to \`${table}\` FAILED and ${what} was NOT saved.`,
+    code ? `[${code}]` : "[no code]",
+    error?.message?.trim() || "no message from the database",
+  ];
+  if (meaning) parts.push(`— ${meaning}`);
+  if (error?.details?.trim()) parts.push(`details: ${error.details.trim()}`);
+  if (error?.hint?.trim()) parts.push(`hint: ${error.hint.trim()}`);
+  parts.push(
+    "Nothing is corrupted; something is MISSING, which cannot be found by " +
+      "querying for it later. This line is the only record that it should exist.",
+  );
+  return parts.join(" ");
+}
+
+/**
+ * Turn a supabase write envelope into an outcome that cannot be mistaken.
+ *
+ * A missing envelope is a failure: a call that returned nothing has not told us
+ * the row landed, and on a write that is the same as saying it did not.
+ */
+export function interpretWrite(
+  job: string,
+  table: string,
+  what: string,
+  envelope: WriteEnvelope | null | undefined,
+): WriteOutcome {
+  if (!envelope) {
+    return {
+      ok: false,
+      reason: describeWriteFailure(job, table, what, {
+        message: "the client returned no response envelope at all",
+      }),
+    };
+  }
+  if (envelope.error) {
+    return {
+      ok: false,
+      reason: describeWriteFailure(job, table, what, envelope.error),
+    };
+  }
+  return { ok: true };
 }

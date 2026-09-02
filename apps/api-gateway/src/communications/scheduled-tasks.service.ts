@@ -21,8 +21,8 @@ import {
   describeRecurringOrder,
   recurringRemindersEnabled,
 } from "./recurring-order-reminder";
-import { interpretRead } from "./scheduled-read";
-import type { ReadEnvelope, ReadOutcome } from "./scheduled-read";
+import { interpretRead, interpretWrite } from "./scheduled-db";
+import type { ReadEnvelope, ReadOutcome, WriteEnvelope } from "./scheduled-db";
 
 /**
  * Pure function — exported for direct use in tests without NestJS DI.
@@ -783,21 +783,33 @@ export class ScheduledTasksService implements OnModuleInit {
                   reminder.schedule_cron,
                   now,
                 );
-                await client
-                  .from("custom_reminders")
-                  .update({
-                    last_fired_at: now.toISOString(),
-                    next_fire_at: nextFire.toISOString(),
-                  })
-                  .eq("id", reminder.id);
+                this.wrote(
+                  "custom-reminders-check",
+                  "custom_reminders",
+                  `the advance of reminder ${reminder.id} to ${nextFire.toISOString()} — ` +
+                    "it stays due, so the 15-minute cron will send it again",
+                  await client
+                    .from("custom_reminders")
+                    .update({
+                      last_fired_at: now.toISOString(),
+                      next_fire_at: nextFire.toISOString(),
+                    })
+                    .eq("id", reminder.id),
+                );
               } else {
-                await client
-                  .from("custom_reminders")
-                  .update({
-                    last_fired_at: now.toISOString(),
-                    is_active: false,
-                  })
-                  .eq("id", reminder.id);
+                this.wrote(
+                  "custom-reminders-check",
+                  "custom_reminders",
+                  `the deactivation of one-off reminder ${reminder.id} — ` +
+                    "it stays active and due, so it will be sent again",
+                  await client
+                    .from("custom_reminders")
+                    .update({
+                      last_fired_at: now.toISOString(),
+                      is_active: false,
+                    })
+                    .eq("id", reminder.id),
+                );
               }
               continue;
             }
@@ -842,8 +854,10 @@ export class ScheduledTasksService implements OnModuleInit {
           // 2. Write a notifications row (so it appears in the in-app inbox)
           const notifUserId = reminder.created_by || null;
           if (notifUserId) {
-            try {
-              await client.from("notifications").insert({
+            // No try/catch around the database error: supabase-js RETURNS it.
+            // The outer try still guards genuine exceptions (a dead socket).
+            {
+              const inserted = await client.from("notifications").insert({
                 user_id: notifUserId,
                 recipient_id: notifUserId,
                 notification_type: "custom_reminder",
@@ -864,9 +878,12 @@ export class ScheduledTasksService implements OnModuleInit {
                 },
                 created_at: now.toISOString(),
               });
-            } catch (notifErr) {
-              this.logger.warn(
-                `Could not write notifications row for reminder ${reminder.id}: ${notifErr?.message}`,
+              this.wrote(
+                "custom-reminders-check",
+                "notifications",
+                `the in-app notification for reminder ${reminder.id} ` +
+                  `("${reminder.title}") addressed to user ${notifUserId}`,
+                inserted,
               );
             }
           }
@@ -877,18 +894,30 @@ export class ScheduledTasksService implements OnModuleInit {
               reminder.schedule_cron,
               now,
             );
-            await client
-              .from("custom_reminders")
-              .update({
-                last_fired_at: now.toISOString(),
-                next_fire_at: nextFire.toISOString(),
-              })
-              .eq("id", reminder.id);
+            this.wrote(
+              "custom-reminders-check",
+              "custom_reminders",
+              `the advance of reminder ${reminder.id} to ${nextFire.toISOString()} — ` +
+                "it stays due, so the 15-minute cron will send it again",
+              await client
+                .from("custom_reminders")
+                .update({
+                  last_fired_at: now.toISOString(),
+                  next_fire_at: nextFire.toISOString(),
+                })
+                .eq("id", reminder.id),
+            );
           } else {
-            await client
-              .from("custom_reminders")
-              .update({ last_fired_at: now.toISOString(), is_active: false })
-              .eq("id", reminder.id);
+            this.wrote(
+              "custom-reminders-check",
+              "custom_reminders",
+              `the deactivation of one-off reminder ${reminder.id} — ` +
+                "it stays active and due, so it will be sent again",
+              await client
+                .from("custom_reminders")
+                .update({ last_fired_at: now.toISOString(), is_active: false })
+                .eq("id", reminder.id),
+            );
           }
         }
 
@@ -969,6 +998,27 @@ export class ScheduledTasksService implements OnModuleInit {
     const outcome = interpretRead<T>(job, table, envelope);
     if (!outcome.ok) this.logger.error(outcome.reason);
     return outcome;
+  }
+
+  /**
+   * Every scheduled write goes through here.
+   *
+   * The `try/catch` these calls used to sit inside was inert: supabase-js
+   * RETURNS `{ error }` for a database error rather than throwing, so there was
+   * nothing for the catch to catch, and a failed insert looked exactly like a
+   * successful one. `what` names the rows that did not land, because a row that
+   * was never written cannot be found by querying for it afterwards — the log
+   * line is the only trace it was supposed to exist.
+   */
+  private wrote(
+    job: string,
+    table: string,
+    what: string,
+    envelope: WriteEnvelope | null | undefined,
+  ): boolean {
+    const outcome = interpretWrite(job, table, what, envelope);
+    if (!outcome.ok) this.logger.error(outcome.reason);
+    return outcome.ok;
   }
 
   // ==========================================================================
@@ -1371,9 +1421,26 @@ export class ScheduledTasksService implements OnModuleInit {
         metadata: payload.metadata ?? {},
         created_at: now,
       }));
-      await this.databaseService.getClient().from("notifications").insert(rows);
+      const inserted = await this.databaseService
+        .getClient()
+        .from("notifications")
+        .insert(rows);
+      // The count and the type are named because this is a BULK insert: one
+      // failure loses the signal for every member of the restaurant at once,
+      // and the inbox has no way to show a row that was never written.
+      this.wrote(
+        "persistRestaurantNotification",
+        "notifications",
+        `${rows.length} in-app notification row(s) of type "${payload.type}" ` +
+          `for restaurant ${restaurantId} ("${payload.title}")`,
+        inserted,
+      );
     } catch (e: any) {
-      this.logger.warn(`persistRestaurantNotification failed: ${e?.message}`);
+      // Still reached for a genuine exception; a DB error never gets here.
+      this.logger.error(
+        `persistRestaurantNotification threw for restaurant ${restaurantId} ` +
+          `(type "${payload.type}"): ${e?.message}. No notification row was written.`,
+      );
     }
   }
 

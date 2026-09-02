@@ -122,7 +122,7 @@ its `error`** — seven of them, found independently by the new test's own extra
 ```
 
 All seven now run through `readRows()`, backed by a pure module
-`communications/scheduled-read.ts`:
+`communications/scheduled-db.ts`:
 
 - **`interpretRead()` returns a discriminated `ReadOutcome`** — `{ok:true, rows}`
   or `{ok:false, reason}`. There is deliberately no third state meaning "null, make
@@ -140,6 +140,40 @@ All seven now run through `readRows()`, backed by a pure module
   `notification_preferences` still defaults to on when unreadable (a preferences
   outage must not silence every notification), and a failed `providers` lookup no
   longer silently becomes `"Unknown Provider"` for every row ([[0020]]).
+
+### And the writes, which were worse
+
+The founder extended the scope after the read fix landed. **All six writes in the
+file discarded their error too**, inside a `try/catch` that reads as covered and
+is inert: supabase-js *returns* `{error}` rather than throwing, so there is
+nothing for the catch to catch. They now go through `wrote()`, over
+`interpretWrite()` / `describeWriteFailure()` in the same pure module.
+
+Two are `notifications` inserts — the class the memory note calls **O, silent
+omission**: no row is corrupted, a good row is simply never written, and nothing
+records it. That damage cannot be enumerated or repaired afterwards, so the log
+line has to enumerate it *at the moment it happens*. `describeWriteFailure()`
+therefore takes a `what`: not "a write failed" but *"3 in-app notification row(s)
+of type payment_due for restaurant `<id>` was NOT saved"*. For the bulk insert in
+`persistRestaurantNotification` that count matters — one failure loses the signal
+for every member of the restaurant at once.
+
+**The other four are worse, and were found by looking rather than by being
+reported.** They are the `custom_reminders` updates that advance `next_fire_at`
+or set `is_active = false`. The cron runs `*/15 * * * *` and selects
+`is_active = true AND next_fire_at <= now`, so **those updates are the only thing
+that stops a reminder re-firing.** A silent failure does not lose a
+notification — it emails the manager the same reminder every fifteen minutes,
+indefinitely. Their messages say so: *"it stays due, so the 15-minute cron will
+send it again"*. All the columns they write are real; this was purely the
+swallowed error. They were fixed alongside the two the founder named, because
+repairing a lost inbox row while leaving a live mail loop next to it would not
+have been a defensible reading of the ask.
+
+`23503` gets named specially in the write-side code table, pointing at
+`public.users(user_id)` versus `auth.users`: those two carry **disjoint** id
+sets, an actor FK aimed at the wrong one fails on every write, and CI cannot
+catch it because a fresh database has no rows to violate.
 
 The sweep found a **fourth** phantom read in the same file, which is also fixed
 here: the weekly report selected `procurement_conversations.message_body` and
@@ -166,15 +200,24 @@ read sites all fail.
 
 | Run | Tree | Result |
 |---|---|---|
-| 1 | untouched `HEAD` (`e3acc79a`) | **3 of 4 failed.** Columns: `payment_due_date` at `:609`, `message_body` and `subject` at `:1209`. Errors: all seven sites listed above. Non-vacuity check passed, correctly. |
-| 2 | this branch | 4 of 4 pass |
-| 3 | this branch, whole api-gateway suite | **1652 passed**, 133/135 suites (2 skipped, pre-existing) |
+| 1 | untouched `origin/main` (`e3acc79a`) | **4 of 5 failed.** Columns: `payment_due_date` at `:609`, `message_body` and `subject` at `:1209`. Reads: all seven sites. Writes: all six sites. Non-vacuity check passed, correctly. |
+| 1b | the read-fix commit (`baa450a2`), writes not yet fixed | **exactly 1 of 5 failed** — the write test, naming `:787 :795 :846 :881 :889 :1374`. A second baseline, because a test that only fails on a tree where *everything* is broken has not shown it discriminates. |
+| 2 | this branch | 5 of 5 pass |
+| 3 | this branch, whole api-gateway suite | **1658 passed**, 133/135 suites (2 skipped, pre-existing) |
 | 4 | this branch, `tsc --noEmit` | clean |
 | 5 | this branch, eslint on the four changed files | 0 errors; one `'month' is unused` warning **proved pre-existing** by reverting the file to `HEAD` and re-linting (`:949` there, `:920` here) |
 
-`scheduled-read.spec.ts` adds 7 unit tests on the pure module, including the one
+`scheduled-db.spec.ts` adds 12 unit tests on the pure module, including the one
 assertion the whole ADR reduces to: an empty result and a failed result must not be
 the same value.
+
+**The spec caught itself twice, which is why it is worth trusting.** Its first
+draft matched against the raw file, so the tombstone comment naming
+`payment_due_date` failed the deletion test, and a comment containing the word
+"error" *passed* a write site that handled nothing. Both are the same fault the
+ADR is about — a check satisfied by prose rather than by the thing it claims to
+measure. It now runs against a comment-blanked copy that preserves newlines, so
+line numbers still match the real file.
 
 ## Guard interaction — three entries to retire, not one
 
@@ -218,10 +261,11 @@ the register-rot this repo's §5b was written about: a true-sounding sentence, c
 to a line number, checked exactly once — on the day it was written.
 
 **What this change does NOT cover, stated plainly.**
-- The two `notifications` **inserts** (`:875`, `:1367` pre-fix) still discard their
-  error. They are the silent-omission class — a notification row that never lands,
-  undetectable and unrepairable after the fact. The founder scoped this change to
-  the reads; these are measured, named here, and left.
+- `notifications` is **not** in `check_orders_column_writes.py`'s table registry,
+  so nothing mechanically checks that these insert payloads name real columns.
+  They were checked by hand against `supabase/migrations/` here and all 15 keys
+  are real, but registering the table is a separate change with its own measured
+  floors and debt decision.
 - `delivery.wine_name` in the delivery-ETA job is a phantom property read off a
   `select("*")`, so it degrades to `|| "Wine"` rather than killing the query. Left
   as-is: repointing it means adding an `inventory:inventory_id(wine_name)` embed,

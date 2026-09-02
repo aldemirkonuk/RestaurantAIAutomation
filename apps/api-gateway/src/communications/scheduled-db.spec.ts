@@ -1,4 +1,9 @@
-import { describeReadFailure, interpretRead } from "./scheduled-read";
+import {
+  describeReadFailure,
+  describeWriteFailure,
+  interpretRead,
+  interpretWrite,
+} from "./scheduled-db";
 
 /**
  * The one distinction three dead crons could not make: a query that FAILED
@@ -90,5 +95,63 @@ describe("describeReadFailure", () => {
     expect(msg).toContain("check RLS for this role");
     expect(msg).toContain("details: role anon");
     expect(msg).toContain("hint: check the policy");
+  });
+});
+
+/**
+ * The write side of the same trap. supabase-js RETURNS `{error}` rather than
+ * throwing, so the `try/catch` these calls sat inside was inert and a lost row
+ * looked exactly like a saved one. Nothing is corrupted — something is missing,
+ * which cannot be found by querying for it later. See ADR 0077.
+ */
+describe("interpretWrite", () => {
+  it("a clean envelope is a success", () => {
+    expect(
+      interpretWrite("custom-reminders-check", "notifications", "a row", {
+        error: null,
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it("names what was lost, not just that something failed", () => {
+    const out = interpretWrite(
+      "persistRestaurantNotification",
+      "notifications",
+      '3 in-app notification row(s) of type "payment_due" for restaurant r-1',
+      { error: { code: "PGRST204", message: "column x not found" } },
+    );
+    expect(out.ok).toBe(false);
+    if (out.ok) throw new Error("unreachable");
+    expect(out.reason).toContain("3 in-app notification row(s)");
+    expect(out.reason).toContain("was NOT saved");
+    expect(out.reason).toContain("COLUMN the table does not have");
+    expect(out.reason).toContain("something is MISSING");
+  });
+
+  it("a missing envelope is a failure — silence is not a saved row", () => {
+    expect(
+      interpretWrite("custom-reminders-check", "custom_reminders", "x", null)
+        .ok,
+    ).toBe(false);
+  });
+
+  it("a 23503 points at the auth.users / public.users trap by name", () => {
+    // These two tables share ZERO ids, and an actor FK aimed at the wrong one
+    // 23503s on every write while CI stays green (a fresh DB has no rows to
+    // violate). The message has to say so, because the code alone does not.
+    const msg = describeWriteFailure(
+      "custom-reminders-check",
+      "notifications",
+      "one row",
+      { code: "23503", message: "violates foreign key constraint" },
+    );
+    expect(msg).toContain("public.users(user_id)");
+    expect(msg).toContain("auth.users");
+  });
+
+  it("says nothing was saved even when the error carries nothing", () => {
+    const msg = describeWriteFailure("job", "notifications", "one row", {});
+    expect(msg).toContain("was NOT saved");
+    expect(msg).toContain("[no code]");
   });
 });

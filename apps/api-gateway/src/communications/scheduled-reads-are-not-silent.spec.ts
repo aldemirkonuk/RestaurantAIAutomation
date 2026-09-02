@@ -152,20 +152,34 @@ interface ReadSite {
   line: number;
   /** The builder chain, from `.from(` to the end of the statement. */
   chain: string;
-  /** ~200 chars immediately before `.from(`, where the assignment lives. */
+  /** ~200 chars before `.from(` — where an assignment or a wrapper call sits. */
   lead: string;
+  /** ~200 chars after the statement — where a trailing check sits. */
+  trail: string;
 }
 
 const SOURCE = readFileSync(SERVICE, "utf8");
 
 /**
- * The same file with comments stripped, so an assertion about what the code
- * DOES is not satisfied or broken by what a comment SAYS.
+ * The same file with comment BODIES blanked but every newline kept, so line
+ * numbers still line up with the real file.
+ *
+ * Every assertion below runs on this, not on SOURCE. Without it the checks are
+ * satisfiable by prose: a comment near a read that happens to contain the word
+ * "error" passes the error-handling test, and one naming `payment_due_date`
+ * fails the deletion test. Both actually happened while writing this file —
+ * which is the point, since a check that a comment can satisfy is a check that
+ * measures nothing.
  */
-const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, "").replace(
-  /(^|[^:])\/\/[^\n]*/g,
-  "$1",
+const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (m) =>
+  m.replace(/[^\n]/g, " "),
 );
+
+/**
+ * The file holds this many `.insert(` / `.update(` writes. Same floor logic as
+ * MIN_READ_SITES: fewer means the extractor rotted, not that the file got clean.
+ */
+const MIN_WRITE_SITES = 6;
 
 /** `.from("t")` plus everything up to the next `.from(` or `;`. */
 function readSites(src: string): ReadSite[] {
@@ -186,6 +200,32 @@ function readSites(src: string): ReadSite[] {
       line: src.slice(0, start).split("\n").length,
       chain,
       lead: src.slice(Math.max(0, start - 200), start),
+      trail: src.slice(end, end + 200),
+    });
+  }
+  return sites;
+}
+
+/** The same windows, but the ones that WRITE rather than read. */
+function writeSites(src: string): ReadSite[] {
+  const sites: ReadSite[] = [];
+  const re = /\.from\(\s*["']([a-z][a-z0-9_]*)["']\s*\)/g;
+  for (const m of src.matchAll(re)) {
+    const start = m.index!;
+    let end = start + m[0].length;
+    while (end < src.length) {
+      if (src[end] === ";") break;
+      if (src.startsWith(".from(", end)) break;
+      end++;
+    }
+    const chain = src.slice(start, end);
+    if (!/\.(insert|update|upsert|delete)\(/.test(chain)) continue;
+    sites.push({
+      table: m[1],
+      line: src.slice(0, start).split("\n").length,
+      chain,
+      lead: src.slice(Math.max(0, start - 400), start),
+      trail: src.slice(end, end + 300),
     });
   }
   return sites;
@@ -227,7 +267,7 @@ function namedColumns(chain: string): { cols: Set<string>; literal: boolean } {
 // ---------------------------------------------------------------------------
 
 describe("scheduled-tasks reads: columns exist, and a failure is not an empty result", () => {
-  const sites = readSites(SOURCE);
+  const sites = readSites(CODE);
 
   it("the scan actually found something to check", () => {
     expect(
@@ -266,6 +306,32 @@ describe("scheduled-tasks reads: columns exist, and a failure is not an empty re
           `scheduled-tasks.service.ts:${site.line} reads ${site.table} and ` +
             `discards \`error\`. A failed query arrives as data: null, which ` +
             `the caller cannot tell from "nothing matched".`,
+        );
+      }
+    }
+    expect(findings).toEqual([]);
+  });
+
+  it("reads the error on every WRITE too, so a lost row cannot pass for a saved one", () => {
+    // supabase-js RETURNS `{error}` rather than throwing, so a `try/catch`
+    // around a write is inert for database errors. Nothing is corrupted; a good
+    // row is simply never written, and nothing records that it failed — damage
+    // that cannot be enumerated afterwards, let alone repaired. Two of these
+    // dropped an in-app notification; the other four leave a custom reminder
+    // still due, so the 15-minute cron re-mails it indefinitely.
+    const writes = writeSites(CODE);
+    expect(writes.length).toBeGreaterThanOrEqual(MIN_WRITE_SITES);
+    const findings: string[] = [];
+    for (const site of writes) {
+      // A wrapper reads `this.wrote(await client.from(…))` — the call is in the
+      // lead. An assignment reads `const x = await client.from(…);` and the
+      // check follows — so the trail counts too.
+      const near = site.lead + site.trail;
+      const handled = /\berror\b/.test(near) || /\bwrote\s*\(/.test(near);
+      if (!handled) {
+        findings.push(
+          `scheduled-tasks.service.ts:${site.line} writes ${site.table} and ` +
+            `never reads \`error\`. The row may never have landed.`,
         );
       }
     }
