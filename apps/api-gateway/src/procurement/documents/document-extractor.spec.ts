@@ -1,6 +1,10 @@
 import { ConfigService } from "@nestjs/config";
-import { DocumentExtractorService } from "./document-extractor.service";
+import {
+  DocumentExtractorService,
+  settledEventId,
+} from "./document-extractor.service";
 import { isDocumentLike } from "./document-intake.service";
+import { NfEventRef } from "../../common/model-client/model-client.service";
 
 const svc = new DocumentExtractorService(
   {
@@ -166,5 +170,42 @@ describe("isDocumentLike", () => {
   it("rejects unrelated file types", () => {
     expect(isDocumentLike("application/zip", "archive.zip")).toBe(false);
     expect(isDocumentLike("text/calendar", "invite.ics")).toBe(false);
+  });
+});
+
+/**
+ * ADR 0059 (L6) — the footprint id is carried out with the document so the
+ * extraction can be attributed to a model.
+ *
+ * The wait is BOUNDED, and that is the whole substance of these tests.
+ * `model-client.service.ts:326` states that emission latency never rides a user
+ * path: the emit is `void`ed on purpose, and the ref settles only when that
+ * background insert finishes. A plain `await ref.id` would have handed the
+ * instrument the power to hang the extraction it measures — the exact inversion
+ * the module forbids — on a path where the user is a receiver standing at a
+ * door with a driver waiting.
+ */
+describe("settledEventId — attribution never blocks the extraction", () => {
+  it("returns the id when the emit lands", async () => {
+    const ref = new NfEventRef();
+    ref.settle("evt-1");
+    await expect(settledEventId(ref, 50)).resolves.toBe("evt-1");
+  });
+
+  it("returns null when the emit was dropped", async () => {
+    const ref = new NfEventRef();
+    // A dropped emit settles with null rather than hanging — the model client
+    // guarantees this in its `.finally()`. Attribution is lost; nothing else is.
+    ref.settle(null);
+    await expect(settledEventId(ref, 50)).resolves.toBeNull();
+  });
+
+  it("gives up rather than waiting on a ref that never settles", async () => {
+    const started = Date.now();
+    // Never settled: a footprint insert that stalled. Before the bound, this
+    // hung the extraction — and therefore the HTTP request — forever.
+    const out = await settledEventId(new NfEventRef(), 20);
+    expect(out).toBeNull();
+    expect(Date.now() - started).toBeLessThan(1000);
   });
 });
