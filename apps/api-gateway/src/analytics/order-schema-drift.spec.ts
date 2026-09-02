@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
+import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
 
 /**
  * Regression guard — analytics must not select columns that do not exist.
@@ -218,7 +219,7 @@ const ORDER_ROWS = [
     created_at: day(20),
     delivered_at: day(18),
     expected_delivery_date: day(19).substring(0, 10),
-    status: "delivered",
+    status: ProcurementOrderStatus.DELIVERED,
   },
   {
     id: "o2",
@@ -231,7 +232,7 @@ const ORDER_ROWS = [
     created_at: day(10),
     delivered_at: day(8),
     expected_delivery_date: day(9).substring(0, 10),
-    status: "delivered",
+    status: ProcurementOrderStatus.DELIVERED,
   },
 ];
 
