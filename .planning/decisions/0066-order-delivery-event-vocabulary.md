@@ -4,7 +4,7 @@
 - **Date:** 2026-09-02
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** calendar_events, createCalendarEventForOrder, delivery event, source NOT NULL, 23502, PGRST204, status vocabulary, SCHEDULED, order_id, provider_id, absence reported as health, silent failure, procurement
-- **Links:** [[0056-order-paths-write-columns-that-exist]] (surfaced this and explicitly did not fix it), [[0058-order-status-is-an-enum-not-a-string]] (the same defect on `procurement_orders.status`), [[0025-citations-must-disagree-loudly]], PR #230
+- **Links:** [[0056-order-paths-write-columns-that-exist]] (surfaced this and explicitly did not fix it), [[0058-order-status-is-an-enum-not-a-string]] (the same defect on `procurement_orders.status`), [[0025-citations-must-disagree-loudly]], PR #232
 
 ## Context
 
