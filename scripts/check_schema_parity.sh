@@ -142,6 +142,46 @@ ext_dep() { printf "NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='%s'::
 # and a multi-line one cannot split a fact in half.
 flat() { printf "btrim(regexp_replace(%s, '[[:space:]]+', ' ', 'g'))" "$1"; }
 
+# Cast-decoration normalizer for CHECK constraints. NARROW ON PURPOSE.
+#
+# A pg_dump/restore round-trip is not a fixed point for `x IN (...)` on a
+# varchar column. Measured 2026-09-02 in a scratch Postgres, all four of these
+# are the SAME predicate and Postgres renders them two different ways:
+#
+#   CHECK (unit_type IN ('BOTTLE','CASE'))                      -- production
+#     -> CHECK (unit_type::text = ANY (ARRAY['BOTTLE'::character varying, ...]::text[]))
+#   CHECK (((unit_type)::text = ANY ((ARRAY['BOTTLE'::character varying, ...])::text[])))
+#     -> CHECK (unit_type::text = ANY (ARRAY['BOTTLE'::character varying::text, ...]))
+#
+# The second spelling is what pg_dump WROTE into
+# 20260805000000_baseline_from_production.sql, so a fresh `supabase db reset`
+# re-parses it and renders per-element while production still renders
+# array-level. 45 constraints diverged this way on the first real CI run — every
+# one a false positive, and unfixable by editing migrations, because the dump
+# text cannot reproduce the tree it came from.
+#
+# So: collapse the DECORATION, never the content. Two literal replacements,
+# deliberately not a general regex:
+#
+#   '::character varying::text'  ->  '::character varying'   (per-element form)
+#   ']::text[]'                  ->  ']'                     (array-level form)
+#
+# Each requires a cast to sit directly against ANOTHER string-type cast or
+# against an array literal's closing bracket. Neither can touch a column
+# reference: `unit_type::text` survives untouched, because `unit_type` is
+# neither `character varying` nor `]`. Nothing about the literal VALUES, their
+# ORDER, the operator, or the column is normalized — add, remove or rename one
+# array element and the definitions still differ. --self-test proves exactly
+# that, in both directions.
+#
+# Known limit, stated rather than hidden: a CHECK whose own string literal
+# contains the text `]::text[]` would have that literal rewritten too. It is
+# rewritten identically on both sides, so it cannot manufacture a false PASS on
+# its own, but it is a real edge and it is not defended against.
+norm_casts() {
+  printf "replace(replace(%s, '::character varying::text', '::character varying'), ']::text[]', ']')" "$1"
+}
+
 REL_VISIBLE="n.nspname='public' AND c.relkind IN ($REL_KINDS) AND $NOT_BAK AND $(ext_dep pg_class c.oid)"
 
 read -r -d '' FINGERPRINT_SQL <<SQL || true
@@ -194,7 +234,7 @@ GROUP BY n.nspname, c.relname;
 -- 5. constraints: CHECK (the unit vocabularies, the ledger quantity checks),
 --    UNIQUE, PRIMARY KEY, FOREIGN KEY, EXCLUDE. None of these were compared.
 SELECT 'constraint' || E'\t' || n.nspname||'.'||c.relname||'.'||con.conname || E'\t' ||
-       $(flat "pg_get_constraintdef(con.oid, true)")
+       $(norm_casts "$(flat "pg_get_constraintdef(con.oid, true)")")
 FROM pg_constraint con
 JOIN pg_class c ON c.oid=con.conrelid
 JOIN pg_namespace n ON n.oid=c.relnamespace
@@ -202,8 +242,17 @@ WHERE $REL_VISIBLE AND $(ext_dep pg_constraint con.oid);
 
 -- 6. indexes. Constraint-backed indexes are skipped: they are already reported
 --    by 5, and reporting one drift twice trains people to skim the output.
+--    Rendered PRETTY (the 0, true arguments) for one reason: a partial index's
+--    WHERE clause carries the same IN (...) predicate a CHECK does, and the
+--    non-pretty form spells the two renderings a THIRD way —
+--    ARRAY[('open'::character varying)::text, ...] — which norm_casts cannot
+--    see past. Pretty mode emits exactly the constraint spelling, so one
+--    normalizer covers both. Measured 2026-09-02: this is what the last false
+--    positive on the first real CI run turned out to be (idx_pc_open_age).
+--    Pretty mode also drops the schema qualifier from the rendered definition;
+--    that loses nothing, because the schema is already in the comparison KEY.
 SELECT 'index' || E'\t' || n.nspname||'.'||ci.relname || E'\t' ||
-       $(flat "pg_get_indexdef(i.indexrelid)")
+       $(norm_casts "$(flat "pg_get_indexdef(i.indexrelid, 0, true)")")
 FROM pg_index i
 JOIN pg_class ci ON ci.oid=i.indexrelid
 JOIN pg_class c  ON c.oid=i.indrelid
@@ -273,7 +322,7 @@ SELECT 'type' || E'\t' || n.nspname||'.'||t.typname || E'\t' ||
                                             FROM pg_enum e WHERE e.enumtypid=t.oid), '') || ')'
          WHEN 'd' THEN 'domain ' || format_type(t.typbasetype, t.typtypmod) ||
                        CASE WHEN t.typnotnull THEN ' NOT NULL' ELSE '' END ||
-                       COALESCE(' ' || (SELECT string_agg($(flat "pg_get_constraintdef(dc.oid, true)"), ' ' ORDER BY dc.conname)
+                       COALESCE(' ' || (SELECT string_agg($(norm_casts "$(flat "pg_get_constraintdef(dc.oid, true)")"), ' ' ORDER BY dc.conname)
                                         FROM pg_constraint dc WHERE dc.contypid=t.oid), '')
          ELSE t.typtype::text END
 FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace
@@ -414,7 +463,7 @@ compare() {
     "Read both lines. If remote is the odd one out it was altered by hand; capture it as a migration, then 'supabase migration repair --status applied <v>'." \
     fmt_changed
   section "IN REMOTE, NOT IN LOCAL — hand-applied DDL" "$d.only_remote" \
-    "Capture it as a migration, then 'supabase migration repair --status applied <v>'." \
+    "FIRST: is your branch behind main? Migrations auto-apply on merge, so every migration merged since you branched is ALREADY on production and NOT in your local build — it lands here looking exactly like hand-applied DDL. Merge main and re-run BEFORE capturing anything; capturing another session's migration duplicates it. Only if the branch is current: capture it, then 'supabase migration repair --status applied <v>'." \
     fmt_one
   section "IN LOCAL, NOT IN REMOTE — unpushed migration" "$d.only_local" \
     "Run 'supabase db push', or drop the migration if it was a mistake." \
@@ -470,6 +519,30 @@ policy-widened|ALTER POLICY il_tenant ON public.inventory_lots USING (true);
 DRIFTS
 }
 
+# PAIRS — the normalizer's two-sided proof.
+#
+# Each row is `name|expect|ddlA|ddlB`. Both sides get SELFTEST_BASE plus their
+# own DDL, then are compared. `same` means the normalizer MUST collapse the
+# difference; `differs` means it MUST NOT.
+#
+# The `differs` rows are deliberately adversarial: each spells its two sides
+# with the two DIFFERENT renderings *as well as* changing the content, so a
+# normalizer that over-reached and swallowed the content would pass the `same`
+# row and quietly fail these. That is the failure this list exists to catch —
+# handing back the blindness the rewrite just removed.
+selftest_pairs() {
+  cat <<'PAIRS'
+render-equivalent|same|CREATE TABLE public.probe (unit_type character varying(20), other_col character varying(20), CONSTRAINT probe_chk CHECK (unit_type IN ('BOTTLE','CASE')));|CREATE TABLE public.probe (unit_type character varying(20), other_col character varying(20), CONSTRAINT probe_chk CHECK (((unit_type)::text = ANY ((ARRAY['BOTTLE'::character varying, 'CASE'::character varying])::text[]))));
+check-value-added|differs|CREATE TABLE public.probe (unit_type character varying(20), other_col character varying(20), CONSTRAINT probe_chk CHECK (unit_type IN ('BOTTLE','CASE')));|CREATE TABLE public.probe (unit_type character varying(20), other_col character varying(20), CONSTRAINT probe_chk CHECK (((unit_type)::text = ANY ((ARRAY['BOTTLE'::character varying, 'CASE'::character varying, 'SPLASH'::character varying])::text[]))));
+check-value-removed|differs|CREATE TABLE public.probe (unit_type character varying(20), other_col character varying(20), CONSTRAINT probe_chk CHECK (unit_type IN ('BOTTLE','CASE','SPLASH')));|CREATE TABLE public.probe (unit_type character varying(20), other_col character varying(20), CONSTRAINT probe_chk CHECK (((unit_type)::text = ANY ((ARRAY['BOTTLE'::character varying, 'CASE'::character varying])::text[]))));
+check-value-renamed|differs|CREATE TABLE public.probe (unit_type character varying(20), other_col character varying(20), CONSTRAINT probe_chk CHECK (unit_type IN ('BOTTLE','CASE')));|CREATE TABLE public.probe (unit_type character varying(20), other_col character varying(20), CONSTRAINT probe_chk CHECK (((unit_type)::text = ANY ((ARRAY['BOTTLE'::character varying, 'CASEX'::character varying])::text[]))));
+check-column-changed|differs|CREATE TABLE public.probe (unit_type character varying(20), other_col character varying(20), CONSTRAINT probe_chk CHECK (unit_type IN ('BOTTLE','CASE')));|CREATE TABLE public.probe (unit_type character varying(20), other_col character varying(20), CONSTRAINT probe_chk CHECK (other_col IN ('BOTTLE','CASE')));
+check-operator-negated|differs|CREATE TABLE public.probe (unit_type character varying(20), other_col character varying(20), CONSTRAINT probe_chk CHECK (unit_type IN ('BOTTLE','CASE')));|CREATE TABLE public.probe (unit_type character varying(20), other_col character varying(20), CONSTRAINT probe_chk CHECK (unit_type NOT IN ('BOTTLE','CASE')));
+index-predicate-render-equivalent|same|CREATE TABLE public.probe (rid uuid, state character varying(20)); CREATE INDEX probe_idx ON public.probe (rid) WHERE state IN ('open','requested');|CREATE TABLE public.probe (rid uuid, state character varying(20)); CREATE INDEX probe_idx ON public.probe (rid) WHERE ((state)::text = ANY ((ARRAY['open'::character varying, 'requested'::character varying])::text[]));
+index-predicate-value-added|differs|CREATE TABLE public.probe (rid uuid, state character varying(20)); CREATE INDEX probe_idx ON public.probe (rid) WHERE state IN ('open','requested');|CREATE TABLE public.probe (rid uuid, state character varying(20)); CREATE INDEX probe_idx ON public.probe (rid) WHERE ((state)::text = ANY ((ARRAY['open'::character varying, 'requested'::character varying, 'promised'::character varying])::text[]));
+PAIRS
+}
+
 st_sql() { docker exec -i "$DBC" psql -U postgres -d "$1" -v ON_ERROR_STOP=1 -q -c "$2" </dev/null >/dev/null 2>&1; }
 st_admin() { docker exec -i "$DBC" psql -U postgres -d postgres -q -c "$1" </dev/null >/dev/null 2>&1 || true; }
 
@@ -511,6 +584,32 @@ self_test() {
     fi
   done < <(selftest_drifts)
 
+  # 2b. The normalizer, proven in BOTH directions on the same list. One row must
+  #     collapse; five must survive. A normalizer can only pass all six by
+  #     touching the cast decoration and nothing else.
+  local pname expect ddl_a ddl_b
+  while IFS='|' read -r pname expect ddl_a ddl_b; do
+    [[ -z "$pname" ]] && continue
+    checks=$((checks+1))
+    st_admin "DROP DATABASE IF EXISTS $A;"; st_admin "CREATE DATABASE $A;"
+    st_admin "DROP DATABASE IF EXISTS $B;"; st_admin "CREATE DATABASE $B;"
+    if ! st_sql "$A" "$SELFTEST_BASE$ddl_a" || ! st_sql "$B" "$SELFTEST_BASE$ddl_b"; then
+      fail "$pname: pair fixture did not build"; continue
+    fi
+    fingerprint "pair A" "$WORK/st_pa" -U postgres -d "$A"
+    fingerprint "pair B" "$WORK/st_pb" -U postgres -d "$B"
+    if compare "$WORK/st_pa" "$WORK/st_pb" --quiet; then
+      [[ "$expect" == "same" ]] || fail "$pname: COLLAPSED — the normalizer swallowed a real difference"
+    else
+      [[ "$expect" == "differs" ]] || fail "$pname: still reported as drift — the normalizer did not collapse it"
+    fi
+  done < <(selftest_pairs)
+
+  # The pair loop rebuilt A. Restore it for the invariants below.
+  st_admin "DROP DATABASE IF EXISTS $A;"; st_admin "CREATE DATABASE $A;"
+  st_sql "$A" "$SELFTEST_BASE" || fail "fixture A rebuild failed"
+  fingerprint "fixture A" "$WORK/st_a" -U postgres -d "$A"
+
   # 3. Two EMPTY databases, driven through the WHOLE path, must be exit 2 and
   #    never 0. This is the exact shape the previous version got wrong: it
   #    printed "0 columns, 0 functions" then "PASS" and exited 0.
@@ -540,6 +639,25 @@ self_test() {
   code=0; ( fingerprint "nowhere" "$WORK/st_n" -U postgres -d parity_selftest_does_not_exist ) >/dev/null 2>&1 || code=$?
   [[ "$code" == "2" ]] || fail "an unreachable database exited $code, not 2"
 
+  # 6b. The fingerprint heredoc is UNQUOTED (it has to be — it interpolates the
+  #     helper functions), which means bash also expands backticks inside it. A
+  #     backtick in an explanatory SQL comment therefore runs as a command and
+  #     silently mangles the query. That happened while writing this file, so it
+  #     is an invariant now rather than a lesson.
+  checks=$((checks+1))
+  local hd_start hd_end
+  hd_start="$(grep -n "FINGERPRINT_SQL <<SQL" "$0" | head -1 | cut -d: -f1)"
+  hd_end="$(awk 'NR>'"$hd_start"' && /^SQL$/ {print NR; exit}' "$0")"
+  if [[ -z "$hd_start" || -z "$hd_end" ]]; then
+    fail "could not locate the fingerprint heredoc to check it"
+  elif grep -n '`' "$0" | awk -F: -v a="$hd_start" -v b="$hd_end" '$1>a && $1<b' | grep -q .; then
+    fail "a backtick appears inside the fingerprint heredoc — bash will execute it"
+  fi
+  checks=$((checks+1))
+  if [[ -n "$("$0" --print-sql 2>&1 >/dev/null)" ]]; then
+    fail "--print-sql wrote to stderr — the heredoc is being mangled by the shell"
+  fi
+
   # 7. The real difference must be REPORTED, not merely counted — a guard that
   #    knows something changed but cannot say what is not usable.
   checks=$((checks+1))
@@ -566,11 +684,20 @@ self_test() {
   echo "   a removed column DEFAULT is caught"
   echo "   a materialized view's columns are compared at all (information_schema cannot see them)"
   echo "   an added enum label, a disabled RLS flag and a widened policy are caught"
+  echo "   the SAME CHECK spelled two ways (x IN (...) vs the pg_dump array-cast text)"
+  echo "     is NOT reported — the 45-constraint false positive from the first real CI run"
+  echo "   a CHECK with a value added, removed or renamed, its column swapped, or its"
+  echo "     operator negated IS still reported, even when the two sides ALSO use the"
+  echo "     two different renderings — the normalizer collapses decoration, not content"
+  echo "   a partial INDEX's WHERE predicate gets the same treatment in both directions"
+  echo "     (the last false positive of the first real CI run was one of these)"
   echo "   an EMPTY database exits 2, never 0 — the fault this rewrite exists to remove"
   echo "   two identical-but-empty fingerprints exit 2, never 0"
   echo "   a Postgres major-version mismatch exits 2, not phantom drift"
   echo "   an unreachable database exits 2"
   echo "   the report NAMES the changed definition on both sides"
+  echo "   the fingerprint heredoc carries no backtick for bash to execute, and"
+  echo "     --print-sql emits nothing on stderr (this file had that bug once)"
   echo "PASS"
   return 0
 }

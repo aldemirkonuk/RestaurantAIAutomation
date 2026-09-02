@@ -135,7 +135,7 @@ Three things make this a different *kind* of check, not just a wider one:
    exit 0.
 3. **`--self-test` is end-to-end.** It builds real databases in the local
    container, applies each blind spot as real DDL one at a time, and asserts the
-   guard catches it — 18 invariants. A self-test that only exercised string
+   guard catches it — 28 invariants. A self-test that only exercised string
    handling would prove nothing about the SQL, and the SQL is where every blind
    spot lived. `--print-sql` prints the comparison itself, so nobody has to take
    this file's word for what is compared.
@@ -293,15 +293,159 @@ never in its key. Had that migration been applied to production by hand and neve
 committed — the precise scenario this job exists to catch — the old parity run
 would have printed PASS. The new one prints the two lines above.
 
+## The first real CI run — what it found, and what it cost
+
+Run on PR #239, the pull request that rewrites the check. `CI Complete` went
+**green** while `Fresh database equals remote` went **red** — the non-gating
+finding above, demonstrated live on the pull request that reports it.
+
+### 1. Real drift, and the best evidence in this ADR
+
+Four objects were in production and in **no migration**:
+
+```
+[constraint] pos_item_mappings_inventory_id_fkey
+             FOREIGN KEY (inventory_id) REFERENCES restaurant_inventory(id) ON DELETE CASCADE
+[constraint] pos_catalog_match_proposals_candidate_inventory_id_fkey
+             FOREIGN KEY (candidate_inventory_id) REFERENCES restaurant_inventory(id) ON DELETE SET NULL
+[index]      pos_item_mappings_inventory_id_idx                      (partial, WHERE ... IS NOT NULL)
+[index]      pos_catalog_match_proposals_candidate_inventory_id_idx  (partial, WHERE ... IS NOT NULL)
+```
+
+This is the POS-bridge work: an `inventory_id` foreign key added by hand
+alongside deleting 92 orphaned mappings. The sibling migration
+`20260825140000_pos_referential_integrity.sql:8-9` states outright that "ADR 0012
+closed `inventory_id` and ADR 0014 closed `candidate_inventory_id`, deliberately
+leaving the rest for this one" — **and neither was ever written as a migration.**
+They were closed on production and nowhere else. Any database rebuilt from this
+repository would have lacked both, silently.
+
+A foreign key is not a column name and not a function name, so the old check was
+structurally incapable of seeing this. It is better evidence than any fixture:
+the check found real, year-old, undocumented drift on its first real run.
+
+Captured as `20260902130000_capture_pos_inventory_fks.sql`. It is idempotent via
+`drop constraint if exists` + `add constraint` — deliberately **convergent**
+rather than merely tolerant, because a `DO ... EXCEPTION WHEN duplicate_object`
+block accepts whatever definition is already there, so a production constraint
+with the wrong delete behaviour would survive unseen. The two delete behaviours
+differ and were read back from production before the file was written; the
+rendered definitions were then diffed against production's, byte for byte.
+
+### 2. A false-positive class that would have kept it red forever
+
+45 constraints differed, every one of them the same predicate rendered two ways:
+
+```
+local  : CHECK (unit_type::text = ANY (ARRAY['BOTTLE'::character varying::text, ...]))
+remote : CHECK (unit_type::text = ANY (ARRAY['BOTTLE'::character varying, ...]::text[]))
+```
+
+Root cause, reproduced in a scratch Postgres rather than guessed: **a
+pg_dump/restore round-trip is not a fixed point for `x IN (...)` on a varchar
+column.** Production's constraints were created as `IN (...)` and render
+array-level. pg_dump wrote them into
+`20260805000000_baseline_from_production.sql` as `((ARRAY[...])::text[])`, and
+re-parsing *that* yields a different expression tree which renders per-element.
+No edit to any migration can fix it — the dump text cannot reproduce the tree it
+came from.
+
+Normalized, narrowly. Two literal replacements, not a general regex:
+
+```
+'::character varying::text'  ->  '::character varying'
+']::text[]'                  ->  ']'
+```
+
+Each requires a cast to sit directly against another string-type cast or against
+an array literal's closing bracket. **A column reference is untouched** —
+`unit_type::text` survives, because `unit_type` is neither `character varying`
+nor `]`. Nothing about the literal values, their order, the operator or the
+column is normalized.
+
+A 46th case hid in a *partial index predicate* and rendered a **third** way
+(`ARRAY[('open'::character varying)::text, ...]`), because `pg_get_indexdef`
+was being called without the pretty flag. Fixed by rendering the index
+definition pretty, which emits exactly the constraint spelling — one normalizer,
+both object kinds, no second rule.
+
+**Proven safe in both directions**, on the same six-row pair list: one pair must
+collapse, five must survive (value added / removed / renamed, column swapped,
+operator negated), and the `differs` rows deliberately use the two *different*
+renderings as well as changing content, so an over-reaching normalizer cannot
+pass them. Mutation-tested:
+
+| Mutant | Result |
+|---|---|
+| normalizer removed | `render-equivalent: still reported as drift` — the 45 false positives return |
+| normalizer over-broad (blanks `ARRAY[...]`) | `check-value-added / removed / renamed: COLLAPSED — the normalizer swallowed a real difference`, plus `check-vocabulary: NOT DETECTED` |
+
+### 3. Proven green, not predicted
+
+`supabase db reset` was unavailable (no CLI), so the CI local side was
+reconstructed by hand: all **89** migrations applied in order to a throwaway
+database inside the running local Supabase container, with the extension layout
+copied from production rather than guessed. All 89 applied cleanly. That database
+was then compared against production through the pooler:
+
+```
+local  : 5516 facts — column=3403 column-order=238 constraint=714 function=83
+                      index=651 policy=90 relation=238 sequence=4 trigger=53
+                      type=13 viewdef=28 server=1
+remote : 5516 facts — (identical in every category)
+PASS — local and remote agree on every compared object.        exit 0
+```
+
+### 4. A hazard the run exposed, now printed by the check itself
+
+Mid-verification the run went red again with 13 new remote-only objects on
+`procurement_receipt_events`. **Not drift** — PR #228 had merged
+`20260901220000_door_facts_are_columns.sql` to main, which auto-applied to
+production, while this branch had not yet merged main. Every migration merged
+since a branch was cut is already on production and absent from that branch's
+local build, so it arrives looking exactly like hand-applied DDL.
+
+The danger is specific and expensive: someone "captures" another session's
+migration and the repo gets it twice — and CLAUDE.md §5b already records that a
+duplicate migration version surfaces as *"Fresh database equals remote"*, a
+message that says drift when the truth is a collision. So the `IN REMOTE, NOT IN
+LOCAL` hint now leads with it: check whether the branch is behind main, and merge
+before capturing anything.
+
+### 5. Duplicate migration versions — already guarded, and deliberately not added here
+
+Asked whether this check should also detect two migrations sharing a version.
+**It should not, and it does not need to.** `scripts/_migration_versions.py`
+already does it, `scripts/check_decision_claims.sh:176-191` already fails the
+build on it, and `decision-claims` is in `ci-complete.needs` — so unlike parity,
+it is *already gating*. Its header records the same 2026-08-25 incident this ADR
+cites: a duplicate makes `schema_migrations`' primary key reject the second
+INSERT, and `supabase db reset` dies in a way that surfaces as *"Fresh database
+equals remote"* — drift's message for a collision's cause.
+
+Adding it to the parity script would make it strictly worse: parity needs docker
+and a remote secret, so it is skipped on fork pull requests, and it is not a
+required check (see the open question above). A hermetic filesystem check placed
+behind a non-gating, secret-dependent job is the blind-and-non-blocking shape
+this whole ADR is about.
+
+Verified 2026-09-02: `20260901120000` **is** duplicated in the wild —
+`approve_draft_duplicate_send_guard.sql` and `purchase_reasons.sql` on different
+refs. `origin/main` currently holds only the first, so main is clean and the
+existing guard will fire the moment the second merges, which is the correct
+moment: the collision is not real until both files are in one tree. Worth telling
+whoever owns `purchase_reasons` so they renumber before CI tells them.
+
 ## Not verified — stated plainly
 
-- **The fixed script has not been run against the CI pair** — a *fresh* database
-  built from migrations alone versus production. The Supabase CLI is not
-  installed on this machine (`which supabase` → not found), so the local side
-  could not be rebuilt. The real-pair run above is the closest available
-  substitute and is honest about what it is. Consequence: the first real CI run
-  may surface legitimate differences that need triage, and nobody has seen that
-  list yet.
+- **The `supabase db reset` path itself was not exercised** — the local side was
+  built by applying the 89 migration files directly with psql, which is what
+  `db reset` does but is not literally the same command, and it needed a
+  hand-written prelude (schemas, extensions, a stub `auth.users`) that the real
+  CLI provides. The fact counts match production exactly in all 12 categories,
+  which is strong evidence the reconstruction is faithful, but CI's own run on
+  PR #239 is the authoritative confirmation and has not completed at the time of
+  writing.
 - The fixture was built on PostgreSQL 16; production is 17. No PG17-only
   behaviour is relied on, and PG17's `pg_constraint` was checked on production
   for `contype = 'n'` rows (there are none, so NOT NULL is reported once, by the
