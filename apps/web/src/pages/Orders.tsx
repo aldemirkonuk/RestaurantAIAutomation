@@ -651,7 +651,11 @@ export function Orders() {
       // Try API call when this is a real backend order
       if (isUuid(orderId)) {
         await apiClient.post(`/procurement/orders/${orderId}/deliver`, {}, {
-          params: { quantityReceived: order.quantity },
+          // In the ORDER's own unit, which is what `order.quantity` is stated in.
+          // The parameter says so in its name; the old unitless `quantityReceived`
+          // is still accepted by the gateway as a deprecated alias for clients
+          // that have not been rebuilt.
+          params: { quantityReceivedInOrderUom: order.quantity },
         })
       }
       

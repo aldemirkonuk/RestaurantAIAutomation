@@ -165,36 +165,6 @@ class CannotCheck(Exception):
 # the guard says so.
 KNOWN_EXCEPTIONS: tuple[tuple[str, str, bool, str], ...] = (
     (
-        "procurement/dto/procurement.dto.ts",
-        "prefilledInvoiceQuantity",
-        False,
-        "Mirrors invoiceQuantity, which is itself unit-less and already on this list. "
-        "Renaming the prefilled copy alone would claim a precision its twin "
-        "does not have, and the two must compare directly (the diff between "
-        "them IS the label, ADR 0059). Delete this entry in the same change "
-        "that gives invoiceQuantity its unit.",
-    ),
-    (
-        "procurement/dto/procurement.dto.ts",
-        "prefilledShippedQuantity",
-        False,
-        "Mirrors shippedQuantity, which is itself unit-less and already on this list. "
-        "Renaming the prefilled copy alone would claim a precision its twin "
-        "does not have, and the two must compare directly (the diff between "
-        "them IS the label, ADR 0059). Delete this entry in the same change "
-        "that gives shippedQuantity its unit.",
-    ),
-    (
-        "procurement/dto/procurement.dto.ts",
-        "prefilledFreeGoodsQuantity",
-        False,
-        "Mirrors freeGoodsQuantity, which is itself unit-less and already on this list. "
-        "Renaming the prefilled copy alone would claim a precision its twin "
-        "does not have, and the two must compare directly (the diff between "
-        "them IS the label, ADR 0059). Delete this entry in the same change "
-        "that gives freeGoodsQuantity its unit.",
-    ),
-    (
         "procurement/receiving.controller.ts",
         "rejectedQty",
         True,
@@ -210,57 +180,74 @@ KNOWN_EXCEPTIONS: tuple[tuple[str, str, bool, str], ...] = (
         "typed so an outbox entry written by the old client still parses.",
     ),
     # ---------------------------------------------------------------------
-    # PRE-EXISTING DEBT — found by this guard on its first run, NOT endorsed.
+    # PROCUREMENT DESK — was PRE-EXISTING DEBT, now DEPRECATED ALIASES.
     # ---------------------------------------------------------------------
-    # Six fields on `dto/procurement.dto.ts` carry the identical defect: a
-    # quantity with no unit in its name, no unit sibling on its DTO, and — like
-    # `rejectedQty` — a unit stated only in prose. They are listed rather than
-    # fixed because every one of them is read by `procurement.service.ts`, which
-    # three unmerged branches own; renaming them here would collide with all
-    # three. They are the same wound, awaiting a change that can touch that file.
+    # These nine were listed as debt because fixing them meant touching
+    # `procurement.service.ts`, which three unmerged branches owned. That change
+    # has now landed: each name below is a `@deprecated` alias standing beside a
+    # declared twin, and `verifyReceipt` converts every operand to bottles before
+    # comparing. They are aliases rather than deletions because the mobile receive
+    # screen queues into an OFFLINE OUTBOX — a payload composed weeks ago arrives
+    # after deploy, and a bare rename answers it "not a known field" while the user
+    # stands in front of a driver. The service refuses when both names are present
+    # with different values, so an alias cannot lie about the number it carries.
     #
-    # `verifyReceipt`'s four in particular are compared against each other and
-    # against `procurement_orders.quantity` — the same shape as the door's
-    # `countedBottles - rejectedQty`, one conversion away from the same bug.
+    # `invoiceQuantity` and `shippedQuantity` are NOT here: they pass on their own
+    # merit, because `invoiceUom` and `shippedUom` share their prefix and declare
+    # them under form 3. An exemption that excuses nothing is the same hole as one
+    # that outlives its field, so they are deleted rather than carried.
+    # Each entry is twin=True, so it stops excusing anything the moment its
+    # declared field is deleted: without the twin, the alias IS the original
+    # defect and the guard says so. Delete these entries together with the fields
+    # once no phone can still hold a pre-fix payload.
     (
         "dto/procurement.dto.ts",
         "quantityReceived",
-        False,
-        "PRE-EXISTING. Written to procurement_orders.quantity_received, which the "
-        "door writes in BOTTLES and markDelivered writes in ORDER UNITS. Fixing "
-        "the name means touching procurement.service.ts.",
-    ),
-    (
-        "dto/procurement.dto.ts",
-        "invoiceQuantity",
-        False,
-        "PRE-EXISTING. verifyReceipt's four-way match. Read by procurement.service.ts.",
-    ),
-    (
-        "dto/procurement.dto.ts",
-        "shippedQuantity",
-        False,
-        "PRE-EXISTING. verifyReceipt's four-way match. Read by procurement.service.ts.",
+        True,
+        "DEPRECATED alias for `quantityReceivedInOrderUom` — the desk-stage receipt's order-unit quantity. "
+        "Kept for offline-outbox payloads written by the pre-fix client.",
     ),
     (
         "dto/procurement.dto.ts",
         "freeGoodsQuantity",
-        False,
-        "PRE-EXISTING. verifyReceipt's four-way match. Read by procurement.service.ts.",
+        True,
+        "DEPRECATED alias for `freeGoodsQuantityInCountedUom` — units supplied free under a deal. "
+        "Kept for offline-outbox payloads written by the pre-fix client.",
     ),
     (
         "dto/procurement.dto.ts",
         "acceptedQuantity",
-        False,
-        "PRE-EXISTING. verifyReceipt's four-way match. Read by procurement.service.ts.",
+        True,
+        "DEPRECATED alias for `acceptedQuantityInCountedUom` — units accepted into stock. "
+        "Kept for offline-outbox payloads written by the pre-fix client.",
     ),
     (
         "dto/procurement.dto.ts",
         "rejectedQuantity",
-        False,
-        "PRE-EXISTING, and the closest sibling of the bug this guard exists for: "
-        "the same word, the same missing unit, on the desk-stage receipt. Read by "
-        "procurement.service.ts.",
+        True,
+        "DEPRECATED alias for `rejectedQuantityInCountedUom` — units refused at the desk. "
+        "Kept for offline-outbox payloads written by the pre-fix client.",
+    ),
+    (
+        "dto/procurement.dto.ts",
+        "prefilledInvoiceQuantity",
+        True,
+        "DEPRECATED alias for `prefilledInvoiceQuantityInInvoiceUom` — the pre-filled invoice figure. "
+        "Kept for offline-outbox payloads written by the pre-fix client.",
+    ),
+    (
+        "dto/procurement.dto.ts",
+        "prefilledShippedQuantity",
+        True,
+        "DEPRECATED alias for `prefilledShippedQuantityInShippedUom` — the pre-filled shipped figure. "
+        "Kept for offline-outbox payloads written by the pre-fix client.",
+    ),
+    (
+        "dto/procurement.dto.ts",
+        "prefilledFreeGoodsQuantity",
+        True,
+        "DEPRECATED alias for `prefilledFreeGoodsQuantityInCountedUom` — the pre-filled free-goods figure. "
+        "Kept for offline-outbox payloads written by the pre-fix client.",
     ),
 )
 
@@ -599,14 +586,22 @@ def _fixture(tmp: Path) -> Path:
     )
     (root / WEB_WIRE_FILES[0]).write_text(CLEAN_WEB, encoding="utf-8")
 
-    # The pre-existing debt is PART of the clean fixture, for the same reason the
+    # What the list excuses is PART of the clean fixture, for the same reason the
     # capture guard's grandfathered FKs are part of its: the shrink-only rule is
     # only honest if an entry matching nothing is a finding, so a compliant tree
     # has to actually contain what the list excuses. Generated from the list, so
     # editing the list keeps the self-test truthful rather than stale.
+    #
+    # A twin=True entry needs its DECLARED FIELD here too, not just the alias:
+    # an alias standing alone is the original defect, and the guard is meant to
+    # say so. Emitting only the alias would make the clean tree fail — which is
+    # the guard being right, not the fixture being unlucky.
     debt = "".join(
-        f"  @IsNumber()\n  {field}?: number;\n\n"
-        for suffix, field, _twin, _reason in KNOWN_EXCEPTIONS
+        (
+            f"  @IsNumber()\n  {field}?: number;\n\n"
+            + (f"  @IsNumber()\n  {field}InCountedUom?: number;\n\n" if twin else "")
+        )
+        for suffix, field, twin, _reason in KNOWN_EXCEPTIONS
         if suffix.endswith("dto/procurement.dto.ts")
     )
     (root / GATEWAY_ROOTS[0] / "dto" / "procurement.dto.ts").write_text(
