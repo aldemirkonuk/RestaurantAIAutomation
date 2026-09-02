@@ -152,12 +152,27 @@ export class MembersService {
 
     // Capture the before-state while it still exists. After the UPDATE below
     // nothing can reconstruct what the role used to be.
-    const { data: before } = await this.databaseService.supabase
+    // Bound, because `maybeSingle()` answers `data: null` for BOTH "no row" and
+    // "the query failed". Discarding the error made a failed read produce
+    // `previousRole = null`, and the audit row this method exists to write would
+    // then record the change as coming FROM no role at all — a false record,
+    // which is worse than no record and is precisely what ADR 0088 forbids.
+    const { data: before, error: beforeErr } = await this.databaseService.supabase
       .from("user_restaurant_access")
       .select("role")
       .eq("user_id", targetUserId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
+    if (beforeErr) {
+      this.logger.error(
+        `changeRole: could not read the current role of ${targetUserId} in ` +
+          `${restaurantId}: ${beforeErr.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read the member's current role, so the change was not made " +
+          "— recording it would have meant inventing what it changed from.",
+      );
+    }
     const previousRole: string | null = before?.role ?? null;
 
     const { error: uraErr } = await this.databaseService.supabase

@@ -494,12 +494,27 @@ export class TeamService {
     userId: string,
     restaurantId: string,
   ): Promise<string | null> {
-    const { data } = await this.sb
+    // `null` here means "no ops profile", and callers scope a staff member's
+    // credential file by it. A discarded error made a failed lookup return the
+    // same `null`, so a database hiccup silently became "this person has no
+    // member row" — an answer about the data, manufactured from an answer about
+    // the query. Raised rather than returned so the caller cannot read a
+    // failure as an absence; the doc comment's `null` keeps its one meaning.
+    const { data, error } = await this.sb
       .from("team_members")
       .select("id")
       .eq("restaurant_id", restaurantId)
       .eq("user_id", userId)
       .maybeSingle();
+    if (error) {
+      this.logger.error(
+        `ownMemberId: lookup failed for user ${userId} in ${restaurantId}: ` +
+          error.message,
+      );
+      throw new InternalServerErrorException(
+        "Could not look up your team profile, so the request was not answered.",
+      );
+    }
     return data?.id ?? null;
   }
 

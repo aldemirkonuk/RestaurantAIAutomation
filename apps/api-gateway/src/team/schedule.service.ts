@@ -210,20 +210,51 @@ export class ScheduleService {
     );
     const fromEnd = addDays(dto.fromWeekStart, 6);
     const toEnd = addDays(dto.toWeekStart, 6);
-    const { data: src } = await this.sb
+    // Pre-existing debt (`schedule.service.ts::shifts::src` in the baseline),
+    // fixed here because it is the same method and the same shape as the read
+    // below: a failed source-week query gave `src === undefined` and the method
+    // returned `{ copied: 0 }` — reporting a SUCCESSFUL copy of nothing for a
+    // week that may be full. "I could not read the source" is not "the source
+    // is empty", and the caller has no way to tell those apart from that reply.
+    const { data: src, error: srcErr } = await this.sb
       .from("shifts")
       .select("*")
       .eq("restaurant_id", restaurantId)
       .gte("shift_date", dto.fromWeekStart)
       .lte("shift_date", fromEnd);
+    if (srcErr) {
+      this.logger.error(
+        `copyWeek: could not read the source week ${dto.fromWeekStart} for ` +
+          `restaurant ${restaurantId}: ${srcErr.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read the week you are copying from, so nothing was copied.",
+      );
+    }
     if (!src?.length) return { copied: 0, deleted: 0, schedule: target };
 
-    const { data: existing } = await this.sb
+    // This read is what arms the "the target week is not empty" guard below.
+    // supabase-js RESOLVES with { data, error }, so a failed query used to give
+    // `existing === undefined`, `inTheWay === 0`, and the ConflictException
+    // would NOT be thrown — the copy would then delete and overwrite a week the
+    // manager was never warned about. Failing closed is the only safe read here:
+    // not knowing what is in the target week is not the same as it being empty.
+    const { data: existing, error: existingErr } = await this.sb
       .from("shifts")
       .select("id")
       .eq("restaurant_id", restaurantId)
       .gte("shift_date", dto.toWeekStart)
       .lte("shift_date", toEnd);
+    if (existingErr) {
+      this.logger.error(
+        `copyWeek: could not read the target week ${dto.toWeekStart} for ` +
+          `restaurant ${restaurantId}: ${existingErr.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not check whether the target week already has shifts, so the " +
+          "copy was not made. Nothing was changed.",
+      );
+    }
     const inTheWay = existing?.length ?? 0;
 
     if (inTheWay > 0 && !dto.replaceTarget) {
@@ -298,10 +329,24 @@ export class ScheduleService {
       .maybeSingle();
     if (!current) throw new NotFoundException("Schedule not found");
 
-    const { data: receiptRows } = await this.sb
+    // Same shape as copyWeek's target-week read, same consequence: this count
+    // arms the "re-publishing clears N read receipts" guard. A failed read gave
+    // 0, the guard stayed silent, and the receipts were destroyed without the
+    // manager ever being asked. "I could not count them" is not "there are none".
+    const { data: receiptRows, error: receiptsErr } = await this.sb
       .from("schedule_receipts")
       .select("id")
       .eq("schedule_id", scheduleId);
+    if (receiptsErr) {
+      this.logger.error(
+        `publish: could not count read receipts for schedule ${scheduleId}: ` +
+          receiptsErr.message,
+      );
+      throw new InternalServerErrorException(
+        "Could not check how many read receipts this week already has, so it " +
+          "was not re-published. Nothing was changed.",
+      );
+    }
     const receiptsAtRisk = receiptRows?.length ?? 0;
 
     if (
