@@ -57,6 +57,28 @@ Write-path behaviour behind the page, fixed 2026-09-01 ([ADR 0057](../decisions/
   fractional or negative value is a 400 that says which, not a 200 that marks
   the order delivered with no stock booked.
 
+Honesty features, bound by [ADR 0060](../decisions/0060-a-window-is-a-floor-and-an-unknown-is-not-a-zero.md)
+and held by `scripts/check_windowed_figures.py` in CI:
+- **The door's count is in bottles.** Rendered from the gateway's `bottlesTotal`
+  ([ADR 0054](../decisions/0054-order-capture-and-unit-arithmetic.md)); when it
+  is absent the card shows the em dash plus what was ordered **in its own unit**
+  ("5 cases ordered · bottles —"). The page never multiplies a pack size.
+- **`SERVER_WINDOWS`** — a register in `useReceivingNextData.ts` of every server
+  cap a figure sits behind, each cited to the query that imposes it. Windowed
+  figures render `≥`; where the gateway returns an exact `total`, that is used
+  instead and no marker is needed.
+- **Measured zero vs unknown.** `$0` is a measurement and renders as `$0`; an
+  absent figure renders `—`. `openClaims` is a floor unconditionally — its cap
+  is per-restaurant and unobservable from the client.
+- **The uncounted strip has three states**, and the unknown one is words: a
+  failed queue says so rather than rendering as "nothing uncounted".
+- **403 is its own state** on all three renderings — names the permission, drops
+  the retry that cannot help, prints the status and message. At the door it
+  still sends the receiver to the paper record.
+- **The outbox is tenant-scoped**: pins are keyed by restaurant, and pre-scoping
+  pins are adopted marked `tenantUnknown` rather than discarded or re-attributed.
+- **An offline non-attempt says "holding"**, never `sent 0 · failed 0`.
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receiving`)
 
 Canonical source with curves: `apps/web/src/pages/receiving/next/MOTIONS-receiving.md` —
@@ -326,3 +348,68 @@ Three failing-by-design `it.skip` tests in
 the exact lines that finish rows 3 and 4. §14d's remark that **no `operator`
 Neural Footprint event is written anywhere in the repo** is unaddressed and
 remains true.
+
+
+## 15. Page-honesty pass — 2026-09-01 (`fix/receiving-page-honesty`)
+
+Ten defects measured on the rebuilt `receiving/next` surface against
+[ADR 0051](../decisions/0051-rebuilt-pages-show-live-data-only.md), the day
+after 0051 locked. Decision recorded as
+[ADR 0060](../decisions/0060-a-window-is-a-floor-and-an-unknown-is-not-a-zero.md).
+Line numbers are pre-fix, against `origin/main` at `5d3dbe7e`.
+
+| # | Defect | Where | Status |
+|---|---|---|---|
+| F1 | `procurement_orders.quantity` is denominated in `unit_type`, and was rendered as bottles — a five-**case** order told the door five bottles were expected. `mapOrderRow` already emitted `bottlesTotal` (`procurement.service.ts:1913-1914`); it was unused | `useReceivingNextData.ts:111`, `RcStaffLane.tsx:135` | ✅ fixed |
+| F2 | `vendor` always null — the hook reads `providerName`, which `mapOrderRow` never emits | `useReceivingNextData.ts:107` | ⚠️ client half done; **gateway TODO** |
+| F3 | Outbox not tenant-scoped: one global `localStorage` key, so restaurant A's dropped receipt rendered as a `role="alert"` under restaurant B | `useReceivingNextData.ts:373` | ✅ pins fixed; ⚠️ **queue TODO** |
+| F4 | An offline non-attempt stamped as a clean sync — `last sync 14:32 · sent 0 · failed 0` under a header reading "offline — holding" | `doorOutbox.ts:94` → `:491` → `RcOutboxRail.tsx:260-262` | ✅ fixed consumer-side |
+| F5 | Six windowed figures rendered as totals; **not one `≥` on the page** | `RcStaffLane.tsx:181`, `RcManagerQueue.tsx:91,121,390`, `RcOwnerLedger.tsx` | ✅ fixed |
+| F6 | A measured `$0` and an unknown both rendered as `—`, beside a literal `0` — one row could read `$— · 0 open claims` | `RcManagerQueue.tsx:261,313,314` | ✅ fixed |
+| F7 | The uncounted strip rendered only when non-empty and the hook set `[]` on failure — a failed query read as "nothing uncounted" | `RcManagerQueue.tsx:403`, `useReceivingNextData.ts:250` | ✅ fixed |
+| F8 | 403 indistinguishable from 500; two of three renderings never printed the message | `RcStaffLane.tsx:37-53`, `RcOwnerLedger.tsx:105-125` | ✅ fixed |
+| F9 | The credited-list query had no error branch — honest by accident, indistinguishable from "no credited claims yet" | `useReceivingNextData.ts:349-359` | ✅ fixed |
+| F10 | `/receipts` hand-off dropped the order id its sibling passed; `settlementRate` (settled ÷ all resolved) sat under "They refused" | `RcManagerQueue.tsx:342`, `RcOwnerLedger.tsx:152-165` | ✅ fixed; `?order=` inert until `ReceiptsNext.tsx` reads it |
+
+### The server windows this page renders behind
+
+Registered in `useReceivingNextData.ts` as `SERVER_WINDOWS`, cited to the query
+that imposes each. CI (`check_windowed_figures.py`) fails when a declared cap no
+longer matches its source.
+
+| Window | Cap | Query | Observable from the client? |
+|---|---|---|---|
+| `QUEUE_ITEMS` | 100 | `receiving.service.ts:375` | **Yes** — a full page proves more may exist, so the floor is conditional |
+| `UNVERIFIED` | 500 | `receiving.service.ts:271` (receipt events) | No — the derived list is shorter than the window |
+| `LINKED_CREDITS` | 200 | `receiving.service.ts:384`, **no `.order()`**, capped per *restaurant* not per order | No — hence `openClaims` is a floor unconditionally |
+| `RECOVERY_STATS` | 5000 | `credits.controller.ts:137`, **no `.order()`** | No — aggregates only, so every owner figure is a floor |
+| `CREDITS_LIST` | 200 | `credits.controller.ts:113`, ordered **oldest-first** | No — and the ordering means a busy restaurant's *recent* settlements fall outside the month-on-month trend entirely |
+
+### What was already honest and was preserved verbatim
+
+Named here so a later pass does not "tidy" any of it away: `rc-format.ts:8-44`
+(`num()` rejecting NaN/empty/non-finite); `RcStaffLane.tsx:37-53` — *"there may
+well be a truck outside. Write the delivery down on paper."*, now the 5xx branch;
+`useReceivingNextData.ts:465` + `RcOutboxRail.tsx:179-182` (a thrown IndexedDB
+read → `null`, rendered "unknown, not zero"); `RcOutboxRail.tsx:127-132` (the pin
+that audits its own inference); `RcTally.tsx:40-41` (a dash→number transition
+does not animate — knowledge arriving is not a value changing);
+`RcOwnerLedger.tsx:101-103` (`recovered` sums `creditedAmount`, never
+`claimedAmount`); `RcCreditDrafts.tsx:34-43,179` (no optimistic state in the
+approve path).
+
+### Still open after this pass
+
+1. **`mapOrderRow` maps no provider name** (`procurement.service.ts:1906-1928`).
+   Until it does, the door cannot see which distributor is in front of it — the
+   card now says so explicitly instead of showing the wine in the vendor slot.
+   The client reads `providerName` and `provider.name` defensively, so the fix is
+   one join and one mapped field, with no web change.
+2. **The door outbox queue carries no restaurant id.** `doorOutbox.ts` writes
+   every receipt under the single mutation type `receiving.door` and
+   `QueuedDoorReceipt` is `{orderId, orderLabel, body}`, so a queued receipt
+   cannot be attributed to a tenant from the consuming side at all. The pinned
+   *drops* are scoped; the *queued* list is not. The consuming filter is written
+   and inert until the write side stamps the field.
+3. **`ReceiptsNext.tsx:447` reads only `?tab`**, so the order id this page now
+   passes to `/receipts` does not yet select anything there.
