@@ -145,7 +145,7 @@ token accounting, and the routing policy itself"* with primary metric **"NF-A
 both own the routing policy. See [[research-math-agenda-full]] §Questions.
 
 **ID note (collision resolved):** `technology.md` originally numbered the evaluation
-seam "OD-21", but `OPEN-DECISIONS.md:143` already assigns OD-21 to the Obsidian
+seam "OD-21", but `OPEN-DECISIONS.md:144` already assigns OD-21 to the Obsidian
 structural workflow. [[decision-office-charter]] reconciled the local numbering; the
 seam is **TECH-F3** ([[FORK-REGISTRY]]) and should be cited by that ID.
 

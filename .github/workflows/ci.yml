@@ -626,6 +626,35 @@ jobs:
         if: ${{ !cancelled() }}
         run: ./scripts/check_order_status_literals.py --self-test
 
+      # merge_library_wines discovers the foreign keys it repoints from
+      # pg_constraint, which is right -- and both loops unnested `conkey`
+      # WITHOUT `confkey`, which threw away which column each component
+      # references. For a composite key that emits one UPDATE per COMPONENT.
+      # Measured on Postgres 17: a text component aborts the whole merge on
+      # `42883 operator does not exist: text = uuid`; a uuid component with all
+      # parts non-null is rejected 23503; a uuid component with another part
+      # NULL is written SILENTLY, because MATCH SIMPLE does not enforce a
+      # partially null key. Latent when found -- no composite FK to either merge
+      # target exists outside `inventory_lots`, which the loop excludes -- and
+      # invisible in review, which is why it gets a guard and not just a fix.
+      # ADR 0076. `if: !cancelled()` for the same reason as the steps above.
+      - name: A catalog-driven repoint names the referencing column
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_fk_repoint_by_referenced_column.py
+
+      - name: The repoint guard can actually fail
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_fk_repoint_by_referenced_column.py --self-test
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::[fk repoint] means SQL unnests pg_constraint.conkey without pairing it to confkey by ordinality. conkey lists the REFERENCING columns; confkey lists what they reference. Unnest one alone and a composite key yields one row per component, so a repoint loop rewrites columns that reference nothing."
+          echo "::notice::Fix it by joining unnest(conkey) and unnest(confkey) on matching ORDINALITY and keeping only the component whose referenced attribute is the key -- or just call public.fk_repoint_plan(), which does exactly that and also REPORTS every FK it cannot plan instead of skipping it."
+          echo "::notice::The four allowlisted migrations are applied and superseded; editing an applied migration is drift, not a fix. A new file carrying the shape is the failure this catches."
+          echo "::notice::'the live definition calls fk_repoint_plan 0 times' means a later CREATE OR REPLACE dropped the fix. That is the realistic regression, and the text scan alone cannot see it."
+          echo "::notice::Exit 2 is CANNOT CHECK, not a skip: the migrations directory, an allowlisted file, or the merge_library_wines anchor is gone. Fix the anchor, do not delete the step."
+
       - name: Explain a failure
         if: failure()
         run: |

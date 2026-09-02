@@ -169,21 +169,39 @@ export async function verifyOrderReceipt(
   orderId: string,
   body: {
     adjustments?: Array<{ inventoryId: string; delta: number; reason?: string }>;
+    /**
+     * THE UNIT DECLARATIONS.
+     *
+     * Each quantity below names the declaration it belongs to in its own name.
+     * Absent means "the unit the order was placed in", which is what this screen
+     * already means — it seeds its count from the order's own quantity. An
+     * unrecognised unit, or a case/pack/split_case whose pack size is nowhere
+     * stated, is REFUSED with a 400 rather than assumed: a guessed unit produces
+     * a confident wrong verdict that nothing downstream can detect.
+     */
+    invoiceUom?: string;
+    invoiceBottlesPerUnit?: number;
+    shippedUom?: string;
+    shippedBottlesPerUnit?: number;
+    countedUom?: string;
+    countedBottlesPerUnit?: number;
+
     /** Omit when no invoice is in hand — the server reads absence as unknown, not agreement. */
-    invoiceQuantity?: number;
+    invoiceQuantityInInvoiceUom?: number;
+    /** PER BOTTLE — compared directly against the agreed per-bottle price. */
     invoiceUnitPrice?: number;
     /**
      * From the vendor's own packing slip / EDI 856. When this disagrees with the
      * invoice quantity, the overbill is proven by their paperwork and the resulting
      * claim needs no argument.
      */
-    shippedQuantity?: number;
-    /** Agreed free bottles, so a negotiated 11-for-10 stops reading as an overage. */
-    freeGoodsQuantity?: number;
+    shippedQuantityInShippedUom?: number;
+    /** Agreed free goods, so a negotiated 11-for-10 stops reading as an overage. */
+    freeGoodsQuantityInCountedUom?: number;
     /** Freight and fees from the invoice header, folded into landed cost. */
     allocatedCharges?: number;
-    acceptedQuantity?: number;
-    rejectedQuantity?: number;
+    acceptedQuantityInCountedUom?: number;
+    rejectedQuantityInCountedUom?: number;
     rejectedReason?: string;
     priceOverrideReason?: string;
     note?: string;
@@ -202,10 +220,10 @@ export async function verifyOrderReceipt(
      * value is not a correction of anything, and claiming otherwise would
      * manufacture a label.
      */
-    prefilledInvoiceQuantity?: number;
+    prefilledInvoiceQuantityInInvoiceUom?: number;
     prefilledInvoiceUnitPrice?: number;
-    prefilledShippedQuantity?: number;
-    prefilledFreeGoodsQuantity?: number;
+    prefilledShippedQuantityInShippedUom?: number;
+    prefilledFreeGoodsQuantityInCountedUom?: number;
   }
 ): Promise<Order> {
   const response = await apiClient.post<Order>(
