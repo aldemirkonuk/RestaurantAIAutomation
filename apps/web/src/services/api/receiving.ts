@@ -46,6 +46,25 @@ export interface DoorReceiptRequest {
   /** When the tap happened, which may be long before it reached the server. */
   clientCapturedAt?: string
   notes?: string
+
+  /**
+   * What the machine read off the photographed paper, in countedUom, at the
+   * moment the count screen was pre-filled (ADR 0059).
+   *
+   * Omitted entirely when no suggestion was offered — offline, unreadable, or
+   * no photo taken. That is different from a suggestion of zero, and the two
+   * must not collapse into the same value.
+   */
+  suggestedQtyInCountedUom?: number
+  /**
+   * TRUE when the receiver sealed the number the machine proposed, FALSE when
+   * they overrode it. Omitted when there was nothing to accept.
+   *
+   * This is the highest-value label the door can produce: a person holding the
+   * physical cases, grading a vision model against the paper in their other
+   * hand. It never left the browser before ADR 0059.
+   */
+  suggestionAccepted?: boolean
 }
 
 export interface DoorReceiptResponse {

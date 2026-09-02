@@ -334,6 +334,14 @@ export default function DoorNext() {
           // sent: it was counted in boxes and converted as bottles, which booked
           // a refused delivery into live stock.
           ...doorFacts(facts),
+
+          // ADR 0059. The paper's own reading, and whether this receiver stood
+          // by it. Both undefined when the paper offered nothing — there was no
+          // proposal, so there is nothing to grade, and sending `false` would
+          // claim the receiver overrode a number that never existed.
+          suggestedQtyInCountedUom: reading?.boxes ?? undefined,
+          suggestionAccepted:
+            reading?.boxes == null ? undefined : counted === reading.boxes,
           documentId: documentId ?? undefined,
           idempotencyKey: idem.current,
           clientCapturedAt: new Date().toISOString(),

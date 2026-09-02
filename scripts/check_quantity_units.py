@@ -165,6 +165,36 @@ class CannotCheck(Exception):
 # the guard says so.
 KNOWN_EXCEPTIONS: tuple[tuple[str, str, bool, str], ...] = (
     (
+        "procurement/dto/procurement.dto.ts",
+        "prefilledInvoiceQuantity",
+        False,
+        "Mirrors invoiceQuantity, which is itself unit-less and already on this list. "
+        "Renaming the prefilled copy alone would claim a precision its twin "
+        "does not have, and the two must compare directly (the diff between "
+        "them IS the label, ADR 0059). Delete this entry in the same change "
+        "that gives invoiceQuantity its unit.",
+    ),
+    (
+        "procurement/dto/procurement.dto.ts",
+        "prefilledShippedQuantity",
+        False,
+        "Mirrors shippedQuantity, which is itself unit-less and already on this list. "
+        "Renaming the prefilled copy alone would claim a precision its twin "
+        "does not have, and the two must compare directly (the diff between "
+        "them IS the label, ADR 0059). Delete this entry in the same change "
+        "that gives shippedQuantity its unit.",
+    ),
+    (
+        "procurement/dto/procurement.dto.ts",
+        "prefilledFreeGoodsQuantity",
+        False,
+        "Mirrors freeGoodsQuantity, which is itself unit-less and already on this list. "
+        "Renaming the prefilled copy alone would claim a precision its twin "
+        "does not have, and the two must compare directly (the diff between "
+        "them IS the label, ADR 0059). Delete this entry in the same change "
+        "that gives freeGoodsQuantity its unit.",
+    ),
+    (
         "procurement/receiving.controller.ts",
         "rejectedQty",
         True,
