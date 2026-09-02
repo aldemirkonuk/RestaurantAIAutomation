@@ -243,27 +243,72 @@ measured 2026-09-02: **171** `OPEN-DECISIONS.md:<line>` citations across the rep
 of which **45** sit below the end of the Open table. Re-anchoring those is a
 docs-only operation, not this one. Recorded here so the fork is not lost.
 
+### Real-pair run — the one the migration story turns on
+
+Run 2026-09-02 against the **running local Supabase stack** and **production via
+the pooler DSN CI uses** (`SUPABASE_POOLER_URL`), read-only:
+
+```
+local  : 4598 facts — column=2896 column-order=201 constraint=567 function=43
+                      index=555 policy=57 relation=201 sequence=4 trigger=44
+                      type=13 viewdef=16 server=1
+remote : 5503 facts — column=3397 column-order=238 constraint=709 function=83
+                      index=649 policy=90 relation=238 sequence=4 trigger=53
+                      type=13 viewdef=28 server=1
+excluded from the comparison — ad-hoc backup tables on remote (4)
+== CHANGED — same object, different definition (90)
+== IN REMOTE, NOT IN LOCAL — hand-applied DDL (905)
+                                                                       exit 1
+```
+
+**This is not the CI comparison** and must not be read as a drift verdict: the
+local database was *not* rebuilt with `supabase db reset` (no CLI on this
+machine), so it is simply behind. Zero objects were only-local, which is exactly
+the shape of a stale local, not of production drift.
+
+What it *does* prove, and this closes an unknown the first draft of this ADR
+flagged: **the 12-statement fingerprint executes through Supavisor without
+error.** That was the largest residual risk in shipping this.
+
+It also produced the cleanest possible illustration of the defect. Top of the
+CHANGED list:
+
+```
+[column] public.api_spend.cost_usd
+     local  : numeric(10,6) NOT NULL DEFAULT 0.0
+     remote : numeric(10,6) NULL
+```
+
+That difference is migration `20260825160000_api_spend_cost_usd_nullable.sql:57-58`
+(OD-61 — the spend ledger must be able to say "unknown" rather than book a false
+`$0.000000`). Checked against production before asserting anything: production has
+`cost_usd numeric(10,6)`, nullable, no default — it **matches the migration**, and
+the local stack is the stale side. So this is not drift.
+
+But it is the proof, taken from this repo's own history rather than from a
+fixture: **that migration's entire effect is a `DROP NOT NULL` plus a
+`DROP DEFAULT`, and the old check could not have seen either one.** Both sides
+report `information_schema.data_type = 'numeric'`; nullability and default were
+never in its key. Had that migration been applied to production by hand and never
+committed — the precise scenario this job exists to catch — the old parity run
+would have printed PASS. The new one prints the two lines above.
+
 ## Not verified — stated plainly
 
-- **The fixed script has never been run against the real local-vs-production
-  pair.** The Supabase CLI is not installed on this machine (`which supabase` →
-  not found), so the "fresh database built from migrations" side could not be
-  produced. What *was* proven: the complete 12-statement fingerprint executes
-  against production PostgreSQL 17 without error and returns 5,500 facts
-  (`column` 3,396 · `index` 648 · `constraint` 708 · `column-order` 238 ·
-  `relation` 238 · `policy` 90 · `function` 83 · `trigger` 53 · `viewdef` 28 ·
-  `type` 13 · `sequence` 4 · `server` 1), and the comparison + exit-code contract
-  is proven end-to-end against real Postgres databases by `--self-test`.
-- **Multi-statement `-c` through Supavisor is untested.** CI reaches production
-  through the pooler; the fingerprint is sent as one simple query containing 12
-  statements. If the pooler refuses it, the result is `psql` failing and the
-  script exiting **2 with the message printed** — a loud "cannot check", not a
-  false pass. That is the correct failure mode, but it is a failure mode that has
-  not been observed either way.
+- **The fixed script has not been run against the CI pair** — a *fresh* database
+  built from migrations alone versus production. The Supabase CLI is not
+  installed on this machine (`which supabase` → not found), so the local side
+  could not be rebuilt. The real-pair run above is the closest available
+  substitute and is honest about what it is. Consequence: the first real CI run
+  may surface legitimate differences that need triage, and nobody has seen that
+  list yet.
 - The fixture was built on PostgreSQL 16; production is 17. No PG17-only
   behaviour is relied on, and PG17's `pg_constraint` was checked on production
   for `contype = 'n'` rows (there are none, so NOT NULL is reported once, by the
   `column` category, not twice).
+- The `_bak_*` exclusion still fires on production (4 snapshot tables, printed on
+  every run). Unchanged behaviour, restated because an exclusion nobody re-reads
+  becomes a blind spot.
 
 ## Review trail
 
