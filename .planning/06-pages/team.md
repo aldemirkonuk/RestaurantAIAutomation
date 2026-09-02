@@ -9,9 +9,9 @@ tier: core
 archetype: command # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
-maturity: complete
+maturity: live
 status: documented
-updated: 2026-08-26
+updated: 2026-09-02
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
@@ -118,9 +118,10 @@ page (the publish control itself stays with the desk until parity).
 ## 4. Endpoints
 
 Everything under `/restaurants/:rid/team` (`services/api/team.ts:7-11` builds the
-base). Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):565 (`team`, 33 — the
-largest module any of these pages consumes), :516 (`restaurants/members`), :87
-(`calendar`).
+base). Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):565 (`team`, 33 at the
+time of that scan — the largest module any of these pages consumes; **32 since
+ADR 0088 deleted `GET …/swaps`**, which no client called and which read a table
+nothing in the repository writes), :516 (`restaurants/members`), :87 (`calendar`).
 
 | Method | Path | Call site |
 |---|---|---|
@@ -167,20 +168,49 @@ dashboard.md §7.
   until POS depth exists — the S04 ⚠ wine-only depletion caveat applies
   ([TIER-MAP](../03-scenarios/TIER-MAP.md):40).
 - No debt-register entries name `/team` (checked `v3.0-TECH-DEBT.md` — no hits).
+- **The whole scheduling domain is empty in production** (measured 2026-09-02):
+  `coverage_templates` 0, `schedules` 0, `shifts` 0, `team_certifications` 0,
+  `server_sales` 0, `team_settings` 0, `schedule_receipts` 0. Only the 11-row
+  roster exists. Nothing on this page below the roster has ever run against real
+  data, so a green test here proves the code, never the behaviour.
+- **No wage is on file for anyone.** ADR 0088 stopped the server inventing one,
+  and the 11 existing rows still carry the invented $32.00/$28.00 literals — they
+  are *not* deleted by that change. Until someone enters real wages, the week
+  total, the Tonight pulse and the CSV "Labor cost" column read `—`, by design.
+- **`team_settings.labor_target_pct` is `numeric(5,2) DEFAULT 28 NOT NULL`**, so
+  the first restaurant to toggle `wage_visible` gets a stored 28% target it never
+  chose. ADR 0088 fixed the code-side default (no row → `null` + `configured:
+  false`); making the column nullable is a separate migration against a table
+  with 0 rows.
+- **Three controls need a client half before they work again** (ADR 0088 T3/T7,
+  owned by the `/team` page session, not the gateway): "Copy last week" and
+  "Re-publish" now answer 409 until the client sends `replaceTarget` /
+  `resetReceipts` with a confirmation, and the legacy desk's broadcast answers
+  400 until it sends an `audience`.
 
 ## 10. Maturity
 
-**complete.** The only page in this cluster where every advertised action reaches a
-real, role-enforced endpoint and produces a downstream effect.
+**live.** Corrected from `complete` on 2026-09-02 (ADR 0088). Every advertised
+action does reach a real, role-enforced endpoint — but a 2026-09-02 gateway audit
+found seven defects, three of the six evidence rows below were false as written,
+and "complete" was reading the absence of a bug report as the absence of bugs.
+
+### The three rows that were wrong, and why
+
+| Was claimed | What was true on 2026-09-02 |
+|---|---|
+| "Role gate is enforced server-side" | `assertAccess` (`team.service.ts:56-64`) fell back to `users.restaurant_id` + `users.role`, and `users.role` is `varchar(20) DEFAULT 'manager' NOT NULL` — so **a user row with a restaurant id and an untouched role was a manager of /team**. `listCertifications` (`:397`) required no role at all and `listTimeOff` (`:477`) exposed every member's dates and free-text reasons to any member. `assertAccess(..., "owner")` was defined at `:71-72` and **called nowhere in the module**. Fixed by ADR 0088 T5 |
+| "Every mutation carries an `onError` toast" | **Seven do not.** Not re-verified since 2026-08-26; the six line citations were real, the word "every" was not |
+| "Where the UI misleads: nothing found" | The Tonight-labor pulse renders `$${...(s.labor_cost ?? 0)}` (`ManagerShiftDesk.tsx:429`) — an unpriced shift and a free shift print identically — and until ADR 0088 the wage feeding it was invented by the server (`team.service.ts:205-207`): **11 of 11 production rows carried the literal**, so 100% of the labour figures on this page were fiction |
+
+### The rows that still hold
 
 | Check | Evidence |
 |---|---|
-| Role gate is enforced server-side, not just in the UI | `assertAccess(userId, rid, "manager")` guards every manager action — publish (`team/schedule.service.ts:232`), broadcast (`team/team.controller.ts:346`), etc. The client split (`TeamCommandPage.tsx:1-4`) is convenience on top, not the control |
-| Publishing a week is a real event | `schedule.service.ts:231-265` sets `status:'published'`, **clears `schedule_receipts`** so "seen" reflects the new version (`:247-251`), and writes a restaurant-wide notification deep-linked back to `/team?schedule=…&week=…` (`:254-263`) |
-| Broadcast reaches four channels | In-app notification + web push + email + SMS, targeted at active linked members, best-effort per channel (`team.controller.ts:335-380`) |
+| Publishing a week is a real event | `schedule.service.ts` sets `status:'published'` and writes a restaurant-wide notification deep-linked back to `/team?schedule=…&week=…`. It also **clears `schedule_receipts`** — which the old row listed as a feature; since ADR 0088 that clearing requires `resetReceipts: true` and reports `receiptsCleared`, because destroying the record of who has seen the schedule is not a side effect a click should have |
+| Broadcast reaches four channels | In-app notification + web push + email + SMS (`team.controller.ts`). Since ADR 0088 it must name its audience, and it honours `notification_preferences` opt-outs the scheduled mailer already honoured |
 | Performance numbers are not invented | `PerformancePanel.tsx:3` states the rule explicitly — *"'no data yet' state (never mock numbers) until sales are attributed"* — and honours it. Contrast `/reports` (reports.md §10) |
-| Mutations report failure | Every mutation carries an `onError` toast (`ManagerShiftDesk.tsx:204,209,295,300,329,344`) |
-| Debt register | No `v3.0-TECH-DEBT.md` entry names `/team` (§9, re-verified) |
+| Debt register | No `v3.0-TECH-DEBT.md` entry names `/team` (§9, re-verified 2026-09-02) |
 
 The one dependency worth naming is not a defect on this page: performance metrics
 come from **manually ingested** sales rows (`POST …/sales`, `…/sales/batch`,
@@ -199,15 +229,15 @@ All under `/restaurants/:restaurantId/team`, JWT-guarded at class level
 |---|---|---|---|---|
 | GET/POST/PATCH/DELETE | `…/members` | JWT + role | `team.controller.ts` → `team.service.ts` | Roster |
 | GET | `…/week`, `…/my-week` | JWT | `team.controller.ts` | Grid / staff week |
-| POST | `…/schedules`, `…/schedules/copy-week` | JWT + manager | `schedule.service.ts` | Draft week |
-| POST | `…/schedules/:id/publish` | JWT + manager | `schedule.service.ts:231-265` | Published schedule + notification |
+| POST | `…/schedules`, `…/schedules/copy-week` | JWT + manager | `schedule.service.ts` | Draft week; copy-week returns `{copied, deleted, schedule}` and **409**s on a non-empty target unless the body says `replaceTarget: true` (ADR 0088) |
+| POST | `…/schedules/:id/publish` | JWT + manager | `schedule.service.ts` | `{schedule, receiptsCleared, republished}` + notification. **409** on a re-publish that would erase read receipts, unless the body says `resetReceipts: true` (ADR 0088) |
 | POST | `…/schedules/:id/acknowledge` | JWT | `schedule.service.ts:268-...` | Read receipt |
 | POST/PATCH/DELETE | `…/shifts` (+`/callout`, `/offer-cover`, `/assign`) | JWT | `team.controller.ts` | Shift rows |
 | GET/POST/PATCH/DELETE | `…/certifications`, `…/coverage-templates` | JWT | `team.controller.ts` | Ops rules |
 | GET/POST/PATCH | `…/time-off` | JWT | `team.controller.ts` | Requests |
 | GET | `…/members/:id/performance` | JWT | `team/performance.service.ts` | Attributed sales, or an honest empty |
 | POST | `…/sales`, `…/sales/batch` | JWT | `performance.service.ts` | Ingested rows |
-| POST | `…/broadcast` | JWT + manager | `team.controller.ts:335-380` | Fan-out result |
+| POST | `…/broadcast` | JWT + manager | `team.controller.ts` | `{audience, recipients, suppressed, preferencesUnavailable, …}`. **400** unless the body names exactly one of `memberIds` or `audience:"everyone"` (ADR 0088) |
 | GET/PATCH | `…/settings` | JWT | `team.controller.ts` | Labor/goal settings (edited from `/settings`) |
 | GET | `/calendar/events` | JWT | `calendar.controller.ts:94` | Desk overlay |
 

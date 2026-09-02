@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
@@ -16,6 +17,7 @@ import {
   CreateScheduleDto,
   CreateShiftDto,
   OfferCoverDto,
+  PublishScheduleDto,
   UpdateShiftDto,
 } from "./dto/team.dto";
 
@@ -181,6 +183,24 @@ export class ScheduleService {
     return { member, schedule, mine, open, acknowledged };
   }
 
+  /**
+   * Copy one week's shifts onto another.
+   *
+   * **This deletes the target week.** It always did — "replace target week so
+   * re-running copy doesn't duplicate rows" — but neither the request nor the
+   * response said so, and it is one client click. A manager who had already
+   * built next week by hand and then pressed "Copy last week" lost the lot,
+   * with a toast reading "Copied N shifts".
+   *
+   * The destruction is now in the contract (ADR 0088 T7):
+   *  - an empty target week copies with no flag, because nothing is destroyed;
+   *  - a target week that already holds shifts is a **409** naming how many are
+   *    in the way, unless the caller passes `replaceTarget: true`;
+   *  - the response says `deleted`, always, so the caller can report the real
+   *    outcome rather than only the happy half of it.
+   *
+   * The confirmation dialog is the client's half of the same fix.
+   */
   async copyWeek(userId: string, restaurantId: string, dto: CopyWeekDto) {
     await this.team.assertAccess(userId, restaurantId, "manager");
     const target = await this.getOrCreateWeek(
@@ -196,15 +216,33 @@ export class ScheduleService {
       .eq("restaurant_id", restaurantId)
       .gte("shift_date", dto.fromWeekStart)
       .lte("shift_date", fromEnd);
-    if (!src?.length) return { copied: 0, schedule: target };
+    if (!src?.length) return { copied: 0, deleted: 0, schedule: target };
 
-    // Replace target week so re-running copy doesn't duplicate rows.
-    await this.sb
+    const { data: existing } = await this.sb
       .from("shifts")
-      .delete()
+      .select("id")
       .eq("restaurant_id", restaurantId)
       .gte("shift_date", dto.toWeekStart)
       .lte("shift_date", toEnd);
+    const inTheWay = existing?.length ?? 0;
+
+    if (inTheWay > 0 && !dto.replaceTarget) {
+      throw new ConflictException(
+        `The week of ${dto.toWeekStart} already has ${inTheWay} shift(s). ` +
+          "Copying replaces the whole week; re-send with replaceTarget: true to do that.",
+      );
+    }
+
+    let deleted = 0;
+    if (inTheWay > 0) {
+      await this.sb
+        .from("shifts")
+        .delete()
+        .eq("restaurant_id", restaurantId)
+        .gte("shift_date", dto.toWeekStart)
+        .lte("shift_date", toEnd);
+      deleted = inTheWay;
+    }
 
     const dayShift = daysBetween(dto.fromWeekStart, dto.toWeekStart);
     const rows = src
@@ -222,14 +260,62 @@ export class ScheduleService {
         note: s.note,
         labor_cost: s.labor_cost,
       }));
-    if (!rows.length) return { copied: 0, schedule: target };
+    if (!rows.length) return { copied: 0, deleted, schedule: target };
     const { error } = await this.sb.from("shifts").insert(rows);
     if (error) throw new InternalServerErrorException("Failed to copy week");
-    return { copied: rows.length, schedule: target };
+    return { copied: rows.length, deleted, schedule: target };
   }
 
-  async publish(userId: string, restaurantId: string, scheduleId: string) {
+  /**
+   * Publish a week.
+   *
+   * **Re-publishing erases every `schedule_receipts` row for the schedule.**
+   * The semantics are right — a new version has not been seen by anyone — but
+   * the record of who had seen the previous version is the only evidence that a
+   * shift was communicated, it is destroyed on one click, and nothing said so.
+   *
+   * The contract now names it (ADR 0088 T7):
+   *  - a first publish clears nothing and reports `receiptsCleared: 0`;
+   *  - a re-publish of a schedule that already carries receipts is a **409**
+   *    naming how many will be lost, unless the caller passes
+   *    `resetReceipts: true`;
+   *  - the response always reports `receiptsCleared`, so the count is measured
+   *    rather than assumed.
+   */
+  async publish(
+    userId: string,
+    restaurantId: string,
+    scheduleId: string,
+    dto: PublishScheduleDto = {},
+  ) {
     await this.team.assertAccess(userId, restaurantId, "manager");
+
+    const { data: current } = await this.sb
+      .from("schedules")
+      .select("id, status")
+      .eq("id", scheduleId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (!current) throw new NotFoundException("Schedule not found");
+
+    const { data: receiptRows } = await this.sb
+      .from("schedule_receipts")
+      .select("id")
+      .eq("schedule_id", scheduleId);
+    const receiptsAtRisk = receiptRows?.length ?? 0;
+
+    if (
+      current.status === "published" &&
+      receiptsAtRisk > 0 &&
+      !dto.resetReceipts
+    ) {
+      throw new ConflictException(
+        `Re-publishing clears the ${receiptsAtRisk} read receipt(s) on this week, ` +
+          "so nobody will be recorded as having seen it. Re-send with " +
+          "resetReceipts: true to publish the new version.",
+      );
+    }
+
     const { data: schedule, error } = await this.sb
       .from("schedules")
       .update({
@@ -245,10 +331,20 @@ export class ScheduleService {
       throw new InternalServerErrorException("Failed to publish schedule");
 
     // Re-publish resets receipts so "seen" reflects the new version.
-    await this.sb
-      .from("schedule_receipts")
-      .delete()
-      .eq("schedule_id", scheduleId);
+    let receiptsCleared = 0;
+    if (receiptsAtRisk > 0) {
+      const { error: clearErr } = await this.sb
+        .from("schedule_receipts")
+        .delete()
+        .eq("schedule_id", scheduleId);
+      if (clearErr) {
+        this.logger.error(
+          `published ${scheduleId} but could not clear its receipts: ${clearErr.message}`,
+        );
+      } else {
+        receiptsCleared = receiptsAtRisk;
+      }
+    }
 
     // Notify the whole restaurant + deep-link back into /team.
     await this.notifications.persistForRestaurant(restaurantId, {
@@ -261,7 +357,11 @@ export class ScheduleService {
       groupKey: `schedule_published:${scheduleId}:${schedule.published_at}`,
       metadata: { scheduleId, weekStart: schedule.week_start },
     });
-    return schedule;
+    return {
+      schedule,
+      receiptsCleared,
+      republished: current.status === "published",
+    };
   }
 
   /** Staff opening a published schedule records a read receipt. */
@@ -320,7 +420,7 @@ export class ScheduleService {
       userId,
       restaurantId,
       dto.scheduleId
-        ? await this.weekStartOfSchedule(dto.scheduleId)
+        ? await this.weekStartOfSchedule(restaurantId, dto.scheduleId)
         : mondayOf(dto.shiftDate),
     );
     const cost = await this.laborCost(
@@ -605,7 +705,11 @@ export class ScheduleService {
     const { data: s } = await this.sb
       .from("shifts")
       .select("start_time, end_time")
+      // Scoped even though the only caller already proved ownership with a
+      // scoped fetch: an unscoped read that is safe only because of what its
+      // caller happens to do first is one refactor away from not being.
       .eq("id", shiftId)
+      .eq("restaurant_id", restaurantId)
       .maybeSingle();
     if (!s) return null;
     return this.laborCost(restaurantId, memberId, s.start_time, s.end_time);
@@ -672,6 +776,25 @@ export class ScheduleService {
   }
 
   // ── Labor engine ─────────────────────────────────────────────────────────
+  /**
+   * The week's labour, and whether the week can be costed at all.
+   *
+   * This used to be `shifts.reduce((s, sh) => s + Number(sh.labor_cost ?? 0), 0)`,
+   * which has two failure modes and reports both as a measurement:
+   *
+   *  - a week where **no** member is priced renders **$0** — a real zero and an
+   *    unknown printed identically (ADR 0051 clause 1);
+   *  - a week where **some** members are priced renders a **partial sum as a
+   *    total**, which is worse than the zero because it looks plausible.
+   *
+   * Both were live the moment `hourly_wage` stopped being invented (ADR 0088
+   * T1): the fabrication would simply have moved from the wage to the total.
+   *
+   * So the total is `null` until every member-assigned shift carries a cost,
+   * and the counts are returned so a caller can say *why* it is unknown
+   * ("3 of 11 shifts have no wage on file") rather than only that it is.
+   * An open shift has no member and therefore no cost to be missing.
+   */
   private async computeLabor(
     restaurantId: string,
     shifts: any[],
@@ -681,10 +804,15 @@ export class ScheduleService {
       return { enabled: false, totalHours: hoursTotal(shifts) };
     }
     const totalHours = hoursTotal(shifts);
-    const totalCost = shifts.reduce(
-      (s, sh) => s + Number(sh.labor_cost ?? 0),
-      0,
-    );
+    const assigned = shifts.filter((sh) => !!sh.member_id);
+    const priced = assigned.filter((sh) => sh.labor_cost != null);
+    const unpricedShifts = assigned.length - priced.length;
+    const costComplete = unpricedShifts === 0;
+    const totalCost = costComplete
+      ? Math.round(
+          priced.reduce((s, sh) => s + Number(sh.labor_cost), 0) * 100,
+        ) / 100
+      : null;
     // Per-member overtime (>40h/week) flags.
     const byMember = new Map<string, number>();
     for (const s of shifts) {
@@ -701,19 +829,47 @@ export class ScheduleService {
     return {
       enabled: true,
       totalHours: Math.round(totalHours * 10) / 10,
-      totalCost: Math.round(totalCost * 100) / 100,
-      targetPct: Number(settings.labor_target_pct ?? 28),
+      /** `null` = this week cannot be costed yet. Never a partial, never 0. */
+      totalCost,
+      costComplete,
+      pricedShifts: priced.length,
+      unpricedShifts,
+      /**
+       * `null` when nobody has configured a target. It was `?? 28` here AND
+       * `?? 28` in `getSettings`, so an unconfigured restaurant was told its
+       * target twice over (ADR 0088 T1).
+       */
+      targetPct:
+        settings.labor_target_pct == null
+          ? null
+          : Number(settings.labor_target_pct),
       overtime,
     };
   }
 
-  private async weekStartOfSchedule(scheduleId: string): Promise<string> {
+  /**
+   * The week a schedule belongs to — **within this restaurant**.
+   *
+   * This selected by caller-supplied id with no restaurant filter, and then
+   * fell back to *this* Monday when it found nothing. Reached through
+   * `POST …/team/shifts` that made a foreign schedule id do two wrong things at
+   * once: read another tenant's `week_start`, or — when the id resolved to
+   * nothing — quietly file the shift into the current week the caller never
+   * named. A supplied id that does not resolve is an error, not a default.
+   */
+  private async weekStartOfSchedule(
+    restaurantId: string,
+    scheduleId: string,
+  ): Promise<string> {
     const { data } = await this.sb
       .from("schedules")
       .select("week_start")
       .eq("id", scheduleId)
+      .eq("restaurant_id", restaurantId)
       .maybeSingle();
-    return data?.week_start ?? mondayOf(new Date().toISOString().slice(0, 10));
+    if (!data?.week_start)
+      throw new NotFoundException("Schedule not found in this restaurant");
+    return data.week_start;
   }
 }
 

@@ -97,6 +97,21 @@ export class CreateScheduleDto {
 export class CopyWeekDto {
   @IsDateString() fromWeekStart: string;
   @IsDateString() toWeekStart: string;
+  /**
+   * Copying REPLACES the target week — every shift in it is deleted first.
+   * Without this flag a non-empty target is a 409 naming the count, so the
+   * destruction cannot happen by accident (ADR 0088 T7).
+   */
+  @IsOptional() @IsBoolean() replaceTarget?: boolean;
+}
+
+export class PublishScheduleDto {
+  /**
+   * Re-publishing erases every read receipt on the schedule — the only record
+   * that anyone had seen the previous version. A re-publish over existing
+   * receipts is a 409 without this (ADR 0088 T7).
+   */
+  @IsOptional() @IsBoolean() resetReceipts?: boolean;
 }
 
 // ── Certifications ─────────────────────────────────────────────────────────
@@ -159,7 +174,16 @@ export class IngestSalesBatchDto {
 // ── Broadcast ──────────────────────────────────────────────────────────────
 export class BroadcastDto {
   @IsString() message: string;
+  /**
+   * The members to reach. Mutually exclusive with `audience: "everyone"`, and
+   * exactly one of the two is REQUIRED: an omitted `memberIds` used to mean
+   * "every active linked member", so a control labelled "message this person"
+   * that forgot to pass an id messaged the whole restaurant, and the response
+   * could not tell one send from the other (ADR 0088 T3).
+   */
   @IsOptional() @IsArray() @IsUUID("all", { each: true }) memberIds?: string[];
+  /** Say it out loud. The only accepted value is `"everyone"`. */
+  @IsOptional() @IsIn(["everyone"]) audience?: "everyone";
   @IsOptional() @IsString() title?: string;
 }
 

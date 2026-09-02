@@ -8,6 +8,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { AccessChangeReceipt, recordAccessChange } from "../team/access-audit";
 
 @Injectable()
 export class MembersService {
@@ -115,12 +116,23 @@ export class MembersService {
     return invites ?? [];
   }
 
+  /**
+   * Change a member's role.
+   *
+   * This is the other half of ADR 0088 T2. A role change decides whether a
+   * person sees wages and the whole roster, it is owner-gated, it protects only
+   * the last-owner case — and it used to perform two bare UPDATEs with no audit
+   * row, no notification and no before/after capture, so it changed silently
+   * and unrecoverably. It now files itself through the same
+   * `recordAccessChange` the removal uses, and returns a receipt saying whether
+   * the record was actually written.
+   */
   async updateMemberRole(
     actorUserId: string,
     restaurantId: string,
     targetUserId: string,
     newRole: "owner" | "manager" | "staff",
-  ): Promise<void> {
+  ): Promise<AccessChangeReceipt> {
     await this.assertMembership(actorUserId, restaurantId, "owner");
 
     if (actorUserId === targetUserId && newRole !== "owner") {
@@ -137,6 +149,16 @@ export class MembersService {
         );
       }
     }
+
+    // Capture the before-state while it still exists. After the UPDATE below
+    // nothing can reconstruct what the role used to be.
+    const { data: before } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .select("role")
+      .eq("user_id", targetUserId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    const previousRole: string | null = before?.role ?? null;
 
     const { error: uraErr } = await this.databaseService.supabase
       .from("user_restaurant_access")
@@ -155,6 +177,20 @@ export class MembersService {
       .from("users")
       .update({ role: newRole })
       .eq("user_id", targetUserId);
+
+    return recordAccessChange(this.databaseService.supabase, this.logger, {
+      restaurantId,
+      actorUserId,
+      targetUserId,
+      action: "member_role_changed",
+      entityType: "restaurant_member",
+      entityId: targetUserId,
+      changes: { role: { from: previousRole, to: newRole } },
+      notice: {
+        title: "Your role in this restaurant changed",
+        message: `An owner changed your role to ${newRole}. What you can see and do here has changed with it.`,
+      },
+    });
   }
 
   async removeMember(
