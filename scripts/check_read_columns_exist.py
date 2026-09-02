@@ -172,26 +172,8 @@ KNOWN_BAD_READ_COLUMNS: dict[str, str] = {
     "procurement_orders.target_price_per_bottle": (
         "Same site and same shape as negotiated_price_per_bottle."
     ),
-    "procurement_orders.payment_due_date": (
-        "`payment_due_date` is declared by NO table in the schema — not by "
-        "procurement_orders, not anywhere (the nearest real column is "
-        "`payment_terms`). So this is not a wrong-table read like "
-        "next_order_date was; there is no right table to point it at. "
-        "scheduled-tasks.service.ts builds a three-clause date window on it, so "
-        "the payment-reminder cron has never sent a single reminder. Owned by "
-        "the session on that file, which is taking the fix."
-    ),
     "procurement_conversations.manager_approval_status": (
         "No such column; the table has `status`. communications.controller.ts:881."
-    ),
-    "procurement_conversations.message_body": (
-        "The column is `message_text` (NOT NULL). This is the READ half of the "
-        "write defect ADR 0065 fixed -- it repaired logConversation's payload and "
-        "left scheduled-tasks.service.ts:1147 reading the same phantom names."
-    ),
-    "procurement_conversations.subject": (
-        "Same site and same ADR 0065 pair as message_body; the real subject lives "
-        "in the jsonb `email_headers`."
     ),
     "providers.contact_name": (
         "The table has `contact_first_name` and `contact_last_name` (also "
