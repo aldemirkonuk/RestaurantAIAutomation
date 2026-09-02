@@ -176,30 +176,13 @@ PROCUREMENT_ORDERS_KNOWN_BAD: dict[str, Debt] = {
     ),
 }
 
-CALENDAR_EVENTS_KNOWN_BAD: dict[str, Debt] = {
-    "priority": Debt(
-        files=("procurement/procurement.service.ts",),
-        reason=(
-        "procurement.service.ts createCalendarEventForOrder (~:1969). "
-        "`calendar_events` has never had `priority` or `tags` -- verified against "
-        "production 2026-09-02, 0 of 2 present in information_schema. "
-        "recurring-orders.service.ts wrote both too and is FIXED in this change "
-        "(ADR 0068); the procurement.service.ts site is owned by a concurrent "
-        "change and is recorded here so this guard is green-on-arrival rather "
-        "than blocked on someone else's branch. DELETE BOTH ENTRIES the moment "
-        "that site is fixed -- the ratchet fails if they stop matching."
-        ),
-    ),
-    "tags": Debt(
-        files=("procurement/procurement.service.ts",),
-        reason=(
-        "procurement.service.ts createCalendarEventForOrder (~:1970). Same site "
-        "and same fix as calendar_events.priority. Note the write is also the "
-        "READ side of a dead linkage: the pre-fix recurring materialiser looked "
-        "its own event up with `.like(\"tags\", '%uuid%')`."
-        ),
-    ),
-}
+CALENDAR_EVENTS_KNOWN_BAD: dict[str, Debt] = {}
+# Emptied 2026-09-02. Both entries said "DELETE BOTH ENTRIES the moment that
+# site is fixed -- the ratchet fails if they stop matching", and ADR 0073
+# removed the last procurement.service.ts writer (recurring-orders was
+# already done by ADR 0068). The same two entries in
+# check_order_capture_contract.py KNOWN_BAD_COLUMNS went with them, exactly
+# as this file's own failure message instructs.
 
 TABLES: tuple[TableSpec, ...] = (
     TableSpec(

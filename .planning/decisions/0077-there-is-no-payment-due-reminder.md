@@ -234,15 +234,26 @@ KNOWN_BAD_READ_COLUMNS lists procurement_conversations.subject, ... Delete.
 ```
 
 The peer session's own hand-off predicted one. It is three, because the
-`procurement_conversations` pair went with the same sweep. **All three entries must
-be deleted when the two changes meet**, in whichever order they land. They are not
-edited here: the guard file belongs to that branch and is not in this tree. Its
-`CLAIMS.jsonl` entry asserts `<= 17` and this takes it to 13, which passes by
-construction.
+`procurement_conversations` pair went with the same sweep.
 
-Independently, that guard reports two findings this branch does not touch and does
-not own: `procurement.service.ts:1102` and `:2006` both select
-`calendar_events.tags`, which no migration declares.
+**#240 merged first (`9eca1a49`, 2026-09-02 12:43Z), so the prune is done here.**
+`origin/main` was merged into this branch and all three keys deleted from
+`KNOWN_BAD_READ_COLUMNS`: **16 → 13**, inside that ADR's `CLAIMS.jsonl` bound of
+`<= 17`. Verified after the merge, in this tree:
+
+| Check | Result |
+|---|---|
+| `check_read_columns_exist.py`, before the prune | exit 1 — the three stale entries, by name |
+| after the prune | **PASS** — "13 entries" |
+| `--self-test` | **PASS** |
+| `check_decision_claims.sh` | **122 checked, 122 holding** |
+| api-gateway suite, merged tree | **1704 passed**, 135/137 suites |
+
+The two `calendar_events.tags` findings this branch reported earlier turned out
+**not** to be unowned: they are precisely what #240 fixes, and they cleared with
+that merge. Reporting them as ownerless was a measurement taken against the wrong
+tree — the guard was run from an unmerged branch while its own fix sat in the same
+unmerged PR.
 
 ## Consequences
 
