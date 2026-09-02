@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-08-26
+updated: 2026-09-02
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
@@ -39,7 +39,9 @@ documents that prove the claims" (`ReceiptsPage.tsx:1-10`, decisions E48/E49).
 - Verify a document
 - **Credits** tab: the vendor credit-claim ledger with stats; move a claim through its states
 - Deep-linkable tab (`?tab=credits` — where `/credits` lands)
-- **Mudavym redesign behind `mudavym_design_receipts` (OFF)** — the founder's four-requirement brief: the review queue + the door's paperless deliveries on one surface; the linked order above the lines ("the right invoice"); qty/unit/total editable in place pre-verification with the tie-out recomputed in the same response (new gateway route `PATCH /procurement/documents/:id/lines/:lineId`); the swipe-up confirm ceremony firing verify; matcher suggestions with plain-language reasons, one-tap confirmed, never auto-written
+- **Mudavym redesign behind `mudavym_design_receipts` (OFF)** — the founder's four-requirement brief: the review queue + the door's paperless deliveries on one surface; **the stored scan rendered inline beside the lines** (images and PDFs; the 3600s signed link is treated as spent five minutes early and offers a refetch, and each not-shown state names which one it is — no stored file / no signable link / aged out / did not load); the linked order above the lines ("the right invoice"); qty/unit/total editable in place pre-verification with the tie-out recomputed in the same response (new gateway route `PATCH /procurement/documents/:id/lines/:lineId`), **the extracted figure kept beside a corrected cell with an undo until verify**; the swipe-up confirm ceremony firing verify
+- **Honesty, per [[0063-a-certification-screen-shows-the-thing-being-certified|ADR 0063]]** — every query key carries the active restaurant id (an unresolved restaurant is refused, not given a shared `''` cache bucket); the awaiting-review count renders as a floor (`≥`) at its server window; all three list failures are named individually, and an unanswered uncounted-deliveries query says it is unknown rather than rendering as a caught-up door; a failed detail fetch says the failure in the **server's** words and never claims an empty invoice; document `extraction_confidence` and per-suggestion `confidence` are shown, `—` when unrecorded
+- **Pairing** — matcher suggestions carry their reason **and their confidence** for one-tap confirmation. The matcher **does** auto-write unambiguous vendor-SKU pairings server-side (`line-matcher.ts:282-296`); the page names them as written-without-asking, and every paired row has **Unlink**. The `Paired with` column names its target (ordered wine · quantity · order-line ref · method · confidence) and says "not paired" in words
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receipts`)
 
@@ -156,6 +158,19 @@ applies (see dashboard.md §7).
 
 **partial.** The most honestly-built page in this cluster, and the only one whose
 producer chain is verified live end to end. What is absent is named, not faked.
+
+**Verdict unchanged by ADR 0063 (2026-09-02), and here is why it did not rise.**
+The rebuilt lane's headline defect is fixed — it could not display the invoice it
+asked a human to certify, and now renders it beside the lines — along with the
+tenant-keying leak, three [[0051-rebuilt-pages-show-live-data-only|ADR 0051]]
+honesty breaches, the hidden confidences, and the false "never auto-written"
+docblock over a live write path. But the lane is still behind
+`mudavym_design_receipts` (OFF), the gaps listed below are still gaps, and two
+named limits remain: `procurement_document_lines` has no `updated_at`, so two
+managers on one document are still last-write-wins (the collision is now
+*announced*, which is not the same as prevented), and no endpoint exposes
+`procurement_order_lines`, so a pairing badge names the ordered wine and the
+order-line id rather than that line's own description.
 
 **Real, with a live producer.** A vendor emails an invoice → Gmail push webhook
 (`apps/api-gateway/src/communications/communications.controller.ts:1030-1180`)
