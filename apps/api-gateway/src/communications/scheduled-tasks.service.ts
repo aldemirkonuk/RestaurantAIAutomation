@@ -14,6 +14,10 @@ import type {
 import { ScheduledTenantsService } from "./scheduled-tenants.service";
 import type { ScheduledTenant } from "./scheduled-tenants.service";
 import {
+  ORDER_ARRIVED_STATUSES,
+  ORDER_IN_FLIGHT_STATUSES,
+} from "../procurement/order-status";
+import {
   RECURRING_REMINDER_FLAG,
   describeRecurringOrder,
   recurringRemindersEnabled,
@@ -533,7 +537,7 @@ export class ScheduledTasksService implements OnModuleInit {
           .from("procurement_orders")
           .select("*, providers(name)")
           .eq("restaurant_id", tenant.id)
-          .in("status", ["CONFIRMED", "SHIPPED", "IN_TRANSIT"])
+          .in("status", ORDER_IN_FLIGHT_STATUSES)
           .lte("expected_delivery_date", tomorrowStr + "T23:59:59")
           .gte("expected_delivery_date", tomorrowStr + "T00:00:00");
 
@@ -605,7 +609,7 @@ export class ScheduledTasksService implements OnModuleInit {
         .from("procurement_orders")
         .select("*, providers(name)")
         .eq("restaurant_id", tenant.id)
-        .in("status", ["DELIVERED", "INVOICED"])
+        .in("status", ORDER_ARRIVED_STATUSES)
         .not("payment_due_date", "is", null)
         .lte("payment_due_date", threeDaysFromNow.toISOString())
         .gte("payment_due_date", now.toISOString());
