@@ -633,6 +633,23 @@ jobs:
           echo "::notice::A mis-cased status filter matches NOTHING, so the figure reads 0 rather than erroring. On a .not(...in...) gate it inverts: nothing matches, so NOT IN matches EVERYTHING and the gate fails OPEN."
           echo "::notice::Exit 2 from that guard is CANNOT CHECK, not a skip: the enum could not be parsed, or the chain extractor found no procurement_orders queries. Fix the anchor, do not delete the step."
 
+      # A quantity that crosses the wire with no declared unit.
+      #
+      # `DoorReceiptDto.rejectedQty` stated its unit nowhere — the door sent it
+      # in BOXES beside `countedQty` + `countedUom`, and the gateway converted
+      # only `countedQty` before computing `countedBottles - rejectedQty`. Three
+      # refused boxes at pack 12 booked 33 bottles of LIVE STOCK for wine turned
+      # away at the door. It survived review because the only test covering the
+      # path used `countedUom: "bottle"`, where the conversion is the identity —
+      # the test did not fail because it COULD not fail.
+      - name: Every quantity crossing the wire declares its unit
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_quantity_units.py
+
+      - name: The unit guard can actually fail
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_quantity_units.py --self-test
+
       - name: Explain a failure
         if: failure()
         run: |
@@ -642,6 +659,9 @@ jobs:
           echo "::notice::[order line capture] means createOrder can produce an order with no procurement_order_items row. matchDocumentLines returns early when an order has no lines, so the whole invoice matching engine goes dark and nothing fails visibly."
           echo "::notice::[unit defaults] means a unit fallback landed on case/pack/split_case. Those MULTIPLY: an absent or misspelt unit books quantity x pack size. ADR 0011 decided this class -- refuse, do not guess."
           echo "::notice::[price_history writer] means the price series has no writer again. The table is correctly keyed and indexed; with no writer it stays empty forever."
+          echo "::notice::'does not say what unit it is in' means a *Qty*/*Quantity* DTO field crossed the wire with no unit in its name and no same-prefix unit sibling. Put the unit in the NAME (xQtyBottles, or xQtyInCountedUom when it must match another field). A comment is not a declaration -- JSON does not carry comments."
+          echo "::notice::'exempted as a DEPRECATED ALIAS, but the declared field it aliases is gone' means the properly-named field was deleted and only the unitless alias remains. That is the original defect back under its own name, not an alias."
+          echo "::notice::The unit guard does NOT verify that a declared unit is the CORRECT one -- only a test at a real pack size does that. Never let it stand in for one."
           echo "::notice::Exit 2 from that guard is CANNOT CHECK, not a skip: a file it reads is missing or a method it anchors on was renamed. Fix the anchor, do not delete the step."
           echo "::notice::RLS NEVER ENABLED means a migration creates a public table that no migration ever puts RLS on. Add it in the CREATING migration -- unless that migration has already shipped to production, in which case a follow-up is the only fix that reaches both production and a fresh build."
           echo "::notice::anon/authenticated STILL GRANTED means a table is client-reachable over PostgREST. The OD-72 default-privileges ratchet covers tables created after 20260825210000; an explicit GRANT after that undoes it."
