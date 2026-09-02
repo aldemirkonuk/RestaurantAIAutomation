@@ -78,7 +78,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install Supabase CLI
-        uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@v3
         with:
           # PINNED, and that is the fix — `version: latest` forces the action to
           # resolve a release through the GitHub API on every single run, which
