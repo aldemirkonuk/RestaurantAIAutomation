@@ -57,7 +57,9 @@ def _request(
         with urllib.request.urlopen(request, timeout=timeout) as response:
             raw = response.read().decode("utf-8", "replace")
             if not 200 <= response.status < 300:
-                raise ScenarioApplyError(f"{method} {url} -> HTTP {response.status}: {raw[:300]}")
+                raise ScenarioApplyError(
+                    f"{method} {url} -> HTTP {response.status}: {raw[:300]}"
+                )
             if not raw.strip():
                 return None
             try:
@@ -72,9 +74,13 @@ def _request(
             detail = exc.read().decode("utf-8", "replace")[:300]
         except Exception:  # noqa: BLE001 — the status is the finding, not this
             pass
-        raise ScenarioApplyError(f"{method} {url} -> HTTP {exc.code}: {detail}") from exc
+        raise ScenarioApplyError(
+            f"{method} {url} -> HTTP {exc.code}: {detail}"
+        ) from exc
     except urllib.error.URLError as exc:
-        raise ScenarioApplyError(f"{method} {url} -> unreachable: {exc.reason}") from exc
+        raise ScenarioApplyError(
+            f"{method} {url} -> unreachable: {exc.reason}"
+        ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -82,7 +88,9 @@ def _request(
 # ---------------------------------------------------------------------------
 
 
-def login(analytics_base: str, email: str, password: str, *, timeout: float = 20.0) -> str:
+def login(
+    analytics_base: str, email: str, password: str, *, timeout: float = 20.0
+) -> str:
     """`POST /api/v1/auth/login` -> the bearer every guarded route needs.
 
     Shape read from `auth.controller.ts::login`: the body is
@@ -227,7 +235,9 @@ def persist_run(
         **_service_headers(service_key),
         "Prefer": "return=representation",
     }
-    data = _request(url, method="POST", body=dict(row), headers=headers, timeout=timeout)
+    data = _request(
+        url, method="POST", body=dict(row), headers=headers, timeout=timeout
+    )
     if isinstance(data, list):
         if not data:
             raise ScenarioApplyError(

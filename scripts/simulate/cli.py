@@ -387,6 +387,29 @@ def cmd_scenario(args: argparse.Namespace) -> int:
     timezone_name = None
 
     if args.apply:
+        # FIRST, before a single packet leaves. `Bridge` runs this check too, but
+        # it is constructed after the login, the hours read and the inventory
+        # read — so relying on it alone would mean a mistyped --analytics-base
+        # had already POSTed the owner's password to whatever host it named.
+        # That is the 2026-08-05 incident class (BridgeConfig
+        # .assert_targets_are_safe), and the credential is the part that cannot
+        # be taken back.
+        try:
+            BridgeConfig(
+                restaurant_id=restaurant_id,
+                restaurant_guid="",
+                analytics_base=args.analytics_base,
+                # This gate is about the ONE base this command talks to. The
+                # stock ingress is never used here (ingress="analytics"), so it
+                # is pointed at the same host rather than dragging the default
+                # localhost:8000 through a check it is not subject to.
+                stock_base=args.analytics_base,
+                apply=True,
+                allow_remote=args.allow_remote,
+            ).assert_targets_are_safe()
+        except RemoteTargetRefusedError as exc:
+            raise SystemExit(str(exc))
+
         email = os.environ.get("SIM_OWNER_EMAIL", "")
         password = os.environ.get("SIM_OWNER_PASSWORD", "")
         if not email or not password:

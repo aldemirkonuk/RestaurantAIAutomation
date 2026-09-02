@@ -41,7 +41,8 @@ from scripts.simulate import scenario_apply as apply_mod  # noqa: E402
 from scripts.simulate.detection import looks_like_wine  # noqa: E402
 from scripts.simulate.hours import is_open_at  # noqa: E402
 from scripts.simulate.mappings import build_mappings  # noqa: E402
-from scripts.simulate.payloads import canonical_check, line_idempotency_key  # noqa: E402
+from scripts.simulate.payloads import canonical_check  # noqa: E402
+from scripts.simulate.payloads import line_idempotency_key  # noqa: E402
 from scripts.simulate.service import FOOD_ITEMS, WineList  # noqa: E402
 
 MENU = REPO_ROOT / "datasets" / "sim" / "menus" / "bistro.json"
@@ -114,8 +115,14 @@ def test_different_seed_produces_a_different_expectation(menu_items, hours, wine
 
 def test_check_ids_are_stable_across_runs(menu_items, hours, wine_list):
     """A replay must be a no-op at the hub, not a doubled day."""
-    first = [c["external_check_id"] for c in build(menu_items, hours, wine_list, "service")[2]["checks"]]
-    second = [c["external_check_id"] for c in build(menu_items, hours, wine_list, "service")[2]["checks"]]
+    first = [
+        c["external_check_id"]
+        for c in build(menu_items, hours, wine_list, "service")[2]["checks"]
+    ]
+    second = [
+        c["external_check_id"]
+        for c in build(menu_items, hours, wine_list, "service")[2]["checks"]
+    ]
     assert first == second
     assert len(set(first)) == len(first), "two checks share an id"
 
@@ -139,9 +146,9 @@ def test_every_expect_value_is_one_the_verifier_knows(menu_items, hours, wine_li
         expected = build(menu_items, hours, wine_list, scenario)[2]
         for check in expected["checks"]:
             for line in check["lines"]:
-                assert line["expect"] in scn.EXPECT_VALUES, (
-                    f"{scenario}: unknown expect {line['expect']!r}"
-                )
+                assert (
+                    line["expect"] in scn.EXPECT_VALUES
+                ), f"{scenario}: unknown expect {line['expect']!r}"
 
 
 def test_food_lines_carry_no_idempotency_key(menu_items, hours, wine_list):
@@ -285,9 +292,9 @@ def test_every_check_is_inside_a_window_except_the_after_hours_one(
                 assert not inside, "the after-hours check landed inside opening hours"
                 assert check.outside_hours is True
             else:
-                assert inside, (
-                    f"{check.scenario} opened at {check.opened_at} — outside every window"
-                )
+                assert (
+                    inside
+                ), f"{check.scenario} opened at {check.opened_at} — outside every window"
                 assert check.outside_hours is False
 
 
@@ -306,12 +313,17 @@ def test_after_hours_check_is_recorded_not_rejected(menu_items, hours, wine_list
     check = expected["checks"][0]
     assert check["posted"] is True
     assert check["outside_hours"] is True
-    assert is_open_at(hours, TZ, datetime.fromisoformat(
-        check["opened_at"].replace("Z", "+00:00")
-    )).open is False
+    assert (
+        is_open_at(
+            hours, TZ, datetime.fromisoformat(check["opened_at"].replace("Z", "+00:00"))
+        ).open
+        is False
+    )
 
 
-def test_opening_minute_is_one_minute_after_the_doors_open(menu_items, hours, wine_list):
+def test_opening_minute_is_one_minute_after_the_doors_open(
+    menu_items, hours, wine_list
+):
     ctx, _expectation, expected, _outcomes = build(
         menu_items, hours, wine_list, "opening_minute"
     )
@@ -377,30 +389,32 @@ def test_two_tables_records_its_placement(menu_items, hours, wine_list):
 def test_two_tables_falls_back_and_says_so_on_a_lunch_only_venue(menu_items, wine_list):
     """A venue shut by 14:00 gets open+2h — and `params` says which rule fired."""
     lunch_only = {
-        day: [{"open": "11:00", "close": "13:30"}] for day in
-        ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+        day: [{"open": "11:00", "close": "13:30"}]
+        for day in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
     }
-    expected = build(
-        menu_items, lunch_only, wine_list, "two_tables_two_minutes"
-    )[2]
+    expected = build(menu_items, lunch_only, wine_list, "two_tables_two_minutes")[2]
     params = expected["scenarios"][0]["params"]
     assert params["placement"] == "fallback_open_plus_2h"
     assert "placement_reason" in params
 
 
-def test_sell_through_crosses_par_and_appears_in_low_stock(menu_items, hours, wine_list):
+def test_sell_through_crosses_par_and_appears_in_low_stock(
+    menu_items, hours, wine_list
+):
     expected = build(menu_items, hours, wine_list, "sell_through_to_par")[2]
     params = expected["scenarios"][0]["params"]
     assert 2 <= params["checks"] <= 4
 
     target = [
-        row for row in expected["depletion"] if row["inventory_id"] == params["inventory_id"]
+        row
+        for row in expected["depletion"]
+        if row["inventory_id"] == params["inventory_id"]
     ]
     assert len(target) == 1
     row = target[0]
-    assert row["expected_stock_live"] < row["threshold_min"], (
-        "the scenario did not actually cross par"
-    )
+    assert (
+        row["expected_stock_live"] < row["threshold_min"]
+    ), "the scenario did not actually cross par"
     assert params["inventory_id"] in {r["inventory_id"] for r in expected["low_stock"]}
 
 
@@ -420,7 +434,9 @@ def test_unmapped_item_queues_one_line_as_unmapped(menu_items, hours, wine_list)
     assert line["inventory_id"] is None
 
 
-def test_unmapped_line_matches_no_mapping_by_id_or_by_name(menu_items, hours, wine_list):
+def test_unmapped_line_matches_no_mapping_by_id_or_by_name(
+    menu_items, hours, wine_list
+):
     """`resolveWine` tries the external id AND an exact lowercased name."""
     ctx, _expectation, expected, _outcomes = build(
         menu_items, hours, wine_list, "unmapped_item"
@@ -446,7 +462,9 @@ def test_void_posts_twice_and_nets_to_zero(menu_items, hours, wine_list):
     assert [p.voided for p in posts] == [False, True]
     assert posts[0].external_check_id == posts[1].external_check_id
 
-    row = [r for r in expected["depletion"] if r["inventory_id"] == line["inventory_id"]][0]
+    row = [
+        r for r in expected["depletion"] if r["inventory_id"] == line["inventory_id"]
+    ][0]
     assert row["bottles"] == 0
     assert row["expected_stock_live"] == row["opening_stock_live"]
     assert row["void_return"] is True
@@ -479,7 +497,9 @@ def test_duplicate_posts_twice_but_depletes_once(menu_items, hours, wine_list):
         line for line in expected["checks"][0]["lines"] if line["expect"] == "bottle"
     ][0]
     row = [
-        r for r in expected["depletion"] if r["inventory_id"] == bottle_line["inventory_id"]
+        r
+        for r in expected["depletion"]
+        if r["inventory_id"] == bottle_line["inventory_id"]
     ][0]
     assert row["bottles"] == bottle_line["bottles"], "a duplicate was counted twice"
 
@@ -591,7 +611,9 @@ def test_service_fills_every_open_window(menu_items, wine_list):
         for index, (start, end) in enumerate(ctx.windows):
             if start <= check.opened_at < end:
                 per_window[index] += 1
-    assert all(count > 0 for count in per_window), f"a window got no traffic: {per_window}"
+    assert all(
+        count > 0 for count in per_window
+    ), f"a window got no traffic: {per_window}"
 
 
 def test_weekend_service_is_heavier_than_monday(menu_items, hours, wine_list):
@@ -839,7 +861,9 @@ def test_a_failed_login_raises_rather_than_returning_an_empty_token(monkeypatch)
         def __exit__(self, *args):
             return False
 
-    monkeypatch.setattr(apply_mod.urllib.request, "urlopen", lambda *a, **k: _Response())
+    monkeypatch.setattr(
+        apply_mod.urllib.request, "urlopen", lambda *a, **k: _Response()
+    )
     with pytest.raises(apply_mod.ScenarioApplyError) as exc:
         apply_mod.login("https://example.test", "a@b.c", "x")
     assert "accessToken" in str(exc.value)
@@ -853,3 +877,431 @@ def test_the_only_non_product_write_is_the_run_row():
     assert len(writes) == 3
     assert "/rest/v1/sim_scenario_runs" in source
     assert source.count("/rest/v1/") == 2  # the inventory read and the run row
+
+
+# ---------------------------------------------------------------------------
+# The --apply path, driven end to end with a fake transport
+#
+# Nothing here touches a network — `urlopen` is replaced in both modules that
+# hold one — but every other line of the apply path runs for real: the bridge,
+# the signing, the ordering, the row that gets persisted. An apply path that is
+# only ever exercised against a live gateway is an apply path whose NameErrors
+# are found by the integrator.
+# ---------------------------------------------------------------------------
+
+
+class _FakeResponse:
+    def __init__(self, payload: bytes, status: int = 200) -> None:
+        self._payload = payload
+        self.status = status
+
+    def read(self) -> bytes:
+        return self._payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+class _Transport:
+    """Records every request and answers each route the run touches."""
+
+    def __init__(self, fail_checks: bool = False) -> None:
+        self.requests: list[tuple[str, str, dict, bytes]] = []
+        self.fail_checks = fail_checks
+
+    def __call__(self, request, timeout=None):  # noqa: ARG002 — urlopen's shape
+        url = request.full_url
+        body = request.data or b""
+        self.requests.append((request.get_method(), url, dict(request.headers), body))
+        if url.endswith("/auth/login"):
+            return _FakeResponse(
+                b'{"success":true,"accessToken":"tok","refreshToken":"r"}'
+            )
+        if "/operating-hours" in url:
+            return _FakeResponse(
+                json.dumps(
+                    {
+                        "timezone": TZ,
+                        "operatingHours": json.loads(FIXTURE.read_text())["hours"][
+                            "bistro"
+                        ],
+                    }
+                ).encode()
+            )
+        if "/restaurant_inventory" in url:
+            return _FakeResponse(json.dumps(self._inventory_rows()).encode())
+        if "/sim_scenario_runs" in url:
+            return _FakeResponse(b'[{"id":"run-1"}]')
+        if "/analytics/tables/" in url:
+            return _FakeResponse(b'{"ok":true}')
+        if "/pos-hub/mappings/" in url:
+            return _FakeResponse(b'{"ok":true}')
+        if "/pos-hub/webhook/" in url:
+            if self.fail_checks:
+                raise apply_mod.urllib.error.HTTPError(url, 500, "boom", None, None)
+            return _FakeResponse(b'{"upserted":1}')
+        raise AssertionError(f"unexpected request to {url}")
+
+    def _inventory_rows(self) -> list[dict]:
+        from scripts.synth.seed import sim_inventory_id
+
+        items = json.loads(MENU.read_text())["items"]
+        rows, seen = [], set()
+        for item in items:
+            sig = item["signature_hash"]
+            if sig in seen:
+                continue
+            seen.add(sig)
+            rows.append(
+                {
+                    "id": sim_inventory_id("bistro", sig),
+                    "master_wine_id": None,
+                    "wine_name": item.get("wine_name"),
+                    "stock_live": 12,
+                    "threshold_min": 5,
+                    "bottle_size_ml": None,
+                    "pour_size_ml": 150,
+                    "sale_type": "bottle",
+                    "is_active": True,
+                }
+            )
+        return rows
+
+    def urls(self, fragment: str) -> list[str]:
+        return [url for _m, url, _h, _b in self.requests if fragment in url]
+
+
+@pytest.fixture
+def applied(monkeypatch):
+    from scripts.simulate import cli as cli_mod
+
+    transport = _Transport()
+    monkeypatch.setattr(bridge_mod.urllib.request, "urlopen", transport)
+    monkeypatch.setattr(apply_mod.urllib.request, "urlopen", transport)
+    monkeypatch.setenv("SIM_OWNER_EMAIL", "owner@example.test")
+    monkeypatch.setenv("SIM_OWNER_PASSWORD", "x")
+    monkeypatch.setenv("SUPABASE_URL", "http://localhost:54321")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-key")
+    monkeypatch.setenv("POS_HUB_WEBHOOK_SECRET", "hmac-secret")
+    code = cli_mod.main(
+        [
+            "scenario",
+            "--archetype",
+            "bistro",
+            "--scenario",
+            "random",
+            "--seed",
+            "7",
+            "--date",
+            "2026-09-02",
+            "--restaurant",
+            "11111111-1111-1111-1111-111111111111",
+            "--apply",
+        ]
+    )
+    return code, transport
+
+
+def test_apply_runs_the_whole_path_and_reports_no_failure(applied, capsys):
+    code, transport = applied
+    capsys.readouterr()
+    assert code == 0
+    assert transport.urls("/auth/login")
+    assert transport.urls("/operating-hours")
+    assert transport.urls("/analytics/tables/")
+    assert transport.urls("/pos-hub/mappings/")
+    assert transport.urls("/pos-hub/webhook/generic_webhook/")
+    assert transport.urls("/sim_scenario_runs")
+
+
+def test_apply_seeds_tables_and_mappings_before_any_check(applied, capsys):
+    """resolveWine and resolveTable both run at ingest; late rows do not backfill."""
+    _code, transport = applied
+    capsys.readouterr()
+    order = [url for _m, url, _h, _b in transport.requests]
+    first_check = next(i for i, u in enumerate(order) if "/pos-hub/webhook/" in u)
+    last_table = max(i for i, u in enumerate(order) if "/analytics/tables/" in u)
+    last_mapping = max(i for i, u in enumerate(order) if "/pos-hub/mappings/" in u)
+    assert last_table < first_check
+    assert last_mapping < first_check
+
+
+def test_apply_sends_the_bearer_on_mappings_and_never_on_the_webhook(applied, capsys):
+    _code, transport = applied
+    capsys.readouterr()
+    for method, url, headers, _body in transport.requests:
+        lowered = {k.lower(): v for k, v in headers.items()}
+        if "/pos-hub/mappings/" in url:
+            assert lowered.get("Authorization".lower()) == "Bearer tok"
+        if "/pos-hub/webhook/" in url:
+            assert "authorization" not in lowered, "the webhook is @Public(); it signs"
+            assert "x-pos-hub-signature" in lowered
+
+
+def test_apply_sends_mappings_carrying_inventory_ids(applied, capsys):
+    """Without one, every wine line queues as unmapped and nothing depletes."""
+    _code, transport = applied
+    capsys.readouterr()
+    bodies = [
+        json.loads(body)
+        for _m, url, _h, body in transport.requests
+        if "/pos-hub/mappings/" in url
+    ]
+    wine_rows = [row for row in bodies if row.get("is_wine")]
+    assert wine_rows
+    assert all(row.get("inventory_id") for row in wine_rows)
+    assert all(row.get("sale_unit") in ("bottle", "glass") for row in wine_rows)
+
+
+def test_apply_posts_checks_in_opened_at_order(applied, capsys):
+    _code, transport = applied
+    capsys.readouterr()
+    posted = [
+        json.loads(body)
+        for _m, url, _h, body in transport.requests
+        if "/pos-hub/webhook/" in url
+    ]
+    opened = [p["openedAt"] for p in posted]
+    assert opened == sorted(opened)
+
+
+def test_apply_posts_the_duplicate_twice_and_the_void_as_two_states(applied, capsys):
+    _code, transport = applied
+    capsys.readouterr()
+    posted = [
+        json.loads(body)
+        for _m, url, _h, body in transport.requests
+        if "/pos-hub/webhook/" in url
+    ]
+    by_id: dict[str, list[dict]] = {}
+    for payload in posted:
+        by_id.setdefault(payload["externalCheckId"], []).append(payload)
+
+    twice = {cid: rows for cid, rows in by_id.items() if len(rows) == 2}
+    assert twice, "neither the duplicate nor the void posted twice"
+    voided = [rows for rows in twice.values() if rows[1]["voided"] is True]
+    duplicated = [rows for rows in twice.values() if rows[1]["voided"] is False]
+    assert voided, "the void scenario did not post a voided second state"
+    assert voided[0][0]["voided"] is False, "the void must post the close first"
+    assert duplicated, "the duplicate scenario did not post twice"
+    assert duplicated[0][0] == duplicated[0][1], "a duplicate must be byte-identical"
+
+
+def test_apply_never_posts_the_dropped_check(monkeypatch, capsys):
+    """The one scenario whose whole point is that nothing goes on the wire."""
+    from scripts.simulate import cli as cli_mod
+
+    transport = _Transport()
+    monkeypatch.setattr(bridge_mod.urllib.request, "urlopen", transport)
+    monkeypatch.setattr(apply_mod.urllib.request, "urlopen", transport)
+    monkeypatch.setenv("SIM_OWNER_EMAIL", "owner@example.test")
+    monkeypatch.setenv("SIM_OWNER_PASSWORD", "x")
+    monkeypatch.setenv("SUPABASE_URL", "http://localhost:54321")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-key")
+    monkeypatch.setenv("POS_HUB_WEBHOOK_SECRET", "hmac-secret")
+    code = cli_mod.main(
+        [
+            "scenario",
+            "--archetype",
+            "bistro",
+            "--scenario",
+            "dropped_webhook",
+            "--date",
+            "2026-09-02",
+            "--restaurant",
+            "11111111-1111-1111-1111-111111111111",
+            "--apply",
+        ]
+    )
+    capsys.readouterr()
+    assert code == 0
+    assert transport.urls("/pos-hub/webhook/") == [], "a dropped check was posted"
+    # The run is still recorded — the expectation is what makes the absence
+    # readable later, and `unverifiable` is the verdict, not silence.
+    row = [
+        json.loads(body)
+        for _m, url, _h, body in transport.requests
+        if "/sim_scenario_runs" in url
+    ][0]
+    assert row["expected"]["dropped_check_ids"]
+    assert row["expected"]["totals"]["posted_checks"] == 0
+
+
+def test_apply_persists_the_run_with_the_agreed_columns(applied, capsys):
+    _code, transport = applied
+    capsys.readouterr()
+    body = [
+        json.loads(body)
+        for _m, url, _h, body in transport.requests
+        if "/sim_scenario_runs" in url
+    ][0]
+    assert set(body) == {
+        "restaurant_id",
+        "archetype_id",
+        "scenario",
+        "seed",
+        "service_date",
+        "timezone",
+        "operating_hours",
+        "params",
+        "expected",
+        "posted_at",
+    }
+    assert set(body["expected"]) == set(scn.CONTRACT_KEYS)
+    assert body["params"]["hours_source"] == "product_api"
+    assert body["params"]["inventory_source"] == "restaurant_inventory"
+    assert body["params"]["post_failures"] == []
+
+
+def test_a_rejected_check_is_a_run_failure_not_a_silent_one(monkeypatch, capsys):
+    """A non-2xx is reported at the end, never hidden behind a zero exit."""
+    from scripts.simulate import cli as cli_mod
+
+    transport = _Transport(fail_checks=True)
+    monkeypatch.setattr(bridge_mod.urllib.request, "urlopen", transport)
+    monkeypatch.setattr(apply_mod.urllib.request, "urlopen", transport)
+    monkeypatch.setenv("SIM_OWNER_EMAIL", "owner@example.test")
+    monkeypatch.setenv("SIM_OWNER_PASSWORD", "x")
+    monkeypatch.setenv("SUPABASE_URL", "http://localhost:54321")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-key")
+    monkeypatch.setenv("POS_HUB_WEBHOOK_SECRET", "hmac-secret")
+    code = cli_mod.main(
+        [
+            "scenario",
+            "--archetype",
+            "bistro",
+            "--scenario",
+            "opening_minute",
+            "--seed",
+            "7",
+            "--date",
+            "2026-09-02",
+            "--restaurant",
+            "11111111-1111-1111-1111-111111111111",
+            "--apply",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "failure(s) in this run" in out
+    # And the run is still recorded, carrying the failures — a run that vanished
+    # because it failed would be the worst of both.
+    body = [
+        json.loads(body)
+        for _m, url, _h, body in transport.requests
+        if "/sim_scenario_runs" in url
+    ][0]
+    assert body["params"]["post_failures"]
+
+
+def test_apply_refuses_a_remote_gateway_without_allow_remote(monkeypatch):
+    from scripts.simulate import cli as cli_mod
+
+    transport = _Transport()
+    monkeypatch.setattr(bridge_mod.urllib.request, "urlopen", transport)
+    monkeypatch.setattr(apply_mod.urllib.request, "urlopen", transport)
+    monkeypatch.setenv("SIM_OWNER_EMAIL", "owner@example.test")
+    monkeypatch.setenv("SIM_OWNER_PASSWORD", "x")
+    monkeypatch.setenv("SUPABASE_URL", "http://localhost:54321")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-key")
+    monkeypatch.setenv("POS_HUB_WEBHOOK_SECRET", "hmac-secret")
+    with pytest.raises(SystemExit) as exc:
+        cli_mod.main(
+            [
+                "scenario",
+                "--archetype",
+                "bistro",
+                "--scenario",
+                "opening_minute",
+                "--date",
+                "2026-09-02",
+                "--restaurant",
+                "11111111-1111-1111-1111-111111111111",
+                "--analytics-base",
+                "https://mudavym.example.com",
+                "--apply",
+            ]
+        )
+    assert "not localhost" in str(exc.value)
+    # And it refused BEFORE anything left: the login would otherwise have POSTed
+    # the owner's password to whatever host --analytics-base named, which is the
+    # half of the 2026-08-05 incident that cannot be taken back.
+    assert transport.requests == []
+
+
+# ---------------------------------------------------------------------------
+# Edges of the clock
+# ---------------------------------------------------------------------------
+
+
+def test_a_very_short_window_still_places_every_check_inside_it(menu_items, wine_list):
+    """A window is half-open: a seat exactly ON close is out of hours."""
+    tiny = {
+        day: [{"open": "12:00", "close": "12:20"}]
+        for day in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+    }
+    ctx, expectation, _expected, _outcomes = build(
+        menu_items, tiny, wine_list, "service"
+    )
+    assert expectation.checks, "a 20-minute service produced nothing to check"
+    for check in expectation.checks:
+        assert ctx.is_inside_hours(
+            check.opened_at
+        ), f"a check opened at {check.opened_at}, on or past close"
+        assert check.outside_hours is False
+
+
+def test_a_window_crossing_midnight_is_one_window_not_two(menu_items, wine_list):
+    late = {
+        day: [{"open": "18:00", "close": "02:00"}]
+        for day in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+    }
+    ctx, expectation, expected, _outcomes = build(
+        menu_items, late, wine_list, "service"
+    )
+    assert len(ctx.windows) == 1
+    start, end = ctx.windows[0]
+    assert (end - start) == timedelta(hours=8)
+    assert expected["outside_hours_count"] == 0
+    assert any(
+        check.opened_at.astimezone(bridge_tz()).hour < 3 for check in expectation.checks
+    ), "no check landed after midnight — the crossing was not exercised"
+
+
+def bridge_tz():
+    from zoneinfo import ZoneInfo
+
+    return ZoneInfo(TZ)
+
+
+def test_a_spring_forward_day_keeps_every_check_inside_hours(
+    menu_items, hours, wine_list
+):
+    """2027-03-14 is a spring-forward Sunday in America/Chicago: 02:00 does not exist.
+
+    `hours.service_windows` resolves a wall time with `fold=0`, and this asserts
+    the scenario engine inherits that rather than doing its own arithmetic on a
+    day that is 23 hours long.
+    """
+    ctx, expectation, expected, _outcomes = build(
+        menu_items, hours, wine_list, "service", day=date(2027, 3, 14)
+    )
+    assert ctx.windows, "the venue is open on Sunday in the fixture"
+    assert expectation.checks
+    assert expected["outside_hours_count"] == 0
+    for check in expectation.checks:
+        assert ctx.is_inside_hours(check.opened_at)
+
+
+def test_a_fall_back_day_keeps_every_check_inside_hours(menu_items, hours, wine_list):
+    """2026-11-01: 01:00-02:00 happens twice. Ambiguity resolves to the first."""
+    ctx, expectation, expected, _outcomes = build(
+        menu_items, hours, wine_list, "service", day=date(2026, 11, 1)
+    )
+    assert expectation.checks
+    assert expected["outside_hours_count"] == 0
+    for check in expectation.checks:
+        assert ctx.is_inside_hours(check.opened_at)

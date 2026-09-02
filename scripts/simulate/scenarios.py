@@ -50,7 +50,6 @@ from typing import Any, Callable, Iterable, Mapping
 from scripts.simulate.detection import looks_like_wine
 from scripts.simulate.hours import (
     WEEKDAYS,
-    OperatingHoursError,
     is_open_at,
     parse_operating_hours,
     service_windows,
@@ -281,20 +280,32 @@ def resolve_sale_volume(
             ml = float(sale_volume_ml)
         except (TypeError, ValueError):
             return SaleVolume(
-                "unresolved", None, f"sale_volume_ml {sale_volume_ml} is not a usable volume"
+                "unresolved",
+                None,
+                f"sale_volume_ml {sale_volume_ml} is not a usable volume",
             )
         if not math.isfinite(ml) or ml < MIN_PLAUSIBLE_SALE_ML:
             return SaleVolume(
-                "unresolved", None, f"sale_volume_ml {sale_volume_ml} is not a usable volume"
+                "unresolved",
+                None,
+                f"sale_volume_ml {sale_volume_ml} is not a usable volume",
             )
-        capacity = inv.bottle_size_ml if (inv and inv.bottle_size_ml) else RPC_DEFAULT_BOTTLE_ML
+        capacity = (
+            inv.bottle_size_ml
+            if (inv and inv.bottle_size_ml)
+            else RPC_DEFAULT_BOTTLE_ML
+        )
         if ml > capacity:
             return SaleVolume(
                 "unresolved",
                 None,
                 f"sale_volume_ml {ml} exceeds the {capacity}ml container it pours from",
             )
-        if inv is not None and inv.bottle_size_ml is not None and ml == inv.bottle_size_ml:
+        if (
+            inv is not None
+            and inv.bottle_size_ml is not None
+            and ml == inv.bottle_size_ml
+        ):
             return SaleVolume("whole_bottle")
         return SaleVolume("volume", ml)
 
@@ -504,7 +515,9 @@ class ScenarioContext:
 
     # -- lookups ----------------------------------------------------------
 
-    def mapping_for(self, external_item_id: str | None, name: str) -> dict[str, Any] | None:
+    def mapping_for(
+        self, external_item_id: str | None, name: str
+    ) -> dict[str, Any] | None:
         """`resolveWine`'s order: external id first, then an exact name match."""
         if external_item_id and external_item_id in self._by_external_id:
             return self._by_external_id[external_item_id]
@@ -593,7 +606,9 @@ class Expectation:
                         "wine_name": inv.wine_name if inv else "",
                         "opening_stock_live": inv.stock_live if inv else 0,
                         "threshold_min": inv.threshold_min if inv else 0,
-                        "bottle_size_ml": inv.effective_bottle_ml if inv else RPC_DEFAULT_BOTTLE_ML,
+                        "bottle_size_ml": (
+                            inv.effective_bottle_ml if inv else RPC_DEFAULT_BOTTLE_ML
+                        ),
                         "bottles": 0,
                         "pour_ml": 0.0,
                         "void_return": False,
@@ -666,7 +681,10 @@ class Expectation:
         """`stock_live < threshold_min` — the low-stock view's own predicate."""
         out = []
         for row in depletion:
-            if row["threshold_min"] and row["expected_stock_live"] < row["threshold_min"]:
+            if (
+                row["threshold_min"]
+                and row["expected_stock_live"] < row["threshold_min"]
+            ):
                 entry = {
                     "inventory_id": row["inventory_id"],
                     "wine_name": row["wine_name"],
@@ -780,7 +798,9 @@ def _food_line(line_no: int, name: str, category: str, price: float) -> PlannedL
     )
 
 
-def _pick_food(rng: random.Random, category: str | None = None) -> tuple[str, str, float]:
+def _pick_food(
+    rng: random.Random, category: str | None = None
+) -> tuple[str, str, float]:
     pool = [f for f in FOOD_ITEMS if category is None or f[1] == category]
     if not pool:
         raise ScenarioBuildError(f"No FOOD_ITEMS in category {category!r}")
@@ -808,7 +828,9 @@ def _wine_line(
     inventory id, not on whether a mapping was found.
     """
     item = _wine_item(dict(wine), by_glass=by_glass, quantity=qty)
-    mapping = None if force_unmapped else ctx.mapping_for(item.external_item_id, item.name)
+    mapping = (
+        None if force_unmapped else ctx.mapping_for(item.external_item_id, item.name)
+    )
 
     if mapping is None:
         # No mapping: `resolveWine` falls back to the keyword scan of the NAME.
@@ -826,7 +848,9 @@ def _wine_line(
             signature_hash=item.signature_hash,
         )
         if is_wine:
-            line.unresolved_reason = "no pos_item_mappings row resolves this line to stock"
+            line.unresolved_reason = (
+                "no pos_item_mappings row resolves this line to stock"
+            )
         return line
 
     inv = ctx.inventory_for(mapping.get("signature_hash") or item.signature_hash)
@@ -851,7 +875,9 @@ def _wine_line(
         line.unresolved_reason = "no pos_item_mappings row resolves this line to stock"
         return line
 
-    resolved = resolve_sale_volume(mapping.get("sale_volume_ml"), mapping.get("sale_unit"), inv)
+    resolved = resolve_sale_volume(
+        mapping.get("sale_volume_ml"), mapping.get("sale_unit"), inv
+    )
     if resolved.mode == "unresolved":
         line.expect = "unresolved_no_sale_volume"
         line.unresolved_reason = resolved.reason
@@ -921,7 +947,9 @@ def _glass_wines(ctx: ScenarioContext) -> list[dict[str, Any]]:
     return out
 
 
-def _require_window(ctx: ScenarioContext, scenario_id: str) -> tuple[datetime, datetime]:
+def _require_window(
+    ctx: ScenarioContext, scenario_id: str
+) -> tuple[datetime, datetime]:
     if not ctx.windows:
         raise ScenarioBuildError(
             f"{scenario_id}: the venue is closed on {ctx.service_date.isoformat()} "
@@ -1035,8 +1063,12 @@ def build_two_tables_two_minutes(ctx: ScenarioContext) -> ScenarioOutcome:
 
     id_a = ctx.check_id(scenario_id, 0)
     id_b = ctx.check_id(scenario_id, 1)
-    lines_a = [_wine_line(ctx, glass_wine, by_glass=True, qty=1, line_no=0, check_id=id_a)]
-    lines_b = [_wine_line(ctx, bottle_wine, by_glass=False, qty=5, line_no=0, check_id=id_b)]
+    lines_a = [
+        _wine_line(ctx, glass_wine, by_glass=True, qty=1, line_no=0, check_id=id_a)
+    ]
+    lines_b = [
+        _wine_line(ctx, bottle_wine, by_glass=False, qty=5, line_no=0, check_id=id_b)
+    ]
 
     check_a = PlannedCheck(
         external_check_id=id_a,
@@ -1199,11 +1231,15 @@ def _window_seat_times(
         return []
     slot = span / len(DINNER_CURVE)
     total_weight = sum(DINNER_CURVE)
+    # A window is half-open: `is_open_at` answers False at `end`. The last slot's
+    # uniform draw can land on `slot` through float rounding, which would put a
+    # seat exactly ON close and flag a perfectly ordinary check as out of hours.
+    last = max(0, int(span) - 1)
     out: list[datetime] = []
     for index, weight in enumerate(DINNER_CURVE):
         for _ in range(int(round(covers * weight / total_weight))):
-            offset = index * slot + rng.uniform(0, slot)
-            out.append(_floor_second(start + timedelta(seconds=int(offset))))
+            offset = min(int(index * slot + rng.uniform(0, slot)), last)
+            out.append(_floor_second(start + timedelta(seconds=offset)))
     return sorted(out)
 
 
@@ -1250,9 +1286,7 @@ def build_sell_through_to_par(ctx: ScenarioContext) -> ScenarioOutcome:
         )
         check_id = ctx.check_id(scenario_id, i)
         lines = [
-            _wine_line(
-                ctx, wine, by_glass=False, qty=qty, line_no=0, check_id=check_id
-            )
+            _wine_line(ctx, wine, by_glass=False, qty=qty, line_no=0, check_id=check_id)
         ]
         fname, fcat, fprice = _pick_food(rng)
         lines.append(_food_line(len(lines), fname, fcat, fprice))
@@ -1564,7 +1598,6 @@ def build_dropped_webhook(ctx: ScenarioContext) -> ScenarioOutcome:
 
 def build_closed_day(ctx: ScenarioContext) -> ScenarioOutcome:
     """A day the venue is shut. Zero checks is the whole expectation."""
-    scenario_id = "closed_day"
     closed = ctx.closed_weekdays
     weekday = WEEKDAYS[ctx.service_date.weekday()]
     if not closed:
@@ -1622,7 +1655,9 @@ def build_after_hours_order(ctx: ScenarioContext) -> ScenarioOutcome:
     tz = ZoneInfo(ctx.timezone)
     candidates: list[tuple[str, datetime]] = []
     if ctx.windows:
-        candidates.append(("last_close_plus_3h", ctx.windows[-1][1] + timedelta(hours=3)))
+        candidates.append(
+            ("last_close_plus_3h", ctx.windows[-1][1] + timedelta(hours=3))
+        )
     for label, day in (
         ("0300_local_next_day", ctx.service_date + timedelta(days=1)),
         ("0300_local_same_day", ctx.service_date),
