@@ -274,3 +274,67 @@ describe('reading the vendor’s own paperwork', () => {
     expect(screen.queryByText('Over-delivered')).not.toBeInTheDocument()
   })
 })
+
+/**
+ * ADR 0059 — the pre-fill is a machine proposal, and the manager's edit is the
+ * answer to it. Both must reach the server.
+ *
+ * Before this, a manager correcting a misread invoice quantity from 22 to 24
+ * left no trace whatsoever: the submitted 24 was byte-identical to a 24 the
+ * model had read correctly. Every extraction correction — the most valuable
+ * label this screen can produce — was invisible in the only corpus that could
+ * grade the extractor.
+ *
+ * These fail against pristine origin/main: `verifyOrderReceipt` was called with
+ * no prefilled_* fields at all.
+ */
+describe('ReceivingWorkspace — ADR 0059, the correction is visible', () => {
+  it('sends what the extraction proposed alongside what the manager submitted', async () => {
+    // The paper says 22. The manager, holding the cases, says 24.
+    forOrder.mockResolvedValue([doc('invoice', [{ qtyBottles: 22, unitPrice: 22 }])])
+    renderWorkspace()
+    await screen.findByText(/Read from their paperwork/)
+
+    const user = userEvent.setup()
+    await user.clear(invoiceQtyInput())
+    await user.type(invoiceQtyInput(), '24')
+    await user.click(submit())
+
+    expect(verifyOrderReceipt).toHaveBeenCalledTimes(1)
+    const [, body] = verifyOrderReceipt.mock.calls[0]
+    // The answer.
+    expect(body.invoiceQuantity).toBe(24)
+    // The proposal it overrode — frozen at pre-fill time, unmoved by the edit.
+    expect(body.prefilledInvoiceQuantity).toBe(22)
+    expect(body.prefilledInvoiceUnitPrice).toBe(22)
+  })
+
+  it('records agreement too, not only correction', async () => {
+    forOrder.mockResolvedValue([doc('invoice', [{ qtyBottles: 24, unitPrice: 22 }])])
+    renderWorkspace()
+    await screen.findByText(/Read from their paperwork/)
+
+    await userEvent.setup().click(submit())
+
+    const [, body] = verifyOrderReceipt.mock.calls[0]
+    // Equal values are not a redundant write: "the human looked and agreed" is
+    // a positive label, and it is only visible because both halves are sent.
+    expect(body.invoiceQuantity).toBe(24)
+    expect(body.prefilledInvoiceQuantity).toBe(24)
+  })
+
+  it('sends no proposal when no document pre-filled the form', async () => {
+    forOrder.mockResolvedValue([])
+    renderWorkspace()
+
+    const user = userEvent.setup()
+    await enterInvoice(user)
+    await user.click(submit())
+
+    const [, body] = verifyOrderReceipt.mock.calls[0]
+    // A hand-keyed invoice is an original answer, not a correction of one.
+    // Sending 0 or null here would fabricate a proposal nobody made.
+    expect(body.prefilledInvoiceQuantity).toBeUndefined()
+    expect(body.prefilledShippedQuantity).toBeUndefined()
+  })
+})
