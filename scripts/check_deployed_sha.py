@@ -125,7 +125,16 @@ def verdict(body: str, expected: str) -> tuple[str, str]:
 
 
 def fetch(url: str, timeout: float) -> tuple[int, str]:
-    """One GET. Returns (status, body); status 0 means the host never answered."""
+    """One GET. Returns (status, body); status 0 means the host never answered.
+
+    On status 0 the body carries the transport error, because "no response" is
+    not a diagnosis. Measured while pointing this at real production: a macOS
+    python.org interpreter with no root certificates raises
+    `CERTIFICATE_VERIFY_FAILED`, and the first version of this function reported
+    that as "the host never answered" — which sends the reader to look at the
+    gateway when the fault is on the machine running the check. Same shape as
+    everything else here: say what actually happened, never a plausible summary.
+    """
     req = urllib.request.Request(url, headers={"User-Agent": "deploy-audit"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -136,8 +145,8 @@ def fetch(url: str, timeout: float) -> tuple[int, str]:
         except Exception:  # pragma: no cover - body already consumed
             body = ""
         return exc.code, body
-    except Exception:
-        return 0, ""
+    except Exception as exc:
+        return 0, f"{type(exc).__name__}: {exc}"
 
 
 def poll(
@@ -177,7 +186,8 @@ def poll(
                 print(f"  attempt {attempt}: {state} — {detail}")
                 return last
         elif status == 0:
-            last = (UNREACHABLE, f"no response from {url}")
+            why = body or "no response"
+            last = (UNREACHABLE, f"{url} did not answer — {why}")
         else:
             last = (UNREACHABLE, f"HTTP {status} from {url}")
         print(f"  attempt {attempt}: {last[0]} — {last[1]}")
@@ -204,6 +214,8 @@ ADVICE = {
     UNKNOWN: (
         "The gateway answered but reported commit=\"unknown\", so no revision\n"
         "variable reached the process and this audit cannot verify anything.\n"
+        "Measured 2026-09-02: production DID report a real sha, so the runtime\n"
+        "path was live then — if you are seeing this, something removed it.\n"
         "Fix by setting ONE of:\n"
         "  - Railway service variable GIT_COMMIT_SHA=${{RAILWAY_GIT_COMMIT_SHA}}\n"
         "    (passed to the Docker build as an arg and baked into the image by\n"
@@ -219,10 +231,17 @@ ADVICE = {
         "in its place. Both mean this audit is pointed at the wrong thing."
     ),
     UNREACHABLE: (
-        "The gateway never answered 200 within the deadline. A 404 means the\n"
-        "route is missing (check the api/v1 prefix); nothing at all means the\n"
-        "host is down; a 502 means the process is not up — the NestJS DI failure\n"
-        "CI structurally cannot see."
+        "The gateway never answered 200 within the deadline. Read the reason on\n"
+        "the line above rather than assuming the host is down:\n"
+        "  HTTP 404              the route is missing — check the api/v1 prefix\n"
+        "  HTTP 502              the process is not up — the NestJS DI failure CI\n"
+        "                        structurally cannot see\n"
+        "  CERTIFICATE_VERIFY…   THIS machine has no root certificates; the\n"
+        "                        gateway is probably fine. Common on a macOS\n"
+        "                        python.org interpreter — run its\n"
+        "                        `Install Certificates.command`, or point\n"
+        "                        SSL_CERT_FILE at a CA bundle.\n"
+        "  timed out / refused   nothing answered at that address"
     ),
 }
 

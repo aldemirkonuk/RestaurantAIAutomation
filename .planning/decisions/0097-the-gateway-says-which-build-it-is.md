@@ -233,6 +233,22 @@ run  -e GIT_COMMIT_SHA=runtime-wins         ->  {"baked":"runtime-wins"}  (paths
 0f157dea0000…    no run exists                      -> NOT AUDITED (never ran)      exit 1
 ```
 
+**Against REAL production**, not a local double — `SSL_CERT_FILE=/etc/ssl/cert.pem`
+because this Mac's python.org interpreter has no root store (see below):
+
+```
+--expect <origin/main tip 92891200…>  ->  MATCH — running 928912003840bcb086cc1cf4f3642753aac47771   exit 0
+--expect 0f157dea…  (a different sha) ->  MISMATCH — a DIFFERENT build is serving                    exit 1
+GET /api/v1/health/ready              ->  HTTP 404 (correct — the route is on this branch, not main)
+```
+
+**A defect this found in itself.** Pointed at production, the first version
+reported `CERTIFICATE_VERIFY_FAILED` as *"no response from …"* — i.e. it blamed
+the gateway for a missing CA bundle on the machine running the check. The
+transport error is now carried into the verdict line and the advice block names
+the case. Found only by running it against something real; the localhost
+self-test cannot reach it.
+
 **Suites:** `check_deployed_sha.py --self-test` 8/8 including the mismatch;
 `npx jest src/health` **18/18** across 4 suites; `npx tsc --noEmit -p
 tsconfig.spec.json` clean; `scripts/check_gateway_boots.sh` PASS (the real
@@ -240,11 +256,28 @@ tsconfig.spec.json` clean; `scripts/check_gateway_boots.sh` PASS (the real
 
 ## What this does NOT fix — named, not quietly left
 
-- **The Railway service variable is a settings change, not a code change.**
-  Nothing in this repository can assert it is set. Until it is, the gateway
-  reports `commit: "unknown"` and **Stage 2 fails on every merge** — deliberately
-  and loudly, because the alternative is an audit that passes without checking.
-  This is the one action required of the founder.
+- **The Railway variable turned out to need no action — because it was measured,
+  not assumed.** This ADR was drafted saying *"nothing in this repository can
+  assert a platform setting, so until the founder sets `GIT_COMMIT_SHA`, Stage 2
+  fails every merge"*. That was written without asking production. Asking it,
+  2026-09-02T23:3xZ:
+
+  ```
+  GET https://wineopsapi-gateway-production.up.railway.app/api/v1/health/live
+  {"status":"ok","commit":"928912003840bcb086cc1cf4f3642753aac47771","bootedAt":"2026-09-02T23:31:01.642Z"}
+  ```
+
+  That is a real 40-character revision, and it is `origin/main`'s tip
+  (`92891200 fix(toast): close the mock-data escape in production (ADR 0020) (#223)`).
+  So **`RAILWAY_GIT_COMMIT_SHA` is already in the service's runtime environment**
+  and the audit will verify against it on the first merge after this lands. No
+  founder action is required. The Dockerfile bake stays as the second, independent
+  path — it survives a runner that does not set the runtime variable — but it is
+  belt-and-braces, not a prerequisite.
+
+  Recording the near-miss because it is the ADR's own subject one level up: an
+  unverified "the founder must do X" is the same class of unfalsifiable claim as
+  an unverified "the deploy is healthy". It cost one `curl` to settle.
 - **The orchestrator has no provenance route.** Stage 1 still only proves *a*
   orchestrator is up and its agents are Active. The same fault, one service over.
 - **Vercel is unverified.** Stage 3 builds the frontend in CI and curls the
