@@ -227,7 +227,9 @@ export class DocumentsController {
   @ApiOperation({
     summary: "Confirm a suggested line pairing",
     description:
-      "The human half of line matching. Pass orderLineId to accept a suggestion, or null to unlink one that was wrong.",
+      "The human half of line matching. Pass orderLineId to accept a suggestion, or null to unlink one that was wrong. " +
+      "The answer is APPENDED, never substituted (ADR 0059): a pairing the machine proposed keeps its proposed_confidence / proposed_method untouched, and this endpoint adds confirmed_by / confirmed_at beside them. " +
+      "Only a pairing no machine ever proposed gets match_method 'manual' — there is no proposal there to preserve.",
   })
   async linkLine(
     @Param("id") documentId: string,
@@ -235,25 +237,22 @@ export class DocumentsController {
     @Body() body: { orderLineId?: string | null },
     @CurrentUser() user: AuthedUser,
   ) {
-    const { data, error } = await this.db
-      .getClient()
-      .from("procurement_document_lines")
-      .update({
-        order_line_id: body?.orderLineId ?? null,
-        // A person confirmed it, so confidence is not a model's estimate any more.
-        match_confidence: body?.orderLineId ? 1 : null,
-        match_method: body?.orderLineId ? "manual" : null,
-      })
-      .eq("id", lineId)
-      .eq("document_id", documentId)
-      .eq("restaurant_id", user.restaurantId)
-      .select("id, order_line_id, match_method")
-      .maybeSingle();
-
-    if (error)
-      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
-    if (!data) throw new HttpException("Line not found", HttpStatus.NOT_FOUND);
-    return data;
+    try {
+      return await this.intake.confirmLineMatch(
+        documentId,
+        lineId,
+        user.restaurantId,
+        user.userId,
+        body?.orderLineId ?? null,
+      );
+    } catch (error) {
+      if (error?.message === "NOT_FOUND")
+        throw new HttpException("Line not found", HttpStatus.NOT_FOUND);
+      throw new HttpException(
+        error?.message || "Failed to confirm the pairing",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   @Patch(":id/lines/:lineId")
