@@ -161,6 +161,16 @@ ALLOWLIST: dict[tuple[str, str, str], str] = {
         "rejected",
         "r",
     ): "PromiseSettledResult.status from Promise.allSettled, not an order status",
+    # Third instance of the same shape, added 2026-09-02 with ADR 0067's
+    # reportSlice(): `r: PromiseSettledResult<any>` in analytics.service.ts.
+    # Verified by reading the declaration, not by pattern-matching the name --
+    # the receiver is the settled result itself, and the two arms are
+    # "rejected" / value.error, never an order.
+    (
+        "analytics/analytics.service.ts",
+        "rejected",
+        "r",
+    ): "PromiseSettledResult.status from Promise.allSettled, not an order status",
 }
 
 # ---------------------------------------------------------------------------

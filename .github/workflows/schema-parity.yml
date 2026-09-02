@@ -39,6 +39,17 @@ jobs:
   parity:
     name: Fresh database equals remote
     runs-on: ubuntu-latest
+    # This job's `name:` is a required status check on `main` (branch protection,
+    # `contexts`, `strict: true`) — so are the other three jobs in this file that
+    # carry the same fork guard below. Renaming a job or changing this `if:` changes
+    # whether PRs can merge at all: a renamed job is the same failure as a skipped
+    # one — the required context stops reporting and the PR is blocked forever.
+    # See ADR 0072 (Consequences) for why the guard itself stays as-is: a fork PR
+    # has no access to the DB secret, so a check that ran "successfully" on a fork
+    # would be vacuously green — the exact fault ADR 0072 exists to close. The
+    # remedy for a real fork contribution is a maintainer re-pushing the branch to
+    # this repo, not faking a green check.
+    #
     # Without the connection secret this job can only ever be vacuously green,
     # and a vacuously green check is worse than no check.
     if: >
