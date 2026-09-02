@@ -1,6 +1,9 @@
 import { ForbiddenException } from "@nestjs/common";
 import { ProcurementService } from "./procurement.service";
-import { parseDeliveredQuantity } from "./procurement.controller";
+import {
+  parseDeliveredQuantity,
+  readDeliveredQuantity,
+} from "./procurement.controller";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
@@ -117,6 +120,7 @@ interface Calls {
   creditInserts: Row[];
   inventoryUpdates: Row[];
   eventInserts: Row[];
+  priceHistoryInserts: Row[];
 }
 
 /**
@@ -128,6 +132,13 @@ interface Calls {
  */
 function makeDb(opts: {
   orderRow?: Row | null;
+  /**
+   * The order LINE. `procurement_orders` carries unit_type but NOT
+   * bottles_per_unit — only `procurement_order_items` does — so this is where a
+   * pack size comes from when one is stated. Absent exercises the
+   * bottles_total/quantity fallback instead.
+   */
+  orderLineRow?: Row | null;
   ownedInventoryIds?: string[];
   updatedRow?: Row;
   updateError?: { code: string; message: string } | null;
@@ -138,6 +149,7 @@ function makeDb(opts: {
     creditInserts: [],
     inventoryUpdates: [],
     eventInserts: [],
+    priceHistoryInserts: [],
   };
   const owned = new Set(opts.ownedInventoryIds ?? [OWN_INVENTORY]);
 
@@ -164,6 +176,9 @@ function makeDb(opts: {
           }
           return { data: opts.orderRow ?? null, error: null };
         }
+
+        if (table === "procurement_order_items")
+          return { data: opts.orderLineRow ?? null, error: null };
 
         if (table === "restaurant_inventory") {
           // The ownership probe: select("id") filtered by restaurant_id + id.
@@ -209,6 +224,7 @@ function makeDb(opts: {
           if (table === "procurement_credits")
             calls.creditInserts.push(payload);
           if (table === "inventory_events") calls.eventInserts.push(payload);
+          if (table === "price_history") calls.priceHistoryInserts.push(payload);
           return q;
         },
         update(payload: Row) {
@@ -497,5 +513,332 @@ describe("markDelivered — ?quantityReceived is validated, not coerced", () => 
     // The web client sends nothing at all; that is a real answer, not an error.
     expect(parseDeliveredQuantity(undefined)).toBeUndefined();
     expect(parseDeliveredQuantity("")).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// D4 — the unitless quantity
+// ---------------------------------------------------------------------------
+/**
+ * `verifyReceipt` handed `computeMatch` seven bare numbers. The order row it
+ * already had in hand carried `unit_type`, and nothing read it. An order placed
+ * in CASES and invoiced in BOTTLES therefore produced a confident wrong verdict
+ * rather than an error — and the wrong number was stamped into
+ * `effectiveUnitCost` and into `price_history`, whose `unit` column says
+ * 'BOTTLE' unconditionally.
+ *
+ * EVERY FIXTURE HERE IS A REAL CONVERSION. `unit_type: "bottle"` with a pack
+ * size of 1 makes the conversion the identity, which is exactly how the
+ * precedent bug in the door path stayed hidden: its one test used
+ * `countedUom: "bottle"`, so a missing conversion could not change the answer.
+ * These use cases of 12.
+ */
+describe("verifyReceipt — cross-unit quantities are converted, not compared raw", () => {
+  /** 2 cases of 12. `bottles_total` is 24; the header has no pack size column. */
+  const caseOrder = {
+    id: ORDER,
+    order_number: "ORD-2026-00003",
+    restaurant_id: REST,
+    inventory_id: OWN_INVENTORY,
+    provider_id: "prov-1",
+    quantity: 2,
+    bottles_total: 24,
+    unit_type: "case",
+    final_price: 22,
+    quantity_received: 2,
+    status: "DELIVERED",
+    delivery_notes: null,
+  };
+
+  it("matches an order placed in cases against an invoice billed in bottles", async () => {
+    // THE DEFECT, exactly. Pre-fix this compared ordered 2 against invoice 24
+    // and reported `qty_short` — a critical alert, a credit claim against the
+    // vendor, and a delivery held open, all for a delivery that was correct.
+    const { db, calls } = makeDb({ orderRow: caseOrder });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 24,
+      invoiceUom: "bottle",
+      invoiceUnitPrice: 22,
+      acceptedQuantity: 2,
+      countedUom: "case",
+    } as any);
+
+    expect(calls.orderUpdates[0].match_status).toBe("matched");
+    expect(calls.orderUpdates[0].backorder_quantity).toBe(0);
+    expect(calls.orderUpdates[0].discrepancy_notes).toBeNull();
+  });
+
+  it("raises no credit claim on a correct cases-vs-bottles delivery", async () => {
+    // The verdict is not the only casualty: `qty_short` opens a claim, which
+    // puts a restaurant in front of its distributor asking for money back over
+    // an arithmetic error of our own.
+    const { db, calls } = makeDb({ orderRow: caseOrder });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 24,
+      invoiceUom: "bottle",
+      invoiceUnitPrice: 22,
+      acceptedQuantity: 2,
+      countedUom: "case",
+    } as any);
+
+    expect(calls.creditInserts).toEqual([]);
+  });
+
+  it("writes a per-bottle landed cost, so the price series means what its unit column says", async () => {
+    // Pre-fix: effectiveUnitCost = 24 * $22 / 2 accepted = $264, written into a
+    // row whose `unit` is hardcoded 'BOTTLE'. A twelvefold-wrong price, labelled
+    // confidently, in the one series that exists to answer "are we paying more
+    // than we were".
+    const { db, calls } = makeDb({ orderRow: caseOrder });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 24,
+      invoiceUom: "bottle",
+      invoiceUnitPrice: 22,
+      acceptedQuantity: 2,
+      countedUom: "case",
+    } as any);
+
+    expect(calls.priceHistoryInserts).toHaveLength(1);
+    const row = calls.priceHistoryInserts[0];
+    expect(row.unit).toBe("BOTTLE");
+    expect(row.price).toBe(22);
+    // 24 BOTTLES, not the raw 24 that happened to be typed, and not 2 cases.
+    expect(row.quantity).toBe(24);
+  });
+
+  it("converts the rejected count with the accepted one, never only the first", async () => {
+    // The precedent bug, ported: `countedQty` was converted and `rejectedQty`
+    // was not, so `accepted = counted - rejected` subtracted boxes from bottles
+    // and booked 33 bottles of stock for a delivery refused at the door. Both
+    // operands are in `countedUom` and both must move.
+    const { db, calls } = makeDb({ orderRow: caseOrder });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 24,
+      invoiceUom: "bottle",
+      invoiceUnitPrice: 22,
+      acceptedQuantity: 1,
+      rejectedQuantity: 1,
+      rejectedReason: "case crushed",
+      countedUom: "case",
+    } as any);
+
+    // 1 case accepted = 12 bottles; 1 case rejected = 12 bottles. Billed 24
+    // bottles, 12 usable -> the vendor owes 12 bottles back at $22 = $264.
+    //
+    // Convert only the accepted side and this is 1 bottle rejected out of 24
+    // billed: a $22 claim, and 11 bottles of stock the books say are on the
+    // shelf and the shelf does not have. That subtraction across two units is
+    // the precedent bug verbatim.
+    expect(calls.orderUpdates[0].match_status).toBe("rejected");
+    expect(calls.creditInserts).toHaveLength(1);
+    expect(calls.creditInserts[0].claimed_amount).toBe(264);
+  });
+
+  it("prefers the order LINE's stated pack size over deriving one", async () => {
+    // `bottles_total / quantity` is a back-derivation, and back-deriving pack
+    // size is what let a legacy order booking 5 bottles for 5 cases teach the
+    // door that a case holds one bottle. The line states it outright.
+    const { db, calls } = makeDb({
+      // A header whose bottles_total would derive 1, contradicted by a line
+      // that says 12. The line wins.
+      orderRow: { ...caseOrder, bottles_total: 2 },
+      orderLineRow: { unit_type: "case", bottles_per_unit: 12 },
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 24,
+      invoiceUom: "bottle",
+      invoiceUnitPrice: 22,
+      acceptedQuantity: 2,
+      countedUom: "case",
+    } as any);
+
+    expect(calls.orderUpdates[0].match_status).toBe("matched");
+  });
+});
+
+describe("verifyReceipt — a unit it cannot read is refused, never assumed", () => {
+  const caseOrder = {
+    id: ORDER,
+    order_number: "ORD-2026-00004",
+    restaurant_id: REST,
+    inventory_id: OWN_INVENTORY,
+    provider_id: "prov-1",
+    quantity: 2,
+    bottles_total: 24,
+    unit_type: "case",
+    final_price: 22,
+    quantity_received: 2,
+    status: "DELIVERED",
+    delivery_notes: null,
+  };
+
+  it("refuses an unrecognised unit with a 400 rather than guessing one", async () => {
+    const { db } = makeDb({ orderRow: caseOrder });
+
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        invoiceQuantity: 24,
+        invoiceUom: "bxs",
+        invoiceUnitPrice: 22,
+        acceptedQuantity: 2,
+      } as any),
+    ).rejects.toThrow(/not a unit this match can convert/i);
+  });
+
+  it("writes nothing at all when a unit cannot be read", async () => {
+    // The refusal has to come before the ledger correction and the claim. A
+    // guard that ran afterwards would already have moved the stock.
+    const { db, calls } = makeDb({ orderRow: caseOrder });
+
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        invoiceQuantity: 24,
+        invoiceUom: "bxs",
+        invoiceUnitPrice: 22,
+        acceptedQuantity: 2,
+      } as any),
+    ).rejects.toThrow();
+
+    expect(calls.orderUpdates).toEqual([]);
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual(
+      [],
+    );
+    expect(calls.creditInserts).toEqual([]);
+    expect(calls.priceHistoryInserts).toEqual([]);
+  });
+
+  it("refuses a multiplying unit whose pack size is nowhere stated", async () => {
+    // An order row that cannot say how big a case is: no line, and a
+    // bottles_total that does not divide into the quantity. Guessing 12
+    // multiplies the delivery twelvefold; guessing 1 divides it by twelve.
+    const { db } = makeDb({
+      orderRow: { ...caseOrder, quantity: 5, bottles_total: 7 },
+    });
+
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        invoiceQuantity: 24,
+        invoiceUnitPrice: 22,
+        acceptedQuantity: 5,
+      } as any),
+    ).rejects.toThrow(/how many bottles are in one/i);
+  });
+
+  it("refuses to compare kegs against bottles", async () => {
+    const { db } = makeDb({
+      orderRow: {
+        ...caseOrder,
+        quantity: 2,
+        bottles_total: 2,
+        unit_type: "keg",
+      },
+    });
+
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        invoiceQuantity: 24,
+        invoiceUom: "bottle",
+        invoiceUnitPrice: 22,
+        acceptedQuantity: 2,
+      } as any),
+    ).rejects.toThrow(/cannot be compared/i);
+  });
+});
+
+describe("verifyReceipt — a deprecated alias may not disagree with its twin", () => {
+  const bottleOrder = {
+    id: ORDER,
+    order_number: "ORD-2026-00005",
+    restaurant_id: REST,
+    inventory_id: OWN_INVENTORY,
+    provider_id: "prov-1",
+    quantity: 24,
+    bottles_total: 24,
+    unit_type: "bottle",
+    final_price: 22,
+    quantity_received: 24,
+    status: "DELIVERED",
+    delivery_notes: null,
+  };
+
+  it("refuses a payload carrying both names with different values, naming both", async () => {
+    // The failure the alias pattern invites: two numbers for one quantity and a
+    // server that quietly prefers one. That is the same defect class as the
+    // unitless field itself — a number chosen by a rule nobody can see.
+    const { db, calls } = makeDb({ orderRow: bottleOrder });
+
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        acceptedQuantityInCountedUom: 24,
+        acceptedQuantity: 22,
+        invoiceQuantity: 24,
+        invoiceUnitPrice: 22,
+      } as any),
+    ).rejects.toThrow(
+      /acceptedQuantityInCountedUom=24 disagrees with its deprecated alias acceptedQuantity=22/,
+    );
+
+    expect(calls.orderUpdates).toEqual([]);
+  });
+
+  it("accepts both names when they agree — a client mid-migration sends both", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      acceptedQuantityInCountedUom: 24,
+      acceptedQuantity: 24,
+      invoiceQuantityInInvoiceUom: 24,
+      invoiceQuantity: 24,
+      invoiceUnitPrice: 22,
+    } as any);
+
+    expect(calls.orderUpdates[0].match_status).toBe("matched");
+    expect(calls.orderUpdates[0].accepted_quantity).toBe(24);
+  });
+
+  it("still honours a payload that carries only the old unitless names", async () => {
+    // The whole reason this was an alias and not a rename: a phone holding a
+    // queued receipt from an older build must still book its delivery.
+    const { db, calls } = makeDb({ orderRow: bottleOrder });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 24,
+      invoiceUnitPrice: 22,
+      acceptedQuantity: 22,
+      rejectedQuantity: 2,
+    } as any);
+
+    expect(calls.orderUpdates[0].accepted_quantity).toBe(22);
+    expect(calls.orderUpdates[0].rejected_quantity).toBe(2);
+    expect(calls.orderUpdates[0].match_status).toBe("rejected");
+  });
+});
+
+describe("markDelivered — ?quantityReceived is a deprecated alias, not a second answer", () => {
+  it("reads the canonical unit-declaring parameter", () => {
+    expect(readDeliveredQuantity("7", undefined)).toBe(7);
+  });
+
+  it("still reads the old unitless parameter on its own", () => {
+    expect(readDeliveredQuantity(undefined, "7")).toBe(7);
+  });
+
+  it("accepts both when they agree", () => {
+    expect(readDeliveredQuantity("7", "7")).toBe(7);
+  });
+
+  it("refuses both when they disagree, naming both", () => {
+    expect(() => readDeliveredQuantity("7", "9")).toThrow(
+      /quantityReceivedInOrderUom=7 disagrees with its deprecated alias quantityReceived=9/,
+    );
+  });
+
+  it("keeps absence absent", () => {
+    expect(readDeliveredQuantity(undefined, undefined)).toBeUndefined();
   });
 });
