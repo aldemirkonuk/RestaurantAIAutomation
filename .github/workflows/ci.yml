@@ -535,6 +535,21 @@ jobs:
       - name: Every relation the code queries is declared by supabase/migrations
         run: ./scripts/check_queried_tables_exist.py
 
+      # The column-level counterpart, added 2026-09-02 (ADR 0074). The guard
+      # above asks whether the TABLE a read names exists; this asks whether its
+      # COLUMNS do. A bad column in a select list or a filter is a 42703 that
+      # fails the WHOLE query -- exactly as fatal as a bad insert column, and
+      # invisible for the same reason: Supabase returns {data, error} rather
+      # than throwing, so a caller that destructures only `data` sees an empty
+      # result and reports health. check_order_capture_contract.py reads write
+      # payloads only and was green at exit 0 through the entire life of the
+      # defect that prompted this.
+      - name: Every column a read names is declared by supabase/migrations
+        run: ./scripts/check_read_columns_exist.py
+
+      - name: ...and that guard's own failure path fires
+        run: ./scripts/check_read_columns_exist.py --self-test
+
       - name: Schema lives in exactly one place
         run: ./scripts/check_migrations_single_home.py
 
