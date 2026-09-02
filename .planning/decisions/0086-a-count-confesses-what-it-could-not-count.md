@@ -152,8 +152,11 @@ Concretely, and each with the reasoning that carried it:
    on one branch only. Recorded as measured, because reporting it as a fixed bug
    would be a claim the evidence does not support.
 
-9. **`scripts/check_windowed_figures.py` gains `/documents-reports` as a third
-   `PAGES` entry**, not a second script. The page declares `SO_SERVER_WINDOWS`
+9. **`scripts/check_windowed_figures.py` gains `/documents-reports` as a fourth
+   `PAGES` entry**, not a second script. (Written as "third"; `/communications`
+   landed on `main` and merged in before this branch did, so the ordinal moved
+   under it — measured against the merged file, which carries `/receiving`,
+   `/receipts`, `/communications` and `/documents-reports`.) The page declares `SO_SERVER_WINDOWS`
    (PAPER / TIMELINE / REPORTS, each citing the gateway query that imposes it),
    exports a `SortingOfficeData` interface whose eight unknown-capable fields
    must keep their `| null`, and uses a named `GE` export so a deleted `≥` is
@@ -177,13 +180,62 @@ Concretely, and each with the reasoning that carried it:
   three cited gateway files, an unconsumed window, a lost `| null`, an
   untenanted query key, a discarded cardinality — proven to fire on each, on
   the real files.
-- **Known gap, named:** `apps/web/src/pages/LogsTimelinePage.tsx` reads the same
-  endpoint with its own local `TimelineEvent` type (`:22-25`) and renders
-  `new Date(e.occurredAt).toLocaleString()` (`:167`). It neither reads
-  `failedSources` nor tolerates a null timestamp — where it previously got a
-  500 for an undated row it will now render "Invalid Date". That file was owned
-  by another lane during this change and was left alone; it is the obvious next
-  edit.
+- **~~Known gap, named~~ — CLOSED on this branch.** The gap was
+  `apps/web/src/pages/LogsTimelinePage.tsx`: it read the same endpoint through
+  its own local `TimelineEvent` type, rendered
+  `new Date(e.occurredAt).toLocaleString()`, and read neither new field — so a
+  dead log source stayed a quieter number there, and an undated row would have
+  rendered "Invalid Date" where it previously got a 500. The file was owned by
+  another lane during the seam fix and left alone deliberately. It has now been
+  brought onto this branch (`fix(logs): the timeline names the register it
+  could not read`): the type is widened, a null or unparseable `occurredAt`
+  renders `—`, `failedSources` raises a banner naming the registers in words,
+  and a failed or unqueried source's chip shows `—` rather than a fabricated
+  `0`. Two things about that edit are worth recording here, because neither is
+  obvious from clause 1:
+    - **The two fields are typed OPTIONAL on the page**, matching
+      `useSortingOfficeData.ts:83-84`. Not defensiveness for its own sake: the
+      SPA and the gateway deploy separately, so a new page will meet an old
+      gateway during any rolling deploy, and `failedSources ?? []` there would
+      turn "the gateway did not say" into "nothing failed" — this ADR's own
+      fault, one layer up. Absent is unknown; the page falls silent instead.
+    - **One list drives the chip row and the register tally**, built as the
+      union of the page's mirrored source list and `sourcesQueried`. The page
+      restates these types rather than importing them (the web app has no
+      import path into `apps/api-gateway`), so the gateway can grow a seventh
+      source this file has never heard of. **The first version of this fix used
+      the union for the denominator only, and an adversarial audit killed it:**
+      it stopped the impossible "Read 7 of 6" and bought two new lies in its
+      place — a tally counting seven registers over a chip row showing six, and
+      an event badge that rendered **completely empty**, because
+      `SOURCE_LABEL[unknown]` is `undefined`. An unknown printed as nothing is
+      this ADR's own fault one field further down, introduced by the change
+      meant to close it. Now every label, colour and long-name lookup falls
+      back to the raw source key — ugly on purpose, never blank — and the two
+      counts come from the same array, so they cannot disagree.
+      `.planning/06-pages/logs.md` §8 records the mirror and §13 asks for it to
+      be shared.
+  `LogsTimelinePage.test.tsx` pins all of it — five of its six cases fail
+  against the pre-fix page, and the sixth passes on both by design because it
+  pins what the page must **not** start claiming.
+- **Still open on /logs, named rather than fixed:** the feed is capped at 100
+  with no floor marker anywhere on the page, and `/logs` is not a `PAGES` entry
+  in `scripts/check_windowed_figures.py` — so the new "every count below is a
+  floor" sentence, the `| null` on `occurredAt`, and the optionality of
+  `failedSources` rest on that one test file. Recorded as `logs.md` §9 and
+  roadmap item 2, not carried by this branch. The `PAGES` half is filed as an
+  **executable** claim rather than prose (`CLAIMS.jsonl`, `ADR-0086`,
+  `status: open`), because a "named, not fixed" bullet is a dated claim about a
+  moving tree and rots faster than anything else in an ADR — twice today a gap
+  named in an ADR was closed by another session before its own PR merged. The
+  claim inverts that: the day someone registers `/logs`, an open claim starts
+  holding, the guard goes red, and the bullet must be struck in that same
+  change. The floor-marker half gets **no** claim, deliberately: its closing has
+  no signature unique to it (`grep '≥'` would fire on any `≥` added anywhere for
+  any figure), and a check whose green means something other than what the
+  bullet says is worse than prose. It is also subsumed — registering the page
+  requires declaring `floor_markers` on the `PageSpec`, so closing the first
+  half makes the guard enforce the second.
 - **Revisit when:** a caller needs more than the first page of reports (the
   `offset` is there and unused), or when `event_store` becomes
   restaurant-scoped and `sourcesQueried` stops having a skip to report.
@@ -192,4 +244,6 @@ Concretely, and each with the reasoning that carried it:
 
 | Date | Reviewer | Outcome |
 |---|---|---|
-| 2026-09-02 | — | Created; six defects fixed, one recorded as not-reproducible, guard extended to a third page |
+| 2026-09-02 | — | Created; six defects fixed, one recorded as not-reproducible, guard extended to a fourth page |
+| 2026-09-02 | — | `/logs` brought onto the branch: the named gap in Consequences is closed, and the page's own window gap is filed in its place — as an executable `CLAIMS.jsonl` entry, not prose |
+| 2026-09-02 | Sonnet (adversarial) | Audited the `/logs` close-out: found that the union-denominator fix had itself introduced a blank source badge and a tally the chip row contradicted, plus two stale citations. All fixed; verdict safe to merge |

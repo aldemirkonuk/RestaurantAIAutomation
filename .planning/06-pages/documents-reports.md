@@ -332,13 +332,12 @@ dashboard.md §7.
 - Wave-wide siblings share the dead-hover inline-background pattern and the
   `PageGate` double-`.mudavym` charcoal-nesting latent — filed as one
   cross-page task, not fixed from this branch.
-- **`/logs` reads the same endpoint and has not caught up (ADR 0086).**
-  `LogsTimelinePage.tsx` keeps its own local `TimelineEvent` (`:22-25`) and
-  renders `new Date(e.occurredAt).toLocaleString()` (`:167`). It reads neither
-  `failedSources` — so a dead log source is still a quieter number there — nor
-  tolerates the now-nullable `occurredAt`: where it previously got a 500 for an
-  undated row it will render "Invalid Date". That file belonged to another lane
-  during the seam fix and was left alone deliberately.
+- ~~**`/logs` reads the same endpoint and has not caught up (ADR 0086).**~~
+  **Closed on this branch.** `LogsTimelinePage.tsx` now reads `failedSources`
+  and `sourcesQueried` and tolerates the nullable `occurredAt`, so both pages
+  treat a lost register the same way. Its own remaining gap — a 100-row feed
+  with no floor marker, and no `PAGES` entry in `check_windowed_figures.py` —
+  is filed on `logs.md` §9 and as an executable `CLAIMS.jsonl` entry, not here.
 
 ## 10. Maturity
 
