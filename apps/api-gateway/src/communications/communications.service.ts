@@ -32,6 +32,21 @@ export interface AlertRecipients {
   phones?: string[];
 }
 
+/**
+ * Result of a conversation-log write.
+ *
+ * `stored` exists so that "the call returned" cannot be mistaken for "the row
+ * landed". The previous shape was `{ data, error }`, and the one call site read
+ * a null `data` as merely uninteresting; the write had in fact never once
+ * succeeded. A caller that ignores `error` still cannot ignore `stored`.
+ */
+export interface StoredConversationResult {
+  /** True only if a row exists in procurement_conversations because of this call. */
+  stored: boolean;
+  data: { id: string } | null;
+  error: { message: string; code?: string } | null;
+}
+
 @Injectable()
 export class CommunicationsService {
   private readonly logger = new Logger(CommunicationsService.name);
@@ -447,7 +462,45 @@ export class CommunicationsService {
   }
 
   /**
-   * Store an outbound conversation record in procurement_conversations
+   * Store an outbound conversation record in procurement_conversations.
+   *
+   * ADR 0065. This wrote `sender_email`, `recipient_email`, `subject` and
+   * `message_body`. `procurement_conversations` has never had any of them, so
+   * every call answered 42703/PGRST204 and returned an error that the caller
+   * logged at warn level and stepped over. The table held 27 rows on
+   * 2026-09-02 and not one came from here.
+   *
+   * The parameter names are deliberately camelCase now: the four snake_case
+   * ones read like column names and were treated as such. They are inputs. The
+   * mapping onto the real columns is the whole point of this method:
+   *
+   *   body          -> message_text        (text, NOT NULL)
+   *   subject       -> email_headers.subject
+   *   senderEmail   -> email_headers.from
+   *   recipientEmail-> email_headers.to
+   *
+   * `email_headers` is jsonb and already has one convention, set by the live
+   * inbound path (`rabbitmq-bridge.service.ts` handleInboundEmail): lowercase
+   * RFC-822 header names — `from`, `subject`, `message_id`, `in_reply_to`,
+   * `references` — alongside `gmail_thread_id`. `to` is the RFC name for the
+   * recipient and follows the same rule; inbound rows omit it only because the
+   * recipient there is us. Verified against production: of 27 rows, 13 carry
+   * email_headers and their key set is exactly {subject, in_reply_to,
+   * references, message_id, from, gmail_thread_id}. Writing a second shape here
+   * would break `procurement.service.ts` and `conversationGrouping.ts`, which
+   * both thread on `email_headers.subject`.
+   *
+   * NOT NULL columns are refused, never defaulted. `message_text`,
+   * `restaurant_id`, `provider_id`, `direction` and `channel` have no defaults;
+   * a placeholder body would be indistinguishable from a real short message in
+   * /communications and in the weekly manager email, which is exactly what
+   * ADR 0020 and ADR 0051 forbid. A conversation with no body is not a
+   * conversation record, so we decline and say which field was missing.
+   *
+   * This never throws. The email it accompanies has already been sent, and
+   * failing the caller would misreport that. It also never reports success it
+   * did not have: `stored` is false and the failure is logged at error level
+   * with the table and the key set that was attempted.
    */
   async storeOutboundConversation(params: {
     restaurantId: string;
@@ -455,45 +508,87 @@ export class CommunicationsService {
     orderId?: string | null;
     direction: string;
     channel: string;
-    sender_email: string;
-    recipient_email: string;
+    senderEmail: string;
+    recipientEmail: string;
     subject: string;
-    message_body: string;
+    body: string;
     detected_intent?: string;
     detected_sentiment?: string;
     status: string;
-  }) {
+  }): Promise<StoredConversationResult> {
+    // Every NOT NULL column of procurement_conversations that has no default.
+    // `id` and `created_at` default; everything else here must be supplied.
+    const missing = (
+      [
+        ["restaurantId", params.restaurantId],
+        ["providerId", params.providerId],
+        ["direction", params.direction],
+        ["channel", params.channel],
+        ["body", params.body],
+      ] as const
+    )
+      .filter(([, value]) => !value || !String(value).trim())
+      .map(([name]) => name);
+
+    if (missing.length > 0) {
+      const message =
+        `Refusing to store a conversation: ${missing.join(", ")} ` +
+        `${missing.length === 1 ? "is" : "are"} empty, and the matching ` +
+        `procurement_conversations column is NOT NULL with no default. ` +
+        `Storing a placeholder would put an invented message body in front of ` +
+        `a manager (ADR 0020, ADR 0051), so the row is not written.`;
+      this.logger.error(message);
+      return { stored: false, data: null, error: { message, code: "MISSING" } };
+    }
+
+    const payload = {
+      restaurant_id: params.restaurantId,
+      provider_id: params.providerId,
+      order_id: params.orderId || null,
+      direction: params.direction,
+      channel: params.channel,
+      message_text: params.body,
+      email_headers: {
+        from: params.senderEmail || null,
+        to: params.recipientEmail || null,
+        subject: params.subject || null,
+      },
+      detected_intent: params.detected_intent || null,
+      detected_sentiment: params.detected_sentiment || null,
+      delivery_status: params.status,
+    };
+
     try {
       const { data, error } = await this.databaseService.supabase
         .from("procurement_conversations")
-        .insert({
-          restaurant_id: params.restaurantId,
-          provider_id: params.providerId || null,
-          order_id: params.orderId || null,
-          direction: params.direction,
-          channel: params.channel,
-          sender_email: params.sender_email,
-          recipient_email: params.recipient_email,
-          subject: params.subject,
-          message_body: params.message_body,
-          detected_intent: params.detected_intent || null,
-          detected_sentiment: params.detected_sentiment || null,
-          delivery_status: params.status,
-        })
+        .insert(payload)
         .select("id")
         .single();
 
       if (error) {
-        this.logger.warn(
-          `Failed to store outbound conversation: ${error.message}`,
+        this.logger.error(
+          `procurement_conversations insert FAILED — the outbound message was ` +
+            `not recorded. code=${(error as any).code ?? "none"} ` +
+            `message=${error.message} keys=[${Object.keys(payload).join(", ")}]`,
         );
-        return { data: null, error };
+        return {
+          stored: false,
+          data: null,
+          error: { message: error.message, code: (error as any).code },
+        };
       }
 
-      return { data, error: null };
+      return { stored: true, data, error: null };
     } catch (e: any) {
-      this.logger.warn(`storeOutboundConversation failed: ${e?.message}`);
-      return { data: null, error: e };
+      this.logger.error(
+        `procurement_conversations insert THREW — the outbound message was ` +
+          `not recorded: ${e?.message} keys=[${Object.keys(payload).join(", ")}]`,
+      );
+      return {
+        stored: false,
+        data: null,
+        error: { message: e?.message ?? String(e), code: e?.code },
+      };
     }
   }
 
