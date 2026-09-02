@@ -29,15 +29,46 @@
  * missing invoice: doing so makes the headline check compare a number to itself
  * and writes a price-verified assertion no human ever made.
  *
- * QUANTITIES ARE BOTTLE-EQUIVALENTS. Callers normalise through
- * documents/document-types.ts#toBottles before calling. Ordering 2 cases and
- * being invoiced 24 bottles is a match, and comparing the bare numbers reports
- * a 22-unit overage — the most common false alarm in beverage receiving.
+ * QUANTITIES ARE BOTTLE-EQUIVALENTS — AND THIS MODULE NOW ENFORCES THAT.
  *
- * Pure: no DB, no I/O. The frontend mirrors these rules in
- * apps/web/src/lib/invoiceMatch.ts for live feedback while counting; THIS module
- * is authoritative and decides what is persisted.
+ * It used to be a comment. Every field was a bare number, `MatchInput` had no
+ * unit field at all, and the docblock asked callers to normalise through
+ * `documents/document-types.ts#toBottles` first. `verifyReceipt` did not, and
+ * nothing could tell: an order placed in cases of 12 and invoiced in bottles
+ * produced a CONFIDENT WRONG VERDICT rather than an error — 2 vs 24 reads as a
+ * 22-unit overage, the most common false alarm in beverage receiving — and the
+ * wrong number was then stamped into `effectiveUnitCost` and the price series.
+ *
+ * A convention that cannot be checked is not a contract. So each of the four
+ * documents now DECLARES its unit on the input, in a field that shares the
+ * prefix of the quantities it governs (`invoiceUom` governs `invoiceQty*`), and
+ * this function converts every operand to bottles itself before a single
+ * comparison happens.
+ *
+ * REFUSAL RULES (ADR 0011's rule, as `order-units.ts` states it):
+ *   - An **unrecognised** unit throws. "bxs" could mean anything.
+ *   - A **multiplying** unit (case/pack/split_case) with no pack size throws,
+ *     unless the ORDER is in that same unit, in which case the order's own
+ *     stated pack size applies — a reference to a sibling fact, not a guess.
+ *   - An **opaque** unit (keg/liter) may only be matched against the same
+ *     opaque unit; mixing one with bottles throws. Inventing a keg-to-bottle
+ *     factor produces confident, wrong cost maths.
+ *   - An **absent** unit resolves to the ORDER's unit, and the order's own
+ *     absent unit resolves to `bottle`. This is not the guess the ADR forbids:
+ *     every existing client seeds its physical count from the order's own
+ *     quantity (`ReceivingWorkspace.tsx` — `stockedQty = order.quantityReceived
+ *     ?? order.quantity`), so the order's unit is what an undeclared number
+ *     already IS. With no unit stated anywhere the whole call is in bottles and
+ *     every conversion is the identity, which is exactly the old behaviour.
+ *
+ * Pure: no DB, no I/O. Throws only `MatchUnitError`, which the HTTP layer maps
+ * to a 400 — a refusal a caller can act on, rather than a verdict it cannot
+ * doubt. The frontend mirrors these rules in apps/web/src/lib/invoiceMatch.ts
+ * for live feedback while counting; THIS module is authoritative and decides
+ * what is persisted.
  */
+
+import { normalizeUom, Uom } from "./documents/document-types";
 
 export type MatchVerdict =
   | "matched"
@@ -59,31 +90,122 @@ export type MatchCheckId =
   | "damage"
   | "fulfilment";
 
+/**
+ * Why a conversion was refused. Carried so the HTTP layer can say which
+ * document's unit it could not read, rather than answering a bare 500.
+ */
+export type MatchUnitRefusal =
+  | "unknown_unit"
+  | "pack_size_required"
+  | "not_comparable"
+  | "alias_conflict";
+
+/**
+ * A quantity could not be put into bottles, so no verdict was computed.
+ *
+ * Thrown, never returned as a verdict. The failure this whole mechanism exists
+ * to prevent is a confident wrong answer; degrading to "unmatched" would be one
+ * more of those, because nobody reading `unmatched` would know a unit was
+ * unreadable.
+ */
+export class MatchUnitError extends Error {
+  readonly reason: MatchUnitRefusal;
+  constructor(reason: MatchUnitRefusal, message: string) {
+    super(message);
+    this.name = "MatchUnitError";
+    this.reason = reason;
+  }
+}
+
 export interface MatchInput {
-  /** Ordered quantity from the PO, in bottle-equivalents. */
-  orderedQty: number;
-  /** Agreed unit price (final_price). Null when the order never carried a price. */
+  // -------------------------------------------------------------------------
+  // ORDERED (PO, EDI 850)
+  // -------------------------------------------------------------------------
+  /**
+   * Ordered quantity from the PO, in `orderedUom`.
+   *
+   * Supersedes `orderedQty`, which named no unit at all.
+   */
+  orderedQtyInOrderedUom?: number | null;
+  /**
+   * Unit the order was placed in — bottle | case | keg | pack | split_case |
+   * each | liter. Absent means bottles. Also the fallback unit for any other
+   * document that does not state one (see the module docblock).
+   */
+  orderedUom?: string | null;
+  /** Bottles in one ordered unit. Required when `orderedUom` multiplies. */
+  orderedBottlesPerUnit?: number | null;
+
+  /** Agreed unit price (final_price). PER BOTTLE. Null when the order never carried a price. */
   poUnitPrice?: number | null;
+
+  // -------------------------------------------------------------------------
+  // SHIPPED (packing slip, EDI 856)
+  // -------------------------------------------------------------------------
   /**
-   * Quantity the packing slip / ASN says shipped. Null = no packing slip, which
-   * is common and must read as unknown rather than as agreement.
+   * Quantity the packing slip / ASN says shipped, in `shippedUom`. Null = no
+   * packing slip, which is common and must read as unknown rather than as
+   * agreement.
    */
-  shippedQty?: number | null;
-  /** Quantity the vendor invoice bills for. Null = invoice not in hand yet. */
-  invoiceQty?: number | null;
-  /** Unit price the vendor invoice bills. Null = invoice not in hand yet. */
+  shippedQtyInShippedUom?: number | null;
+  /** Unit the packing slip counts in. Absent falls back to `orderedUom`. */
+  shippedUom?: string | null;
+  /** Bottles in one shipped unit. Required when `shippedUom` multiplies. */
+  shippedBottlesPerUnit?: number | null;
+
+  // -------------------------------------------------------------------------
+  // BILLED (invoice, EDI 810)
+  // -------------------------------------------------------------------------
+  /** Quantity the vendor invoice bills for, in `invoiceUom`. Null = invoice not in hand yet. */
+  invoiceQtyInInvoiceUom?: number | null;
+  /** Unit the invoice bills in. Absent falls back to `orderedUom`. */
+  invoiceUom?: string | null;
+  /** Bottles in one billed unit. Required when `invoiceUom` multiplies. */
+  invoiceBottlesPerUnit?: number | null;
+  /**
+   * Unit price the vendor invoice bills. PER BOTTLE — it is compared directly
+   * against `poUnitPrice`, which `upsertOrderLine` derives per bottle
+   * (`line_total = final_unit_price * total_bottles`). Null = invoice not in
+   * hand yet.
+   */
   invoiceUnitPrice?: number | null;
-  /** Units accepted into stock. */
-  acceptedQty: number;
-  /** Units that arrived but were refused (damaged/corked). */
-  rejectedQty?: number;
+
+  // -------------------------------------------------------------------------
+  // RECEIVED (physical count at the door)
+  // -------------------------------------------------------------------------
+  /** Units accepted into stock, in `countedUom`. */
+  acceptedQtyInCountedUom?: number | null;
+  /** Units that arrived but were refused (damaged/corked), in `countedUom`. */
+  rejectedQtyInCountedUom?: number | null;
   /**
-   * Units supplied free under an agreed deal ("11 for the price of 10").
-   * Netted out of every quantity comparison. Without this an ordinary,
-   * negotiated bonus reads as `qty_over` and fires a critical alert every time
-   * — and a manager who is alarmed about good news stops reading alarms.
+   * Units supplied free under an agreed deal ("11 for the price of 10"), in
+   * `countedUom`. Netted out of every quantity comparison. Without this an
+   * ordinary, negotiated bonus reads as `qty_over` and fires a critical alert
+   * every time — and a manager who is alarmed about good news stops reading
+   * alarms.
    */
-  freeGoodsQty?: number;
+  freeGoodsQtyInCountedUom?: number | null;
+  /**
+   * Units actually added to the ledger at markDelivered time, in `countedUom` —
+   * NOT what we wish had been stocked. The delivery path stocks optimistically
+   * at invoice quantity before anyone counts, so this defaults to that, and
+   * ledgerDelta is the correction back to reality. Defaulting it to the accepted
+   * count would make ledgerDelta permanently zero and silently strand every
+   * miscount.
+   */
+  stockedQtyInCountedUom?: number | null;
+  /**
+   * Unit the physical count was taken in. Absent falls back to `orderedUom` —
+   * which is what every current client actually means, because each seeds its
+   * count from the order's own quantity.
+   */
+  countedUom?: string | null;
+  /** Bottles in one counted unit. Required when `countedUom` multiplies. */
+  countedBottlesPerUnit?: number | null;
+
+  // -------------------------------------------------------------------------
+  // Shared
+  // -------------------------------------------------------------------------
   /** Manager justification for accepting a price that differs from the PO. */
   priceOverrideReason?: string | null;
   /**
@@ -92,13 +214,43 @@ export interface MatchInput {
    * the sticker price. Freight is a cost component, not a price variance.
    */
   allocatedCharges?: number;
-  /**
-   * Units actually added to the ledger at markDelivered time — NOT what we wish
-   * had been stocked. The delivery path stocks optimistically at invoice
-   * quantity before anyone counts, so this defaults to that, and ledgerDelta is
-   * the correction back to reality. Defaulting it to acceptedQty would make
-   * ledgerDelta permanently zero and silently strand every miscount.
-   */
+
+  // =========================================================================
+  // DEPRECATED ALIASES — unitless names kept so nothing on the wire breaks.
+  //
+  // Each is the old name of the canonical field directly above its group. They
+  // are accepted, never preferred, and they may not disagree: supplying an alias
+  // AND its canonical twin with DIFFERENT values throws `alias_conflict` rather
+  // than letting this function pick one, because silently picking one is the
+  // same class of defect the unit fields exist to end.
+  //
+  // Kept rather than deleted because three independent things still hold these
+  // names: the generated backtest fixture
+  // (`invoice-match.backtest.spec.ts`, regenerated only by
+  // `python3 -m scripts.docgen backtest`), the web and mobile mirrors of this
+  // module, and the parity test that asserts the mirrors agree with this file.
+  //
+  // REMOVAL CONDITION — not "someday": delete each alias once no caller can
+  // still hold the old name, i.e. when the docgen fixture has been regenerated
+  // with the canonical names AND both mirrors and their parity test use them.
+  // Those are all in-repo, so this group can go in one change as soon as
+  // someone owns the fixture regeneration; it is not gated on client rollout
+  // the way the HTTP DTO's aliases are.
+  // =========================================================================
+
+  /** @deprecated Unitless. Use `orderedQtyInOrderedUom` with `orderedUom`. */
+  orderedQty?: number | null;
+  /** @deprecated Unitless. Use `shippedQtyInShippedUom` with `shippedUom`. */
+  shippedQty?: number | null;
+  /** @deprecated Unitless. Use `invoiceQtyInInvoiceUom` with `invoiceUom`. */
+  invoiceQty?: number | null;
+  /** @deprecated Unitless. Use `acceptedQtyInCountedUom` with `countedUom`. */
+  acceptedQty?: number | null;
+  /** @deprecated Unitless. Use `rejectedQtyInCountedUom` with `countedUom`. */
+  rejectedQty?: number | null;
+  /** @deprecated Unitless. Use `freeGoodsQtyInCountedUom` with `countedUom`. */
+  freeGoodsQty?: number | null;
+  /** @deprecated Unitless. Use `stockedQtyInCountedUom` with `countedUom`. */
   stockedQty?: number | null;
 }
 
@@ -146,11 +298,277 @@ const money = (n: number) => `$${n.toFixed(2)}`;
 const priceEquals = (a: number, b: number) =>
   Math.round(a * 100) === Math.round(b * 100);
 
+/** Units where quantity x pack size is the bottle count. */
+const MULTIPLYING: ReadonlySet<Uom> = new Set<Uom>([
+  "case",
+  "pack",
+  "split_case",
+]);
+
+/** Units that are not bottle-convertible at all. See `toBottles`. */
+const OPAQUE: ReadonlySet<Uom> = new Set<Uom>(["keg", "liter"]);
+
+const present = (v: unknown) => v !== undefined && v !== null;
+
+/**
+ * Read a value that has a canonical name and a deprecated unitless alias.
+ *
+ * Both present and EQUAL is fine — an old client and a new one may legitimately
+ * send the same number twice during a rollout. Both present and DIFFERENT is
+ * refused, loudly, naming both fields and both values: an alias that can be
+ * quietly overruled by its twin is not a compatibility shim, it is a second
+ * silent-wrong-number channel, which is the defect this file is being fixed for.
+ */
+function readAliased(
+  canonicalName: string,
+  canonical: number | null | undefined,
+  aliasName: string,
+  alias: number | null | undefined,
+): number | null {
+  const hasCanonical = present(canonical);
+  const hasAlias = present(alias);
+  if (hasCanonical && hasAlias && Number(canonical) !== Number(alias)) {
+    throw new MatchUnitError(
+      "alias_conflict",
+      `${canonicalName}=${canonical} disagrees with its deprecated alias ${aliasName}=${alias}. ` +
+        `They name the same quantity, so one of them is wrong and this match cannot tell which. ` +
+        `Send only ${canonicalName}.`,
+    );
+  }
+  if (hasCanonical) return Number(canonical);
+  if (hasAlias) return Number(alias);
+  return null;
+}
+
+/** A unit plus the pack size that turns it into bottles. */
+interface ResolvedUnit {
+  uom: Uom;
+  bottlesPerUnit: number;
+}
+
+/**
+ * Turn one document's declared unit into something that can multiply, or refuse.
+ *
+ * `fallback` is the ORDER's resolved unit; see the module docblock for why an
+ * undeclared unit means "the same unit the order was placed in" rather than
+ * "bottles". Pass null for the order itself, whose own fallback is `bottle`.
+ */
+function resolveUnit(
+  label: string,
+  rawUom: string | null | undefined,
+  rawPack: number | null | undefined,
+  fallback: ResolvedUnit | null,
+): ResolvedUnit {
+  const raw = typeof rawUom === "string" ? rawUom.trim() : rawUom;
+
+  if (raw === undefined || raw === null || raw === "") {
+    // Absent -> the order's unit, or the identity for the order itself. A pack
+    // size stated without a unit still has to mean something, so honour it.
+    const base = fallback ?? { uom: "bottle" as Uom, bottlesPerUnit: 1 };
+    if (!present(rawPack)) return base;
+    const pack = Number(rawPack);
+    if (!Number.isFinite(pack) || !Number.isInteger(pack) || pack < 1) {
+      throw new MatchUnitError(
+        "pack_size_required",
+        `${label} pack size must be a whole number of at least 1 (got ${JSON.stringify(rawPack)}).`,
+      );
+    }
+    if (!MULTIPLYING.has(base.uom) && pack !== 1) {
+      throw new MatchUnitError(
+        "pack_size_required",
+        `${label} states ${pack} bottles per unit, but its unit is "${base.uom}", which holds exactly one.`,
+      );
+    }
+    return { uom: base.uom, bottlesPerUnit: pack };
+  }
+
+  const uom = normalizeUom(raw);
+  if (!uom) {
+    throw new MatchUnitError(
+      "unknown_unit",
+      `${label} is stated in "${String(rawUom)}", which is not a unit this match can convert to bottles. ` +
+        `Refusing rather than guessing — a guessed unit produces a confident, wrong verdict that nothing downstream can detect.`,
+    );
+  }
+
+  const pack = present(rawPack) ? Number(rawPack) : null;
+  if (
+    pack !== null &&
+    (!Number.isFinite(pack) || !Number.isInteger(pack) || pack < 1)
+  ) {
+    throw new MatchUnitError(
+      "pack_size_required",
+      `${label} pack size must be a whole number of at least 1 (got ${JSON.stringify(rawPack)}).`,
+    );
+  }
+
+  if (MULTIPLYING.has(uom)) {
+    if (pack === null) {
+      // The order's own pack size applies when this document counts in the very
+      // same unit. That is a reference to a stated sibling fact, not a guess —
+      // and it is the ordinary case, where a manager counts the cases they
+      // ordered without restating what a case holds.
+      if (fallback && fallback.uom === uom) return fallback;
+      throw new MatchUnitError(
+        "pack_size_required",
+        `${label} is stated in ${uom.replace("_", " ")}s but nothing says how many bottles are in one. ` +
+          `Guessing 12 multiplies the delivery twelvefold and guessing 1 divides it by twelve; neither is knowledge.`,
+      );
+    }
+    return { uom, bottlesPerUnit: pack };
+  }
+
+  if (pack !== null && pack !== 1) {
+    throw new MatchUnitError(
+      "pack_size_required",
+      `${label} states ${pack} bottles per unit, which contradicts a unit of "${uom}" — it holds exactly one.`,
+    );
+  }
+  return { uom, bottlesPerUnit: 1 };
+}
+
+/**
+ * Normalise every operand of a match into bottles, or refuse.
+ *
+ * Exported so the refusal can be tested as arithmetic rather than only through
+ * a verdict, and so callers that need to report the bottle figures back to a
+ * human (the price series, the ledger correction) read the same numbers the
+ * verdict was computed from.
+ */
+export function toBottleOperands(input: MatchInput): {
+  orderedQty: number;
+  shippedQty: number | null;
+  invoiceQty: number | null;
+  acceptedQty: number;
+  rejectedQty: number;
+  freeGoodsQty: number;
+  stockedQty: number | null;
+  units: {
+    ordered: ResolvedUnit;
+    shipped: ResolvedUnit;
+    invoice: ResolvedUnit;
+    counted: ResolvedUnit;
+  };
+} {
+  const rawOrdered = readAliased(
+    "orderedQtyInOrderedUom",
+    input.orderedQtyInOrderedUom,
+    "orderedQty",
+    input.orderedQty,
+  );
+  const rawShipped = readAliased(
+    "shippedQtyInShippedUom",
+    input.shippedQtyInShippedUom,
+    "shippedQty",
+    input.shippedQty,
+  );
+  const rawInvoice = readAliased(
+    "invoiceQtyInInvoiceUom",
+    input.invoiceQtyInInvoiceUom,
+    "invoiceQty",
+    input.invoiceQty,
+  );
+  const rawAccepted = readAliased(
+    "acceptedQtyInCountedUom",
+    input.acceptedQtyInCountedUom,
+    "acceptedQty",
+    input.acceptedQty,
+  );
+  const rawRejected = readAliased(
+    "rejectedQtyInCountedUom",
+    input.rejectedQtyInCountedUom,
+    "rejectedQty",
+    input.rejectedQty,
+  );
+  const rawFreeGoods = readAliased(
+    "freeGoodsQtyInCountedUom",
+    input.freeGoodsQtyInCountedUom,
+    "freeGoodsQty",
+    input.freeGoodsQty,
+  );
+  const rawStocked = readAliased(
+    "stockedQtyInCountedUom",
+    input.stockedQtyInCountedUom,
+    "stockedQty",
+    input.stockedQty,
+  );
+
+  const ordered = resolveUnit(
+    "The order",
+    input.orderedUom,
+    input.orderedBottlesPerUnit,
+    null,
+  );
+  const shipped = resolveUnit(
+    "The packing slip",
+    input.shippedUom,
+    input.shippedBottlesPerUnit,
+    ordered,
+  );
+  const invoice = resolveUnit(
+    "The invoice",
+    input.invoiceUom,
+    input.invoiceBottlesPerUnit,
+    ordered,
+  );
+  const counted = resolveUnit(
+    "The physical count",
+    input.countedUom,
+    input.countedBottlesPerUnit,
+    ordered,
+  );
+
+  // Opaque units do not convert. A keg counted against a bottle order cannot be
+  // compared at all, and inventing a factor is exactly the confident-wrong-cost
+  // failure `toBottles` refuses to commit. Only units that actually contribute a
+  // number are checked, so an absent packing slip cannot block a valid match.
+  const participating: Array<[string, ResolvedUnit]> = [
+    ["the order", ordered],
+    ...(rawShipped !== null
+      ? ([["the packing slip", shipped]] as Array<[string, ResolvedUnit]>)
+      : []),
+    ...(rawInvoice !== null
+      ? ([["the invoice", invoice]] as Array<[string, ResolvedUnit]>)
+      : []),
+    ...(rawAccepted !== null || rawRejected !== null || rawFreeGoods !== null
+      ? ([["the physical count", counted]] as Array<[string, ResolvedUnit]>)
+      : []),
+  ];
+  const opaque = participating.filter(([, u]) => OPAQUE.has(u.uom));
+  if (opaque.length > 0) {
+    const mismatch = participating.find(([, u]) => u.uom !== opaque[0][1].uom);
+    if (mismatch) {
+      throw new MatchUnitError(
+        "not_comparable",
+        `${opaque[0][0]} is counted in ${opaque[0][1].uom}s and ${mismatch[0]} in ${mismatch[1].uom}s. ` +
+          `A ${opaque[0][1].uom} is not a number of bottles in any way a receiver would accept, so these cannot be compared.`,
+      );
+    }
+  }
+
+  const conv = (qty: number, u: ResolvedUnit) => qty * u.bottlesPerUnit;
+
+  return {
+    orderedQty: Math.max(0, conv(rawOrdered ?? 0, ordered)),
+    shippedQty: rawShipped === null ? null : Math.max(0, conv(rawShipped, shipped)),
+    invoiceQty: rawInvoice === null ? null : Math.max(0, conv(rawInvoice, invoice)),
+    acceptedQty: Math.max(0, conv(rawAccepted ?? 0, counted)),
+    rejectedQty: Math.max(0, conv(rawRejected ?? 0, counted)),
+    freeGoodsQty: Math.max(0, conv(rawFreeGoods ?? 0, counted)),
+    stockedQty: rawStocked === null ? null : conv(rawStocked, counted),
+    units: { ordered, shipped, invoice, counted },
+  };
+}
+
 export function computeMatch(input: MatchInput): MatchResult {
-  const orderedQty = Math.max(0, input.orderedQty ?? 0);
-  const acceptedQty = Math.max(0, input.acceptedQty ?? 0);
-  const rejectedQty = Math.max(0, input.rejectedQty ?? 0);
-  const freeGoodsQty = Math.max(0, input.freeGoodsQty ?? 0);
+  // EVERY operand is in bottles from here down. Nothing below this line may read
+  // `input.<something>Qty` again — that is what made the units invisible before.
+  const operands = toBottleOperands(input);
+
+  const orderedQty = operands.orderedQty;
+  const acceptedQty = operands.acceptedQty;
+  const rejectedQty = operands.rejectedQty;
+  const freeGoodsQty = operands.freeGoodsQty;
   const allocatedCharges = Math.max(0, input.allocatedCharges ?? 0);
   const receivedQty = acceptedQty + rejectedQty;
 
@@ -158,19 +576,17 @@ export function computeMatch(input: MatchInput): MatchResult {
   // units they gave us.
   const billableReceived = Math.max(0, receivedQty - freeGoodsQty);
 
-  const hasShip = input.shippedQty != null;
-  const shippedQty = hasShip ? Math.max(0, input.shippedQty as number) : null;
+  const shippedQty = operands.shippedQty;
+  const hasShip = shippedQty != null;
 
-  const hasInvoice = input.invoiceQty != null;
-  const invoiceQty = hasInvoice
-    ? Math.max(0, input.invoiceQty as number)
-    : null;
+  const invoiceQty = operands.invoiceQty;
+  const hasInvoice = invoiceQty != null;
 
   const poUnitPrice = input.poUnitPrice ?? null;
   const invoiceUnitPrice = input.invoiceUnitPrice ?? null;
   const overrideReason = (input.priceOverrideReason ?? "").trim();
 
-  const stockedQty = input.stockedQty ?? invoiceQty ?? orderedQty;
+  const stockedQty = operands.stockedQty ?? invoiceQty ?? orderedQty;
 
   const checks: MatchCheck[] = [];
 
