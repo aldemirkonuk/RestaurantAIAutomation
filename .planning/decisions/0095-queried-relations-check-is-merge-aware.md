@@ -178,10 +178,26 @@ Runs 1→2 are the repair; 2→3 is proof the exemption is not global; 4a/4b are
 the ratchet — an object no migration declares is red in both modes, and the
 precision of the exemption is visible in 4b's count going from 1 to 2.
 
+**Where the fixture is not production, stated rather than glossed:** its 1278
+public functions against real production's 824 is an artefact of installing
+postgis and pgvector `WITH SCHEMA public` per the recipe — the fixture has
+*more* functions than production, not fewer. That can only make things look
+*less* missing, so it cannot manufacture runs 1, 3, 4a or 4b, which are all
+failures. Nor can it explain run 2, because run 3 is the *same database and the
+same tree* and returns the failure: the only variable between them is `--base`.
+The load-bearing fact was queried directly rather than inferred —
+`record_stock_count` count 0.
+
 Additionally, on this branch's own tree: `--base no-such-ref-anywhere` → **exit
 2** with `BLOCKED`; `--base origin/main` → *adds 0 migration file(s)… NOTHING is
 exempt*, exit 0; and `scripts/check_migrations_single_home.py`, which `exec`s
 this module, still exits 0.
+
+**And in real CI, on this PR (#267):** the job passed with the self-test green,
+`== merge-aware: this PR adds 0 migration file(s) vs 'origin/main', declaring 0
+new relation(s) and 0 new function(s)`, and a live read of production —
+`== production has 244 relations and 824 functions` — so the merge-aware path
+is exercised on a PR that adds no migration and correctly exempts nothing.
 
 ## Branch protection — restored as part of this decision
 
