@@ -118,6 +118,7 @@ const Privacy = lazyWithRefresh(() => import('./pages/Privacy'))
 const VendorPortal = lazyWithRefresh(() => import('./pages/VendorPortal'))
 // Owner/manager only — vendor pricing is the restaurant's negotiating position.
 const VendorPriceCompare = lazyWithRefresh(() => import('./pages/VendorPriceCompare'))
+const DevTruth = lazyWithRefresh(() => import('./pages/DevTruth'))
 
 // Dev/Test pages
 const DevSandbox = lazyWithRefresh(() => import('./pages/DevSandbox'))
@@ -295,6 +296,12 @@ function App() {
                       too (owner/manager on /vendor-intel/*) — a hidden route is
                       not access control. */}
                   <Route path="/vendor-prices" element={<VendorPriceCompare />} />
+                  {/* dev/truth — three instruments that make the product's own
+                      numbers checkable (reach · as-of · swallow). The gateway
+                      routes behind them 404 in production, so this renders its
+                      own failure there rather than a blank screen. Throwaway:
+                      delete when the claims stop needing checking. */}
+                  <Route path="/dev/truth" element={<DevTruth />} />
                   {/* Discovery moved into Providers as a tab; keep the old path
                       working so existing links and bookmarks land in the right place. */}
                   <Route

@@ -20,116 +20,139 @@
 # are allow-listed below by exact "file:line:content" — any new match must be
 # either fixed or added here with a comment explaining why it is safe.
 
-set -euo pipefail
+# ===========================================================================
+# 2026-09-02 — THIS GUARD WAS VACUOUS AND PRINTED PASS OVER ZERO LINES.
+#
+# The search on the old line 63 read:
+#
+#     matches="$(rg -n -P "$PATTERN" --type ts --type tsx ... 2>/dev/null || true)"
+#
+# There is no ripgrep type named `tsx`. Measured on this tree:
+#
+#     $ rg -n -P '...' --type ts --type tsx apps/
+#     rg: unrecognized file type: tsx
+#     EXIT=2
+#
+# rg exited 2 before examining a single file, `2>/dev/null` hid the message,
+# `|| true` hid the status, `matches` came back empty, the offender loop had
+# nothing to iterate, and the script printed **PASS**. It had reported health for
+# an inspection it never performed — the `absence-reported-as-health` shape, in
+# the guard whose whole job is to notice something.
+#
+# Three things changed, and the first is the one that matters:
+#
+#   1. THE SEARCH'S EXIT STATUS IS INSPECTED. rg distinguishes 1 (no matches)
+#      from >=2 (the search broke). A broken search is exit 2 — CANNOT CHECK —
+#      never a pass. No `2>/dev/null` remains.
+#   2. THE CORPUS IS COUNTED AND ASSERTED. Zero scannable files is exit 2. A
+#      guard with nothing to look at must not answer the same as one that looked.
+#   3. THE ALLOWLIST IS KEYED ON file+CONTENT, NOT file:line. Every recorded
+#      line number had already rotted — the three `stock_live: 0,` placeholders
+#      had moved from 449/519/792 to 744/814/1087 — so the list would have
+#      started producing false failures the moment the search was repaired. The
+#      four `old_/new_stock_live:` entries never matched at all: `\b` before
+#      `stock_live` cannot match inside `old_stock_live`, `_` being a word
+#      character. They are dropped rather than kept as decoration.
+#   4. `.cts` and `.mts` JOIN THE CORPUS. Carried over from an independent
+#      repair of this same guard on fix/lot-cost-truth, which also recorded
+#      the fact that made the original flag redundant as well as invalid:
+#      ripgrep's built-in `ts` type already covers `.tsx`, `.cts` and `.mts`,
+#      so `--type ts --type tsx` was never two types, it was one plus an error.
+#
+# 2026-09-02, SECOND PASS — THE REPAIRED GUARD STILL EXAMINED NOTHING.
+#
+# The repair above was correct and, on the only machines that matter, unreachable.
+# `rg` is not installed on GitHub's `ubuntu-latest` runner, and on the founder's
+# Mac it is a shell function rather than a binary, so a script invoked as `bash
+# script.sh` cannot see it either. The guard therefore hit its own new
+# CANNOT-CHECK branch on *every* run and exited 2 — no longer lying, but still
+# never once looking at a line of code. It turned CI red on PR #243 and that red
+# is how this was found.
+#
+# A guard whose only correct outcome is "I cannot check" is not a guard. The
+# search is now `grep`, which is present everywhere by definition, so the
+# non-vacuity machinery above (exit status inspected, corpus counted and
+# asserted) now guards a search that actually runs.
+#
+# The pattern is POSIX ERE, not PCRE: `grep -P` is a GNU extension and BSD grep
+# on macOS lacks it. `(^|[^A-Za-z0-9_])` reproduces `\b` exactly for this
+# pattern — `_` is a word character, so `old_stock_live` is still not a match,
+# which is the property point 3 above depends on.
+# ===========================================================================
 
-cd "$(dirname "$0")/.."
+set -uo pipefail
 
-PATTERN='\b(stock_live|shadow_stock)\s*:'
+cd "$(dirname "$0")/.." || { echo "CANNOT CHECK — no repo root"; exit 2; }
 
-# Occurrences already audited as NOT a direct write:
+PATTERN='(^|[^A-Za-z0-9_])(stock_live|shadow_stock)[[:space:]]*:'
+
+# file + exact content already audited as NOT a direct write:
 #  - `stock_live: 0,` at insert time — the row is created with a zero
 #    placeholder and the real quantity lands via apply_stock_movement in the
 #    same request, as a lot. The projection trigger then sets stock_live to
 #    match. Safe because the written value is always exactly 0.
 #  - `shadow_stock: number` in the InventoryItem TS interface — a type
 #    declaration, not an assignment.
-#
-# MATCHED BY FILE + CONTENT, NOT BY FILE:LINE.
-#
-# This list used to key on `file:line`. Every one of its ten entries had gone
-# stale: the three `stock_live: 0` placeholders had drifted from lines
-# 449/519/792 to 744/814/1087, and the six `old_*`/`new_*` RabbitMQ payload
-# keys in inventory.service.ts and communications.controller.ts no longer exist
-# at all. Nobody noticed, because the scan above was returning zero lines (see
-# the ripgrep note below) so the allow-list was never consulted.
-#
-# Line numbers move every time anyone edits a file above the match, which makes
-# a line-keyed exemption a guarantee of rot. Content is stable: the exemption
-# survives refactoring and dies when the code it excused is actually gone.
 ALLOWLIST=(
   "apps/api-gateway/src/inventory/inventory.service.ts|stock_live: 0,"
   "apps/web/src/lib/supabase.ts|shadow_stock: number"
 )
 
-# "path:line:content" -> "path|trimmed-content"
-hit_key() {
+is_allowlisted() {
   local hit="$1"
   local file="${hit%%:*}"
-  local rest="${hit#*:}"          # line:content
-  local content="${rest#*:}"      # content
-  content="${content#"${content%%[![:space:]]*}"}"   # ltrim
-  printf '%s|%s' "$file" "$content"
-}
-
-is_allowlisted() {
-  local key
-  key="$(hit_key "$1")"
+  # Strip "file:line:" to get the raw content, then trim whitespace.
+  local content="${hit#*:}"; content="${content#*:}"
+  content="$(printf '%s' "$content" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  # Drop a trailing `// comment` so a note beside the line does not defeat the match.
+  content="$(printf '%s' "$content" | sed -e 's|[[:space:]]*//.*$||' -e 's/[[:space:]]*$//')"
   for entry in "${ALLOWLIST[@]}"; do
-    # Prefix match on the content so a trailing comment does not break the
-    # exemption, while the leading text still has to be the audited code.
-    if [[ "$key" == "$entry"* ]]; then
+    if [[ "$file" == "${entry%%|*}" && "$content" == "${entry#*|}" ]]; then
       return 0
     fi
   done
   return 1
 }
 
-# `--type tsx` used to be passed here alongside `--type ts`. `tsx` is not a
-# ripgrep type — rg's built-in `ts` type already covers *.ts, *.cts, *.mts AND
-# *.tsx — so rg exited 2 with "unrecognized file type: tsx", `2>/dev/null ||
-# true` swallowed both the message and the status, `matches` came back empty,
-# and this script printed PASS having examined ZERO LINES. It had been doing
-# that for every run since the flag was added.
-#
-# Two changes, because fixing only the flag would leave the same trap armed for
-# the next mistake:
-#   1. the invalid type is gone;
-#   2. a non-zero rg exit is now FATAL unless it is exactly 1 ("no matches"),
-#      and the guard exits 2 — "could not check" — instead of reporting the
-#      absence of an answer as a clean bill of health.
-# POSIX-ERE equivalent of the PCRE `\b`, for the grep fallback below. `\b` is
-# a GNU/PCRE extension and is not in POSIX ERE.
-PORTABLE_PATTERN='(^|[^A-Za-z0-9_])(stock_live|shadow_stock)[[:space:]]*:'
+# --- The search, with its failure modes separated. ------------------------
+for tool in grep find; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "CANNOT CHECK — ${tool} not on PATH."
+    echo "  Reporting PASS here is exactly the bug this header describes."
+    exit 2
+  fi
+done
 
-matches=""
-scanner=""
-set +e
-if command -v rg >/dev/null 2>&1; then
-  scanner="ripgrep"
-  matches="$(rg -n -P "$PATTERN" --type ts -g '!*.spec.ts' -g '!*.test.ts' apps/ 2>&1)"
-  status=$?
-else
-  # No ripgrep. grep is on every machine that can run this script at all, so
-  # the check still happens rather than being skipped.
-  scanner="grep"
-  matches="$(grep -rnE "$PORTABLE_PATTERN" \
-      --include='*.ts' --include='*.tsx' --include='*.cts' --include='*.mts' \
-      --exclude='*.spec.ts' --exclude='*.test.ts' apps/ 2>&1)"
-  status=$?
-fi
-set -e
-
-if [[ $status -gt 1 ]]; then
-  echo "COULD NOT CHECK: $scanner failed (exit $status):"
-  echo "$matches"
-  echo "Exit 2. This is not a pass."
+# Corpus assertion FIRST: prove the globs match real files before believing any
+# count over them. This is the line that would have caught the `--type tsx` bug.
+corpus="$(find apps -type f \( -name '*.ts' -o -name '*.tsx' -o -name '*.cts' -o -name '*.mts' \) \
+  -not -path '*/node_modules/*' -not -path '*/dist/*' -not -path '*/build/*' \
+  -not -name '*.spec.ts' -not -name '*.test.ts' \
+  -not -name '*.spec.tsx' -not -name '*.test.tsx')"
+rc=$?
+if [[ $rc -ne 0 || -z "$corpus" ]]; then
+  echo "CANNOT CHECK — the file sweep over apps/ returned nothing (find exit ${rc})."
   exit 2
 fi
-if [[ $status -eq 1 ]]; then
-  matches=""
+corpus_count="$(printf '%s\n' "$corpus" | grep -c .)"
+if [[ "$corpus_count" -lt 50 ]]; then
+  echo "CANNOT CHECK — corpus is ${corpus_count} .ts/.tsx files under apps/; that is not this repo."
+  exit 2
 fi
 
-# NON-VACUITY. The scanner must be shown to have reached the tree before an
-# empty result is allowed to mean "clean". Counting matches cannot do this —
-# zero matches is a legitimate outcome — so count the FILES the scan had to
-# walk. If that is zero, the scan found nothing to look at and "no offenders"
-# is an absence of evidence, not evidence of absence.
-files_in_scope=$(find apps -type f \
-  \( -name '*.ts' -o -name '*.tsx' -o -name '*.cts' -o -name '*.mts' \) \
-  -not -path '*/node_modules/*' -not -path '*/dist/*' 2>/dev/null | wc -l | tr -d ' ')
-if [[ "${files_in_scope:-0}" -lt 1 ]]; then
-  echo "COULD NOT CHECK: no TypeScript files found under apps/ to scan."
-  echo "Exit 2. This is not a pass."
+# grep's exit codes are rg's: 0 matched, 1 no match, >=2 the search itself broke.
+# `grep -r` is called directly rather than piped through `xargs`, deliberately:
+# xargs collapses "grep found nothing" (1) into its own 123, which this script
+# would then read as ">= 2, the search broke" — swapping one exit-code confusion
+# for another in the file that exists because of exit-code confusion.
+matches="$(grep -rn -E "$PATTERN" apps \
+  --include='*.ts' --include='*.tsx' --include='*.cts' --include='*.mts' \
+  --exclude='*.spec.ts' --exclude='*.test.ts' \
+  --exclude='*.spec.tsx' --exclude='*.test.tsx' \
+  --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=build)"
+rc=$?
+if [[ $rc -ge 2 ]]; then
+  echo "CANNOT CHECK — the search failed (grep exit ${rc}). Not a pass."
   exit 2
 fi
 
@@ -143,20 +166,14 @@ while IFS= read -r line; do
   fi
 done <<< "$matches"
 
-matched=$(printf '%s' "$matches" | grep -c . || true)
-
 if [[ $fail -eq 1 ]]; then
   echo "FAIL: direct write to stock_live/shadow_stock found outside the allowlist:"
   printf '  %s\n' "${offenders[@]}"
   echo
   echo "Fix: route the change through apply_stock_movement (apps/api-gateway/src/*/inventory-ledger, inventory.service.ts) instead of updating the projected column directly."
-  echo "Coverage: $scanner, $files_in_scope file(s) in scope, $matched occurrence(s) matched."
   exit 1
 fi
 
-# The coverage line is not decoration. A guard that prints only its verdict
-# cannot be distinguished from a guard that examined nothing — which is exactly
-# what this one did, undetected, for as long as the invalid ripgrep type was in
-# it. The numbers make a vacuous run visible in the CI log.
+matched_count="$(printf '%s\n' "$matches" | grep -c . || true)"
 echo "PASS — no direct stock_live/shadow_stock writes outside the allowlist."
-echo "Coverage: $scanner, $files_in_scope file(s) in scope, $matched occurrence(s) matched, ${#ALLOWLIST[@]} allow-list entr(ies)."
+echo "  examined ${corpus_count} .ts/.tsx files under apps/; ${matched_count} occurrence(s), all allow-listed."

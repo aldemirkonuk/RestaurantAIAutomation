@@ -366,3 +366,60 @@ export class BulkTransactionResponseDto {
   @ApiProperty({ type: [Object] })
   errors: { index: number; error: string }[];
 }
+
+// ============================================================================
+// RECONCILIATION (ADR 0078 — a count is a record)
+// ============================================================================
+
+export class StockCountRecordDto {
+  @ApiProperty({ nullable: true })
+  countId: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      "What the lots said at the instant of the count, read under the same lock the applied delta was computed from — not the restaurant_inventory.stock_live projection.",
+  })
+  expectedQty: number | null;
+
+  @ApiProperty({ nullable: true })
+  countedQty: number | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      "counted - expected. 0 means the books were right, which is a recorded outcome and was previously unrepresentable.",
+  })
+  varianceQty: number | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      "The movement this count caused, or null when nothing had to move.",
+  })
+  transactionId: string | null;
+
+  @ApiProperty({ nullable: true })
+  countedAt: string | null;
+
+  @ApiProperty({
+    description: "True when this request replayed an already-recorded count.",
+  })
+  replayed: boolean;
+}
+
+export class ReconcileResultDto {
+  @ApiProperty({
+    type: StockCountRecordDto,
+    description: "Always present — the count is recorded whether or not it changed anything.",
+  })
+  count: StockCountRecordDto;
+
+  @ApiProperty({
+    type: InventoryTransactionResponseDto,
+    nullable: true,
+    description:
+      "The ledger movement, or null when the count agreed. Null is a result, not an error: this endpoint used to answer a correct count with a 400.",
+  })
+  transaction: InventoryTransactionResponseDto | null;
+}

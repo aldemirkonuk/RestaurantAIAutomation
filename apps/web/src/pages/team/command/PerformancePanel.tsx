@@ -232,7 +232,11 @@ function Metric({ label, value }: { label: string; value: string }) {
 function Sparkline({ analytic }: { analytic: NonNullable<import('../../../services/api/team').MemberPerformance['analytic']> }) {
   const { series, median, band } = analytic
   const W = 300, H = 60, pad = 4
-  const all = [...series, median, band[0], band[1]]
+  // median/band are null when the peer benchmark is unknown. They used to be
+  // 0 — including when the benchmark QUERY had failed — which pinned the
+  // dashed peer line to the floor and made every server look above average.
+  // Unknown draws nothing, and the caption says why. ADR 0067 / ADR 0051.
+  const all = [...series, ...(median != null ? [median] : []), ...(band ? [band[0], band[1]] : [])]
   let lo = Math.min(...all), hi = Math.max(...all)
   const range = hi - lo || 1
   lo -= range * 0.15; hi += range * 0.15
@@ -240,10 +244,19 @@ function Sparkline({ analytic }: { analytic: NonNullable<import('../../../servic
   const Y = (v: number) => H - pad - ((v - lo) / (hi - lo || 1)) * (H - 2 * pad)
   const path = series.map((v, i) => `${i ? 'L' : 'M'}${X(i)},${Y(v)}`).join(' ')
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-14">
-      <rect x={0} y={Y(band[1])} width={W} height={Math.max(1, Y(band[0]) - Y(band[1]))} fill="#f3f4f6" />
-      <line x1={0} y1={Y(median)} x2={W} y2={Y(median)} stroke="#d1d5db" strokeDasharray="3 3" />
-      <path d={path} fill="none" stroke="#1A5E6B" strokeWidth={2} />
-    </svg>
+    <>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-14">
+        {band && (
+          <rect x={0} y={Y(band[1])} width={W} height={Math.max(1, Y(band[0]) - Y(band[1]))} fill="#f3f4f6" />
+        )}
+        {median != null && (
+          <line x1={0} y1={Y(median)} x2={W} y2={Y(median)} stroke="#d1d5db" strokeDasharray="3 3" />
+        )}
+        <path d={path} fill="none" stroke="#1A5E6B" strokeWidth={2} />
+      </svg>
+      {median == null && (
+        <div className="mt-1 text-[10px] text-gray-400">Team benchmark —</div>
+      )}
+    </>
   )
 }

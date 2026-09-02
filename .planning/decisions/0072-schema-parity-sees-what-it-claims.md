@@ -209,6 +209,25 @@ back (base type only, no typmod / nullability / default; function keyed on
 - **Revisit when:** the first real run against production produces a red that is
   not drift. That is the signal that a category needs narrowing, and it should be
   narrowed by name in this ADR, never by deleting the category quietly.
+- **Fork PRs cannot merge (deliberate, not a bug).** `main` now requires four of
+  this workflow's job names as status checks with `strict: true`: `Fresh database
+  equals remote`, `Code queries only relations production has`, `Beverage identity
+  key — SQL matches Python`, and `Guest merge policy — zero false merges`. Each job
+  carries `if: github.event_name != 'pull_request' || github.event.pull_request
+  .head.repo.full_name == github.repository`, so on a PR opened from a fork the
+  condition is false and the job never runs — the required context never posts,
+  and GitHub blocks a required context that never reports permanently. This is
+  intentional, not an oversight: these jobs read `SUPABASE_POOLER_URL` /
+  `SUPABASE_DIRECT_CONNECTION_STRING`, and GitHub does not expose repository
+  secrets to workflow runs triggered from a fork, so a fork PR can only ever make
+  these jobs vacuously green — precisely the fault this ADR exists to close (see
+  Decision). The remedy is for a maintainer to re-push the contributor's branch to
+  a branch on this repo (not the fork) and open the PR from there, never to relax
+  the guard or fake a passing check. **Measured, not assumed:** this repository
+  has had zero fork PRs, ever (`gh pr list --state all` filtered on
+  `headRepositoryOwner.login != "aldemirkonuk"` returns 0 as of 2026-09-02), so
+  this is a latent constraint with no live instance — worth documenting so the
+  next contributor discovers it by reading this ADR, not by being silently stuck.
 
 ## Open question — founder call, not taken here
 
