@@ -86,6 +86,26 @@ export interface ParsedDocument {
   confidence: number;
   /** Human-readable reasons this parse might be wrong. Surfaced, never swallowed. */
   warnings: string[];
+
+  /**
+   * Which model read this document (ADR 0059).
+   *
+   * `procurement_documents.extraction_model` has existed since the document
+   * spine and had no writer at all, so every row said NULL — which reads as
+   * "no model was involved" rather than "nobody recorded which one". The
+   * extractor always knew the value; it simply never travelled this far.
+   *
+   * NULL is honest and load-bearing: an EDI parse and an unreadable document
+   * genuinely had no model.
+   */
+  extractionModel?: string | null;
+
+  /**
+   * The neural-footprint row id for the extraction call, once its
+   * fire-and-forget emit lands (ADR 0059). NULL when the emit was dropped or
+   * there was no model call — attribution is lost, the document is not.
+   */
+  eventId?: string | null;
 }
 
 /** Money comparison in cents, so 528.0000001 !== 528 never fires. */
