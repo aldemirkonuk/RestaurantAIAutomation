@@ -44,3 +44,4 @@ plan of record — that is `PROJECT.md` → `STATE.md` → `ROADMAP.md`.
 | [GOOGLE_AND_API_CREDENTIALS_SETUP.md](GOOGLE_AND_API_CREDENTIALS_SETUP.md) | Google + API credentials from scratch (was `md/05-guides-setup/`) | Guide |
 | [TOAST_API_DEVELOPER_GUIDE.md](TOAST_API_DEVELOPER_GUIDE.md) | Toast developer-guide research report (was `md/Toast_API/ToastAPI`) | External-API reference |
 | [TOAST_API_CONFIGURATION.md](TOAST_API_CONFIGURATION.md) | Toast platform integration/config report (was `md/Toast_API/`) | External-API reference |
+| [TRANSFORMATION-PRIMITIVE-DESIGN.md](TRANSFORMATION-PRIMITIVE-DESIGN.md) | L2's missing primitive: a transformation as a balanced document, the conservation constraint, yield split three ways, and by-product costing that keeps OD-114 open | Proposal — 4 forks open (2026-09-02) |

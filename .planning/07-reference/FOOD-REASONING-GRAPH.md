@@ -163,6 +163,21 @@ exact-equality check. This is why costing methodology is *research* and not
 arithmetic: choosing the definition is the work, and no conformance test can choose
 for you. → **OD-114**.
 
+> **The design for this layer now lives in
+> [[TRANSFORMATION-PRIMITIVE-DESIGN]] (2026-09-02), and this section stops here.**
+> That document holds the transformation *event* — a balanced document of input,
+> output and named-loss lines whose conservation is enforced by a deferred trigger,
+> not by a free residual field — plus the split of yield into trim, cooking and
+> portioning as three different quantities, and the schema shape that keeps **both**
+> OD-114 costing methods computable over the same rows. Two claims of this section are
+> sharpened there rather than contradicted: the repo's `yield_factor` is an
+> **expected** yield attached to a vendor offer
+> (`vendor_price_observations`, not an item or a lot), so nothing in the schema can
+> produce an *observed* one; and the FIFO write path **discards the cost it consumed**
+> (`20260805130000_extend_apply_stock_movement.sql:97,112`), which makes every costing
+> method — both sides of OD-114 included — unreachable until that changes. The layer
+> model above is unchanged; L2 is still the keystone and is still unbuilt.
+
 ### L3 — Consumption truth
 
 POS sales → dish → (through L2's BOM) → ingredient depletion = **theoretical** usage.
