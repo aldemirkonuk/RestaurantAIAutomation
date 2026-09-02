@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import * as E from "./engine";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
+import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
 
 /**
  * GoalsService — metric-linked goals with AI assistance.
@@ -317,7 +318,7 @@ export class GoalsService {
           .from("procurement_orders")
           .select("total_cost, final_price, delivered_at, created_at, status")
           .eq("restaurant_id", restaurantId)
-          .eq("status", "delivered")
+          .in("status", ORDER_SPEND_STATUSES)
           .gte("delivered_at", sinceIso);
         if (untilIso) q = q.lte("delivered_at", untilIso);
         const { data } = await q;

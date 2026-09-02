@@ -470,8 +470,10 @@ export class ToastService {
     // Phase 2 POS→pour: a completed sale decrements inventory (glass → pour, bottle → movement).
     await this.applyOrderSaleEffects(restaurantId, webhookDto);
 
-    // Forward to agent orchestrator for processing
-    await this.forwardToOrchestrator("order", webhookDto);
+    // NO forward to the orchestrator. Removed 2026-09-01 — see the block comment
+    // above `getWebhookMetrics` for the evidence. Short version: the POST went to
+    // `/api/v1/toast/webhooks/{type}`, a route the orchestrator has never
+    // registered, and the 404 was swallowed by a `logger.warn`.
 
     return data?.id;
   }
@@ -678,8 +680,7 @@ export class ToastService {
     // Invalidate menu cache since stock changed
     await this.cacheService.invalidateByPattern("toast:menu*");
 
-    // Forward to agent orchestrator
-    await this.forwardToOrchestrator("stock", webhookDto);
+    // NO forward to the orchestrator — same dead route as the order path above.
 
     return data?.id;
   }
@@ -728,34 +729,47 @@ export class ToastService {
     return data?.id;
   }
 
-  /**
-   * Forward webhook to agent orchestrator for processing
+  /*
+   * REMOVED 2026-09-01 — `forwardToOrchestrator()`.
+   *
+   * It did:
+   *     POST {AGENT_ORCHESTRATOR_URL}/api/v1/toast/webhooks/{order|stock|menu}
+   *     catch → this.logger.warn("Failed to forward webhook to orchestrator")
+   *
+   * That route has never existed. The orchestrator registers exactly these
+   * prefixes (`services/agent-orchestrator/main.py:151-186` + the `APIRouter`
+   * declarations in `services/agent-orchestrator/api/`):
+   *   /api/v1/{admin,analytics,collect,onboarding,pos,preview,procurement,
+   *            quality,research,scan,studio}, /api/templates, and the
+   *   unprefixed health/metrics routes.
+   * There is no `/api/v1/toast` router, so every one of these POSTs returned
+   * 404 and the catch turned a permanent misconfiguration into a warn line.
+   *
+   * DELETED rather than repointed. The obvious repoint target is
+   * `POST /api/v1/pos/webhook/toast` (`api/pos_routes.py:35`), and it is wrong
+   * on four independent counts:
+   *   1. Signature — that route calls `ToastAdapter.verify_webhook(raw, sig)`
+   *      (`adapters/toast_adapter.py:24-45`), which fails closed with no
+   *      `Toast-Signature` header. This forward sends none → 401, always.
+   *   2. Shape — `normalize_event` reads `eventType` and
+   *      `order.checks[].selections` (`toast_adapter.py:47-89`); this forward
+   *      sends a reshaped `{event_id, event_type, restaurant_guid, timestamp,
+   *      payload}` envelope, so `items` would always come out empty.
+   *   3. Semantics — the agent's handler map keys are `OrderCompleted`,
+   *      `OrderItemVoided`, `OrderRefunded`, `MenuItemModified`
+   *      (`agents/pos_integration_agent.py:268-273`). None of this gateway's
+   *      event types (`order.paid`, `stock.updated`, …) match, so every event
+   *      would return `{"status": "ignored"}`.
+   *   4. Duplication — `/api/v1/pos/webhook/toast` is a *parallel ingress* that
+   *      Toast calls directly, not a downstream of this handler. This method
+   *      has already persisted the `events` row and applied the inventory
+   *      effects by the time the forward ran; feeding the same order in again
+   *      would risk double-counting the sale.
+   *
+   * So there is no consumer to fail loudly towards, and nothing is lost: the
+   * event is persisted and the inventory effects are applied above. If a real
+   * orchestrator-side consumer is ever built, wire it here and let it throw.
    */
-  private async forwardToOrchestrator(
-    type: "order" | "stock" | "menu",
-    webhookDto: ToastWebhookDto,
-  ): Promise<void> {
-    try {
-      await this.httpClient.post(`/api/v1/toast/webhooks/${type}`, {
-        event_id: webhookDto.eventId,
-        event_type: webhookDto.eventType,
-        restaurant_guid: webhookDto.restaurantGuid,
-        timestamp: webhookDto.timestamp,
-        payload:
-          webhookDto.order ||
-          webhookDto.stock ||
-          webhookDto.menu ||
-          webhookDto.data,
-      });
-    } catch (error) {
-      // Log but don't fail - the event is already persisted
-      this.logger.warn({
-        message: "Failed to forward webhook to orchestrator",
-        eventId: webhookDto.eventId,
-        error: error.message,
-      });
-    }
-  }
 
   /**
    * Get webhook processing metrics

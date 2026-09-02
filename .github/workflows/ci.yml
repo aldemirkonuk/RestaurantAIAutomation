@@ -327,6 +327,45 @@ jobs:
   # Stdlib only, no install step. Exit 2 (cannot check) blocks like exit 1: this
   # fabrication reached 70 of 72 production rows under a green CI, which is
   # exactly what a vacuous pass buys.
+  # Six figures on the rebuilt /receiving were server-side windows rendered as
+  # totals -- the staff count (a 25-row page printed as "N out for delivery"
+  # while the gateway's exact `total` was destructured away), the lane counts
+  # and at-risk total behind .limit(100), the uncounted strip behind .limit(500)
+  # and every owner figure behind an unordered .limit(5000). There was not one
+  # `>=` on the page. Beside them, `dollarsAtRisk > 0 ? money : EM` printed a
+  # MEASURED $0 as an unknown next to a literal `0`, and `unverified: known ? ...
+  # : []` made a failed fetch read as "nothing uncounted".
+  #
+  # One rule wearing seven hats, which is what a command should hold. The guard
+  # does NOT trace a .limit() to a JSX node -- that is undecidable across two
+  # languages and an HTTP hop, and its header says so in full. It holds five
+  # checkable things instead; read that header before widening or narrowing it.
+  #
+  # Stdlib only, no install step. Exit 2 (cannot check) blocks like exit 1.
+  windowed-figures:
+    name: A windowed figure is a floor, an unknown is not a zero
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: The guard still fires on the shapes it exists to catch
+        run: python3 scripts/check_windowed_figures.py --self-test
+
+      - name: No window rendered as a total, no unknown rendered as a zero
+        run: python3 scripts/check_windowed_figures.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::[window drift] means a declared cap in SERVER_WINDOWS no longer matches the .limit() it cites. The page's floor prose now names a cap the server does not use -- update the register AND the sentences that quote it, in the same change."
+          echo "::notice::[unconsumed window] means a cap is declared but nothing reads it, or a renderer that knows about the register carries no floor marker. Deleting the >= while keeping the constant is the cheapest way to silently undo this."
+          echo "::notice::[zero as unknown] means a measured 0 renders as an em dash. ADR 0051 clause 1: a real zero and an absent figure must be distinguishable. Run the value through num() and format the null-or-number, do not gate on > 0."
+          echo "::notice::[empty as unknown] means a view-model field falls back to [] when its query did not answer. A failed fetch then renders as an empty list -- which is how the uncounted-delivery safety net went silent exactly when it was needed."
+          echo "::notice::[unknown lost] means a field whose job is to say 'the query did not answer' lost its | null. Widen it back deliberately or the page can only ever say 'empty', which is a measurement."
+          echo "::notice::[cardinality discarded] means a queryFn sends a limit but reads neither total nor hasMore. The exact count is in the payload; without it the page renders a page length dressed as a total."
+          echo "::notice::Exit 2 is CANNOT CHECK, not a skip: an anchor moved (the register, a cited gateway file, a guarded interface field). Fix the anchor, do not delete the step."
+
   analytics-cost-honesty:
     name: Analytics never invents a cost
     runs-on: ubuntu-latest
@@ -350,6 +389,52 @@ jobs:
           echo "::notice::Propagate the null rather than defaulting it: a margin from an unknown cost is unknown, not zero. See ADR 0051 and the per-field notes in apps/api-gateway/src/analytics/cost-honesty.spec.ts."
           echo "::notice::WHICH price should value inventory is OPEN-DECISIONS OD-100 and is the founder's call. This guard is about not answering it silently -- do not resolve OD-100 by editing resolveUnitCost in a bug-fix PR."
           echo "::notice::CANNOT CHECK (exit 2) means inventory-cost.ts is gone or gutted, nothing was scanned, or no cost basis label is derived any more. That is a move or a rename, not a pass; repoint the guard."
+
+  # ADR 0059: a machine proposal shown to a human is written BEFORE the human
+  # answers, and the answer is APPENDED, never substituted.
+  #
+  # Receiving is the only place in the product where a number is produced by a
+  # person touching an object. Four of its six machine-proposes/human-judges
+  # pairs destroyed the machine's half at the instant it became a label. The
+  # cleanest instance was two lines in documents.controller.ts:
+  #
+  #     // A person confirmed it, so confidence is not a model's estimate any more.
+  #     match_confidence: body?.orderLineId ? 1 : null,
+  #     match_method:     body?.orderLineId ? "manual" : null,
+  #
+  # The comment is CORRECT about live state and the write is still the defect:
+  # the proposal and the confirmation shared two columns, so confirming a
+  # pairing deleted the model's score at the one moment it could never be
+  # reconstructed. Nothing looks wrong in the diff and nothing looks wrong in
+  # the row -- the corpus is simply empty of every case the model got right.
+  #
+  # That is why this is a guard: the violating line is short, plausible,
+  # well-commented, and identical in form to the legitimate write six files
+  # away. A reviewer cannot reliably tell them apart; an allowlist can.
+  #
+  # Stdlib only, no install step. Exit 2 (cannot check) blocks like exit 1.
+  proposal-preservation:
+    name: A proposal is never overwritten by the answer
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: The guard still fires on the shape it exists to catch
+        run: python3 scripts/check_proposal_preservation.py --self-test
+
+      - name: No write outside a declared writer touches a proposal column
+        run: python3 scripts/check_proposal_preservation.py
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::PROPOSAL OVERWRITTEN means a database write outside the declared writer set assigns a protected column -- match_confidence, match_method, ties_out, tie_out_delta, computed_lines_total, or any proposed_* column."
+          echo "::notice::If the write is the HUMAN'S ANSWER, give the answer its own columns (confirmed_by / confirmed_at, or a proposed_* twin) and leave the machine's half alone. ADR 0059: append, never substitute."
+          echo "::notice::If the write really is a PROPOSAL -- a machine recording its own suggestion -- add the file to ALLOWLIST in scripts/check_proposal_preservation.py with the reason it is one. That edit is the mechanism: it is deliberate, reviewable, and a sentence someone has to be willing to write."
+          echo "::notice::Do NOT widen the allowlist to a directory to make this pass. 'This module may write it' is a much weaker claim than 'this function may', and the weaker claim is how the defect returns."
+          echo "::notice::CANNOT CHECK (exit 2) means the guard scanned nothing, found zero write sites at all, or a declared writer stopped writing the column it is declared for. That is a move or a rename, not a pass; repoint the guard rather than deleting the step."
+          echo "::notice::Context: production held 0 procurement_documents / 0 document_lines / 0 receipt_events when this rule was adopted on 2026-09-01. The corpus being empty is why the rule was free to adopt -- and why a regression is expensive: the proposal half cannot be back-filled from the confirmed half, by construction."
 
   decision-claims:
     name: Decision register matches reality
@@ -483,12 +568,85 @@ jobs:
         if: ${{ !cancelled() }}
         run: ./scripts/check_order_capture_contract.py --self-test
 
+      # COLUMN granularity, which the relation-level guard above explicitly does
+      # not cover (its own docstring: "WHAT IT DOES NOT CATCH: 1. COLUMNS").
+      #
+      # verifyReceipt wrote `notes` to procurement_orders, which has never had a
+      # `notes` column. `?? undefined` meant the key only reached PostgREST when
+      # a manager actually typed a note -- i.e. only when documenting a
+      # discrepancy -- and by then the ledger correction and the vendor credit
+      # claim had already been written. PGRST204 then rejected the whole update,
+      # so status, match_status, accepted_quantity and invoice_* never landed and
+      # the retry failed identically. Nothing else in CI could see it: TypeScript
+      # cannot type a Record<string, any>, and schema-parity compares a database
+      # to a database, where both sides correctly agree the column does not
+      # exist.
+      #
+      # GENERALISED 2026-09-02 (ADR 0068). The same defect then appeared on
+      # `calendar_events` -- `priority` and `tags`, neither a column, plus an
+      # omitted NOT NULL `source` -- across three write sites that had therefore
+      # never written a row. The guard now carries a table registry rather than
+      # a second copy of itself (CLAUDE.md 4), and calendar_events is registered
+      # with its INSERT paths enforced, because that is where its defect lives.
+      #
+      # `if: !cancelled()` for the same reason as the steps above.
+      - name: Every key written to a registered table is a real column of it
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_orders_column_writes.py
+
+      - name: The column-write guard can actually fail
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_orders_column_writes.py --self-test
+
+      # procurement_orders.status is written from the ProcurementOrderStatus
+      # enum (UPPERCASE) and was read against the lowercase "delivered" at nine
+      # sites, so every vendor scorecard, lead-time statistic, spend total and
+      # goal series returned a structural zero that rendered as a measurement.
+      # 21 violations across 8 files when this guard landed. ADR 0058.
+      - name: Guard order status literals (the enum is the vocabulary)
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_order_status_literals.py
+
+      - name: The status guard can actually fail
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_order_status_literals.py --self-test
+
       - name: Explain a failure
         if: failure()
         run: |
+          echo "::notice::[order status] means code compared procurement_orders.status to a string literal that is not a ProcurementOrderStatus member. Do NOT just retype it in uppercase -- import a set from apps/api-gateway/src/procurement/order-status.ts. Which set is a real question: ORDER_SPEND_STATUSES excludes PARTIALLY_RECEIVED (its money columns describe the PO, not the short delivery), ORDER_ARRIVED_STATUSES includes it (the truck did come). ADR 0058."
+          echo "::notice::A mis-cased status filter matches NOTHING, so the figure reads 0 rather than erroring. On a .not(...in...) gate it inverts: nothing matches, so NOT IN matches EVERYTHING and the gate fails OPEN."
+          echo "::notice::Exit 2 from that guard is CANNOT CHECK, not a skip: the enum could not be parsed, or the chain extractor found no procurement_orders queries. Fix the anchor, do not delete the step."
+
+      # A quantity that crosses the wire with no declared unit.
+      #
+      # `DoorReceiptDto.rejectedQty` stated its unit nowhere — the door sent it
+      # in BOXES beside `countedQty` + `countedUom`, and the gateway converted
+      # only `countedQty` before computing `countedBottles - rejectedQty`. Three
+      # refused boxes at pack 12 booked 33 bottles of LIVE STOCK for wine turned
+      # away at the door. It survived review because the only test covering the
+      # path used `countedUom: "bottle"`, where the conversion is the identity —
+      # the test did not fail because it COULD not fail.
+      - name: Every quantity crossing the wire declares its unit
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_quantity_units.py
+
+      - name: The unit guard can actually fail
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_quantity_units.py --self-test
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::[column write] means the gateway sends procurement_orders a key that is not one of its columns. PostgREST answers PGRST204 and rejects the ENTIRE update, including every other column in the same payload."
+          echo "::notice::Write it to the column that exists, or add a migration. Do NOT add it to KNOWN_BAD -- that list is shrink-only and records what was already broken when the guard landed."
+          echo "::notice::'blind spot grew' means a payload the guard could not read. Build it as an object literal or a local const; raising DYNAMIC_CEILING silently is how a guard stops covering its own input."
           echo "::notice::[order line capture] means createOrder can produce an order with no procurement_order_items row. matchDocumentLines returns early when an order has no lines, so the whole invoice matching engine goes dark and nothing fails visibly."
           echo "::notice::[unit defaults] means a unit fallback landed on case/pack/split_case. Those MULTIPLY: an absent or misspelt unit books quantity x pack size. ADR 0011 decided this class -- refuse, do not guess."
           echo "::notice::[price_history writer] means the price series has no writer again. The table is correctly keyed and indexed; with no writer it stays empty forever."
+          echo "::notice::'does not say what unit it is in' means a *Qty*/*Quantity* DTO field crossed the wire with no unit in its name and no same-prefix unit sibling. Put the unit in the NAME (xQtyBottles, or xQtyInCountedUom when it must match another field). A comment is not a declaration -- JSON does not carry comments."
+          echo "::notice::'exempted as a DEPRECATED ALIAS, but the declared field it aliases is gone' means the properly-named field was deleted and only the unitless alias remains. That is the original defect back under its own name, not an alias."
+          echo "::notice::The unit guard does NOT verify that a declared unit is the CORRECT one -- only a test at a real pack size does that. Never let it stand in for one."
           echo "::notice::Exit 2 from that guard is CANNOT CHECK, not a skip: a file it reads is missing or a method it anchors on was renamed. Fix the anchor, do not delete the step."
           echo "::notice::RLS NEVER ENABLED means a migration creates a public table that no migration ever puts RLS on. Add it in the CREATING migration -- unless that migration has already shipped to production, in which case a follow-up is the only fix that reaches both production and a fresh build."
           echo "::notice::anon/authenticated STILL GRANTED means a table is client-reachable over PostgREST. The OD-72 default-privileges ratchet covers tables created after 20260825210000; an explicit GRANT after that undoes it."
@@ -856,6 +1014,9 @@ jobs:
         # enforce: a guard nobody depends on can fail while this prints success.
         adr-numbers-unique,
         analytics-cost-honesty,
+        proposal-preservation,
+
+        windowed-figures,
       ]
     steps:
       - name: Checkout code

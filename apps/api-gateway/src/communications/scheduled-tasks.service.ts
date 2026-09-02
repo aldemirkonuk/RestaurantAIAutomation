@@ -13,6 +13,15 @@ import type {
 } from "./recipient-resolver.service";
 import { ScheduledTenantsService } from "./scheduled-tenants.service";
 import type { ScheduledTenant } from "./scheduled-tenants.service";
+import {
+  ORDER_ARRIVED_STATUSES,
+  ORDER_IN_FLIGHT_STATUSES,
+} from "../procurement/order-status";
+import {
+  RECURRING_REMINDER_FLAG,
+  describeRecurringOrder,
+  recurringRemindersEnabled,
+} from "./recurring-order-reminder";
 
 /**
  * Pure function — exported for direct use in tests without NestJS DI.
@@ -368,14 +377,45 @@ export class ScheduledTasksService implements OnModuleInit {
   // ==========================================================================
 
   /**
-   * Recurring Order Reminder - Runs daily at 8:00 AM
-   * Checks for recurring orders due in 2 days
+   * Recurring Order Reminder — runs daily at 08:00 America/New_York.
+   *
+   * Tells a tenant that a row in `recurring_orders` comes due in two days.
+   *
+   * WHY THIS READS `recurring_orders` AND NOT A `procurement_orders` STATUS
+   * ----------------------------------------------------------------------
+   * It used to filter `procurement_orders` on `status = 'RECURRING'`. There is
+   * no RECURRING member of `ProcurementOrderStatus` and there never has been,
+   * so the query matched zero rows and this reminder has never sent a single
+   * email since it was written.
+   *
+   * The repoint is not a guess between candidate statuses. The query's three
+   * OTHER fields were already `recurring_orders` fields and had been all along:
+   * `next_order_date` is a `recurring_orders` column and exists on no other
+   * table; `recurrence_frequency` is a Postgres ENUM TYPE, whose column on that
+   * table is plainly `frequency`; and `target_price_per_bottle` exists in no
+   * table in the schema at all. `procurement_orders` carries none of the three.
+   * The job was always addressing `recurring_orders` — it was pointed at the
+   * wrong table, and the dead status was the symptom rather than the disease.
+   * See ADR 0061.
+   *
+   * OFF BY DEFAULT — this path emails real tenants. The whole job is gated on
+   * RECURRING_ORDER_REMINDERS_ENABLED and returns before it reads, resolves a
+   * recipient or sends anything while that is unset. The ADR records what must
+   * be true before it is flipped; flipping it is the founder's call.
    */
   @Cron("0 8 * * *", {
     name: "recurring-order-reminder",
     timeZone: "America/New_York",
   })
   async sendRecurringOrderReminders() {
+    if (!this.recurringRemindersArmed()) {
+      this.logger.log(
+        `recurring-order-reminder skipped — ${RECURRING_REMINDER_FLAG} is not set. ` +
+          "This job is off by default and sends nothing until it is armed.",
+      );
+      return;
+    }
+
     await this.tenants.runPerTenant(
       "recurring-order-reminder",
       async (tenant) => {
@@ -390,56 +430,82 @@ export class ScheduledTasksService implements OnModuleInit {
         twoDaysFromNow.setDate(twoDaysFromNow.getDate() + 2);
         const twoDaysStr = twoDaysFromNow.toISOString().split("T")[0];
 
-        // Query recurring orders scheduled within 2 days
-        const { data: orders } = await client
-          .from("procurement_orders")
-          .select("*, providers(name)")
+        // Schedules coming due within two days, for this tenant only.
+        const { data: schedules } = await client
+          .from("recurring_orders")
+          .select("*")
           .eq("restaurant_id", tenant.id)
-          .eq("status", "RECURRING")
+          .eq("active", true)
           .lte("next_order_date", twoDaysStr)
           .order("next_order_date", { ascending: true });
 
-        if (!orders || orders.length === 0) return;
+        if (!schedules || schedules.length === 0) return;
 
         const recipients = await this.recipientsFor(tenant, {
           roles: ["manager"],
           channels: ["email"],
         });
 
-        for (const order of orders) {
+        const labels: string[] = [];
+        for (const row of schedules) {
+          const described = describeRecurringOrder(row);
+          if (!described.sendable) {
+            // Fail closed and say so. A row we cannot name or price is not
+            // downgraded into a vaguer email — it is not emailed at all, and
+            // the gap is named in the log rather than inferred from silence.
+            this.logger.warn(
+              `recurring-order-reminder: schedule ${row.id ?? "?"} not describable ` +
+                `(missing ${described.missing.join(", ")}); no email sent for it.`,
+            );
+            if (described.label) labels.push(described.label);
+            continue;
+          }
+          labels.push(described.label);
+
           if (!ordersMode.email || recipients.emails.length === 0) continue;
           await this.gmailService.sendRecurringOrderReminder({
             to: recipients.emails,
             restaurantName: tenant.name,
-            orderName: order.wine_name || "Recurring Order",
-            providerName: order.providers?.name || "Unknown Provider",
-            scheduledDate: order.next_order_date || twoDaysStr,
+            orderName: described.label,
+            providerName: described.providerName,
+            scheduledDate: described.scheduledDate,
             items: [
               {
-                name: order.wine_name || "Wine",
-                quantity: order.quantity || 0,
-                unitPrice: order.target_price_per_bottle || 0,
+                name: described.label,
+                quantity: described.quantity,
+                unitPrice: described.unitPrice,
               },
             ],
-            totalAmount:
-              (order.quantity || 0) * (order.target_price_per_bottle || 0),
-            frequency: order.recurrence_frequency || "monthly",
+            totalAmount: described.totalAmount,
+            frequency: described.frequency,
           });
         }
 
         await this.persistRestaurantNotification(tenant.id, {
           type: "order_pending",
-          title: `🔁 ${orders.length} recurring order${orders.length === 1 ? "" : "s"} due soon`,
-          message: orders
-            .map((o) => o.wine_name || "Order")
-            .slice(0, 5)
-            .join(", "),
+          title: `🔁 ${schedules.length} recurring order${schedules.length === 1 ? "" : "s"} due soon`,
+          message:
+            labels.length > 0
+              ? labels.slice(0, 5).join(", ")
+              : `Due by ${twoDaysStr}`,
           actionUrl: "/orders?tab=recurring",
           actionLabel: "Review Orders",
           groupKey: `recurring_order:${twoDaysStr}`,
-          metadata: { count: orders.length },
+          metadata: { count: schedules.length },
         });
       },
+    );
+  }
+
+  /**
+   * Read the arming flag. ConfigService first, `process.env` second — the same
+   * order `GmailService` already uses, so a Railway-set variable and a
+   * `.env`-set one behave identically.
+   */
+  private recurringRemindersArmed(): boolean {
+    return recurringRemindersEnabled(
+      this.configService.get<string>(RECURRING_REMINDER_FLAG) ??
+        process.env[RECURRING_REMINDER_FLAG],
     );
   }
 
@@ -471,7 +537,7 @@ export class ScheduledTasksService implements OnModuleInit {
           .from("procurement_orders")
           .select("*, providers(name)")
           .eq("restaurant_id", tenant.id)
-          .in("status", ["CONFIRMED", "SHIPPED", "IN_TRANSIT"])
+          .in("status", ORDER_IN_FLIGHT_STATUSES)
           .lte("expected_delivery_date", tomorrowStr + "T23:59:59")
           .gte("expected_delivery_date", tomorrowStr + "T00:00:00");
 
@@ -543,7 +609,7 @@ export class ScheduledTasksService implements OnModuleInit {
         .from("procurement_orders")
         .select("*, providers(name)")
         .eq("restaurant_id", tenant.id)
-        .in("status", ["DELIVERED", "INVOICED"])
+        .in("status", ORDER_ARRIVED_STATUSES)
         .not("payment_due_date", "is", null)
         .lte("payment_due_date", threeDaysFromNow.toISOString())
         .gte("payment_due_date", now.toISOString());

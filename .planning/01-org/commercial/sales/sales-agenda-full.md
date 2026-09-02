@@ -331,8 +331,9 @@ a criterion for finding one.
   That phrasing appears nowhere in ADR 0025; the "24 files" half was borrowed from an
   unrelated population (CM-F3's *61 citations in 24 files*, [[FORK-REGISTRY]]). Measured
   at `14503ced`: the register is **newest-first**, so a genuinely new fork lands at the
-  top of the Open table and breaks **165 citations across 86 files — every register
-  citation in the corpus**. (Inserting at the *end* of Open breaks only 45; that is the
+  top of the Open table and breaks **173 citations across 89 files — every register
+  citation in the corpus**. *(First measured as 165/86 and flagged as a floor; the guard
+  was blind to `.html`; fixed the same day. Re-measure rather than quote — the figure rises with every citation added.)* (Inserting at the *end* of Open breaks only 45; that is the
   number usually quoted, and it describes a position no new fork occupies.) **Budget the
   full repoint and automate it** — `check_citation_pairing.py` prints the exact
   replacement for every break. See ADR 0025's *Correction — 2026-09-01*. **Both**

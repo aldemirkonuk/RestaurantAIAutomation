@@ -252,11 +252,9 @@ describe("ToastService webhook signature enforcement in production", () => {
         get: async () => null,
         set: async () => undefined,
       };
-      const service = new ToastService(
-        configService,
-        cacheService,
-        { supabase: client } as any,
-      );
+      const service = new ToastService(configService, cacheService, {
+        supabase: client,
+      } as any);
       await expect(
         service.processWebhook(
           webhookDto(ToastWebhookEventType.ORDER_CLOSED),
@@ -305,11 +303,9 @@ describe("Toast id validation (SSRF)", () => {
       del: async () => undefined,
       invalidateByPattern: async () => 0,
     };
-    const service = new ToastService(
-      configService,
-      cacheService,
-      { supabase: {} } as unknown as DatabaseService,
-    );
+    const service = new ToastService(configService, cacheService, {
+      supabase: {},
+    } as unknown as DatabaseService);
     const get = jest.fn();
     (service as any).httpClient = { get };
     return { service, get };
@@ -533,5 +529,95 @@ describe("Toast mock data is unreachable in production (ADR 0020)", () => {
         service.getSalesData("r1", new Date(0), new Date(3600000)),
       ).rejects.toThrow(/Failed to fetch sales data from Toast/);
     });
+ * Defect A — the dead orchestrator forward.
+ *
+ * `forwardToOrchestrator()` POSTed every order and stock webhook to
+ * `/api/v1/toast/webhooks/{type}`. The orchestrator has never registered an
+ * `/api/v1/toast` router (`services/agent-orchestrator/main.py:151-186`), so
+ * the call 404'd every single time and the catch downgraded a permanent
+ * misconfiguration to `logger.warn(...)` — invisible.
+ *
+ * The forward is deleted (see the block comment in toast.service.ts for why
+ * repointing at `/api/v1/pos/webhook/toast` is wrong). These tests pin that:
+ * no outbound POST is issued at all, so there is no 404 left to swallow.
+ *
+ * Against the pre-fix tree both of the first two tests fail — `post` IS called.
+ */
+describe("Defect A — no silently-swallowed forward to the orchestrator", () => {
+  function spyingHttpClient(service: any) {
+    // Rejects the way axios rejects a 404, so that if the forward ever comes
+    // back, it comes back into a test that is already watching for the swallow.
+    const err: any = new Error("Request failed with status code 404");
+    err.response = { status: 404, data: { detail: "Not Found" } };
+    const post = jest.fn().mockRejectedValue(err);
+    const get = jest.fn().mockRejectedValue(err);
+    service.httpClient = { post, get };
+    return { post, get };
+  }
+
+  it("processes an order webhook without POSTing to the non-existent /api/v1/toast/webhooks route", async () => {
+    const { service, calls } = makeService({
+      mapping: {
+        inventory_id: "inv-1",
+        sale_unit: "bottle",
+        item_name: "Caymus Cabernet",
+      },
+    });
+    const { post } = spyingHttpClient(service);
+
+    const res = await service.processWebhook(
+      webhookDto(ToastWebhookEventType.ORDER_CLOSED),
+      "{}",
+      null,
+      null,
+    );
+
+    // The real work still happens…
+    expect(res.status).toBe("processed");
+    expect(calls.rpc).toHaveLength(1);
+    // …and nothing is fired at a route that does not exist.
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("processes a stock webhook without POSTing to the non-existent /api/v1/toast/webhooks route", async () => {
+    const { service } = makeService({});
+    const { post } = spyingHttpClient(service);
+
+    const res = await service.processWebhook(
+      {
+        eventId: "evt-stock-1",
+        eventType: ToastWebhookEventType.STOCK_UPDATED,
+        restaurantGuid: "toast-rest-1",
+        timestamp: new Date().toISOString(),
+        stock: {
+          itemGuid: "item-1",
+          itemName: "Caymus Cabernet",
+          quantity: 3,
+          previousQuantity: 5,
+        },
+      } as any,
+      "{}",
+      null,
+      null,
+    );
+
+    expect(res.status).toBe("processed");
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("keeps the dead route out of the source (regression guard)", () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const fs = require("fs");
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const path = require("path");
+    const src = fs.readFileSync(
+      path.join(__dirname, "toast.service.ts"),
+      "utf8",
+    );
+    // Only the explanatory block comment may mention the path or the old
+    // method name; neither may appear as live code again.
+    expect(src).not.toMatch(/httpClient\.post\(\s*`\/api\/v1\/toast\/webhooks/);
+    expect(src).not.toMatch(/this\.forwardToOrchestrator\(/);
+    expect(src).not.toMatch(/private async forwardToOrchestrator\(/);
   });
 });
