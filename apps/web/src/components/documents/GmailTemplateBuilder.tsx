@@ -73,7 +73,12 @@ interface TemplatePanel {
 
 interface GmailTemplateBuilderProps {
   onClose: () => void
-  onSave?: (template: SavedTemplate) => void
+  /**
+   * May persist, and may therefore fail. A rejection means NOTHING was stored,
+   * so the builder must not show its success state or close over it — see
+   * `handleSaveTemplate`.
+   */
+  onSave?: (template: SavedTemplate) => void | Promise<void>
   editingTemplate?: SavedTemplate | null
 }
 
@@ -523,12 +528,24 @@ export function GmailTemplateBuilder({ onClose, onSave, editingTemplate }: Gmail
       used_count: editingTemplate?.used_count || 0,
     }
 
+    // The success state follows the outcome, it does not precede it. This used
+    // to read `setSaveSuccess(true); onSave(template)` and close on a timer no
+    // matter what — so a handler that persists and FAILS still produced a
+    // green tick and a closed builder, discarding the author's work while
+    // telling them it was saved (ADR 0051 clause 3).
+    try {
+      if (onSave) {
+        await onSave(template)
+      }
+    } catch {
+      // The caller surfaces the failure in words; the builder's job is only to
+      // not claim success and to keep the work on screen.
+      setIsSaving(false)
+      return
+    }
+
     setIsSaving(false)
     setSaveSuccess(true)
-
-    if (onSave) {
-      onSave(template)
-    }
 
     setTimeout(() => {
       setSaveSuccess(false)
