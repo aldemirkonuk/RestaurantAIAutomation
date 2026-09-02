@@ -464,10 +464,12 @@ export class PosHubService {
         errors: ["No recognizable checks in payload"],
       };
 
-    const [mappings, tableLookup] = await Promise.all([
+    const [mappingLookup, tableLookup] = await Promise.all([
       this.loadItemMappings(restaurantId, providerKey),
       this.loadTables(restaurantId),
     ]);
+    const mappings = mappingLookup.rows;
+    if (mappingLookup.error) errors.push(mappingLookup.error);
     const tables = tableLookup.tables;
     // Degrade, do not reject: table resolution is an enrichment, so a failed
     // lookup must not turn into a 500 the POS retries forever. But it is SAID,
@@ -562,8 +564,24 @@ export class PosHubService {
   // Item mappings (pos_item_mappings) + wine heuristic
   // =========================================================================
 
-  private async loadItemMappings(restaurantId: string, source: string) {
-    const { data } = await this.dbService
+  /**
+   * Same shape as `loadTables` below, for the same reason.
+   *
+   * A failed read here returned `[]`, and `resolveWine` finds nothing in an
+   * empty array — so every line on every check ingested with
+   * `inventory_id: null`, `is_wine` from the name heuristic only, and no
+   * depletion. The ingest then reported `errors: []`. That is the mechanism
+   * that manufactures "the POS bridge stopped mapping" as a silent condition.
+   *
+   * An empty mapping table is NOT an error (a restaurant that has mapped
+   * nothing yet is normal) and is never reported as one; only a real failure
+   * is, through the same `errors` channel a failed check upsert uses.
+   */
+  private async loadItemMappings(
+    restaurantId: string,
+    source: string,
+  ): Promise<{ rows: any[]; error: string | null }> {
+    const { data, error } = await this.dbService
       .getClient()
       .from("pos_item_mappings")
       .select(
@@ -571,7 +589,14 @@ export class PosHubService {
       )
       .eq("restaurant_id", restaurantId)
       .in("source", [source, "*"]);
-    return data || [];
+    if (error) {
+      this.logger.error(
+        `pos_item_mappings lookup failed for r=${restaurantId} src=${source} — ` +
+          `every line will ingest unmapped rather than wrongly mapped: ${error.message}`,
+      );
+      return { rows: [], error: `pos_item_mappings: ${error.message}` };
+    }
+    return { rows: data || [], error: null };
   }
 
   /**
@@ -587,11 +612,21 @@ export class PosHubService {
   ): Promise<Map<string, InventoryVolumes>> {
     const out = new Map<string, InventoryVolumes>();
     if (!inventoryIds.length) return out;
-    const { data } = await this.dbService
+    const { data, error } = await this.dbService
       .getClient()
       .from("restaurant_inventory")
       .select("id, bottle_size_ml, pour_size_ml, menu_price_current")
       .in("id", inventoryIds);
+    // An empty map is the safe degrade — resolveSaleVolume queues the line
+    // rather than guessing a volume (ADR 0011) — but it must not be silent:
+    // a failed read here queues an ENTIRE service as unresolved and looks
+    // exactly like a restaurant whose inventory rows all vanished.
+    if (error)
+      this.logger.error(
+        `restaurant_inventory volume lookup failed for ${inventoryIds.length} ` +
+          `id(s) — every wine line on this check will queue as unresolved ` +
+          `rather than deplete by a guessed volume: ${error.message}`,
+      );
     for (const row of data || []) {
       const positive = (v: unknown) => {
         const n = Number(v);
@@ -1146,14 +1181,42 @@ export class PosHubService {
     return byLabel?.id ?? null;
   }
 
+  /**
+   * "Is my POS connection live?" — the one screen an operator opens to answer
+   * exactly that.
+   *
+   * The `error` used to be discarded, so a failed `pos_checks` read returned
+   * `totalChecks: 0, sources: []` and Settings → POS rendered
+   * "Ingestion (30d): 0 checks from this source" — the same sentence a
+   * genuinely idle integration produces. A status endpoint that cannot tell
+   * "dead" from "quiet" is answering the wrong question, and it answers it in
+   * the reassuring direction.
+   *
+   * Now it returns `unavailable: true` with `totalChecks: null`, which the
+   * client renders as an em dash (ADR 0051). A real measured zero still
+   * renders `0`.
+   */
   async getStatus(restaurantId: string) {
     const client = this.dbService.getClient();
     const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
-    const { data } = await client
+    const { data, error } = await client
       .from("pos_checks")
       .select("source, opened_at, closed_at")
       .eq("restaurant_id", restaurantId)
       .gte("opened_at", since30);
+    if (error) {
+      this.logger.error(
+        `pos_checks status read failed for r=${restaurantId} — reporting ` +
+          `UNAVAILABLE rather than "0 checks": ${error.code ?? "?"} ${error.message}`,
+      );
+      return {
+        windowDays: 30,
+        unavailable: true as const,
+        totalChecks: null,
+        sources: null,
+        generatedAt: new Date().toISOString(),
+      };
+    }
     const rows = data || [];
     const bySource = new Map<
       string,
@@ -1168,6 +1231,7 @@ export class PosHubService {
     }
     return {
       windowDays: 30,
+      unavailable: false as const,
       totalChecks: rows.length,
       sources: Array.from(bySource.entries()).map(([source, s]) => ({
         source,

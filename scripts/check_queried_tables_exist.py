@@ -293,7 +293,18 @@ KNOWN_MISSING_FUNCTIONS: dict[str, str] = {}
 # Resolving `const x = Class.CONST` remains a real gap in the extractor rather
 # than an unknowable, and is the cheapest next thing to close if the count
 # creeps again.
-DYNAMIC_CEILING = 24
+# 2026-09-02, raised 24 -> 26 for TWO sites in
+# apps/api-gateway/src/analytics/dev-truth.service.ts: `client.from(table)` in
+# reach() and swallow(), where `table` is the loop variable over SOURCE_TABLE
+# and over an explicit probe list. These cannot be literals without defeating
+# the instrument -- its entire job is to report row counts and read-failure
+# states ACROSS the seven data sources at once, so the table name is the thing
+# being iterated. The blind spot changes no verdict: every name it can take is
+# a literal in the same file (SOURCE_TABLE's seven values plus five probes),
+# so all twelve are already in the queried set from the map literal itself and
+# are checked against migrations there. The module is dev-only and returns 404
+# under NODE_ENV=production, so if it is ever deleted this should go back to 24.
+DYNAMIC_CEILING = 26
 
 
 # ---------------------------------------------------------------------------

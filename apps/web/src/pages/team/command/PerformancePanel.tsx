@@ -8,6 +8,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { BarChart3, Plus, Upload } from 'lucide-react'
 import { getMemberPerformance, ingestSales, ingestSalesBatch, type TeamMember } from '../../../services/api/team'
+import { useAuth } from '../../../contexts/AuthContext'
+import { TEAM_SERVER_WINDOWS } from '../next/useTeamNextData'
+import { LE } from '../next/tm-format'
 import { ExportMenu } from '../../../components/ui/ExportMenu'
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport'
 import { TABULAR_ACCEPT } from '../../../lib/uploadAccept'
@@ -18,10 +21,13 @@ export function PerformancePanel({ member }: { member: TeamMember | null }) {
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ serviceDate: new Date().toISOString().slice(0, 10), covers: '', netSales: '', wineSales: '', checks: '' })
 
+  // Tenant-keyed: a member id is unique, but the cache bucket is not evicted
+  // on a branch switch and the gateway scopes this read by restaurant header.
+  const { activeRestaurantId } = useAuth()
   const { data, isLoading } = useQuery({
-    queryKey: ['team', 'performance', member?.id],
+    queryKey: ['team', 'performance', activeRestaurantId, member?.id],
     queryFn: () => getMemberPerformance(member!.id),
-    enabled: !!member,
+    enabled: !!member && !!activeRestaurantId,
   })
 
   /** NEW-529: export this member's performance series in shared formats. */
@@ -213,6 +219,16 @@ export function PerformancePanel({ member }: { member: TeamMember | null }) {
               <Metric label="Wine attach" value={`${data.metrics!.wineAttachPct}%`} />
             </div>
             <Sparkline analytic={data.analytic!} />
+            {/* The dashed line and grey band are the TEAM benchmark, and it is
+                a window: performance.service.ts:139 computes the median and
+                quartiles over the most recent
+                TEAM_SERVER_WINDOWS.BENCHMARK_SERVICES logged services across
+                the whole restaurant, not over all of them. Drawn without that
+                sentence it reads as "the team", which it is not. */}
+            <div className="mt-1.5 text-[9px] text-gray-400">
+              Median and band over the restaurant&apos;s most recent services,{' '}
+              {LE}{TEAM_SERVER_WINDOWS.BENCHMARK_SERVICES} of them — not the whole history.
+            </div>
           </>
         )}
       </div>
@@ -232,7 +248,11 @@ function Metric({ label, value }: { label: string; value: string }) {
 function Sparkline({ analytic }: { analytic: NonNullable<import('../../../services/api/team').MemberPerformance['analytic']> }) {
   const { series, median, band } = analytic
   const W = 300, H = 60, pad = 4
-  const all = [...series, median, band[0], band[1]]
+  // median/band are null when the peer benchmark is unknown. They used to be
+  // 0 — including when the benchmark QUERY had failed — which pinned the
+  // dashed peer line to the floor and made every server look above average.
+  // Unknown draws nothing, and the caption says why. ADR 0067 / ADR 0051.
+  const all = [...series, ...(median != null ? [median] : []), ...(band ? [band[0], band[1]] : [])]
   let lo = Math.min(...all), hi = Math.max(...all)
   const range = hi - lo || 1
   lo -= range * 0.15; hi += range * 0.15
@@ -240,10 +260,19 @@ function Sparkline({ analytic }: { analytic: NonNullable<import('../../../servic
   const Y = (v: number) => H - pad - ((v - lo) / (hi - lo || 1)) * (H - 2 * pad)
   const path = series.map((v, i) => `${i ? 'L' : 'M'}${X(i)},${Y(v)}`).join(' ')
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-14">
-      <rect x={0} y={Y(band[1])} width={W} height={Math.max(1, Y(band[0]) - Y(band[1]))} fill="#f3f4f6" />
-      <line x1={0} y1={Y(median)} x2={W} y2={Y(median)} stroke="#d1d5db" strokeDasharray="3 3" />
-      <path d={path} fill="none" stroke="#1A5E6B" strokeWidth={2} />
-    </svg>
+    <>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-14">
+        {band && (
+          <rect x={0} y={Y(band[1])} width={W} height={Math.max(1, Y(band[0]) - Y(band[1]))} fill="#f3f4f6" />
+        )}
+        {median != null && (
+          <line x1={0} y1={Y(median)} x2={W} y2={Y(median)} stroke="#d1d5db" strokeDasharray="3 3" />
+        )}
+        <path d={path} fill="none" stroke="#1A5E6B" strokeWidth={2} />
+      </svg>
+      {median == null && (
+        <div className="mt-1 text-[10px] text-gray-400">Team benchmark —</div>
+      )}
+    </>
   )
 }

@@ -5,12 +5,25 @@
  * figure stays null until its query has actually answered.
  *
  * Sources: useProcurementConversationHistory (the outbound negotiation book),
- * useConversationThreads (inbound/outbound thread summaries), and the report
- * schedules the legacy page managed.
+ * useConversationThreads (inbound/outbound thread summaries), the drafts
+ * awaiting action, the report schedules the legacy page managed, and the
+ * gateway's own Gmail watch status.
+ *
+ * THREE STATES, NEVER TWO (ADR 0051 clause 3). Every source here can be
+ * unanswered, failed, or answered, and this hook keeps all three apart:
+ *
+ *   unanswered  the figure is null and no failure is named
+ *   failed      the figure is null AND `failed.<source>` is true
+ *   answered    the figure is a number, zero included
+ *
+ * The rebuild originally collapsed the first two — `schedulesKnown = data !==
+ * undefined` and `isError = historyQ.isError` — so a permanent 500 rendered as
+ * latency forever and four of five sources had no failure surface at all.
  */
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../../../contexts/AuthContext';
 import {
   useConversationThreads,
   useProcurementConversationHistory,
@@ -21,8 +34,24 @@ import { apiClient } from '../../../services/api/client';
 import { listReportSchedules, type ScheduledReport } from '../../../services/api/reports';
 import { sendState } from './cm-format';
 
+/**
+ * Server-imposed windows this page renders behind. Each entry cites the query
+ * that imposes it, and `scripts/check_windowed_figures.py` (W1) re-reads that
+ * citation on every CI run: move the server's cap and the guard fails rather
+ * than letting the page's floor prose become a confident falsehood.
+ */
+export const COMMS_SERVER_WINDOWS = {
+  /**
+   * procurement.service.ts:3820 — `getConversationHistory` ends
+   * `.in("status", HISTORY_STATUSES).order(...).limit(100)`. The 30-day sent
+   * figure is filtered from that page, so once the page is full the figure is
+   * a floor and the strip prints `≥`.
+   */
+  HISTORY_ROWS: 100,
+} as const;
+
 export interface CommsGlance {
-  /** null = the query behind the figure has not answered. */
+  /** null = the query behind the figure has not answered (or has failed). */
   threads: number | null;
   draftsPending: number | null;
   sentLast30: number | null;
@@ -31,7 +60,34 @@ export interface CommsGlance {
   schedules: number | null;
 }
 
+/** Which of the five sources returned a failure. Never merged with "unknown". */
+export interface CommsFailures {
+  history: boolean;
+  threads: boolean;
+  drafts: boolean;
+  schedules: boolean;
+  gmail: boolean;
+}
+
+/** Reader-facing names, in strip order, for the sentence the banner prints. */
+const SOURCE_LABELS: Array<[keyof CommsFailures, string]> = [
+  ['history', 'the conversation book'],
+  ['threads', 'the thread index'],
+  ['drafts', 'the drafts awaiting action'],
+  ['schedules', 'the report schedules'],
+  ['gmail', 'the Gmail watch status'],
+];
+
+function errText(e: unknown): string {
+  return e instanceof Error ? e.message : 'unknown error';
+}
+
 export function useCommsNextData() {
+  const { user, activeRestaurantId } = useAuth();
+  // The gateway scopes every endpoint below from the JWT alone; the key literal
+  // is the only thing keeping one tenant's cache out of another's.
+  const restaurantId = activeRestaurantId ?? user?.restaurantId ?? '';
+
   const historyQ = useProcurementConversationHistory();
   const threadsQ = useConversationThreads();
   // Drafts awaiting action come from the same live source the orders DraftRail
@@ -40,7 +96,7 @@ export function useCommsNextData() {
   // zero (communications-audit.md, BLOCKER 2).
   const activeQ = useActiveConversations();
   const schedulesQ = useQuery<ScheduledReport[]>({
-    queryKey: ['report-schedules'],
+    queryKey: ['report-schedules', restaurantId],
     queryFn: listReportSchedules,
     staleTime: 60_000,
   });
@@ -48,7 +104,7 @@ export function useCommsNextData() {
   // connection nothing checked (opus-fidelity C-1). The gateway's Gmail
   // watch status is the honest source for the inbound mail channel.
   const gmailQ = useQuery<{ configured: boolean }>({
-    queryKey: ['comms-gmail-watch-status'],
+    queryKey: ['comms-gmail-watch-status', restaurantId],
     queryFn: async () => {
       const { data } = await apiClient.get('/communications/webhooks/gmail/status');
       return data;
@@ -78,28 +134,64 @@ export function useCommsNextData() {
                 sendState(i.status) === 'sent' &&
                 new Date(i.sentAt ?? i.createdAt).getTime() >= cutoff,
             ).length,
-      // The history endpoint serves at most its server cap; when the window
-      // is full the 30-day figure is a floor, and the strip says so.
-      sentLast30Truncated: (historyQ.data?.length ?? 0) >= 100,
+      // The history endpoint serves at most COMMS_SERVER_WINDOWS.HISTORY_ROWS;
+      // when the window is full the 30-day figure is a floor, and the strip
+      // says so with GE.
+      sentLast30Truncated: (historyQ.data?.length ?? 0) >= COMMS_SERVER_WINDOWS.HISTORY_ROWS,
       schedules: schedulesQ.data === undefined ? null : schedulesQ.data.length,
     };
   }, [historyQ.data, threadsQ.data, activeQ.data, schedulesQ.data]);
 
+  const failed: CommsFailures = {
+    history: historyQ.isError,
+    threads: threadsQ.isError,
+    drafts: activeQ.isError,
+    schedules: schedulesQ.isError,
+    gmail: gmailQ.isError,
+  };
+
+  const failedSources = SOURCE_LABELS.filter(([k]) => failed[k]).map(([, label]) => label);
+
   return {
     rows,
     glance,
-    /** null = unanswered; boolean = the gateway's own word. */
+    /** null = unanswered or failed; boolean = the gateway's own word. */
     gmailWatchConfigured: gmailQ.data === undefined ? null : gmailQ.data.configured,
     schedules: schedulesQ.data ?? [],
+    /** True only when the schedule register actually answered. */
     schedulesKnown: schedulesQ.data !== undefined,
+    /**
+     * The schedule register's failure, kept SEPARATE from `schedulesKnown` —
+     * the distinction the legacy page held (Communications.tsx:269, 293-299)
+     * and the rebuild deleted.
+     *
+     * This is not hypothetical latency. `public.scheduled_reports` is created
+     * by no migration in `supabase/migrations/`; a later migration
+     * (20260826170000_integration_oauth_tables.sql:26) names it as one of five
+     * tables "living outside supabase/migrations/ that production never saw".
+     * So `GET /reports/schedules` fails 100% of the time, and a page that can
+     * only say "hasn't answered yet" says it forever.
+     */
+    schedulesError: schedulesQ.isError ? errText(schedulesQ.error) : null,
     hasData: historyQ.data !== undefined,
     isError: historyQ.isError,
-    errorMessage: historyQ.error instanceof Error ? historyQ.error.message : 'unknown error',
+    errorMessage: errText(historyQ.error),
+    /** Per-source failure. The banner and the strip both read this. */
+    failed,
+    /**
+     * Reader-facing names of the failed sources, for the banner's sentence.
+     * Its emptiness IS the banner's condition — one source of truth, so a
+     * banner can never appear naming nothing, nor a failure go unnamed.
+     */
+    failedSources,
     refetch: () => {
       void historyQ.refetch();
       void threadsQ.refetch();
       void activeQ.refetch();
       void schedulesQ.refetch();
+      // The Gmail line is a fifth source and was previously unreachable from
+      // "Try again", which made the button's promise partly false.
+      void gmailQ.refetch();
     },
   };
 }

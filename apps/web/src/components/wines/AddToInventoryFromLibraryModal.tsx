@@ -784,11 +784,14 @@ export function AddToInventoryFromLibraryModal({
               ) : (
                 <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-0.5">
                   {locations.map((location) => {
+                    // A zone with no recorded capacity has no percentage and
+                    // cannot be known to be full.
                     const pct =
-                      location.capacity > 0
+                      location.capacity != null && location.capacity > 0
                         ? Math.min(100, (location.currentCount / location.capacity) * 100)
-                        : 0
-                    const isFull = location.currentCount >= location.capacity
+                        : null
+                    const isFull =
+                      location.capacity != null && location.currentCount >= location.capacity
                     const isSelected = selectedLocationId === location.id
                     return (
                       <button
@@ -816,21 +819,25 @@ export function AddToInventoryFromLibraryModal({
                             <Check className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
                           )}
                         </div>
-                        <div className="w-full bg-gray-100 rounded-full h-1 mb-1.5">
-                          <div
-                            className={`h-1 rounded-full transition-all ${
-                              pct > 90
-                                ? 'bg-red-400'
-                                : pct > 70
-                                ? 'bg-amber-400'
-                                : 'bg-emerald-400'
-                            }`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
+                        {pct == null ? (
+                          <p className="text-[10px] text-gray-400 mb-1.5">Capacity not recorded</p>
+                        ) : (
+                          <div className="w-full bg-gray-100 rounded-full h-1 mb-1.5">
+                            <div
+                              className={`h-1 rounded-full transition-all ${
+                                pct > 90
+                                  ? 'bg-red-400'
+                                  : pct > 70
+                                  ? 'bg-amber-400'
+                                  : 'bg-emerald-400'
+                              }`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        )}
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] text-gray-400">
-                            {location.currentCount}/{location.capacity}
+                            {location.currentCount}/{location.capacity ?? '—'}
                           </span>
                           {location.temperature && (
                             <span className="text-[11px] text-gray-400">

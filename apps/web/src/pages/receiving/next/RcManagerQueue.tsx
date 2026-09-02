@@ -20,9 +20,21 @@ import { useNavigate } from 'react-router-dom';
 import { ink, settle } from '@/lib/mudavym/motion';
 import type { UnverifiedDelivery } from '@/services/api/receiving';
 import { RcTally } from './RcTally';
-import { EM, MONO, SANS, SERIF, capStyle, fmtDate, fmtMoneyWhole } from './rc-format';
+import {
+  EM,
+  GE,
+  MONO,
+  SANS,
+  SERIF,
+  capStyle,
+  fmtDate,
+  fmtIntFloor,
+  fmtMoneyWhole,
+  fmtMoneyWholeFloor,
+} from './rc-format';
 import {
   LANE_LABEL,
+  SERVER_WINDOWS,
   type ManagerQueueData,
   type OutcomeLane,
   type QueueItemVM,
@@ -34,10 +46,13 @@ const LANES: OutcomeLane[] = ['accepted', 'short', 'refused'];
 
 function LaneSpine({
   counts,
+  atFloor,
   active,
   onSelect,
 }: {
   counts: Record<OutcomeLane, number | null>;
+  /** The lane counts are filters over a capped list; a full list makes them floors. */
+  atFloor: boolean;
   active: OutcomeLane | null;
   onSelect: (lane: OutcomeLane | null) => void;
 }) {
@@ -79,6 +94,11 @@ function LaneSpine({
           >
             {LANE_LABEL[lane]}
             <span
+              title={
+                atFloor
+                  ? `At least this many. The queue is served capped at ${SERVER_WINDOWS.QUEUE_ITEMS} rows and came back full, so anything beyond it is not counted here.`
+                  : undefined
+              }
               style={{
                 fontFamily: MONO,
                 fontSize: 11,
@@ -88,7 +108,7 @@ function LaneSpine({
                 transition: `color ${ink.ms}ms ${ink.easing}`,
               }}
             >
-              {counts[lane] === null ? EM : counts[lane]}
+              {fmtIntFloor(counts[lane], atFloor)}
             </span>
           </button>
         );
@@ -99,31 +119,65 @@ function LaneSpine({
 
 /* ── the safety net for stock booked on a case count ────────────────────── */
 
-function UnverifiedStrip({ items }: { items: UnverifiedDelivery[] }) {
+const stripShell = {
+  display: 'flex',
+  gap: 10,
+  alignItems: 'baseline',
+  borderRadius: 12,
+  background: 'var(--paper-1, #F3EFE6)',
+  padding: '10px 14px',
+  fontFamily: SANS,
+  fontSize: 12.5,
+  color: 'var(--ink-2, #4F473C)',
+} as const;
+
+/**
+ * The safety net used to render only when `items.length > 0`, and the hook set
+ * `unverified: []` whenever the query did not answer — so the one figure whose
+ * silence turns into unexplained shrinkage went silent exactly when its query
+ * failed. "Nothing uncounted" and "we do not know whether anything is
+ * uncounted" are opposite instructions to a manager.
+ */
+function UnverifiedUnknownStrip() {
+  return (
+    <div
+      role="status"
+      style={{ ...stripShell, border: '1px solid var(--seal-ring, rgba(26,94,107,.32))' }}
+    >
+      <span style={{ ...capStyle, flex: 'none' }}>Uncounted</span>
+      <span>
+        <strong style={{ color: 'var(--ink-1, #211C16)' }}>Unknown</strong> — the uncounted list did
+        not load. This is not a report of zero: a delivery booked on a case count and never counted
+        by bottle may well be sitting there. Reload before treating the queue below as the whole
+        picture.
+      </span>
+    </div>
+  );
+}
+
+function UnverifiedStrip({ items, atFloor }: { items: UnverifiedDelivery[]; atFloor: boolean }) {
   const overdue = items.filter((i) => i.severity === 'overdue').length;
   return (
     <div
       style={{
-        display: 'flex',
-        gap: 10,
-        alignItems: 'baseline',
+        ...stripShell,
         border: `1px solid ${overdue ? 'var(--seal-ring, rgba(26,94,107,.32))' : 'var(--paper-2, #EAE4D8)'}`,
-        borderRadius: 12,
-        background: 'var(--paper-1, #F3EFE6)',
-        padding: '10px 14px',
-        fontFamily: SANS,
-        fontSize: 12.5,
-        color: 'var(--ink-2, #4F473C)',
       }}
     >
       <span style={{ ...capStyle, flex: 'none' }}>Uncounted</span>
       <span>
-        <strong style={{ color: 'var(--ink-1, #211C16)' }}>{items.length}</strong> deliver
-        {items.length === 1 ? 'y' : 'ies'} counted by case and not yet by bottle — oldest{' '}
+        <strong
+          style={{ color: 'var(--ink-1, #211C16)' }}
+          title={`At least this many. The list is built from the newest ${SERVER_WINDOWS.UNVERIFIED} receipt events, so an older uncounted delivery falls outside it.`}
+        >
+          {fmtIntFloor(items.length, atFloor)}
+        </strong>{' '}
+        deliver{items.length === 1 ? 'y' : 'ies'} counted by case and not yet by bottle — oldest{' '}
         {items[0]?.ageHours ?? EM}h.
         {overdue > 0 && (
           <strong style={{ color: 'var(--ink-1, #211C16)' }}>
             {' '}
+            {GE}
             {overdue} past two days — a short case there can no longer be claimed from the vendor.
           </strong>
         )}
@@ -246,19 +300,34 @@ function QueueRow({
             {item.summary || `verdict: ${item.verdict}`}
           </span>
         </span>
+        {/* A measured $0 and an absent figure used to collapse into the same
+            em dash, while `openClaims` printed a literal 0 beside it — so one
+            row could read "$— · 0 open claims". `atRisk` is null ONLY when the
+            server sent no figure; a real zero renders as $0 and is dimmed,
+            not hidden (ADR 0051 clause 1). */}
         <span
+          title={
+            item.atRisk === null
+              ? 'The server sent no figure for this row — unknown, not zero.'
+              : item.atRisk === 0
+                ? 'Measured: this row has nothing at risk.'
+                : undefined
+          }
           style={{
             flex: 'none',
             fontFamily: MONO,
             fontSize: 13.5,
             fontWeight: 700,
             fontVariantNumeric: 'tabular-nums',
-            color: item.dollarsAtRisk > 0 ? 'var(--ink-1, #211C16)' : 'var(--ink-3, #7C7365)',
+            color:
+              item.atRisk !== null && item.atRisk > 0
+                ? 'var(--ink-1, #211C16)'
+                : 'var(--ink-3, #7C7365)',
             minWidth: 72,
             textAlign: 'right',
           }}
         >
-          {item.dollarsAtRisk > 0 ? fmtMoneyWhole(item.dollarsAtRisk) : EM}
+          {fmtMoneyWhole(item.atRisk)}
         </span>
         <span
           aria-hidden
@@ -310,8 +379,13 @@ function QueueRow({
                     lineHeight: 1.6,
                   }}
                 >
-                  {item.openClaims} open claim{item.openClaims === 1 ? '' : 's'} ·{' '}
-                  {item.dollarsAtRisk > 0 ? fmtMoneyWhole(item.dollarsAtRisk) : EM} at risk
+                  {/* ALWAYS a floor. The server links claims with `.limit(200)`
+                      and no `.order()`, capped per restaurant rather than per
+                      order, so the client cannot see whether the window was
+                      full — `≥0` means "none inside the window", which is a
+                      weaker and truer claim than "none". */}
+                  {fmtIntFloor(item.openClaimsFloor, true)} open claim
+                  {item.openClaimsFloor === 1 ? '' : 's'} · {fmtMoneyWhole(item.atRisk)} at risk
                   {item.backorderQty > 0 && (
                     <>
                       <br />
@@ -320,6 +394,12 @@ function QueueRow({
                   )}
                   <br />
                   matched {fmtDate(item.verifiedAt)}
+                </p>
+                <p style={{ fontSize: 10.5, color: 'var(--ink-3, #7C7365)', margin: '6px 0 0' }}>
+                  Claim counts are lower bounds: the gateway links at most{' '}
+                  {SERVER_WINDOWS.LINKED_CREDITS} credit rows per restaurant and does not order
+                  them, so a claim can sit outside the window.
+                  {item.atRisk === 0 && ' The $0 above is measured, not missing.'}
                 </p>
               </div>
             </div>
@@ -339,7 +419,14 @@ function QueueRow({
                 type="button"
                 style={linkStyle}
                 data-ux-key="receiving-next:queue-open-receipts"
-                onClick={() => navigate('/receipts')}
+                // Carries the order, exactly as its sibling above does. Landing
+                // a manager on an unfiltered desk after they picked one row is
+                // how the wrong receipt gets edited.
+                // TODO(receipts): `pages/receipts/next/ReceiptsNext.tsx:447`
+                // reads only `?tab`, so this parameter is inert until that page
+                // selects by order id. Passing it now means the hand-off starts
+                // working the moment it does, with no change here.
+                onClick={() => navigate(`/receipts?order=${encodeURIComponent(item.orderId)}`)}
               >
                 Edit line items at the desk — /receipts
               </button>
@@ -387,9 +474,12 @@ export function RcManagerQueue({ data }: { data: ManagerQueueData }) {
         </h2>
         <span style={{ textAlign: 'right' }}>
           <span style={capStyle}>At risk</span>{' '}
+          {/* Summed over the same capped list as the lane counts, so a full
+              window makes the total a lower bound. RcTally keeps its contract:
+              null is the em dash and the dash→number arrival does not tick. */}
           <RcTally
             value={data.totalAtRisk}
-            format={fmtMoneyWhole}
+            format={(n) => fmtMoneyWholeFloor(n, data.itemsAtFloor)}
             style={{
               fontFamily: MONO,
               fontSize: 17,
@@ -400,13 +490,26 @@ export function RcManagerQueue({ data }: { data: ManagerQueueData }) {
         </span>
       </div>
 
-      {data.unverified.length > 0 && (
+      {/* Three states, three renderings — and the unknown one is the reason
+          this block exists (F7). Loading is covered by "Reaching the gateway…"
+          below, so silence here only ever means a measured zero. */}
+      {data.unverified === null && !data.isLoading && (
         <div style={{ marginBottom: 12 }}>
-          <UnverifiedStrip items={data.unverified} />
+          <UnverifiedUnknownStrip />
+        </div>
+      )}
+      {data.unverified !== null && data.unverified.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <UnverifiedStrip items={data.unverified} atFloor={data.unverifiedAtFloor} />
         </div>
       )}
 
-      <LaneSpine counts={data.laneCounts} active={lane} onSelect={setLane} />
+      <LaneSpine
+        counts={data.laneCounts}
+        atFloor={data.itemsAtFloor}
+        active={lane}
+        onSelect={setLane}
+      />
 
       {data.isError && (
         <div
@@ -425,9 +528,32 @@ export function RcManagerQueue({ data }: { data: ManagerQueueData }) {
           }}
         >
           <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-            The queue could not be loaded ({data.errorMessage}). What needs a decision is unknown —
-            {' '}{EM}, not zero.
+            {data.failure?.forbidden ? (
+              <>
+                This account is not permitted to see the decision queue. The gateway understood the
+                request and refused it — a permission, not an outage, so retrying will not help. Ask
+                an owner to open manager access. What needs a decision is unknown — {EM}, not zero.
+              </>
+            ) : (
+              <>
+                The queue could not be loaded ({data.errorMessage}). What needs a decision is unknown
+                — {EM}, not zero.
+              </>
+            )}
+            <span
+              style={{
+                display: 'block',
+                fontFamily: MONO,
+                fontSize: 10.5,
+                color: 'var(--ink-3, #7C7365)',
+                marginTop: 4,
+              }}
+            >
+              {data.failure?.status === null ? 'no status' : `HTTP ${data.failure?.status}`} ·{' '}
+              {data.errorMessage}
+            </span>
           </span>
+          {!data.failure?.forbidden && (
           <button
             type="button"
             onClick={data.refetch}
@@ -444,6 +570,7 @@ export function RcManagerQueue({ data }: { data: ManagerQueueData }) {
           >
             Try again
           </button>
+          )}
         </div>
       )}
 

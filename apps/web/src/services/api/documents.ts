@@ -22,6 +22,16 @@ export interface ProcurementDocument {
   doc_number: string | null
   doc_date: string | null
   status: 'received' | 'extracting' | 'needs_review' | 'verified' | 'rejected' | 'superseded'
+  /**
+   * ISO 4217 code the document is denominated in. Real column
+   * (`procurement_documents.currency`, `varchar(3)`, defaulted to 'USD' but
+   * NOT NULL-free), returned by the `select("*")` list endpoint and simply
+   * absent from this type — which is why every money figure this client fed a
+   * screen was printed with a hardcoded `$`. Nullable here because the column
+   * is: a row inserted with an explicit NULL records no unit, and that is a
+   * fact to state, not a dollar sign to assume.
+   */
+  currency?: string | null
   total: number | null
   freight: number | null
   fuel_surcharge: number | null
@@ -57,6 +67,24 @@ export interface ProcurementDocumentLine {
   line_total: number | null
   allowance: number | null
   order_line_id: string | null
+  /**
+   * How sure the pairing is, 0–1 (`numeric(4,3)`). `1` after a human confirms
+   * (documents.controller.ts:244). Null when nothing is paired — and null is
+   * NOT zero: "no pairing" and "a pairing nobody scored" are different facts.
+   */
+  match_confidence?: number | null
+  /** vendor_sku | description | qty_price | manual | edi_reference. */
+  match_method?: 'vendor_sku' | 'description' | 'qty_price' | 'manual' | 'edi_reference' | null
+}
+
+/** One pairing the matcher produced, applied or merely suggested. */
+export interface DocumentLineMatch {
+  documentLineId: string
+  orderLineId: string
+  confidence: number
+  substitution: boolean
+  reason: string
+  method?: string
 }
 
 /** Decision E49 — absence is never agreement. Render nulls as an em dash, never as a pass. */
@@ -108,6 +136,16 @@ export const documentsApi = {
    * Correct one extracted line by hand (pre-verification only). Returns the
    * updated line and the document's recomputed tie-out, so the caller can
    * show the arithmetic move immediately.
+   *
+   * NO CONCURRENCY PRECONDITION, and there is nothing to build one from.
+   * `procurement_document_lines` carries `created_at` and no `updated_at`
+   * (baseline_from_production.sql:4377-4400), so there is no version, no
+   * etag, and no mtime to send an `If-Match` on. Two managers on one document
+   * are last-write-wins. Rather than invent a column here, the page detects
+   * the collision AFTER the fact: it sends one field per PATCH and compares
+   * every field it did NOT send against its own cached copy of the row, so a
+   * value that moved underneath is said out loud instead of silently winning.
+   * A real precondition needs a migration; filed as a page-note gap.
    */
   async editLine(
     documentId: string,
@@ -129,16 +167,19 @@ export const documentsApi = {
     return data
   },
 
-  /** Run the line matcher; suggestions come back for one-tap confirmation. */
+  /**
+   * Run the line matcher.
+   *
+   * `applied` pairings were **written to the database** by this call —
+   * unambiguous vendor-SKU matches above the auto threshold
+   * (line-matcher.ts:282-296, documents.controller.ts:209-224). They are a
+   * fait accompli, not a proposal, so a caller that shows them must also offer
+   * to undo them (`linkLine(…, null)`). `suggested` is the half that is never
+   * persisted until a human confirms it.
+   */
   async match(id: string): Promise<{
-    applied: unknown[]
-    suggested: Array<{
-      documentLineId: string
-      orderLineId: string
-      confidence: number
-      substitution: boolean
-      reason: string
-    }>
+    applied: DocumentLineMatch[]
+    suggested: DocumentLineMatch[]
     unmatchedDocumentLineIds: string[]
     unmatchedOrderLineIds: string[]
   }> {

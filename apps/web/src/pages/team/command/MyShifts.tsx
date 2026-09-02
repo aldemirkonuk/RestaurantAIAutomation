@@ -26,7 +26,7 @@ export function MyShifts() {
     if (w && /^\d{4}-\d{2}-\d{2}$/.test(w)) setWeekStart(mondayOf(new Date(w + 'T12:00:00')))
   }, [params])
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['team', 'my-week', activeRestaurantId, weekStart],
     queryFn: () => getMyWeek(weekStart),
     enabled: !!activeRestaurantId,
@@ -34,6 +34,10 @@ export function MyShifts() {
 
   const payload = data as MyWeekPayload | undefined
   const days = useMemo(() => weekDays(weekStart), [weekStart])
+  // A failed fetch rendered seven days of "Off" — a staff member's whole week
+  // said to be free because the gateway was down. "Could not be refreshed" and
+  // "nothing below is claimed" are different sentences (ADR 0051).
+  const weekUnknown = isError && !payload
 
   const ack = useMutation({
     mutationFn: (scheduleId: string) => acknowledgeSchedule(scheduleId),
@@ -41,6 +45,7 @@ export function MyShifts() {
       toast.success('Schedule acknowledged')
       qc.invalidateQueries({ queryKey: ['team', 'my-week'] })
     },
+    onError: () => toast.error('Could not acknowledge the schedule'),
   })
   const claim = useMutation({
     mutationFn: ({ shiftId, memberId }: { shiftId: string; memberId: string }) =>
@@ -84,6 +89,25 @@ export function MyShifts() {
         </div>
       </div>
 
+      {isError && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 mb-4 p-3.5 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-700"
+        >
+          <span>
+            {payload
+              ? `Your week could not be refreshed (${error instanceof Error ? error.message : 'unknown error'}) — what is below is the last answer, not the present.`
+              : `Your week could not be loaded (${error instanceof Error ? error.message : 'unknown error'}). Nothing below is claimed — this is not a week off.`}
+          </span>
+          <button
+            onClick={() => void refetch()}
+            className="h-8 px-3 shrink-0 border border-gray-200 bg-white rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-100"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
       {/* Acknowledge banner */}
       {payload?.schedule?.status === 'published' && !payload.acknowledged && (
         <div className="flex items-center justify-between gap-3 mb-4 p-3.5 rounded-xl border border-wine-100 bg-wine-50/60">
@@ -119,7 +143,11 @@ export function MyShifts() {
                   <div className="text-lg font-extrabold tabular-nums text-gray-900">{dayNum(d)}</div>
                 </div>
                 <div className="flex-1 flex flex-wrap items-center gap-2">
-                  {mine.length === 0 && <span className="text-xs text-gray-300">Off</span>}
+                  {mine.length === 0 && (
+                    <span className="text-xs text-gray-300">
+                      {weekUnknown ? '— not known' : 'Off'}
+                    </span>
+                  )}
                   {mine.map((s) => (
                     <div key={s.id} className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold', shiftClass(s))}>
                       <span className="font-extrabold tabular-nums">

@@ -13,11 +13,22 @@ import { StockGauge } from './bits'
 interface Props {
   items: InventoryItem[]
   locations: StorageLocation[]
+  /** The zones query has not answered yet. Not the same as "no zones". */
+  locationsLoading?: boolean
+  /** The zones query failed. Also not the same as "no zones". */
+  locationsUnavailable?: boolean
   onOpenInTable: (locationId: string) => void
   onManageLocations: () => void
 }
 
-export function CellarMapView({ items, locations, onOpenInTable, onManageLocations }: Props) {
+export function CellarMapView({
+  items,
+  locations,
+  locationsLoading = false,
+  locationsUnavailable = false,
+  onOpenInTable,
+  onManageLocations,
+}: Props) {
   const [selected, setSelected] = useState<string | null>(locations[0]?.id ?? null)
 
   const byLocation = useMemo(() => {
@@ -44,6 +55,29 @@ export function CellarMapView({ items, locations, onOpenInTable, onManageLocatio
     return 'bg-emerald-50 border-emerald-200'
   }
 
+  // Three different sentences for three different states. Before 2026-09-02 all
+  // three rendered four invented zones, so the map could not say any of them.
+  if (locationsUnavailable) {
+    return (
+      <div className="bg-white border border-gray-100 rounded-2xl p-12 text-center">
+        <h3 className="text-base font-bold text-gray-900 mb-1">Storage zones could not be loaded</h3>
+        <p className="text-sm text-gray-500">
+          The request to the server failed, so this map is not claiming anything about your cellar.
+          It is not saying you have no zones — it does not know. Reload to try again.
+        </p>
+      </div>
+    )
+  }
+
+  if (locationsLoading) {
+    return (
+      <div className="bg-white border border-gray-100 rounded-2xl p-12 text-center">
+        <h3 className="text-base font-bold text-gray-900 mb-1">Loading storage zones…</h3>
+        <p className="text-sm text-gray-500">Nothing below is claimed until this answers.</p>
+      </div>
+    )
+  }
+
   if (locations.length === 0) {
     return (
       <div className="bg-white border border-gray-100 rounded-2xl p-12 text-center">
@@ -62,7 +96,12 @@ export function CellarMapView({ items, locations, onOpenInTable, onManageLocatio
         {locations.map((zone) => {
           const wines = byLocation.get(zone.id) ?? []
           const bottleCount = wines.reduce((s, w) => s + w.qty, 0)
-          const pct = zone.capacity > 0 ? Math.min(100, (bottleCount / zone.capacity) * 100) : 0
+          // A capacity nobody recorded is not 100 and not zero — it is no
+          // denominator at all, so there is no percentage to draw.
+          const capacity = zone.capacity
+          const pct = capacity != null && capacity > 0
+            ? Math.min(100, (bottleCount / capacity) * 100)
+            : null
           return (
             <div key={zone.id} className="bg-white border border-gray-100 rounded-2xl p-4">
               <div className="flex items-center justify-between mb-3">
@@ -70,13 +109,22 @@ export function CellarMapView({ items, locations, onOpenInTable, onManageLocatio
                   <span className="w-2 h-2 rounded-full" style={{ background: zone.color || '#be123c' }} />
                   {zone.name}
                 </div>
-                <div className="font-mono text-[11px] text-gray-400">
-                  {bottleCount} / {zone.capacity || '?'} slots{zone.temperature ? `, ${zone.temperature}` : ''}
+                <div
+                  className="font-mono text-[11px] text-gray-400"
+                  title={capacity == null ? 'No capacity recorded for this zone' : undefined}
+                >
+                  {bottleCount} / {capacity ?? '—'} slots{zone.temperature ? `, ${zone.temperature}` : ''}
                 </div>
               </div>
-              <div className="h-1 bg-gray-100 rounded-full overflow-hidden mb-3.5">
-                <i className="block h-full rounded-full" style={{ width: `${pct}%`, background: zone.color || '#be123c' }} />
-              </div>
+              {pct == null ? (
+                <p className="text-[10.5px] text-gray-400 mb-3.5">
+                  Capacity not recorded — no fill shown.
+                </p>
+              ) : (
+                <div className="h-1 bg-gray-100 rounded-full overflow-hidden mb-3.5">
+                  <i className="block h-full rounded-full" style={{ width: `${pct}%`, background: zone.color || '#be123c' }} />
+                </div>
+              )}
               {wines.length === 0 ? (
                 <p className="text-xs text-gray-400">Nothing assigned here yet.</p>
               ) : (

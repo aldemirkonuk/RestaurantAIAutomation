@@ -15,6 +15,7 @@ const api = vi.hoisted(() => ({
   week: {} as Record<string, unknown>,
   members: [] as unknown[],
   certs: [] as unknown[],
+  templates: [{ id: 't1', role: 'line', day_of_week: null, shift_period: 'pm', min_staff: 1 }] as unknown[],
   createShift: vi.fn(() => Promise.resolve({})),
 }));
 
@@ -22,9 +23,21 @@ vi.mock('../../../services/api/team', () => ({
   getWeek: () => Promise.resolve(api.week),
   getTeamMembers: () => Promise.resolve(api.members),
   getCertifications: () => Promise.resolve(api.certs),
+  getCoverageTemplates: () => Promise.resolve(api.templates),
+  createCoverageTemplate: vi.fn(() => Promise.resolve({})),
   createShift: api.createShift,
   broadcast: vi.fn(() => Promise.resolve({})),
 }));
+
+vi.mock('../../../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    activeRestaurantId: 'r1',
+    activeRole: 'owner',
+    user: { id: 'u1', restaurantId: 'r1', role: 'owner' },
+  }),
+}));
+
+vi.mock('../command/MyShifts', () => ({ MyShifts: () => <div>My Shifts</div> }));
 
 import TeamNext from './TeamNext';
 import { useTeamNextData } from './useTeamNextData';
@@ -140,7 +153,7 @@ describe('useTeamNextData derivations', () => {
     });
   });
 
-  it('an expired cert blocks that member’s shifts; expiring blocks none yet', async () => {
+  it('counts the week a lapsed member is scheduled for — the exposure, not a link', async () => {
     api.members = [member('m1', 'Ayşe', 'Sommelier')];
     api.week = weekPayload({ shifts: [shift('m1', '2026-09-01'), shift('m1', '2026-09-03')] });
     api.certs = [
@@ -148,10 +161,15 @@ describe('useTeamNextData derivations', () => {
       { id: 'c2', member_id: 'm1', cert_type: 'alcohol-service', issued_at: null, expires_at: '2026-09-04', doc_url: null, status: 'expiring' },
     ];
     const result = await settled(() => useTeamNextData(new Date('2026-09-02T12:00:00')));
-    const byId = Object.fromEntries(result.current.certBlocks.map((b) => [b.cert.id, b.blockedShifts]));
+    const byId = Object.fromEntries(
+      result.current.certExposures.map((b) => [b.cert.id, b.shiftsThisWeek]),
+    );
+    // Both rows report the same fact: this member works 2 shifts this week.
+    // Nothing here claims either credential is required for either shift.
     expect(byId.c1).toBe(2);
-    expect(byId.c2).toBe(0);
-    expect(result.current.blockedTotal).toBe(2);
+    expect(byId.c2).toBe(2);
+    // The countable claim is people, not shifts, and only for a lapsed card.
+    expect(result.current.exposedMembers).toBe(1);
   });
 });
 
@@ -205,13 +223,16 @@ describe('TeamNext rendering', () => {
     });
   });
 
-  it('says the schedule should not publish while shifts are blocked', async () => {
+  it('names the exposure before publishing without inventing a credential-to-shift link', async () => {
     api.members = [member('m1', 'Ayşe', 'Sommelier')];
     api.week = weekPayload({ shifts: [shift('m1', '2026-09-01')] });
     api.certs = [
       { id: 'c1', member_id: 'm1', cert_type: 'food-handler', issued_at: null, expires_at: '2026-08-20', doc_url: null, status: 'expired' },
     ];
     render(<TeamNext />, { wrapper });
-    expect(await screen.findByText(/should not be published as it stands/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/which shifts require it is not recorded/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/1 person is/)).toBeInTheDocument();
   });
 });
