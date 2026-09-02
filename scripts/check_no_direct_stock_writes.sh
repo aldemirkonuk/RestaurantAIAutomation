@@ -53,13 +53,33 @@
 #      four `old_/new_stock_live:` entries never matched at all: `\b` before
 #      `stock_live` cannot match inside `old_stock_live`, `_` being a word
 #      character. They are dropped rather than kept as decoration.
+#
+# 2026-09-02, SECOND PASS — THE REPAIRED GUARD STILL EXAMINED NOTHING.
+#
+# The repair above was correct and, on the only machines that matter, unreachable.
+# `rg` is not installed on GitHub's `ubuntu-latest` runner, and on the founder's
+# Mac it is a shell function rather than a binary, so a script invoked as `bash
+# script.sh` cannot see it either. The guard therefore hit its own new
+# CANNOT-CHECK branch on *every* run and exited 2 — no longer lying, but still
+# never once looking at a line of code. It turned CI red on PR #243 and that red
+# is how this was found.
+#
+# A guard whose only correct outcome is "I cannot check" is not a guard. The
+# search is now `grep`, which is present everywhere by definition, so the
+# non-vacuity machinery above (exit status inspected, corpus counted and
+# asserted) now guards a search that actually runs.
+#
+# The pattern is POSIX ERE, not PCRE: `grep -P` is a GNU extension and BSD grep
+# on macOS lacks it. `(^|[^A-Za-z0-9_])` reproduces `\b` exactly for this
+# pattern — `_` is a word character, so `old_stock_live` is still not a match,
+# which is the property point 3 above depends on.
 # ===========================================================================
 
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || { echo "CANNOT CHECK — no repo root"; exit 2; }
 
-PATTERN='\b(stock_live|shadow_stock)\s*:'
+PATTERN='(^|[^A-Za-z0-9_])(stock_live|shadow_stock)[[:space:]]*:'
 
 # file + exact content already audited as NOT a direct write:
 #  - `stock_live: 0,` at insert time — the row is created with a zero
@@ -90,17 +110,23 @@ is_allowlisted() {
 }
 
 # --- The search, with its failure modes separated. ------------------------
-if ! command -v rg >/dev/null 2>&1; then
-  echo "CANNOT CHECK — ripgrep (rg) not on PATH."
-  echo "  Reporting PASS here is exactly the bug this header describes."
-  exit 2
-fi
+for tool in grep find; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "CANNOT CHECK — ${tool} not on PATH."
+    echo "  Reporting PASS here is exactly the bug this header describes."
+    exit 2
+  fi
+done
 
 # Corpus assertion FIRST: prove the globs match real files before believing any
 # count over them. This is the line that would have caught the `--type tsx` bug.
-corpus="$(rg --files -g '*.ts' -g '*.tsx' apps/)"
-if [[ $? -ge 2 || -z "$corpus" ]]; then
-  echo "CANNOT CHECK — the file sweep over apps/ returned nothing."
+corpus="$(find apps -type f \( -name '*.ts' -o -name '*.tsx' \) \
+  -not -path '*/node_modules/*' -not -path '*/dist/*' -not -path '*/build/*' \
+  -not -name '*.spec.ts' -not -name '*.test.ts' \
+  -not -name '*.spec.tsx' -not -name '*.test.tsx')"
+rc=$?
+if [[ $rc -ne 0 || -z "$corpus" ]]; then
+  echo "CANNOT CHECK — the file sweep over apps/ returned nothing (find exit ${rc})."
   exit 2
 fi
 corpus_count="$(printf '%s\n' "$corpus" | grep -c .)"
@@ -109,11 +135,19 @@ if [[ "$corpus_count" -lt 50 ]]; then
   exit 2
 fi
 
-matches="$(rg -n -P "$PATTERN" -g '*.ts' -g '*.tsx' \
-  -g '!*.spec.ts' -g '!*.test.ts' -g '!*.spec.tsx' -g '!*.test.tsx' apps/)"
+# grep's exit codes are rg's: 0 matched, 1 no match, >=2 the search itself broke.
+# `grep -r` is called directly rather than piped through `xargs`, deliberately:
+# xargs collapses "grep found nothing" (1) into its own 123, which this script
+# would then read as ">= 2, the search broke" — swapping one exit-code confusion
+# for another in the file that exists because of exit-code confusion.
+matches="$(grep -rn -E "$PATTERN" apps \
+  --include='*.ts' --include='*.tsx' \
+  --exclude='*.spec.ts' --exclude='*.test.ts' \
+  --exclude='*.spec.tsx' --exclude='*.test.tsx' \
+  --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=build)"
 rc=$?
 if [[ $rc -ge 2 ]]; then
-  echo "CANNOT CHECK — the search failed (rg exit ${rc}). Not a pass."
+  echo "CANNOT CHECK — the search failed (grep exit ${rc}). Not a pass."
   exit 2
 fi
 
