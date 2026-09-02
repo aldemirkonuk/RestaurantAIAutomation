@@ -144,6 +144,14 @@ def _required_contexts() -> list[str] | None:
 # to filter when the real required-contexts list was actually read).
 _FALLBACK_IGNORE_PREFIXES = ("Vercel", "Supabase")
 
+# This workflow's own check name (jobs.audit.name in pr-audit-gate.yml). MUST
+# be excluded in fallback mode: confirmed live, run 33693914388 — "waiting for
+# every reported check" without this exclusion waits on itself, which is
+# IN_PROGRESS by definition until wait_upstream returns, so it can never
+# converge and burns the full MAX_WAIT_SECONDS on a guaranteed deadlock every
+# single run. Not a race, not a timing fluke — structural, every time.
+_SELF_CHECK_NAME = "PR Audit Gate"
+
 
 def wait_upstream(pr_number: str) -> int:
     required = _required_contexts()  # None => fallback mode, not "nothing required"
@@ -156,9 +164,10 @@ def wait_upstream(pr_number: str) -> int:
         by_name = {c["name"]: c["state"] for c in checks}
 
         if required is not None:
-            names = required
+            names = [c for c in required if c != _SELF_CHECK_NAME]
         else:
-            names = [n for n in by_name if not n.startswith(_FALLBACK_IGNORE_PREFIXES)]
+            names = [n for n in by_name
+                     if not n.startswith(_FALLBACK_IGNORE_PREFIXES) and n != _SELF_CHECK_NAME]
 
         missing = [c for c in names if c not in by_name]
         pending = [c for c in names if by_name.get(c) in ("PENDING", "IN_PROGRESS", "QUEUED")]
