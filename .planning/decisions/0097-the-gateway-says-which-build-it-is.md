@@ -33,17 +33,27 @@ grey dash, not a failure and not a warning.
 
 | fact | value |
 |---|---|
-| last 30 `deploy.yml` runs with conclusion `skipped` | **12** — a contiguous block covering every merge in that window |
+| consecutive `deploy.yml` runs concluding `skipped` | **49**, unbroken — 2026-09-01T13:06:36Z → 2026-09-02T16:14:18Z, **44 distinct revisions**, over 27 hours in which the audit never ran once |
+| `skipped` runs in the last 200, all of them since 2026-08-24 | **77** |
 | what a skipped run reports over the API | `"conclusion": "skipped"` — never `failure` |
 | audits that compared a deployed sha against a merged sha | **0** (the comparison did not exist) |
 | routes proving the database is reachable | **0** |
 | `/api/v1/health/live` on a booted app with an unreachable database | **200 `{"status":"ok"}`** |
 
-The third row is the load-bearing one. Railway auto-deploys on push to `main`
-regardless of CI, so during that block of twelve, production was repeatedly
-replaced with a build that nothing verified, and the pipeline's own record said
-neither "verified" nor "failed" — it said nothing at all, in a shape that reads
-as fine.
+The first row is the load-bearing one. Railway auto-deploys on push to `main`
+regardless of CI, so across those 44 revisions production was repeatedly replaced
+with a build that nothing verified, and the pipeline's own record said neither
+"verified" nor "failed" — it said nothing at all, in a shape that reads as fine.
+
+**A correction is on the record here.** This session first measured the fault as
+*"12 of the last 30 runs skipped"*, and by the time the branch was pushed the same
+query returned **11** — the window had slid as other sessions merged. A
+last-N-runs count is not a claim; it is a reading that decays while you write it
+down. Re-measured as an anchored fact — an unbroken run of 49, bounded by two
+timestamps and a count of distinct revisions — it does not drift, and it is
+considerably worse than the figure it replaces. Numbers get re-measured, never
+copied forward (CLAUDE.md §5b); this one was caught by obeying that rule inside
+the session that wrote it.
 
 ## Decision
 
@@ -128,8 +138,8 @@ fail. It can, so both shipped:
   future run and is the primary mechanism.
 - **(b) `scripts/check_deploy_audit_ran.sh <sha>`** answers *"is there a completed
   audit that actually checked the gateway for this revision?"* — retrospectively,
-  including for the twelve shas that merged before any of this existed, which (a)
-  by construction cannot reach. It deliberately does **not** trust the
+  including for the 44 revisions that merged unaudited before any of this existed,
+  which (a) by construction cannot reach. It deliberately does **not** trust the
   workflow-level conclusion: a workflow `success` is compatible with every real
   stage having been skipped, which is precisely how this failed before. It reads
   the **job** `Stage 2 — API Gateway`.
@@ -240,7 +250,7 @@ tsconfig.spec.json` clean; `scripts/check_gateway_boots.sh` PASS (the real
 - **Vercel is unverified.** Stage 3 builds the frontend in CI and curls the
   production URL; nothing compares the deployed frontend's revision to the merged
   one.
-- **The twelve skipped audits are not retroactively performed.**
+- **The 49 skipped audits are not retroactively performed.**
   `check_deploy_audit_ran.sh` makes their absence *visible*; it cannot make them
   have happened.
 - **`apps/api-gateway/openapi.json` is stale and stays stale.** It predates the

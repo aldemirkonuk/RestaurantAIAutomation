@@ -45,10 +45,13 @@ jobs:
   # list and `"conclusion": "skipped"` over the API. Skipped is not a failure and
   # not a warning. It reads as *not applicable*.
   #
-  # Measured 2026-09-02 across the last 30 runs of this workflow: 12 skipped, a
-  # contiguous block covering every merge in that window. The repository's own
+  # Measured 2026-09-02: **49 consecutive runs of this workflow concluded
+  # `skipped`**, unbroken from 2026-09-01T13:06:36Z to 2026-09-02T16:14:18Z,
+  # across 44 distinct revisions — over 27 hours in which the repository's own
   # docs called this audit the thing that catches what CI structurally cannot see
-  # (NestJS DI failures). It had not run once.
+  # (NestJS DI failures), and it did not run once. 77 of the last 200 runs are
+  # skipped. (A "last N runs" figure is not used here on purpose: it slid from 12
+  # to 11 between measuring it and pushing the branch. See ADR 0097's correction.)
   #
   # So the job now ALWAYS runs and fails explicitly on a non-success trigger. Red,
   # not grey. The downstream stages still skip — correctly, because there is

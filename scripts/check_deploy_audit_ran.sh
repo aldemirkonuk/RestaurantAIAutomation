@@ -11,10 +11,14 @@
 # it is `"conclusion": "skipped"` — which reads as *not applicable*, not as
 # *this deploy was never verified*.
 #
-# Measured on 2026-09-02, over the last 30 runs of deploy.yml: **12 skipped**, a
-# contiguous run of them covering every merge in that window. During that window
-# the repository's own docs described the post-merge health audit as the thing
-# that catches what CI cannot see. It had not run once.
+# Measured on 2026-09-02: **49 consecutive runs of deploy.yml concluded
+# `skipped`** — unbroken from 2026-09-01T13:06:36Z to 2026-09-02T16:14:18Z, across
+# 44 distinct revisions. 77 of the last 200 runs are skipped, the oldest on
+# 2026-08-24. Throughout, the repository's own docs described the post-merge
+# health audit as the thing that catches what CI cannot see. It had not run once.
+#
+# The figure is stated as an anchored block, not as "N of the last 30": that form
+# slid from 12 to 11 between measuring it and pushing the branch that fixes it.
 #
 # This is `absence-reported-as-health` applied to the deploy pipeline itself, and
 # the fix has two halves. The first is in deploy.yml: `ci-gate` now always runs
