@@ -173,14 +173,14 @@ KNOWN_BAD_READ_COLUMNS: dict[str, str] = {
     "procurement_orders.target_price_per_bottle": (
         "Same site and same shape as negotiated_price_per_bottle."
     ),
-    "procurement_orders.next_order_date": (
-        "It is a column of `recurring_orders`, not of `procurement_orders` -- a "
-        "table confusion, not a typo. scheduled-tasks.service.ts:402-403 filters "
-        "AND orders on it, so that task's query has never returned a row."
-    ),
     "procurement_orders.payment_due_date": (
-        "No such column. scheduled-tasks.service.ts:550-552 builds a three-clause "
-        "date window on it, so the payment-reminder task is structurally dead."
+        "`payment_due_date` is declared by NO table in the schema — not by "
+        "procurement_orders, not anywhere (the nearest real column is "
+        "`payment_terms`). So this is not a wrong-table read like "
+        "next_order_date was; there is no right table to point it at. "
+        "scheduled-tasks.service.ts builds a three-clause date window on it, so "
+        "the payment-reminder cron has never sent a single reminder. Owned by "
+        "the session on that file, which is taking the fix."
     ),
     "procurement_conversations.manager_approval_status": (
         "No such column; the table has `status`. communications.controller.ts:881."

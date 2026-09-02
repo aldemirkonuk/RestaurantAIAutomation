@@ -33,17 +33,23 @@ theoretical. Across `apps/api-gateway/src`:
 
 | | Count |
 |---|---|
-| readable `.select()` sites | 602 |
-| filter arguments naming a column | 1375 |
-| **select columns that do not exist** | **17, in 10 files** |
-| **filter columns that do not exist** | **10** |
+| readable `.select()` sites | 604 |
+| filter arguments naming a column | 1364 |
+| **select columns that do not exist** | **17** |
+| **filter columns that do not exist** | **8** |
+| **distinct `table.column` behind them** | **16** |
 
-Some of those are not small. `scheduled-tasks.service.ts:402-403` filters *and*
-orders `procurement_orders` on `next_order_date` — a column of
-`recurring_orders`. It is a table confusion rather than a typo, and that task's
-query has never returned a row. `:550-552` builds a three-clause date window on
-`procurement_orders.payment_due_date`, which does not exist, so the payment
-reminder is structurally dead. `users.avatar_url` is read at three sites, so
+Re-measured on the post-#227 tree, not carried forward: the first pass found
+**27** findings over 17 keys, and `procurement_orders.next_order_date` was
+repaired on `main` by [[0061-recurring-reminder-reads-the-recurrence-table]]
+between the two runs. **The ratchet caught that itself** — see Consequences.
+
+Some of those are not small. `procurement_orders.payment_due_date` is the sharpest.
+`scheduled-tasks.service.ts` builds a three-clause date window on it, and
+`payment_due_date` **is declared by no table in the schema at all** — the
+nearest real column anywhere is `payment_terms`. It is not a wrong-table read
+with a right table to point at; there is nothing to point it at, and the
+payment-reminder cron has never sent one reminder. `users.avatar_url` is read at three sites, so
 every team and member listing 42703s. And `procurement_conversations.message_body`
 / `.subject` are the **read half of the write defect
 [[0065-a-conversation-log-names-real-columns-and-refuses-a-missing-body]] fixed**
@@ -83,9 +89,9 @@ was false positives — embedded filters (`.eq("providers.name", …)`) and alia
 would need FK resolution.
 
 **That argument was measured rather than believed, and it did not survive.** Of
-1375 filter arguments in the gateway, **zero** are dotted/embedded and one is a
-non-identifier. Excluding filters would have left 10 live instances of exactly
-this defect unseen, on a theory the codebase contradicts.
+the 1364 filter arguments in the gateway, **zero** are dotted/embedded and one
+is a non-identifier. Excluding filters would have left 8 live instances of
+exactly this defect unseen, on a theory the codebase contradicts.
 
 **C. What to do about reads the parser cannot resolve.** `.select(cols)` with a
 runtime value names columns that cannot be checked statically.
@@ -115,7 +121,7 @@ be on a shrink-only debt list.**
 - **`UNREADABLE_READ_CEILING = 2`**, measured, per option C. It may shrink
   freely; growing it requires editing that line, because every addition is a
   read the guard has stopped looking at.
-- **`KNOWN_BAD_READ_COLUMNS` starts at 17 entries**, one per distinct
+- **`KNOWN_BAD_READ_COLUMNS` starts at 16 entries**, one per distinct
   `table.column`, each naming the column the table actually has where one is
   obvious. It is enforced in **both** directions — an entry the schema now
   declares fails, and an entry nothing reads any more fails — so the only way to
@@ -152,13 +158,20 @@ exactly why it would have survived indefinitely.
 - **A bad column in a read is now a build failure**, on the same footing as a bad
   column in a write. The two guards together mean a column named anywhere in a
   Supabase call — payload, projection or filter — is checked against the schema.
-- **27 live defects are now recorded with evidence** instead of being unknown.
+- **25 live defects are now recorded with evidence** instead of being unknown.
   They are not fixed here: repairing them means deciding, per site, whether the
   right move is the real column, an embed, or deleting a dead query — and
   `scheduled-tasks.service.ts` alone would be its own change. **The debt list is
   the deliverable that makes them enumerable**, which is the one thing class-O
   damage otherwise denies (`absence-reported-as-health`).
 - **The blind spot is 2 reads and is now a number**, not an unknown.
+- **The ratchet paid for itself within a day, on this ADR's own list.** #227
+  merged `procurement_orders.next_order_date`'s fix to `main` after the first
+  measurement, and on the next merge the guard failed at exit 1: *"nothing under
+  apps/api-gateway/src reads it any more. Delete the entry."* That is the exact
+  shape that had just broken the sibling guard's self-test, caught mechanically
+  this time instead of by hand — and it is the argument for enforcing a debt
+  list in **both** directions rather than only against new violations.
 - **This does not check the database.** Like its siblings' hermetic arm, it
   compares code against `supabase/migrations/`, needs no secret, and runs in
   seconds. A column that exists in a migration but not in production is
@@ -176,7 +189,7 @@ exactly why it would have survived indefinitely.
 
 | What | Result |
 |---|---|
-| `scripts/check_read_columns_exist.py` on the tree | **exit 0**, 17 debt entries |
+| `scripts/check_read_columns_exist.py` on the tree | **exit 0**, 16 debt entries |
 | Same guard, **proven to fire on the real defect** — ADR 0073's `.select("id, tags")` restored in place into `procurement.service.ts` | **exit 1**: `procurement.service.ts:1180 selects calendar_events.tags, which no migration in supabase/migrations declares` |
 | …and it did **not** fire on `:1121`, the same string inside that function's doc comment | comment stripping proven on the real tree, not only the fixture |
 | `--self-test` | **PASS**, 13 assertions |
