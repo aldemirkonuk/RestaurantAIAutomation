@@ -313,10 +313,20 @@ describe("InventoryLedgerService", () => {
 
     it("should calculate summary correctly", async () => {
       const mockData = [
-        { transaction_type: "sale", source: "pos", quantity_change: -5 },
-        { transaction_type: "sale", source: "pos", quantity_change: -3 },
-        { transaction_type: "purchase", source: "order", quantity_change: 24 },
-        { transaction_type: "waste", source: "manual", quantity_change: -1 },
+        { transaction_type: "sale", source: "pos", quantity_change: -5, uom: "bottle" },
+        { transaction_type: "sale", source: "pos", quantity_change: -3, uom: "bottle" },
+        {
+          transaction_type: "purchase",
+          source: "order",
+          quantity_change: 24,
+          uom: "bottle",
+        },
+        {
+          transaction_type: "waste",
+          source: "manual",
+          quantity_change: -1,
+          uom: "bottle",
+        },
       ];
 
       mockSupabaseClient.lte.mockResolvedValue({
@@ -333,9 +343,72 @@ describe("InventoryLedgerService", () => {
       expect(result.totalIn).toBe(24);
       expect(result.totalOut).toBe(9); // 5 + 3 + 1
       expect(result.netChange).toBe(15);
+      expect(result.uom).toBe("bottle");
+      expect(result.unreadableCount).toBe(0);
       expect(result.transactionCount).toBe(4);
       expect(result.byType.sale.count).toBe(2);
       expect(result.byType.sale.quantity).toBe(-8);
+      expect(result.byType.sale.uom).toBe("bottle");
+    });
+
+    // ADR 0070. Before this, the loop added every quantity_change in the period
+    // into one scalar. Once a row can mean milligrams that is 25 kg of flour
+    // plus 25000 mg of saffron reported as 25025 of nothing — with no error and
+    // no way for a reader to know. A mixed period must refuse the scalar.
+    it("refuses a scalar total when the period spans more than one unit", async () => {
+      mockSupabaseClient.lte.mockResolvedValue({
+        data: [
+          { transaction_type: "purchase", source: "order", quantity_change: 25, uom: "bottle" },
+          { transaction_type: "purchase", source: "order", quantity_change: 25000, uom: "mg" },
+        ],
+        error: null,
+      });
+
+      const result = await service.getTransactionSummary(
+        restaurantId,
+        "2024-01-01",
+        "2024-01-31",
+      );
+
+      expect(result.totalIn).toBeNull();
+      expect(result.totalOut).toBeNull();
+      expect(result.netChange).toBeNull();
+      expect(result.uom).toBeNull();
+      // The real answer is still available, one row per unit.
+      expect(result.byUom).toEqual([
+        { uom: "bottle", totalIn: 25, totalOut: 0, netChange: 25, transactionCount: 1 },
+        { uom: "mg", totalIn: 25000, totalOut: 0, netChange: 25000, transactionCount: 1 },
+      ]);
+      // And the bucket that mixes them refuses too, rather than summing.
+      expect(result.byType.purchase.count).toBe(2);
+      expect(result.byType.purchase.quantity).toBeNull();
+      expect(result.byType.purchase.uom).toBeNull();
+    });
+
+    it("counts a row it cannot read instead of defaulting it to bottles", async () => {
+      mockSupabaseClient.lte.mockResolvedValue({
+        data: [
+          { transaction_type: "sale", source: "pos", quantity_change: -2, uom: "bottle" },
+          { transaction_type: "sale", source: "pos", quantity_change: -2, uom: "case" },
+          { transaction_type: "sale", source: "pos", quantity_change: -2, uom: null },
+        ],
+        error: null,
+      });
+
+      const result = await service.getTransactionSummary(
+        restaurantId,
+        "2024-01-01",
+        "2024-01-31",
+      );
+
+      expect(result.unreadableCount).toBe(2);
+      expect(result.transactionCount).toBe(3);
+      // One readable unit, but two rows are missing from it — so the scalar is
+      // still refused. A total that quietly omits rows reports absence as health.
+      expect(result.totalOut).toBeNull();
+      expect(result.byUom).toEqual([
+        { uom: "bottle", totalIn: 0, totalOut: 2, netChange: -2, transactionCount: 1 },
+      ]);
     });
   });
 

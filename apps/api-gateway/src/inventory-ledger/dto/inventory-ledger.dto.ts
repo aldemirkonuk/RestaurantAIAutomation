@@ -233,6 +233,13 @@ export class InventoryTransactionResponseDto {
   @ApiProperty()
   quantityAfter: number;
 
+  @ApiProperty({
+    nullable: true,
+    description:
+      "Base unit the three quantities above are counted in — one of each/bottle/mg/ml (ADR 0070). It is the item's canonical unit, never a per-row choice.",
+  })
+  uom: string | null;
+
   @ApiProperty({ enum: StockType })
   stockType: StockType;
 
@@ -313,12 +320,10 @@ export class InventoryBalanceResponseDto {
   stockType: StockType;
 }
 
-export class TransactionSummaryResponseDto {
-  @ApiProperty()
-  restaurantId: string;
-
-  @ApiProperty()
-  period: string;
+/** One unit's slice of a summary. Quantities within a slice are always comparable. */
+export class UomSummaryDto {
+  @ApiProperty({ description: "Base unit these totals are counted in." })
+  uom: string;
 
   @ApiProperty()
   totalIn: number;
@@ -331,12 +336,73 @@ export class TransactionSummaryResponseDto {
 
   @ApiProperty()
   transactionCount: number;
+}
+
+/** A per-type or per-source bucket. `quantity` is null when the bucket spans units. */
+export class SummaryBucketDto {
+  @ApiProperty()
+  count: number;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      "Net quantity in `uom`. NULL when this bucket mixes units — a mixed sum is not a quantity, so it is refused rather than reported (ADR 0051).",
+  })
+  quantity: number | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: "The single base unit `quantity` is counted in, or null if mixed.",
+  })
+  uom: string | null;
+}
+
+export class TransactionSummaryResponseDto {
+  @ApiProperty()
+  restaurantId: string;
 
   @ApiProperty()
-  byType: Record<string, { count: number; quantity: number }>;
+  period: string;
+
+  // ADR 0070: every ledger row now states its own unit, and a cross-unit
+  // aggregate must convert or refuse rather than silently sum. These three
+  // scalars are the whole-restaurant totals, which are only a quantity when
+  // every movement in the period shared one unit. Adding 25 (kg of flour) to
+  // 25000 (mg of saffron) is not a number, so NULL is the honest answer and
+  // `byUom` carries the real one.
+  @ApiProperty({ nullable: true })
+  totalIn: number | null;
+
+  @ApiProperty({ nullable: true })
+  totalOut: number | null;
+
+  @ApiProperty({ nullable: true })
+  netChange: number | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      "The single base unit the scalar totals are counted in, or null when the period spans more than one unit.",
+  })
+  uom: string | null;
+
+  @ApiProperty({ type: [UomSummaryDto] })
+  byUom: UomSummaryDto[];
+
+  @ApiProperty({
+    description:
+      "Rows whose uom was missing or outside the base vocabulary. Counted rather than dropped: a total that quietly omits rows reports absence as health.",
+  })
+  unreadableCount: number;
 
   @ApiProperty()
-  bySource: Record<string, { count: number; quantity: number }>;
+  transactionCount: number;
+
+  @ApiProperty({ type: SummaryBucketDto })
+  byType: Record<string, SummaryBucketDto>;
+
+  @ApiProperty({ type: SummaryBucketDto })
+  bySource: Record<string, SummaryBucketDto>;
 }
 
 // ============================================================================

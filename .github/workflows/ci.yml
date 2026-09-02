@@ -611,6 +611,47 @@ jobs:
         if: ${{ !cancelled() }}
         run: ./scripts/check_order_status_literals.py --self-test
 
+      # ADR 0070 (Locked): a ledger quantity stays an integer and states its own
+      # unit, and the canonical unit belongs to the ITEM, not the row. ADR 0075
+      # settles the vocabulary, the enforcement mechanism and the allocation
+      # algorithm. Every part of that is one ALTER away from being undone, and
+      # none of the undos breaks a test that existed before it:
+      #
+      #   * drop `uom NOT NULL` or the composite foreign key and a lot can carry
+      #     a unit its item disagrees with. `SUM(qty)` then adds 25 to 25000 and
+      #     projects a nonsense on-hand figure — no constraint violation, no
+      #     error, and the WAC divisor it feeds is guarded only by `sum(qty)>0`.
+      #   * turn that key's ON UPDATE RESTRICT into CASCADE and a canonical_uom
+      #     change relabels every lot from mg to ml WITHOUT rescaling qty.
+      #   * add a fifth unit to the SQL CHECK or to LEDGER_UOMS alone and the
+      #     mismatch surfaces as a 23514 in production, not here.
+      #   * replace allocateRemainderSafe with Math.round(total / n) and an
+      #     equal three-way split silently destroys or creates a unit.
+      #   * go back to DELETEing an emptied lot and `status = 'depleted'` again
+      #     becomes a value nothing ever sets, while the consumed lot's real
+      #     unit_cost is discarded.
+      #
+      # schema-parity.yml cannot see ANY of this: as of 2026-09-02 it compares a
+      # database to a database and has no view of nullability, CHECK
+      # constraints, UNIQUE constraints, function bodies or triggers.
+      # `if: !cancelled()` for the same reason as the steps above.
+      - name: Guard the ledger unit contract (a quantity states its own unit)
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_ledger_units.py
+
+      - name: The ledger unit guard can actually fail
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_ledger_units.py --self-test
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::[sql] means a migration no longer declares one of the objects that makes a unitless or disagreeing ledger row impossible. Re-add it; do not relax the guard."
+          echo "::notice::[vocabulary] means LEDGER_UOMS in apps/api-gateway/src/inventory-ledger/ledger-units.ts and the three SQL CHECK constraints disagree. They are one list written twice -- change both, and read ADR 0075 before adding a unit: the ledger takes BASE units only, so 'case' and 'kg' are deliberately absent."
+          echo "::notice::[allocation] means a ledger quantity was divided without allocateRemainderSafe. One third has no finite representation at any scale: 1000 split three ways must allocate 333 + 333 + 334, and the naive round loses or invents a unit that ends up as inventory_lot_rollup's WAC divisor."
+          echo "::notice::[depletion] means apply_stock_movement went back to DELETEing an emptied lot, or a rollup column started counting depleted lots as stock on hand."
+          echo "::notice::[ratchet] means a LATER migration drops what 20260902120000 added. Exit 2 is CANNOT CHECK, not a skip -- fix the anchor, do not delete the step."
+
       - name: Explain a failure
         if: failure()
         run: |

@@ -15,6 +15,7 @@ import {
   TransactionSource,
   StockType,
 } from "./dto/inventory-ledger.dto";
+import { LEDGER_UOMS, isLedgerUom } from "./ledger-units";
 
 // ============================================================================
 // DATABASE ROW INTERFACE
@@ -30,6 +31,8 @@ interface TransactionRow {
   quantity_change: number;
   quantity_before: number;
   quantity_after: number;
+  /** Base unit the three quantities above are counted in (ADR 0070). */
+  uom: string;
   stock_type: string;
   reference_type: string | null;
   reference_id: string | null;
@@ -397,7 +400,7 @@ export class InventoryLedgerService {
   ): Promise<TransactionSummaryResponseDto> {
     const { data, error } = await this.databaseService.supabase
       .from("inventory_transactions")
-      .select("transaction_type, source, quantity_change")
+      .select("transaction_type, source, quantity_change, uom")
       .eq("restaurant_id", restaurantId)
       .gte("transaction_date", startDate)
       .lte("transaction_date", endDate);
@@ -408,45 +411,107 @@ export class InventoryLedgerService {
 
     const transactions = data || [];
 
-    // Calculate summaries
-    let totalIn = 0;
-    let totalOut = 0;
-    const byType: Record<string, { count: number; quantity: number }> = {};
-    const bySource: Record<string, { count: number; quantity: number }> = {};
+    // ADR 0070: this loop used to add every `quantity_change` in the period
+    // into one number. That was already only defensible because every row meant
+    // "bottles"; the moment a row can mean milligrams it becomes 25 kg of flour
+    // plus 25000 mg of saffron reported as 25025 of nothing. Aggregation is now
+    // per unit, and a scalar is emitted ONLY when the period turns out to have
+    // exactly one — otherwise NULL, never a sum (ADR 0051).
+    const perUom = new Map<
+      string,
+      { totalIn: number; totalOut: number; transactionCount: number }
+    >();
+    let unreadableCount = 0;
+
+    const byTypeRaw = new Map<string, { count: number; qtyByUom: Map<string, number> }>();
+    const bySourceRaw = new Map<string, { count: number; qtyByUom: Map<string, number> }>();
+
+    const bump = (
+      target: Map<string, { count: number; qtyByUom: Map<string, number> }>,
+      key: string,
+      uom: string | null,
+      qty: number,
+    ) => {
+      const bucket = target.get(key) ?? { count: 0, qtyByUom: new Map() };
+      bucket.count += 1;
+      if (uom !== null) {
+        bucket.qtyByUom.set(uom, (bucket.qtyByUom.get(uom) ?? 0) + qty);
+      }
+      target.set(key, bucket);
+    };
 
     for (const txn of transactions) {
       const qty = txn.quantity_change;
+      const uom = isLedgerUom(txn.uom) && Number.isFinite(qty) ? txn.uom : null;
 
-      if (qty > 0) {
-        totalIn += qty;
+      if (uom === null) {
+        // Not dropped and not defaulted to "bottle". A row we cannot read makes
+        // the total incomplete, and saying so is the point.
+        unreadableCount += 1;
       } else {
-        totalOut += Math.abs(qty);
+        const slice =
+          perUom.get(uom) ?? { totalIn: 0, totalOut: 0, transactionCount: 0 };
+        if (qty > 0) slice.totalIn += qty;
+        else slice.totalOut += Math.abs(qty);
+        slice.transactionCount += 1;
+        perUom.set(uom, slice);
       }
 
-      // By type
-      if (!byType[txn.transaction_type]) {
-        byType[txn.transaction_type] = { count: 0, quantity: 0 };
-      }
-      byType[txn.transaction_type].count++;
-      byType[txn.transaction_type].quantity += qty;
-
-      // By source
-      if (!bySource[txn.source]) {
-        bySource[txn.source] = { count: 0, quantity: 0 };
-      }
-      bySource[txn.source].count++;
-      bySource[txn.source].quantity += qty;
+      bump(byTypeRaw, txn.transaction_type, uom, qty);
+      bump(bySourceRaw, txn.source, uom, qty);
     }
+
+    const byUom = LEDGER_UOMS.filter((u) => perUom.has(u)).map((u) => {
+      const s = perUom.get(u) as {
+        totalIn: number;
+        totalOut: number;
+        transactionCount: number;
+      };
+      return {
+        uom: u as string,
+        totalIn: s.totalIn,
+        totalOut: s.totalOut,
+        netChange: s.totalIn - s.totalOut,
+        transactionCount: s.transactionCount,
+      };
+    });
+
+    // A scalar total is a quantity only when there is exactly one unit in play
+    // and every row was readable.
+    const single = byUom.length === 1 && unreadableCount === 0 ? byUom[0] : null;
+
+    const collapse = (
+      raw: Map<string, { count: number; qtyByUom: Map<string, number> }>,
+    ): Record<string, { count: number; quantity: number | null; uom: string | null }> => {
+      const out: Record<
+        string,
+        { count: number; quantity: number | null; uom: string | null }
+      > = {};
+      for (const [key, bucket] of raw) {
+        if (bucket.qtyByUom.size === 1) {
+          const [uom, quantity] = Array.from(bucket.qtyByUom.entries())[0];
+          out[key] = { count: bucket.count, quantity, uom };
+        } else {
+          // Zero readable units, or more than one. Either way the bucket has no
+          // single quantity, and inventing one is the fault this guards.
+          out[key] = { count: bucket.count, quantity: null, uom: null };
+        }
+      }
+      return out;
+    };
 
     return {
       restaurantId,
       period: `${startDate} to ${endDate}`,
-      totalIn,
-      totalOut,
-      netChange: totalIn - totalOut,
+      totalIn: single ? single.totalIn : null,
+      totalOut: single ? single.totalOut : null,
+      netChange: single ? single.netChange : null,
+      uom: single ? single.uom : null,
+      byUom,
+      unreadableCount,
       transactionCount: transactions.length,
-      byType,
-      bySource,
+      byType: collapse(byTypeRaw),
+      bySource: collapse(bySourceRaw),
     };
   }
 
@@ -539,6 +604,10 @@ export class InventoryLedgerService {
       quantityChange: row.quantity_change,
       quantityBefore: row.quantity_before,
       quantityAfter: row.quantity_after,
+      // A quantity without its unit is not a measurement. The column is
+      // NOT NULL in the database; `?? null` covers a projection that did not
+      // select it rather than inventing "bottle" (ADR 0051).
+      uom: row.uom ?? null,
       stockType: row.stock_type as StockType,
       referenceType: row.reference_type || undefined,
       referenceId: row.reference_id || undefined,
