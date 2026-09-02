@@ -3777,21 +3777,59 @@ export class ProcurementService {
   }
 
   /**
-   * Returns completed/sent procurement conversations for send history.
-   * D-03: Used by the Procurement Emails tab on /communications.
+   * Every vendor conversation this restaurant has had, except the ones still
+   * waiting on the manager.
+   *
+   * D-03: Used by the Procurement Emails tab on /communications, the page that
+   * describes itself as the one place a manager sees every vendor
+   * conversation. ADR 0081 — it was showing ONE row out of twenty-six.
+   *
+   * MEASURED ON PRODUCTION (`exzueerziesmczwlhomd`, 2026-09-02), because the
+   * two constraints below have very different sizes and only one of them was
+   * suspected:
+   *
+   *   27 conversation rows in total, across 2 restaurants
+   *   12 pass the old status allow-list
+   *    2 survive `procurement_orders!inner`
+   *    2 the old query returned in total  ← the join was the binding constraint
+   *
+   * 25 of 27 rows carry `order_id IS NULL`, so the INNER embed dropped them
+   * before the status filter was ever consulted. Widening the status list
+   * ALONE would have moved the count from 2 to 2 and shipped as a fix. The
+   * embed is now `!left`: a conversation that is not attached to a purchase
+   * order is still a conversation, and every inbound vendor reply in
+   * production is one of those.
+   *
+   * On the main tenant that is 1 visible row before, 25 after.
+   *
+   * WHAT IS EXCLUDED, AND WHY IT IS A DENY-LIST NOW
+   *
+   * The allow-list was the second half of the fault: a status absent from it
+   * is invisible, so every value the workflow gains — `DISCARDED` and
+   * `CANCELLED` both post-date the list — disappears silently and nothing
+   * reports that it did. A ledger must fail toward showing too much, so the
+   * filter is inverted. Exactly two things are withheld, and both are withheld
+   * because they are LIVE ELSEWHERE, never because they are uninteresting:
+   *
+   *   status = PENDING_APPROVAL       — the approval queue on /orders
+   *                                     (`getActiveConversations`, which
+   *                                     selects exactly this status)
+   *   status = DRAFT AND outbound     — an unsent draft of ours, same queue
+   *
+   * Showing either in the history ledger would put the same row in two live
+   * places and invite a second send of an email already awaiting approval.
+   *
+   * `DRAFT` inbound is NOT excluded. `procurement_conversations.status`
+   * defaults to `'DRAFT'` at the column level, and the inbound path does not
+   * set it, so every vendor reply we have ever received wears a status that
+   * describes us rather than them — 10 of the 27 rows. They are received mail,
+   * not drafts, and they were the largest single thing missing from the page.
+   *
+   * DISCARDED (3) and CANCELLED (1) are shown. "We drafted this and killed it"
+   * is part of the record of what happened with a vendor; the page renders an
+   * unrecognised status as its own lowercase chip, so they arrive labelled.
    */
   async getConversationHistory(restaurantId: string): Promise<any[]> {
-    const HISTORY_STATUSES = [
-      "AUTO_SENT",
-      "APPROVED",
-      "SENT",
-      "COMPLETED",
-      "CLOSED",
-      // Delivered to the vendor but the status write failed afterwards. It must
-      // stay visible — it is a real sent email a human has to reconcile.
-      "SEND_UNCONFIRMED",
-    ];
-
     const { data, error } = await this.databaseService.supabase
       .from("procurement_conversations")
       .select(
@@ -3799,15 +3837,17 @@ export class ProcurementService {
         id,
         order_id,
         provider_id,
+        direction,
         outbound_email_type,
         round_count,
         created_at,
         sent_at,
         status,
         content,
+        message_text,
         constraint_flags,
         rolling_summary,
-        procurement_orders!inner(
+        procurement_orders!left(
           id, order_number, quantity,
           inventory:inventory_id(wine_name)
         ),
@@ -3815,7 +3855,18 @@ export class ProcurementService {
       `,
       )
       .eq("restaurant_id", restaurantId)
-      .in("status", HISTORY_STATUSES)
+      // The two exclusions, as filters rather than a post-fetch drop, so
+      // `limit` counts rows the manager can actually see.
+      //
+      // Each is written `status.is.null,<test>` because `neq` against a NULL
+      // status evaluates to NULL, i.e. EXCLUDES the row — which for a
+      // deny-list ledger is backwards: an unrecognised or absent status is the
+      // case we most want on screen. `status` is nullable (it only has a
+      // DEFAULT), so this is reachable, and it is the same shape as
+      // `one-tap-actions.service.ts:90`. Two separate `.or()` calls are ANDed.
+      .or("status.is.null,status.neq.PENDING_APPROVAL")
+      // NOT (status = DRAFT AND direction = outbound), by De Morgan.
+      .or("status.is.null,status.neq.DRAFT,direction.eq.inbound")
       .order("created_at", { ascending: false })
       .limit(100);
 
@@ -3831,12 +3882,24 @@ export class ProcurementService {
       id: row.id,
       orderId: row.order_id,
       providerId: row.provider_id,
+      // The DB stores lowercase 'inbound'/'outbound'; `getOrderConversations`
+      // already normalises to uppercase for the UI, so this does too rather
+      // than shipping two conventions for one field.
+      direction: String(row.direction ?? "outbound").toUpperCase() as
+        | "OUTBOUND"
+        | "INBOUND",
       emailType: row.outbound_email_type,
       status: row.status,
       roundCount: row.round_count,
       createdAt: row.created_at,
       sentAt: row.sent_at ?? row.created_at,
-      draftContent: row.content,
+      // `content` only, until ADR 0081. `content` is NULL on all ten inbound
+      // rows in production — their body is in `message_text`, which is the
+      // NOT NULL column — so the page printed "No message body was recorded
+      // for this exchange" about ten messages whose bodies were recorded.
+      // `getActiveConversations` and `getOrderConversations` have always read
+      // the pair; this method was the odd one out.
+      draftContent: row.content ?? row.message_text ?? null,
       constraintFlags: row.constraint_flags,
       rollingSummary: row.rolling_summary,
       orderNumber: row.procurement_orders?.order_number ?? null,

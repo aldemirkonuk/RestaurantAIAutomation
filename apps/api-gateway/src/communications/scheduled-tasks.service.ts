@@ -216,7 +216,6 @@ export class ScheduledTasksService implements OnModuleInit {
           restaurantName: tenant.name,
           lowStockCount: summaryData.lowStockCount,
           pendingOrders: summaryData.pendingOrders,
-          deliveriesToday: summaryData.deliveriesToday,
         });
       }
     });
@@ -1047,14 +1046,26 @@ export class ScheduledTasksService implements OnModuleInit {
    * ADR 0020 — this used to swallow a database failure and return a fixture
    * (5 low-stock, 3 pending orders, 1 delivery), which was then SMSed to the
    * manager as fact. The same fabrication was removed from the weekly email
-   * under OD-85; the SMS path was missed. It now throws, so the tenant is
-   * counted `failed` in the run summary and nobody is texted a number nobody
-   * measured.
+   * under OD-85; the SMS path was missed.
+   *
+   * WHERE THE THROW COMES FROM (ADR 0081 — the comment used to say "it now
+   * throws" without saying that, and a reader checking the body found no
+   * `throw` and reasonably concluded the fix had never landed). There is no
+   * `throw` here and there should not be: both reads throw for us.
+   * `DatabaseService.getLowStockItems` and `.getProcurementOrders` each end
+   * `if (error) throw error`, so a failed query propagates out of this method
+   * and `runPerTenant` counts the tenant `failed`. The `|| 0`s below are
+   * reached only on a SUCCESSFUL read that returned no rows, where zero is the
+   * measured answer.
+   *
+   * `deliveriesToday` is gone (ADR 0081). It was the literal `0` that the
+   * removed fixture's `1` had been replaced with, carrying the comment "Would
+   * need to query deliveries table", and `SmsService.sendDailySummary` printed
+   * it to the manager beside two real figures as though it were a third.
    */
   private async getDailySummaryData(restaurantId: string): Promise<{
     lowStockCount: number;
     pendingOrders: number;
-    deliveriesToday: number;
   }> {
     const lowStockItems =
       await this.databaseService.getLowStockItems(restaurantId);
@@ -1066,7 +1077,6 @@ export class ScheduledTasksService implements OnModuleInit {
     return {
       lowStockCount: lowStockItems?.length || 0,
       pendingOrders: pendingOrders?.length || 0,
-      deliveriesToday: 0, // Would need to query deliveries table
     };
   }
 
@@ -1224,8 +1234,28 @@ export class ScheduledTasksService implements OnModuleInit {
   }
 
   /**
-   * Fetch recent conversation summaries for the weekly report
-   * Groups by provider and includes the latest message summary
+   * Fetch recent conversation summaries for the weekly report.
+   * Groups by provider and includes the latest message summary.
+   *
+   * ADR 0081 — this select named `message_body` and `subject`. The table has
+   * neither: `procurement_conversations` stores the body in `message_text`
+   * (`text NOT NULL`) and the subject inside `email_headers` (`jsonb`).
+   * Measured against production 2026-09-02, not inferred from migrations.
+   *
+   * They are the SAME TWO PHANTOM NAMES that ADR 0065 removed from the write
+   * side four hours earlier. The write side was fixed; the read side was
+   * missed, because `check_order_capture_contract.py` Contract E parses
+   * `.insert|update|upsert` payloads and nothing in the tree parses a select
+   * list. So PostgREST answered 42703 on every weekly report, the line below
+   * read that as "no vendor conversations", and the Vendor Communication
+   * Summary has never once appeared in a manager's weekly email — over 27 real
+   * conversation rows. Class **O** in [[absence-reported-as-health]]: nothing
+   * was corrupted, a section was simply never there, and nothing said so.
+   *
+   * The error branch is now separate from the empty branch. Conflating them is
+   * what made this invisible for as long as it was: one `return []` served
+   * "the query failed" and "there is nothing to report", and only one of those
+   * two is a fact about the restaurant.
    */
   private async getRecentConversationSummaries(restaurantId: string): Promise<
     Array<{
@@ -1244,15 +1274,21 @@ export class ScheduledTasksService implements OnModuleInit {
       // `message_text` (NOT NULL) and keeps the subject inside the `email_headers`
       // jsonb. ADR 0065 repaired the WRITE half of exactly this pair and left the
       // read here naming the same two phantoms, so every weekly report has been
-      // summarising an empty list. `message_body` is dropped outright rather than
-      // renamed: nothing below ever read it.
+      // summarising an empty list.
+      //
+      // `message_text` is selected as well (ADR 0081). ADR 0073 dropped
+      // `message_body` outright on the grounds that nothing below read it,
+      // which was true — and left `latestSubject` as `email_headers.subject
+      // ?? ""`, so the 14 of production's 27 rows that carry no subject print
+      // `Latest: "" (general)`. The body is the only other thing the row has
+      // to say, so it supplies the fallback below.
       const read = this.readRows<any>(
         "weekly-email-report",
         "procurement_conversations",
         await client
           .from("procurement_conversations")
           .select(
-            "id, provider_id, direction, channel, detected_intent, detected_sentiment, delivery_status, email_headers, created_at",
+            "id, provider_id, direction, channel, detected_intent, detected_sentiment, delivery_status, message_text, email_headers, created_at",
           )
           .eq("restaurant_id", restaurantId)
           .gte("created_at", sevenDaysAgo.toISOString())
@@ -1264,7 +1300,13 @@ export class ScheduledTasksService implements OnModuleInit {
       // indistinguishable in the log.
       if (!read.ok) return [];
       const conversations = read.rows;
-      if (conversations.length === 0) return [];
+      if (conversations.length === 0) {
+        this.logger.log(
+          `No vendor conversations in the last 7 days for restaurant ${restaurantId} — ` +
+            `section omitted (the read SUCCEEDED and found nothing).`,
+        );
+        return [];
+      }
 
       // Group by provider_id and summarize
       const byProvider = new Map<string, typeof conversations>();
@@ -1312,17 +1354,46 @@ export class ScheduledTasksService implements OnModuleInit {
         const messageCount = convos.length;
         const latestConvo = convos[0]; // Already sorted descending
 
-        // Build a short summary from the latest conversation
-        // The subject lives in the `email_headers` jsonb, not in a column.
+        // Build a short summary from the latest conversation.
+        //
+        // The subject lives in `email_headers.subject` — the lowercase RFC-822
+        // key set the live inbound path writes (`rabbitmq-bridge.service.ts`
+        // `handleInboundEmail`) and the shape ADR 0065 adopted for outbound.
+        const headers = (latestConvo.email_headers ?? {}) as Record<
+          string,
+          unknown
+        >;
+        const rawSubject = headers.subject;
         const latestSubject =
-          (latestConvo.email_headers as Record<string, unknown> | null)
-            ?.subject ?? "";
+          typeof rawSubject === "string" && rawSubject.trim().length > 0
+            ? rawSubject.trim()
+            : null;
+
+        // Measured on production 2026-09-02: 13 of 27 rows carry a non-empty
+        // `email_headers.subject` (all 10 inbound, 3 outbound). A subjectless
+        // row is the COMMON case, not the edge, so `message_text` — the NOT
+        // NULL body — supplies a short preview rather than `Latest: ""`, which
+        // reads as a message with an empty subject rather than a row that
+        // never had one. Truncated with an ellipsis so nobody mistakes the
+        // preview for a complete subject line.
+        const body =
+          typeof latestConvo.message_text === "string"
+            ? latestConvo.message_text.replace(/\s+/g, " ").trim()
+            : "";
+        const preview =
+          body.length > 60 ? `${body.slice(0, 60).trimEnd()}…` : body;
+
+        const latestDescriptor = latestSubject
+          ? `"${latestSubject}"`
+          : preview || "(no subject or body recorded)";
+
+
         const latestIntent = latestConvo.detected_intent || "general";
         const latestStatus = latestConvo.delivery_status || "active";
 
         summaries.push({
           provider: providerName,
-          summary: `${messageCount} messages this week. Latest: "${latestSubject}" (${latestIntent})`,
+          summary: `${messageCount} messages this week. Latest: ${latestDescriptor} (${latestIntent})`,
           status: latestStatus,
           messageCount,
         });
