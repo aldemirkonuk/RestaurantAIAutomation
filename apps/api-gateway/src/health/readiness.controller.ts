@@ -68,6 +68,14 @@ import { COMMIT_SHA, BOOTED_AT } from "./build-provenance";
  * The memo means a "ready" answer can be up to `PROBE_TTL_MS` old. That bound is
  * stated in the payload as `checkedAt`, so a caller can see the age rather than
  * having to trust it.
+ *
+ * There is a second bound this route does not own: the global `RateLimitGuard`
+ * (`APP_GUARD` in `app.module.ts`) applies its `default` config here — 100
+ * requests per 60s per key (`rate-limit.guard.ts:28`), the same ceiling liveness
+ * lives under. Combined with the 5s memo that is at most ~12 database round
+ * trips a minute from one caller, which is why the memo is enough on its own
+ * terms and does not need to be the only defence. The deploy audit polls at 6
+ * requests a minute, two orders inside it.
  */
 
 /** How long a probe result stays usable. Stated in the payload as `checkedAt`. */
