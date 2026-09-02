@@ -517,22 +517,14 @@ KNOWN_BAD_COLUMNS: dict[str, str] = {
         "ADR 0068 replaced that read with a keyed lookup on the new "
         "`calendar_events.recurring_order_id` column."
     ),
-    "procurement_conversations.sender_email": (
-        "prod:absent. communications.service.ts logConversation writes four columns "
-        "the table does not have — sender_email, recipient_email, subject, "
-        "message_body — and the real ones are `message_text` (NOT NULL) plus the "
-        "jsonb `email_headers`. Every call to it has failed."
-    ),
-    "procurement_conversations.recipient_email": (
-        "prod:absent. Same site as procurement_conversations.sender_email."
-    ),
-    "procurement_conversations.subject": (
-        "prod:absent. Same site as procurement_conversations.sender_email."
-    ),
-    "procurement_conversations.message_body": (
-        "prod:absent. Same site as procurement_conversations.sender_email; the "
-        "column that holds a body is `message_text`."
-    ),
+    # procurement_conversations.{sender_email,recipient_email,subject,
+    # message_body} were here. FIXED 2026-09-02, ADR 0065:
+    # communications.service.ts storeOutboundConversation (the entries called it
+    # logConversation; that method name has never existed in the tree) now
+    # writes `message_text` and folds the three email-metadata fields into the
+    # jsonb `email_headers` under the shape the live inbound path already uses.
+    # Deleted per the shrink-only rule — leaving them would be a hole this guard
+    # ignores next time.
 }
 
 CREATE_TABLE_HEAD_RE = re.compile(
@@ -963,14 +955,10 @@ export class ReceivingService {
         "      tags: JSON.stringify({}),\n"
         "    });\n"
         "  }\n"
-        "  async logConversation() {\n"
-        "    await this.db.supabase.from(\"procurement_conversations\").insert({\n"
-        "      sender_email: a,\n"
-        "      recipient_email: b,\n"
-        "      subject: c,\n"
-        "      message_body: d,\n"
-        "    });\n"
-        "  }\n"
+        # The procurement_conversations arm of this fixture is gone with its
+        # KNOWN_BAD_COLUMNS entries (ADR 0065, 2026-09-02). It existed only so
+        # those four entries matched a write; leaving it would make the fixture
+        # itself the violation.
         "}\n",
         encoding="utf-8",
     )
