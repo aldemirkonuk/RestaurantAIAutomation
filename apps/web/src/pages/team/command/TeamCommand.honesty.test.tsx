@@ -259,10 +259,17 @@ describe('P2 · a message addressed to one person reaches one person', () => {
     fireEvent.click(screen.getByRole('button', { name: /send to 1/i }));
 
     await waitFor(() => expect(t.broadcast).toHaveBeenCalled());
-    expect((t.broadcast.mock.calls as unknown as unknown[][])[0][0]).toMatchObject({
+    const oneBody = (t.broadcast.mock.calls as unknown as unknown[][])[0][0] as Record<
+      string,
+      unknown
+    >;
+    expect(oneBody).toMatchObject({
       message: 'Please swap Friday.',
       memberIds: ['m1'],
     });
+    // ADR 0088 T3: naming BOTH is a 400 before anything is sent, so a targeted
+    // message must not also claim the whole restaurant.
+    expect(oneBody).not.toHaveProperty('audience');
   });
 
   it('a crew broadcast says how many people it reaches before it is sent', async () => {
@@ -271,6 +278,30 @@ describe('P2 · a message addressed to one person reaches one person', () => {
     const dialog = await screen.findByRole('dialog', { name: /message/i });
     expect(dialog).toHaveTextContent(/2/);
     expect(t.broadcast).not.toHaveBeenCalled();
+  });
+
+  /**
+   * ADR 0088 T3 shipped gateway-first (#256): an omitted `memberIds` stopped
+   * meaning "everyone" and became a 400. Until the client named its audience,
+   * this control was simply broken in production. Asserted on the BODY, not on
+   * "it was called", because a call that 400s is still a call.
+   */
+  it('a crew broadcast names its audience instead of relying on an omission', async () => {
+    render(<ManagerShiftDesk />, { wrapper });
+    fireEvent.click(await screen.findByRole('button', { name: /Broadcast crew/i }));
+    await screen.findByRole('dialog', { name: /message/i });
+    fireEvent.change(screen.getByRole('textbox', { name: /message/i }), {
+      target: { value: 'Family meal at 4.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /send to 2/i }));
+
+    await waitFor(() => expect(t.broadcast).toHaveBeenCalled());
+    const body = (t.broadcast.mock.calls as unknown as unknown[][])[0][0] as Record<
+      string,
+      unknown
+    >;
+    expect(body).toMatchObject({ audience: 'everyone' });
+    expect(body.memberIds).toBeUndefined();
   });
 });
 
@@ -288,6 +319,12 @@ describe('P7 · destructive actions ask first', () => {
     expect(dialog).toHaveTextContent(/cannot be undone/i);
     fireEvent.click(screen.getByRole('button', { name: /replace the week/i }));
     await waitFor(() => expect(t.copyWeek).toHaveBeenCalled());
+    // ADR 0088 T7: the gateway 409s a copy that has not said it replaces the
+    // target week. The ConfirmSheet above is what earns the flag; without the
+    // flag on the wire the confirmed copy never happens at all.
+    expect((t.copyWeek.mock.calls as unknown as unknown[][])[0][3]).toMatchObject({
+      replaceTarget: true,
+    });
   });
 
   it('re-publish says it clears who has seen the schedule before doing it', async () => {
@@ -305,6 +342,26 @@ describe('P7 · destructive actions ask first', () => {
     expect(t.publishSchedule).not.toHaveBeenCalled();
     const dialog = await screen.findByRole('dialog', { name: /re-publish/i });
     expect(dialog).toHaveTextContent(/seen/i);
+
+    fireEvent.click(screen.getByRole('button', { name: /re-publish and clear receipts/i }));
+    await waitFor(() => expect(t.publishSchedule).toHaveBeenCalled());
+    // ADR 0088 T7: a re-publish that would erase read receipts is a 409 unless
+    // the body says so. The sheet asked; the wire has to carry the answer.
+    expect((t.publishSchedule.mock.calls as unknown as unknown[][])[0][2]).toMatchObject({
+      resetReceipts: true,
+    });
+  });
+
+  /**
+   * The other half of the same contract: a FIRST publish destroys nothing, so
+   * it must not ask to. Sending `resetReceipts: true` unconditionally would
+   * pass the test above while turning the gateway's refusal into decoration.
+   */
+  it('a first publish asks for no receipt reset', async () => {
+    render(<ManagerShiftDesk />, { wrapper });
+    fireEvent.click(await screen.findByRole('button', { name: /Publish week/i }));
+    await waitFor(() => expect(t.publishSchedule).toHaveBeenCalled());
+    expect((t.publishSchedule.mock.calls as unknown as unknown[][])[0][2]).toBeUndefined();
   });
 });
 

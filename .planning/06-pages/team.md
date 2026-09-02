@@ -184,11 +184,16 @@ dashboard.md §7.
   chose. ADR 0088 fixed the code-side default (no row → `null` + `configured:
   false`); making the column nullable is a separate migration against a table
   with 0 rows.
-- **Three controls need a client half before they work again** (ADR 0088 T3/T7,
-  owned by the `/team` page session, not the gateway): "Copy last week" and
-  "Re-publish" now answer 409 until the client sends `replaceTarget` /
-  `resetReceipts` with a confirmation, and the legacy desk's broadcast answers
-  400 until it sends an `audience`.
+- **The three controls that needed a client half now have one.** ADR 0088 T3/T7
+  shipped gateway-first in #256, so between that merge and the fix "Copy last
+  week" and "Re-publish" answered 409 and the legacy desk's crew broadcast
+  answered 400 — in production, for every caller. `services/api/team.ts` now
+  sends `replaceTarget` / `resetReceipts` **only from the ConfirmSheet that
+  names what is destroyed**, and a first publish sends neither (the gateway
+  clears nothing and reports `receiptsCleared: 0`); the crew broadcast names
+  `audience: "everyone"` instead of relying on an omitted `memberIds`. Covered
+  by `TeamCommand.honesty.test.tsx` — four assertions on the request BODY, not
+  on "it was called", because a call that 400s is still a call.
 
 ## 10. Maturity
 
