@@ -1084,10 +1084,26 @@ def main():
     print(f"  Feature Flags: 7")
     print(f"  Provider Dates: 2")
     print()
+    # Print the *source* of each password, never the value. These three read
+    # from SEED_DEMO_PASSWORD / SEED_MANAGER_PASSWORD, so when this script runs
+    # anywhere those are set to something real — CI, a shared staging box — the
+    # old version wrote live credentials into the job log, where they persist
+    # long after the seed does (CodeQL py/clear-text-logging-sensitive-data).
+    def _password_hint(env_var: str, value: str, default: str) -> str:
+        if value == default:
+            return f"{default}  (built-in default; override with {env_var})"
+        return f"<value of ${env_var}>"
+
     print(f"Demo / Test Login:")
-    print(f"  Easy demo: {DEMO_EMAIL} / {DEMO_PASSWORD}")
-    print(f"  Manager: manager@meyhouse-pa.com / {DEFAULT_MANAGER_PASSWORD}")
-    print(f"  Owner: owner@meyhouse-pa.com / {DEFAULT_MANAGER_PASSWORD}")
+    print(
+        f"  Easy demo: {DEMO_EMAIL} / "
+        f"{_password_hint('SEED_DEMO_PASSWORD', DEMO_PASSWORD, 'demo123')}"
+    )
+    manager_hint = _password_hint(
+        "SEED_MANAGER_PASSWORD", DEFAULT_MANAGER_PASSWORD, "ChangeMe123!"
+    )
+    print(f"  Manager: manager@meyhouse-pa.com / {manager_hint}")
+    print(f"  Owner: owner@meyhouse-pa.com / {manager_hint}")
     print()
     print(f"Restaurant ID: {restaurant_id}")
     print()

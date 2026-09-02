@@ -45,7 +45,10 @@ load_env(ENV_PATH)
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 MOCK_LLM = os.environ.get("MOCK_LLM", "false").lower() == "true"
 
-print(f"  GOOGLE_API_KEY: {'set (' + GOOGLE_API_KEY[:10] + '...)' if GOOGLE_API_KEY else 'MISSING'}")
+# Presence only — a 10-character prefix of a live API key is still key
+# material, and this line runs wherever the script does, CI included
+# (CodeQL py/clear-text-logging-sensitive-data).
+print(f"  GOOGLE_API_KEY: {'set' if GOOGLE_API_KEY else 'MISSING'}")
 print(f"  MOCK_LLM      : {MOCK_LLM}")
 print()
 

@@ -351,7 +351,14 @@ export function SMSTemplateBuilder({ onClose, onSave, editingTemplate }: SMSTemp
     let preview = message
     VARIABLE_CATEGORIES.forEach(cat => {
       cat.variables.forEach(v => {
-        preview = preview.replace(new RegExp(v.key.replace(/[{}]/g, '\\$&'), 'g'), v.example)
+        // Escape every regex metacharacter, not just braces: `[{}]` leaves
+        // `.`, `*`, `+`, `(`, `)` etc. live, so a variable key containing one
+        // silently becomes a pattern instead of a literal. Today the keys are
+        // a static constant, which is why this is hardening rather than a
+        // live bug — but the escape should be correct for the input it claims
+        // to handle.
+        const literal = v.key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        preview = preview.replace(new RegExp(literal, 'g'), v.example)
       })
     })
     return preview
