@@ -135,7 +135,7 @@ they are, L-DSN-1/2/3 close at human reliability — the reliability that produc
 - [x] **Brand / landing visuals — HELD** until *"structure + brand exist"*
       (`decisions/README.md:81`). This department does the structure half and
       **commissions no visual**
-- [x] **OD-106 — deferred, documentation only** (`OPEN-DECISIONS.md:65`). The co-design
+- [x] **OD-106 — deferred, documentation only** (`OPEN-DECISIONS.md:64`). The co-design
       pack is built; the direction and the primary stay the founder's
 - [x] **The voice guide is [[brand-identity-charter]]'s**, not Design's. Design owns the
       product-language corpus underneath it

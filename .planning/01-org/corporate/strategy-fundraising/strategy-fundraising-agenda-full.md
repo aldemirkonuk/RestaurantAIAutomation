@@ -41,8 +41,8 @@ Four other things moved, and each one changes what is schedulable:
 |---|---|
 | `.claude/skills/` does not exist; the repo has **zero committed skills** ([[strategy-fundraising-schedule]] §Skills, [[positioning-fundraise-readiness-schedule]] §Skills) | **Stale.** It exists, with **4 committed skills**, first admitted 2026-08-28 through the §3.3 gate, each wrapping `scripts/agents/run_card.py` (`.claude/skills/README.md:6-9`). `citation-reverify` now has both a past instance *and* a worked admission path |
 | The claim register is a four-column markdown table ([[positioning-fundraise-readiness-agenda-full]] §What) | **Superseded by a better mechanism that already runs.** `.planning/decisions/CLAIMS.jsonl` (112 lines) carries executable claims, and `scripts/check_decision_claims.sh` re-verifies every one of them in CI at `.github/workflows/ci.yml:196`, in strict mode: a claim that *cannot run* is a failure, not a skip, and a verify command may not suppress its own stderr. A register in that form is checked on every commit instead of on every send |
-| OD-23 is *"$20k MRR in 30 days against **locked** $20–50/mo pricing"*, cited at `[[OPEN-DECISIONS]]:27` — the phrasing in all 14 documents of this vault | **Wrong on three counts, and the row moved.** OD-23 (`OPEN-DECISIONS.md:33`) now records: (a) **no ADR records any pricing**, so $20–50/mo is *open*, not locked; (b) its source document is **not in this repo** — it lives in a Cowork session, so the <10% rating cannot be checked here; (c) `PROJECT.md:73` reads **"No revenue pressure: Build right, not fast"**, which contradicts a 30-day revenue sprint |
-| The 573-vs-375 insight-type contradiction **blocks publishing either figure** ([[strategy-fundraising-charter]] §Open forks) | **Settled.** OD-33 (`OPEN-DECISIONS.md:38`) fixed it at **573** on 2026-08-26 by transpiling `insight-catalog.ts` standalone. The block lifts — and the residual risk is now the opposite one: `apps/api-gateway/src/analytics/insights/insight-catalog.spec.ts:10` still asserts only `toBeGreaterThanOrEqual(200)`, so 348, 375 and 573 all pass and nothing would catch the next drift |
+| OD-23 is *"$20k MRR in 30 days against **locked** $20–50/mo pricing"*, cited at `[[OPEN-DECISIONS]]:27` — the phrasing in all 14 documents of this vault | **Wrong on three counts, and the row moved.** OD-23 (`OPEN-DECISIONS.md:32`) now records: (a) **no ADR records any pricing**, so $20–50/mo is *open*, not locked; (b) its source document is **not in this repo** — it lives in a Cowork session, so the <10% rating cannot be checked here; (c) `PROJECT.md:73` reads **"No revenue pressure: Build right, not fast"**, which contradicts a 30-day revenue sprint |
+| The 573-vs-375 insight-type contradiction **blocks publishing either figure** ([[strategy-fundraising-charter]] §Open forks) | **Settled.** OD-33 (`OPEN-DECISIONS.md:37`) fixed it at **573** on 2026-08-26 by transpiling `insight-catalog.ts` standalone. The block lifts — and the residual risk is now the opposite one: `apps/api-gateway/src/analytics/insights/insight-catalog.spec.ts:10` still asserts only `toBeGreaterThanOrEqual(200)`, so 348, 375 and 573 all pass and nothing would catch the next drift |
 
 **Read together, those five rows are one argument.** This department's job is to stop
 claims outrunning evidence, and in four days its own vault drifted at the baseline, at
@@ -118,17 +118,17 @@ the tasks:
 | 3 | Cost drift caught | `:370` | **rejected** — computable, not computed. Evidence would be a plan (R3) |
 | 4 | Four-way match · credit ledger · X12 810/856/812 · two-stage receiving | `:340-348` ✅ rows | **releasable, evidence class wrong** — needs a demo, not a line number (STR-6) |
 | 5 | Competitive read vs MarginEdge | `:328` | **releasable** — re-verify per send; competitor facts age fastest |
-| 6 | 573 insight types | `:324` | **releasable — the block lifted.** OD-33 (`OPEN-DECISIONS.md:38`) settled it 2026-08-26. `verify` must assert the **exact** count; the repo's own test asserts only `>= 200` (`insight-catalog.spec.ts:10`) |
+| 6 | 573 insight types | `:324` | **releasable — the block lifted.** OD-33 (`OPEN-DECISIONS.md:37`) settled it 2026-08-26. `verify` must assert the **exact** count; the repo's own test asserts only `>= 200` (`insight-catalog.spec.ts:10`) |
 | 7 | 860-path UX catalogue | `:324` | **blocked** — travels in the same sentence as 573 and has had no equivalent measurement. One settled number does not settle its neighbour |
 | 8 | *"ux-optimizer secured"* | `:340` | **releasable with scope attached** — accurate in the row's own words; see STR-8 for the mis-anchored version of this finding the vault carries |
-| 9 | *"Security complete"* (the Track A heading) | `:188` | **weaken** — `### Track A — Security` is where the unscoped word lives. OD-19 (`OPEN-DECISIONS.md:32`) records 40 routes on five unguarded-by-omission controllers, most deliberate |
-| 10 | *"$20k MRR in 30 days"* | OD-23 (`OPEN-DECISIONS.md:33`) | **blocked, and its blocker changed** — not "unresolved target" but "the target's price is unrecorded, its source is not in this repo, and `PROJECT.md:73` contradicts its urgency" |
+| 9 | *"Security complete"* (the Track A heading) | `:188` | **weaken** — `### Track A — Security` is where the unscoped word lives. OD-19 (`OPEN-DECISIONS.md:31`) records 40 routes on five unguarded-by-omission controllers, most deliberate |
+| 10 | *"$20k MRR in 30 days"* | OD-23 (`OPEN-DECISIONS.md:32`) | **blocked, and its blocker changed** — not "unresolved target" but "the target's price is unrecorded, its source is not in this repo, and `PROJECT.md:73` contradicts its urgency" |
 | 11 | *"$20–50/mo pricing"* as a company fact | this vault, 14 documents | **rejected** — we have been calling it *locked* and no ADR records it. An unwritten choice is open (CLAUDE.md §0.1). See STR-9 |
 | 12 | Any `nf_a.*` completion figure | [[strategy-fundraising-charter]] §Metrics | **weaken by default** — today's `success_rate` means *"the call returned"*; `scripts/check_task_types_are_graded.py` exists precisely because six of seven task types recorded a garbage response as success |
 
 - **Evidence:** every source line above re-read 2026-08-28;
   [[positioning-fundraise-readiness-agenda-full]] §Step 1 (the seven-claim ancestor of
-  this table); OD-33 (`OPEN-DECISIONS.md:38`); OD-19 (`OPEN-DECISIONS.md:32`).
+  this table); OD-33 (`OPEN-DECISIONS.md:37`); OD-19 (`OPEN-DECISIONS.md:31`).
 
 ### STR-3 · `claim-provenance-check` — the grader, in CI, inheriting strict mode
 
@@ -273,11 +273,11 @@ the tasks:
 - **close_time:** **2026-09-11**, then **monthly** (L-STR-4, the unattributed-target
   sweep already scheduled)
 - **Doneability:** no document in this tree describes $20–50/mo as *locked*; every
-  occurrence of the revenue figure carries `OD-23 (OPEN-DECISIONS.md:33)` in the ADR
+  occurrence of the revenue figure carries `OD-23 (OPEN-DECISIONS.md:32)` in the ADR
   0025 pair form (id **and** line, so a renumber and an insert each break the pair
   loudly). Done when the monthly sweep's `strategy.unattributed_target_citations`
   has a first real number for this vault.
-- **Evidence:** OD-23 (`OPEN-DECISIONS.md:33`) — *"it called $20–50/mo **locked** —
+- **Evidence:** OD-23 (`OPEN-DECISIONS.md:32`) — *"it called $20–50/mo **locked** —
   **no ADR records any pricing**; per CLAUDE.md §0.1 an unwritten choice is *open*, so
   the $20k math rests on an assumed price"*; the same row records the source document
   as absent from this repo and `PROJECT.md:73` (*"No revenue pressure: Build right, not
@@ -294,7 +294,7 @@ the tasks:
 - **Doneability:** register claim #6 moves from `blocked` to `releasable` carrying a
   `verify` that asserts the **exact** count, and the residual risk is recorded as a
   cross-unit ask rather than as a block we no longer have grounds for.
-- **Evidence:** OD-33 (`OPEN-DECISIONS.md:38`) — settled at **573** on 2026-08-26,
+- **Evidence:** OD-33 (`OPEN-DECISIONS.md:37`) — settled at **573** on 2026-08-26,
   identical across repeated runs, with the per-category breakdown; and the residual:
   `apps/api-gateway/src/analytics/insights/insight-catalog.spec.ts:10` asserts
   `toBeGreaterThanOrEqual(200)`, so all four circulating values pass. **Knowing the
@@ -494,10 +494,10 @@ ratio is the fork's live argument and this agenda does not resolve it.
 | ID | To | Ask | close_time |
 |---|---|---|---|
 | STR-X1 | [[standards-verification-charter]] | The ≈29% citation-drift baseline is quoted in 12 documents across this vault and is wrong (STR-7: 5 of 7, 71%). Corpus truth is yours; the outward half is ours. Correct or supersede | 42-day age-out |
-| STR-X2 | [[metric-contract-truth-assurance-charter]] | Two asks, both from OD-33 (`OPEN-DECISIONS.md:38`) and STR-12: replace `insight-catalog.spec.ts:10`'s `>= 200` floor with an exact-count assertion, and give us the `dollars_recovered` contract the register's row 2 must bind to | 2026-09-25 |
+| STR-X2 | [[metric-contract-truth-assurance-charter]] | Two asks, both from OD-33 (`OPEN-DECISIONS.md:37`) and STR-12: replace `insight-catalog.spec.ts:10`'s `>= 200` floor with an exact-count assertion, and give us the `dollars_recovered` contract the register's row 2 must bind to | 2026-09-25 |
 | STR-X3 | [[skills-charter]] | Admit `claim-provenance-check` through the §3.3 gate — trigger, doneability, past instance (three, in STR-7), owning department. The registry is yours; we author and commission | 2026-09-18 |
 | STR-X4 | [[red-team-charter]] | The adversarial read of the register (STR-17). Advisory is findings-only; nothing here blocks | 2026-10-16 |
-| STR-X5 | [[decision-office-charter]] | Two: OD-23 (`OPEN-DECISIONS.md:33`) is reported monthly by name from today, and escalates at two consecutive unmoved months; and we second Legal's ask for a content hash beside `updated:` in `watch_loops.py` (F3) | 42-day age-out |
+| STR-X5 | [[decision-office-charter]] | Two: OD-23 (`OPEN-DECISIONS.md:32`) is reported monthly by name from today, and escalates at two consecutive unmoved months; and we second Legal's ask for a content hash beside `updated:` in `watch_loops.py` (F3) | 42-day age-out |
 | STR-X6 | [[design-partner-operations-charter]] | Register row 2 publishes nothing stronger than you produce. Tell us the verified number's shape — credits watched landing — before the first artifact needs it | 42-day age-out |
 
 ---
@@ -540,7 +540,7 @@ does not smuggle one in through a task.
 ## Questions for the founder
 
 1. **OD-23 — what is the target, now that its premises have changed?**
-   OD-23 (`OPEN-DECISIONS.md:33`) records that no ADR sets a price, that the source
+   OD-23 (`OPEN-DECISIONS.md:32`) records that no ADR sets a price, that the source
    document is not in this repo, and that `PROJECT.md:73` says *"No revenue pressure:
    Build right, not fast."* The original three options stand — hold $20k/30d, move to
    higher-ACV founder-led sales, or count committed rather than collected — but a fourth

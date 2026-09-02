@@ -4,9 +4,9 @@
 until the bake-off runs and a scorecard with zero `UNMEASURED` axes exists. No
 ADR may cite this directory as a decision; it may only cite it as a *method*.
 
-- **Decision under test:** OD-03 (`.planning/decisions/OPEN-DECISIONS.md:27`) —
+- **Decision under test:** OD-03 (`.planning/decisions/OPEN-DECISIONS.md:26`) —
   the orchestration base.
-- **Reframed by:** OD-52 (`OPEN-DECISIONS.md:41`). Read §1 before anything else.
+- **Reframed by:** OD-52 (`OPEN-DECISIONS.md:40`). Read §1 before anything else.
 - **Who runs it:** `harness-runtime` ([[harness-runtime-charter]]), whose charter
   says in as many words: *"Running the bake-off is this team's job; choosing
   before it runs is not."*

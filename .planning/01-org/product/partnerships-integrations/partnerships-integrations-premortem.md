@@ -89,7 +89,7 @@ position: the build is sunk, the differentiating surface is already half-shipped
 only thing left to negotiate is distribution on someone else's terms. The decision was made
 — by drift, in the direction nobody argued for.
 
-**Earliest observable signal.** OD-07's status line in `OPEN-DECISIONS.md:31` is unchanged
+**Earliest observable signal.** OD-07's status line in `OPEN-DECISIONS.md:30` is unchanged
 for two consecutive months **while** guest-experience commits continue landing. The
 conjunction is the signal; either alone is fine.
 

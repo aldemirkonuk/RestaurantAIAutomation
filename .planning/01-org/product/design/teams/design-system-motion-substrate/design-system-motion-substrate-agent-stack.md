@@ -15,7 +15,7 @@ links: ["[[design-system-motion-substrate-charter]]", "[[design-system-motion-su
 > The only Design team whose customer is other teams, so its agent is a **census and a set of
 > reports**, not an author: it counts what leaks, names it by value and `path:line`, and hands
 > the reading to a human. It is also the card most constrained by an open fork — **OD-106**
-> (OD-106, `decisions/OPEN-DECISIONS.md:65`) is deferred to founder co-design, **documentation only**,
+> (OD-106, `decisions/OPEN-DECISIONS.md:64`) is deferred to founder co-design, **documentation only**,
 > and no line below may propose building the foundation.
 
 ## 1. Roster
@@ -69,7 +69,7 @@ team measured on its own back-catalogue builds a museum (premortem M1).
 
 | Skill (`.claude/skills/…`) | Tier | Trigger | Doneability | Past instance | Status |
 |---|---|---|---|---|---|
-| `design-token-census` | T2 | Monthly, and on any token edit | Both sources enumerated; divergent values listed **by name**; count published | **`apps/mobile/src/design/tokens.ts` became a second token source with no recorded decision**, and the same drift produced two live burgundies — the finding OD-106 was filed on (`OPEN-DECISIONS.md:65`) | NEW |
+| `design-token-census` | T2 | Monthly, and on any token edit | Both sources enumerated; divergent values listed **by name**; count published | **`apps/mobile/src/design/tokens.ts` became a second token source with no recorded decision**, and the same drift produced two live burgundies — the finding OD-106 was filed on (`OPEN-DECISIONS.md:64`) | NEW |
 | `a11y-path-audit` | T2 | Per PR, plus a quarterly full sweep | Each §X rule is either enforced in CI or listed as unenforced with a named owner | **§X `NEW-667…676`** (`UX_PATHS_CATALOG.md:1493`) written in July as prose and enforced nowhere since — 0 of 10 rules live | NEW |
 | `primitive-story-scaffold` | T2 | A primitive lands with no story | The story exists and renders every documented state | **`packages/ui` has 0 stories** while `apps/web`'s 28 story files cluster in `src/stories/` rather than beside the primitives that ship — the shared package is the least documented thing in the repo | NEW |
 

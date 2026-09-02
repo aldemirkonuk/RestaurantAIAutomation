@@ -36,7 +36,7 @@ Recorded here, not back-edited into the charter (§8.4: charters are not this do
 | Charter said | Reads today | Evidence |
 |---|---|---|
 | OD-20 live, 39 unguarded routes | **Closed** | `analytics.controller.ts:51`, class-level `@UseGuards(JwtAuthGuard)` |
-| The insight count is contested | **Settled at 573** (OD-33, 2026-08-26) — but *only in the register*; nothing in code or CI knows | OD-33, `OPEN-DECISIONS.md:38`; `insight-catalog.spec.ts:9-10` still asserts `>= 200` |
+| The insight count is contested | **Settled at 573** (OD-33, 2026-08-26) — but *only in the register*; nothing in code or CI knows | OD-33, `OPEN-DECISIONS.md:37`; `insight-catalog.spec.ts:9-10` still asserts `>= 200` |
 | Nest emits no cost events | **Emits them** since P1 | `common/model-client/model-client.service.ts:413`; consultant path `consultants.service.ts:174` |
 | 0 spec cases beside the services | **23** | `consultant-grounding.spec.ts` (13) + `pos-revenue.spec.ts` (10). Engine + catalogue: 149 |
 | 375 published in 3 code sites | **5** | + `insight-generator.service.ts:55`, the same file whose `getCatalogSummary()` returns the true count |
@@ -71,7 +71,7 @@ number the department exists to publish (premortem M1, M5).
 
 ## 3. Programme B — the 375-vs-573 reconciliation, closed structurally
 
-**OD-33 settled the count at 573 on 2026-08-26** (OD-33, `OPEN-DECISIONS.md:38`). Two years of
+**OD-33 settled the count at 573 on 2026-08-26** (OD-33, `OPEN-DECISIONS.md:37`). Two years of
 this department's premortem hangs on what happens next: *a divergence closed by editing a
 markdown file will reopen* (`metric-contract-truth-assurance` premortem M2; the two-week
 "not built" header at `ANALYTICS_FEATURE_CATALOG.md:5-13` is the precedent).
@@ -92,7 +92,7 @@ markdown file will reopen* (`metric-contract-truth-assurance` premortem M2; the 
   `foundation/teams/corporate.md:207,448` repeats it. **The number is settled; their
   status rows are not.**
 
-And a fourth bucket that must **not** be touched: **citational uses** — OD-33, `OPEN-DECISIONS.md:38`,
+And a fourth bucket that must **not** be touched: **citational uses** — OD-33, `OPEN-DECISIONS.md:37`,
 `04-specs/REGISTER-AUDIT-2026-08-26.md:524`, `decisions/evidence/0025-citation-rot.md:93-98`,
 `07-reference/LLM_INSTRUCTION_PROMPTS.md:33`, `03-scenarios/TIER-MAP.md:122`,
 `03-scenarios/S15-owner-opens-the-weekly-insight-digest.md:87,90,100,144`,
@@ -101,7 +101,7 @@ delete the audit trail — the exact move ADR 0025 exists to prevent.
 
 | # | Task | Owner | Doneability | close_time | Evidence |
 |---|---|---|---|---|---|
-| **B1** | **Replace the floor assertion with an exact one** — `INSIGHT_CANDIDATES.length === 573` *and* the per-category vector (tables 174 · efficiency 108 · sales 82 · staff 50 · risk 40 · inventory 34 · forecast 30 · purchasing 27 · goals 22 · basket 6) | AB-1 | A single added candidate turns CI red. Verified by adding one locally and watching it fail | **2026-09-04** | `insight-catalog.spec.ts:9-10` asserts only `>= 200`, so 348/375/573/200 all pass (OD-33, `OPEN-DECISIONS.md:38`) |
+| **B1** | **Replace the floor assertion with an exact one** — `INSIGHT_CANDIDATES.length === 573` *and* the per-category vector (tables 174 · efficiency 108 · sales 82 · staff 50 · risk 40 · inventory 34 · forecast 30 · purchasing 27 · goals 22 · basket 6) | AB-1 | A single added candidate turns CI red. Verified by adding one locally and watching it fail | **2026-09-04** | `insight-catalog.spec.ts:9-10` asserts only `>= 200`, so 348/375/573/200 all pass (OD-33, `OPEN-DECISIONS.md:37`) |
 | **B2** | **Derive the number at runtime in all 5 code sites** — the endpoint already returns it | AB-3 + AB-1 | No literal insight-count survives in `apps/web` or the OpenAPI strings; the palette label is computed | **2026-09-11** | `getCatalogSummary()` returns `totalCandidateTypes` (`insight-generator.service.ts:44-46`); `GET /analytics/insight-catalog` is live |
 | **B3** | **Never ship the count without its satisfiable share** — the runtime payload carries both, so a caller cannot print one alone | AB-1 | The API response makes the bare count unavailable: `{ total, satisfiable, blockingRequirements[] }` or nothing | **2026-09-25** | Directive rule 2 (*"Both numbers or neither"*); `availableCandidates()` exists at `insight-catalog.ts:557-563` |
 | **B4** | **File the two cross-unit asks** — one note into `decision-office-questions`, one into `strategy-fundraising-questions`: *OD-33 is settled; your rows still read unresolved.* One into `ux-path-burn-down-questions` for §Z's 7 lines | AB-3 | Three notes exist with the `path:line` lists above; **we do not edit their files** | **2026-09-04** | GENERATION_BRIEF §8.4 — *"a cross-unit need is an agenda task addressed to that unit's questions file"* |

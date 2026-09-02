@@ -96,8 +96,19 @@ HISTORICAL = {
 }
 
 FIX = "supabase/migrations/20260902160000_merge_repoints_by_referenced_column.sql"
+COLLIDE = "supabase/migrations/20260902180000_a_unique_index_decides_what_collides.sql"
+
+# The same failure, one catalog over. The collision loop rebuilt each UNIQUE
+# index's equality test from pg_index.indkey and got it wrong five ways --
+# expression columns (attnum 0) dropped, indpred ignored, INCLUDE columns
+# treated as key columns, invalid indexes treated as constraints, and
+# IS NOT DISTINCT FROM making NULL equal NULL when a NULLS DISTINCT index says
+# it is not. ADR 0081 deleted the reconstruction rather than adding four cases.
+# These migrations carry it and are applied and superseded.
+HISTORICAL_INDKEY = HISTORICAL | {FIX}
 
 UNNEST_CONKEY = re.compile(r"unnest\s*\(\s*[\w.]*conkey\s*\)", re.IGNORECASE)
+UNNEST_INDKEY = re.compile(r"unnest\s*\(\s*[\w.]*indkey\s*\)", re.IGNORECASE)
 CONFKEY = re.compile(r"confkey", re.IGNORECASE)
 DEFINES_MERGE = re.compile(
     r"CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.merge_library_wines\s*\(", re.IGNORECASE
@@ -184,6 +195,42 @@ def check_shape(paths):
     return violations, covered
 
 
+def reconstructs_an_index(text):
+    """Line numbers where a UNIQUE index is rebuilt from pg_index.indkey.
+
+    `unnest(i.indkey)` in a query that also names pg_attribute is the shape: it
+    is resolving index columns to names in order to compare them by hand. A
+    bare read of indkey to COUNT or to test membership is not that, and the
+    migration that removes the reconstruction still reads indkey to assert the
+    shape is gone -- so the pg_attribute join is what makes it a violation.
+    """
+    lines = text.split("\n")
+    hits = []
+    for i, line in enumerate(lines):
+        if not UNNEST_INDKEY.search(line):
+            continue
+        window = "\n".join(lines[max(0, i - PAIR_WINDOW): i + PAIR_WINDOW + 1])
+        if re.search(r"pg_attribute", window, re.IGNORECASE):
+            hits.append(i + 1)
+    return hits
+
+
+def check_index_reconstruction(paths):
+    """C: no live SQL rebuilds a unique index's equality test by hand."""
+    violations = []
+    for path in paths:
+        text = open(path, encoding="utf-8", errors="replace").read()
+        if "indkey" not in text.lower():
+            continue
+        if path.endswith(".sql"):
+            text = executable_sql(text)
+        if path in HISTORICAL_INDKEY:
+            continue
+        for line in reconstructs_an_index(text):
+            violations.append((path, line))
+    return violations
+
+
 def check_fix_is_live():
     """B: the newest definition of merge_library_wines routes through the plan."""
     if not os.path.isdir(MIGRATIONS):
@@ -211,8 +258,20 @@ def check_fix_is_live():
     return path, calls, len(definers)
 
 
-def report(violations, covered, live):
+def report(violations, covered, live, idx_violations):
     ok = True
+    if idx_violations:
+        ok = False
+        print("A UNIQUE index rebuilt by hand from pg_index.indkey:\n")
+        for path, line in idx_violations:
+            print(f"  {path}:{line}")
+        print(
+            "\n  An index is expressions, partial predicates, opclasses, collations,"
+            "\n  INCLUDE columns and null semantics. Rebuilding its equality test is a"
+            "\n  second implementation of all of that. Attempt the write and read the"
+            "\n  index's own answer instead -- see ADR 0081."
+        )
+
     if violations:
         ok = False
         print("Foreign-key enumeration by column instead of by reference:\n")
@@ -364,6 +423,73 @@ BEGIN
 END
 $t$;
 
+
+-- Index shapes the previous loop reconstructed wrongly. Built here rather than
+-- found, because none of them exists on a referencing table today -- that is
+-- what made four of the five defects latent, not what made them safe.
+CREATE TABLE public.t_expr (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  wine_id uuid NOT NULL REFERENCES public.master_wine_library(id),
+  label text NOT NULL);
+CREATE UNIQUE INDEX t_expr_uq ON public.t_expr (wine_id, lower(label));
+
+CREATE TABLE public.t_partial (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  wine_id uuid NOT NULL REFERENCES public.master_wine_library(id),
+  code text NOT NULL, active boolean NOT NULL);
+CREATE UNIQUE INDEX t_partial_uq ON public.t_partial (wine_id, code) WHERE active;
+
+DO $t$
+DECLARE v_keep uuid; v_lose uuid; n int; d text;
+BEGIN
+  INSERT INTO public.master_wine_library (wine_id, name, producer, primary_type, country)
+    VALUES (left('ck'||replace(gen_random_uuid()::text,'-',''),20),'Collide Keeper','CP','red','FR') RETURNING id INTO v_keep;
+  INSERT INTO public.master_wine_library (wine_id, name, producer, primary_type, country)
+    VALUES (left('cl'||replace(gen_random_uuid()::text,'-',''),20),'Collide Loser','CP','red','FR') RETURNING id INTO v_lose;
+
+  -- (5) NULLS DISTINCT with a nullable key column. sku_mappings is UNIQUE on
+  --     (restaurant_id, master_wine_id, sku_type, sku_value) and restaurant_id
+  --     is nullable -- a global, unscoped SKU mapping. Two NULLs are DISTINCT,
+  --     so both rows may legally sit on the keeper. Both must SURVIVE.
+  INSERT INTO public.sku_mappings (restaurant_id, master_wine_id, sku_type, sku_value)
+    VALUES (NULL, v_keep, 'upc', 'SAME-UPC'), (NULL, v_lose, 'upc', 'SAME-UPC');
+
+  -- A GENUINE collision. trg_normalize_alias derives alias_name_normalized from
+  -- alias_name, so these two differ in case and normalize to the same value.
+  INSERT INTO public.wine_aliases (canonical_id, alias_name) VALUES (v_keep, 'samename');
+  INSERT INTO public.wine_aliases (canonical_id, alias_name) VALUES (v_lose, 'SAMENAME');
+
+  -- (1) expression index; lower('ABC') <> lower('zzz'), so NO collision.
+  INSERT INTO public.t_expr (wine_id, label) VALUES (v_keep, 'ABC'), (v_lose, 'zzz');
+  -- (2) partial index; predicate false on both, so neither is in the index.
+  INSERT INTO public.t_partial (wine_id, code, active) VALUES (v_keep,'X',false), (v_lose,'X',false);
+
+  PERFORM * FROM public.merge_library_wines(v_keep, v_lose, false, 'collide');
+
+  SELECT count(*) INTO n FROM public.sku_mappings
+   WHERE master_wine_id=v_keep AND sku_type='upc' AND sku_value='SAME-UPC';
+  IF n <> 2 THEN RAISE EXCEPTION 'NULLS DISTINCT: % sku_mappings row(s) survived of 2 -- a row the index allowed was deleted', n; END IF;
+  RAISE NOTICE 'PASS nulls-distinct: both rows survived; NULL does not equal NULL';
+
+  SELECT count(*) INTO n FROM public.wine_aliases WHERE canonical_id=v_keep AND alias_name='SAMENAME';
+  IF n <> 0 THEN RAISE EXCEPTION 'genuine collision: the loser row was NOT dropped'; END IF;
+  SELECT count(*) INTO n FROM public.wine_aliases WHERE canonical_id=v_keep AND alias_name='samename';
+  IF n <> 1 THEN RAISE EXCEPTION 'genuine collision: the KEEPER row was dropped instead'; END IF;
+  SELECT x.detail INTO d FROM public.wine_merge_log l,
+       jsonb_to_recordset(l.steps) AS x(step text, detail text, rows bigint)
+   WHERE l.loser_id=v_lose AND x.step='collision.dropped' AND x.detail LIKE '%wine_aliases%' LIMIT 1;
+  IF d IS NULL THEN RAISE EXCEPTION 'the drop was not reported in the merge log'; END IF;
+  RAISE NOTICE 'PASS genuine collision: loser dropped, keeper kept, reported as "%"', d;
+
+  SELECT count(*) INTO n FROM public.t_expr WHERE wine_id=v_keep AND label='zzz';
+  IF n <> 1 THEN RAISE EXCEPTION 'expression index: a non-colliding row was deleted'; END IF;
+  RAISE NOTICE 'PASS expression index: lower(label) evaluated, non-colliding row survived';
+
+  SELECT count(*) INTO n FROM public.t_partial WHERE wine_id=v_keep AND active=false;
+  IF n <> 2 THEN RAISE EXCEPTION 'partial index: % of 2 out-of-predicate rows survived', n; END IF;
+  RAISE NOTICE 'PASS partial index: indpred respected, both out-of-predicate rows survived';
+END $t$;
+
 ROLLBACK;
 """
 
@@ -394,7 +520,9 @@ def against_database(dsn):
         return False
     # Every assertion announces itself. psql exiting 0 without them means the
     # block never ran -- silence is not a pass.
-    expected = ("PASS shape:", "PASS accounting:", "PASS refusal:", "PASS merge:")
+    expected = ("PASS shape:", "PASS accounting:", "PASS refusal:", "PASS merge:",
+                "PASS nulls-distinct:", "PASS genuine collision:",
+                "PASS expression index:", "PASS partial index:")
     missing = [m for m in expected if m not in proc.stderr]
     if missing:
         print(
@@ -472,6 +600,29 @@ def self_test():
     if fake.count("public.fk_repoint_plan(") >= 2:
         failures.append("B would pass a definition that never calls the plan")
 
+    recon = """
+      SELECT i.indexrelid, array_agg(att.attname ORDER BY ik.ord)
+      FROM pg_index i
+      JOIN unnest(i.indkey) WITH ORDINALITY AS ik(attnum, ord) ON true
+      JOIN pg_attribute att ON att.attrelid = i.indrelid AND att.attnum = ik.attnum
+      WHERE i.indisunique
+    """
+    if reconstructs_an_index(recon) != [4]:
+        failures.append(
+            f"C did not fire on the pre-fix index reconstruction (got "
+            f"{reconstructs_an_index(recon)})")
+
+    counting = "SELECT count(*) FROM unnest(i.indkey) kk(an) WHERE true\n"
+    if reconstructs_an_index(counting):
+        failures.append(
+            "C fired on a bare read of indkey with no pg_attribute join -- that is "
+            "counting, not reconstructing, and the ADR 0081 assertion itself does it")
+
+    if check_index_reconstruction(sql_files()):
+        failures.append(
+            f"C fails on the tree as committed: "
+            f"{check_index_reconstruction(sql_files())}")
+
     # The real tree must satisfy both, or the guard is testing nothing.
     got = check_shape(sql_files())
     if got is None:
@@ -518,7 +669,7 @@ def main():
     if not os.path.isdir(MIGRATIONS):
         print(f"{MIGRATIONS} is not a directory", file=sys.stderr)
         return 2
-    for path in sorted(HISTORICAL) + [FIX]:
+    for path in sorted(HISTORICAL) + [FIX, COLLIDE]:
         if not os.path.isfile(path):
             print(
                 f"{path} is missing -- this guard's allowlist and anchor name "
@@ -537,7 +688,8 @@ def main():
     live = check_fix_is_live()
     if live is None:
         return 2
-    return 0 if report(violations, covered, live) else 1
+    idx_violations = check_index_reconstruction(sql_files())
+    return 0 if report(violations, covered, live, idx_violations) else 1
 
 
 if __name__ == "__main__":

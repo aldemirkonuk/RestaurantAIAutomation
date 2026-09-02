@@ -346,4 +346,4 @@ rebuild from the source of truth, diff against reality, exit non-zero.
   that fork has since closed on Path C (OD-11, `OPEN-DECISIONS.md:123`).
 - **OD-19 / OD-20** — AR-5's incident half. Not ours; named so the seam is legible.
   Half of it has since closed (OD-20, `OPEN-DECISIONS.md:117` — already fixed and never
-  closed); OD-19 (`OPEN-DECISIONS.md:32`) stays open.
+  closed); OD-19 (`OPEN-DECISIONS.md:31`) stays open.

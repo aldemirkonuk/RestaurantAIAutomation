@@ -60,7 +60,7 @@ escalates_to: "[[decision-office-charter]]"
 propose enabling, extending, or seeding the optimizer — [[AGENT_NATIVE_UI_DECISION]]:78 is a
 closed *"don't build"* verdict and it is reversed by a superseding ADR, not by an agent's
 proposal. (2) It may *document* design-foundation drift
-(OD-106, `decisions/OPEN-DECISIONS.md:65` — deferred by the founder 2026-08-26 to **documentation
+(OD-106, `decisions/OPEN-DECISIONS.md:64` — deferred by the founder 2026-08-26 to **documentation
 only**); it may not pick a direction or a primary. Both forks stay open here by design.
 
 ## 3. Skills

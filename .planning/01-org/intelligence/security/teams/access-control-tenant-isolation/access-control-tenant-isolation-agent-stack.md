@@ -62,7 +62,7 @@ triggers:
   - schedule: "weekly classification sitting, one module per session"   # deletes itself when the backlog is drained, per [[access-control-tenant-isolation-schedule]]
 consumes:
   - "the unclassified-route list; controller and service source by path:line"   # publishers: guard-census, the repo
-  - "OD-19's enumeration ask"             # publisher: OPEN-DECISIONS.md:32
+  - "OD-19's enumeration ask"             # publisher: OPEN-DECISIONS.md:31
 emits:
   - "five-field verdicts into [[access-control-tenant-isolation-agenda-full]]; sec.routes_classified; sec.cross_tenant_write_paths"   # consumers: this team's board, then [[platform-api-charter]] who authors the fix
   - "an escalation for every `unknown`"   # consumer: [[security-charter]]
@@ -139,7 +139,7 @@ Cross-unit interaction: board rows to the department (vault PR), NF-A events, lo
   blacklist at `:30-42`) with the template already shipped
   (`one-tap-actions.controller.ts:64,80,92`). Neither needs designing.
 - **PARTIAL — the primary metric's value.** The charter's 94 is stale as a present count:
-  OD-19 recounted to **40** on 2026-08-26 (`OPEN-DECISIONS.md:32`) and
+  OD-19 recounted to **40** on 2026-08-26 (`OPEN-DECISIONS.md:31`) and
   `foundation/README.md` §2.3 records holes closed in PRs #31/#32. `guard-census`'s first
   run is that reconciliation; **OD-19 stays open here.** RLS is PARTIAL and not this
   stack's to settle — 182 policies, bypassed by the service-role key

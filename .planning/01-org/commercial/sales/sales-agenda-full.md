@@ -277,7 +277,7 @@ a criterion for finding one.
 
 - **Evidence.** [[outbound-engine-charter]] §Entry trigger (two conditions, both unmet);
   ADR 0039's deferral lock, founder re-confirmed 2026-08-28; and
-  `.planning/decisions/OPEN-DECISIONS.md:51` (OD-77), which says in the founder's own
+  `.planning/decisions/OPEN-DECISIONS.md:50` (OD-77), which says in the founder's own
   deferral: *"Sequence it before any customer onboarding — migrating a live mail domain
   under real vendor traffic is materially harder than doing it now."*
 - **Doneability.** One document, five rows, each a **state** and not a plan: sending
@@ -296,7 +296,7 @@ a criterion for finding one.
 
 ### SAL-12 — Carry OD-77 to its owner with the sales consequence attached
 
-- **Evidence.** OD-77 (`OPEN-DECISIONS.md:51`) is founder-deferred, blocks OD-78, and its
+- **Evidence.** OD-77 (`OPEN-DECISIONS.md:50`) is founder-deferred, blocks OD-78, and its
   runbook is committed with **no step taken**; `GMAIL_SENDER_EMAIL` is still a personal
   gmail.com address. The **sales** consequence is written nowhere in OD-77: the design
   partner's mail from the product arrives from a personal account, and every outbound plan

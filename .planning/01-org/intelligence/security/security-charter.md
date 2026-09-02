@@ -113,7 +113,7 @@ The department's job is to make the fail-closed shape the default, not to invent
 > primary controller of every one of the six named modules now carries a class-level
 > `@UseGuards(JwtAuthGuard)` — `analytics.controller.ts:51`, `dashboard.controller.ts:51`,
 > and the same on `notifications`, `communications`, `contacts`, `procurement` (verified
-> in source). **Recounted 2026-08-26** in OD-19 (`OPEN-DECISIONS.md:32`): **459** route
+> in source). **Recounted 2026-08-26** in OD-19 (`OPEN-DECISIONS.md:31`): **459** route
 > decorators across the 47 non-spec controllers, of which **40** sit on the five
 > controllers carrying no class-level `@UseGuards`. OD-19 stays open to enumerate those 40
 > and confirm each is public by intent.
@@ -138,7 +138,7 @@ for per-route classification:
 - **94** — verified row-by-row against `ENDPOINTS.md`, and canonical until 2026-08-26.
 - **40** — routes on class-unguarded controllers. The re-measure struck the 94 arithmetic
   as describing "a codebase two guard-sweeps ago" and counted a proxy instead
-  (OD-19, `OPEN-DECISIONS.md:32`).
+  (OD-19, `OPEN-DECISIONS.md:31`).
 - **0** — current, and the answer to the question all four earlier numbers were reaching
   for. E0 enumerated the 40 route-by-route (`ECOSYSTEM-PLAN.md:83`, 2026-09-01): every one
   is either authenticated or deliberately public with recorded evidence; one is unclear.
