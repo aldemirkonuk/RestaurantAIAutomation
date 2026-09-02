@@ -3,6 +3,7 @@ import {
   isClaimable,
   isDiscrepancy,
   MatchInput,
+  MatchUnitError,
 } from "./invoice-match";
 
 /**
@@ -429,6 +430,237 @@ describe("computeMatch", () => {
       // Unknown, not passed: there was nothing to compare.
       expect(check(r, "price").ok).toBeNull();
       expect(r.verdict).toBe("matched");
+    });
+  });
+});
+
+/**
+ * UNITS.
+ *
+ * `MatchInput` had no unit field at all; the docblock asked callers to convert
+ * to bottles first and nothing checked that they had. An order in cases of 12
+ * invoiced in bottles produced a confident wrong verdict, and the wrong figure
+ * went on to the landed cost and the price series.
+ *
+ * NOT ONE FIXTURE HERE IS AN IDENTITY CONVERSION. `unit_type: "bottle"` with a
+ * pack size of 1 makes a missing conversion invisible, which is exactly how the
+ * precedent bug in the door path survived its own test.
+ */
+describe("computeMatch — units", () => {
+  /** 2 cases of 12, invoiced as 24 bottles at the agreed $22. Correct delivery. */
+  const casesOrderedBottlesBilled: MatchInput = {
+    orderedQtyInOrderedUom: 2,
+    orderedUom: "case",
+    orderedBottlesPerUnit: 12,
+    poUnitPrice: 22,
+    invoiceQtyInInvoiceUom: 24,
+    invoiceUom: "bottle",
+    invoiceUnitPrice: 22,
+    acceptedQtyInCountedUom: 2,
+    countedUom: "case",
+  };
+
+  describe("cross-unit comparison", () => {
+    it("calls 2 cases of 12 against 24 billed bottles a match", () => {
+      // Comparing the bare numbers reports a 22-unit discrepancy — the most
+      // common false alarm in beverage receiving, and pre-fix the engine had no
+      // way to avoid it because it was never told what a 2 was.
+      const r = computeMatch(casesOrderedBottlesBilled);
+
+      expect(r.verdict).toBe("matched");
+      expect(r.backorderQty).toBe(0);
+      expect(r.creditDue).toBe(false);
+    });
+
+    it("reports the landed cost per bottle, not per case", () => {
+      // 24 x $22 / 24 bottles accepted = $22. Divide by the raw 2 instead and
+      // the books carry $264 a bottle.
+      const r = computeMatch(casesOrderedBottlesBilled);
+      expect(r.effectiveUnitCost).toBe(22);
+    });
+
+    it("states the discrepancy in bottles when a case is genuinely missing", () => {
+      const r = computeMatch({
+        ...casesOrderedBottlesBilled,
+        acceptedQtyInCountedUom: 1,
+      });
+
+      expect(r.verdict).toBe("qty_short");
+      expect(r.backorderQty).toBe(12);
+      expect(r.summary).toContain("12");
+    });
+
+    it("converts rejected units with accepted ones — both are in countedUom", () => {
+      // The precedent bug: `countedQty` converted, `rejectedQty` not, and
+      // `accepted = counted - rejected` subtracting boxes from bottles booked 33
+      // bottles of live stock for a delivery refused at the door.
+      const r = computeMatch({
+        ...casesOrderedBottlesBilled,
+        acceptedQtyInCountedUom: 1,
+        rejectedQtyInCountedUom: 1,
+      });
+
+      expect(r.verdict).toBe("rejected");
+      // 12 bottles refused out of the 24 billed, at $22.
+      expect(r.creditDue).toBe(true);
+      expect(r.creditAmount).toBe(264);
+      expect(r.summary).toContain("12 of 24 rejected");
+    });
+
+    it("compares a packing slip in cases against an invoice in bottles", () => {
+      // The vendor's own two documents, in two different units. This check is
+      // the highest-confidence claim the system can make, so a unit error here
+      // manufactures an accusation that cannot be withdrawn gracefully.
+      const r = computeMatch({
+        ...casesOrderedBottlesBilled,
+        shippedQtyInShippedUom: 2,
+        shippedUom: "case",
+      });
+
+      expect(r.verdict).toBe("matched");
+      expect(check(r, "bill_vs_ship").ok).toBe(true);
+    });
+
+    it("takes the pack size from the order when a document counts in the same unit", () => {
+      // A manager counting the cases they ordered does not restate what a case
+      // holds. That is a reference to a stated sibling fact, not a guess.
+      const r = computeMatch({
+        ...casesOrderedBottlesBilled,
+        countedUom: "case",
+        countedBottlesPerUnit: null,
+      });
+
+      expect(r.verdict).toBe("matched");
+    });
+
+    it("still treats a wholly undeclared call as bottles, so old callers are unchanged", () => {
+      // Nothing declares a unit here, so every conversion is the identity and
+      // the answer is exactly what it was before units existed.
+      const r = computeMatch({
+        orderedQty: 24,
+        poUnitPrice: 22,
+        invoiceQty: 24,
+        invoiceUnitPrice: 22,
+        acceptedQty: 24,
+      });
+
+      expect(r.verdict).toBe("matched");
+      expect(r.effectiveUnitCost).toBe(22);
+    });
+  });
+
+  describe("refusal, not assumption", () => {
+    it("throws on an unrecognised unit rather than guessing one", () => {
+      expect(() =>
+        computeMatch({ ...casesOrderedBottlesBilled, invoiceUom: "bxs" }),
+      ).toThrow(MatchUnitError);
+      expect(() =>
+        computeMatch({ ...casesOrderedBottlesBilled, invoiceUom: "bxs" }),
+      ).toThrow(/not a unit this match can convert/i);
+    });
+
+    it("throws on a multiplying unit with no pack size anywhere", () => {
+      // Guessing 12 multiplies the delivery twelvefold; guessing 1 divides it by
+      // twelve. Neither is knowledge.
+      expect(() =>
+        computeMatch({
+          orderedQtyInOrderedUom: 2,
+          orderedUom: "case",
+          poUnitPrice: 22,
+          invoiceQtyInInvoiceUom: 24,
+          invoiceUom: "bottle",
+          invoiceUnitPrice: 22,
+          acceptedQtyInCountedUom: 2,
+        }),
+      ).toThrow(/how many bottles are in one/i);
+    });
+
+    it("refuses a pack size that contradicts a non-multiplying unit", () => {
+      expect(() =>
+        computeMatch({
+          ...casesOrderedBottlesBilled,
+          invoiceUom: "bottle",
+          invoiceBottlesPerUnit: 12,
+        }),
+      ).toThrow(/holds exactly one/i);
+    });
+
+    it("refuses to compare kegs against bottles", () => {
+      // A keg is not a number of bottles in any way a receiver would accept, and
+      // inventing a factor produces confident, wrong cost maths.
+      expect(() =>
+        computeMatch({
+          orderedQtyInOrderedUom: 2,
+          orderedUom: "keg",
+          poUnitPrice: 22,
+          invoiceQtyInInvoiceUom: 24,
+          invoiceUom: "bottle",
+          invoiceUnitPrice: 22,
+          acceptedQtyInCountedUom: 2,
+          countedUom: "keg",
+        }),
+      ).toThrow(/cannot be compared/i);
+    });
+
+    it("allows kegs against kegs", () => {
+      const r = computeMatch({
+        orderedQtyInOrderedUom: 2,
+        orderedUom: "keg",
+        poUnitPrice: 220,
+        invoiceQtyInInvoiceUom: 2,
+        invoiceUom: "keg",
+        invoiceUnitPrice: 220,
+        acceptedQtyInCountedUom: 2,
+        countedUom: "keg",
+      });
+
+      expect(r.verdict).toBe("matched");
+    });
+
+    it("does not let an absent packing slip block an otherwise valid match", () => {
+      // Only units that actually contribute a number are checked for
+      // comparability; a document nobody sent must not veto the verdict.
+      const r = computeMatch({
+        ...casesOrderedBottlesBilled,
+        shippedUom: "keg",
+        shippedQtyInShippedUom: null,
+      });
+
+      expect(r.verdict).toBe("matched");
+    });
+  });
+
+  describe("a deprecated alias may not disagree with its twin", () => {
+    it("throws when both names arrive with different values", () => {
+      // Silently preferring one would be the same defect the unit fields exist
+      // to end: a number chosen by a rule nobody can see.
+      expect(() =>
+        computeMatch({ ...base, acceptedQtyInCountedUom: 24, acceptedQty: 22 }),
+      ).toThrow(
+        /acceptedQtyInCountedUom=24 disagrees with its deprecated alias acceptedQty=22/,
+      );
+    });
+
+    it("accepts both names when they agree", () => {
+      const r = computeMatch({
+        ...base,
+        acceptedQtyInCountedUom: 24,
+        acceptedQty: 24,
+      });
+
+      expect(r.verdict).toBe("matched");
+    });
+
+    it("refuses a disagreement on every aliased field, not just the counted ones", () => {
+      expect(() =>
+        computeMatch({ ...base, invoiceQtyInInvoiceUom: 24, invoiceQty: 20 }),
+      ).toThrow(/invoiceQtyInInvoiceUom=24 disagrees/);
+      expect(() =>
+        computeMatch({ ...base, orderedQtyInOrderedUom: 24, orderedQty: 12 }),
+      ).toThrow(/orderedQtyInOrderedUom=24 disagrees/);
+      expect(() =>
+        computeMatch({ ...base, shippedQtyInShippedUom: 24, shippedQty: 22 }),
+      ).toThrow(/shippedQtyInShippedUom=24 disagrees/);
     });
   });
 });
