@@ -11,7 +11,7 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common";
-import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import {
@@ -49,13 +49,24 @@ export class ReportsController {
   }
 
   @Get()
-  @ApiOperation({ summary: "List generated reports" })
+  @ApiOperation({
+    summary: "List generated reports, newest first",
+    description:
+      "Returns one page of reports plus `total`, which is the EXACT count over the whole filtered set rather than the page length. Bounded server-side (default 100, max 200): the read used to be unbounded, so every caller downloaded the entire table.",
+  })
+  @ApiQuery({ name: "limit", required: false })
+  @ApiQuery({ name: "offset", required: false })
   @ApiResponse({ status: 200, type: ReportListResponseDto })
   async listReports(
     @CurrentUser() user: { restaurantId: string },
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
   ): Promise<ReportListResponseDto> {
     try {
-      return await this.reportsService.listReports(user.restaurantId);
+      return await this.reportsService.listReports(user.restaurantId, {
+        limit: limit ? parseInt(limit, 10) : undefined,
+        offset: offset ? parseInt(offset, 10) : undefined,
+      });
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch reports",
