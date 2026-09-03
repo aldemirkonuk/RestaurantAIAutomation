@@ -248,33 +248,85 @@ jobs:
   queried-tables-exist-in-production:
     name: Code queries only relations production has
     runs-on: ubuntu-latest
+    # This job's `name:` is a required status check on `main`. Renaming it is the
+    # same failure as skipping it — the context stops reporting and every PR is
+    # blocked forever. See the identical note on the `parity` job above.
     if: >
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name == github.repository
     steps:
+      # fetch-depth: 0 is load-bearing here for the same reason ADR 0092 gave it
+      # to the parity job: actions/checkout defaults to shallow AND single-branch,
+      # which leaves no `origin/<base_ref>` remote-tracking ref at all, and a
+      # `git fetch --depth 1` inside a step cannot create one. Without it the
+      # merge-base cannot be resolved and the guard exits 2 — a red job, never a
+      # silent hole, because "I could not work out what this PR adds" must not be
+      # answerable as "this PR adds nothing".
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
+      # Before the arm that needs a secret, and needing none itself: the
+      # merge-awareness below is only worth anything if it can go red. This
+      # asserts, among other things, that push mode still fails the very object
+      # PR mode exempts, and that an object no migration declares fails in both.
+      - name: The merge-awareness is a rule that can fail
+        run: ./scripts/check_queried_tables_exist.py --self-test
+
       - name: Install psycopg2
         run: pip install psycopg2-binary
 
+      # ---------------------------------------------------------------------
+      # ADR 0095. C - R asks "does production have what the code calls". On a
+      # push to main that is exactly right and nothing below relaxes it. On a
+      # pull request the code is no more deployed than the migration is — they
+      # land together on merge — so an object production lacks that a migration
+      # ADDED BY THIS PR declares is expected, not a defect.
+      #
+      # MEASURED: PR #243 added `record_stock_count` with the migration creating
+      # it and this job failed with "1 function(s) the code calls do not exist
+      # in PRODUCTION". Being a required context, that PR could not merge by any
+      # route except bypassing the check or hand-applying the migration to
+      # production first — and hand-applying manufactures the version mismatch
+      # that cost two sessions an hour on 2026-09-02.
+      #
+      # Same shape as ADR 0092 gave the sibling job deliberately: the same
+      # helper computes "added by this PR", so the two checks cannot drift apart
+      # on what that means.
+      #
+      # What does NOT relax: an object no migration declares still fails in both
+      # modes (the exempt set is a subset of what migrations declare); a
+      # MODIFIED migration exempts nothing; an unresolvable base is exit 2.
+      # ---------------------------------------------------------------------
       - name: Compare the code's relations against production
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_POOLER_URL || secrets.SUPABASE_POOLER_CONNECTION_STRING || secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
         run: |
+          set -euo pipefail
           ./scripts/check_db_reachable.sh
-          ./scripts/check_queried_tables_exist.py --against-production
+          if [ -n "${{ github.base_ref }}" ]; then
+            git fetch origin "${{ github.base_ref }}" --quiet
+            ./scripts/check_queried_tables_exist.py \
+              --against-production --base "origin/${{ github.base_ref }}"
+          else
+            echo "push/schedule: no base ref, nothing is exempt — this is the strict run."
+            ./scripts/check_queried_tables_exist.py --against-production
+          fi
 
       - name: Explain a failure
         if: failure()
         run: |
+          echo "::notice::A failing 'The merge-awareness is a rule that can fail' step is the SELF-TEST, not drift — the guard's own logic broke. Run ./scripts/check_queried_tables_exist.py --self-test locally."
           echo "::notice::If the log says 'Network is unreachable', this is CONNECTIVITY, not drift — see scripts/check_db_reachable.sh."
+          echo "::notice::Exit 2 / 'BLOCKED' means the guard could not check what it claims to. On a PR that is usually an unresolvable base ref — fetch-depth: 0 above is what makes origin/<base_ref> exist."
           echo "::notice::Otherwise the code calls a relation or function production does not have, and every such call is failing at runtime right now."
-          echo "::notice::If supabase/migrations/ DOES define it, the migration was never pushed: supabase db push."
+          echo "::notice::On a PULL REQUEST this run was merge-aware (ADR 0095), so anything listed is NOT explained by a migration this PR adds: either the migration is MODIFIED rather than added, or no migration declares the object at all."
+          echo "::notice::If supabase/migrations/ DOES define it and this was a push to main, the migration was never pushed: supabase db push."
           echo "::notice::If it does not, see the sibling failure in ci.yml's schema-code-parity job — the CREATE is probably sitting in an archive directory."
 
   # Premortem audit finding (2026-08-18, decision #1): beverage_identity_key

@@ -339,32 +339,73 @@ export class RecipientResolverService {
 
   /**
    * Check if a user's notification preferences allow a specific channel.
+   *
+   * Two gates, applied in order.
+   *
+   * **Gate 1 — the global per-channel switch.** `email_enabled`,
+   * `push_enabled` and `sms_enabled` are what a user actually toggles in
+   * Settings, and their defaults are deliberately asymmetric: email and push
+   * are opt-OUT (default true), SMS is opt-IN (default false). Those exact
+   * defaults are already read in
+   * `notifications.service.ts:1051-1053`; this method is the second reader
+   * and has to agree with the first, or the same row means two things
+   * depending on which code path looks at it.
+   *
+   * **Gate 2 — the per-category channel arrays.** The real column names come
+   * from `supabase/migrations/20260805000000_baseline_from_production.sql:3899-3939`:
+   * `low_stock_channels`, `order_approval_channels`,
+   * `financial_reports_channels`.
+   *
+   * Until 2026-09-02 gate 1 did not exist and gate 2 read `order_channels`
+   * and `report_channels`, **which no migration has ever declared**. Both
+   * reads were therefore permanently `undefined`, which had two consequences
+   * that compounded:
+   *
+   *   - the "no explicit preferences set" escape hatch could never fire once
+   *     `low_stock_channels` held its default, because that one column was
+   *     truthy while the other two were undefined; and
+   *   - the only array that could match was `low_stock_channels`, whose
+   *     default is `['sms','push']`.
+   *
+   * So with stock production rows the check ran backwards on both axes at
+   * once: **email was refused to every user who had it enabled** (not in
+   * `low_stock_channels`, and the escape hatch was blocked) while **SMS was
+   * permitted to every user who had it disabled** (in `low_stock_channels`,
+   * and `sms_enabled` was never consulted). Fixing only the column names
+   * fixes the first half and leaves the second, which is why gate 1 is here.
+   *
+   * This method is not told which notification CATEGORY it is resolving for,
+   * so gate 2 is a union across the three arrays. That is deliberately
+   * permissive rather than wrong: making it category-aware means threading a
+   * category through all seven call sites and deciding which category each
+   * belongs to, which is a product decision. Recorded as the open half of
+   * ADR 0093.
    */
   private checkChannelPreference(prefs: any, channel: string): boolean {
-    // Check various preference fields
-    const channelArrays = [
-      prefs.low_stock_channels,
-      prefs.order_channels,
-      prefs.report_channels,
-    ];
-
-    // If any preference array includes this channel, allow it
-    for (const arr of channelArrays) {
-      if (Array.isArray(arr) && arr.includes(channel)) {
-        return true;
-      }
+    // Gate 1: the global per-channel switch. Defaults must stay identical to
+    // notifications.service.ts:1051-1053.
+    const globallyEnabled: Record<string, boolean> = {
+      email: prefs.email_enabled ?? true,
+      push: prefs.push_enabled ?? true,
+      sms: prefs.sms_enabled ?? false,
+    };
+    if (globallyEnabled[channel] === false) {
+      return false;
     }
 
-    // Default: allow if no explicit preferences set
-    if (
-      !prefs.low_stock_channels &&
-      !prefs.order_channels &&
-      !prefs.report_channels
-    ) {
+    // Gate 2: the per-category channel arrays, by their real column names.
+    const expressed = [
+      prefs.low_stock_channels,
+      prefs.order_approval_channels,
+      prefs.financial_reports_channels,
+    ].filter((arr) => Array.isArray(arr));
+
+    // No category preference expressed at all — gate 1 has already decided.
+    if (expressed.length === 0) {
       return true;
     }
 
-    return false;
+    return expressed.some((arr) => arr.includes(channel));
   }
 
   /**
