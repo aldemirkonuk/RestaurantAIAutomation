@@ -13,6 +13,21 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  # Purely additive -- does not change push/pull_request behavior at all.
+  # Added so scripts/pr_audit_gate.py can explicitly re-trigger this workflow
+  # after a merge it performs itself: GitHub does not create a new workflow
+  # run for a push made with the built-in GITHUB_TOKEN (documented recursion
+  # suppression, exceptions only workflow_dispatch/repository_dispatch), so
+  # without this, a gate-driven merge to main silently never runs THIS
+  # workflow -- and deploy.yml's `workflow_run: workflows: ["CI"]` trigger
+  # never fires either, so the post-merge deploy/health audit this repo
+  # already built ADR 0085 around ("a skipped gate is not a pass") would not
+  # just be skipped, it would not exist for that merge at all. Confirmed
+  # live: every merge to main in this repo's history is founder-identity
+  # (web-flow), so this exact path had never been exercised until ADR 0090's
+  # gate. See scripts/pr_audit_gate.py's merge step and ADR 0090's fourth
+  # Correction section.
+  workflow_dispatch:
 
 env:
   NODE_VERSION: "20.x"
