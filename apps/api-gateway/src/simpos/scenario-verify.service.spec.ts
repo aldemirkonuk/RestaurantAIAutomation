@@ -336,6 +336,11 @@ describe("ScenarioVerifyService.verify — a clean replay", () => {
     expect(
       r.checks.every((c: Row) => typeof c.title === "string" && c.title),
     ).toBe(true);
+    // EVERY check id, on every run. A branch that silently skipped a row would
+    // shorten the table, and a shorter table reads as "there was less to
+    // check" rather than "one verdict went missing".
+    expect(r.checks).toHaveLength(20);
+    expect(new Set(r.checks.map((c: Row) => c.id)).size).toBe(20);
   });
 
   it("states the table-performance comparison as a floor, not a per-day total", async () => {
