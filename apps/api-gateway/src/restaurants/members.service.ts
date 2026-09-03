@@ -76,22 +76,46 @@ export class MembersService {
       )
       .eq("restaurant_id", restaurantId)
       .eq("is_active", true)
-      .order("granted_at", { ascending: true });
+      // `user_restaurant_access` has NO `granted_at`. That column lives on
+      // `user_roles` (baseline migration 20260805000000, line 5834); this
+      // table's creation timestamp is `created_at` (same file, line 5814).
+      // Ordering by the absent name made PostgREST answer 42703 for every
+      // tenant, and the catch below turned that into an empty roster.
+      .order("created_at", { ascending: true });
 
     if (error) {
       this.logger.error(
         `getMembers failed for restaurant ${restaurantId}: ${error.message}`,
       );
-      return [];
+      // A failed read is NEVER an empty roster. Returning `[]` here reported
+      // the absence of an answer as "this restaurant has no members" — the
+      // standing fault scripts/check_read_errors_not_swallowed.py exists for.
+      throw new InternalServerErrorException(
+        "Could not read the member roster",
+      );
     }
 
     const userIds = [...new Set((rows ?? []).map((r: any) => r.user_id))];
     if (userIds.length === 0) return [];
 
-    const { data: users } = await this.databaseService.supabase
+    // `public.users` has NO `avatar_url` and NO `auth_provider` (baseline
+    // migration 20260805000000, lines 5620-5633 -- the provider column is
+    // `oauth_provider`, and avatars live on `team_members`). Naming them made
+    // PostgREST answer 42703 and, with `error` unbound, every member came back
+    // with `users: null` -- a roster of anonymous rows that looked like data.
+    const { data: users, error: usersError } = await this.databaseService.supabase
       .from("users")
-      .select("user_id, name, email, avatar_url, auth_provider")
+      .select("user_id, name, email, oauth_provider")
       .in("user_id", userIds);
+
+    if (usersError) {
+      this.logger.error(
+        `getMembers could not read member identities for ${restaurantId}: ${usersError.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read the member roster",
+      );
+    }
 
     const userMap = new Map((users ?? []).map((u: any) => [u.user_id, u]));
 
@@ -116,7 +140,10 @@ export class MembersService {
       this.logger.error(
         `getInvites failed for restaurant ${restaurantId}: ${error.message}`,
       );
-      return [];
+      // Same rule: an unreadable invite list is not an empty invite list.
+      throw new InternalServerErrorException(
+        "Could not read the pending invites",
+      );
     }
 
     return invites ?? [];
