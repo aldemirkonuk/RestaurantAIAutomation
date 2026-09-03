@@ -44,6 +44,29 @@ export class TenantGuard implements CanActivate {
     // This call is kept as a backstop for anything that populates `request.user`
     // before the global stage. It is a no-op otherwise, and no longer the only
     // thing standing between one tenant and another.
+    // ADR 0096 — this fall-through was RE-EXAMINED and deliberately KEPT.
+    //
+    // The temptation is to refuse here instead of warning. It cannot be done at
+    // this point, and the reason is ordering, not caution: Nest runs global
+    // guards before controller guards, this guard is an APP_GUARD
+    // (`app.module.ts`) and `JwtAuthGuard` is not — it is applied per
+    // controller with `@UseGuards`. So on a correctly guarded, correctly
+    // authenticated route, `request.user` is ALSO undefined here, because
+    // passport has not run yet. This branch cannot tell "route with no guard"
+    // from "route whose guard is about to run and will pass". Refusing would
+    // 403 every authenticated route in the gateway.
+    //
+    // What was actually wrong is that the warning was the ONLY thing that would
+    // ever notice a guardless route, and a warning in a log nobody reads is not
+    // a control. That gap is now closed OUTSIDE the request path, where the
+    // question is answerable: `scripts/check_route_exposure.py` fails CI when
+    // any route declares neither an auth guard nor `@Public()`. Static analysis
+    // can see the decorators that this guard, at this moment, cannot.
+    //
+    // Making refusal possible here would mean promoting `JwtAuthGuard` to an
+    // APP_GUARD and marking every genuinely public route `@Public()` — a real
+    // option, a larger change than this one, and a founder decision. Filed in
+    // ADR 0096's rejected alternatives rather than done quietly.
     if (!request.user) {
       this.logger.warn(
         `TenantGuard: No authenticated user on ${request.method} ${request.url} — ensure JwtAuthGuard is applied if this route requires auth`,
