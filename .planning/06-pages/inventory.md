@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-08-26
+updated: 2026-09-03
 links: ["[[PAGE-CONTRACT]]", "[[orders]]"]
 ---
 
@@ -145,6 +145,8 @@ never renders. Shared layout chrome applies (see dashboard.md §7).
   inventory item → its order_line ids). Deliberately not faked with
   description matching (§1b).
 
+- **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** no screen connects POS buttons to stock — the SPA calls only `pos-hub/providers` and `/status` (`services/api/posHub.ts:59,66`), so every closed check queues to `pos_unresolved_lines` until the mapping API is worked by hand (defect 1). The Add-Wine modal cannot express an unknown cost (`AddWineToInventoryModal.tsx:136,492` → `0 / 'manual'`; defect 6). Two definitions of "below par" on one page — chip `<=` 9 vs API `<` 7 (defect 7). Raising a par level through PATCH raises no alert (defect 8). The first ~2.5 s render "0 wines, 0 bottles, $0" — byte-identical to an empty cellar — and unknown cost renders as "$0 cost basis" (absence 5, 6).
+
 ## 10. Maturity
 
 **partial.** The stock spine is real and the writes land in a ledger; the market
@@ -161,6 +163,8 @@ were closed 2026-08-26 and the legacy page was deleted — see [ADR 0019](../dec
 | **Derived advice inherits the null.** `marketDeltaPct` returns `null` when `marketPrice` is falsy, so the "Priced X% under market" / "Cost X% above market" notes never fire — dead branches, not wrong ones (honest failure). | `bits.tsx:23-26`; `InventoryCommandPage.tsx:233,242-243` |
 | **"View ledger" points at a route that does not exist.** `/documents?ledger=…` — the app has `/documents-reports`, not `/documents` (§0, and `App.tsx` has no `/documents` binding). The catch-all sends the click to `/` (`App.tsx:302`). | §0 of this note |
 | **The embedded insights rail is 401ing** since the analytics guard landed. `ContextualInsights` calls the analytics API with raw `fetch` and no `Authorization` header; the controller has been `@UseGuards(JwtAuthGuard)` at class level since 2026-08-24 (#31), and the JWT strategy is bearer-header-only. It fails into `catch { /* additive panel — fail quiet */ }`. | `components/insights/ContextualInsights.tsx:104,118,121,176`; guard `analytics.controller.ts:51`; extractor `auth/strategies/jwt.strategy.ts:11` |
+
+- **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** measured with 53 items / 274 bottles on a sim tenant: the settled counts match the rows exactly; the bulk door (`POST :rid/items/bulk`, the modal's "Receive a delivery") took 50 free-text menu lines with 0 failures in 42 s; a count on a zero-stock item creates a lot at `unit_cost NULL / 'estimated'` (the honest onboarding door). What is not usable from this page: connecting the POS, saying a cost is unknown, a spirits list (every row types "Red"), or one wine at two pour sizes.
 
 ## 11. Data flow
 

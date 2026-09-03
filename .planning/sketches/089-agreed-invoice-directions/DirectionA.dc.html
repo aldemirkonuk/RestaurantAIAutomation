@@ -1,0 +1,415 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; background: #F3EFE6; color: #211C16; font-family: 'DM Sans', system-ui, sans-serif; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+    .ser  { font-family: 'Fraunces', Georgia, serif; }
+    .kick { font-family: 'JetBrains Mono', monospace; font-size: 8px; font-weight: 600; letter-spacing: .15em; color: #8E8576; text-transform: uppercase; }
+    sup.fn { font-family: 'JetBrains Mono', monospace; font-size: 7px; font-weight: 600; color: #1A5E6B; vertical-align: super; line-height: 0; margin-left: 1px; }
+
+    table.sheet { width: 100%; table-layout: fixed; border-collapse: collapse; }
+    table.sheet caption { caption-side: top; text-align: left; font-family: 'JetBrains Mono', monospace; font-size: 8px; font-weight: 600; letter-spacing: .15em; color: #8E8576; padding: 0 0 1px; }
+    table.sheet th, table.sheet td { vertical-align: baseline; }
+    table.sheet th.grp { font-family: 'JetBrains Mono', monospace; font-size: 7px; font-weight: 600; letter-spacing: .13em; color: #8E8576; text-align: center; padding: 0 0 1px; border-bottom: 1px solid #EFE7D9; }
+    table.sheet th.col { font-family: 'JetBrains Mono', monospace; font-size: 7.5px; font-weight: 600; letter-spacing: .08em; color: #665D50; padding: 1.5px 4px; border-bottom: 1.5px solid #211C16; text-align: left; }
+    table.sheet th.col span { display: block; font-weight: 400; font-size: 6.5px; letter-spacing: .05em; color: #ABA294; }
+    table.sheet th.col.r { text-align: right; }
+    table.sheet th.col.c { text-align: center; }
+    table.sheet th.col.rule { border-left: 1px solid #EFE7D9; padding-left: 12px; }
+
+    table.sheet td.n  { font-family: 'JetBrains Mono', monospace; font-size: 8.5px; color: #ABA294; padding: 0.5px 4px; border-bottom: 1px solid #EFE7D9; }
+    table.sheet td.it { padding: 0.5px 4px; border-bottom: 1px solid #EFE7D9; }
+    table.sheet td.it .nm { display: block; font-size: 10px; font-weight: 500; letter-spacing: -.005em; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    table.sheet td.it .pb { display: block; font-family: 'JetBrains Mono', monospace; font-size: 6.5px; color: #8E8576; line-height: 1.1; }
+    table.sheet td.q  { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; text-align: center; padding: 0.5px 4px; border-bottom: 1px solid #EFE7D9; color: #4F473C; }
+    table.sheet td.m  { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; text-align: right; padding: 0.5px 12px 0.5px 4px; border-bottom: 1px solid #EFE7D9; }
+    table.sheet td.nt { font-size: 8px; line-height: 1.2; color: #9E4249; padding: 0.5px 0 0.5px 12px; border-left: 1px solid #EFE7D9; border-bottom: 1px solid #EFE7D9; }
+    table.sheet tr.flag td { background: #F7F1E4; }
+    table.sheet td.q.short { color: #9E4249; font-weight: 600; }
+    table.sheet td.m.over  { color: #9E4249; font-weight: 600; }
+
+    .chgrow { display: flex; align-items: baseline; font-size: 9px; color: #4F473C; padding: 0.5px 6px 0.5px 4px; }
+    .chgrow .lbl { flex: 1; }
+    .chgrow .amt { font-family: 'JetBrains Mono', monospace; font-size: 9px; }
+    .totrow { display: flex; align-items: baseline; padding: 0.5px 6px 0.5px 4px; font-size: 9px; }
+    .totrow .lbl { flex: 1; color: #4F473C; }
+    .totrow .amt { font-family: 'JetBrains Mono', monospace; font-size: 9px; width: 92px; text-align: right; }
+
+    .fnli { display: flex; gap: 5px; align-items: baseline; padding: 1px 4px 1px 3px; }
+    .fnli .k { font-family: 'JetBrains Mono', monospace; font-size: 7.5px; font-weight: 600; color: #1A5E6B; }
+    .fnli .t { font-size: 8px; line-height: 1.25; color: #4F473C; }
+    .fnli .t b { font-weight: 600; color: #211C16; }
+    .fnli.raised { background: rgba(26,94,107,.09); border-left: 2px solid #1A5E6B; border-radius: 0 3px 3px 0; padding-left: 5px; }
+
+    .btn { font-size: 8.5px; font-weight: 600; padding: 2.5px 8px; border-radius: 3px; border: 1px solid rgba(26,94,107,.40); color: #14515C; }
+    .btn.q { border-color: #E0D9C9; color: #665D50; }
+    .scanline { height: 2.5px; border-radius: 1px; background: #D8CFBD; }
+    .srow { display: flex; gap: 5px; align-items: center; }
+  </style>
+</helmet>
+
+<div style="width:1440px; height:900px; background:#F3EFE6; overflow:hidden; display:flex; flex-direction:column; position:relative">
+
+  <!-- ── chrome: one thin rule, nothing app-like ───────────────────────── -->
+  <div style="flex:none; display:flex; align-items:center; gap:10px; padding:6px 26px 5px; border-bottom:1px solid #E4DCCB; background:#EFEADF">
+    <span class="mono" style="font-size:9px; color:#8E8576">&#8592;&nbsp; Belgeler</span>
+    <span style="width:1px; height:11px; background:#DED5C3"></span>
+    <span class="mono" style="font-size:9px; font-weight:600; letter-spacing:.14em; color:#211C16">FATURA</span>
+    <span class="mono" style="font-size:9px; color:#665D50" lang="tr">Kavakl&#305;dere &#350;araplar&#305; A.&#350;. &middot; A-88214 &middot; 14.08.2026</span>
+    <span style="margin-left:auto; display:flex; gap:14px" class="mono">
+      <span style="font-size:9px; color:#14515C; font-weight:600">Yazd&#305;r</span>
+      <span style="font-size:9px; color:#14515C; font-weight:600">Denetim izi</span>
+      <span style="font-size:9px; color:#14515C; font-weight:600">D&#305;&#351;a aktar</span>
+      <span style="font-size:9px; color:#8E8576">Asl&#305;n&#305; getir &#8594;</span>
+    </span>
+  </div>
+
+  <!-- ── the desk: margin | sheet | drawer ─────────────────────────────── -->
+  <div style="flex:1; display:flex; gap:12px; padding:8px 26px 0; min-height:0">
+
+    <!-- ══ MARGINAL COLUMN ══════════════════════════════════════════════ -->
+    <div style="width:164px; flex:none; display:flex; flex-direction:column; gap:9px; padding-right:11px; border-right:1px solid #E4DCCB">
+
+      <div>
+        <div class="kick" style="margin-bottom:4px">Durum &middot; state</div>
+        <div style="display:flex; flex-direction:column; gap:2px">
+          <div style="display:flex; align-items:baseline; gap:6px"><span class="mono" style="font-size:8px; color:#1A5E6B">&#9679;</span><span style="font-size:9.5px; color:#4F473C; flex:1">Teslim edildi</span><span class="mono" style="font-size:8px; color:#8E8576">12.08</span></div>
+          <div style="display:flex; align-items:baseline; gap:6px; background:rgba(26,94,107,.10); border-radius:3px; padding:2px 4px; margin:0 -4px"><span class="mono" style="font-size:8px; color:#1A5E6B">&#9679;</span><span style="font-size:9.5px; font-weight:600; color:#14515C; flex:1">Mutabakat s&#252;r&#252;yor</span><span class="mono" style="font-size:8px; color:#14515C">15.08</span></div>
+          <div style="display:flex; align-items:baseline; gap:6px"><span class="mono" style="font-size:8px; color:#C0B6A5">&#9675;</span><span style="font-size:9.5px; color:#8E8576; flex:1">Mutab&#305;k kal&#305;nd&#305;</span><span class="mono" style="font-size:8px; color:#ABA294">&#8212;</span></div>
+          <div style="display:flex; align-items:baseline; gap:6px"><span class="mono" style="font-size:8px; color:#C0B6A5">&#9675;</span><span style="font-size:9.5px; color:#8E8576; flex:1">Do&#287;ruland&#305;</span><span class="mono" style="font-size:8px; color:#ABA294">&#8212;</span></div>
+        </div>
+        <p style="margin:4px 0 0; font-size:8px; line-height:1.3; color:#8E8576">Ula&#351;&#305;lmam&#305;&#351; bir tarih &#8212; yaz&#305;l&#305;r, s&#305;f&#305;r de&#287;il.</p>
+      </div>
+
+      <div style="border-top:1px solid #EFE7D9; padding-top:8px">
+        <div class="kick" style="margin-bottom:5px">Mutabakat defteri</div>
+        <div style="display:flex; flex-direction:column">
+          <div style="display:flex; gap:7px"><div style="width:7px; flex:none; display:flex; flex-direction:column; align-items:center"><span style="width:5px;height:5px;border-radius:50%;background:#1A5E6B;margin-top:3px"></span><span style="flex:1;width:1px;background:#E0D9C9"></span></div><div style="padding-bottom:7px"><span class="mono" style="display:block; font-size:8px; color:#665D50">12.08 &middot; 06:50</span><span style="display:block; font-size:9.5px; font-weight:500; line-height:1.15" lang="tr">e-&#304;rsaliye IRS-4471</span><span style="display:block; font-size:8px; color:#8E8576; line-height:1.2">sat&#305;c&#305;dan geldi &middot; 9 sat&#305;r</span></div></div>
+          <div style="display:flex; gap:7px"><div style="width:7px; flex:none; display:flex; flex-direction:column; align-items:center"><span style="width:5px;height:5px;border-radius:50%;background:#1A5E6B"></span><span style="flex:1;width:1px;background:#E0D9C9"></span></div><div style="padding-bottom:7px"><span class="mono" style="display:block; font-size:8px; color:#665D50">12.08 &middot; 07:41</span><span style="display:block; font-size:9.5px; font-weight:500; line-height:1.15">Kap&#305;da say&#305;m &middot; Mehmet</span><span style="display:block; font-size:8px; color:#8E8576; line-height:1.2">1 sat&#305;r eksik &middot; foto&#287;raf ekli</span></div></div>
+          <div style="display:flex; gap:7px"><div style="width:7px; flex:none; display:flex; flex-direction:column; align-items:center"><span style="width:5px;height:5px;border-radius:50%;background:#1A5E6B"></span><span style="flex:1;width:1px;background:#E0D9C9"></span></div><div style="padding-bottom:7px"><span class="mono" style="display:block; font-size:8px; color:#665D50">14.08 &middot; 09:12</span><span style="display:block; font-size:9.5px; font-weight:500; line-height:1.15">Fatura A-88214</span><span style="display:block; font-size:8px; color:#8E8576; line-height:1.2">okundu &middot; 1 alan elle d&#252;zeltildi</span></div></div>
+          <div style="display:flex; gap:7px"><div style="width:7px; flex:none; display:flex; flex-direction:column; align-items:center"><span style="width:7px;height:7px;border-radius:50%;background:#FAF7F1;border:2px solid #1A5E6B"></span><span style="flex:1;width:1px;background:#E0D9C9"></span></div><div style="padding-bottom:7px"><span class="mono" style="display:block; font-size:8px; color:#14515C; font-weight:600">15.08 &middot; 16:22</span><span style="display:block; font-size:9.5px; font-weight:600; line-height:1.15; color:#14515C">Sat&#305;c&#305;dan kar&#351;&#305; teklif</span><span style="display:block; font-size:8px; color:#665D50; line-height:1.2">sat&#305;r 4 i&#231;in &#8378;840,00 alacak</span></div></div>
+          <div style="display:flex; gap:7px"><div style="width:7px; flex:none; display:flex; flex-direction:column; align-items:center"><span style="width:5px;height:5px;border-radius:50%;background:#D8CFBD"></span></div><div><span class="mono" style="display:block; font-size:8px; color:#ABA294">&#8212;</span><span style="display:block; font-size:9.5px; font-weight:500; line-height:1.15; color:#8E8576">Mutab&#305;k kal&#305;nd&#305;</span><span style="display:block; font-size:8px; color:#ABA294; line-height:1.2">hen&#252;z de&#287;il &middot; sat&#305;r 7 a&#231;&#305;k</span></div></div>
+        </div>
+      </div>
+
+      <div style="border-top:1px solid #EFE7D9; padding-top:8px">
+        <div class="kick" style="margin-bottom:5px">S&#252;reler &middot; clocks</div>
+        <div style="display:flex; flex-direction:column; gap:5px">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:baseline"><span style="font-size:9px; font-weight:600" lang="tr">e-&#304;rsaliye yan&#305;t&#305;</span><span class="mono" style="font-size:8.5px; font-weight:600; color:#9E4249">2 g&#252;n</span></div>
+            <span class="mono" style="display:block; font-size:7.5px; color:#8E8576">7 g&#252;n &middot; 12.08 &#8594; son 19.08.2026</span>
+            <span style="display:block; font-size:8px; color:#9E4249; line-height:1.2">Sessizlik tam kabul say&#305;l&#305;r.</span>
+          </div>
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:baseline"><span style="font-size:9px; font-weight:600" lang="tr">Fatura itiraz&#305; &middot; TTK 21</span><span class="mono" style="font-size:8.5px; font-weight:600; color:#665D50">5 g&#252;n</span></div>
+            <span class="mono" style="display:block; font-size:7.5px; color:#8E8576">8 g&#252;n &middot; 14.08 &#8594; son 22.08.2026</span>
+          </div>
+          <div style="opacity:.55">
+            <div style="display:flex; justify-content:space-between; align-items:baseline"><span style="font-size:9px; font-weight:600">US &middot; CA alkol EFT</span><span class="mono" style="font-size:8.5px; color:#8E8576">&#8212;</span></div>
+            <span class="mono" style="display:block; font-size:7.5px; color:#8E8576">30 g&#252;n &middot; AB 2991</span>
+            <span style="display:block; font-size:8px; color:#8E8576; line-height:1.2">Bu belgede i&#351;lemiyor &#8212; ev T&#252;rkiye&#8217;de.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ THE SHEET ════════════════════════════════════════════════════ -->
+    <div style="flex:1; min-width:0; display:flex; flex-direction:column">
+      <div style="background:#FAF7F1; border:1px solid #EFE7D9; border-radius:2px; box-shadow:0 1px 0 #EAE2D2, 0 10px 22px -18px rgba(33,28,22,.45); padding:9px 24px 6px 16px; display:flex; flex-direction:column">
+
+        <!-- masthead + stamp -->
+        <div style="display:flex; align-items:flex-start; gap:12px; border-bottom:1.5px solid #211C16; padding-bottom:4px">
+          <div style="flex:1; min-width:0">
+            <h1 class="ser" style="margin:0; font-size:17px; font-weight:600; letter-spacing:-.015em; line-height:1.05">Sat&#305;&#351; Faturas&#305;</h1>
+            <span class="mono" style="display:block; font-size:7.5px; letter-spacing:.14em; color:#8E8576">COMMERCIAL INVOICE &middot; EN 16931 &middot; TR e-FATURA (UBL-TR 1.2)</span>
+          </div>
+          <div style="flex:none; text-align:right">
+            <span class="mono" style="display:block; font-size:7.5px; letter-spacing:.13em; color:#8E8576">BELGE NO</span>
+            <span class="mono" style="display:block; font-size:14px; font-weight:600; letter-spacing:-.01em; line-height:1.05">A-88214</span>
+            <span class="mono" style="display:block; font-size:8px; color:#665D50">14.08.2026 &middot; ETTN 8f21&#8230;4c07</span>
+          </div>
+          <!-- the stamp -->
+          <div style="flex:none; transform:rotate(-5deg); margin:-3px 0 0 2px">
+            <div style="border:1.5px solid #1A5E6B; border-radius:3px; padding:2px">
+              <div style="border:1px solid rgba(26,94,107,.55); border-radius:2px; padding:2px 9px 3px; text-align:center; background:rgba(26,94,107,.05)">
+                <span class="mono" style="display:block; font-size:6.5px; font-weight:600; letter-spacing:.24em; color:#1A5E6B">M U D A V Y M .</span>
+                <span class="mono" style="display:block; font-size:10.5px; font-weight:600; letter-spacing:.09em; color:#14515C; line-height:1.2">MUTABAKAT S&#220;R&#220;YOR</span>
+                <span class="mono" style="display:block; font-size:7px; letter-spacing:.05em; color:#1A5E6B">RECONCILING &middot; 2 issues &middot; &#8378;1.240,00 at risk</span>
+                <span class="mono" style="display:block; font-size:7px; line-height:1.3; letter-spacing:.05em; color:#1A5E6B">talep a&#231;&#305;k &middot; 15.08.2026 16:22</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- verdict, in words and numbers, first -->
+        <div style="padding:5px 0 5px; border-bottom:1px solid #EFE7D9">
+          <div style="display:flex; align-items:baseline; gap:12px">
+            <p class="ser" style="margin:0; flex:1; min-width:0; font-size:12px; font-weight:600; letter-spacing:-.008em; line-height:1.2">&#304;ki kalem tutmuyor. Toplam &#8378;1.240,00 risk alt&#305;nda.</p>
+            <span class="btn" style="flex:none; background:rgba(26,94,107,.10)">Talebi a&#231;&#305;k tut</span>
+            <span class="btn q" style="flex:none">Kar&#351;&#305; teklif yaz</span>
+          </div>
+          <div style="display:flex; gap:18px; margin-top:2px">
+            <div style="flex:1"><span class="mono" style="font-size:7px; font-weight:600; letter-spacing:.12em; color:#9E4249">SATIR 4 &middot; EKS&#304;K TESL&#304;M</span><p style="margin:0; font-size:8.5px; line-height:1.3; color:#4F473C">12 &#351;i&#351;e faturaland&#305;, 10 &#351;i&#351;e teslim al&#305;nd&#305; &#8212; 2 &#351;i&#351;e eksik. <b style="font-weight:600; color:#211C16">2 &times; &#8378;420,00 = &#8378;840,00.</b> Kap&#305;da Mehmet say&#305;p foto&#287;raflad&#305;.<sup class="fn">2</sup></p></div>
+            <div style="flex:1"><span class="mono" style="font-size:7px; font-weight:600; letter-spacing:.12em; color:#9E4249">SATIR 7 &middot; F&#304;YAT FARKI</span><p style="margin:0; font-size:8.5px; line-height:1.3; color:#4F473C">&#8378;410,00/&#351;i&#351;e faturaland&#305;, PO-2211&#8217;de &#8378;375,00 anla&#351;&#305;lm&#305;&#351;t&#305;.<sup class="fn">4</sup> <b style="font-weight:600; color:#211C16">&#8378;35,00 &times; 12 = &#8378;420,00</b>, sat&#305;ra i&#351;lenen &#8378;20,00 kasa indirimi d&#252;&#351;&#252;l&#252;nce <b style="font-weight:600; color:#211C16">&#8378;400,00</b>.</p></div>
+          </div>
+        </div>
+
+        <!-- parties + references -->
+        <div style="display:flex; border-bottom:1px solid #EFE7D9">
+          <div style="flex:1.15; padding:3px 10px 3px 0; border-right:1px solid #EFE7D9">
+            <span class="kick">Sat&#305;c&#305; &middot; seller</span>
+            <span style="display:block; font-size:10.5px; font-weight:600; line-height:1.2" lang="tr">Kavakl&#305;dere &#350;araplar&#305; A.&#350;.</span>
+            <span class="mono" style="display:block; font-size:8px; line-height:1.25; color:#665D50">VKN 1234567890<sup class="fn">1</sup> &middot; Ankara VD</span>
+            <span style="display:block; font-size:8px; line-height:1.25; color:#8E8576" lang="tr">Akyurt OSB, 06750 Ankara &middot; TR</span>
+          </div>
+          <div style="flex:1.15; padding:3px 10px; border-right:1px solid #EFE7D9">
+            <span class="kick">Al&#305;c&#305; &middot; buyer</span>
+            <span style="display:block; font-size:10.5px; font-weight:600; line-height:1.2">Meyhouse &middot; Kad&#305;k&#246;y</span>
+            <span class="mono" style="display:block; font-size:8px; line-height:1.25; color:#665D50">VKN 9876543210 &middot; Kad&#305;k&#246;y VD</span>
+            <span style="display:block; font-size:8px; line-height:1.25; color:#8E8576" lang="tr">Cafera&#287;a Mah., 34710 &#304;stanbul &middot; TR</span>
+          </div>
+          <div style="flex:1.7; padding:3px 0 3px 10px; display:grid; grid-template-columns:1fr 1fr; gap:2px 10px">
+            <div><span class="kick">Sipari&#351;</span><span class="mono" style="display:block; font-size:9px">PO-2211 &middot; 06.08.2026</span></div>
+            <div><span class="kick">&#304;rsaliye</span><span class="mono" style="display:block; font-size:9px" lang="tr">IRS-4471 &middot; 12.08.2026</span></div>
+            <div><span class="kick">Teslim tarihi</span><span class="mono" style="display:block; font-size:9px">12.08.2026<sup class="fn">5</sup></span></div>
+            <div><span class="kick">Vade &middot; due</span><span class="mono" style="display:block; font-size:9px">13.09.2026 &middot; 30 g&#252;n</span></div>
+          </div>
+        </div>
+
+        <!-- lines -->
+        <table class="sheet" style="margin-top:3px">
+          <caption>Mal ve hizmet kalemleri &middot; 9 sat&#305;r &middot; kasa taban&#305; 1 ks = 12 &#351;i&#351;e</caption>
+          <thead>
+            <tr>
+              <th class="grp" style="width:20px; border-bottom:none"></th><th class="grp" style="width:236px; border-bottom:none"></th>
+              <th class="grp" colspan="4" style="width:176px">M&#304;KTAR &middot; &#351;i&#351;e</th>
+              <th class="grp" style="width:84px; border-bottom:none"></th><th class="grp" style="width:100px; border-bottom:none"></th><th class="grp" style="width:238px; border-bottom:none"></th>
+            </tr>
+            <tr>
+              <th class="col">#</th>
+              <th class="col">Mal / hizmet<span>item &middot; price base</span></th>
+              <th class="col c">Sip.<span>ordered</span></th>
+              <th class="col c">Sevk<span>shipped</span></th>
+              <th class="col c">Teslim<span>received</span></th>
+              <th class="col c">Fatura<span>billed</span></th>
+              <th class="col r">Birim &#8378;<span>unit / &#351;i&#351;e</span></th>
+              <th class="col r">Tutar &#8378;<span>line net</span></th>
+              <th class="col rule">Fark<span>stated in words, not colour</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="n">1</td><td class="it"><span class="nm" lang="tr">&#214;k&#252;zg&#246;z&#252; 2021 &middot; Prestij</span><span class="pb">1 ks &times; 12 &#351;i&#351;e &middot; KAV-OKZ-21</span></td><td class="q">24</td><td class="q">24</td><td class="q">24</td><td class="q">24</td><td class="m">285,00</td><td class="m">6.840,00</td><td class="nt"></td></tr>
+            <tr><td class="n">2</td><td class="it"><span class="nm" lang="tr">Kalecik Karas&#305; 2022 &middot; Ancyra</span><span class="pb">1 ks &times; 12 &#351;i&#351;e &middot; KAV-KLK-22</span></td><td class="q">12</td><td class="q">12</td><td class="q">12</td><td class="q">12</td><td class="m">310,00</td><td class="m">3.720,00</td><td class="nt"></td></tr>
+            <tr><td class="n">3</td><td class="it"><span class="nm" lang="tr">Narince 2022 &middot; &#199;ankaya</span><span class="pb">1 ks &times; 12 &#351;i&#351;e &middot; KAV-NRC-22</span></td><td class="q">12</td><td class="q">12</td><td class="q">12</td><td class="q">12<sup class="fn">6</sup></td><td class="m">240,00</td><td class="m">2.880,00</td><td class="nt" style="color:#665D50">miktar kesin okunamad&#305; &#8212; Ay&#351;e ka&#287;&#305;ttan girdi, ilk okuma sakl&#305;</td></tr>
+            <tr class="flag"><td class="n">4</td><td class="it"><span class="nm" lang="tr">&#214;k&#252;zg&#246;z&#252; 2021 &middot; Pendore</span><span class="pb">1 ks &times; 12 &#351;i&#351;e &middot; KAV-PND-OKZ-21</span></td><td class="q">12</td><td class="q">12</td><td class="q short">10<sup class="fn">2</sup></td><td class="q">12</td><td class="m">420,00</td><td class="m over">5.040,00</td><td class="nt">12 faturaland&#305;, 10 al&#305;nd&#305; &#8212; 2 &#351;i&#351;e eksik &middot; talep &#8378;840,00</td></tr>
+            <tr><td class="n">5</td><td class="it"><span class="nm" lang="tr">Bo&#287;azkere 2021 &middot; Vin-Art</span><span class="pb">1 ks &times; 12 &#351;i&#351;e &middot; KAV-BGZ-21</span></td><td class="q">12</td><td class="q">12</td><td class="q">12</td><td class="q">12</td><td class="m">365,00</td><td class="m">4.380,00</td><td class="nt"></td></tr>
+            <tr><td class="n">6</td><td class="it"><span class="nm" lang="tr">Emir 2023 &middot; C&#244;tes d&#8217;Avanos</span><span class="pb">1 ks &times; 12 &#351;i&#351;e &middot; KAV-EMR-23</span></td><td class="q">12</td><td class="q">12</td><td class="q">12</td><td class="q">12</td><td class="m">195,00</td><td class="m">2.340,00</td><td class="nt"></td></tr>
+            <tr class="flag"><td class="n">7</td><td class="it"><span class="nm" lang="tr">Narince 2023 &middot; Pendore</span><span class="pb">1 ks &times; 12 &#351;i&#351;e &middot; KAV-PND-NRC-23</span></td><td class="q">12</td><td class="q">12</td><td class="q">12</td><td class="q">12</td><td class="m over">410,00<sup class="fn">4</sup></td><td class="m">4.920,00</td><td class="nt">anla&#351;&#305;lan &#8378;375,00 &middot; fark &#8378;35,00/&#351;i&#351;e &middot; net &#8378;400,00</td></tr>
+            <tr><td class="n">8</td><td class="it"><span class="nm" lang="tr">&#199;alkaras&#305; ros&#233; 2023 &middot; Kalecik</span><span class="pb">1 ks &times; 12 &#351;i&#351;e &middot; KAV-CLK-23</span></td><td class="q">6</td><td class="q">6</td><td class="q">6</td><td class="q">6</td><td class="m">225,00</td><td class="m">1.350,00</td><td class="nt"></td></tr>
+            <tr><td class="n">9</td><td class="it"><span class="nm" lang="tr">Bo&#287;azkere&#8211;&#214;k&#252;zg&#246;z&#252; 2022 &middot; Yakut</span><span class="pb">1 ks &times; 12 &#351;i&#351;e &middot; KAV-YKT-22</span></td><td class="q">24</td><td class="q">24</td><td class="q">24</td><td class="q">24</td><td class="m">165,00<sup class="fn">3</sup></td><td class="m">3.960,00</td><td class="nt" style="color:#665D50">ka&#287;&#305;tta kasa fiyat&#305; yaz&#305;yor &#8212; &#351;i&#351;eye &#231;evrildi</td></tr>
+          </tbody>
+        </table>
+
+        <!-- allowances & charges / totals / payment -->
+        <div style="display:flex; gap:16px; margin-top:5px">
+          <div style="flex:1; min-width:0">
+            <div class="kick" style="margin-bottom:1px">&#304;ndirim ve masraflar &middot; allowances &amp; charges</div>
+            <div class="chgrow" style="border-bottom:1px solid #EFE7D9"><span class="lbl" lang="tr">Nakliye &middot; <span style="color:#8E8576">masraf FC &middot; KDV %20</span></span><span class="amt">+ 240,00</span></div>
+            <div class="chgrow" style="border-bottom:1px solid #EFE7D9"><span class="lbl" lang="tr">Depozito &middot; iade edilebilir kasa (24 ks) &middot; <span style="color:#8E8576">UNCL7161 &middot; KDV %0</span></span><span class="amt">+ 180,00</span></div>
+            <div class="chgrow" style="border-bottom:1px solid #EFE7D9"><span class="lbl" lang="tr">Kasa indirimi &middot; sat&#305;r 7 &middot; <span style="color:#8E8576">UNCL95</span></span><span class="amt">&#8722; 20,00</span></div>
+            <div class="kick" style="margin:5px 0 1px">Vergi d&#246;k&#252;m&#252; &middot; BT-118 &middot; etiket belgeden gelir, &#231;evrilmez</div>
+            <div class="chgrow" style="padding-top:0; padding-bottom:0"><span class="lbl">KDV %20 &middot; <span style="color:#8E8576">matrah 35.650,00 &middot; kategori S</span></span><span class="amt">7.130,00</span></div>
+            <div class="chgrow" style="padding-top:0"><span class="lbl">KDV %0 &middot; <span style="color:#8E8576">matrah 180,00 &middot; kategori E, iade edilebilir ambalaj</span></span><span class="amt">0,00</span></div>
+          </div>
+          <div style="flex:none; width:290px">
+            <div class="totrow" style="border-bottom:1px solid #EFE7D9"><span class="lbl">Mal toplam&#305; &middot; 9 sat&#305;r</span><span class="amt">35.430,00</span></div>
+            <div class="totrow" style="border-bottom:1px solid #EFE7D9"><span class="lbl">Masraf ve indirimler</span><span class="amt">+ 400,00</span></div>
+            <div class="totrow" style="border-bottom:1px solid #EFE7D9"><span class="lbl">Ara toplam &middot; vergi matrah&#305;</span><span class="amt">35.830,00</span></div>
+            <div class="totrow" style="border-bottom:1.5px solid #211C16"><span class="lbl">KDV toplam&#305;</span><span class="amt">7.130,00</span></div>
+            <div class="totrow" style="padding-top:2px; padding-bottom:2px"><span class="lbl ser" style="font-size:11.5px; font-weight:600; color:#211C16">GENEL TOPLAM</span><span class="mono" style="font-size:14px; font-weight:600; letter-spacing:-.015em">&#8378;42.960,00</span></div>
+            <div style="border-top:1px solid #EFE7D9; padding-top:3px">
+              <div style="display:flex; justify-content:space-between; align-items:baseline"><span style="font-size:8.5px; color:#4F473C">&#214;deme talimat&#305; &#8212; itiraz d&#252;&#351;&#252;lm&#252;&#351;</span><span class="mono" style="font-size:11px; font-weight:600; color:#14515C">&#8378;41.720,00</span></div>
+              <span class="mono" style="display:block; font-size:7.5px; color:#8E8576">42.960,00 &#8722; 1.240,00 &middot; IBAN TR33 &#8230; 8413 26</span>
+              <span style="display:block; font-size:8px; color:#665D50; line-height:1.25">Mutab&#305;k kal&#305;nan &#246;denir; itirazl&#305; k&#305;s&#305;m kaybolmaz.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- tipped-in counter-proposal slip -->
+        <div style="margin:2px 0 0; transform:rotate(-.45deg); background:#F7F1E4; border:1px solid #E4DCCB; border-left:3px solid #1A5E6B; border-radius:2px; box-shadow:0 6px 14px -12px rgba(33,28,22,.6); padding:2px 10px; display:flex; align-items:center; gap:12px">
+          <div style="flex:1; min-width:0">
+            <span class="mono" style="font-size:7px; font-weight:600; letter-spacing:.14em; color:#14515C">KAR&#350;I TEKL&#304;F &middot; SATICIDAN &middot; 15.08.2026 16:22</span>
+            <p style="margin:0; font-size:9px; line-height:1.3; color:#4F473C"><i lang="tr">&#8220;Sat&#305;r 4 i&#231;in &#8378;840,00 tutar&#305;nda alacak dekontu keselim.&#8221;</i> &#8212; Serkan Ayd&#305;n, Kavakl&#305;dere. <b style="font-weight:600; color:#211C16">Sat&#305;r 7&#8217;deki &#8378;400,00 teklifte yok</b> &#8212; kabul edersen o kalem a&#231;&#305;k kal&#305;r.</p>
+          </div>
+          <div style="flex:none; display:flex; gap:5px">
+            <span class="btn" style="background:rgba(26,94,107,.10)">Kabul et</span>
+            <span class="btn q">Kar&#351;&#305;la</span>
+            <span class="btn q">Sor</span>
+          </div>
+        </div>
+
+        <!-- footnotes: provenance at the foot of the sheet -->
+        <div style="margin-top:3px; border-top:1.5px solid #211C16; padding-top:2px">
+          <div style="display:flex; align-items:baseline; gap:8px">
+            <span class="kick">Dipnotlar &middot; her alan nereden geldi</span>
+            <span style="font-size:7.5px; color:#ABA294">Bir alan&#305;n &#252;st&#252;ne gelince dipnotu kalkar &#8212; ka&#287;&#305;tta da ayn&#305; yerde durur. <span style="color:#1A5E6B">&#8595; &#8220;Teslim 10&#8221; imle&#231;te.</span></span>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0 10px; margin-top:1px">
+            <div class="fnli"><span class="k">1</span><span class="t"><b>Bu sat&#305;c&#305;dan &#246;&#287;renildi</b> &#8212; belgede bas&#305;l&#305; de&#287;il.</span></div>
+            <div class="fnli raised"><span class="k">2</span><span class="t"><b>Kap&#305;da Mehmet girdi</b> &middot; 12.08 07:41 &middot; foto&#287;raf ekli.</span></div>
+            <div class="fnli"><span class="k">3</span><span class="t"><b>Belgeden okundu</b>, s.1 &middot; bas&#305;l&#305;: &#8220;1.980,00 / KS(12)&#8221;.</span></div>
+            <div class="fnli"><span class="k">4</span><span class="t"><b>PO-2211&#8217;den ta&#351;&#305;nd&#305;</b> &middot; anla&#351;&#305;lan &#8378;375,00/&#351;i&#351;e.</span></div>
+            <div class="fnli"><span class="k">5</span><span class="t"><b>e-&#304;rsaliyeden okundu</b>, faturadan de&#287;il &middot; 12.08.</span></div>
+            <div class="fnli"><span class="k">6</span><span class="t"><b>Kesin okunamad&#305;</b> &middot; Ay&#351;e girdi 14.08 09:40 &middot; rev 2/2.</span></div>
+          </div>
+          <div style="display:flex; align-items:baseline; gap:10px; margin-top:2px; border-top:1px solid #EFE7D9; padding-top:2px">
+            <span class="mono" style="font-size:7.5px; color:#8E8576">&#199;&#305;kar&#305;m v4 &middot; 14.08.2026 09:12 &middot; sha256 4f9c&#8230;21ab &middot; 2 sayfa</span>
+            <span class="mono" style="font-size:7.5px; color:#665D50">47 alan&#305;n 41&#8217;i belgeden okundu &middot; 4&#8217;&#252; sat&#305;c&#305;dan &#246;&#287;renildi &middot; 1&#8217;i kap&#305;dan &middot; 1&#8217;i elle</span>
+            <span class="mono" style="margin-left:auto; font-size:7.5px; font-weight:600; color:#14515C">Denetim izi &#8594;</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ THE DRAWER — original, fetched on demand, slid over the margin ══ -->
+    <div style="width:294px; flex:none; margin-left:-16px; z-index:3; display:flex">
+      <div style="width:9px; flex:none; background:linear-gradient(90deg, rgba(33,28,22,.13), rgba(33,28,22,0)); border-radius:2px 0 0 2px"></div>
+      <div style="flex:1; background:#EFEADF; border:1px solid #E0D9C9; border-radius:2px; box-shadow:-10px 0 20px -16px rgba(33,28,22,.55); padding:9px 11px; display:flex; flex-direction:column; min-height:0">
+        <div style="display:flex; align-items:baseline; gap:6px">
+          <span class="mono" style="font-size:8px; font-weight:600; letter-spacing:.15em; color:#211C16">ASLI &middot; ORIGINAL</span>
+          <span class="mono" style="margin-left:auto; font-size:10px; color:#8E8576">&#215;</span>
+        </div>
+        <span class="mono" style="display:block; font-size:7.5px; color:#8E8576">&#304;stendi&#287;inde getirildi &middot; 14.08 09:12 &middot; 1,9 MB</span>
+
+        <div style="margin-top:7px; background:#FFFDF8; border:1px solid #E0D9C9; border-radius:1px; padding:9px 9px 8px; box-shadow:0 4px 12px -10px rgba(33,28,22,.6)">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px">
+            <div style="display:flex; flex-direction:column; gap:2.5px"><div class="scanline" style="width:74px; height:4px; background:#B8AE9B"></div><div class="scanline" style="width:52px"></div><div class="scanline" style="width:60px"></div><div class="scanline" style="width:44px"></div></div>
+            <div style="display:flex; flex-direction:column; gap:2.5px; align-items:flex-end"><div class="scanline" style="width:40px; background:#C7BDA9"></div><div class="scanline" style="width:30px"></div><div class="scanline" style="width:36px"></div></div>
+          </div>
+          <div style="height:1px; background:#D8CFBD; margin:5px 0 4px"></div>
+          <div style="display:flex; flex-direction:column; gap:3.5px">
+            <div class="srow"><div class="scanline" style="flex:1"></div><div class="scanline" style="width:22px"></div><div class="scanline" style="width:30px"></div></div>
+            <div class="srow"><div class="scanline" style="flex:1"></div><div class="scanline" style="width:22px"></div><div class="scanline" style="width:30px"></div></div>
+            <div class="srow"><div class="scanline" style="flex:1"></div><div class="scanline" style="width:22px"></div><div class="scanline" style="width:30px"></div></div>
+            <div style="position:relative; margin:1px -4px; padding:3px 4px; border:1.5px solid #1A5E6B; border-radius:2px; background:rgba(26,94,107,.09)">
+              <div class="srow"><div class="scanline" style="flex:1; background:#7C7365"></div><div class="scanline" style="width:22px; background:#7C7365"></div><div class="scanline" style="width:30px; background:#7C7365"></div></div>
+              <span class="mono" style="position:absolute; top:-8px; right:-2px; font-size:6.5px; font-weight:600; letter-spacing:.1em; color:#FAF7F1; background:#1A5E6B; padding:1px 4px; border-radius:2px">SATIR 4</span>
+            </div>
+            <div class="srow"><div class="scanline" style="flex:1"></div><div class="scanline" style="width:22px"></div><div class="scanline" style="width:30px"></div></div>
+            <div class="srow"><div class="scanline" style="flex:1"></div><div class="scanline" style="width:22px"></div><div class="scanline" style="width:30px"></div></div>
+            <div class="srow"><div class="scanline" style="flex:1"></div><div class="scanline" style="width:22px"></div><div class="scanline" style="width:30px"></div></div>
+            <div class="srow"><div class="scanline" style="flex:1"></div><div class="scanline" style="width:22px"></div><div class="scanline" style="width:30px"></div></div>
+            <div class="srow"><div class="scanline" style="flex:1"></div><div class="scanline" style="width:22px"></div><div class="scanline" style="width:30px"></div></div>
+            <div class="srow"><div class="scanline" style="flex:1"></div><div class="scanline" style="width:22px"></div><div class="scanline" style="width:30px"></div></div>
+            <div class="srow"><div class="scanline" style="flex:1"></div><div class="scanline" style="width:22px"></div><div class="scanline" style="width:30px"></div></div>
+            <div class="srow"><div class="scanline" style="flex:1"></div><div class="scanline" style="width:22px"></div><div class="scanline" style="width:30px"></div></div>
+          </div>
+          <div style="height:1px; background:#D8CFBD; margin:5px 0 4px"></div>
+          <div style="display:flex; flex-direction:column; gap:2.5px; align-items:flex-end"><div class="scanline" style="width:74px"></div><div class="scanline" style="width:64px"></div><div class="scanline" style="width:86px; height:4px; background:#B8AE9B"></div></div>
+          <div style="height:1px; background:#D8CFBD; margin:5px 0 4px"></div>
+          <div style="display:flex; flex-direction:column; gap:2.5px"><div class="scanline" style="width:110px"></div><div class="scanline" style="width:88px"></div></div>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:8px; margin-top:6px">
+          <span class="mono" style="font-size:9px; color:#665D50">&#9664;&nbsp; 1 / 2 &nbsp;&#9654;</span>
+          <span class="mono" style="margin-left:auto; font-size:9px; color:#14515C; font-weight:600">B&#252;y&#252;t</span>
+          <span class="mono" style="font-size:9px; color:#14515C; font-weight:600">D&#246;nd&#252;r</span>
+          <span class="mono" style="font-size:9px; color:#14515C; font-weight:600">&#304;ndir</span>
+        </div>
+
+        <div style="margin-top:8px; border-top:1px solid #E0D9C9; padding-top:6px">
+          <span class="kick">Ka&#287;&#305;tta ne yaz&#305;yor &middot; as printed</span>
+          <div style="background:#FAF7F1; border:1px solid #E4DCCB; border-radius:2px; padding:5px 7px; margin-top:3px">
+            <span class="mono" style="display:block; font-size:9px; color:#211C16">1 KS(12) &times; 420,00</span>
+            <span class="mono" style="display:block; font-size:9px; color:#211C16">M&#304;KTAR 12 &nbsp; TESL&#304;M &#8212;</span>
+          </div>
+          <p style="margin:4px 0 0; font-size:8px; line-height:1.3; color:#665D50">Bas&#305;l&#305; de&#287;er hi&#231;bir zaman yeniden bi&#231;imlenmez. Kanon s&#252;tunu &#231;evirir; bu s&#252;tun ka&#287;&#305;d&#305; aynen tutar.</p>
+        </div>
+
+        <div style="margin-top:auto; border-top:1px solid #E0D9C9; padding-top:6px">
+          <p style="margin:0; font-size:8px; line-height:1.35; color:#8E8576">&#199;ekmece yaln&#305;zca istendi&#287;inde a&#231;&#305;l&#305;r ve sayfan&#305;n sa&#287; kenar&#305;n&#305; &#246;rter. Kapat&#305;nca sayfa tam gelir; yazd&#305;r&#305;rken asl&#305; ek sayfa olarak eklenir.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── the same sheet, other documents ───────────────────────────────── -->
+  <div style="flex:none; display:flex; gap:12px; padding:3px 26px 0; border-top:1px solid #E4DCCB; margin-top:2px">
+    <div style="width:164px; flex:none; padding-right:11px; border-right:1px solid #E4DCCB">
+      <div class="kick" style="margin-bottom:2px">Ayn&#305; sayfa, ba&#351;ka belgeler</div>
+      <p style="margin:0 0 4px; font-size:8px; line-height:1.35; color:#4F473C">Tek &#351;ablon, ko&#351;ullu b&#246;l&#252;mler. Para blo&#287;u irsaliyede yoktur &#8212; gizlenmez, <i>yoktur</i>.</p>
+      <p style="margin:0; font-size:8px; line-height:1.3; color:#8E8576"><b style="color:#211C16; font-weight:600">Bask&#305; = ekran.</b> Damga, kenar defteri, s&#252;reler ve dipnotlar ayn&#305; yerde bas&#305;l&#305;r &#8212; kaybolacak bir ipucu balonu yok.</p>
+    </div>
+
+    <!-- credit memo -->
+    <div style="flex:1; min-width:0; background:#FAF7F1; border:1px solid #EFE7D9; border-radius:2px; padding:5px 10px; display:flex; flex-direction:column">
+      <div style="display:flex; align-items:flex-start; gap:6px; border-bottom:1px solid #211C16; padding-bottom:3px">
+        <div style="flex:1; min-width:0"><span class="ser" style="display:block; font-size:11px; font-weight:600; line-height:1.1" lang="tr">&#304;ade Faturas&#305;</span><span class="mono" style="display:block; font-size:6.5px; letter-spacing:.13em; color:#8E8576">CREDIT MEMO &middot; BT-25 &#8594; A-88214</span></div>
+        <div style="flex:none; transform:rotate(-4deg); border:1px solid #1A5E6B; border-radius:2px; padding:2px 5px; background:rgba(26,94,107,.06)"><span class="mono" style="font-size:6.5px; font-weight:600; letter-spacing:.1em; color:#14515C">MUTABIK &middot; 16.08</span></div>
+      </div>
+      <div style="display:flex; justify-content:space-between; padding:3px 0 2px; border-bottom:1px solid #EFE7D9"><span class="mono" style="font-size:7.5px; color:#665D50">C-88214-K &middot; 16.08.2026</span><span class="mono" style="font-size:7.5px; color:#665D50">at&#305;f: A-88214 sat&#305;r 4</span></div>
+      <div style="display:flex; align-items:baseline; gap:6px; padding:3px 0 2px; border-bottom:1px solid #EFE7D9"><span style="flex:1; min-width:0; font-size:8.5px" lang="tr">&#214;k&#252;zg&#246;z&#252; 2021 &middot; <span class="mono" style="color:#8E8576">2 &#351;i&#351;e &times; 420,00</span></span><span class="mono" style="font-size:8.5px">&#8722; 840,00</span></div>
+      <div style="display:flex; justify-content:space-between; padding:2px 0"><span style="font-size:8px; color:#4F473C">KDV %20</span><span class="mono" style="font-size:8px">&#8722; 168,00</span></div>
+      <div style="display:flex; justify-content:space-between; align-items:baseline; border-top:1.5px solid #211C16; padding-top:2px"><span class="ser" style="font-size:9.5px; font-weight:600">TOPLAM ALACAK</span><span class="mono" style="font-size:11.5px; font-weight:600">&#8722; &#8378;1.008,00</span></div>
+      <p style="margin:3px 0 0; font-size:7.5px; line-height:1.3; color:#665D50">Ayn&#305; bile&#351;en, ayn&#305; s&#305;ra. Kalan &#8378;400,00 ana sayfada a&#231;&#305;k durur.</p>
+    </div>
+
+    <!-- delivery note -->
+    <div style="flex:1; min-width:0; background:#FAF7F1; border:1px solid #EFE7D9; border-radius:2px; padding:7px 10px; display:flex; flex-direction:column">
+      <div style="display:flex; align-items:flex-start; gap:6px; border-bottom:1px solid #211C16; padding-bottom:3px">
+        <div style="flex:1; min-width:0"><span class="ser" style="display:block; font-size:11px; font-weight:600; line-height:1.1" lang="tr">&#304;rsaliye</span><span class="mono" style="display:block; font-size:6.5px; letter-spacing:.13em; color:#8E8576">e-&#304;RSAL&#304;YE IRS-4471 &middot; DESPATCH ADVICE</span></div>
+        <div style="flex:none; transform:rotate(3deg); border:1px dashed #7C7365; border-radius:2px; padding:2px 5px"><span class="mono" style="font-size:6.5px; font-weight:600; letter-spacing:.1em; color:#665D50">TESL&#304;M &middot; 12.08</span></div>
+      </div>
+      <div style="display:flex; align-items:baseline; gap:6px; padding:3px 0 2px; border-bottom:1px solid #EFE7D9"><span style="flex:1; min-width:0; font-size:8.5px" lang="tr">&#214;k&#252;zg&#246;z&#252; 2021 &middot; Pendore</span><span class="mono" style="font-size:8.5px; color:#665D50">sevk 12</span><span class="mono" style="font-size:8.5px; font-weight:600; color:#9E4249">teslim 10</span></div>
+      <div style="display:flex; align-items:baseline; gap:6px; padding:2px 0; border-bottom:1px solid #EFE7D9"><span style="flex:1; min-width:0; font-size:8.5px" lang="tr">Narince 2023 &middot; Pendore</span><span class="mono" style="font-size:8.5px; color:#665D50">sevk 12</span><span class="mono" style="font-size:8.5px">teslim 12</span></div>
+      <div style="padding:1px 0"><span style="font-size:8.5px; color:#8E8576">&#8230; 7 sat&#305;r daha</span></div>
+      <div style="margin-top:auto; border:1px dashed #D8CFBD; border-radius:2px; padding:4px 7px; background:#F7F1E4">
+        <span class="mono" style="display:block; font-size:6.5px; font-weight:600; letter-spacing:.12em; color:#8E8576">PARA BLO&#286;U YOK &middot; MONEY BLOCK ABSENT</span>
+        <p style="margin:0; font-size:7.5px; line-height:1.3; color:#665D50">&#304;rsaliye fiyat beyan etmez; burada fiyat <b style="color:#211C16; font-weight:600">yoktur</b> &#8212; gizlenmi&#351; de&#287;il, tan&#305;m gere&#287;i yok. Kap&#305;daki telefon g&#246;r&#252;n&#252;m&#252; de ayn&#305;.</p>
+      </div>
+    </div>
+
+    <!-- degraded -->
+    <div style="flex:1; min-width:0; background:#FAF7F1; border:1px solid #EFE7D9; border-radius:2px; padding:7px 10px; display:flex; flex-direction:column">
+      <div style="border-bottom:1px solid #211C16; padding-bottom:3px">
+        <span class="ser" style="display:block; font-size:11px; font-weight:600; line-height:1.1">Okunamad&#305;</span>
+        <span class="mono" style="display:block; font-size:6.5px; letter-spacing:.13em; color:#9E4249">NOT EXTRACTED &middot; ASLI G&#214;STER&#304;L&#304;YOR</span>
+      </div>
+      <div style="display:flex; gap:8px; padding:4px 0 3px; border-bottom:1px solid #EFE7D9">
+        <div style="width:44px; flex:none; height:50px; background:#E4DCCB; border:1px solid #D8CFBD; border-radius:1px; padding:5px 4px; display:flex; flex-direction:column; gap:3px; filter:blur(.6px)">
+          <div class="scanline" style="width:60%; background:#C0B6A5"></div><div class="scanline" style="width:88%; background:#CFC5B2"></div><div class="scanline" style="width:40%; background:#CFC5B2"></div><div class="scanline" style="width:76%; background:#CFC5B2"></div><div class="scanline" style="width:66%; background:#CFC5B2"></div>
+        </div>
+        <div style="flex:1; min-width:0">
+          <p style="margin:0 0 2px; font-size:8px; line-height:1.25; color:#4F473C">Tarama bulan&#305;k. <b style="font-weight:600; color:#211C16">Bu belge hakk&#305;nda h&#252;k&#252;m verilmedi.</b></p>
+          <div style="display:flex; flex-direction:column">
+            <div style="display:flex; gap:4px"><span class="mono" style="font-size:7px; color:#8E8576; width:38px">Sat&#305;c&#305;</span><span class="mono" style="font-size:7px; color:#211C16">Diyar G&#305;da &middot; <span style="color:#1A5E6B">elle</span></span></div>
+            <div style="display:flex; gap:4px"><span class="mono" style="font-size:7px; color:#8E8576; width:38px">Belge no</span><span class="mono" style="font-size:7px; color:#211C16">D-1907 &middot; <span style="color:#1A5E6B">elle</span></span></div>
+            <div style="display:flex; gap:4px"><span class="mono" style="font-size:7px; color:#8E8576; width:38px">Tarih</span><span class="mono" style="font-size:7px; color:#211C16">02.09.2026 &middot; <span style="color:#1A5E6B">elle</span></span></div>
+            <div style="display:flex; gap:4px"><span class="mono" style="font-size:7px; color:#8E8576; width:38px">Toplam</span><span class="mono" style="font-size:7px; color:#211C16">&#8378;3.140,00 &middot; <span style="color:#1A5E6B">elle</span></span></div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:3px 0 0">
+        <span class="mono" style="font-size:7px; font-weight:600; letter-spacing:.1em; color:#665D50">4 ALAN ELLE G&#304;R&#304;LD&#304; &middot; 43 ALAN &#8212;</span>
+        <p style="margin:1px 0 0; font-size:7.5px; line-height:1.3; color:#665D50">Bo&#351; belge tamamlanm&#305;&#351; g&#246;sterilmez; sayfa damga alamaz.</p>
+        <div style="display:flex; gap:5px; margin-top:4px"><span class="btn q">Yeniden tara</span><span class="btn q">Elle tamamla</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mono" style="flex:none; padding:4px 26px 5px; font-size:9px; color:#ABA294; display:flex; gap:14px">
+    <span>MOCK &#8212; design only. Vendor, staff, IBAN, figures and dates are invented for this sketch.</span>
+    <span style="margin-left:auto">089 &middot; DIRECTION A &#8212; THE LEDGER SHEET &middot; paper-first &middot; print = screen</span>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
