@@ -16,7 +16,13 @@ export class MembersService {
 
   constructor(private readonly databaseService: DatabaseService) {}
 
-  private async assertMembership(
+  /**
+   * PUBLIC because it is the ONE membership check in this module (ADR 0093 A3
+   * reuses it for the operating-hours endpoints rather than writing a second
+   * one). Two membership checks in the same module is how a role gate ends up
+   * enforced on one route and not the next.
+   */
+  async assertMembership(
     actorUserId: string,
     restaurantId: string,
     requiredRole?: "owner" | "manager" | "owner|manager",
@@ -157,12 +163,13 @@ export class MembersService {
     // `previousRole = null`, and the audit row this method exists to write would
     // then record the change as coming FROM no role at all — a false record,
     // which is worse than no record and is precisely what ADR 0088 forbids.
-    const { data: before, error: beforeErr } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .select("role")
-      .eq("user_id", targetUserId)
-      .eq("restaurant_id", restaurantId)
-      .maybeSingle();
+    const { data: before, error: beforeErr } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("role")
+        .eq("user_id", targetUserId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
     if (beforeErr) {
       this.logger.error(
         `changeRole: could not read the current role of ${targetUserId} in ` +

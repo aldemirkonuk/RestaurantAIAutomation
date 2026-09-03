@@ -397,6 +397,90 @@ def test_pos_checks_is_deleted_before_restaurants():
     assert DELETE_ORDER.index("pos_checks") < DELETE_ORDER.index("restaurants")
 
 
+# ── ADR 0093 harness: ten more tables the sim seed never wrote ──────────────
+#
+# One assertion per table, deliberately not a loop over a list: a loop over the
+# same constant the code exports proves only that the constant equals itself.
+# These names are typed out here so removing one from write_set.py fails HERE.
+
+ADR_0093_TEARDOWN_TABLES = (
+    "sim_scenario_runs",
+    "restaurant_tables",
+    "pour_events",
+    "inventory_transactions",
+    "inventory_lots",
+    "wine_consumption_log",
+    "notifications",
+    "analytics_insights",
+    "pos_item_mappings",
+    "pos_catalog_match_proposals",
+)
+
+
+@pytest.mark.parametrize("table", ADR_0093_TEARDOWN_TABLES)
+def test_adr_0093_table_is_teardown_covered(table: str):
+    """Every table the harness writes is listed, handled and ordered.
+
+    Some of these DO cascade from `restaurants` or `restaurant_inventory`. They
+    are listed anyway: a cascade is a schema fact declared in a migration that
+    has no link to this file, and "the cascade covers it" is precisely the
+    assumption that leaves simulated rows in a real tenant the day a migration
+    changes the on-delete action.
+    """
+    from scripts.synth.teardown import DELETE_ORDER, TEARDOWN_HANDLERS
+    from scripts.synth.write_set import SYNTH_WRITE_SET, TEARDOWN_TABLES
+
+    assert table in SYNTH_WRITE_SET, f"{table} missing from SYNTH_WRITE_SET"
+    assert table in TEARDOWN_TABLES, f"{table} missing from TEARDOWN_TABLES"
+    assert table in TEARDOWN_HANDLERS, f"{table} has no teardown handler"
+    assert table in DELETE_ORDER, f"{table} is not in DELETE_ORDER"
+    assert DELETE_ORDER.index(table) < DELETE_ORDER.index("restaurants")
+
+
+def test_pos_checks_is_deleted_before_restaurant_tables():
+    """`pos_checks.table_id` references `restaurant_tables(id)` with NO on-delete.
+
+    Deleting the tables first raises 23503, the handler catches it, and the row
+    is reported as an orphan — which from the outside is indistinguishable from
+    a table nobody listed at all.
+    """
+    from scripts.synth.teardown import DELETE_ORDER
+
+    assert DELETE_ORDER.index("pos_checks") < DELETE_ORDER.index("restaurant_tables")
+
+
+def test_inventory_children_are_deleted_before_lots_and_inventory():
+    from scripts.synth.teardown import DELETE_ORDER
+
+    lots = DELETE_ORDER.index("inventory_lots")
+    inv = DELETE_ORDER.index("restaurant_inventory")
+    assert lots < inv
+    for child in (
+        "pour_events",
+        "inventory_transactions",
+        "wine_consumption_log",
+        "pos_catalog_match_proposals",
+        "pos_item_mappings",
+    ):
+        assert DELETE_ORDER.index(child) < lots, f"{child} after inventory_lots"
+
+
+def test_coverage_gate_catches_a_bad_delete_order():
+    """The order check is real, not decorative — proved by breaking it."""
+    import scripts.synth.teardown as td
+
+    good = list(td.DELETE_ORDER)
+    broken = [t for t in good if t != "inventory_lots"]
+    broken.insert(broken.index("pour_events"), "inventory_lots")
+    try:
+        td.DELETE_ORDER[:] = broken
+        with pytest.raises(td.WriteSetTeardownCoverageError, match="before"):
+            td.assert_teardown_coverage()
+    finally:
+        td.DELETE_ORDER[:] = good
+    td.assert_teardown_coverage()
+
+
 def test_apply_refuses_without_a_restaurant():
     """Posting simulated service into an unspecified tenant is the worst case."""
     from scripts.simulate.cli import main
