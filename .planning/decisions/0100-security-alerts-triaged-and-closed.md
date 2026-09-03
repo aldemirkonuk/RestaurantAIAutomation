@@ -318,6 +318,39 @@ nine criticals. Removing whatever depends on `request` closes two advisories at
 once and is the highest-leverage dependency work available. It was not attempted
 here because it needs a lockfile regeneration this worktree cannot verify.
 
+## Clean-environment verification
+
+This change modifies **no** requirements file and **no** `package.json`, so
+there is no dependency delta to install-verify. The ADR 0087 bar was applied to
+the production file as it stands instead, in a fresh venv, because the fixes
+must work in the dependency set the Dockerfile actually installs
+(`Dockerfile:25-26` installs `requirements.prod.txt`, not `requirements.txt`):
+
+```
+pip install -r services/agent-orchestrator/requirements.prod.txt   exit 0
+pip check                                        No broken requirements found.
+import jwt        -> venvprod/.../jwt/__init__.py
+distribution      -> PyJWT 2.13.0
+python-jose       -> absent
+ecdsa             -> ABSENT
+starkbank-ecdsa   -> 2.3.1  (a different package; not the advisory subject)
+```
+
+`ecdsa` being absent from a clean production install is the direct measurement
+behind the correction above: the advisory the brief asked to be reported has no
+carrier left in this repo.
+
+Both new security primitives were then exercised **inside that prod-only
+environment**, not just the dev one:
+
+```
+SandboxedEnvironment + __class__ walk   -> SecurityError
+sandbox renders an ordinary template    -> "Hi Vine Quarter"
+assert_url_is_safe(169.254.169.254)     -> SsrfBlocked
+assert_url_is_safe(https://example.com) -> allowed
+fetch_image_bytes(metadata URL)         -> SsrfBlocked before any socket opens
+```
+
 ## Consequences
 
 - Easier: four whole vulnerability classes are gone at the root rather than
