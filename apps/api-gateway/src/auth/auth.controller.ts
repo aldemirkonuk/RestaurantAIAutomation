@@ -49,6 +49,8 @@ export class AuthController {
   /**
    * Login with email/password
    */
+  // Public by DECISION, not by omission (ADR 0096): the caller has no token yet; obtaining one is what this route is for.
+  @Public()
   @Post("login")
   @HttpCode(HttpStatus.OK)
   async login(@Body() credentials: LoginCredentials) {
@@ -89,6 +91,8 @@ export class AuthController {
   /**
    * Register new user
    */
+  // Public by DECISION, not by omission (ADR 0096): the caller has no account yet, so there is nobody to authenticate.
+  @Public()
   @Post("register")
   async register(@Body() data: RegisterData) {
     this.logger.log(`Registration attempt: ${data.email}`);
@@ -104,6 +108,8 @@ export class AuthController {
   /**
    * Login with Google OAuth
    */
+  // Public by DECISION, not by omission (ADR 0096): sign-in entry point; the Google ID token in the body is the credential.
+  @Public()
   @Post("oauth/google")
   async loginWithGoogle(@Body() body: { token: string }) {
     this.logger.log("Google OAuth login attempt");
@@ -119,6 +125,8 @@ export class AuthController {
   /**
    * Login with Microsoft OAuth
    */
+  // Public by DECISION, not by omission (ADR 0096): sign-in entry point; the Microsoft ID token in the body is the credential.
+  @Public()
   @Post("oauth/microsoft")
   async loginWithMicrosoft(@Body() body: { token: string }) {
     this.logger.log("Microsoft OAuth login attempt");
@@ -134,6 +142,8 @@ export class AuthController {
   /**
    * Refresh access token
    */
+  // Public by DECISION, not by omission (ADR 0096): the access token is expired by the time this is called; the refresh token in the body is the credential.
+  @Public()
   @Post("refresh")
   async refresh(@Body() body: { refreshToken: string }) {
     const tokens = await this.authService.refreshAccessToken(body.refreshToken);
@@ -418,6 +428,8 @@ export class AuthController {
   /**
    * Verify email with the token from the verification email.
    */
+  // Public by DECISION, not by omission (ADR 0096): reached from a link in an email, often before a session exists; the one-time token in the body is the credential.
+  @Public()
   @Post("verify-email")
   async verifyEmail(@Body() body: { token: string }) {
     const tokens = await this.authService.verifyEmail(body.token);
