@@ -144,9 +144,9 @@ turns that required context red.
 
 The bump is still worth having where it counts: `Dockerfile:25-26` installs
 `requirements.prod.txt`, which has **no** surya-ocr. That file now carries
-`pillow==12.3.0`, closing the ten open Pillow advisories against 10.2.0
-(GHSA-9hw9-ch79-4vh6 and friends, seven of them `high`) in the container that
-actually ships. Both files carry a comment saying the divergence is deliberate
+`pillow==12.3.0`, closing **10** open advisories against 10.2.0 — **8 `high`,
+2 `medium`**, `GHSA-9hw9-ch79-4vh6` among them — in the container that actually
+ships. Zero advisories affect 12.3.0. Both files carry a comment saying the divergence is deliberate
 and naming the constraint that causes it, so the next reader does not "fix" it.
 
 **`#2` pnpm/action-setup 2 → 6 — applied, plus the `version:` input removed.**
@@ -273,21 +273,28 @@ The first push carried the pillow explanation as a comment block *above*
 **"15 new alerts including 10 high severity security vulnerabilities"** and the
 PR Audit Gate went red on it.
 
-All fifteen were the *pre-existing* pillow advisories at
-`requirements.txt` — the pin that this change deliberately does not move. They
-were classified as **new** purely because the line's text changed: Trivy
-fingerprints a manifest alert by the line, so editing `# Image manipulation`
-re-reported every advisory attached to it as introduced by this PR. The other
+Every one was a *pre-existing* pillow finding at `requirements.txt` — the pin
+this change deliberately does not move. They were classified as **new** purely
+because the line's text changed: Trivy fingerprints a manifest alert by the
+line, so editing `# Image manipulation` re-reported every advisory attached to
+it as introduced by this PR.
+
+Trivy's 15 is **not** the GitHub Advisory DB's 10, and the two are not
+reconciled here on purpose — they are different databases scanning on different
+schedules (Trivy's open pillow alerts on `main`, re-measured after the fix,
+group as 10 `high` + 2 `medium` = 12, which does not match its own PR-time 15
+either). The number that matters for the decision is the advisory DB's, because
+that is what was checked against the *target* version: **10 affect 10.2.0, 0
+affect 12.3.0.** Trivy's count is quoted only as what the gate said. The other
 alerts on lines that merely *shifted* (`pytest` at 161 → 164, unchanged text)
 were not re-reported, which is what isolates text rather than position as the
 key.
 
 The pin line is now kept byte-identical to `main` and the explanation sits
-**below** it. Nothing is suppressed — those fifteen advisories remain open
-against `requirements.txt` on `main`, visible in the security tab, and the
-comment says why they cannot be closed there. What changed is that a
-documentation comment no longer masquerades as fifteen newly-introduced
-vulnerabilities. A gate that fires on the act of explaining a known risk trains
+**below** it. Nothing is suppressed — those findings remain open against
+`requirements.txt` on `main`, visible in the security tab, and the comment says
+why they cannot be closed there. What changed is that a documentation comment no
+longer masquerades as newly-introduced vulnerabilities. A gate that fires on the act of explaining a known risk trains
 people to stop explaining.
 
 ### Advisory re-check on the target versions

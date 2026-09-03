@@ -74,9 +74,9 @@ pillow==10.2.0  # Image manipulation
 # file. requirements.prod.txt — the one the Dockerfile installs — carries
 # 12.3.0 and has no surya-ocr, so the container that ships is patched.
 # The comment sits BELOW the pin because Trivy fingerprints an alert by the
-# line's text: editing that line re-reported all fifteen pre-existing pillow
-# advisories as "new alerts introduced by this pull request" and failed the PR
-# Audit Gate. They are pre-existing either way. See ADR 0106.
+# line's text: editing that line re-reported every pre-existing pillow advisory
+# attached to it as "new alerts introduced by this pull request" and failed the
+# PR Audit Gate. They are pre-existing either way. See ADR 0106.
 pytesseract==0.3.10  # Alternative OCR backend
 pytz==2024.1  # Timezone support for manager preferences
 
