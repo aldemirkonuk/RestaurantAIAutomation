@@ -47,6 +47,18 @@ def sim_run_id(archetype_id: str) -> str:
     return str(uuid.uuid5(SIM_NS, f"sim.oracle_run.{archetype_id}"))
 
 
+def opening_stock_idempotency_key(inventory_id: str) -> str:
+    """The key that makes re-seeding a tenant a no-op rather than a double stock.
+
+    `apply_stock_movement` returns the EXISTING transaction id when it sees a key
+    it has already committed, so a second `--apply` against the same tenant adds
+    no lots. Deterministic on the inventory id, which is itself uuid5 of
+    (archetype, signature_hash) — so the key survives a re-seed of the same
+    archetype.
+    """
+    return f"sim:opening:{inventory_id}"
+
+
 def compute_opening_stock(
     item: Mapping[str, Any],
     opening_cfg: Mapping[str, Any],
@@ -207,6 +219,11 @@ def build_seed_plan(
             }
         )
 
+    # The rows the apply path will materialise as lots (ADR 0093 D4). Computed
+    # here so the DRY-RUN plan reports them: a plan that omits what --apply will
+    # write is a plan nobody can check the result against.
+    stocked = [row for row in inventory if int(row.get("stock_live") or 0) > 0]
+
     run_id = sim_run_id(archetype_id)
     run_row = build_run_row(
         profile=profile.to_dict(),
@@ -236,6 +253,13 @@ def build_seed_plan(
         "name": profile.restaurant.get("name"),
         "slug": slug,
         "timezone": profile.restaurant.get("timezone"),
+        # ADR 0093 D1. In the DRY-RUN plan too, so `generate` without --apply
+        # shows the hours the tenant would get. `seed_sim_restaurant` is a
+        # SECURITY DEFINER function defined in the 4.9 MB baseline and does not
+        # know this column, so the apply path PATCHes it separately (see
+        # `_write_operating_hours`) rather than editing a function the schema
+        # parity check would compare on the next merge.
+        "operating_hours": profile.restaurant.get("operating_hours"),
         "city": profile.restaurant.get("city"),
         "country": profile.restaurant.get("country"),
         "cuisine_type": profile.defaults.get("cuisine"),
@@ -290,6 +314,12 @@ def build_seed_plan(
         "master_wine_library_submissions": {"row_count": len(submissions)},
         "sim_ground_truth_runs": {"row_count": 1},
         "sim_ground_truth_facts": {"row_count": len(facts)},
+        # ADR 0093 D4: the apply path materialises opening stock through
+        # `apply_stock_movement`, one lot and one ledger row per STOCKED SKU.
+        # Rows with zero opening stock get nothing — a zero-delta call is a
+        # no-op in the RPC and a lot of zero bottles is not a fact.
+        "inventory_lots": {"row_count": len(stocked)},
+        "inventory_transactions": {"row_count": len(stocked)},
     }
     # Sanity: planned tables ⊆ write-set
     unknown = set(tables) - set(SYNTH_WRITE_SET)
@@ -323,6 +353,16 @@ def build_seed_plan(
         "snapshot_sha256": snap_sha,
         "sku_count": len(items),
         "tables": tables,
+        # What --apply will send to `apply_stock_movement`, keyed by the
+        # idempotency key that makes a re-run a no-op.
+        "opening_stock_plan": [
+            {
+                "inventory_id": row["id"],
+                "stock_live": int(row["stock_live"]),
+                "idempotency_key": opening_stock_idempotency_key(row["id"]),
+            }
+            for row in stocked
+        ],
         "samples": {
             "restaurants": [restaurant_row],
             "user_restaurant_access": ura_rows,
@@ -361,14 +401,19 @@ def execute_atomic_seed(payload: Mapping[str, Any], conn: Any) -> dict[str, Any]
             (org["id"], org["name"]),
         )
 
+        # `operating_hours` is written here as well as by the apply path's PATCH
+        # (ADR 0093 D1): this function claims to write the restaurant row, and a
+        # row it writes without the hours would be a tenant whose scenarios have
+        # nothing to place themselves inside.
         cur.execute(
             "INSERT INTO restaurants "
-            "(id, organization_id, name, slug, timezone, city, country, "
-            "cuisine_type, default_threshold_min, is_active) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+            "(id, organization_id, name, slug, timezone, operating_hours, city, "
+            "country, cuisine_type, default_threshold_min, is_active) "
+            "VALUES (%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s) "
             "ON CONFLICT (id) DO UPDATE SET "
             "organization_id=EXCLUDED.organization_id, name=EXCLUDED.name, "
-            "slug=EXCLUDED.slug, timezone=EXCLUDED.timezone, city=EXCLUDED.city, "
+            "slug=EXCLUDED.slug, timezone=EXCLUDED.timezone, "
+            "operating_hours=EXCLUDED.operating_hours, city=EXCLUDED.city, "
             "country=EXCLUDED.country, cuisine_type=EXCLUDED.cuisine_type, "
             "default_threshold_min=EXCLUDED.default_threshold_min, "
             "is_active=EXCLUDED.is_active",
@@ -378,6 +423,11 @@ def execute_atomic_seed(payload: Mapping[str, Any], conn: Any) -> dict[str, Any]
                 restaurant.get("name"),
                 slug,
                 restaurant.get("timezone"),
+                (
+                    None
+                    if restaurant.get("operating_hours") is None
+                    else json.dumps(restaurant["operating_hours"])
+                ),
                 restaurant.get("city"),
                 restaurant.get("country"),
                 restaurant.get("cuisine_type"),
@@ -627,6 +677,205 @@ def _call_seed_rpc_http(payload: Mapping[str, Any]) -> dict[str, Any]:
     return {"ok": True, "result": data}
 
 
+def _service_rest_caller(
+    method: str,
+    path: str,
+    *,
+    json_body: Any = None,
+    params: Mapping[str, str] | None = None,
+) -> Any:
+    """One service-role REST call against PostgREST, raising on any 4xx/5xx.
+
+    The same headers `_call_seed_rpc_http` builds. Injectable at the `apply_seed`
+    boundary as `rest_caller` so every unit test below runs with NO network.
+    """
+    import os
+
+    import httpx
+
+    supabase_url = os.environ.get("SUPABASE_URL")
+    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        raise RuntimeError(
+            "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY required for the apply path"
+        )
+    url = f"{supabase_url.rstrip('/')}{path}"
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Content-Type": "application/json",
+        # Without this a PATCH returns 204 and no body — fine, but asking for the
+        # representation means a PATCH that matched NOTHING is visible as an
+        # empty list rather than as a silent success.
+        "Prefer": "return=representation",
+    }
+    resp = httpx.request(
+        method,
+        url,
+        json=json_body,
+        params=dict(params or {}),
+        headers=headers,
+        timeout=120.0,
+    )
+    if resp.status_code >= 400:
+        raise RuntimeError(
+            f"{method} {path} failed status={resp.status_code} body={resp.text[:500]}"
+        )
+    if not resp.content:
+        return None
+    try:
+        return resp.json()
+    except ValueError:
+        return None
+
+
+def _write_operating_hours(plan: Mapping[str, Any], rest_caller) -> dict[str, Any]:
+    """PATCH `restaurants.operating_hours` from the archetype (ADR 0093 D1).
+
+    Separate from the seed RPC on purpose: `seed_sim_restaurant` is SECURITY
+    DEFINER and defined in the 4.9 MB baseline dump, and editing it would put a
+    hand-written function in front of the schema parity check on the next merge
+    (ADR 0093 D4 rejected the same move for lots, for the same reason).
+    """
+    restaurant_id = plan["restaurant_id"]
+    hours = (plan.get("profile") or {}).get("restaurant", {}).get("operating_hours")
+    if hours is None:
+        # The recipe loader REQUIRES the key, so this is unreachable through
+        # load_recipe. It is refused rather than PATCHed as null, because a sim
+        # tenant with unknown hours would make every scenario placed against it
+        # fall back to a guessed schedule — the thing ADR 0093 exists to remove.
+        raise RuntimeError(
+            f"archetype {plan.get('archetype_id')!r} has no operating_hours; "
+            "refusing to seed a tenant whose hours are unknown"
+        )
+    rows = rest_caller(
+        "PATCH",
+        "/rest/v1/restaurants",
+        json_body={"operating_hours": hours},
+        params={"id": f"eq.{restaurant_id}"},
+    )
+    # `Prefer: return=representation` means a PATCH that matched no row comes
+    # back as []. Reporting that as a successful write is exactly the
+    # absence-reported-as-health shape.
+    if isinstance(rows, list) and len(rows) == 0:
+        raise RuntimeError(
+            f"operating_hours PATCH matched no restaurant {restaurant_id}"
+        )
+    return {"operating_hours_written": True, "operating_hours": hours}
+
+
+def _materialise_opening_stock(plan: Mapping[str, Any], rest_caller) -> dict[str, Any]:
+    """Turn planned `stock_live` into real lots through the one stock door (D4).
+
+    WHY THIS EXISTS. `seed_sim_restaurant` writes `restaurant_inventory.stock_live`
+    directly and creates NO `inventory_lots` rows (`pg_get_functiondef`: zero
+    mentions of the table, checked on production 2026-09-02). But `stock_live` is
+    a PROJECTION maintained by `trg_project_stock_from_lots`, and both depletion
+    RPCs read lots only. A freshly seeded sim tenant therefore showed 12 bottles
+    and raised `no stock to pour` on the first glass —
+    `scripts/check_no_direct_stock_writes.sh` guards exactly this in TypeScript
+    and cannot see inside a SQL function.
+
+    So the seed sends every stocked row through `apply_stock_movement`, the same
+    door a real receipt uses, which writes the lot AND the ledger row and lets the
+    trigger set `stock_live` itself.
+
+    No `p_unit_cost` and no `p_cost_provenance`: the RPC then labels the lot
+    `estimated`, which is the honest label for a quantity nobody has costed.
+    Passing a provenance without a price is refused by the RPC since ADR 0078, and
+    passing `invoice` over a made-up number would be the lie that ADR forbids.
+    """
+    restaurant_id = plan["restaurant_id"]
+    planned = list(plan.get("opening_stock_plan") or [])
+
+    # Which of these keys the ledger ALREADY holds, read BEFORE calling.
+    # `apply_stock_movement` returns the original transaction's id on a replay,
+    # which is indistinguishable from a fresh write at the call site — so the
+    # only honest way to report "already present" is to look first. Counting
+    # every call as a new lot would make a re-seed report work it did not do.
+    existing_rows = rest_caller(
+        "GET",
+        "/rest/v1/inventory_transactions",
+        params={
+            "restaurant_id": f"eq.{restaurant_id}",
+            "select": "idempotency_key",
+        },
+    )
+    if existing_rows is None:
+        raise RuntimeError(
+            "could not read inventory_transactions before materialising opening "
+            "stock; refusing to guess whether the lots already exist"
+        )
+    existing_keys = {
+        str(r.get("idempotency_key"))
+        for r in existing_rows
+        if r.get("idempotency_key")
+    }
+
+    materialised = 0
+    already_present = 0
+
+    for row in planned:
+        replayed = row["idempotency_key"] in existing_keys
+        rest_caller(
+            "POST",
+            "/rest/v1/rpc/apply_stock_movement",
+            json_body={
+                "p_inventory_id": row["inventory_id"],
+                "p_stock_state": "live",
+                "p_delta": int(row["stock_live"]),
+                "p_transaction_type": "initial",
+                "p_source": "system",
+                "p_reason": "sim opening stock (ADR 0093 D4)",
+                "p_idempotency_key": row["idempotency_key"],
+            },
+        )
+        if replayed:
+            already_present += 1
+        else:
+            materialised += 1
+
+    # ── The readback. This is the point of the whole function. ──────────────
+    # A seed that reported success over phantom stock is the fault being fixed;
+    # reporting success over a FAILED materialisation would be the same fault
+    # one layer up. So read what the database actually holds and compare.
+    rows = rest_caller(
+        "GET",
+        "/rest/v1/restaurant_inventory",
+        params={
+            "restaurant_id": f"eq.{restaurant_id}",
+            "select": "id,stock_live",
+        },
+    )
+    if rows is None:
+        raise RuntimeError(
+            "opening-stock readback returned no body; refusing to report a seed "
+            "as successful without seeing the stock it claims to have written"
+        )
+    actual = {str(r["id"]): int(r.get("stock_live") or 0) for r in rows}
+    expected = {
+        str(r["id"]): int(r.get("stock_live") or 0)
+        for r in (plan.get("payload") or {}).get("restaurant_inventory") or []
+    }
+    mismatches = [
+        {"inventory_id": iid, "expected": qty, "actual": actual.get(iid)}
+        for iid, qty in expected.items()
+        if actual.get(iid) != qty
+    ]
+    if mismatches:
+        raise RuntimeError(
+            "opening stock does not match the plan after materialisation "
+            f"({len(mismatches)} of {len(expected)} rows disagree); "
+            f"first: {mismatches[:3]}"
+        )
+
+    return {
+        "lots_materialised": materialised,
+        "lots_already_present": already_present,
+        "stock_verified": len(expected),
+    }
+
+
 def _call_seed_via_database_url(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Secondary apply path when DATABASE_URL is set (same payload builder)."""
     import os
@@ -651,11 +900,22 @@ def apply_seed(
     apply: bool = False,
     overrides: dict[str, Any] | None = None,
     rpc_caller=None,
+    rest_caller=None,
 ) -> dict[str, Any]:
     """Dry-run by default. When ``apply=True``, ensure personas then RPC/TX.
 
     Prefer ``seed_sim_restaurant`` RPC; ``DATABASE_URL`` + ``execute_atomic_seed``
     is secondary. ``rpc_caller`` is injectable for unit tests.
+
+    After the RPC succeeds, two things the RPC itself cannot do (ADR 0093):
+
+    1. PATCH ``restaurants.operating_hours`` from the archetype (D1).
+    2. Materialise the planned ``stock_live`` as real ``inventory_lots`` through
+       ``apply_stock_movement``, then READ IT BACK and refuse to report success
+       if the database disagrees with the plan (D4).
+
+    ``rest_caller`` is the injectable seam for both, so unit tests exercise them
+    with no network.
 
     Cloud ``apply=True`` always requires write-set ↔ teardown coverage (D-11).
     """
@@ -688,17 +948,33 @@ def apply_seed(
 
     if rpc_caller is not None:
         result = rpc_caller(payload)
-        plan["rpc_result"] = result
-        return plan
-
-    try:
-        result = _call_seed_rpc_http(payload)
-    except Exception:
-        if os.environ.get("DATABASE_URL"):
-            result = _call_seed_via_database_url(payload)
-        else:
-            raise
+    else:
+        try:
+            result = _call_seed_rpc_http(payload)
+        except Exception:
+            if os.environ.get("DATABASE_URL"):
+                result = _call_seed_via_database_url(payload)
+            else:
+                raise
     plan["rpc_result"] = result
+
+    # ADR 0093. Both steps run only AFTER the seed RPC succeeded, and both
+    # raise on failure: a seed that reported success over a tenant with no
+    # hours, or with phantom stock, is the exact fault this is fixing.
+    #
+    # An injected `rpc_caller` means a test harness. Reaching for the real
+    # network for the REST half would make a unit test silently talk to the only
+    # Supabase project there is — production. Refuse loudly instead.
+    if rpc_caller is not None and rest_caller is None:
+        raise RuntimeError(
+            "apply_seed: rpc_caller was injected but rest_caller was not. The "
+            "apply path also PATCHes operating_hours and materialises opening "
+            "stock over REST (ADR 0093); inject a rest_caller so the test does "
+            "not reach the network."
+        )
+    caller = rest_caller if rest_caller is not None else _service_rest_caller
+    plan.update(_write_operating_hours(plan, caller))
+    plan.update(_materialise_opening_stock(plan, caller))
     return plan
 
 
@@ -708,5 +984,6 @@ __all__ = [
     "build_seed_plan",
     "compute_opening_stock",
     "execute_atomic_seed",
+    "opening_stock_idempotency_key",
     "sim_wine_id",
 ]

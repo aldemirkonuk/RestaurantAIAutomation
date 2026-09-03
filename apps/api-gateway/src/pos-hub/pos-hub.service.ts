@@ -146,7 +146,10 @@ export interface ResolvedWebhookSecret {
 
 /** Env-var-safe token: `generic_webhook` -> `GENERIC_WEBHOOK`. */
 function envToken(raw: string): string {
-  return raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  return raw
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "_");
 }
 
 /**
@@ -270,10 +273,7 @@ export class PosHubService {
   // =========================================================================
 
   /** Log a key-resolution outcome once per (source, provider, restaurant). */
-  private logSecretResolutionOnce(
-    key: string,
-    emit: () => void,
-  ): void {
+  private logSecretResolutionOnce(key: string, emit: () => void): void {
     if (this.loggedSecretResolutions.has(key)) return;
     // Overflow clears rather than stops deduping: memory stays bounded and the
     // route keeps reporting, at the cost of repeating a line after 500 pairs.
@@ -814,6 +814,24 @@ export class PosHubService {
           // has no reversal mode. Voiding 5 glasses returns 5 bottles. Left as
           // it is because B19 is a recorded decision; superseding it is the
           // founder's call, not this change's.
+          //
+          // ADR 0093 D5 — THE VOID'S KEY IS NOT THE SALE'S KEY.
+          //
+          // `apply_stock_movement` (production definition, read 2026-09-02)
+          // opens with `SELECT id ... WHERE idempotency_key = p_idempotency_key
+          // ... IF FOUND RETURN`. Passing `idem` here — the key the SALE
+          // already wrote — therefore returned the sale's transaction id and
+          // MOVED NOTHING: a voided check stayed depleted forever, and the
+          // caller could not tell, because an idempotent hit and a real
+          // movement are the same `{ error: null }`.
+          //
+          // `${idem}:void` is derived from the sale's key rather than random,
+          // so a REPLAYED void is still idempotent — the property the sale
+          // already had, extended to the reversal.
+          //
+          // pos-hub.void-idempotency.spec.ts pins this against a mock that
+          // actually implements the early return; the older B19 tests could
+          // not see it because their mock ignores the key.
           ({ error: rpcError } = await db.rpc("apply_stock_movement", {
             p_inventory_id: it.inventory_id,
             p_stock_state: "live",
@@ -821,7 +839,7 @@ export class PosHubService {
             p_transaction_type: isVoid ? "return" : "sale",
             p_source: "pos",
             p_reason: `POS ${isVoid ? "void" : "sale"} (${label}): ${it.name}`,
-            p_idempotency_key: idem,
+            p_idempotency_key: isVoid ? `${idem}:void` : idem,
           }));
         }
 

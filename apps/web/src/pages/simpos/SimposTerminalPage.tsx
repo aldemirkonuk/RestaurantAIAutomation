@@ -19,6 +19,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  FlaskConical,
   ScrollText,
   X,
 } from 'lucide-react'
@@ -205,6 +206,13 @@ export function SimposTerminalPage() {
           >
             <ScrollText className="w-3 h-3" />
             Check logs in full page
+          </Link>
+          <Link
+            to={`/simpos/${restaurantId}/scenarios`}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-md text-xs font-bold border border-gray-700 text-gray-400 hover:bg-gray-800"
+          >
+            <FlaskConical className="w-3 h-3" />
+            Scenarios
           </Link>
         </div>
       </header>

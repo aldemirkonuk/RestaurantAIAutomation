@@ -15,6 +15,23 @@ import type { LowStockDigestWine } from "../communications/email-templates";
 
 type AlertLevel = "ok" | "low" | "critical";
 
+/**
+ * What a low-stock email attempt actually did, written to
+ * `notifications.delivery_status.email` (ADR 0093 D5).
+ *
+ * `recipients` is a COUNT and never an address (ADR 0040). `ok: false` with an
+ * `error` is a measured failure; the ABSENCE of this object on a row means the
+ * attempt was never recorded, which a reader must render as unknown rather
+ * than as "not sent" (ADR 0020).
+ */
+export interface EmailDeliveryOutcome {
+  attempted_at: string;
+  ok: boolean;
+  error: string | null;
+  recipients: number;
+  mode: "instant" | "digest";
+}
+
 interface LowStockRow {
   inventoryId: string;
   wineId: string;
@@ -302,33 +319,42 @@ export class LowStockAlertsService {
         : `${criticalCount > 0 ? "🚨" : "⚠️"} ${wines.length} wines dropped below par`;
 
     // 1) In-app inbox — the reliable channel (works even with no email set up).
-    await this.notifications.persistForRestaurant(restaurantId, {
-      type: "inventory_low_stock",
-      title,
-      message:
-        wines.length === 1
-          ? `Only ${wines[0].currentStock} bottles remaining (par: ${wines[0].threshold})`
-          : `Just crossed below par: ${list}`,
-      priority,
-      actionUrl: "/inventory?filter=low-stock",
-      actionLabel: "View Inventory",
-      groupKey: `low_stock_instant:${Date.now()}`,
-      metadata: {
-        mode: "instant",
-        count: wines.length,
-        criticalCount,
-        wines: wines.map((w) => ({
-          wineId: w.wineId,
-          wineName: w.wineName,
-          currentStock: w.currentStock,
-          threshold: w.threshold,
-          severity: w.severity,
-        })),
+    const persisted = await this.notifications.persistForRestaurant(
+      restaurantId,
+      {
+        type: "inventory_low_stock",
+        title,
+        message:
+          wines.length === 1
+            ? `Only ${wines[0].currentStock} bottles remaining (par: ${wines[0].threshold})`
+            : `Just crossed below par: ${list}`,
+        priority,
+        actionUrl: "/inventory?filter=low-stock",
+        actionLabel: "View Inventory",
+        groupKey: `low_stock_instant:${Date.now()}`,
+        metadata: {
+          mode: "instant",
+          count: wines.length,
+          criticalCount,
+          wines: wines.map((w) => ({
+            wineId: w.wineId,
+            wineName: w.wineName,
+            currentStock: w.currentStock,
+            threshold: w.threshold,
+            severity: w.severity,
+          })),
+        },
       },
-    });
+    );
 
     // 2) Email — one grouped digest email for the burst.
-    await this.emailDigest(restaurantId, wines, "instant", restaurantName);
+    const outcome = await this.emailDigest(
+      restaurantId,
+      wines,
+      "instant",
+      restaurantName,
+    );
+    await this.recordEmailOutcome(persisted?.ids, outcome);
   }
 
   /**
@@ -344,7 +370,7 @@ export class LowStockAlertsService {
     const criticalCount = rows.filter((w) => w.severity === "critical").length;
     const dateStr = new Date().toISOString().slice(0, 10);
 
-    await this.notifications.persistForRestaurant(
+    const persisted = await this.notifications.persistForRestaurant(
       restaurantId,
       {
         type: "inventory_low_stock",
@@ -370,7 +396,13 @@ export class LowStockAlertsService {
       { dedupeWithinMinutes: this.DIGEST_DEDUPE_MINUTES },
     );
 
-    await this.emailDigest(restaurantId, rows, "digest", restaurantName);
+    const outcome = await this.emailDigest(
+      restaurantId,
+      rows,
+      "digest",
+      restaurantName,
+    );
+    await this.recordEmailOutcome(persisted?.ids, outcome);
 
     // Stamp the digest time on the ledger.
     const nowIso = new Date().toISOString();
@@ -384,20 +416,46 @@ export class LowStockAlertsService {
     }
   }
 
-  /** Send the batched email via Gmail, resolving low-stock email recipients. */
+  /**
+   * Send the batched email via Gmail, and REPORT what happened.
+   *
+   * This used to return `void` on every path — sent, threw, no Gmail, no
+   * recipients — and the only trace of a failure was a `logger.warn` nobody
+   * can query. An email that never left read exactly like one that did
+   * ([[absence-reported-as-health]]). The outcome now travels back to the
+   * caller, which stamps it on the notification rows (ADR 0093 D5).
+   */
   private async emailDigest(
     restaurantId: string,
     rows: LowStockRow[],
     mode: "instant" | "digest",
     restaurantName?: string,
-  ): Promise<void> {
-    if (!this.gmail) return;
+  ): Promise<EmailDeliveryOutcome> {
+    const attempted_at = new Date().toISOString();
+    if (!this.gmail) {
+      this.logger.log(
+        `Low-stock ${mode} for ${restaurantId}: Gmail is not configured — inbox only`,
+      );
+      return {
+        attempted_at,
+        ok: false,
+        error: "gmail_not_configured",
+        recipients: 0,
+        mode,
+      };
+    }
     const emails = await this.resolveEmails(restaurantId);
     if (emails.length === 0) {
       this.logger.log(
         `Low-stock ${mode} for ${restaurantId}: no email recipients — inbox only`,
       );
-      return;
+      return {
+        attempted_at,
+        ok: false,
+        error: "no_recipients",
+        recipients: 0,
+        mode,
+      };
     }
     const wines: LowStockDigestWine[] = rows.map((w) => ({
       wineName: w.wineName,
@@ -414,8 +472,72 @@ export class LowStockAlertsService {
         restaurantName,
         inventoryUrl: this.inventoryUrl(),
       });
+      return {
+        attempted_at,
+        ok: true,
+        error: null,
+        // COUNT ONLY. ADR 0040: an address never lands in a row a page
+        // renders, and "who was told" is not a question this column answers.
+        recipients: emails.length,
+        mode,
+      };
     } catch (e: any) {
       this.logger.warn(`Low-stock ${mode} email failed: ${e?.message}`);
+      return {
+        attempted_at,
+        ok: false,
+        error: e?.message ? String(e.message) : "unknown_error",
+        recipients: emails.length,
+        mode,
+      };
+    }
+  }
+
+  /**
+   * Stamp the send outcome onto `notifications.delivery_status.email`.
+   *
+   * Read-modify-write on purpose: `delivery_status` is a shared jsonb bag and
+   * other channels (push, SMS) may own their own keys in it. A blind
+   * `update({ delivery_status: { email } })` would DELETE theirs, which is a
+   * quieter version of the same fault this whole change is about.
+   *
+   * Best-effort and never thrown: the alert itself already landed, and losing
+   * the audit stamp must not lose the alert. A failure is logged with the ids
+   * it could not stamp, so the gap is enumerable rather than invisible.
+   */
+  private async recordEmailOutcome(
+    notificationIds: string[] | undefined,
+    outcome: EmailDeliveryOutcome,
+  ): Promise<void> {
+    if (!notificationIds?.length) return;
+    try {
+      const { data, error } = await this.db.supabase
+        .from("notifications")
+        .select("id, delivery_status")
+        .in("id", notificationIds);
+      if (error) {
+        this.logger.warn(
+          `delivery_status read failed for ${notificationIds.length} notification(s): ${error.message} — the email outcome (${outcome.ok ? "sent" : outcome.error}) is not recorded on them`,
+        );
+        return;
+      }
+      for (const row of data ?? []) {
+        const existing =
+          row.delivery_status && typeof row.delivery_status === "object"
+            ? row.delivery_status
+            : {};
+        const { error: updateError } = await this.db.supabase
+          .from("notifications")
+          .update({ delivery_status: { ...existing, email: outcome } })
+          .eq("id", row.id);
+        if (updateError) {
+          this.logger.warn(
+            `delivery_status write failed for notification ${row.id}: ${updateError.message}`,
+          );
+        }
+      }
+    } catch (e: any) {
+      this.logger.warn(`delivery_status stamp failed: ${e?.message}`);
     }
   }
 
