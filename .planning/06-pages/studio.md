@@ -9,7 +9,7 @@ tier: core
 archetype: command # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 1
-maturity: broken
+maturity: partial
 status: documented
 updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[studio-queue]]", "[[studio-certify]]", "[[wines]]"]
@@ -125,39 +125,48 @@ on all three studio pages.
 
 ---
 
-## 10. Maturity — **broken**
+## 10. Maturity — **partial** (was **broken**; rewritten 2026-08-26)
 
-**Ingestion reaches a real backend; nothing you do to the result does.** The routing
-gap in §9 was fixed for exactly one component and left in place for the other four.
+**Every call on this page now reaches a real backend. What is left is one hollow branch
+and one honest-but-empty strip.**
 
-- **Fixed:** `CommandBar` now bases its calls on the orchestrator, not the gateway —
-  `const base = import.meta.env?.VITE_AGENT_ORCHESTRATOR_URL || ''` (`CommandBar.tsx:42`,
-  used by the shared `studioFetch` at `:36-49`). So `POST /api/v1/studio/sessions`
-  (`:66,117,126`) and `POST /api/v1/onboarding/extract` (`:76`) land on FastAPI **when
-  that env var is set**; unset, `base` is `''` and both fall back to the same broken
-  relative path.
-- **Not fixed:** every other studio call is still a bare relative fetch —
-  promote `WineRecordsTable.tsx:41`, override `FieldCell.tsx:89`, metrics
-  `MetricsDashboard.tsx:25`. Relative `/api/v1/...` goes to the NestJS gateway in both
-  environments (`apps/web/vite.config.ts:24-27` → `localhost:4000`;
-  `vercel.json:7-10` → the Railway gateway). The gateway mounts everything under
-  `api/v1` (`apps/api-gateway/src/main.ts:77`) and has **no studio controller** — grep
-  `@Controller("studio"` across `apps/api-gateway/src`: zero hits. Those three 404.
-- Net effect: **you can extract a wine list and you cannot promote it or correct a
-  field.** The two actions the page exists for are the two that fail.
-- The URL branch is **hollow on top of that**: it toasts "URL crawler started — records
-  will appear as they are extracted" (`CommandBar.tsx:122`), but `create_session`
-  only inserts a row into `onboarding_sessions` (`studio_routes.py:66-99`) — it starts
-  no crawl, and nothing on the page ever polls for records. Worse, the crawler has no
-  HTTP entry point at all: `scan_routes.py`'s main router (`/api/v1/scan`,
-  `scan_routes.py:79`) is **never mounted** — `main.py:46` imports only
-  `router_preview` from that module, and `main.py:130-165` lists every router that is.
-- The metrics strip reports **fabricated zeros**: on a failed fetch `data` is undefined
-  and each card renders `?? 0` (`MetricsDashboard.tsx:41,47,53,59`) with no error
-  branch — "Total Overrides 0 / Pending Queue 0" is what a dead endpoint looks like.
-- `MetricsDashboard.tsx:24` still carries the belief that caused all of this:
-  *"Use relative URL — Vite proxy routes /api → FastAPI (port 8000)"*. It does not
-  (`vite.config.ts:24-27`).
+§9 recorded that the routing gap closed; this section still described the pre-fix state,
+so the page contradicted itself. Each claim below was re-checked against `main` rather
+than edited down.
+
+**Fixed since the last verdict — verified, not assumed:**
+
+- **All studio calls route through the gateway.** `studioApi.ts:38` is
+  `STUDIO_API_BASE = ''`, so calls are relative and follow the same `/api` proxy/rewrite
+  as the rest of the app; `StudioProxyController` and `StudioInviteController` serve the
+  prefix (`grep '@Controller("studio")'` → 2 hits, was 0). Promote, override and metrics
+  all go through `studioApi` now, so the three that 404'd resolve.
+- **The founder chose the gateway over the direct-to-orchestrator base URL**
+  ([ADR 0021](../decisions/0021-studio-invites-are-self-service.md)). `CommandBar` no
+  longer reads `VITE_AGENT_ORCHESTRATOR_URL` at all (0 hits), so the "only works when
+  that env var is set" caveat is gone — as is the browser-exposed orchestrator origin.
+- **The comment that caused all of this is gone.** `MetricsDashboard.tsx` no longer
+  claims *"Vite proxy routes /api → FastAPI (port 8000)"*.
+- **The metrics strip no longer fabricates zeros.** It destructures `isError` and renders
+  `'—'` rather than `0` on failure (`:39-40`), with an explicit error branch at `:70`.
+  The surviving `?? 0` is the success-path default for a genuinely absent field, which is
+  the honest reading — see [ADR 0020](../decisions/0020-no-fabricated-answers.md).
+
+**Still broken, and unchanged by any of the above:**
+
+- **The URL branch is hollow.** It toasts *"URL crawler started — records will appear as
+  they are extracted"*, but `create_session` only inserts a row into
+  `onboarding_sessions`; it starts no crawl, and nothing polls for records. The crawler
+  still has no HTTP entry point: `main.py:46` imports only `router_preview` from
+  `scan_routes`, so that module's main `/api/v1/scan` router is never mounted. Re-verified
+  2026-08-26 — this is the reason the verdict is *partial* and not *complete*.
+- **Manual-seed sessions still degrade silently** to a local `local-<ts>` id when the API
+  fails (§9), leaving records in browser memory only.
+
+**Operational coupling to keep in view:** the gateway signs with `JWT_SECRET` and the
+orchestrator verifies with `SUPABASE_JWT_SECRET`. They match in production (both hash to
+`641ddc1b5254`, re-verified twice after one session reported a mismatch that turned out to
+be a measurement error), and every studio call 401s if they ever diverge.
 
 ## 11. Data flow
 

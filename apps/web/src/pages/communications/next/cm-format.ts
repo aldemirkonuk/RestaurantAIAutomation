@@ -48,8 +48,20 @@ export function fmtCadence(frequency: string, dayOfWeek?: number | null, timeOfD
  */
 export type SendState = 'draft' | 'sending' | 'sent' | 'unconfirmed' | 'closed' | 'other';
 
-export function sendState(status: string): SendState {
-  const s = status.toUpperCase();
+/**
+ * NULL-TOLERANT ON PURPOSE. `procurement_conversations.status` is
+ * `varchar(20) DEFAULT 'DRAFT'` with NO `NOT NULL`, and ADR 0084's ledger
+ * deny-list admits a null-status row deliberately — `.or("status.is.null,…")`,
+ * twice, on the reasoning that "an unrecognised or absent status is the case we
+ * most want on screen" (procurement.service.ts `getConversationHistory`). The
+ * mapper passes it through as `status: row.status`, so `null` reaches this
+ * function and `null.toUpperCase()` took the whole page down with it.
+ *
+ * An absent status is 'other': it is not a lifecycle claim, so it may not be
+ * rendered as one. Never 'draft' (that invites a second send) and never 'sent'.
+ */
+export function sendState(status: string | null | undefined): SendState {
+  const s = String(status ?? '').toUpperCase();
   if (s === 'DRAFT' || s === 'PENDING_APPROVAL' || s === 'APPROVED') return 'draft';
   // A send is in flight and the row is claimed. Not a draft — nobody may act
   // on it — and not yet sent, so it gets its own state rather than falling
@@ -65,6 +77,27 @@ export function sendState(status: string): SendState {
 }
 
 /** Chip wording for the pre-send states — approval is said as approval. */
-export function draftChipText(status: string): string {
-  return status.toUpperCase() === 'APPROVED' ? 'Approved · not sent' : 'AI draft · not sent';
+export function draftChipText(status: string | null | undefined): string {
+  return String(status ?? '').toUpperCase() === 'APPROVED'
+    ? 'Approved · not sent'
+    : 'AI draft · not sent';
+}
+
+/**
+ * The row's own type label. `outbound_email_type` is NULL on every INBOUND row
+ * — the inbound writer (`rabbitmq-bridge.service.ts` `handleInboundEmail`)
+ * never sets it, and it is null on all ten of production's inbound rows — so
+ * once ADR 0084 let those rows onto this page, `emailType.toLowerCase()` threw.
+ *
+ * A vendor's own reply has no outbound type and never will. It gets said as
+ * what it is rather than being given a borrowed one.
+ */
+export function typeLabel(
+  emailType: string | null | undefined,
+  labels: Record<string, string>,
+  direction?: 'INBOUND' | 'OUTBOUND' | null,
+): string {
+  const t = String(emailType ?? '').trim();
+  if (t === '') return direction === 'INBOUND' ? 'Vendor reply' : EM;
+  return labels[t] ?? t.toLowerCase();
 }
