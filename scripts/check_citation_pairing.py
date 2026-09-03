@@ -140,7 +140,14 @@ SKIP_PARTS = {".git", ".obsidian", "node_modules", ".venv", "venv", "__pycache__
 # a defect. Every OTHER file in the repository is checked.
 SELF = "scripts/check_citation_pairing.py"
 
-LOCATOR = re.compile(r"OPEN-DECISIONS\.md:(\d+(?:\s*[,-]\s*\d+)*)")
+# The `\)*` is load-bearing, not tidiness. A markdown link puts the closing paren
+# BETWEEN the filename and the line number --
+#     [`OPEN-DECISIONS.md`](../decisions/OPEN-DECISIONS.md):68
+# -- and the original pattern required `.md:` adjacent, so this form was invisible
+# to the scan AND to `--fix`. Measured 2026-09-02: three such citations existed and
+# all three were wrong, two of them by 60+ lines, on a tree the guard called clean.
+# A locator that silently skips a spelling reports its own blind spot as coverage.
+LOCATOR = re.compile(r"OPEN-DECISIONS\.md\)*:(\d+(?:\s*[,-]\s*\d+)*)")
 OD_ID = re.compile(r"OD-\d+")
 # `| OD-88 | ...`  and  `| **OD-88** | ...`
 REGISTER_ROW = re.compile(r"^\|\s*\**\s*(OD-\d+)")
@@ -450,7 +457,35 @@ def self_test() -> int:
         if got != expected:
             failures.append(f"--fix altered HTML beyond the line number: {got!r}")
 
-    # -- 4. the headline count is the number actually checked ------------------------
+    # -- 4. the markdown-LINK spelling is scanned and repaired like the bare one ------
+    # Added 2026-09-02. `[`OPEN-DECISIONS.md`](path/OPEN-DECISIONS.md):68` puts a `)`
+    # where the pattern expected `:`, so three live citations were never scanned and
+    # never repointed by --fix -- and #258's re-anchor cascade walked straight past
+    # them while reporting PASS. The corpus cannot catch this: a spelling the scan
+    # cannot see contributes nothing to the count it would have to be missing from.
+    with tempfile.TemporaryDirectory() as d:
+        tmp = pathlib.Path(d)
+        ROOT = tmp
+        build(tmp)
+        doc = tmp / "linked.md"
+        doc.write_text(
+            "Open fork: OD-7 ([`OPEN-DECISIONS.md`](decisions/OPEN-DECISIONS.md):999).\n",
+            encoding="utf-8",
+        )
+        repoint(load_register())
+        got = doc.read_text(encoding="utf-8")
+        want = line_of(tmp, "OD-7")
+        expected = (
+            "Open fork: OD-7 "
+            f"([`OPEN-DECISIONS.md`](decisions/OPEN-DECISIONS.md):{want}).\n"
+        )
+        if got != expected:
+            failures.append(
+                "a markdown-link-form citation was not scanned/repointed: "
+                f"{got!r}"
+            )
+
+    # -- 5. the headline count is the number actually checked ------------------------
     # The header printed `total - len(examples)` while `total` already excluded the
     # examples, so it under-reported by one per escape. Nothing crashes when a guard
     # miscounts its own work, which is why it is asserted rather than trusted.
@@ -482,7 +517,7 @@ def self_test() -> int:
             )
 
     ROOT = real_root
-    print("== --fix self-test: 4 invariants")
+    print("== --fix self-test: 5 invariants")
     if failures:
         for f in failures:
             print(f"   FAIL — {f}")
@@ -490,6 +525,7 @@ def self_test() -> int:
     print("   cite-example citations survive --fix, ordinary ones are repointed")
     print("   conflict markers are detected and the tree is left alone")
     print("   HTML is scanned and repointed, and nothing but the digits changes")
+    print("   the markdown-LINK spelling is scanned and repointed, not skipped")
     print("   the headline count equals the citations actually checked")
     print("PASS")
     return 0

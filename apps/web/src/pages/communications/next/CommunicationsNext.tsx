@@ -23,7 +23,18 @@ import { useState } from 'react';
 import { Wordmark } from '@/components/mudavym';
 import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
 import { ink, settle } from '../../../lib/mudavym/motion';
-import { EM, GE, MONO, SANS, SERIF, draftChipText, fmtCadence, fmtWhen, sendState } from './cm-format';
+import {
+  EM,
+  GE,
+  MONO,
+  SANS,
+  SERIF,
+  draftChipText,
+  fmtCadence,
+  fmtWhen,
+  sendState,
+  typeLabel,
+} from './cm-format';
 import { TemplateSheet, type TemplateChannel } from './TemplateSheet';
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 
@@ -105,7 +116,47 @@ function GlanceFigure({
   );
 }
 
-function StateChip({ status }: { status: string }) {
+/**
+ * The lifecycle chip, and the one row it must never be shown on.
+ *
+ * `status` is the OUTBOUND lifecycle. An INBOUND row — a vendor's own reply —
+ * carries the column DEFAULT `'DRAFT'` because the inbound writer never sets
+ * `status` at all, so reading it as a lifecycle prints "AI draft · not sent"
+ * over a message the vendor actually sent us. ADR 0084 put ten such rows on
+ * this page (its own spec asserts they arrive), and this page had no notion of
+ * direction to tell them apart with.
+ *
+ * So direction is checked FIRST and short-circuits: an inbound row is said as
+ * received, and `status` is not consulted for it at all.
+ */
+function StateChip({
+  status,
+  direction,
+}: {
+  status: string | null | undefined;
+  direction?: 'INBOUND' | 'OUTBOUND' | null;
+}) {
+  if (direction === 'INBOUND') {
+    return (
+      <span
+        style={{
+          fontFamily: MONO,
+          fontSize: 8.5,
+          fontWeight: 600,
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          padding: '2px 7px',
+          borderRadius: 4,
+          background: 'var(--seal-tint, rgba(26,94,107,.10))',
+          color: 'var(--seal-deep, #14515C)',
+          border: '1px solid transparent',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        Received
+      </span>
+    );
+  }
   const state = sendState(status);
   const looks =
     state === 'draft'
@@ -125,7 +176,16 @@ function StateChip({ status }: { status: string }) {
               }
             : state === 'closed'
               ? { text: 'Closed', bg: 'transparent', fg: 'var(--ink-3, #7C7365)', dashed: false }
-              : { text: status.toLowerCase(), bg: 'transparent', fg: 'var(--ink-3, #7C7365)', dashed: false };
+              : {
+                  // A null status is not a state to print — the row is on this
+                  // page precisely because ADR 0084 refuses to hide what it
+                  // cannot classify, so the chip says "unrecorded" rather than
+                  // borrowing a lifecycle word it has no basis for.
+                  text: status ? String(status).toLowerCase() : 'no status recorded',
+                  bg: 'transparent',
+                  fg: 'var(--ink-3, #7C7365)',
+                  dashed: false,
+                };
   return (
     <span
       style={{
@@ -170,12 +230,12 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
           {item.providerName ?? EM}
         </span>
         <span style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
-          {TYPE_LABELS[item.emailType] ?? item.emailType.toLowerCase()}
+          {typeLabel(item.emailType, TYPE_LABELS, item.direction)}
           {item.wineName ? ` · ${item.wineName}` : ''}
           {item.quantity !== null ? ` · ${item.quantity}` : ''}
         </span>
         <span className="ml-auto" />
-        <StateChip status={item.status} />
+        <StateChip status={item.status} direction={item.direction} />
       </button>
       {open && (
         <div
@@ -203,7 +263,9 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
               borderRadius: 8,
               background: 'var(--paper-1, #F3EFE6)',
               border:
-                sendState(item.status) === 'draft'
+                // Outbound only, for the same reason StateChip is: an inbound
+                // body is a message we received, never an unsent draft.
+                item.direction !== 'INBOUND' && sendState(item.status) === 'draft'
                   ? '1px dashed var(--ink-3, #7C7365)'
                   : '1px solid var(--paper-2, #EAE4D8)',
             }}
@@ -389,12 +451,15 @@ export default function CommunicationsNext() {
               {/* P5. The previous line said SMS templates "stage for the
                   messaging channel", which implies a channel this page can
                   reach. It cannot: every recorded conversation is
-                  `channel='email'`, and while the gateway does expose
-                  `POST /communications/sms`, NO web client calls it — a
-                  repo-wide grep over apps/web finds zero callers. The workshop
-                  is kept because after this change Save genuinely stores an
-                  SMS template (type='sms' in communication_templates); what is
-                  removed is the claim about a downstream sender. */}
+                  `channel='email'`. As written this comment added "and while
+                  the gateway does expose `POST /communications/sms`, NO web
+                  client calls it" — ADR 0084 DELETED that route four hours
+                  later, for exactly the reason named here (zero callers, plus
+                  no tenant and no ownership check on the destination number).
+                  There is now no raw SMS route at all. The workshop is kept
+                  because Save genuinely stores an SMS template (type='sms' in
+                  communication_templates); what is removed is the claim about
+                  a downstream sender. */}
               <p style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '0 0 10px' }}>
                 SMS: no SMS sender is reachable from this page, and every conversation recorded so
                 far is email. An SMS template saved here is stored and nothing more.

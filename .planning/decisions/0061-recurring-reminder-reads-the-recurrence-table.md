@@ -96,16 +96,25 @@ directly testable.
 
 **What is given up.** The job does nothing at all today. That is deliberate and
 doubly enforced: the flag is off, and even with the flag on, `main`'s
-`recurring_orders` has no `target_price`, `provider_name` or `wine_name` column, so
+`recurring_orders` has no `provider_name` or `wine_name` column, so
 `describeRecurringOrder` refuses **every** row and zero emails go out. The
 flip-precondition is enforced by code rather than by a comment.
+
+> **Correction, 2026-09-02 (merge check).** As written this sentence also named
+> `target_price`, and precondition 1 below said PR #220 was unmerged. #220
+> merged at 23:24 on 2026-09-01 — `e50d912c` is an ancestor of this ADR's own
+> commit `e3acc79a` — so `target_price` already existed when this landed and
+> precondition 1 was already satisfied. The conclusion is unchanged, but it
+> rests on precondition **2** alone: the reminder reads the table flat with
+> `select("*")`, and the current writer populates `inventory_id`/`provider_id`
+> rather than the `wine_id`/`preferred_providers` this job falls back to.
 
 **What must be true before the flag is flipped** — all four, and the founder flips
 it, not an agent:
 
-1. **PR #220 must be merged and its migration applied.** `20260901180000_recurring_orders_shape.sql`
-   adds `inventory_id`, `provider_id` and `target_price`. Until then no row is
-   describable and arming the flag changes nothing except log noise.
+1. ~~**PR #220 must be merged and its migration applied.**~~ **Satisfied
+   2026-09-01.** `20260901180000_recurring_orders_shape.sql` added
+   `inventory_id`, `provider_id` and `target_price`, and is on `main`.
 2. **A wine name and provider name must be reachable.** #220 deliberately does *not*
    add a `wine_name` column (it embeds via `inventory_id`). This job reads the table
    directly with `select("*")`, so after #220 it still needs either that embed added
