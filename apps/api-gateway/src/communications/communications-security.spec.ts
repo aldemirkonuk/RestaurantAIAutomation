@@ -14,6 +14,18 @@ import { CommunicationsController } from "./communications.controller";
 import { NonProductionGuard } from "./guards/non-production.guard";
 import { GmailPushAuthService } from "./gmail-push-auth.service";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
+import { readFileSync } from "fs";
+import { join } from "path";
+
+/**
+ * The service SOURCE, read as text. ADR 0094 deletes GMAIL_PUBSUB_REQUIRE_AUTH;
+ * asserting on behaviour alone cannot tell "the flag is gone" from "the flag is
+ * present but this test did not set it".
+ */
+const SERVICE_CODE = readFileSync(
+  join(__dirname, "gmail-push-auth.service.ts"),
+  "utf8",
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -95,20 +107,30 @@ describe("CommunicationsController test routes (ADR 0019 D2)", () => {
     expect(isPublic(name as any)).toBeUndefined();
   });
 
-  it.each(TEST_ROUTE_HANDLERS)(
-    "%s is gated by NonProductionGuard",
-    (name) => {
-      expect(routeGuards(name as any)).toContain(NonProductionGuard);
-    },
-  );
+  it.each(TEST_ROUTE_HANDLERS)("%s is gated by NonProductionGuard", (name) => {
+    expect(routeGuards(name as any)).toContain(NonProductionGuard);
+  });
 
   it("leaves no @Public() test route on the controller at all", () => {
     const stillPublic = Object.getOwnPropertyNames(
       CommunicationsController.prototype,
     ).filter((n) => n !== "constructor" && isPublic(n as any) === true);
-    // The Gmail push webhook is the only intentional exception: it is
-    // authenticated by a Google-signed OIDC token instead of a JWT (D3).
-    expect(stillPublic).toEqual(["handleGmailWebhook"]);
+    // Both exceptions are authenticated — just not by a user JWT:
+    //   handleGmailWebhook  Google-signed Pub/Sub OIDC token (D3)
+    //   sendEmail           X-Admin-Key service key (ADR 0099) — its caller is
+    //                       the Python orchestrator, which has no session
+    expect(stillPublic.sort()).toEqual(["handleGmailWebhook", "sendEmail"]);
+  });
+
+  it("every @Public() route names the thing that authenticates it instead", () => {
+    // ADR 0099. The list above is an allow-list, and an allow-list that only
+    // counts entries can be widened by adding a name. What must hold is the
+    // property: @Public() may mean "not a JWT", never "not authenticated".
+    // handleGmailWebhook verifies its OIDC token inside the handler (D3), so
+    // it is asserted by the D3 block below rather than by a guard here.
+    expect(routeGuards("sendEmail" as any).map((g: any) => g?.name)).toContain(
+      "ServiceKeyGuard",
+    );
   });
 });
 
@@ -141,57 +163,57 @@ describe("GmailPushAuthService (ADR 0019 D3)", () => {
     GMAIL_PUBSUB_SERVICE_ACCOUNT: SA,
   };
 
-  // ── Staged rollout ────────────────────────────────────────────────────────
-  // Production runs a live Gmail watch while these two vars are unset (they
-  // did not exist before this verification). Rejecting on unset config would
-  // not hold a door shut — it would close one that is open and carrying
-  // traffic. So unconfigured ACCEPTS, loudly and countably, until either the
-  // real values or the explicit REQUIRE flag are set.
+  // ── Fail closed when it cannot verify (ADR 0094) ──────────────────────────
+  // These four tests are INVERTED from what they asserted until 2026-09-02.
+  // They used to pin the staged-rollout behaviour: unset config ACCEPTED the
+  // push and counted it, and refusal needed GMAIL_PUBSUB_REQUIRE_AUTH=true to
+  // be remembered as well. A test that pins the wrong behaviour is worse than
+  // no test — it converts the defect into a regression suite.
+  //
+  // The flag is gone. Missing config refuses on its own, and the counter now
+  // measures the operational cost of the closed door rather than the size of
+  // an open one.
 
-  it("accepts but counts an unverified push when config is unset", async () => {
+  it("REFUSES a push when config is unset — a verifier that cannot verify does not admit", async () => {
     const verifyIdToken = jest.fn();
     const service = makeService({}, verifyIdToken);
     await expect(service.verifyPushRequest("Bearer anything")).resolves.toBe(
-      true,
+      false,
     );
     // Never contacts Google — there is nothing to verify against.
     expect(verifyIdToken).not.toHaveBeenCalled();
-    // The gap must be visible, not silent.
-    expect(service.unverifiedPushes).toBe(1);
+    // The refusal is countable: non-zero means inbound mail is being paused.
+    expect(service.refusedWhileUnconfigured).toBe(1);
   });
 
-  it("fails closed when unset AND GMAIL_PUBSUB_REQUIRE_AUTH=true", async () => {
+  it("needs no second flag to fail closed — GMAIL_PUBSUB_REQUIRE_AUTH is gone", async () => {
+    // Setting the retired flag to "false" must not re-open the door. Before
+    // ADR 0094 the absence of this flag was the whole difference between
+    // refusing and admitting.
     const service = makeService(
-      { GMAIL_PUBSUB_REQUIRE_AUTH: "true" },
+      { GMAIL_PUBSUB_REQUIRE_AUTH: "false" },
       jest.fn(),
     );
     await expect(service.verifyPushRequest("Bearer anything")).resolves.toBe(
       false,
     );
-    expect(service.unverifiedPushes).toBe(0);
+    expect(SERVICE_CODE).not.toContain("GMAIL_PUBSUB_REQUIRE_AUTH?.toLowerCase");
   });
 
   it("treats a half-configured pair as unconfigured, not as trusted", async () => {
-    // Audience alone proves nothing about WHO sent the token.
+    // Audience alone proves nothing about WHO sent the token; a service
+    // account alone proves nothing about who it was issued FOR.
     const audienceOnly = makeService({ GMAIL_PUBSUB_AUDIENCE: AUD }, jest.fn());
     await expect(
       audienceOnly.verifyPushRequest("Bearer anything"),
-    ).resolves.toBe(true);
-    expect(audienceOnly.unverifiedPushes).toBe(1);
+    ).resolves.toBe(false);
+    expect(audienceOnly.refusedWhileUnconfigured).toBe(1);
 
     const saOnly = makeService({ GMAIL_PUBSUB_SERVICE_ACCOUNT: SA }, jest.fn());
     await expect(saOnly.verifyPushRequest("Bearer anything")).resolves.toBe(
-      true,
-    );
-
-    // ...and REQUIRE still closes it.
-    const required = makeService(
-      { GMAIL_PUBSUB_AUDIENCE: AUD, GMAIL_PUBSUB_REQUIRE_AUTH: "true" },
-      jest.fn(),
-    );
-    await expect(required.verifyPushRequest("Bearer anything")).resolves.toBe(
       false,
     );
+    expect(saOnly.refusedWhileUnconfigured).toBe(1);
   });
 
   it("treats blank/whitespace config as unset", async () => {
@@ -199,14 +221,26 @@ describe("GmailPushAuthService (ADR 0019 D3)", () => {
       {
         GMAIL_PUBSUB_AUDIENCE: "   ",
         GMAIL_PUBSUB_SERVICE_ACCOUNT: SA,
-        GMAIL_PUBSUB_REQUIRE_AUTH: "true",
       },
       jest.fn(),
     );
     await expect(service.verifyPushRequest("Bearer anything")).resolves.toBe(
       false,
     );
+    expect(service.refusedWhileUnconfigured).toBe(1);
   });
+
+  it("counts nothing as refused-unconfigured once both vars are set", async () => {
+    // The counter must measure the missing-config door only. A push refused
+    // for a bad token is a different fact and must not inflate the number the
+    // founder reads as "inbound email is paused".
+    const service = makeService(validConfig, jest.fn().mockRejectedValue(new Error("bad")));
+    await expect(service.verifyPushRequest("Bearer forged")).resolves.toBe(
+      false,
+    );
+    expect(service.refusedWhileUnconfigured).toBe(0);
+  });
+
 
   it("rejects a missing Authorization header", async () => {
     const service = makeService(validConfig, jest.fn());
@@ -232,9 +266,7 @@ describe("GmailPushAuthService (ADR 0019 D3)", () => {
   it("passes the configured audience to verifyIdToken", async () => {
     const verifyIdToken = jest
       .fn()
-      .mockResolvedValue(
-        ticketWith({ email: SA, email_verified: true }),
-      );
+      .mockResolvedValue(ticketWith({ email: SA, email_verified: true }));
     const service = makeService(validConfig, verifyIdToken);
     await service.verifyPushRequest("Bearer good-token");
     expect(verifyIdToken).toHaveBeenCalledWith({

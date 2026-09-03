@@ -146,7 +146,12 @@ export async function exportTable<T>({
     }
 
     case 'markdown': {
-      const cell = (v: string) => v.replace(/\|/g, '\\|').replace(/\n/g, ' ')
+      // Backslash first: escaping `|` before `\` turns a cell containing `\|`
+      // into `\\|`, which markdown reads as an escaped backslash followed by a
+      // live column separator — the value breaks out of its own cell and
+      // shifts every column after it.
+      const cell = (v: string) =>
+        v.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\n/g, ' ')
       const lines = [
         `# ${title}`,
         '',

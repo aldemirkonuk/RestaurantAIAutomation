@@ -30,7 +30,7 @@ and the write-off was not the 1,053 lines that existed at founding — it was th
 added after the fork was already known to be open.
 
 **Earliest observable signal.** The first commit adding a *new capability* to `core/`
-— not a bug fix, not instrumentation — while `OPEN-DECISIONS.md:27` still reads OD-03
+— not a bug fix, not instrumentation — while `OPEN-DECISIONS.md:28` still reads OD-03
 as open. That commit is the signal, not the line count three months later.
 Instrumented as `harness.core_lines_added_since_od03_opened`.
 

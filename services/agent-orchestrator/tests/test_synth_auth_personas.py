@@ -144,3 +144,53 @@ def test_ensure_personas_treats_422_as_ok_and_looks_up_user():
     assert result["owner"]["user_id"] == "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
     assert result["manager"]["user_id"] == "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
     assert result["staff"]["user_id"] == "cccccccc-cccc-cccc-cccc-cccccccccccc"
+
+
+def test_public_user_mirror_carries_a_bcrypt_sign_in_method(monkeypatch):
+    """The gateway's /auth/login bcrypt-compares users.password_hash (ADR 0093 live day).
+
+    A mirror with no hash answers NO_SIGNIN_METHOD, so the persona that exists
+    in Auth still cannot sign in to the product it was seeded to exercise.
+    """
+    import bcrypt
+
+    from scripts.synth import auth_personas as ap
+
+    captured: dict = {}
+
+    class _Resp:
+        status_code = 201
+        text = ""
+
+    class _Client:
+        def post(self, url, json=None, headers=None, timeout=None):
+            captured["url"] = url
+            captured["json"] = json
+            return _Resp()
+
+    ap._upsert_public_user(
+        _Client(),
+        supabase_url="https://x.supabase.co",
+        headers={},
+        user_id="00000000-0000-0000-0000-000000000001",
+        email="sim-owner@wineops.internal",
+        role="owner",
+        password="correct horse battery staple",
+    )
+    body = captured["json"]
+    assert body["email_verified"] is True
+    assert body["password_hash"].startswith("$2b$10$")
+    assert bcrypt.checkpw(
+        b"correct horse battery staple", body["password_hash"].encode()
+    )
+    assert not bcrypt.checkpw(b"wrong", body["password_hash"].encode())
+    # without a password, no hash is written (never a blank or a placeholder)
+    ap._upsert_public_user(
+        _Client(),
+        supabase_url="https://x.supabase.co",
+        headers={},
+        user_id="00000000-0000-0000-0000-000000000002",
+        email="sim-staff@wineops.internal",
+        role="staff",
+    )
+    assert "password_hash" not in captured["json"]

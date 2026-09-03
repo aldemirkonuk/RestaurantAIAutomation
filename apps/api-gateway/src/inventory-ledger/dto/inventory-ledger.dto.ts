@@ -8,9 +8,14 @@ import {
   IsUUID,
   IsDateString,
   IsObject,
+  IsArray,
+  ArrayMaxSize,
+  ArrayMinSize,
+  ValidateNested,
   Min,
   Max,
 } from "class-validator";
+import { Type } from "class-transformer";
 
 // ============================================================================
 // ENUMS
@@ -343,8 +348,31 @@ export class TransactionSummaryResponseDto {
 // BULK OPERATIONS
 // ============================================================================
 
+/**
+ * Upper bound on one bulk call. The handler loops
+ * `for (i = 0; i < dto.transactions.length; i++)` and awaits a database write
+ * per element, so without a cap the array length is a caller-chosen amount of
+ * server work — one request can hold a worker for as long as it likes.
+ *
+ * 500 is comfortably above a real physical count (the largest cellar counts in
+ * the corpus are low hundreds of lines) and far below a useful denial of
+ * service.
+ */
+export const BULK_TRANSACTION_MAX = 500;
+
 export class BulkTransactionDto {
-  @ApiProperty({ type: [CreateInventoryTransactionDto] })
+  @ApiProperty({
+    type: [CreateInventoryTransactionDto],
+    maxItems: BULK_TRANSACTION_MAX,
+  })
+  // These four decorators were absent entirely: the nested transaction objects
+  // were never validated (ValidationPipe cannot see into an array without
+  // @ValidateNested + @Type) and the array was unbounded.
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(BULK_TRANSACTION_MAX)
+  @ValidateNested({ each: true })
+  @Type(() => CreateInventoryTransactionDto)
   transactions: CreateInventoryTransactionDto[];
 
   @ApiPropertyOptional({ description: "Correlation ID for all transactions" })
