@@ -31,6 +31,7 @@ import {
 import { Header } from '../components/layout/Header'
 import { useCalendarEventsSubscription, useReportSubscription, ReportEventPayload } from '../contexts/RealtimeContext'
 import { useGeneratedReports, useDeleteReport, type GeneratedReport } from '../hooks/queries/useReportQueries'
+import { REPORTS_PAGE_LIMIT } from '../services/api/reports'
 import { ClassifiedConversationList } from '../components/communications/ClassifiedConversationList'
 
 type ReportType = 'daily' | 'weekly' | 'monthly' | 'financial' | 'inventory' | 'sales'
@@ -541,6 +542,23 @@ export function DocumentsPage() {
               produces a PDF, spreadsheet or download. The entries below are the
               requests on record; View, Download and Print stay disabled until
               there is a real file behind them.
+            </p>
+          </div>
+        )}
+
+        {/*
+          ADR 0086 bounded `GET /reports`, which until then returned the whole
+          table. This half of the route was not measured in that pass, so a full
+          page silently became "every report there is". A list that comes back at
+          the cap is a FLOOR: say so rather than let the count read as a total.
+        */}
+        {apiReports.length >= REPORTS_PAGE_LIMIT && (
+          <div className="mb-6 flex items-start gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+            <Info className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-gray-600 leading-relaxed">
+              Showing the newest {REPORTS_PAGE_LIMIT} reports — the server returns
+              at most that many per request, so this list is a floor and older
+              reports exist beyond it. There is no paging control here yet.
             </p>
           </div>
         )}
