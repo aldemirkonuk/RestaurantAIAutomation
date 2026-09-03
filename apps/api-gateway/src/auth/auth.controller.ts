@@ -38,7 +38,7 @@ import { PasswordResetThrottleGuard } from "./guards/password-reset-throttle.gua
 import { SignInMethodsDto } from "./dto/sign-in-methods.dto";
 import { RateLimit } from "../common/rate-limit";
 import { Request } from "express";
-import { devBypassAllowed } from "./dev-bypass.util";
+import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
 
 @Controller("auth")
 export class AuthController {
@@ -188,9 +188,24 @@ export class AuthController {
     const user = await this.authService.getProfileForUser(req.user.userId);
     // Prefer JWT-scoped restaurant over users.restaurant_id (branch switch)
     const restaurantId = req.user.restaurantId ?? user.restaurantId ?? null;
+    // A dev-bypass session reports ITSELF as verified. The bypass account's
+    // `users.email_verified` is false and stays false; ProtectedRoute
+    // (apps/web/src/components/ProtectedRoute.tsx:42) reads this field and
+    // this field only, so without the override every route on localhost
+    // redirects to /verify-email and no page can be opened at all.
+    //
+    // Three conditions, all re-checked HERE rather than trusted from the
+    // token: the session must carry the marker AND this server must not be
+    // production AND DEV_AUTH_BYPASS must be on. Any one of them false and
+    // the database column stands, so the same token replayed against
+    // production reports exactly what the row says.
+    const emailVerified =
+      req.user.devBypass === true && devBypassEnvEnabled()
+        ? true
+        : user.emailVerified;
     return {
       success: true,
-      user: { ...user, restaurantId },
+      user: { ...user, restaurantId, emailVerified },
     };
   }
 
