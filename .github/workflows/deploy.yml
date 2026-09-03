@@ -155,6 +155,8 @@ jobs:
     name: "Stage 2 — API Gateway"
     runs-on: ubuntu-latest
     needs: [verify-orchestrator]
+    outputs:
+      verdict: ${{ steps.provenance.outputs.verdict }}
     if: >-
       github.event_name == 'workflow_run'
       || (github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit')
@@ -163,9 +165,16 @@ jobs:
       # or four sessions merge into this repo concurrently, so `main` at audit
       # time is routinely a different commit from the one being audited, and the
       # check script must be the version that shipped with it.
+      #
+      # `fetch-depth: 0` because the provenance step below asks a HISTORY
+      # question — "is the running build the newest commit that touched this
+      # service's watched paths, and is it on main?" — which a depth-1 tree
+      # cannot answer. The script refuses to guess on a shallow clone (exit 2)
+      # rather than reporting a verdict it could not reach. See ADR 0101.
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
 
       # A MISSING SECRET IS A BROKEN AUDIT, NOT A PASSING ONE.
       #
@@ -233,21 +242,50 @@ jobs:
       # a FAILED deploy was indistinguishable from a good one. Every "deployed
       # and healthy" claim in this repository rested on that gap.
       #
-      # This compares the revision the running process was BUILT from against the
-      # sha that was merged. It polls, because Railway builds and swaps the
-      # instance on its own schedule and "not yet" and "never" look identical at
-      # any single instant; only a deadline separates them.
+      # THE QUESTION IS "the build this merge IMPLIES", NOT "the merged sha".
       #
-      # It fails on `commit: "unknown"` as well as on a mismatch. That is
-      # deliberate — an audit that accepts "unknown" certifies its own blindness.
-      # See the script's ADVICE block for exactly which variable to set.
-      - name: The deployed build IS the merged build
+      # Until ADR 0101 this asserted `running == merged`, and that assertion was
+      # red by construction on ordinary merges. Railway rebuilds a service only
+      # when a push touches its `watchPatterns` in `.railway/railway.ts`, so a
+      # merge that changes only `.planning/**` correctly does NOT rebuild the
+      # gateway — and the running build stays at the newest commit that did.
+      # Measured 2026-09-03: of the twelve merges since the comparison landed,
+      # ALL THREE that touched no watched path failed here and all nine that did
+      # passed. The failing message named the correct build while calling it a
+      # mismatch.
+      #
+      # `--service` makes the step read this repo's own Railway config and
+      # accept the window FLOOR <= running <= tip(main), where FLOOR is the
+      # newest commit in the merged sha's first-parent history that touched a
+      # watched path. That covers both false shapes — the merge that changed
+      # nothing this service watches, and the later merge that superseded it
+      # mid-poll — WITHOUT covering the one this step exists for: a build older
+      # than FLOOR still fails, because that is a deploy that did not land.
+      #
+      # It fails on `commit: "unknown"` as well, and on a shallow checkout, and
+      # when the railway config can no longer be parsed. An audit that accepts
+      # any of those certifies its own blindness.
+      - name: The deployed build is the build this merge implies
+        id: provenance
         run: |
+          set -o pipefail
+          rc=0
           python3 scripts/check_deployed_sha.py \
             --url "$API_GATEWAY_URL" \
             --expect "${{ github.event.workflow_run.head_sha || github.sha }}" \
+            --service '@wineops/api-gateway' \
+            --railway-config .railway/railway.ts \
+            --main-ref origin/main \
             --timeout-seconds 600 \
-            --poll-seconds 10
+            --poll-seconds 10 | tee /tmp/provenance.txt || rc=$?
+          # The verdict, not just the exit code — recorded on FAILURE too, so the
+          # audit artifact says whether the gateway was serving the wrong build,
+          # could not name itself, or could not be placed at all. "The merged
+          # build is serving" and "the merge touched nothing this service builds
+          # from" are both passes and the record must not blur them either.
+          VERDICT="$(sed -n 's/^VERDICT=//p' /tmp/provenance.txt | tail -1)"
+          echo "verdict=${VERDICT:-UNRECORDED}" >> "$GITHUB_OUTPUT"
+          exit $rc
 
       # Readiness is a DIFFERENT question from liveness: liveness is
       # dependency-free by design, so it answers 200 while the Supabase client
@@ -326,9 +364,12 @@ jobs:
           || (github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit'))
     steps:
       # `provenance_verified` is the field that matters. Stage results alone say
-      # only that nothing complained; this says the running gateway named the
-      # merged revision as its own build. The record now distinguishes "we
-      # checked and it is the right build" from "nothing failed".
+      # only that nothing complained; this says the running gateway named a
+      # build that this merge actually implies. The record distinguishes "we
+      # checked and it is the right build" from "nothing failed" — and
+      # `provenance_verdict` says WHICH kind of right, because "the merged sha
+      # is serving" and "this merge changed nothing this service builds from"
+      # are different facts and flattening them is how ADR 0101 happened.
       - name: Write audit summary
         run: |
           SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
@@ -339,7 +380,8 @@ jobs:
             "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "commit": "${SHA}",
             "provenance_verified": ${PROV},
-            "provenance_means": "the gateway's /api/v1/health/live reported this exact commit as its own build, and /api/v1/health/ready answered 200",
+            "provenance_verdict": "${{ needs.verify-api-gateway.outputs.verdict }}",
+            "provenance_means": "the gateway's /api/v1/health/live named a build inside the window this merge implies -- MATCH (the merged sha itself), UNCHANGED (the merge touched no path this service watches, so the newest commit that did is correct), or SUPERSEDED (a later merge landed mid-poll) -- and /api/v1/health/ready answered 200. See ADR 0101.",
             "orchestrator": "${{ needs.verify-orchestrator.result }}",
             "api_gateway": "${GW}",
             "frontend": "${{ needs.verify-frontend.result }}",

@@ -486,6 +486,13 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          # Some claims are re-run history questions — ADR 0101 replays the three
+          # deploy audits that failed on 2026-09-03 against the real commits that
+          # produced them. A depth-1 tree cannot answer those, and the scripts
+          # behind them exit 2 ("cannot check") rather than passing, so a shallow
+          # checkout would turn this job red for the wrong reason.
+          fetch-depth: 0
 
       - name: Re-verify every executable claim
         run: ./scripts/check_decision_claims.sh

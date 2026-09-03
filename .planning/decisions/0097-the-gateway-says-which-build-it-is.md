@@ -4,6 +4,7 @@
 - **Date:** 2026-09-02
 - **Decider:** Aldemir (founder) — commissioned as "is production running what we merged?" being unanswerable
 - **Keywords:** deploy, provenance, liveness, readiness, Railway, workflow_run, skipped-is-not-passed, absence-reported-as-health, NestJS DI, api-gateway
+- **Superseded in part:** [[0101-the-audit-asks-for-the-build-the-merge-implies]] (2026-09-03) replaces §3's `running == merged` assertion. It was red by construction on merges that touch none of the gateway's Railway `watchPatterns` — three of three such merges failed, none of them a real deploy failure. The provenance endpoint and everything in §1 and §2 stand unchanged; only the comparison was wrong.
 - **Links:** [[0092-parity-compares-against-what-was-merged]] (the same "a green check verified nothing" family, one system over), [[0086-a-count-confesses-what-it-could-not-count]], [[0085-a-fixture-tests-the-guard-not-the-checkout]], [[absence-reported-as-health]] (the memory this is an instance of), [[production-deploy-verification]]
 
 ## Context
@@ -116,7 +117,11 @@ the provenance can, which is why §3 exists and why readiness carries `commit` t
 
 - **`scripts/check_deployed_sha.py`** polls liveness until the reported `commit`
   **is** the merged sha, and reports `MATCH` (0) / `MISMATCH` (1) / `UNKNOWN` (1)
-  / `MALFORMED` (2) / `UNREACHABLE` (2). It polls because Railway swaps the
+  / `MALFORMED` (2) / `UNREACHABLE` (2). **Superseded by ADR 0101:** "is the
+  merged sha" is the wrong question for a service Railway rebuilds only on
+  `watchPatterns`, and it produced three false failures in the twelve merges
+  after this shipped. The script now asks for the build the merge *implies*; the
+  polling, the `"unknown"` refusal and the exit-code contract are unchanged. It polls because Railway swaps the
   instance on its own schedule and "not yet" and "never" are identical at any
   instant; only a deadline separates them. It fails on `"unknown"` as loudly as
   on a mismatch. `--self-test` stands up a real HTTP server on localhost and

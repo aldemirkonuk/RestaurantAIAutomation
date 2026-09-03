@@ -48,7 +48,9 @@ COPY --from=builder /app/apps/api-gateway/dist ./apps/api-gateway/dist
 # Railway passes a service's variables to the Docker build as build args, so
 # setting `GIT_COMMIT_SHA=${{RAILWAY_GIT_COMMIT_SHA}}` on the api-gateway service
 # bakes the deployed revision in here. `/api/v1/health/live` reads it, and
-# `scripts/check_deployed_sha.py` compares it against the merged sha.
+# `scripts/check_deployed_sha.py` compares it against the build the merge
+# implies — not against the merged sha itself, because Railway rebuilds this
+# service only when a push touches its watchPatterns (ADR 0101).
 #
 # If no build arg is supplied this bakes an EMPTY string, never a plausible
 # default — `build-provenance.ts` treats blank as absent and reports the literal
