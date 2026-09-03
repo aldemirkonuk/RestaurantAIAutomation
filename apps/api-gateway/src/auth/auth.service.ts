@@ -18,6 +18,7 @@ import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
 import { InviteDto } from "./dto/invite.dto";
 import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
+import { devBypassEnvEnabled } from "./dev-bypass.util";
 import {
   IDENTITY_PROVIDERS,
   IdentityProviderDescriptor,
@@ -397,10 +398,26 @@ export class AuthService {
       // reverts the tenant to the default restaurant, causing 500s on resources
       // that belong to the switched-to restaurant.
       const scopedRestaurantId = payload.restaurantId ?? user.restaurant_id;
-      return this.generateTokens({
-        ...user,
-        restaurant_id: scopedRestaurantId,
-      });
+
+      // Carry the dev-bypass marker across the refresh. Without this the
+      // override silently lapsed after 15 minutes: the new payload is rebuilt
+      // from the row, the row says false, and the founder was bounced to
+      // /verify-email mid-session with no event to point at. A lapse on a
+      // timer is the worst shape of this bug — it looks like the fix never
+      // worked rather than like it expired.
+      //
+      // Both gates are re-checked HERE, at refresh time, not inherited: a
+      // marked refresh token presented to a production server mints an
+      // ordinary session, exactly as if the marker were absent.
+      const devBypass = payload.devBypass === true && devBypassEnvEnabled();
+
+      return this.generateTokens(
+        {
+          ...user,
+          restaurant_id: scopedRestaurantId,
+        },
+        devBypass,
+      );
     } catch (error) {
       throw new UnauthorizedException("Invalid refresh token");
     }

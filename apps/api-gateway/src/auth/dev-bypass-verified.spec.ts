@@ -16,6 +16,17 @@
  * goes. Instead the token carries a `devBypass` marker, and the ONE reader that
  * has to act on it re-checks the environment at read time.
  *
+ * THE SECOND HALF (added in the same branch)
+ * -----------------------------------------
+ * Reporting the session as verified to `GET /auth/me` gets the founder PAST
+ * ProtectedRoute and onto a page — and then every data call behind it took
+ * `403 EMAIL_NOT_VERIFIED`, because `JwtAuthGuard` reads
+ * `req.user.emailVerified`, which came from the row. So the gate is applied
+ * there too, and the tests below drive `JwtStrategy.validate` INTO the real
+ * `JwtAuthGuard.canActivate` rather than hand-seeding `req.user` — a check
+ * that is correct but unreachable is the exact failure this repo has been
+ * bitten by before (see guards/jwt-auth.guard.spec.ts).
+ *
  * WHAT THESE TESTS ARE GUARDING AGAINST
  * -------------------------------------
  * Not "does the happy path work" — that is one test of five. The rest pin the
@@ -29,13 +40,19 @@
  * (.planning/v3.0-TECH-DEBT.md:732): an unset env var must never be the only
  * thing between a caller and a privilege.
  */
+import { ForbiddenException } from "@nestjs/common";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { JwtStrategy } from "./strategies/jwt.strategy";
+import { JwtAuthGuard } from "./guards/jwt-auth.guard";
+import { EMAIL_NOT_VERIFIED_CODE } from "./assert-email-verified";
 
 type Row = Record<string, unknown>;
 
 const BYPASS_EMAIL = "founder@example.com";
+
+/** Any non-default value; `resolveJwtSecret` only rejects unset/published. */
+const TEST_SECRET = "test-jwt-secret-not-the-published-default";
 
 /** The bypass account as it actually is in the database: NOT verified. */
 const BYPASS_ROW: Row = {
@@ -55,6 +72,14 @@ const BYPASS_ROW: Row = {
  */
 function makeAuthService(userRow: Row) {
   const signed: Array<Record<string, any>> = [];
+  const jwt = {
+    sign: jest.fn((payload: any) => {
+      signed.push(payload);
+      return "signed.jwt.token";
+    }),
+    verify: jest.fn(),
+    decode: jest.fn(),
+  };
 
   const usersChain: any = {
     select: () => usersChain,
@@ -80,21 +105,22 @@ function makeAuthService(userRow: Row) {
   });
 
   const service = new AuthService(
+    jwt as any,
+    // `resolveJwtSecret` REFUSES to construct under NODE_ENV=production with no
+    // secret — correctly. The production-case tests below are about the bypass
+    // gate, not about that guard, so give them the secret a real production
+    // server would have.
     {
-      sign: jest.fn((payload: any) => {
-        signed.push(payload);
-        return "signed.jwt.token";
-      }),
-      verify: jest.fn(),
-      decode: jest.fn(),
+      get: jest.fn((key: string) =>
+        key === "JWT_SECRET" ? TEST_SECRET : undefined,
+      ),
     } as any,
-    { get: jest.fn() } as any,
     { supabase: { from } } as any,
     { blacklistToken: jest.fn() } as any,
     {} as any,
   );
 
-  return { service, signed };
+  return { service, signed, jwt };
 }
 
 /** The profile `getProfileForUser` returns for the bypass account. */
@@ -195,42 +221,272 @@ describe("dev bypass: the minted token", () => {
   });
 });
 
+function strategyFor(userRow: Row) {
+  return new JwtStrategy({
+    validateJwtPayload: jest.fn().mockResolvedValue(userRow),
+  } as any);
+}
+
+const PAYLOAD: any = {
+  sub: "u-dev",
+  email: BYPASS_EMAIL,
+  role: "owner",
+  restaurantId: "r1",
+};
+
+const MARKED_PAYLOAD: any = { ...PAYLOAD, devBypass: true };
+
 describe("dev bypass: JwtStrategy projects the marker onto req.user", () => {
-  function strategyFor(userRow: Row) {
-    return new JwtStrategy({
-      validateJwtPayload: jest.fn().mockResolvedValue(userRow),
-    } as any);
+  const ORIGINAL = { ...process.env };
+
+  // Every test in here sets the env it means to test. Leaving it implicit
+  // would make the result depend on the runner's NODE_ENV, and a test that
+  // passes for a reason it did not state is not evidence.
+  afterEach(() => {
+    process.env = { ...ORIGINAL };
+  });
+
+  function devEnv() {
+    process.env.NODE_ENV = "development";
+    process.env.DEV_AUTH_BYPASS = "true";
   }
 
-  const PAYLOAD: any = {
-    sub: "u-dev",
-    email: BYPASS_EMAIL,
-    role: "owner",
-    restaurantId: "r1",
-  };
-
   it("carries devBypass: true through", async () => {
-    const result = await strategyFor(BYPASS_ROW).validate({
-      ...PAYLOAD,
-      devBypass: true,
-    });
+    devEnv();
+    const result = await strategyFor(BYPASS_ROW).validate(MARKED_PAYLOAD);
     expect(result.devBypass).toBe(true);
   });
 
   it("reports false when the claim is absent", async () => {
+    devEnv();
     const result = await strategyFor(BYPASS_ROW).validate(PAYLOAD);
     expect(result.devBypass).toBe(false);
   });
 
-  it("does NOT let the marker touch req.user.emailVerified", async () => {
-    // `assertEmailVerified` reads `req.user.emailVerified` on every guarded
-    // route. Widening it here would turn a display fix into a server-side
-    // authorisation change, so the database row stays the answer.
-    const result = await strategyFor(BYPASS_ROW).validate({
-      ...PAYLOAD,
+  it("sets emailVerified: true for a marked session, from an unverified row", async () => {
+    // This is the field `assertEmailVerified` reads. The row still says false
+    // and is never written.
+    devEnv();
+    const result = await strategyFor(BYPASS_ROW).validate(MARKED_PAYLOAD);
+    expect(result.emailVerified).toBe(true);
+    expect(BYPASS_ROW.email_verified).toBe(false);
+  });
+
+  it("leaves emailVerified at the row value under NODE_ENV=production", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.DEV_AUTH_BYPASS = "true";
+    process.env.JWT_SECRET = TEST_SECRET;
+    const result = await strategyFor(BYPASS_ROW).validate(MARKED_PAYLOAD);
+    expect(result.emailVerified).toBe(false);
+  });
+
+  it("leaves emailVerified at the row value when DEV_AUTH_BYPASS is unset", async () => {
+    process.env.NODE_ENV = "development";
+    delete process.env.DEV_AUTH_BYPASS;
+    const result = await strategyFor(BYPASS_ROW).validate(MARKED_PAYLOAD);
+    expect(result.emailVerified).toBe(false);
+  });
+
+  it("still reports the marker even where the environment refuses to honour it", async () => {
+    // `devBypass` answers "is this a dev session?", which is true regardless.
+    // Collapsing it into the gate would make "not a dev session" and "a dev
+    // session this server ignores" the same value — and the second is the one
+    // worth seeing in a log.
+    process.env.NODE_ENV = "production";
+    process.env.JWT_SECRET = TEST_SECRET;
+    const result = await strategyFor(BYPASS_ROW).validate(MARKED_PAYLOAD);
+    expect(result.devBypass).toBe(true);
+    expect(result.emailVerified).toBe(false);
+  });
+
+  it("never lets an unmarked session inherit verification", async () => {
+    devEnv();
+    const result = await strategyFor(BYPASS_ROW).validate(PAYLOAD);
+    expect(result.emailVerified).toBe(false);
+  });
+});
+
+/**
+ * (e) and (f): the wiring, driven end to end.
+ *
+ * `JwtStrategy.validate` builds `req.user`; `JwtAuthGuard.canActivate` reads
+ * it. Hand-seeding `req.user` here would test the guard against a fixture
+ * rather than against what the strategy actually produces, and "correct
+ * comparison, unreachable code" is precisely the shape that made the tenant
+ * check inert on every authenticated route. So these run the real strategy and
+ * feed its output to the real guard, with only passport itself stubbed.
+ */
+describe("dev bypass: a marked session reaches a guarded handler", () => {
+  const ORIGINAL = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL };
+    jest.restoreAllMocks();
+  });
+
+  function makeGuard(metadata: Record<string, boolean> = {}) {
+    const reflector = {
+      getAllAndOverride: jest.fn(
+        (key: string) => metadata[key] as boolean | undefined,
+      ),
+    } as any;
+    const blacklist = {
+      isBlacklisted: jest.fn().mockResolvedValue(false),
+    } as any;
+    return new JwtAuthGuard(reflector, blacklist);
+  }
+
+  /** Stand in for passport: succeed, leaving `request.user` as seeded. */
+  function stubPassport(guard: JwtAuthGuard) {
+    const parent = Object.getPrototypeOf(Object.getPrototypeOf(guard));
+    return jest.spyOn(parent, "canActivate").mockResolvedValue(true as any);
+  }
+
+  function contextFor(user: Record<string, unknown>) {
+    const request: any = { headers: {}, params: {}, query: {}, body: {}, user };
+    return {
+      switchToHttp: () => ({ getRequest: () => request }),
+      getHandler: () => undefined,
+      getClass: () => undefined,
+    } as any;
+  }
+
+  it("(e) passes the guard's email check on a route with no @AllowUnverified", async () => {
+    process.env.NODE_ENV = "development";
+    process.env.DEV_AUTH_BYPASS = "true";
+
+    const reqUser = await strategyFor(BYPASS_ROW).validate(MARKED_PAYLOAD);
+    const guard = makeGuard();
+    stubPassport(guard);
+
+    await expect(guard.canActivate(contextFor(reqUser))).resolves.toBe(true);
+  });
+
+  it("(f) the SAME token is refused 403 EMAIL_NOT_VERIFIED under NODE_ENV=production", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.DEV_AUTH_BYPASS = "true";
+    process.env.JWT_SECRET = TEST_SECRET;
+
+    const reqUser = await strategyFor(BYPASS_ROW).validate(MARKED_PAYLOAD);
+    const guard = makeGuard();
+    stubPassport(guard);
+
+    // Captured rather than asserted through `.rejects` + `.catch`: if the call
+    // ever RESOLVED, a trailing `.catch` would simply not run and the code
+    // assertion would vanish silently — a test that passes by not executing.
+    // Here a resolve yields `null` and fails the first expectation loudly.
+    const err = await guard.canActivate(contextFor(reqUser)).then(
+      () => null,
+      (e: any) => e,
+    );
+
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect(err.getResponse().code).toBe(EMAIL_NOT_VERIFIED_CODE);
+  });
+
+  it("is refused when DEV_AUTH_BYPASS is not set, on any NODE_ENV", async () => {
+    process.env.NODE_ENV = "development";
+    delete process.env.DEV_AUTH_BYPASS;
+
+    const reqUser = await strategyFor(BYPASS_ROW).validate(MARKED_PAYLOAD);
+    const guard = makeGuard();
+    stubPassport(guard);
+
+    await expect(guard.canActivate(contextFor(reqUser))).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it("an unmarked unverified session is still refused with the bypass fully on", async () => {
+    // The blast radius: enabling the bypass must not verify OTHER sessions.
+    process.env.NODE_ENV = "development";
+    process.env.DEV_AUTH_BYPASS = "true";
+
+    const reqUser = await strategyFor(BYPASS_ROW).validate(PAYLOAD);
+    const guard = makeGuard();
+    stubPassport(guard);
+
+    await expect(guard.canActivate(contextFor(reqUser))).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+});
+
+/** (g): the marker has to survive the 15-minute access-token expiry. */
+describe("dev bypass: refreshAccessToken", () => {
+  const ORIGINAL = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL };
+  });
+
+  async function refreshWith(refreshPayload: Record<string, unknown>) {
+    const { service, signed, jwt } = makeAuthService(BYPASS_ROW);
+    jwt.verify.mockReturnValue(refreshPayload as any);
+    await service.refreshAccessToken("refresh.jwt.token");
+    return signed;
+  }
+
+  it("keeps the marker and emailVerified when both gates hold", async () => {
+    process.env.NODE_ENV = "development";
+    process.env.DEV_AUTH_BYPASS = "true";
+
+    const signed = await refreshWith({
+      sub: "u-dev",
+      restaurantId: "r1",
       devBypass: true,
     });
-    expect(result.emailVerified).toBe(false);
+
+    expect(signed.length).toBeGreaterThan(0);
+    for (const payload of signed) {
+      expect(payload.devBypass).toBe(true);
+      expect(payload.emailVerified).toBe(true);
+    }
+  });
+
+  it("drops the marker under NODE_ENV=production", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.DEV_AUTH_BYPASS = "true";
+    process.env.JWT_SECRET = TEST_SECRET;
+
+    const signed = await refreshWith({
+      sub: "u-dev",
+      restaurantId: "r1",
+      devBypass: true,
+    });
+
+    for (const payload of signed) {
+      expect("devBypass" in payload).toBe(false);
+      expect(payload.emailVerified).toBe(false);
+    }
+  });
+
+  it("drops the marker when DEV_AUTH_BYPASS is not set", async () => {
+    process.env.NODE_ENV = "development";
+    delete process.env.DEV_AUTH_BYPASS;
+
+    const signed = await refreshWith({
+      sub: "u-dev",
+      restaurantId: "r1",
+      devBypass: true,
+    });
+
+    for (const payload of signed) {
+      expect("devBypass" in payload).toBe(false);
+      expect(payload.emailVerified).toBe(false);
+    }
+  });
+
+  it("does not invent a marker for an ordinary refresh token", async () => {
+    process.env.NODE_ENV = "development";
+    process.env.DEV_AUTH_BYPASS = "true";
+
+    const signed = await refreshWith({ sub: "u-dev", restaurantId: "r1" });
+
+    for (const payload of signed) {
+      expect("devBypass" in payload).toBe(false);
+      expect(payload.emailVerified).toBe(false);
+    }
   });
 });
 
@@ -260,6 +516,7 @@ describe("dev bypass: GET /auth/me", () => {
     // production — the claim is what must be inert, not the token.
     process.env.NODE_ENV = "production";
     process.env.DEV_AUTH_BYPASS = "true";
+    process.env.JWT_SECRET = TEST_SECRET;
 
     const user = await getProfile({
       userId: "u-dev",
