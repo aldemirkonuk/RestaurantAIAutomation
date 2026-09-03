@@ -286,6 +286,35 @@ the guard's header** rather than silently excluded; triaging them belongs to the
 sessions that own those modules, and each root joins `SERVER_SCAN_ROOTS` when it
 has been.
 
+## The wage rows, cleared 2026-09-02
+
+Stopping the code from writing a fabricated wage does not un-write the ones already
+there, and this ADR would have been a half-measure without the second operation.
+
+Measured in production before touching anything: **11 `team_members` rows, 11 wages
+set, 0 NULL** — 8 owners at exactly `32.00`, 3 managers at exactly `28.00`. Those are
+not approximately the old literals, they *are* them: `team.service.ts` wrote
+`role === "staff" ? 22 : role === "manager" ? 28 : 32`, and the production values
+reproduce that expression exactly, for every row. **No human has ever entered a wage
+into this system**, so 100% of the wage data — the figure the labour lens consumed and
+the CSV export shipped — was invented by a ternary.
+
+The UPDATE nulls a wage only where it still equals the seed formula for that row's
+role, so a real wage entered later would survive it and the operation is safe to
+re-run. It cleared **11 of 11**; the post-state query confirms **0 wages set** across
+**11 rows**. Each cleared row carries a `notes` line saying the value was a literal
+written by the service and never entered by anyone.
+
+One reading trap worth recording, because the first verification looked like a
+contradiction: a data-modifying CTE's effects are **not visible to sibling SELECTs in
+the same statement**, so `wages_cleared: 11` and `wages_remaining: 11` came back
+together. The second number was the *pre*-update snapshot, not a failed write. Confirmed
+by re-querying in a fresh statement.
+
+Verified on `main` that the source is genuinely gone before clearing, since otherwise
+the next team read would refill it: `team.service.ts:255` now writes `hourly_wage: null`,
+`:322` writes the caller's value or null, and `:186` gates the figure by permission.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |

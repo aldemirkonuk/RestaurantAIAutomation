@@ -116,6 +116,49 @@ Fixed in passing, because iterating the code made them unavoidable:
 instead of SMSing a fixture (the tenant is then counted `failed`); and every
 email names `tenant.name`.
 
+## 2026-09-03 — the env var went away, and this design is why that was survivable
+
+`DEFAULT_RESTAURANT_ID` was removed from Railway on 2026-09-03, alongside
+`GMAIL_PUBSUB_REQUIRE_AUTH` (which ADR 0094 had genuinely deleted from the code).
+The two were reported to the founder in one list of "env vars that need you", and
+only one of them should have been removed. That is a reporting fault, not a
+config fault.
+
+The effect was immediate and total. `ScheduledTenantsService.list()` unions the
+opt-in flag rows with the legacy tenant; production held **one**
+`restaurant_feature_flags` row (`self_evolution`, `enabled = false`) and **zero**
+`scheduled_communications` rows, so with `legacyTenantId` null the set was empty
+and every scheduled job returned without doing anything. **OD-87 exactly, arrived
+through configuration instead of through code.**
+
+What this ADR got right is the part that made it recoverable rather than
+invisible: the empty case logs `SCHEDULED_TENANTS_EMPTY` and names both reasons.
+A design that returned `[]` quietly would have left no symptom but an inbox that
+stopped filling — and nobody notices mail that does not arrive.
+
+**Repaired through this ADR's own mechanism rather than by restoring the env
+var:** one INSERT opting `550e8400-…` (*Meyhouse Palo Alto*, the only real
+tenant — 3 members, 3 `notification_preferences` rows, 50 inventory rows) into
+`scheduled_communications`, with the reason in `metadata`. Deliberately not the
+env var, for two reasons. Scheduled delivery now depends on a **row that names
+the restaurant**, auditable and immune to env churn, which is what this ADR
+argued for in the first place. And restoring `DEFAULT_RESTAURANT_ID` would have
+brought back `isLegacyDefault: true` and with it the `MANAGER_EMAIL` /
+`MANAGER_PHONE` fallback that [[0098]] had just closed as a cross-tenant leak —
+fixing one regression by reopening another.
+
+The eleven fixture restaurants stay out, which is the whole point of opt-in.
+
+**Checked before opting in, not after:** all three members carry an email and a
+phone, `email_enabled = true`, `sms_enabled = false`. Low-stock alerts therefore
+resolve to three email addresses and no SMS. Worth stating why, because the
+arithmetic looks wrong at a glance: `low_stock_channels` holds its default
+`['sms','push']`, which contains no email — but gate 2 is a **union** across the
+three category arrays, and `order_approval_channels` is `['sms','push','email']`.
+The union is what makes these rows deliverable at all. It is also exactly the
+permissiveness OD-121 exists to revisit, so **a category-aware gate must not be
+shipped without first checking it does not silence this tenant.**
+
 ## Consequences
 
 - **Easier:** onboarding restaurant #2 is one INSERT. Per-tenant outcomes are

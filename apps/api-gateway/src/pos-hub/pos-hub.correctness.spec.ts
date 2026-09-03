@@ -17,7 +17,8 @@ function makeDb(opts: { mappings?: Row[]; inventory?: Row } = {}) {
     rpc: [] as any[],
     checkUpserts: [] as Row[],
     mappingUpserts: [] as Row[],
-    consumptionUpserts: [] as { row: Row; options: Row }[],
+    consumptionInserts: [] as { row: Row }[],
+    consumptionDuplicates: [] as Row[],
   };
 
   const client: any = {
@@ -67,14 +68,21 @@ function makeDb(opts: { mappings?: Row[]; inventory?: Row } = {}) {
         q.insert = async () => ({ error: null });
       }
       if (table === "wine_consumption_log") {
-        q.upsert = async (row: Row, options: Row) => {
-          calls.consumptionUpserts.push({ row, options });
+        // The real table has a PARTIAL unique index on (restaurant_id, notes)
+        // for POS rows; PostgREST cannot name it in ON CONFLICT, so the mirror
+        // is a plain insert and a replay answers 23505 (ADR 0093, 2026-09-03).
+        q.insert = async (row: Row) => {
+          if (calls.consumptionInserts.some((c) => c.row.notes === row.notes)) {
+            calls.consumptionDuplicates.push(row);
+            return { error: { code: "23505", message: "duplicate key value" } };
+          }
+          calls.consumptionInserts.push({ row });
           return { error: null };
         };
-        q.insert = async () => {
+        q.upsert = async () => {
           throw new Error(
-            "wine_consumption_log must be written with upsert(ignoreDuplicates), " +
-              "not insert — a bare insert is what inflated the demand series.",
+            "wine_consumption_log must be written with insert — an upsert names " +
+              "a conflict target the partial unique index cannot match (42P10).",
           );
         };
       }
@@ -188,7 +196,7 @@ describe("sale_unit reaches the mapping row", () => {
     const bottles = calls.rpc.filter((c) => c.name === "apply_stock_movement");
     expect(pours).toHaveLength(1);
     expect(bottles).toHaveLength(0);
-    expect(calls.consumptionUpserts[0].row).toMatchObject({
+    expect(calls.consumptionInserts[0].row).toMatchObject({
       consumption_type: "glass",
       volume_ml: 150,
     });
@@ -219,7 +227,7 @@ describe("the consumption log is as idempotent as the stock write", () => {
   // "no rpcError" never meant "this depleted just now". The bare insert that
   // followed left stock correct and the log inflated — the worse direction,
   // because stock is the number a human checks.
-  it("writes through upsert with a dedupe key, not a bare insert", async () => {
+  it("writes through insert, keyed for the partial unique index that dedupes it", async () => {
     const { service, calls } = makeService({
       mappings: [glassMapping],
       inventory: { bottle_size_ml: 750, pour_size_ml: 150 },
@@ -227,11 +235,11 @@ describe("the consumption log is as idempotent as the stock write", () => {
 
     await service.ingest("r1", "generic_webhook", [closedCheck()]);
 
-    expect(calls.consumptionUpserts).toHaveLength(1);
-    expect(calls.consumptionUpserts[0].options).toMatchObject({
-      onConflict: "restaurant_id,notes",
-      ignoreDuplicates: true,
-    });
+    expect(calls.consumptionInserts).toHaveLength(1);
+    expect(calls.consumptionInserts[0].row.source).toBe("pos");
+    expect(calls.consumptionInserts[0].row.notes).toMatch(
+      /^pos:generic_webhook:/,
+    );
   });
 
   it("keys on the POS idempotency key, unprefixed", async () => {
@@ -242,7 +250,7 @@ describe("the consumption log is as idempotent as the stock write", () => {
 
     await service.ingest("r1", "generic_webhook", [closedCheck()]);
 
-    const notes = calls.consumptionUpserts[0].row.notes;
+    const notes = calls.consumptionInserts[0].row.notes;
     // Used to render "pos:pos:…" because the key already carried the prefix.
     expect(notes).not.toMatch(/^pos:pos:/);
     expect(notes).toMatch(/^pos:generic_webhook:chk-1:/);
@@ -260,13 +268,12 @@ describe("the consumption log is as idempotent as the stock write", () => {
     // Two upserts are attempted — the dedupe is the database's job, and the
     // unique index in 20260824190000 is what enforces it. What matters is that
     // both carry the SAME key, so the second is a no-op rather than a new row.
-    expect(calls.consumptionUpserts).toHaveLength(2);
-    expect(calls.consumptionUpserts[0].row.notes).toBe(
-      calls.consumptionUpserts[1].row.notes,
+    // one row landed; the replay hit the index and was answered 23505 — quietly
+    expect(calls.consumptionInserts).toHaveLength(1);
+    expect(calls.consumptionDuplicates).toHaveLength(1);
+    expect(calls.consumptionDuplicates[0].notes).toBe(
+      calls.consumptionInserts[0].row.notes,
     );
-    expect(
-      calls.consumptionUpserts.every((c) => c.options.ignoreDuplicates),
-    ).toBe(true);
   });
 
   // Asserted as a DIFFERENCE, not an absence. "A voided check writes no
@@ -289,7 +296,7 @@ describe("the consumption log is as idempotent as the stock write", () => {
     const normal = harness();
     await normal.service.ingest("r1", "generic_webhook", [closedCheck()]);
 
-    expect(voided.calls.consumptionUpserts).toHaveLength(0);
-    expect(normal.calls.consumptionUpserts).toHaveLength(1);
+    expect(voided.calls.consumptionInserts).toHaveLength(0);
+    expect(normal.calls.consumptionInserts).toHaveLength(1);
   });
 });

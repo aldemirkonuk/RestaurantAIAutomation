@@ -464,6 +464,23 @@ dashboard.md §7.
 - Agent-side notification writes were silently failing until 44.1d's fix — history
   in `v3.0-TECH-DEBT.md:95-131`; worth remembering when interpreting old gaps in
   this inbox.
+- **The per-channel switches on this page did not reach the router until
+  2026-09-02** ([ADR 0098](../decisions/0098-a-preference-is-read-from-the-column-it-lives-in.md)).
+  `notifications.service.ts:1051-1053` read `email_enabled`/`push_enabled`/
+  `sms_enabled` correctly, so the page rendered a user's choice faithfully — but
+  `RecipientResolverService.checkChannelPreference`, which actually decides who
+  gets sent to, never read those columns at all, and the two category arrays it
+  *did* name (`order_channels`, `report_channels`) have never existed in any
+  migration. Because the row is fetched with `.select("*")`, that produced no
+  error — just `undefined`. On the stock row it inverted both channels at once:
+  **email refused to users who had switched it on, SMS delivered to users who had
+  switched it off**. Anyone reading old reports of "I turned SMS off and still get
+  texts" should treat them as real, not as user error.
+- **Routing is still not category-aware** — the resolver takes a union across
+  three of the six per-category channel arrays and ignores the other three, so
+  enabling email for financial reports also enables it for low stock. Tracked as
+  **OD-121**; it needs a founder call on which category each of the seven
+  `resolveRecipients` call sites belongs to.
 
 **Found while building the Mudavym redesign (2026-09-02).** All four are outside the
 page's own paths; none was built.

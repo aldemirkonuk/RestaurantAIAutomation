@@ -71,6 +71,52 @@ write.**
 3. A capacity nobody entered is unknown, not `100`. The fill bar renders the
    unknown rather than a computed percentage of an invented denominator.
 
+### The data operation, executed 2026-09-02
+
+Carried out separately from the code change, exactly as this ADR required: the
+classification query ran and its counts were reported before anything was removed.
+
+**Deleting on a name match alone was rejected** — a human could legitimately name a
+zone "Main Cellar". The fingerprint used instead is the full seeded tuple: one of the
+four names **AND** that name's exact fixture capacity (500/100/200/50) **AND**
+`temperature_zone`, `temperature_min` and `temperature_max` all NULL **AND**
+`humidity_controlled = false`. It matched **84 rows — the same 84 the name-only count
+found**, which is itself the evidence that no human had ever created a zone wearing one
+of those names.
+
+The three human-entered rows are unmistakable beside them: *Reserve Room - Rare
+Collection*, *Wine Cellar - Main Cellar*, *Bar Area - Bar Fridge* — each with a real
+temperature band (11.1-12.8, 12.8-14.4, 7.2-10.0 °C), a humidity flag, and
+`restaurant_inventory` rows pointing at it.
+
+Three foreign keys reference `storage_locations`, and their delete behaviours are not
+alike — `wine_location_mappings.location_id` is **ON DELETE CASCADE**,
+`inventory_lots.location_id` is **SET NULL**, `restaurant_inventory.storage_location_id`
+is **NO ACTION**. So the delete was written to exclude any row referenced by any of the
+three, rather than trusting the constraints to be harmless.
+
+| | |
+|---|---|
+| matched the seeded fingerprint | **84** |
+| referenced by nothing → **deleted** | **83** |
+| referenced → **kept and flagged** | **1** (`fb38dbab`, an *Overflow Storage* carrying one `inventory_lots` row) |
+| `storage_locations` after | **4** (3 human-entered + the flagged one) |
+
+The kept row carries a `notes` line naming it machine-seeded, saying its 200-bottle
+capacity was never measured, and stating what has to happen before it can go: reassign
+the lot, then delete.
+
+**Verified after, not assumed:** the flagged row's lot is still attached (1);
+`wine_location_mappings` is 0 and was 0 before, so nothing cascaded; the 50
+`restaurant_inventory` rows that carried a location still carry one. The single
+`inventory_lots` row with a NULL `location_id` pre-dates this and was not created by it.
+
+**And verified that the rows cannot come back**, which is the only thing that makes the
+delete durable: `useStorageLocations.ts` on `main` has no `DEFAULT_LOCATIONS`, no seeding
+effect and — deliberately — no `placeholderData`; its one remaining POST is a
+user-driven mapping write.
+
+
 **The existing 84 rows are not deleted by this change.** The founder's decision
 is to delete those that nothing references and flag the rest, and that is a
 data operation carried out separately, against a reference-classification query,

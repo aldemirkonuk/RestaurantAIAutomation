@@ -4,6 +4,7 @@ import { ConfigModule } from "@nestjs/config";
 import { ScheduleModule } from "@nestjs/schedule";
 import { APP_INTERCEPTOR, APP_GUARD } from "@nestjs/core";
 import { LivenessController } from "./health/liveness.controller";
+import { ReadinessController } from "./health/readiness.controller";
 import { AuthModule } from "./auth/auth.module";
 import { InventoryModule } from "./inventory/inventory.module";
 import { ProcurementModule } from "./procurement/procurement.module";
@@ -129,10 +130,23 @@ import { AskAiModule } from "./ask-ai/ask-ai.module";
     // Real-time communication
     WebsocketModule,
   ],
-  // The ONLY controller registered at the root. It has no dependencies by
-  // design — see liveness.controller.ts — so it cannot be the thing that breaks
-  // the boot it exists to verify.
-  controllers: [LivenessController],
+  // The two health routes, registered at the root so they answer before any
+  // feature module matters.
+  //
+  // `LivenessController` still has NO dependencies by design — see
+  // liveness.controller.ts — so it cannot be the thing that breaks the boot it
+  // exists to verify.
+  //
+  // `ReadinessController` deliberately does have one: `DatabaseService`, which
+  // is what makes its 503 mean something. To be honest about the cost — a root
+  // controller whose dependency cannot be resolved kills the whole boot,
+  // liveness included, and putting it in a submodule would not change that (a
+  // failing module import kills boot just the same). The dependency is the
+  // narrowest available: `DatabaseModule` is `@Global()` and some forty other
+  // modules already resolve `DatabaseService`, so this route cannot fail to
+  // wire up without the rest of the app failing first. `check_gateway_boots.sh`
+  // is what proves it on every PR.
+  controllers: [LivenessController, ReadinessController],
   providers: [
     // Global guards
     {

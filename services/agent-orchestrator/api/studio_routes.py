@@ -277,11 +277,16 @@ def submit_override(
             logger.error(
                 "submit_override: _apply_override_to_submission failed: %s", exc
             )
-            # Non-fatal for the response — override is logged, promotion failed
+            # Non-fatal for the response — override is logged, promotion failed.
+            # The exception text stays in the server log (above) and is not
+            # echoed to the caller: str(exc) on a database or driver error
+            # carries table names, column names and occasionally connection
+            # details, none of which the client needs to handle this outcome
+            # (CodeQL py/stack-trace-exposure).
             return {
                 "status": "logged_apply_failed",
                 "override_id": override_id,
-                "detail": str(exc),
+                "detail": "Override recorded, but promotion failed. See server logs.",
             }
 
         # T-14-08: attempt library promotion — non-fatal if it fails
