@@ -139,7 +139,7 @@ def main(argv: list[str]) -> int:
         return _self_test()
 
     if not args.sha.strip():
-        print("FAIL — --sha is empty, so there is nothing to resolve from. (exit 2)")
+        print("FAIL — --sha is empty, so there is nothing to resolve from. (exit 2)", file=sys.stderr)
         return 2
     # Hardening, not a live exploit (found live, PR #291's own security audit):
     # `--sha` is placed before `--` in the underlying `git log` call, unlike
@@ -159,23 +159,25 @@ def main(argv: list[str]) -> int:
         print(
             f"FAIL — --sha ({sha!r}) is not a git sha (7-40 hex characters). "
             "Refusing rather than letting it reach `git log` as a flag or "
-            "revision expression. (exit 2)"
+            "revision expression. (exit 2)",
+            file=sys.stderr,
         )
         return 2
     if not args.paths:
-        print("FAIL — --paths is empty, so every commit would match. (exit 2)")
+        print("FAIL — --paths is empty, so every commit would match. (exit 2)", file=sys.stderr)
         return 2
 
     try:
         found = resolve(args.repo_dir, sha, args.paths)
     except (ValueError, RuntimeError) as exc:
-        print(f"FAIL — could not resolve: {exc} (exit 2)")
+        print(f"FAIL — could not resolve: {exc} (exit 2)", file=sys.stderr)
         return 2
 
     if found is None:
         print(
             f"FAIL — no commit at or before {args.sha} touches any of {args.paths}. "
-            "This service has never had a build to compare against. (exit 2)"
+            "This service has never had a build to compare against. (exit 2)",
+            file=sys.stderr,
         )
         return 2
 
@@ -310,6 +312,20 @@ def _self_test() -> int:
 
         cli_no_match = _run_cli(["--sha", also_docs_sha, "--paths", "apps/mobile", "--repo-dir", repo])
         case("CLI: no matching commit is CANNOT CHECK, exit 2", cli_no_match.returncode, 2)
+
+        # Found live, PR #291's own correctness audit: deploy.yml captures this
+        # script's stdout via `RESOLVED="$(...)"` to get the resolved sha on
+        # success. A FAIL message printed to STDOUT on failure would land
+        # inside that same captured string with nothing on the CI log
+        # explaining why the step failed -- fails closed (exit 2 still fires),
+        # but silently, which is its own smaller instance of this file's own
+        # subject. Every FAIL path must print to stderr, never stdout, so
+        # `RESOLVED` is empty on failure and the reason is visible in the log.
+        case(
+            "a FAIL message never reaches stdout -- only stderr, so $(...) capture stays clean",
+            (cli_no_match.stdout.strip(), bool(cli_no_match.stderr.strip())),
+            ("", True),
+        )
 
         # Hardening case (found live, PR #291's own security audit): --sha is
         # placed before -- in the underlying git log call, so an unvalidated
