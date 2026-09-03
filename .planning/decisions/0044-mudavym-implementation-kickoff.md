@@ -182,3 +182,35 @@ brief's premises were stale (recommendations was not broken; the reports mock
 answerer and unwired generator were already gone). `/settings` failed its first
 audit on five false provenance claims — the fix is to grep every runtime
 (orchestrator and mobile included) before calling a setting "read by nothing".
+
+### Wave 4, second pass — 2026-09-03, after the founder's review
+
+The founder reviewed the seven pages on the gallery and asked, per page: no
+emojis anywhere (real icons); one-tap actions to move out of the day-book;
+`/reports` to let a reader change a cutting's graph type or its analysis while
+arranging, with many detailed graphs and drag kept; `/recommendations` to make
+dismissal binding on the engine and its sentences solid; two full-picture
+sketches each for notifications, recommendations, settings and the cellar
+(screenshots only); `/profile` at the standard of a $100B startup with MCP
+servers and payment types real; the cellar to adapt to what each house carries;
+and every "honest about" line closed with a profound fix rather than an em dash.
+Founder calls recorded that day: one-tap → the dashboard rail; cellar registers
+in their own table, inferred then confirmed at onboarding, shipped gated with
+OD-113 next; dismissal asks its scope per dismissal; gap depth = small fixes
+first, then the four large builds (Stripe live, server-side reminders, full
+beverages catalogue, MCP runtime) plus a Mudavym MCP server documented only.
+
+What the pass measured and changed: the emojis were producer-written
+notification titles (100 of 100 rows on production's first page), fixed at
+twelve producer sites with a guard spec; the founder's example insight
+sentence was a live zero-fill bug on the gateway, and a third reader (the
+persisted `analytics_insights` cache) kept serving it until every row carried
+its generator version; `/settings` had asserted five false provenance claims
+and now greps all four runtimes before calling a setting dead; the team roster
+had been empty for every tenant in production (a column its table never had,
+swallowed into `[]`, and listed as known debt in the guard's own list) — PR #287;
+`?limit=` on calendar events 400'd for every caller. Sonnet re-audits ran on
+every page after the pass and every finding was closed or filed. The branch
+took main by merge (`e4c753f8`) rather than rebase, because six builders were
+editing the worktree. Sketches 089–092 registered by the parent in MANIFEST at
+PR time. The four large builds run as their own ADRs (0102 onward).
