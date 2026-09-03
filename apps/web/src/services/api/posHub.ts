@@ -38,13 +38,20 @@ export interface PosProvidersResponse {
 }
 
 export interface PosStatusResponse {
+  /**
+   * True when the `pos_checks` read FAILED. `sources` is then null, not an
+   * empty array — a dead read and a quiet integration are different answers
+   * and must not render the same. ADR 0067.
+   */
+  unavailable?: boolean
+  totalChecks?: number | null
   sources?: Array<{
     source: string
     checks?: number
     open?: number
     latest?: string | null
     providerName?: string
-  }>
+  }> | null
   [key: string]: unknown
 }
 

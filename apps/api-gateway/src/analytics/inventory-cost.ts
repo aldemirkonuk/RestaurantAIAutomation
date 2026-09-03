@@ -38,8 +38,21 @@
  * the single function to change.
  */
 
-/** Where one row's unit cost came from. `unknown` is a first-class answer. */
-export type CostBasis = "invoice_lot_wac" | "last_purchase_price" | "unknown";
+/**
+ * Where one row's unit cost came from. `unknown` is a first-class answer.
+ *
+ * `invoice_lot_wac_partial` exists because coverage and completeness are
+ * different facts and the rollup only used to expose the first.
+ * `has_invoice_cost` is `bool_or(cost_provenance = 'invoice')` over live lots,
+ * while `wac` averages only the lots that HAVE a cost — so one invoiced bottle
+ * among twenty-one was enough to return the WAC and call the whole row
+ * "invoiced lot WAC". The number is real; the scope it was quoted for was not.
+ */
+export type CostBasis =
+  | "invoice_lot_wac"
+  | "invoice_lot_wac_partial"
+  | "last_purchase_price"
+  | "unknown";
 
 export interface ResolvedUnitCost {
   /** Dollars per bottle. `null` means unknown — never substitute a guess. */
@@ -50,6 +63,8 @@ export interface ResolvedUnitCost {
 /** Human-readable source for each basis, for `basis` payload strings. */
 export const COST_BASIS_LABEL: Record<CostBasis, string> = {
   invoice_lot_wac: "invoiced lot WAC (inventory_lot_rollup.wac)",
+  invoice_lot_wac_partial:
+    "invoiced lot WAC covering only part of the on-hand quantity (inventory_lot_rollup.wac)",
   last_purchase_price: "restaurant_inventory.last_purchase_price",
   unknown: "no recorded cost",
 };
@@ -61,6 +76,14 @@ export interface InventoryCostRow {
 export interface LotRollupRow {
   has_invoice_cost?: unknown;
   wac?: unknown;
+  /**
+   * Bottles the `wac` actually averages, and bottles on hand. Added to the view
+   * on 2026-09-02 (ADR 0078). Both optional: a caller that has not been updated
+   * to select them still gets the old behaviour rather than a wrong answer, and
+   * completeness is simply not asserted for it.
+   */
+  wac_qty?: unknown;
+  live_qty?: unknown;
 }
 
 /**
@@ -71,10 +94,25 @@ export interface LotRollupRow {
  * Two deliberate judgement calls, both narrower than they look:
  *
  *  • A lot WAC of exactly **0 is accepted as measured** when
- *    `has_invoice_cost` is set. Zero is a real invoiced cost here:
- *    `inventory.service.ts` records sample bottles as `unitCost: 0` with
- *    provenance `"sample"`. The old expression treated that 0 as falsy and
- *    fabricated `0.6 × menu price` for a bottle that provably cost nothing.
+ *    `has_invoice_cost` is set, because the old expression treated 0 as falsy
+ *    and fabricated `0.6 × menu price` from it.
+ *
+ *    This branch used to justify itself by citing sample bottles —
+ *    `inventory.service.ts` records them as `unitCost: 0`, provenance
+ *    `"sample"`. That reasoning was wrong about the mechanism, though not
+ *    about the conclusion: `inventory_lot_rollup.wac` FILTERs
+ *    `cost_provenance <> 'sample'` (baseline migration :3207), so a sample lot
+ *    can never contribute to the WAC and the cited case cannot arise. A zero
+ *    WAC now means an invoice really did record $0 for a non-sample lot —
+ *    rarer, and still a measurement rather than a gap, so the branch stays and
+ *    only its explanation changes.
+ *
+ *  • A WAC that covers only SOME of the on-hand bottles is returned, but as
+ *    `invoice_lot_wac_partial`. The average is a real measurement of the
+ *    bottles it covers and throwing it away would be its own dishonesty; what
+ *    is not true is that it describes the whole row. When the view's `wac_qty`
+ *    and `live_qty` are not selected, completeness is unknown and the basis
+ *    stays `invoice_lot_wac` — an unasked question is not a failed one.
  *
  *  • A `last_purchase_price` of exactly **0 is treated as unknown**. Unlike
  *    WAC there is no write site in this repo that could have meant "free", so
@@ -90,8 +128,23 @@ export function resolveUnitCost(
   const rawWac = lot?.wac;
   if (lot?.has_invoice_cost && rawWac != null) {
     const wac = Number(rawWac);
-    if (Number.isFinite(wac) && wac >= 0)
-      return { unitCost: wac, costBasis: "invoice_lot_wac" };
+    if (Number.isFinite(wac) && wac >= 0) {
+      const covered = Number(lot?.wac_qty);
+      const onHand = Number(lot?.live_qty);
+      const measurable =
+        lot?.wac_qty != null &&
+        lot?.live_qty != null &&
+        Number.isFinite(covered) &&
+        Number.isFinite(onHand) &&
+        onHand > 0;
+      return {
+        unitCost: wac,
+        costBasis:
+          measurable && covered < onHand
+            ? "invoice_lot_wac_partial"
+            : "invoice_lot_wac",
+      };
+    }
   }
   const rawLast = row?.last_purchase_price;
   if (rawLast != null) {
@@ -119,6 +172,7 @@ export function summarizeCostBasis(
 ): CostCoverage {
   const byBasis: Record<CostBasis, number> = {
     invoice_lot_wac: 0,
+    invoice_lot_wac_partial: 0,
     last_purchase_price: 0,
     unknown: 0,
   };

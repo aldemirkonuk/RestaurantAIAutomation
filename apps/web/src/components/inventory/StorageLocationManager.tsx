@@ -27,7 +27,7 @@ import {
   RefreshCw,
   GripVertical,
 } from 'lucide-react'
-import { useStorageLocations, DEFAULT_LOCATIONS } from '../../hooks/useStorageLocations'
+import { useStorageLocations } from '../../hooks/useStorageLocations'
 import type { StorageLocation } from '../../hooks/useStorageLocations'
 export type { StorageLocation }
 
@@ -50,15 +50,10 @@ interface StorageLocationManagerProps {
   onAutoLocate?: () => void
 }
 
-/** @deprecated Use the useStorageLocations hook instead */
-export function loadStorageLocations(): StorageLocation[] {
-  return DEFAULT_LOCATIONS
-}
-
-/** @deprecated Use the useStorageLocations hook instead */
-export function saveStorageLocations(_locations: StorageLocation[]) {
-  // no-op: persistence is handled by useStorageLocations via API
-}
+// `loadStorageLocations()` / `saveStorageLocations()` used to live here. The
+// loader returned four invented zones to any caller, and the saver was a no-op.
+// Both were unreferenced. Deleted 2026-09-02 rather than left as a second door
+// onto the same fiction — persistence is the useStorageLocations hook's job.
 
 const DEFAULT_COLORS = [
   '#be123c',
@@ -115,10 +110,12 @@ export function StorageLocationManager({
   const [wineSearchQuery, setWineSearchQuery] = useState('')
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
+  // capacity starts EMPTY, not 100. A pre-filled denominator that the user
+  // never looked at becomes a recorded fact the cellar map divides by.
   const [formData, setFormData] = useState<Partial<StorageLocation>>({
     name: '',
     description: '',
-    capacity: 100,
+    capacity: null,
     currentCount: 0,
     temperature: '',
     humidity: '',
@@ -172,7 +169,7 @@ export function StorageLocationManager({
     setFormData({
       name: '',
       description: '',
-      capacity: 100,
+      capacity: null,
       currentCount: 0,
       temperature: '',
       humidity: '',
@@ -186,10 +183,13 @@ export function StorageLocationManager({
   // P0: use addLocation hook so creates are persisted to the server
   const handleCreate = () => {
     if (!formData.name) return
+    // No `|| 100`. The server stores capacity NOT NULL, so a zone created
+    // without one would be recorded as holding 100 bottles that nobody counted.
+    if (!formData.capacity || formData.capacity <= 0) return
     addLocation({
       name: formData.name,
       description: formData.description,
-      capacity: formData.capacity || 100,
+      capacity: formData.capacity,
       currentCount: 0,
       temperature: formData.temperature,
       humidity: formData.humidity,
@@ -205,8 +205,9 @@ export function StorageLocationManager({
   const handleUpdate = (forceCapacity = false) => {
     if (!editingLocation || !formData.name) return
 
-    const newCapacity = formData.capacity || editingLocation.capacity
+    const newCapacity = formData.capacity ?? editingLocation.capacity
     const currentCount = editingLocation.currentCount
+    if (!newCapacity || newCapacity <= 0) return
 
     if (!forceCapacity && newCapacity < currentCount) {
       setCapacityWarning({
@@ -497,16 +498,20 @@ export function StorageLocationManager({
                           )}
                         </div>
 
-                        {/* Capacity bar */}
-                        <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{
-                              width: `${Math.min((location.currentCount / location.capacity) * 100, 100)}%`,
-                              backgroundColor: location.color,
-                            }}
-                          />
-                        </div>
+                        {/* Capacity bar — omitted when there is no recorded denominator */}
+                        {location.capacity == null ? (
+                          <p className="mt-2 text-[11px] text-gray-400">Capacity not recorded</p>
+                        ) : (
+                          <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all"
+                              style={{
+                                width: `${Math.min((location.currentCount / location.capacity) * 100, 100)}%`,
+                                backgroundColor: location.color,
+                              }}
+                            />
+                          </div>
+                        )}
 
                         {/* Expand/collapse wine list toggle */}
                         <button
@@ -655,15 +660,18 @@ export function StorageLocationManager({
                       </label>
                       <input
                         type="number"
-                        value={formData.capacity}
+                        value={formData.capacity ?? ''}
+                        placeholder="Required — bottles this zone holds"
                         onChange={(e) => {
-                          const val = parseInt(e.target.value) || 0
+                          const raw = e.target.value.trim()
+                          const parsed = parseInt(raw, 10)
+                          const val = raw === '' || !Number.isFinite(parsed) ? null : parsed
                           setFormData({ ...formData, capacity: val })
-                          if (capacityWarning && val >= capacityWarning.currentCount) {
+                          if (capacityWarning && val !== null && val >= capacityWarning.currentCount) {
                             setCapacityWarning(null)
                           }
                         }}
-                        min={0}
+                        min={1}
                         className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                         style={{ color: '#1f2937', WebkitTextFillColor: '#1f2937' }}
                       />
@@ -802,20 +810,24 @@ export function StorageLocationManager({
                           </div>
                           <div className="text-right">
                             <span className="text-xs font-medium text-gray-500">
-                              {editingLocationWines.reduce((s, w) => s + w.quantity, 0)} / {editingLocation.capacity}
+                              {editingLocationWines.reduce((s, w) => s + w.quantity, 0)} / {editingLocation.capacity ?? '—'}
                             </span>
                             <p className="text-xs text-gray-400">bottles</p>
                           </div>
                         </div>
-                        <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{
-                              width: `${Math.min((editingLocationWines.reduce((s, w) => s + w.quantity, 0) / editingLocation.capacity) * 100, 100)}%`,
-                              backgroundColor: editingLocation.color,
-                            }}
-                          />
-                        </div>
+                        {editingLocation.capacity == null ? (
+                          <p className="text-[11px] text-gray-400">Capacity not recorded — no fill shown.</p>
+                        ) : (
+                          <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all"
+                              style={{
+                                width: `${Math.min((editingLocationWines.reduce((s, w) => s + w.quantity, 0) / editingLocation.capacity) * 100, 100)}%`,
+                                backgroundColor: editingLocation.color,
+                              }}
+                            />
+                          </div>
+                        )}
                       </div>
 
                       {/* Currently assigned wines — server-sourced to avoid silent drops */}
@@ -1024,7 +1036,7 @@ export function StorageLocationManager({
                     )}
                     <button
                       onClick={() => (isCreating ? handleCreate() : handleUpdate())}
-                      disabled={!formData.name}
+                      disabled={!formData.name || !formData.capacity || formData.capacity <= 0}
                       className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                       <Save className="w-4 h-4" />

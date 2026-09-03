@@ -65,10 +65,55 @@ It adds the third corner nothing was comparing:
 
   ./scripts/check_queried_tables_exist.py                 # C vs L, hermetic
   ./scripts/check_queried_tables_exist.py --against-production
+  ./scripts/check_queried_tables_exist.py --against-production --base origin/main
   ./scripts/check_queried_tables_exist.py --list-dynamic  # show the blind spot
+  ./scripts/check_queried_tables_exist.py --self-test     # prove it can go red
 
 Exit 0 = pass.  Exit 1 = violation.  Exit 2 = the guard could not check what it
 claims to check (see NEVER VACUOUS).
+
+`--base` -- WHY THE C - R ARM IS MERGE-AWARE (ADR 0095)
+------------------------------------------------------
+C - R asks "does production have what the code calls". On a `push` to `main`
+that is exactly the right question: production and `main` are meant to be in
+lockstep, so a call to an object production lacks IS failing at runtime right
+now, and nothing here relaxes that.
+
+On a pull request it is a question nobody posed. Migrations auto-apply on
+MERGE, so a PR that adds one is comparing code that is not deployed against a
+production that correctly does not have the object yet. The code and the
+migration land together; neither is live. The guard printed
+`(migrations DO define it -- never pushed)` -- an accurate description of a
+non-defect -- and exited 1 anyway.
+
+MEASURED, 2026-09-02: PR #243 added `record_stock_count` together with the
+migration creating it, and this guard failed with *"1 function(s) the code
+calls do not exist in PRODUCTION"*. Because this job's `name:` is a required
+status check on `main`, that PR could not merge by any route that did not
+either bypass the check or hand-apply the migration to production first --
+and hand-applying manufactures the version mismatch that cost two sessions an
+hour the same day. Both required contexts were removed from `main` to unblock
+the day. This is what earns them back.
+
+The fix, deliberately the same shape ADR 0092 gave the sibling check
+`Fresh database equals remote`, because two shapes for one problem is how the
+two guards start disagreeing: with `--base <ref>`, work out which migration
+files this PR ADDS (`scripts/parity_migrations_added_by_pr.py`, three-dot,
+`--diff-filter=A`), parse the migration directory a second time WITHOUT them,
+and treat the difference as "introduced by this PR". An object production lacks
+is expected exactly when it is in that difference.
+
+WHAT THIS DELIBERATELY DOES NOT RELAX -- the whole ratchet:
+  * An object NO migration declares still fails, in both modes. The exempt set
+    is a SUBSET of what migrations declare, so a phantom relation cannot be in
+    it. The hermetic C - L arm above is not touched at all.
+  * A MODIFIED migration exempts nothing (`--diff-filter=A` only). Editing an
+    already-applied migration to add a table is still a defect.
+  * With no `--base` -- every `push` and `schedule` run -- the exempt set is
+    empty and the behaviour is byte-for-byte what it was. `main` is as strict
+    as it ever was.
+  * An unresolvable base is exit 2, never a quiet strict run and never a quiet
+    vacuous one. See NEVER VACUOUS.
 
 WHAT IT DOES NOT CATCH -- read this before trusting it
 ------------------------------------------------------
@@ -104,9 +149,15 @@ Every "found nothing" path is a FAILURE, not a pass:
   * fewer than MIN_DECLARED relations parsed      -> exit 2, the SQL parse broke
   * a KNOWN_MISSING entry is now satisfied        -> exit 1, prune it (ratchet)
   * a KNOWN_MISSING entry is not queried any more -> exit 1, prune it
-The last two matter as much as the first. A debt list nobody prunes stops being
-a record of debt and becomes a list of relations the guard has quietly stopped
-looking at.
+  * `--base` given and the base cannot be resolved-> exit 2, never a quiet
+                                                     strict or vacuous run
+  * `--base` names a migration not on disk        -> exit 2, the held-back list
+                                                     does not describe this tree
+  * the base parse falls under MIN_DECLARED       -> exit 2, the exclusion or
+                                                     the SQL parse ate the tree
+The last two of the first group matter as much as the first. A debt list nobody
+prunes stops being a record of debt and becomes a list of relations the guard
+has quietly stopped looking at.
 """
 
 from __future__ import annotations
@@ -293,7 +344,18 @@ KNOWN_MISSING_FUNCTIONS: dict[str, str] = {}
 # Resolving `const x = Class.CONST` remains a real gap in the extractor rather
 # than an unknowable, and is the cheapest next thing to close if the count
 # creeps again.
-DYNAMIC_CEILING = 24
+# 2026-09-02, raised 24 -> 26 for TWO sites in
+# apps/api-gateway/src/analytics/dev-truth.service.ts: `client.from(table)` in
+# reach() and swallow(), where `table` is the loop variable over SOURCE_TABLE
+# and over an explicit probe list. These cannot be literals without defeating
+# the instrument -- its entire job is to report row counts and read-failure
+# states ACROSS the seven data sources at once, so the table name is the thing
+# being iterated. The blind spot changes no verdict: every name it can take is
+# a literal in the same file (SOURCE_TABLE's seven values plus five probes),
+# so all twelve are already in the queried set from the map literal itself and
+# are checked against migrations there. The module is dev-only and returns 404
+# under NODE_ENV=production, so if it is ever deleted this should go back to 24.
+DYNAMIC_CEILING = 26
 
 
 # ---------------------------------------------------------------------------
@@ -606,11 +668,22 @@ QUALIFIED_OTHER_SCHEMA_RE = re.compile(
 )
 
 
-def declared_relations(migrations: pathlib.Path) -> tuple[set[str], set[str], int]:
-    """Replay the migration directory in version order. (tables+views, functions, files)."""
+def declared_relations(
+    migrations: pathlib.Path, exclude: frozenset[str] = frozenset()
+) -> tuple[set[str], set[str], int]:
+    """Replay the migration directory in version order. (tables+views, functions, files).
+
+    `exclude` is a set of BASENAMES to skip, and it exists for one caller: the
+    merge-base parse, which replays the directory as it stood before this PR
+    added anything. Replaying rather than parsing the added files alone is
+    deliberate -- DROP and RENAME are order-dependent, so "what this PR
+    introduces" is `full - base`, computed by the same replay twice, not by
+    reading CREATE statements out of the new files and hoping nothing later
+    undoes them.
+    """
     relations: set[str] = set()
     functions: set[str] = set()
-    files = sorted(p for p in migrations.glob("*.sql"))
+    files = sorted(p for p in migrations.glob("*.sql") if p.name not in exclude)
     for f in files:
         text = strip_sql_comments(f.read_text(encoding="utf-8", errors="replace"))
         for stmt in text.split(";"):
@@ -639,6 +712,127 @@ def declared_relations(migrations: pathlib.Path) -> tuple[set[str], set[str], in
             for m in DROP_FUNCTION_RE.finditer(stmt):
                 functions.discard(m.group(1).lower())
     return relations, functions, len(files)
+
+
+# ---------------------------------------------------------------------------
+# Merge awareness -- what THIS pull request introduces (ADR 0095)
+#
+# Read the `--base` section of the module docstring first. In one line: on a
+# pull request the code is no more deployed than the migration is, so an object
+# production lacks that THIS PR's migration declares is expected. On a push to
+# main it is a live defect and still fails.
+#
+# The exempt set is computed as `declared(all) - declared(all minus the files
+# this PR adds)`, so it is by construction a SUBSET of what migrations declare.
+# A relation no migration declares can never enter it -- that is the ratchet,
+# and it is structural rather than a check that could be forgotten.
+# ---------------------------------------------------------------------------
+class CannotCheck(Exception):
+    """The guard cannot answer what it claims to answer. Always exit 2, never 0."""
+
+
+def introduced_relations(
+    migrations: pathlib.Path, added_paths: list[str]
+) -> tuple[set[str], set[str], list[str], list[str]]:
+    """(relations, functions, files used, files skipped) introduced by `added_paths`.
+
+    Raises CannotCheck if a path git reports as added is not on disk. That
+    mismatch means the held-back list does not describe this tree, and an
+    exempt set computed from it would be a guess -- the one thing a guard may
+    never do quietly.
+    """
+    basenames: list[str] = []
+    skipped: list[str] = []
+    for p in added_paths:
+        pp = pathlib.PurePosixPath(p)
+        if pp.parent.as_posix() != MIGRATIONS_DIR or pp.suffix.lower() != ".sql":
+            # A nested file (supabase/migrations/seed/) or a non-SQL one.
+            # declared_relations only ever reads `<migrations>/*.sql`, so such a
+            # file declares nothing here and could not exempt anything. Skipped,
+            # and listed on the run rather than dropped silently.
+            skipped.append(p)
+            continue
+        if not (migrations / pp.name).is_file():
+            raise CannotCheck(
+                f"git reports this PR adds '{p}', but it is not on disk under "
+                f"{MIGRATIONS_DIR}/. The held-back list does not describe this "
+                f"working tree, so anything computed from it would be a guess."
+            )
+        basenames.append(pp.name)
+
+    full_rels, full_fns, _ = declared_relations(migrations)
+    base_rels, base_fns, base_files = declared_relations(
+        migrations, exclude=frozenset(basenames)
+    )
+    if base_files and len(base_rels) < MIN_DECLARED:
+        raise CannotCheck(
+            f"the merge-base parse yielded {len(base_rels)} relations across "
+            f"{base_files} file(s), below the {MIN_DECLARED} floor. Either the "
+            f"exclusion removed most of the tree or the SQL patterns rotted; "
+            f"either way every object would look like this PR introduced it."
+        )
+    return full_rels - base_rels, full_fns - base_fns, sorted(basenames), skipped
+
+
+def introduced_by_this_pr(
+    repo: pathlib.Path, base: str
+) -> tuple[set[str], set[str], list[str], list[str]]:
+    """Same, but the file list comes from git via the sibling ADR 0092 helper.
+
+    Reused rather than reimplemented on purpose. `Fresh database equals remote`
+    and this check must agree on what "added by this PR" means; two
+    implementations of that would drift, and a guard that disagrees with its
+    own sibling teaches people to believe neither. The helper already carries
+    the three-dot / `--diff-filter=A` reasoning and its own self-test.
+    """
+    import importlib.util  # noqa: PLC0415  (only the --base arm needs it)
+
+    path = repo / "scripts" / "parity_migrations_added_by_pr.py"
+    if not path.is_file():
+        raise CannotCheck(
+            f"{path} is missing. --base has nothing to compute the held-back "
+            f"list with, and guessing 'this PR added nothing' would silently "
+            f"restore the block this flag exists to remove."
+        )
+    spec = importlib.util.spec_from_file_location("parity_migrations_added_by_pr", path)
+    if spec is None or spec.loader is None:  # pragma: no cover - defensive
+        raise CannotCheck(f"cannot load {path} as a module")
+    helper = importlib.util.module_from_spec(spec)
+    sys.modules["parity_migrations_added_by_pr"] = helper
+    spec.loader.exec_module(helper)
+
+    try:
+        added = helper.added_migrations(base, "HEAD", cwd=repo)
+    except helper.CannotCheck as exc:
+        raise CannotCheck(str(exc)) from exc
+
+    return introduced_relations(repo / MIGRATIONS_DIR, added)
+
+
+def classify_absences(
+    queried: set[str],
+    present: set[str],
+    known: dict[str, str],
+    introduced: set[str],
+) -> tuple[list[str], list[str], list[str]]:
+    """Split "the code calls it, production lacks it" three ways.
+
+    Returns (known_debt, introduced_by_this_pr, unexplained). Only the third
+    fails the build.
+
+    Debt takes precedence over introduced: an entry that is on the debt list AND
+    declared by a migration this PR adds is debt being REPAID, and the C - L
+    ratchet already fails that with "delete the entry".
+
+    `introduced` is empty on every push and schedule run, and this then reduces
+    to exactly the two-way split that was here before -- same inputs, same
+    verdict, no new leniency on main.
+    """
+    absent = sorted(t for t in queried if t not in present)
+    debt = [t for t in absent if t in known]
+    intro = [t for t in absent if t not in known and t in introduced]
+    unexplained = [t for t in absent if t not in known and t not in introduced]
+    return debt, intro, unexplained
 
 
 # ---------------------------------------------------------------------------
@@ -768,6 +962,363 @@ def report_missing(
     return fail
 
 
+# ---------------------------------------------------------------------------
+# --self-test -- prove the merge-awareness can go RED before trusting it green
+#
+# Two rules this suite obeys, both learned the hard way in this repo:
+#
+#   1. EVERY case must ASSERT, not merely run. ADR 0073: a self-test that
+#      reports "cannot check" for every case is a failing self-test wearing a
+#      green exit code.
+#   2. It NEVER borrows KNOWN_MISSING to excuse its own fixture. ADR 0065: a
+#      fixture that reaches into the live debt list passes because the debt
+#      list is long, not because the logic is right, and it silently stops
+#      asserting the day the list is pruned. Every debt dict below is
+#      synthetic, and an EMPTY one is asserted to be a legal state -- because
+#      KNOWN_MISSING_FUNCTIONS is empty today and the end state of a
+#      shrink-only list is empty.
+#
+# The decision cases run in-process against a pure function, so each one is
+# proven in BOTH directions: PR mode and push mode, from the same input.
+# ---------------------------------------------------------------------------
+SELFTEST_TABLES_PER_FILE = 6
+SELFTEST_BASE_FILES = 40
+
+
+def _seed_migrations(mig: pathlib.Path) -> None:
+    """A migrations directory big enough to clear both floors, so the floors
+    themselves stay live rather than being what the fixture trips on."""
+    mig.mkdir(parents=True, exist_ok=True)
+    for i in range(SELFTEST_BASE_FILES):
+        stmts = "\n".join(
+            f"create table public.base_{i:03d}_{j} (id uuid primary key);"
+            for j in range(SELFTEST_TABLES_PER_FILE)
+        )
+        (mig / f"2026010100{i:04d}_base.sql").write_text(stmts + "\n", encoding="utf-8")
+
+
+def self_test() -> int:  # noqa: PLR0915  (a flat list of cases reads better here)
+    import shutil  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
+    failures: list[str] = []
+
+    def check(name: str, cond: bool, detail: str = "") -> None:
+        if cond:
+            print(f"   ok    {name}")
+        else:
+            failures.append(name)
+            print(f"   FAIL  {name}{(' — ' + detail) if detail else ''}")
+
+    def run(cwd: pathlib.Path, *args: str) -> None:
+        subprocess.run(args, cwd=cwd, check=True, capture_output=True, text=True)
+
+    # -- A. the decision itself, both directions from one input ---------------
+    print("\n== A. the three-way split (pure function, synthetic debt only)")
+
+    # 1/2. THE defect and its control. Identical inputs; the only difference is
+    #      whether this PR introduces the object. PR mode must exempt it, push
+    #      mode must still fail it. Case 2 is what makes case 1 evidence.
+    _d, intro, unex = classify_absences({"stock_counts"}, set(), {}, {"stock_counts"})
+    check(
+        "PR mode: an object this PR's migration declares is not a failure",
+        (intro, unex) == (["stock_counts"], []),
+        f"intro={intro} unexplained={unex}",
+    )
+    _d, intro, unex = classify_absences({"stock_counts"}, set(), {}, set())
+    check(
+        "push mode: the SAME object still fails (the exemption is not global)",
+        (intro, unex) == ([], ["stock_counts"]),
+        f"intro={intro} unexplained={unex}",
+    )
+
+    # 3. The ratchet. An object no migration declares can never be in the
+    #    introduced set, so it fails either way. Asserted in both modes.
+    _d, _i, unex_pr = classify_absences(
+        {"ghost_table"}, set(), {}, {"stock_counts"}
+    )
+    _d, _i, unex_push = classify_absences({"ghost_table"}, set(), {}, set())
+    check(
+        "an object NO migration declares fails in BOTH modes",
+        unex_pr == ["ghost_table"] and unex_push == ["ghost_table"],
+        f"pr={unex_pr} push={unex_push}",
+    )
+
+    # 4/5. Debt is classed as debt -- with a SYNTHETIC entry, never a live one --
+    #      and the case is proven discriminating by removing the entry.
+    synthetic = {"fixture_only_debt": "[synthetic] exists solely for this self-test"}
+    debt, _i, unex = classify_absences({"fixture_only_debt"}, set(), synthetic, set())
+    check(
+        "a synthetic debt entry is classed as debt, not as a new failure",
+        (debt, unex) == (["fixture_only_debt"], []),
+        f"debt={debt} unexplained={unex}",
+    )
+    debt, _i, unex = classify_absences({"fixture_only_debt"}, set(), {}, set())
+    check(
+        "and that case is discriminating (drop the entry and it fails)",
+        (debt, unex) == ([], ["fixture_only_debt"]),
+        f"debt={debt} unexplained={unex}",
+    )
+
+    # 6/7. An EMPTY debt list is legal -- KNOWN_MISSING_FUNCTIONS is empty today
+    #      -- but empty must not mean "nothing is ever checked".
+    debt, intro, unex = classify_absences({"t"}, {"t"}, {}, set())
+    check(
+        "an EMPTY debt list is a legal state (nothing absent -> nothing to report)",
+        (debt, intro, unex) == ([], [], []),
+        f"{debt} {intro} {unex}",
+    )
+    _d, _i, unex = classify_absences({"t"}, set(), {}, set())
+    check(
+        "and an empty debt list is not a free pass (an absence still fails)",
+        unex == ["t"],
+        f"unexplained={unex}",
+    )
+
+    # 8. Debt outranks introduced: a PR that repays debt is still reported as
+    #    debt, and the C - L ratchet is what tells the author to prune the line.
+    debt, intro, unex = classify_absences({"x"}, set(), {"x": "[synthetic]"}, {"x"})
+    check(
+        "debt outranks introduced-by-this-PR (the ratchet keeps the prune)",
+        (debt, intro, unex) == (["x"], [], []),
+        f"{debt} {intro} {unex}",
+    )
+
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="cqte-selftest-"))
+    try:
+        # -- B. the SQL replay: full minus base ---------------------------------
+        print("\n== B. what the added migration files introduce (real SQL replay)")
+        b = tmp / "sql"
+        mig = b / MIGRATIONS_DIR
+        _seed_migrations(mig)
+        (mig / "20260902190000_pr.sql").write_text(
+            "create table public.pr_only_table (id uuid primary key);\n"
+            "create or replace function public.record_stock_count(p uuid) "
+            "returns void as $$ begin end $$ language plpgsql;\n",
+            encoding="utf-8",
+        )
+        full_rels, full_fns, nfiles = declared_relations(mig)
+        check(
+            "the fixture parses (non-vacuity of everything in section B)",
+            "pr_only_table" in full_rels
+            and "record_stock_count" in full_fns
+            and nfiles == SELFTEST_BASE_FILES + 1,
+            f"{len(full_rels)} rels, {len(full_fns)} fns, {nfiles} files",
+        )
+        rels, fns, used, skipped = introduced_relations(
+            mig, [f"{MIGRATIONS_DIR}/20260902190000_pr.sql"]
+        )
+        check(
+            "excluding the added file makes its objects 'introduced by this PR'",
+            rels == {"pr_only_table"} and fns == {"record_stock_count"} and skipped == [],
+            f"rels={sorted(rels)} fns={sorted(fns)} used={used}",
+        )
+        rels0, fns0, _u, _s = introduced_relations(mig, [])
+        check(
+            "and that is discriminating: adding nothing introduces nothing",
+            rels0 == set() and fns0 == set(),
+            f"rels={sorted(rels0)} fns={sorted(fns0)}",
+        )
+
+        # An ALTER-only migration exempts nothing. This is the case that keeps
+        # "my PR touches migrations" from becoming a blanket excuse.
+        b2 = tmp / "alter-only"
+        mig2 = b2 / MIGRATIONS_DIR
+        _seed_migrations(mig2)
+        (mig2 / "20260902190000_pr.sql").write_text(
+            "alter table public.base_000_0 add column note text;\n", encoding="utf-8"
+        )
+        rels, fns, _u, _s = introduced_relations(
+            mig2, [f"{MIGRATIONS_DIR}/20260902190000_pr.sql"]
+        )
+        check(
+            "an ALTER-only migration introduces nothing (no blanket excuse)",
+            rels == set() and fns == set(),
+            f"rels={sorted(rels)} fns={sorted(fns)}",
+        )
+
+        # A PR that DROPs a table must not "introduce" it. full - base is
+        # negative there, and a set difference correctly yields nothing.
+        b3 = tmp / "drops"
+        mig3 = b3 / MIGRATIONS_DIR
+        _seed_migrations(mig3)
+        (mig3 / "20260902190000_pr.sql").write_text(
+            "drop table public.base_000_0;\n", encoding="utf-8"
+        )
+        rels, _f, _u, _s = introduced_relations(
+            mig3, [f"{MIGRATIONS_DIR}/20260902190000_pr.sql"]
+        )
+        check(
+            "a PR that DROPs a relation does not 'introduce' it",
+            "base_000_0" not in rels and rels == set(),
+            f"rels={sorted(rels)}",
+        )
+
+        # A nested seed/ file is skipped rather than fatal, and exempts nothing.
+        rels, _f, used, skipped = introduced_relations(
+            mig, [f"{MIGRATIONS_DIR}/seed/010_rows.sql"]
+        )
+        check(
+            "a nested seed/ path exempts nothing and is reported, not fatal",
+            rels == set() and used == [] and skipped == [f"{MIGRATIONS_DIR}/seed/010_rows.sql"],
+            f"rels={sorted(rels)} used={used} skipped={skipped}",
+        )
+
+        # -- C. CANNOT CHECK is exit 2, never a quiet answer --------------------
+        print("\n== C. a partial view refuses (exit 2), never answers 'nothing added'")
+
+        raised = False
+        try:
+            introduced_relations(mig, [f"{MIGRATIONS_DIR}/20990101000000_not_on_disk.sql"])
+        except CannotCheck:
+            raised = True
+        check(
+            "a file git calls added that is not on disk raises (never exempts)",
+            raised,
+        )
+
+        b4 = tmp / "too-small"
+        mig4 = b4 / MIGRATIONS_DIR
+        mig4.mkdir(parents=True)
+        (mig4 / "0001_tiny.sql").write_text(
+            "create table public.only_one (id uuid primary key);\n", encoding="utf-8"
+        )
+        raised = False
+        try:
+            introduced_relations(mig4, [])
+        except CannotCheck:
+            raised = True
+        check(
+            f"a base parse under the {MIN_DECLARED}-relation floor raises",
+            raised,
+        )
+
+        # -- D. end to end through git, the PR #243 shape in miniature ----------
+        print("\n== D. through real git, using the same helper the parity job uses")
+        repo_root = pathlib.Path(__file__).resolve().parent.parent
+        helper_src = repo_root / "scripts" / "parity_migrations_added_by_pr.py"
+        if not helper_src.is_file():
+            check("the ADR 0092 helper this reuses exists", False, str(helper_src))
+        else:
+            check("the ADR 0092 helper this reuses exists", True)
+
+            g = tmp / "git"
+            gmig = g / MIGRATIONS_DIR
+            _seed_migrations(gmig)
+            (g / "scripts").mkdir(parents=True, exist_ok=True)
+            shutil.copy(helper_src, g / "scripts" / helper_src.name)
+            run(g, "git", "init", "-q", "-b", "main")
+            run(g, "git", "config", "user.email", "selftest@example.invalid")
+            run(g, "git", "config", "user.name", "selftest")
+            run(g, "git", "add", "-A")
+            run(g, "git", "commit", "-qm", "base")
+
+            # docs-only branch: nothing introduced, and the exemption is empty
+            # rather than the whole tree.
+            run(g, "git", "checkout", "-qb", "docs-only")
+            (g / "README.md").write_text("docs\n", encoding="utf-8")
+            run(g, "git", "add", "-A")
+            run(g, "git", "commit", "-qm", "docs")
+            rels, fns, used, _s = introduced_by_this_pr(g, "main")
+            check(
+                "a branch adding no migration exempts NOTHING",
+                (rels, fns, used) == (set(), set(), []),
+                f"rels={sorted(rels)} fns={sorted(fns)} used={used}",
+            )
+
+            # the PR #243 shape: the call and the migration land together.
+            run(g, "git", "checkout", "-q", "main")
+            run(g, "git", "checkout", "-qb", "feat/stock-counts-are-records")
+            (gmig / "20260902190000_a_count_is_a_record.sql").write_text(
+                "create table public.stock_counts (id uuid primary key);\n"
+                "create or replace function public.record_stock_count(p uuid) "
+                "returns void as $$ begin end $$ language plpgsql;\n",
+                encoding="utf-8",
+            )
+            run(g, "git", "add", "-A")
+            run(g, "git", "commit", "-qm", "a count is a record")
+            rels, fns, used, _s = introduced_by_this_pr(g, "main")
+            check(
+                "the PR #243 shape: record_stock_count is introduced by this PR",
+                "record_stock_count" in fns and "stock_counts" in rels and len(used) == 1,
+                f"rels={sorted(rels)} fns={sorted(fns)} used={used}",
+            )
+            # and the verdict flips with the mode, on the same fixture.
+            _d, intro, unex = classify_absences({"stock_counts"}, set(), {}, rels)
+            check(
+                "…so PR mode exempts it while push mode (empty set) fails it",
+                intro == ["stock_counts"]
+                and classify_absences({"stock_counts"}, set(), {}, set())[2]
+                == ["stock_counts"],
+                f"intro={intro} unexplained={unex}",
+            )
+
+            # THE SHAPE CI ACTUALLY CHECKS OUT. actions/checkout on a
+            # pull_request gives `refs/pull/N/merge` -- a MERGE COMMIT of the
+            # branch into the base -- not the branch head. Every case above
+            # runs on a branch head, so without this the suite would be green
+            # while proving nothing about the tree the job really sees.
+            #
+            # Three-dot still holds: merge-base(main, merge-commit) is main's
+            # tip, because main is one of the merge commit's parents.
+            run(g, "git", "checkout", "-q", "main")
+            run(g, "git", "merge", "--no-ff", "-q", "-m", "pr/merge",
+                "feat/stock-counts-are-records")
+            merge_parents = subprocess.run(
+                ["git", "log", "-1", "--format=%P", "HEAD"],
+                cwd=g, check=True, capture_output=True, text=True,
+            ).stdout.split()
+            rels, fns, used, _s = introduced_by_this_pr(g, "main~1")
+            check(
+                "on a MERGE COMMIT (the shape CI checks out) the answer is the same",
+                len(merge_parents) == 2
+                and "record_stock_count" in fns
+                and "stock_counts" in rels
+                and len(used) == 1,
+                f"parents={len(merge_parents)} rels={sorted(rels)} "
+                f"fns={sorted(fns)} used={used}",
+            )
+            run(g, "git", "reset", "-q", "--hard", "HEAD~1")
+
+            # a MODIFIED migration exempts nothing -- the property ADR 0092's
+            # helper owns, re-asserted here because THIS guard depends on it.
+            run(g, "git", "checkout", "-q", "main")
+            run(g, "git", "checkout", "-qb", "edits-an-applied-migration")
+            victim = sorted(gmig.glob("2026010100*_base.sql"))[0]
+            victim.write_text(
+                "create table public.base_000_0 (id uuid primary key);\n"
+                "create table public.sneaked_in_by_edit (id uuid primary key);\n",
+                encoding="utf-8",
+            )
+            run(g, "git", "add", "-A")
+            run(g, "git", "commit", "-qm", "edit an applied migration")
+            rels, _f, used, _s = introduced_by_this_pr(g, "main")
+            check(
+                "a MODIFIED migration exempts nothing, even for what it adds",
+                "sneaked_in_by_edit" not in rels and used == [],
+                f"rels={sorted(rels)} used={used}",
+            )
+
+            raised = False
+            try:
+                introduced_by_this_pr(g, "no-such-base")
+            except CannotCheck:
+                raised = True
+            check("an unresolvable base raises rather than exempting nothing", raised)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print()
+    if failures:
+        print(f"SELF-TEST FAILED — {len(failures)} case(s): {', '.join(failures)}")
+        return 1
+    print("SELF-TEST PASSED — the exemption applies only to what THIS PR's added")
+    print("                   migrations declare, disappears on push, and cannot")
+    print("                   cover an object no migration declares at all.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -778,11 +1329,29 @@ def main() -> int:
         help="also compare the code's relations against live production",
     )
     ap.add_argument(
+        "--base",
+        metavar="REF",
+        help=(
+            "the ref this pull request merges into, e.g. origin/main. Objects "
+            "production lacks that a migration ADDED BY THIS PR declares are "
+            "then expected rather than failures. Omit it on push/schedule: "
+            "that is the strict run and nothing is exempt."
+        ),
+    )
+    ap.add_argument(
         "--list-dynamic",
         action="store_true",
         help="print every call site whose table name could not be resolved",
     )
+    ap.add_argument(
+        "--self-test",
+        action="store_true",
+        help="prove the merge-awareness can go red before trusting it green",
+    )
     args = ap.parse_args()
+
+    if args.self_test:
+        return self_test()
 
     repo = pathlib.Path(__file__).resolve().parent.parent
     blocked: list[str] = []
@@ -865,6 +1434,44 @@ def main() -> int:
             f"would look missing."
         )
 
+    # --- what THIS pull request introduces, if we were told the base ---------
+    #
+    # Printed on EVERY run including the push shape, so "nothing was exempt" is
+    # a stated measurement rather than an absence nobody looked for. This is the
+    # fault class the repo keeps finding: a check that reports absence as health.
+    pr_rels: set[str] = set()
+    pr_fns: set[str] = set()
+    print()
+    if args.base:
+        try:
+            pr_rels, pr_fns, pr_files, pr_skipped = introduced_by_this_pr(repo, args.base)
+        except CannotCheck as exc:
+            print(f"== merge-aware mode against '{args.base}': CANNOT CHECK")
+            print(f"   {exc}")
+            blocked.append(f"--base '{args.base}': {exc}")
+            pr_files, pr_skipped = [], []
+        else:
+            print(
+                f"== merge-aware: this PR adds {len(pr_files)} migration file(s) "
+                f"vs '{args.base}', declaring {len(pr_rels)} new relation(s) and "
+                f"{len(pr_fns)} new function(s)"
+            )
+            for f in pr_files:
+                print(f"     {f}")
+            for t in sorted(pr_rels):
+                print(f"       introduces relation  {t}")
+            for t in sorted(pr_fns):
+                print(f"       introduces function  {t}()")
+            for p in pr_skipped:
+                print(f"     (not a top-level .sql migration, exempts nothing: {p})")
+            if not pr_files:
+                print("   This PR adds no migration, so NOTHING is exempt below —")
+                print("   the production comparison is as strict as it is on main.")
+    else:
+        print("== merge-aware mode NOT ACTIVE (no --base): the push/schedule shape.")
+        print("   Nothing is exempt. Production and main are meant to be in lockstep,")
+        print("   so an object production lacks is failing at runtime right now.")
+
     fail |= report_missing("relations", tables, declared, KNOWN_MISSING, ex, "table")
     fail |= report_missing(
         "rpc functions", functions, declared_fns, KNOWN_MISSING_FUNCTIONS, ex, "rpc"
@@ -880,14 +1487,32 @@ def main() -> int:
                 "production reported zero relations -- that is a connection or "
                 "permission problem, not an empty database"
             )
-        missing_prod = sorted(t for t in tables if t not in prod_rels)
-        missing_prod_fns = sorted(f for f in functions if f not in prod_fns)
         extra_local = sorted(t for t in declared if t not in prod_rels)
 
-        debt_prod = [t for t in missing_prod if t in KNOWN_MISSING]
-        debt_prod += [f + "()" for f in missing_prod_fns if f in KNOWN_MISSING_FUNCTIONS]
-        new_prod = [t for t in missing_prod if t not in KNOWN_MISSING]
-        new_prod_fns = [f for f in missing_prod_fns if f not in KNOWN_MISSING_FUNCTIONS]
+        rel_debt, rel_pr, new_prod = classify_absences(
+            tables, prod_rels, KNOWN_MISSING, pr_rels
+        )
+        fn_debt, fn_pr, new_prod_fns = classify_absences(
+            functions, prod_fns, KNOWN_MISSING_FUNCTIONS, pr_fns
+        )
+        debt_prod = rel_debt + [f + "()" for f in fn_debt]
+
+        # The exemption, always itemised. An exempt object is not an object
+        # nobody looked at: it is one whose absence was EXPLAINED, and the
+        # explanation is printed so a wrong one can be seen.
+        if rel_pr or fn_pr:
+            print()
+            print(
+                f"   {len(rel_pr) + len(fn_pr)} object(s) production lacks are "
+                f"declared by a migration THIS PR ADDS. Expected, not a defect:"
+            )
+            for t in rel_pr:
+                print(f"     {t}")
+            for f in fn_pr:
+                print(f"     {f}()  [rpc]")
+            print("   They land together on merge. Neither the code nor the migration")
+            print("   is deployed today, so 'production lacks it' is not a defect yet.")
+            print("   On the next push to main this exemption is gone and they must exist.")
 
         if debt_prod:
             print()
@@ -913,6 +1538,14 @@ def main() -> int:
                 print(f"     {f}()  [rpc]{extra}")
             print("   -> Every call against these fails at runtime, right now.")
             print("   -> If migrations define it, this is an unpushed migration: supabase db push.")
+            if args.base:
+                print("   -> This run WAS merge-aware, so none of the above is explained by a")
+                print(f"      migration this PR adds against '{args.base}'. Either the migration")
+                print("      is MODIFIED rather than added (which exempts nothing, by design),")
+                print("      or no migration declares the object at all.")
+            else:
+                print("   -> This run was NOT merge-aware (no --base). On a pull request that")
+                print("      adds the migration alongside the call, pass --base origin/<base>.")
 
         # The disagreement that IS the defect class: declared in the wrong place,
         # yet present in production because someone applied it by another route.

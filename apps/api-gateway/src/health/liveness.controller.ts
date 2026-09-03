@@ -1,5 +1,6 @@
 import { Controller, Get } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
+import { COMMIT_SHA, BOOTED_AT } from "./build-provenance";
 
 /**
  * Liveness — the one route that answers "did this process come up?"
@@ -40,18 +41,56 @@ import { ApiOperation, ApiTags } from "@nestjs/swagger";
  * It does NOT prove the database is reachable or that any dependency is healthy.
  * That is a readiness check, it is a different question, and conflating the two
  * is how a liveness probe starts failing for reasons that have nothing to do
- * with whether the process is alive.
+ * with whether the process is alive. That question now has its own route —
+ * `/api/v1/health/ready`, see `readiness.controller.ts` — which returns 503 when
+ * the client was never initialised or the database does not answer.
+ *
+ * WHY IT ALSO NAMES ITS BUILD
+ * ---------------------------
+ * A 200 here proves *a* process is up. It does not say WHICH ONE. On 2026-09-02
+ * a merge to main was verified by hand and the honest answer had to stop at
+ * "whatever is running is healthy" — because with a constant payload there is no
+ * way to tell the newly deployed build from the previous one still serving.
+ * `deploy.yml` has the same blind spot: it polls until it sees a 200, and the old
+ * instance answers 200 perfectly.
+ *
+ * So the payload names the build. `commit` is the deployed revision;
+ * `bootedAt` is when this process started. Either one answers "is production
+ * running what we just merged?" — and `bootedAt` answers it with no platform
+ * support at all, which matters because the commit sha depends on an injected
+ * variable that may simply not be there.
+ *
+ * WHEN THE SHA IS ABSENT IT SAYS SO
+ * ---------------------------------
+ * `commit` is `"unknown"`, never omitted and never invented. A field that
+ * disappears when the answer is missing turns "we could not tell" into "nothing
+ * to report", which is the fault this route was extended to close, reappearing
+ * inside the fix for it. `bootedAt` still works in that case.
+ *
+ * The sha is not a secret — it identifies a revision of a private repository and
+ * discloses nothing without access to it — and it is what a deploy audit has to
+ * compare against. Nothing else was added: this handler still touches no
+ * database, no tenant data and no configuration that could leak a value.
+ */
+
+/**
+ * `commit` and `bootedAt` moved to `build-provenance.ts` when the readiness
+ * route was added: two modules each calling `new Date()` would report two
+ * different boot times for one process. Where the sha comes from, why it is
+ * injected by the build rather than read from git at runtime, and why its
+ * absence is reported as the literal "unknown" are all documented there.
  */
 @ApiTags("health")
 @Controller("health")
 export class LivenessController {
   @Get("live")
   @ApiOperation({
-    summary: "Liveness probe — the process is up and routing",
+    summary:
+      "Liveness probe — the process is up, routing, and says which build it is",
     description:
-      "Unauthenticated and dependency-free by design. Proves the process started and Nest resolved its injector; proves nothing about the database. Returns a constant.",
+      'Unauthenticated and dependency-free by design. Proves the process started and Nest resolved its injector; proves nothing about the database. `commit` is the deployed revision, or the literal "unknown" when no build variable is set — never omitted. `bootedAt` is when this process started, and answers "is this the build we just merged?" even when `commit` is unknown.',
   })
-  live(): { status: "ok" } {
-    return { status: "ok" };
+  live(): { status: "ok"; commit: string; bootedAt: string } {
+    return { status: "ok", commit: COMMIT_SHA, bootedAt: BOOTED_AT };
   }
 }

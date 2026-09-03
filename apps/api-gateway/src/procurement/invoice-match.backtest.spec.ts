@@ -5,6 +5,7 @@ import {
   isClaimable,
   isDiscrepancy,
   MatchInput,
+  toBottleOperands,
 } from "./invoice-match";
 
 /**
@@ -285,7 +286,14 @@ describe("invoice-match backtest — synthetic scenario expectations", () => {
       for (const row of fixture.rows) {
         const result = computeMatch(row.input);
         expect(result.backorderQty).toBeGreaterThanOrEqual(0);
-        expect(result.backorderQty).toBeLessThanOrEqual(row.input.orderedQty);
+        // Compared against the NORMALISED ordered quantity, not the raw fixture
+        // field: `backorderQty` is in bottles, and the fixture states its
+        // quantities in whatever unit the scenario used. Comparing a bottle
+        // count against a possibly-case count is the very defect this engine
+        // now refuses to commit.
+        expect(result.backorderQty).toBeLessThanOrEqual(
+          toBottleOperands(row.input).orderedQty,
+        );
       }
     });
 

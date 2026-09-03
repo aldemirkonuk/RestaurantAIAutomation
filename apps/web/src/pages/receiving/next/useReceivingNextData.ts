@@ -19,6 +19,53 @@ import { flushDoorOutbox, type QueuedDoorReceipt } from '@/lib/doorOutbox';
 import { offlineStorage, type PendingMutation } from '@/lib/offline-storage';
 import { num } from './rc-format';
 
+/* ─────────────────────────────────────────── the shape of a failure ─────── */
+
+/**
+ * "Not permitted" and "the server broke" are different facts and a page that
+ * renders them identically teaches the reader to distrust both. Axios carries
+ * the status on `response.status`; nothing else on this page reads it.
+ */
+export interface FailureVM {
+  status: number | null;
+  message: string;
+  /** 403/401 — the request was understood and refused. Retrying changes nothing. */
+  forbidden: boolean;
+}
+
+export function failureOf(isError: boolean, error: unknown): FailureVM | null {
+  if (!isError) return null;
+  const status =
+    num((error as { response?: { status?: unknown } } | null)?.response?.status) ?? null;
+  const message = (error as { message?: string } | null)?.message ?? 'request failed';
+  return { status, message, forbidden: status === 403 || status === 401 };
+}
+
+/* ───────────────────────────────────── the windows the server imposes ───── */
+
+/**
+ * Every cap this page's figures are computed behind, cited to the query that
+ * imposes it. ADR 0051 clause 2 turns each of these into a `≥`.
+ *
+ * A cap is only observable from the client when the payload's own length can
+ * reach it — so `QUEUE_ITEMS` and `UNVERIFIED` produce a floor exactly when the
+ * list came back full. `LINKED_CREDITS` and `RECOVERY_STATS` are aggregates
+ * computed server-side behind the cap, so their fullness is NOT observable
+ * here and their figures are floors unconditionally.
+ */
+export const SERVER_WINDOWS = {
+  /** receiving.service.ts:375 — the queue's own rows. */
+  QUEUE_ITEMS: 100,
+  /** receiving.service.ts:271 — the receipt events the uncounted list is built from. */
+  UNVERIFIED: 500,
+  /** receiving.service.ts:384 — credits linked to queue rows. No `.order()`. */
+  LINKED_CREDITS: 200,
+  /** credits.controller.ts:137 — every figure on the owner ledger. No `.order()`. */
+  RECOVERY_STATS: 5000,
+  /** credits.controller.ts:113 — `/credits` list, oldest-first. */
+  CREDITS_LIST: 200,
+} as const;
+
 /* ───────────────────────────────────────────────── staff: in-flight orders ── */
 
 /**
@@ -33,17 +80,47 @@ const IN_FLIGHT_STATUSES = ['CONFIRMED', 'IN_TRANSIT'] as const;
 interface OpenOrderDto {
   id: string;
   orderNumber?: string | null;
+  /** DENOMINATED IN `unitType`. Five on a case order is five CASES. */
   quantity?: number | null;
+  /** `procurement_orders.unit_type` — bottle|case|keg|pack|split_case|each|liter. */
+  unitType?: string | null;
+  /** The bottle-denominated total the server already computed (ADR 0054). */
+  bottlesTotal?: number | null;
   wineName?: string | null;
   requestedAt?: string | null;
-  /** Not in OrderResponseDto today; read defensively so a later addition just works. */
+  providerId?: string | null;
+  /**
+   * Not in OrderResponseDto today — `mapOrderRow` emits `providerId` only
+   * (procurement.service.ts:1911). Read defensively, under both spellings the
+   * gateway might land on, so the door sees the distributor's name the moment
+   * one of them is emitted. See the TODO on `vendorOf` below.
+   */
   providerName?: string | null;
+  provider?: { name?: string | null } | null;
+}
+
+/**
+ * TODO(gateway, blocked): `mapOrderRow` in
+ * `apps/api-gateway/src/procurement/procurement.service.ts:1906-1928` maps
+ * `providerId` and never a provider NAME, so `vendor` is null on every row in
+ * production and the receiver at the door cannot see which distributor is
+ * standing in front of them. The fix is one join + one mapped field in that
+ * service; it is deliberately not made here because three unmerged branches
+ * own that file. This function is written so the page works the instant the
+ * field lands, under either spelling.
+ */
+function vendorOf(o: OpenOrderDto): string | null {
+  const name = o.providerName ?? o.provider?.name ?? null;
+  const trimmed = typeof name === 'string' ? name.trim() : '';
+  return trimmed === '' ? null : trimmed;
 }
 
 export interface DeliveryVM {
   id: string;
-  /** Vendor when the API ever provides it; the wine is the honest fallback. */
+  /** The distributor. Null means NOT KNOWN, and the card must say so. */
   vendor: string | null;
+  /** Last resort for telling two unnamed trucks apart. */
+  providerRef: string | null;
   /** The single line this order carries (one wine per procurement order). */
   line: string | null;
   po: string | null;
@@ -52,17 +129,34 @@ export interface DeliveryVM {
    * line by construction — this is a fact of the DTO, not a guess.
    */
   lineCount: 1;
-  bottles: number | null;
+  /**
+   * What the door will count, in BOTTLES. Taken from the server's own
+   * `bottlesTotal` (ADR 0054's arithmetic) and never re-derived: the pack size
+   * is not in this payload, so a client-side `quantity × n` would be an
+   * invention. Null when the server did not compute it.
+   */
+  bottlesTotal: number | null;
+  /** What was ordered, in the unit it was ordered in. Never bottles unless it is. */
+  orderedQty: number | null;
+  unitType: string | null;
   requestedAt: string | null;
 }
 
 export interface StaffLaneData {
   deliveries: DeliveryVM[];
+  /**
+   * The gateway's own `total` — an exact PostgREST count, not a page length
+   * (procurement.service.ts:853). Null until every request has answered.
+   */
+  totalOutForDelivery: number | null;
+  /** True when a status page was capped, so `deliveries.length` is a floor. */
+  listTruncated: boolean;
   /** False until the list actually arrived — an empty array then means UNKNOWN. */
   hasData: boolean;
   isLoading: boolean;
   isError: boolean;
   isFetching: boolean;
+  failure: FailureVM | null;
   refetch: () => void;
 }
 
@@ -91,35 +185,66 @@ export function useStaffDeliveries(): StaffLaneData {
           const { data } = await apiClient.get('/procurement/orders', {
             params: { status, limit: 25 },
           });
-          return (data?.orders ?? []) as OpenOrderDto[];
+          // `total` is the gateway's exact count for this status, and `hasMore`
+          // says whether the 25-row page reached it. Both were previously
+          // destructured away, which is what forced the rendered count to be a
+          // page length dressed as a total.
+          return {
+            orders: (data?.orders ?? []) as OpenOrderDto[],
+            total: num(data?.total),
+            hasMore: data?.hasMore === true,
+          };
         }),
       );
-      return pages
-        .flat()
-        .sort((a, b) => (b.requestedAt ?? '').localeCompare(a.requestedAt ?? ''));
+      return pages;
     },
   });
 
+  const pages = q.data;
+
   const deliveries = useMemo<DeliveryVM[]>(
     () =>
-      (q.data ?? []).map((o) => ({
-        id: o.id,
-        vendor: o.providerName ?? null,
-        line: o.wineName ?? null,
-        po: o.orderNumber ?? (o.id ? o.id.slice(0, 8) : null),
-        lineCount: 1 as const,
-        bottles: num(o.quantity),
-        requestedAt: o.requestedAt ?? null,
-      })),
-    [q.data],
+      (pages ?? [])
+        .flatMap((p) => p.orders)
+        .sort((a, b) => (b.requestedAt ?? '').localeCompare(a.requestedAt ?? ''))
+        .map((o) => ({
+          id: o.id,
+          vendor: vendorOf(o),
+          providerRef: o.providerId ? o.providerId.slice(0, 8) : null,
+          line: o.wineName ?? null,
+          po: o.orderNumber ?? (o.id ? o.id.slice(0, 8) : null),
+          lineCount: 1 as const,
+          // NEVER `quantity`. See DeliveryVM.bottlesTotal.
+          bottlesTotal: num(o.bottlesTotal),
+          orderedQty: num(o.quantity),
+          unitType: o.unitType ?? null,
+          requestedAt: o.requestedAt ?? null,
+        })),
+    [pages],
   );
+
+  // The statuses are disjoint, so the per-status totals add. One unknown total
+  // makes the sum unknown — a partial sum rendered as a total is the same
+  // defect one level up.
+  const totalOutForDelivery = useMemo(() => {
+    if (!pages) return null;
+    let sum = 0;
+    for (const p of pages) {
+      if (p.total === null) return null;
+      sum += p.total;
+    }
+    return sum;
+  }, [pages]);
 
   return {
     deliveries,
-    hasData: Array.isArray(q.data),
+    totalOutForDelivery,
+    listTruncated: (pages ?? []).some((p) => p.hasMore),
+    hasData: Array.isArray(pages),
     isLoading: q.isLoading,
     isError: q.isError,
     isFetching: q.isFetching,
+    failure: failureOf(q.isError, q.error),
     refetch: () => void q.refetch(),
   };
 }
@@ -137,6 +262,27 @@ export interface QueueItemDto {
   dollarsAtRisk: number;
   selfEvidenced: boolean;
   openClaims: number;
+}
+
+/** The same row after `num()` has separated a measured 0 from an absent field. */
+export interface QueueItemVM extends QueueItemDto {
+  lane: OutcomeLane;
+  laneLabel: string;
+  chip: string;
+  /**
+   * Null when the server sent no figure at all — the em dash. A real measured
+   * `0` stays `0` and renders as `$0`, because "this row costs nothing" and
+   * "nobody has priced this row" are opposite facts about a decision queue and
+   * the page used to print both as `—` (ADR 0051 clause 1).
+   */
+  atRisk: number | null;
+  /**
+   * A FLOOR, always. The server links claims with `.limit(200)` and no
+   * `.order()` (receiving.service.ts:384), and the cap is applied across the
+   * restaurant rather than per order, so the client cannot observe whether it
+   * was reached. `≥0` therefore means "none inside the window", never "none".
+   */
+  openClaimsFloor: number | null;
 }
 
 /**
@@ -194,22 +340,29 @@ export function verdictLabel(verdict: string): string {
   }
 }
 
-export interface QueueItemVM extends QueueItemDto {
-  lane: OutcomeLane;
-  laneLabel: string;
-  chip: string;
-}
-
 export interface ManagerQueueData {
   /** Worst money first — the server's own order, kept. */
   items: QueueItemVM[];
   laneCounts: Record<OutcomeLane, number | null>;
   totalAtRisk: number | null;
-  unverified: UnverifiedDelivery[];
+  /**
+   * True when the queue came back holding exactly its cap, so every count and
+   * every sum derived from it is a lower bound (SERVER_WINDOWS.QUEUE_ITEMS).
+   */
+  itemsAtFloor: boolean;
+  /**
+   * Null means the query did not answer — NOT "nothing is uncounted". An
+   * uncounted delivery is the one that turns into unexplained shrinkage, so
+   * this is the single figure on the page where silence is most expensive.
+   */
+  unverified: UnverifiedDelivery[] | null;
+  /** The uncounted list is built behind `.limit(500)` on receipt events. */
+  unverifiedAtFloor: boolean;
   hasData: boolean;
   isLoading: boolean;
   isError: boolean;
   errorMessage: string | null;
+  failure: FailureVM | null;
   refetch: () => void;
 }
 
@@ -235,6 +388,8 @@ export function useManagerQueue(): ManagerQueueData {
           lane: laneOf(i.verdict),
           laneLabel: LANE_LABEL[laneOf(i.verdict)],
           chip: verdictLabel(i.verdict),
+          atRisk: num(i.dollarsAtRisk),
+          openClaimsFloor: num(i.openClaims),
         }))
       : [];
     const laneCounts: Record<OutcomeLane, number | null> = {
@@ -242,16 +397,26 @@ export function useManagerQueue(): ManagerQueueData {
       short: known ? items.filter((i) => i.lane === 'short').length : null,
       refused: known ? items.filter((i) => i.lane === 'refused').length : null,
     };
+    // The cap is observable here: the queue's own rows arrive in the payload,
+    // so a full page IS the evidence that more may exist behind it.
+    const itemsAtFloor = known && items.length >= SERVER_WINDOWS.QUEUE_ITEMS;
+    const unverified = known ? q.data!.unverified ?? null : null;
     const err = q.error as { message?: string } | null;
     return {
       items,
       laneCounts,
       totalAtRisk: known ? num(q.data!.totalAtRisk) : null,
-      unverified: known ? q.data!.unverified ?? [] : [],
+      itemsAtFloor,
+      unverified,
+      // Built from the newest 500 receipt events; the list itself is shorter
+      // than that window, so fullness is not observable and this is a floor
+      // whenever the list is non-empty.
+      unverifiedAtFloor: (unverified?.length ?? 0) > 0,
       hasData: known,
       isLoading: q.isLoading,
       isError: q.isError,
       errorMessage: q.isError ? err?.message ?? 'request failed' : null,
+      failure: failureOf(q.isError, q.error),
       refetch: () => void q.refetch(),
     };
   }, [q.data, q.isLoading, q.isError, q.error, q.refetch]);
@@ -265,6 +430,7 @@ export interface CreditDraftsData {
   hasData: boolean;
   isLoading: boolean;
   isError: boolean;
+  failure: FailureVM | null;
   refetch: () => void;
 }
 
@@ -279,6 +445,7 @@ export function useCreditDrafts(): CreditDraftsData {
     hasData: Array.isArray(q.data),
     isLoading: q.isLoading,
     isError: q.isError,
+    failure: failureOf(q.isError, q.error),
     refetch: () => void q.refetch(),
   };
 }
@@ -307,9 +474,26 @@ export interface RecoveryData {
   /** Sum of credited_amount settled this calendar month / last. Null until known. */
   creditedThisMonth: number | null;
   creditedLastMonth: number | null;
+  /**
+   * The trend's own failure. Separate from `isError` on purpose: the headline
+   * figure is allowed to stand when only the trend broke, but the trend must
+   * then SAY it broke rather than showing the same `—` it shows for "no
+   * settled claims yet". Honest-by-accident is not honest.
+   */
+  trendIsError: boolean;
+  trendFailure: FailureVM | null;
+  /**
+   * Every stats figure is computed behind `.limit(5000)` with no `.order()`
+   * (credits.controller.ts:137), and the trend behind `.limit(200)` ordered
+   * OLDEST-first (:112) — so a restaurant past either cap has its most recent
+   * settlements outside the window entirely. Both are lower bounds.
+   */
+  statsAtFloor: boolean;
+  trendAtFloor: boolean;
   hasData: boolean;
   isLoading: boolean;
   isError: boolean;
+  failure: FailureVM | null;
   refetch: () => void;
 }
 
@@ -349,15 +533,33 @@ export function useOwnerRecovery(): RecoveryData {
       stats: statsQ.data ?? null,
       creditedThisMonth: thisMonth,
       creditedLastMonth: lastMonth,
+      trendIsError: creditedQ.isError,
+      trendFailure: failureOf(creditedQ.isError, creditedQ.error),
+      // Not observable from the payload — /credits/stats returns aggregates,
+      // not the 5000 rows behind them — so this is unconditional whenever
+      // there is anything to bound.
+      statsAtFloor: !!statsQ.data,
+      trendAtFloor: Array.isArray(creditedQ.data) && creditedQ.data.length > 0,
       hasData: !!statsQ.data,
       isLoading: statsQ.isLoading,
       isError: statsQ.isError,
+      failure: failureOf(statsQ.isError, statsQ.error),
       refetch: () => {
         void statsQ.refetch();
         void creditedQ.refetch();
       },
     };
-  }, [statsQ.data, statsQ.isLoading, statsQ.isError, statsQ.refetch, creditedQ.data, creditedQ.refetch]);
+  }, [
+    statsQ.data,
+    statsQ.isLoading,
+    statsQ.isError,
+    statsQ.error,
+    statsQ.refetch,
+    creditedQ.data,
+    creditedQ.isError,
+    creditedQ.error,
+    creditedQ.refetch,
+  ]);
 }
 
 /* ───────────────────────────────────────────── shared: the door outbox ── */
@@ -369,8 +571,24 @@ export function useOwnerRecovery(): RecoveryData {
  */
 const DOOR_MUTATION_TYPE = 'receiving.door';
 
-/** Storage key for drops this page has pinned. Survives reload on purpose. */
-const DROPS_KEY = 'mudavym.receiving.outboxDrops';
+/**
+ * Storage key for drops this page has pinned, PER RESTAURANT. Survives reload
+ * on purpose.
+ *
+ * It used to be one global key. A receiving tablet at the door is shared, and
+ * restaurant switching is a first-class gesture, so a receipt dropped under
+ * restaurant A rendered as a `role="alert"` under restaurant B — naming that
+ * receipt's label and its order-id prefix to a tenant with no right to either.
+ */
+const DROPS_KEY_PREFIX = 'mudavym.receiving.outboxDrops';
+
+/** The pre-scoping key. Read exactly once per browser, then removed — see `readDrops`. */
+const DROPS_KEY_LEGACY = 'mudavym.receiving.outboxDrops';
+
+function dropsKey(restaurantId: string): string {
+  // An empty id would collapse back to the legacy key and re-create the leak.
+  return `${DROPS_KEY_PREFIX}.${restaurantId || 'unscoped'}`;
+}
 
 export interface QueuedReceiptVM {
   id: string;
@@ -391,23 +609,40 @@ export interface DroppedReceiptVM {
    * instead of guessing.
    */
   exact: boolean;
+  /**
+   * True for a pin inherited from the pre-scoping global key. The restaurant
+   * it belongs to was never recorded, so it is shown — losing a pinned drop is
+   * the inv-09 defect this rail exists to fix — but it is NOT claimed as this
+   * restaurant's.
+   */
+  tenantUnknown?: boolean;
 }
+
+/**
+ * The most recent flush. `attempted: false` is a first-class state: the outbox
+ * returns `{sent:0, failed:0}` without touching the network when the device is
+ * offline (lib/doorOutbox.ts:94), and stamping that with a timestamp printed
+ * "last sync 14:32 · sent 0 · failed 0" directly under a header reading
+ * "offline — holding".
+ */
+export type FlushRecord =
+  | { attempted: true; sent: number; failed: number; at: string }
+  | { attempted: false; reason: 'offline'; at: string };
 
 export interface OutboxData {
   /** Null when local storage itself could not be read — unknown, not empty. */
   queued: QueuedReceiptVM[] | null;
   drops: DroppedReceiptVM[];
   /** Result of the most recent flush this page ran. Null before the first. */
-  lastFlush: { sent: number; failed: number; at: string } | null;
+  lastFlush: FlushRecord | null;
   online: boolean;
   dismissDrop: (id: string) => void;
   flushNow: () => void;
 }
 
-function readDrops(): DroppedReceiptVM[] {
+function parseDrops(raw: string | null): DroppedReceiptVM[] {
+  if (!raw) return [];
   try {
-    const raw = window.localStorage.getItem(DROPS_KEY);
-    if (!raw) return [];
     const arr = JSON.parse(raw);
     return Array.isArray(arr) ? (arr as DroppedReceiptVM[]) : [];
   } catch {
@@ -415,9 +650,43 @@ function readDrops(): DroppedReceiptVM[] {
   }
 }
 
-function writeDrops(drops: DroppedReceiptVM[]): void {
+/**
+ * MIGRATION, decided rather than defaulted. The pre-scoping key holds pins
+ * whose restaurant was never recorded, and the three options were:
+ *
+ *   discard      — silently loses a receipt that needs a person. That IS the
+ *                  inv-09 defect; refused.
+ *   re-attribute — moves them to whichever restaurant is active now and claims
+ *                  them as its own. That is the leak this fix exists to close,
+ *                  performed once by hand; refused.
+ *   adopt, marked — taken by the first restaurant to open the page, stamped
+ *                  `tenantUnknown`, and rendered saying the restaurant was not
+ *                  recorded. Nothing is lost and nothing is claimed.
+ *
+ * The legacy key is removed on adoption so the pins land in exactly one place
+ * instead of fanning out to every tenant that later opens the page.
+ */
+function readDrops(restaurantId: string): DroppedReceiptVM[] {
   try {
-    window.localStorage.setItem(DROPS_KEY, JSON.stringify(drops));
+    const scoped = parseDrops(window.localStorage.getItem(dropsKey(restaurantId)));
+    const legacyRaw = window.localStorage.getItem(DROPS_KEY_LEGACY);
+    if (!legacyRaw) return scoped;
+
+    const inherited = parseDrops(legacyRaw)
+      .filter((d) => !scoped.some((s) => s.id === d.id))
+      .map((d) => ({ ...d, tenantUnknown: true }));
+    const merged = [...scoped, ...inherited];
+    window.localStorage.setItem(dropsKey(restaurantId), JSON.stringify(merged));
+    window.localStorage.removeItem(DROPS_KEY_LEGACY);
+    return merged;
+  } catch {
+    return [];
+  }
+}
+
+function writeDrops(restaurantId: string, drops: DroppedReceiptVM[]): void {
+  try {
+    window.localStorage.setItem(dropsKey(restaurantId), JSON.stringify(drops));
   } catch {
     /* storage blocked — the in-memory pins still render this session */
   }
@@ -435,6 +704,22 @@ function toQueuedVM(m: PendingMutation): QueuedReceiptVM {
 }
 
 /**
+ * TODO(door-outbox, blocked): the QUEUE itself is still untenanted.
+ * `doorOutbox.ts` writes every receipt under the single mutation type
+ * `receiving.door` and `QueuedDoorReceipt` (`{orderId, orderLabel, body}`)
+ * carries no restaurant id, so a queued receipt cannot be attributed to a
+ * tenant from this side at all — filtering the read alone would return zero,
+ * which is strictly worse. The write side needs to stamp the id; that file is
+ * owned by a separate review. This filter is the consuming half, and it is
+ * INERT until then: nothing sets the field today, so every entry passes.
+ */
+function belongsToRestaurant(m: PendingMutation, restaurantId: string): boolean {
+  const tagged = (m.data as { restaurantId?: unknown } | undefined)?.restaurantId;
+  if (typeof tagged !== 'string' || tagged === '') return true;
+  return tagged === restaurantId;
+}
+
+/**
  * The pending-outbox rail's data. This is the defect fix the motion canvas
  * named (inv-09, "Nothing vanishes; the drop becomes a pin"): the legacy page
  * calls `watchDoorOutbox` and throws the flush result away, so a receipt that
@@ -445,35 +730,46 @@ function toQueuedVM(m: PendingMutation): QueuedReceiptVM {
  * dismisses it.
  */
 export function useDoorOutbox(): OutboxData {
+  const rid = useActiveRestaurantId();
   const [queued, setQueued] = useState<QueuedReceiptVM[] | null>(null);
   const [drops, setDrops] = useState<DroppedReceiptVM[]>(() =>
-    typeof window === 'undefined' ? [] : readDrops(),
+    typeof window === 'undefined' ? [] : readDrops(rid),
   );
-  const [lastFlush, setLastFlush] = useState<{ sent: number; failed: number; at: string } | null>(
-    null,
-  );
+  const [lastFlush, setLastFlush] = useState<FlushRecord | null>(null);
   const [online, setOnline] = useState(() =>
     typeof navigator === 'undefined' ? true : navigator.onLine,
   );
   const busyRef = useRef(false);
 
+  // A restaurant switch re-reads that tenant's pins. Without this the previous
+  // restaurant's drops stay on screen — the same leak the key scoping closes,
+  // arriving through React state instead of through storage.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setDrops(readDrops(rid));
+    setLastFlush(null);
+  }, [rid]);
+
   const refreshQueue = useCallback(async () => {
     try {
       const pending = await offlineStorage.getPendingMutationsByType(DOOR_MUTATION_TYPE);
-      setQueued(pending.map(toQueuedVM));
+      setQueued(pending.filter((m) => belongsToRestaurant(m, rid)).map(toQueuedVM));
     } catch {
       setQueued(null); // unknown, and rendered as unknown — never as empty
     }
-  }, []);
+  }, [rid]);
 
-  const pinDrops = useCallback((next: DroppedReceiptVM[]) => {
-    if (next.length === 0) return;
-    setDrops((prev) => {
-      const merged = [...prev, ...next.filter((d) => !prev.some((p) => p.id === d.id))];
-      writeDrops(merged);
-      return merged;
-    });
-  }, []);
+  const pinDrops = useCallback(
+    (next: DroppedReceiptVM[]) => {
+      if (next.length === 0) return;
+      setDrops((prev) => {
+        const merged = [...prev, ...next.filter((d) => !prev.some((p) => p.id === d.id))];
+        writeDrops(rid, merged);
+        return merged;
+      });
+    },
+    [rid],
+  );
 
   const flushNow = useCallback(async () => {
     if (busyRef.current) return;
@@ -487,8 +783,22 @@ export function useDoorOutbox(): OutboxData {
         beforeKnown = false;
       }
 
-      const res = await flushDoorOutbox();
-      setLastFlush({ ...res, at: new Date().toISOString() });
+      // `flushDoorOutbox` returns {sent:0, failed:0} WITHOUT attempting
+      // anything when the device is offline (lib/doorOutbox.ts:94). Two
+      // independent readings separate that non-attempt from a real flush that
+      // found nothing to send, neither of which requires touching that file:
+      //
+      //  1. the same predicate it guards on, read here first;
+      //  2. its own loop invariant — it iterates the pending queue and every
+      //     iteration increments exactly one of sent/failed, so a non-empty
+      //     queue returning 0+0 cannot have run.
+      const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
+      const res = offlineNow ? { sent: 0, failed: 0 } : await flushDoorOutbox();
+      const raced = beforeKnown && before.length > 0 && res.sent + res.failed === 0;
+      const at = new Date().toISOString();
+      setLastFlush(
+        offlineNow || raced ? { attempted: false, reason: 'offline', at } : { ...res, attempted: true, at },
+      );
 
       if (beforeKnown && res.failed > 0) {
         let after: PendingMutation[] = [];
@@ -547,13 +857,16 @@ export function useDoorOutbox(): OutboxData {
     };
   }, [flushNow, refreshQueue]);
 
-  const dismissDrop = useCallback((id: string) => {
-    setDrops((prev) => {
-      const next = prev.filter((d) => d.id !== id);
-      writeDrops(next);
-      return next;
-    });
-  }, []);
+  const dismissDrop = useCallback(
+    (id: string) => {
+      setDrops((prev) => {
+        const next = prev.filter((d) => d.id !== id);
+        writeDrops(rid, next);
+        return next;
+      });
+    },
+    [rid],
+  );
 
   return { queued, drops, lastFlush, online, dismissDrop, flushNow: () => void flushNow() };
 }

@@ -37,22 +37,53 @@ env:
   VERCEL_PRODUCTION_URL: ${{ secrets.VERCEL_PRODUCTION_URL }}
 
 jobs:
+  # A GATE THAT DID NOT RUN MUST NOT LOOK LIKE A GATE THAT PASSED.
+  #
+  # This job used to carry `if: workflow_run.conclusion == 'success'`. When CI was
+  # red on main the event still fired, every job's `if` evaluated false, and
+  # GitHub recorded the whole workflow as **skipped** — a grey dash in the Actions
+  # list and `"conclusion": "skipped"` over the API. Skipped is not a failure and
+  # not a warning. It reads as *not applicable*.
+  #
+  # Measured 2026-09-02: **49 consecutive runs of this workflow concluded
+  # `skipped`**, unbroken from 2026-09-01T13:06:36Z to 2026-09-02T16:14:18Z,
+  # across 44 distinct revisions — over 27 hours in which the repository's own
+  # docs called this audit the thing that catches what CI structurally cannot see
+  # (NestJS DI failures), and it did not run once. 77 of the last 200 runs are
+  # skipped. (A "last N runs" figure is not used here on purpose: it slid from 12
+  # to 11 between measuring it and pushing the branch. See ADR 0097's correction.)
+  #
+  # So the job now ALWAYS runs and fails explicitly on a non-success trigger. Red,
+  # not grey. The downstream stages still skip — correctly, because there is
+  # nothing to verify — but they skip underneath a FAILED workflow, which is a
+  # state nobody reads as "fine".
+  #
+  # For a sha that merged before this change, `scripts/check_deploy_audit_ran.sh`
+  # answers the same question retrospectively.
   ci-gate:
     name: CI Gate
     runs-on: ubuntu-latest
-    if: >-
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
-      || github.event_name == 'workflow_dispatch'
     steps:
-      - name: CI passed
+      - name: CI must have succeeded
         if: github.event_name == 'workflow_run'
         run: |
-          echo "✅ CI workflow completed successfully — proceeding with ordered health audit"
-          echo "commit=${{ github.event.workflow_run.head_sha }}"
+          CONCLUSION="${{ github.event.workflow_run.conclusion }}"
+          SHA="${{ github.event.workflow_run.head_sha }}"
+          if [ "$CONCLUSION" = "success" ]; then
+            echo "✅ CI succeeded for $SHA — proceeding with the ordered health audit"
+            exit 0
+          fi
+          echo "::error::CI concluded '$CONCLUSION' for $SHA, so the deploy audit"
+          echo "::error::cannot verify anything — and Railway deployed on the push"
+          echo "::error::regardless. This is a FAILURE, not a skip: production is"
+          echo "::error::running an unverified build right now."
+          echo ""
+          echo "Re-run once CI is green:  gh workflow run deploy.yml -f mode=deploy-audit"
+          exit 1
 
       - name: Manual dispatch acknowledged
         if: github.event_name == 'workflow_dispatch'
-        run: echo "Manual deploy audit mode=${{ inputs.mode }}"
+        run: echo "Manual deploy audit mode=${{ inputs.mode }} sha=${{ github.sha }}"
 
   # ── Stage 1: Agent orchestrator (9 agents must be Active) ─────────────────
   verify-orchestrator:
@@ -128,6 +159,14 @@ jobs:
       github.event_name == 'workflow_run'
       || (github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit')
     steps:
+      # Pinned to the audited revision, not to whatever main has become — three
+      # or four sessions merge into this repo concurrently, so `main` at audit
+      # time is routinely a different commit from the one being audited, and the
+      # check script must be the version that shipped with it.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
       # A MISSING SECRET IS A BROKEN AUDIT, NOT A PASSING ONE.
       #
       # This step used to `::warning::` and set skip=true, so the whole stage
@@ -187,21 +226,61 @@ jobs:
           echo "::error::the process is not up — the NestJS DI failure CI cannot see."
           exit 1
 
-      # Authenticated, and therefore optional: without a token this can only be
-      # skipped, so it says so rather than pretending. It is a READINESS probe —
-      # a different question from liveness above, which is why a missing token
-      # does not fail the stage.
-      - name: Proxy agent health via gateway
+      # ── THE STEP THAT MAKES THE STAGE ABOVE MEAN SOMETHING ──────────────────
+      #
+      # A 200 from liveness proves *a* process is up. It does not say WHICH ONE,
+      # and the previous instance answers 200 perfectly — so a green audit during
+      # a FAILED deploy was indistinguishable from a good one. Every "deployed
+      # and healthy" claim in this repository rested on that gap.
+      #
+      # This compares the revision the running process was BUILT from against the
+      # sha that was merged. It polls, because Railway builds and swaps the
+      # instance on its own schedule and "not yet" and "never" look identical at
+      # any single instant; only a deadline separates them.
+      #
+      # It fails on `commit: "unknown"` as well as on a mismatch. That is
+      # deliberate — an audit that accepts "unknown" certifies its own blindness.
+      # See the script's ADVICE block for exactly which variable to set.
+      - name: The deployed build IS the merged build
         run: |
-          set -euo pipefail
-          URL="${API_GATEWAY_URL%/}/api/v1/health/agents"
-          TOKEN="${{ secrets.E2E_TEST_TOKEN }}"
-          if [ -n "$TOKEN" ]; then
-            curl -fsS -H "Authorization: Bearer $TOKEN" "$URL" | head -c 2000
-          else
-            echo "::notice::E2E_TEST_TOKEN not set — the authenticated readiness"
-            echo "::notice::check did not run. Liveness above DID run and passed."
-          fi
+          python3 scripts/check_deployed_sha.py \
+            --url "$API_GATEWAY_URL" \
+            --expect "${{ github.event.workflow_run.head_sha || github.sha }}" \
+            --timeout-seconds 600 \
+            --poll-seconds 10
+
+      # Readiness is a DIFFERENT question from liveness: liveness is
+      # dependency-free by design, so it answers 200 while the Supabase client
+      # was never initialised and every data route returns 500. This one cannot.
+      #
+      # Unauthenticated on purpose (see readiness.controller.ts): the previous
+      # version of this step used the JWT-guarded proxy and therefore ran only
+      # when `E2E_TEST_TOKEN` happened to be set — a check that silently does not
+      # run, which is the fault this whole file is being repaired for.
+      - name: Gateway is READY, not merely alive
+        run: |
+          set -uo pipefail
+          URL="${API_GATEWAY_URL%/}/api/v1/health/ready"
+          echo "Polling $URL ..."
+          for i in $(seq 1 30); do
+            CODE="$(curl -sS -o /tmp/gw-ready.json -w '%{http_code}' --max-time 15 "$URL" || echo 000)"
+            if [ "$CODE" = "200" ]; then
+              echo "Gateway ready on attempt $i"
+              cat /tmp/gw-ready.json
+              exit 0
+            fi
+            echo "Attempt $i/30 — HTTP $CODE"
+            [ -s /tmp/gw-ready.json ] && cat /tmp/gw-ready.json
+            sleep 10
+          done
+          echo "::error::The gateway never reported ready at $URL."
+          echo "::error::A 503 carries a \`checks\` object naming which half failed:"
+          echo "::error::  supabaseClient=missing  -> the process is up and was never"
+          echo "::error::                             configured (liveness says 'ok')"
+          echo "::error::  database=unreachable    -> the process is up and cannot"
+          echo "::error::                             serve a single data route"
+          echo "::error::A 404 means the route is missing; 000 means nothing answered."
+          exit 1
 
   # ── Stage 3: Frontend build smoke (Vercel deploys separately) ──────────────
   verify-frontend:
@@ -212,11 +291,11 @@ jobs:
       github.event_name == 'workflow_run'
       || (github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -246,16 +325,25 @@ jobs:
       && (github.event_name == 'workflow_run'
           || (github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit'))
     steps:
+      # `provenance_verified` is the field that matters. Stage results alone say
+      # only that nothing complained; this says the running gateway named the
+      # merged revision as its own build. The record now distinguishes "we
+      # checked and it is the right build" from "nothing failed".
       - name: Write audit summary
         run: |
           SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          GW="${{ needs.verify-api-gateway.result }}"
+          if [ "$GW" = "success" ]; then PROV=true; else PROV=false; fi
           cat > deploy-audit.json <<EOF
           {
             "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "commit": "${SHA}",
+            "provenance_verified": ${PROV},
+            "provenance_means": "the gateway's /api/v1/health/live reported this exact commit as its own build, and /api/v1/health/ready answered 200",
             "orchestrator": "${{ needs.verify-orchestrator.result }}",
-            "api_gateway": "${{ needs.verify-api-gateway.result }}",
+            "api_gateway": "${GW}",
             "frontend": "${{ needs.verify-frontend.result }}",
+            "recheck": "scripts/check_deploy_audit_ran.sh ${SHA}",
             "rollback_hint": "Re-run this workflow with mode=rollback-guide and rollback_target_sha=<previous-good-sha>"
           }
           EOF
@@ -295,7 +383,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'rollback-guide'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -324,11 +412,17 @@ jobs:
           3. Vercel — frontend
              Dashboard → Deployments → find deployment for $TARGET → Promote to Production.
 
-          4. Verify (ordered):
+          4. Verify (ordered). \$API_GATEWAY_URL/health has never existed — the
+             gateway sets a global api/v1 prefix — so use the real routes:
              curl \$RAILWAY_ORCHESTRATOR_URL/health
              curl \$RAILWAY_ORCHESTRATOR_URL/api/v1/health/agents  # 9/9 Active
-             curl \$API_GATEWAY_URL/health
+             curl \$API_GATEWAY_URL/api/v1/health/live    # names the build
+             curl \$API_GATEWAY_URL/api/v1/health/ready   # 200 only if it can serve
              curl \$VERCEL_PRODUCTION_URL/
+
+             The rollback is not done until \`live\` reports $TARGET. A 200 alone
+             proves nothing: the instance you are trying to replace answers it too.
+             python3 scripts/check_deployed_sha.py --url \$API_GATEWAY_URL --expect $TARGET
 
           5. Re-run deploy-audit:
              gh workflow run deploy.yml -f mode=deploy-audit

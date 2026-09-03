@@ -29,8 +29,8 @@ import {
   type ReportType,
 } from '../../../services/api/reports';
 import { ink, settle } from '../../../lib/mudavym/motion';
-import { EM, MONO, SANS, SERIF, fmtDate, labelize } from './so-format';
-import { useSortingOfficeData } from './useSortingOfficeData';
+import { EM, GE, MONO, SANS, SERIF, fmtDate, labelize } from './so-format';
+import { SO_SERVER_WINDOWS, settledError, useSortingOfficeData } from './useSortingOfficeData';
 
 function DrawerLabel({ children }: { children: string }) {
   return (
@@ -73,7 +73,7 @@ function Count({
         color: tone === 'seal' ? 'var(--seal-deep, #14515C)' : 'var(--ink-1, #211C16)',
       }}
     >
-      {value === null ? EM : `${capped ? '≥' : ''}${value}`}
+      {value === null ? EM : `${capped ? GE : ''}${value}`}
     </span>
   );
 }
@@ -96,13 +96,19 @@ function ReadingPane({ report, onRefiled }: { report: GeneratedReport; onRefiled
   const { activeRestaurantId } = useAuth();
 
   // "Cross-filed under" — the other registers holding this report's period.
-  // The report prop already knows when there is no period; asking the server
-  // to say the same thing would be a wasted round trip.
-  const hasPeriod = Boolean(report.periodStart && report.periodEnd);
+  //
+  // There used to be a client-side `hasPeriod` pre-check here, gating both the
+  // query and a "this report names no period" branch. Neither could ever fire:
+  // `generated_reports.report_period_start` and `report_period_end` are both
+  // `date NOT NULL` in the baseline, so `hasPeriod` was true on every row the
+  // table can hold. A test pinned the unreachable branch, which made the suite
+  // look like it covered a state production cannot produce. Both are gone; the
+  // server answers the question it owns, and its nullable answer is rendered
+  // as the unknown below rather than as a zero.
+  const rid = activeRestaurantId ?? '';
   const crossQ = useQuery({
-    queryKey: ['sorting-office', 'cross-file', activeRestaurantId ?? '', report.id],
+    queryKey: ['sorting-office', 'cross-file', rid, report.id],
     queryFn: () => getReportCrossFile(report.id),
-    enabled: hasPeriod,
     staleTime: 60_000,
   });
 
@@ -336,14 +342,14 @@ function ReadingPane({ report, onRefiled }: { report: GeneratedReport; onRefiled
           fontVariantNumeric: 'tabular-nums',
         }}
       >
-        {!hasPeriod ? (
-          <span>This report names no period — nothing is cross-filed.</span>
-        ) : crossQ.isError ? (
+        {/* settledError, not `crossQ.isError`: the page banner and this
+            sentence are two branches of one rule, and reading the raw flag
+            here meant a fetch in flight could be reported as a verdict on one
+            of them only. */}
+        {settledError(crossQ) ? (
           <span>The cross-file could not be checked.</span>
         ) : crossQ.data === undefined ? (
           <span>{`Cross-filed under: ${EM}`}</span>
-        ) : crossQ.data.paper === null ? (
-          <span>This report names no period — nothing is cross-filed.</span>
         ) : (
           <>
             <span>Cross-filed under:</span>
@@ -352,9 +358,13 @@ function ReadingPane({ report, onRefiled }: { report: GeneratedReport; onRefiled
               className="so-link"
               style={{ fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
             >
-              {`Vendor paper (${crossQ.data.paper.count} document${
-                crossQ.data.paper.count === 1 ? '' : 's'
-              }${crossQ.data.paper.sample ? ` · ${crossQ.data.paper.sample}` : ''})`}
+              {/* A null register is the server saying it does not know, and an
+                  unknown renders as the dash — never as a measured zero. */}
+              {crossQ.data.paper === null
+                ? `Vendor paper (${EM})`
+                : `Vendor paper (${crossQ.data.paper.count} document${
+                    crossQ.data.paper.count === 1 ? '' : 's'
+                  }${crossQ.data.paper.sample ? ` · ${crossQ.data.paper.sample}` : ''})`}
             </Link>
             <span>·</span>
             <Link
@@ -362,9 +372,11 @@ function ReadingPane({ report, onRefiled }: { report: GeneratedReport; onRefiled
               className="so-link"
               style={{ fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
             >
-              {`Conversations (${crossQ.data.conversations?.count ?? 0} thread${
-                (crossQ.data.conversations?.count ?? 0) === 1 ? '' : 's'
-              })`}
+              {crossQ.data.conversations === null
+                ? `Conversations (${EM})`
+                : `Conversations (${crossQ.data.conversations.count} thread${
+                    crossQ.data.conversations.count === 1 ? '' : 's'
+                  })`}
             </Link>
           </>
         )}
@@ -420,6 +432,19 @@ export default function DocumentsReportsNext() {
               Documents &amp; Reports
             </h1>
           </div>
+          {/* One page-level figure, and it is the only one with a unit.
+              "In the registers" used to sit beside it, summing house reports +
+              vendor paper + conversation threads + log lines. That sum was
+              wrong twice over. It DOUBLE-COUNTED: `procurement_documents` is
+              one of the timeline's six sources (logs-timeline.service.ts),
+              so every vendor document in the recent window was counted as
+              paper and again as a log event, and each re-file added a third
+              through `system_audit_log`. And even de-duplicated it named
+              nothing — a report, an invoice, a thread and an audit line are
+              four different kinds of thing, so their sum has no unit and
+              cannot be right or wrong about anything. The four drawers below
+              each carry their own count, with their own floor semantics.
+              (ADR 0086.) */}
           <div className="flex gap-5 text-right" style={{ fontFamily: SANS }}>
             <div>
               <DrawerLabel>Needs a human</DrawerLabel>
@@ -428,24 +453,6 @@ export default function DocumentsReportsNext() {
                 capped={data.paperNeedsReviewCapped}
                 size={22}
                 tone="seal"
-              />
-            </div>
-            <div>
-              <DrawerLabel>In the registers</DrawerLabel>
-              <Count
-                value={
-                  data.paperCount === null ||
-                  data.timelineCount === null ||
-                  data.threadsTotal === null ||
-                  !data.reportsKnown
-                    ? null
-                    : (data.reportsTotal ?? data.reports.length) +
-                      data.paperCount +
-                      data.threadsTotal +
-                      data.timelineCount
-                }
-                capped={data.paperCapped || data.timelineCapped}
-                size={22}
               />
             </div>
           </div>
@@ -641,9 +648,16 @@ export default function DocumentsReportsNext() {
                       fontVariantNumeric: 'tabular-nums',
                     }}
                   >
+                    {/* "1 need review" was the string at one of the two counts
+                        production actually shows. A floored count is never
+                        singular: "≥1" means one or more. */}
                     {data.paperNeedsReviewCount === null
                       ? `${EM} need review`
-                      : `${data.paperNeedsReviewCapped ? '≥' : ''}${data.paperNeedsReviewCount} need review, all paper`}
+                      : `${data.paperNeedsReviewCapped ? GE : ''}${data.paperNeedsReviewCount} ${
+                          data.paperNeedsReviewCount === 1 && !data.paperNeedsReviewCapped
+                            ? 'needs'
+                            : 'need'
+                        } review, all paper`}
                   </span>
                 </div>
                 <span style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', display: 'block' }}>
@@ -688,7 +702,10 @@ export default function DocumentsReportsNext() {
                 <DrawerLabel>System log</DrawerLabel>
                 <div className="flex items-baseline gap-2">
                   <Count value={data.timelineCount} capped={data.timelineCapped} />
-                  <span style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+                  <span
+                    style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}
+                    title={`the gateway returns at most ${SO_SERVER_WINDOWS.TIMELINE} events per read`}
+                  >
                     {data.timelineCapped ? 'latest window' : 'recent entries'}
                   </span>
                 </div>
@@ -730,7 +747,15 @@ export default function DocumentsReportsNext() {
                       fontVariantNumeric: 'tabular-nums',
                     }}
                   >
-                    {data.todayRoutine.count} entr{data.todayRoutine.count === 1 ? 'y' : 'ies'} —{' '}
+                    {/* The floor rule reaches this strip too — it was the one
+                        figure on the page missing it. Its condition is not the
+                        drawers' `windowFull`; see TodayRoutine.countCapped. */}
+                    {data.todayRoutine.countCapped ? GE : ''}
+                    {data.todayRoutine.count} entr
+                    {data.todayRoutine.count === 1 && !data.todayRoutine.countCapped
+                      ? 'y'
+                      : 'ies'}{' '}
+                    —{' '}
                     {Array.from(data.todayRoutine.bySource.entries())
                       .map(([s, n]) => `${n} ${s.replace(/_/g, ' ')}`)
                       .join(' · ')}
