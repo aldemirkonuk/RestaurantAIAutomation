@@ -121,7 +121,12 @@ export class ReportsService {
 
     return {
       reports,
-      total: count ?? reports.length,
+      // NOT `?? reports.length`. That fallback was harmless while the read was
+      // unbounded — the array WAS the table. Now that the query is capped it
+      // would report the page size as the total, so a restaurant with 5,000
+      // reports would be told it has 100. "I could not count them" is not a
+      // count; it is reported as null and rendered as `—`.
+      total: count ?? null,
     };
   }
 
