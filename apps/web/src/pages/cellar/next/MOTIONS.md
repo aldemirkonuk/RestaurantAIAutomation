@@ -56,3 +56,43 @@ tuned here, and is not claimed as house motion.
   drop their transitions in CSS; `cl-leaf-turn` collapses to its end state
   through `animate()`'s reduced-motion branch; `Tally` sets the final figure
   directly without a frame loop; `HoldToApprove` becomes a two-step confirm.
+
+## Third pass, 2026-09-03 — the registers that are not wines
+
+**No new tokens, and no new motion.** The six non-wine registers gained a full
+register surface (search, six sifts, ten sortable columns, a reading stand
+carrying the house's own record) and every motion on it is one already in the
+table above:
+
+| where | id | token |
+|---|---|---|
+| `CatalogueRegister` opening a bottle's record above the table | `cl-stand-settle` | `settle` |
+| its contents changing when another bottle is chosen | `cl-leaf-turn` | `turn` |
+| `CocktailRegister` opening a cocktail's leaf and its recipe | `cl-stand-settle` | `settle` |
+| every row, sift, mark, field and button on both | `cl-ink` | `ink` |
+
+That the richest surface on the page added zero motions is the ration working,
+not an omission.
+
+### New deliberate non-motions
+
+- **The record strip does not animate.** Five marks per row, one per book that
+  names the bottle. They are ink on paper and they appear with the row. A mark
+  that faded in would read as a fact arriving; it is a fact that was already
+  there.
+- **Nothing tallies in a register.** `Tally` stays on the parent's cards and
+  tiles. A register row's "paid" and "sold" are figures of record about one
+  bottle, and counting up to £618.40 in front of the reader makes a ledger
+  entry look like a live meter.
+- **Retiring a cocktail does not carry the seal, and does not animate.** It is
+  the only destructive act on the page, and the house ceremony is rationed to
+  one act — the hold that sends a real purchase order to a vendor. So this is
+  the same die pressed dry: the button becomes "Take it off — confirm" in place,
+  on `cl-ink`, and reverts on blur. No wax, no wind-up, no dialog.
+- **The disabled "Count into the cellar" control never pulses, shakes or
+  explains itself on hover.** It is disabled because OD-113 is undecided, and
+  the reason sits beside it in permanent text. Motion there would suggest the
+  button is *waiting* for something the reader could do.
+- **A loose match is marked in words, not in colour or movement.** "matched
+  loosely" under the row name, and the full sentence on the stand. A warning
+  tint would make a weaker join look like an error, which it is not.

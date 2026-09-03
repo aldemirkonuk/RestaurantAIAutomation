@@ -70,11 +70,15 @@ export interface CellarNextProps {
   /**
    * Which register of the cellar to open; undefined = the parent overview.
    *
-   * Only four of the seven have a route in `App.tsx`, which this page may not
-   * edit. The other three open on the parent as `?register=<id>` — deep-linkable
-   * and needing no route. Three real routes are filed in the page note §9.
+   * All seven are accepted here as of the third pass. Four have a route in
+   * `App.tsx` today (`/wines`, `/beer`, `/whiskey`, `/cocktails`); the exact
+   * three lines that give `spirits`, `non_alcoholic` and `soft_drinks` their
+   * own are filed in the page note §9.2 for the parent to add — `App.tsx` is
+   * outside this page's paths. Until they land, those three open on the parent
+   * as `?register=<id>`, which is deep-linkable and needs no route, and the
+   * prop is ready for the routes the moment they exist.
    */
-  category?: 'wines' | 'beer' | 'whiskey' | 'cocktails';
+  category?: RegisterId;
 }
 
 export default function CellarNext({ ground, category }: CellarNextProps) {

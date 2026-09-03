@@ -117,6 +117,52 @@ catalogue wines into inventory. Owner/manager surface; staff can read.
 - `beverage_kind` and `classification_status` now reach the browser on every
   `/wines` row, so the library's own classification is visible and countable
 
+**Third pass, 2026-09-03 — the house's own record on the row:**
+
+- **A register is this house's books first.** `public.house_beverage_ledger`
+  (migration `20260903120000`) assembles one row per product THIS restaurant's
+  own books name, across five tables that all carry a `restaurant_id`:
+  `menu_items` (what we list and charge), `procurement_document_lines` on
+  invoice documents (what we were charged, and when), `procurement_order_items`
+  (what we ordered), `vendor_price_observations` (who quoted it, off what), and
+  `pos_unresolved_lines` (what we actually sold). The shared catalogue is laid
+  over that, not the other way round
+- **First bought · Paid · Sold · Last quote are columns on the row**, with a
+  five-mark strip showing which books name the bottle. The reading stand opens
+  the whole record, and every block names the table it was read from
+- **Beer · Whiskey · Spirits · Non-alcoholic · Soft drinks are real registers** —
+  search, six sifts (Whose · In which book · Type · Match · plus free text) and
+  ten sortable columns, over `GET /beverages/:rid/registers/:register`
+- **Soft drinks are served.** No `beverage_type` can reach them, so the register
+  is served by this house's menu and till alone, and says the catalogue was not
+  asked rather than that the read was empty
+- **Cocktails are the one register a house can WRITE** — add, amend and retire
+  (`POST` / `PATCH` / `DELETE /cocktails/:rid`), soft-retire so a cocktail that
+  came off in September stays a fact about the season
+- **`cocktail_ingredients` has its first writer** (`PUT /cocktails/:rid/:id/ingredients`).
+  It was empty because the extraction pass never ran — a fact about the
+  extractor, never a reason a bartender could not type a recipe
+- **A catalogue match says how strong it is** — `exact` (same words) or
+  `contains` (every catalogue word inside a longer house line), marked in the
+  row and explained on the stand. There is no third tier and no similarity score
+- **A house line with no catalogue row keeps its record in full** — a bottle
+  nobody catalogued is not a bottle nobody bought
+- **House lines no register can hold are reported, not dropped** — the count and
+  the first four labels, so a register never quietly returns fewer rows than the
+  books contain
+- **DARK / GATED** &middot; **"Count into the cellar" renders disabled on every
+  row of every register**, with the gateway's own sentence beside it: every
+  quantity path (`restaurant_inventory`, `inventory_lots`,
+  `inventory_transactions`, `pour_events`) is keyed on `master_wine_id`, so
+  stocking waits on the identity axis. **OD-113**, carried on the wire as
+  `stocking.decision` so the browser cannot invent a cheerier reason
+- **PARTIAL** &middot; **The house's record is dark until migration
+  `20260903120000` is applied.** Measured live 2026-09-03 against :4000: all six
+  registers return 200, the catalogue half renders (beer 57, whiskey 272,
+  spirits 400 capped, non-alcoholic 10), and the house half returns
+  `readable: false` with a reason naming that migration file. It renders as
+  words, never as an empty record
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_cellar`)
 
 Canonical source with curves: `apps/web/src/pages/cellar/next/MOTIONS.md` —
@@ -144,6 +190,16 @@ motion system** — the five rows above are the whole of CellarNext's motion; th
 scanner's animations are the legacy component's own, are not in that table, and
 are not claimed as house motion. Its legacy white/indigo chrome inside the İznik
 page is filed at §9.8.
+
+*Carried forward unchanged, and still literally a DoD violation.* The pass-two
+re-audit (2026-09-03) re-confirmed the import is present, still lazy, still
+reachable only from `WineRegister.tsx`
+(`grep -rln framer-motion apps/web/src/pages/cellar/next` → that file and this
+note's own prose). The DoD rule is "framer-motion imported = DEFECT", and the
+route violates it. It is **not** closed by disclosure and is not being counted as
+closed: it closes when the scanner is rebuilt (§13.8), and until then this page
+carries a real, named, third-time-of-asking exception rather than a resolved
+one.
 
 Deliberate non-motions: the register does not stagger in (500 titles arriving
 one by one is the busyness the verdict rejected); switching Register ↔ Shelf and
@@ -242,19 +298,37 @@ that no unit test would have caught were found that way and fixed:
    figure is a floor. Same class of error as reporting absence as health, one
    level up: reporting *a truncation* as *a total*.
 
-**Size, measured and over budget.** The p4 brief asks for ~900 lines across a
-page's files. This one is **1,706 lines of component/hook/formatter code** —
-`WineRegister.tsx` 478, `BottleLeaf.tsx` 343, `useCellarNextData.ts` 225,
-`Registers.tsx` 172, `CellarNext.tsx` 145, `cellar-format.ts` 141,
-`registerShapes.ts` 106, `UnwiredRegister.tsx` 96 — plus 293 lines of test, 330
-of CSS and 33 of `MOTIONS.md`: **2,362 across 11 files**. (A count of
-non-blank, non-comment lines gives 1,339; the raw figure is the one to quote.)
-The directory was split into five components as the rule allows, and one pass
-already moved repeated inline typography into `cellar-next.css`, but the total
-is still ~1.9× the budget for what is five surfaces behind one component. No
-feature was cut to close the gap — the overrun is disclosed rather than paid for
-by dropping breadth the founder asked to keep. If it must come down,
-`WineRegister.tsx` splits again (control rail / table / shelf).
+**Size, measured and over budget — re-measured 2026-09-03, third pass.** The p4
+brief asks for ~900 lines across a page's files. This paragraph has been wrong
+twice: it quoted the pass-one file set (including `UnwiredRegister.tsx`, deleted
+in pass two) until the pass-two re-audit caught it as CLAIM-DRIFT, and the
+pass-two figure was itself never written down. Both are corrected here, and the
+figure now carries the date it was taken.
+
+| measured | page code | files | tests | CSS + MOTIONS | total |
+|---|---|---|---|---|---|
+| pass one (2026-09-02) | 1,706 | 8 | 293 | 363 | 2,362 across 11 |
+| pass two (audit, 2026-09-03) | 3,108 | 12 | 949 | 388 | 4,445 across 16 |
+| pass three (this build) | **4,537** | **14** | 1,240 | 473 | **6,250 across 18** |
+
+Pass three added `HouseRecordLeaf.tsx` (240) and `CocktailRegister.tsx` (564),
+and grew `useCellarNextData.ts` (503 → 739), `CatalogueRegister.tsx` (261 → 523)
+and `cellar-format.ts` (271 → 373). That is **~5.0× the ~900-line budget**, and
+the number is stated rather than softened.
+
+The reason it is defensible, stated so the founder can reject it: this directory
+is not one page. It is **eight surfaces** — the cellar parent, six registers with
+different columns, and the wine register — plus two components that live outside
+the page entirely (`CellarRegistersStep` in onboarding, `CellarRegistersControl`
+in Settings, 382 lines between them, sharing this directory so the three places
+that describe a register cannot describe it three different ways).
+
+The reason it is still a defect: the growth has never been paid for by a cut.
+Every pass has added. **If it must come down**, in the order that costs least:
+`WineRegister.tsx` splits (control rail / table / shelf); `useCellarNextData.ts`
+splits its view-model types out of its hooks; and the two shared components move
+to `components/mudavym/registers/`, which is where they belong on the merits
+anyway and would take 382 lines off this page's count without deleting a line.
 
 **Substituted or left out, and why.** Bulk selection and the CSV export are
 left out (see §1a — the export shipped six invented columns as fact). "Save as
@@ -374,6 +448,104 @@ register whose one authoritative row is `restaurant_cellar_registers`; per-brows
 `localStorage` is used instead and the notice says so (§13). No routes for
 `/spirits`, `/non-alcoholic`, `/soft-drinks`: `App.tsx` is outside this page's
 paths, so those three open as `?register=` on the parent (§9).
+
+### Third pass, 2026-09-03 — the house's own record
+
+**What the founder asked.** "First small fixes, and then everything left
+including the four large builds — make them elegant and pretty looking." The
+full beverages catalogue was one of the four: *"Beer, whisky, cocktails,
+spirits, non-alcoholic and soft drinks each a real register: list/search/filter/
+sort with the house's own record per row (first bought, paid, poured, who quoted
+— `—` where unknown), add-to-inventory gated on OD-113 (say so)."*
+
+**What was actually wrong, which is not what it looked like.** These registers
+were not thin because nobody had built them. They were thin because
+`public.beverages` has no `restaurant_id`
+(`supabase/migrations/20260817070000_beverages_table.sql:217`) and nothing in the
+schema references `beverages.id` except `cocktail_ingredients.beverage_id`
+(`…20260817090000:63`), a table created empty. So the page had been served two
+passes running, and each pass had written a better sentence explaining that none
+of the rows were the house's. Pass two's own `registerShapes.ts` said it
+outright: *"these are the shared reference catalogue, not this house's stock."*
+That is a design failure wearing a well-worded disclaimer.
+
+**The structural change: the spine is inverted.** `DESIGN-FOUNDATION.md` §6, the
+`/cellar` row, already named the answer and marked it **now** — "the house's own
+record on every bottle — first bought, what we have paid, what we poured … who
+quoted it". Five tables carry both a `restaurant_id` and the product's name in
+text, and between them they are that record:
+
+| the house fact | table | name column |
+|---|---|---|
+| what we list, and charge | `menu_items` | `name` + `producer` |
+| what we were invoiced, and when | `procurement_document_lines` → `procurement_documents` (`doc_type='invoice'`) | `description` |
+| what we ordered | `procurement_order_items` → `procurement_orders` | `wine_name` + `producer` |
+| who quoted it, off what | `vendor_price_observations` (this tenant's rows only) | `product_name_raw` |
+| what we actually sold | `pos_unresolved_lines` (`resolved = false`) | `item_name` |
+
+The last row is the find of this pass. `pos_unresolved_lines` holds the till
+lines the POS bridge could not map to an inventory row — and because
+`restaurant_inventory` is keyed on `master_wine_id`, **every non-wine sale a
+house makes lands there and nowhere else.** It is filed as a defect log; for
+beer, spirits and soft drinks it is the sales ledger.
+
+`public.house_beverage_ledger(uuid, int)` (migration `20260903120000`) assembles
+them into one row per product. The catalogue is then laid over it by
+`beverage_house_key()` — see ADR **0108** for the whole argument, including why
+`beverage_identity_key` could not be reused unchanged and why no similarity
+score was permitted.
+
+**Honesty rules applied.**
+
+- A book that names a product nowhere is **absent from the record**, not
+  rendered as a block of zeroes. `quoted: null` is the em dash; `quoted:
+  { count: 0 }` would be a confident nought.
+- A **paid total of 0** is read as unrecorded, never as "free" — an invoice line
+  with a blank total and a blank unit price is unknown.
+- The **catalogue match tier is on the row**: `exact` or `contains`, with
+  `contains` labelled loose in the table *and* explained on the stand ("a
+  different bottle with the same words would match too"). No third tier exists.
+- **A missing migration is words.** Until `20260903120000` is applied the ledger
+  RPC does not exist; the gateway returns `readable: false` with a reason naming
+  that exact file, and the register renders the sentence. Returning `[]` there
+  would have said "this house has no record of anything" — absence reported as
+  health, the most expensive shape in this repo.
+- **House lines no register can hold are reported**, not filtered away.
+- The **`shortDate` timezone bug was caught in test, not on screen**:
+  `doc_date` is a Postgres `date`, `new Date('2026-03-02')` parses as UTC
+  midnight, and any timezone west of UTC printed "1 Mar 2026" for an invoice
+  dated the 2nd. A date of record that silently moves by a day is a fabricated
+  date in a smaller coat. Calendar dates are now formatted in UTC; instants
+  (`created_at`, a `timestamptz`) stay local, because "when did we last sell it"
+  is a question about the reader's evening. Pinned in `cellar-format.test.ts`.
+
+**The two alternative directions considered, and not built** — the founder
+decides after seeing the page:
+
+1. **Merge the house's rows and the catalogue's into one alphabetical table.**
+   Simpler, and it reads as one register rather than "ours, then theirs". It was
+   rejected on the operator's question: someone opening `/whiskey` wants the
+   twelve bottles this house pours, and alphabetical order buries them among 272
+   strangers. The current build sorts the house's rows first and defaults the
+   sort to record-richness. If the founder prefers one flat table, it is a
+   one-line change to the sort in `CatalogueRegister.tsx`.
+2. **Match on more than exact-or-contained** — trigram similarity, or a
+   threshold on token overlap, which would attach far more invoice lines to
+   catalogue rows. Rejected because a wrong attribution puts one bottle's spend
+   on another bottle's row silently, and this page's whole claim is that its
+   figures are the house's own. `counts.matchedLoosely` is already reported
+   separately, so if the founder wants the looser tier measured before deciding,
+   the instrumentation is there.
+
+**Substituted or left out, and why.** No add-to-inventory: OD-113 is undecided,
+so the control renders disabled with the reason rather than hidden or faked. No
+write path to `public.beverages`: a tenant inserting into a shared reference
+catalogue whose identity is set by a trigger would be a second writer for
+somebody else's table, so the register says so instead of showing a button. No
+seal on this page's new acts — retiring a cocktail is a two-step confirm, the
+same die pressed dry, because the ceremony is rationed to the one hold that
+spends money. And the happy-path cocktail *create* was deliberately **not**
+exercised against the live database (see §9.11).
 
 ## 2. Entry
 Sidebar item (`apps/web/src/components/layout/Sidebar.tsx:79`). PAGE_MAP records
@@ -620,6 +792,76 @@ Each one is a file the p4 page agent does not own; none was built.
     resolves it server-side (`services/api/inventory.ts:97-103`), which is the shape a
     real "scan → shelf" path should use.
 
+### Gaps found in the third pass (2026-09-03) — the beverages catalogue
+
+17. **Three registers still have no route, and this page may not add them.**
+    `App.tsx` is outside this page's paths. `CellarNext`'s `category` prop now
+    accepts all seven register ids, so the three lines below are the whole of
+    what is needed; until they land, `/spirits`, `/non-alcoholic` and
+    `/soft-drinks` open as `/cellar?register=<id>`, which is deep-linkable and
+    works today. The exact lines, to sit beside the existing `/cocktails` route
+    at `apps/web/src/App.tsx:305`:
+
+    ```tsx
+    <Route path="/spirits" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="spirits" />} />} />
+    <Route path="/non-alcoholic" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="non_alcoholic" />} />} />
+    <Route path="/soft-drinks" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="soft_drinks" />} />} />
+    ```
+
+    They also need `REGISTER_ROUTE` in `cellar-format.ts` extended with
+    `spirits: '/spirits'`, `non_alcoholic: '/non-alcoholic'`,
+    `soft_drinks: '/soft-drinks'` — that file IS this page's, and the entries
+    are deliberately **not** added yet, because a `<Link to="/spirits">` with no
+    route behind it is a dead link. The two changes land together or not at all.
+
+18. **The house's record is dark until migration `20260903120000` is applied.**
+    `public.house_beverage_ledger` does not exist on the database :4000 talks
+    to; migrations auto-apply on merge to `main`. Measured live 2026-09-03: all
+    six registers return **200**, the catalogue half renders (beer 57, whiskey
+    272, spirits 400 capped, non-alcoholic 10, soft_drinks 0 by design,
+    cocktails 0), and `house.readable` is `false` with the reason naming that
+    file. The degradation is the designed one and is verified; the *populated*
+    path is covered by 36 gateway specs and 59 web tests with the client mocked,
+    and needs one live re-verification after the migration lands. Same posture,
+    and same reason, as gap 15.
+
+19. **`beverage_house_key` is a second key, and can be misused.** It is derived
+    from `beverage_tokenize`, granted to `service_role` and `authenticated`
+    only, documented reporting-only, and asserted in the migration. There is no
+    guard preventing somebody storing it on a row, which is the one abuse ADR
+    0108 forbids. A `scripts/` guard would be the right shape;
+    `scripts/` is outside this page's paths.
+
+20. **`pos_unresolved_lines` is the only sales record a non-wine has, and
+    nothing else in the product knows that.** `/reports`, `/recommendations` and
+    the analytics engine all read sales through inventory-keyed tables, so every
+    beer and cocktail a house sells is invisible to them. Not this page's to fix;
+    filed because the measurement was made here.
+
+21. **The cocktails register cannot deplete a base spirit.**
+    `cocktail_ingredients.beverage_id` is now writable, but pouring a Negroni
+    cannot reduce anything, because the gin has no stock row. Same OD-113 gate.
+
+22. **`vendor_price_observations` rows with a NULL `restaurant_id` are excluded
+    from the ledger on purpose** — a scraped public list price belongs to
+    everyone (`20260805154027_vendor_price_observations.sql:53-56`), so it is
+    not this house's quote. That means a bottle only ever seen on a public
+    catalogue shows "who quoted" as the em dash. Correct, and worth knowing
+    before somebody reads the dash as missing data.
+
+23. **The happy-path cocktail create was NOT exercised against the live
+    database, deliberately.** :4000 points at the real Supabase, and inserting a
+    test cocktail would leave a row in a real tenant. Every route was verified
+    instead through its refusal paths, which exercise the same guard, DTO,
+    tenancy filter and error shape: `POST` with no name **400**, `POST` naming
+    another tenant **403**, `PATCH`/`DELETE`/`GET`/`PUT ingredients` against a
+    ghost uuid **404** carrying *"a write that matched no row must not report
+    success"*, `PATCH` with a non-uuid **400**, and no token **401**. The insert
+    payload itself is asserted in `beverages.service.spec.ts` (that
+    `restaurant_id` comes from the path and a body `restaurantId` is ignored).
+    One live create-then-retire is still owed once there is a scratch tenant to
+    do it in.
+
 ## 10. Maturity
 
 **hollow.** Browsing works and is real. The page's two headline *actions* — "order this
@@ -815,3 +1057,29 @@ the onboarding step for every house on a database missing the migration.
 8. **`/menu` as a real surface** — held per the menu research's recommendation until
    OD-113 is decided, and when built it must READ `restaurant_cellar_registers`,
    never write a competing answer.
+
+### Roadmap for the beverages catalogue (added 2026-09-03, ordered)
+
+1. **The three routes** (§9.17) — three lines in `App.tsx` plus three entries in
+   `REGISTER_ROUTE`, together. Costs nothing and finishes the IA.
+2. **Re-verify the ledger live** (§9.18) — one curl per register after migration
+   `20260903120000` merges, confirming `house.readable: true` and a real record
+   on a real row. Until that is done, the populated path is spec-covered only.
+3. **A guard against storing `beverage_house_key`** (§9.19) — the one abuse
+   ADR 0108 forbids, currently prevented by prose alone. `scripts/`, blocking,
+   exits 2 when it cannot check.
+4. **Measure the loose tier before widening or narrowing it** —
+   `counts.matchedLoosely` is already on the wire. If it is attributing spend
+   wrongly even once, drop to `exact` only; if it is near-zero and correct, the
+   next tier (producer-token containment) becomes arguable. Do not guess.
+5. **Deplete a base spirit from a poured cocktail** (§9.21) — needs OD-113.
+6. **Teach the rest of the product about `pos_unresolved_lines`** (§9.20) — every
+   non-wine sale is invisible to `/reports` and the analytics engine today. This
+   is the largest thing this pass found and the smallest part of it is on this
+   page.
+7. **Publish a register to the guest** — DESIGN-FOUNDATION §6 marks it *later*;
+   the rows now carry enough (name, producer, price on the list) that it is a
+   presentation problem rather than a data one.
+8. **Deadstock and velocity on the row** — DESIGN-FOUNDATION §6 table stakes.
+   `pos_unresolved_lines` gives velocity for a non-wine today; deadstock needs a
+   stock figure, so it waits on OD-113 with everything else.

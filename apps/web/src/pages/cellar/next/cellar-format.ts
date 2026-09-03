@@ -175,6 +175,9 @@ export const REGISTER_ROUTE: Partial<Record<RegisterId, string>> = {
   beer: '/beer',
   whiskey: '/whiskey',
   cocktails: '/cocktails',
+  spirits: '/spirits',
+  non_alcoholic: '/non-alcoholic',
+  soft_drinks: '/soft-drinks',
 };
 
 /** Where a register opens: its own route, or the parent with a query. */
@@ -268,4 +271,106 @@ export function strandedPrompt(id: RegisterId, n: number): string {
           ? n === 1 ? 'whisky' : 'whiskies'
           : `${REGISTER_TITLE[id].toLowerCase()} ${n === 1 ? 'line' : 'lines'}`;
   return `${n.toLocaleString('en-US')} ${what} ${n === 1 ? 'is' : 'are'} still in this house’s books.`;
+}
+
+/* ── the house's own record ────────────────────────────────────────────────
+   DESIGN-FOUNDATION.md §6 names it as this page's exponential idea: "the
+   house's own record on every bottle — first bought, what we have paid, what
+   we poured … who quoted it". These are the words that record is rendered in.
+   Every one of them can be the em dash, and the em dash means unknown, never
+   none.                                                                     */
+
+/**
+ * A date of record: "2 Mar 2026", or the dash. Never "today", never a guess.
+ *
+ * THE TIMEZONE IS LOAD-BEARING HERE, and it was caught wrong in test before it
+ * ever reached a screen. Two different kinds of value arrive at this function:
+ *
+ *  - a CALENDAR DATE — `procurement_documents.doc_date` is a Postgres `date`
+ *    and arrives as `2026-03-02`. `new Date('2026-03-02')` parses that as UTC
+ *    midnight, and rendering it in a timezone west of UTC prints **1 Mar**. An
+ *    invoice dated the 2nd showing as the 1st is precisely the class of quiet
+ *    error this whole register exists to refuse, so a date-only string is
+ *    formatted in UTC and stays the day the document says.
+ *  - an INSTANT — `pos_unresolved_lines.created_at` is a `timestamptz` and
+ *    names a moment. That one IS rendered in the reader's own timezone,
+ *    because "when did we last sell it" is a question about their evening.
+ */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+export function shortDate(iso: string | null | undefined): string {
+  if (!iso) return EM;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return EM;
+  return d.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    ...(DATE_ONLY.test(iso) ? { timeZone: 'UTC' } : {}),
+  });
+}
+
+/** The five books, in the order the house would read them. */
+export const BOOK_ORDER = ['menu', 'invoice', 'order', 'quote', 'pos'] as const;
+export type HouseBookId = (typeof BOOK_ORDER)[number];
+
+/**
+ * The operator's word for each book, not the schema's. A row's strip of marks
+ * is the fastest honest summary there is of "how well do we know this bottle".
+ */
+export const BOOK_LABEL: Record<HouseBookId, string> = {
+  menu: 'on the list',
+  invoice: 'invoiced',
+  order: 'ordered',
+  quote: 'quoted',
+  pos: 'sold',
+};
+
+/** Which table each mark was read from — shown, so the claim is checkable. */
+export const BOOK_SOURCE: Record<HouseBookId, string> = {
+  menu: 'menu_items',
+  invoice: 'procurement_document_lines, on documents of type invoice',
+  order: 'procurement_order_items',
+  quote: 'vendor_price_observations, this restaurant’s rows only',
+  pos: 'pos_unresolved_lines — the till lines the POS bridge could not map to a wine',
+};
+
+/**
+ * `vendor_price_observations.source_type`, in the vocabulary `/vendor-prices`
+ * already uses. An unrecognised value is shown verbatim rather than bucketed:
+ * the column has no CHECK constraint, and renaming a value we do not know
+ * would be inventing provenance.
+ */
+export function quoteSource(v: string | null): string {
+  switch (v) {
+    case 'invoice': return 'an invoice';
+    case 'catalogue': return 'a catalogue';
+    case 'quote': return 'a quote';
+    case 'rep_message': return 'a rep’s message';
+    case 'social': return 'a social post';
+    case 'manual': return 'a manual entry';
+    case 'scrape': return 'a scraped page';
+    default: return v ? `“${v}”` : 'an unstated source';
+  }
+}
+
+/**
+ * How this house's line reached the shared catalogue. Rendered on every row
+ * that has a catalogue entry, because a weaker join presented with the same
+ * confidence as a strong one is the quiet kind of lie.
+ */
+export function matchNote(matchedBy: 'exact' | 'contains' | null): string | null {
+  if (matchedBy === 'exact')
+    return 'This house’s own line and the catalogue entry carry the same words.';
+  if (matchedBy === 'contains')
+    return 'Matched loosely: every word of the catalogue entry appears in this house’s line, which carries more besides. A different bottle with the same words would match too.';
+  return null;
+}
+
+/**
+ * The sentence a register carries when this house's books hold nothing of the
+ * kind. Never "you have none" — the books may simply not be here yet.
+ */
+export function noHouseRowsLine(id: RegisterId): string {
+  return `Nothing in this house’s menu, invoices, orders, quotes or till lines names ${REGISTER_TITLE[id].toLowerCase()}. ${addRowsPrompt(id)}`;
 }

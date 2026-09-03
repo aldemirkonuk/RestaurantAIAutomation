@@ -274,6 +274,242 @@ export interface CocktailListVM {
   scopeNote: string;
 }
 
+/* ── the house's own record on a row ───────────────────────────────────────
+   Mirrored from `apps/api-gateway/src/beverages/house-record.ts`. Every field
+   that can be unknown IS nullable, and a book that names a product nowhere is
+   `null` rather than a zeroed block — so the row renders an em dash instead of
+   a confident nought.                                                       */
+
+export type HouseBook = 'menu' | 'invoice' | 'order' | 'quote' | 'pos';
+
+export interface OnMenuVM {
+  lines: number;
+  bottlePrice: number | null;
+  glassPrice: number | null;
+  sections: string[];
+}
+export interface BoughtVM {
+  lines: number;
+  first: string | null;
+  last: string | null;
+  bottles: number | null;
+  paidTotal: number | null;
+  lastUnitPrice: number | null;
+  lastFrom: string | null;
+}
+export interface OrderedVM {
+  lines: number;
+  lastAt: string | null;
+  lastPrice: number | null;
+  lastFrom: string | null;
+}
+export interface QuotedVM {
+  count: number;
+  lastAt: string | null;
+  lastPrice: number | null;
+  lastSource: string | null;
+  lastFrom: string | null;
+}
+export interface PouredVM {
+  lines: number;
+  qty: number | null;
+  revenue: number | null;
+  firstAt: string | null;
+  lastAt: string | null;
+}
+export interface HouseRecordVM {
+  books: HouseBook[];
+  firstSeen: string | null;
+  onMenu: OnMenuVM | null;
+  bought: BoughtVM | null;
+  ordered: OrderedVM | null;
+  quoted: QuotedVM | null;
+  poured: PouredVM | null;
+}
+
+export interface CatalogueFactsVM {
+  id: string;
+  beverageType: string | null;
+  country: string | null;
+  region: string | null;
+  abvPct: number | null;
+  volumeMl: number | null;
+  packageFormat: string | null;
+  priceReference: number | null;
+  /** How the house's line reached this row. Null on a catalogue-only row. */
+  matchedBy: 'exact' | 'contains' | null;
+}
+
+export interface RegisterRowVM {
+  key: string;
+  name: string;
+  producer: string | null;
+  catalogue: CatalogueFactsVM | null;
+  /** Null when nobody in this house has ever touched the row. */
+  house: HouseRecordVM | null;
+}
+
+export interface RegisterSourceVM extends SourceStatusVM {
+  truncated: boolean;
+  limit: number;
+}
+
+export interface RegisterVM {
+  restaurantId: string;
+  register: RegisterId;
+  rows: RegisterRowVM[];
+  counts: {
+    total: number;
+    houseRows: number;
+    matched: number;
+    matchedLoosely: number;
+    catalogueOnly: number;
+  };
+  catalogue: RegisterSourceVM & { matchedTypes: string[]; servedByThisTable: boolean };
+  house: RegisterSourceVM;
+  /**
+   * OD-113, carried on the wire so the browser cannot invent a cheerier
+   * sentence than the one the gateway stands behind.
+   */
+  stocking: { available: false; decision: 'OD-113'; reason: string };
+  scopeNote: string;
+  /** This house's own lines that no register in the seven can hold. */
+  unregistered: { label: string; books: string[] }[];
+}
+
+/** One register, whole. The house's own rows, then the shared catalogue. */
+export function useRegister(register: RegisterId | null) {
+  const { activeRestaurantId } = useAuth();
+  const q = useQuery({
+    queryKey: ['cellar', 'register', activeRestaurantId, register],
+    enabled: Boolean(activeRestaurantId) && register !== null && register !== 'wines',
+    queryFn: async (): Promise<RegisterVM> => {
+      const r = await apiClient.get(
+        `/beverages/${activeRestaurantId}/registers/${register}`,
+      );
+      return r.data as RegisterVM;
+    },
+  });
+  return {
+    data: q.data ?? null,
+    loading: q.isLoading,
+    error: q.isError
+      ? q.error instanceof Error
+        ? q.error.message
+        : 'no reason given'
+      : null,
+    refetch: () => void q.refetch(),
+  };
+}
+
+/* ── the one register a house can write ────────────────────────────────────
+   `public.cocktails` is the only table behind these registers that carries a
+   `restaurant_id`, so it is the only one with a write path. There is no
+   `useCreateBeverage`: inserting into the shared reference catalogue would be
+   a tenant writing somebody else's table, and the register says so rather
+   than rendering a button that should not exist.                            */
+
+export interface CocktailInput {
+  name?: string;
+  displayName?: string;
+  menuSection?: string;
+  method?: string;
+  glass?: string;
+  garnish?: string;
+  price?: number;
+  description?: string;
+}
+
+export interface RecipeLineVM {
+  id?: string;
+  free_text?: string | null;
+  freeText?: string;
+  quantity?: number | null;
+  unit?: string | null;
+  sort_order?: number | null;
+}
+
+export function useCocktailWrites() {
+  const { activeRestaurantId } = useAuth();
+  const queryClient = useQueryClient();
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['cellar', 'cocktails', activeRestaurantId] });
+    void queryClient.invalidateQueries({ queryKey: ['cellar', 'register', activeRestaurantId] });
+  };
+
+  const create = useMutation({
+    mutationFn: async (input: CocktailInput) => {
+      const r = await apiClient.post(`/cocktails/${activeRestaurantId}`, input);
+      return r.data;
+    },
+    onSuccess: invalidate,
+  });
+
+  const amend = useMutation({
+    mutationFn: async (v: { id: string; input: CocktailInput }) => {
+      const r = await apiClient.patch(
+        `/cocktails/${activeRestaurantId}/${v.id}`,
+        v.input,
+      );
+      return r.data;
+    },
+    onSuccess: invalidate,
+  });
+
+  const retire = useMutation({
+    mutationFn: async (id: string) => {
+      const r = await apiClient.delete(`/cocktails/${activeRestaurantId}/${id}`);
+      return r.data;
+    },
+    onSuccess: invalidate,
+  });
+
+  const setRecipe = useMutation({
+    mutationFn: async (v: {
+      id: string;
+      lines: { freeText?: string; quantity?: number; unit?: string; sortOrder?: number }[];
+    }) => {
+      const r = await apiClient.put(
+        `/cocktails/${activeRestaurantId}/${v.id}/ingredients`,
+        { lines: v.lines },
+      );
+      return r.data;
+    },
+    onSuccess: invalidate,
+  });
+
+  return { create, amend, retire, setRecipe };
+}
+
+/** One cocktail's recipe lines. Read only when the leaf for it is open. */
+export function useCocktailRecipe(cocktailId: string | null) {
+  const { activeRestaurantId } = useAuth();
+  const q = useQuery({
+    queryKey: ['cellar', 'recipe', activeRestaurantId, cocktailId],
+    enabled: Boolean(activeRestaurantId) && cocktailId !== null,
+    queryFn: async () => {
+      const r = await apiClient.get(
+        `/cocktails/${activeRestaurantId}/${cocktailId}/ingredients`,
+      );
+      return r.data as {
+        cocktailId: string;
+        rows: RecipeLineVM[];
+        count: number;
+        writable: true;
+      };
+    },
+  });
+  return {
+    data: q.data ?? null,
+    loading: q.isLoading,
+    error: q.isError
+      ? q.error instanceof Error
+        ? q.error.message
+        : 'no reason given'
+      : null,
+  };
+}
+
 /** The read limit for a catalogue register. The response says if it was hit. */
 export const CATALOGUE_READ_LIMIT = 300;
 

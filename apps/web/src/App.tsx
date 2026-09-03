@@ -318,6 +318,9 @@ function App() {
                   <Route path="/beer" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="beer" />} />} />
                   <Route path="/whiskey" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="whiskey" />} />} />
                   <Route path="/cocktails" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="cocktails" />} />} />
+                  <Route path="/spirits" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="spirits" />} />} />
+                  <Route path="/non-alcoholic" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="non_alcoholic" />} />} />
+                  <Route path="/soft-drinks" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="soft_drinks" />} />} />
                   <Route path="/reports" element={<PageGate page="reports" legacy={<Reports />} next={<ReportsNext />} />} />
                   <Route path="/recommendations" element={<PageGate page="recommendations" legacy={<Recommendations />} next={<RecommendationsNext />} />} />
                   <Route path="/recommendations/catalog" element={<InsightCatalog />} />

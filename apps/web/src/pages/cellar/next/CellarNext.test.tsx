@@ -36,6 +36,9 @@ const mock = vi.hoisted(() => ({
   current: {} as Record<string, unknown>,
   beverages: { data: null, loading: false, error: null } as Record<string, unknown>,
   cocktails: { data: null, loading: false, error: null } as Record<string, unknown>,
+  register: { data: null, loading: false, error: null, refetch: () => {} } as Record<string, unknown>,
+  recipe: { data: null, loading: false, error: null } as Record<string, unknown>,
+  writes: {} as Record<string, unknown>,
 }));
 
 vi.mock('./useCellarNextData', async (orig) => ({
@@ -43,6 +46,9 @@ vi.mock('./useCellarNextData', async (orig) => ({
   useCellarNextData: () => mock.current,
   useBeverageRegister: () => mock.beverages,
   useCocktailRegister: () => mock.cocktails,
+  useRegister: () => mock.register,
+  useCocktailRecipe: () => mock.recipe,
+  useCocktailWrites: () => mock.writes,
 }));
 
 vi.mock('../../../hooks/queries/useInventoryQueries', () => ({
@@ -460,103 +466,323 @@ describe('CellarNext — the wine register', () => {
   });
 });
 
-describe('CellarNext — the catalogue registers', () => {
-  it('lists real beer rows, and refuses to call the shared catalogue this house’s stock', () => {
-    mock.current = { ...base, registers: readout() };
-    mock.beverages = {
-      loading: false,
-      error: null,
-      data: {
-        rows: [
-          {
-            id: 'b1',
-            beverage_type: 'beer',
-            name: 'Efes Pilsen',
-            display_name: null,
-            producer: 'Anadolu Efes',
-            brand: null,
-            country: 'Türkiye',
-            region: null,
-            abv_pct: 5,
-            volume_ml: 500,
-            package_format: null,
-            price_reference: null,
-          },
-        ],
-        count: 1,
-        truncated: false,
-        limit: 300,
-        register: 'beer',
-        matchedTypes: ['beer'],
-        servedByThisTable: true,
-        scope: 'global-reference',
-        scopeNote:
-          'public.beverages carries no restaurant_id — this is the shared reference catalogue, not what this house holds. Nothing here is stock.',
+/* ── the registers that are not wines ──────────────────────────────────────
+   THIRD PASS, 2026-09-03. What changed is the spine: these registers used to
+   list `public.beverages` — a table with no `restaurant_id` — and truthfully
+   report that none of it was this house's. DESIGN-FOUNDATION §6 marks the
+   opposite as this page's exponential idea, "the house's own record on every
+   bottle", so the house's five books come first and the catalogue is laid over
+   them. These tests pin the three kinds of row that follow, plus the two
+   things that must never regress: an unknown is an em dash, and stocking is
+   withheld with its reason.                                               */
+
+function houseRow(over: Record<string, unknown> = {}) {
+  return {
+    key: 'b1',
+    name: 'Efes Pilsen',
+    producer: 'Anadolu Efes',
+    catalogue: {
+      id: 'b1',
+      beverageType: 'beer',
+      country: 'Türkiye',
+      region: null,
+      abvPct: 5,
+      volumeMl: 500,
+      packageFormat: null,
+      priceReference: null,
+      matchedBy: 'exact',
+    },
+    house: {
+      books: ['invoice', 'pos'],
+      firstSeen: '2026-03-02T00:00:00Z',
+      onMenu: null,
+      bought: {
+        lines: 3,
+        first: '2026-03-02',
+        last: '2026-08-19',
+        bottles: 72,
+        paidTotal: 618.4,
+        lastUnitPrice: 8.6,
+        lastFrom: 'Anadolu İçecek',
       },
+      ordered: null,
+      quoted: null,
+      poured: { lines: 41, qty: 58, revenue: 464, firstAt: null, lastAt: null },
+    },
+    ...over,
+  };
+}
+
+function registerVM(over: Record<string, unknown> = {}) {
+  return {
+    restaurantId: 'r1',
+    register: 'beer',
+    rows: [houseRow()],
+    counts: { total: 1, houseRows: 1, matched: 1, matchedLoosely: 0, catalogueOnly: 0 },
+    catalogue: {
+      readable: true, reason: null, rows: 1, truncated: false, limit: 400,
+      matchedTypes: ['beer'], servedByThisTable: true,
+    },
+    house: { readable: true, reason: null, rows: 1, truncated: false, limit: 600 },
+    stocking: {
+      available: false,
+      decision: 'OD-113',
+      reason:
+        'Nothing in this register can be counted into the cellar yet. restaurant_inventory is keyed on master_wine_id.',
+    },
+    scopeNote:
+      "Rows with a record are this house's own. Rows without one are the shared reference catalogue and belong to nobody.",
+    unregistered: [],
+    ...over,
+  };
+}
+
+describe('CellarNext — the registers that are not wines', () => {
+  beforeEach(() => {
+    mock.register = { data: null, loading: false, error: null, refetch: () => {} };
+    mock.recipe = { data: null, loading: false, error: null };
+    mock.writes = {};
+  });
+
+  it('puts this house’s own record on the row — first bought, paid, poured', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM(), loading: false, error: null, refetch: () => {} };
+    draw({ category: 'beer' });
+
+    expect(screen.getByText('Efes Pilsen')).toBeInTheDocument();
+    const row = screen.getByText('Efes Pilsen').closest('tr')!;
+    expect(within(row).getByText('2 Mar 2026')).toBeInTheDocument();
+    expect(within(row).getByText('$618.40')).toBeInTheDocument();
+    expect(within(row).getByText('58')).toBeInTheDocument();
+    // A book that names it nowhere is the dash, never a zero.
+    expect(within(row).getAllByText('—').length).toBeGreaterThanOrEqual(1);
+    expect(within(row).queryByText('$0.00')).not.toBeInTheDocument();
+  });
+
+  it('opens the whole record on the stand, naming the table each fact came from', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM(), loading: false, error: null, refetch: () => {} };
+    draw({ category: 'beer' });
+    fireEvent.click(screen.getByText('Efes Pilsen'));
+
+    const leaf = screen.getByTestId('house-leaf');
+    expect(within(leaf).getByText('Anadolu İçecek')).toBeInTheDocument();
+    expect(leaf).toHaveTextContent(/procurement_document_lines/);
+    expect(leaf).toHaveTextContent(/pos_unresolved_lines/);
+    // The books that name it nowhere are absent, not zeroed.
+    expect(leaf).not.toHaveTextContent(/quoted/i);
+  });
+
+  it('renders add-to-inventory disabled, with the OD-113 sentence beside it', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM(), loading: false, error: null, refetch: () => {} };
+    draw({ category: 'beer' });
+    fireEvent.click(screen.getByText('Efes Pilsen'));
+
+    const gate = screen.getByTestId('stock-gate');
+    expect(gate).toBeDisabled();
+    expect(screen.getByTestId('house-leaf')).toHaveTextContent(/keyed on master_wine_id/);
+  });
+
+  it('keeps a bottle the house bought that no catalogue row carries', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = {
+      data: registerVM({
+        rows: [houseRow({ key: 'k1', name: 'Bomonti Filtresiz', catalogue: null, producer: null })],
+        counts: { total: 1, houseRows: 1, matched: 0, matchedLoosely: 0, catalogueOnly: 0 },
+      }),
+      loading: false, error: null, refetch: () => {},
     };
     draw({ category: 'beer' });
-    expect(screen.getByText('Efes Pilsen')).toBeInTheDocument();
-    expect(screen.getByTestId('register-scope')).toHaveTextContent(
-      /no restaurant_id.*not what this house holds/s,
+    fireEvent.click(screen.getByText('Bomonti Filtresiz'));
+    expect(screen.getByTestId('leaf-uncatalogued')).toHaveTextContent(
+      /not a bottle nobody bought/,
     );
-    // no "on hand" column: this house cannot hold stock of this kind yet
-    expect(screen.queryByText('On hand')).not.toBeInTheDocument();
-    expect(screen.getByText(/keyed on the wine library/)).toBeInTheDocument();
-    // the reference price with no value is the dash, never $0.00
-    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('separates an empty catalogue from a failed read', () => {
+  it('marks a loose match as loose, in the row and on the stand', () => {
     mock.current = { ...base, registers: readout() };
-    mock.beverages = { loading: false, error: 'HTTP 500', data: null };
-    draw({ category: 'whiskey' });
-    expect(screen.getByRole('alert')).toHaveTextContent(/unread, not empty/);
-    expect(screen.queryByTestId('beverages-empty-whiskey')).not.toBeInTheDocument();
-  });
-
-  it('cocktails list names and never a recipe, and count reference rows apart', () => {
-    mock.current = { ...base, registers: readout() };
-    mock.cocktails = {
-      loading: false,
-      error: null,
-      data: {
+    mock.register = {
+      data: registerVM({
         rows: [
-          {
-            id: 'c1',
-            name: 'Negroni',
-            display_name: null,
-            menu_section: 'Aperitivo',
-            method: 'stirred',
-            glass: 'rocks',
-            garnish: null,
-            price: 18,
-            description: null,
-          },
+          houseRow({
+            name: 'LAGUNITAS IPA 6/12OZ NR',
+            catalogue: { ...houseRow().catalogue, matchedBy: 'contains' },
+          }),
         ],
-        count: 1,
-        truncated: false,
-        referenceRows: 55,
-        recipesAvailable: false,
+        counts: { total: 1, houseRows: 1, matched: 0, matchedLoosely: 1, catalogueOnly: 0 },
+      }),
+      loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+    expect(screen.getByText(/matched loosely/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText('LAGUNITAS IPA 6/12OZ NR'));
+    expect(screen.getByTestId('match-contains')).toHaveTextContent(
+      /A different bottle with the same words would match too/,
+    );
+  });
+
+  it('labels a row nobody here has touched as belonging to nobody', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = {
+      data: registerVM({
+        rows: [houseRow({ key: 'b9', name: 'Some Stranger Stout', house: null })],
+        counts: { total: 1, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 1 },
+      }),
+      loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+    fireEvent.click(screen.getByText('Some Stranger Stout'));
+    expect(screen.getByTestId('leaf-no-record')).toHaveTextContent(
+      /complete answer, not a missing one/,
+    );
+  });
+
+  it('an unreadable ledger is words, and the catalogue still renders', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = {
+      data: registerVM({
+        rows: [houseRow({ house: null })],
+        counts: { total: 1, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 1 },
+        house: {
+          readable: false,
+          reason:
+            'public.house_beverage_ledger is not on this database yet — migration 20260903120000 has not been applied here.',
+          rows: null, truncated: false, limit: 600,
+        },
+      }),
+      loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+    expect(screen.getByTestId('house-unread')).toHaveTextContent(/unknown, not empty/);
+    expect(screen.getByTestId('house-unread')).toHaveTextContent(/20260903120000/);
+    expect(screen.getByText('Efes Pilsen')).toBeInTheDocument();
+  });
+
+  it('separates a failed register read from an empty one', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: null, loading: false, error: 'HTTP 500', refetch: () => {} };
+    draw({ category: 'whiskey' });
+    expect(screen.getByTestId('register-error')).toHaveTextContent(/unread, not empty/);
+    expect(screen.queryByTestId('register-empty')).not.toBeInTheDocument();
+  });
+
+  it('serves soft drinks from this house’s own books, which no catalogue can', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = {
+      data: registerVM({
+        register: 'soft_drinks',
+        rows: [
+          houseRow({
+            key: 'k-cola',
+            name: 'Coca-Cola 330ml',
+            producer: null,
+            catalogue: null,
+            house: {
+              books: ['menu', 'pos'],
+              firstSeen: '2026-01-04T00:00:00Z',
+              onMenu: { lines: 1, bottlePrice: 4, glassPrice: null, sections: ['Soft Drinks'] },
+              bought: null, ordered: null, quoted: null,
+              poured: { lines: 220, qty: 231, revenue: 924, firstAt: null, lastAt: null },
+            },
+          }),
+        ],
+        counts: { total: 1, houseRows: 1, matched: 0, matchedLoosely: 0, catalogueOnly: 0 },
+        catalogue: {
+          readable: true,
+          reason:
+            'No value of beverages.beverage_type identifies soft_drinks, so the shared catalogue cannot answer for it.',
+          rows: 0, truncated: false, limit: 400, matchedTypes: [], servedByThisTable: false,
+        },
+      }),
+      loading: false, error: null, refetch: () => {},
+    };
+    draw({}, '/cellar?register=soft_drinks');
+    expect(screen.getByText('Coca-Cola 330ml')).toBeInTheDocument();
+    expect(screen.getByText(/cannot answer for it/)).toBeInTheDocument();
+    // The register is NOT empty just because the catalogue cannot serve it.
+    expect(screen.queryByTestId('register-empty')).not.toBeInTheDocument();
+  });
+
+  it('reports the house lines no register can hold rather than dropping them', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = {
+      data: registerVM({ unregistered: [{ label: 'Bread basket', books: ['invoice'] }] }),
+      loading: false, error: null, refetch: () => {},
+    };
+    draw({ category: 'beer' });
+    expect(screen.getByTestId('unregistered')).toHaveTextContent(/Bread basket/);
+    expect(screen.getByTestId('unregistered')).toHaveTextContent(
+      /counted nowhere rather than folded/,
+    );
+  });
+
+  it('cocktails are the one register a house can write, and the recipe is writable', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
+    mock.recipe = { data: { cocktailId: 'c1', rows: [], count: 0, writable: true }, loading: false, error: null };
+    mock.writes = {
+      create: { mutateAsync: vi.fn(), isPending: false },
+      amend: { mutateAsync: vi.fn(), isPending: false },
+      retire: { mutateAsync: vi.fn(), isPending: false },
+      setRecipe: { mutateAsync: vi.fn(), isPending: false },
+    };
+    mock.cocktails = {
+      loading: false, error: null,
+      data: {
+        rows: [{
+          id: 'c1', name: 'Negroni', display_name: null, menu_section: 'Aperitivo',
+          method: 'stirred', glass: 'rocks', garnish: null, price: 18, description: null,
+        }],
+        count: 1, truncated: false, referenceRows: 55, recipesAvailable: false,
         scopeNote: 'Only cocktails this restaurant owns.',
       },
     };
     draw({ category: 'cocktails' });
+
     expect(screen.getByText('Negroni')).toBeInTheDocument();
-    expect(screen.getByText(/Recipes were never extracted/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Add a cocktail/ })).toBeEnabled();
     expect(screen.getByText(/55 unattributed reference cocktails/)).toBeInTheDocument();
-    // the table has no ingredients column, because there are no ingredients
-    expect(
-      screen.queryByRole('columnheader', { name: /ingredient/i }),
-    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Negroni'));
+    // The recipe half is no longer "never" — it is unwritten, and writable.
+    expect(screen.getByTestId('recipe-empty')).toHaveTextContent(
+      /empty because the extraction pass over the scanned menus never ran/,
+    );
+    expect(screen.getByRole('button', { name: /Write the recipe/ })).toBeEnabled();
   });
 
-  it('soft drinks say there is nothing to ask for, not that there are none', () => {
+  it('retiring a cocktail takes two presses and never carries the seal', () => {
     mock.current = { ...base, registers: readout() };
-    draw({}, '/cellar?register=soft_drinks');
-    const panel = screen.getByTestId('no-source-soft_drinks');
-    expect(panel).toHaveTextContent(/No value of .*beverage_type.* distinguishes a soft drink/);
-    expect(panel).toHaveTextContent(/nothing to ask/);
-    expect(within(panel).queryByText('0')).not.toBeInTheDocument();
+    mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
+    mock.recipe = { data: { cocktailId: 'c1', rows: [], count: 0, writable: true }, loading: false, error: null };
+    const retire = vi.fn().mockResolvedValue({ id: 'c1', retired: true });
+    mock.writes = {
+      create: { mutateAsync: vi.fn(), isPending: false },
+      amend: { mutateAsync: vi.fn(), isPending: false },
+      retire: { mutateAsync: retire, isPending: false },
+      setRecipe: { mutateAsync: vi.fn(), isPending: false },
+    };
+    mock.cocktails = {
+      loading: false, error: null,
+      data: {
+        rows: [{
+          id: 'c1', name: 'Negroni', display_name: null, menu_section: null,
+          method: null, glass: null, garnish: null, price: null, description: null,
+        }],
+        count: 1, truncated: false, referenceRows: null, recipesAvailable: false,
+        scopeNote: 'Only cocktails this restaurant owns.',
+      },
+    };
+    draw({ category: 'cocktails' });
+    fireEvent.click(screen.getByText('Negroni'));
+
+    const off = screen.getByRole('button', { name: /Take it off the list/ });
+    fireEvent.click(off);
+    // First press asks; it does not write.
+    expect(retire).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /confirm/ }));
+    expect(retire).toHaveBeenCalledWith('c1');
   });
 
   it('an unknown ?register value opens the overview rather than an invented register', () => {
