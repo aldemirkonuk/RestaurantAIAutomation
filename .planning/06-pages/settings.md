@@ -182,8 +182,9 @@ snapshots, and the shared dev server and checkout are not this agent's to drive 
 so both grounds are argued from token-only colour usage (grep: zero raw hex for
 any ground, ink or seal) plus a test asserting the root carries `.mudavym` and
 `data-ground="charcoal"`, not from eye. **Size, stated plainly:** the page runs
-**2,869 lines across sixteen files** excluding its test — 2,121 of code and 536
-of comment — against the ~900-line guidance in the build brief. The second pass
+**2,880 lines across sixteen files** excluding its test — 2,121 of code and 547
+of comment, `wc -l` and a comment-classifying count agreeing to the line —
+against the ~900-line guidance in the build brief. The second pass
 did the split the audit asked for (the 532-line `OtherSections.tsx` bundling six
 unrelated registers is gone; every register is now its own file, the largest
 being the data hook at 466 lines and `SectionKit.tsx` at 356) and shared the
@@ -211,7 +212,7 @@ suspicious and a fabricated absence looks like integrity.
 
 | # | The false claim | What is true | Where it is fixed |
 |---|---|---|---|
-| 1 | "No sender consults quiet hours" — control removed | `_is_quiet_hours` (`services/agent-orchestrator/agents/notification_agent.py:1487-1494`) is called by `_select_channels` (`:1448`) from four handlers (`:541`, `:637`, `:726`, `:787`) on the very `notification_preferences` row this page writes. Inside the window, anything below `critical` gets **no channel at all** — suppressed, not delayed | Live `Toggle` + window restored, `NotifySection.tsx`; consequence copy says which half honours it and which does not |
+| 1 | "No sender consults quiet hours" — control removed | `_is_quiet_hours` (`services/agent-orchestrator/agents/notification_agent.py:1487-1494`) is called by `_select_channels` (`:1448`) from its three call sites — `:545` low stock, `:727` negotiation complete, `:788` delivery confirmation — on the very `notification_preferences` row this page writes. Inside the window, anything below `critical` gets **no channel at all** — suppressed, not delayed | Live `Toggle` + window restored, `NotifySection.tsx`; consequence copy says which half honours it and which does not |
 | 2 | "the chains table records no last-changed date" | `restaurant_chains.updated_at` is `NOT NULL DEFAULT now()` (`baseline:5053-5060`). The endpoint selected `id, name, cuisine_type` | **Gateway**: `getChainsForUser` selects and returns it; `renameChain` **stamps** it, because that table has no `BEFORE UPDATE` trigger and returning it unstamped would have printed a creation date under the word "changed" |
 | 3 | "the branch record carries no last-changed date" | `restaurants.updated_at` exists *and* is maintained by `update_restaurants_updated_at BEFORE UPDATE` (`baseline:12300`) | **Gateway**: `getBranchesForUser` selects it on all three paths and maps it; the page reads it off the session's branch objects, which are passed through unmapped |
 | 4 | "an invite records its expiry, not when it was issued" | `members.service.ts:101-107` has always returned `created_at` | `PendingInviteRow` carries it; rendered as **issued · …** |
@@ -454,11 +455,19 @@ runtimes on 2026-09-03**, and the per-key result is §9.10.
    `services/agent-orchestrator/agents/notification_agent.py:1487-1494`
    (`_is_quiet_hours`) is called by `_select_channels` (`:1448`) on the row this
    page writes, loaded by `_get_notification_preferences` (`:1580-1591`,
-   `select("*")` on `notification_preferences`), reached from four handlers
-   (`:541`, `:637`, `:726`, `:787`). Inside the window and below `critical`,
-   `_select_channels` returns `[]` — the alert is **suppressed**, not delayed.
-   The control was restored on 2026-09-03; it was removed for one day on a
-   three-runtime grep.
+   `select("*")` on `notification_preferences`). `_select_channels` has exactly
+   three call sites: `:545` (low stock), `:727` (negotiation complete), `:788`
+   (delivery confirmation). Inside the window and below `critical` it returns
+   `[]` — the alert is **suppressed**, not delayed. The control was restored on
+   2026-09-03; it was removed for one day on a three-runtime grep.
+   **Corrected again 2026-09-03 (re-audit DEFECT 1):** this citation said "four
+   handlers (`:541`, `:637`, `:726`, `:787`)". `send_order_approval_request`
+   (`:611`) fetches the same preferences row (`:637`) but then reads
+   `order_approval_channels` off it directly (`:638`) and never calls
+   `_select_channels` — **order-approval notifications are not quiet-hours-gated
+   at all**, which is a real and distinct fact rather than a citation trim
+   (§13.17 covers what to do about it). The rendered copy never claimed
+   otherwise; the comment that exists to make the claim checkable did.
 3. **No setting on this page records WHO changed it.**
    `restaurant_feature_flags` carries `created_at` and no `updated_at` or
    `updated_by` (`supabase/migrations/20260805000000_baseline_from_production.sql:5097-5105`),
@@ -479,8 +488,9 @@ runtimes on 2026-09-03**, and the per-key result is §9.10.
 7. ~~**The seeded-defaults guard does not scan the rebuilt directory.**~~
    **Closed 2026-09-03** — `scripts/check_no_seeded_defaults.py:203` now carries
    `Path("apps/web/src/pages/settings/next")`, added by the parent session. The
-   real guard run covers this directory: `PASS — 124 web file(s) and 13 gateway
-   file(s) across 19 root(s)`.
+   real guard run covers this directory. Last run here: `PASS — 129 web file(s) and 13 gateway file(s) across 19 root(s); 1,433,123 + 127,368 chars examined.`
+   — the web file count climbs as the shared `wt-p4` worktree takes other pages'
+   commits, so it is a timestamp, not a constant.
 
 **Added 2026-09-03 by the second pass:**
 
@@ -757,11 +767,18 @@ cleared to edit, so each is filed rather than built):
     `public.users.user_id` — is in §1b, *What this page can do now*. This is the
     single highest-value item on this list: today the grant of autonomous AI
     sending is anonymous.
-17. **Decide which quiet-hours store is canonical.** There are two:
-    `notification_preferences` (this page writes it; the alerting agent reads it)
-    and `manager_preferences.quiet_hours_start/end` (`baseline:3696-3697`, read
-    only by a method with no callers). Delete the dead one or the next person
-    fixes the wrong one (§9.11).
+17. **Decide which quiet-hours store is canonical, and whether order approvals
+    should honour the window.** Two stores: `notification_preferences` (this page
+    writes it; the alerting agent reads it) and
+    `manager_preferences.quiet_hours_start/end` (`baseline:3696-3697`, read only
+    by a method with no callers) — delete the dead one or the next person fixes
+    the wrong one (§9.11). Separately,
+    `NotificationAgent.send_order_approval_request`
+    (`notification_agent.py:611,638`) bypasses `_select_channels` and reads
+    `order_approval_channels` directly, so an order-approval push or SMS fires
+    inside the quiet window. That may be right — an approval request is arguably
+    urgent — but it is undeclared, and the page cannot say "quiet hours holds
+    non-critical alerts" without an asterisk until it is decided.
 18. **SUSPECTED, and worth an hour: `MembersService.getMembers` orders by a
     column that does not exist** (`restaurants/members.service.ts:73`,
     `granted_at` on `user_restaurant_access`). If PostgREST rejects it, the Team

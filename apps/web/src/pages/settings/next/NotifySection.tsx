@@ -19,7 +19,17 @@
  *                 called from `_select_channels` at :1448, on the row loaded by
  *                 `_get_notification_preferences` (:1580-1591) with `select("*")`
  *                 on the SAME `notification_preferences` row this page writes.
- *                 Reached from four handlers (:541, :637, :726, :787).       READ
+ *                 `_select_channels` has exactly THREE call sites — :545
+ *                 (low stock), :727 (negotiation complete), :788 (delivery
+ *                 confirmation).                                             READ
+ *
+ *                 NOT gated by it: `send_order_approval_request` (:611) reads
+ *                 the same preferences row (:637) and then takes
+ *                 `order_approval_channels` straight off it (:638) without
+ *                 going through `_select_channels`. An order-approval push or
+ *                 SMS goes out inside the quiet window. The rendered copy never
+ *                 claimed otherwise; this comment did, by counting :637 as a
+ *                 fourth handler (second-pass audit DEFECT 1).
  *   push        → `push_enabled` is written three times and read never.
  *                 Push DELIVERY code does exist in the orchestrator
  *                 (`push_service.send_push_notification`), but the channel
