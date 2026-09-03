@@ -15,6 +15,7 @@
 
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { Archive, ChevronRight, CornerUpLeft, Inbox, Stamp, Trash2 } from 'lucide-react';
 import type { Notification } from '@/services/api/notifications';
 import {
   EM,
@@ -23,7 +24,9 @@ import {
   actionTargetOf,
   belowParFrom,
   factsFrom,
+  iconForType,
   kindOf,
+  plainText,
   timeAgo,
 } from './nt-format';
 
@@ -46,16 +49,18 @@ function Control({
   children,
   onClick,
   emphasis,
+  icon: Icon,
 }: {
   children: ReactNode;
   onClick: () => void;
   emphasis?: boolean;
+  icon: typeof Archive;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="nt-ink rounded px-2 py-1 text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
+      className="nt-ink inline-flex items-center gap-1.5 rounded px-2 py-1 text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
       style={{
         fontFamily: SANS,
         border: `1px solid ${emphasis ? 'var(--seal-ring)' : 'var(--paper-2)'}`,
@@ -64,6 +69,7 @@ function Control({
         cursor: 'pointer',
       }}
     >
+      <Icon size={12} strokeWidth={1.75} aria-hidden />
       {children}
     </button>
   );
@@ -86,6 +92,12 @@ export function BookRow({
   const target = actionTargetOf(row);
   const urgent = row.priority === 'critical' || row.priority === 'high';
   const ink = subdued ? 'var(--ink-4)' : 'var(--ink-1)';
+  const kind = kindOf(row.type);
+  // The mark the register earns, drawn here — never the emoji the producer
+  // once stored in the title (see `plainText` / `iconForType` in nt-format).
+  const Mark = iconForType(row.type);
+  const title = plainText(row.title);
+  const message = plainText(row.message);
 
   return (
     <li
@@ -101,7 +113,7 @@ export function BookRow({
         style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
       >
         <span
-          className="shrink-0"
+          className="inline-flex shrink-0 items-center gap-1"
           style={{
             fontFamily: MONO,
             fontSize: 8.5,
@@ -114,20 +126,21 @@ export function BookRow({
             padding: '2px 5px',
           }}
         >
-          {kindOf(row.type)}
+          <Mark size={10} strokeWidth={1.75} aria-hidden />
+          {kind}
         </span>
         <span className="min-w-0 flex-1">
           <span
             className="block truncate text-[13px]"
             style={{ fontFamily: SANS, fontWeight: subdued ? 400 : 600, color: ink }}
           >
-            {row.title || 'Untitled entry'}
+            {title || 'Untitled entry'}
           </span>
           <span
             className="block truncate text-[11.5px]"
             style={{ fontFamily: SANS, color: 'var(--ink-4)' }}
           >
-            {row.message || 'No message was written on this line.'}
+            {message || 'No message was written on this line.'}
           </span>
         </span>
         {folded > 0 && (
@@ -149,8 +162,8 @@ export function BookRow({
         >
           {timeAgo(row.timestamp ?? row.createdAt)}
         </span>
-        <span aria-hidden className="nt-chev shrink-0" data-open={open}>
-          ›
+        <span aria-hidden className="nt-chev shrink-0 leading-none" data-open={open}>
+          <ChevronRight size={14} strokeWidth={1.75} />
         </span>
       </button>
 
@@ -158,7 +171,7 @@ export function BookRow({
         <div>
           <div className="border-t px-3 py-3" style={{ borderColor: 'var(--paper-2)' }}>
             <p className="text-[12.5px]" style={{ fontFamily: SANS, color: 'var(--ink-2)' }}>
-              {row.message || 'This line carries no message beyond its title.'}
+              {message || 'This line carries no message beyond its title.'}
             </p>
 
             {facts.length > 0 && (
@@ -233,11 +246,31 @@ export function BookRow({
                   This line carries no link — it was written without one.
                 </span>
               )}
-              {onRuleOff && <Control onClick={onRuleOff} emphasis>Rule it off</Control>}
-              {onReopen && <Control onClick={onReopen}>Reopen</Control>}
-              {onSetAside && <Control onClick={onSetAside}>Set aside</Control>}
-              {onArchive && <Control onClick={onArchive}>Archive</Control>}
-              {onDelete && <Control onClick={onDelete}>Delete</Control>}
+              {onRuleOff && (
+                <Control onClick={onRuleOff} emphasis icon={Stamp}>
+                  Rule it off
+                </Control>
+              )}
+              {onReopen && (
+                <Control onClick={onReopen} icon={CornerUpLeft}>
+                  Reopen
+                </Control>
+              )}
+              {onSetAside && (
+                <Control onClick={onSetAside} icon={Inbox}>
+                  Set aside
+                </Control>
+              )}
+              {onArchive && (
+                <Control onClick={onArchive} icon={Archive}>
+                  Archive
+                </Control>
+              )}
+              {onDelete && (
+                <Control onClick={onDelete} icon={Trash2}>
+                  Delete
+                </Control>
+              )}
             </div>
           </div>
         </div>

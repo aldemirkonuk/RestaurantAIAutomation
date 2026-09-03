@@ -82,6 +82,34 @@ while the flag is off — `apps/web/src/pages/notifications/next/`):
   search, the priority filter, batch multi-select, the local star, *Copy link*, and
   the in-page `?tab=settings` panel. Rationale in §1b "Design used, and why".
 
+**Second pass, 2026-09-03** (founder review):
+
+- **No emoji anywhere, and the mark is drawn instead.** Every stored title and
+  message is normalised through `plainText()` before it is drawn, and the register's
+  own lucide icon is rendered from the row's `type` — in ink, sized by the house
+  tokens, identical on the line's chip and on the rail's tally so the two can never
+  disagree. This is the reader-side half; the producers were cleaned at source
+  (below), but rows already written keep their emoji forever.
+- **Twelve producers stopped writing emoji into notification rows** (gateway ×10,
+  orchestrator ×2 — the list with `file:line` is in §1b), and a scanning spec
+  (`apps/api-gateway/src/notifications/notification-text-is-plain.spec.ts`) fails
+  CI on the thirteenth, in either runtime.
+- **Register mapping widened** — `custom_reminder`, `vendor_reply`, `low_stock`,
+  `system_alert`, `overdue_order`, `order_inquiry`, `generated_report`,
+  `email_classified_operational`, `email_classified_promo` now land in a named
+  register instead of *Other*. Every one of them is a `type` a real producer writes.
+- 🚧→**moved: one-tap actions now live on the dashboard rail**, under
+  *Waiting on you* (`apps/web/src/pages/dashboard/next/OneTapPanel.tsx`; founder's
+  decision of 2026-09-03, argument in §1b). The day-book keeps only lines; the
+  `--calm` band names the new home in one sentence rather than going silent. This
+  page no longer reads `/one-tap-actions` at all, and the entry above about custom
+  one-tap actions persisting is now a *dashboard* capability — see
+  [[dashboard]] §1a.
+- **Two directions drawn at full density** for the founder's fork:
+  `.planning/sketches/089-notifications-directions/` — `three-column-desk.html`
+  and `day-strip.html`, with `index.html` as the cover. Example data throughout;
+  neither is a working page.
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_notifications`)
 
 Canonical copy: `apps/web/src/pages/notifications/next/MOTIONS.md`. Every motion is a
@@ -91,12 +119,15 @@ the tokens, so what runs is the token. `prefers-reduced-motion` collapses all of
 | id | token | curve · ms | fires |
 |---|---|---|---|
 | `nt-open-arrive` | `settle` | HOUSE · 320ms | the opening line, once on mount — opacity + 6px rise |
-| `nt-expand` | `settle` | HOUSE · 320ms | `grid-template-rows: 0fr → 1fr` — a line opening into its facts, the **Ruled off** register opening under the double rule, the new-one-tap-action form |
+| `nt-expand` | `settle` | HOUSE · 320ms | `grid-template-rows: 0fr → 1fr` — a line opening into its facts, and the **Ruled off** register opening under the double rule |
 | `nt-chev` | `settle` | HOUSE · 320ms | the line's chevron turning 90°, on the same token as the expansion it belongs to |
 | `nt-ink` | `ink` | HOUSE · 160ms | hover/focus micro-states on lines and controls; nothing translates, nothing scales |
 | `nt-tally` | `tally` | overdamped spring 120/26 · 840ms | the rail's per-register open counts and "Showing N of …"; an em dash never counts |
-| `nt-hold-pour` | `pour` | `linear` · 620ms | the fill under **Hold to mark it done** on a one-tap action; early release retreats on `tuck` and says what did not happen |
-| `nt-seal-stamp` | `stamp` | spring 500/26 (~11% overshoot) · 360ms | the seal landing once the gateway has actually recorded the execute — the only wax on the page |
+
+**Changed 2026-09-03:** `pour` and `stamp` left this page with the one-tap desk
+(they are now in [[dashboard]]'s table). The day-book has no wax at all, which is
+the correct reading of the rationing rule: every write it offers is a reversible
+bookkeeping entry, and the seal is for commitment.
 
 Deliberate non-motions: a line does **not** travel between bands (the re-read may have
 changed it — a smooth slide would assert a continuity the data has not got); nothing
@@ -161,6 +192,8 @@ component draws both states, so the page cannot quiet by becoming a different pa
    charcoal), the calm chip is `--seal-deep` (7.80:1 / 9.46:1).
 
 **Two directions considered and not built — the founder's fork**
+*(drawn at full density on 2026-09-03 at the founder's request:
+`.planning/sketches/089-notifications-directions/`)*
 
 - **A · The three-column desk** (Federation taken literally): the three registers side
   by side, each scrolling independently, under a fixed count strip. More on one screen.
@@ -198,6 +231,137 @@ component draws both states, so the page cannot quiet by becoming a different pa
   and orders and keeps them in `localStorage` (`:80-83,395-460`); this page reads the
   guarded `one-tap-actions` table instead, which is the register that actually exists.
 
+### Second pass, 2026-09-03
+
+**What the founder asked.** Three things, after reading the first pass: *"show me
+two more sketches — the whole picture, a lot of details, full of the details
+available to serve — just as screenshots, not as a real page… If that means the
+three-column desk and the day-strip, then build them."* · *"remove all emojis,
+replace them with real applicable icons."* · *"One-tap actions is a thing — address
+that, either inside /notifications or (maybe this is wrong) find another place."*
+
+**1 · The two sketches.** `.planning/sketches/089-notifications-directions/` —
+`index.html`, `three-column-desk.html`, `day-strip.html`. Both render at 1440 from
+`file://` with no server, both carry the SKETCH banner, both are drawn at a busy
+house's density: 20 open lines across all nine registers, 3 drafted-and-unsent
+replies, 20 ruled-off lines, folded-duplicate badges, an expanded line with its
+facts grid and its below-par table, the rail tallies, the live-read contract, every
+filter the gateway actually accepts (`type · status · dateFrom · dateTo · page ·
+limit`), and a legend separating what is built from what is proposed. Each one also
+carries a panel naming its own cost, so the fork is argued on the page rather than
+in a note. Verified in both grounds at 1440 with zero horizontal overflow and zero
+console errors.
+
+**2 · The emoji, and where they actually came from.** The page source never had
+one; the *data* did. Production titles read `[siren] 50 wines dropped below par`,
+`[chart] Weekly report ready`, `[warning] Low-stock digest: …` because the
+PRODUCERS wrote them into the row. That is worse than decoration: a picture in a
+database row is permanent, renders in whatever colour font the reader's OS ships
+(breaking ADR 0042's one-chromatic-colour rule on a page with no way to override
+it), and in every case restated something the row already carried structurally —
+`priority`, `metadata.severity`, `metadata.criticalCount`, `type`.
+
+Fixed in three layers, because no single one is sufficient:
+
+*(a) At the source.* Twelve call sites, each now plain, each covered:
+
+| file:line | was | now |
+|---|---|---|
+| `apps/api-gateway/src/notifications/low-stock-alerts.service.ts:300-306` | siren/warning + `N wines dropped below par` | `3 wines dropped below par — 1 critical` (the count the picture could never carry) |
+| `apps/api-gateway/src/notifications/low-stock-alerts.service.ts:355` | warning + `Low-stock digest: …` | `Low-stock digest: 17 wines below par` |
+| `apps/api-gateway/src/notifications/notifications.service.ts:274-279` | siren/warning severity prefix on the low-stock push + inbox row | `Critical: <wine>` / `Low stock: <wine>` |
+| `apps/api-gateway/src/notifications/notifications.service.ts:239,252-253` | wine glass + tick + eye on the order-approval push and its buttons | plain |
+| `apps/api-gateway/src/notifications/notifications.service.ts:290-291` | cart + chart on the low-stock push buttons | plain |
+| `apps/api-gateway/src/notifications/notifications.service.ts:356,366-367,376` | parcel + tick + eye on the delivery push, buttons and inbox row | plain |
+| `apps/api-gateway/src/notifications/notifications.service.ts:407,420-421` | money bag + tick + arrows on the price-offer push and buttons | plain |
+| `apps/api-gateway/src/notifications/notifications.service.ts:436-452` | an `emoji` map keyed by severity, prefixed onto BOTH the push title and the stored row | deleted; severity stays in `data.severity`, `metadata.severity`, `priority` and `requireInteraction` |
+| `apps/api-gateway/src/notifications/notifications.controller.ts:313` | wine glass + `WineOps AI Test` | `WineOps AI test` |
+| `apps/api-gateway/src/communications/scheduled-tasks.service.ts:267,491,582` | chart / repeat / parcel on the weekly report, recurring-order and delivery-ETA rows | plain |
+| `apps/api-gateway/src/team/schedule.service.ts:397,631` | calendar + siren on schedule-published and shift-call-out | plain |
+| `apps/api-gateway/src/team/team.controller.ts:407` | megaphone on the DEFAULT broadcast title | plain — a manager's own title is passed through untouched |
+| `services/agent-orchestrator/agents/email_intel_agent.py:243,588` | envelope + tag on the two rows the Python agent INSERTs directly | plain |
+
+*(b) At the boundary, as a guard rather than a sanitiser.*
+`apps/api-gateway/src/notifications/notification-text-is-plain.spec.ts` scans every
+gateway file that names a notification funnel (`persistForRestaurant`,
+`createNotification`, `persistManagerNotification`, a direct
+`from("notifications")`) plus every orchestrator agent that inserts into the table,
+and fails naming `file:line`. It refuses to pass vacuously — it asserts it can see
+the producers first — and it was proven against the pre-fix tree, where it reports
+**28** offences including the two indirect ones held in an `emoji` variable rather
+than written on the `title:` line. Log lines are excluded by a paren-balance walk
+(operator output is not a reader's), and comments are excluded so a defect can be
+described without re-triggering the guard.
+
+*Why a guard and not a strip inside `persistForRestaurant`:* that funnel also
+carries human-authored text — a manager's team broadcast, a custom reminder the
+user typed. Silently deleting characters out of a person's own message is a house
+editing its own records. The rule is for the house's voice, so the house's voice is
+what is fixed. `team.controller.broadcast.spec.ts` pins both halves of that
+distinction.
+
+*Measured, not assumed (2026-09-03, local gateway on :4000 against the dev
+tenant).* `GET /notifications?limit=100&page=1` returned
+`{ total: 134, hasMore: true, data: [100] }` and **100 of the 100 rows on page one
+carry an emoji in their stored title** — including the founder's exact example,
+`[siren] 50 wines dropped below par`, alongside `[warning] Low-stock digest: 50
+wines below par` and `[chart] Weekly report ready`. So the reader-side strip is not
+a precaution: without it every single line on the first page of this tenant's book
+renders a picture. (The same call also confirms the envelope the hook depends on and
+the `@Max(100)` page cap.)
+
+*(c) At the reader.* `nt-format.ts` `plainText()` strips the same two ranges the
+repo's own emoji grep uses, plus the joiners — and deliberately NOT `©`, `®`, `™`,
+which a naive `\p{Extended_Pictographic}` sweep would have deleted out of a wine
+name. `iconForType()` then draws the register's mark from `type`. A title that was
+*only* a picture comes back empty and falls to "Untitled entry" rather than being
+invented.
+
+**3 · One-tap actions — the founder chose the dashboard rail.** They now live in
+`apps/web/src/pages/dashboard/next/OneTapPanel.tsx`, mounted directly under
+*Waiting on you*, and are gone from this page: the hook no longer reads
+`/one-tap-actions` (pinned by `useNotificationsNextData.test.tsx`), the desk and the
+house-raised `ActionCard` are deleted, and the `--calm` band ends with one sentence
+linking to the new home. The three homes and what each cost:
+
+- **Here, on `/notifications` (what the first pass built).** Cheapest — the register
+  was already being read for the `--calm` band. But it makes the day-book two things
+  at once: a *record* worked downwards until the account is ruled off, and a *desk*
+  of work with next steps. The page's whole structural argument is that a line never
+  leaves, only quiets; a one-tap action's natural end is that it *goes away*. Two
+  opposite lifecycles in one column is why the first pass needed a rail to hide the
+  contradiction in.
+- **The dashboard rail, beside "Waiting on you" (chosen).** Costs one new read on a
+  page that already makes five, and it puts a second `HoldToApprove` on a page that
+  had one — a real risk of making the seal routine, which the rationing rule exists
+  to prevent. It buys the right adjacency: an approval waiting to be sealed and an
+  action the house raised for itself are the same kind of object, and an operator
+  who opens the dashboard "to see what needs me" now sees both without a second
+  page. It also makes the day-book honest again — only lines.
+- **A command-palette-only surface.** Cheapest of all to build and the least
+  discoverable: an action nobody opens the palette to look for is an action that
+  expires. It also has nowhere to put the `triggerWorkflow` caveat, which must be
+  visible at the moment of committing, not behind a keystroke. Rejected as a *home*;
+  fine as an *entrance* → §13.14.
+
+*Not built here: the command-palette entry.* The palette's registry
+(`apps/web/src/components/CommandPalette.tsx`) is not a plain appendable list — its
+items are built inside the component from route and permission context — so adding
+one means editing a shared component this page does not own. Filed as §13.14.
+
+**What stays open, and why.** (1) `createSystemAction` still has no production
+caller (§9.1), so the "raised by the house" half of the panel is structurally
+correct and permanently empty wherever it is mounted — moving it did not fix that,
+and the panel says "Nothing standing" rather than implying the house is idle.
+(2) `triggerWorkflow` is still TODO stubs (§9.2); the panel states it above the die
+and cites the line. (3) The two competitive-lens "now" ideas — a line stating its own
+rule and 90-day fire count, and subdue-by-settlement — are drawn as *proposed* in
+both sketches and filed in §13.15/§13.16; neither has a gateway read behind it and
+neither was faked. (4) Three emoji remain in `notifications.service.ts` at
+`:478,491,502` — all inside `this.logger.log(...)`, i.e. server console output no
+reader ever sees. Out of the rule's scope; named here so the grep's non-empty
+result is not mistaken for an oversight.
+
 ## 2. Entry
 
 - Sidebar with unread badge (`Sidebar.tsx:144,410`).
@@ -218,10 +382,22 @@ component draws both states, so the page cannot quiet by becoming a different pa
 - Mudavym redesign (flag-gated): `apps/web/src/pages/notifications/next/` —
   `NotificationsNext.tsx`, `BookRow.tsx`, `HouseBand.tsx`,
   `useNotificationsNextData.ts`, `nt-format.ts`, `NotificationsNext.test.tsx`
-  (15 render-contract tests, hook mocked), `useNotificationsNextData.test.tsx`
-  (6 hook tests, `apiClient` mocked), `MOTIONS.md`. It shares
+  (13 render-contract tests, hook mocked), `useNotificationsNextData.test.tsx`
+  (7 hook tests, `apiClient` mocked), `MOTIONS.md`. It shares
   `lib/notificationStack.ts` with the legacy page and imports nothing from
   `pages/Notifications.tsx`.
+- Moved out 2026-09-03: the one-tap desk, formerly `notifications/next/HouseBand.tsx`
+  and briefly `notifications/next/OneTapDesk.tsx`, is now
+  `apps/web/src/pages/dashboard/next/OneTapPanel.tsx` with its own read and its own
+  test (`OneTapPanel.test.tsx`, 10 tests). See [[dashboard]] §1a/§1b.
+- Producer-side, second pass: `apps/api-gateway/src/notifications/notification-text-is-plain.spec.ts`
+  (the emoji guard, both runtimes), plus title assertions added to
+  `notifications/low-stock-alerts.service.spec.ts`, `team/schedule.service.spec.ts`,
+  `team/team.controller.broadcast.spec.ts`,
+  `communications/weekly-report-honesty.spec.ts` and
+  `services/agent-orchestrator/tests/test_email_intel_agent.py`.
+- Sketches: `.planning/sketches/089-notifications-directions/` — `index.html`,
+  `three-column-desk.html`, `day-strip.html` (standalone, `file://`, example data).
 
 ## 4. Endpoints
 
@@ -274,6 +450,7 @@ dashboard.md §7.
 | Poll | 10s while mounted (`useNotificationsNextData.ts` `POLL_MS`), plus the `notification_sent` and `ws:dashboard-invalidate` window events |
 | Page size | `limit=100` (the gateway's `@Max(100)`); *Read further back* adds one more page per press |
 | Per-browser state | `localStorage["mudavym.notifications.setAside.<restaurantId>"]` — the *Set aside* list, tenant-keyed, and the only client-only state on the page |
+| Registers read | `GET /notifications` only, since 2026-09-03. `/one-tap-actions` moved to the dashboard rail with the desk; pinned by `useNotificationsNextData.test.tsx` ("reads the notifications register and nothing else") |
 
 ## 9. Gaps
 
@@ -320,6 +497,41 @@ page's own paths; none was built.
    the guard from a copy with that root present: **PASS**, 64 web files, no S1–S4 hit.
    Until the line is added, CI is green over an unexamined surface — exactly the shape
    the guard's own header warns about.
+
+**Found in the second pass (2026-09-03).** Outside this page's paths; the first two
+were CLOSED here, the rest were not.
+
+6. ~~🔴 **Producers write emoji into the stored notification title.**~~ **Closed
+   2026-09-03** — twelve call sites cleaned (table in §1b), guarded by
+   `apps/api-gateway/src/notifications/notification-text-is-plain.spec.ts`, and
+   normalised on read by `nt-format.ts` `plainText()` for the rows already written.
+7. ~~🟠 **One-tap actions had no home of their own.**~~ **Closed 2026-09-03** — the
+   founder placed them on the dashboard rail
+   (`apps/web/src/pages/dashboard/next/OneTapPanel.tsx`); this page no longer reads
+   `/one-tap-actions`.
+8. 🟠 **The command palette's registry is not appendable.**
+   `apps/web/src/components/CommandPalette.tsx` builds its items inside the
+   component from route and permission context rather than from a list a page can
+   contribute to, so no page can add an entrance to its own surface without editing
+   a shared component. That is why one-tap actions have no palette entry today
+   (§1b). **Owner: whoever owns `components/CommandPalette.tsx`.**
+9. 🟠 **A notification carries no record of the rule that fired it.** The row holds
+   `metadata.count`/`criticalCount`/`wines[]` but nothing about the threshold that
+   was crossed, how often that same rule has fired, or whether the operator thinks
+   it is too loud. Both sketches draw the shape as *proposed*; the read does not
+   exist. This is DESIGN-FOUNDATION §6's "every item states its rule and its
+   history", marked **need it: now**. **Owner:
+   `notifications/low-stock-alerts.service.ts` + a new rule-history read.**
+10. 🟠 **Nothing subdues a line by SETTLEMENT.** A row quiets when a person reads it,
+   never when the credit note lands, the PO goes out, or the price returns to range
+   — so a line that has genuinely resolved itself still sits in *Needs a hand*
+   asking. DESIGN-FOUNDATION §6 calls this out as the exponential idea for this page
+   ("only a ledger can"), **need it: now**. Needs the settlement events wired to the
+   notification row (a `resolved_by_event` column and a writer per producer).
+11. 🟢 **Three emoji remain in `notifications.service.ts:478,491,502`** — all inside
+   `this.logger.log(...)`. Server console output, never a reader's; deliberately out
+   of the rule's scope and excluded by the guard's log-detection, recorded here so
+   a raw grep's non-empty result is not read as an oversight.
 
 ## 10. Maturity
 
@@ -477,3 +689,26 @@ none built here.**
     `?tab=settings` panel; `/settings` (rebuilt in the same wave) should carry the
     `GET/PATCH /notifications/preferences` section, and the sidebar/bell should link
     there.
+
+**Added 2026-09-03 by the second pass.**
+
+13. ~~**Stop the producers writing emoji into notification titles**~~ — **done
+    2026-09-03**, twelve call sites plus a scanning guard (§1b).
+14. **Give the command palette an appendable registry** so a page can contribute an
+    entrance to its own surface (§9.8), then add *One-tap actions* to it. The
+    founder named the palette as a second way in; today it would require editing
+    `components/CommandPalette.tsx`, which no page owns.
+15. **Let a line state its own rule and its history** (§9.9) — threshold, observed
+    value, 90-day fire count, and a "this rule is too loud" control that retunes the
+    par rather than muting the notification. Drawn as *proposed* in both 089
+    sketches. DESIGN-FOUNDATION §6, **need it: now**.
+16. **Subdue by settlement, not by reading** (§9.10) — grey a line out when the
+    credit note lands, the PO goes out, or the price returns to range.
+    DESIGN-FOUNDATION §6 names this as the idea only a ledger can have, **need it:
+    now**. It is also the honest fix for the biggest remaining lie on the page: a
+    resolved line that still asks.
+17. **Later, from the same lens** — the service-shaped inbox (grouped before /
+    during / after service rather than by timestamp), truck-inbound as a
+    self-expiring item promising only the window the vendor actually stated, and
+    context-aware batching that does not batch what is already on screen. All three
+    are DESIGN-FOUNDATION §6 "later"; none is built.

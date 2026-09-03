@@ -26,6 +26,7 @@ import { ensureFraunces, SERIF } from './fonts';
 import KpiRow from './KpiRow';
 import SalesCalendar from './SalesCalendar';
 import WaitingOnYou from './WaitingOnYou';
+import OneTapPanel from './OneTapPanel';
 import { ActivityPanel, LowStockPanel, WeekAhead } from './RailPanels';
 import './dashboard-next.css';
 
@@ -135,6 +136,11 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
           />
           <div className="space-y-4">
             <WaitingOnYou pending={spine.pending} onChanged={spine.refetch} />
+            {/* Directly under the approvals queue, by the founder's decision of
+                2026-09-03: an action the house raised is a cousin of an order
+                waiting to be sealed, and belongs beside it rather than inside
+                the day-book at /notifications. */}
+            <OneTapPanel restaurantId={activeRestaurantId} />
             <WeekAhead restaurantId={activeRestaurantId} />
             <LowStockPanel items={spine.lowStock} />
             <ActivityPanel items={spine.activity} />

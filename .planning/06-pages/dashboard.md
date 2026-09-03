@@ -50,6 +50,42 @@ plainly: "Today's KPIs, alerts, and the actions worth doing first"
 - Switch between restaurants/branches
 - Live updates while the page is open (realtime calendar/inventory events)
 
+**Mudavym redesign** (flag `mudavym_design_dashboard`; legacy renders unchanged
+while the flag is off — `apps/web/src/pages/dashboard/next/`):
+
+- **One-tap actions live on the rail, under *Waiting on you*** (added 2026-09-03 by
+  the founder's decision; they were built inside `/notifications` in the p4 first
+  pass and moved here). `apps/web/src/pages/dashboard/next/OneTapPanel.tsx` reads
+  `GET /one-tap-actions` tenant-keyed, writes through
+  `POST /one-tap-actions{,/:id/execute,/:id/cancel}` — all on the class-guarded
+  `OneTapActionsController` — and is self-contained: its own types, its own read,
+  its own honesty states, nothing imported from another page.
+  - An action **the house raised for itself** is told apart from one a person wrote
+    *structurally*, not by tone: `createSystemAction` inserts no `user_id`
+    (`one-tap-actions.service.ts:366-382`) while `POST /one-tap-actions` stamps the
+    caller (`:150-152`), so an absent author is the proof. A house-raised card
+    carries the `--calm` dashed edge and can never look carried-out.
+  - Committing gets the wax — `HoldToApprove` completing into the seal — because it
+    is a durable server write stamped with your identity. Cancelling and navigating
+    are plain controls.
+  - 🚧 **"Done" records a decision, not an order.** The gateway's `triggerWorkflow`
+    is three `// TODO` branches and a default log
+    (`one-tap-actions.service.ts:404-430`); the panel says so above the die and cites
+    the line. See §9.
+  - 🚧 **The house half is permanently empty today** — `createSystemAction` has no
+    production caller, so the panel truthfully shows "Nothing standing" rather than
+    implying the house is idle. See §9. *Measured 2026-09-03 against the local
+    gateway:* `GET /one-tap-actions?restaurantId=…` returns
+    `{ actions: [], total: 0, pending: 0, completed: 0 }` — a real empty register,
+    which is exactly the case the panel must not draw as health.
+  - Writing a standing action **persists** on the server against the restaurant, so
+    it survives a refresh and every member sees it. (The legacy
+    `OneTapActionCenter` rebuilt actions client-side into `localStorage`.)
+  - All four states, each real: loading (skeletons), empty (said in words), broken
+    read (the failure quoted), refused read (403 told apart from a 500, no pointless
+    retry). The pending count is an em dash, never a zero, while the register is
+    unread.
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_dashboard`)
 
 Canonical source with curves: `apps/web/src/pages/dashboard/next/MOTIONS.md` —
@@ -60,14 +96,32 @@ this list is the note-side index (ADR 0044 §2).
 | `open-arrive` | Opening line entrance | the Fraunces "Good evening / before service" header, once on mount |
 | `cal-arrive` | Staggered arrival | every real day cell of the sales calendar, per month paint |
 | `kpi-tally` | Figures arrive | the five KPIs + "Waiting on you" count; an em dash never counts |
-| `day-open` | Settle expansion | the day-detail panel; each Waiting-on-you row into its HoldToApprove |
+| `day-open` | Settle expansion | the day-detail panel; each Waiting-on-you row into its HoldToApprove; the "write a new one-tap action" form on the rail |
 | `day-scrub` | Scrub the day | the tape strip in day detail — un-eased on purpose, per-day samples |
-| `hold-pour` / `seal-stamp` | Hold-to-approve → the seal lands | the approvals queue, wired to the real mutation |
+| `hold-pour` / `seal-stamp` | Hold-to-approve → the seal lands | the approvals queue **and** (2026-09-03) every card in the One-tap actions rail panel — both wired to a real mutation; the seal only stays if the server said yes |
 | `ink-micro` | Micro-states | hovers/focus, nothing moves more than 2px |
 | `skel-sheen` | Honest skeletons | genuinely in-flight fetches only — never for "unknown" |
 
 Deliberate non-motions: unknowns never animate; month navigation does not slide;
-scrubbed figures do not tween.
+scrubbed figures do not tween; the one-tap panel's dashed cards never pulse — an
+action the house raised and did not carry out must look inert.
+
+### Why the one-tap desk is here and not on `/notifications` (2026-09-03)
+
+The founder's call, after the p4 first pass built it into the day-book. The full
+three-way argument — here, `/notifications`, or a command-palette-only surface, and
+what each costs — is written once in [[notifications]] §1b "Second pass"; the short
+version is that `/notifications` is a **record** worked downwards until an account
+is ruled off, while a standing action is **work** whose natural end is to go away,
+and two opposite lifecycles in one column is what made the first pass need a rail to
+hide the contradiction in. On this page the adjacency is right: an order waiting to
+be sealed and an action the house raised for itself are the same kind of object.
+
+The cost, stated: this page now carries a **second** `HoldToApprove`. The rationing
+rule exists so the seal does not become routine, and two dies on one screen is the
+closest this design has come to spending it. It is defensible only because both are
+durable, identity-stamped server writes — the moment a third appears for something
+reversible, the ceremony should be taken off one of them.
 
 ## 2. Entry
 
@@ -88,6 +142,13 @@ from `/admin`, `/get-started`, `/invite/:code`, `/onboarding`, `/register`. Also
   `components/ui/ContextMenu.tsx` (six mounts, :1570-1802).
 - Data hooks: `hooks/useDashboardData.ts`, `hooks/useInventoryData.ts`, `hooks/useOrdersMetrics.ts`,
   `data/manualImportantDates.ts` (Dashboard.tsx:41-56).
+- Mudavym redesign (flag-gated): `apps/web/src/pages/dashboard/next/` —
+  `DashboardNext.tsx`, `SalesCalendar.tsx`, `DayDetail.tsx`, `KpiRow.tsx`,
+  `WaitingOnYou.tsx`, `RailPanels.tsx`, `CountUp.tsx`, `useDashboardNextData.ts`,
+  `format.ts`, `fonts.ts`, `dashboard-next.css`, `MOTIONS.md`, and — added
+  2026-09-03 — `OneTapPanel.tsx` with `OneTapPanel.test.tsx` (10 tests,
+  `apiClient` mocked). The panel is mounted at `DashboardNext.tsx:141`, directly
+  under `<WaitingOnYou/>`.
 
 ## 4. Endpoints
 
@@ -101,6 +162,8 @@ atlas's **⚠ all unguarded** is stale; guarded at class level since 2026-08-25 
 |---|---|---|
 | GET | `/dashboard/stats/:id`, `/dashboard/activity/:id`, `/dashboard/alerts/:id` | `hooks/useDashboardData.ts:74-79` → `services/api/dashboard.ts:23,70,87` |
 | GET | `/dashboard/sales-chart/:id` | `hooks/useDashboardData.ts:205` → `services/api/dashboard.ts:109` |
+| GET | `/one-tap-actions?restaurantId=` | **Mudavym only** — `pages/dashboard/next/OneTapPanel.tsx` `useOneTapActions` (moved here from `/notifications` on 2026-09-03) |
+| POST | `/one-tap-actions`, `/one-tap-actions/:id/execute`, `/one-tap-actions/:id/cancel` | **Mudavym only** — same file; `OneTapActionsController` is `@UseGuards(JwtAuthGuard)` at class level (`one-tap-actions.controller.ts:64`) |
 | GET | `/dashboard/calendar-revenue/:id` | `pages/dashboard/useDashboardPage.ts:227` → `services/api/dashboard.ts:227` |
 | GET | `/calendar/events` | `useCalendarEvents` (useDashboardPage.ts:7) → `services/api/calendar.ts:221` |
 | GET | `/wines` | `useWines` → `services/api/wines.ts:30` |
@@ -150,6 +213,22 @@ Page tree: **0** user-visible strings. Reachable-but-shared:
   row ([ENDPOINTS](../foundation/ENDPOINTS.md):197) still reads "unguarded" and is stale.
 - `v3.0-TECH-DEBT.md:502` — dashboard profile card dead-click claim (L102) is *unverified,
   not confirmed*; the one-tap auth hole it fed is closed (`v3.0-TECH-DEBT.md:409`).
+
+**Found while moving the one-tap desk here (2026-09-03).** Both are outside this
+page's paths; neither was built here, and the rail panel states both in words.
+
+- 🔴 **`createSystemAction` has no production caller.**
+  `apps/api-gateway/src/one-tap-actions/one-tap-actions.service.ts:351` is the only
+  way an action is written *without* a human author, and its only references in the
+  repo are in `src/__tests__/one-tap-actions.service.spec.ts:279,305`. So the "raised
+  by the house" half of the rail panel is structurally correct and permanently empty:
+  the producers that should raise one (the low-stock sweep, procurement) write
+  notification rows only. **Owner: `notifications/low-stock-alerts.service.ts` and
+  `procurement/`** — one `createSystemAction` call per producer.
+- 🔴 **Executing a one-tap action does nothing but record it.** `triggerWorkflow`
+  (`one-tap-actions.service.ts:404-430`) is three `// TODO` branches and a default
+  log. The card states this above the die rather than letting the seal imply a
+  reorder; the fix is a gateway one.
 
 ## 10. Maturity
 
@@ -241,3 +320,24 @@ the two or three actions worth doing before service, each of which actually happ
 5. Distinguish empty-restaurant from zero — "no orders yet" beats `$0`.
 6. Turn on the uxSignals reporter for this page (§5) once the actions are real; measuring
    taps on buttons that do nothing measures nothing.
+
+**Added 2026-09-03 — the one-tap desk arrived on the rail.**
+
+7. **Let a producer raise a one-tap action** — call
+   `OneTapActionsService.createSystemAction` from the low-stock sweep
+   (`notifications/low-stock-alerts.service.ts:305,347`) and/or procurement
+   (`procurement/procurement.service.ts:1744,2362`). Until then the rail panel's
+   house half is correct and empty (§9). This is the single highest-value item for
+   the panel: without it the "autonomy you can see" half of the page is a shape.
+8. **Implement `triggerWorkflow`** (`one-tap-actions.service.ts:404-430`) or rename
+   the endpoint to what it does. Today the panel has to explain that "done" is a
+   record, not a reorder (§9).
+9. **Give the command palette an appendable registry** so *One-tap actions* can be
+   reached from it — the founder named the palette as a second way in.
+   `components/CommandPalette.tsx` builds its items inside the component from route
+   and permission context, so no page can contribute one today. Mirrored in
+   [[notifications]] §13.14.
+10. **Decide whether two `HoldToApprove` dies on one screen is one too many** (§1b).
+   Both are durable identity-stamped writes today, which is what justifies it; a
+   third would not be justifiable, and the rationing rule should then take the
+   ceremony off the reversible one.

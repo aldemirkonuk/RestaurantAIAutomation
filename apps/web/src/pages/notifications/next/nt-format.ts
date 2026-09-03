@@ -6,6 +6,18 @@
  * notification row the gateway sent.
  */
 
+import {
+  Boxes,
+  CalendarDays,
+  CreditCard,
+  FileText,
+  Inbox,
+  Lightbulb,
+  Mail,
+  Package,
+  Settings,
+  type LucideIcon,
+} from 'lucide-react';
 import type { Notification } from '@/services/api/notifications';
 
 export const EM = '—';
@@ -77,24 +89,114 @@ export function stampOf(iso: string | null | undefined): string {
  */
 const KIND_BY_TYPE: Record<string, string> = {
   inventory_low_stock: 'Stock',
+  low_stock: 'Stock',
   order_pending: 'Orders',
   order_delivered: 'Orders',
   delivery_scheduled: 'Orders',
+  overdue_order: 'Orders',
+  order_inquiry: 'Orders',
   price_change: 'Orders',
   draft_ready: 'Vendor mail',
   unknown_sender: 'Vendor mail',
   invoice_received: 'Vendor mail',
+  vendor_reply: 'Vendor mail',
+  email_classified_operational: 'Vendor mail',
+  email_classified_promo: 'Vendor mail',
   calendar_reminder: 'Calendar',
+  custom_reminder: 'Calendar',
   report: 'Reports',
+  generated_report: 'Reports',
   ai_suggestion: 'Advice',
   constraint_triggered: 'Advice',
   payment_due: 'Payments',
   system: 'System',
+  system_alert: 'System',
 };
 
 export function kindOf(type: string | null | undefined): string {
   if (!type) return 'Other';
   return KIND_BY_TYPE[type] ?? 'Other';
+}
+
+/**
+ * THE ICON A ROW EARNS — a drawn mark for the register the row is in, never
+ * a decoration and never a mood.
+ *
+ * Why this exists at all: the producers wrote emoji INTO the stored title — a
+ * siren in front of "50 wines dropped below par", a bar chart in front of
+ * "Weekly report ready", a warning triangle in front of "Low-stock digest: …".
+ * The emoji was doing real work — it was the only severity/register mark the
+ * line carried — but it was carried in the data,
+ * rendered in whatever the reader's OS ships, and unstylable. The producers
+ * have been cleaned (see the page note §1b, second pass) and the funnel is
+ * guarded by a spec, but rows already written keep their emoji forever. So the
+ * page strips it and draws the mark itself, in ink, from the row's own `type`.
+ *
+ * The map is keyed by REGISTER, not by type, so it can never disagree with the
+ * chip beside it or with the rail's tally.
+ */
+const ICON_BY_KIND: Record<string, LucideIcon> = {
+  Stock: Boxes,
+  Orders: Package,
+  'Vendor mail': Mail,
+  Calendar: CalendarDays,
+  Reports: FileText,
+  Advice: Lightbulb,
+  Payments: CreditCard,
+  System: Settings,
+  Other: Inbox,
+};
+
+/** The icon for a register. An unknown register still gets a real mark. */
+export function iconForKind(kind: string): LucideIcon {
+  return ICON_BY_KIND[kind] ?? Inbox;
+}
+
+/** The icon a row earns, by way of its register. */
+export function iconForType(type: string | null | undefined): LucideIcon {
+  return iconForKind(kindOf(type));
+}
+
+/**
+ * Every emoji code point this page will strip out of stored text.
+ *
+ * Deliberately the SAME two ranges the house-wide emoji grep uses
+ * (`[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}]`), plus the joiners and
+ * miscellaneous-symbol block that carry the rest of a sequence:
+ * U+FE0F (variation selector-16), U+200D (zero-width joiner), U+20E3
+ * (combining keycap) and U+2B00–U+2BFF (⭐ and friends).
+ *
+ * What is deliberately NOT in the range: U+00A9 ©, U+00AE ® and U+2122 ™.
+ * They are `Extended_Pictographic` — a naive `\p{Extended_Pictographic}` sweep
+ * would silently delete the ™ out of a wine name, which is a house that edits
+ * its own records. The guard's range is the contract; this is that range.
+ */
+const EMOJI_RE =
+  /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}\u{20E3}]/gu;
+
+/**
+ * A stored title or message with the producer's emoji taken out, so a row
+ * written before the producers were cleaned reads like one written after.
+ *
+ * It removes, it never rewrites: nothing is added, no word is changed, and a
+ * string that was only an emoji comes back empty rather than invented — the
+ * caller's own fallback ("Untitled entry") then applies, which is the honest
+ * answer for a line whose title was a picture.
+ */
+export function plainText(s: string | null | undefined): string {
+  if (!s) return '';
+  return s
+    .replace(EMOJI_RE, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[\s·]+/, '')
+    .trim();
+}
+
+/** True when the stored string carries an emoji — the pin for the producers. */
+export function hasEmoji(s: string | null | undefined): boolean {
+  if (!s) return false;
+  EMOJI_RE.lastIndex = 0;
+  return EMOJI_RE.test(s);
 }
 
 /** The registers, in book order. Used for the rail's tally. */

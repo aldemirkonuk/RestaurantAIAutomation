@@ -11,6 +11,12 @@
  * outright (`pages/Notifications.tsx:157`), which is the defect this rebuild
  * exists to remove: a watchdog that cannot say it is blind.
  *
+ * SCOPE, since it narrowed on 2026-09-03: this hook reads the NOTIFICATIONS
+ * register and nothing else. One-tap actions used to be read here too; the
+ * founder moved them to the dashboard rail
+ * (`pages/dashboard/next/OneTapPanel.tsx`, which owns its own read), so the
+ * day-book no longer fetches a register it does not draw.
+ *
  * Every read here goes through the authenticated `apiClient`, is keyed by
  * `activeRestaurantId`, and lands in exactly one of three states:
  *
@@ -74,37 +80,6 @@ interface BookEnvelope {
   hasMore?: unknown;
 }
 
-export type OneTapStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled' | 'expired';
-
-/** `OneTapActionResponseDto`, as it reaches the browser. */
-export interface OneTapAction {
-  id: string;
-  restaurantId: string;
-  /**
-   * The AUTHOR. `createSystemAction` inserts no `user_id`
-   * (`one-tap-actions.service.ts:366-382`) while `POST /one-tap-actions`
-   * stamps the caller (`:150-152`), so an absent author is the structural
-   * proof that the house raised this row rather than a person here.
-   */
-  userId?: string | null;
-  actionType: string;
-  title: string;
-  description?: string;
-  actionUrl?: string;
-  priority: string;
-  status: OneTapStatus;
-  createdAt: string;
-  executedAt?: string;
-  expiresAt?: string;
-}
-
-export interface CreateOneTapInput {
-  title: string;
-  description?: string;
-  actionUrl?: string;
-  priority: 'low' | 'medium' | 'high';
-}
-
 /* ─────────────────────────────────────────────── set-aside (per browser) ─ */
 
 const SET_ASIDE_PREFIX = 'mudavym.notifications.setAside.';
@@ -141,7 +116,6 @@ export interface BookStack {
 export interface NotificationsNextData {
   book: BookVM;
   stack: BookStack;
-  actions: Register<OneTapAction>;
   /** Wall-clock of the last completed read of the book; null before the first. */
   lastReadAt: Date | null;
   /** True while a poll or a manual refresh is in flight. */
@@ -158,9 +132,6 @@ export interface NotificationsNextData {
   markAllRead: () => void;
   putAside: (id: string) => void;
   restoreAside: () => void;
-  executeAction: (id: string) => Promise<void>;
-  cancelAction: (id: string) => Promise<void>;
-  createAction: (input: CreateOneTapInput) => Promise<void>;
 }
 
 export function useNotificationsNextData(): NotificationsNextData {
@@ -173,7 +144,6 @@ export function useNotificationsNextData(): NotificationsNextData {
     hasMore: null,
     pages: 1,
   });
-  const [actions, setActions] = useState<Register<OneTapAction>>({ state: 'loading' });
   const [lastReadAt, setLastReadAt] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [failureNote, setFailureNote] = useState<string | null>(null);
@@ -191,7 +161,6 @@ export function useNotificationsNextData(): NotificationsNextData {
     pagesRef.current = 1;
     rowsRef.current = null;
     setBook({ register: { state: 'loading' }, total: null, hasMore: null, pages: 1 });
-    setActions({ state: 'loading' });
     setLastReadAt(null);
     setFailureNote(null);
     setSetAside(readSetAside(activeRestaurantId));
@@ -208,11 +177,10 @@ export function useNotificationsNextData(): NotificationsNextData {
     const wanted = pagesRef.current;
     setRefreshing(true);
 
-    const [bookRes, actionRes] = await Promise.allSettled([
+    const [bookRes] = await Promise.allSettled([
       apiClient.get('/notifications', {
         params: { userId, restaurantId: forTenant, limit: BOOK_PAGE, page: 1 },
       }),
-      apiClient.get('/one-tap-actions', { params: { restaurantId: forTenant } }),
     ]);
 
     // Older pages are asked for one at a time and appended: the gateway caps
@@ -261,11 +229,6 @@ export function useNotificationsNextData(): NotificationsNextData {
       olderFailure ? `Pages further back could not be read (${olderFailure.message}).` : null,
     );
 
-    setActions(
-      actionRes.status === 'rejected'
-        ? { state: 'unreadable', failure: failureOf(actionRes.reason) }
-        : { state: 'ready', rows: actionsOf(actionRes.value.data) },
-    );
     setLastReadAt(new Date());
     setRefreshing(false);
   }, [userId, activeRestaurantId, publish]);
@@ -384,53 +347,6 @@ export function useNotificationsNextData(): NotificationsNextData {
     });
   }, []);
 
-  const actOnAction = useCallback(
-    async (id: string, path: 'execute' | 'cancel', what: string) => {
-      setFailureNote(null);
-      try {
-        await apiClient.post(`/one-tap-actions/${id}/${path}`, {});
-        await read();
-      } catch (err) {
-        setFailureNote(
-          `${what} was refused (${failureOf(err).message}) — the action is unchanged.`,
-        );
-        throw err;
-      }
-    },
-    [read],
-  );
-
-  const executeAction = useCallback(
-    (id: string) => actOnAction(id, 'execute', 'Marking it done'),
-    [actOnAction],
-  );
-  const cancelAction = useCallback(
-    (id: string) => actOnAction(id, 'cancel', 'Ruling it out'),
-    [actOnAction],
-  );
-
-  const createAction = useCallback(
-    async (input: CreateOneTapInput) => {
-      setFailureNote(null);
-      try {
-        await apiClient.post('/one-tap-actions', {
-          title: input.title,
-          description: input.description || undefined,
-          actionUrl: input.actionUrl || undefined,
-          actionType: 'custom',
-          priority: input.priority,
-        });
-        await read();
-      } catch (err) {
-        setFailureNote(
-          `The action was not saved (${failureOf(err).message}) — nothing was created.`,
-        );
-        throw err;
-      }
-    },
-    [read],
-  );
-
   const readFurtherBack = useCallback(() => {
     pagesRef.current += 1;
     void read();
@@ -444,7 +360,6 @@ export function useNotificationsNextData(): NotificationsNextData {
   return {
     book,
     stack,
-    actions,
     lastReadAt,
     refreshing,
     setAside,
@@ -458,9 +373,6 @@ export function useNotificationsNextData(): NotificationsNextData {
     markAllRead,
     putAside,
     restoreAside,
-    executeAction,
-    cancelAction,
-    createAction,
   };
 }
 
@@ -474,10 +386,4 @@ function rowsOf(payload: unknown): Notification[] {
     if (Array.isArray(candidate)) return candidate as Notification[];
   }
   return [];
-}
-
-function actionsOf(payload: unknown): OneTapAction[] {
-  if (Array.isArray(payload)) return payload as OneTapAction[];
-  const p = payload as { actions?: unknown } | null;
-  return Array.isArray(p?.actions) ? (p.actions as OneTapAction[]) : [];
 }

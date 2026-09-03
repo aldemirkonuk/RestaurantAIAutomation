@@ -394,7 +394,7 @@ export class ScheduleService {
     // Notify the whole restaurant + deep-link back into /team.
     await this.notifications.persistForRestaurant(restaurantId, {
       type: "system",
-      title: "📅 Schedule published",
+      title: "Schedule published",
       message: `The week of ${schedule.week_start} is live. Open it to see your shifts.`,
       priority: "high",
       actionUrl: `/team?schedule=${scheduleId}&week=${schedule.week_start}`,
@@ -628,7 +628,7 @@ export class ScheduleService {
 
     await this.notifications.persistForRestaurant(restaurantId, {
       type: "system",
-      title: "🚨 Shift call-out — cover needed",
+      title: "Shift call-out — cover needed",
       message: `${original.role ?? "A shift"} on ${original.shift_date} ${original.start_time}-${original.end_time} is open.`,
       priority: "critical",
       actionUrl: `/team?shift=${openShift.id}`,

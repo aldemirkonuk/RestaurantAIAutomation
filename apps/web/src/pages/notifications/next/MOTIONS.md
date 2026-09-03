@@ -10,17 +10,28 @@ their end state through `animate()`'s reduced branch, the CSS transitions are
 disabled by the `@media (prefers-reduced-motion: reduce)` block at the end of
 `PAGE_CSS`, and `Tally` lands its figure instantly via `useReducedMotion()`.
 
+**Changed 2026-09-03.** `pour` and `stamp` are gone from this page: the wax
+belonged to the one-tap die, and one-tap actions moved to the dashboard rail
+(`pages/dashboard/next/OneTapPanel.tsx`; that page's `MOTIONS.md` carries them
+now). Nothing on the day-book is a commitment ceremony any more — ruling a
+line off is a record, not a seal — so the page is down to four motions and has
+no wax at all. That is the correct reading of the rationing rule, not a loss.
+
 | id | token | curve · ms | fires |
 |---|---|---|---|
 | `nt-open-arrive` | `settle` | HOUSE `cubic-bezier(.16,1,.3,1)` · 320ms | the opening line ("What the house noticed.") on mount, once — opacity + 6px rise |
-| `nt-expand` | `settle` | HOUSE · 320ms | `grid-template-rows: 0fr → 1fr` on three things: a day-book line opening into its facts, the **Ruled off** register opening under the double rule, and the "write a new one-tap action" form |
+| `nt-expand` | `settle` | HOUSE · 320ms | `grid-template-rows: 0fr → 1fr` on two things: a day-book line opening into its facts, and the **Ruled off** register opening under the double rule |
 | `nt-chev` | `settle` | HOUSE · 320ms | the line's chevron turning 90° as it opens — same token as the expansion it belongs to, so they arrive together |
 | `nt-ink` | `ink` | HOUSE · 160ms | hover/focus micro-states: a line's ground lifts one paper step, a control's border warms toward the seal ring. Nothing translates, nothing scales |
 | `nt-tally` | `tally` | sampled overdamped spring (120/26, `linear(…)`) · 840ms | the rail's per-register open counts, and "Showing N of …", counting to each new figure as the page is worked. Driven off `springs.tally.samples`, so the on-screen curve is the token |
-| `nt-hold-pour` | `pour` | `linear` · 620ms | the İznik fill under **Hold to mark it done** on a one-tap action, while the operator holds. Deliberately linear — they are timing it against their own thumb. An early release retreats on `tuck` and says what did not happen |
-| `nt-seal-stamp` | `stamp` | sampled spring (500/26, ~11% overshoot) · 360ms | the seal landing when the execute has actually been recorded by the gateway. The only motion here allowed to overshoot, and the only wax on the page |
 
 ## Deliberate non-motions
+
+- **No wax.** There is no `pour` and no `stamp` on this page. Every write it
+  offers — rule off, reopen, archive, delete, set aside — is a bookkeeping
+  entry, reversible in one click, and giving any of them the seal would spend
+  the house's one ceremony on filing. The seal is for commitment; the day-book
+  does not commit to anything.
 
 - **A line does not travel from "Needs a hand" to "Ruled off".** It is redrawn
   in its new band by the next read. Animating the journey would assert a

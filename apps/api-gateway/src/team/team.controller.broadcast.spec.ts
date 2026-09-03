@@ -247,3 +247,43 @@ describe("TeamController.broadcast — T4: an opt-out means the same thing on bo
     ]);
   });
 });
+
+/**
+ * T5 — the broadcast's DEFAULT title carries no emoji.
+ *
+ * A megaphone emoji prefixed the house speaking, written permanently into every
+ * member's inbox row. A manager's OWN title is passed through untouched: the
+ * rule is about the house's voice, not about editing what a person typed.
+ */
+describe("TeamController.broadcast — T5: the house's default title is plain", () => {
+  const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
+
+  it("falls back to a plain title when the caller names none", async () => {
+    const db = seed();
+    const { controller, notifications } = harness(db);
+
+    await controller.broadcast(req, RID, {
+      message: "Hello",
+      audience: "everyone",
+    } as any);
+
+    const payload = notifications.persistForRestaurant.mock.calls[0][1];
+    expect(payload.title).toBe("Team broadcast");
+    expect(payload.title).not.toMatch(EMOJI);
+  });
+
+  it("passes a manager's own words through unchanged — the house edits nobody", async () => {
+    const db = seed();
+    const { controller, notifications } = harness(db);
+
+    await controller.broadcast(req, RID, {
+      title: "Party Friday",
+      message: "Bring a plate.",
+      audience: "everyone",
+    } as any);
+
+    expect(notifications.persistForRestaurant.mock.calls[0][1].title).toBe(
+      "Party Friday",
+    );
+  });
+});

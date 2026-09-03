@@ -67,7 +67,12 @@ function bookPage(page: number, total: number, restaurantId: string) {
   };
 }
 
-/** Serve `total` notifications, paged, plus an empty one-tap register. */
+/**
+ * Serve `total` notifications, paged. `/one-tap-actions` is still answered so
+ * that a REGRESSION (the hook starting to read it again after the founder moved
+ * the desk to the dashboard) surfaces as the assertion below failing rather
+ * than as an unhandled rejection somewhere else.
+ */
 function serve(total: number, restaurantId = 'rest-A') {
   api.get.mockImplementation((url: string, cfg?: { params?: Record<string, unknown> }) => {
     if (url === '/notifications') {
@@ -188,5 +193,15 @@ describe('tenant keying', () => {
     for (const [url, cfg] of api.get.mock.calls) {
       expect(cfg.params.restaurantId, `${url} must name the tenant`).toBe('rest-A');
     }
+  });
+
+  it('reads the notifications register and nothing else — one-tap moved to the dashboard', async () => {
+    serve(1);
+    const { result } = renderHook(() => useNotificationsNextData());
+    await waitFor(() => expect(result.current.book.register.state).toBe('ready'));
+
+    const urls: string[] = api.get.mock.calls.map((call: unknown[]) => String(call[0]));
+    expect(urls).not.toContain('/one-tap-actions');
+    expect(new Set(urls)).toEqual(new Set(['/notifications']));
   });
 });

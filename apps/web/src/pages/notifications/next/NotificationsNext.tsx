@@ -23,6 +23,20 @@
  * message · folded duplicates · age) and on the rail's per-register tally,
  * not on decoration. Quiet is spent on band 3.
  *
+ * WHAT THIS PAGE IS NOT, since 2026-09-03. One-tap actions were built into
+ * this page in the first pass and the founder moved them out: they now live on
+ * the dashboard rail, under "Waiting on you"
+ * (`pages/dashboard/next/OneTapPanel.tsx`). The day-book keeps only lines. A
+ * line that a standing action would answer points at the rail rather than
+ * growing a control of its own.
+ *
+ * NO EMOJI, ANYWHERE. The producers wrote emoji into the STORED title — a
+ * siren in front of "50 wines dropped below par". They have been cleaned at source and
+ * pinned by a gateway spec, but rows already written keep theirs — so every
+ * title and message drawn here goes through `plainText()` and the register's
+ * mark is drawn by the page, in ink, from the row's own `type`
+ * (`nt-format.ts`).
+ *
  * HONESTY (ADR 0020, and the page's own §12 defect list). The legacy page
  * discarded `error` at `pages/Notifications.tsx:157`, so a 500 or a 401
  * rendered as an empty inbox forever while the poll retried in silence — a
@@ -34,12 +48,30 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import {
+  BookOpenText,
+  Hand,
+  RadioTower,
+  RotateCw,
+  Stamp,
+  TriangleAlert,
+} from 'lucide-react';
 import { Seal, Wordmark } from '@/components/mudavym';
 import { animate, ink, settle, springs, tally, useReducedMotion } from '@/lib/mudavym';
 import type { Notification } from '@/services/api/notifications';
 import BookRow from './BookRow';
-import { HouseBand, OneTapDesk } from './HouseBand';
-import { EM, KIND_ORDER, MONO, SANS, SERIF, ensureFraunces, isHouseActed, kindOf } from './nt-format';
+import { HouseBand } from './HouseBand';
+import {
+  EM,
+  KIND_ORDER,
+  MONO,
+  SANS,
+  SERIF,
+  ensureFraunces,
+  iconForKind,
+  isHouseActed,
+  kindOf,
+} from './nt-format';
 import { POLL_MS, useNotificationsNextData } from './useNotificationsNextData';
 
 /* ── figures arrive on the tally spring; an unknown never counts ────────── */
@@ -193,14 +225,6 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
 
   const ready = data.book.register.state === 'ready';
   const failure = data.book.register.state === 'unreadable' ? data.book.register.failure : null;
-  const houseActions =
-    data.actions.state === 'ready'
-      ? data.actions.rows.filter((a) => a.status === 'pending' && !a.userId)
-      : [];
-  const myActions =
-    data.actions.state === 'ready'
-      ? data.actions.rows.filter((a) => a.status === 'pending' && !!a.userId)
-      : [];
 
   const onPage = ready ? data.stack.items.length : null;
   const needCount = ready ? bands.needs.length + bands.drafts.length : null;
@@ -257,7 +281,11 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
             className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3"
             style={{ border: '1px solid var(--paper-2)', background: 'var(--paper-1)' }}
           >
-            <span className="text-[12.5px]" style={{ color: 'var(--ink-2)' }}>
+            <span
+              className="inline-flex items-start gap-2 text-[12.5px]"
+              style={{ color: 'var(--ink-2)' }}
+            >
+              <TriangleAlert size={14} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" />
               {failure.forbidden
                 ? `The notifications register refused this account (${failure.status ?? 'refused'}). Retrying will not change that — an owner or manager account can read it.`
                 : `The notifications register could not be read (${failure.message}). The book is unknown, not empty.`}
@@ -266,7 +294,7 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
               <button
                 type="button"
                 onClick={data.refresh}
-                className="nt-ink rounded-lg px-3 py-1.5 text-[12px] font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
+                className="nt-ink inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
                 style={{
                   border: '1px solid var(--seal-ring)',
                   background: 'transparent',
@@ -274,6 +302,7 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
                   cursor: 'pointer',
                 }}
               >
+                <RotateCw size={12} strokeWidth={1.75} aria-hidden />
                 Try again
               </button>
             )}
@@ -297,9 +326,10 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
               <div className="flex items-baseline justify-between gap-3">
                 <h2
                   id="nt-needs"
-                  className="text-[11px] uppercase tracking-[0.14em]"
+                  className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.14em]"
                   style={{ fontFamily: MONO, color: 'var(--ink-4)' }}
                 >
+                  <Hand size={12} strokeWidth={1.75} aria-hidden />
                   Needs a hand
                 </h2>
                 {bands.needs.length > 0 && (
@@ -307,7 +337,7 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
                     type="button"
                     onClick={data.markAllRead}
                     title="Every unread line in THIS restaurant's book, including pages not on screen. No other restaurant is touched."
-                    className="nt-ink rounded px-2 py-1 text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
+                    className="nt-ink inline-flex items-center gap-1.5 rounded px-2 py-1 text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
                     style={{
                       border: '1px solid var(--paper-2)',
                       background: 'transparent',
@@ -315,6 +345,7 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
                       cursor: 'pointer',
                     }}
                   >
+                    <Stamp size={12} strokeWidth={1.75} aria-hidden />
                     Rule off every open line
                   </button>
                 )}
@@ -360,12 +391,8 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
 
             <HouseBand
               drafts={bands.drafts}
-              houseActions={houseActions}
-              actions={data.actions}
               bookUnreadable={failure !== null}
               onRuleOff={data.markRead}
-              onExecute={data.executeAction}
-              onCancel={data.cancelAction}
             />
 
             {/* ── the double rule: the account is ruled off ─────────────── */}
@@ -374,9 +401,10 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
               <div className="mt-2 flex items-baseline justify-between gap-3">
                 <h2
                   id="nt-ruled"
-                  className="text-[11px] uppercase tracking-[0.14em]"
+                  className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.14em]"
                   style={{ fontFamily: MONO, color: 'var(--ink-4)' }}
                 >
+                  <Stamp size={12} strokeWidth={1.75} aria-hidden />
                   Ruled off
                 </h2>
                 <button
@@ -448,16 +476,22 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
                 <Seal size={16} />
                 <h2
                   id="nt-registers"
-                  className="text-[11px] uppercase tracking-[0.14em]"
+                  className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.14em]"
                   style={{ fontFamily: MONO, color: 'var(--ink-1)' }}
                 >
+                  <BookOpenText size={12} strokeWidth={1.75} aria-hidden />
                   On this page
                 </h2>
               </div>
               <dl className="mt-2.5 space-y-1">
-                {registerTally.map((r) => (
+                {registerTally.map((r) => {
+                  const Mark = iconForKind(r.kind);
+                  return (
                   <div key={r.kind} className="flex items-baseline justify-between gap-3 text-[12px]">
-                    <dt style={{ color: 'var(--ink-2)' }}>{r.kind}</dt>
+                    <dt className="inline-flex items-center gap-1.5" style={{ color: 'var(--ink-2)' }}>
+                      <Mark size={12} strokeWidth={1.75} aria-hidden />
+                      {r.kind}
+                    </dt>
                     <dd className="m-0" style={{ color: 'var(--ink-4)' }}>
                       <span style={{ color: r.open > 0 ? 'var(--ink-1)' : 'var(--ink-4)' }}>
                         <Tally value={r.open} />
@@ -465,7 +499,8 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
                       <span style={{ fontFamily: MONO }}> / {r.all}</span>
                     </dd>
                   </div>
-                ))}
+                  );
+                })}
               </dl>
               {ready && registerTally.length === 0 && (
                 <p className="mt-2 text-[12px] italic" style={{ color: 'var(--ink-4)' }}>
@@ -510,9 +545,10 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
             >
               <h2
                 id="nt-live"
-                className="text-[11px] uppercase tracking-[0.14em]"
+                className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.14em]"
                 style={{ fontFamily: MONO, color: 'var(--ink-4)' }}
               >
+                <RadioTower size={12} strokeWidth={1.75} aria-hidden />
                 How this page reads
               </h2>
               <p className="mt-1.5 text-[11.5px]" style={{ color: 'var(--ink-2)' }}>
@@ -535,7 +571,7 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
               <button
                 type="button"
                 onClick={data.refresh}
-                className="nt-ink mt-2 rounded px-2 py-1 text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
+                className="nt-ink mt-2 inline-flex items-center gap-1.5 rounded px-2 py-1 text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
                 style={{
                   border: '1px solid var(--paper-2)',
                   background: 'transparent',
@@ -543,17 +579,10 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
                   cursor: 'pointer',
                 }}
               >
+                <RotateCw size={12} strokeWidth={1.75} aria-hidden />
                 Read it now
               </button>
             </section>
-
-            <OneTapDesk
-              mine={myActions}
-              actions={data.actions}
-              onExecute={data.executeAction}
-              onCancel={data.cancelAction}
-              onCreate={data.createAction}
-            />
           </aside>
         </div>
 
@@ -563,9 +592,8 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
         >
           <Wordmark size={14} />
           <p className="max-w-[560px] text-[11px]" style={{ color: 'var(--ink-4)' }}>
-            Set-aside is stored in this browser and nowhere else. Marking a one-tap action done
-            records the decision against your name — it does not itself place an order or send a
-            mail.
+            Set-aside is stored in this browser and nowhere else. This page records what the house
+            noticed; it never places an order or sends a mail on your behalf.
           </p>
         </footer>
       </div>

@@ -236,7 +236,7 @@ export class NotificationsService {
   }): Promise<void> {
     const payload: NotificationPayload = {
       type: "order_approval",
-      title: "🍷 New Order Awaiting Approval",
+      title: "New order awaiting approval",
       body: `${data.quantity} bottles of ${data.wineName} from ${data.providerName}${
         data.price ? ` ($${data.price.toFixed(2)}/bottle)` : ""
       }`,
@@ -249,8 +249,8 @@ export class NotificationsService {
       },
       requireInteraction: true,
       actions: [
-        { action: "approve", title: "✅ Approve" },
-        { action: "view", title: "👁️ View Details" },
+        { action: "approve", title: "Approve" },
+        { action: "view", title: "View details" },
       ],
     };
 
@@ -271,12 +271,11 @@ export class NotificationsService {
     managerPhone?: string;
   }): Promise<void> {
     const severity =
-      data.currentStock <= data.threshold * 0.5 ? "Critical" : "Low Stock";
-    const emoji = data.currentStock <= data.threshold * 0.5 ? "🚨" : "⚠️";
+      data.currentStock <= data.threshold * 0.5 ? "Critical" : "Low stock";
 
     const payload: NotificationPayload = {
       type: "low_stock",
-      title: `${emoji} ${severity}: ${data.wineName}`,
+      title: `${severity}: ${data.wineName}`,
       body: `Only ${data.currentStock} bottles remaining (threshold: ${data.threshold})`,
       data: {
         wineId: data.wineId,
@@ -287,8 +286,8 @@ export class NotificationsService {
       },
       requireInteraction: data.currentStock <= data.threshold * 0.5,
       actions: [
-        { action: "reorder", title: "🛒 Reorder Now" },
-        { action: "view", title: "📊 View Inventory" },
+        { action: "reorder", title: "Reorder now" },
+        { action: "view", title: "View inventory" },
       ],
     };
 
@@ -301,7 +300,7 @@ export class NotificationsService {
       data.restaurantId,
       {
         type: "inventory_low_stock",
-        title: `${emoji} ${severity}: ${data.wineName}`,
+        title: `${severity}: ${data.wineName}`,
         message: `Only ${data.currentStock} bottles remaining (threshold: ${data.threshold})`,
         priority:
           data.currentStock <= data.threshold * 0.5 ? "critical" : "high",
@@ -353,7 +352,7 @@ export class NotificationsService {
   }): Promise<void> {
     const payload: NotificationPayload = {
       type: "delivery",
-      title: "📦 Delivery Arrived",
+      title: "Delivery arrived",
       body: `${data.quantity} bottles of ${data.wineName} from ${data.providerName}`,
       data: {
         orderId: data.orderId,
@@ -363,8 +362,8 @@ export class NotificationsService {
       },
       requireInteraction: true,
       actions: [
-        { action: "confirm", title: "✅ Confirm Receipt" },
-        { action: "view", title: "👁️ View Order" },
+        { action: "confirm", title: "Confirm receipt" },
+        { action: "view", title: "View order" },
       ],
     };
 
@@ -373,7 +372,7 @@ export class NotificationsService {
     // Sync to the in-app inbox so the signal survives past the live toast.
     await this.persistForRestaurant(data.restaurantId, {
       type: "order_delivered",
-      title: `📦 Delivery arrived: ${data.wineName}`,
+      title: `Delivery arrived: ${data.wineName}`,
       message: `${data.quantity} bottles of ${data.wineName} from ${data.providerName}`,
       priority: "medium",
       actionUrl: "/orders",
@@ -404,7 +403,7 @@ export class NotificationsService {
 
     const payload: NotificationPayload = {
       type: "price_negotiation",
-      title: "💰 New Price Offer",
+      title: "New price offer",
       body: `${data.providerName} offered $${data.proposedPrice.toFixed(2)}/bottle for ${
         data.wineName
       } (${Math.abs(Number(percentage))}% ${direction})`,
@@ -417,8 +416,8 @@ export class NotificationsService {
       },
       requireInteraction: true,
       actions: [
-        { action: "accept", title: "✅ Accept" },
-        { action: "negotiate", title: "↔️ Counter" },
+        { action: "accept", title: "Accept" },
+        { action: "negotiate", title: "Counter" },
       ],
     };
 
@@ -434,28 +433,29 @@ export class NotificationsService {
     message: string;
     severity: "info" | "warning" | "error";
   }): Promise<void> {
-    const emoji = {
-      info: "ℹ️",
-      warning: "⚠️",
-      error: "🚨",
-    }[data.severity];
-
+    // The severity used to be prefixed as an emoji onto both the
+    // push title and the STORED inbox title. It is gone: `severity` is already
+    // carried structurally — in `data.severity`, in `metadata.severity`, in the
+    // row's `priority`, and in `requireInteraction` — so the picture added no
+    // fact, and a picture written into a database row cannot be restyled,
+    // searched or read aloud. The inbox draws its own mark from `type`
+    // (`pages/notifications/next/nt-format.ts`).
     const payload: NotificationPayload = {
       type: "system_alert",
-      title: `${emoji} ${data.title}`,
+      title: data.title,
       body: data.message,
       data: {
         severity: data.severity,
       },
       requireInteraction: data.severity === "error",
-      actions: [{ action: "view", title: "👁️ View Details" }],
+      actions: [{ action: "view", title: "View details" }],
     };
 
     await this.sendToRestaurant(data.restaurantId, payload);
 
     await this.persistForRestaurant(data.restaurantId, {
       type: "system",
-      title: `${emoji} ${data.title}`,
+      title: data.title,
       message: data.message,
       priority: data.severity === "error" ? "high" : "medium",
       metadata: { severity: data.severity },

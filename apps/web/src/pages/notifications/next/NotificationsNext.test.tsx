@@ -13,12 +13,14 @@
  *    nothing was sent, and carries a human control;
  *  - honesty — a refused read and a broken read are told apart, neither
  *    renders as an empty inbox, and an unknown total is an em dash;
- *  - the legacy defect closed — creating a one-tap action reaches the
- *    gateway instead of dying in `useState`.
+ *  - no emoji, anywhere: a row whose STORED title carries the producer's
+ *    emoji renders clean and the register's mark is drawn in ink instead;
+ *  - one-tap actions have left this page (founder, 2026-09-03) — the desk is
+ *    gone and the band says where they went, rather than going silent.
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { Notification } from '@/services/api/notifications';
 
@@ -59,9 +61,6 @@ const spies = {
   restoreAside: vi.fn(),
   refresh: vi.fn(),
   readFurtherBack: vi.fn(),
-  executeAction: vi.fn(async () => undefined),
-  cancelAction: vi.fn(async () => undefined),
-  createAction: vi.fn(async () => undefined),
 };
 
 function base(rows: Notification[]) {
@@ -73,7 +72,6 @@ function base(rows: Notification[]) {
       pages: 1,
     },
     stack: { items: rows, foldedById: {}, foldedCount: 0 },
-    actions: { state: 'ready', rows: [] },
     lastReadAt: new Date('2026-09-02T18:00:00'),
     refreshing: false,
     setAside: new Set<string>(),
@@ -184,87 +182,54 @@ describe('NotificationsNext — the day-book', () => {
     expect(within(needs).queryByText(/drafted/i)).not.toBeInTheDocument();
   });
 
-  it('separates a house-raised one-tap action from a person-raised one', () => {
-    mockData.current = {
-      ...base([]),
-      actions: {
-        state: 'ready',
-        rows: [
-          {
-            id: 'a1',
-            restaurantId: 'r1',
-            userId: null,
-            actionType: 'low_stock',
-            title: 'Reorder the Rioja',
-            priority: 'high',
-            status: 'pending',
-            createdAt: new Date().toISOString(),
-          },
-          {
-            id: 'a2',
-            restaurantId: 'r1',
-            userId: 'u1',
-            actionType: 'custom',
-            title: 'Call the cellar',
-            priority: 'low',
-            status: 'pending',
-            createdAt: new Date().toISOString(),
-          },
-        ],
-      },
-    };
+  it('no longer keeps a one-tap desk — the day-book holds lines, and says where the actions went', () => {
+    mockData.current = base([
+      row({ id: 'd1', type: 'draft_ready', title: 'A reply to Bodega Álvaro is drafted' }),
+    ]);
     draw();
 
+    // The desk that used to sit in the rail is gone from this page entirely.
+    expect(screen.queryByRole('region', { name: 'Your one-tap actions' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Write a new one')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Hold to mark it done' })).not.toBeInTheDocument();
+
+    // And the band that used to hold house-raised actions points at their new home
+    // rather than going quiet about them.
     const band = screen.getByRole('region', { name: 'What the house did on its own' });
-    expect(within(band).getByText('Raised by the house · not done')).toBeInTheDocument();
-    expect(within(band).getByText('Reorder the Rioja')).toBeInTheDocument();
-
-    const desk = screen.getByRole('region', { name: 'Your one-tap actions' });
-    expect(within(desk).getByText('Call the cellar')).toBeInTheDocument();
-    expect(within(desk).getByText(/survive a refresh/)).toBeInTheDocument();
-    // the die never claims more than the endpoint does
-    expect(within(band).getByText(/does not place the order itself/)).toBeInTheDocument();
+    expect(within(band).getByText(/Standing one-tap actions/)).toBeInTheDocument();
+    expect(within(band).getByRole('link', { name: 'dashboard rail' })).toHaveAttribute('href', '/');
   });
 
-  it('commits a one-tap action through the guarded endpoint via the hold ceremony', async () => {
-    mockData.current = {
-      ...base([]),
-      actions: {
-        state: 'ready',
-        rows: [
-          {
-            id: 'a1',
-            restaurantId: 'r1',
-            userId: null,
-            actionType: 'low_stock',
-            title: 'Reorder the Rioja',
-            priority: 'high',
-            status: 'pending',
-            createdAt: new Date().toISOString(),
-          },
-        ],
-      },
-    };
-    draw();
-    const die = screen.getByRole('button', { name: 'Hold to mark it done' });
-    fireEvent.keyDown(die, { key: 'Enter' }); // arms
-    fireEvent.keyDown(die, { key: 'Enter' }); // approves
-    await waitFor(() => expect(spies.executeAction).toHaveBeenCalledWith('a1'));
-  });
-
-  it('creates a custom one-tap action against the gateway (the useState defect, closed)', async () => {
-    mockData.current = base([]);
-    draw();
-    fireEvent.click(screen.getByText('Write a new one'));
-    fireEvent.change(screen.getByPlaceholderText(/Bodega Álvaro/), {
-      target: { value: 'Chase the Chablis invoice' },
+  it('strips the producer’s emoji out of a stored title and draws the register’s own mark', () => {
+    const r = row({
+      // Exactly what production rows carry today (low-stock-alerts.service.ts:302
+      // before the producers were cleaned): a row already written keeps its emoji
+      // forever. Written as escapes so this directory's own emoji grep stays
+      // clean — the string the component receives is byte-identical to the
+      // stored one.
+      title: '\u{1F6A8} 50 wines dropped below par',
+      message: '\u26A0\uFE0F Just crossed below par: Rioja, Chablis',
+      type: 'inventory_low_stock',
     });
-    fireEvent.click(screen.getByText('Write it into the book'));
-    await waitFor(() =>
-      expect(spies.createAction).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Chase the Chablis invoice', priority: 'medium' }),
-      ),
+    mockData.current = base([r]);
+    const { container } = draw();
+
+    expect(screen.getByText('50 wines dropped below par')).toBeInTheDocument();
+    // the message is drawn twice — once on the collapsed line, once in the
+    // (always-mounted, 0fr) detail — and both must be clean
+    expect(screen.getAllByText('Just crossed below par: Rioja, Chablis')).toHaveLength(2);
+    // no emoji survives anywhere on the rendered page
+    expect(container.textContent ?? '').not.toMatch(
+      /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u,
     );
+    // and the mark the emoji used to carry is drawn instead — a lucide <svg>
+    // inside the register chip on the line AND beside the rail's tally row, so
+    // the two can never disagree about which register this is.
+    const marks = screen.getAllByText('Stock');
+    expect(marks).toHaveLength(2);
+    for (const el of marks) {
+      expect(el.querySelector('svg.lucide-boxes')).not.toBeNull();
+    }
   });
 
   it('says a broken read in words — an unread book is never an empty one', () => {
@@ -317,20 +282,6 @@ describe('NotificationsNext — the day-book', () => {
     expect(screen.queryByText('Try again')).not.toBeInTheDocument();
   });
 
-  it('admits an unreadable one-tap register instead of showing an empty desk', () => {
-    mockData.current = {
-      ...base([]),
-      actions: {
-        state: 'unreadable',
-        failure: { status: 500, message: 'no route', forbidden: false },
-      },
-    };
-    draw();
-    const desk = screen.getByRole('region', { name: 'Your one-tap actions' });
-    expect(within(desk).getByText(/this is not an empty desk/)).toBeInTheDocument();
-    expect(within(desk).queryByText('No standing actions yet.')).not.toBeInTheDocument();
-  });
-
   it('renders an em dash, not a zero, when the register will not say how big it is', () => {
     const r = row({});
     mockData.current = {
@@ -356,7 +307,6 @@ describe('NotificationsNext — the day-book', () => {
     mockData.current = {
       ...base([]),
       book: { register: { state: 'loading' }, total: null, hasMore: null, pages: 1 },
-      actions: { state: 'loading' },
       lastReadAt: null,
       stack: { items: [], foldedById: {}, foldedCount: 0 },
     };

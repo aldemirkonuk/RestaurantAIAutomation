@@ -404,7 +404,7 @@ export class TeamController {
       rid,
       {
         type: "system",
-        title: dto.title ?? "📣 Team broadcast",
+        title: dto.title ?? "Team broadcast",
         message: dto.message,
         priority: "high",
         actionUrl: "/team",

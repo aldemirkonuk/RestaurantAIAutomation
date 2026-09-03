@@ -296,10 +296,17 @@ export class LowStockAlertsService {
     const list = wines
       .map((w) => `${w.wineName} (${w.currentStock}/${w.threshold})`)
       .join(", ");
+    // No emoji in a stored title (ADR 0042 / the 2026-09-03 house rule): the
+    // inbox draws the register's mark itself, and an emoji written into the
+    // row is unstylable, unsearchable and permanent. The severity the emoji
+    // used to carry is stated in WORDS here and repeated in `priority` and
+    // `metadata.criticalCount`, so nothing is lost by dropping the picture.
     const title =
       wines.length === 1
-        ? `${criticalCount > 0 ? "🚨" : "⚠️"} ${wines[0].severity === "critical" ? "Critical" : "Low stock"}: ${wines[0].wineName}`
-        : `${criticalCount > 0 ? "🚨" : "⚠️"} ${wines.length} wines dropped below par`;
+        ? `${wines[0].severity === "critical" ? "Critical" : "Low stock"}: ${wines[0].wineName}`
+        : criticalCount > 0
+          ? `${wines.length} wines dropped below par — ${criticalCount} critical`
+          : `${wines.length} wines dropped below par`;
 
     // 1) In-app inbox — the reliable channel (works even with no email set up).
     await this.notifications.persistForRestaurant(restaurantId, {
@@ -348,7 +355,7 @@ export class LowStockAlertsService {
       restaurantId,
       {
         type: "inventory_low_stock",
-        title: `⚠️ Low-stock digest: ${rows.length} wine${rows.length === 1 ? "" : "s"} below par`,
+        title: `Low-stock digest: ${rows.length} wine${rows.length === 1 ? "" : "s"} below par`,
         message: `${criticalCount} critical · ${rows.length - criticalCount} low. Tap to review and reorder.`,
         priority: criticalCount > 0 ? "critical" : "high",
         actionUrl: "/inventory?filter=low-stock",

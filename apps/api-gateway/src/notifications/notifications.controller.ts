@@ -310,7 +310,7 @@ export class NotificationsController {
 
     await this.notificationsService.sendToUser(body.userId, {
       type: "system_alert",
-      title: "🍷 WineOps AI Test",
+      title: "WineOps AI test",
       body: "Notifications are working! You'll receive alerts here.",
       requireInteraction: false,
     });
