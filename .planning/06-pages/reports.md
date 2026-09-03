@@ -115,6 +115,8 @@ drift chips, S02/S03 Plus scorecards, S10 Plus days-of-cover. Pro depth (forecas
 
 - **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** the page says "Sales revenue needs a connected POS and is not shown here" over 44 ingested `pos_checks`, 34 depleted bottles and 55 consumption rows — honest about the gap, wrong about the cause (the checks carry no money; defect 9) — and each "— —" KPI carries a green "↗ 0% vs prev period". Three fabrications remain in the molecules: `PeriodCompareBar.tsx:21-25` (last period = 75–120 % of this one), `BusyHoursHeatmap.tsx:23` (static weights × `Math.random()`, never reads `pos_checks`), `MonthlyReconciliation.tsx:28-33` (invented purchased/variance) — absence 2–4.
 
+- **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** the Purchased Wines badge shows "30 orders" over 0 `procurement_orders` — `Reports.tsx:391` counts `purchaseData.length`, one row per day of the 30D window (`:351`), rendered at `PurchasedWinesTable.tsx:52` (defect 2). The page says "no sales data" at the top and shows $2,236 of real sales in Wine Consumption Analytics below, without saying the two read different tables.
+
 ## 10. Maturity
 
 **hollow** — and this is the worst finding in the communication/config cluster.
@@ -138,6 +140,8 @@ atlas's "all unguarded" row is stale. `Reports.v1.backup.tsx` still ships
 (`v3.0-TECH-DEBT.md:257`).
 
 - **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** still hollow in the only sense that matters: with a real night of checks on the tenant, no revenue, busy-hour or reconciliation figure on this page is derived from them.
+
+- **Intelligence lens 2026-09-03 (`v3.0-TECH-DEBT.md`, customer + intelligence lens):** Wine Consumption Analytics is exact to the dollar against `wine_consumption_log` (15 bottles $1,348 + 41 glasses $888 = $2,236) — the one sales figure on the page, and it is not a headline.
 
 ## 11. Data flow
 
