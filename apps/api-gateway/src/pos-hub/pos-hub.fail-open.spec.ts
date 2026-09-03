@@ -33,7 +33,10 @@ type Row = Record<string, any>;
  * `failing` names the tables whose SELECT/UPSERT resolves with an error, exactly
  * as PostgREST does — never throwing, which is the whole trap.
  */
-function makeDb(failing: Set<string>, sink: { consumption: Row[] } = { consumption: [] }) {
+function makeDb(
+  failing: Set<string>,
+  sink: { consumption: Row[] } = { consumption: [] },
+) {
   const checkRows: Row[] = [];
   const err = (t: string) =>
     failing.has(t)
@@ -60,7 +63,12 @@ function makeDb(failing: Set<string>, sink: { consumption: Row[] } = { consumpti
           }
           return { data: null, error: e };
         },
-        insert: async () => ({ data: null, error: err(table) }),
+        insert: async (row: Row) => {
+          const e = err(table);
+          if (!e && table === "wine_consumption_log")
+            sink.consumption.push(row);
+          return { data: null, error: e };
+        },
         update: () => q,
       };
       // A resolved list read: `await q` must yield {data, error}.
@@ -140,8 +148,12 @@ describe("recordConsumption must not silently omit a row", () => {
     // names.
     const { client } = makeDb(new Set(["wine_consumption_log"]));
     const s = svc(client);
-    const warn = jest.spyOn((s as any).logger, "warn").mockImplementation(() => undefined);
-    const error = jest.spyOn((s as any).logger, "error").mockImplementation(() => undefined);
+    const warn = jest
+      .spyOn((s as any).logger, "warn")
+      .mockImplementation(() => undefined);
+    const error = jest
+      .spyOn((s as any).logger, "error")
+      .mockImplementation(() => undefined);
 
     await (s as any).recordConsumption(
       "r-1",
@@ -162,7 +174,9 @@ describe("recordConsumption must not silently omit a row", () => {
     const sink = { consumption: [] as Row[] };
     const { client } = makeDb(new Set(), sink);
     const s = svc(client);
-    const error = jest.spyOn((s as any).logger, "error").mockImplementation(() => undefined);
+    const error = jest
+      .spyOn((s as any).logger, "error")
+      .mockImplementation(() => undefined);
 
     await (s as any).recordConsumption(
       "r-1",

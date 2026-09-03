@@ -158,6 +158,23 @@ class Settings:
         self.toast_webhook_secret: Optional[str] = os.getenv("TOAST_WEBHOOK_SECRET")
         self.toast_environment: str = os.getenv("TOAST_ENVIRONMENT", "sandbox")
         self.mock_pos: bool = os.getenv("MOCK_POS", "true").lower() == "true"
+        # create_toast_client_from_settings() reads `settings.toast_mock_mode`
+        # (services/toast_api_client.py:547) — an attribute this class had never
+        # defined, so that factory raised AttributeError on every call. It went
+        # unnoticed because the factory has no callers: every existing client is
+        # built via ToastAPIClient(...) directly. The /api/v1/toast router is the
+        # first caller, which is why this is being defined now.
+        #
+        # Deliberately NOT `self.mock_pos`. MOCK_POS is false in production, so
+        # aliasing would turn a bug fix into a silent switch to real, billable
+        # calls against a third-party API — a commercial decision (OD-64) taken
+        # by nobody. This reads its own key and defaults to the same safe value
+        # the gateway uses (TOAST_MOCK_MODE, default true —
+        # apps/api-gateway/src/toast/toast.service.ts:72), so one key now
+        # governs Toast mocking on both services.
+        self.toast_mock_mode: bool = (
+            os.getenv("TOAST_MOCK_MODE", "true").lower() == "true"
+        )
 
         # Phase 21: Inventory and buffer configuration (E2E-v2-02, E2E-v2-03)
         self.buffer_window_minutes: int = int(os.getenv("BUFFER_WINDOW_MINUTES", "30"))

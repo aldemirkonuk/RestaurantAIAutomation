@@ -117,6 +117,54 @@ Generator write-set equals teardown tables **and** handlers (D-11/D-12). See `sc
 
 FK-safe order includes `restaurant_menus` (never shorthand `menus`) and sim-filtered `master_wine_library*`.
 
+#### ADR 0093 live-day corrections (2026-09-03) — what the first real run taught the seed
+
+- **The library identity collapses menu lines.** `master_wine_library.signature_hash` is
+  `wine_signature_hash(producer, name, vintage, country, region, grape)`, trigger-set and
+  UNIQUE; `restaurant_inventory` is UNIQUE per (restaurant, wine). The bistro snapshot's 92
+  crawl hashes are 81 identities, and 28 hashes carry case-variant lines. Rule, shared by
+  `seed.py` and the scenario engine through `plan_wine_identities()`: the first line under a
+  hash decides its identity; the first hash carrying an identity owns the wine row and the
+  one inventory row. `scripts/synth/identity.py` mirrors the SQL (pinned by
+  `datasets/sim/fixtures/wine-identity-vectors.json`, 0 mismatches on 92 + 7), the seed
+  re-checks the SQL function at apply and REFUSES on drift, and reuses library rows that
+  already exist (teardown never touches those — it deletes `sim.wine.*` ids only).
+- **Personas need a product sign-in and a tenant.** The gateway's `/auth/login`
+  bcrypt-compares `users.password_hash` (Supabase Auth passwords are not consulted), and its
+  tenant guard compares the JWT's `restaurantId` (from `users.restaurant_id`) with every
+  path. The mirror now carries a cost-10 hash, and the seed binds the three personas to the
+  tenant it just seeded (`_bind_personas_to_restaurant`, read back and asserted).
+- **Load order of env files matters on this machine**: `.env.sim` must win over
+  `apps/api-gateway/.env` for `SIM_*`, and webhooks must be signed with the ROOT `.env`
+  `POS_HUB_WEBHOOK_SECRET` (the gateway's ConfigModule lists the root file first).
+
+#### ADR 0093 additions (2026-09-02) — the scenario harness writes ten more tables
+
+The harness ([[0093-a-scenario-is-replayed-and-verified-against-its-own-expectation]]) writes rows the sim seed never wrote. All ten are in `SYNTH_WRITE_SET`, `TEARDOWN_TABLES`, `TEARDOWN_HANDLERS` and `DELETE_ORDER`, with one assertion each in `scripts/test_simulate.py` and `services/agent-orchestrator/tests/test_synth_write_set_gate.py`.
+
+| Table | Written by | Already cascade-covered? |
+|---|---|---|
+| `inventory_lots` | seed apply path — opening stock via `apply_stock_movement` (D4) | yes, from `restaurant_inventory` (`ON DELETE CASCADE`) |
+| `inventory_transactions` | same | yes, from `restaurants` |
+| `pour_events` | a scenario's depletion path | **no FK to `restaurants` at all** |
+| `wine_consumption_log` | the consumption mirror | yes, from `restaurants` and from `restaurant_inventory` |
+| `pos_item_mappings` | hub line resolution | no FK to `restaurants`; only `inventory_id` cascades |
+| `pos_catalog_match_proposals` | the catalog matcher | **no** — `candidate_inventory_id` is `ON DELETE SET NULL` |
+| `restaurant_tables` | a check carries a table | **no FK to `restaurants` at all** |
+| `notifications` | the low-stock sweep the harness runs on demand | yes, from `restaurants` |
+| `analytics_insights` | the insight generator the harness runs on demand | **no FK to `restaurants` at all** |
+| `sim_scenario_runs` | the scenario runner — one row per run (D2) | yes, from `restaurants` |
+
+**Listed even where a cascade covers them, on purpose.** The rule in this file is an explicit list, not implicit cascade (`teardown.py:41`). A cascade is declared in a migration with no link to `write_set.py`; "the cascade covers it" is the assumption that leaves simulated rows inside a real tenant the day an on-delete action changes.
+
+**Order is load-bearing, and now asserted.** `assert_teardown_coverage()` gained a child-before-parent check because a table deleted out of order raises `23503`, the handler catches it and reports an orphan — which from the outside is indistinguishable from a table nobody listed. The pairs it enforces:
+
+- `pos_checks` before `restaurant_tables` — `pos_checks.table_id` references `restaurant_tables(id)` with **no** on-delete action.
+- `pour_events` / `inventory_transactions` / `wine_consumption_log` / `pos_catalog_match_proposals` / `pos_item_mappings` before `inventory_lots`, and `inventory_lots` before `restaurant_inventory`.
+- `sim_scenario_runs` / `notifications` / `analytics_insights` / `restaurant_inventory` before `restaurants`.
+
+The guard is proved against a broken order in `test_coverage_gate_catches_a_bad_delete_order`, not merely observed green.
+
 ### Gap vs FUNCTIONALITY-REGISTRY Table D (C2)
 
 Registry Table D domain buckets beyond the generator write-set remain **out of sim teardown** until a later phase widens the seed surface. Phase 37 closes the **generator write-set** gap (orgs, restaurants, URA, menus, inventory, oracle, provisional library) — not every registry domain.
