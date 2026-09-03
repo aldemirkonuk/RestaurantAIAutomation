@@ -110,6 +110,33 @@ const excludeDay = vi.fn(async () => true);
 const bulk = vi.fn(async () => {});
 const restore = vi.fn(async () => {});
 const refetch = vi.fn();
+const loadGoals = vi.fn();
+interface GoalInput {
+  name: string;
+  metricKey: string;
+  targetValue: number;
+  direction: 'at_least' | 'at_most';
+  period: string;
+  deadline: string;
+}
+interface GoalRes {
+  ok: boolean;
+  goal?: Record<string, unknown>;
+  message?: string;
+  expired?: boolean;
+}
+const createGoal = vi.fn(async (_input: GoalInput): Promise<GoalRes> => ({
+  ok: true,
+  goal: {
+    id: 'g1',
+    name: 'Wine revenue back to baseline',
+    metricKey: 'wine_revenue',
+    targetValue: 2500,
+    currentValue: 0,
+    deadline: '2026-09-10',
+    status: 'active',
+  },
+}));
 
 const base = {
   leaf: 'standing',
@@ -129,6 +156,9 @@ const base = {
   team: undefined,
   teamFailed: false,
   loadTeam: vi.fn(),
+  goals: [] as unknown,
+  loadGoals,
+  createGoal,
   note: null,
   undo: null,
   clearUndo: vi.fn(),
@@ -153,6 +183,8 @@ beforeEach(() => {
   includeDay.mockClear();
   bulk.mockClear();
   navigate.mockClear();
+  loadGoals.mockClear();
+  createGoal.mockClear();
   mockData.current = { ...base, entries: [] };
 });
 
@@ -631,5 +663,184 @@ describe('dismissal — the standing instruction, asked for and said back', () =
     expect(screen.getByText('closed for the holiday')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Count it again'));
     expect(includeDay).toHaveBeenCalledWith('2026-09-02');
+  });
+});
+
+/**
+ * Fourth pass, 2026-09-03 — the two forward doors.
+ *
+ * The founder asked for "couple buttons — that will let them set the
+ * recommendations as goals, or have them see this changes in reports". These
+ * pin what the buttons actually do, and — the load-bearing half — what they
+ * refuse to do: a rule with no measurable metric and a rule with no cutting
+ * both render DARK with the reason, rather than sending a manager to the
+ * wrong figure or the wrong drawing.
+ */
+describe('RecommendationsNext — the two forward doors', () => {
+  it('classifies the controls into carrying out and filing', () => {
+    mockData.current = { ...base, entries: [weekdayEntry()] };
+    draw();
+    const row = screen.getAllByTestId('rc-entry')[0];
+    expect(within(row).getByText('Carry it out')).toBeInTheDocument();
+    expect(within(row).getByText('File it')).toBeInTheDocument();
+  });
+
+  it('opens a goal sheet with the metric, direction and period derived from the rule', () => {
+    mockData.current = { ...base, entries: [weekdayEntry()] };
+    draw();
+    fireEvent.click(screen.getByText('Make this a goal'));
+    expect(loadGoals).toHaveBeenCalled();
+    // wine revenue, at least, over the week the "now" urgency implies
+    expect(screen.getByText('Wine revenue')).toBeInTheDocument();
+    expect(screen.getByLabelText("The goal's period")).toBeInTheDocument();
+    const week = screen.getByRole('radio', { name: 'This week' }) as HTMLInputElement;
+    expect(week.checked).toBe(true);
+    // and it says why THIS metric, rather than leaving the mapping unexplained
+    expect(screen.getByText(/same weekday.s baseline/)).toBeInTheDocument();
+  });
+
+  it('will not invent the target, and refuses to write without one', () => {
+    mockData.current = { ...base, entries: [weekdayEntry()] };
+    draw();
+    fireEvent.click(screen.getByText('Make this a goal'));
+    const target = screen.getByLabelText('Target in $') as HTMLInputElement;
+    expect(target.value).toBe('');
+    expect(screen.getByText(/will not invent the number/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set the goal' })).toBeDisabled();
+    fireEvent.change(target, { target: { value: '0' } });
+    expect(screen.getByRole('button', { name: 'Set the goal' })).toBeDisabled();
+  });
+
+  it('writes the goal with everything the gateway needs, and nothing it did not ask for', async () => {
+    mockData.current = { ...base, entries: [weekdayEntry()] };
+    draw();
+    fireEvent.click(screen.getByText('Make this a goal'));
+    fireEvent.change(screen.getByLabelText('Target in $'), { target: { value: '2500' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Set the goal' }));
+    await waitFor(() => expect(createGoal).toHaveBeenCalled());
+    const sent = createGoal.mock.calls[0][0];
+    expect(sent).toMatchObject({
+      metricKey: 'wine_revenue',
+      targetValue: 2500,
+      direction: 'at_least',
+      period: 'week',
+    });
+    expect(sent.name).toBe('Wednesday wine revenue back to baseline');
+    expect(sent.deadline).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // an actor id is never sent from the client — the JWT is the only witness
+    expect(sent).not.toHaveProperty('createdBy');
+  });
+
+  it('stores a rate as a fraction — 60% typed is 0.6 written', async () => {
+    mockData.current = {
+      ...base,
+      entries: [entry({ ruleKey: 'pairing_promotion', category: 'basket', urgency: 'this_week' })],
+    };
+    draw();
+    fireEvent.click(screen.getByText('Make this a goal'));
+    fireEvent.change(screen.getByLabelText('Target in %'), { target: { value: '60' } });
+    expect(screen.getByText(/Stored as 0\.6/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Set the goal' }));
+    await waitFor(() => expect(createGoal).toHaveBeenCalled());
+    expect(createGoal.mock.calls[0][0].targetValue).toBe(0.6);
+  });
+
+  it("shows the gateway's own refusal rather than a generic failure", async () => {
+    createGoal.mockResolvedValueOnce({
+      ok: false,
+      message: 'targetValue must be > 0',
+      expired: false,
+    });
+    mockData.current = { ...base, entries: [weekdayEntry()] };
+    draw();
+    fireEvent.click(screen.getByText('Make this a goal'));
+    fireEvent.change(screen.getByLabelText('Target in $'), { target: { value: '2500' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Set the goal' }));
+    expect(await screen.findByTestId('rc-goal-refusal')).toHaveTextContent(
+      'targetValue must be > 0',
+    );
+    // and the sheet stays open, so the mistake is fixable
+    expect(screen.getByLabelText('Target in $')).toBeInTheDocument();
+  });
+
+  it('warns when a live goal already exists on the same figure, and says what that match is', () => {
+    mockData.current = {
+      ...base,
+      entries: [weekdayEntry()],
+      goals: [
+        {
+          id: 'g0',
+          name: 'September wine push',
+          metricKey: 'wine_revenue',
+          targetValue: 4000,
+          currentValue: 1200,
+          deadline: '2026-09-30',
+          status: 'active',
+        },
+      ],
+    };
+    draw();
+    fireEvent.click(screen.getByText('Make this a goal'));
+    const dup = screen.getByTestId('rc-goal-duplicate');
+    expect(dup).toHaveTextContent('September wine push');
+    // it never claims provenance it cannot read
+    expect(dup).toHaveTextContent(/match on the figure, not on this entry/);
+  });
+
+  it('an unreadable goal list is said out loud, not treated as "no goals"', () => {
+    mockData.current = { ...base, entries: [weekdayEntry()], goals: null };
+    draw();
+    fireEvent.click(screen.getByText('Make this a goal'));
+    expect(screen.getByText(/goals could not be read/)).toBeInTheDocument();
+    expect(screen.queryByTestId('rc-goal-duplicate')).not.toBeInTheDocument();
+  });
+
+  it('renders the goal button DARK, with the reason, for a rule no metric can measure', () => {
+    mockData.current = { ...base, entries: [entry()] }; // stockout_imminent
+    draw();
+    const dark = screen.getByTestId('rc-goal-dark');
+    expect(dark).toBeDisabled();
+    expect(dark).toHaveAttribute('title', expect.stringContaining('availability event'));
+    expect(screen.getByText(/availability event/)).toBeInTheDocument();
+  });
+
+  it('refuses to make a second goal out of an entry that is already about a goal', () => {
+    mockData.current = {
+      ...base,
+      entries: [
+        entry({ ruleKey: 'goal_behind_abc', category: 'goals', urgency: 'this_week' }),
+      ],
+    };
+    draw();
+    expect(screen.getByTestId('rc-goal-dark')).toBeDisabled();
+    expect(screen.getByText(/double-count the same target/)).toBeInTheDocument();
+  });
+
+  it('sends "see it in reports" to the cutting whose register answers the rule', () => {
+    mockData.current = { ...base, entries: [entry()] }; // stockout_imminent → restock
+    draw();
+    fireEvent.click(screen.getByText('See it in reports'));
+    expect(navigate).toHaveBeenCalledWith(
+      '/reports?cutting=restock&rec=stockout_imminent&from=recommendations',
+    );
+    // and it names the cutting, its basis, and what will actually happen
+    expect(screen.getByText(/What to buy back/)).toBeInTheDocument();
+    expect(screen.getByText(/the same register this rule read/)).toBeInTheDocument();
+    expect(screen.getByText(/Add a cutting/)).toBeInTheDocument();
+  });
+
+  it('renders the reports button DARK, with the reason, where no cutting answers the rule', () => {
+    mockData.current = {
+      ...base,
+      entries: [
+        entry({ ruleKey: 'vendor_concentration', category: 'risk', urgency: 'this_month' }),
+      ],
+    };
+    draw();
+    const dark = screen.getByTestId('rc-cutting-dark');
+    expect(dark).toBeDisabled();
+    expect(screen.getByText(/No cutting answers this one/)).toBeInTheDocument();
+    fireEvent.click(dark);
+    expect(navigate).not.toHaveBeenCalled();
   });
 });

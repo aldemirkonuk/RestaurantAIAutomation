@@ -33,6 +33,20 @@
  * every subsequent run, offers separately to take the day out of the analysis,
  * and says in words what will never be shown and where to undo it.
  *
+ * Fourth pass, 2026-09-03 — the two forward doors. The founder: "maybe add
+ * couple buttons — that will let them set the recommendations as goals, or have
+ * them see this changes in reports (research the possible endpoints it can
+ * reach to give them better insight)." Every entry now carries **Make this a
+ * goal** (a real `POST /analytics/goals/:rid`, with the metric, direction and
+ * period derived from the rule and only the target asked of the manager) and
+ * **See it in reports** (a deep link to the one cutting of the reports sheet's
+ * eleven whose register answers this rule). Both mappings, their bases and
+ * their refusals live in `rec-forward.ts`; a rule that maps to neither renders
+ * the control dark with the reason rather than sending anyone to a drawing
+ * that is not about it. The controls are also now classified in two labelled
+ * rows — **Carry it out** / **File it** — which is the control-side half of
+ * "everything in a categorized classified section".
+ *
  * Transport: everything goes through `apiClient`. The page note's §10 "broken"
  * verdict (six raw `fetch` calls, no bearer, 401 on every request) was written
  * on 2026-08-26 and repaired the same day by `58113e26` on the LEGACY file —
@@ -539,6 +553,10 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                         onRestore={() => void data.restore(e.ruleKey)}
                         onAssign={(m) => assign(e, m)}
                         onWantTeam={data.loadTeam}
+                        goals={data.goals}
+                        onWantGoals={data.loadGoals}
+                        onMakeGoal={data.createGoal}
+                        onSeeInReports={(href) => navigate(href)}
                       />
                     ))}
                   </div>

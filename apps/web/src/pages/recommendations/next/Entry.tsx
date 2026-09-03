@@ -46,10 +46,24 @@ import {
   urgencyLabel,
   type SuppressionScope,
 } from './rec-format';
+import {
+  CUTTING_BASIS_WORDS,
+  PERIOD_LABEL,
+  UNIT_SUFFIX,
+  cuttingFor,
+  deadlineFor,
+  goalOfferFor,
+  landingWords,
+  toStored,
+  type GoalPeriod,
+  type GoalPlan,
+} from './rec-forward';
 import type {
   DismissChoice,
   EntryVM,
   ExclusionsVM,
+  GoalWrite,
+  GoalsVM,
   Leaf,
   TeamOption,
 } from './useRecommendationsNextData';
@@ -97,6 +111,18 @@ export interface EntryProps {
   onRestore: () => void;
   onAssign: (member: TeamOption | null) => void;
   onWantTeam: () => void;
+  /** The tenant's live goals — undefined not asked, null unreadable, [] none. */
+  goals: GoalsVM;
+  onWantGoals: () => void;
+  onMakeGoal: (input: {
+    name: string;
+    metricKey: string;
+    targetValue: number;
+    direction: 'at_least' | 'at_most';
+    period: string;
+    deadline: string;
+  }) => Promise<GoalWrite>;
+  onSeeInReports: (href: string) => void;
 }
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
@@ -154,10 +180,201 @@ function scopesFor(e: EntryVM): SuppressionScope[] {
   return SCOPE_ORDER.filter((s) => kept.has(s));
 }
 
+/**
+ * The goal sheet — the second of the page's two "asks before it acts" panels.
+ *
+ * A goal is a standing target a house is later judged against, so, like the
+ * dismissal sheet, it states everything it is about to write BEFORE it writes
+ * it: the metric and why that metric, the direction, the period, the deadline,
+ * and the fact that the deadline can never be changed afterwards. The one
+ * field it will not fill is the target — the rule states a gap, not a number a
+ * house should be held to, and inventing one would be exactly the fabricated
+ * figure this page exists to refuse.
+ */
+function GoalSheet({
+  plan,
+  goals,
+  onCancel,
+  onWrite,
+}: {
+  plan: GoalPlan;
+  goals: GoalsVM;
+  onCancel: () => void;
+  onWrite: (input: {
+    name: string;
+    metricKey: string;
+    targetValue: number;
+    direction: 'at_least' | 'at_most';
+    period: string;
+    deadline: string;
+  }) => Promise<GoalWrite>;
+}) {
+  const [name, setName] = useState(plan.name);
+  const [typed, setTyped] = useState('');
+  const [period, setPeriod] = useState<GoalPeriod>(plan.period);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const deadline = useMemo(() => deadlineFor(period), [period]);
+  const value = Number(typed);
+  const usable = typed.trim() !== '' && Number.isFinite(value) && value > 0;
+
+  /**
+   * "You already track this figure" — the strongest true statement available.
+   * `analytics_goals` records no provenance, so the page can never say "this
+   * recommendation is already a goal"; it can say the house has a live target
+   * on the same metric, which is what stops a duplicate.
+   */
+  const sameMetric = Array.isArray(goals)
+    ? goals.filter((g) => g.metricKey === plan.metricKey)
+    : [];
+
+  return (
+    <div className="rc-menu rc-sheet" role="group" aria-label="Make this a goal">
+      <p className="rc-serif rc-sheet-title">Make this a goal</p>
+
+      <div className="rc-sheet-block">
+        <span className="rc-micro">Held on</span>
+        <p className="rc-plain">
+          <span className="rc-num">{plan.metricLabel}</span> ·{' '}
+          {plan.direction === 'at_most' ? 'at most' : 'at least'} your target
+        </p>
+        <p className="rc-why">{plan.basis}</p>
+      </div>
+
+      <div className="rc-sheet-block">
+        <label className="rc-field">
+          <span className="rc-micro">What to call it</span>
+          <input
+            type="text"
+            value={name}
+            aria-label="Goal name"
+            onChange={(ev) => setName(ev.target.value)}
+          />
+        </label>
+      </div>
+
+      <div className="rc-sheet-block">
+        <label className="rc-field">
+          <span className="rc-micro">
+            The target ({UNIT_SUFFIX[plan.unit]})
+          </span>
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="any"
+            value={typed}
+            aria-label={`Target in ${UNIT_SUFFIX[plan.unit]}`}
+            onChange={(ev) => {
+              setTyped(ev.target.value);
+              setRefusal(null);
+            }}
+          />
+        </label>
+        <p className="rc-why">
+          The rule states a gap, not a target {EM} Mudavym will not invent the
+          number your house is held to.
+          {plan.unit === 'percent' && usable
+            ? ` Stored as ${toStored('percent', value)}, because the engine keeps a rate as a fraction.`
+            : ''}
+        </p>
+      </div>
+
+      <div className="rc-sheet-block">
+        <span className="rc-micro">Over</span>
+        <div className="rc-scopes" role="radiogroup" aria-label="The goal's period">
+          {(['week', 'month'] as GoalPeriod[]).map((p) => (
+            <label key={p} className="rc-scope">
+              <input
+                type="radio"
+                name={`period-${plan.metricKey}`}
+                value={p}
+                checked={period === p}
+                onChange={() => setPeriod(p)}
+              />
+              <span>{PERIOD_LABEL[p]}</span>
+            </label>
+          ))}
+        </div>
+        <p className="rc-why">
+          Due <span className="rc-num">{fmtDay(deadline)}</span>. A deadline cannot be
+          changed afterwards {EM} the gateway’s only goal write after creation moves its
+          status, nothing else. The period the entry suggested came from its urgency;
+          “tonight” is a window for acting, not one a figure can be read over.
+        </p>
+      </div>
+
+      <div className="rc-sheet-block">
+        {goals === undefined ? (
+          <p className="rc-why">Reading your goals…</p>
+        ) : goals === null ? (
+          <p className="rc-why" role="status">
+            Your goals could not be read, so this may duplicate one you already have.
+            The write below still works.
+          </p>
+        ) : sameMetric.length === 0 ? (
+          <p className="rc-why">
+            No live goal is held on {plan.metricLabel} today.
+          </p>
+        ) : (
+          <p className="rc-why" data-testid="rc-goal-duplicate">
+            You already hold {sameMetric.length === 1 ? 'a goal' : `${sameMetric.length} goals`} on{' '}
+            {plan.metricLabel}: {sameMetric.map((g) => `“${g.name}”`).join(', ')}. Nothing
+            records which recommendation a goal came from, so this is a match on the
+            figure, not on this entry.
+          </p>
+        )}
+      </div>
+
+      {refusal && (
+        <p className="rc-said" role="alert" data-testid="rc-goal-refusal">
+          {refusal}
+        </p>
+      )}
+
+      <div className="rc-row">
+        <button
+          type="button"
+          className="rc-act"
+          disabled={!usable || busy}
+          onClick={async () => {
+            if (!usable) return;
+            setBusy(true);
+            const res = await onWrite({
+              name: name.trim() || plan.name,
+              metricKey: plan.metricKey,
+              targetValue: toStored(plan.unit, value),
+              direction: plan.direction,
+              period,
+              deadline,
+            });
+            setBusy(false);
+            if (!res.ok) setRefusal(res.message);
+          }}
+        >
+          {busy ? 'Setting it…' : 'Set the goal'}
+        </button>
+        <Quiet onClick={onCancel}>Not now</Quiet>
+        {!usable && (
+          <span className="rc-said">
+            Type a target above {EM} the gateway refuses anything at or below zero.
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Entry(props: EntryProps) {
   const { entry: e, leaf, focused, selected, expanded, team } = props;
-  const [menu, setMenu] = useState<'dismiss' | 'snooze' | 'assign' | null>(null);
+  const [menu, setMenu] = useState<'dismiss' | 'snooze' | 'assign' | 'goal' | null>(null);
   const rootRef = useRef<HTMLElement | null>(null);
+
+  /* ── the two forward doors, resolved from the rule alone ──────────────── */
+  const forward = { ruleKey: e.ruleKey, category: e.category, urgency: e.urgency, subject: e.subject };
+  const goalOffer = useMemo(() => goalOfferFor(forward), [e.ruleKey, e.urgency, e.subject]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cutting = useMemo(() => cuttingFor(forward), [e.ruleKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── the dismissal sheet's own state ──────────────────────────────────── */
   const scopes = useMemo(() => scopesFor(e), [e]);
@@ -270,13 +487,62 @@ export default function Entry(props: EntryProps) {
           </p>
         )}
 
-        {/* ── controls ──────────────────────────────────────────────────── */}
-        <div className="rc-controls">
-          {live ? (
-            <>
+        {/*
+          ── controls, classified by what they DO ─────────────────────────
+          The founder, fourth pass: "we need everything in a categorized
+          classified section in order for people to understand what to do as
+          action". The register above classifies the ENTRIES; this classifies
+          the CONTROLS, which is the other half of the same request. Two rows,
+          each labelled: what carries the work forward, and what files the
+          entry. A dismissal and a deep link were previously the same shape of
+          button sitting side by side.
+        */}
+        {live ? (
+          <>
+            <div className="rc-controls rc-controls-do">
+              <span className="rc-micro rc-ctl-label">Carry it out</span>
               <button type="button" className="rc-act" onClick={props.onAct}>
                 {e.hand.label} →
               </button>
+              {goalOffer.kind === 'plan' ? (
+                <Quiet
+                  onClick={() => {
+                    props.onWantGoals();
+                    setMenu(menu === 'goal' ? null : 'goal');
+                  }}
+                  pressed={menu === 'goal'}
+                >
+                  Make this a goal
+                </Quiet>
+              ) : (
+                <button
+                  type="button"
+                  className="rc-dark rc-dark-inline"
+                  disabled
+                  title={goalOffer.why}
+                  data-testid="rc-goal-dark"
+                >
+                  Make this a goal
+                </button>
+              )}
+              {cutting.kind === 'cutting' ? (
+                <Quiet onClick={() => props.onSeeInReports(cutting.link.href)}>
+                  See it in reports
+                </Quiet>
+              ) : (
+                <button
+                  type="button"
+                  className="rc-dark rc-dark-inline"
+                  disabled
+                  title={cutting.why}
+                  data-testid="rc-cutting-dark"
+                >
+                  See it in reports
+                </button>
+              )}
+            </div>
+            <div className="rc-controls rc-controls-file">
+              <span className="rc-micro rc-ctl-label">File it</span>
               <Quiet onClick={props.onToggleExpand}>
                 {expanded ? 'Hide the working' : 'The working'}
               </Quiet>
@@ -288,16 +554,45 @@ export default function Entry(props: EntryProps) {
               <Quiet onClick={props.onToggleSelect} pressed={selected}>
                 {selected ? 'Selected' : 'Select'}
               </Quiet>
-            </>
-          ) : (
-            <>
-              <Quiet onClick={props.onToggleExpand}>
-                {expanded ? 'Hide the working' : 'The working'}
-              </Quiet>
-              <Quiet onClick={props.onRestore}>Return it to the book</Quiet>
-            </>
-          )}
-        </div>
+            </div>
+          </>
+        ) : (
+          <div className="rc-controls">
+            <Quiet onClick={props.onToggleExpand}>
+              {expanded ? 'Hide the working' : 'The working'}
+            </Quiet>
+            <Quiet onClick={props.onRestore}>Return it to the book</Quiet>
+          </div>
+        )}
+
+        {/* the two forward doors, said in words under the controls */}
+        {live && (
+          <p className="rc-said rc-forward-note">
+            {goalOffer.kind === 'plan'
+              ? `A goal from this entry is held on ${goalOffer.plan.metricLabel}, ${
+                  goalOffer.plan.direction === 'at_most' ? 'at most' : 'at least'
+                }.`
+              : goalOffer.why}{' '}
+            {cutting.kind === 'cutting'
+              ? `Reports draws it as “${cutting.link.title}” — ${
+                  CUTTING_BASIS_WORDS[cutting.link.basis]
+                }. ${landingWords(cutting.link)}`
+              : cutting.why}
+          </p>
+        )}
+
+        {menu === 'goal' && goalOffer.kind === 'plan' && (
+          <GoalSheet
+            plan={goalOffer.plan}
+            goals={props.goals}
+            onCancel={() => setMenu(null)}
+            onWrite={async (input) => {
+              const res = await props.onMakeGoal(input);
+              if (res.ok) setMenu(null);
+              return res;
+            }}
+          />
+        )}
 
         {menu === 'dismiss' && (
           <div className="rc-menu rc-sheet" role="group" aria-label="Dismiss this entry">

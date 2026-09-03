@@ -114,6 +114,36 @@ export interface TeamOption {
   name: string;
 }
 
+/**
+ * A goal as `analytics_goals` holds it (fourth pass, 2026-09-03).
+ *
+ * Read lazily — only when someone opens a goal sheet — for the one honest use
+ * the page has for it: telling a manager that a goal on this metric ALREADY
+ * exists before they set a second one. It is not a provenance link, because
+ * there is no provenance to read: `analytics_goals` has no column that records
+ * which recommendation a goal came from (baseline schema,
+ * `20260805000000_baseline_from_production.sql:2157-2172`), so the page matches
+ * on `metric_key` and says exactly that — "you already track this figure",
+ * never "this recommendation is already a goal".
+ */
+export interface GoalRow {
+  id: string;
+  name: string;
+  metricKey: string;
+  targetValue: number | null;
+  currentValue: number | null;
+  deadline: string | null;
+  status: string;
+}
+
+/** undefined = never asked · null = the read failed · [] = read, and empty. */
+export type GoalsVM = GoalRow[] | null | undefined;
+
+/** What a goal write answered. A failure carries the gateway's own sentence. */
+export type GoalWrite =
+  | { ok: true; goal: GoalRow }
+  | { ok: false; message: string; expired: boolean };
+
 /** Days the manager has ruled out of every baseline. */
 export interface DayExclusion {
   businessDate: string;
@@ -174,6 +204,23 @@ function toEntry(raw: Record<string, unknown>, fallbackStatus: Disposition): Ent
 }
 
 /**
+ * One `analytics_goals` row, read defensively — snake_case on the wire, and
+ * `numeric(14,2)` arrives as a string from PostgREST often enough that `num()`
+ * is the only safe reader. A figure that will not parse is null, never 0.
+ */
+function toGoal(raw: Record<string, unknown>): GoalRow {
+  return {
+    id: String(raw.id ?? ''),
+    name: typeof raw.name === 'string' ? raw.name : 'Untitled goal',
+    metricKey: typeof raw.metric_key === 'string' ? raw.metric_key : '',
+    targetValue: num(raw.target_value),
+    currentValue: num(raw.current_value),
+    deadline: typeof raw.deadline === 'string' ? raw.deadline : null,
+    status: typeof raw.status === 'string' ? raw.status : 'active',
+  };
+}
+
+/**
  * The gateway's suppression block, read defensively. The page NEVER builds a
  * key — "the same insight" has to mean one thing on both sides of the wire —
  * so an entry that arrives without one gets `null` and the dismissal sheet
@@ -217,6 +264,18 @@ export interface RecommendationsData {
   team: TeamOption[] | null | undefined;
   teamFailed: boolean;
   loadTeam: () => void;
+  /** undefined = not asked yet; null = the read failed; [] = none set. */
+  goals: GoalsVM;
+  loadGoals: () => void;
+  /** Writes one goal. Resolves with the gateway's own refusal on a 400. */
+  createGoal: (input: {
+    name: string;
+    metricKey: string;
+    targetValue: number;
+    direction: 'at_least' | 'at_most';
+    period: string;
+    deadline: string;
+  }) => Promise<GoalWrite>;
   /** The last write the page performed, said in words. */
   note: string | null;
   undo: { ruleKey: string; label: string } | null;
@@ -252,6 +311,7 @@ export function useRecommendationsNextData(): RecommendationsData {
   const [suppressionsReadable, setSuppressionsReadable] = useState(true);
   const [exclusions, setExclusions] = useState<ExclusionsVM | undefined>(undefined);
   const [team, setTeam] = useState<TeamOption[] | null | undefined>(undefined);
+  const [goals, setGoals] = useState<GoalsVM>(undefined);
   const [note, setNote] = useState<string | null>(null);
   const [undo, setUndo] = useState<{ ruleKey: string; label: string } | null>(null);
   const seq = useRef(0);
@@ -428,6 +488,83 @@ export function useRecommendationsNextData(): RecommendationsData {
       .catch(() => setTeam(null));
   }, [rid, team]);
 
+  /* ── goals (fourth pass) ─────────────────────────────────────────────── */
+
+  // A restaurant switch invalidates the goal list the same way it invalidates
+  // the book: goals are per tenant, and showing the previous house's targets
+  // beside this house's entries would be the wrong-tenant read this page's
+  // sequence numbers exist to prevent.
+  useEffect(() => {
+    setGoals(undefined);
+  }, [rid]);
+
+  /**
+   * The goal list, read only when a goal sheet is opened.
+   *
+   * `status=active` on purpose: an archived goal is not a duplicate anyone
+   * needs warning about, and the question this read answers is only ever "am I
+   * about to set a second live target on this figure?".
+   */
+  const loadGoals = useCallback(() => {
+    if (!rid || goals !== undefined) return;
+    setGoals(null);
+    apiClient
+      .get<Record<string, unknown>[]>(`/analytics/goals/${rid}?status=active`)
+      .then(({ data }) => setGoals(Array.isArray(data) ? data.map(toGoal) : []))
+      .catch(() => setGoals(null));
+  }, [rid, goals]);
+
+  /**
+   * Write one goal.
+   *
+   * The gateway refuses two ways and says why in plain English — 400
+   * "Unsupported metric 'x'. Supported: …" and 400 "targetValue must be > 0"
+   * (`goals.service.ts` `createGoal`, both curl-verified against :4000 on
+   * 2026-09-03). Those sentences are handed straight back to the manager
+   * rather than flattened into "could not save": a refusal that names the
+   * reason is the difference between a fixable mistake and a dead button.
+   *
+   * `createdBy` is deliberately NOT sent. The controller passes the request
+   * body to the service unfiltered (`analytics.controller.ts:507`), so a
+   * client-supplied actor id would be an unverified claim written to a stored
+   * record; the JWT is the only thing that knows who this is, and nothing on
+   * this path reads it.
+   */
+  const createGoal = useCallback(
+    async (input: {
+      name: string;
+      metricKey: string;
+      targetValue: number;
+      direction: 'at_least' | 'at_most';
+      period: string;
+      deadline: string;
+    }): Promise<GoalWrite> => {
+      if (!rid)
+        return { ok: false, message: 'no restaurant is selected', expired: false };
+      try {
+        const { data } = await apiClient.post<Record<string, unknown>>(
+          `/analytics/goals/${rid}`,
+          input,
+        );
+        const goal = toGoal(data ?? {});
+        // Keep the list true without a re-read: the sheet's "you already track
+        // this" line must be right the moment a second entry opens.
+        setGoals((prev) => (Array.isArray(prev) ? [goal, ...prev] : prev));
+        say(`Goal set: “${goal.name}”. It is read in Reports, against your own numbers.`);
+        return { ok: true, goal };
+      } catch (err) {
+        const f = failureOf(err);
+        say(
+          f.expired
+            ? 'Your session has expired — no goal was set. Sign in again.'
+            : `No goal was set (${f.message}).`,
+        );
+        return { ok: false, message: f.message, expired: f.expired };
+      }
+    },
+    [rid, say],
+  );
+
   const offerUndo = useCallback((ruleKey: string, label: string) => {
     setUndo({ ruleKey, label });
     if (undoTimer.current) clearTimeout(undoTimer.current);
@@ -598,6 +735,9 @@ export function useRecommendationsNextData(): RecommendationsData {
     team,
     teamFailed: team === null,
     loadTeam,
+    goals,
+    loadGoals,
+    createGoal,
     note,
     undo,
     clearUndo: () => setUndo(null),

@@ -158,7 +158,38 @@
 
 /* ── controls: the die pressed dry ───────────────────────────────────────── */
 
-.rc-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.rc-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+/*
+  Two classified rows (fourth pass). The label is a fixed-width gutter on a wide
+  screen so "Carry it out" and "File it" line up and the two rows read as two
+  bands rather than one wrapped strip; below 640px it becomes a heading over its
+  own row instead of stealing width from the buttons.
+*/
+.rc-ctl-label { color: var(--ink-4, #665d50); }
+.rc-controls-do { margin-top: 12px; }
+.rc-controls-file { margin-top: 6px; }
+.rc-controls-file .rc-ctl-label { opacity: 0.85; }
+@media (min-width: 640px) {
+  .rc-controls-do .rc-ctl-label,
+  .rc-controls-file .rc-ctl-label { flex: 0 0 74px; }
+}
+@media (max-width: 639px) {
+  .rc-controls-do .rc-ctl-label,
+  .rc-controls-file .rc-ctl-label { flex: 1 0 100%; }
+}
+.rc-forward-note { margin-top: 7px; line-height: 1.5; }
+/* the goal sheet's two typed fields */
+.rc-field { display: block; }
+.rc-field input {
+  display: block; width: 100%; max-width: 320px; margin-top: 4px;
+  font: inherit; font-size: 12.5px; padding: 5px 8px; border-radius: 7px;
+  border: 1px solid var(--paper-2, #eae4d8);
+  background: var(--paper-0, #faf7f1); color: var(--ink-1, #211c16);
+}
+.rc-field input:focus-visible {
+  outline: 2px solid var(--seal, #1a5e6b); outline-offset: 2px;
+  border-color: var(--seal-ring, rgba(26, 94, 107, 0.32));
+}
 .rc-quiet {
   font: inherit; font-size: 11.5px; padding: 4px 9px; border-radius: 7px;
   border: 1px solid var(--paper-2, #eae4d8); background: transparent;

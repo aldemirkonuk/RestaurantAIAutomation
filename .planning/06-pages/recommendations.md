@@ -26,6 +26,8 @@ links: ["[[PAGE-CONTRACT]]", "[[orders]]", "[[promotions]]", "[[reports]]", "[[p
 - **Enable more insight types** / **Open Reports** (empty state) → [[reports]] `/reports`
 - **Dismiss / Snooze / Assign / Pin** → API `POST /api/v1/analytics/recommendations/:restaurantId/action`
 - **Copy link** → clipboard deep link
+- **Make this a goal** (redesign, per entry) → API `POST /api/v1/analytics/goals/:restaurantId`; the goal is then read in [[reports]]
+- **See it in reports** (redesign, per entry) → [[reports]] `/reports?cutting=<analysisId>&rec=<ruleKey>&from=recommendations`
 
 ## 1. Purpose
 
@@ -83,6 +85,18 @@ history, and assignment to team members (UX paths NEW-284…NEW-308, header comm
   builds. Hiding a sentence and correcting an average are different acts.
 - **The head prints what a dismissal withheld** — "3 entries were withheld because you
   dismissed them" — and says so plainly when the dismissal store could not be read at all.
+- **Two forward doors on every entry** (fourth pass, 2026-09-03). **Make this a goal** writes a
+  real goal — `POST /analytics/goals/:rid` — with the metric, the direction, the period and the
+  name derived from the rule that fired and **only the target asked of the manager**; nine of the
+  thirteen rules map to one of the gateway's six metrics, three map to none and render the control
+  disabled with the reason, and the `goal_behind_*` family refuses because it already *is* a goal.
+  **See it in reports** deep-links to the one cutting of the reports sheet's eleven whose register
+  answers this rule, saying whether that is the same register the rule read or a different one that
+  plots the same quantity; four rules have no cutting and say so. Mapping, bases and refusals:
+  `apps/web/src/pages/recommendations/next/rec-forward.ts`.
+- **The controls are themselves classified** into two labelled rows — **Carry it out** (act · make
+  a goal · see it in reports) and **File it** (the working · snooze · dismiss · pin · select) —
+  the control-side half of the founder's "everything in a categorized classified section".
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_recommendations`)
 
@@ -100,6 +114,11 @@ this list is the note-side index (ADR 0044 §2).
 (Second pass, 2026-09-03: the dismissal sheet adds **no** motion — it is the one
 control that stores a standing instruction, and a panel that slides while someone
 decides what to silence is asking them to hurry. See MOTIONS.md §"Second pass".)
+
+(Fourth pass, 2026-09-03: the goal sheet adds **no** motion either, for the same reason —
+it is the page's second standing instruction, and a target is a number a house is judged
+against afterwards. The two classified control rows add none: they are a layout, and a
+label that animates into place is a label that was not there when the eye arrived.)
 
 Deliberate non-motions: the seal is rationed to ruling off (every other action is the
 same die pressed dry); a dismissed entry leaves at once and the undo line — not an
@@ -302,6 +321,112 @@ curl-proven. And `analytics_day_exclusions` does not exist in the database until
 migration merges, so the exclusion checkbox is disabled in the running app today; that is
 rendered as the reason, not hidden.
 
+### Fourth pass, 2026-09-03 — the two forward doors, and the shape question re-opened
+
+**What the founder asked, verbatim.** *"I need your help (I said rework new design but not sure),
+what would you select I also liked the day strip a lot. But I need your expertise maybe create 2-3
+more sketch to understand behaviour and what would work the best. Especially some brainstorming
+ideas — a calendar strip that we can select and see that is highly advanced and elegant looking, or
+sth else. The need is that we need to everything in a categorized classified section in order for
+people to understand what to do as action"* and *"maybe add couple buttons — that will let them set
+the recommendations as goals, or have them see this changes in reports (research the possible
+endpoints it can reach to give them better insight)."*
+
+**What was built.** The two buttons, for real, on every standing entry — nothing about the page's
+shape was changed, because the shape is the founder's fork and the sketches are how it is put to him.
+
+| Change | Where |
+|---|---|
+| The rule → goal-metric map (9 of 13 rules), the three refusals, the goal-behind refusal, the period and deadline derivation, and the percent→fraction conversion | **new** `apps/web/src/pages/recommendations/next/rec-forward.ts` |
+| The rule → reports-cutting map (9 rules), its `same-register` / `same-question` basis, the four "no cutting answers this" refusals, and which cuttings lie on an unarranged sheet | same file |
+| `goals` / `loadGoals` / `createGoal` — a lazy per-tenant read of `GET /analytics/goals/:rid?status=active` and the `POST` write, with the gateway's own 400 handed back verbatim | `useRecommendationsNextData.ts` |
+| The goal sheet (metric · basis · editable name · required target · period radio · derived deadline · duplicate warning), the two classified control rows, and the forward sentence under them | `Entry.tsx` (`GoalSheet`), `RecommendationsNext.tsx`, `rec-next.css` |
+| 29 new tests: 12 on the mappings, 12 on the two buttons' render contract, 5 on the goal transport | `rec-forward.test.ts`, `RecommendationsNext.test.tsx`, `useRecommendationsNextData.test.tsx` |
+
+**The goal mapping, and its basis.** A goal is `{name, metricKey, targetValue, deadline, period,
+direction}` (`analytics.controller.ts:497`, `goals.service.ts` `createGoal`). Everything except the
+target is derived from the rule that fired; the target is typed, because **a rule states a gap, not
+a number a house should be held to**, and `EntryVM` carries the observation as a formatted sentence,
+so any figure scraped back out of it would be invented.
+
+| rule | metric | direction | why that metric |
+|---|---|---|---|
+| `sales_below_weekday_baseline` | `wine_revenue` | at least | the rule compares a day's wine sales with the same weekday's baseline |
+| `weekly_demand_slide` | `wine_revenue` | at least | the same quantity at a longer grain |
+| `weekday_gap` | `wine_revenue` | at least | it prescribes an offer on the weakest weekday |
+| `dead_stock_capital` | `bottles_sold` | at least | the act is bottles leaving the shelf; the capital figure is not a supported metric |
+| `plowhorse_repricing` | `wine_revenue` | at least | a price rise at constant volume lands in revenue |
+| `puzzle_activation` | `bottles_sold` | at least | the by-the-glass test is whether the bottles move |
+| `spend_acceleration` | `purchase_spend` | **at most** | the same number the rule read — the one goal here that counts down |
+| `staff_spread` | `avg_check` | at least | the insight behind it is `waiter.avg_check.peer_rank` (`insight-generator.service.ts:1134`) |
+| `pairing_promotion` | `wine_attach_rate` | at least | a pairing at the table is an attach-rate move |
+| `stockout_imminent` · `vendor_concentration` · `revenue_concentration` | **none** | — | availability, an HHI and a Gini are not among the six figures `SUPPORTED_METRICS` holds (`goals.service.ts:32-70`) |
+| `goal_behind_*` | **none** | — | it already *is* a goal; a second one would double-count the target |
+
+Period comes from urgency: `this_month` → `month`, everything else → `week`. `now` is deliberately
+**not** mapped to `day` — "tonight" is a window for acting, not one a figure can be read over — and
+the manager can widen week→month in the sheet. The deadline is +7 or +30 days and is **stated before
+the write** because it can never be changed afterwards: the gateway's only post-creation goal write
+is `PUT …/status` (`analytics.controller.ts:536`). `wine_attach_rate` is stored as a **fraction**
+(`goals.service.ts:387-398`), so a typed 60% is written as `0.6` and the sheet says so.
+
+**The reports mapping, and its basis.** The reports sheet lays down eleven analyses
+(`apps/web/src/pages/reports/next/rp-catalogue.tsx`); each rule is sent to the one whose register
+answers it, labelled `same-register` (the cutting reads the endpoint the rule read) or
+`same-question` (a different register that plots the quantity the rule names):
+
+| rule | cutting | endpoint | basis |
+|---|---|---|---|
+| `weekday_gap` | The week's shape | `/analytics/seasonality` | same register |
+| `sales_below_weekday_baseline` | The week's shape | `/analytics/seasonality` | same question |
+| `weekly_demand_slide` | Through the till | `/analytics/pos-revenue` | same question |
+| `stockout_imminent` | What to buy back | `/analytics/inventory-science` | same register |
+| `dead_stock_capital` | Figures of record | `/analytics/financial` | same register |
+| `plowhorse_repricing` · `puzzle_activation` | Margin against movement | `/analytics/menu-engineering` | same register |
+| `spend_acceleration` | Spend pacing | `/analytics/cashflow` | same register |
+| `staff_spread` | Who served it | `/analytics/waiters` | same question |
+| `vendor_concentration` · `revenue_concentration` | **none** | `/analytics/risk` is not one of the eleven | — |
+| `pairing_promotion` | **none** | basket affinity reaches the sheet only as a sentence inside "The reading" | — |
+| `goal_behind_*` | **none** | goal progress is not one of the eleven | — |
+
+Two of the mapped cuttings (`restock`, `service`) are **not on an unarranged sheet**
+(`rp-sheet.ts` `DEFAULT_ON`), and the entry says "add it with Add a cutting" rather than implying it
+will be there. The link is `/reports?cutting=<id>&rec=<ruleKey>&from=recommendations`; **the reports
+page does not read that parameter yet** — grepped 2026-09-03, no `useSearchParams` and no
+`URLSearchParams` anywhere under `apps/web/src/pages/reports/` — so the entry says the sheet does not
+open on a named cutting. §13.18.
+
+**Verified, not asserted.** Against the running local gateway on :4000 for `550e8400-…`:
+
+| Checked | Result |
+|---|---|
+| `GET /analytics/goals/:rid?status=all` | 200, real rows |
+| `POST /analytics/goals/:rid` with a derived body | **201**, row returned with `baseline_value` computed |
+| `POST` with `metricKey: "nope"` | **400** `Unsupported metric 'nope'. Supported: wine_revenue, bottles_sold, …` |
+| `POST` with `targetValue: 0` | **400** `targetValue must be > 0` |
+| `GET …/:goalId/progress` | 200, with pace, `onTrack` and `projectedAtDeadline` |
+| the probe goal | archived via `PUT …/status`, so the tenant is left as found apart from one archived row |
+
+The mapping tests were run against a mutated control (the `spend_acceleration` direction flipped to
+`at_least`, the percent conversion made an identity, one refusal removed): **4 of 29 fail** on it.
+No web dev server was running in this worktree and the brief forbids starting one, so the page-level
+evidence is the render contract, not a screenshot; the three sketches are screenshots of the shapes.
+
+**The shape question, and the recommendation.** Three new directions are drawn full of data in
+`.planning/sketches/094-recommendations-directions-2/`: **094a the calendar strip** (28 days across
+the top, what fired · what falls due · what it is worth · which days have **no records at all**,
+hatched not zeroed; select a day and the book becomes that day; hover an entry and a hairline draws
+its life back to the day it was first shown; double-click a day to strike it from the analysis),
+**094b the action docket** (filed by the act — order it · price it · move stock · call a vendor ·
+brief the floor — each with count, money at stake and one line on what doing the section looks like;
+the founder's fifth heading *change a rule* drawn dark because nothing is behind it), and **094c the
+case ledger** (opened → acted → watching → closed-with-a-result, plus *refused* as a state that keeps
+its reason; a goal is the instrument that moves a case into watching).
+
+The recommendation is **094b as the spine, 094a above it as a ribbon rather than the axis, 094c as
+the roadmap** — the argument and its strongest counter are on the sketch index. Nothing of it is
+built: the founder decides.
+
 ## 2. Entry
 
 **Not in the sidebar.** Entries are:
@@ -322,8 +447,11 @@ rendered as the reason, not hidden.
   `Entry.tsx` (one ruled entry + the working), `useRecommendationsNextData.ts`
   (every read/write through `apiClient`), `rec-format.ts` (the three axes + the
   failure shape), `rec-next.css` (all styling — Mudavym tokens only, with the
-  motion tokens written out at the bottom), `MOTIONS.md`, and two test files
-  (**38 tests** after the second pass). 2,474 lines of source + 853 of tests — well past
+  motion tokens written out at the bottom), **new (fourth pass)** `rec-forward.ts` (the
+  rule → goal-metric and rule → reports-cutting maps, their bases and their refusals),
+  `MOTIONS.md`, and three test files
+  (**67 tests** after the fourth pass: 41 render, 14 transport, 12 mapping).
+  3,384 lines of source + 1,399 of tests — well past
   the brief's ~900-line guideline, and disclosed rather than hidden: roughly a third of the
   source is the honesty prose (four real states per read, three failure sentences, the
   disclosure lines on every disabled control and every scope choice), and it is the part of
@@ -338,6 +466,15 @@ rendered as the reason, not hidden.
   `recommendation-suppression.spec.ts` (15), `insights/insight-cache-version.spec.ts` (9).
   Migrations `supabase/migrations/20260903091000_days_the_engine_must_not_count.sql` and
   `20260903130000_insight_rows_carry_their_arithmetic.sql`.
+- Gateway, fourth pass: **none.** The goal write needs `{name, metricKey, targetValue,
+  deadline, period, direction}` and `GoalsService.createGoal` already takes exactly those
+  (`goals.service.ts` `createGoal`), so nothing in the goals module was edited and no
+  migration was written. What the module *lacks* — provenance, and a metric read that can
+  fail out loud — is filed in §9 and §13 rather than built.
+- Sketches, fourth pass: `.planning/sketches/094-recommendations-directions-2/` —
+  `index.html` (the fork, the recommendation and its counter-argument, the competitive
+  sources), `calendar-strip.html`, `action-docket.html`, `case-ledger.html`. Screenshots
+  only; nothing there is wired.
 
 ## 4. Endpoints
 
@@ -359,8 +496,25 @@ Raw `fetch` against `${VITE_API_GATEWAY_URL}/api/v1/analytics/recommendations`
 | GET | `/analytics/exclusions/:rid` | **new 2026-09-03** — the days ruled out of every baseline, with a `readable` flag; `useRecommendationsNextData.ts` tenant effect |
 | POST | `/analytics/exclusions/:rid` | **new** — `{businessDate, reason}`; `excludeDay()` |
 | DELETE | `/analytics/exclusions/:rid/:businessDate` | **new** — `includeDay()`, "Count it again" |
+| GET | `/analytics/goals/:rid?status=active` | **new 2026-09-03** — the goal sheet's "you already hold a goal on this figure" line; lazy, on first sheet open; `analytics.controller.ts:485` |
+| POST | `/analytics/goals/:rid` | **new** — *Make this a goal*; body `{name, metricKey, targetValue, deadline, period, direction}`, **no `createdBy`** (the controller passes the body through unfiltered at `:507`, so a client-supplied actor id would be an unverified claim); `analytics.controller.ts:497` |
 
-Same six endpoints in the Mudavym build, all through `apiClient`, all keyed by
+**Endpoints researched for "see it in reports", and what each would give.** The founder asked which
+endpoints this page can reach "to give them better insight". The reports sheet's eleven cuttings are
+the shortlist, because each is already a rendered answer rather than a raw payload:
+`/analytics/insights/:rid` (The reading) · `/analytics/pos-revenue/:rid` (Through the till) ·
+`/analytics/cashflow/:rid` (Spend pacing) · `/analytics/seasonality/:rid` (The week's shape) ·
+`/analytics/forecast/:rid` (What's coming) · `/analytics/menu-engineering/:rid` (Margin against
+movement) · `/analytics/financial/:rid` (Figures of record) · `/analytics/table-performance/:rid`
+(The room) · `/analytics/waiters/:rid` (Who served it) · `/analytics/inventory-science/:rid` (What to
+buy back). Nine rules reach one of them. Three further endpoints exist and are **deliberately not
+linked**: `/analytics/risk/:rid` (HHI/Gini — real, but no cutting draws it, so a link would land on a
+sheet that cannot show it), `/analytics/goals/:rid/:goalId/progress` (real, and the natural target for
+the `goal_behind_*` family — §13.19), and `POST /analytics/consult/:rid` (the toggle-gated LLM layer, which
+this page will not send anyone to: the whole claim of `/recommendations` is that no model wrote its
+sentences).
+
+Same six read endpoints in the Mudavym build, all through `apiClient`, all keyed by
 `activeRestaurantId`: `useRecommendationsNextData.ts` — feed and leaves in `load()`,
 digest in the tenant effect, `…/action` in `setDisposition`/`restore`,
 `…/bulk-action` in `bulk`, `getTeamMembers(rid)` in `loadTeam` (lazy, on first
@@ -391,7 +545,7 @@ dashboard.md §7.
 - Legacy: no client flags or env gates beyond `VITE_API_GATEWAY_URL`.
 - **Feature flag `mudavym_design_recommendations`** — registered ACTIVE, `defaultValue:
   false` (`apps/api-gateway/src/settings/feature-flag-registry.ts:155-159`), read by
-  `useMudavymDesign` through `PageGate` (`App.tsx:307`). OFF ⇒ the legacy page renders
+  `useMudavymDesign` through `PageGate` (`App.tsx:325`). OFF ⇒ the legacy page renders
   byte-for-byte.
 - **Per-browser override `mudavym.design.recommendations`** in `localStorage`
   (`1|true|on` forces the redesign, `0|false|off` forces legacy) — precedence over the
@@ -399,7 +553,9 @@ dashboard.md §7.
 - Redesign client state (none of it persisted): leaf, register filter, expanded set,
   selection, keyboard cursor, and — second pass — the open dismissal sheet's reason, scope
   and exclusion checkbox, which reset to the default (the exact finding, no reason, no
-  exclusion) every time the sheet opens rather than remembering the last choice. Every
+  exclusion) every time the sheet opens rather than remembering the last choice; and — fourth pass —
+  the open goal sheet's name, target, period and the gateway's last refusal, which likewise start
+  from the derived defaults with an **empty** target every time it opens. Every
   query is keyed by `activeRestaurantId` and a sequence number, so a restaurant switch
   clears the previous tenant's entries before the new read lands (asserted in
   `useRecommendationsNextData.test.tsx`).
@@ -465,13 +621,46 @@ Outside the page's own paths, and therefore filed rather than built (2026-09-02)
   `demandProfile` in `computeInventoryFamily` still receives a dense per-wine series with
   zeros for closures. It feeds a stockout probability, not a percentage claim, so it does
   not misstate — but it is inconsistent, and worth a second pass. §13.15.
-- **`scripts/check_no_seeded_defaults.py` `SCAN_ROOTS` should gain
-  `apps/web/src/pages/recommendations/next`** — the guard only binds directories listed
-  there, so this rebuilt surface is currently unpoliced by it. Measured 2026-09-02: with
-  the root added the guard **passes** on this directory (13 roots, 740,341 chars); it
-  first caught a `{ id, label, days }` snooze list under S1, which is why that list now
-  keys its duration as `value`. One-line change, but the file is shared by seven page
-  agents this wave — parent session's call. §13.9.
+- **Resolved 2026-09-02 — `scripts/check_no_seeded_defaults.py` `SCAN_ROOTS` carries
+  `apps/web/src/pages/recommendations/next`** (`check_no_seeded_defaults.py:201`); the
+  2026-09-03 audit re-ran the guard and it passes across 19 roots. When the root was first
+  added it caught a `{ id, label, days }` snooze list under S1, which is why that list keys
+  its duration as `value`. §13.9.
+Found by the fourth pass (2026-09-03), all outside this page's paths:
+
+- **A goal made from a recommendation cannot be linked back to it.** `analytics_goals` has
+  `id · restaurant_id · name · metric_key · target_value · baseline_value · current_value ·
+  direction · period · deadline · status · created_by · created_at · updated_at`
+  (`supabase/migrations/20260805000000_baseline_from_production.sql:2157-2172`) and no column
+  records provenance. So the goal sheet can truthfully say *"you already hold a live goal on Wine
+  revenue"* — a match on `metric_key`, which it states — and can never say *"this entry is already a
+  goal"*. One nullable `source_rule_key text` closes it; it is a migration and this pass was not
+  granted one. §13.19.
+- **The reports page does not read `?cutting=`.** Grepped 2026-09-03: no `useSearchParams` and no
+  `URLSearchParams` anywhere under `apps/web/src/pages/reports/`, legacy or rebuilt. The link this
+  page mints therefore opens the sheet and names the cutting in words rather than scrolling to it or
+  adding it. Two of the nine mapped cuttings (`restock`, `service`) are not even on an unarranged
+  sheet, so "add it while arranging" is said out loud. §13.18.
+- **A recommendation carries no structured money.** Every rule that has a figure formats it *into*
+  its sentence (`recommendations.service.ts` — `$${Math.round(...).toLocaleString()}` and friends),
+  so nothing can total a column of "money at stake", which is what the action-docket direction's
+  section headings want. A `moneyAtStake: number | null` on the recommendation would close it and
+  change nothing else; without it the headings can show a count and an em dash. §13.20.
+- **There is no act mapping.** `handOf` (`rec-format.ts`) routes by the rule's *category*, so
+  `sales_below_weekday_baseline` — whose prescription is "brief the floor" — is sent to `/reports`.
+  A docket filed by the act needs its own nine-row map, one word each. §13.20.
+- **No rule can be tuned anywhere in the product.** The thresholds are literals inside
+  `recommendations.service.ts`; the only feedback the engine takes from a manager is a dismissal,
+  which silences a finding rather than moving a threshold. The founder's fifth docket heading,
+  *change a rule*, has nothing behind it and is drawn dark in the sketch. §13.21.
+- **`GoalsService.computeMetricWithSeries` swallows its own failure.** A thrown query is caught,
+  logged at warn, and the method returns `current: 0` (`goals.service.ts` — the `catch (err: any)`
+  around the metric block), so a goal's `baseline_value` and `current_value` can be a measured zero
+  or an unread table and nothing downstream can tell them apart. This page does not read those
+  fields, but goal progress does, and it is the same "absence reported as a measurement" shape the
+  second pass removed from the insight generator. Filed, not fixed: it is the goals module's, and
+  this pass only writes goals. §13.22.
+
 - **The legacy page keys its path param on `user.restaurantId`**
   (`Recommendations.tsx:153`) while every other tenant signal — the re-issued JWT and
   the `X-Restaurant-Id` header — follows `activeRestaurantId`
@@ -642,3 +831,29 @@ execution, no first-fired timestamp — in the same way.
     `two-pane-docket.html` (register · list · the working pinned open). Both carry the new
     dismissal dialogue so its weight can be judged in place. The shipped build is neither;
     the fork is the founder's.
+18. **Make the reports sheet read `?cutting=<id>`** (§9). *See it in reports* mints
+    `/reports?cutting=…&rec=…&from=recommendations`; the reports page reads no query parameter at
+    all, so the link opens the sheet and the entry says the cutting's name instead of landing on it.
+    The honest full version also *adds* the cutting when it is not on the reader's sheet — which is a
+    write to another page's stored arrangement (`reportsSheet` in user preferences), and therefore a
+    founder's call before it is a ticket.
+19. **Give a goal its provenance** (§9). One nullable `source_rule_key text` on `analytics_goals`
+    would let the entry say "this is already being watched" instead of "you already hold a goal on
+    this figure", and would let the case-ledger direction (094c) exist at all. Migration, so a
+    founder's call. While there: the `goal_behind_*` family should link to
+    `GET /analytics/goals/:rid/:goalId/progress` rather than refusing both doors — it is the one
+    rule family whose deep link is a goal, not a cutting.
+20. **Return a structured `moneyAtStake` on each recommendation, and an act key** (§9) — the two
+    fields the action-docket direction needs and the only two it needs. Both are additive on
+    `recommendations.service.ts`; neither changes a sentence.
+21. **Decide whether a rule can be retuned, and by whom** (§9). The dismissal reasons are already a
+    taxonomy and nothing reads them as one. DESIGN-FOUNDATION §6 rates this need-it-now for this
+    page; it is an ADR (what may be tuned, under whose hand, with what threshold history), not a
+    ticket.
+22. **Make `GoalsService.computeMetricWithSeries` distinguish a measured zero from an unread table**
+    (§9) — the same fault the second pass removed from `toDaily`, still live one module over. A goal
+    whose baseline could not be read should say so, not report 0.
+23. **Sketch set 094 is the shape fork** —
+    `.planning/sketches/094-recommendations-directions-2/`: `calendar-strip.html`,
+    `action-docket.html`, `case-ledger.html`. The recommendation on the index is 094b as the spine
+    with 094a as a ribbon above it and 094c as the roadmap; nothing of it is built.

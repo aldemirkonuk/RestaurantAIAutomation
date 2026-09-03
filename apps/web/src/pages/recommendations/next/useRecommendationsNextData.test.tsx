@@ -216,3 +216,153 @@ describe('useRecommendationsNextData transport', () => {
     expect(api.get).toHaveBeenCalledWith('/analytics/recommendations/r2');
   });
 });
+
+/**
+ * Fourth pass — the goal door's transport.
+ *
+ * The write is a real `POST /analytics/goals/:rid` (curl-verified against the
+ * local gateway on 2026-09-03: 201 on a good body, 400 "Unsupported metric …"
+ * and 400 "targetValue must be > 0" on the two bad ones). What these pin is
+ * that the page reaches it through the authenticated client, reads the list
+ * lazily and per tenant, hands back the gateway's own refusal rather than a
+ * generic one, and never claims a goal was set when it was not.
+ */
+describe('useRecommendationsNextData — goals', () => {
+  it('does not read goals until something asks, then reads them through apiClient', async () => {
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining('/analytics/goals/'));
+    expect(result.current.goals).toBeUndefined();
+
+    api.get.mockImplementation(async (url: string) => {
+      if (url.includes('/analytics/goals/'))
+        return {
+          data: [
+            {
+              id: 'g0',
+              name: 'September wine push',
+              metric_key: 'wine_revenue',
+              // PostgREST hands numerics back as strings often enough that the
+              // reader must parse rather than trust the type.
+              target_value: '4000.00',
+              current_value: '1200.00',
+              deadline: '2026-09-30',
+              status: 'active',
+            },
+          ],
+        };
+      if (url.includes('/digest')) return { data: null };
+      if (url.includes('/exclusions'))
+        return { data: { items: [], readable: true, problem: null } };
+      return { data: FEED };
+    });
+
+    act(() => result.current.loadGoals());
+    await waitFor(() => expect(Array.isArray(result.current.goals)).toBe(true));
+    expect(api.get).toHaveBeenCalledWith('/analytics/goals/r1?status=active');
+    expect(result.current.goals?.[0]).toEqual({
+      id: 'g0',
+      name: 'September wine push',
+      metricKey: 'wine_revenue',
+      targetValue: 4000,
+      currentValue: 1200,
+      deadline: '2026-09-30',
+      status: 'active',
+    });
+  });
+
+  it('an unreadable goal list is null, not an empty list', async () => {
+    api.get.mockImplementation(async (url: string) => {
+      if (url.includes('/analytics/goals/')) throw { response: { status: 500 }, message: 'boom' };
+      if (url.includes('/digest')) return { data: null };
+      if (url.includes('/exclusions'))
+        return { data: { items: [], readable: true, problem: null } };
+      return { data: FEED };
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    act(() => result.current.loadGoals());
+    await waitFor(() => expect(result.current.goals).toBeNull());
+  });
+
+  it('posts a goal through apiClient and says so in words', async () => {
+    api.post.mockResolvedValue({
+      data: {
+        id: 'g9',
+        name: 'Wednesday wine revenue back to baseline',
+        metric_key: 'wine_revenue',
+        target_value: 2500,
+        current_value: 0,
+        deadline: '2026-09-10',
+        status: 'active',
+      },
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+
+    let answer: unknown;
+    await act(async () => {
+      answer = await result.current.createGoal({
+        name: 'Wednesday wine revenue back to baseline',
+        metricKey: 'wine_revenue',
+        targetValue: 2500,
+        direction: 'at_least',
+        period: 'week',
+        deadline: '2026-09-10',
+      });
+    });
+    expect(api.post).toHaveBeenCalledWith('/analytics/goals/r1', {
+      name: 'Wednesday wine revenue back to baseline',
+      metricKey: 'wine_revenue',
+      targetValue: 2500,
+      direction: 'at_least',
+      period: 'week',
+      deadline: '2026-09-10',
+    });
+    expect((answer as { ok: boolean }).ok).toBe(true);
+    expect(result.current.note).toMatch(/Goal set/);
+  });
+
+  it("hands back the gateway's own 400, and never claims the goal was set", async () => {
+    api.post.mockRejectedValue({
+      response: { status: 400, data: { message: 'targetValue must be > 0' } },
+      message: 'Request failed with status code 400',
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+
+    let answer: { ok: boolean; message?: string } = { ok: true };
+    await act(async () => {
+      answer = (await result.current.createGoal({
+        name: 'x',
+        metricKey: 'wine_revenue',
+        targetValue: 0,
+        direction: 'at_least',
+        period: 'week',
+        deadline: '2026-09-10',
+      })) as { ok: boolean; message?: string };
+    });
+    expect(answer.ok).toBe(false);
+    expect(answer.message).toBe('targetValue must be > 0');
+    expect(result.current.note).toBe('No goal was set (targetValue must be > 0).');
+  });
+
+  it('a restaurant switch drops the previous house’s goals', async () => {
+    api.get.mockImplementation(async (url: string) => {
+      if (url.includes('/analytics/goals/'))
+        return { data: [{ id: 'g0', name: 'theirs', metric_key: 'checks', status: 'active' }] };
+      if (url.includes('/digest')) return { data: null };
+      if (url.includes('/exclusions'))
+        return { data: { items: [], readable: true, problem: null } };
+      return { data: FEED };
+    });
+    const { result, rerender } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    act(() => result.current.loadGoals());
+    await waitFor(() => expect(result.current.goals).toHaveLength(1));
+
+    auth.rid = 'r2';
+    rerender();
+    await waitFor(() => expect(result.current.goals).toBeUndefined());
+  });
+});
