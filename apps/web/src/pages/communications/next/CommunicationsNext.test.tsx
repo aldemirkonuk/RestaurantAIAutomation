@@ -41,6 +41,7 @@ function item(over: Partial<ProcurementHistoryItem>): ProcurementHistoryItem {
     id: 'c1',
     orderId: 'o1',
     providerId: 'p1',
+    direction: 'OUTBOUND',
     emailType: 'PRICE_INQUIRY',
     status: 'SENT',
     roundCount: 1,
@@ -221,5 +222,50 @@ describe('CommunicationsNext', () => {
     render(<CommunicationsNext />);
     expect(screen.queryByText(/stage for the messaging channel/i)).toBeNull();
     expect(screen.getByText(/no SMS sender is reachable/i)).toBeInTheDocument();
+  });
+  // ── ADR 0084 put inbound vendor replies on this page; ADR 0083's row could
+  //    not render one. All three of these throw on the merged tree. ──────────
+  //
+  // The fixture is the shape `conversation-ledger.spec.ts` asserts the gateway
+  // returns for production's ten inbound rows: `direction: 'INBOUND'`,
+  // `outbound_email_type` NULL, and `status` the column DEFAULT 'DRAFT' that
+  // the inbound writer never sets.
+  const inbound = () =>
+    item({
+      id: 'in-0',
+      direction: 'INBOUND',
+      emailType: null,
+      status: 'DRAFT',
+      orderId: null,
+      orderNumber: null,
+      quantity: null,
+      wineName: null,
+      draftContent: 'Vendor reply number 0',
+    });
+
+  it('renders an inbound vendor reply, which has no outbound email type', () => {
+    mockData.current = { ...base, rows: [inbound()] };
+    render(<CommunicationsNext />);
+    expect(screen.getByText('Bodega Álvaro')).toBeInTheDocument();
+    expect(screen.getByText(/Vendor reply/)).toBeInTheDocument();
+  });
+
+  it('never calls a vendor’s own reply an unsent AI draft', () => {
+    mockData.current = { ...base, rows: [inbound()] };
+    render(<CommunicationsNext />);
+    // 'DRAFT' is the DEFAULT on an inbound row, not a lifecycle claim about it.
+    expect(screen.queryByText('AI draft · not sent')).toBeNull();
+    expect(screen.getByText('Received')).toBeInTheDocument();
+  });
+
+  it('renders a row whose status is null, and does not invent one for it', () => {
+    // ADR 0084's deny-list admits `status.is.null` on purpose; the mapper
+    // passes it straight through as `status: row.status`.
+    mockData.current = { ...base, rows: [item({ status: null })] };
+    render(<CommunicationsNext />);
+    expect(screen.getByText('Bodega Álvaro')).toBeInTheDocument();
+    expect(screen.getByText('no status recorded')).toBeInTheDocument();
+    expect(screen.queryByText(/^Sent$/)).toBeNull();
+    expect(screen.queryByText('AI draft · not sent')).toBeNull();
   });
 });
