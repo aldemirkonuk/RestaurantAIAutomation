@@ -127,17 +127,17 @@ nothing in the repository writes), :516 (`restaurants/members`), :87 (`calendar`
 
 | Method | Path | Call site |
 |---|---|---|
-| GET/POST/PATCH/DELETE | `…/members` | ManagerShiftDesk + editors → `team.ts:124-136` |
-| GET | `…/week`, `…/my-week` | `team.ts:141,145` (ManagerShiftDesk / MyShifts) |
-| POST | `…/schedules`, `…/schedules/copy-week`, `…/schedules/:id/publish`, `…/schedules/:id/acknowledge` | `team.ts:149-161` |
-| POST/PATCH/DELETE | `…/shifts` (+ `/callout`, `/offer-cover`, `/assign`) | `team.ts:167-186` |
-| GET/POST/PATCH/DELETE | `…/certifications` | OpsRulesPanel → `team.ts:192-204` |
-| GET/POST/PATCH | `…/time-off` | MyShifts/desk → `team.ts:209-217` |
-| GET/POST/DELETE | `…/coverage-templates` | OpsRulesPanel → `team.ts:223-231` |
-| GET | `…/members/:id/performance` | PerformancePanel → `team.ts:236` |
-| POST | `…/sales`, `…/sales/batch` | PerformancePanel → `team.ts:240-244` |
-| POST | `…/broadcast` | ManagerShiftDesk → `team.ts:250` |
-| GET/PATCH | `…/settings` | `team.ts:256-260` |
+| GET/POST/PATCH/DELETE | `…/members` | ManagerShiftDesk + editors → `team.ts:127-141` |
+| GET | `…/week`, `…/my-week` | `team.ts:144,148` (ManagerShiftDesk / MyShifts) |
+| POST | `…/schedules`, `…/schedules/copy-week`, `…/schedules/:id/publish`, `…/schedules/:id/acknowledge` | `team.ts:152-203` |
+| POST/PATCH/DELETE | `…/shifts` (+ `/callout`, `/offer-cover`, `/assign`) | `team.ts:206-228` |
+| GET/POST/PATCH/DELETE | `…/certifications` | OpsRulesPanel → `team.ts:231-245` |
+| GET/POST/PATCH | `…/time-off` | MyShifts/desk → `team.ts:248-259` |
+| GET/POST/DELETE | `…/coverage-templates` | OpsRulesPanel → `team.ts:262-272` |
+| GET | `…/members/:id/performance` | PerformancePanel → `team.ts:275` |
+| POST | `…/sales`, `…/sales/batch` | PerformancePanel → `team.ts:279-286` |
+| POST | `…/broadcast` | ManagerShiftDesk → `team.ts:289-305` |
+| GET/PATCH | `…/settings` | `team.ts:308-315` |
 | GET | `/calendar/events` | desk overlays events — `ManagerShiftDesk.tsx:17` → `services/api/calendar.ts:221` |
 
 ## 5. Signals
@@ -166,7 +166,7 @@ dashboard.md §7.
 
 ## 9. Gaps
 
-- Performance metrics depend on manually ingested sales rows (`team.ts:240-244`)
+- Performance metrics depend on manually ingested sales rows (`team.ts:279-286`)
   until POS depth exists — the S04 ⚠ wine-only depletion caveat applies
   ([TIER-MAP](../03-scenarios/TIER-MAP.md):40).
 - No debt-register entries name `/team` (checked `v3.0-TECH-DEBT.md` — no hits).
@@ -184,11 +184,22 @@ dashboard.md §7.
   chose. ADR 0088 fixed the code-side default (no row → `null` + `configured:
   false`); making the column nullable is a separate migration against a table
   with 0 rows.
-- **Three controls need a client half before they work again** (ADR 0088 T3/T7,
+- ~~**Three controls need a client half before they work again** (ADR 0088 T3/T7,
   owned by the `/team` page session, not the gateway): "Copy last week" and
   "Re-publish" now answer 409 until the client sends `replaceTarget` /
   `resetReceipts` with a confirmation, and the legacy desk's broadcast answers
-  400 until it sends an `audience`.
+  400 until it sends an `audience`.~~ **Closed 2026-09-02** — the client half is
+  written. The two halves merged in the wrong order (#257 page-first, then #256
+  gateway) and nothing sent the fields in between, so all three controls failed
+  on every click for the window between them. Now `copyWeek` and
+  `publishSchedule` take the flag as an option and `broadcast`'s signature
+  refuses a body naming neither `memberIds` nor an `audience`
+  (`services/api/team.ts:156-199,290-304`); the flag is passed **only** from the
+  branch that already showed the user what it destroys
+  (`ManagerShiftDesk.tsx:246-283,905,921,931`), so the 409 keeps guarding the
+  unconfirmed path rather than becoming a formality. Held by
+  `services/api/team.destructive.test.ts` on the request body — a component test
+  can only prove the module was called, and the fields were what was missing.
 
 ## 10. Maturity
 
@@ -228,7 +239,7 @@ and "complete" was reading the absence of a bug report as the absence of bugs.
 
 The one dependency worth naming is not a defect on this page: performance metrics
 come from **manually ingested** sales rows (`POST …/sales`, `…/sales/batch`,
-`services/api/team.ts:240-244`) until POS depth exists (S04 ⚠, TIER-MAP:40). The panel
+`services/api/team.ts:279-286`) until POS depth exists (S04 ⚠, TIER-MAP:40). The panel
 says so rather than filling the gap.
 
 ## 11. Data flow
@@ -322,7 +333,7 @@ sales-ingest based, which is the permitted kind. Keep them apart.
 
 ## 13. Roadmap
 
-1. **Attribute sales from POS** instead of manual ingest (`services/api/team.ts:240-244`)
+1. **Attribute sales from POS** instead of manual ingest (`services/api/team.ts:279-286`)
    — turns the performance panel from a data-entry chore into a by-product. Blocked
    on POS depth (S04 ⚠, TIER-MAP:40).
 2. ~~**`isError` branches on the read queries**~~ — **done**, ADR 0089. Both halves now
