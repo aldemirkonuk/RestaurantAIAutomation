@@ -2,8 +2,9 @@ name: PR Audit Gate
 
 # ADR 0090. The CI-side half of the pre-merge audit — the backstop that holds
 # even when no Claude Code session (and therefore no PreToolUse hook) is driving
-# the merge. Advisory today: it posts a verdict and, on PASS, attempts its own
-# `gh pr merge --auto` — but it is NOT yet in main's required status contexts
+# the merge. Advisory today: it posts a verdict and, on PASS, attempts an
+# immediate, SHA-pinned merge (never `--auto` — see scripts/pr_audit_gate.py's
+# merge step for why) — but it is NOT yet in main's required status contexts
 # (that PATCH needs the founder's explicit go, see ADR 0090 "What this does NOT
 # yet do"), so nothing here stops a merge that bypasses this workflow entirely.
 #
@@ -53,8 +54,8 @@ name: PR Audit Gate
 # to this repo. That is the whole reason pull_request_target demands the
 # checkout discipline above in the first place. Exposure is bounded, not
 # zero: no external code ever executes (checkout is pinned to base, the PR's
-# content is read only as inert diff text) and `--auto --squash` still can't
-# get past branch protection for someone without merge rights — but an
+# content is read only as inert diff text) and even a successful merge attempt
+# still can't get past branch protection for someone without merge rights — but an
 # outside account CAN, at will, trigger a job that spends the Anthropic
 # API budget. Closed below with an author-association gate rather than left
 # as an accepted cost: `github.event.pull_request.author_association` is
@@ -73,7 +74,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write        # gh pr merge on PASS
+  contents: write        # sha-pinned merge (gh api .../merge) on PASS
   pull-requests: write    # gh pr comment
   checks: read            # read the required contexts (fetched fresh from branch protection, never hardcoded)
 
@@ -85,9 +86,14 @@ jobs:
     # job (see the SECURITY comment above). Refuse to spend the API budget
     # (or the checks: read / contents: write / pull-requests: write token)
     # on a PR from outside the people already trusted with write access.
-    if: |
-      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
-                github.event.pull_request.author_association)
+    # Confirmed live (third audit, security angle): this repo's collaborator
+    # list is exactly one account (the founder, admin). OWNER only, not the
+    # MEMBER/COLLABORATOR this originally shipped with — COLLABORATOR
+    # includes read-only and triage collaborators, not only write access as
+    # a stricter reading might assume, and MEMBER is org-scoped and becomes
+    # a much wider door if this repo is ever transferred to an org. Widen
+    # deliberately if real collaborators are ever added, not by default.
+    if: github.event.pull_request.author_association == 'OWNER'
     steps:
       - name: Checkout the TRUSTED base commit (never the PR's own tree)
         uses: actions/checkout@v4
@@ -102,6 +108,9 @@ jobs:
 
       - name: Install dependencies
         run: pip install anthropic
+
+      - name: Self-test the verdict/push-pattern/state-classifier logic
+        run: python3 scripts/pr_audit_gate.py --self-test
 
       - name: Wait for the existing required checks
         id: upstream

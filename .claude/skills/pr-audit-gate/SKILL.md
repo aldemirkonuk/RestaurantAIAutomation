@@ -1,6 +1,6 @@
 ---
 name: pr-audit-gate
-description: Use before merging ANY PR to main — invoke it directly, or it runs because the require_pr_audit PreToolUse hook blocks `gh pr merge`/a direct push to main until it has. Fans out 3 Opus auditor angles + a mandatory adversarial pass over the PR's diff and CI reports (ADR 0090 — model corrected from the original "Sonnet max" ask to Opus per ADR 0050's production/ADR/outward-send override); on approval it auto-merges via `gh pr merge --auto`, on block it posts findings and stops. Never call gh pr merge directly — call this skill, it calls gh pr merge for you once it approves.
+description: Use before merging ANY PR to main — invoke it directly, or it runs because the require_pr_audit PreToolUse hook blocks `gh pr merge`/a direct push to main until it has. Fans out 3 Opus auditor angles + a mandatory adversarial pass over the PR's diff and CI reports (ADR 0090 — model corrected from the original "Sonnet max" ask to Opus per ADR 0050's production/ADR/outward-send override); on approval it merges immediately via `gh pr merge --squash` (no `--auto` — that races an unaudited later push), on block it posts findings and stops. Never call gh pr merge directly — call this skill, it calls gh pr merge for you once it approves.
 ---
 
 # pr-audit-gate
@@ -48,8 +48,9 @@ individually while what they don't cover reaches production — this gate exists
    scenario), say so and stop — this gate is for PRs into `main`.
 2. **Confirm existing CI is green first.** Read `main`'s *current* required
    status contexts (`gh api repos/.../branches/main/protection --jq
-   '.required_status_checks.contexts'` — this list moves; it changed from 5 to
-   3 while this skill itself was being built, so never hardcode it) against
+   '.required_status_checks.contexts'` — this list moves; it changed 5→3→5
+   while this skill itself was being built (other sessions' unrelated CI
+   work), so never hardcode it or cite a current count) against
    `gh pr checks <n>`. This audit is a semantic layer on top of green CI, never
    a replacement for it — if any required context is red or pending, stop and
    say so. Do not spend an Opus call auditing a PR that can't merge anyway.
@@ -62,7 +63,13 @@ individually while what they don't cover reaches production — this gate exists
 4. **Check whether this diff touches the gate's own files** — anything under
    `scripts/pr_audit_gate.py`, `scripts/hooks/require_pr_audit.py`,
    `.github/workflows/pr-audit-gate.yml`, `.claude/agents/pr-merge-*.md`,
-   `.claude/skills/pr-audit-gate/`, `.claude/settings.json`. If so, this PR
+   `.claude/skills/pr-audit-gate/`, `.claude/settings.json`, `CLAUDE.md`, or
+   `.planning/decisions/0090-*.md`/`.planning/decisions/README.md`. Keep this
+   list in sync with `_GATE_OWNED_PATHS` in `scripts/pr_audit_gate.py` — a
+   third real audit (2026-09-03, compliance angle) found the CI side had
+   `CLAUDE.md` in its owned-paths list and this step didn't, so a
+   `CLAUDE.md`-only PR could steer the compliance angle's own reading of
+   what's compliant without ever triggering escalation. If so, this PR
    changes what future audits do — carry that forward to step 9 regardless of
    what the angles conclude (see step 9). Unlike the CI path, a Claude Code
    session auditing its OWN checkout has no `pull_request_target`-style
@@ -102,12 +109,20 @@ individually while what they don't cover reaches production — this gate exists
    constructed the real hook"). The comment is the durable, SHA-stamped
    record; the local file is a convenience copy, not a prerequisite.
 10. **Act on the verdict:**
-    - **PASS:** `gh pr merge <n> --auto --squash` — always with the explicit
-      `<n>`, never a bare `gh pr merge` (the hook resolves that against your
-      current branch, not necessarily the PR you just audited). Never
-      `--admin` — if the merge doesn't go through because a required check
-      isn't actually green, that is GitHub correctly refusing, not something
-      to force past.
+    - **PASS:** `gh pr merge <n> --squash` — **no `--auto`.** `--auto` arms
+      GitHub's auto-merge against the PR, not the audited commit; a push
+      landing after you PASS but before GitHub actually merges would go
+      through unaudited once the (unrelated) required checks are green
+      (confirmed live, correctness angle, third audit — the CI-side script
+      hit this exact race and now uses a SHA-pinned `gh api` merge instead;
+      the Claude-Code path stays on `gh pr merge` for hook-pattern
+      compatibility, but drops `--auto` so the merge is immediate and bound
+      to what you just audited, not queued against whatever's head later).
+      Always the explicit `<n>`, never a bare `gh pr merge` (the hook
+      resolves that against your current branch, not necessarily the PR you
+      just audited). Never `--admin` — if the merge doesn't go through
+      because a required check isn't actually green, that is GitHub
+      correctly refusing, not something to force past.
     - **BLOCK:** do not merge. Tell the founder directly in chat what blocked it and
       point at the PR comment — do not just let this scroll past as "done."
 
@@ -134,8 +149,28 @@ individually while what they don't cover reaches production — this gate exists
   `pull_request_target` + a base-pinned checkout — see the workflow file's
   header); and this skill's step 4 escalation, which the CI fix does not
   cover for the Claude-Code path since a session auditing its own checkout has
-  no equivalent isolation. Unaddressed from that same audit: no
-  `CLAIMS.jsonl` entries for ADR 0090's two time-sensitive claims, no
-  retention policy for `.planning/07-reference/pr-audits/` (filed as an
-  open fork, not decided here), and CLAUDE.md §7 not yet amended with a
-  pointer to this ADR.
+  no equivalent isolation.
+- **v2 → v3, same day:** a third real audit (compliance angle) caught this
+  section itself making a false claim — it used to say the
+  `.planning/07-reference/pr-audits/` retention question was "filed as an
+  open fork," and it was not; `OPEN-DECISIONS.md` had no row for it. Not
+  filed now either, deliberately: adding a row to that specific file has a
+  measured cost (see [[register-row-shifts-citations]] — ~173 citations
+  across ~89 files move when a new fork is inserted there) disproportionate
+  to a retention-policy question for a generated-report directory. This is
+  named as an open question the founder can answer directly, not defaulted
+  and not falsely marked filed. Same audit also fixed: `CLAUDE.md`,
+  `.planning/decisions/0090-*.md`, and `.planning/decisions/README.md` added
+  to both owned-path lists (step 4 above and `_GATE_OWNED_PATHS` — they had
+  drifted, CI had `CLAUDE.md` and this file didn't); the stale
+  `ANTHROPIC_API_KEY`-not-yet-added claim in `decisions/README.md` (the
+  secret has been live since 2026-09-02; that row said otherwise until
+  2026-09-03); and `_verdict_of()` now has a `--self-test` (see the script)
+  covering the exact adversarial input that broke it, so this class of bug
+  fails a committed test next time rather than needing a fourth live audit
+  to notice it again. Still unaddressed: no `CLAIMS.jsonl` entries for ADR
+  0090's two time-sensitive claims (structurally blocked until the retention
+  question above gets an OD number, since claims key to `OD-*` ids in this
+  repo), and CLAUDE.md §7 not yet amended with a pointer to this ADR — the
+  latter is now itself an owned-path change, so it will force-escalate to
+  the founder rather than merge on its own, which is the intended shape.

@@ -266,6 +266,71 @@ concrete constructed input and confirmed it against the live parser before
 reporting it; this session verified the same construction independently
 before fixing it, rather than fixing on the subagent's word alone.
 
+## Correction — 2026-09-03, found by the gate's own THIRD real audit
+
+A fourth full audit round (all three angles fresh, run against the fixes
+above) returned BLOCK on all three. Six defects, four of them the identical
+class recurring a third time — a decision made by a deny-list or a scan
+looser than the thing it decided:
+
+1. **`overall`'s two decisions were both deny-lists.** `"BLOCK" if
+   adv_verdict in ("OVERTURNED", "UNPARSEABLE") else "PASS"` treats the
+   adversary literally answering the word `BLOCK` — a real, parseable value,
+   and the exact wording `pr-merge-adversary.md` itself models
+   ("OVERTURNED — BLOCK") — as anything-other-than-those-two-strings, which
+   is PASS. **Confirmed by executing the real function**: `adv_verdict =
+   "BLOCK"` produced `overall = "PASS"`. The angle-level check had the mirror
+   gap (an angle answering OVERTURNED/HOLDS by mistake wasn't blocked
+   either). Both are now allow-lists: only `HOLDS` passes the adversary;
+   only `APPROVE`/`APPROVE WITH NOTES` pass an angle.
+2. **`_verdict_of()`'s round-2 fix (anchor + last-match) was still a scan.**
+   Any trailing quoted/appendix verdict line won on last-match, and a
+   decorated line (`**VERDICT: X**`, `` `VERDICT: X` `` — the system prompt
+   itself modeled the backtick form) never matched the anchor at all,
+   silently falling back to an earlier undecorated match. **Confirmed by
+   execution** against constructed inputs matching both shapes. Rewritten to
+   inspect ONLY the response's actual last non-blank line (never a text-wide
+   scan), with common decoration stripped before matching.
+3. **The marker check (require_pr_audit.py) was unauthenticated.**
+   **Confirmed by executing the real hook** with a shimmed comment authored
+   by an unrelated account: exit 0, merge allowed. This repo is public with
+   one collaborator (the founder); anyone could read a PR's head SHA off the
+   page and post a forged marker. Now checks comment author against the CI
+   bot plus whoever is running `gh` locally, and matches the marker only at
+   a comment's own start (`.match()`, not `.search()`/`.finditer()`) — a
+   trusted comment's own embedded report can legitimately discuss marker
+   syntax with real-looking values without that counting.
+4. **`gh pr merge --auto` races an unaudited later commit.** `--auto` arms
+   GitHub's auto-merge against the PR, not the SHA that passed audit; a push
+   landing after PASS but before the actual merge could go through once the
+   *other* required checks are green, with this gate's own re-run for that
+   new commit reduced to an advisory red check nobody has to look at. Fixed
+   by merging immediately with an exact-`sha`-pinned `gh api .../merge` call
+   instead — GitHub refuses (409) if the head has moved, so the failure mode
+   is "don't merge, say why," not "silently merge the wrong commit."
+5. **`wait_upstream`'s pass/fail split was a deny-list too** — `TIMED_OUT`,
+   `ACTION_REQUIRED`, `STARTUP_FAILURE`, `NEUTRAL`, `STALE` are real
+   check-run conclusions that were neither "pending" nor "failed" in the old
+   lists, falling through to green by default. Now an allow-list: only
+   `SUCCESS` is green.
+6. **Two smaller, real gaps from the same session, not the fourth audit:**
+   `MERGE_PATTERN` only captured a PR number immediately after "merge" —
+   `gh pr merge --squash 42` fell back to the current-branch resolver, the
+   exact bug correction #1 already fixed once; and `DIRECT_PUSH_PATTERN`'s
+   `\s*$` anchor (added to kill a false-positive) meant `git push origin
+   main --force` — the single most consequential form — evaded it entirely.
+   Both fixed; `gh pr diff --name-only`'s unchecked returncode (silently
+   `touches_own_gate = False` on failure) also closed, failing toward
+   escalation rather than away from it.
+
+A `--self-test` mode now pins the exact adversarial inputs across all three
+audits (`python3 scripts/pr_audit_gate.py --self-test`, wired as a required
+step in the workflow before anything else runs) — named directly in the
+prior Correction's own text as the gap that let this class survive three
+rounds: *"zero tests and zero guard for the single function that has now
+decided a merge wrongly twice."* It had decided a merge wrongly a third
+time by the point this was written.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -275,3 +340,4 @@ before fixing it, rather than fixing on the subagent's word alone.
 | 2026-09-02 | Aldemir (chat) | Asked "sonnet ultrathink or opus high" — corrected model from "Sonnet max" to **Opus / high** per ADR 0050's own override rule, before merge. Files/branding renamed off "sonnet" to match (`pr-merge-{auditor,adversary}.md`, `pr-audit-gate.yml`, `pr_audit_gate.py`, `require_pr_audit.py`) |
 | 2026-09-03 | `PR Audit Gate` (Opus, run 33695630472) | BLOCK — security + correctness, both confirmed real; 4 fixes landed same day, see Correction above |
 | 2026-09-03 | pr-audit-gate skill, security angle (Opus subagent) | BLOCK — the verdict-parser fix from the first correction was incomplete (wrong function) and the fork-secret claim was wrong for the new trigger; both confirmed independently and fixed, see second Correction above |
+| 2026-09-03 | pr-audit-gate skill, all 3 angles (fresh Opus subagents) | BLOCK, BLOCK, BLOCK — a deny-list verdict decision in two places (one confirmed by execution to invert a literal adversary "VERDICT: BLOCK" into a merge), an unauthenticated marker check (confirmed by execution against a shimmed outsider comment), an `--auto` merge race, and a deny-list state classifier; 6 fixes landed same day plus a `--self-test`, see third Correction above |

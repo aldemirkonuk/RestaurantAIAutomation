@@ -4,29 +4,43 @@ direct push to `main` unless the pr-audit-gate skill (or the CI workflow) has
 already posted a PASS verdict comment for the PR's *current* head SHA. This is
 the "you call it, make it a constraint" half of ADR 0090.
 
-v2 (2026-09-03) — rewritten after the gate's own first real audit (PR #261,
-run 33695630472) found 3 correctness bugs in v1, all fixed here:
+Three real audits, same day (2026-09-03), each closing what it targeted and
+missing a sibling — v2 fixed v1's three bugs, v3 (this version) fixes two
+more v2 introduced/missed, found by the third audit's correctness AND
+security angles independently:
 
+v1 → v2:
 1. v1 resolved the PR via `gh pr view` on the *current checkout's branch*,
    ignoring the PR number in the command actually being gated. In a repo with
    ~90 concurrent worktrees, a session on branch A (with its own PASS report)
    running `gh pr merge <B>` would have that validated against A's report and
-   merge B unaudited. Now parses the number out of the command itself; only
-   falls back to the current-branch resolver for a bare `gh pr merge` (no
-   PR argument), which really does target the current branch's PR.
+   merge B unaudited. v2 parses the number out of the command instead.
 2. v1 checked for a *committed local file*. The skill's own instructions had
    it commit that file, on the PR branch, immediately before the gated merge
    call — which changes the head SHA the file is keyed to, so the file the
-   hook looks for (at the NEW sha) never exists. A structural livelock. Now
+   hook looks for (at the NEW sha) never exists. A structural livelock. v2
    checks PR **comments** instead (`gh pr view --json comments`), which the
-   report-posting step already writes and which carry no such SHA-changing
-   side effect.
+   report-posting step already writes and which carry no such side effect.
 3. v1's verdict check was `"PASS" in line and "BLOCK" not in line` over the
    first 20 lines of the file — a bare substring scan a BLOCK report's own
-   prose (e.g. "Upstream required contexts: all PASS") could satisfy. Now
-   requires an exact machine-readable marker line (see MARKER_RE) that both
-   the CI script and this skill's own instructions are required to emit
-   verbatim; anything else does not count as a verdict.
+   prose (e.g. "Upstream required contexts: all PASS") could satisfy. v2
+   introduced a machine-readable marker line (MARKER_RE) instead.
+
+v2 → v3:
+4. **CONFIRMED by actual execution** (security angle, shimmed `gh` returning
+   a comment authored by an unrelated GitHub account): v2's marker check
+   trusted ANY comment's body, on a PUBLIC repo. An outsider reads the head
+   SHA off the PR page and posts `<!-- pr-audit-gate: pr=N sha=X
+   verdict=PASS -->` as a plain comment — exit 0, merge allowed. Now checks
+   `author.login` against a small trusted set (the CI bot, and whichever
+   account is running `gh` right now) before trusting anything in the body.
+5. Even restricted to trusted authors, v2's `MARKER_RE.finditer(body)`
+   scanned the *whole* comment — including the full report embedded in the
+   SAME comment by design, which (especially for a PR *about this gate*)
+   can legitimately discuss or quote marker syntax with real-looking values
+   in its own prose. Now `MARKER_RE.match()` on the body's own leading edge
+   only — a marker anywhere but position zero doesn't count, however
+   trusted the author.
 
 Contract (Claude Code PreToolUse hooks): JSON on stdin with at least
 `tool_name`/`tool_input`; exit 0 = allow, exit 2 = block (stderr is fed back to
@@ -53,25 +67,38 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 # enforcement (that's the CI required check in ADR 0090, once the founder wires
 # it). A determined bypass via a differently-worded command can still slip past
 # a regex — documented as a known limitation, not silently assumed complete.
-# Captures an explicit PR number when the command names one (`gh pr merge 42`,
-# `gh pr merge #42`) — a bare `gh pr merge` with no number is also matched,
-# group(1) is then None and callers resolve via the current branch instead.
-MERGE_PATTERN = re.compile(r"\bgh\s+pr\s+merge\b(?:\s+#?(\d+))?")
+# Captures the whole argument tail after "merge" so _extract_pr_number() can
+# find the number regardless of flag order (`gh pr merge --squash 42`,
+# `gh pr merge 42 --squash`, a /pull/42 URL) — v2 only captured a number
+# immediately after "merge" and missed all of those, confirmed live
+# (correctness angle, third audit).
+MERGE_PATTERN = re.compile(r"\bgh\s+pr\s+merge\b(?P<tail>[^|;&\n]*)")
 # Anchored to an actual git ref target, not "the word main anywhere in the
-# command" — v1 false-positived on `feat/maintenance-x` or a comment body
-# that happened to mention "main". Still a speed bump, not the hard gate.
+# command" (v1 false-positived on `feat/maintenance-x`), and NOT anchored to
+# end-of-command either (v2's `\s*$` meant `git push origin main --force` —
+# the single most consequential form — evaded it entirely; confirmed live,
+# correctness angle, third audit). `(?:\s|$)` requires a real word boundary
+# after "main" without requiring nothing else follows.
 DIRECT_PUSH_PATTERN = re.compile(
-    r"\bgit\s+push\b[^|;&]*\b(?:origin\s+)?(?:HEAD:)?(?:refs/heads/)?main\b\s*$"
+    r"\bgit\s+push\b[^|;&]*\b(?:origin\s+)?(?:HEAD:)?(?:refs/heads/)?main\b(?:\s|$)"
 )
 
 # Both this hook and scripts/pr_audit_gate.py (CI) must emit exactly this shape
 # in the PR comment they post: an HTML comment, invisible when rendered, that
 # names the PR, the exact head SHA it was computed against, and the verdict.
 # Never parse prose for "PASS"/"BLOCK" — see bug 3 in the module docstring.
+# Matched with .match() at a comment's own start, never .search()/.finditer()
+# over the whole body — see bug 5.
 MARKER_RE = re.compile(
     r"<!--\s*pr-audit-gate:\s*pr=(?P<pr>\d+)\s+sha=(?P<sha>[0-9a-f]{7,40})\s+"
     r"verdict=(?P<verdict>PASS|BLOCK)\s*-->"
 )
+
+# See bug 4. The CI bot's comments are always trusted; whoever is running
+# `gh` right now (fetched lazily, once) is trusted too, since if THIS
+# session posted the marker, it's legitimately theirs regardless of who else
+# has access. Nobody else's comment body is ever inspected for a marker.
+_TRUSTED_MARKER_AUTHORS = {"github-actions[bot]"}
 
 
 def _allow(note: str = "") -> None:
@@ -95,9 +122,32 @@ def _run(cmd: list[str]) -> str | None:
     return out.stdout.strip()
 
 
+def _extract_pr_number(tail: str) -> str | None:
+    """Find the PR number in a `gh pr merge <tail>` command's argument tail.
+    Handles a plain number, a `#`-prefixed number, either in any position
+    relative to flags, and a /pull/<n> URL. Deliberately does NOT try to
+    resolve a branch-name argument (`gh pr merge my-branch`, a real gh form)
+    to a number — that needs an actual `gh pr view <branch>` call, which
+    the current-branch fallback doesn't attempt either; returns None and lets
+    the caller fall through to CANNOT CHECK rather than guessing."""
+    m = re.search(r"/pull/(\d+)", tail)
+    if m:
+        return m.group(1)
+    for tok in tail.split():
+        if tok.startswith("-"):
+            continue  # a flag (--squash, --auto, ...), not a positional argument
+        t = tok.lstrip("#")
+        if t.isdigit():
+            return t
+    return None
+
+
 def _current_branch_pr() -> str | None:
-    """Fallback ONLY for a bare `gh pr merge` with no explicit number, which
-    really does target whatever PR belongs to the current branch."""
+    """Fallback for a bare `gh pr merge` (no argument) or one whose argument
+    _extract_pr_number couldn't resolve to a number (a branch name) — both
+    really do target whatever PR belongs to the current branch, which is the
+    correct resolution for the first case and the best available one for
+    the second."""
     raw = _run(["gh", "pr", "view", "--json", "number"])
     if not raw:
         return None
@@ -117,10 +167,17 @@ def _head_sha(pr_number: str) -> str | None:
         return None
 
 
+def _current_gh_user() -> str | None:
+    return _run(["gh", "api", "user", "-q", ".login"])
+
+
 def _passing_marker_exists(pr_number: str, sha: str) -> bool:
-    """True iff some PR comment carries the marker for this exact PR + sha
-    with verdict=PASS. Checks ALL comments (not just the latest) since the
-    CI path and this skill can both post one, in either order."""
+    """True iff some TRUSTED-author PR comment STARTS WITH the marker for
+    this exact PR + sha with verdict=PASS. Checks ALL comments (not just the
+    latest) since the CI path and this skill can both post one, in either
+    order. Author-trust and position-anchoring are both load-bearing — see
+    bugs 4 and 5 in the module docstring; either alone was confirmed
+    bypassable."""
     raw = _run(["gh", "pr", "view", pr_number, "--json", "comments"])
     if raw is None:
         return False  # caller must treat None-vs-False distinctly if needed
@@ -128,11 +185,20 @@ def _passing_marker_exists(pr_number: str, sha: str) -> bool:
         comments = json.loads(raw).get("comments", [])
     except json.JSONDecodeError:
         return False
+
+    trusted = set(_TRUSTED_MARKER_AUTHORS)
+    me = _current_gh_user()
+    if me:
+        trusted.add(me)
+
     for c in comments:
-        for m in MARKER_RE.finditer(c.get("body", "")):
-            if m.group("pr") == pr_number and sha.startswith(m.group("sha")) \
-                    and m.group("verdict") == "PASS":
-                return True
+        author = (c.get("author") or {}).get("login", "")
+        if author not in trusted:
+            continue
+        m = MARKER_RE.match(c.get("body", "").strip())
+        if m and m.group("pr") == pr_number and sha.startswith(m.group("sha")) \
+                and m.group("verdict") == "PASS":
+            return True
     return False
 
 
@@ -162,12 +228,11 @@ def main() -> int:
     if is_direct_push:
         _block(
             "BLOCKED by ADR 0090: direct pushes to main are not audited. Open a "
-            "PR and let the pr-audit-gate skill (and its own gh pr merge --auto) "
-            "carry it, so main's branch protection and the audit both actually "
-            "run against it."
+            "PR and let the pr-audit-gate skill carry it, so main's branch "
+            "protection and the audit both actually run against it."
         )
 
-    pr_number = merge_match.group(1) or _current_branch_pr()
+    pr_number = _extract_pr_number(merge_match.group("tail")) or _current_branch_pr()
     if pr_number is None:
         _block(
             "CANNOT CHECK (ADR 0090): `gh pr merge` was called with no PR number "
