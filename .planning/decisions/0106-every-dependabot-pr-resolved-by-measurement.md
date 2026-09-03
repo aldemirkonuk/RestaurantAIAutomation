@@ -306,6 +306,32 @@ sites are `await import('jspdf')` (`tableExport.ts:215`,
 `exportHelpers.ts:45`), which is exactly the dynamic shape 0100's first pass
 missed, and the build emits a 390 kB `jspdf.es.min-*.js` chunk.
 
+### The e2e-prod fix, verified by running it
+
+`e2e-prod.yml` was dispatched against this branch before merge
+(`workflow_dispatch`, run `33719204671`). It **completed `success`, all
+seventeen steps**:
+
+```
+ 4. Install Python dependencies ......................... success   <- requirements.prod.txt
+                                                                      with pillow 12.3.0, on Linux
+ 5. Set up pnpm + Node.js (Wave F — Playwright) ......... success   <- was the throw
+ 7. Install frontend dependencies ...................... success   <- failed 8 nights running
+10. Wave A — API Contract Tests ........................ success   \
+11. Waves B+C — Agent Health + RabbitMQ Triggers ....... success    |
+12. Wave D — Toast Pipeline ............................ success    |  all seven skipped
+13. Wave E — Gmail Pipeline ............................ success    |  on every run since
+14. Wave G — Calendar DB Assertion ..................... success    |  at least 2026-08-26
+15. Wave F — Playwright Frontend Smoke Tests ........... success   /
+```
+
+Two things this buys beyond the workflow fix. Step 4 is
+`pip install -r requirements.prod.txt` **on `ubuntu-latest`** — so the
+`pillow==12.3.0` prod bump is confirmed on the platform the Railway container
+actually runs, not only on the macOS/arm64 box the venv work was done on. And
+waves A–G are the first end-to-end evidence in eight days that the production
+surfaces this change deploys to are answering at all.
+
 ### Three of the fifteen change nothing that runs
 
 Recorded because "merged" should not imply "effective":
@@ -342,11 +368,10 @@ separate question and is **not** decided here.
   across 122 files cannot be proved by a test run. Motion 11's velocity and
   mount-render-timing changes are behavioural, not type errors. This is stated
   rather than implied by silence.
-- Given up: `e2e-prod.yml` and `deploy.yml` at `pnpm/action-setup@v6` are not
-  exercised by a pull-request CI run. `ci.yml` at v6 *is* — the five setup steps
-  in the required contexts run from this branch's own workflow file — and the
-  fixed `e2e-prod.yml` is verified separately by a `workflow_dispatch` against
-  this branch.
+- `deploy.yml` at `pnpm/action-setup@v6` is the one file **not** proved by a run:
+  it only fires on merge to `main`. `ci.yml` at v6 *is* proved — the five setup
+  steps inside the required contexts execute from this branch's own workflow
+  file — and its usage is identical in shape to `deploy.yml`'s single one.
 - Revisit when: `surya-ocr` lifts its `pillow<11` cap (the two requirements
   files can converge again), or when `@nestjs/swagger` moves off
   `@nestjs/mapped-types@2.0.5` (the class-validator peer warning disappears).
