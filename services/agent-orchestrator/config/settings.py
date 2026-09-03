@@ -158,6 +158,35 @@ class Settings:
         self.toast_webhook_secret: Optional[str] = os.getenv("TOAST_WEBHOOK_SECRET")
         self.toast_environment: str = os.getenv("TOAST_ENVIRONMENT", "sandbox")
         self.mock_pos: bool = os.getenv("MOCK_POS", "true").lower() == "true"
+        # create_toast_client_from_settings() reads `settings.toast_mock_mode`
+        # (services/toast_api_client.py:547) — an attribute this class had never
+        # defined, so that factory raised AttributeError on every call. It went
+        # unnoticed because the factory has no callers: every existing client is
+        # built via ToastAPIClient(...) directly. The /api/v1/toast router is the
+        # first caller, which is why this is being defined now.
+        #
+        # Deliberately NOT `self.mock_pos`. MOCK_POS is false in production, so
+        # aliasing would turn a bug fix into a silent switch to real, billable
+        # calls against a third-party API — a commercial decision (OD-64) taken
+        # by nobody. This reads its own key and defaults to the same safe value
+        # the gateway uses (TOAST_MOCK_MODE, default true —
+        # apps/api-gateway/src/toast/toast.service.ts:72), so one key now
+        # governs Toast mocking on both services.
+        #
+        # The polarity of the parse is the point. Written as `== "true"` this
+        # was fail-OPEN for everything that is not the literal word: measured
+        # 2026-09-03, `TOAST_MOCK_MODE=yes`, `=1` and `=""` all produced
+        # mock_mode False, i.e. LIVE, billable calls to a third-party API from
+        # a typo. A mock switch is a safety switch, so only an explicit,
+        # unambiguous opt-out may disarm it: anything that is not exactly
+        # "false" (case-insensitive, trimmed) means mock. Unset means mock.
+        # Malformed means mock. That is fail-closed, and it is why this is not
+        # written the same way as `self.debug` above — `debug` fails closed on
+        # `== "true"` because its safe value is False, and Toast's safe value
+        # is True.
+        self.toast_mock_mode: bool = (
+            os.getenv("TOAST_MOCK_MODE", "true").strip().lower() != "false"
+        )
 
         # Phase 21: Inventory and buffer configuration (E2E-v2-02, E2E-v2-03)
         self.buffer_window_minutes: int = int(os.getenv("BUFFER_WINDOW_MINUTES", "30"))

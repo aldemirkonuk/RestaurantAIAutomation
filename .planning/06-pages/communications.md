@@ -175,6 +175,24 @@ chrome per dashboard.md §7.
 - **Scheduled report *sending* is feature-flagged off server-side** — "no mailer —
   scheduled send is feature-flagged" ([TIER-MAP](../03-scenarios/TIER-MAP.md):51, S15
   Plus). The scheduler UI here creates schedules a mailer never executes.
+- **Who a send actually reaches was decided by two columns that do not exist,
+  until 2026-09-02** ([ADR 0098](../decisions/0098-a-preference-is-read-from-the-column-it-lives-in.md)).
+  `communications/recipient-resolver.service.ts` is the module every scheduled
+  send here resolves through, and its `checkChannelPreference` read
+  `prefs.order_channels` and `prefs.report_channels` — names no migration has
+  ever declared (the table has `order_approval_channels` and
+  `financial_reports_channels`). The row arrives via `.select("*")`, so the reads
+  were `undefined` with no error, and on the stock production row the check ran
+  backwards on both axes: email refused to users who had enabled it, SMS sent to
+  users who had disabled it. Anything in this note that reasons about *who*
+  received a scheduled send before that date should be re-checked, not trusted.
+- **The cross-tenant fallback OD-87 closed in the resolver was still open one
+  layer up.** `notifications/low-stock-alerts.service.ts:resolveEmails` runs once
+  per restaurant and reached the global `MANAGER_EMAIL` twice over — it omitted
+  `allowDefaultFallback` (which defaults to `true`) and then read the env var
+  directly inside a `catch {}`. Fixed in the same change; the legacy
+  `DEFAULT_RESTAURANT_ID` tenant's recipient list is deliberately unchanged, per
+  [ADR 0022](../decisions/0022-scheduled-jobs-serve-opted-in-tenants.md).
 - ~~Saved templates persist client-side through the builder components rather than a
   server store~~ — **stale and wrong, corrected 2026-09-02.** The builders persisted
   *nowhere*: they made no network call and touched no storage (§10). A server store

@@ -3,10 +3,18 @@
 Skills live here — auto-discovered by Claude Code, committed, and reviewable in PRs
 ([decision 2026-08-24](../../.planning/decisions/OPEN-DECISIONS.md), Resolved table).
 
-**Current state: 4 committed skills** (first admitted 2026-08-28 through the §3.3
-gate — `fleet-census`, `harness-contract-audit`, `model-pin-census`,
-`registry-index-refresh`; each wraps `scripts/agents/run_card.py`). The census is
-`python3 scripts/agents/run_card.py --agent registry-clerk`, never this paragraph.
+**Current state: 5 committed skills.** The first 4 (admitted 2026-08-28 through
+the §3.3 gate — `fleet-census`, `harness-contract-audit`, `model-pin-census`,
+`registry-index-refresh`) each wrap `scripts/agents/run_card.py`, a *mechanical*
+(no model call) card runner per ADR 0034. `pr-audit-gate` (2026-09-02, ADR 0090) is
+the first **judgment-class** skill — it calls Opus (corrected from the original
+"Sonnet max" ask per ADR 0050's production/ADR/outward-send override), and
+deliberately does not
+run through `run_card.py`, which is mechanical-only by design (see that script's
+own docstring) and stays that way so it never biases the open OD-03 harness
+choice. The census is `python3 scripts/agents/run_card.py --agent registry-clerk`
+for the mechanical four; `pr-audit-gate` is event-triggered, not census-tracked.
+The census is never this paragraph.
 (The prior state — zero committed, one gitignored vendor `SKILL.md` at
 `.agents/skills/railway-config/` — held from 2026-08-24 to 2026-08-28.)
 

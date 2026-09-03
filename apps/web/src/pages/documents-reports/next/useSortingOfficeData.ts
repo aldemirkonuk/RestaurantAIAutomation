@@ -156,7 +156,9 @@ export function useSortingOfficeData(): SortingOfficeData {
   const { activeRestaurantId } = useAuth();
   const rid = activeRestaurantId ?? '';
 
-  const reportsQ = useQuery<{ reports: GeneratedReport[]; total: number }>({
+  // `total: number | null` — the gateway reports null when it could not count,
+  // rather than handing back the page length (ADR 0086 / ADR 0051 clause 2).
+  const reportsQ = useQuery<{ reports: GeneratedReport[]; total: number | null }>({
     queryKey: ['sorting-office', 'reports', rid],
     queryFn: () => listReportsWithTotal({ limit: SO_SERVER_WINDOWS.REPORTS }),
     enabled: !!rid,
