@@ -163,9 +163,15 @@ jobs:
       # or four sessions merge into this repo concurrently, so `main` at audit
       # time is routinely a different commit from the one being audited, and the
       # check script must be the version that shipped with it.
+      #
+      # fetch-depth: 0 (full history) is required by the "resolve which commit
+      # this service should be running" step below — it walks `git log` back
+      # from the audited sha looking for the last commit that touched the
+      # gateway's own watched paths, which a shallow clone would not have.
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
 
       # A MISSING SECRET IS A BROKEN AUDIT, NOT A PASSING ONE.
       #
@@ -226,6 +232,50 @@ jobs:
           echo "::error::the process is not up — the NestJS DI failure CI cannot see."
           exit 1
 
+      # ── WHICH COMMIT SHOULD api-gateway ACTUALLY BE RUNNING? ─────────────────
+      #
+      # Not necessarily the raw merged sha. Railway's @wineops/api-gateway only
+      # rebuilds when a push touches paths in ITS OWN watchPatterns
+      # (apps/api-gateway/**, pnpm-lock.yaml, pnpm-workspace.yaml, package.json —
+      # confirmed via `railway deployment list --json` ->
+      # .meta.serviceManifest.build.watchPatterns). A merge that doesn't touch
+      # those paths makes Railway correctly SKIP a rebuild
+      # (meta.skippedReason: "No changes to watched files"), and the service
+      # keeps serving whatever it already built — comparing that against the raw
+      # merged sha is comparing against a sha the service was never going to
+      # build from.
+      #
+      # Confirmed live twice in a row, 2026-09-03: PR #284 (docs only) and
+      # PR #261 (CI/tooling/.claude/.planning only, ADR 0090) both correctly
+      # skipped a gateway rebuild and both then failed "The deployed build IS
+      # the merged build" for it — the running gateway (`2e9d0723`, the actual
+      # last commit to touch apps/api-gateway) was reported as a MISMATCH
+      # against a sha (`ce519d42`) whose own diff has zero lines under apps/.
+      # Nothing was broken; the check was comparing against the wrong sha.
+      #
+      # scripts/resolve_watched_commit.py --self-test proves the resolution
+      # logic against a real git repo before it is trusted to gate a real audit
+      # — the same "prove the guard reaches the fault" rule the ci.yml guards
+      # keep, applied here even though this workflow doesn't wire it into
+      # ci.yml's required-check graph (it needs no live target, but neither did
+      # check_deployed_sha.py's own self-test, and that one isn't wired in
+      # either — this stays consistent with that precedent rather than growing
+      # CI Complete's hand-maintained needs list for a post-merge-only guard).
+      - name: The gateway's watched-path resolution logic still holds
+        run: python3 scripts/resolve_watched_commit.py --self-test
+
+      - name: Resolve which commit api-gateway should be running
+        id: expect
+        run: |
+          set -euo pipefail
+          SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          RESOLVED="$(python3 scripts/resolve_watched_commit.py \
+            --sha "$SHA" \
+            --paths apps/api-gateway pnpm-lock.yaml pnpm-workspace.yaml package.json)"
+          echo "Merged: $SHA"
+          echo "api-gateway's watched paths were last touched at: $RESOLVED"
+          echo "expect=$RESOLVED" >> "$GITHUB_OUTPUT"
+
       # ── THE STEP THAT MAKES THE STAGE ABOVE MEAN SOMETHING ──────────────────
       #
       # A 200 from liveness proves *a* process is up. It does not say WHICH ONE,
@@ -233,19 +283,22 @@ jobs:
       # a FAILED deploy was indistinguishable from a good one. Every "deployed
       # and healthy" claim in this repository rested on that gap.
       #
-      # This compares the revision the running process was BUILT from against the
-      # sha that was merged. It polls, because Railway builds and swaps the
-      # instance on its own schedule and "not yet" and "never" look identical at
-      # any single instant; only a deadline separates them.
+      # This compares the revision the running process was BUILT from against
+      # the commit resolved above — the last commit (at or before the merge)
+      # that actually touched something Railway watches for this service, NOT
+      # necessarily the raw merged sha (see the step above). It polls, because
+      # Railway builds and swaps the instance on its own schedule and "not yet"
+      # and "never" look identical at any single instant; only a deadline
+      # separates them.
       #
       # It fails on `commit: "unknown"` as well as on a mismatch. That is
       # deliberate — an audit that accepts "unknown" certifies its own blindness.
       # See the script's ADVICE block for exactly which variable to set.
-      - name: The deployed build IS the merged build
+      - name: The deployed build IS the build it should be
         run: |
           python3 scripts/check_deployed_sha.py \
             --url "$API_GATEWAY_URL" \
-            --expect "${{ github.event.workflow_run.head_sha || github.sha }}" \
+            --expect "${{ steps.expect.outputs.expect }}" \
             --timeout-seconds 600 \
             --poll-seconds 10
 
