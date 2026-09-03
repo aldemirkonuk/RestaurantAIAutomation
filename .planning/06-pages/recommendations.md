@@ -9,9 +9,9 @@ tier: plus
 archetype: list+detail # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
-maturity: broken
+maturity: partial
 status: documented
-updated: 2026-08-26
+updated: 2026-09-02
 links: ["[[PAGE-CONTRACT]]", "[[orders]]", "[[promotions]]", "[[reports]]", "[[providers]]", "[[inventory]]", "[[team]]", "[[recommendations-catalog]]"]
 ---
 
@@ -43,6 +43,111 @@ history, and assignment to team members (UX paths NEW-284…NEW-308, header comm
 - Tabs: active / history / dismissed / snoozed / done
 - Digest frequency settings
 - 🚧 Not in the sidebar — reachable only via command palette or the catalog (§9)
+- **Mudavym redesign behind `mudavym_design_recommendations` (OFF)** — *the standing
+  book* (§1b): entries filed under **what acting on them would change** (Money ·
+  Stock · Vendors · The floor · Unfiled), every entry stating the same three facts —
+  what it would change · whose hand does it and where the work lands · how long it has
+  stood; the head prints the **denominator** ("17 rules were read. 4 entries stand");
+  leaves for standing / snoozed / dismissed / ruled-off / history; act · dismiss with a
+  reason · snooze · pin · assign · feedback · bulk all kept, and **ruling an entry off
+  is the one hold-to-seal act** on the page
+- The redesign authenticates **by construction and is held there by a test** — the only
+  build of this page whose transport is asserted: `useRecommendationsNextData.test.tsx`
+  proves the read goes through `apiClient` and that `fetch` is never called. (The
+  legacy page's own repair landed earlier, in `58113e26`, with no test — §10.)
+- 🚧 **Daily digest (NEW-303) renders DISABLED in the redesign.** The preference stores
+  (GET/PUT `…/digest` work), but nothing sends it: no scheduler anywhere reads
+  `recommendation_digest_prefs` — verified by grep across the repo on 2026-09-02, and
+  stated in [[08-softwares/recommendations]]:101-103. The legacy page's toggle says
+  "top actions to your inbox"; no inbox receives anything.
+- 🚧 **"Let Mudavym do it" renders DISABLED** on every entry, with the reason: no
+  autonomous execution path exists in the gateway for any recommendation, with or
+  without permission. The only autonomous switch in the product
+  (`enable_ai_autonomous_send`) belongs to vendor email, not to this feed.
+- `?insight=<ruleKey>` (NEW-759) opens and focuses that entry, and says in words when
+  the rule asked for is **not** standing (ruled off, dismissed, snoozed, or no longer
+  firing) instead of landing silently on a book that does not contain it
+- 🚧 **"Standing" is an em dash on the standing leaf** — the feed carries no first-fired
+  timestamp, so how long an entry has stood is unknown until the disposition store has
+  touched it (§13.7). It is never rendered as 0 days or as today.
+
+## 1b. Motions used — Mudavym redesign (flag `mudavym_design_recommendations`)
+
+Canonical source with curves: `apps/web/src/pages/recommendations/next/MOTIONS.md` —
+this list is the note-side index (ADR 0044 §2).
+
+| id | name | fires |
+|---|---|---|
+| `rc-work-settle` | The working opens | an entry's rationale/rule/assignment/seal panel, `grid-template-rows: 0fr → 1fr` on `settle` (320ms house curve) — the row-expand the founder named by hand in the wave-1 review |
+| `rc-leaf-turn` | A leaf turns | changing leaf (Standing → Snoozed → Dismissed → Ruled off → History) — `turn`, 420ms, fade + 5px rise, once per leaf |
+| `rc-ink` | Ink micro-state | entry left-rule warming to the seal ring on hover/focus, quiet-button borders — `ink`, 160ms; nothing moves |
+| `rc-hold-pour` | The hold fills | `HoldToApprove` on **Hold to rule off** — `pour`, linear 620ms; an early release retreats on `tuck` and says what did not happen |
+| `rc-seal-stamp` | The seal lands | the hold completing and the entry being ruled off — `stamp`, ~11% overshoot, the only wax on the page |
+
+Deliberate non-motions: the seal is rationed to ruling off (every other action is the
+same die pressed dry); a dismissed entry leaves at once and the undo line — not an
+animation — is what makes it recoverable; unknowns never animate (a static em dash and
+a moving skeleton are different claims); the register does not animate when filtered.
+
+### Design used, and why (ADR 0044 p4 wave · MAKEOVER-VERDICTS: REWORK)
+
+**The verdict, verbatim** (`MAKEOVER-VERDICTS.md:183-185`): *"`/recommendations` —
+REWORK / find another way. Likes the new version but wants **more structure and more
+uniqueness**. 'Maybe we should find another way.'"*
+
+**The structure that enforces it.** The legacy page is a flat feed ranked by a hidden
+`score`, filtered by coloured category chips — the shape the founder said to leave. The
+rebuild is ruled by **consequence**: the page's organising axis is *what acting on an
+entry would change*, and the left-hand **register** (Money · Stock · Vendors · The floor
+· Unfiled) is both the table of contents and the filter. Under it, every entry carries
+the same three facts in the same place — **would change · whose hand (and where the work
+lands) · standing** — which are exactly the three axes the founder named and the three
+the legacy feed never showed. Urgency stays the engine's own word ("Tonight" / "This
+week" / "This month") and the score stops being the page's organising principle.
+`unfiled` exists on purpose: a rule category this page has no register for shows up as
+unfiled rather than being absorbed into a bucket it was never sorted into.
+
+**Uniqueness, and where it comes from.** Three things exist on no other surface: the
+**denominator in the opening line** ("17 rules were read. 4 entries stand — the rest did
+not fire, or you have already ruled them off"), which turns a short book into a proven
+absence instead of a silence (ADR 0020); **the working**, where the rule key is printed
+in mono with "a deterministic rule … no model wrote this sentence"; and **ruling an
+entry off** — the one hold-to-seal act, chosen because the double rule *is* the house's
+sign that an account is closed, and because asserting "the work was done" is the only
+claim on this page a manager makes about the world rather than about the feed.
+
+**Honesty rules applied.** (1) Standing is an em dash wherever nothing recorded it.
+(2) 401 ("your session has expired"), 403 ("this account is not allowed") and everything
+else ("could not be read (…) — this is not an empty book") are three different
+sentences; the legacy page rendered all three as `Request failed (401)`. (3) A failed
+read never renders as an empty list, and a write that did not land puts the entry back
+and says so. (4) The two controls whose backend does not exist — the digest sender and
+autonomous execution — are rendered **disabled with the reason**, not as working
+buttons. (5) The empty book says why it might be short (rules needing till data stay
+silent without a POS) and links the catalogue.
+
+**Two directions considered and NOT built — the founder's fork.**
+*(a) The run-sheet.* One sheet banded by time-to-act (Tonight / This week / This month)
+with the register demoted to a filter, printed and carried to the pass. It is the more
+operational page and probably the better one on a Friday — but it re-centres the page on
+urgency, which is the axis the legacy already had, so it answers "more structure" and
+not "more uniqueness". *(b) The two-pane docket* (the archetype in this note's
+frontmatter, `list+detail`): a narrow list of entries left, the full working pinned
+right. It reads beautifully with a long book and is dead space with a short one — and
+short is what a restaurant without POS coverage actually gets (§11). Both are one
+refactor away from the current build; the register and the three-fact line survive
+either.
+
+**Substituted / left out, disclosed.** *Search, sort and category filters* (NEW-288/289/
+290) are not rebuilt: the standing leaf never holds more entries than rules that fired,
+and with the register doing the filing a search box is furniture at that length — if the
+book grows past a screen the founder should have them back, and they are cheap. *The
+context menu and double-click paths* (NEW-305/306) are dropped in favour of visible
+controls; every action on the page is a real button and a key. *`Copy link`* is not
+rebuilt — the page reads `?insight=<ruleKey>` (NEW-759: it opens and focuses that entry,
+and says so plainly when the rule is not standing) but nothing on it mints a link
+(§13.12). *The digest editor* (hour, minimum urgency, recipient) is not built at all,
+because its sender is not built either.
 
 ## 2. Entry
 
@@ -56,8 +161,16 @@ history, and assignment to team members (UX paths NEW-284…NEW-308, header comm
 ## 3. Files
 
 - Route binding: `apps/web/src/App.tsx:262` (lazy import :85).
-- `apps/web/src/pages/Recommendations.tsx` (1,103 lines) — self-contained; only
-  shared imports are Header, toasts, and the team API (:49-52).
+- `apps/web/src/pages/Recommendations.tsx` (1,099 lines) — self-contained; only
+  shared imports are Header, toasts, the team API and `apiClient` (:49-52).
+- Mudavym redesign (flag `mudavym_design_recommendations`, gated by `PageGate` at
+  `App.tsx:307`): `apps/web/src/pages/recommendations/next/` —
+  `RecommendationsNext.tsx` (the book, register, leaves, keyboard),
+  `Entry.tsx` (one ruled entry + the working), `useRecommendationsNextData.ts`
+  (every read/write through `apiClient`), `rec-format.ts` (the three axes + the
+  failure shape), `rec-next.css` (all styling — Mudavym tokens only, with the
+  motion tokens written out at the bottom), `MOTIONS.md`, and two test files
+  (15 tests). ~1,710 lines of source.
 
 ## 4. Endpoints
 
@@ -75,6 +188,13 @@ Raw `fetch` against `${VITE_API_GATEWAY_URL}/api/v1/analytics/recommendations`
 | POST | `…/:rid/action` | `Recommendations.tsx:263` |
 | POST | `…/:rid/bulk-action` | `Recommendations.tsx:404` |
 | GET | `/restaurants/:rid/team/members` | assignment picker, `Recommendations.tsx:346` → `services/api/team.ts:124` |
+
+Same six endpoints in the Mudavym build, all through `apiClient`, all keyed by
+`activeRestaurantId`: `useRecommendationsNextData.ts` — feed and leaves in `load()`,
+digest in the tenant effect, `…/action` in `setDisposition`/`restore`,
+`…/bulk-action` in `bulk`, `getTeamMembers(rid)` in `loadTeam` (lazy, on first
+assign). No endpoint outside this table is called, and no figure on the page comes
+from anywhere else.
 
 ## 5. Signals
 
@@ -97,7 +217,18 @@ dashboard.md §7.
 
 - Tabs (active/history/dismissed/snoozed/done) fetch on demand (:219); digest
   frequency is a server-side setting via GET/PUT digest (:252,383).
-- No client flags or env gates beyond `VITE_API_GATEWAY_URL`.
+- Legacy: no client flags or env gates beyond `VITE_API_GATEWAY_URL`.
+- **Feature flag `mudavym_design_recommendations`** — registered ACTIVE, `defaultValue:
+  false` (`apps/api-gateway/src/settings/feature-flag-registry.ts:155-159`), read by
+  `useMudavymDesign` through `PageGate` (`App.tsx:307`). OFF ⇒ the legacy page renders
+  byte-for-byte.
+- **Per-browser override `mudavym.design.recommendations`** in `localStorage`
+  (`1|true|on` forces the redesign, `0|false|off` forces legacy) — precedence over the
+  flag, one machine only (`lib/mudavym/useMudavymDesign.ts:31-45`).
+- Redesign client state (none of it persisted): leaf, register filter, expanded set,
+  selection, keyboard cursor. Every query is keyed by `activeRestaurantId` and a
+  sequence number, so a restaurant switch clears the previous tenant's entries before
+  the new read lands (asserted in `useRecommendationsNextData.test.tsx`).
 
 ## 9. Gaps
 
@@ -106,12 +237,63 @@ dashboard.md §7.
   `20260720120000`). Do not rebuild from the catalog.
 - The page is reachable only through the command palette or the catalog (§2) — a
   primary actionable surface with no sidebar presence; undecided, not accidental as
-  far as any record shows (no ADR either way).
+  far as any record shows (no ADR either way). **The Mudavym build does not add a nav
+  entry** — that is a founder decision, not a page-agent one (§13.4); the redesign is
+  reached the same two ways, plus the per-browser override in §8.
+
+Outside the page's own paths, and therefore filed rather than built (2026-09-02):
+
+- **The digest has no sender.** `recommendation_digest_prefs` is written by
+  `analytics.controller.ts:908` and read back by `:898`; grepping the whole repo for
+  the table finds only that service, the two migrations and planning docs — no
+  scheduler, no job, no mail. `last_sent_at` is never written. The redesign renders the
+  digest control disabled with that reason; the fix belongs in
+  `apps/api-gateway/src/analytics/insights/insight-scheduler.service.ts` (or a sibling)
+  and is §13.6.
+- **Nothing records when a rule first fired**, so "how long has this stood" is
+  unknowable for an untouched entry. The raw material already exists:
+  `recommendation_impressions` is written on every read
+  (`recommendations.service.ts:396-419`) and would answer it with
+  `min(created_at) per (restaurant_id, rule_key)` — but no endpoint exposes it. §13.7.
+- **No autonomous execution exists** for any recommendation anywhere in the gateway;
+  the product's only autonomy switch, `enable_ai_autonomous_send`, belongs to vendor
+  email (`feature-flag-registry.ts:64`). The redesign says so on every entry rather
+  than implying a capability. §13.8.
+- **`scripts/check_no_seeded_defaults.py` `SCAN_ROOTS` should gain
+  `apps/web/src/pages/recommendations/next`** — the guard only binds directories listed
+  there, so this rebuilt surface is currently unpoliced by it. Measured 2026-09-02: with
+  the root added the guard **passes** on this directory (13 roots, 740,341 chars); it
+  first caught a `{ id, label, days }` snooze list under S1, which is why that list now
+  keys its duration as `value`. One-line change, but the file is shared by seven page
+  agents this wave — parent session's call. §13.9.
+- **The legacy page keys its path param on `user.restaurantId`**
+  (`Recommendations.tsx:153`) while every other tenant signal — the re-issued JWT and
+  the `X-Restaurant-Id` header — follows `activeRestaurantId`
+  (`AuthContext.tsx:425-441`, which never updates `user.restaurantId`). After a
+  restaurant switch those two disagree. The Mudavym build uses `activeRestaurantId`
+  throughout; the legacy page is untouched by this wave. §13.10.
 
 ## 10. Maturity
 
-**broken.** Every request this page makes is unauthenticated against a controller that
-has required a bearer token since 2026-08-24. The page cannot load a single card.
+**partial** (moved from **broken** on 2026-09-02, ADR 0044 p4 wave). The transport
+defect this section was written about is **fixed twice over**, and neither fix is a
+promise — both are in the tree:
+
+| What changed | Evidence |
+|---|---|
+| **The legacy page's six raw `fetch` calls became `apiClient` calls** in commit `58113e26` ("fix: security holes, the honesty sweep, and 46 page dossiers", #70, 2026-08-26) — the same sweep that filed this dossier. The evidence table below is therefore **stale as of that commit**, and is kept for the record, not as a live defect. | `git show 58113e26 -- apps/web/src/pages/Recommendations.tsx`; today the calls are at `Recommendations.tsx:195,217,252,262,382,401`, and grepping the file for `fetch(` returns **no hits** |
+| **The Mudavym rebuild is authenticated by construction** and, unlike the legacy fix, is **held there by a test**: `useRecommendationsNextData.test.tsx` asserts the feed read goes through `apiClient` with the tenant id in the path and that `fetch` is never called. That closes §13.2, which asked for exactly this. | `apps/web/src/pages/recommendations/next/useRecommendationsNextData.test.tsx` |
+| **401 is now a distinguishable fact** — "your session has expired" vs 403 "not allowed" vs everything else — closing §13.3. | `rec-format.ts` `failureOf`/`failureSentence`; asserted in `RecommendationsNext.test.tsx` |
+
+**Why not `complete`.** Three capabilities the page appears to offer do not exist
+behind it: the daily digest stores a preference nothing sends (§9), no entry can be
+carried out by the platform itself (§9), and how long an entry has stood is not
+recorded anywhere readable (§9). The feed also stays short without a POS (§11), and
+still emits no UX signals (§5). The redesign renders all three absences in words rather
+than papering over them, which is what moves the verdict to *partial* rather than
+*complete*.
+
+### The original evidence (2026-08-26, kept for the record — fixed by `58113e26`)
 
 | Evidence | `path:line` |
 |---|---|
@@ -127,14 +309,18 @@ has required a bearer token since 2026-08-24. The page cannot load a single card
 
 ### Calls out
 
+Corrected 2026-09-02: every row below now sends the bearer — the legacy page through
+`apiClient` since `58113e26`, the Mudavym build by construction (§10). Controller
+line numbers are the decorators as they stand today.
+
 | Method · Path | Auth **sent** | Auth **required** | Gateway controller | Returns |
 |---|---|---|---|---|
-| GET `/analytics/recommendations/:rid` | ❌ none | JWT (class) | `analytics.controller.ts:628` → `recommendations.service.ts:58` | ranked rule hits with observation / action / rationale, merged with dispositions — **401 today** |
-| GET `…/:rid/history`, `…/:rid/actions?status=` | ❌ | JWT | `:779`, `:757` | tab contents — **401** |
-| GET/PUT `…/:rid/digest` | ❌ | JWT | `:794`, `:802` | digest frequency — **401** |
-| POST `…/:rid/action` | ❌ | JWT | `:654` | act/dismiss/snooze/done/pin write — **401** |
-| POST `…/:rid/bulk-action` | ❌ | JWT | `:708` | bulk write — **401** |
-| GET `/restaurants/:rid/team/members` | ✅ via `apiClient` | JWT | `team` module (`services/api/team.ts:124`) | assignment picker — **this one works**, which is why the assign menu populates on a page where nothing else does |
+| GET `/analytics/recommendations/:rid` | ✅ via `apiClient` | JWT (class) | `analytics.controller.ts:728` → `recommendations.service.ts:58` | ranked rule hits with observation / action / rationale, merged with dispositions |
+| GET `…/:rid/history`, `…/:rid/actions?status=` | ✅ | JWT | `:879`, `:857` | leaf contents (dismissed / snoozed / done / history) |
+| GET/PUT `…/:rid/digest` | ✅ | JWT | `:894`, `:902` | digest preference — **stored, never sent** (§9) |
+| POST `…/:rid/action` | ✅ | JWT | `:754` | act/dismiss/snooze/done/pin/assign/feedback write |
+| POST `…/:rid/bulk-action` | ✅ | JWT | `:808` | bulk write |
+| GET `/restaurants/:rid/team/members` | ✅ via `apiClient` | JWT | `team` module (`services/api/team.ts:124`) | assignment picker — the one call that always worked, which is why the assign menu populated on a page where nothing else did |
 
 ### Fed by
 
@@ -143,12 +329,15 @@ has required a bearer token since 2026-08-24. The page cannot load a single card
 | Rule inputs | hourly `@Cron(EVERY_HOUR)` insight sweep across all restaurants and 11 categories, honouring `analytics_insight_prefs` | `analytics/insights/insight-scheduler.service.ts:42-70` |
 | Metrics behind the rules | `AnalyticsService` / `AdvancedAnalyticsService` over `pos_checks`, `wine_consumption_log`, `restaurant_inventory`, `procurement_orders` | `analytics/analytics.service.ts:18,133-138`; `advanced-analytics.service.ts:86` |
 | Goal-pace rules | `GoalsService` | `analytics/goals.service.ts:312` |
-| Dispositions | this page's own writes (currently 401) plus `ContextualInsights` on [[orders]]/[[inventory]] (also 401 — same defect) | `analytics/recommendation-actions.service.ts` |
+| Dispositions | this page's own writes plus `ContextualInsights` on [[orders]]/[[inventory]] — both authenticated through `apiClient` today (`ContextualInsights.tsx:28,120,123,201,224`) | `analytics/recommendation-actions.service.ts` |
 
-The producers are healthy and running. **The transport is the defect** — this page is
-starved by its own client code, not by missing data. Note the second-order effect: many
-rules need `pos_checks`, so even once auth is fixed, a restaurant without a POS sees a
-much shorter list than the catalogue implies (see [[recommendations-catalog]] §10).
+The producers are healthy and running, and **the transport is no longer the defect**
+(§10 — the 2026-08-26 sweep fixed it, and the Mudavym build has a test holding it).
+What survives is the second-order effect: many rules need `pos_checks`, so a restaurant
+without a POS sees a much shorter list than the catalogue implies (see
+[[recommendations-catalog]] §10). The redesign answers that by printing the
+denominator — "17 rules were read. 4 entries stand" — so a thin feed is legible as
+*rules that did not fire* rather than as a page with nothing to say.
 
 ### Writes
 
@@ -156,9 +345,11 @@ much shorter list than the catalogue implies (see [[recommendations-catalog]] §
 |---|---|---|
 | Act / dismiss / snooze / done / pin | `recommendation_actions` (migration `20260720120000`) | the card's disposition on this page **and** the hidden/pinned set that `ContextualInsights` applies on [[orders]] and [[inventory]] (`ContextualInsights.tsx:125-138`) |
 | Assign to a teammate | `recommendation_actions.assigned_to` | assignee's view |
-| Digest frequency | server-side digest setting | scheduled digest mail |
+| Digest frequency | `recommendation_digest_prefs` | 🚧 **nothing** — no scheduler reads the table and no mail is sent (§9) |
 
-**All of these are 401 today**, so the disposition store receives nothing from this page.
+**All of these land today.** The 2026-08-26 note that "all of these are 401" is
+superseded: the writes reach `recommendation_actions`, and the only write with no
+consumer is the digest preference.
 
 ## 12. Design intent
 
@@ -168,31 +359,66 @@ Auditable, never an LLM.
 
 | State | Handled? | Evidence |
 |---|---|---|
-| loading | ✅ | `setLoading(true)` in `loadActive` (`:192`) |
-| empty | ✅ | dedicated empty state routing to [[reports]] (§0) |
-| error | ✅ **and it is the state users actually see** — `setError` is populated and rendered | `:168,193-199` |
-| permission-denied | ❌ | 401 renders as a generic "Request failed (401)", not as "sign in again" |
+| loading | ✅ | legacy `setLoading(true)` in `loadActive` (`:192`); redesign: static ruled ghost rows and "Reading the standing book…" — never a shimmer that could be mistaken for an unknown |
+| empty | ✅ | legacy: dedicated empty state routing to [[reports]] (§0). Redesign: the denominator sentence ("17 rules were read, and none of them stands") plus why the book may be short, and the catalogue link |
+| error | ✅ | legacy `setError` is populated and rendered (`:168,193-199`). Redesign: the failure is a sentence naming the register that could not be read, plus a retry — never an empty list |
+| permission-denied | ❌ legacy · ✅ redesign | legacy: 401 renders as a generic "Request failed (401)". Redesign: 401 → "Your session has expired — sign in again and the standing book will read", 403 → "This account is not allowed to read the standing book", anything else → "could not be read (…) — this is not an empty book", each with a retry (`rec-format.ts:failureSentence`) |
 
-**Where the UI misleads:** it does not, much — it fails loudly, which is the one thing in
-its favour. The misleading part is upstream of the user: a page that *reports* as
-shipped, that has an ADR-worthy action model behind it, and that has been non-functional
-since the guard landed two days after the actions shipped.
+**Where the UI misleads (2026-08-26, and what is left of it).** The original entry here
+read: *"it does not, much — it fails loudly… the misleading part is upstream of the
+user: a page that reports as shipped… and that has been non-functional since the guard
+landed two days after the actions shipped."* The transport half of that is settled
+(§10). What is left is one live misleading control and it is in the LEGACY page only:
+the digest toggle says *"Daily digest on — top actions to your inbox"*
+(`Recommendations.tsx:385`) when nothing sends a digest (§9). The Mudavym build renders
+that control disabled with the reason, and marks the two other absences — no autonomous
+execution, no first-fired timestamp — in the same way.
 
 ## 13. Roadmap
 
-1. **Replace all six raw `fetch` calls with `apiClient`.** This alone restores the entire
-   page. Highest-value single change across all twelve of these dossiers relative to
-   effort. *Blocker: none.*
-2. **Add a regression test that a page's analytics call carries a bearer token** — this
-   defect was introduced by a *correct* security fix in a different file, and nothing
-   caught it. Same class of failure will recur on the next guard added.
-3. Distinguish 401 from other errors in the UI ("your session expired" vs "request
-   failed").
+1. ~~**Replace all six raw `fetch` calls with `apiClient`.**~~ **Done** in `58113e26`
+   (2026-08-26) for the legacy page; the Mudavym build never had them (§10).
+2. ~~**Add a regression test that a page's analytics call carries a bearer token.**~~
+   **Done for this page** — `useRecommendationsNextData.test.tsx` asserts the read goes
+   through `apiClient` and that `fetch` is never called. *Still open as a class:*
+   nothing generalises this to the next page a guard breaks. A repo-wide check ("no
+   `fetch(` under `apps/web/src/pages/**`") is the shape that would, and is not built.
+3. ~~Distinguish 401 from other errors in the UI.~~ **Done in the redesign** (§12);
+   the legacy page still says "Request failed (401)".
 4. **Decide whether this page belongs in the sidebar** (§9). It is a primary actionable
    surface reachable only via the command palette. *Blocker: founder decision — no ADR
-   exists either way; add to `OPEN-DECISIONS.md`.*
+   exists either way; add to `OPEN-DECISIONS.md`.* The redesign deliberately adds no
+   nav entry.
 5. Correct the stale `v3.0-TECH-DEBT.md:493` line ("Recommendations entirely read-only")
-   — actions shipped; the page's real problem is auth, not read-only-ness.
-6. Once loading works, emit signals — dispositions are operational state, but *which
-   rules get dismissed* is the highest-value UX signal in the product and nothing
-   records it (§5).
+   — actions shipped; the page's real problem was auth, and that is now fixed.
+6. **Build the digest sender, or retire the preference.** `recommendation_digest_prefs`
+   is written and read by nothing else (§9); the redesign shows the control disabled
+   with that reason. Either a job in
+   `analytics/insights/insight-scheduler.service.ts` reads `digest_enabled` /
+   `digest_hour` / `digest_min_urgency` and sends (writing `last_sent_at`), or the
+   endpoints and the table go. *Blocker: founder call on whether the product mails.*
+7. **Expose first-fired time so "standing" stops being an em dash.** The data already
+   accumulates in `recommendation_impressions`
+   (`analytics/recommendations.service.ts:396-419`); the cheapest fix is for
+   `getRecommendations` to attach `firstSeenAt = min(created_at)` per `rule_key` to each
+   recommendation. One join. The page renders it the moment it exists —
+   `EntryVM.updatedAt` is already the axis. *Blocker: none but ownership; it is a
+   gateway change and this wave is web-only.*
+8. **Decide whether the platform may ever act on a recommendation itself** — the
+   founder's own third axis, and today the honest answer on every entry is "not built"
+   (§9). It is an ADR, not a ticket: what may be done unattended, under whose
+   permission, with what audit trail. `enable_ai_autonomous_send` is the precedent for
+   the shape of the switch.
+9. **Add `apps/web/src/pages/recommendations/next` to `SCAN_ROOTS` in
+   `scripts/check_no_seeded_defaults.py`** (§9) — measured to pass with it added.
+10. **Point the legacy page's path param at `activeRestaurantId`**
+    (`Recommendations.tsx:153`) so it agrees with the JWT and the `X-Restaurant-Id`
+    header after a restaurant switch (§9).
+11. Emit signals — dispositions are operational state, but *which rules get dismissed*
+    is the highest-value UX signal in the product and nothing records it (§5). The
+    impressions log now covers what was *shown*; what is missing is the reporter.
+12. **Give the page a way to mint a link.** It reads `?insight=<ruleKey>` but has no
+    `Copy link` control, so the deep links it honours can only come from elsewhere.
+13. If the book ever grows past a screen, restore search / sort / category filters
+    (§1b names them as deliberately dropped) — they are cheap, and the register alone
+    stops scaling somewhere around twenty entries.
