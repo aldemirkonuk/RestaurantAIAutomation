@@ -177,6 +177,14 @@ entire production E2E suite has been reporting health from having run nothing.
 That is [[0089-absence-reported-as-health]] verbatim, in the one place that was
 supposed to catch a bad deploy — including the deploys this very change makes.
 
+**Credit and scope, added after PR #266 landed:** the pnpm pin is the proximate
+cause of *step 7* failing on those eight nights, and removing it is real. It is
+**not** why the suite has never told us anything about production. #266
+measured that: 120 runs since 2026-05-06, 118 `failure`, and the required
+secrets never set on the repository at all. Two independent sessions found the
+pnpm defect on the same day; #266 found the larger one underneath it and owns
+the fix. This change is the smaller half.
+
 ### What was measured, per package
 
 Clean-environment bar per [[0087-phantom-dependency-pinned-real-one-unpinned]]:
@@ -318,31 +326,52 @@ sites are `await import('jspdf')` (`tableExport.ts:215`,
 `exportHelpers.ts:45`), which is exactly the dynamic shape 0100's first pass
 missed, and the build emits a 390 kB `jspdf.es.min-*.js` chunk.
 
-### The e2e-prod fix, verified by running it
+### The e2e-prod fix, verified by running it — and a claim this ADR got wrong
 
 `e2e-prod.yml` was dispatched against this branch before merge
-(`workflow_dispatch`, run `33719204671`). It **completed `success`, all
-seventeen steps**:
+(`workflow_dispatch`, run `33719204671`). It completed `success`, all seventeen
+steps, including the three that matter here:
 
 ```
- 4. Install Python dependencies ......................... success   <- requirements.prod.txt
-                                                                      with pillow 12.3.0, on Linux
- 5. Set up pnpm + Node.js (Wave F — Playwright) ......... success   <- was the throw
- 7. Install frontend dependencies ...................... success   <- failed 8 nights running
-10. Wave A — API Contract Tests ........................ success   \
-11. Waves B+C — Agent Health + RabbitMQ Triggers ....... success    |
-12. Wave D — Toast Pipeline ............................ success    |  all seven skipped
-13. Wave E — Gmail Pipeline ............................ success    |  on every run since
-14. Wave G — Calendar DB Assertion ..................... success    |  at least 2026-08-26
-15. Wave F — Playwright Frontend Smoke Tests ........... success   /
+ 4. Install Python dependencies ......... success   <- requirements.prod.txt with
+                                                       pillow 12.3.0, on ubuntu-latest
+ 5. Set up pnpm + Node.js ............... success   <- was the version-conflict throw
+ 7. Install frontend dependencies ....... success   <- ERR_PNPM_UNSUPPORTED_ENGINE before
 ```
 
-Two things this buys beyond the workflow fix. Step 4 is
-`pip install -r requirements.prod.txt` **on `ubuntu-latest`** — so the
-`pillow==12.3.0` prod bump is confirmed on the platform the Railway container
-actually runs, not only on the macOS/arm64 box the venv work was done on. And
-waves A–G are the first end-to-end evidence in eight days that the production
-surfaces this change deploys to are answering at all.
+Step 4 is worth keeping: it is `pip install -r requirements.prod.txt` **on
+Linux**, so the `pillow==12.3.0` prod bump is confirmed on the platform the
+Railway container runs, not only on the macOS/arm64 box the venvs were built on.
+
+**An earlier draft of this ADR also claimed the run was "the first end-to-end
+evidence in eight days that the production surfaces answer at all", because
+Waves A–G all reported `success`. That was wrong, and it was wrong in exactly
+the way [[0089-absence-reported-as-health]] describes.** The waves asserted
+nothing:
+
+```
+tests/e2e/wave_a_api_contracts.py ...  17 skipped in 0.07s
+tests/e2e/wave_b_agent_health.py  ...  12 collected, every one SKIPPED
+```
+
+Every test skipped because the workflow's secrets are not set on the
+repository, and pytest exits 0 when everything skips — so the step, and the
+job, reported `success` having checked nothing. **A green wave was read as a
+working production.**
+
+This was caught by a peer session's PR #266, which landed while this branch was
+in the merge queue and measured the real history: **120 runs from 2026-05-06 to
+2026-09-02, 118 `failure` and 2 `success`, every one a `schedule` event, with
+none of the required secrets ever configured.** So the eight consecutive
+nightly failures this ADR cites are real, and the pnpm pin really was the
+proximate cause of *step 7* — but they were never the reason the suite told us
+nothing about production. That reason is older and larger, and #266 owns it.
+
+The honest scope of this change is therefore narrower than the draft claimed:
+**it removes one of the two reasons the nightly could not run, and proves that
+removal by running it. It does not make the nightly meaningful.** Until #266's
+secrets precondition passes, a red or a green here still says nothing about
+production. The merged `e2e-prod.yml` comment says so at the call site.
 
 ### Three of the fifteen change nothing that runs
 
