@@ -53,17 +53,29 @@ import {
  * the server answered. The migration header spells out why they are two columns:
  * one timestamp would let a month of failures read as a month of traffic.
  */
+/**
+ * Everything a row shows. `secret_encrypted` is deliberately absent — see the
+ * class header. Changing this string is the only way to leak the credential,
+ * and `mcp-connections.service.spec.ts` asserts it does not contain it.
+ *
+ * A module-level `const`, not a `static readonly` on the class, and the
+ * `.select()` calls below name it BARE rather than as
+ * `McpConnectionsService.ROW_COLUMNS`. That is not a style choice:
+ * `scripts/check_read_columns_exist.py` resolves a same-file
+ * `const NAME = "…" + "…";` and checks every column in it against
+ * `supabase/migrations/`, and cannot resolve a class static — five reads here
+ * were counted UNREADABLE, which is the guard's word for a read nobody is
+ * checking. This shape puts all sixteen column names back under the guard.
+ */
+const MCP_ROW_COLUMNS =
+  "id, name, url, scopes, created_at, last_used_at, last_probe_at, revoked_at, " +
+  "secret_set_at, probe_status, probe_detail, probe_tools, probe_tool_count, " +
+  "probe_server_name, probe_server_version, probe_protocol_version";
+
 @Injectable()
 export class McpConnectionsService {
-  /**
-   * Everything a row shows. `secret_encrypted` is deliberately absent — see the
-   * class header. Changing this string is the only way to leak the credential,
-   * and `mcp-connections.service.spec.ts` asserts it does not contain it.
-   */
-  static readonly ROW_COLUMNS =
-    "id, name, url, scopes, created_at, last_used_at, last_probe_at, revoked_at, " +
-    "secret_set_at, probe_status, probe_detail, probe_tools, probe_tool_count, " +
-    "probe_server_name, probe_server_version, probe_protocol_version";
+  /** The same list, exposed so a spec can assert what it does NOT contain. */
+  static readonly ROW_COLUMNS = MCP_ROW_COLUMNS;
 
   private readonly logger = new Logger(McpConnectionsService.name);
 
@@ -146,7 +158,7 @@ export class McpConnectionsService {
   ): Promise<McpConnectionResponse[]> {
     const { data, error } = await this.databaseService.supabase
       .from("user_mcp_connections")
-      .select(McpConnectionsService.ROW_COLUMNS)
+      .select(MCP_ROW_COLUMNS)
       .eq("user_id", userId)
       .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false });
@@ -188,7 +200,7 @@ export class McpConnectionsService {
           ? { secret_encrypted: sealed, secret_set_at: new Date().toISOString() }
           : {}),
       })
-      .select(McpConnectionsService.ROW_COLUMNS)
+      .select(MCP_ROW_COLUMNS)
       .single();
 
     if (error) {
@@ -235,7 +247,7 @@ export class McpConnectionsService {
       .eq("user_id", userId)
       .eq("restaurant_id", restaurantId)
       .is("revoked_at", null)
-      .select(McpConnectionsService.ROW_COLUMNS)
+      .select(MCP_ROW_COLUMNS)
       .maybeSingle();
 
     if (error) {
@@ -278,7 +290,7 @@ export class McpConnectionsService {
       .eq("user_id", userId)
       .eq("restaurant_id", restaurantId)
       .is("revoked_at", null)
-      .select(McpConnectionsService.ROW_COLUMNS)
+      .select(MCP_ROW_COLUMNS)
       .maybeSingle();
 
     if (error) {
@@ -419,7 +431,7 @@ export class McpConnectionsService {
       .eq("id", id)
       .eq("user_id", userId)
       .eq("restaurant_id", restaurantId)
-      .select(McpConnectionsService.ROW_COLUMNS)
+      .select(MCP_ROW_COLUMNS)
       .maybeSingle();
 
     if (error) {

@@ -192,6 +192,13 @@ describe("McpConnectionsService.list", () => {
     const { service, rec } = makeService({ data: [ROW], error: null });
     await service.list("u1", "r1");
     expect(rec.selects.join(" ")).not.toContain("secret_encrypted");
+
+    // The list is a module-level const so `check_read_columns_exist.py` can
+    // resolve it and check all sixteen names against supabase/migrations; the
+    // class static exists only so this file can assert what it omits. Pin them
+    // together, or the guard would end up checking a string the code no longer
+    // selects.
+    expect(rec.selects[0]).toBe(McpConnectionsService.ROW_COLUMNS);
   });
 
   it("says a secret is stored from its DATE, never from its value", async () => {
