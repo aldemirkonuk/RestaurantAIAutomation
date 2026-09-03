@@ -47,8 +47,10 @@ import * as fs from "fs";
 import * as path from "path";
 
 /** The house-wide emoji range — identical to the repo's own emoji grep. */
+// VS16 and the keycap are alternated, not placed in the class: eslint's
+// no-misleading-character-class reads a combining mark inside [...] as an accident.
 const EMOJI =
-  /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{20E3}]/u;
+  /(?:[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]|\u{FE0F}|\u{20E3})/u;
 
 const GATEWAY_SRC = path.resolve(__dirname, "..");
 const ORCHESTRATOR = path.resolve(
