@@ -73,39 +73,39 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // OFF by default: the Mudavym redesign of `/` (ADR 0044) is opt-in per
     // restaurant while under founder review; legacy renders otherwise.
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:85",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:92",
   },
   {
     key: "mudavym_design_orders",
     // OFF by default: the Mudavym redesign of `/orders` (ADR 0044), same gate.
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:85",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:92",
   },
   {
     key: "mudavym_design_receiving",
     // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:85",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:92",
   },
   {
     key: "mudavym_design_receiving_door",
     // OFF by default: the Mudavym redesign of the door flow (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:85",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:92",
   },
   {
     key: "mudavym_design_providers",
     // OFF by default: the Mudavym redesign of `/providers` (ADR 0045 §5 wave,
     // MERGE verdict — small buckets + twin-in-sheet), founder-reviewed per flip.
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:85",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:92",
   },
   {
     key: "mudavym_design_communications",
     // OFF by default: the Mudavym redesign of `/communications` (ADR 0045 §5
     // wave, MERGE verdict — glance strip + ledger + template-clarity sheet).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:85",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:92",
   },
   {
     key: "mudavym_design_team",
@@ -113,7 +113,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // verdict + the founder's three additions: gaps-first, labour build-up,
     // credential blockers).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:85",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:92",
   },
   {
     key: "mudavym_design_inventory",
@@ -121,14 +121,14 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // the ReceiptDepth card inside the kept RowExpansion dropdown (ADR 0045
     // §5). The page renders byte-identically with the flag off.
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:85",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:92",
   },
   {
     key: "mudavym_design_receipts",
     // OFF by default: the Mudavym redesign of `/receipts` (ADR 0045 §5 wave,
     // KEEP+ verdict — the founder's four requirements + the swipe-up confirm).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:85",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:92",
   },
   {
     key: "mudavym_design_documents_reports",
@@ -137,7 +137,49 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // chosen by the founder 2026-08-31 for scale: every register countable,
     // routine noise files itself, C's clean reading pane kept as the detail).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:85",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:92",
+  },
+  {
+    key: "mudavym_design_reports",
+    // OFF by default: the Mudavym redesign of `/reports` (ADR 0044 p4 wave, MERGE verdict — today's drag-to-rearrange canvas back, more graphs, insights + reports focus).
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:92",
+  },
+  {
+    key: "mudavym_design_notifications",
+    // OFF by default: the Mudavym redesign of `/notifications` (ADR 0044 p4 wave, REWORK verdict — density of what is happening, handled items subdued).
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:92",
+  },
+  {
+    key: "mudavym_design_recommendations",
+    // OFF by default: the Mudavym redesign of `/recommendations` (ADR 0044 p4 wave, REWORK verdict — "more structure and uniqueness"; also the first authenticated build of the page).
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:92",
+  },
+  {
+    key: "mudavym_design_calendar",
+    // OFF by default: the Mudavym redesign of `/calendar` (ADR 0044 p4 wave, KEEP verdict — the one page the founder named as unreservedly liked).
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:92",
+  },
+  {
+    key: "mudavym_design_settings",
+    // OFF by default: the Mudavym redesign of `/settings` (ADR 0044 p4 wave, KEEP Editorial + "there should be more").
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:92",
+  },
+  {
+    key: "mudavym_design_profile",
+    // OFF by default: the Mudavym redesign of `/profile` (ADR 0044 p4 wave, KEEP+ — MCPs, linked accounts and payments as first-class sections, honest about what is not yet connected).
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:92",
+  },
+  {
+    key: "mudavym_design_cellar",
+    // OFF by default: the Mudavym `/cellar` parent surface and its `/wines` `/beer` `/whiskey` `/cocktails` children (ADR 0044 p4 wave; IA decided 2026-08-30, the crowded redesign rejected — "more character", keep "see everything").
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:92",
   },
 ];
 

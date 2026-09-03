@@ -84,6 +84,13 @@ const CommunicationsNext = lazyWithRefresh(() => import('./pages/communications/
 const TeamNext = lazyWithRefresh(() => import('./pages/team/next/TeamNext'))
 const ReceiptsNext = lazyWithRefresh(() => import('./pages/receipts/next/ReceiptsNext'))
 const DocumentsReportsNext = lazyWithRefresh(() => import('./pages/documents-reports/next/DocumentsReportsNext'))
+const ReportsNext = lazyWithRefresh(() => import('./pages/reports/next/ReportsNext'))
+const NotificationsNext = lazyWithRefresh(() => import('./pages/notifications/next/NotificationsNext'))
+const RecommendationsNext = lazyWithRefresh(() => import('./pages/recommendations/next/RecommendationsNext'))
+const CalendarNext = lazyWithRefresh(() => import('./pages/calendar/next/CalendarNext'))
+const SettingsNext = lazyWithRefresh(() => import('./pages/settings/next/SettingsNext'))
+const ProfileNext = lazyWithRefresh(() => import('./pages/profile/next/ProfileNext'))
+const CellarNext = lazyWithRefresh(() => import('./pages/cellar/next/CellarNext'))
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
 const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
@@ -287,9 +294,17 @@ function App() {
                   <Route path="/orders" element={<PageGate page="orders" legacy={<Orders />} next={<OrdersNext />} />} />
                   {/* One event, three renderings, chosen by role — see ReceivingHome. */}
                   <Route path="/receiving" element={<PageGate page="receiving" legacy={<ReceivingHome />} next={<ReceivingNext />} />} />
-                  <Route path="/wines" element={<WineLibrary />} />
-                  <Route path="/reports" element={<Reports />} />
-                  <Route path="/recommendations" element={<Recommendations />} />
+                  <Route path="/wines" element={<PageGate page="cellar" legacy={<WineLibrary />} next={<CellarNext category="wines" />} />} />
+                  {/* `/cellar` is the parent surface (founder, 2026-08-29/30): what is in
+                      the building, with /wines /beer /whiskey /cocktails as its children.
+                      Flag off, the parent and the three new children land on the shipping
+                      wine list rather than the catch-all — a bookmark still does the job. */}
+                  <Route path="/cellar" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext />} />} />
+                  <Route path="/beer" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="beer" />} />} />
+                  <Route path="/whiskey" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="whiskey" />} />} />
+                  <Route path="/cocktails" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="cocktails" />} />} />
+                  <Route path="/reports" element={<PageGate page="reports" legacy={<Reports />} next={<ReportsNext />} />} />
+                  <Route path="/recommendations" element={<PageGate page="recommendations" legacy={<Recommendations />} next={<RecommendationsNext />} />} />
                   <Route path="/recommendations/catalog" element={<InsightCatalog />} />
                   <Route path="/providers" element={<PageGate page="providers" legacy={<Providers />} next={<ProvidersNext />} />} />
                   {/* Vendor price comparison. Role gate is enforced server-side
@@ -317,7 +332,7 @@ function App() {
                       server-side, so the whole credential file rendered to any
                       member. */}
                   <Route path="/team" element={<PageGate page="team" legacy={<TeamCommandPage />} next={<TeamNext />} />} />
-                  <Route path="/calendar" element={<CalendarModular />} />
+                  <Route path="/calendar" element={<PageGate page="calendar" legacy={<CalendarModular />} next={<CalendarNext />} />} />
                   {/* Same reasoning as `/inventory-legacy` above: `/calendar-classic`
                       is retired (ADR 0019 §B) and its one exclusive — reminders that
                       actually fire — was ported onto `/calendar` first. */}
@@ -327,9 +342,9 @@ function App() {
                   <Route path="/receipts" element={<PageGate page="receipts" legacy={<ReceiptsPage />} next={<ReceiptsNext />} />} />
                   <Route path="/credits" element={<Navigate to="/receipts?tab=credits" replace />} />
                   <Route path="/logs" element={<LogsTimelinePage />} />
-                  <Route path="/notifications" element={<Notifications />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="/profile" element={<Profile />} />
+                  <Route path="/notifications" element={<PageGate page="notifications" legacy={<Notifications />} next={<NotificationsNext />} />} />
+                  <Route path="/settings" element={<PageGate page="settings" legacy={<Settings />} next={<SettingsNext />} />} />
+                  <Route path="/profile" element={<PageGate page="profile" legacy={<Profile />} next={<ProfileNext />} />} />
                   <Route path="/help" element={<Help />} />
                   {/* Gated: the sidebar link is owner-only, but the URL was not —
                       any authenticated staff member could open the admin UI. */}

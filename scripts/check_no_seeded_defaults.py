@@ -194,6 +194,15 @@ SCAN_ROOTS = [
     Path("apps/web/src/pages/team/next"),
     Path("apps/web/src/pages/documents-reports/next"),
     Path("apps/web/src/pages/communications/next"),
+    # p4 wave (2026-09-02): seven more rebuilt surfaces, each builder ran the guard
+    # on a copy with its own directory added before this line was written.
+    Path("apps/web/src/pages/reports/next"),
+    Path("apps/web/src/pages/notifications/next"),
+    Path("apps/web/src/pages/recommendations/next"),
+    Path("apps/web/src/pages/calendar/next"),
+    Path("apps/web/src/pages/settings/next"),
+    Path("apps/web/src/pages/profile/next"),
+    Path("apps/web/src/pages/cellar/next"),
 ]
 
 # Hooks that back those surfaces. These are data hooks, so a fabricated row set

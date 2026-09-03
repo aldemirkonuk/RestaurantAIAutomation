@@ -42,6 +42,13 @@ export const MUDAVYM_PAGES = [
   'inventory',
   'receipts',
   'documents_reports',
+  'reports',
+  'notifications',
+  'recommendations',
+  'calendar',
+  'settings',
+  'profile',
+  'cellar',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
