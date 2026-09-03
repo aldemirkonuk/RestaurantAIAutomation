@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-08-26
+updated: 2026-09-03
 links: ["[[PAGE-CONTRACT]]", "[[orders]]", "[[inventory]]"]
 ---
 
@@ -131,6 +131,8 @@ dashboard.md §7.
   **OD-121**; it needs a founder call on which category each of the seven
   `resolveRecipients` call sites belongs to.
 
+- **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** `inventory_alert_state` was advanced for 7 wines while `notifications` holds 2 rows covering 3 — `low-stock-alerts.service.ts:200-215` stamps the ledger before the 15-minute cooldown at `:225-235`, so a suppressed crossing reads as alerted and the four silent wines wait for the once-daily digest (`:127-143`; absence 8). Raising a par through PATCH raises no alert (`inventory.service.ts` hooks only at `:330`, `:451`; defect 8). The page's "7 Wines Need Restocking" recovers the truth by live read; the stream does not.
+
 ## 10. Maturity
 
 **partial.** The inbox itself is real and has more live producers than any other page
@@ -158,6 +160,8 @@ The 10-second poll and the detail-panel resync are implemented as documented.
 `openRouteForAction` now returns `/communications` for `gmail_send` and
 `gmail_contextual`, with a comment explaining that no id can be handed over
 (`OneTapActionCenter.tsx:135-141`).
+
+- **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** both notifications that did land carry `delivery_status.email = {ok:false, error:"no_recipients"}` — absence recorded as absence, which is the shape this page is supposed to have.
 
 ## 11. Data flow
 

@@ -229,6 +229,8 @@ Seams:
 5. **Zero real merchant traffic.** Everything above is proven on a 47-row simulator window
    plus 66 fixtures (`ECOSYSTEM-PLAN.md` §4.4).
 
+> **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens):** the bridge's own doors work — 44 checks in, 34 depletions, a replayed close refused — but **no screen connects POS buttons to stock** (`apps/web/src/services/api/posHub.ts:59,66` are the SPA's only two pos-hub calls), an approved catalog match carries no sale unit and still cannot deplete (`catalog-matcher.service.ts:420-427`), 0 of 135 real button names cleared the 0.9 auto-match threshold (`line-matcher.ts:64`), and every SimPOS line arrives as wine (`simpos.service.ts:411-414`), so the unresolved queue is mostly mezes. The mapping-review screen still promises a "bottle" default that ADR 0011 removed (`pos-mapping-review.service.ts:16-17,219,250-251`).
+
 ## §8 Where it's going
 
 > **Decided 2026-09-03:** a POS connection is a row in `pos_connections (restaurant_id, provider_key)` — secret, `signature_scheme`, `notification_url`, OAuth tokens, cursor, status — after the measured Square day (genuine signature 401 × 243; our header 201 × 243 with zero rows and zero log lines; the same day 42/42 through the canonical envelope): [ADR 0105](../decisions/0105-a-pos-connection-is-a-row-not-an-env-var.md). Build gated; four defects it found are in `v3.0-TECH-DEBT.md` (2026-09-03).

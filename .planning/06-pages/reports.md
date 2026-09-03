@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 2
 maturity: hollow
 status: documented
-updated: 2026-08-26
+updated: 2026-09-03
 links: ["[[PAGE-CONTRACT]]", "[[settings]]", "[[orders]]", "[[inventory]]", "[[team]]", "[[promotions]]", "[[recommendations]]", "[[recommendations-catalog]]"]
 ---
 
@@ -113,6 +113,8 @@ drift chips, S02/S03 Plus scorecards, S10 Plus days-of-cover. Pro depth (forecas
 - Analytics truth-suite work is carried-forward unbuilt scope
   (`v3.0-TECH-DEBT.md:322-324`, was Phase 41).
 
+- **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** the page says "Sales revenue needs a connected POS and is not shown here" over 44 ingested `pos_checks`, 34 depleted bottles and 55 consumption rows — honest about the gap, wrong about the cause (the checks carry no money; defect 9) — and each "— —" KPI carries a green "↗ 0% vs prev period". Three fabrications remain in the molecules: `PeriodCompareBar.tsx:21-25` (last period = 75–120 % of this one), `BusyHoursHeatmap.tsx:23` (static weights × `Math.random()`, never reads `pos_checks`), `MonthlyReconciliation.tsx:28-33` (invented purchased/variance) — absence 2–4.
+
 ## 10. Maturity
 
 **hollow** — and this is the worst finding in the communication/config cluster.
@@ -134,6 +136,8 @@ Also confirmed on this page: the guard fix §9 records is real —
 `analytics.controller.ts:51` carries class-level `@UseGuards(JwtAuthGuard)`, so the
 atlas's "all unguarded" row is stale. `Reports.v1.backup.tsx` still ships
 (`v3.0-TECH-DEBT.md:257`).
+
+- **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens; `03-scenarios/S04` §9.1):** still hollow in the only sense that matters: with a real night of checks on the tenant, no revenue, busy-hour or reconciliation figure on this page is derived from them.
 
 ## 11. Data flow
 
