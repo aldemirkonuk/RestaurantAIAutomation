@@ -294,7 +294,15 @@ export function describeScheduleSubject(row: {
  * `communications/recurring-order-reminder.ts` was still on PR #227's unmerged
  * branch and this one had to build against `main`; the duplicate was recorded
  * with the trigger for removing it — "when #227 lands, the two should collapse
- * onto one exported constant". #227 landed (`e3acc79a`), so they have.
+ * onto one exported constant".
+ *
+ * The trigger has since fired. Exact order, from GitHub's own merge timestamps
+ * rather than commit-author dates: #234 merged 2026-09-02T10:47:03Z, and #227
+ * (`e3acc79a`) merged 2026-09-02T11:00:23Z — THIRTEEN MINUTES LATER. So the
+ * paragraph above was accurate both when it was written and when it merged;
+ * the duplicate was correct on arrival and went stale a quarter of an hour
+ * afterwards. It is collapsed here because the trigger it named has fired, not
+ * because it was ever wrong.
  *
  * The re-export is kept so this module still names its own gate, and so the
  * existing importers do not have to reach across a bounded context to find out

@@ -2134,27 +2134,39 @@ export class ProcurementService {
     // Three of the four parties say `procurement_orders.quantity_received` is
     // stated in the ORDER's own unit, beside `quantity`:
     //
-    //   * `markDelivered` writes `quantityReceived ?? orderRow.quantity` (:1572)
-    //   * `updateOrder` writes it from `quantityReceivedInOrderUom` (:1098) —
+    //   * `markDelivered` writes `quantityReceived ?? existingOrder.quantity`
+    //     (:1602)
+    //   * `updateOrder` writes it from `quantityReceivedInOrderUom` (:1128) —
     //     the DTO field name is itself the claim
     //   * this method writes back `acceptedQty + rejectedQty` in the COUNTED
-    //     unit as submitted, and says so (:2300)
+    //     unit as submitted, and says so (:2353)
     //
     // The fourth writes BOTTLES. `ReceivingService.recordDoorReceipt` sets
-    // `quantity_received = totals.receivedBottles` (receiving.service.ts:477),
+    // `quantity_received = totals.receivedBottles` (receiving.service.ts:504),
     // a sum of `counted_qty_bottles - rejected_qty_bottles` (ADR 0062, #228).
     //
     // So on a door-counted order this number is already in bottles, and the
     // line below hands it to `computeMatch` as `stockedQtyInCountedUom`, where
-    // it is multiplied by the pack size a SECOND time. MEASURED on a 5-case
-    // order of a twelve-pack, door-counted at 5 cases, desk-verified at 5:
+    // `conv(rawStocked, counted)` (invoice-match.ts:558) multiplies it by the
+    // pack size a SECOND time. MEASURED by calling `toBottleOperands` /
+    // `computeMatch` directly on a 5-case order of a twelve-pack, door-counted
+    // at 5 cases, desk-verified at 5, with no `countedUom` sent (neither desk
+    // client sends one, so it falls back to the order's `case`):
     //
-    //   accepted 60 bottles, stocked 720 bottles, ledgerDelta -660,
-    //   verdict "matched"
+    //   no invoice on file    accepted 60  stocked 720  ledgerDelta -660  "unmatched"
+    //   matching invoice      accepted 60  stocked 720  ledgerDelta -660  "matched"
     //
-    // — a 660-bottle removal from live stock, under a verdict that says the
-    // delivery was fine. The `?? quantity` fallback carries the same
-    // assumption for an order nothing has booked at all.
+    // THE INVOICE CHANGES ONLY WHAT THE MANAGER IS TOLD, NOT WHETHER STOCK
+    // MOVES. `-660` is identical either way, and the gate at :2267 fires on
+    // `match.ledgerDelta !== 0`, so `applyReceiptAdjustment` removes 660
+    // bottles from live stock on BOTH paths. (`invoice-match.ts:706` is where
+    // an absent invoice becomes "unmatched"; it touches no operand.) With no invoice the screen at
+    // least says "unmatched", which a manager might question; with a matching
+    // invoice it says "matched", which they would not. The precondition is
+    // about detection, not about reachability.
+    //
+    // The `?? quantity` fallback carries the same assumption for an order
+    // nothing has booked at all.
     //
     // NOT REPAIRED HERE, because the repair is a choice between the two
     // writers and it has consequences either way: bottles is the more precise
