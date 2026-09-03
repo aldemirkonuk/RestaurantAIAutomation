@@ -89,6 +89,7 @@ const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'
 const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
 const SimposTerminalPage = lazyWithRefresh(() => import('./pages/simpos/SimposTerminalPage'))
 const SimposOrderLogPage = lazyWithRefresh(() => import('./pages/simpos/SimposOrderLogPage'))
+const SimposScenariosPage = lazyWithRefresh(() => import('./pages/simpos/SimposScenariosPage'))
 
 // Heavy pages (lazy loaded)
 const Reports = lazyWithRefresh(() => import('./pages/Reports'))
@@ -249,6 +250,20 @@ function App() {
                   element={
                     <ProtectedRoute>
                       {import.meta.env.PROD ? <Navigate to="/" replace /> : <SimposOrderLogPage />}
+                    </ProtectedRoute>
+                  }
+                />
+                {/*
+                  The scenario harness's verdict page (ADR 0093). Dev-only for
+                  the same reason its siblings are: SimposModule is not loaded
+                  in production, so a production build would render a page
+                  whose every request 404s.
+                */}
+                <Route
+                  path="/simpos/:restaurantId/scenarios"
+                  element={
+                    <ProtectedRoute>
+                      {import.meta.env.PROD ? <Navigate to="/" replace /> : <SimposScenariosPage />}
                     </ProtectedRoute>
                   }
                 />
