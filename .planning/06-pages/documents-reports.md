@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: hollow
 status: documented
-updated: 2026-08-31
+updated: 2026-09-02
 links: ["[[PAGE-CONTRACT]]", "[[receipts]]", "[[communications]]", "[[logs]]"]
 ---
 
@@ -47,12 +47,13 @@ vendor conversation list shared with `/communications`.
 - Share links (`?doc=`) open the page with that document selected
 
 Behind `mudavym_design_documents_reports` (OFF — the Sorting Office, §1b):
-- **Waiting on you** drawer: vendor paper needing review + AI drafts awaiting approval + door-counted deliveries with no paperwork, one queue, oldest debt first (never by arrival); opens only when every register behind it has answered
+- **Waiting on you** drawer: vendor paper needing review + AI drafts awaiting approval + deliveries counted by the case and never counted by bottle, one queue, oldest debt first (never by arrival); opens only when every register behind it has answered. That third source is **not** "no paperwork" — the endpoint behind it knows nothing about invoices (`receiving.service.ts:43-44`, *"a delivery with a case count and no bottle count is unverified"*); the debt is somebody breaking the cases and counting bottles, and the page said the wrong one until ADR 0086
+- **No composite page figure.** "In the registers" summed the four drawers and was deleted in ADR 0086 — `procurement_documents` is one of the timeline's six sources so vendor paper was counted twice (thrice after a re-file), and even de-duplicated the addends share no unit. The header keeps only **Needs a human**, which counts one kind of thing.
 - **Four countable registers**: House reports (inline list → reading pane) · Vendor paper (→ `/receipts`) · Conversations (→ `/communications`) · System log (→ `/logs`); a filled window renders its count as a floor (`≥`), never a total
-- **Filed itself today**: the routine noise roll — today's timeline entries counted by source, filed, never deleted, never in the way
+- **Filed itself today**: the routine noise roll — today's timeline entries counted by source, filed, never deleted, never in the way; the count carries the floor mark on a **different** test from the four drawers' (ADR 0086): `windowFull && the oldest event still in the window is itself from today`, because a full window whose oldest event predates midnight already contains all of today
 - **Reading pane** (Direction C, kept): serif title, metadata line, paragraph summary at reading width; copy-share-link; OD-81 file truth (no file → says so, disabled, with the reason)
 - **File to…** (sketch affordance, founder-ordered 2026-08-31): re-file the open report under another type; the change writes a `system_audit_log` row the System-log drawer itself renders — the re-file files itself
-- **Cross-filed under** (sketch affordance): the pane's footer counts the report's period in the other registers — vendor paper by `doc_date`, conversation threads via the production `list_conversation_threads` window total — linked to `/receipts` and `/communications`; a report with no period says nothing is cross-filed
+- **Cross-filed under** (sketch affordance): the pane's footer counts the report's period in the other registers — vendor paper by `doc_date`, conversation threads via the production `list_conversation_threads` window total — linked to `/receipts` and `/communications`; either register answering `null` renders `—`, never a zero. The "report with no period" branch was **removed** in ADR 0086: `report_period_start`/`report_period_end` are `date NOT NULL`, so it could never render, and the test pinning it went with it
 - `?doc=` share links preselect in the pane, same as legacy
 
 ## 1b. Redesign state — Direction D chosen, built 2026-08-31
@@ -172,6 +173,40 @@ in-scope findings fixed same day:**
   registers (paper by `doc_date` count-exact; threads via the
   `list_conversation_threads` RPC's `total_threads`, date-bounded); both
   covered by gateway specs (9/9) and page tests (29 on this page).
+
+**Seam + honesty pass, 2026-09-02 (ADR 0086) — six defects fixed, one reported
+defect measured as not reproducible:**
+- *The gateway seam* (the one that mattered): `/logs/timeline` caught each of
+  its six sources to `[]` and returned 200, so a source that 500s rendered as a
+  **smaller number with no banner** on a page whose subject is counts. The
+  response now carries `failedSources` and `sourcesQueried`; the page raises its
+  existing branch-aware banner, names the sources, and marks every count off
+  that window as a floor. The merge's `localeCompare` sat outside all six
+  try/catches over two nullable timestamp columns — one NULL 500ed the whole
+  feed; now null-safe with undated rows last.
+- *The routine strip* gained the `≥` it was missing, on a condition the four
+  drawers do not share (§1a).
+- *"In the registers"* deleted (§1a) — double-counted and unitless.
+- *Money* now prints `procurement_documents.currency` instead of a hardcoded
+  `$`; a row with no currency says the unit is missing rather than borrowing
+  one (ADR 0062).
+- *`GET /reports`* was unbounded and shipped the whole table to render twenty
+  rows → default 100, max 200, `offset` supported, `count: "exact"` keeping the
+  drawer's figure exact.
+- *Two unreachable branches* and the test pinning them removed (§1a,
+  Cross-filed under); `conversations?.count ?? 0` no longer renders an unknown
+  as a zero; the pane's failure sentence now shares the page's `settledError`.
+- **Not reproducible, recorded as such:** the reported mid-retry flash of "The
+  cross-file could not be checked". On `@tanstack/react-query` 5.90.16 a
+  refetch after an error resets `status` to `pending`, so `isError &&
+  isFetching` does not arise — measured with a probe. The change stands as a
+  consistency fix, not a bug fix.
+- Held by `scripts/check_windowed_figures.py`, which gains this page as its
+  **third** `PAGES` entry (`SO_SERVER_WINDOWS` citing `documents.controller.ts`,
+  `logs-timeline.service.ts` and `reports.service.ts`; eight `| null` fields; a
+  named `GE`). Proven to exit 1 four ways and 2 once against the real files —
+  and its limit is recorded in the ADR: it would **not** have caught the missing
+  `≥` that motivated adding it.
   A follow-up Sonnet audit of the extension found one defect, fixed same
   day: the RPC's `timestamptz` end bound got a bare date — midnight — so the
   period's last day of conversations was silently excluded while the paper
@@ -239,7 +274,7 @@ rendered an empty archive — the rationale is written at the top of
 |---|---|---|
 | Gateway | `generated_reports` list/delete (restaurant from JWT) | `hooks/queries/useReportQueries.ts` → `services/api/reports.ts` |
 | Gateway | `/conversations/threads` + `/thread/:id` + `/stats/overview`, POST `/:id/summarize` | ClassifiedConversationList → `hooks/queries/useConversationQueries.ts:194-240` |
-| Gateway (next only) | procurement documents list · active conversations · unverified door counts · `GET /logs/timeline/:restaurantId` | `documents-reports/next/useSortingOfficeData.ts` |
+| Gateway (next only) | procurement documents list (≤100) · active conversations · unverified door counts · `GET /logs/timeline/:restaurantId` (≤100; returns `failedSources` + `sourcesQueried`, ADR 0086) · `GET /reports?limit=100` | `documents-reports/next/useSortingOfficeData.ts` |
 | Gateway (next only) | `PATCH /reports/:id` (File to… — refile + audit row) · `GET /reports/:id/cross-file` | `DocumentsReportsNext.tsx` ReadingPane → `services/api/reports.ts` |
 
 Realtime: `useReportSubscription` pushes `generated` report events into the list
@@ -297,6 +332,12 @@ dashboard.md §7.
 - Wave-wide siblings share the dead-hover inline-background pattern and the
   `PageGate` double-`.mudavym` charcoal-nesting latent — filed as one
   cross-page task, not fixed from this branch.
+- ~~**`/logs` reads the same endpoint and has not caught up (ADR 0086).**~~
+  **Closed on this branch.** `LogsTimelinePage.tsx` now reads `failedSources`
+  and `sourcesQueried` and tolerates the nullable `occurredAt`, so both pages
+  treat a lost register the same way. Its own remaining gap — a 100-row feed
+  with no floor marker, and no `PAGES` entry in `check_windowed_figures.py` —
+  is filed on `logs.md` §9 and as an executable `CLAIMS.jsonl` entry, not here.
 
 ## 10. Maturity
 

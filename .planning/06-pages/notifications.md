@@ -113,6 +113,23 @@ dashboard.md §7.
 - Agent-side notification writes were silently failing until 44.1d's fix — history
   in `v3.0-TECH-DEBT.md:95-131`; worth remembering when interpreting old gaps in
   this inbox.
+- **The per-channel switches on this page did not reach the router until
+  2026-09-02** ([ADR 0098](../decisions/0098-a-preference-is-read-from-the-column-it-lives-in.md)).
+  `notifications.service.ts:1051-1053` read `email_enabled`/`push_enabled`/
+  `sms_enabled` correctly, so the page rendered a user's choice faithfully — but
+  `RecipientResolverService.checkChannelPreference`, which actually decides who
+  gets sent to, never read those columns at all, and the two category arrays it
+  *did* name (`order_channels`, `report_channels`) have never existed in any
+  migration. Because the row is fetched with `.select("*")`, that produced no
+  error — just `undefined`. On the stock row it inverted both channels at once:
+  **email refused to users who had switched it on, SMS delivered to users who had
+  switched it off**. Anyone reading old reports of "I turned SMS off and still get
+  texts" should treat them as real, not as user error.
+- **Routing is still not category-aware** — the resolver takes a union across
+  three of the six per-category channel arrays and ignores the other three, so
+  enabling email for financial reports also enables it for low stock. Tracked as
+  **OD-121**; it needs a founder call on which category each of the seven
+  `resolveRecipients` call sites belongs to.
 
 ## 10. Maturity
 
@@ -163,7 +180,7 @@ The 10-second poll and the detail-panel resync are implemented as documented.
 | Vendor reply / draft ready | Gmail push → `email.inbound.received` → `rabbitmq-bridge.service.ts:528` → `InboundResponderService.analyzeAndDraftReply` → notification rows `inbound-responder.service.ts:1287` | Yes (live Gmail watch, OD-78) |
 | Schedule published / acknowledged, broadcast | `team/schedule.service.ts:254,484`; `team/team.controller.ts:350` | Yes |
 | Order approval, delivery, price | `procurement.service.ts:1062,1368` | Yes |
-| Weekly report ready, delivery ETA, payment due, audit, event prep, custom reminders | **Eight** tenant-scoped `@Cron`s in `communications/scheduled-tasks.service.ts`, anchored on the decorator's `name:` rather than a line: `daily-sms-summary`, `weekly-email-report`, `recurring-order-reminder`, `delivery-eta-notification`, `payment-due-reminder`, `inventory-audit-reminder`, `event-prep-check`, `custom-reminders-check` (`:183,218,374,450,524,598,652,702`). A ninth, `tenant-isolation-check` (`:149`), is the global tenant-isolation RPC. **Count them with `grep -nE '^[[:space:]]*@Cron\('`** — a bare `grep @Cron` also hits `:274`, a `@deprecated` note recording that `sendMiddayLowStockReport`'s schedule was *removed* | **Per-tenant since 2026-08-26** (OD-87 / [ADR 0022](../decisions/0022-scheduled-jobs-serve-opted-in-tenants.md)) — each iterates `ScheduledTenantsService.runPerTenant`, isolating per-tenant failures. But enumeration is **explicit opt-in** and no restaurant has opted in, so in practice this still serves exactly the `DEFAULT_RESTAURANT_ID` restaurant, which still takes its recipients from `MANAGER_EMAIL`. Whether that stays opt-in is **OD-91** |
+| Weekly report ready, delivery ETA, audit, event prep, custom reminders | **Seven** tenant-scoped `@Cron`s in `communications/scheduled-tasks.service.ts`, anchored on the decorator's `name:` rather than a line: `daily-sms-summary`, `weekly-email-report`, `recurring-order-reminder`, `delivery-eta-notification`, `inventory-audit-reminder`, `event-prep-check`, `custom-reminders-check` (`:193,228,407,522,625,679,734` — an eighth, `payment-due-reminder`, was deleted 2026-09-02 after [ADR 0077](../decisions/0077-there-is-no-payment-due-reminder.md) found it had never sent one email). Separately, `tenant-isolation-check` (`:159`) is the global tenant-isolation RPC, not a tenant-scoped one. **Count them with `grep -nE '^[[:space:]]*@Cron\('`** — a bare `grep @Cron` also hits `:274`, a `@deprecated` note recording that `sendMiddayLowStockReport`'s schedule was *removed* | **Per-tenant since 2026-08-26** (OD-87 / [ADR 0022](../decisions/0022-scheduled-jobs-serve-opted-in-tenants.md)) — each iterates `ScheduledTenantsService.runPerTenant`, isolating per-tenant failures. But enumeration is **explicit opt-in** and no restaurant has opted in, so in practice this still serves exactly the `DEFAULT_RESTAURANT_ID` restaurant, which still takes its recipients from `MANAGER_EMAIL`. Whether that stays opt-in is **OD-91** |
 | Agent-side writes | Historically silent-failing until 44.1d (`v3.0-TECH-DEBT.md:95-131`) | Fixed |
 
 ### Writes

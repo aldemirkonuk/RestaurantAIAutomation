@@ -161,6 +161,16 @@ ALLOWLIST: dict[tuple[str, str, str], str] = {
         "rejected",
         "r",
     ): "PromiseSettledResult.status from Promise.allSettled, not an order status",
+    # Third instance of the same shape, added 2026-09-02 with ADR 0067's
+    # reportSlice(): `r: PromiseSettledResult<any>` in analytics.service.ts.
+    # Verified by reading the declaration, not by pattern-matching the name --
+    # the receiver is the settled result itself, and the two arms are
+    # "rejected" / value.error, never an order.
+    (
+        "analytics/analytics.service.ts",
+        "rejected",
+        "r",
+    ): "PromiseSettledResult.status from Promise.allSettled, not an order status",
 }
 
 # ---------------------------------------------------------------------------
@@ -177,23 +187,6 @@ ALLOWLIST: dict[tuple[str, str, str], str] = {
 # The only way to touch this list is to make it shorter.
 # ---------------------------------------------------------------------------
 KNOWN_BROKEN: dict[tuple[str, str, str], str] = {
-    (
-        "communications/scheduled-tasks.service.ts",
-        "RECURRING",
-        "",
-    ): (
-        "sendRecurringOrderReminders() filters procurement_orders on "
-        "status='RECURRING'. There is no RECURRING member of "
-        "ProcurementOrderStatus and there never has been -- correct casing, "
-        "nonexistent value -- so the recurring-order reminder has never sent a "
-        "single email. UNLIKE the delivered/SHIPPED/INVOICED sites fixed in the "
-        "same PR, this one has no obvious enum equivalent to repoint to: the "
-        "enum has no recurring concept at all, and the query also keys on a "
-        "`next_order_date` column. Whether recurrence is a status, a separate "
-        "table, or an abandoned feature is a PRODUCT decision, and guessing "
-        "would silently start mailing real tenants. Left failing-closed (it "
-        "sends nothing today) and recorded rather than invented. See ADR 0058."
-    ),
 }
 
 

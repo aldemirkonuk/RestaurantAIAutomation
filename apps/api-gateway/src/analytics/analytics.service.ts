@@ -80,6 +80,28 @@ export class AnalyticsService {
   // Shared data loaders
   // =========================================================================
 
+  /**
+   * Say so when a read fails. Mirrors
+   * advanced-analytics.service.ts:150 `logQueryFailure` — same wording on
+   * purpose, so both halves of this directory are greppable as one thing.
+   *
+   * An empty result is NOT an error and is never logged as one; only a real
+   * failure is.
+   */
+  private logQueryFailure(table: string, error: any) {
+    this.logger.error(
+      `analytics query on ${table} failed — this lens will report empty ` +
+        `rather than wrong: ${error?.code ?? "?"} ${error?.message ?? error}`,
+    );
+  }
+
+  /** The allSettled variant: a rejection is a failure too. */
+  private reportSlice(table: string, r: PromiseSettledResult<any>) {
+    if (r.status === "rejected")
+      this.logger.error(`analytics query on ${table} rejected: ${r.reason}`);
+    else if (r.value?.error) this.logQueryFailure(table, r.value.error);
+  }
+
   private async loadInventory(restaurantId: string) {
     const client = this.dbService.getClient();
     const [invRes, rollupRes] = await Promise.allSettled([
@@ -102,9 +124,22 @@ export class AnalyticsService {
         .eq("is_active", true),
       client
         .from("inventory_lot_rollup")
-        .select("inventory_id, live_qty, wac, has_invoice_cost")
+        .select(
+          // wac_qty / live_qty added 2026-09-02 (ADR 0078) so resolveUnitCost
+          // can tell a WAC that covers every on-hand bottle from one that
+          // covers a single invoiced bottle in twenty-one.
+          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
+        )
         .eq("restaurant_id", restaurantId),
     ]);
+
+    // allSettled makes a REJECTION invisible and `{ data, error }` makes a
+    // FAILED QUERY invisible; both land as `[]` here, which every metric below
+    // reads as "this restaurant has no inventory". Its sibling
+    // advanced-analytics.service.ts was hardened with logQueryFailure and this
+    // file, same directory and same tables, was not. See ADR 0067.
+    this.reportSlice("restaurant_inventory", invRes);
+    this.reportSlice("inventory_lot_rollup", rollupRes);
 
     const inventory =
       invRes.status === "fulfilled" ? invRes.value.data || [] : [];
@@ -146,7 +181,7 @@ export class AnalyticsService {
   private async loadDeliveredOrders(restaurantId: string, sinceDays = 365) {
     const client = this.dbService.getClient();
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
-    const { data } = await client
+    const { data, error } = await client
       .from("procurement_orders")
       .select(
         "id, provider_id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
@@ -154,6 +189,10 @@ export class AnalyticsService {
       .eq("restaurant_id", restaurantId)
       .in("status", ORDER_SPEND_STATUSES)
       .gte("delivered_at", since);
+    // Every spend, COGS-ratio and vendor-concentration figure is built on this
+    // list. Discarding the error made a failed read report a restaurant that
+    // bought nothing all year — the exact shape ADR 0053 named for cost.
+    if (error) this.logQueryFailure("procurement_orders", error);
     return (data || []).map((o: any) => ({
       providerId: o.provider_id || "unknown",
       cost: o.total_cost || o.final_price || 0,
@@ -749,6 +788,8 @@ export class AnalyticsService {
     const { dates, values } = this.toDailySeries(rows, sinceDays);
 
     // Try weekly-seasonal Holt-Winters; fall back to Holt then SES.
+    // `warmup` is the seeding window each model reads before its recursion can
+    // predict anything out-of-sample — accuracy is scored past it (ADR 0064).
     const period = 7;
     let model = "holt_winters";
     let result = E.forecast.holtWintersAdditive(
@@ -772,24 +813,58 @@ export class AnalyticsService {
             level: 0,
             trend: 0,
             seasonals: [],
+            warmup: ses.warmup,
           }
         : null;
     }
 
-    // Backtest accuracy on the fitted series.
-    const accuracy = result
-      ? {
-          mae: E.forecast.mae(values, result.fitted),
-          rmse: E.forecast.rmse(values, result.fitted),
-          mape: E.forecast.mape(values, result.fitted),
-          maseVsSeasonalNaive: E.forecast.mase(
-            values,
-            result.fitted,
-            values,
-            period,
-          ),
-        }
-      : null;
+    // Rolling one-step-ahead accuracy: each fitted[i] is a prediction of
+    // values[i] made from values[0..i-1] only. The seeding window is excluded
+    // because those fitted values are in-sample by construction, and `from: w`
+    // holds the seasonal-naive denominator to that same window — scoring the
+    // numerator on [w, n) against a benchmark drawn from [period, n) would
+    // compare two different stretches of trade (ADR 0064).
+    let accuracy: {
+      mae: number | null;
+      rmse: number | null;
+      mape: number | null;
+      maseVsSeasonalNaive: number | null;
+      basis: string;
+      scoredPoints: number;
+    } | null = null;
+    if (result) {
+      const w = Math.min(result.warmup, values.length);
+      const actual = values.slice(w);
+      const predicted = result.fitted.slice(w);
+      // `toDailySeries` zero-fills, so a restaurant (or SKU) with no
+      // consumption yields an all-zero window. MAE and RMSE would both answer
+      // 0 there — a *perfect forecast* claimed over a series holding no
+      // observation. An unknown is an em dash, never a zero (ADR 0051).
+      const hasSignal = actual.some((v) => v !== 0);
+      accuracy = hasSignal
+        ? {
+            mae: E.forecast.mae(actual, predicted),
+            rmse: E.forecast.rmse(actual, predicted),
+            mape: E.forecast.mape(actual, predicted),
+            maseVsSeasonalNaive: E.forecast.mase(
+              actual,
+              predicted,
+              values,
+              period,
+              w,
+            ),
+            basis: "rolling_one_step_ahead",
+            scoredPoints: actual.length,
+          }
+        : {
+            mae: null,
+            rmse: null,
+            mape: null,
+            maseVsSeasonalNaive: null,
+            basis: "no_observations_in_scored_window",
+            scoredPoints: 0,
+          };
+    }
 
     const futureDates: string[] = [];
     const today = new Date();

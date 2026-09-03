@@ -115,7 +115,11 @@ export interface TeamSettings {
 export interface MemberPerformance {
   hasData: boolean
   metrics?: { salesPerShift: number; avgCheck: number; wineAttachPct: number }
-  analytic?: { unit: string; series: number[]; median: number; band: [number, number] }
+  // median/band are null when the peer benchmark is UNKNOWN — either the
+  // server_sales read failed or the restaurant has no other servers with
+  // covers. They used to arrive as 0, which drew the peer line at the bottom
+  // of the chart and put every server above it. ADR 0067.
+  analytic?: { unit: string; series: number[]; median: number | null; band: readonly [number, number] | null }
   services?: Array<{ date: string; covers: number }>
 }
 
@@ -149,6 +153,24 @@ export async function createSchedule(weekStart: string, rid?: string): Promise<S
   const { data } = await apiClient.post<Schedule>(`${base(rid)}/schedules`, { weekStart })
   return data
 }
+/**
+ * TODO(cross-branch, gateway-first): `fix/team-gateway` (ADR 0088) makes the
+ * three destructive/fan-out verbs below REFUSE an unqualified request —
+ * copy-week 409s without `replaceTarget: true` when the target week is not
+ * empty, publish 409s without `resetReceipts: true` when receipts exist, and
+ * broadcast 400s unless it carries either `memberIds` or `audience:
+ * "everyone"`. Those three fields are NOT sent here on purpose: the gateway
+ * runs `forbidNonWhitelisted: true` (`apps/api-gateway/src/main.ts:54`), so
+ * sending a field the deployed DTO does not know 400s every one of these calls
+ * TODAY. The two changes therefore have a merge ORDER, not just a dependency:
+ * the gateway PR must land first, and the very next change here adds
+ * `replaceTarget` / `resetReceipts` / `audience` to these three bodies.
+ *
+ * Until then the confirmations that ADR 0089 added on the page
+ * (`ManagerShiftDesk.tsx` ConfirmSheet / MessageComposer) are the ONLY thing
+ * standing between a single click and a deleted week — client-side, and
+ * therefore not a control. Both halves are needed; neither is sufficient.
+ */
 export async function copyWeek(fromWeekStart: string, toWeekStart: string, rid?: string) {
   const { data } = await apiClient.post(`${base(rid)}/schedules/copy-week`, { fromWeekStart, toWeekStart })
   return data

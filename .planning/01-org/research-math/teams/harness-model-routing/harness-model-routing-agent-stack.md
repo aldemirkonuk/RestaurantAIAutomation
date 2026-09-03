@@ -15,7 +15,7 @@ links: ["[[harness-model-routing-charter]]", "[[harness-model-routing-schedule]]
 > Two open forks constrain this card and neither may be resolved in it. **OD-03** forbids a
 > pick from repute, so nothing here presupposes a harness. **OD-29** records that this team
 > and `aio-model-routing` carry the same mandate *and* the same NF-A cost metric
-> (OD-29, `OPEN-DECISIONS.md:35`), so this card measures and publishes and leaves ownership to the
+> (OD-29, `OPEN-DECISIONS.md:37`), so this card measures and publishes and leaves ownership to the
 > founder.
 
 ## 1. Roster
@@ -103,7 +103,7 @@ and skill candidates only. Gap rows:
 
 | Gap | Why it is a gap |
 |---|---|
-| **OD-29 — resolved 2026-08-28 (founder, ADR 0036): two plans in parallel, in harmony** | This team owns the *methodology* — benchmark design, what cost-per-task means, substitution-study rules; `aio-model-routing` owns the *operation* — the wrapper (`common/model-client`, the charter's "one shared wrapper" made real by P1) and the production routing policy (OD-29, `OPEN-DECISIONS.md:35`). Same line as TECH-F3, same escalation: if it fails, merge — never duplicate |
+| **OD-29 — resolved 2026-08-28 (founder, ADR 0036): two plans in parallel, in harmony** | This team owns the *methodology* — benchmark design, what cost-per-task means, substitution-study rules; `aio-model-routing` owns the *operation* — the wrapper (`common/model-client`, the charter's "one shared wrapper" made real by P1) and the production routing policy (OD-29, `OPEN-DECISIONS.md:37`). Same line as TECH-F3, same escalation: if it fails, merge — never duplicate |
 | `model.callsite_added` has no publisher | Nothing emits when a new model call lands. The weekly scan bounds the blind spot at 7 days; the count has already moved 7→9 unwatched |
 | `nf_a.harness_overhead_ms` has no instrument | Grepping `apps`, `services`, `scripts` for `harness_overhead` returns **0 hits** (verified 2026-08-27). The number that decides OD-03 cannot be consumed because nothing emits it |
 | Cost-per-completed-task needs RM-2's join | Computable now for graded task types, and **not** for the 12 on the exemption list (`.planning/STATE.md:98-105`); the denominator must publish with the number or it reads as complete |

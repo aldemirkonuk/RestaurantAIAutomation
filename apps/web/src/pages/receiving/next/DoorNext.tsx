@@ -45,6 +45,7 @@ import { SCAN_ACCEPT, resolveMimeType } from '@/lib/uploadAccept';
 import {
   composeDoorNotes,
   creditDraft,
+  doorFacts,
   ensureDoorFraunces,
   matchLine,
   normalizeDoorOrder,
@@ -102,9 +103,13 @@ export default function DoorNext() {
   /* ── the order — fetched live, degrading honestly (point 1) ───────────── */
   const [order, setOrder] = useState<DoorOrderVM | null>(null);
   const [orderState, setOrderState] = useState<'loading' | 'ok' | 'unreachable'>('loading');
+  /* What earlier trucks on this order already brought, in boxes. Null when it
+     could not be read or the pack size is not knowable — the match line then
+     behaves exactly as it did before split deliveries were a thing, rather than
+     treating "unknown" as "none". */
+  const [priorBoxes, setPriorBoxes] = useState<number | null>(null);
 
   /* ── the photograph (point 2) ─────────────────────────────────────────── */
-  const [photoTaken, setPhotoTaken] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [reading, setReading] = useState<PaperReading | null>(null);
@@ -124,6 +129,7 @@ export default function DoorNext() {
   /* ── sealing + the outbox (point 5) ───────────────────────────────────── */
   const [submitting, setSubmitting] = useState(false);
   const [queued, setQueued] = useState(false);
+  const [stockIssue, setStockIssue] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sealAttempt, setSealAttempt] = useState(0);
   const [online, setOnline] = useState(navigator.onLine);
@@ -169,6 +175,12 @@ export default function DoorNext() {
       .catch(() => {
         if (alive) setOrderState('unreachable');
       });
+    // Separate call, separate failure. An order that cannot say what it already
+    // received must still be countable — the count stands on its own.
+    receivingApi
+      .doorReceivedSoFar(orderId)
+      .then((r) => alive && setPriorBoxes(r.receivedBoxes))
+      .catch(() => alive && setPriorBoxes(null));
     return () => {
       alive = false;
     };
@@ -212,12 +224,26 @@ export default function DoorNext() {
    * screen moves on immediately; the parse arrives when it arrives and
    * pre-fills only a count no human has touched yet. Offline or failed, the
    * affordance degrades honestly to manual counting, in words.
+   *
+   * THE OFFLINE BRANCH SAYS WHAT ACTUALLY HAPPENS. It used to say "the paper
+   * will be read later" while the `File` went out of scope and was discarded —
+   * a promise nothing in the app could keep.
+   *
+   * Queueing the bytes instead was the better answer and was measured as unsafe
+   * here: the door outbox is `offlineStorage`'s pending-mutation queue, whose
+   * localStorage fallback serialises EVERY pending mutation into one
+   * `${store}_all` key (`offline-storage.ts:189-210`) and swallows a quota
+   * failure with a `console.error`. A multi-megabyte base64 photo written into
+   * that store on the old iPads a receiving desk actually has would take the
+   * RECEIPT down with it — losing the delivery to save the picture of it. So the
+   * photo is not queued, and the screen no longer claims it was.
    */
   async function handlePhoto(file: File) {
-    setPhotoTaken(true);
     setStep('count');
     if (!navigator.onLine) {
-      setPaperLine('No signal — the paper will be read later. Count the boxes yourself.');
+      setPaperLine(
+        'No signal — this photo cannot be sent and is not saved. Keep the paper for the desk, and count the boxes yourself.',
+      );
       return;
     }
     setUploading(true);
@@ -252,17 +278,24 @@ export default function DoorNext() {
     }
   }
 
-  const match = matchLine(counted, orderState === 'ok' ? order : null);
+  const match = matchLine(counted, orderState === 'ok' ? order : null, priorBoxes ?? 0);
   const suggested = suggestOutcome(match);
   const outcome: DoorOutcome = outcomeChoice ?? suggested;
+  // THE CREDIT LETTER MAY ONLY CLAIM AN ATTACHMENT THAT EXISTS. This was
+  // `photoTaken`, set the instant the camera returned a file — so on the offline
+  // branch and on the upload-failure branch the draft told a vendor that
+  // paperwork "is attached" to a document the server had never received. A
+  // documentId is the only proof the upload landed.
+  const hasPhoto = documentId !== null;
   const draft = creditDraft({
     outcome,
     reason,
     counted,
     order,
-    hasPhoto: photoTaken,
+    hasPhoto,
     driverName,
     initials,
+    alreadyReceivedBoxes: priorBoxes ?? 0,
   });
 
   const initialsOk = initials.trim().length >= 2;
@@ -278,38 +311,48 @@ export default function DoorNext() {
     setSubmitting(true);
     setError(null);
     try {
+      const facts = {
+        outcome,
+        reason,
+        counted,
+        broken,
+        order,
+        match,
+        hasPhoto,
+        driverName,
+        initials,
+        alreadyReceivedBoxes: priorBoxes ?? 0,
+      };
       const res = await submitDoorReceipt({
         orderId,
         orderLabel: order?.orderNumber ?? orderId,
         body: {
           countedQty: counted,
           countedUom: 'case',
-          // A refusal takes nothing in; otherwise only the visibly broken.
-          rejectedQty: outcome === 'refused' ? counted : broken,
+          // Everything the door knows, each quantity carrying its unit in its
+          // own name. `rejectedQty` — the unitless name — is deliberately not
+          // sent: it was counted in boxes and converted as bottles, which booked
+          // a refused delivery into live stock.
+          ...doorFacts(facts),
+
           // ADR 0059. The paper's own reading, and whether this receiver stood
           // by it. Both undefined when the paper offered nothing — there was no
           // proposal, so there is nothing to grade, and sending `false` would
           // claim the receiver overrode a number that never existed.
-          suggestedQty: reading?.boxes ?? undefined,
+          suggestedQtyInCountedUom: reading?.boxes ?? undefined,
           suggestionAccepted:
             reading?.boxes == null ? undefined : counted === reading.boxes,
           documentId: documentId ?? undefined,
           idempotencyKey: idem.current,
           clientCapturedAt: new Date().toISOString(),
-          notes: composeDoorNotes({
-            outcome,
-            reason,
-            counted,
-            broken,
-            order,
-            match,
-            hasPhoto: photoTaken,
-            driverName,
-            initials,
-          }),
+          notes: composeDoorNotes(facts),
         },
       });
       setQueued(!res.synced);
+      // The delivery can be recorded while the shelf count is not — an order
+      // with no inventory link books nothing. Say so rather than showing the
+      // ordinary "someone will count the bottles" ending.
+      setStockIssue(res.synced && res.stockBooked === false ? (res.stockIssue ?? null) : null);
       setStep('done');
     } catch (e) {
       // A gateway refusal resets the die, with the refusal stated in place —
@@ -607,6 +650,17 @@ export default function DoorNext() {
                   'It will send itself when you are back inside. Nothing is lost.'
                 : 'Someone will count the bottles and check it against the invoice at a desk.'}
             </p>
+            {/* Recorded is not the same as booked. The server says which, in
+                words, and the receiver reads the words rather than a seal that
+                means two different things. */}
+            {stockIssue !== null && (
+              <p
+                role="alert"
+                className="max-w-xs rounded-xl border border-amber-400/50 bg-amber-500/10 px-3 py-2 text-center text-sm text-amber-200"
+              >
+                {stockIssue}
+              </p>
+            )}
             {draft !== null && (
               <p className="max-w-xs text-center text-sm text-inkm-3">
                 The credit request rides with it — drafted, unsent. A manager approves it.

@@ -5,6 +5,9 @@
 
 export const EM = '—';
 
+/** ADR 0051 clause 2 — a windowed count renders as a floor, never as a total. */
+export const GE = '≥';
+
 export const SERIF = '"Fraunces", Georgia, "Times New Roman", serif';
 export const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 export const SANS = '"DM Sans", "Plus Jakarta Sans", system-ui, sans-serif';
@@ -36,6 +39,63 @@ export function fmtDate(iso: string | null | undefined): string {
   const d = parseDay(iso) ?? new Date(iso);
   if (!Number.isFinite(d.getTime())) return EM;
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/**
+ * Extraction / match confidence, as the model stated it.
+ *
+ * ADR 0051 clause 1: a confidence the record does not hold renders as the em
+ * dash. There is no default, no "assume high", and no rounding a null to 0% —
+ * "the model was 0% sure" and "nobody recorded how sure the model was" are
+ * different claims, and this screen asks a human to trust the reading.
+ */
+export function fmtConfidence(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(Number(n))) return EM;
+  const v = Number(n);
+  // Stored as numeric(4,3) in [0,1]; anything outside that is not a confidence
+  // and must not be dressed as one.
+  if (v < 0 || v > 1) return EM;
+  return `${Math.round(v * 100)}%`;
+}
+
+/**
+ * What the SERVER said, not what the transport guessed.
+ *
+ * An axios rejection's `.message` is "Request failed with status code 403" —
+ * the same sentence for a permission refusal, a stale document, and a bad
+ * patch. The gateway's own sentence is in `response.data.message` (Nest's
+ * HttpException body), and it is the only text that tells the manager what to
+ * do. A network failure has no server sentence, and must say so rather than
+ * borrow one.
+ */
+export function serverMessage(e: unknown, fallback: string): string {
+  const r = (e as { response?: { data?: unknown; status?: number } } | null)?.response;
+  const body = r?.data as { message?: unknown; error?: unknown } | undefined;
+  const raw = body?.message ?? body?.error;
+  const text = Array.isArray(raw) ? raw.join('; ') : typeof raw === 'string' ? raw : null;
+  if (text && text.trim()) return r?.status ? `${text.trim()} (HTTP ${r.status})` : text.trim();
+  if (r?.status) return `The gateway refused it with HTTP ${r.status} and no message.`;
+  if (e instanceof Error && e.message) return `${fallback} (${e.message})`;
+  return fallback;
+}
+
+/**
+ * The signed URL the detail endpoint mints lives 3600s
+ * (documents.controller.ts:195). Treat it as spent a little early: a link that
+ * dies mid-render shows a broken image, and on the receipts screen a broken
+ * image reads as "there is no paper" rather than "the link aged out".
+ */
+const SIGNED_URL_TTL_MS = 3_600_000;
+const SIGNED_URL_GRACE_MS = 5 * 60_000;
+
+/**
+ * A signed link is spent once it is inside the grace window of its hour.
+ * `fetchedAt` of 0 means "never fetched", which is not "expired" — react-query
+ * reports exactly that before a query has landed.
+ */
+export function isSignedUrlExpired(fetchedAt: number, now: number): boolean {
+  if (!Number.isFinite(fetchedAt) || fetchedAt <= 0) return false;
+  return now - fetchedAt > SIGNED_URL_TTL_MS - SIGNED_URL_GRACE_MS;
 }
 
 /** Parse an edited money/number cell; empty clears to null, junk is rejected. */

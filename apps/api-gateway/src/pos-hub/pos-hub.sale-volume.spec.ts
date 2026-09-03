@@ -71,8 +71,9 @@ function makeDb(opts: { mappings?: Row[]; inventory?: Row[] } = {}) {
         };
       }
       if (table === "wine_consumption_log") {
-        q.upsert = async (row: Row, options: Row) => {
-          calls.consumptionUpserts.push({ row, options });
+        // Plain insert since ADR 0093: the partial unique index dedupes.
+        q.insert = async (row: Row) => {
+          calls.consumptionUpserts.push({ row, options: {} });
           return { error: null };
         };
       }
