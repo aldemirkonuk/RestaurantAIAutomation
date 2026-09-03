@@ -362,7 +362,7 @@ not a checklist item on a modelling team.
 - Scheduled as ROADMAP backlog **999.1** (`.planning/ROADMAP.md:639`), `PROJECT.md:27`.
 - ⚠️ No `points`, `ledger`, `ratings`, or guest-app code exists — grepped. The consumer app
   is greenfield; `apps/mobile` today is the staff app (`src/guidance/`, `src/design/`).
-- ⬦ **Gated on OD-07** ([OPEN-DECISIONS.md:31](../../decisions/OPEN-DECISIONS.md)) — build
+- ⬦ **Gated on OD-07** ([OPEN-DECISIONS.md:32](../../decisions/OPEN-DECISIONS.md)) — build
   independently vs explore Beli collaboration. This team's existence is downstream of that
   call; see §3.2.
 
@@ -710,7 +710,7 @@ distinctness argument anywhere in this document.
 - ⬦ **Beli — OD-07, open:** *"build the guest consumer experience independently vs explore
   collaboration"*; *"Determines whether guest-app work is product or partnership groundwork"*;
   unblocked by *"Founder call after guest MVP scope exists (FUTURES.md §7.5)"*
-  ([OD-07, OPEN-DECISIONS.md:31](../../decisions/OPEN-DECISIONS.md)).
+  ([OD-07, OPEN-DECISIONS.md:32](../../decisions/OPEN-DECISIONS.md)).
   **This team owns the exploration; §2.3 owns the build. Both are gated on the same call.**
 
 **Primary metric.** *Signed agreements that unblock a `partner_agreement` provider*, plus

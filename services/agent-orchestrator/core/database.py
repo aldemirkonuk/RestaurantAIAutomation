@@ -25,6 +25,18 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from utils.logger import setup_logger
 
+
+def _is_upstash_host(url: str) -> bool:
+    """True when the URL's host is upstash.io or a subdomain of it."""
+    from urllib.parse import urlparse
+
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return False
+    return host == "upstash.io" or host.endswith(".upstash.io")
+
+
 logger = setup_logger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
@@ -1670,7 +1682,16 @@ class DatabaseClient:
         self.supabase_url = supabase_url
         self.supabase_key = supabase_key
         # Upstash Redis requires TLS — normalise redis:// → rediss://
-        if redis_url and redis_url.startswith("redis://") and "upstash.io" in redis_url:
+        #
+        # Compare the parsed hostname rather than testing `"upstash.io" in
+        # redis_url`: the substring also matches hosts like
+        # `upstash.io.example.com`, which are not Upstash. Mirrors
+        # isUpstashHost() in apps/api-gateway/src/common/cache/cache.service.ts.
+        if (
+            redis_url
+            and redis_url.startswith("redis://")
+            and _is_upstash_host(redis_url)
+        ):
             redis_url = "rediss://" + redis_url[len("redis://") :]
         self.redis_url = redis_url
 
