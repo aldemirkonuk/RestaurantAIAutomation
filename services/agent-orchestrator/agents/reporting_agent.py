@@ -394,25 +394,63 @@ class ReportingAgent(BaseAgent):
         else:
             raise ValueError(f"Unknown report type: {report_type}")
 
+    @staticmethod
+    def _unit_cost(item: Dict[str, Any]) -> float:
+        """
+        Cost basis for one bottle of an inventory row.
+
+        OD-99. `restaurant_inventory` has no `wine_price`; it has several price
+        columns that mean different things. Inventory is valued at what it
+        cost, so `last_purchase_price` wins, and `custom_price` stands in when
+        the item was never bought through the system. A row with neither
+        contributes 0 rather than a guess -- the report under-states, visibly,
+        instead of inventing a number (ADR 0020).
+        """
+        for column in ("last_purchase_price", "custom_price"):
+            value = item.get(column)
+            if value is not None:
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    continue
+        return 0.0
+
     async def _generate_inventory_report(self, restaurant_id: str) -> Dict[str, Any]:
         """
-        Generate inventory report from inventory_stock table.
+        Generate inventory report from the restaurant_inventory table.
 
         Uses self.database (BaseAgent standard attribute).
         BUG-11 fix: real Supabase query (not repository method that doesn't exist).
+
+        OD-99: this used to select from `inventory_stock`, which is declared by
+        no migration in this repository and returns 404 PGRST205 in production
+        (verified 2026-08-26). Every inventory report ever generated therefore
+        hit the `except` below and reported an empty inventory: 0 items, 0 low
+        stock, 0 value, stock_health "healthy". A report that says "healthy"
+        because the query 404'd is the worst shape this failure could take.
+
+        The real table is `restaurant_inventory`, which carries every column
+        this report reads under the same names -- `wine_name`, `stock_live`,
+        `threshold_min`, `last_sold_at` -- with one exception: there is no
+        `wine_price`. Valuation uses `last_purchase_price` (cost basis) with
+        `custom_price` as a fallback, because inventory value is what the stock
+        cost, not what it would sell for; a menu price here would report
+        revenue potential as an asset. See OD-100 -- the founder may want a
+        different basis, and this is the column to change.
         """
         try:
             response = (
-                self.database.supabase.table("inventory_stock")
+                self.database.supabase.table("restaurant_inventory")
                 .select(
-                    "id, wine_name, stock_live, threshold_min, wine_price, last_sold_at"
+                    "id, wine_name, stock_live, threshold_min, "
+                    "last_purchase_price, custom_price, last_sold_at"
                 )
                 .eq("restaurant_id", restaurant_id)
                 .execute()
             )
             inventory_items = response.data or []
         except Exception as e:
-            logger.error(f"Failed to query inventory_stock: {e}")
+            logger.error(f"Failed to query restaurant_inventory: {e}")
             inventory_items = []
 
         total_items = len(inventory_items)
@@ -425,7 +463,7 @@ class ReportingAgent(BaseAgent):
             item for item in inventory_items if (item.get("stock_live") or 0) == 0
         ]
         total_value = sum(
-            (item.get("stock_live") or 0) * (item.get("wine_price") or 0)
+            (item.get("stock_live") or 0) * self._unit_cost(item)
             for item in inventory_items
         )
 

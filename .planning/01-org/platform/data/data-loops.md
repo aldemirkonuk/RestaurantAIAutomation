@@ -39,6 +39,11 @@ close_time: daily
 status: proposed
 ```
 
+> **Ownership settled 2026-08-27 (founder, ADR 0035):** the report is *produced* by
+> [[substrate-quality-coverage-loops]] `substrate-progress-report`; this loop is the
+> department's daily *consumption* — the rollup over that report and the other four
+> teams' feeds. The YAML above is left untouched pending a `loops.json` regeneration.
+
 **Emits three L0 numbers, never one.** A run that emits a single scalar is a failed run.
 **Anti-sprawl:** three consecutive runs producing no action downgrades this to weekly
 ([[README]] §6).

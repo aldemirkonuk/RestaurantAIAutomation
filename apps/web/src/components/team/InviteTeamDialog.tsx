@@ -16,7 +16,7 @@ interface InviteTeamDialogProps {
   anchorRef?: RefObject<HTMLElement | null>
   /**
    * Optional escape hatch: create a schedule roster profile without sending an
-   * account invite (walk-in / contractor who only needs shifts, not WineOps login).
+   * account invite (walk-in / contractor who only needs shifts, not Mudavym login).
    */
   onRosterOnly?: () => void
 }
@@ -142,7 +142,7 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
                       }}
                       className="text-xs text-gray-500 hover:text-wine-700 text-center underline-offset-2 hover:underline"
                     >
-                      Add roster-only staff (no WineOps login)
+                      Add roster-only staff (no Mudavym login)
                     </button>
                   )}
                 </div>

@@ -441,7 +441,7 @@ export default function AdminPanel() {
                 <ArrowLeft className="w-5 h-5 text-slate-600" />
               </Link>
               <div className="flex items-center gap-3">
-                <BrandMark size={36} alt="" />
+                <BrandMark variant="mark" size={26} alt="" />
                 <div>
                   <h1 className="text-lg font-bold text-slate-900">Admin Settings</h1>
                 </div>

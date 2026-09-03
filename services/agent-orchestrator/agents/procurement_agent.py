@@ -1,45 +1,219 @@
 """
-Procurement Agent — Lean Decision Engine
-==========================================
+Procurement Agent — Lean Decision Engine, propose-only on the buy side
+=====================================================================
 Order decision logic and status management.
 
 Architecture (Gateway Pattern):
 - This agent decides WHAT to buy, HOW MUCH, and at WHAT PRICE TARGET
 - ProviderConversationAgent handles ALL provider communication
-- This agent publishes intents and receives parsed responses
+- This agent stages proposals and receives parsed responses
 
 Responsibilities:
-- Stock threshold breach → create procurement order + publish negotiation intent
-- Manual order requests → create order + publish intent
+- Stock threshold breach → **propose** a reorder for a human to approve
+- Manual order requests → the same proposal, with the requester's overrides
 - Receive parsed intent responses from ProviderConversationAgent
 - Order status state machine (NEGOTIATING → CONFIRMED → IN_TRANSIT → DELIVERED)
 - Price history and target calculation
 - Voice call initiation (Plivo API), but message content via ProviderConversationAgent
+
+WHAT CHANGED AND WHY (ADR 0039 Track A3, following recurring_order_agent)
+-------------------------------------------------------------------------
+``_initiate_procurement`` used to turn a ``stock.threshold.breached`` event into a
+purchase attempt with no human anywhere in the path. On one par crossing it:
+
+  1. called ``database.create_procurement_order({... "status": "NEGOTIATING"})``,
+     and
+  2. published ``procurement.conversation_request`` — the intent that makes
+     ProviderConversationAgent draft and send to the vendor.
+
+That is sense → act with no confirmation record, which is the violation
+FUTURES §8.1 exists to prevent:
+
+    Ask → propose → confirm → execute. AI never silently mutates stock, money,
+    or outbound vendor email. Confirmation is the gate; existing services are
+    the executors.
+
+**It was inert only by accident of plumbing, and the accident was about to be
+undone.** This agent is CORE (``core/agent_registry.py:78-82``): it starts on
+every boot and its queue is bound. What was missing was the *input* — the only
+producers of ``stock.threshold.breached`` are ``buffer_manager.py:284`` and
+``:451``, and the Python POS pipeline that drives them is dormant. E1's other
+half is "unify the POS pipeline", which supplies exactly that input. The gate
+therefore had to close before the pipe opened, not after.
+
+The order-creation path is **deleted, not disabled**, on the same reasoning as
+``recurring_order_agent``: a disabled path is one edit away from a live one.
+There is no ``_create_order``/``_place_order`` here, and no call to
+``database.create_procurement_order`` anywhere in this module.
+
+What replaced it, and what was deliberately kept:
+
+* ``_build_reorder_plan`` — the vendor-selection and price-target logic, intact
+  and moved into a **pure** method: it reads inventory, provider and price
+  history and returns a plan. It writes nothing and publishes nothing, so the
+  future hop-4 bridge can call it to decide *what* to buy without any risk of it
+  also *buying* it. This is where the negotiation logic went; nothing was thrown
+  away.
+* ``_propose_reorder`` — stages a ``one_tap_actions`` row with
+  ``status='pending'`` and null ``executed_by``/``executed_at``, and writes a
+  ``decision_log`` row. Execution happens later in
+  ``OneTapActionsService.executeAction``
+  (``apps/api-gateway/src/one-tap-actions/one-tap-actions.service.ts:230``),
+  which stamps ``executed_by`` from the authenticated user. Nothing in this file
+  can produce that stamp.
+
+**Shadow mode: the proposal is written, but no human is told.** Approving a
+proposal executes nothing today — ``triggerWorkflow`` is a switch of TODO logs
+with no branch for this family — so notifying a manager would put a card in
+front of a person that does nothing when tapped, silently. ADR 0020 (LOCKED)
+forbids exactly that. The rows are still staged, and are safe to stage because
+the web action center filters this ``action_type`` out by design; they serve as
+shadow-mode input for the hop-4 bridge. See the ``PROPOSAL_EXECUTOR_EXISTS``
+block below for the full argument and for what to change when the executor
+lands. This means the buy side is now **safe, not finished**.
+* ``_emit_action_proposal`` — the enforcement point, copied from
+  ``recurring_order_agent.py``. It validates the caller-supplied row and refuses
+  anything that arrives already confirmed.
+
+**Fail closed.** If the proposal cannot be staged, ``_propose_reorder`` records
+the failure and returns. It does not fall back to creating an order, and it does
+not publish a vendor-facing intent — there is no code path left that could.
+Losing a reorder proposal is a missed suggestion; the alternative was an
+unapproved purchase.
+
+Nothing downstream is orphaned by this. ``procurement.conversation_request`` and
+``procurement.order.created`` both keep their live producers in the gateway
+(``apps/api-gateway/src/procurement/procurement.service.ts:877`` — published from
+the *approve* path — and ``:443``, from ``createOrder``), which is where they
+belong: after a human acted.
+
+Voice is a binding surface and is gated (FUTURES §8.1): `_initiate_voice_negotiation`
+requires a recorded human approval for the exact terms, and the whole capability is
+off unless VOICE_ORDER_CALLS_ENABLED=true. Enforcement lives in PlivoVoiceClient, not
+here. See services/plivo_voice_client.py.
 """
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, TYPE_CHECKING
 from datetime import datetime
 
 from core.base_agent import BaseAgent
 
+if TYPE_CHECKING:  # import-time cost only for type checkers, not for the orchestrator
+    from services.plivo_voice_client import VoiceOrderApproval
+
+
+# Typed action envelope (ACTION-SCHEMA-SPEC.md §1). Module constants so the spec,
+# this agent and the tests all name the same strings.
+ACTION_FAMILY = "procurement"
+ACTION_KIND = "procurement.reorder.place"
+AUTONOMY_TIER = "propose_only"
+
+# one_tap_actions.action_type is a Postgres enum (public.one_tap_action_type,
+# migration 20260805000000_baseline_from_production.sql:173). 'custom' is the
+# interim carrier ACTION-SCHEMA-SPEC §4.1 prescribes until step 6 of its
+# migration order adds a first-class value; the real family/kind live in
+# metadata. Deliberately NOT 'low_stock': the renderers and
+# OneTapActionsService.triggerWorkflow dispatch on this column, and inventing a
+# dispatch target for a proposal is how a proposal becomes an execution.
+ONE_TAP_ACTION_TYPE = "custom"
+PROPOSAL_STATUS = "pending"
+
+DECISION_REORDER_PROPOSAL = "procurement_reorder_proposal"
+DECISION_REORDER_BLOCKED = "procurement_reorder_blocked"
+
+# The manager-facing announcement. `notification.events` is bound `notification.#`
+# by the gateway bridge (apps/api-gateway/src/common/orchestrator/
+# rabbitmq-bridge.service.ts:186-190), so this reaches the frontend the same way
+# the other three notifications in this file do.
+EXCHANGE_NOTIFICATION = "notification.events"
+RK_REORDER_PROPOSED = "notification.procurement_reorder_proposed"
+
+
+# =============================================================================
+# WHY NOBODY IS TOLD ABOUT THESE PROPOSALS YET  —  REMOVE THIS WITH THE EXECUTOR
+# =============================================================================
+# Approving a proposal is supposed to execute it. Today nothing does.
+# ``OneTapActionsService.triggerWorkflow``
+# (``apps/api-gateway/src/one-tap-actions/one-tap-actions.service.ts:404-429``)
+# is a switch of TODO logs, and it has no branch for this family at all. A
+# manager who approved one of these would get silence: no order, no error, no
+# explanation.
+#
+# ADR 0020 (LOCKED, `.planning/decisions/0020-no-fabricated-answers.md`) forbids
+# precisely that shape — "Actions that cannot complete refuse out loud and keep
+# the card", and "An error must never render as emptiness". Shipping a card that
+# does nothing when tapped is the defect that ADR catalogues, not a lesser
+# version of it.
+#
+# So the notification is gated, and only the notification. The row is still
+# staged, and that is both safe and useful:
+#
+#   * Safe, because the web action center filters this action_type out. `custom`
+#     is deliberately absent from RENDERABLE_SERVER_TYPES and `mapServerAction`
+#     returns None for it — "it is filtered out rather than shown as a dead
+#     card" (apps/web/src/components/notifications/OneTapActionCenter.tsx:76-90,
+#     :104-116). No card reaches a person from the row alone. The mobile app
+#     does not read one_tap_actions at all.
+#   * Useful, because the rows accumulate as shadow-mode input: the hop-4 bridge
+#     design needs to know how often a par crossing would fire and what it would
+#     propose, and that is exactly what these rows measure.
+#
+# The publish is the one step that would put a human in front of a dead action,
+# which is why it is the one step behind this flag.
+#
+# TO WHOEVER BUILDS THE EXECUTOR: flip this to True in the same change that
+# gives `triggerWorkflow` a real branch for `procurement.reorder.place`, and
+# delete this block. Do not flip it on its own — the flag means "approval does
+# something", not "we would like to notify".
+# ``tests/test_procurement_agent.py::TestNoHumanIsToldUntilApprovalWorks`` pins
+# both halves until then.
+#
+# NOTE: this is not unique to this agent. `recurring_order_agent` stages the
+# same `custom` rows against the same absent executor, so its proposals approved
+# today also buy nothing. That is a pre-existing defect in the other runtime,
+# tracked separately, and deliberately not widened into this change.
+PROPOSAL_EXECUTOR_EXISTS = False
+
+
+class ProcurementSafetyError(RuntimeError):
+    """
+    Raised when a caller tries to write a purchase action that is already
+    confirmed. Not defensive decoration: it is the assertion that keeps the
+    propose→confirm→execute gate from being edited away silently.
+    """
+
 
 class ProcurementAgent(BaseAgent):
     """
-    Procurement Agent - AI-powered wine ordering
+    Procurement Agent - AI-assisted wine ordering, propose-only on origination
 
     Negotiation Strategy:
     1. Check historical prices for this wine/provider
-    2. Generate negotiation message with target price
-    3. Parse provider response
-    4. If rejected, negotiate up to 3 times
+    2. Pick the provider and compute the target price band
+    3. **Propose** the reorder; a human approves it
+    4. From there ProviderConversationAgent negotiates, up to 3 attempts
     5. If still outside range, escalate to manager
-    6. If accepted, create order and notify manager for approval
+    6. Parse the provider response and drive the order state machine
 
-    LLM Usage:
-    - Gemini Pro for conversation generation
-    - Max 100 tokens per message
-    - Context: provider history, wine details, price range
+    Autonomy tier: ``propose_only`` for **origination**. This class cannot create
+    a procurement order and cannot publish a vendor-conversation intent, so no
+    event it consumes can start a purchase.
+
+    The carve-out, stated plainly because a blanket claim here would be false:
+    ``_handle_intent_response`` still writes directly — order status, calendar
+    cancellation, shadow-stock release. That is bookkeeping on an order a human
+    already created through the gateway, reacting to what a vendor said; it can
+    only ever *unwind* or record a commitment, never form one. It is the same
+    split ``drift_agent`` draws (``drift_agent.py:8-17``) and the same one
+    ``recurring_order_agent`` draws when it advances ``next_order_date``.
+
+    LLM Usage: none. The client this agent used to build was removed in OD-57;
+    message generation belongs to ProviderConversationAgent.
     """
+
+    # Read by tests and by anything auditing agent autonomy without importing
+    # the module's constants.
+    AUTONOMY_TIER = AUTONOMY_TIER
 
     def __init__(self, agent_name: str, message_bus, database, config: Dict[str, Any]):
         super().__init__(agent_name, message_bus, database, config)
@@ -120,7 +294,7 @@ class ProcurementAgent(BaseAgent):
         routing_key = message.get("routing_key")
 
         if routing_key == "stock.threshold.breached":
-            await self._initiate_procurement(message)
+            await self._propose_reorder(message)
         elif routing_key == "procurement.manual_order_request":
             await self._handle_manual_order(message)
         elif routing_key == "procurement.intent_response":
@@ -134,138 +308,352 @@ class ProcurementAgent(BaseAgent):
         else:
             self.logger.warning(f"Unhandled routing key: {routing_key}")
 
-    async def _initiate_procurement(self, message: Dict[str, Any]) -> None:
-        """
-        Initiate procurement for low-stock item.
+    # =========================================================================
+    # PAR CROSSING → PROPOSAL (never a purchase, never a vendor intent)
+    # =========================================================================
 
-        Gateway Pattern: creates order and publishes a conversation intent
-        to ProviderConversationAgent instead of generating messages directly.
+    async def _build_reorder_plan(
+        self, payload: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
         """
-        payload = message.get("payload", {})
+        Decide WHAT to buy, HOW MUCH, and at WHAT PRICE TARGET — and nothing else.
 
+        This is the vendor-selection and price-target logic that used to live
+        inline in ``_initiate_procurement``, kept whole. It is deliberately
+        **pure with respect to side effects**: it reads inventory, provider and
+        price history, and returns a plan. It creates no order, publishes no
+        event, and stages no proposal.
+
+        That separation is the point. The future hop-4 bridge needs this
+        reasoning and must not inherit the ability to act on it, so the reasoning
+        lives in a method that structurally cannot. Returns ``None`` when the
+        plan cannot be built (missing inventory, no provider, unknown provider),
+        which callers must treat as "do nothing".
+        """
         inventory_id = payload.get("inventory_id")
         wine_name = payload.get("wine_name")
-        payload.get("stock_after", 0)
-        urgency = payload.get("urgency", "medium")
 
-        is_manual = payload.get("_manual", False)
         manual_provider_id = payload.get("_provider_id")
         manual_quantity = payload.get("_quantity")
         manual_target_price = payload.get("_target_price")
-        manual_notes = payload.get("_notes", "")
+
+        inventory = await self.database.get_inventory_item(inventory_id)
+        if not inventory:
+            self.logger.error(f"Inventory not found: {inventory_id}")
+            return None
+
+        # The column is `provider_id`. `primary_provider_id` does not exist on
+        # restaurant_inventory in any environment, so this lookup returned None
+        # for EVERY wine and procurement could never be initiated at all — the
+        # failure surfaced as `get_provider(None)` crashing on a cache key.
+        # It stayed invisible because local databases were hand-built and never
+        # had the real column set either. `primary_provider_id` is kept as a
+        # fallback in case some row somewhere carries it.
+        primary_provider_id = (
+            manual_provider_id
+            or inventory.get("provider_id")
+            or inventory.get("primary_provider_id")
+        )
+        if not primary_provider_id:
+            self.logger.error(
+                "No provider on inventory %s (%s) — cannot reorder",
+                inventory_id,
+                wine_name,
+            )
+            return None
+
+        provider = await self.database.get_provider(primary_provider_id)
+        if not provider:
+            self.logger.error(f"Provider not found: {primary_provider_id}")
+            return None
+
+        threshold_min = inventory.get("threshold_min", 3)
+        reorder_quantity = manual_quantity or inventory.get(
+            "reorder_quantity", threshold_min * 3
+        )
+
+        price_history = await self._get_price_history(inventory_id, primary_provider_id)
+        avg_price = self._calculate_avg_price(price_history)
+        target_price = manual_target_price or (avg_price * 0.95)
+
+        return {
+            "restaurant_id": inventory.get("restaurant_id")
+            or payload.get("restaurant_id"),
+            "inventory_id": inventory_id,
+            "provider_id": primary_provider_id,
+            "provider_name": provider.get("name"),
+            "wine_name": wine_name or inventory.get("wine_name"),
+            "quantity": reorder_quantity,
+            "target_price_per_bottle": target_price,
+            "max_acceptable_price": target_price
+            * (1 + self.price_tolerance_percent / 100),
+            "price_tolerance_percent": self.price_tolerance_percent,
+            "avg_historical_price": avg_price,
+            "price_history_points": len(price_history),
+            "urgency": payload.get("urgency", "medium"),
+            "stock_after": payload.get("stock_after", 0),
+            "threshold": payload.get("threshold", threshold_min),
+            # Recorded so the proposal shows where it came from. A manual request
+            # is a request, not a confirmation: it carries no executed_by, so it
+            # takes the same path as an automatic par crossing.
+            "is_manual": bool(payload.get("_manual", False)),
+            "notes": payload.get("_notes", ""),
+        }
+
+    async def _propose_reorder(self, message: Dict[str, Any]) -> Optional[str]:
+        """
+        Turn a par crossing (or a manual request) into a proposal a human taps.
+
+        Replaces ``_initiate_procurement``, which created a ``NEGOTIATING`` order
+        and published ``procurement.conversation_request`` — reaching a vendor
+        with no confirmation record anywhere in the path. Both of those are gone;
+        see the module docstring.
+
+        Fails closed. Every early return does nothing, and there is no branch
+        that creates an order. Returns the staged action id, or None.
+        """
+        payload = message.get("payload", {}) or {}
 
         try:
-            inventory = await self.database.get_inventory_item(inventory_id)
+            plan = await self._build_reorder_plan(payload)
+            if not plan:
+                return None
 
-            if not inventory:
-                self.logger.error(f"Inventory not found: {inventory_id}")
-                return
+            restaurant_id = plan["restaurant_id"]
+            wine_name = plan["wine_name"] or "Unknown wine"
 
-            # The column is `provider_id`. `primary_provider_id` does not exist on
-            # restaurant_inventory in any environment, so this lookup returned None
-            # for EVERY wine and procurement could never be initiated at all — the
-            # failure surfaced as `get_provider(None)` crashing on a cache key.
-            # It stayed invisible because local databases were hand-built and never
-            # had the real column set either. `primary_provider_id` is kept as a
-            # fallback in case some row somewhere carries it.
-            primary_provider_id = (
-                manual_provider_id
-                or inventory.get("provider_id")
-                or inventory.get("primary_provider_id")
+            existing = await self._find_open_proposal(
+                plan["inventory_id"], restaurant_id
             )
-            if not primary_provider_id:
-                self.logger.error(
-                    "No provider on inventory %s (%s) — cannot reorder",
-                    inventory_id,
-                    wine_name,
+            if existing:
+                self.logger.info(
+                    f"Reorder proposal {existing} is already open for inventory "
+                    f"{plan['inventory_id']} — not staging a second one"
                 )
-                return
+                return existing
 
-            provider = await self.database.get_provider(primary_provider_id)
-
-            if not provider:
-                self.logger.error(f"Provider not found: {primary_provider_id}")
-                return
-
-            threshold_min = inventory.get("threshold_min", 3)
-            reorder_quantity = manual_quantity or inventory.get(
-                "reorder_quantity", threshold_min * 3
+            decision_id = await self.log_decision(
+                decision_type=DECISION_REORDER_PROPOSAL,
+                inputs=plan,
+                output={
+                    "action": "proposal",
+                    "autonomy_tier": AUTONOMY_TIER,
+                    "status": PROPOSAL_STATUS,
+                    "executed": False,
+                    "orders_created": 0,
+                    "vendor_intents_published": 0,
+                    # Makes the shadow-mode volume countable straight off
+                    # decision_log, which is what the hop-4 bridge design needs.
+                    "shadow_mode": not PROPOSAL_EXECUTOR_EXISTS,
+                    "manager_notified": PROPOSAL_EXECUTOR_EXISTS,
+                },
+                reasoning=(
+                    "Stock crossed its reorder threshold. Staged a pending "
+                    "one_tap_actions proposal for manager confirmation. No "
+                    "procurement order was created and no vendor-conversation "
+                    "intent was published: FUTURES §8.1 requires a confirmation "
+                    "record (executed_by/executed_at) against this specific "
+                    "action before anything reaches a vendor."
+                    + (
+                        " Shadow mode: no manager was notified, because "
+                        "approving a proposal executes nothing yet and ADR 0020 "
+                        "forbids an action that silently does nothing."
+                        if not PROPOSAL_EXECUTOR_EXISTS
+                        else ""
+                    )
+                ),
+                confidence=0.9,
+                restaurant_id=restaurant_id,
             )
 
-            price_history = await self._get_price_history(
-                inventory_id, primary_provider_id
-            )
-            avg_price = self._calculate_avg_price(price_history)
-            target_price = manual_target_price or (avg_price * 0.95)
-
-            # Create draft procurement order
-            order_id = await self.database.create_procurement_order(
+            action_id = await self._emit_action_proposal(
                 {
-                    "restaurant_id": inventory.get("restaurant_id"),
-                    "inventory_id": inventory_id,
-                    "provider_id": primary_provider_id,
-                    "wine_name": wine_name,
-                    "quantity": reorder_quantity,
-                    "target_price_per_bottle": target_price,
-                    "status": "NEGOTIATING",
-                    "urgency": urgency,
-                    "negotiation_attempt": 1,
-                    "max_acceptable_price": target_price
-                    * (1 + self.price_tolerance_percent / 100),
-                    **({"notes": manual_notes, "is_manual": True} if is_manual else {}),
+                    "restaurant_id": restaurant_id,
+                    "action_type": ONE_TAP_ACTION_TYPE,
+                    "title": f"Reorder suggested: {wine_name}",
+                    "description": (
+                        f"Stock is at {plan['stock_after']} (threshold "
+                        f"{plan['threshold']}). Suggested: {plan['quantity']} x "
+                        f"{wine_name} from {plan['provider_name']} at a target of "
+                        f"${plan['target_price_per_bottle']:.2f}/bottle. "
+                        f"Approve to start this reorder."
+                    ),
+                    "priority": (
+                        "high" if plan["urgency"] in ("high", "critical") else "medium"
+                    ),
+                    "status": PROPOSAL_STATUS,
+                    "metadata": {
+                        "action_family": ACTION_FAMILY,
+                        "action_kind": ACTION_KIND,
+                        "proposer": self.agent_name,
+                        "autonomy_tier": AUTONOMY_TIER,
+                        "payload": plan,
+                        "decision_log_id": decision_id,
+                        "correlation_id": self._current_correlation_id,
+                    },
                 }
             )
 
-            if order_id:
-                # Publish conversation intent to ProviderConversationAgent
-                await self.publish(
-                    exchange_name="procurement.events",
-                    routing_key="procurement.conversation_request",
-                    message_body={
-                        "event_type": "ProcurementConversationRequest",
-                        "payload": {
-                            "intent_type": "negotiate_price",
-                            "order_id": order_id,
-                            "provider_id": primary_provider_id,
-                            "restaurant_id": inventory.get("restaurant_id"),
-                            "wine_name": wine_name,
-                            "quantity": reorder_quantity,
-                            "target_price": target_price,
-                            "max_acceptable_price": target_price
-                            * (1 + self.price_tolerance_percent / 100),
-                            "urgency": urgency,
-                            "channel_preference": "email",
-                        },
-                    },
-                    priority=7 if urgency == "high" else 5,
+            if not action_id:
+                # FAIL CLOSED. The proposal could not be staged, so the manager
+                # will not see this suggestion. That is the acceptable outcome;
+                # the unacceptable one would be reaching the vendor anyway, and
+                # no code path here can do that.
+                self.logger.error(
+                    f"Could not stage a reorder proposal for {wine_name} "
+                    f"(inventory {plan['inventory_id']}) — nothing was ordered "
+                    "and no vendor was contacted"
                 )
-
-                # Also publish order created for other consumers
-                await self.publish(
-                    exchange_name="procurement.events",
-                    routing_key="procurement.order.created",
-                    message_body={
-                        "event_type": "ProcurementOrderCreated",
-                        "payload": {
-                            "order_id": order_id,
-                            "inventory_id": inventory_id,
-                            "wine_name": wine_name,
-                            "provider_name": provider.get("name"),
-                            "quantity": reorder_quantity,
-                            "target_price": target_price,
-                        },
-                    },
-                    priority=7 if urgency == "high" else 5,
+                await self.log_decision(
+                    decision_type=DECISION_REORDER_BLOCKED,
+                    inputs=plan,
+                    output={"action": "none", "executed": False, "orders_created": 0},
+                    reasoning=(
+                        "Proposal staging failed. Failing closed: no order was "
+                        "created and no vendor intent was published."
+                    ),
+                    confidence=1.0,
+                    restaurant_id=restaurant_id,
                 )
+                return None
 
+            if not PROPOSAL_EXECUTOR_EXISTS:
+                # SHADOW MODE. The row is written; no human is told, because
+                # approving it would silently do nothing (ADR 0020). See the
+                # PROPOSAL_EXECUTOR_EXISTS block at the top of this module for
+                # the full reasoning and for what to change when the executor
+                # lands.
                 self.logger.info(
-                    f"Created procurement order {order_id}: "
-                    f"{wine_name} x{reorder_quantity} from {provider.get('name')} "
-                    f"(intent published to ProviderConversationAgent)"
+                    f"Staged reorder proposal {action_id} in shadow mode: "
+                    f"{wine_name} x{plan['quantity']} from "
+                    f"{plan['provider_name']}. No manager was notified — "
+                    "approving a proposal executes nothing today "
+                    "(one-tap-actions.service.ts:404-429)."
                 )
+                return action_id
+
+            # Tell the manager there is something to look at. This is the only
+            # publish on this path, it is manager-facing, and it carries no
+            # order id because no order exists yet.
+            await self.publish(
+                exchange_name=EXCHANGE_NOTIFICATION,
+                routing_key=RK_REORDER_PROPOSED,
+                message_body={
+                    "event_type": "ProcurementReorderProposed",
+                    "payload": {
+                        "restaurant_id": restaurant_id,
+                        "type": "reorder_proposed",
+                        "one_tap_action_id": action_id,
+                        "inventory_id": plan["inventory_id"],
+                        "wine_name": wine_name,
+                        "provider_name": plan["provider_name"],
+                        "quantity": plan["quantity"],
+                        "target_price": plan["target_price_per_bottle"],
+                        "title": f"Reorder suggested: {wine_name}",
+                        "message": (
+                            f"{wine_name} is low. A reorder of {plan['quantity']} "
+                            f"from {plan['provider_name']} is waiting for your "
+                            "approval."
+                        ),
+                        "urgency": plan["urgency"],
+                        "action_url": "/orders",
+                    },
+                },
+                priority=7 if plan["urgency"] in ("high", "critical") else 5,
+            )
+
+            self.logger.info(
+                f"Staged reorder proposal {action_id}: {wine_name} x"
+                f"{plan['quantity']} from {plan['provider_name']} "
+                "(pending human approval; no order created)"
+            )
+            return action_id
 
         except Exception as e:
-            self.logger.error(f"Error initiating procurement: {e}", exc_info=True)
+            self.logger.error(f"Error proposing reorder: {e}", exc_info=True)
+            return None
+
+    async def _emit_action_proposal(self, row: Dict[str, Any]) -> Optional[str]:
+        """
+        THE ENFORCEMENT POINT for the no-auto-execute guarantee.
+
+        Copied deliberately from ``recurring_order_agent._emit_action_proposal``
+        (ACTION-SCHEMA-SPEC.md §1 invariant 1 names that method as the reference
+        implementation) so both purchase proposers enforce the same rule the same
+        way rather than two agents drifting apart.
+
+        This is the only method in the agent that writes a purchase-shaped row,
+        and it refuses any row that arrives already confirmed — a status other
+        than ``pending``, or a populated ``executed_by`` / ``executed_at`` /
+        ``execution_result``. The confirmation stamp belongs to the API gateway
+        (``apps/api-gateway/src/one-tap-actions/one-tap-actions.service.ts:245-246``),
+        written after a human taps approve; an agent writing it would forge
+        consent and be, at rest, indistinguishable from a real approval.
+
+        It validates caller-supplied data rather than data it built itself, so it
+        still fails on a future caller that reintroduces execution — which is the
+        whole point of putting the check here instead of in a comment.
+        """
+        violations = [
+            field
+            for field in ("executed_by", "executed_at", "execution_result")
+            if row.get(field) is not None
+        ]
+        if row.get("status") != PROPOSAL_STATUS:
+            violations.append(f"status={row.get('status')!r}")
+
+        if violations:
+            raise ProcurementSafetyError(
+                f"{self.agent_name} may only stage unconfirmed proposals "
+                f"(status={PROPOSAL_STATUS!r}; executed_by, executed_at and "
+                f"execution_result unset). Refused: {', '.join(violations)}. "
+                "Confirmation is written by OneTapActionsService.executeAction "
+                "after a human approves — FUTURES §8.1."
+            )
+
+        try:
+            result = (
+                self.database.supabase.table("one_tap_actions").insert(row)
+                # No .select() — see BaseAgent.log_decision for why chaining it
+                # onto an insert builder raises AttributeError.
+                .execute()
+            )
+            if result.data:
+                return result.data[0].get("id")
+        except Exception as exc:
+            self.logger.warning(f"Failed to stage one_tap_actions proposal: {exc}")
+        return None
+
+    async def _find_open_proposal(
+        self, inventory_id: Any, restaurant_id: Optional[str]
+    ) -> Optional[str]:
+        """
+        Return the id of an already-pending reorder proposal for this wine.
+
+        Idempotency lives on the envelope, not the executor
+        (ACTION-SCHEMA-SPEC.md §1 invariant 5): a par that keeps breaching must
+        not stack a proposal per event.
+        """
+        try:
+            query = (
+                self.database.supabase.table("one_tap_actions")
+                .select("id, metadata")
+                .eq("status", PROPOSAL_STATUS)
+                .eq("action_type", ONE_TAP_ACTION_TYPE)
+            )
+            if restaurant_id:
+                query = query.eq("restaurant_id", restaurant_id)
+            result = query.execute()
+            for row in result.data or []:
+                metadata = row.get("metadata") or {}
+                if metadata.get("action_kind") != ACTION_KIND:
+                    continue
+                payload = metadata.get("payload") or {}
+                if str(payload.get("inventory_id")) == str(inventory_id):
+                    return row.get("id")
+        except Exception as exc:
+            self.logger.warning(f"Open-proposal lookup failed: {exc}")
+        return None
 
     async def _handle_intent_response(self, message: Dict[str, Any]) -> None:
         """
@@ -678,7 +1066,19 @@ class ProcurementAgent(BaseAgent):
         return sum(prices) / len(prices)
 
     async def _handle_manual_order(self, message: Dict[str, Any]) -> None:
-        """Handle manual order request from manager -- same flow as auto but with explicit params"""
+        """
+        Handle a manual order request -- same flow as auto, with explicit params.
+
+        This still becomes a proposal rather than an order. The message carries
+        no ``executed_by`` and no token-derived user id, so nothing in it is a
+        confirmation record; treating "a message said a human wanted this" as
+        consent is exactly the substitution ACTION-SCHEMA-SPEC §4.1 documents
+        (``recurring_orders.auto_approve``) and rejects. The routing key
+        ``procurement.manual_order_request`` also has no producer anywhere in the
+        repo today, so there is nothing to regress — a real manager-initiated
+        order goes through the authenticated gateway path
+        (``procurement.service.ts`` ``createOrder``), which already stamps a user.
+        """
         payload = message.get("payload", {})
 
         wine_name = payload.get("wine_name", "Unknown")
@@ -694,7 +1094,7 @@ class ProcurementAgent(BaseAgent):
             self.logger.error("Manual order missing wine_id or provider_id")
             return
 
-        # Re-use the auto-procurement flow with manual overrides
+        # Re-use the proposal flow with manual overrides
         synthetic_message = {
             "routing_key": "stock.threshold.breached",
             "payload": {
@@ -717,7 +1117,7 @@ class ProcurementAgent(BaseAgent):
             },
         }
 
-        await self._initiate_procurement(synthetic_message)
+        await self._propose_reorder(synthetic_message)
 
     # NOTE: _generate_negotiation_message, _parse_provider_response, _fallback_parser,
     # _send_sms_to_provider, _send_email_to_provider, _pause_for_approval,
@@ -736,9 +1136,22 @@ class ProcurementAgent(BaseAgent):
         wine_name: str,
         quantity: int,
         target_price: float,
+        *,
+        order_approval: "VoiceOrderApproval",
     ) -> Optional[str]:
         """
-        Initiate voice call negotiation with provider
+        Initiate voice call negotiation with provider.
+
+        BINDING SURFACE (FUTURES §8.1). This speaks a quantity and a price to a
+        vendor and gathers an acceptance, so ``order_approval`` — a recorded
+        human confirmation of these exact terms — is REQUIRED, not optional.
+        The gate itself lives one layer down in ``PlivoVoiceClient`` so that a
+        future caller cannot reach the phone line by going round this method;
+        this signature exists so the requirement is visible at the call site too.
+
+        The capability is additionally off unless ``VOICE_ORDER_CALLS_ENABLED``
+        is set — this path has no in-repo caller today, and the flag is what
+        stops it acquiring one silently.
 
         Args:
             order_id: Procurement order ID
@@ -746,13 +1159,23 @@ class ProcurementAgent(BaseAgent):
             wine_name: Wine name
             quantity: Order quantity
             target_price: Target price per bottle
+            order_approval: Human approval evidence for this order and terms
 
         Returns:
             Call UUID if successful
+
+        Raises:
+            VoiceBindingGateError: gate not satisfied. Deliberately propagates —
+                the broad ``except`` below must never turn a refusal to place an
+                unapproved vendor call into a quiet ``None``.
         """
         if not self.voice_client:
             self.logger.warning("Voice client not available")
             return None
+
+        # Imported here (not at module scope) so the orchestrator's import graph
+        # is unchanged; by this point the voice client module is already loaded.
+        from services.plivo_voice_client import VoiceBindingGateError
 
         try:
             # Get provider details
@@ -764,15 +1187,26 @@ class ProcurementAgent(BaseAgent):
             provider_name = provider.get("name", "Vendor")
             provider_phone = provider.get("contact_phone")
 
-            # Generate negotiation XML
+            # Generate negotiation XML. This is the gated call: it refuses unless
+            # the flag is on, `order_approval` covers this order at these exact
+            # terms, and the greeting passes the hard constraints.
+            #
+            # The XML is still not wired to an answer URL — `make_call` below
+            # falls back to the default `/voice/answer` webhook — so today this
+            # both builds the script and enforces the gate on it. Serving this
+            # XML from the answer webhook is the follow-up slice; until then the
+            # call must not be placed on a script the gate never saw.
             self.voice_client.generate_negotiation_xml(
                 wine_name=wine_name,
                 quantity=quantity,
                 target_price=target_price,
                 provider_name=provider_name,
+                order_id=order_id,
+                order_approval=order_approval,
             )
 
-            # Make the call
+            # Make the call — gated again at the client on the order-shaped
+            # context, so the dial cannot happen even if the XML step is skipped.
             result = await self.voice_client.make_call(
                 to_number=provider_phone,
                 record=True,
@@ -784,6 +1218,7 @@ class ProcurementAgent(BaseAgent):
                     "target_price": target_price,
                     "negotiation_type": "voice",
                 },
+                order_approval=order_approval,
             )
 
             if result.get("success"):
@@ -817,6 +1252,16 @@ class ProcurementAgent(BaseAgent):
                 self.logger.error(f"Voice call failed: {result.get('error')}")
                 return None
 
+        except VoiceBindingGateError:
+            # Never swallowed. A gate refusal means the system was one step away
+            # from an unapproved commitment to a vendor; collapsing that into
+            # `None` would make the most important failure here look like a
+            # transient one (FUTURES §8.1).
+            self.logger.error(
+                f"Voice binding gate refused order {order_id} — no call placed",
+                exc_info=True,
+            )
+            raise
         except Exception as e:
             self.logger.error(f"Error initiating voice negotiation: {e}", exc_info=True)
             return None
@@ -1081,6 +1526,13 @@ class ProcurementAgent(BaseAgent):
             },
             priority=8,
         )
+
+    async def health_check(self) -> Dict[str, Any]:
+        """Surface the origination tier where an operator can see it."""
+        health = await super().health_check()
+        health["autonomy_tier"] = AUTONOMY_TIER
+        health["can_create_orders"] = False
+        return health
 
     async def cleanup(self) -> None:
         """Cleanup voice resources (LLM now owned by ProviderConversationAgent)"""

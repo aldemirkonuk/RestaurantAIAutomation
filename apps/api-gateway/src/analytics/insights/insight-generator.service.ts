@@ -16,6 +16,7 @@ import {
   tableAttributeReading,
   InsightEvidence,
 } from "./insight-verbalizer";
+import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 
 /**
  * InsightGeneratorService — executes the insight candidate space.
@@ -52,8 +53,12 @@ export class InsightGeneratorService {
 
   /**
    * Full enumerated catalog for the Browse-All explorer (NEW-707…NEW-728):
-   * every dimension, measure, comparator, and the 375 candidate type keys with
-   * their category + data requirements. Pure — no restaurant data touched.
+   * every dimension, measure, comparator, and every candidate type key with its
+   * category + data requirements. Pure — no restaurant data touched.
+   *
+   * The count is deliberately NOT written here. It is `INSIGHT_CANDIDATES.length`
+   * (573 as of 2026-09-01), and this comment said "375" for months while the line
+   * below already returned 573 — a number in prose is a claim nothing re-checks.
    */
   getCatalogTypes() {
     return {
@@ -124,6 +129,16 @@ export class InsightGeneratorService {
       restaurantId,
       insights: ranked,
       availability: Array.from(bundle.availability),
+      // UPPER BOUND, not a count of what this restaurant can receive.
+      // `availableCandidates` (insight-catalog.ts:557) filters on DATA
+      // REQUIREMENTS only — `c.requires.every(r => available.has(r))` — and
+      // never on whether a type has an implementation behind it. So with all
+      // seven data sources connected this equals the whole catalogue, which is
+      // how a "573 of 573" meter came to overstate a system where roughly two
+      // dozen types have a `record()` site and fewer than that could actually
+      // fire. What DID fire is `insights` below; the gap between them is the
+      // honest number, and it is deliberately left visible rather than papered
+      // over here (ADR 0020: a surface never asserts what it cannot support).
       candidateTypesAvailable: candidates.length,
       candidateTypesTotal: INSIGHT_CANDIDATES.length,
       computedIn: Date.now() - startedAt,
@@ -227,11 +242,16 @@ export class InsightGeneratorService {
           .gte("created_at", since90),
         client
           .from("procurement_orders")
+          // NO provider_name column on procurement_orders (see
+          // supabase/migrations/20260805000000_baseline_from_production.sql:4514-4568)
+          // — naming it 42703s the whole query, `ok()` below turned that into
+          // an empty order list, and the entire purchasing insight family went
+          // permanently silent. The vendor label comes from the provider_id FK.
           .select(
-            "provider_id, provider_name, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
+            "provider_id, providers(name), total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
           )
           .eq("restaurant_id", restaurantId)
-          .eq("status", "delivered")
+          .in("status", ORDER_SPEND_STATUSES)
           .gte("delivered_at", since180),
         client
           .from("restaurant_inventory")
@@ -268,19 +288,50 @@ export class InsightGeneratorService {
           .eq("status", "active"),
       ]);
 
+    // A failed slice still degrades to `[]` — one dead lens must not take the
+    // whole insight run down. But it must not do so SILENTLY: an empty array
+    // from a 42703 is indistinguishable from an empty array from a quiet
+    // restaurant, which is precisely how the provider_name drift above stayed
+    // invisible. Every failure now names itself in the logs.
+    const slices: Array<[string, PromiseSettledResult<any>]> = [
+      ["wine_consumption_log", cons],
+      ["procurement_orders", ords],
+      ["restaurant_inventory", inv],
+      ["pos_checks", checks],
+      ["restaurant_tables", tables],
+      ["restaurant_venue_profiles", venue],
+      ["analytics_goals", goals],
+    ];
+    for (const [table, r] of slices) {
+      if (r.status === "rejected")
+        this.logger.error(
+          `insight bundle query on ${table} rejected: ${r.reason}`,
+        );
+      else if (r.value?.error)
+        this.logger.error(
+          `insight bundle query on ${table} failed — this family will be ` +
+            `silent rather than wrong: ${r.value.error.code ?? "?"} ${r.value.error.message ?? r.value.error}`,
+        );
+    }
+
     const ok = <T>(r: PromiseSettledResult<any>): T[] =>
       r.status === "fulfilled" && !r.value.error ? r.value.data || [] : [];
 
     const bundle: Bundle = {
       restaurantId,
       consumption: ok<any>(cons).map((c: any) => ({
-        wineId: c.master_wine_id,
+        // The select above resolves the wine through the inventory FK, because
+        // wine_consumption_log has no master_wine_id column of its own — so
+        // PostgREST returns it NESTED, and reading it at the top level yields
+        // undefined on every row. That made `if (!c.wineId) continue` (:394,
+        // :578) skip everything and silently emptied both per-wine families.
+        wineId: c.restaurant_inventory?.master_wine_id,
         qty: c.quantity || (c.volume_ml ? c.volume_ml / 750 : 0),
         date: (c.created_at || "").substring(0, 10),
       })),
       orders: ok<any>(ords).map((o: any) => ({
         vendorId: o.provider_id || "unknown",
-        vendorName: o.provider_name || o.provider_id || "unknown vendor",
+        vendorName: o.providers?.name || o.provider_id || "unknown vendor",
         cost: o.total_cost || o.final_price || 0,
         date: (o.delivered_at || o.created_at || "").substring(0, 10),
       })),
@@ -433,7 +484,9 @@ export class InsightGeneratorService {
       }
     }
 
-    // Forecast gap: Holt-Winters fitted vs actual over last week.
+    // Forecast gap: train Holt-Winters on everything but the last 7 days, then
+    // compare its out-of-sample forecast against what actually happened. This
+    // is a genuine holdout — it scores `forecast`, never `fitted` (ADR 0064).
     const hw = E.holtWintersAdditive(
       values.slice(0, -7),
       7,

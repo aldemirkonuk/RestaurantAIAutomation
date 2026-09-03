@@ -3,6 +3,8 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { ScheduleModule } from "@nestjs/schedule";
 import { APP_INTERCEPTOR, APP_GUARD } from "@nestjs/core";
+import { LivenessController } from "./health/liveness.controller";
+import { ReadinessController } from "./health/readiness.controller";
 import { AuthModule } from "./auth/auth.module";
 import { InventoryModule } from "./inventory/inventory.module";
 import { ProcurementModule } from "./procurement/procurement.module";
@@ -49,6 +51,7 @@ import { ModelClientModule } from "./common/model-client/model-client.module";
 import { TenantGuard } from "./common/tenant/tenant.guard";
 import { OrchestratorModule } from "./common/orchestrator/orchestrator.module";
 import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
+import { AskAiModule } from "./ask-ai/ask-ai.module";
 
 @Module({
   imports: [
@@ -82,6 +85,7 @@ import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
     VendorPortalModule, // Public vendor catalogue pages (subdomain-resolved)
     VendorIntelModule, // Vendor price scraping + multi-source comparison
     UxOptimizerModule, // Self-learning UX agent (observe → propose → gated ship → learn)
+    AskAiModule, // Ask AI (FUTURES §8): ask → propose → confirm → execute
     PosHubModule, // MultiPOS ingestion hub (canonical checks → pos_checks)
     // Fake POS terminal. Its close() makes THIS server HMAC-sign a webhook into
     // PosHubModule, which trusts the signature and depletes stock — so an unguarded
@@ -118,7 +122,23 @@ import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
     // Real-time communication
     WebsocketModule,
   ],
-  controllers: [],
+  // The two health routes, registered at the root so they answer before any
+  // feature module matters.
+  //
+  // `LivenessController` still has NO dependencies by design — see
+  // liveness.controller.ts — so it cannot be the thing that breaks the boot it
+  // exists to verify.
+  //
+  // `ReadinessController` deliberately does have one: `DatabaseService`, which
+  // is what makes its 503 mean something. To be honest about the cost — a root
+  // controller whose dependency cannot be resolved kills the whole boot,
+  // liveness included, and putting it in a submodule would not change that (a
+  // failing module import kills boot just the same). The dependency is the
+  // narrowest available: `DatabaseModule` is `@Global()` and some forty other
+  // modules already resolve `DatabaseService`, so this route cannot fail to
+  // wire up without the rest of the app failing first. `check_gateway_boots.sh`
+  // is what proves it on every PR.
+  controllers: [LivenessController, ReadinessController],
   providers: [
     // Global guards
     {

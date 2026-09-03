@@ -2,18 +2,22 @@
 type: page
 route: /recommendations
 slug: recommendations
+softwares: [recommendations]
 component: apps/web/src/pages/Recommendations.tsx
 audience: owner
 tier: plus
+archetype: list+detail # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
 maturity: broken
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[orders]]", "[[promotions]]", "[[reports]]", "[[providers]]", "[[inventory]]", "[[team]]", "[[recommendations-catalog]]"]
 ---
 
 # /recommendations — Recommendations
+
+> **Part of** [[08-softwares/recommendations|Recommendations]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
@@ -31,6 +35,14 @@ that fired: the observed number, the concrete action, and why the action follows
 with reason / snooze / done / pin, bulk actions, keyboard flows, digest settings,
 history, and assignment to team members (UX paths NEW-284…NEW-308, header comment
 :8-14).
+
+## 1a. Features
+- Recommendation cards, one per fired deterministic rule: the observed number, the concrete action, and why (no LLM — auditable)
+- Per-card: act / dismiss with reason / snooze / done / pin; bulk actions; keyboard flows
+- Assign a recommendation to a team member
+- Tabs: active / history / dismissed / snoozed / done
+- Digest frequency settings
+- 🚧 Not in the sidebar — reachable only via command palette or the catalog (§9)
 
 ## 2. Entry
 

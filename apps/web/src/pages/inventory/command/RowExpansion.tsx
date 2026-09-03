@@ -13,9 +13,13 @@ import type { StorageLocation } from '../../../hooks/useStorageLocations'
 import { useNotificationStore } from '../../../stores'
 import { ThemedSelect } from '../../../components/ui/ThemedSelect'
 import { MultiLocationCell } from '../../../components/inventory/MultiLocationCell'
+import { formatVolume } from '../../../utils/volumeUtils'
+import { useRestaurantSettingsStore } from '../../../stores/restaurantSettingsStore'
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
+import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign'
 import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, HoursHeatmap, runwayDays } from './bits'
+import { ReceiptDepth } from './ReceiptDepth'
 import { SpotCountPanel } from './SpotCountPanel'
 
 function Card({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
@@ -58,7 +62,14 @@ export function RowExpansion({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useNotificationStore()
+  // Volumes render in the unit the restaurant chose in Settings. `/inventory-legacy`
+  // honoured this setting and `/inventory` did not, so retiring that page silently
+  // pinned an oz restaurant back to ml. Restored with the retirement (ADR 0019 §B).
+  const measurementUnit = useRestaurantSettingsStore((s) => s.measurementUnit)
   const inventoryId = item.inventoryId || ''
+  // The founder's named gap: receipt/invoice depth in the dropdown, gated so
+  // the kept page renders byte-identically until the flag flips (ADR 0045 §5).
+  const receiptDepthOn = useMudavymDesign('inventory')
 
   const [delta, setDelta] = useState(0)
   const [reason, setReason] = useState('Count correction')
@@ -146,7 +157,7 @@ export function RowExpansion({
         {[
           ['Grape', item.grape || 'Unknown'],
           ['Region', item.region || 'Unknown'],
-          ['Format', `${item.bottleSizeMl ?? 750} ml`],
+          ['Format', formatVolume(item.bottleSizeMl ?? 750, measurementUnit)],
           ['Vintage', item.vintage || 'NV'],
         ].map(([k, v]) => (
           <div key={k as string} className="text-[11px] text-gray-400">
@@ -218,7 +229,7 @@ export function RowExpansion({
             </span>
           }
         >
-          <KV k={`Market avg (${item.bottleSizeMl ?? 750}ml)`} v={fmtMoneyExact(item.marketPrice)} />
+          <KV k={`Market avg (${formatVolume(item.bottleSizeMl ?? 750, measurementUnit)})`} v={fmtMoneyExact(item.marketPrice)} />
           <KV k="You paid (WAC)" v={fmtMoneyExact(paid)} />
           <KV
             k="Delta"
@@ -293,6 +304,8 @@ export function RowExpansion({
             </div>
           )}
         </Card>
+
+        {receiptDepthOn && <ReceiptDepth orders={orders} />}
       </div>
 
       {/* action bar */}

@@ -20,6 +20,7 @@ import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { RolesGuard } from "./guards/roles.guard";
 import { Roles } from "./decorators/roles.decorator";
 import { Public } from "./decorators/public.decorator";
+import { AllowsTenantChange } from "../common/tenant/allows-tenant-change.decorator";
 import { AllowUnverified } from "./decorators/allow-unverified.decorator";
 import { CheckEmailDto } from "./dto/check-email.dto";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
@@ -37,7 +38,7 @@ import { PasswordResetThrottleGuard } from "./guards/password-reset-throttle.gua
 import { SignInMethodsDto } from "./dto/sign-in-methods.dto";
 import { RateLimit } from "../common/rate-limit";
 import { Request } from "express";
-import { devBypassAllowed } from "./dev-bypass.util";
+import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
 
 @Controller("auth")
 export class AuthController {
@@ -48,6 +49,8 @@ export class AuthController {
   /**
    * Login with email/password
    */
+  // Public by DECISION, not by omission (ADR 0096): the caller has no token yet; obtaining one is what this route is for.
+  @Public()
   @Post("login")
   @HttpCode(HttpStatus.OK)
   async login(@Body() credentials: LoginCredentials) {
@@ -88,6 +91,8 @@ export class AuthController {
   /**
    * Register new user
    */
+  // Public by DECISION, not by omission (ADR 0096): the caller has no account yet, so there is nobody to authenticate.
+  @Public()
   @Post("register")
   async register(@Body() data: RegisterData) {
     this.logger.log(`Registration attempt: ${data.email}`);
@@ -103,6 +108,8 @@ export class AuthController {
   /**
    * Login with Google OAuth
    */
+  // Public by DECISION, not by omission (ADR 0096): sign-in entry point; the Google ID token in the body is the credential.
+  @Public()
   @Post("oauth/google")
   async loginWithGoogle(@Body() body: { token: string }) {
     this.logger.log("Google OAuth login attempt");
@@ -118,6 +125,8 @@ export class AuthController {
   /**
    * Login with Microsoft OAuth
    */
+  // Public by DECISION, not by omission (ADR 0096): sign-in entry point; the Microsoft ID token in the body is the credential.
+  @Public()
   @Post("oauth/microsoft")
   async loginWithMicrosoft(@Body() body: { token: string }) {
     this.logger.log("Microsoft OAuth login attempt");
@@ -133,6 +142,8 @@ export class AuthController {
   /**
    * Refresh access token
    */
+  // Public by DECISION, not by omission (ADR 0096): the access token is expired by the time this is called; the refresh token in the body is the credential.
+  @Public()
   @Post("refresh")
   async refresh(@Body() body: { refreshToken: string }) {
     const tokens = await this.authService.refreshAccessToken(body.refreshToken);
@@ -177,9 +188,24 @@ export class AuthController {
     const user = await this.authService.getProfileForUser(req.user.userId);
     // Prefer JWT-scoped restaurant over users.restaurant_id (branch switch)
     const restaurantId = req.user.restaurantId ?? user.restaurantId ?? null;
+    // A dev-bypass session reports ITSELF as verified. The bypass account's
+    // `users.email_verified` is false and stays false; ProtectedRoute
+    // (apps/web/src/components/ProtectedRoute.tsx:42) reads this field and
+    // this field only, so without the override every route on localhost
+    // redirects to /verify-email and no page can be opened at all.
+    //
+    // Three conditions, all re-checked HERE rather than trusted from the
+    // token: the session must carry the marker AND this server must not be
+    // production AND DEV_AUTH_BYPASS must be on. Any one of them false and
+    // the database column stands, so the same token replayed against
+    // production reports exactly what the row says.
+    const emailVerified =
+      req.user.devBypass === true && devBypassEnvEnabled()
+        ? true
+        : user.emailVerified;
     return {
       success: true,
-      user: { ...user, restaurantId },
+      user: { ...user, restaurantId, emailVerified },
     };
   }
 
@@ -417,6 +443,8 @@ export class AuthController {
   /**
    * Verify email with the token from the verification email.
    */
+  // Public by DECISION, not by omission (ADR 0096): reached from a link in an email, often before a session exists; the one-time token in the body is the credential.
+  @Public()
   @Post("verify-email")
   async verifyEmail(@Body() body: { token: string }) {
     const tokens = await this.authService.verifyEmail(body.token);
@@ -443,6 +471,7 @@ export class AuthController {
    */
   @Post("switch-restaurant")
   @UseGuards(JwtAuthGuard)
+  @AllowsTenantChange()
   async switchRestaurant(
     @Req() req: Request & { user: any },
     @Body() body: { restaurantId: string },

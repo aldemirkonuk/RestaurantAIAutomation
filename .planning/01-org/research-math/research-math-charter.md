@@ -145,7 +145,7 @@ token accounting, and the routing policy itself"* with primary metric **"NF-A
 both own the routing policy. See [[research-math-agenda-full]] §Questions.
 
 **ID note (collision resolved):** `technology.md` originally numbered the evaluation
-seam "OD-21", but `OPEN-DECISIONS.md:25` already assigns OD-21 to the Obsidian
+seam "OD-21", but `OPEN-DECISIONS.md:146` already assigns OD-21 to the Obsidian
 structural workflow. [[decision-office-charter]] reconciled the local numbering; the
 seam is **TECH-F3** ([[FORK-REGISTRY]]) and should be cited by that ID.
 
@@ -235,7 +235,7 @@ work they inherit is not new; its ownership is.
 
 | Ref | Fork |
 |---|---|
-| **OD-03** | Orchestration base — must be decided by a bake-off on this repo's own workloads. `OPEN-DECISIONS.md:14` already says *"No pick from repute."* [[harness-model-routing-charter]] owns executing that |
+| **OD-03** | Orchestration base — must be decided by a bake-off on this repo's own workloads. `OPEN-DECISIONS.md:28` already says *"No pick from repute."* [[harness-model-routing-charter]] owns executing that |
 | **OD-04** | External model roster — blocked on OD-03 |
 | **OD-11** | NF production schema detail — columns, partial indexes, retention. Gates every NF implementation; owner split with [[data-charter]] must be named or it gets built twice |
 | **INTEL-F3** (`intelligence.md:519`) | NF has no `subject_type` for the restaurant **operator** — the strongest human-preference signal already collected has no home. Interacts directly with OD-11 |

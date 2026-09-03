@@ -1,14 +1,17 @@
 {
-  "name": "WineOps AI",
-  "short_name": "WineOps",
+  "name": "Mudavym",
+  "short_name": "Mudavym",
   "description": "AI-powered wine inventory & procurement automation",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#9E4249",
+  "theme_color": "#1A5E6B",
   "orientation": "any",
-  "categories": ["business", "food"],
+  "categories": [
+    "business",
+    "food"
+  ],
   "icons": [
     {
       "src": "/icon-192.png",

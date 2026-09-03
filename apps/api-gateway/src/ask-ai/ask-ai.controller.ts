@@ -1,0 +1,96 @@
+import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { AskAiService } from "./ask-ai.service";
+
+type AuthedUser = { userId: string; restaurantId: string };
+
+/**
+ * Ask AI — ask → propose → confirm → execute (FUTURES §8).
+ *
+ *   POST /ask-ai/propose              turn an utterance into ONE typed proposal
+ *   GET  /ask-ai/actions              what is waiting for this restaurant
+ *   GET  /ask-ai/candidates           the ids an action may point at, labelled
+ *   POST /ask-ai/actions/:id/confirm  the gate: confirm, then execute
+ *   POST /ask-ai/actions/:id/discard  the operator says no
+ *
+ * Every route is guarded. That is not boilerplate here: this surface creates
+ * purchase orders and vendor email, and the register still carries entries for
+ * unauthenticated endpoints that cost money — an analytics consultant anyone
+ * could drive, a Vision endpoint whose $2 cap had never once fired. An
+ * unguarded route on THIS controller would be the worst version of that.
+ *
+ * `restaurantId` always comes from the token, never from the path or body, so
+ * a caller cannot propose against a tenant they do not belong to.
+ */
+@ApiTags("ask-ai")
+@ApiBearerAuth()
+@Controller("ask-ai")
+@UseGuards(JwtAuthGuard)
+export class AskAiController {
+  constructor(private readonly askAi: AskAiService) {}
+
+  @Post("propose")
+  @ApiOperation({
+    summary:
+      "Propose one typed, allowlisted action from a natural-language ask",
+    description:
+      "Never executes. Returns a proposal for a human to confirm, or a reason it could not.",
+  })
+  async propose(
+    @Body() body: { utterance?: string },
+    @CurrentUser() user: AuthedUser,
+  ) {
+    return this.askAi.propose(
+      user.restaurantId,
+      user.userId,
+      body?.utterance ?? "",
+    );
+  }
+
+  @Get("actions")
+  @ApiOperation({ summary: "Proposals awaiting confirmation" })
+  async list(@CurrentUser() user: AuthedUser) {
+    return this.askAi.listOpen(user.restaurantId);
+  }
+
+  @Get("candidates")
+  @ApiOperation({
+    summary: "The ids this restaurant's actions may point at, with labels",
+    description:
+      "The SAME capped set the propose prompt is handed and the confirm grounds against — so every option a picker builds from this is an id `confirm` will accept. " +
+      "Read-only: no model call, no row written. Not paginated, deliberately; the grounding set is the first page, so a second page would offer ids that fail grounding. " +
+      "`capped` says when a list is at its limit rather than complete.",
+  })
+  async candidates(@CurrentUser() user: AuthedUser) {
+    return this.askAi.listCandidates(user.restaurantId);
+  }
+
+  @Post("actions/:id/confirm")
+  @ApiOperation({
+    summary: "Confirm a proposal and execute it through the owning service",
+    description:
+      "The confirm is a compare-and-swap on the row's status, so a double tap or a retry executes exactly once. " +
+      "An optional `payload` carries the operator's edits — re-validated through the same allowlist and grounding " +
+      "check as a model proposal, because an editable field is an id-injection hole the moment it is trusted.",
+  })
+  async confirm(
+    @Param("id") id: string,
+    @Body() body: { payload?: Record<string, unknown> },
+    @CurrentUser() user: AuthedUser,
+  ) {
+    return this.askAi.confirm(
+      user.restaurantId,
+      user.userId,
+      id,
+      body?.payload,
+    );
+  }
+
+  @Post("actions/:id/discard")
+  @ApiOperation({ summary: "Discard a proposal without executing it" })
+  async discard(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    return this.askAi.discard(user.restaurantId, user.userId, id);
+  }
+}

@@ -1080,20 +1080,62 @@ async def get_accuracy_report():
 
 @router.post("/learning/run-cycle")
 async def run_learning_cycle():
-    """Run one active learning improvement cycle."""
+    """Run one active learning improvement cycle.
+
+    Status-code contract (deliberate, and symmetric with ``/learning/benchmark``
+    below). The cycle has two halves: rule proposal from corrections, and the
+    gold-set benchmark that is what makes those proposals trustworthy. When the
+    gold set cannot assert accuracy — empty, below threshold, or present but
+    with nothing comparable — the cycle produced *unvalidated* proposals, so a
+    200 would put a green status code on a validation that never ran. That is
+    the vacuous-pass failure mode ADR 0025 forbids, merely relocated from the
+    body to the status line. So this fails loud with the same 503 the benchmark
+    route already returns for the same corpus condition, and the two endpoints
+    stop disagreeing about whether an unusable gold set is an error.
+
+    A blanket 503 would be its own lie in the other direction, though:
+    ``analyze_corrections`` genuinely ran and its proposals are real work. The
+    503 body therefore carries the whole cycle payload (rules proposed, plus
+    ``benchmark_skipped_reason``) instead of discarding it — the caller loses
+    the green light, not the work.
+
+    Rejected alternative: 200 whenever any non-benchmark work succeeded. That
+    ties the status code to how many corrections happened to be queued, so the
+    same broken gold set answers green on one call and red on the next; worse,
+    the green case is exactly "rules proposed, nothing validated" — the state
+    most dangerous to report as success.
+    """
     from services.active_learning_service import get_active_learning_service
 
     al = get_active_learning_service()
-    return al.run_improvement_cycle()
+    # run_improvement_cycle is total: it reports an unusable gold set rather
+    # than raising, which is why both the empty and the not-comparable corpus
+    # arrive here as a field instead of one 503 and one uncaught 500.
+    result = al.run_improvement_cycle()
+    if result.get("benchmark_skipped_reason"):
+        raise HTTPException(status_code=503, detail=result)
+    return result
 
 
 @router.get("/learning/benchmark")
 async def run_benchmark():
-    """Run the parser against the gold-standard benchmark set."""
-    from services.active_learning_service import get_active_learning_service
+    """Run the parser against the gold-standard benchmark set.
+
+    A benchmark over an empty/below-threshold gold set asserts nothing, so the
+    oracle raises ``BenchmarkCorpusError`` rather than returning a vacuous 0.0.
+    Surface that as a 503 (the check could not run) instead of a green 200 —
+    the HTTP analogue of a guard's "exit 2 when it cannot check".
+    """
+    from services.active_learning_service import (
+        get_active_learning_service,
+        BenchmarkCorpusError,
+    )
 
     al = get_active_learning_service()
-    result = al.benchmark.run_benchmark()
+    try:
+        result = al.benchmark.run_benchmark()
+    except BenchmarkCorpusError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     return {
         "documents": result.total_documents,
         "wines": result.total_wines,

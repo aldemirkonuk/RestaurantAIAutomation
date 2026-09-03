@@ -1,11 +1,11 @@
 /**
  * SimPOS order log — full-page debugging view over SimPOS's own data only
- * (distinct from the WineOps /logs correlated timeline). Reached via
+ * (distinct from the Mudavym /logs correlated timeline). Reached via
  * "Check logs in full page" from the terminal Home tab.
  */
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { ArrowLeft, FlaskConical, Loader2 } from 'lucide-react'
 import { simposApi } from '../../services/api/simpos'
 import { cn } from '../../lib/utils'
 
@@ -37,6 +37,13 @@ export function SimposOrderLogPage() {
         <span className="text-xs font-bold tracking-widest text-amber-400 uppercase ml-2">
           Order log
         </span>
+        <Link
+          to={`/simpos/${restaurantId}/scenarios`}
+          className="ml-auto flex items-center gap-1.5 text-[11px] font-bold text-gray-500 hover:text-gray-300"
+        >
+          <FlaskConical className="w-3 h-3" />
+          Scenarios
+        </Link>
       </header>
 
       <div className="max-w-4xl mx-auto p-4 space-y-3">

@@ -2,18 +2,22 @@
 type: page
 route: /distributors
 slug: distributors
+softwares: [global-vendor-search]
 component: none (inline <Navigate> redirect)
 audience: owner
 tier: core
+archetype: redirect # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
 maturity: complete
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[providers]]"]
 ---
 
 # /distributors — legacy redirect → /providers?tab=discover
+
+> **Part of** [[08-softwares/global-vendor-search|Global Vendor Search]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
@@ -23,6 +27,9 @@ links: ["[[PAGE-CONTRACT]]", "[[providers]]"]
 Compatibility route only. Distributor discovery moved into Providers as its
 **discover** tab; this path survives "so existing links and bookmarks land in the
 right place" (comment at `App.tsx:269-270`).
+
+## 1a. Features
+none — redirect. Distributor discovery lives on [[providers]] §1a (discover tab).
 
 ## 2. Entry
 No inbound in-app link (`PAGE_MAP.md` entry-point list). Old bookmarks/external links

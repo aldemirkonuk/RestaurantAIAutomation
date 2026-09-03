@@ -550,9 +550,9 @@ export default function CalendarPage() {
             onClick={() => openCreateModal()}
             data-tour="calendar-new-event"
             className="hidden sm:flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-white rounded-lg transition-colors"
-            style={{ backgroundColor: '#9E4249' }}
+            style={{ backgroundColor: '#1A5E6B' }}
             onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#7c1d3c')}
-            onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#9E4249')}
+            onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#1A5E6B')}
           >
             <Plus className="w-4 h-4" />
             New Event
@@ -706,7 +706,7 @@ export default function CalendarPage() {
       <button
         onClick={() => openCreateModal()}
         className="sm:hidden fixed bottom-6 right-6 z-30 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-white"
-        style={{ backgroundColor: '#9E4249' }}
+        style={{ backgroundColor: '#1A5E6B' }}
         aria-label="New event"
       >
         <Plus className="w-6 h-6" />

@@ -263,7 +263,6 @@ function makeScheduledTasks(opts: {
         `manager@${restaurantId}.test`,
       ],
       phones: [],
-      pushSubscriptionIds: [],
     })),
   };
 
@@ -367,9 +366,12 @@ describe("scheduled jobs — per-tenant iteration", () => {
     await service.sendInventoryAuditReminder();
 
     expect(gmailService.sendInventoryAuditReminder).toHaveBeenCalledTimes(1);
-    expect(
-      gmailService.sendInventoryAuditReminder.mock.calls[0][0].restaurantName,
-    ).toBe("Three");
+    // `.mock.calls` is typed `[]` on a bare jest.fn(), so indexing it is a
+    // type error once specs are actually checked (OD-97). Reading the call
+    // through a local keeps the assertion identical and the type honest.
+    const [firstCall] = gmailService.sendInventoryAuditReminder.mock
+      .calls as unknown as Array<[{ restaurantName: string }]>;
+    expect(firstCall[0].restaurantName).toBe("Three");
   });
 });
 

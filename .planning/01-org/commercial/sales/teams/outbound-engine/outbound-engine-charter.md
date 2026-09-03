@@ -145,7 +145,7 @@ is precisely the failure of a dormant team acquiring activity to justify itself.
 - **PARTIAL — a reusable pattern, pointing the other way.** The unknown-sender capture
   shape is built, wired, and dormant: `prospects.service.ts:36-42` captures unknown-sender
   vendor email, dedupes by domain, **never auto-replies**, and offers one-tap promotion.
-  `.planning/PROSPECTS_ATTRIBUTION_ARCHITECTURE.md:3-12` confirms both controllers are
+  `.planning/07-reference/PROSPECTS_ATTRIBUTION_ARCHITECTURE.md:3-12` confirms both controllers are
   registered and the feature is gated on `INBOUND_EMAIL_DOMAIN` — *"Nothing is left to
   build… Activating it is an ops task, not a build task."* **Reusable shape. Not a
   pipeline.** See the warning at the top.

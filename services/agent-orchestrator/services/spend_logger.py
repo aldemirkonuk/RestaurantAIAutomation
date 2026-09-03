@@ -274,6 +274,7 @@ class SpendLogger:
         outcome: Optional[str] = None,
         duration_ms: Optional[int] = None,
         correlation_id: Optional[str] = None,
+        skill_id: Optional[str] = None,
         context: Optional[Dict[str, Any]] = None,
     ) -> Optional[str]:
         """
@@ -297,7 +298,10 @@ class SpendLogger:
         Keyword-only args (P1, all default None — no call-site churn required):
             agent: explicit actor name (wins over ambient context)
             agent_fallback: library-name fallback when nothing else is known
-            task_type: compact local literal, e.g. "email_draft", "score_search"
+            task_type: compact local literal, e.g. "email_draft", "score_search".
+                Written to BOTH ledgers since ADR 0039 — api_spend.task_type and
+                NF context.task_type — so cost_per_task_v reads the same grain
+                from either. None or "" means UNKNOWN, never a task type.
             stimulus: what triggered the call (defaults to task_type)
             choice: compact artifact descriptor, e.g. "draft:parsed",
                 "search:5_results" (defaults to "completion"). Never a payload.
@@ -306,6 +310,10 @@ class SpendLogger:
                 is stamped context.outcome_basis = "call_level_v0".
             duration_ms: wall-clock call duration when the caller measured it
             correlation_id: joins decision_log; defaults to ambient context
+            skill_id: registry skill that fired, when one did (ADR 0039 A4).
+                NF row only — api_spend has no such column. Left unset the key
+                is omitted entirely, so the column stays NULL meaning "not a
+                skill task", never "unknown".
             context: extra jsonb payload (wine_id, results_count, parse flags…)
         """
         # Bound BEFORE the outer try so every exit path can return it. There is
@@ -372,6 +380,23 @@ class SpendLogger:
                         "output_tokens": output_tokens,
                         "cost_usd": ledger_cost,
                         "restaurant_id": restaurant_id,
+                        # ADR 0039 / OD-29: the two ledgers used to differ in
+                        # GRAIN. task_type was stamped into the NF row below and
+                        # nowhere else, so "what did this TASK cost?" was
+                        # answerable from the secondary ledger and not from the
+                        # primary one — the same asymmetry OD-61 closed for
+                        # cost_usd, one field over. Written from the same local
+                        # as the NF row, so the two cannot drift.
+                        #
+                        # `or None`, not the bare value: NF's `if task_type:`
+                        # below drops an empty string, and an empty string in
+                        # this column would be a task type that is not unknown
+                        # and not real. Both ledgers must express unknown the
+                        # SAME way (ADR 0016) — as NULL. The key is always sent
+                        # rather than omitted for the OD-61 reason: an omitted
+                        # column asserts whatever the column's default says,
+                        # which is a claim nobody made.
+                        "task_type": task_type or None,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                 ).execute()
@@ -414,6 +439,7 @@ class SpendLogger:
                     duration_ms=duration_ms,
                     correlation_id=corr,
                     restaurant_id=restaurant_id,
+                    skill_id=skill_id,
                     context=nf_context,
                 )
                 # never raises; returns the row id, or None on a counted drop

@@ -1,8 +1,16 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { UpdateIntelligenceDto } from "./dto/update-intelligence.dto";
-import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
 
+/**
+ * NOTE — `createRetroactiveOrder` used to live here as well, as a near-copy of
+ * the one in `providers.service.ts`. It was deleted on 2026-09-01: nothing
+ * called it (no controller, no service, no test — grepped repo-wide), and the
+ * two copies had already diverged, so a fix applied to the routed one would
+ * have left a broken twin behind for the next reader to fix again. The live
+ * implementation is `ProvidersService.createRetroactiveOrder`, routed from
+ * `providers.controller.ts` `POST :id/retroactive-order`.
+ */
 @Injectable()
 export class ProviderIntelligenceService {
   private readonly logger = new Logger(ProviderIntelligenceService.name);
@@ -267,32 +275,45 @@ export class ProviderIntelligenceService {
     return data || [];
   }
 
+  /**
+   * Search a provider's conversation history.
+   *
+   * OD-99. This used to call an RPC named `search_provider_conversations`
+   * first, described in its own comment as "vector similarity search". No
+   * CREATE FUNCTION for it exists anywhere in this repository and production
+   * does not have it (PGRST202, verified 2026-08-26), so the call has failed
+   * on every request and the `catch` below it has been the implementation
+   * since the day it was written.
+   *
+   * The RPC call is deleted and the substring search promoted to the body:
+   * same results, one fewer failed round trip per search, and no exception on
+   * the happy path. This is honestly a substring search now and is no longer
+   * dressed as a semantic one.
+   *
+   * `conversation_embeddings` really does exist and really does carry
+   * embeddings, so a genuine vector search IS buildable here -- it is a
+   * feature to build, not a repair to make, and it is filed as OD-104 rather
+   * than left implied by a call to a function nobody wrote.
+   */
   async searchConversationMemory(providerId: string, query: string) {
-    // Uses the Supabase RPC for vector similarity search
-    try {
-      const { data, error } = await this.databaseService.supabase.rpc(
-        "search_provider_conversations",
-        {
-          search_provider_id: providerId,
-          search_query: query,
-          match_count: 20,
-        },
-      );
+    const { data, error } = await this.databaseService.supabase
+      .from("conversation_embeddings")
+      .select("id, message_text, role, channel, importance_score, created_at")
+      .eq("provider_id", providerId)
+      .ilike("message_text", `%${query}%`)
+      .order("created_at", { ascending: false })
+      .limit(20);
 
-      if (error) throw error;
-      return data || [];
-    } catch {
-      // Fallback: text search
-      const { data } = await this.databaseService.supabase
-        .from("conversation_embeddings")
-        .select("id, message_text, role, channel, importance_score, created_at")
-        .eq("provider_id", providerId)
-        .ilike("message_text", `%${query}%`)
-        .order("created_at", { ascending: false })
-        .limit(20);
-
-      return data || [];
+    if (error) {
+      // ADR 0020: a failed search is not an empty result set.
+      this.logger.error("Conversation memory search failed", {
+        providerId,
+        error: error.message,
+      });
+      throw error;
     }
+
+    return data || [];
   }
 
   // =========================================================================
@@ -407,7 +428,10 @@ export class ProviderIntelligenceService {
     const { data: providers, error: pErr } = await query;
     if (pErr) throw pErr;
 
-    const result = [];
+    // Typed, because a bare `[]` infers `never[]` and every push is then an
+    // error under strictNullChecks — the array shape here is heterogeneous by
+    // design (provider fields plus computed aggregates).
+    const result: Record<string, any>[] = [];
     for (const provider of providers || []) {
       const [promos, sentiment, knowledge] = await Promise.all([
         this.databaseService.supabase
@@ -577,100 +601,5 @@ export class ProviderIntelligenceService {
         value: String(profileDynamic[k]).slice(0, 20),
       }))
       .slice(0, 3);
-  }
-
-  /**
-   * D-32-15 Scenario C: Create retroactive order from off-app invoice.
-   * Inserts procurement_orders (status=delivered, source=retroactive),
-   * procurement_conversations (direction=INBOUND), order_interactions (invoice_received).
-   */
-  async createRetroactiveOrder(
-    providerId: string,
-    restaurantId: string,
-    dto: RetroactiveOrderDto,
-  ): Promise<{
-    orderId: string;
-    conversationId: string;
-    interactionId: string;
-  }> {
-    // 1. Insert retroactive procurement_order
-    const retroOrderNumber = `RETRO-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
-
-    const { data: orderData, error: orderError } =
-      await this.databaseService.supabase
-        .from("procurement_orders")
-        .insert({
-          restaurant_id: restaurantId,
-          provider_id: providerId,
-          order_number: retroOrderNumber,
-          wine_name: dto.wineName,
-          quantity: dto.quantity ?? null,
-          final_confirmed_cost: dto.finalConfirmedCost ?? null,
-          actual_delivery: dto.invoiceDate ?? null,
-          status: "delivered",
-          source: "retroactive",
-        })
-        .select("id")
-        .single();
-
-    if (orderError) {
-      this.logger.error("createRetroactiveOrder: order insert failed", {
-        error: orderError.message,
-      });
-      throw orderError;
-    }
-
-    const orderId = (orderData as any).id as string;
-
-    // 2. Insert procurement_conversation (direction=INBOUND, contains email body)
-    const { data: convData, error: convError } =
-      await this.databaseService.supabase
-        .from("procurement_conversations")
-        .insert({
-          order_id: orderId,
-          provider_id: providerId,
-          restaurant_id: restaurantId,
-          direction: "INBOUND",
-          channel: "email",
-          content: dto.rawInvoiceContent ?? "",
-          status: "DELIVERED",
-          ai_summary: `Retroactive order created from off-app invoice ${dto.invoiceNumber ?? ""}.`,
-        })
-        .select("id")
-        .single();
-
-    if (convError) {
-      this.logger.warn("createRetroactiveOrder: conversation insert failed", {
-        error: convError.message,
-      });
-    }
-
-    const conversationId = convData ? ((convData as any).id as string) : "";
-
-    // 3. Insert order_interaction (interaction_type=invoice_received)
-    const { data: intData, error: intError } =
-      await this.databaseService.supabase
-        .from("order_interactions")
-        .insert({
-          order_id: orderId,
-          interaction_type: "invoice_received",
-          channel: "email",
-          content: dto.rawInvoiceContent ?? "",
-          ai_summary: `Invoice ${dto.invoiceNumber ?? "unknown"} received; retroactive order created.`,
-        })
-        .select("id")
-        .single();
-
-    if (intError) {
-      this.logger.warn("createRetroactiveOrder: interaction insert failed", {
-        error: intError.message,
-      });
-    }
-
-    return {
-      orderId,
-      conversationId,
-      interactionId: intData ? ((intData as any).id as string) : "",
-    };
   }
 }

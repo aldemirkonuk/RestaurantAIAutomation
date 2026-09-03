@@ -2,9 +2,11 @@
 type: page
 route: /login
 slug: login
+softwares: [auth-onboarding]
 component: apps/web/src/pages/Login.tsx
 audience: public
 tier: public
+archetype: focused # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 3
 maturity: partial
@@ -14,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[PAGE_MAP]]", "[[dashboard]]", "[[forgot-password
 ---
 
 # /login
+
+> **Part of** [[08-softwares/auth-onboarding|Auth & Onboarding]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
@@ -34,6 +38,12 @@ Two inference paths were removed here (ADR 0024, both fabrications under ADR 002
 - The backend's `oauth_provider === "microsoft" ? "microsoft" : "google"` default, which told every password-less account it "uses Google sign-in" — wrong for 4 of 4 such accounts in production on 2026-08-26.
 
 An identity with no password **and** no linked provider now gets a stated answer and the set-password path (`Login.tsx:236`), instead of being pointed at a flow that cannot work.
+
+## 1a. Features
+- Sign in with email/password
+- Sign in with Google (Gmail addresses are auto-routed to Google's chooser; 🚧 no Microsoft button though the backend supports it)
+- Return-to-where-you-were after signing in (`?redirect=`)
+- Links out: forgot password, create account
 
 ## 2. Entry
 Most-linked page in the app — in-degree 6 per [PAGE_MAP](../foundation/PAGE_MAP.md) (`/register`, `/forgot-password`, `/reset-password`, `/verify-email`, `/invite/:code`, `/no-access` all link back). Also the default redirect target of every `ProtectedRoute` when unauthenticated (`components/ProtectedRoute.tsx:16,38`), carrying `?redirect=` or router state so login returns you where you were (`Login.tsx:24-26`).

@@ -26,6 +26,8 @@
  */
 
 /** One row as the model reports it, before any of our validation. */
+import { htmlToText as sharedHtmlToText } from "../common/html/html-to-text";
+
 export interface RawExtractedItem {
   name?: unknown;
   producer?: unknown;
@@ -53,10 +55,27 @@ export interface ExtractedItem {
   warnings: string[];
 }
 
+/**
+ * Why the parse ended where it did, as a value rather than a warning string.
+ *
+ * OD-59: the doneability verdict has to tell "the model returned garbage" from
+ * "the page really had three wines", and the two are indistinguishable once the
+ * distinction only exists in prose inside `warnings[]`. A grader that
+ * string-matches an English sentence breaks the first time someone improves the
+ * wording, and breaks silently.
+ */
+export type ParseStatus = "ok" | "invalid_json" | "no_item_array";
+
 export interface ExtractionResult {
   items: ExtractedItem[];
   rejected: Array<{ raw: RawExtractedItem; reason: string }>;
   warnings: string[];
+  /** How the parse ended. See {@link ParseStatus}. */
+  parseStatus: ParseStatus;
+  /** Rows the model returned, before validation. `0` when nothing parsed. */
+  rowCount: number;
+  /** True when >50% of rows were rejected — a broken parser, not a small page. */
+  yieldCollapsed: boolean;
 }
 
 /** Bottle formats we recognise, in ml. */
@@ -266,6 +285,9 @@ export function normalizeExtraction(
       warnings: [
         "Model response was not valid JSON; no observations recorded.",
       ],
+      parseStatus: "invalid_json",
+      rowCount: 0,
+      yieldCollapsed: false,
     };
   }
 
@@ -283,6 +305,9 @@ export function normalizeExtraction(
         items: [],
         rejected: [],
         warnings: ["Model response contained no recognisable item array."],
+        parseStatus: "no_item_array",
+        rowCount: 0,
+        yieldCollapsed: false,
       };
     }
   }
@@ -310,13 +335,21 @@ export function normalizeExtraction(
   // A page where most rows fail is a broken parse, not a sparse catalogue. Say
   // so loudly — the alternative is a vendor silently contributing three prices
   // from a hundred-wine list and nobody noticing the parser regressed.
-  if (rows.length > 0 && rejected.length > rows.length / 2) {
+  const yieldCollapsed = rows.length > 0 && rejected.length > rows.length / 2;
+  if (yieldCollapsed) {
     warnings.push(
       `${rejected.length} of ${rows.length} rows were rejected — treat this page's parser as broken rather than the catalogue as small.`,
     );
   }
 
-  return { items, rejected, warnings };
+  return {
+    items,
+    rejected,
+    warnings,
+    parseStatus: "ok",
+    rowCount: rows.length,
+    yieldCollapsed,
+  };
 }
 
 /**
@@ -328,24 +361,18 @@ export function normalizeExtraction(
  * tracking value.
  */
 export function htmlToText(html: string, maxChars = 60_000): string {
-  const text = html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-
-  return text.length > maxChars ? text.slice(0, maxChars) : text;
+  // Delegated to the shared single-pass scanner (src/common/html). The regex
+  // chain that used to live here could not remove `</script >` (valid HTML,
+  // and the js/bad-tag-filter finding), decoded `&amp;` before `&lt;` so
+  // `&amp;lt;` became `<`, and rescanned the document from every `<script`
+  // prefix. That last one matters most here: this function's input is a page
+  // fetched from a third-party vendor site, so its runtime is chosen by
+  // whoever controls that page.
+  //
+  // Script/style content is still dropped rather than flattened, for the
+  // reason in the doc comment above: inline JSON-LD and analytics payloads
+  // are full of numbers that read like prices.
+  return sharedHtmlToText(html, maxChars);
 }
 
 /**

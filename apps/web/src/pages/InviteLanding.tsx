@@ -82,7 +82,7 @@ export function InviteLanding() {
 
   if (loadingPreview || preview === null) {
     return (
-      <AuthShell title="WineOps AI" subtitle="Loading invite…">
+      <AuthShell title="Mudavym" subtitle="Loading invite…">
         <AuthCard className="flex justify-center py-10">
           <RefreshCw className="w-7 h-7 animate-spin text-wine-600" strokeWidth={1.75} />
         </AuthCard>
@@ -127,7 +127,7 @@ export function InviteLanding() {
             <div className="space-y-3 mt-6">
               <Link
                 to={loginHref}
-                className="block w-full text-center bg-wine-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-wine-700 shadow-[0_10px_28px_-10px_rgba(158,66,73,0.55)]"
+                className="block w-full text-center bg-wine-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-wine-700 shadow-[0_10px_28px_-10px_rgba(26,94,107,0.55)]"
               >
                 Sign in to accept
               </Link>
@@ -146,7 +146,7 @@ export function InviteLanding() {
               type="button"
               disabled={accepting}
               onClick={() => void handleAccept()}
-              className="w-full flex items-center justify-center gap-2 bg-wine-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-wine-700 disabled:opacity-60 shadow-[0_10px_28px_-10px_rgba(158,66,73,0.55)]"
+              className="w-full flex items-center justify-center gap-2 bg-wine-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-wine-700 disabled:opacity-60 shadow-[0_10px_28px_-10px_rgba(26,94,107,0.55)]"
             >
               {accepting ? (
                 <>

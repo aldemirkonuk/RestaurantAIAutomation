@@ -7,7 +7,7 @@ import { apiClient } from '../services/api/client'
 // ARCHITECTURE NOTE: Why Supabase Realtime is DISABLED
 // ============================================================================
 //
-// WineOps uses a CUSTOM WebSocket system instead of Supabase Realtime because:
+// Mudavym uses a CUSTOM WebSocket system instead of Supabase Realtime because:
 //
 // 1. **Agent-driven updates**: The Python AI agents publish events via RabbitMQ.
 //    The NestJS RabbitMqBridgeService consumes these and re-emits them through

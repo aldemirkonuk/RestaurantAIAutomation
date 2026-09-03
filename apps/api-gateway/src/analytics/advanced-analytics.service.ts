@@ -4,6 +4,17 @@ import * as E from "./engine";
 import { AnalyticsService } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
+import {
+  COST_BASIS_LABEL,
+  costBasisSentence,
+  resolveUnitCost,
+  summarizeCostBasis,
+} from "./inventory-cost";
+import {
+  ORDER_ARRIVED_STATUSES,
+  ORDER_SPEND_STATUSES,
+  hasStatus,
+} from "../procurement/order-status";
 
 /**
  * AdvancedAnalyticsService — the second wave of catalogue features.
@@ -51,37 +62,50 @@ export class AdvancedAnalyticsService {
         .eq("is_active", true),
       client
         .from("inventory_lot_rollup")
-        .select("inventory_id, live_qty, wac, has_invoice_cost")
+        .select(
+          // wac_qty / live_qty added 2026-09-02 (ADR 0078) so resolveUnitCost
+          // can tell a WAC that covers every on-hand bottle from one that
+          // covers a single invoiced bottle in twenty-one.
+          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
+        )
         .eq("restaurant_id", restaurantId),
     ]);
+    if (invRes.status === "fulfilled" && invRes.value.error)
+      this.logQueryFailure("restaurant_inventory", invRes.value.error);
+    if (rollupRes.status === "fulfilled" && rollupRes.value.error)
+      this.logQueryFailure("inventory_lot_rollup", rollupRes.value.error);
     const inventory =
       invRes.status === "fulfilled" ? invRes.value.data || [] : [];
     const rollup = new Map<string, any>();
     if (rollupRes.status === "fulfilled")
       for (const r of rollupRes.value.data || []) rollup.set(r.inventory_id, r);
+    // Same fix as AnalyticsService.loadInventory: the third branch here was
+    // `unitPrice * 0.6`, an undocumented magic number that was the live path
+    // for ~70 of 72 production rows while `basis.margin` below called the
+    // result "WAC (lot rollup)". See ./inventory-cost.ts.
     return inventory.map((i: any) => {
       const lot = rollup.get(i.id);
       const unitPrice = Number(i.menu_price_current) || 0;
-      const cost =
-        lot?.has_invoice_cost && lot?.wac
-          ? lot.wac
-          : Number(i.last_purchase_price) || (unitPrice ? unitPrice * 0.6 : 0);
+      const { unitCost, costBasis } = resolveUnitCost(i, lot);
       return {
         id: i.id,
         masterWineId: i.master_wine_id,
         name: i.wine_name || i.master_wine_id || i.id,
         type: i.master_wine_library?.primary_type || "unknown",
         qty: lot?.live_qty ?? i.stock_live ?? 0,
-        unitCost: cost,
+        unitCost,
+        costBasis,
         unitPrice,
-        marginPerBottle: unitPrice - cost,
+        // A margin computed against an unknown cost is unknown. Defaulting the
+        // cost to 0 would report the entire menu price as margin.
+        marginPerBottle: unitCost == null ? null : unitPrice - unitCost,
       };
     });
   }
 
   private async loadConsumption(restaurantId: string, sinceDays = 90) {
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
-    const { data } = await this.dbService
+    const { data, error } = await this.dbService
       .getClient()
       .from("wine_consumption_log")
       // No master_wine_id column on this table — resolve via the inventory FK.
@@ -90,6 +114,7 @@ export class AdvancedAnalyticsService {
       )
       .eq("restaurant_id", restaurantId)
       .gte("created_at", since);
+    if (error) this.logQueryFailure("wine_consumption_log", error);
     return (data || []).map((c: any) => ({
       wineId: c.restaurant_inventory?.master_wine_id ?? null,
       qty: c.quantity || (c.volume_ml ? c.volume_ml / 750 : 0),
@@ -99,15 +124,39 @@ export class AdvancedAnalyticsService {
 
   private async loadOrders(restaurantId: string, sinceDays = 365) {
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
-    const { data } = await this.dbService
+    // Same schema-drift class as loadInventory above. `procurement_orders` has
+    // NO provider_name and NO wine_name column (see
+    // supabase/migrations/20260805000000_baseline_from_production.sql:4514-4568)
+    // — it carries provider_id → providers(id) and inventory_id →
+    // restaurant_inventory(id). Naming either one 42703s the WHOLE PostgREST
+    // query, and the discarded `error` below turned that into an empty order
+    // list, so getVendorScorecard and getCashflow returned zeroes for every
+    // restaurant, forever. The vendor label comes from the FK embed instead;
+    // wine_name was selected but never read, so it is simply gone.
+    const { data, error } = await this.dbService
       .getClient()
       .from("procurement_orders")
       .select(
-        "id, provider_id, provider_name, wine_name, total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status",
+        "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status",
       )
       .eq("restaurant_id", restaurantId)
       .gte("created_at", since);
+    if (error) this.logQueryFailure("procurement_orders", error);
     return data || [];
+  }
+
+  /**
+   * A failed loader still degrades to `[]` — an analytics page that 500s
+   * because one lens is unavailable is worse than one that renders the rest.
+   * But it must never do so SILENTLY: a query that fails and returns no rows
+   * is indistinguishable from one that succeeds with no rows, which is exactly
+   * how the provider_name drift above survived unnoticed in production.
+   */
+  private logQueryFailure(table: string, error: any) {
+    this.logger.error(
+      `analytics query on ${table} failed — this lens will report empty ` +
+        `rather than wrong: ${error?.code ?? "?"} ${error?.message ?? error}`,
+    );
   }
 
   private toDaily(
@@ -142,21 +191,28 @@ export class AdvancedAnalyticsService {
       if (!c.wineId) continue;
       soldByWine.set(c.wineId, (soldByWine.get(c.wineId) || 0) + c.qty);
     }
-    const items = inventory
-      .filter((i) => i.unitPrice > 0)
-      .map((i) => ({
-        id: i.id,
-        name: i.name,
-        type: i.type,
-        velocityPerDay: (soldByWine.get(i.masterWineId) || 0) / sinceDays,
-        marginPerBottle: i.marginPerBottle,
-        marginPct: E.grossMargin(i.unitCost, i.unitPrice),
-      }));
+    const priced = inventory.filter((i) => i.unitPrice > 0);
+    const costCoverage = summarizeCostBasis(priced);
+    const items = priced.map((i) => ({
+      id: i.id,
+      name: i.name,
+      type: i.type,
+      velocityPerDay: (soldByWine.get(i.masterWineId) || 0) / sinceDays,
+      marginPerBottle: i.marginPerBottle,
+      costBasis: i.costBasis,
+      marginPct:
+        i.unitCost == null ? null : E.grossMargin(i.unitCost, i.unitPrice),
+    }));
 
     const velocities = items.map((i) => i.velocityPerDay);
-    const margins = items.map((i) => i.marginPerBottle);
+    // The margin cutoff is a median over the wines that HAVE a margin. Rows
+    // with an unknown cost cannot be on either side of it, so they are left
+    // unclassified below rather than dragged to one side by a stand-in 0.
+    const margins = items
+      .map((i) => i.marginPerBottle)
+      .filter((m): m is number => m != null);
     const medVel = E.median(velocities) ?? 0;
-    const medMargin = E.median(margins) ?? 0;
+    const medMargin = margins.length > 0 ? E.median(margins) : null;
 
     const ACTIONS: Record<string, string> = {
       star: "Protect: keep in stock, feature prominently, never discount.",
@@ -167,7 +223,12 @@ export class AdvancedAnalyticsService {
       dog: "Low volume, low margin: candidate to delist, flight off, or replace.",
     };
 
+    // The quadrant is a two-axis claim. With no cost there is no margin axis,
+    // so there is no quadrant and no action — `dog` ("candidate to delist") is
+    // not the safe default for a wine we simply never costed.
     const classified = items.map((i) => {
+      if (i.marginPerBottle == null || medMargin == null)
+        return { ...i, quadrant: null, action: null };
       const highVel = i.velocityPerDay > medVel;
       const highMargin = i.marginPerBottle > medMargin;
       const quadrant = highVel
@@ -180,22 +241,43 @@ export class AdvancedAnalyticsService {
       return { ...i, quadrant, action: ACTIONS[quadrant] };
     });
 
-    const counts: Record<string, number> = {};
+    const counts: Record<string, number> = { unclassified: 0 };
     for (const c of classified)
-      counts[c.quadrant] = (counts[c.quadrant] || 0) + 1;
+      if (c.quadrant == null) counts.unclassified += 1;
+      else counts[c.quadrant] = (counts[c.quadrant] || 0) + 1;
 
     return {
       basis: {
         velocity: `wine_consumption_log units/day over ${sinceDays}d`,
-        margin: "unit_price − WAC (lot rollup)",
+        // Was "unit_price − WAC (lot rollup)" unconditionally, for a margin
+        // that came from WAC on ~2 rows in 72 and from a fabricated
+        // 0.6 × menu price on the rest.
+        margin: `menu_price_current − unit cost — ${costBasisSentence(costCoverage)}`,
+        costDerived:
+          "items[].marginPerBottle, items[].marginPct, items[].quadrant, items[].action and medians.marginPerBottle are null for rows with no recorded cost; those rows are counted under counts.unclassified (ADR 0051)",
       },
+      costCoverage,
       medians: { velocityPerDay: medVel, marginPerBottle: medMargin },
       counts,
-      items: classified.sort(
-        (a, b) =>
-          b.velocityPerDay * b.marginPerBottle -
-          a.velocityPerDay * a.marginPerBottle,
-      ),
+      // Unclassified rows sort after every classified one — ordering them by
+      // `velocity × null` would be NaN, and ordering them by velocity alone
+      // would interleave them as if they had a known margin of zero.
+      items: classified.sort((a, b) => {
+        const av =
+          a.marginPerBottle == null
+            ? null
+            : a.velocityPerDay * a.marginPerBottle;
+        const bv =
+          b.marginPerBottle == null
+            ? null
+            : b.velocityPerDay * b.marginPerBottle;
+        if (av == null || bv == null)
+          return (
+            (av == null ? 1 : 0) - (bv == null ? 1 : 0) ||
+            b.velocityPerDay - a.velocityPerDay
+          );
+        return bv - av;
+      }),
       generatedAt: new Date().toISOString(),
     };
   }
@@ -215,7 +297,11 @@ export class AdvancedAnalyticsService {
     }
 
     const vendors = Array.from(byVendor.entries()).map(([vendorId, os]) => {
-      const delivered = os.filter((o) => o.status === "delivered");
+      // Timing question: a short delivery still came through the door, so
+      // PARTIALLY_RECEIVED counts here. See order-status.ts.
+      const delivered = os.filter((o) =>
+        hasStatus(o.status, ORDER_ARRIVED_STATUSES),
+      );
       const leadTimes = delivered
         .filter((o) => o.delivered_at && o.created_at)
         .map(
@@ -246,7 +332,7 @@ export class AdvancedAnalyticsService {
       );
       return {
         vendorId,
-        vendorName: os[0]?.provider_name || vendorId,
+        vendorName: os[0]?.providers?.name || vendorId,
         orders: os.length,
         delivered: delivered.length,
         spend,
@@ -307,11 +393,12 @@ export class AdvancedAnalyticsService {
     // Per-category weekday winners (which type sells on which day).
     const byType = new Map<string, Array<{ date: string; value: number }>>();
     const client = this.dbService.getClient();
-    const { data: inv } = await client
+    const { data: inv, error: invError } = await client
       .from("restaurant_inventory")
       // Varietal/type lives on master_wine_library, not restaurant_inventory.
       .select("master_wine_id, master_wine_library(primary_type)")
       .eq("restaurant_id", restaurantId);
+    if (invError) this.logQueryFailure("restaurant_inventory", invError);
     const typeByWine = new Map(
       (inv || []).map((i: any) => [
         i.master_wine_id,
@@ -361,7 +448,11 @@ export class AdvancedAnalyticsService {
 
   async getCashflow(restaurantId: string) {
     const orders = await this.loadOrders(restaurantId, 180);
-    const delivered = orders.filter((o: any) => o.status === "delivered");
+    // Money question: PARTIALLY_RECEIVED carries PO-value columns, not
+    // received-value ones, so it is excluded here. See order-status.ts.
+    const delivered = orders.filter((o: any) =>
+      hasStatus(o.status, ORDER_SPEND_STATUSES),
+    );
     const spendRows = delivered.map((o: any) => ({
       date: (o.delivered_at || o.created_at || "").substring(0, 10),
       value: o.total_cost || o.final_price || 0,
@@ -444,9 +535,19 @@ export class AdvancedAnalyticsService {
     return {
       masterWineId,
       name: item?.name ?? masterWineId,
+      // This endpoint carried no `basis` at all, so `unitCost` arrived with no
+      // way to tell an invoiced number from the 0.6 × menu price fabrication.
+      basis: {
+        demand: "wine_consumption_log units/day over 90d",
+        unitCost: item
+          ? `${COST_BASIS_LABEL[item.costBasis]}${item.unitCost == null ? " — unitCost and marginPerBottle are null (ADR 0051)" : ""}`
+          : "wine not found in active inventory",
+        unitPrice: "restaurant_inventory.menu_price_current",
+      },
       onHand: item?.qty ?? null,
       unitPrice: item?.unitPrice ?? null,
       unitCost: item?.unitCost ?? null,
+      costBasis: item?.costBasis ?? null,
       marginPerBottle: item?.marginPerBottle ?? null,
       demand: profile,
       daysOfCover:

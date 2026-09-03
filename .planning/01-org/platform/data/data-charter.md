@@ -121,7 +121,7 @@ catalogue item is a guest choice that was never recorded.
 
 **Where the evidence is genuinely thin, stated plainly:**
 
-- **Food/dish corpus.** `datasets/menu_corpus/` and `.planning/MENU_EXTRACTION_SCALE_PLAN.md`
+- **Food/dish corpus.** `datasets/menu_corpus/` and `.planning/07-reference/MENU_EXTRACTION_SCALE_PLAN.md`
   exist, but dish identity was **explicitly deferred** (`b728d25 docs(a15): defer dish
   identity, but write the design before deferring`). The L0 blocker is named as *wine and
   food*; only wine is being worked.

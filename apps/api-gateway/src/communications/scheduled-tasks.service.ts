@@ -13,6 +13,16 @@ import type {
 } from "./recipient-resolver.service";
 import { ScheduledTenantsService } from "./scheduled-tenants.service";
 import type { ScheduledTenant } from "./scheduled-tenants.service";
+// ORDER_ARRIVED_STATUSES went with the payment-due reminder — it was that job's
+// only consumer here. See the tombstone below and ADR 0077.
+import { ORDER_IN_FLIGHT_STATUSES } from "../procurement/order-status";
+import {
+  RECURRING_REMINDER_FLAG,
+  describeRecurringOrder,
+  recurringRemindersEnabled,
+} from "./recurring-order-reminder";
+import { interpretRead, interpretWrite } from "./scheduled-db";
+import type { ReadEnvelope, ReadOutcome, WriteEnvelope } from "./scheduled-db";
 
 /**
  * Pure function — exported for direct use in tests without NestJS DI.
@@ -129,7 +139,6 @@ export class ScheduledTasksService implements OnModuleInit {
           opts.channels.includes("sms") && this.managerPhone
             ? [this.managerPhone]
             : [],
-        pushSubscriptionIds: [],
       };
     }
 
@@ -207,7 +216,6 @@ export class ScheduledTasksService implements OnModuleInit {
           restaurantName: tenant.name,
           lowStockCount: summaryData.lowStockCount,
           pendingOrders: summaryData.pendingOrders,
-          deliveriesToday: summaryData.deliveriesToday,
         });
       }
     });
@@ -369,14 +377,45 @@ export class ScheduledTasksService implements OnModuleInit {
   // ==========================================================================
 
   /**
-   * Recurring Order Reminder - Runs daily at 8:00 AM
-   * Checks for recurring orders due in 2 days
+   * Recurring Order Reminder — runs daily at 08:00 America/New_York.
+   *
+   * Tells a tenant that a row in `recurring_orders` comes due in two days.
+   *
+   * WHY THIS READS `recurring_orders` AND NOT A `procurement_orders` STATUS
+   * ----------------------------------------------------------------------
+   * It used to filter `procurement_orders` on `status = 'RECURRING'`. There is
+   * no RECURRING member of `ProcurementOrderStatus` and there never has been,
+   * so the query matched zero rows and this reminder has never sent a single
+   * email since it was written.
+   *
+   * The repoint is not a guess between candidate statuses. The query's three
+   * OTHER fields were already `recurring_orders` fields and had been all along:
+   * `next_order_date` is a `recurring_orders` column and exists on no other
+   * table; `recurrence_frequency` is a Postgres ENUM TYPE, whose column on that
+   * table is plainly `frequency`; and `target_price_per_bottle` exists in no
+   * table in the schema at all. `procurement_orders` carries none of the three.
+   * The job was always addressing `recurring_orders` — it was pointed at the
+   * wrong table, and the dead status was the symptom rather than the disease.
+   * See ADR 0061.
+   *
+   * OFF BY DEFAULT — this path emails real tenants. The whole job is gated on
+   * RECURRING_ORDER_REMINDERS_ENABLED and returns before it reads, resolves a
+   * recipient or sends anything while that is unset. The ADR records what must
+   * be true before it is flipped; flipping it is the founder's call.
    */
   @Cron("0 8 * * *", {
     name: "recurring-order-reminder",
     timeZone: "America/New_York",
   })
   async sendRecurringOrderReminders() {
+    if (!this.recurringRemindersArmed()) {
+      this.logger.log(
+        `recurring-order-reminder skipped — ${RECURRING_REMINDER_FLAG} is not set. ` +
+          "This job is off by default and sends nothing until it is armed.",
+      );
+      return;
+    }
+
     await this.tenants.runPerTenant(
       "recurring-order-reminder",
       async (tenant) => {
@@ -391,56 +430,87 @@ export class ScheduledTasksService implements OnModuleInit {
         twoDaysFromNow.setDate(twoDaysFromNow.getDate() + 2);
         const twoDaysStr = twoDaysFromNow.toISOString().split("T")[0];
 
-        // Query recurring orders scheduled within 2 days
-        const { data: orders } = await client
-          .from("procurement_orders")
-          .select("*, providers(name)")
-          .eq("restaurant_id", tenant.id)
-          .eq("status", "RECURRING")
-          .lte("next_order_date", twoDaysStr)
-          .order("next_order_date", { ascending: true });
-
-        if (!orders || orders.length === 0) return;
+        // Schedules coming due within two days, for this tenant only.
+        const read = this.readRows<any>(
+          "recurring-order-reminder",
+          "recurring_orders",
+          await client
+            .from("recurring_orders")
+            .select("*")
+            .eq("restaurant_id", tenant.id)
+            .eq("active", true)
+            .lte("next_order_date", twoDaysStr)
+            .order("next_order_date", { ascending: true }),
+        );
+        if (!read.ok) return;
+        const schedules = read.rows;
+        if (schedules.length === 0) return;
 
         const recipients = await this.recipientsFor(tenant, {
           roles: ["manager"],
           channels: ["email"],
         });
 
-        for (const order of orders) {
+        const labels: string[] = [];
+        for (const row of schedules) {
+          const described = describeRecurringOrder(row);
+          if (!described.sendable) {
+            // Fail closed and say so. A row we cannot name or price is not
+            // downgraded into a vaguer email — it is not emailed at all, and
+            // the gap is named in the log rather than inferred from silence.
+            this.logger.warn(
+              `recurring-order-reminder: schedule ${row.id ?? "?"} not describable ` +
+                `(missing ${described.missing.join(", ")}); no email sent for it.`,
+            );
+            if (described.label) labels.push(described.label);
+            continue;
+          }
+          labels.push(described.label);
+
           if (!ordersMode.email || recipients.emails.length === 0) continue;
           await this.gmailService.sendRecurringOrderReminder({
             to: recipients.emails,
             restaurantName: tenant.name,
-            orderName: order.wine_name || "Recurring Order",
-            providerName: order.providers?.name || "Unknown Provider",
-            scheduledDate: order.next_order_date || twoDaysStr,
+            orderName: described.label,
+            providerName: described.providerName,
+            scheduledDate: described.scheduledDate,
             items: [
               {
-                name: order.wine_name || "Wine",
-                quantity: order.quantity || 0,
-                unitPrice: order.target_price_per_bottle || 0,
+                name: described.label,
+                quantity: described.quantity,
+                unitPrice: described.unitPrice,
               },
             ],
-            totalAmount:
-              (order.quantity || 0) * (order.target_price_per_bottle || 0),
-            frequency: order.recurrence_frequency || "monthly",
+            totalAmount: described.totalAmount,
+            frequency: described.frequency,
           });
         }
 
         await this.persistRestaurantNotification(tenant.id, {
           type: "order_pending",
-          title: `🔁 ${orders.length} recurring order${orders.length === 1 ? "" : "s"} due soon`,
-          message: orders
-            .map((o) => o.wine_name || "Order")
-            .slice(0, 5)
-            .join(", "),
+          title: `🔁 ${schedules.length} recurring order${schedules.length === 1 ? "" : "s"} due soon`,
+          message:
+            labels.length > 0
+              ? labels.slice(0, 5).join(", ")
+              : `Due by ${twoDaysStr}`,
           actionUrl: "/orders?tab=recurring",
           actionLabel: "Review Orders",
           groupKey: `recurring_order:${twoDaysStr}`,
-          metadata: { count: orders.length },
+          metadata: { count: schedules.length },
         });
       },
+    );
+  }
+
+  /**
+   * Read the arming flag. ConfigService first, `process.env` second — the same
+   * order `GmailService` already uses, so a Railway-set variable and a
+   * `.env`-set one behave identically.
+   */
+  private recurringRemindersArmed(): boolean {
+    return recurringRemindersEnabled(
+      this.configService.get<string>(RECURRING_REMINDER_FLAG) ??
+        process.env[RECURRING_REMINDER_FLAG],
     );
   }
 
@@ -468,15 +538,20 @@ export class ScheduledTasksService implements OnModuleInit {
         const tomorrowStr = tomorrow.toISOString().split("T")[0];
 
         // Query orders with delivery expected tomorrow
-        const { data: deliveries } = await client
-          .from("procurement_orders")
-          .select("*, providers(name)")
-          .eq("restaurant_id", tenant.id)
-          .in("status", ["CONFIRMED", "SHIPPED", "IN_TRANSIT"])
-          .lte("expected_delivery_date", tomorrowStr + "T23:59:59")
-          .gte("expected_delivery_date", tomorrowStr + "T00:00:00");
-
-        if (!deliveries || deliveries.length === 0) return;
+        const read = this.readRows<any>(
+          "delivery-eta-notification",
+          "procurement_orders",
+          await client
+            .from("procurement_orders")
+            .select("*, providers(name)")
+            .eq("restaurant_id", tenant.id)
+            .in("status", ORDER_IN_FLIGHT_STATUSES)
+            .lte("expected_delivery_date", tomorrowStr + "T23:59:59")
+            .gte("expected_delivery_date", tomorrowStr + "T00:00:00"),
+        );
+        if (!read.ok) return;
+        const deliveries = read.rows;
+        if (deliveries.length === 0) return;
 
         const recipients = await this.recipientsFor(tenant, {
           roles: ["manager", "staff"],
@@ -519,79 +594,29 @@ export class ScheduledTasksService implements OnModuleInit {
   }
 
   /**
-   * Payment Due Reminder - Runs daily at 9:00 AM
-   * Checks for payment deadlines within 3 days
+   * There is no payment-due reminder, and this note is where it was.
+   *
+   * `sendPaymentDueReminders()` queried `procurement_orders` with a three-clause
+   * window on `payment_due_date`. No table in the schema declares that column —
+   * not this one, not any — so PostgREST answered 42703, the whole query failed,
+   * and `if (!invoices || invoices.length === 0) return;` read that as "nothing
+   * is due". The cron ran at 09:00 every day of its life and sent zero emails.
+   *
+   * It was deleted rather than repaired because the column was not the only
+   * thing missing. The same job read `payment_terms`,
+   * `final_price_per_bottle` and `negotiated_price_per_bottle` off
+   * `procurement_orders`, which has none of them — so the amount would have
+   * rendered $0.00 — and linked to `/orders?status=invoiced`, a status
+   * `ProcurementOrderStatus` does not contain. No table anywhere carries a paid
+   * state, so nothing could have told a due invoice from a settled one. This was
+   * a stub for an accounts-payable module that was never built, not a feature
+   * with a typo in it.
+   *
+   * See ADR 0077 for what building it would actually require. The delivery half
+   * survives and is covered by tests — `paymentDueTemplate`,
+   * `GmailService.sendPaymentDueReminder`, the `payment_due` notification type
+   * and its icon in `Notifications.tsx` — so AP starts from a working mailer.
    */
-  @Cron("0 9 * * *", {
-    name: "payment-due-reminder",
-    timeZone: "America/New_York",
-  })
-  async sendPaymentDueReminders() {
-    await this.tenants.runPerTenant("payment-due-reminder", async (tenant) => {
-      const ordersMode = await this.getEffectiveCategoryMode(
-        tenant.id,
-        "orders",
-      );
-      if (!ordersMode.enabled) return;
-
-      const client = this.databaseService.getClient();
-      const now = new Date();
-      const threeDaysFromNow = new Date();
-      threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
-
-      // Query invoices with payment due within 3 days
-      const { data: invoices } = await client
-        .from("procurement_orders")
-        .select("*, providers(name)")
-        .eq("restaurant_id", tenant.id)
-        .in("status", ["DELIVERED", "INVOICED"])
-        .not("payment_due_date", "is", null)
-        .lte("payment_due_date", threeDaysFromNow.toISOString())
-        .gte("payment_due_date", now.toISOString());
-
-      if (!invoices || invoices.length === 0) return;
-
-      const recipients = await this.recipientsFor(tenant, {
-        roles: ["manager"],
-        channels: ["email"],
-      });
-
-      for (const invoice of invoices) {
-        if (!ordersMode.email || recipients.emails.length === 0) continue;
-        const dueDate = new Date(invoice.payment_due_date);
-        const daysUntilDue = Math.ceil(
-          (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
-        );
-
-        await this.gmailService.sendPaymentDueReminder({
-          to: recipients.emails,
-          restaurantName: tenant.name,
-          invoiceNumber:
-            invoice.order_number || invoice.id?.substring(0, 8) || "N/A",
-          providerName: invoice.providers?.name || "Unknown Provider",
-          dueDate: invoice.payment_due_date,
-          amount:
-            (invoice.quantity || 0) *
-            (invoice.final_price_per_bottle ||
-              invoice.negotiated_price_per_bottle ||
-              0),
-          daysUntilDue,
-          paymentTerms: invoice.payment_terms,
-        });
-      }
-
-      await this.persistRestaurantNotification(tenant.id, {
-        type: "payment_due",
-        title: `💳 ${invoices.length} payment${invoices.length === 1 ? "" : "s"} due soon`,
-        message: `${invoices.length} invoice${invoices.length === 1 ? "" : "s"} due within 3 days. Tap to review.`,
-        priority: "high",
-        actionUrl: "/orders?status=invoiced",
-        actionLabel: "View Invoices",
-        groupKey: `payment_due:${now.toISOString().slice(0, 10)}`,
-        metadata: { count: invoices.length },
-      });
-    });
-  }
 
   /**
    * Inventory Audit Reminder - Runs every Monday at 7:00 AM
@@ -662,14 +687,19 @@ export class ScheduledTasksService implements OnModuleInit {
       const targetDate = twoDaysFromNow.toISOString().split("T")[0];
 
       // Query calendar events happening in 2 days
-      const { data: events } = await client
-        .from("calendar_events")
-        .select("*")
-        .eq("restaurant_id", tenant.id)
-        .gte("event_date", targetDate + "T00:00:00")
-        .lte("event_date", targetDate + "T23:59:59");
-
-      if (!events || events.length === 0) return;
+      const read = this.readRows<any>(
+        "event-prep-check",
+        "calendar_events",
+        await client
+          .from("calendar_events")
+          .select("*")
+          .eq("restaurant_id", tenant.id)
+          .gte("event_date", targetDate + "T00:00:00")
+          .lte("event_date", targetDate + "T23:59:59"),
+      );
+      if (!read.ok) return;
+      const events = read.rows;
+      if (events.length === 0) return;
 
       const recipients = await this.recipientsFor(tenant, {
         roles: ["manager", "staff"],
@@ -716,16 +746,21 @@ export class ScheduledTasksService implements OnModuleInit {
         // restaurant's reminder was decided by the first restaurant's stock and
         // mailed to the first restaurant's manager. `custom_reminders` is empty in
         // production (verified 2026-08-26), so nothing has been misdelivered yet.
-        const { data: reminders } = await client
-          .from("custom_reminders")
-          .select("*")
-          .eq("restaurant_id", tenant.id)
-          .eq("is_active", true)
-          .lte("next_fire_at", now.toISOString())
-          .order("next_fire_at", { ascending: true })
-          .limit(20);
-
-        if (!reminders || reminders.length === 0) return;
+        const read = this.readRows<any>(
+          "custom-reminders-check",
+          "custom_reminders",
+          await client
+            .from("custom_reminders")
+            .select("*")
+            .eq("restaurant_id", tenant.id)
+            .eq("is_active", true)
+            .lte("next_fire_at", now.toISOString())
+            .order("next_fire_at", { ascending: true })
+            .limit(20),
+        );
+        if (!read.ok) return;
+        const reminders = read.rows;
+        if (reminders.length === 0) return;
 
         for (const reminder of reminders) {
           const invTypes = new Set([
@@ -747,21 +782,33 @@ export class ScheduledTasksService implements OnModuleInit {
                   reminder.schedule_cron,
                   now,
                 );
-                await client
-                  .from("custom_reminders")
-                  .update({
-                    last_fired_at: now.toISOString(),
-                    next_fire_at: nextFire.toISOString(),
-                  })
-                  .eq("id", reminder.id);
+                this.wrote(
+                  "custom-reminders-check",
+                  "custom_reminders",
+                  `the advance of reminder ${reminder.id} to ${nextFire.toISOString()} — ` +
+                    "it stays due, so the 15-minute cron will send it again",
+                  await client
+                    .from("custom_reminders")
+                    .update({
+                      last_fired_at: now.toISOString(),
+                      next_fire_at: nextFire.toISOString(),
+                    })
+                    .eq("id", reminder.id),
+                );
               } else {
-                await client
-                  .from("custom_reminders")
-                  .update({
-                    last_fired_at: now.toISOString(),
-                    is_active: false,
-                  })
-                  .eq("id", reminder.id);
+                this.wrote(
+                  "custom-reminders-check",
+                  "custom_reminders",
+                  `the deactivation of one-off reminder ${reminder.id} — ` +
+                    "it stays active and due, so it will be sent again",
+                  await client
+                    .from("custom_reminders")
+                    .update({
+                      last_fired_at: now.toISOString(),
+                      is_active: false,
+                    })
+                    .eq("id", reminder.id),
+                );
               }
               continue;
             }
@@ -806,8 +853,10 @@ export class ScheduledTasksService implements OnModuleInit {
           // 2. Write a notifications row (so it appears in the in-app inbox)
           const notifUserId = reminder.created_by || null;
           if (notifUserId) {
-            try {
-              await client.from("notifications").insert({
+            // No try/catch around the database error: supabase-js RETURNS it.
+            // The outer try still guards genuine exceptions (a dead socket).
+            {
+              const inserted = await client.from("notifications").insert({
                 user_id: notifUserId,
                 recipient_id: notifUserId,
                 notification_type: "custom_reminder",
@@ -828,9 +877,12 @@ export class ScheduledTasksService implements OnModuleInit {
                 },
                 created_at: now.toISOString(),
               });
-            } catch (notifErr) {
-              this.logger.warn(
-                `Could not write notifications row for reminder ${reminder.id}: ${notifErr?.message}`,
+              this.wrote(
+                "custom-reminders-check",
+                "notifications",
+                `the in-app notification for reminder ${reminder.id} ` +
+                  `("${reminder.title}") addressed to user ${notifUserId}`,
+                inserted,
               );
             }
           }
@@ -841,18 +893,30 @@ export class ScheduledTasksService implements OnModuleInit {
               reminder.schedule_cron,
               now,
             );
-            await client
-              .from("custom_reminders")
-              .update({
-                last_fired_at: now.toISOString(),
-                next_fire_at: nextFire.toISOString(),
-              })
-              .eq("id", reminder.id);
+            this.wrote(
+              "custom-reminders-check",
+              "custom_reminders",
+              `the advance of reminder ${reminder.id} to ${nextFire.toISOString()} — ` +
+                "it stays due, so the 15-minute cron will send it again",
+              await client
+                .from("custom_reminders")
+                .update({
+                  last_fired_at: now.toISOString(),
+                  next_fire_at: nextFire.toISOString(),
+                })
+                .eq("id", reminder.id),
+            );
           } else {
-            await client
-              .from("custom_reminders")
-              .update({ last_fired_at: now.toISOString(), is_active: false })
-              .eq("id", reminder.id);
+            this.wrote(
+              "custom-reminders-check",
+              "custom_reminders",
+              `the deactivation of one-off reminder ${reminder.id} — ` +
+                "it stays active and due, so it will be sent again",
+              await client
+                .from("custom_reminders")
+                .update({ last_fired_at: now.toISOString(), is_active: false })
+                .eq("id", reminder.id),
+            );
           }
         }
 
@@ -917,6 +981,45 @@ export class ScheduledTasksService implements OnModuleInit {
     return next;
   }
 
+  /**
+   * Every scheduled read goes through here, so that "the query failed" can
+   * never again arrive at a caller looking like "there was nothing to send".
+   *
+   * Logs at ERROR, not WARN. A scheduled job that cannot read is not degraded,
+   * it is not running — and the three crons this file has lost each looked
+   * perfectly healthy from the outside for months.
+   */
+  private readRows<T>(
+    job: string,
+    table: string,
+    envelope: ReadEnvelope<T> | null | undefined,
+  ): ReadOutcome<T> {
+    const outcome = interpretRead<T>(job, table, envelope);
+    if (!outcome.ok) this.logger.error(outcome.reason);
+    return outcome;
+  }
+
+  /**
+   * Every scheduled write goes through here.
+   *
+   * The `try/catch` these calls used to sit inside was inert: supabase-js
+   * RETURNS `{ error }` for a database error rather than throwing, so there was
+   * nothing for the catch to catch, and a failed insert looked exactly like a
+   * successful one. `what` names the rows that did not land, because a row that
+   * was never written cannot be found by querying for it afterwards — the log
+   * line is the only trace it was supposed to exist.
+   */
+  private wrote(
+    job: string,
+    table: string,
+    what: string,
+    envelope: WriteEnvelope | null | undefined,
+  ): boolean {
+    const outcome = interpretWrite(job, table, what, envelope);
+    if (!outcome.ok) this.logger.error(outcome.reason);
+    return outcome.ok;
+  }
+
   // ==========================================================================
   // MANUAL TRIGGER METHODS (for testing)
   // ==========================================================================
@@ -927,10 +1030,6 @@ export class ScheduledTasksService implements OnModuleInit {
 
   async triggerDeliveryETANotifications(): Promise<void> {
     await this.sendDeliveryETANotifications();
-  }
-
-  async triggerPaymentDueReminders(): Promise<void> {
-    await this.sendPaymentDueReminders();
   }
 
   async triggerInventoryAuditReminder(): Promise<void> {
@@ -947,14 +1046,26 @@ export class ScheduledTasksService implements OnModuleInit {
    * ADR 0020 — this used to swallow a database failure and return a fixture
    * (5 low-stock, 3 pending orders, 1 delivery), which was then SMSed to the
    * manager as fact. The same fabrication was removed from the weekly email
-   * under OD-85; the SMS path was missed. It now throws, so the tenant is
-   * counted `failed` in the run summary and nobody is texted a number nobody
-   * measured.
+   * under OD-85; the SMS path was missed.
+   *
+   * WHERE THE THROW COMES FROM (ADR 0084 — the comment used to say "it now
+   * throws" without saying that, and a reader checking the body found no
+   * `throw` and reasonably concluded the fix had never landed). There is no
+   * `throw` here and there should not be: both reads throw for us.
+   * `DatabaseService.getLowStockItems` and `.getProcurementOrders` each end
+   * `if (error) throw error`, so a failed query propagates out of this method
+   * and `runPerTenant` counts the tenant `failed`. The `|| 0`s below are
+   * reached only on a SUCCESSFUL read that returned no rows, where zero is the
+   * measured answer.
+   *
+   * `deliveriesToday` is gone (ADR 0084). It was the literal `0` that the
+   * removed fixture's `1` had been replaced with, carrying the comment "Would
+   * need to query deliveries table", and `SmsService.sendDailySummary` printed
+   * it to the manager beside two real figures as though it were a third.
    */
   private async getDailySummaryData(restaurantId: string): Promise<{
     lowStockCount: number;
     pendingOrders: number;
-    deliveriesToday: number;
   }> {
     const lowStockItems =
       await this.databaseService.getLowStockItems(restaurantId);
@@ -966,7 +1077,6 @@ export class ScheduledTasksService implements OnModuleInit {
     return {
       lowStockCount: lowStockItems?.length || 0,
       pendingOrders: pendingOrders?.length || 0,
-      deliveriesToday: 0, // Would need to query deliveries table
     };
   }
 
@@ -1124,8 +1234,28 @@ export class ScheduledTasksService implements OnModuleInit {
   }
 
   /**
-   * Fetch recent conversation summaries for the weekly report
-   * Groups by provider and includes the latest message summary
+   * Fetch recent conversation summaries for the weekly report.
+   * Groups by provider and includes the latest message summary.
+   *
+   * ADR 0084 — this select named `message_body` and `subject`. The table has
+   * neither: `procurement_conversations` stores the body in `message_text`
+   * (`text NOT NULL`) and the subject inside `email_headers` (`jsonb`).
+   * Measured against production 2026-09-02, not inferred from migrations.
+   *
+   * They are the SAME TWO PHANTOM NAMES that ADR 0065 removed from the write
+   * side four hours earlier. The write side was fixed; the read side was
+   * missed, because `check_order_capture_contract.py` Contract E parses
+   * `.insert|update|upsert` payloads and nothing in the tree parses a select
+   * list. So PostgREST answered 42703 on every weekly report, the line below
+   * read that as "no vendor conversations", and the Vendor Communication
+   * Summary has never once appeared in a manager's weekly email — over 27 real
+   * conversation rows. Class **O** in [[absence-reported-as-health]]: nothing
+   * was corrupted, a section was simply never there, and nothing said so.
+   *
+   * The error branch is now separate from the empty branch. Conflating them is
+   * what made this invisible for as long as it was: one `return []` served
+   * "the query failed" and "there is nothing to report", and only one of those
+   * two is a fact about the restaurant.
    */
   private async getRecentConversationSummaries(restaurantId: string): Promise<
     Array<{
@@ -1140,17 +1270,41 @@ export class ScheduledTasksService implements OnModuleInit {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-      const { data: conversations, error } = await client
-        .from("procurement_conversations")
-        .select(
-          "id, provider_id, direction, channel, detected_intent, detected_sentiment, delivery_status, message_body, subject, created_at",
-        )
-        .eq("restaurant_id", restaurantId)
-        .gte("created_at", sevenDaysAgo.toISOString())
-        .order("created_at", { ascending: false })
-        .limit(50);
-
-      if (error || !conversations || conversations.length === 0) {
+      // `message_body` and `subject` are not columns of this table. It carries
+      // `message_text` (NOT NULL) and keeps the subject inside the `email_headers`
+      // jsonb. ADR 0065 repaired the WRITE half of exactly this pair and left the
+      // read here naming the same two phantoms, so every weekly report has been
+      // summarising an empty list.
+      //
+      // `message_text` is selected as well (ADR 0084). ADR 0073 dropped
+      // `message_body` outright on the grounds that nothing below read it,
+      // which was true — and left `latestSubject` as `email_headers.subject
+      // ?? ""`, so the 14 of production's 27 rows that carry no subject print
+      // `Latest: "" (general)`. The body is the only other thing the row has
+      // to say, so it supplies the fallback below.
+      const read = this.readRows<any>(
+        "weekly-email-report",
+        "procurement_conversations",
+        await client
+          .from("procurement_conversations")
+          .select(
+            "id, provider_id, direction, channel, detected_intent, detected_sentiment, delivery_status, message_text, email_headers, created_at",
+          )
+          .eq("restaurant_id", restaurantId)
+          .gte("created_at", sevenDaysAgo.toISOString())
+          .order("created_at", { ascending: false })
+          .limit(50),
+      );
+      // A failed read is NOT an empty week. It is logged by readRows and returns
+      // the same [] the caller already handled, but the two are no longer
+      // indistinguishable in the log.
+      if (!read.ok) return [];
+      const conversations = read.rows;
+      if (conversations.length === 0) {
+        this.logger.log(
+          `No vendor conversations in the last 7 days for restaurant ${restaurantId} — ` +
+            `section omitted (the read SUCCEEDED and found nothing).`,
+        );
         return [];
       }
 
@@ -1170,12 +1324,19 @@ export class ScheduledTasksService implements OnModuleInit {
       );
       const providerNames = new Map<string, string>();
       if (providerIds.length > 0) {
-        const { data: providers } = await client
-          .from("providers")
-          .select("id, name")
-          .in("id", providerIds);
-        if (providers) {
-          for (const p of providers) {
+        const read = this.readRows<any>(
+          "weekly-email-report",
+          "providers",
+          await client
+            .from("providers")
+            .select("id, name")
+            .in("id", providerIds),
+        );
+        // A failed provider lookup must not silently become "Unknown Provider"
+        // for every row: the read is logged, and names stay unresolved rather
+        // than being invented (ADR 0020).
+        if (read.ok) {
+          for (const p of read.rows) {
             providerNames.set(p.id, p.name);
           }
         }
@@ -1193,14 +1354,45 @@ export class ScheduledTasksService implements OnModuleInit {
         const messageCount = convos.length;
         const latestConvo = convos[0]; // Already sorted descending
 
-        // Build a short summary from the latest conversation
-        const latestSubject = latestConvo.subject || "";
+        // Build a short summary from the latest conversation.
+        //
+        // The subject lives in `email_headers.subject` — the lowercase RFC-822
+        // key set the live inbound path writes (`rabbitmq-bridge.service.ts`
+        // `handleInboundEmail`) and the shape ADR 0065 adopted for outbound.
+        const headers = (latestConvo.email_headers ?? {}) as Record<
+          string,
+          unknown
+        >;
+        const rawSubject = headers.subject;
+        const latestSubject =
+          typeof rawSubject === "string" && rawSubject.trim().length > 0
+            ? rawSubject.trim()
+            : null;
+
+        // Measured on production 2026-09-02: 13 of 27 rows carry a non-empty
+        // `email_headers.subject` (all 10 inbound, 3 outbound). A subjectless
+        // row is the COMMON case, not the edge, so `message_text` — the NOT
+        // NULL body — supplies a short preview rather than `Latest: ""`, which
+        // reads as a message with an empty subject rather than a row that
+        // never had one. Truncated with an ellipsis so nobody mistakes the
+        // preview for a complete subject line.
+        const body =
+          typeof latestConvo.message_text === "string"
+            ? latestConvo.message_text.replace(/\s+/g, " ").trim()
+            : "";
+        const preview =
+          body.length > 60 ? `${body.slice(0, 60).trimEnd()}…` : body;
+
+        const latestDescriptor = latestSubject
+          ? `"${latestSubject}"`
+          : preview || "(no subject or body recorded)";
+
         const latestIntent = latestConvo.detected_intent || "general";
         const latestStatus = latestConvo.delivery_status || "active";
 
         summaries.push({
           provider: providerName,
-          summary: `${messageCount} messages this week. Latest: "${latestSubject}" (${latestIntent})`,
+          summary: `${messageCount} messages this week. Latest: ${latestDescriptor} (${latestIntent})`,
           status: latestStatus,
           messageCount,
         });
@@ -1299,9 +1491,26 @@ export class ScheduledTasksService implements OnModuleInit {
         metadata: payload.metadata ?? {},
         created_at: now,
       }));
-      await this.databaseService.getClient().from("notifications").insert(rows);
+      const inserted = await this.databaseService
+        .getClient()
+        .from("notifications")
+        .insert(rows);
+      // The count and the type are named because this is a BULK insert: one
+      // failure loses the signal for every member of the restaurant at once,
+      // and the inbox has no way to show a row that was never written.
+      this.wrote(
+        "persistRestaurantNotification",
+        "notifications",
+        `${rows.length} in-app notification row(s) of type "${payload.type}" ` +
+          `for restaurant ${restaurantId} ("${payload.title}")`,
+        inserted,
+      );
     } catch (e: any) {
-      this.logger.warn(`persistRestaurantNotification failed: ${e?.message}`);
+      // Still reached for a genuine exception; a DB error never gets here.
+      this.logger.error(
+        `persistRestaurantNotification threw for restaurant ${restaurantId} ` +
+          `(type "${payload.type}"): ${e?.message}. No notification row was written.`,
+      );
     }
   }
 
@@ -1320,12 +1529,22 @@ export class ScheduledTasksService implements OnModuleInit {
       const userIds =
         await this.databaseService.getRestaurantMemberIds(restaurantId);
       if (userIds.length === 0) return { enabled: true, email: true };
-      const { data } = await this.databaseService
-        .getClient()
-        .from("notification_preferences")
-        .select(col)
-        .in("user_id", userIds);
-      if (!data || data.length === 0) return { enabled: true, email: true };
+      const read = this.readRows<any>(
+        "notification-preferences",
+        "notification_preferences",
+        await this.databaseService
+          .getClient()
+          .from("notification_preferences")
+          .select(col)
+          .in("user_id", userIds),
+      );
+      // Unreadable preferences fall back to on — the historical behaviour, kept
+      // deliberately so a preferences outage cannot silence every notification —
+      // but the failure is now logged instead of being indistinguishable from
+      // "nobody has set a preference".
+      if (!read.ok) return { enabled: true, email: true };
+      const data = read.rows;
+      if (data.length === 0) return { enabled: true, email: true };
       const modes = data.map((r: any) => r[col] || "both");
       return {
         enabled: modes.some((m: string) => m !== "off"),

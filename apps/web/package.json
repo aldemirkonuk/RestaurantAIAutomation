@@ -1,12 +1,13 @@
 {
   "name": "@wineops/web",
   "version": "0.1.0",
-  "description": "WineOps AI - Beautiful Manager Dashboard",
+  "description": "Mudavym - Beautiful Manager Dashboard",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "typecheck": "tsc --noEmit",
     "build:check": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives",

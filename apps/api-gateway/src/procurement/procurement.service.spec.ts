@@ -24,12 +24,16 @@ describe("ProcurementService — draft trigger fallback (regression: Bug 2)", ()
     select: jest.fn().mockReturnThis(),
     insert: jest.fn().mockReturnThis(),
     update: jest.fn().mockReturnThis(),
+    // createOrder now also writes the order line, which clears any previous one
+    // and resolves the wine identity — so the chain needs delete/maybeSingle.
+    delete: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
     neq: jest.fn().mockReturnThis(),
     not: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     range: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
+    maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
     single: mockSingle,
   };
 
@@ -93,8 +97,10 @@ describe("ProcurementService — draft trigger fallback (regression: Bug 2)", ()
       from: jest.fn().mockReturnThis(),
       select: jest.fn().mockReturnThis(),
       insert: jest.fn().mockReturnThis(),
+      delete: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
       neq: jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
       single: mockSingle,
     });
 

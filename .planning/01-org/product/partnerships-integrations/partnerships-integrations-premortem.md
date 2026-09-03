@@ -31,7 +31,7 @@ independently completable piece of work with a public API doc. So the team works
 Square gets its merchant OAuth, Clover its API token, SpotOn and Lightspeed get normalizers,
 and `registrySummary()` (`:328`) returns a beautiful histogram. Twelve months later
 `pos_checks` still holds the **0 real rows** it holds today
-(`.planning/AGENT_NATIVE_UI_DECISION.md:56`) — the 47 rows in there are simulator output
+(`.planning/decisions/AGENT_NATIVE_UI_DECISION.md:56`) — the 47 rows in there are simulator output
 from one 43-minute window — because no merchant ever authorized a single connection. This is
 the exact failure the agent-native review already named against this codebase:
 *"combinatorially impressive systems built without a paying customer pulling on them."*
@@ -89,7 +89,7 @@ position: the build is sunk, the differentiating surface is already half-shipped
 only thing left to negotiate is distribution on someone else's terms. The decision was made
 — by drift, in the direction nobody argued for.
 
-**Earliest observable signal.** OD-07's status line in `OPEN-DECISIONS.md:18` is unchanged
+**Earliest observable signal.** OD-07's status line in `OPEN-DECISIONS.md:32` is unchanged
 for two consecutive months **while** guest-experience commits continue landing. The
 conjunction is the signal; either alone is fine.
 

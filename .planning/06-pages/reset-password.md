@@ -2,9 +2,11 @@
 type: page
 route: /reset-password
 slug: reset-password
+softwares: [auth-onboarding]
 component: apps/web/src/pages/ResetPassword.tsx
 audience: public
 tier: public
+archetype: focused # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 5
 maturity: complete
@@ -15,6 +17,8 @@ links: ["[[PAGE-CONTRACT]]", "[[forgot-password]]", "[[login]]"]
 
 # /reset-password
 
+> **Part of** [[08-softwares/auth-onboarding|Auth & Onboarding]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
+
 ## Surface — buttons → where they go
 
 - **Reset Password** (submit) → API `POST /api/v1/auth/reset-password`, then auto-redirect → [[login]] `/login`
@@ -23,6 +27,11 @@ links: ["[[PAGE-CONTRACT]]", "[[forgot-password]]", "[[login]]"]
 
 ## 1. Purpose
 Set a new password from an emailed reset link (`?token=`). Three states: missing token → "Invalid reset link" (`ResetPassword.tsx:64-88`), form (min 8 chars, confirm match, `ResetPassword.tsx:33-40`), success → auto-redirect to `/login` after 2.5s (`ResetPassword.tsx:48-49`). Backend error messages are surfaced verbatim — safe here because possessing the token already proves email receipt, so no enumeration risk (`ResetPassword.tsx:50-58`).
+
+## 1a. Features
+- Set a new password from the emailed link (min 8 chars, confirm match)
+- Invalid/missing link state with "request a new link"
+- Success auto-redirects to sign-in
 
 ## 2. Entry
 **Cold URL only** — the link is minted server-side as `${FRONTEND_URL}/reset-password?token=…` (`auth.service.ts:1596`) and arrives by email. No in-app navigation *to* it; it links out to `/forgot-password` and `/login`.

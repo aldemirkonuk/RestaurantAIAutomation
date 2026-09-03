@@ -39,6 +39,17 @@ jobs:
   parity:
     name: Fresh database equals remote
     runs-on: ubuntu-latest
+    # This job's `name:` is a required status check on `main` (branch protection,
+    # `contexts`, `strict: true`) — so are the other three jobs in this file that
+    # carry the same fork guard below. Renaming a job or changing this `if:` changes
+    # whether PRs can merge at all: a renamed job is the same failure as a skipped
+    # one — the required context stops reporting and the PR is blocked forever.
+    # See ADR 0072 (Consequences) for why the guard itself stays as-is: a fork PR
+    # has no access to the DB secret, so a check that ran "successfully" on a fork
+    # would be vacuously green — the exact fault ADR 0072 exists to close. The
+    # remedy for a real fork contribution is a maintainer re-pushing the branch to
+    # this repo, not faking a green check.
+    #
     # Without the connection secret this job can only ever be vacuously green,
     # and a vacuously green check is worse than no check.
     if: >
@@ -46,12 +57,47 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
-      - uses: actions/checkout@v4
+      # fetch-depth: 0 is load-bearing, not hygiene, and it is not optional:
+      # actions/checkout's default is shallow AND single-branch, which leaves no
+      # `origin/<base_ref>` ref at all. MEASURED on a real shallow clone of
+      # fix/lot-cost-truth: the helper exits 2 both before and AFTER a
+      # `git fetch origin main --depth 1`, because a single-branch clone's
+      # restricted refspec does not create the remote-tracking ref — so the
+      # fetch in the step below cannot substitute for this line.
+      #
+      # The failure mode is a red job, never a silent hole: the helper refuses
+      # to answer from a partial view rather than reporting "this PR added
+      # nothing", which would quietly turn a relaxed comparison into a strict
+      # one and reintroduce the very block this change removes.
+      #
+      # (One degenerate case is genuinely fine: a shallow clone OF the base
+      # branch itself, where base and head are the same commit and the honest
+      # answer is the empty list. That is the push shape, and it exits 0.)
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Install Supabase CLI
-        uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@v3
         with:
-          version: latest
+          # PINNED, and that is the fix — `version: latest` forces the action to
+          # resolve a release through the GitHub API on every single run, which
+          # is the thing that rate-limits. A pinned version needs no lookup, so
+          # the failure mode cannot occur rather than being made less likely.
+          #
+          # History, because the previous attempt is instructive: on 2026-08-26
+          # this step failed on a rate limit and `GITHUB_TOKEN` was added to
+          # raise the unauthenticated 60/hour to 1000/hour. Its own comment said
+          # honestly that it was "NOT VERIFIED against a live rate limit". On
+          # 2026-09-01 it rate-limited AGAIN, on PR #192 — so that is now
+          # disproven, not merely unverified. The token stays below (it is free
+          # and still helps the download), but it is no longer the control.
+          #
+          # Bumping this is a deliberate, reviewable act. That is the point: an
+          # unpinned toolchain silently changes what CI measures.
+          version: 2.116.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Start local stack
         run: supabase start
@@ -59,6 +105,85 @@ jobs:
       - name: Rebuild local database from migrations only
         # If this step fails, migrations cannot build a database — exactly the
         # condition that made local development impossible before the baseline.
+        run: supabase db reset --no-seed
+
+      # The behavioural half of ci.yml's `fk repoint` guard. That one reads
+      # text: it can say the fix is PRESENT, never that it WORKS. This builds a
+      # real composite foreign key -- (inventory_id, uom) -> (id, uom), the shape
+      # ADR 0070 introduces -- against the database that was just rebuilt from
+      # migrations, and asserts the behaviour: one plan row per constraint
+      # rather than one per component, a stated problem for a key that
+      # references no id, a refusal that names the constraint when a composite
+      # key would reject the repointed rows, and a merge that still completes
+      # once they are reconciled. Verified to FAIL against the pre-fix schema.
+      #
+      # Here rather than in ci.yml because this is the workflow that already has
+      # a database. It needs no secret: the local stack above is enough, and
+      # everything it does runs in a transaction that is rolled back.
+      - name: A catalog-driven repoint works, not just reads correctly
+        run: |
+          ./scripts/check_fk_repoint_by_referenced_column.py \
+            --against-database \
+            --dsn "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+
+      # ---------------------------------------------------------------------
+      # Everything above ran against the FULL migration set, and still does —
+      # `supabase db reset` above is what proves this PR's own migrations apply,
+      # and the fk-repoint check needs the schema they introduce.
+      #
+      # Only the COMPARISON below changes. It diffs a database built from
+      # migrations against production, which on a pull request is asking a
+      # question nobody posed: migrations auto-apply on MERGE, so a PR that adds
+      # one compares a local database that HAS the new objects against a
+      # production that correctly does not. The new table lands under "IN LOCAL,
+      # NOT IN REMOTE", the job exits 1, and since this job is a required
+      # context the PR cannot merge at all. Three of six open PRs were stuck on
+      # exactly that on 2026-09-02.
+      #
+      # So for the comparison, and ONLY the comparison, rebuild from the
+      # migrations as they stand on the PR's merge base. The check then asks its
+      # real question — has production drifted from what has been MERGED — and
+      # is insensitive to what this PR proposes.
+      #
+      # What deliberately does NOT relax:
+      #   * a MODIFIED migration is not held back (`--diff-filter=A` only), so
+      #     editing an already-applied migration still shows as drift;
+      #   * on push/schedule there is no base ref, nothing is held back, and
+      #     this is byte-for-byte the old behaviour — `main` is as strict as it
+      #     was;
+      #   * an unresolvable base is exit 2, not a quiet strict or a quiet
+      #     vacuous run.
+      # ---------------------------------------------------------------------
+      - name: The held-back list is computed by a guard that can fail
+        run: ./scripts/parity_migrations_added_by_pr.py --self-test
+
+      - name: Hold this PR's own migrations back from the comparison
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/parity-held-back
+          if [ -n "${{ github.base_ref }}" ]; then
+            git fetch origin "${{ github.base_ref }}" --quiet
+            ./scripts/parity_migrations_added_by_pr.py \
+              --base "origin/${{ github.base_ref }}" > /tmp/parity-added.txt
+          else
+            : > /tmp/parity-added.txt
+            echo "push/schedule: nothing held back — this is the strict run."
+          fi
+          held=0
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            mv "$f" /tmp/parity-held-back/
+            echo "held back: $f"
+            held=$((held + 1))
+          done < /tmp/parity-added.txt
+          echo "held back ${held} migration(s) added by this PR."
+          # Stated on every run, including the zero case, so "nothing was held
+          # back" is a reported measurement rather than an absence.
+          if [ "$held" -eq 0 ]; then
+            echo "This is therefore a STRICT comparison over the full migration set."
+          fi
+
+      - name: Rebuild the comparison database from the merge base
         run: supabase db reset --no-seed
 
       - name: Compare against remote
@@ -69,16 +194,126 @@ jobs:
           ./scripts/check_db_reachable.sh
           ./scripts/check_schema_parity.sh
 
+      - name: Put the held-back migrations back
+        if: always()
+        run: |
+          cp /tmp/parity-held-back/*.sql supabase/migrations/ 2>/dev/null || true
+          git status --porcelain -- supabase/migrations/ || true
+
       - name: Explain a failure
         if: failure()
         run: |
+          echo "::notice::Read WHICH step failed before reading this. A 'PASS shape/accounting/refusal/merge' line missing, or psql erroring under 'A catalog-driven repoint works', is the ADR 0076 behavioural check — see ci.yml's 'fk repoint' notices, not the drift advice below."
+          echo "::notice::fk_repoint_plan / fk_repoint_blockers listed under IN LOCAL, NOT IN REMOTE is NOT that check failing. It is ADR 0076's migration not yet pushed, which is what every unmerged migration looks like here, and it clears on merge."
           echo "::notice::If the log says 'Network is unreachable', this is CONNECTIVITY, not drift —"
           echo "::notice::see scripts/check_db_reachable.sh. Otherwise:"
           echo "::notice::Local and remote schemas disagree."
           echo "::notice::Columns/functions only in REMOTE were applied by hand — capture them"
           echo "::notice::as a migration, then: supabase migration repair --status applied <version>"
           echo "::notice::Columns/functions only in LOCAL are unpushed — run: supabase db push"
-          echo "::notice::Background: .planning/SCHEMA_DRIFT_INVENTORY.txt"
+          echo "::notice::Background: .planning/07-reference/SCHEMA_DRIFT_INVENTORY.txt"
+
+  # The arm of the schema-code guard that needs a database.
+  #
+  # ci.yml's `schema-code-parity` job runs the hermetic half on every pull
+  # request: does supabase/migrations/ DECLARE everything the code queries. That
+  # needs no secret and so runs on forks too. It cannot answer the other
+  # question -- was production ever GIVEN those migrations -- and that is the
+  # question the five 2026-08-26 instances actually failed. This job asks it,
+  # here rather than in ci.yml because this is the workflow that already holds
+  # the connection string and the fork guard, and because a daily run is what
+  # catches drift introduced outside a pull request.
+  #
+  # It also reports the disagreement that IS the defect class: a relation the
+  # code queries that production HAS and no live migration declares. Those work
+  # today and vanish from any database rebuilt from this repository.
+  # integration_oauth_connections and _states are exactly that on 2026-08-26.
+  #
+  # Read-only. The guard opens the session with set_session(readonly=True) and
+  # never prints the DSN.
+  queried-tables-exist-in-production:
+    name: Code queries only relations production has
+    runs-on: ubuntu-latest
+    # This job's `name:` is a required status check on `main`. Renaming it is the
+    # same failure as skipping it — the context stops reporting and every PR is
+    # blocked forever. See the identical note on the `parity` job above.
+    if: >
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      # fetch-depth: 0 is load-bearing here for the same reason ADR 0092 gave it
+      # to the parity job: actions/checkout defaults to shallow AND single-branch,
+      # which leaves no `origin/<base_ref>` remote-tracking ref at all, and a
+      # `git fetch --depth 1` inside a step cannot create one. Without it the
+      # merge-base cannot be resolved and the guard exits 2 — a red job, never a
+      # silent hole, because "I could not work out what this PR adds" must not be
+      # answerable as "this PR adds nothing".
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      # Before the arm that needs a secret, and needing none itself: the
+      # merge-awareness below is only worth anything if it can go red. This
+      # asserts, among other things, that push mode still fails the very object
+      # PR mode exempts, and that an object no migration declares fails in both.
+      - name: The merge-awareness is a rule that can fail
+        run: ./scripts/check_queried_tables_exist.py --self-test
+
+      - name: Install psycopg2
+        run: pip install psycopg2-binary
+
+      # ---------------------------------------------------------------------
+      # ADR 0095. C - R asks "does production have what the code calls". On a
+      # push to main that is exactly right and nothing below relaxes it. On a
+      # pull request the code is no more deployed than the migration is — they
+      # land together on merge — so an object production lacks that a migration
+      # ADDED BY THIS PR declares is expected, not a defect.
+      #
+      # MEASURED: PR #243 added `record_stock_count` with the migration creating
+      # it and this job failed with "1 function(s) the code calls do not exist
+      # in PRODUCTION". Being a required context, that PR could not merge by any
+      # route except bypassing the check or hand-applying the migration to
+      # production first — and hand-applying manufactures the version mismatch
+      # that cost two sessions an hour on 2026-09-02.
+      #
+      # Same shape as ADR 0092 gave the sibling job deliberately: the same
+      # helper computes "added by this PR", so the two checks cannot drift apart
+      # on what that means.
+      #
+      # What does NOT relax: an object no migration declares still fails in both
+      # modes (the exempt set is a subset of what migrations declare); a
+      # MODIFIED migration exempts nothing; an unresolvable base is exit 2.
+      # ---------------------------------------------------------------------
+      - name: Compare the code's relations against production
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_POOLER_URL || secrets.SUPABASE_POOLER_CONNECTION_STRING || secrets.SUPABASE_DIRECT_CONNECTION_STRING }}
+        run: |
+          set -euo pipefail
+          ./scripts/check_db_reachable.sh
+          if [ -n "${{ github.base_ref }}" ]; then
+            git fetch origin "${{ github.base_ref }}" --quiet
+            ./scripts/check_queried_tables_exist.py \
+              --against-production --base "origin/${{ github.base_ref }}"
+          else
+            echo "push/schedule: no base ref, nothing is exempt — this is the strict run."
+            ./scripts/check_queried_tables_exist.py --against-production
+          fi
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::A failing 'The merge-awareness is a rule that can fail' step is the SELF-TEST, not drift — the guard's own logic broke. Run ./scripts/check_queried_tables_exist.py --self-test locally."
+          echo "::notice::If the log says 'Network is unreachable', this is CONNECTIVITY, not drift — see scripts/check_db_reachable.sh."
+          echo "::notice::Exit 2 / 'BLOCKED' means the guard could not check what it claims to. On a PR that is usually an unresolvable base ref — fetch-depth: 0 above is what makes origin/<base_ref> exist."
+          echo "::notice::Otherwise the code calls a relation or function production does not have, and every such call is failing at runtime right now."
+          echo "::notice::On a PULL REQUEST this run was merge-aware (ADR 0095), so anything listed is NOT explained by a migration this PR adds: either the migration is MODIFIED rather than added, or no migration declares the object at all."
+          echo "::notice::If supabase/migrations/ DOES define it and this was a push to main, the migration was never pushed: supabase db push."
+          echo "::notice::If it does not, see the sibling failure in ci.yml's schema-code-parity job — the CREATE is probably sitting in an archive directory."
 
   # Premortem audit finding (2026-08-18, decision #1): beverage_identity_key
   # (SQL, runs in production) and residual_key (Python, what
@@ -96,7 +331,7 @@ jobs:
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name == github.repository
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -130,7 +365,7 @@ jobs:
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name == github.repository
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Python
         uses: actions/setup-python@v6

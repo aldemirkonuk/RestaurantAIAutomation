@@ -2,9 +2,11 @@
 type: page
 route: /forgot-password
 slug: forgot-password
+softwares: [auth-onboarding]
 component: apps/web/src/pages/ForgotPassword.tsx
 audience: public
 tier: public
+archetype: focused # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 4
 maturity: partial
@@ -15,6 +17,8 @@ links: ["[[PAGE-CONTRACT]]", "[[login]]", "[[reset-password]]"]
 
 # /forgot-password
 
+> **Part of** [[08-softwares/auth-onboarding|Auth & Onboarding]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
+
 ## Surface — buttons → where they go
 
 - **Send reset link** → API `POST /api/v1/auth/request-password-reset`
@@ -22,6 +26,10 @@ links: ["[[PAGE-CONTRACT]]", "[[login]]", "[[reset-password]]"]
 
 ## 1. Purpose
 Request a password-reset email. Deliberately enumeration-resistant: the UI has no "email not found" branch because the backend always answers success (`ForgotPassword.tsx:27-32`, reasoning mirrors `AuthService#requestPasswordReset`). Only genuinely non-account-revealing failures render: 429 throttle and generic 5xx (`ForgotPassword.tsx:37-41`).
+
+## 1a. Features
+- Request a password-reset email (always answers success — deliberately enumeration-resistant)
+- Rate-limit (429) and server-error states; everything else looks like success by design
 
 ## 2. Entry
 - `/login` → "Forgot password?" (`Login.tsx:144-149`)

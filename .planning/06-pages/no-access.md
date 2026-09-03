@@ -2,9 +2,11 @@
 type: page
 route: /no-access
 slug: no-access
+softwares: [auth-onboarding]
 component: apps/web/src/pages/NoAccess.tsx
 audience: public
 tier: public
+archetype: focused # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 2
 maturity: hollow
@@ -15,6 +17,8 @@ links: ["[[PAGE-CONTRACT]]", "[[invite-landing]]", "[[login]]"]
 
 # /no-access
 
+> **Part of** [[08-softwares/auth-onboarding|Auth & Onboarding]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
+
 ## Surface — buttons → where they go
 
 - **Sign out** → API `POST /api/v1/auth/logout`, session cleared → [[login]] `/login`
@@ -22,6 +26,11 @@ links: ["[[PAGE-CONTRACT]]", "[[invite-landing]]", "[[login]]"]
 
 ## 1. Purpose
 Dead-end card for a signed-in user with no restaurant membership: shows their email, tells them to ask an owner for an invite link, offers Sign out (`NoAccess.tsx:24-31`, calls `logout`) and Back to sign in.
+
+## 1a. Features
+- Shows your signed-in email and explains you need an owner's invite link
+- Sign out; back to sign in
+- 🚧 Nothing actually routes users here today (see §9)
 
 ## 2. Entry
 **Orphaned.** The route exists (`App.tsx:155`) but *nothing navigates to it* — grep for `no-access` across `apps/web/src` finds only the route binding and a comment in `AuthShell.tsx:18`. Neither `ProtectedRoute.tsx` nor `AuthContext.tsx` redirects membership-less users here. [PAGE_MAP](../foundation/PAGE_MAP.md) omits it from the entry-points list (it only records the outbound `n_no_access --> n_login` edge) — a map inconsistency worth knowing about.

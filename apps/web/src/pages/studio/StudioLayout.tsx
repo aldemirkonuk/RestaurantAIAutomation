@@ -30,7 +30,7 @@ export function StudioLayout({ children }: StudioLayoutProps) {
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200 h-14 flex items-center px-6">
         <div className="flex items-center gap-2 mr-8">
           <Wine className="w-5 h-5 text-wine-600" />
-          <span className="font-semibold text-slate-900 text-sm">WineOps Studio</span>
+          <span className="font-semibold text-slate-900 text-sm">Mudavym Studio</span>
         </div>
         <nav className="flex items-center gap-1 flex-1">
           <Link

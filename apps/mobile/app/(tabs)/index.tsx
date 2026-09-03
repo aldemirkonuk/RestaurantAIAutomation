@@ -15,7 +15,7 @@ import { PulseStrip } from "@/components/today/PulseStrip";
 import { DecisionCard } from "@/components/today/DecisionCard";
 import { FeedZero } from "@/components/today/FeedZero";
 import { color, space } from "@/design/tokens";
-import { useFeed } from "@/api/queries";
+import { useFeed, useUnreadCount } from "@/api/queries";
 import { useFeedLocal } from "@/state/feedLocal";
 import { useOutbox } from "@/state/outbox";
 import { useSession } from "@/state/session";
@@ -33,8 +33,27 @@ const sedimentTransition = LinearTransition.springify()
 export default function TodayScreen() {
   const router = useRouter();
   const user = useSession((s) => s.user);
+  const status = useSession((s) => s.status);
   const guidance = useGuidanceOptional();
+
+  /**
+   * A signed-in account with no restaurant has nothing to show here — every
+   * query on this screen is scoped to a restaurant that does not exist, so the
+   * tab loads forever and explains nothing.
+   *
+   * `/no-access` is the screen that explains it. On web the route exists and
+   * *nothing routes to it* (`no-access.md` §9: "Orphaned"); porting that as-is
+   * would have added a second orphan, so mobile gives it the caller web never
+   * had. Ten of the ten production restaurants have owners, but six are
+   * owner-only, so an invited-but-unattached account is a real state.
+   */
+  useEffect(() => {
+    if (status === "signedIn" && user && !user.restaurantId) {
+      router.replace("/no-access");
+    }
+  }, [status, user, router]);
   const { data, isLoading, isError, refetch, isRefetching, dataUpdatedAt } = useFeed();
+  const unread = useUnreadCount().data ?? 0;
   const showActivateBanner =
     !!guidance &&
     guidance.onboarding !== null &&
@@ -109,6 +128,50 @@ export default function TodayScreen() {
           <FreshnessLabel updatedAt={dataUpdatedAt || null} />
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+          <PressableScale
+            onPress={() => router.push("/notifications")}
+            accessibilityLabel={
+              unread > 0 ? `Notifications, ${unread} unread` : "Notifications"
+            }
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 999,
+              backgroundColor: color.fill,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons
+              name={unread > 0 ? "notifications" : "notifications-outline"}
+              size={18}
+              color={unread > 0 ? color.wine : color.inkSecondary}
+            />
+            {unread > 0 ? (
+              <View
+                style={{
+                  position: "absolute",
+                  top: 4,
+                  right: 4,
+                  minWidth: 16,
+                  height: 16,
+                  borderRadius: 8,
+                  paddingHorizontal: 4,
+                  backgroundColor: color.wine,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <AppText
+                  variant="caption"
+                  tone="onWine"
+                  style={{ fontSize: 10, lineHeight: 12 }}
+                >
+                  {unread > 99 ? "99+" : unread}
+                </AppText>
+              </View>
+            ) : null}
+          </PressableScale>
           <PressableScale
             onPress={() => {
               trackGuidance("learn_opened", { mode: "today" });

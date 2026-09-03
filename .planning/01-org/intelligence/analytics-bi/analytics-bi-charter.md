@@ -64,7 +64,7 @@ Three teams, which are three different questions asked of the same number:
 | How the number *renders* — charts, layout, colour, the dashboard itself | [[design-charter]] *(Product)* + [[client-surfaces-charter]] *(Platform)* | Rejected explicitly as an A&BI team (`intelligence.md:506`). We own what it means, not how it looks |
 | Guest taste fingerprints, personalization, NF-B applied | [[guest-experience-charter]] *(Product)* | We consume NF-B **in aggregate**; we do not own the guest (`intelligence.md:490`) |
 | Grading **nondeterministic** model output — golden sets, judges, threshold pass conditions | [[agent-evaluation-gates-charter]] *(RM-2)* | RM-2 grades judgement; [[metric-contract-truth-assurance-charter]] grades arithmetic against a ledger with no judgement involved (`intelligence.md:460-464`) |
-| Closing the 39 unguarded routes on `analytics.controller.ts` | [[security-charter]] + [[platform-api-charter]] | We are the **victim** of OD-20, not its owner. We own escalating it and refusing to demo behind it |
+| ~~Closing the unguarded routes on `analytics.controller.ts`~~ — **closed 2026-08-24** (PR #31; `analytics.controller.ts:51` carries a class-level `@UseGuards(JwtAuthGuard)` over every route handler on the file) | [[security-charter]] + [[platform-api-charter]] | We were the **victim** of OD-20, not its owner. Escalation and the demo refusal are both discharged; the ownership line stays for the next endpoint we are asked to stand behind |
 | Harness choice, retry policy, model routing for the consultant call | [[harness-model-routing-charter|harness-and-model-routing-charter]] *(RM-1)* | `consultants.service.ts:159` is one of RM-1's seven raw-`fetch` callsites. We own the prompt and the evidence pack; RM-1 owns the wire |
 
 ## Metrics it moves
@@ -127,11 +127,11 @@ one a customer sees:
 
 | Says **375** | Says **573** |
 |---|---|
-| `apps/web/src/pages/InsightCatalog.tsx:2` — the explorer page header | `.planning/AGENT_NATIVE_UI_DECISION.md:64,100,105` |
+| `apps/web/src/pages/InsightCatalog.tsx:2` — the explorer page header | `.planning/decisions/AGENT_NATIVE_UI_DECISION.md:64,100,105` |
 | `apps/web/src/components/command/commands.ts:99` — command palette, *"Browse all 375 insight types"* | `.planning/YC_WEDGE_PLAN.md:280,324` |
-| `apps/api-gateway/src/analytics/analytics.controller.ts:219` — the shipped OpenAPI summary | `.planning/UX_PATHS_CATALOG.md:1844` |
-| `.planning/LLM_INSTRUCTION_PROMPTS.md:51,166` | `.planning/foundation/teams/corporate.md:435,448` |
-| `.planning/UX_PATHS_CATALOG.md:1543,1564,1566,1593,1598` | |
+| `apps/api-gateway/src/analytics/analytics.controller.ts:219` — the shipped OpenAPI summary | `.planning/07-reference/UX_PATHS_CATALOG.md:1844` |
+| `.planning/07-reference/LLM_INSTRUCTION_PROMPTS.md:51,166` | `.planning/foundation/teams/corporate.md:435,448` |
+| `.planning/07-reference/UX_PATHS_CATALOG.md:1543,1564,1566,1593,1598` | |
 
 `UX_PATHS_CATALOG.md` contains **both** numbers: `:1564` says 375, `:1844` says 573.
 `LLM_INSTRUCTION_PROMPTS.md:167` introduces a **third**: *"never invent a 348th type."*

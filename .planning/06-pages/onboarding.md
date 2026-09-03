@@ -2,9 +2,11 @@
 type: page
 route: /onboarding
 slug: onboarding
+softwares: [auth-onboarding]
 component: apps/web/src/pages/Onboarding.tsx
 audience: owner
 tier: core
+archetype: focused # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 2
 maturity: partial
@@ -15,6 +17,8 @@ links: ["[[PAGE-CONTRACT]]", "[[get-started]]", "[[dashboard]]"]
 
 # /onboarding
 
+> **Part of** [[08-softwares/auth-onboarding|Auth & Onboarding]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
+
 ## Surface — buttons → where they go
 
 - Auto-redirect (menu not yet uploaded) → [[get-started]] `/get-started`
@@ -23,6 +27,11 @@ links: ["[[PAGE-CONTRACT]]", "[[get-started]]", "[[dashboard]]"]
 
 ## 1. Purpose
 **A tombstone, not a wizard.** The old 9-step onboarding was retired; this page says "Setup has moved — your checklist lives on the dashboard. Connect POS under Settings → Integrations" (`Onboarding.tsx:20-21`) and offers Go to Dashboard / Set up my wine list. Users with no menu uploaded are auto-forwarded to `/get-started` (`Onboarding.tsx:11-16`), so only already-activated users ever see the card.
+
+## 1a. Features
+- A "Setup has moved" card: your checklist lives on the dashboard; POS connects under Settings → Integrations
+- Buttons: Go to Dashboard / Set up my wine list
+- Users with no menu are auto-forwarded to `/get-started` before seeing any of this
 
 ## 2. Entry
 Kept for old links/bookmarks. [PAGE_MAP](../foundation/PAGE_MAP.md) records outbound edges only (`n_onboarding --> n_root`, `--> n_get_started`); no live in-app link navigates here (grep of `apps/web/src`).

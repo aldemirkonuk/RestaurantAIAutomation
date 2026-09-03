@@ -2,8 +2,10 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import {
   GenerateReportDto,
+  ReportCrossFileResponseDto,
   ReportListResponseDto,
   ReportResponseDto,
+  ReportType,
   ScheduleReportDto,
   ScheduledReportResponseDto,
 } from "./dto/reports.dto";
@@ -70,12 +72,40 @@ export class ReportsService {
     return this.mapReportRow(data as GeneratedReportRow);
   }
 
-  async listReports(restaurantId: string): Promise<ReportListResponseDto> {
-    const { data, error, count } = await this.databaseService.supabase
+  /**
+   * The newest `limit` reports, plus the EXACT total.
+   *
+   * This read used to be unbounded, so every caller downloaded the whole
+   * table — the Sorting Office to render twenty rows, the legacy page to
+   * render a list. The bound costs the drawers nothing: `count: "exact"` is a
+   * COUNT over the whole filtered set, not over the returned page, so the
+   * register still prints the real total rather than a page length (which is
+   * the mistake ADR 0051 clause 2 exists to stop). The clamp mirrors the
+   * documents controller's, so the two list endpoints bound the same way.
+   */
+  async listReports(
+    restaurantId: string,
+    opts: { limit?: number; offset?: number } = {},
+  ): Promise<ReportListResponseDto> {
+    // Literal bounds, matching documents.controller.ts:117 exactly. They are
+    // literals rather than named constants because the web client's
+    // SO_SERVER_WINDOWS register cites this file by line and
+    // scripts/check_windowed_figures.py re-reads the number here on every CI
+    // run — a cap hidden behind an identifier is a cap that guard cannot see.
+    const limit = Math.min(200, Math.max(1, Math.trunc(opts.limit ?? 100) || 100));
+    const offset = Math.max(0, Math.trunc(opts.offset ?? 0) || 0);
+
+    let query = this.databaseService.supabase
       .from("generated_reports")
       .select("*", { count: "exact" })
       .eq("restaurant_id", restaurantId)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    // `range` carries the offset — and restates the identical limit — so it is
+    // only issued when a caller actually asks for a page past the first.
+    if (offset > 0) query = query.range(offset, offset + limit - 1);
+
+    const { data, error, count } = await query;
 
     if (error) {
       this.logger.error("Failed to list reports", {
@@ -142,6 +172,137 @@ export class ReportsService {
       });
       throw error;
     }
+  }
+
+  /**
+   * "File to…" (Sorting Office). Re-files a report under a different type —
+   * the human override for the sorter's rules. Scoped like deleteReport, and
+   * the change writes a `system_audit_log` row, which the /logs timeline
+   * (and the page's own System-log drawer) reads: the re-file files itself.
+   * A failed audit write is logged loudly but does not undo the re-file.
+   */
+  async refileReport(
+    restaurantId: string,
+    reportId: string,
+    reportType: ReportType,
+    actorId: string | null,
+  ): Promise<ReportResponseDto> {
+    const existing = await this.getReport(restaurantId, reportId);
+
+    const { data, error } = await this.databaseService.supabase
+      .from("generated_reports")
+      .update({ report_type: reportType })
+      .eq("restaurant_id", restaurantId)
+      .eq("id", reportId)
+      .select("*")
+      .single();
+
+    if (error) {
+      this.logger.error("Failed to refile report", {
+        restaurantId,
+        reportId,
+        error: error.message,
+      });
+      throw error;
+    }
+
+    const { error: auditError } = await this.databaseService.supabase
+      .from("system_audit_log")
+      .insert({
+        actor_type: "user",
+        actor_id: actorId,
+        action: "report_refiled",
+        entity_type: "generated_report",
+        entity_id: reportId,
+        changes: {
+          report_type: { from: existing.reportType, to: reportType },
+        },
+        restaurant_id: restaurantId,
+      });
+    if (auditError) {
+      this.logger.error("Report refiled but the audit row failed to write", {
+        restaurantId,
+        reportId,
+        error: auditError.message,
+      });
+    }
+
+    return this.mapReportRow(data as GeneratedReportRow);
+  }
+
+  /**
+   * "Cross-filed under" (Sorting Office). The other registers holding entries
+   * from this report's period: vendor paper (procurement_documents by
+   * doc_date) and conversation threads (the production
+   * `list_conversation_threads` RPC's window total, date-bounded). A report
+   * with no period cross-files to nothing, and says so with nulls — the
+   * counts are computed or absent, never invented.
+   */
+  async getReportCrossFile(
+    restaurantId: string,
+    reportId: string,
+  ): Promise<ReportCrossFileResponseDto> {
+    const report = await this.getReport(restaurantId, reportId);
+    if (!report.periodStart || !report.periodEnd) {
+      return { periodStart: null, periodEnd: null, paper: null, conversations: null };
+    }
+
+    const [paperRes, threadsRes] = await Promise.all([
+      this.databaseService.supabase
+        .from("procurement_documents")
+        .select("doc_number", { count: "exact" })
+        .eq("restaurant_id", restaurantId)
+        .gte("doc_date", report.periodStart)
+        .lte("doc_date", report.periodEnd)
+        .order("doc_date", { ascending: false })
+        .limit(1),
+      this.databaseService.supabase.rpc("list_conversation_threads", {
+        p_restaurant_id: restaurantId,
+        p_date_from: report.periodStart,
+        // The RPC's bound is timestamptz: a bare date casts to MIDNIGHT of
+        // the last day, silently excluding nearly all of it — while the paper
+        // query's `date` column includes it. Same reason resolveDateWindow's
+        // widen() extends "to" bounds (conversations.service.ts).
+        p_date_to: /^\d{4}-\d{2}-\d{2}$/.test(report.periodEnd)
+          ? `${report.periodEnd}T23:59:59.999`
+          : report.periodEnd,
+        p_limit: 1,
+        p_offset: 0,
+      }),
+    ]);
+
+    if (paperRes.error) {
+      this.logger.error("Cross-file paper count failed", {
+        restaurantId,
+        reportId,
+        error: paperRes.error.message,
+      });
+      throw paperRes.error;
+    }
+    if (threadsRes.error) {
+      this.logger.error("Cross-file thread count failed", {
+        restaurantId,
+        reportId,
+        error: threadsRes.error.message,
+      });
+      throw threadsRes.error;
+    }
+
+    const paperRows = (paperRes.data ?? []) as Array<{ doc_number: string | null }>;
+    const threadRows = (threadsRes.data ?? []) as Array<{ total_threads: number | string }>;
+
+    return {
+      periodStart: report.periodStart,
+      periodEnd: report.periodEnd,
+      paper: {
+        count: paperRes.count ?? 0,
+        sample: paperRows[0]?.doc_number ?? null,
+      },
+      conversations: {
+        // bigint over the wire — may arrive as a string; zero rows = zero threads
+        count: Number(threadRows[0]?.total_threads ?? 0),
+      },
+    };
   }
 
   async scheduleReport(

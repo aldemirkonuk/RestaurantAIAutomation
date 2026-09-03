@@ -2,9 +2,11 @@
 type: page
 route: /simpos/:restaurantId/orders
 slug: simpos-order-log
+softwares: [simpos]
 component: apps/web/src/pages/simpos/SimposOrderLogPage.tsx
 audience: dev
 tier: public
+archetype: dev # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
 maturity: partial
@@ -15,12 +17,18 @@ links: ["[[PAGE-CONTRACT]]", "[[simpos-terminal]]", "[[logs]]"]
 
 # /simpos/:restaurantId/orders
 
+> **Part of** [[08-softwares/simpos|SimPOS]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
+
 ## Surface — buttons → where they go
 
 - **Back to terminal** → [[simpos-terminal]] `/simpos/:restaurantId`
 
 ## 1. Purpose
 Full-page debug log over SimPOS's *own* checks — explicitly distinct from the WineOps `/logs` correlated timeline (`SimposOrderLogPage.tsx:1-4`). Per closed check: line items with void/comp status, loss total, and crucially the **webhook delivery status + error** (`:100-118`) — the page you look at to see whether a closed check actually reached PosHub.
+
+## 1a. Features *(dev fixture companion)*
+- Per closed check: line items with void/comp status and loss total
+- Webhook delivery status + error per check — did the closed check actually reach PosHub?
 
 ## 2. Entry
 "Check logs in full page" button on the terminal header (`SimposTerminalPage.tsx:202-208`); otherwise cold URL ([PAGE_MAP](../foundation/PAGE_MAP.md) entry-points list). `ProtectedRoute`, chrome-free (`App.tsx:222-229`) — and **only reachable under `vite dev`**; a production build redirects to `/` (`App.tsx:226`, see §8).

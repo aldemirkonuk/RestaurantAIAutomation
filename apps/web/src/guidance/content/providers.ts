@@ -31,7 +31,7 @@ export const providersTour: TourDefinition = {
       element: '[data-tour="providers-add"]',
       title: 'Add a vendor',
       description:
-        'Browse the catalogue or add a custom supplier so WineOps can source and message for you.',
+        'Browse the catalogue or add a custom supplier so Mudavym can source and message for you.',
     },
   ],
 }

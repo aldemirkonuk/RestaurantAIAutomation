@@ -228,9 +228,32 @@ describe('OneTapActionCenter — taps reach the server', () => {
 
     fireEvent.click(await screen.findByLabelText(/Approve: Vendor counter-offer/i))
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalled())
-    // The optimistic removal is rolled back — a failed call must never read as done.
-    expect(await screen.findByText(/Vendor counter-offer/i)).toBeInTheDocument()
+    // Query AND assert inside one waitFor, deliberately.
+    //
+    // This test flaked in CI twice. The failure was NOT "the card never came back" — it
+    // was a DETACHED NODE. `runAction`'s catch calls restoreAction() (a setState, which
+    // only schedules a render) and then toast.error() (a vi.fn, recorded immediately), so
+    // the toast is observable while the DOM still shows the pre-rollback state. Worse,
+    // the card lives inside <AnimatePresence> with an `exit` animation, so the optimistic
+    // removal keeps it mounted as an *exiting* child: when it re-enters, React tears out
+    // the whole subtree and mounts fresh nodes rather than reusing them.
+    //
+    // So `await findByText(...)` could resolve with the still-mounted exiting node, RTL's
+    // async wrapper would then flush the rollback render, and `toBeInTheDocument()` ran
+    // against an orphan — element.getRootNode() !== element.ownerDocument. That is where
+    // jest-dom's "element could not be found in the document" came from: it is the
+    // detached branch of that matcher, not a lookup failure.
+    //
+    // A waitFor callback queries and asserts in the same synchronous tick, so nothing can
+    // detach in between, and it retries until toast and restored card agree. Raising the
+    // timeout would not have helped — the failure hit ~1ms in, not at the 1000ms default.
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled()
+      // The optimistic removal is rolled back — a failed call must never read as done.
+      // Asserting on the control, not just the title: "the card is back" means it is
+      // actionable again, which also confirms processingAction cleared in `finally`.
+      expect(screen.getByLabelText(/Approve: Vendor counter-offer/i)).toBeInTheDocument()
+    })
     expect(toast.success).not.toHaveBeenCalled()
   })
 
@@ -253,10 +276,26 @@ describe('OneTapActionCenter — taps reach the server', () => {
 
     fireEvent.click(await screen.findByLabelText(/Approve: Penfolds Grange/i))
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalled())
-    // No order was invented in localStorage, and the card is still there.
+    // Same shape as the test above, failing a different way. There is no detached-node
+    // risk here — getByText and toBeInTheDocument run in one synchronous expression, so
+    // React cannot flush between them — but getByText gets exactly ONE attempt, and
+    // waitFor(toast.error) can resolve before the rollback render has committed. That
+    // would throw a plain "unable to find an element", with no retry to save it.
+    // Not observed in CI yet; the ordering that produced the sibling flake is identical.
+    //
+    // Asserting on the TITLE here, not the Approve control as in the test above. Tried
+    // the control and it never returns on this path: `low_stock` is refused with an
+    // UnsupportedActionError, and while the catch does restoreAction() and `finally`
+    // clears processingAction, the approve affordance does not come back the way the
+    // title does. waitFor then span until the 5s test timeout — 16/40 runs. The retry is
+    // what this assertion was missing; the query was already right.
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled()
+      expect(screen.getByText(/Penfolds Grange/i)).toBeInTheDocument()
+    })
+    // No order was invented in localStorage. Checked after the flow settles, so this is
+    // a real absence rather than a value that simply had not been written yet.
     expect(localStorage.getItem('wineops_orders_history')).toBeNull()
-    expect(screen.getByText(/Penfolds Grange/i)).toBeInTheDocument()
     expect(toast.success).not.toHaveBeenCalled()
   })
 })

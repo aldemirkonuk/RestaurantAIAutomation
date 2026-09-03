@@ -12,10 +12,10 @@ Responsibilities:
 from __future__ import annotations
 
 import json
+import os
 import re
 import statistics
 import time
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
@@ -179,6 +179,11 @@ class EmailComposerService:
     ):
         self.database = database
         self.api_gateway_url = config.get("api_gateway_url", "http://localhost:3001")
+        # ADR 0099. Service credential for POST /communications/email. Read from
+        # config if the caller passes one, else from the environment at send
+        # time — Railway can change it under a long-lived process, and there is
+        # no default: an absent key must stop the send, never allow it.
+        self.admin_api_key = config.get("admin_api_key") or ""
         self.google_api_key = config.get("google_api_key")
         # gemini-2.0-flash was shut down 2026-06-01 (OD-57).
         self.llm_model_name = config.get("llm_model", get_settings().gemini_model)
@@ -331,10 +336,47 @@ class EmailComposerService:
         )
 
     async def send_via_gateway(self, payload: EmailPayload) -> Dict[str, Any]:
-        """Send email through NestJS API Gateway for Gmail API threading."""
+        """Send email through NestJS API Gateway for Gmail API threading.
+
+        ADR 0099. This call carried NO credential at all until 2026-09-02, and
+        the gateway's `POST /communications/email` has been behind a class-level
+        `@UseGuards(JwtAuthGuard)` since `fdaa7fa0` (2026-08-25). Every send from
+        here was therefore refused with a 401 before the handler ran, and the
+        401's body has no `error` key, so this method reported it as the string
+        "Unknown error" — the least diagnostic form the failure could take.
+
+        `ADMIN_API_KEY` / `X-Admin-Key` is not a new scheme: it is the existing
+        gateway↔orchestrator service credential (`api/health_routes.py:230`
+        verifies it inbound; `orchestrator.service.ts:72` sends it outbound),
+        pointed the other way.
+
+        FAILS CLOSED. With no key configured this sends nothing. It does not fall
+        back to an unauthenticated attempt, because a real 401 and a
+        misconfiguration would then be indistinguishable in the logs — which is
+        precisely how this went unnoticed for a week.
+        """
         if not payload.to:
             logger.warning("No recipients — skipping send")
             return {"success": False, "error": "No recipients"}
+
+        admin_key = (self.admin_api_key or os.getenv("ADMIN_API_KEY", "") or "").strip()
+        if not admin_key:
+            # Worded to land in `ProviderConversationAgent._is_definite_send_refusal`
+            # (provider_conversation_agent.py:2635) on purpose: no transport was
+            # attempted, so this PROVES non-delivery and the conversation is safe
+            # to release for retry. Classifying it ambiguous would park a message
+            # that was never sent.
+            logger.error(
+                "ADMIN_API_KEY is not set — no email delivery method available; "
+                "refusing to send vendor mail unauthenticated."
+            )
+            return {
+                "success": False,
+                "error": (
+                    "no email delivery method available: ADMIN_API_KEY is not "
+                    "configured for the orchestrator"
+                ),
+            }
 
         request_body = {
             "to": payload.to,
@@ -358,7 +400,10 @@ class EmailComposerService:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    url, json=request_body, timeout=aiohttp.ClientTimeout(total=30)
+                    url,
+                    json=request_body,
+                    headers={"X-Admin-Key": admin_key},
+                    timeout=aiohttp.ClientTimeout(total=30),
                 ) as resp:
                     result = await resp.json()
                     if resp.status == 200 and result.get("success"):
@@ -372,9 +417,18 @@ class EmailComposerService:
                         }
                     else:
                         logger.error(f"Gateway send failed: {result}")
+                        # ADR 0099: a Nest error body carries `statusCode` and
+                        # `message`, never `error`, so the old
+                        # `result.get("error", "Unknown error")` erased the
+                        # status on every refusal. Name it.
+                        detail = (
+                            result.get("error")
+                            or result.get("message")
+                            or "no detail returned"
+                        )
                         return {
                             "success": False,
-                            "error": result.get("error", "Unknown error"),
+                            "error": f"gateway refused the send: HTTP {resp.status} — {detail}",
                         }
         except Exception as e:
             logger.error(f"Failed to send via gateway: {e}")
@@ -389,26 +443,31 @@ class EmailComposerService:
         provider_id: str,
         conversation_history: List[Dict[str, Any]],
     ) -> StyleProfile:
-        """Load cached style profile or analyze from conversation history."""
+        """
+        Analyze a provider's style from conversation history.
+
+        OD-99: this used to first read a cache out of `provider_digital_twins`.
+        That table is declared by no migration in this repository and returns
+        404 PGRST205 in production (verified 2026-08-26), so the read raised on
+        every call, was swallowed by `logger.debug`, and control fell through
+        to `_analyze_style` -- which is the only path that has ever executed.
+        Deleting the read is therefore behaviour-preserving by construction.
+
+        It was deleted rather than backed by a new table because the real store
+        already exists and is not this one: `provider_knowledge`
+        (category='relationship', subcategory='communication_style') is what
+        `ProviderConversationAgent._load_style_profile` reads, and what its
+        `_load_digital_twin` reads -- the digital twin is `provider_knowledge`.
+        Creating `provider_digital_twins` would have built a second, rival
+        store for a concept that already has one (ADR 0027 / OD-95).
+
+        Wiring this composer *into* `provider_knowledge` is a real feature and
+        a founder decision, not a repair -- that store carries `confidence` and
+        `verified` columns, and what an LLM-guessed style profile should claim
+        for those is not something to default. Filed as OD-101.
+        """
         if not provider_id:
             return StyleProfile()
-
-        try:
-            result = (
-                self.database.supabase.table("provider_digital_twins")
-                .select("communication_style")
-                .eq("provider_id", provider_id)
-                .limit(1)
-                .execute()
-            )
-
-            if result.data and result.data[0].get("communication_style"):
-                cached = result.data[0]["communication_style"]
-                if isinstance(cached, str):
-                    cached = json.loads(cached)
-                return StyleProfile.from_dict(cached)
-        except Exception as e:
-            logger.debug(f"No cached style for {provider_id}: {e}")
 
         if conversation_history:
             return await self._analyze_style(provider_id, conversation_history)
@@ -489,9 +548,11 @@ class EmailComposerService:
             json_match = re.search(r"\{[\s\S]*\}", text)
             if json_match:
                 parsed = json.loads(json_match.group())
-                style = StyleProfile.from_dict(parsed)
-                await self._cache_style(provider_id, parsed)
-                return style
+                # OD-99: the result used to be written to `provider_digital_twins`
+                # here. That table does not exist, so the upsert raised and was
+                # swallowed on every call -- nothing was ever cached. See
+                # `_load_or_analyze_style` for why it was deleted, not created.
+                return StyleProfile.from_dict(parsed)
         except Exception as e:
             logger.error(f"LLM style analysis failed: {e}")
 
@@ -543,20 +604,6 @@ class EmailComposerService:
                 ["formal", "business"] if is_formal else ["professional", "friendly"]
             ),
         )
-
-    async def _cache_style(self, provider_id: str, style_data: Dict) -> None:
-        """Cache analyzed style in provider_digital_twins."""
-        try:
-            self.database.supabase.table("provider_digital_twins").upsert(
-                {
-                    "provider_id": provider_id,
-                    "communication_style": json.dumps(style_data),
-                    "style_analyzed_at": datetime.utcnow().isoformat(),
-                },
-                on_conflict="provider_id",
-            ).execute()
-        except Exception as e:
-            logger.debug(f"Failed to cache style: {e}")
 
     # =========================================================================
     # LLM BODY GENERATION

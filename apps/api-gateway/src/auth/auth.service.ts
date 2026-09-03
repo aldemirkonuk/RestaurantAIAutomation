@@ -18,6 +18,7 @@ import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
 import { InviteDto } from "./dto/invite.dto";
 import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
+import { devBypassEnvEnabled } from "./dev-bypass.util";
 import {
   IDENTITY_PROVIDERS,
   IdentityProviderDescriptor,
@@ -73,6 +74,15 @@ export interface JwtPayload {
    * column; this is a snapshot from issue time.
    */
   emailVerified?: boolean;
+  /**
+   * Present ONLY on a token minted by `devBypassLogin`, and never signed as
+   * `false` — a normal session omits the key entirely, so "absent" and "not a
+   * dev session" are the same fact rather than two states a reader could
+   * confuse. It is a marker, not a permission: every reader re-checks
+   * `devBypassEnvEnabled()` at read time, so the claim does nothing on a
+   * production server even though the signature is valid there.
+   */
+  devBypass?: boolean;
   iat?: number;
   exp?: number;
 }
@@ -274,7 +284,13 @@ export class AuthService {
     this.logger.warn(
       `DEV_AUTH_BYPASS active — issuing a real session for ${email} (localhost only).`,
     );
-    return this.generateTokens(user);
+    // `true` here signs `emailVerified: true` and a `devBypass: true` marker.
+    // Without it the session is unusable for its one purpose: the bypass
+    // account's `users.email_verified` is false, and ProtectedRoute
+    // (apps/web/src/components/ProtectedRoute.tsx:42) sends every route to
+    // /verify-email on that. Changing the row instead would edit real data to
+    // work around a dev tool, and would follow the account into production.
+    return this.generateTokens(user, true);
   }
 
   /**
@@ -382,10 +398,26 @@ export class AuthService {
       // reverts the tenant to the default restaurant, causing 500s on resources
       // that belong to the switched-to restaurant.
       const scopedRestaurantId = payload.restaurantId ?? user.restaurant_id;
-      return this.generateTokens({
-        ...user,
-        restaurant_id: scopedRestaurantId,
-      });
+
+      // Carry the dev-bypass marker across the refresh. Without this the
+      // override silently lapsed after 15 minutes: the new payload is rebuilt
+      // from the row, the row says false, and the founder was bounced to
+      // /verify-email mid-session with no event to point at. A lapse on a
+      // timer is the worst shape of this bug — it looks like the fix never
+      // worked rather than like it expired.
+      //
+      // Both gates are re-checked HERE, at refresh time, not inherited: a
+      // marked refresh token presented to a production server mints an
+      // ordinary session, exactly as if the marker were absent.
+      const devBypass = payload.devBypass === true && devBypassEnvEnabled();
+
+      return this.generateTokens(
+        {
+          ...user,
+          restaurant_id: scopedRestaurantId,
+        },
+        devBypass,
+      );
     } catch (error) {
       throw new UnauthorizedException("Invalid refresh token");
     }
@@ -487,7 +519,10 @@ export class AuthService {
    * Studio roles are fetched from user_roles table and embedded in app_metadata.roles
    * so FastAPI require_studio_role() can authorize studio API calls without a DB round-trip.
    */
-  private async generateTokens(user: any): Promise<TokenPair> {
+  private async generateTokens(
+    user: any,
+    devBypass = false,
+  ): Promise<TokenPair> {
     // Fetch active studio roles for this user
     let studioRoles: string[] = [];
     try {
@@ -522,7 +557,14 @@ export class AuthService {
       email: user.email,
       role: restaurantRole,
       restaurantId: user.restaurant_id,
-      emailVerified: user.email_verified ?? false,
+      // `devBypass` is only ever true on the one call from `devBypassLogin`,
+      // which has already re-checked the env gate itself. The database row is
+      // untouched; this is a claim about the SESSION, not about the account.
+      emailVerified: devBypass ? true : (user.email_verified ?? false),
+      // Spread, not `devBypass: devBypass` — a normal token must not carry the
+      // key at all. A signed `false` would be a second way to say "not a dev
+      // session", and readers would have to handle both.
+      ...(devBypass ? { devBypass: true } : {}),
       app_metadata: { roles: studioRoles },
     };
 
@@ -736,7 +778,11 @@ export class AuthService {
         });
 
       // Both emails are fire-and-forget — Gmail latency must never delay the registration response
-      this.queueEmailVerification(userId, dto.email).catch((err) =>
+      // `userId` is declared `string | null` for the rollback path above; by
+      // here it has been assigned from the created row and the throw on
+      // failure means it cannot be null. Asserting that rather than widening
+      // the callee, which would let a genuinely-null id through elsewhere.
+      this.queueEmailVerification(userId as string, dto.email).catch((err) =>
         this.logger.warn(
           `queueEmailVerification failed (non-fatal): ${err.message}`,
         ),
@@ -933,10 +979,20 @@ export class AuthService {
     let code: string;
     let attempts = 0;
     do {
-      const bytes = crypto.randomBytes(8);
-      code = Array.from(bytes)
-        .map((b) => CHARSET[(b as number) % CHARSET.length])
-        .join("");
+      // crypto.randomInt, not randomBytes(...) % CHARSET.length.
+      //
+      // The modulo version is unbiased *only* because CHARSET happens to be
+      // 32 characters and 256 divides evenly by 32. That is a property of the
+      // string literal above, not of the code: drop one ambiguous character
+      // from CHARSET — exactly the edit this "no confusable letters" alphabet
+      // invites — and the first 256 % len values become more likely than the
+      // rest, making organisation invite codes measurably easier to guess.
+      // randomInt does rejection sampling internally, so uniformity no longer
+      // depends on the alphabet length.
+      code = Array.from(
+        { length: 8 },
+        () => CHARSET[crypto.randomInt(CHARSET.length)],
+      ).join("");
       const { data: existing } = await this.databaseService.supabase
         .from("organization_invites")
         .select("id")
@@ -1409,6 +1465,17 @@ export class AuthService {
 
   /**
    * Resend verification email — rate-limited to 1 per minute via resend_count.
+   *
+   * A missing `email_verifications` row means "never issued", not "not
+   * allowed". This used to throw `No pending verification found`, which made
+   * the endpoint refuse exactly the accounts that most needed it: anyone whose
+   * row was never created, was pruned, or predates the verification flow.
+   *
+   * That became a lockout the moment enforcement went live (ADR 0023). The
+   * gate bounces an unverified user to `/verify-email`, whose only control is
+   * this endpoint — so for an account with no row, every door was shut at
+   * once. Measured on production 2026-08-26: of three unverified accounts, two
+   * had no row and could not have got back in.
    */
   async resendVerification(
     userId: string,
@@ -1423,7 +1490,33 @@ export class AuthService {
       .limit(1)
       .maybeSingle();
 
-    if (!verif) throw new BadRequestException("No pending verification found");
+    if (!verif) {
+      // No pending row. Before minting one, check the most recent row of ANY
+      // status — otherwise "no pending row" would be an unlimited send button
+      // for an already-verified account, which is the cooldown's whole point.
+      const { data: recent } = await this.databaseService.supabase
+        .from("email_verifications")
+        .select("created_at, last_resent_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (recent) {
+        const lastActivity = new Date(
+          recent.last_resent_at ?? recent.created_at,
+        ).getTime();
+        if ((Date.now() - lastActivity) / 1000 < 60) {
+          throw new BadRequestException(
+            "Please wait 1 minute before resending",
+          );
+        }
+      }
+
+      // queueEmailVerification inserts the row and sends in one step.
+      await this.queueEmailVerification(userId, email);
+      return { sent: true };
+    }
 
     if (verif.last_resent_at) {
       const secondsSinceLast =
@@ -1446,9 +1539,22 @@ export class AuthService {
   }
 
   /**
-   * Find or create OAuth user.
-   * If the user doesn't exist, create them and assign to the default restaurant
-   * (or leave restaurant_id null for an onboarding flow).
+   * Find the account an OAuth identity belongs to. Never creates one.
+   *
+   * This used to self-provision: an unknown address that passed Google's token
+   * check was INSERTed as `role: "manager"` into `DEFAULT_RESTAURANT_ID`. That
+   * variable is set in production, `POST /auth/oauth/google` is unauthenticated,
+   * and `verifyGoogleToken` only checks the audience and `email_verified` — no
+   * domain restriction. So anyone on the internet holding any Google account
+   * could mint themselves a manager of a real tenant by signing in. Verified
+   * against production 2026-09-01 (the default id resolved to a live restaurant
+   * carrying real inventory); no account had come in that way yet.
+   *
+   * The auto-create is removed outright rather than re-gated on the env var:
+   * an unset variable was the only thing standing between the public internet
+   * and a manager role, and a stray value in a future environment must not be
+   * able to reopen it. Registration is where a restaurant gets created or an
+   * invite redeemed — OAuth sign-in only ever resolves an EXISTING account.
    */
   async findOrCreateOAuthUser(params: {
     provider: "google" | "microsoft";
@@ -1456,54 +1562,27 @@ export class AuthService {
     email: string;
     name: string;
   }) {
-    const { provider, providerId, email, name } = params;
+    const { provider, email } = params;
 
-    let { data: user } = await this.databaseService.supabase
+    // Normalised like every other lookup (checkEmailExists, resolveSignInMethods).
+    // `users.email` is UNIQUE and case-sensitive, so a mixed-case stored address
+    // against Google's lower-cased claim used to miss and fall through to the
+    // create branch — the same defect wearing a different hat.
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const { data: user } = await this.databaseService.supabase
       .from("users")
       .select("*")
-      .eq("email", email)
+      .eq("email", normalizedEmail)
       .single();
 
     if (!user) {
-      const defaultRestaurantId = this.configService.get<string>(
-        "DEFAULT_RESTAURANT_ID",
+      this.logger.warn(
+        `Rejected ${provider} sign-in for unknown email; no account exists`,
       );
-
-      // Without a restaurant to join, signing up here would mint an account
-      // that can authenticate but belongs to no tenant — it lands on /no-access
-      // with no way forward, and quietly consumes the email address so the
-      // proper registration flow later reports it as taken. Registration is
-      // where a restaurant gets created or an invite gets redeemed.
-      if (!defaultRestaurantId) {
-        this.logger.warn(
-          `Rejected ${provider} sign-in for unknown email; no account exists`,
-        );
-        throw new UnauthorizedException(
-          "No WineOps account uses that address. Create an account or use your invite code first.",
-        );
-      }
-
-      const insertData: Record<string, any> = {
-        email,
-        name,
-        oauth_provider: provider,
-        oauth_id: providerId,
-        role: "manager",
-        restaurant_id: defaultRestaurantId,
-      };
-
-      const { data: newUser, error } = await this.databaseService.supabase
-        .from("users")
-        .insert(insertData)
-        .select()
-        .single();
-
-      if (error || !newUser) {
-        this.logger.error(`OAuth registration failed: ${error?.message}`);
-        throw new UnauthorizedException("OAuth registration failed");
-      }
-
-      user = newUser;
+      throw new UnauthorizedException(
+        "No WineOps account uses that address. Create an account or use your invite code first.",
+      );
     }
 
     return user;

@@ -172,7 +172,7 @@ export function NotificationsSection() {
         <Bell className="w-4 h-4 text-wine-500" />
         <div>
           <h2 className="text-sm font-semibold text-gray-900">Notifications</h2>
-          <p className="text-xs text-gray-400 mt-0.5">How and when WineOps alerts you</p>
+          <p className="text-xs text-gray-400 mt-0.5">How and when Mudavym alerts you</p>
         </div>
       </div>
 

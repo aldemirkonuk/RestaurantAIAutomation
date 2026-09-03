@@ -5,7 +5,8 @@
 > [archive/STATE-pre-P2-20260825.md](archive/STATE-pre-P2-20260825.md).
 > If this file and any other doc disagree about what is current, fix the other doc.
 
-**Current milestone: P2 — Web complete + deploy.**
+**Current milestone: P3 — Grade, then scale** ([ADR 0029](decisions/0029-p3-plan-of-record.md)).
+**P2 closed 2026-08-26** — all five stages deployed and verified, both held items resolved.
 **Read order:** [PROJECT.md](PROJECT.md) → [decisions/README.md](decisions/README.md) → this file → [ROADMAP.md](ROADMAP.md).
 
 ## What is live in production (2026-08-25)
@@ -51,7 +52,7 @@
   each with a Surface section (buttons → destination wikilinks) forming the
   Obsidian page graph.
 
-## P2 position
+## P2 position — closed 2026-08-26
 
 | Stage | Status |
 |---|---|
@@ -93,13 +94,66 @@
    Details: [ADR 0019](decisions/0019-p2-build-scope.md) §B-parity.
    The old note that `/inventory-legacy` hosted `InvoiceScannerModal` was **stale**
    — that component was deleted in `e5402d67` and 44.1e is already closed.
-2. **Gmail push verification** is built but staged open. Set
-   `GMAIL_PUBSUB_AUDIENCE` + `GMAIL_PUBSUB_SERVICE_ACCOUNT` on Railway (values
-   come from the Pub/Sub subscription — nobody can invent them), then
-   `GMAIL_PUBSUB_REQUIRE_AUTH=true`. Until then the gateway logs an error per
-   unverified push and counts them.
+2. 🔴 **Gmail push verification now FAILS CLOSED** (ADR 0094, 2026-09-02) — it
+   was staged *open* until then, admitting every push while unconfigured
+   despite four places in the repo claiming it failed closed. **Set
+   `GMAIL_PUBSUB_AUDIENCE` + `GMAIL_PUBSUB_SERVICE_ACCOUNT` on Railway**
+   (values come from the Pub/Sub push subscription — nobody can invent them).
+   Until both are set every push is refused and inbound vendor email does not
+   arrive; the gateway logs a refusal per push and counts them
+   (`GmailPushAuthService.refusedWhileUnconfigured`). `GMAIL_PUBSUB_REQUIRE_AUTH`
+   is deleted — it no longer exists and setting it does nothing.
+   **Most likely a no-op in production:** OD-78 records an unsigned push probed
+   twice on 2026-08-26 returning **401**, which under the old code means either
+   the pair was set (verification already live) or the retired flag was already
+   refusing everything. Either way this change does not break a working inbox.
+   A non-zero `refusedWhileUnconfigured` is how to tell, without Railway access.
 
-**Next action:** P3 selection (ROADMAP candidates), or the two held items above.
+## P3 position
+
+| Stage | Gate | Status |
+|---|---|---|
+| **P3.0 Doneability coverage** | *is* the gate | ✅ **shipped 2026-08-27** — 7/7 gateway task types graded, Python restamped, CI guard blocks a regression. One migration awaiting production (below) |
+| **P3.A Mobile parity** | none — runs alongside | not started |
+| **P3.B Backend-kitchen expansion** (beverages first) | none — runs alongside | not started |
+| **P3.C Ask AI** | behind P3.0 | blocked by design |
+| **P3.D Job → model registry** (OD-04) | behind P3.0 + traffic | blocked by design |
+| **NF-B guests** | — | **held** — blocked on OD-05/OD-07, not on work |
+
+**The one number this milestone existed to fix — closed 2026-08-27.** It was:
+the gateway emits **7** task types and **1** carries a real verdict. It is now
+**7 of 7**, and across both runtimes **26 of 38** task types carry a basis better
+than `call_level_v0`, with the remaining **12** named in a shrink-only exemption
+list that states why each cannot be graded (genuine human rubric, or a deferred
+join that does not exist yet). `scripts/check_task_types_are_graded.py` blocks a
+regression in CI, and fails on a *redundant* exemption too — claiming something
+cannot be graded when it can is the same rot pointing the other way.
+
+**Not done until applied:** `20260827100000_photo_count_suggestions.sql` is
+committed and **not yet applied to production**. `schema-parity.yml`'s production
+arm is red until it is, and that is the guard working as designed — an unapplied
+migration is the phantom-table class this repo found five times in one day.
+
+**Next action:** apply the photo-count migration, then **P3.C (Ask AI)** and
+**P3.D (model registry)** are unblocked — the gate they sat behind is closed.
+P3.A (mobile) and P3.B (beverages) were never gated and remain startable.
+
+**Ecosystem scenario harness (ADR 0093, 2026-09-02, branch `feat/ecosystem-scenario-sim`):**
+the product learns its operating hours (`restaurants.operating_hours` + Settings editor),
+`scripts/simulate scenario` replays a random restaurant day inside them, and
+`/simpos/:id/scenarios` verifies the run against its own expectation across twenty checks
+(pass / fail / unverifiable). Found by reading before any run: sim tenants were phantom
+stock (seed wrote `stock_live`, no lots), a POS void reused the sale's idempotency key and
+never returned stock, and the low-stock email outcome was unrecorded — all three fixed with
+pre-fix failure proofs. **PR #280 merged 2026-09-03; the live day ran three times the same night** and the
+clean run (`937a23f0`) verifies **17 pass · 0 fail · 3 unverifiable** — after fixing six
+more defects the harness surfaced (the POS consumption mirror had written zero rows since
+2026-08-24; the sim seed could not insert its wines; personas could not sign in or reach
+their tenant; two harness faults). Details in ADR 0093, "The live day, on the record".
+
+**Page layer:** 48 route notes in `06-pages/`, each carrying Surface + §1a
+Features + the §10–13 dossier + `archetype:` — both the graph and the
+founder-readable layer are CI-claimed (ADR-0018 claims in `CLAIMS.jsonl`).
 
 ## Standing constraints
 
@@ -109,4 +163,4 @@
 - Real data, never mock-only; docs bulletproof before features (ADR 0018).
 
 ---
-*Last updated: 2026-08-25 — P2 complete through deploy; two items held for the founder.*
+*Last updated: 2026-08-27 — P3.0 shipped: every task type graded or knowingly exempt, guarded in CI.*

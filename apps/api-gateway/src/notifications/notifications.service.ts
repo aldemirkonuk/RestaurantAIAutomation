@@ -603,7 +603,12 @@ export class NotificationsService {
    * Best-effort: never throws, so a persistence hiccup can't break the caller's
    * primary action (placing an order, sending an email, recording a pour).
    *
-   * @returns number of inbox rows inserted.
+   * @returns the number of inbox rows inserted AND their ids. The ids exist
+   *   so a caller that goes on to attempt a DELIVERY (an email, a push) can
+   *   write the outcome back onto the rows it just created — ADR 0093 D5. A
+   *   send that failed and a send that never happened used to be
+   *   indistinguishable from the row, which is the standing fault of this
+   *   codebase wearing another hat.
    */
   async persistForRestaurant(
     restaurantId: string,
@@ -617,12 +622,28 @@ export class NotificationsService {
       metadata?: Record<string, any>;
       groupKey?: string;
     },
-    opts: { broadcast?: boolean; dedupeWithinMinutes?: number } = {},
-  ): Promise<{ inserted: number }> {
+    opts: {
+      broadcast?: boolean;
+      dedupeWithinMinutes?: number;
+      /**
+       * Restrict the write to these user ids (still intersected with the
+       * restaurant's own members, so a caller can never write outside the
+       * tenant). Without it, every member gets the row — which is right for
+       * a true broadcast and wrong for a targeted message; the team
+       * broadcast endpoint was leaking per-member messages to the whole
+       * restaurant through this default (team-audit.md, BLOCKER 4).
+       */
+      onlyUserIds?: string[];
+    } = {},
+  ): Promise<{ inserted: number; ids: string[] }> {
     const { broadcast = true, dedupeWithinMinutes } = opts;
     try {
-      const userIds = await this.resolveRestaurantMemberIds(restaurantId);
-      if (!userIds.length) return { inserted: 0 };
+      let userIds = await this.resolveRestaurantMemberIds(restaurantId);
+      if (opts.onlyUserIds) {
+        const allow = new Set(opts.onlyUserIds);
+        userIds = userIds.filter((id) => allow.has(id));
+      }
+      if (!userIds.length) return { inserted: 0, ids: [] };
 
       // Optional dedupe: skip if an identical group_key was already written for
       // this restaurant inside the window (prevents a re-alert on every sweep).
@@ -638,7 +659,7 @@ export class NotificationsService {
           .gte("created_at", since)
           .limit(1);
         if (existing && existing.length > 0) {
-          return { inserted: 0 };
+          return { inserted: 0, ids: [] };
         }
       }
 
@@ -662,31 +683,50 @@ export class NotificationsService {
         created_at: now,
       }));
 
-      const { error } = await this.databaseService.supabase
+      // `.select("id")` from 2026-09-02 (ADR 0093 D5): the caller needs the
+      // rows it just wrote so it can stamp the delivery outcome on them.
+      const { data: insertedRows, error } = await this.databaseService.supabase
         .from("notifications")
-        .insert(rows);
+        .insert(rows)
+        .select("id");
       if (error) {
         this.logger.warn(
           `persistForRestaurant insert failed: ${error.message}`,
         );
-        return { inserted: 0 };
+        return { inserted: 0, ids: [] };
+      }
+      const ids = (insertedRows ?? [])
+        .map((r: any) => r?.id)
+        .filter(Boolean) as string[];
+      if (ids.length !== rows.length) {
+        // Said out loud rather than silently returning a short list: a
+        // delivery outcome can only be recorded on the ids that came back, so
+        // a caller must not read this as "every row was stamped".
+        this.logger.warn(
+          `persistForRestaurant wrote ${rows.length} row(s) but the insert returned ${ids.length} id(s) — any delivery outcome can only be stamped on those ${ids.length}`,
+        );
       }
 
       if (broadcast) {
-        this.websocketGateway.server
-          .to(`restaurant:${restaurantId}`)
-          .emit("notification:new", {
-            event: "NewNotification",
-            data: {
-              title: payload.title,
-              message: payload.message,
-              type: payload.type,
-              action_url: payload.actionUrl,
-              priority: payload.priority ?? "medium",
-              metadata: payload.metadata ?? {},
-            },
-            timestamp: now,
-          });
+        // A targeted write must not fan its text to the whole restaurant over
+        // the socket either — DB rows and push were narrowed by onlyUserIds,
+        // and the live emit follows the same addressing (Opus correctness
+        // review, BLOCKER 2). Every client already joins its user:<id> room.
+        const emitTo = opts.onlyUserIds
+          ? this.websocketGateway.server.to(userIds.map((id) => `user:${id}`))
+          : this.websocketGateway.server.to(`restaurant:${restaurantId}`);
+        emitTo.emit("notification:new", {
+          event: "NewNotification",
+          data: {
+            title: payload.title,
+            message: payload.message,
+            type: payload.type,
+            action_url: payload.actionUrl,
+            priority: payload.priority ?? "medium",
+            metadata: payload.metadata ?? {},
+          },
+          timestamp: now,
+        });
       }
 
       // Mobile fan-out: whatever lands in the notification center lands on
@@ -705,12 +745,12 @@ export class NotificationsService {
         });
       }
 
-      return { inserted: rows.length };
+      return { inserted: rows.length, ids };
     } catch (e: any) {
       this.logger.warn(
         `persistForRestaurant failed for restaurant ${restaurantId}: ${e?.message}`,
       );
-      return { inserted: 0 };
+      return { inserted: 0, ids: [] };
     }
   }
 

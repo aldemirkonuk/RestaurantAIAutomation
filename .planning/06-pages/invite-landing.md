@@ -2,9 +2,11 @@
 type: page
 route: /invite/:code
 slug: invite-landing
+softwares: [auth-onboarding]
 component: apps/web/src/pages/InviteLanding.tsx
 audience: public
 tier: public
+archetype: focused # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 3
 maturity: partial
@@ -14,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[register]]", "[[no-access]]", "[[login]]", "[[da
 ---
 
 # /invite/:code
+
+> **Part of** [[08-softwares/auth-onboarding|Auth & Onboarding]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
@@ -25,6 +29,12 @@ links: ["[[PAGE-CONTRACT]]", "[[register]]", "[[no-access]]", "[[login]]", "[[da
 
 ## 1. Purpose
 Landing page for a team-invite link. Previews the invite (restaurant, role) before any commitment. Branches on auth state: signed-out users get "Sign in to accept" (login with `?redirect=` back here, `InviteLanding.tsx:90`) or "Create account to accept" (`/register?invite=CODE`, `:144`); signed-in users get a one-tap "Add {restaurant}" accept (`:154-168`). A 409 ("already a member") is treated as success (`:67-72`). Expired/invalid codes get a dead-end card pointing back to `/login` (`:102-116`).
+
+## 1a. Features
+- Preview the invite before committing: which restaurant, which role
+- Signed out: "Sign in to accept" or "Create account to accept" (both return here)
+- Signed in: one-tap "Add {restaurant}" accept ("already a member" counts as success)
+- Expired/invalid code: a clear dead-end card pointing back to sign-in
 
 ## 2. Entry
 **Cold URL** — the link is minted server-side as `${FRONTEND_URL}/invite/${invite.code}` (`auth.service.ts:893`) and shared by the owner out-of-band (email/chat). No in-app navigation to it.

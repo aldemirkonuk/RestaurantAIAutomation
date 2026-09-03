@@ -32,7 +32,7 @@ Owns outright:
 - **`packages/ui`** — `packages/ui/src/components/{charts,layout,notifications,primitives}`.
 - **Front-end test and story coverage** — 34 web test files; `apps/web/src/stories/`
   (4 Storybook stories — **thin**, and named as thin in the evidence).
-- **The UX path corpus as an input** — `.planning/UX_PATHS_CATALOG.md` (154KB).
+- **The UX path corpus as an input** — `.planning/07-reference/UX_PATHS_CATALOG.md` (154KB).
 
 **Deliberately one team, not two.** `apps/mobile/app/` is roughly eight route files;
 splitting web and mobile now would create a mobile team with no load
@@ -72,7 +72,7 @@ from the 24: an orphan route exists and cannot be reached; an untraceable compon
 not correspond to a route at all.
 
 **Explicitly not the primary metric:** paths burned down from
-`.planning/UX_PATHS_CATALOG.md`. That number is an input. Treating it as the goal is the
+`.planning/07-reference/UX_PATHS_CATALOG.md`. That number is an input. Treating it as the goal is the
 premortem ([[client-surfaces-premortem]] M1).
 
 ## Evidence today
@@ -85,7 +85,7 @@ premortem ([[client-surfaces-premortem]] M1).
 - `packages/ui/src/components/{charts,layout,notifications,primitives}`
 - `apps/web/src/stories/` — 4 Storybook stories (**thin**)
 - 34 web test files
-- `.planning/UX_PATHS_CATALOG.md` — 154KB burn-down corpus
+- `.planning/07-reference/UX_PATHS_CATALOG.md` — 154KB burn-down corpus
 
 **Correction this team owns.** `apps/web` is a **Vite SPA with `react-router-dom`**
 (`apps/web/package.json:8,55,94`), **not Next.js as CLAUDE.md §1 states**

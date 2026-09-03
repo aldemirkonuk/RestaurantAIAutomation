@@ -28,12 +28,12 @@ function buildSyntheticGrid(totalOrders: number) {
 function cellColor(value: number, max: number): string {
   if (max === 0 || value === 0) return '#f9fafb'
   const t = value / max
-  if (t < 0.2) return '#FEF5F5'
-  if (t < 0.4) return '#FDE8E8'
-  if (t < 0.6) return '#F9CDCD'
-  if (t < 0.75) return '#F2A3A5'
-  if (t < 0.9) return '#E56B70'
-  return '#9E4249'
+  if (t < 0.2) return '#F1F7F8'
+  if (t < 0.4) return '#E0EFF1'
+  if (t < 0.6) return '#BEDDE2'
+  if (t < 0.75) return '#8FC4CD'
+  if (t < 0.9) return '#5FB0BC'
+  return '#1A5E6B'
 }
 
 interface Props {
@@ -78,7 +78,7 @@ export function BusyHoursHeatmap({ totalOrders, className = '' }: Props) {
       {/* Legend */}
       <div className="flex items-center gap-1 justify-end pt-0.5">
         <span className="text-[9px] text-gray-400">Low</span>
-        {['#FDF7F6', '#FAEDEC', '#F3D4D2', '#E5A9A8', '#D07072', '#9E4249'].map((c) => (
+        {['#F1F7F8', '#E0EFF1', '#BEDDE2', '#8FC4CD', '#5FB0BC', '#1A5E6B'].map((c) => (
           <div key={c} className="w-3 h-2 rounded-[1px]" style={{ backgroundColor: c }} />
         ))}
         <span className="text-[9px] text-gray-400">High</span>

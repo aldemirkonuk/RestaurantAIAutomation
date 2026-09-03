@@ -2,18 +2,22 @@
 type: page
 route: /profile
 slug: profile
+softwares: [auth-onboarding]
 component: apps/web/src/pages/Profile.tsx
 audience: owner
 tier: core
+archetype: form # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 2
 maturity: partial
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[login]]", "[[settings]]"]
 ---
 
 # /profile
+
+> **Part of** [[08-softwares/auth-onboarding|Auth & Onboarding]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
@@ -27,6 +31,14 @@ links: ["[[PAGE-CONTRACT]]", "[[login]]", "[[settings]]"]
 
 ## 1. Purpose
 Personal account page for every role: Account (name/phone; email read-only), Security (change password), Linked accounts (Google link/unlink), Preferences (theme). Managers/owners additionally get Restaurant (name/city/billing contact), Payment, Memberships sections (`Profile.tsx:36-48`). Danger zone: leave the active restaurant, or delete the account behind a type-DELETE confirmation (`Profile.tsx:877-891`).
+
+## 1a. Features
+- Account: edit name and phone (email read-only)
+- Security: change password
+- Linked accounts: link/unlink Google
+- Preferences: theme
+- Managers/owners additionally: Restaurant details (name/city/billing contact), Payment, Memberships
+- Danger zone: leave the active restaurant; delete your account behind a type-DELETE confirmation
 
 ## 2. Entry
 In-degree 3 per [PAGE_MAP](../foundation/PAGE_MAP.md): header user menu (`Header.tsx:277`), sidebar bottom nav (`Sidebar.tsx:166-170`), plus `/help`, `/privacy`, `/settings` link here. Inside `DashboardLayout` + `ProtectedRoute` (`App.tsx:247-252,286`).

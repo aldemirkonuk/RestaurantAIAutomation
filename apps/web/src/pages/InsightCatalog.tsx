@@ -1,5 +1,5 @@
 /**
- * InsightCatalog — "Browse all 375 insight types" explorer.
+ * InsightCatalog — "Browse all insight types" explorer.
  *
  * UX paths (UX_PATHS_CATALOG.md §Z1):
  *   NEW-707 full-screen explorer · NEW-708 dimensions w/ counts
@@ -11,6 +11,13 @@
  *
  * Backed by GET /analytics/insight-catalog/types (pure enumeration + optional
  * per-restaurant data availability). No fabricated numbers.
+ *
+ * The coverage meter (NEW-722) reads the server's `coverage` block, which
+ * counts a type as computable now only when a generator emits it AND the
+ * restaurant has its data. Filtering on data availability alone counted the
+ * whole roadmap as a capability — ADR 0020, a mislabelled number is a
+ * fabrication. When the server sends no `coverage`, the meter says the split is
+ * unavailable rather than deriving a second, possibly different, number here.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -22,6 +29,7 @@ import {
   Lock,
   Search,
   Sparkles,
+  Wrench,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
@@ -40,6 +48,12 @@ interface Candidate {
   category: string;
   template: string;
   requires: string[];
+  /**
+   * Whether a generator emits this type today. Optional so an older API (no
+   * `implemented` field) degrades to "unknown" instead of silently reading as
+   * "not built".
+   */
+  implemented?: boolean;
 }
 interface Dim {
   key: string;
@@ -58,6 +72,14 @@ interface Comparator {
   label: string;
   template: string;
 }
+/** The server's honest split of the catalogue. Nulls mean "not known here". */
+export interface Coverage {
+  catalogued: number;
+  implemented: number;
+  computable: number | null;
+  blockedOnData: number | null;
+  notBuilt: number;
+}
 interface Catalog {
   total: number;
   byCategory: Record<string, number>;
@@ -66,6 +88,35 @@ interface Catalog {
   comparators: Comparator[];
   candidates: Candidate[];
   available: string[] | null;
+  coverage?: Coverage;
+}
+
+/**
+ * Readiness of one type. "not_built" is catalogued-only: no generator, so no
+ * amount of data unlocks it. "unknown" covers both a signed-out visitor and an
+ * API that did not send the field — neither may be rendered as a number.
+ */
+export type TypeStatus = "computable" | "blocked" | "not_built" | "unknown";
+
+/**
+ * Readiness of one catalogue type. Exported and tested directly (see
+ * `InsightCatalog.honesty.test.ts`) because the distinction it draws IS the fix:
+ * a type with no generator is "not built" whatever data the restaurant has, and
+ * the old meter had no way to say that — it called every data-satisfied type
+ * computable, which was ~20x the truth.
+ *
+ * `available` is `null` when the visitor is signed out or the availability
+ * probe failed; `implemented` is `undefined` when the API did not send it. Both
+ * yield "unknown" rather than a guess in either direction.
+ */
+export function typeStatus(
+  c: Pick<Candidate, "requires" | "implemented">,
+  available: ReadonlySet<string> | null,
+): TypeStatus {
+  if (c.implemented === undefined) return "unknown";
+  if (!c.implemented) return "not_built";
+  if (available == null) return "unknown";
+  return c.requires.every((r) => available.has(r)) ? "computable" : "blocked";
 }
 
 const CATEGORY_CHIP: Record<string, string> = {
@@ -137,15 +188,10 @@ export default function InsightCatalog() {
     return m;
   }, [catalog]);
 
-  const isComputable = (c: Candidate) =>
-    catalog?.available == null ? null : c.requires.every((r) => available.has(r));
+  const statusOf = (c: Candidate): TypeStatus =>
+    typeStatus(c, catalog?.available == null ? null : available);
 
-  const computableTotal = useMemo(() => {
-    if (catalog?.available == null) return null;
-    return (catalog.candidates ?? []).filter((c) =>
-      c.requires.every((r) => available.has(r)),
-    ).length;
-  }, [catalog, available]);
+  const coverage = catalog?.coverage ?? null;
 
   const rows = useMemo(() => {
     if (!catalog) return [];
@@ -199,6 +245,11 @@ export default function InsightCatalog() {
       { header: "comparator", value: (c) => c.comparator },
       { header: "category", value: (c) => c.category },
       { header: "requires", value: (c) => c.requires.join("|") },
+      // Without this the export reads as 573 shipped capabilities.
+      {
+        header: "implemented",
+        value: (c) => (c.implemented === undefined ? "unknown" : String(c.implemented)),
+      },
     ];
     try {
       await exportTable({
@@ -234,8 +285,9 @@ export default function InsightCatalog() {
               Insight Catalog
             </h1>
             <p className="text-sm text-gray-500 mt-1">
-              Every insight type the engine can compute — dimension × measure ×
-              comparator.
+              Every insight type the engine enumerates — dimension × measure ×
+              comparator. Catalogued is the roadmap; the meter below says what
+              is computable today.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -257,31 +309,8 @@ export default function InsightCatalog() {
           </div>
         </div>
 
-        {/* Coverage meter (NEW-722) */}
         {catalog && (
-          <div className="flex items-center gap-4 mb-4 px-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm">
-            <span className="flex items-center gap-1.5 font-semibold text-gray-900">
-              <Boxes className="w-4 h-4 text-indigo-500" />
-              {catalog.total} types
-            </span>
-            <span className="text-gray-300">·</span>
-            <span className="text-gray-600">
-              {computableTotal == null ? (
-                "sign in to see what's computable with your data"
-              ) : (
-                <>
-                  <span className="font-semibold text-emerald-600">
-                    {computableTotal}
-                  </span>{" "}
-                  computable now ·{" "}
-                  <span className="font-semibold text-amber-600">
-                    {catalog.total - computableTotal}
-                  </span>{" "}
-                  blocked on missing data
-                </>
-              )}
-            </span>
-          </div>
+          <CoverageMeter total={catalog.total} coverage={coverage} />
         )}
 
         {/* Search + category filters */}
@@ -334,7 +363,7 @@ export default function InsightCatalog() {
                 c={c}
                 measureByKey={measureByKey}
                 comparatorByKey={comparatorByKey}
-                computable={isComputable(c)}
+                status={statusOf(c)}
                 selected={selectedKey === c.key}
                 onSelect={() => selectType(c.key)}
               />
@@ -375,7 +404,7 @@ export default function InsightCatalog() {
                     c={c}
                     measureByKey={measureByKey}
                     comparatorByKey={comparatorByKey}
-                    computable={isComputable(c)}
+                    status={statusOf(c)}
                     selected={selectedKey === c.key}
                     onSelect={() => selectType(c.key)}
                   />
@@ -392,6 +421,7 @@ export default function InsightCatalog() {
                   measure={measureByKey.get(selected.measure)}
                   comparator={comparatorByKey.get(selected.comparator)}
                   available={catalog.available}
+                  status={statusOf(selected)}
                   onCopyLink={() => copyLink(selected.key)}
                 />
               ) : (
@@ -409,18 +439,76 @@ export default function InsightCatalog() {
   );
 }
 
+/**
+ * Coverage meter (NEW-722) — catalogued ≠ computable.
+ *
+ * Exported for `InsightCatalog.honesty.test.ts`: the sentence this renders is
+ * the surface ADR 0020 governs, so it is asserted as rendered text rather than
+ * trusted to review. It never derives a count of its own — when the server
+ * sends no `coverage`, it says the split is unavailable.
+ */
+export function CoverageMeter({
+  total,
+  coverage,
+}: {
+  total: number;
+  coverage: Coverage | null;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4 px-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm">
+      <span className="flex items-center gap-1.5 font-semibold text-gray-900">
+        <Boxes className="w-4 h-4 text-indigo-500" />
+        {total} catalogued
+      </span>
+      <span className="text-gray-300">·</span>
+      {!coverage ? (
+        <span className="text-gray-600">
+          coverage unavailable — this build can't tell which types have a
+          generator behind them
+        </span>
+      ) : coverage.computable == null ? (
+        <span className="text-gray-600">
+          <span className="font-semibold text-gray-900">
+            {coverage.implemented}
+          </span>{" "}
+          built ·{" "}
+          <span className="font-semibold text-gray-500">
+            {coverage.notBuilt}
+          </span>{" "}
+          on the roadmap · sign in to see what's computable with your data
+        </span>
+      ) : (
+        <span className="text-gray-600">
+          <span className="font-semibold text-emerald-600">
+            {coverage.computable}
+          </span>{" "}
+          computable now ·{" "}
+          <span className="font-semibold text-amber-600">
+            {coverage.blockedOnData}
+          </span>{" "}
+          blocked on missing data ·{" "}
+          <span className="font-semibold text-gray-500">
+            {coverage.notBuilt}
+          </span>{" "}
+          not built yet
+        </span>
+      )}
+    </div>
+  );
+}
+
 function TypeRow({
   c,
   measureByKey,
   comparatorByKey,
-  computable,
+  status,
   selected,
   onSelect,
 }: {
   c: Candidate;
   measureByKey: Map<string, Measure>;
   comparatorByKey: Map<string, Comparator>;
-  computable: boolean | null;
+  status: TypeStatus;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -436,7 +524,13 @@ function TypeRow({
           {comparatorByKey.get(c.comparator)?.label ?? c.comparator}
         </span>
         <span className="flex items-center gap-1.5 shrink-0">
-          {computable === false && (
+          {status === "not_built" && (
+            <Wrench
+              className="w-3.5 h-3.5 text-gray-400"
+              aria-label="Not built yet"
+            />
+          )}
+          {status === "blocked" && (
             <Lock className="w-3.5 h-3.5 text-amber-500" aria-label="Blocked" />
           )}
           <span
@@ -457,6 +551,7 @@ function DetailPane({
   measure,
   comparator,
   available,
+  status,
   onCopyLink,
 }: {
   c: Candidate;
@@ -464,21 +559,46 @@ function DetailPane({
   measure?: Measure;
   comparator?: Comparator;
   available: string[] | null;
+  status: TypeStatus;
   onCopyLink: () => void;
 }) {
   const availSet = new Set(available ?? []);
   const missing = available == null ? [] : c.requires.filter((r) => !availSet.has(r));
-  const blocked = missing.length > 0;
+  // A type with no generator is not blocked on data — data would not unlock it.
+  const blocked = status === "blocked" && missing.length > 0;
   return (
     <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
-      <div>
+      <div className="flex items-center gap-1.5 flex-wrap">
         <span
           className={`px-2 py-0.5 rounded-full text-[11px] font-medium border ${CATEGORY_CHIP[c.category] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}
         >
           {c.category}
         </span>
-        <p className="font-mono text-xs text-gray-500 mt-2 break-all">{c.key}</p>
+        {status === "computable" && (
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">
+            computable now
+          </span>
+        )}
+        {status === "blocked" && (
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-medium border bg-amber-50 text-amber-700 border-amber-200">
+            blocked on data
+          </span>
+        )}
+        {status === "not_built" && (
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-medium border bg-gray-50 text-gray-600 border-gray-200">
+            not built yet
+          </span>
+        )}
       </div>
+      <p className="font-mono text-xs text-gray-500 break-all">{c.key}</p>
+
+      {/* Catalogued ≠ available. Say which one this is, plainly. */}
+      {status === "not_built" && (
+        <div className="p-3 bg-gray-50 rounded-xl text-xs text-gray-600">
+          Catalogued, but no generator computes it yet — it is on the roadmap,
+          not something your data can unlock today.
+        </div>
+      )}
 
       <dl className="text-sm space-y-1.5">
         <Row label="Dimension" value={`${dim?.label ?? c.dimension}${dim?.entityScoped ? " (per entity)" : ""}`} />
@@ -491,7 +611,7 @@ function DetailPane({
         <p className="text-xs font-semibold text-gray-500 mb-1.5">Data required</p>
         <div className="flex flex-wrap gap-1.5">
           {c.requires.length === 0 ? (
-            <span className="text-xs text-gray-400">None (always computable)</span>
+            <span className="text-xs text-gray-400">None</span>
           ) : (
             c.requires.map((r) => {
               const ok = available == null ? null : availSet.has(r);

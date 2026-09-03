@@ -9,8 +9,14 @@ Schema (evolving - start minimal):
   Phase 2: + cuisine_type, price_tier, sommelier, food_menu, distributions
 
 Storage:
-  - Supabase: restaurant_wine_menus table (for API queries)
-  - JSONL files: datasets/restaurant_menus/{city}.jsonl (for batch processing)
+  - JSONL files: datasets/restaurant_menus/{city}.jsonl -- the only store.
+
+    OD-99: a second Supabase store (`restaurant_wine_menus`) was declared here
+    and written by `_save_to_supabase`. That table exists in no migration and
+    returns 404 PGRST205 in production, no caller ever supplied the Supabase
+    client the write was guarded on, and nothing anywhere read it back. Both
+    the write and the client were deleted rather than the table created --
+    ADR 0027 / OD-95: a store that no reader consults is not a fix.
 
 Versioned: each re-scan creates a new dated snapshot.
 """
@@ -99,8 +105,11 @@ class RestaurantDatasetService:
     Saves to both JSONL files and (optionally) Supabase.
     """
 
-    def __init__(self, supabase_client=None):
-        self._supabase = supabase_client
+    def __init__(self):
+        # OD-99: this used to accept a `supabase_client`. No caller ever passed
+        # one, so the `if self._supabase:` guard around the (phantom-table)
+        # insert was always false -- the dead write was not merely failing, it
+        # was never even reached.
         RESTAURANT_MENUS_DIR.mkdir(parents=True, exist_ok=True)
 
     # =========================================================================
@@ -112,7 +121,20 @@ class RestaurantDatasetService:
         snapshot: RestaurantMenuSnapshot,
     ) -> Dict[str, Any]:
         """
-        Save a restaurant menu snapshot to JSONL + Supabase.
+        Save a restaurant menu snapshot to the city JSONL file.
+
+        OD-99: this used to also insert into a Supabase table called
+        `restaurant_wine_menus`, which is declared by no migration in this
+        repository and returns 404 PGRST205 in production (verified
+        2026-08-26). The insert has therefore never once succeeded, and the
+        `supabase_id` it returned was always None -- and was read by nothing.
+
+        The second store was deleted rather than created, following the
+        precedent set by ADR 0027 / OD-95 for `push_subscriptions`. The JSONL
+        files under `datasets/restaurant_menus/` are the real store: they are
+        what `get_restaurants_by_city` and `get_all_cities`, the only readers
+        this service has, actually read. Creating the table would have
+        produced a second store that no reader consults -- a new lie, not a fix.
 
         Args:
             snapshot: The menu snapshot to save.
@@ -137,19 +159,10 @@ class RestaurantDatasetService:
             f"-> {snapshot.total_wines} wines -> {jsonl_path.name}"
         )
 
-        # Save to Supabase if available
-        supabase_id = None
-        if self._supabase:
-            try:
-                supabase_id = await self._save_to_supabase(data)
-            except Exception as e:
-                logger.warning(f"Supabase save failed: {e}")
-
         return {
             "status": "saved",
             "jsonl_path": str(jsonl_path),
             "city_file": jsonl_path.name,
-            "supabase_id": supabase_id,
             "total_wines": snapshot.total_wines,
         }
 
@@ -318,38 +331,6 @@ class RestaurantDatasetService:
         slug = re.sub(r"[\s-]+", "_", slug)
         return slug
 
-    async def _save_to_supabase(self, data: Dict[str, Any]) -> Optional[str]:
-        """Save snapshot to Supabase restaurant_wine_menus table."""
-        if not self._supabase:
-            return None
-
-        try:
-            result = (
-                self._supabase.table("restaurant_wine_menus")
-                .insert(
-                    {
-                        "restaurant_name": data["restaurant_name"],
-                        "city": data["city"],
-                        "state": data.get("state"),
-                        "menu_date": data["menu_date"],
-                        "source_type": data["source_type"],
-                        "source_url": data.get("source_url"),
-                        "extraction_method": data["extraction_method"],
-                        "extraction_confidence": data["extraction_confidence"],
-                        "human_verified": data["human_verified"],
-                        "total_wines": data["total_wines"],
-                        "menu_data": data,
-                    }
-                )
-                .execute()
-            )
-
-            if result.data:
-                return result.data[0].get("id")
-        except Exception as e:
-            logger.error(f"Supabase insert failed: {e}")
-        return None
-
 
 # =============================================================================
 # MODULE-LEVEL SINGLETON
@@ -358,11 +339,9 @@ class RestaurantDatasetService:
 _service_instance: Optional[RestaurantDatasetService] = None
 
 
-def get_restaurant_dataset_service(
-    supabase_client=None,
-) -> RestaurantDatasetService:
+def get_restaurant_dataset_service() -> RestaurantDatasetService:
     """Get module-level singleton restaurant dataset service."""
     global _service_instance
     if _service_instance is None:
-        _service_instance = RestaurantDatasetService(supabase_client)
+        _service_instance = RestaurantDatasetService()
     return _service_instance

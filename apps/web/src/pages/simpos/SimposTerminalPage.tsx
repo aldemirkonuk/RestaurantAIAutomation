@@ -7,7 +7,7 @@
  *   Receipts/Invoices — this fake restaurant's procurement_documents
  *
  * "Check logs in full page" opens /simpos/:restaurantId/orders — SimPOS's own
- * order log, distinct from the WineOps /logs timeline.
+ * order log, distinct from the Mudavym /logs timeline.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -19,6 +19,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  FlaskConical,
   ScrollText,
   X,
 } from 'lucide-react'
@@ -206,6 +207,13 @@ export function SimposTerminalPage() {
             <ScrollText className="w-3 h-3" />
             Check logs in full page
           </Link>
+          <Link
+            to={`/simpos/${restaurantId}/scenarios`}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-md text-xs font-bold border border-gray-700 text-gray-400 hover:bg-gray-800"
+          >
+            <FlaskConical className="w-3 h-3" />
+            Scenarios
+          </Link>
         </div>
       </header>
 
@@ -332,12 +340,12 @@ export function SimposTerminalPage() {
       )}
 
       <footer className="border-t border-gray-800 px-4 py-2 text-[10px] text-gray-600 flex justify-between">
-        <span>Synthetic test fixture — not a WineOps feature</span>
+        <span>Synthetic test fixture — not a Mudavym feature</span>
         <button
           onClick={() => navigate('/')}
           className="hover:text-gray-400"
         >
-          Exit to WineOps
+          Exit to Mudavym
         </button>
       </footer>
     </div>
@@ -515,7 +523,7 @@ function EditPosPane({
           Edit POS — drift generator
         </h2>
         <p className="text-[10px] text-gray-500 mt-0.5">
-          Changes here diverge from WineOps inventory. The drift agent finds them.
+          Changes here diverge from Mudavym inventory. The drift agent finds them.
         </p>
       </div>
 

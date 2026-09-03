@@ -252,25 +252,208 @@ describe("PosHubService.ingest — stock effects", () => {
 });
 
 describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
-  it("fails closed when no secret is configured", () => {
-    delete process.env.POS_HUB_WEBHOOK_SECRET;
-    const { service } = makeService();
-    expect(service.verifyWebhookSignature(Buffer.from("{}"), "anything")).toBe(
-      false,
-    );
+  const R_A = "11111111-1111-4111-8111-111111111111";
+  const R_B = "22222222-2222-4222-8222-222222222222";
+  const body = Buffer.from(JSON.stringify({ hello: "world" }));
+
+  /** Every env var this suite may set, cleared between tests. */
+  const SECRET_VARS = [
+    "POS_HUB_WEBHOOK_SECRET",
+    "POS_WEBHOOK_SECRET_GENERIC_WEBHOOK",
+    "POS_WEBHOOK_SECRET_TOAST",
+    `POS_WEBHOOK_SECRET_GENERIC_WEBHOOK__${R_A.toUpperCase().replace(/-/g, "_")}`,
+    `POS_WEBHOOK_SECRET_GENERIC_WEBHOOK__${R_B.toUpperCase().replace(/-/g, "_")}`,
+  ];
+
+  const hmac = (secret: string, message: Buffer | string) =>
+    crypto.createHmac("sha256", secret).update(message).digest("hex");
+
+  /** What a scoped signer produces: the identity is inside the signed bytes. */
+  const scopedSig = (
+    secret: string,
+    provider: string,
+    restaurantId: string,
+    raw: Buffer,
+  ) => hmac(secret, `${provider}:${restaurantId}.${raw.toString("utf8")}`);
+
+  beforeEach(() => {
+    for (const v of SECRET_VARS) delete process.env[v];
+  });
+  afterAll(() => {
+    for (const v of SECRET_VARS) delete process.env[v];
   });
 
-  it("rejects a mismatched signature and accepts a correct one", () => {
+  it("fails closed when no secret is configured, naming the available provider", () => {
+    const { service } = makeService();
+    const errors = jest
+      .spyOn((service as any).logger, "error")
+      .mockImplementation(() => undefined);
+
+    expect(
+      service.verifyWebhookSignature(body, "anything", {
+        provider: "generic_webhook",
+        restaurantId: R_A,
+      }),
+    ).toBe(false);
+
+    // Logged once, and it says the door is advertised — generic_webhook is
+    // registry status 'available', which is exactly the case that must never
+    // fall open.
+    expect(errors).toHaveBeenCalledTimes(1);
+    expect(errors.mock.calls[0][0]).toMatch(/fail closed/i);
+    expect(errors.mock.calls[0][0]).toMatch(/AVAILABLE/);
+
+    // Repeat calls stay rejected; the log does not repeat.
+    expect(
+      service.verifyWebhookSignature(body, "anything", {
+        provider: "generic_webhook",
+        restaurantId: R_A,
+      }),
+    ).toBe(false);
+    expect(errors).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a mismatched signature and accepts a correct one (legacy scheme)", () => {
     process.env.POS_HUB_WEBHOOK_SECRET = "test-secret";
     const { service } = makeService();
-    const body = Buffer.from(JSON.stringify({ hello: "world" }));
-    const good = crypto
-      .createHmac("sha256", "test-secret")
-      .update(body)
-      .digest("hex");
+    const ctx = { provider: "generic_webhook", restaurantId: R_A };
 
-    expect(service.verifyWebhookSignature(body, "deadbeef")).toBe(false);
-    expect(service.verifyWebhookSignature(body, good)).toBe(true);
-    delete process.env.POS_HUB_WEBHOOK_SECRET;
+    expect(service.verifyWebhookSignature(body, "deadbeef", ctx)).toBe(false);
+    expect(
+      service.verifyWebhookSignature(body, hmac("test-secret", body), ctx),
+    ).toBe(true);
+  });
+
+  it("still authenticates the legacy global secret, and warns that it did", () => {
+    // The fallback window: SimPOS (simpos.service.ts sendSignedWebhook) and
+    // scripts/simulate/bridge.py both sign the raw body with the process-wide
+    // key, and production has no scoped secret set. Break this and the only
+    // door with rows behind it goes dark.
+    process.env.POS_HUB_WEBHOOK_SECRET = "legacy-secret";
+    const { service } = makeService();
+    const warn = jest
+      .spyOn((service as any).logger, "warn")
+      .mockImplementation(() => undefined);
+
+    expect(
+      service.verifyWebhookSignature(body, hmac("legacy-secret", body), {
+        provider: "generic_webhook",
+        restaurantId: R_A,
+      }),
+    ).toBe(true);
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toMatch(/legacy process-wide/i);
+    expect(warn.mock.calls[0][0]).toMatch(/POS_WEBHOOK_SECRET_GENERIC_WEBHOOK/);
+  });
+
+  it("rejects a signature minted for another PROVIDER", () => {
+    process.env.POS_WEBHOOK_SECRET_GENERIC_WEBHOOK = "secret-generic";
+    process.env.POS_WEBHOOK_SECRET_TOAST = "secret-toast";
+    const { service } = makeService();
+
+    const sigForGeneric = scopedSig(
+      "secret-generic",
+      "generic_webhook",
+      R_A,
+      body,
+    );
+
+    expect(
+      service.verifyWebhookSignature(body, sigForGeneric, {
+        provider: "generic_webhook",
+        restaurantId: R_A,
+      }),
+    ).toBe(true);
+    // Same tenant, same bytes, provider A's key — must not open provider B.
+    expect(
+      service.verifyWebhookSignature(body, sigForGeneric, {
+        provider: "toast",
+        restaurantId: R_A,
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects a signature minted for another RESTAURANT under one provider secret", () => {
+    // The cross-tenant forgery itself: one provider-wide key, two tenants.
+    process.env.POS_WEBHOOK_SECRET_GENERIC_WEBHOOK = "secret-generic";
+    const { service } = makeService();
+
+    const sigForA = scopedSig("secret-generic", "generic_webhook", R_A, body);
+
+    expect(
+      service.verifyWebhookSignature(body, sigForA, {
+        provider: "generic_webhook",
+        restaurantId: R_A,
+      }),
+    ).toBe(true);
+    expect(
+      service.verifyWebhookSignature(body, sigForA, {
+        provider: "generic_webhook",
+        restaurantId: R_B,
+      }),
+    ).toBe(false);
+  });
+
+  it("prefers the per-connection secret, and one tenant's key does not open another's", () => {
+    const varA = `POS_WEBHOOK_SECRET_GENERIC_WEBHOOK__${R_A.toUpperCase().replace(/-/g, "_")}`;
+    const varB = `POS_WEBHOOK_SECRET_GENERIC_WEBHOOK__${R_B.toUpperCase().replace(/-/g, "_")}`;
+    process.env[varA] = "secret-a";
+    process.env[varB] = "secret-b";
+    process.env.POS_WEBHOOK_SECRET_GENERIC_WEBHOOK = "secret-provider";
+    process.env.POS_HUB_WEBHOOK_SECRET = "legacy-secret";
+    const { service } = makeService();
+
+    const sigA = scopedSig("secret-a", "generic_webhook", R_A, body);
+    expect(
+      service.verifyWebhookSignature(body, sigA, {
+        provider: "generic_webhook",
+        restaurantId: R_A,
+      }),
+    ).toBe(true);
+    expect(
+      service.verifyWebhookSignature(body, sigA, {
+        provider: "generic_webhook",
+        restaurantId: R_B,
+      }),
+    ).toBe(false);
+
+    // A scoped secret is the cutover switch: the legacy key no longer opens
+    // this door, on either the legacy scheme or the scoped one.
+    expect(
+      service.verifyWebhookSignature(body, hmac("legacy-secret", body), {
+        provider: "generic_webhook",
+        restaurantId: R_A,
+      }),
+    ).toBe(false);
+    expect(
+      service.verifyWebhookSignature(
+        body,
+        scopedSig("secret-provider", "generic_webhook", R_A, body),
+        { provider: "generic_webhook", restaurantId: R_A },
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects an unknown provider and a blank context even with a secret set", () => {
+    process.env.POS_HUB_WEBHOOK_SECRET = "legacy-secret";
+    const { service } = makeService();
+    const good = hmac("legacy-secret", body);
+
+    expect(
+      service.verifyWebhookSignature(body, good, {
+        provider: "not_a_real_pos",
+        restaurantId: R_A,
+      }),
+    ).toBe(false);
+    expect(
+      service.verifyWebhookSignature(body, good, {
+        provider: "generic_webhook",
+        restaurantId: "  ",
+      }),
+    ).toBe(false);
+    expect(
+      service.verifyWebhookSignature(body, good, undefined as any),
+    ).toBe(false);
   });
 });

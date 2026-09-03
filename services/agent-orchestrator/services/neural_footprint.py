@@ -15,6 +15,9 @@ Contract (migration 20260824141116_neural_footprint_event.sql):
   context["outcome_basis"] = "call_level_v0" (founder decision, 2026-08-24).
 - Raw prompts/outputs never go in stimulus/choice — compact descriptors only;
   details go in the `context` jsonb.
+- skill_id is nullable forever (20260828103059_nf_skill_id.sql) and the key is
+  omitted from the row entirely when unset — NULL there means "not a skill
+  task", never "unknown" and never a failure.
 
 Never raises. Failed inserts are COUNTED (`get_drop_counts()`) and logged with
 a running total, so silent gaps are visible instead of invisible.
@@ -70,6 +73,7 @@ def build_agent_event(
     duration_ms: Optional[int] = None,
     correlation_id: Optional[str] = None,
     restaurant_id: Optional[str] = None,
+    skill_id: Optional[str] = None,
     context: Optional[Dict[str, Any]] = None,
     internal_state: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -84,6 +88,8 @@ def build_agent_event(
       ids ARE valid UUIDs, so the restaurant_id=wine_id misuse is fixed at the
       call sites (they now pass restaurant_id=None with wine_id in context),
       not here.
+    - `skill_id` names the registry skill that fired, when one did. It is
+      OMITTED from the row entirely when unset — see below.
     """
     ctx: Dict[str, Any] = dict(context or {})
 
@@ -97,7 +103,7 @@ def build_agent_event(
         ctx["restaurant_ref"] = str(restaurant_id)[:100]
         restaurant_id = None
 
-    return {
+    row: Dict[str, Any] = {
         # Minted here rather than read back from the insert (OD-74). The table
         # defaults to gen_random_uuid(), so this changes nothing about the row —
         # but it means the id exists BEFORE the write, which is what lets a
@@ -120,6 +126,19 @@ def build_agent_event(
         "restaurant_id": restaurant_id,
         "occurred_at": datetime.now(timezone.utc).isoformat(),
     }
+
+    # ADDED ONLY WHEN SET, and that is a correctness requirement rather than
+    # tidiness. `skill_id` is nullable forever (migration 20260828103059) because
+    # most events are not a skill firing — but this insert goes through PostgREST,
+    # which rejects the WHOLE row for an unknown column. Sending `skill_id: None`
+    # unconditionally would therefore drop every NF row in any environment where
+    # the migration has not landed yet, turning an optional passthrough into an
+    # outage of the instrument. Omitting the key leaves the column at its NULL
+    # default, which is the same stored row with none of that risk.
+    if skill_id:
+        row["skill_id"] = str(skill_id)[:100]
+
+    return row
 
 
 def insert_event(supabase, row: Dict[str, Any]) -> Optional[str]:
@@ -152,3 +171,54 @@ def insert_event(supabase, row: Dict[str, Any]) -> Optional[str]:
             exc,
         )
         return None
+
+
+def record_verdict(
+    supabase,
+    event_id: str,
+    basis: str,
+    outcome: Optional[str],
+    evidence: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """
+    Write one task-level doneability verdict over an existing NF row. Never raises.
+
+    The Python mirror of the gateway's `NfVerdictService` (ADR 0017). Until this
+    existed, Python could emit events and had no way to grade them, so a
+    DEFERRED grader — one that only learns the answer minutes later, in another
+    process — had nowhere to put it.
+
+    `basis` names the grader IN THE ROW, and the table is keyed
+    `(event_id, basis)`, so re-running the same grader is idempotent and a
+    genuinely different grader lands as a SECOND row with its disagreement
+    intact. That is the whole reason verdicts are a sidecar and not a column.
+
+    Failure posture matches `insert_event`: a warn and a drop counter, never an
+    exception. The instrument must not break the thing it measures — a verdict
+    that cannot be written shows up honestly as uncovered, while a raised one
+    would kill a Celery task doing real work.
+
+    Returns True on success, False on any failure — including an event_id that
+    is not a uuid, which the FK would reject anyway.
+    """
+    if not _is_uuid(event_id):
+        return False
+    try:
+        supabase.table("nf_verdict").upsert(
+            {
+                "event_id": event_id,
+                "basis": basis,
+                "outcome": outcome,
+                "evidence": evidence or {},
+            },
+            on_conflict="event_id,basis",
+        ).execute()
+        return True
+    except Exception as exc:
+        total = record_drop("nf_verdict")
+        logger.warning(
+            "nf_verdict upsert failed (non-fatal, drop #%d this process): %s",
+            total,
+            exc,
+        )
+        return False

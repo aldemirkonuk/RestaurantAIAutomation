@@ -56,7 +56,7 @@ Owns outright:
   `:26-28`), `scripts/check_schema_parity.sh`, `check_no_direct_stock_writes.sh`,
   `check_no_direct_type_attributes_access.sh`, `check_no_raw_guest_channels.sh`,
   `check_no_guest_name_matching.sh`.
-- **The drift record** — `.planning/SCHEMA_DRIFT_INVENTORY.txt`, and the `drift_findings`
+- **The drift record** — `.planning/07-reference/SCHEMA_DRIFT_INVENTORY.txt`, and the `drift_findings`
   queue (`supabase/migrations/20260805133000_pos_unresolved_lines_and_review_queues.sql`).
 - **Stubs it should own but cannot yet** — `agents/ghost_inventory_agent.py`,
   `agents/shrinkage_detective_agent.py`. Both are among the five agents whose

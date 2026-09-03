@@ -49,7 +49,7 @@ export async function exportToPDF(data: any[], metrics?: InventoryMetrics) {
     
     // Title
     doc.setFontSize(20)
-    doc.text('WineOps Inventory Report', 14, 22)
+    doc.text('Mudavym Inventory Report', 14, 22)
     
     // Date
     doc.setFontSize(11)

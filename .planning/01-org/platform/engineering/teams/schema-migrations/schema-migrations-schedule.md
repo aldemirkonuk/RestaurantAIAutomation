@@ -6,7 +6,7 @@ team: schema-migrations
 status: provisional
 metrics: []
 updated: 2026-08-24
-links: ["[[schema-migrations-charter]]", "[[schema-migrations-loops]]", "[[engineering-schedule]]", "[[state-integrity-invariants-charter|sre-state-integrity]]", "[[skills-charter]]", "[[SCHEMA_DRIFT_INVENTORY]]"]
+links: ["[[schema-migrations-charter]]", "[[schema-migrations-loops]]", "[[engineering-schedule]]", "[[state-integrity-invariants-charter|sre-state-integrity]]", "[[skills-charter]]", "`../../../../SCHEMA_DRIFT_INVENTORY.txt`"]
 ---
 
 # Schema & Migrations — Schedule & Skills
@@ -22,7 +22,7 @@ links: ["[[schema-migrations-charter]]", "[[schema-migrations-loops]]", "[[engin
 | Daily | Streak publication — L-SM-1 | `schema.days_since_hand_applied_ddl` |
 | **Per event** | Emergency DDL reconciliation — L-SM-2, within 24h | Drift-register entry + reconciliation migration |
 | Weekly | Migration backlog review — pending DDL requested by domain teams | Authoring queue and its age |
-| Monthly | `.planning/SCHEMA_DRIFT_INVENTORY.txt` reconciliation against production | Outstanding drift objects from the 2026-08-05 incident |
+| Monthly | `.planning/07-reference/SCHEMA_DRIFT_INVENTORY.txt` reconciliation against production | Outstanding drift objects from the 2026-08-05 incident |
 | Monthly | RLS policy review with [[platform-api-charter]] | Tables without a tenant policy |
 | Quarterly | Migration corpus health — 62 files and growing; `scripts/concat_migrations.py` | Ordering hazards, superseded migrations, ergonomics of the authoring path |
 

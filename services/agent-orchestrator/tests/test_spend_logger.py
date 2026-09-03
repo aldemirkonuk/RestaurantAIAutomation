@@ -75,6 +75,8 @@ def test_log_dual_writes_api_spend_and_neural_footprint():
     assert spend["restaurant_id"] == "7c9e6679-7425-40de-944b-e07fc1f90ae7"
     assert "timestamp" in spend
 
+    assert spend["task_type"] == "email_draft"
+
     nf = rows["neural_footprint_event"][0]
     assert nf["subject_type"] == "agent"
     assert nf["subject_id"] == "provider_communication_agent"
@@ -753,6 +755,147 @@ def test_zero_token_call_keeps_its_true_zero_rather_than_going_unknown():
 
 
 # ---------------------------------------------------------------------------
+# OD-29 / ADR 0039 — the two ledgers must share a GRAIN, not just a value.
+#
+# task_type was stamped into the NF row and nowhere else, so cost-per-task was
+# answerable from the secondary ledger and not from the primary one. Same shape
+# as OD-61, one field over: a fix applied to only one of the two writes.
+# ---------------------------------------------------------------------------
+
+
+def test_task_type_lands_in_the_api_spend_payload():
+    """The primary ledger records WHICH TASK the call served, not just which
+    model. Without this, `cost_per_task_v`'s api_spend branch groups every row
+    under a single NULL bucket and the view's whole point is lost."""
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(
+            provider="anthropic",
+            model="claude-haiku-4-5-20251001",
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.0001,
+            agent="visual_verification_agent",
+            task_type="invoice_extraction",
+        )
+    finally:
+        p.stop()
+
+    assert rows["api_spend"][0]["task_type"] == "invoice_extraction"
+
+
+def test_both_ledgers_record_the_same_task_type():
+    """One local drives both writes, so the grain cannot drift the way the cost
+    determination did before OD-61."""
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(
+            provider="google",
+            model="gemini-2.5-flash",
+            input_tokens=146,
+            output_tokens=84,
+            cost_usd=0.000036,
+            agent="email_intel_agent",
+            task_type="email_classification",
+        )
+    finally:
+        p.stop()
+
+    spend_task_type = rows["api_spend"][0]["task_type"]
+    nf_task_type = rows["neural_footprint_event"][0]["context"]["task_type"]
+    assert spend_task_type == nf_task_type == "email_classification"
+
+
+def test_missing_task_type_is_an_explicit_null_not_an_omitted_column():
+    """NULL means UNKNOWN (ADR 0016). The key is SENT — an omitted column
+    asserts the column's default, which is the OD-61 false-zero route arriving
+    at a different column."""
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(
+            provider="google",
+            model="gemini-2.5-flash",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.000155,
+        )
+    finally:
+        p.stop()
+
+    spend = rows["api_spend"][0]
+    assert "task_type" in spend  # sent, not omitted
+    assert spend["task_type"] is None
+    # ...and NF says unknown by leaving the key out of context, so neither
+    # ledger has invented a task type.
+    assert "task_type" not in rows["neural_footprint_event"][0]["context"]
+
+
+def test_empty_task_type_is_unknown_in_both_ledgers_not_an_empty_string():
+    """NF's `if task_type:` already drops "". Writing "" into the api_spend
+    column would make one ledger hold a task type that is neither unknown nor
+    real, which is exactly the disagreement ADR 0016 forbids."""
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(
+            provider="google",
+            model="gemini-2.5-flash",
+            input_tokens=1,
+            output_tokens=1,
+            cost_usd=0.0,
+            task_type="",
+        )
+    finally:
+        p.stop()
+
+    assert rows["api_spend"][0]["task_type"] is None
+    assert "task_type" not in rows["neural_footprint_event"][0]["context"]
+
+
+def test_api_spend_payload_carries_exactly_the_expected_columns():
+    """Pins the payload shape against the migrated table. A key the column does
+    not have makes PostgREST reject the INSERT, and SpendLogger swallows that
+    into a counted drop — the ledger would just go quiet."""
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(
+            provider="serper",
+            model="serper-search",
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.001,
+            task_type="web_verify",
+        )
+    finally:
+        p.stop()
+
+    assert set(rows["api_spend"][0]) == {
+        "provider",
+        "model",
+        "input_tokens",
+        "output_tokens",
+        "cost_usd",
+        "restaurant_id",
+        "task_type",  # 20260828132607_api_spend_task_type_and_cost_view.sql
+        "timestamp",
+    }
+
+
+# ---------------------------------------------------------------------------
 # OD-62 — dated-source discipline for the rate table
 # ---------------------------------------------------------------------------
 
@@ -957,3 +1100,84 @@ def test_log_returns_none_when_supabase_is_unconfigured():
         )
     finally:
         p.stop()
+
+
+# ---------------------------------------------------------------------------
+# ADR 0039 A4 — skill_id passthrough.
+#
+# `nf_a.skill_id` is the single blocking dependency for skill-firing telemetry:
+# run_card.py's staleness-reaper reports skills.firing_rate_30d as
+# "unmeasurable" because the column did not exist. It does now
+# (20260828103059_nf_skill_id.sql), nullable forever, and the emitters pass it
+# through optionally.
+#
+# The absence case is the load-bearing one. The key must be OMITTED, not written
+# as None: this insert goes through PostgREST, which rejects the whole row for an
+# unknown column, so an unconditional `skill_id: None` would drop every NF row in
+# any environment where the migration has not landed yet.
+# ---------------------------------------------------------------------------
+
+
+def test_skill_id_lands_in_the_nf_row_when_passed():
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(
+            provider="anthropic",
+            model="claude-haiku-4-5",
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.0001,
+            agent="provider_communication_agent",
+            task_type="email_draft",
+            skill_id="supabase-postgres-best-practices",
+        )
+    finally:
+        p.stop()
+
+    nf = rows["neural_footprint_event"][0]
+    assert nf["skill_id"] == "supabase-postgres-best-practices"
+    # NF only. api_spend has no such column, and adding one there would be a
+    # second, disagreeing home for the same fact.
+    assert "skill_id" not in rows["api_spend"][0]
+
+
+def test_skill_id_key_is_absent_when_not_passed():
+    """Not "None" — ABSENT. A null for an unmigrated column drops the row."""
+    client, rows = _capturing_supabase()
+    p = _patched_settings(client)
+    try:
+        from services.spend_logger import SpendLogger
+
+        SpendLogger().log(
+            provider="google",
+            model="gemini-2.5-flash",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.001,
+        )
+    finally:
+        p.stop()
+
+    nf = rows["neural_footprint_event"][0]
+    assert "skill_id" not in nf
+    # Not smuggled into context either — attribution is a column here.
+    assert "skill_id" not in nf["context"]
+
+
+def test_build_agent_event_omits_skill_id_for_empty_values():
+    """Empty string and None are both 'not a skill task' — neither writes it."""
+    from services.neural_footprint import build_agent_event
+
+    for empty in (None, ""):
+        row = build_agent_event(
+            subject_id="agent", stimulus="s", choice="c", skill_id=empty
+        )
+        assert "skill_id" not in row
+
+    row = build_agent_event(
+        subject_id="agent", stimulus="s", choice="c", skill_id="registry-clerk"
+    )
+    assert row["skill_id"] == "registry-clerk"

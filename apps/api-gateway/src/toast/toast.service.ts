@@ -27,6 +27,7 @@ import {
   ToastWebhookResponseDto,
   ToastWebhookEventType,
 } from "./dto/toast-webhook.dto";
+import { ToastUpstream, TOAST_UPSTREAM_ROUTES } from "./toast-upstream";
 
 /**
  * Toast API Service
@@ -44,6 +45,14 @@ export class ToastService {
   private readonly httpClient: AxiosInstance;
   private readonly cacheTtlSeconds: number;
   private readonly webhookSecret: string | null;
+
+  /**
+   * Derives the refusal for every failed `/api/v1/toast/*` call — 501 when the
+   * orchestrator has no such route, 503 when it has one but could not serve it.
+   * See `toast-upstream.ts` for why this is derived rather than written out at
+   * each of the six call sites.
+   */
+  private readonly upstream: ToastUpstream;
 
   // Mock mode flag
   private readonly mockMode: boolean;
@@ -74,7 +83,11 @@ export class ToastService {
       "TOAST_CACHE_TTL_SECONDS",
       300,
     );
-    this.webhookSecret = this.configService.get<string>(
+    // `string | null`, because the default IS null — the secret is genuinely
+    // optional and `verifyWebhookSignature` already branches on its absence.
+    // Typing it `string` while defaulting to null is how "the secret is set"
+    // became unfalsifiable at the type level.
+    this.webhookSecret = this.configService.get<string | null>(
       "TOAST_WEBHOOK_SECRET",
       null,
     );
@@ -83,6 +96,17 @@ export class ToastService {
       baseURL: this.agentOrchestratorUrl,
       timeout: 30000,
     });
+
+    // The single place a failure status for /api/v1/toast/* is decided. Reads
+    // `this.httpClient` through a closure rather than capturing it, because the
+    // existing specs swap the instance after construction.
+    this.upstream = new ToastUpstream(
+      { get: (url, config) => this.httpClient.get(url, config) },
+      {
+        warn: (message) => this.logger.warn(message),
+        error: (message) => this.logger.error(message),
+      },
+    );
 
     this.logger.log(`Toast service initialized (mock mode: ${this.mockMode})`);
 
@@ -116,6 +140,48 @@ export class ToastService {
    */
   private enforceSignature(): boolean {
     return !this.mockMode || process.env.NODE_ENV === "production";
+  }
+
+  /**
+   * Whether FABRICATED Toast data may be served.
+   *
+   * The reasoning above was applied to webhook signatures on 2026-08-25 and
+   * never to the data paths, so five endpoints kept returning invented menus,
+   * orders and sales figures gated on `this.mockMode` alone — and
+   * TOAST_MOCK_MODE is not set in the production Railway environment, so the
+   * TRUE default was live. `POST /toast/orders` was reporting an order placed
+   * at a vendor that was never placed: a false success on an acting path,
+   * which ADR 0020 (no fabricated answers, LOCKED) forbids outright.
+   *
+   * Closed the same way, and deliberately NOT by flipping the default to
+   * false: the default only governs the unset case, whereas someone setting
+   * TOAST_MOCK_MODE=true on the production service to debug would reopen the
+   * exact hole. This close cannot be reopened by a variable at all, and
+   * `apps/api-gateway/Dockerfile:42` bakes ENV NODE_ENV=production into the
+   * deployed image, so it engages regardless of Railway's variable list.
+   *
+   * NODE_ENV is read per call rather than cached at construction, matching
+   * `enforceSignature` above and `communications/guards/non-production.guard.ts:29`.
+   */
+  private mockDataAllowed(): boolean {
+    return this.mockMode && process.env.NODE_ENV !== "production";
+  }
+
+  /**
+   * The refusal served when mock data is suppressed. ADR 0020: a surface with
+   * no data says so, and an error must never render as emptiness — so this is
+   * a spoken 503, never an empty list and never a zero.
+   */
+  private toastNotConnected(detail: string): HttpException {
+    this.logger.error(
+      `Toast data requested in production with TOAST_MOCK_MODE on — refusing to fabricate (${detail})`,
+    );
+    return new HttpException(
+      `Toast is not connected for this restaurant, so ${detail}. ` +
+        `Mudavym does not show simulated POS data in production. ` +
+        `Connect Toast to see real figures.`,
+      HttpStatus.SERVICE_UNAVAILABLE,
+    );
   }
 
   verifyWebhookSignature(
@@ -424,8 +490,10 @@ export class ToastService {
     // Phase 2 POS→pour: a completed sale decrements inventory (glass → pour, bottle → movement).
     await this.applyOrderSaleEffects(restaurantId, webhookDto);
 
-    // Forward to agent orchestrator for processing
-    await this.forwardToOrchestrator("order", webhookDto);
+    // NO forward to the orchestrator. Removed 2026-09-01 — see the block comment
+    // above `getWebhookMetrics` for the evidence. Short version: the POST went to
+    // `/api/v1/toast/webhooks/{type}`, a route the orchestrator has never
+    // registered, and the 404 was swallowed by a `logger.warn`.
 
     return data?.id;
   }
@@ -632,8 +700,7 @@ export class ToastService {
     // Invalidate menu cache since stock changed
     await this.cacheService.invalidateByPattern("toast:menu*");
 
-    // Forward to agent orchestrator
-    await this.forwardToOrchestrator("stock", webhookDto);
+    // NO forward to the orchestrator — same dead route as the order path above.
 
     return data?.id;
   }
@@ -682,34 +749,47 @@ export class ToastService {
     return data?.id;
   }
 
-  /**
-   * Forward webhook to agent orchestrator for processing
+  /*
+   * REMOVED 2026-09-01 — `forwardToOrchestrator()`.
+   *
+   * It did:
+   *     POST {AGENT_ORCHESTRATOR_URL}/api/v1/toast/webhooks/{order|stock|menu}
+   *     catch → this.logger.warn("Failed to forward webhook to orchestrator")
+   *
+   * That route has never existed. The orchestrator registers exactly these
+   * prefixes (`services/agent-orchestrator/main.py:151-186` + the `APIRouter`
+   * declarations in `services/agent-orchestrator/api/`):
+   *   /api/v1/{admin,analytics,collect,onboarding,pos,preview,procurement,
+   *            quality,research,scan,studio}, /api/templates, and the
+   *   unprefixed health/metrics routes.
+   * There is no `/api/v1/toast` router, so every one of these POSTs returned
+   * 404 and the catch turned a permanent misconfiguration into a warn line.
+   *
+   * DELETED rather than repointed. The obvious repoint target is
+   * `POST /api/v1/pos/webhook/toast` (`api/pos_routes.py:35`), and it is wrong
+   * on four independent counts:
+   *   1. Signature — that route calls `ToastAdapter.verify_webhook(raw, sig)`
+   *      (`adapters/toast_adapter.py:24-45`), which fails closed with no
+   *      `Toast-Signature` header. This forward sends none → 401, always.
+   *   2. Shape — `normalize_event` reads `eventType` and
+   *      `order.checks[].selections` (`toast_adapter.py:47-89`); this forward
+   *      sends a reshaped `{event_id, event_type, restaurant_guid, timestamp,
+   *      payload}` envelope, so `items` would always come out empty.
+   *   3. Semantics — the agent's handler map keys are `OrderCompleted`,
+   *      `OrderItemVoided`, `OrderRefunded`, `MenuItemModified`
+   *      (`agents/pos_integration_agent.py:268-273`). None of this gateway's
+   *      event types (`order.paid`, `stock.updated`, …) match, so every event
+   *      would return `{"status": "ignored"}`.
+   *   4. Duplication — `/api/v1/pos/webhook/toast` is a *parallel ingress* that
+   *      Toast calls directly, not a downstream of this handler. This method
+   *      has already persisted the `events` row and applied the inventory
+   *      effects by the time the forward ran; feeding the same order in again
+   *      would risk double-counting the sale.
+   *
+   * So there is no consumer to fail loudly towards, and nothing is lost: the
+   * event is persisted and the inventory effects are applied above. If a real
+   * orchestrator-side consumer is ever built, wire it here and let it throw.
    */
-  private async forwardToOrchestrator(
-    type: "order" | "stock" | "menu",
-    webhookDto: ToastWebhookDto,
-  ): Promise<void> {
-    try {
-      await this.httpClient.post(`/api/v1/toast/webhooks/${type}`, {
-        event_id: webhookDto.eventId,
-        event_type: webhookDto.eventType,
-        restaurant_guid: webhookDto.restaurantGuid,
-        timestamp: webhookDto.timestamp,
-        payload:
-          webhookDto.order ||
-          webhookDto.stock ||
-          webhookDto.menu ||
-          webhookDto.data,
-      });
-    } catch (error) {
-      // Log but don't fail - the event is already persisted
-      this.logger.warn({
-        message: "Failed to forward webhook to orchestrator",
-        eventId: webhookDto.eventId,
-        error: error.message,
-      });
-    }
-  }
 
   /**
    * Get webhook processing metrics
@@ -725,6 +805,9 @@ export class ToastService {
     this.logger.log(`Fetching menus for restaurant: ${restaurantId}`);
 
     if (this.mockMode) {
+      if (!this.mockDataAllowed()) {
+        throw this.toastNotConnected("its menus are unavailable");
+      }
       return this.getMockMenus();
     }
 
@@ -747,8 +830,18 @@ export class ToastService {
       return response.data;
     } catch (error) {
       this.logger.error(`Failed to fetch menus: ${error.message}`);
-      // Fallback to mock data
-      return this.getMockMenus();
+      // ADR 0020: a failed fetch says it failed. This previously fell back to
+      // getMockMenus(), which fabricated menus even when mock mode was
+      // correctly OFF — a real Toast integration plus one network blip served
+      // invented data with no marker. Mirrors getMenu's catch below.
+      //
+      // The STATUS is derived, not written here: 501 while the orchestrator has
+      // no `/api/v1/toast` router, 503 or the upstream's own code once it does.
+      throw await this.upstream.describe({
+        route: TOAST_UPSTREAM_ROUTES.menus,
+        summary: "Failed to fetch menus from Toast",
+        error,
+      });
     }
   }
 
@@ -770,6 +863,9 @@ export class ToastService {
     this.logger.log(`Fetching menu: ${menuId}`);
 
     if (this.mockMode) {
+      if (!this.mockDataAllowed()) {
+        throw this.toastNotConnected("this menu is unavailable");
+      }
       const menus = this.getMockMenus();
       const menu = menus.menus.find((m) => m.guid === menuId);
       if (!menu) {
@@ -796,10 +892,14 @@ export class ToastService {
       return response.data;
     } catch (error) {
       this.logger.error(`Failed to fetch menu: ${error.message}`);
-      throw new HttpException(
-        error.response?.data?.message || "Failed to fetch menu",
-        error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      // Id-addressed, so a bare 404 is ambiguous — "no such router" and "no such
+      // menu" are different answers and used to collapse into the same one.
+      // `describe` confirms which before it will say 501.
+      throw await this.upstream.describe({
+        route: TOAST_UPSTREAM_ROUTES.menu,
+        summary: "Failed to fetch menu",
+        error,
+      });
     }
   }
 
@@ -838,6 +938,21 @@ export class ToastService {
     this.logger.log(`Creating order for restaurant: ${restaurantId}`);
 
     if (this.mockMode) {
+      if (!this.mockDataAllowed()) {
+        // The worst of the five: this returned a fabricated order with a
+        // real-looking guid and an OPEN status, reporting an order placed at a
+        // vendor that was never placed. ADR 0020: an action that cannot
+        // complete refuses out loud. The refusal must say NOTHING WAS PLACED,
+        // because the caller's next question is whether to retry.
+        this.logger.error(
+          "Order creation attempted in production with TOAST_MOCK_MODE on — refusing to fabricate a placed order",
+        );
+        throw new HttpException(
+          "Toast is not connected, so this order was NOT sent and nothing was placed. " +
+            "Connect Toast before ordering through it.",
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      }
       return this.createMockOrder(dto);
     }
 
@@ -849,10 +964,15 @@ export class ToastService {
       return response.data;
     } catch (error) {
       this.logger.error(`Failed to create order: ${error.message}`);
-      throw new HttpException(
-        error.response?.data?.message || "Failed to create order",
-        error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      // The acting path. Whatever the derived status turns out to be, the
+      // message has to answer the caller's actual next question — was anything
+      // placed? — the same way the mock-mode refusal above does.
+      throw await this.upstream.describe({
+        route: TOAST_UPSTREAM_ROUTES.createOrder,
+        summary:
+          "Failed to create order — it was NOT sent and nothing was placed",
+        error,
+      });
     }
   }
 
@@ -870,6 +990,9 @@ export class ToastService {
     this.logger.log(`Fetching order: ${orderId}`);
 
     if (this.mockMode) {
+      if (!this.mockDataAllowed()) {
+        throw this.toastNotConnected("this order cannot be looked up");
+      }
       return this.getMockOrder(orderId);
     }
 
@@ -880,10 +1003,12 @@ export class ToastService {
       return response.data;
     } catch (error) {
       this.logger.error(`Failed to fetch order: ${error.message}`);
-      throw new HttpException(
-        error.response?.data?.message || "Failed to fetch order",
-        error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      // Id-addressed — same ambiguity as getMenu above.
+      throw await this.upstream.describe({
+        route: TOAST_UPSTREAM_ROUTES.order,
+        summary: "Failed to fetch order",
+        error,
+      });
     }
   }
 
@@ -898,6 +1023,9 @@ export class ToastService {
     this.logger.log(`Fetching sales data for restaurant: ${restaurantId}`);
 
     if (this.mockMode) {
+      if (!this.mockDataAllowed()) {
+        throw this.toastNotConnected("sales figures are unavailable");
+      }
       return this.getMockSalesData(startTime, endTime);
     }
 
@@ -912,24 +1040,81 @@ export class ToastService {
       return response.data;
     } catch (error) {
       this.logger.error(`Failed to fetch sales data: ${error.message}`);
-      // Fallback to mock data
-      return this.getMockSalesData(startTime, endTime);
+      // ADR 0020, and the sharpest case of it: analytics consumes sales. This
+      // previously fell back to getMockSalesData() even with mock mode OFF, so
+      // a transient orchestrator failure fed invented revenue into the engine
+      // indistinguishably from real takings.
+      throw await this.upstream.describe({
+        route: TOAST_UPSTREAM_ROUTES.sales,
+        summary: "Failed to fetch sales data from Toast",
+        error,
+      });
     }
   }
 
   /**
-   * Get Toast API statistics
+   * Get Toast API statistics.
+   *
+   * This calls `GET {AGENT_ORCHESTRATOR_URL}/api/v1/toast/statistics`, and that
+   * route has never existed. The orchestrator registers exactly these prefixes
+   * (`main.py:151-186` plus the `APIRouter(prefix=…)` declarations under
+   * `services/agent-orchestrator/api/`):
+   *   /api/v1/{admin,analytics,collect,onboarding,pos,preview,procurement,
+   *            quality,research,scan,studio}, /api/templates, and the
+   *   unprefixed health/metrics routes.
+   * `git log --all -S"/api/v1/toast"` returns no orchestrator commit at all —
+   * the router was not removed or renamed, it was never written. These calls
+   * arrived in `91b75dd1` (2026-04-13), by which point the orchestrator already
+   * shipped eight route modules, none of them Toast.
+   *
+   * Of the six dead calls this is the sharpest, because it is the only one with
+   * no mock branch: it goes to the orchestrator in EVERY configuration, mock
+   * mode on or off, dev or prod. It has therefore never once succeeded.
+   *
+   * What it used to do was half-right. The catch returned HTTP 200 with
+   * `{mode, status: "unknown", error}` — honest about the VALUE, in that it
+   * refused to invent a statistic, which satisfies the first half of ADR 0020
+   * (no fabricated answers, LOCKED). But it was not honest about the SURFACE.
+   * ADR 0020's other half is that an action which cannot complete refuses out
+   * loud, and a 200 is not a refusal: every health-style caller read this
+   * endpoint as reachable, every time, for as long as it has existed.
+   *
+   * 501, deliberately, and not the 503 used for the other five. "Toast is not
+   * connected" is a condition the owner can change — connect Toast and those
+   * calls work, so 503 and its retry-later meaning are true there. Neither is
+   * true here: connecting Toast would not help, because the missing piece is an
+   * orchestrator router nobody has written. A 503 would promise a future in
+   * which this succeeds — a quieter version of the same fabrication — and would
+   * invite a monitor to retry a route that cannot ever answer.
+   *
+   * That reasoning stands; what changed is that the 501 is no longer WRITTEN
+   * here. A constant is true only while its condition holds, and the sibling
+   * service change building `/api/v1/toast` will end this one — at which point a
+   * hardcoded 501 becomes the fabrication it was added to prevent, and the fix
+   * depends on somebody remembering six catch blocks. The status is now derived
+   * from what the orchestrator actually answers (`toast-upstream.ts`), so this
+   * call answers 501 for exactly as long as the route is missing and not one
+   * deploy longer.
+   *
+   * Whether this endpoint should exist at all is a live question and NOT
+   * settled here; see the PR that added this comment. Nothing in the product
+   * renders it, but `apps/web/src/services/api/toast.ts:110` exports a client
+   * for it and it is published in the OpenAPI spec, so retiring it is the
+   * founder's call, not this change's.
    */
   async getStatistics(): Promise<any> {
     try {
       const response = await this.httpClient.get("/api/v1/toast/statistics");
       return response.data;
     } catch (error) {
-      return {
-        mode: this.mockMode ? "mock" : "real",
-        status: "unknown",
-        error: error.message,
-      };
+      this.logger.error(
+        `Toast statistics request failed upstream: ${error.message}`,
+      );
+      throw await this.upstream.describe({
+        route: TOAST_UPSTREAM_ROUTES.statistics,
+        summary: "Toast API statistics are unavailable",
+        error,
+      });
     }
   }
 

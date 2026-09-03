@@ -202,12 +202,12 @@ export function scheduleTestEmail(): ScheduledEmail | null {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>WineOps Test Email</title>
+  <title>Mudavym Test Email</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6;">
   <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
     <div style="background: linear-gradient(135deg, #7c2d12 0%, #991b1b 100%); padding: 40px 30px; text-align: center;">
-      <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 600;">🍷 WineOps AI</h1>
+      <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 600;">🍷 Mudavym</h1>
       <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 14px;">Scheduled Email Test</p>
     </div>
     <div style="padding: 40px 30px;">
@@ -225,7 +225,7 @@ export function scheduleTestEmail(): ScheduledEmail | null {
       </div>
     </div>
     <div style="background-color: #f3f4f6; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
-      <p style="color: #9ca3af; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} WineOps AI</p>
+      <p style="color: #9ca3af; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Mudavym</p>
     </div>
   </div>
 </body>
@@ -234,7 +234,7 @@ export function scheduleTestEmail(): ScheduledEmail | null {
   
   return scheduleEmail(
     to,
-    'WineOps AI - Scheduled Test Email',
+    'Mudavym - Scheduled Test Email',
     testHtml,
     'This is a test email scheduled to be sent 20 minutes after creation.',
     20 // 20 minutes

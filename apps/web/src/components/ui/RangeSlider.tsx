@@ -26,7 +26,7 @@ export interface RangeSliderProps {
   id?: string
 }
 
-const FILL = '#9E4249' // wine-600
+const FILL = '#1A5E6B' // wine-600
 const TRACK = '#EDE7E3' // warm gray-200
 
 export function RangeSlider({
@@ -82,8 +82,8 @@ export function RangeSlider({
         }
         .wo-range:not(:disabled):hover::-webkit-slider-thumb { transform: scale(1.12); }
         .wo-range:not(:disabled):hover::-moz-range-thumb { transform: scale(1.12); }
-        .wo-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(158,66,73,.22); }
-        .wo-range:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px rgba(158,66,73,.22); }
+        .wo-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(26,94,107,.22); }
+        .wo-range:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 4px rgba(26,94,107,.22); }
         .wo-range:disabled::-webkit-slider-thumb { border-color: #C9C1BC; cursor: not-allowed; }
         .wo-range:disabled::-moz-range-thumb { border-color: #C9C1BC; cursor: not-allowed; }
       `}</style>

@@ -45,7 +45,8 @@ These were set on 2026-08-24 and override convenience every time.
 | `supabase/` | Migrations + schema — source of truth for DB shape |
 | `.planning/` | Planning corpus (see §4) |
 | `.planning/decisions/` | **ADRs + the open-decision register** |
-| `md/` | Legacy long-form docs (120 files, historical) |
+| `.planning/00-index/DESIGN-MAP.html` | Generated design map (ADR 0033) + `DESIGN-MAP-CLUSTERS.html` (coupling lens) — open in a browser; regenerate with `scripts/generate_design_atlas.py`, never hand-edit |
+| `md/` | Retired (ADR 0032) — only 5 schema-debt `.sql` files remain, awaiting the ADR 0026 lane |
 | `datasets/`, `scripts/` | Data corpora and one-off tooling |
 
 **Doc entry points, in reading order:** `.planning/PROJECT.md` (identity + current
@@ -112,14 +113,20 @@ point can and should be as deep as the decision warrants.
 
 ## 4. The planning corpus
 
-`.planning/` currently holds 28 top-level documents (~1.2MB). It is **not yet
-restructured** — that work is proposed but undecided (see
-`.planning/decisions/OPEN-DECISIONS.md`, OD-01). Until it is:
+`.planning/` holds ~30 top-level files after the OD-01 cleanup
+([ADR 0032](.planning/decisions/0032-vault-cleanup-cut-line.md), 2026-08-27 —
+closed build trees deleted, recoverable via its tombstone index). **Archive
+means delete + tombstone**: nothing is ever copied or moved into an in-tree
+archive folder; a retirement lists the file in the retiring ADR with its
+recovery commit. Ongoing rules:
 
-- Treat `PROJECT.md`, `STATE.md`, `ROADMAP.md`, `REQUIREMENTS.md`, `FUTURES.md`
-  as the live spine.
-- Treat the large `*_PLAN.md` / `*_ARCHITECTURE.md` / `*_CATALOG.md` files as
-  reference corpora — grep them, cite them by `file.md:line`, do not restate them.
+- Treat `PROJECT.md`, `STATE.md`, `ROADMAP.md`, `FUTURES.md`, `YC_WEDGE_PLAN.md`
+  as the live spine — the only top-level docs besides `v3.0-TECH-DEBT.md` and
+  `config.json`.
+- Closed records and reference corpora (REQUIREMENTS ledger, milestone audits,
+  the `*_PLAN` / `*_CATALOG` files) live in `.planning/07-reference/` — grep
+  them, cite them by `file.md:line`, do not restate them. `07-reference/INDEX.md`
+  says what each one is.
 - `v3.0-TECH-DEBT.md` is the live defect register. Check it before claiming
   something is broken or fixed.
 - Do **not** create new top-level `.planning/*.md` files. New long-form docs go in

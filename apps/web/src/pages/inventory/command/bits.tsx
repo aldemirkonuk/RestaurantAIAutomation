@@ -109,7 +109,7 @@ export function Sparkline({ series }: { series: number[] }) {
 
 // ── Busy-hours heatmap ────────────────────────────────────────────────────────
 
-const HEAT_SHADES = ['#FDF7F6', '#FAEDEC', '#F3D4D2', '#E5A9A8', '#D07072', '#9E4249']
+const HEAT_SHADES = ['#F1F7F8', '#E0EFF1', '#BEDDE2', '#8FC4CD', '#5FB0BC', '#1A5E6B']
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const SLOTS = ['4p', '5p', '6p', '7p', '8p', '9p', '10p', '11p']
 

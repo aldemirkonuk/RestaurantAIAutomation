@@ -2,7 +2,7 @@
 type: plan
 title: Plan
 status: live
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[AGENDA]]", "[[HOME]]", "[[ORG-MAP]]", "[[LOOP-MAP]]", "[[SCENARIO-MAP]]"]
 ---
 
@@ -15,17 +15,17 @@ links: ["[[AGENDA]]", "[[HOME]]", "[[ORG-MAP]]", "[[LOOP-MAP]]", "[[SCENARIO-MAP
 
 ## 0. Where we actually are
 
-> **Milestone naming lives in the spine** — current milestone: **P2 — Web complete
-> + deploy** ([ADR 0018](../decisions/0018-p2-plan-of-record.md); stages in
-> [STATE.md](../STATE.md)). The P1/P2 labels below were this file's own push
-> numbering, coined before ADR 0018 reserved P-names for milestones; they are kept
-> as history under 'Push' names to avoid two things called P2.
+> **Milestone naming lives in the spine** — current milestone: **P3 — Grade, then
+> scale** ([ADR 0029](../decisions/0029-p3-plan-of-record.md); stages in
+> [STATE.md](../STATE.md)). P2 closed 2026-08-26. The P1/P2 labels below were this
+> file's own push numbering, coined before ADR 0018 reserved P-names for milestones;
+> they are kept as history under 'Push' names to avoid two things called P2.
 
 | Plane | State |
 |---|---|
 | **Structure** — divisions, departments, teams, advisory | ✅ Built. 7 divisions · 19 departments · 2 sub-layers · 3 advisory · 75 teams = 99 units × 8 artifacts = **792 docs** |
 | **Operational** — scenario rituals | ✅ Built. 17 scenarios, all `status: proposed` |
-| **Decisions** | 🟡 **49 open**, several 🔴. Fill-to-drain ratio measured at 7:1 |
+| **Decisions** | 🟡 **40 open** (7 🔴) · **64 resolved**, re-counted 2026-08-26. The fill-to-drain ratio has inverted since it was measured at 7:1 |
 | **Instrumentation (L4)** | 🟢 **P1 closed 2026-08-24.** Table live, 25 call sites emit, `scripts/nf_readout.py` produces the number with no hand-written SQL. Both runtimes proved end-to-end against production |
 | **Loops** | 🟡 5 running/active · **4 gated** · 29 blocked · 438 proposed. Two cost loops moved `blocked` → `gated` when P1 landed |
 | **Security** | 🟢 Five holes closed (#31, #32). Plus: the NF table shipped RLS-off with anon grants and was closed the same day |
@@ -124,9 +124,33 @@ moved **1.4% → 67.4%** ([[POS-BRIDGE-AUDIT]]); sale-volume contract and refere
 integrity are locked (ADRs 0011, 0015). Two Toast-side defects remain open in the
 register (OD-64/66/67 cluster), tracked there rather than here.
 
-### Push 4 — Give NF-B a caller *(open — carried as a P3-candidate in [ROADMAP.md](../ROADMAP.md))*
-The guest consent/identity slice is 564 lines of working migration, three tables, two CI
-guards — and **zero application call sites**. Every guest scenario is blocked on this.
+### Push 4 — Give NF-B a caller ⛔ **HELD — superseded by [ADR 0029](../decisions/0029-p3-plan-of-record.md) §3**
+Re-measured 2026-08-26 and the numbers hold: `20260819000000_guest_identity_minimal_slice.sql`
+is **564 lines** creating `guests`, `guest_identifiers`, `guest_check_links`, with two CI
+guards standing over it (`check_no_guest_name_matching.sh`, `check_no_raw_guest_channels.sh`)
+and an eval — and **zero** application call sites, the only repository reference outside
+migrations and scripts being a feature-flag registry entry.
+
+**What changed is the diagnosis, not the measurement.** This push was written as an
+ordering problem — *do it next*. It is not. It has no caller because **which guest surface
+it serves is undecided** (OD-05 voice-agent audience, OD-07 Beli build-vs-partner), so
+wiring one means an agent choosing the product. Founder call 2026-08-26: **held**, and
+recorded as blocked-on-a-decision so nothing later mistakes the silence for backlog.
+
+### Push 5 — Close the grading gap *(this is P3.0, and it is the milestone gate)*
+§1's bottleneck now has a stage, a census and a gate. Measured 2026-08-26: the gateway
+emits **7** task types and **1** carries a real verdict — the emitter hard-codes
+`outcome_basis: "call_level_v0"` at `model-client.service.ts:387`, and the single
+exception records its verdict as an ADR-0017 sidecar (`document-extractor.service.ts:169`).
+Python is further along: OD-75 moved 12 sites to `parse_v1`.
+
+Not open research — `.planning/04-specs/OD-59-VERDICT-CENSUS.md` §4 ranks 18 task types
+cheapest-verdict-first with each existing check cited at `file:line`, and rows 2–9 are all
+**synchronous** and **Trivial/Low** because the graders already run; only the result never
+reaches the footprint.
+
+**Unblocks:** OD-04 (Push 3's successor), P3.C Ask AI, and the 24 loops across 14 units
+that measure at least one of the 7 ungraded `nf_a.*` keys.
 
 ## 2. What is explicitly NOT next
 
@@ -135,6 +159,10 @@ guards — and **zero application call sites**. Every guest scenario is blocked 
   `CanonicalCheck` — it needs a schema decision before code.
 - **Pricing.** Founder-deferred (OD-23). Commercial stays provisional.
 - **Blender / landing visuals.** Held until brand direction exists.
+- **Scaffolding P3.C (Ask AI) or P3.D (model registry) "to get ahead."** They sit
+  behind the P3.0 gate for a reason: the scaffolding is what accumulates the calls
+  the instrument cannot yet grade ([ADR 0029](../decisions/0029-p3-plan-of-record.md) §6.3).
+- **Wiring NF-B a "minimal" caller.** Offered and rejected — see Push 4.
 
 ## 3. Sequencing rule
 

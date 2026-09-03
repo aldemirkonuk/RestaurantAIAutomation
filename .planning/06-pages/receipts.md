@@ -2,18 +2,22 @@
 type: page
 route: /receipts
 slug: receipts
+softwares: [receipts-invoice-match]
 component: apps/web/src/pages/ReceiptsPage.tsx
 audience: owner
 tier: core
+archetype: list+detail # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-08-25
+updated: 2026-09-02
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
 # /receipts — Receipts & Credits
+
+> **Part of** [[08-softwares/receipts-invoice-match|Receipts & Invoice Match]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
@@ -28,6 +32,66 @@ document shows the stored image beside the extracted lines for side-by-side
 verification. Tri-state nulls … render as an em dash, never as a pass. Credits live
 as a second tab on the same page so the chase list is one click away from the
 documents that prove the claims" (`ReceiptsPage.tsx:1-10`, decisions E48/E49).
+
+## 1a. Features
+- **Documents** tab, two lanes: needs review / verified
+- Select a document → its stored image beside the extracted lines for side-by-side verification; unknown values render as "—", never as a pass
+- Verify a document
+- **Credits** tab: the vendor credit-claim ledger with stats; move a claim through its states
+- Deep-linkable tab (`?tab=credits` — where `/credits` lands)
+- **Mudavym redesign behind `mudavym_design_receipts` (OFF)** — the founder's four-requirement brief: the review queue + the door's paperless deliveries on one surface; **the stored scan rendered inline beside the lines** (images and PDFs; the 3600s signed link is treated as spent five minutes early and offers a refetch, and each not-shown state names which one it is — no stored file / no signable link / aged out / did not load); the linked order above the lines ("the right invoice"); qty/unit/total editable in place pre-verification with the tie-out recomputed in the same response (new gateway route `PATCH /procurement/documents/:id/lines/:lineId`), **the extracted figure kept beside a corrected cell with an undo until verify**; the swipe-up confirm ceremony firing verify
+- **Honesty, per [[0063-a-certification-screen-shows-the-thing-being-certified|ADR 0063]]** — every query key carries the active restaurant id (an unresolved restaurant is refused, not given a shared `''` cache bucket); the awaiting-review count renders as a floor (`≥`) at its server window; all three list failures are named individually, and an unanswered uncounted-deliveries query says it is unknown rather than rendering as a caught-up door; a failed detail fetch says the failure in the **server's** words and never claims an empty invoice; document `extraction_confidence` and per-suggestion `confidence` are shown, `—` when unrecorded
+- **Pairing** — matcher suggestions carry their reason **and their confidence** for one-tap confirmation. The matcher **does** auto-write unambiguous vendor-SKU pairings server-side (`line-matcher.ts:282-296`); the page names them as written-without-asking, and every paired row has **Unlink**. The `Paired with` column names its target (ordered wine · quantity · order-line ref · method · confidence) and says "not paired" in words
+
+## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receipts`)
+
+Canonical source with curves: `apps/web/src/pages/receipts/next/MOTIONS.md` —
+this list is the note-side index (ADR 0044 §2).
+
+| id | name | fires |
+|---|---|---|
+| `rc-swipe-confirm` | The swipe-up confirm | the verify ceremony — fill tracks the finger 1:1; keyboard hold fills at the pour rate, linear (a countdown never eases); early release tucks back |
+| `rc-doc-settle` | Document settles open | the selected document's panel — `settle`, 320ms house curve |
+| `rc-ink` | Ink micro-state | queue rows and controls — one paper step, nothing translates |
+
+Deliberate non-motions: a recomputed tie-out swaps text, never animates
+(arithmetic has no continuity after a correction); the no-paperwork strip
+never pulses; verified documents leave the queue without an exit flourish.
+
+**2026-08-31 wave polish (Sorting Office two-Opus review):** the "Check line
+pairing" and "Verified" controls, plus the two row lists' selected-state
+buttons, carried an inline `background: 'transparent'` that permanently
+outranked `.rc-ink:hover`/`.rc-row:hover` (a style attribute beats a class
+selector regardless of specificity) — dead hovers on every rc-ink/rc-row
+control. Fixed by removing the inline value rather than adding `!important`;
+verified via a static cascade repro (before/after screenshots) since the
+route sits behind auth. `fmtDate` in `rc2-format.ts` also got the
+local-calendar-day parser backported from `documents-reports/next/so-format.ts`
+— `doc_date` is a Postgres `date` (no time, no zone), so the bare
+`new Date(iso)` it used rendered the prior day west of UTC.
+
+### Design used, and why (ADR 0045 §5 wave · MAKEOVER-VERDICTS: KEEP+, the most demanding brief)
+
+The founder's four requirements, mapped to structure: (1) *compress
+everything from the orders* — the door's counted-but-paperless deliveries
+share the surface with the review queue, so no part of an order's paper
+trail waits invisibly elsewhere; (2) *backend integration without
+overcrowding* — three list queries plus one on-demand document detail;
+(3) *the right invoice* — the linked order rides above the lines, an
+unlinked document says "pair it before trusting any line", and the line
+matcher's suggestions surface with their plain-language reasons for one-tap
+confirmation (never auto-written — a wrong link corrupts cost basis
+silently); (4) *editable and confirmable right away* — qty/unit/total edit
+in place through the new PATCH route, which recomputes the tie-out through
+the same rule extraction uses and returns it in the response, and the named
+**swipe-up ceremony** completes into verify. The edit/verify honesty
+contract: only a pre-verification document is editable (a verified document
+is the record a dispute leans on — no un-verify exists); edits are anonymous
+drafts and provenance is carried by verify's `verified_by` stamp; the
+ceremony's own copy says exactly what it asserts — the transcription, never
+charges or stock. Credits stay on the legacy tab (flag off) until a later
+pass; recorded in §9. E48/E49 carried throughout: tri-state nulls are
+untestable, never a pass.
 
 ## 2. Entry
 
@@ -82,8 +146,11 @@ applies (see dashboard.md §7).
 
 ## 9. Gaps
 
+- ReceiptsNext (flag ON) has no credits lane yet — `?tab=credits` renders the LEGACY page even with the flag on (guarded in `ReceiptsNext.tsx`), so `/credits` keeps working; a native credits lane is a later pass (§1b).
+
 - Line-match **suggestions** from `POST /procurement/documents/:id/match` have no UI
-  rendering them — deferred by design (`v3.0-TECH-DEBT.md:447`).
+  on the LEGACY page — deferred by design (`v3.0-TECH-DEBT.md:447`). ReceiptsNext
+  renders them with reasons + one-tap confirm behind `mudavym_design_receipts` (§1b).
 - Cost-drift-caught / straight-through-rate / days-to-close metrics are decided-not-
   built (`v3.0-TECH-DEBT.md:446`) — this page is where they would land.
 
@@ -91,6 +158,19 @@ applies (see dashboard.md §7).
 
 **partial.** The most honestly-built page in this cluster, and the only one whose
 producer chain is verified live end to end. What is absent is named, not faked.
+
+**Verdict unchanged by ADR 0063 (2026-09-02), and here is why it did not rise.**
+The rebuilt lane's headline defect is fixed — it could not display the invoice it
+asked a human to certify, and now renders it beside the lines — along with the
+tenant-keying leak, three [[0051-rebuilt-pages-show-live-data-only|ADR 0051]]
+honesty breaches, the hidden confidences, and the false "never auto-written"
+docblock over a live write path. But the lane is still behind
+`mudavym_design_receipts` (OFF), the gaps listed below are still gaps, and two
+named limits remain: `procurement_document_lines` has no `updated_at`, so two
+managers on one document are still last-write-wins (the collision is now
+*announced*, which is not the same as prevented), and no endpoint exposes
+`procurement_order_lines`, so a pairing badge names the ordered wine and the
+order-line id rather than that line's own description.
 
 **Real, with a live producer.** A vendor emails an invoice → Gmail push webhook
 (`apps/api-gateway/src/communications/communications.controller.ts:1030-1180`)
@@ -138,7 +218,7 @@ Unused by the page: `POST /procurement/documents` (manual upload, `:53-96`),
 |---|---|---|
 | `procurement_documents` (email channel) | `@Cron("*/5 * * * *")` sweep over `conversation_attachments` → `DocumentExtractorService` → `ModelClientService` (`document-intake.service.ts:581-645`) | **Yes.** Its input depends on the Gmail push path, which carries live traffic |
 | `conversation_attachments` | `rabbitmq-bridge.service.ts:882` on inbound mail | Yes |
-| Same, via the provider-agnostic webhook | `POST /webhooks/inbound-email` (`inbound-email.controller.ts:92`) | **Dormant** — `INBOUND_EMAIL_DOMAIN` unset (OD-78 note). The Gmail path covers it today; this is the multi-tenant replacement |
+| Same, via the provider-agnostic webhook | `POST /webhooks/inbound-email` — `@Controller("webhooks")` + `@Post("inbound-email")` (`inbound-email.controller.ts:42,53`) | **Dormant** — `INBOUND_EMAIL_DOMAIN` unset, read in `inbound-address.service.ts:29` (**not** in the controller); the controller's own gate is `INBOUND_WEBHOOK_SECRET` (`inbound-email.controller.ts:61-68`), also unset. The Gmail path covers it today; this is the multi-tenant replacement |
 | `procurement_documents` (door channel) | `POST /procurement/documents` from `/receiving-door` | Yes |
 | `procurement_credits` | `openCreditClaim` on invoice match (`procurement.service.ts:1104-1132`); `receiving.service.ts:325` reads them for the manager queue | Yes |
 

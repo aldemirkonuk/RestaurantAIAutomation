@@ -306,25 +306,51 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
 
         # Log Serper spend (fixed $0.001/query per Starter plan).
         # P1 fix: wine_id is NOT a restaurant_id — it now rides in context.
-        try:
-            get_spend_logger().log(
-                provider="serper",
-                model="serper-search",
-                input_tokens=0,
-                output_tokens=0,
-                cost_usd=settings.serper_cost_per_query,
-                restaurant_id=None,
-                agent="web_verify",
-                task_type="web_verify_search",
-                choice=f"search:{len(snippets)}_results",
-                outcome="success",  # call-level: search completed
-                duration_ms=int((time.perf_counter() - _t0) * 1000),
-                context={"wine_id": wine_id, "results_count": len(snippets)},
-            )
-        except Exception:
-            pass
+        #
+        # OD-59 / P3.0 `results_parsed_v1`: the honest verdict on a paid search
+        # is whether its snippets YIELDED something, and that is only known
+        # after the Gemini parse below. The parse is NOT hoisted above this log
+        # the way it is in jobs/score_tasks.py — there the parse is pure and
+        # local, here it is another billed network call, and hoisting it would
+        # mean a Gemini failure silently loses the Serper spend row.
+        #
+        # So the log is deferred into a helper called at each exit instead, with
+        # a guard so it fires exactly once. Losing cost data to grade it better
+        # would be a bad trade.
+        _logged = False
+
+        def _log_search(outcome: Optional[str], detail: dict) -> None:
+            nonlocal _logged
+            if _logged:
+                return
+            _logged = True
+            try:
+                get_spend_logger().log(
+                    provider="serper",
+                    model="serper-search",
+                    input_tokens=0,
+                    output_tokens=0,
+                    cost_usd=settings.serper_cost_per_query,
+                    restaurant_id=None,
+                    agent="web_verify",
+                    task_type="web_verify_search",
+                    choice=f"search:{len(snippets)}_results",
+                    outcome=outcome,
+                    duration_ms=int((time.perf_counter() - _t0) * 1000),
+                    context={
+                        "outcome_basis": "results_parsed_v1",
+                        "wine_id": wine_id,
+                        "results_count": len(snippets),
+                        **detail,
+                    },
+                )
+            except Exception:
+                pass
 
         if not snippets:
+            # null, not failure: whether this wine has no web presence or the
+            # query was wrong is not knowable here.
+            _log_search(None, {"untestable": "search_returned_no_results"})
             logger.info(
                 "_verify_async: wine_id=%s Serper returned 0 results — skipping concordance",
                 wine_id,
@@ -332,22 +358,35 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
             return {"wine_id": wine_id, "status": "no_search_results"}
 
         # WSRCH-02: Parse snippets via Gemini 2.5 Flash
-        verification_result = await parse_search_results(
-            snippets=[
-                {"title": s["title"], "snippet": s["snippet"], "link": s["link"]}
-                for s in snippets
-            ],
-            wine_name=wine_name,
-            producer=producer_raw or None,
-            vintage=str(vintage) if vintage else None,
-        )
+        try:
+            verification_result = await parse_search_results(
+                snippets=[
+                    {"title": s["title"], "snippet": s["snippet"], "link": s["link"]}
+                    for s in snippets
+                ],
+                wine_name=wine_name,
+                producer=producer_raw or None,
+                vintage=str(vintage) if vintage else None,
+            )
+        except Exception:
+            # The Serper query was still paid for. Record it before the
+            # exception leaves, then re-raise unchanged — this handler exists to
+            # protect the cost row, not to swallow the error.
+            _log_search("failure", {"parsed": False, "parse_raised": True})
+            raise
 
         if verification_result is None:
+            # We paid for five snippets and none of them were usable. This is
+            # the case the census singled out: it used to record identically to
+            # a search that found the answer.
+            _log_search("failure", {"parsed": False})
             logger.info(
                 "_verify_async: wine_id=%s Gemini parse returned None — skipping concordance",
                 wine_id,
             )
             return {"wine_id": wine_id, "status": "parse_failed"}
+
+        _log_search("success", {"parsed": True})
 
         # Source confidence from Gemini (0.0-1.0)
         web_confidence = verification_result.source_confidence or 0.7

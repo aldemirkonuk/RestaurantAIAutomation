@@ -127,9 +127,7 @@ def test_supabase_cron():
     print("\n4️⃣ Testing Supabase pg_cron integration...")
     print("   Steps:")
     print("   1. Open Supabase SQL Editor")
-    print(
-        "   2. Run the migration script: md_files/02-architecture/SUPABASE_CRON_SETUP.sql"
-    )
+    print("   2. Run the migration script: md/02-architecture/SUPABASE_CRON_SETUP.sql")
     print("   3. Verify cron jobs created:")
     print("      SELECT * FROM list_cron_jobs();")
     print("   4. Manually trigger a report:")

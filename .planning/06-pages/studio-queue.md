@@ -2,9 +2,11 @@
 type: page
 route: /studio/queue
 slug: studio-queue
+softwares: [wine-studio]
 component: apps/web/src/pages/studio/StudioApprovalQueue.tsx
 audience: dev
 tier: core
+archetype: list+detail # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 1
 maturity: broken
@@ -14,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[studio]]", "[[studio-certify]]"]
 ---
 
 # /studio/queue — override approval queue
+
+> **Part of** [[08-softwares/wine-studio|Wine Studio]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
@@ -25,6 +29,10 @@ links: ["[[PAGE-CONTRACT]]", "[[studio]]", "[[studio-certify]]"]
 Review-admin surface: approve or reject field overrides submitted by certified
 contributors (the D-12/D-14 human gate on catalogue edits). One decision per row,
 optional note.
+
+## 1a. Features *(internal review tooling)*
+- Approve or reject field overrides submitted by certified contributors, one decision per row
+- Optional note per decision; contributor trust progress display
 
 ## 2. Entry
 No inbound in-app link (`PAGE_MAP.md` entry-point list) except the studio header's

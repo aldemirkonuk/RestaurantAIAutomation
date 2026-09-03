@@ -119,7 +119,7 @@ export function LearnPanel({
           : { top, left }
       }
       className={cn(
-        'fixed z-[60] bg-white shadow-xl border-l-4 border-[#9E4249] overflow-hidden flex flex-col',
+        'fixed z-[60] bg-white shadow-xl border-l-4 border-[#1A5E6B] overflow-hidden flex flex-col',
         isNarrow
           ? 'inset-x-3 bottom-3 max-h-[min(75vh,560px)] w-auto rounded-2xl mb-safe'
           : 'w-72 max-h-[min(80vh,560px)] rounded-2xl',
@@ -172,7 +172,7 @@ export function LearnPanel({
                   {!task.done && task.cta && (
                     <button
                       onClick={task.cta.onClick}
-                      className="text-xs text-[#9E4249] hover:text-[#B85055] font-medium mt-0.5"
+                      className="text-xs text-[#1A5E6B] hover:text-[#14515C] font-medium mt-0.5"
                     >
                       {task.cta.label} →
                     </button>
@@ -197,7 +197,7 @@ export function LearnPanel({
                   onClick={() => startPageTour(id)}
                   className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 text-left"
                 >
-                  <Play className="w-3.5 h-3.5 text-[#9E4249]" />
+                  <Play className="w-3.5 h-3.5 text-[#1A5E6B]" />
                   <span className="text-sm text-gray-700 flex-1">
                     {TOUR_LABELS[id]}
                   </span>

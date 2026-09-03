@@ -2,9 +2,11 @@
 type: page
 route: /studio
 slug: studio
+softwares: [wine-studio]
 component: apps/web/src/pages/studio/Studio.tsx
 audience: dev
 tier: core
+archetype: command # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 1
 maturity: partial
@@ -14,6 +16,8 @@ links: ["[[PAGE-CONTRACT]]", "[[studio-queue]]", "[[studio-certify]]", "[[wines]
 ---
 
 # /studio — data ingestion workbench
+
+> **Part of** [[08-softwares/wine-studio|Wine Studio]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
@@ -28,6 +32,14 @@ Internal contributor tool: ingest a wine list (PDF/photo → Claude Vision, URL 
 Flash crawler, or empty manual record), review the extracted records field-by-field with
 per-field confidence, override values, and promote records into the master library.
 Audience is developer / certified_contributor / review_admin — not restaurant users.
+
+## 1a. Features *(internal contributor tool)*
+- Ingest a wine list three ways: PDF/photo (Claude Vision), URL (Gemini crawler), or an empty manual record
+- Review extracted records field-by-field with per-field confidence badges (14 columns incl. grape, color, sweetness, tasting notes)
+- Override a value; high-confidence fields require a reason
+- Promote records into the master library (409 = duplicate)
+- Session metrics dashboard
+- 🚧 Routing gap: as configured, all calls should 404 against the gateway (§9)
 
 ## 2. Entry
 **No inbound in-app link** (`PAGE_MAP.md` entry-point list) — cold URL, gated by

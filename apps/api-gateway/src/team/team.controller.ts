@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -36,6 +37,7 @@ import {
   IngestSalesDto,
   IngestSalesBatchDto,
   OfferCoverDto,
+  PublishScheduleDto,
   ReviewRequestDto,
   UpdateCertDto,
   UpdateShiftDto,
@@ -139,13 +141,19 @@ export class TeamController {
     return this.schedule.copyWeek(this.uid(req), rid, dto);
   }
 
+  /**
+   * Re-publishing erases every read receipt on the week. The body must say
+   * `resetReceipts: true` for that to be allowed on a schedule that already
+   * carries receipts — otherwise this answers 409 with the count (ADR 0088 T7).
+   */
   @Post("schedules/:scheduleId/publish")
   publish(
     @Req() req: any,
     @Param("restaurantId") rid: string,
     @Param("scheduleId") sid: string,
+    @Body() dto: PublishScheduleDto,
   ) {
-    return this.schedule.publish(this.uid(req), rid, sid);
+    return this.schedule.publish(this.uid(req), rid, sid, dto ?? {});
   }
 
   @Post("schedules/:scheduleId/acknowledge")
@@ -275,10 +283,12 @@ export class TeamController {
     return this.team.reviewTimeOff(this.uid(req), rid, requestId, dto);
   }
 
-  @Get("swaps")
-  swaps(@Req() req: any, @Param("restaurantId") rid: string) {
-    return this.team.listSwaps(this.uid(req), rid);
-  }
+  /*
+   * `GET …/team/swaps` was removed (ADR 0088). No client called it, and
+   * `swap_requests` has no writer anywhere in the repository — so it could
+   * only ever answer `[]`, which reads as "no swaps pending" rather than "this
+   * does not exist". See the note in `team.service.ts`.
+   */
 
   // ── Coverage templates ─────────────────────────────────────────────────
   @Get("coverage-templates")
@@ -333,6 +343,32 @@ export class TeamController {
   }
 
   // ── Broadcast (crew messaging) ───────────────────────────────────────────
+  /**
+   * Message the crew, or one member of it.
+   *
+   * TWO defects closed here (ADR 0088).
+   *
+   * **T3 — one was silently all.** With no `memberIds` this targeted every
+   * active linked member. That is a reasonable thing to *want*, but it was the
+   * behaviour of an *omission*: a caller that forgot to pass an id — as the
+   * legacy Manager Shift Desk's "message this person" control did — messaged
+   * the whole restaurant, and the response (`{notified, emailed, texted}`)
+   * looked identical either way. Absence of targeting was read as intent to
+   * target everyone.
+   *
+   * So exactly one of `memberIds` or `audience: "everyone"` is now required —
+   * the ambiguous call is a 400 before anything is sent, not a fan-out that is
+   * only visible afterwards — and the response names its `audience` and its
+   * reach. Both halves matter: the flag stops the wrong send, the count lets a
+   * caller *notice* a right send that was bigger than it meant.
+   *
+   * **T4 — an opt-out that only one sender honoured.** The email and phone
+   * lists came straight off the roster, while the scheduled mailer resolves
+   * through `recipient-resolver.service.ts` and drops a user who turned the
+   * channel off. Same people, same channels, opposite answers. The opt-outs are
+   * applied here now, and what they suppressed is reported rather than
+   * disappearing into a smaller number.
+   */
   @Post("broadcast")
   async broadcast(
     @Req() req: any,
@@ -341,20 +377,43 @@ export class TeamController {
   ) {
     const userId = this.uid(req);
     await this.team.assertAccess(userId, rid, "manager");
+
+    const named = dto.memberIds?.length ?? 0;
+    if (named > 0 && dto.audience === "everyone") {
+      throw new BadRequestException(
+        "Send to named members or to everyone, not both: pass memberIds or audience:'everyone'.",
+      );
+    }
+    if (named === 0 && dto.audience !== "everyone") {
+      throw new BadRequestException(
+        "A broadcast must say who it is for: pass memberIds, or audience:'everyone' to " +
+          "message the whole active crew.",
+      );
+    }
+
     const roster = await this.team.listMembers(userId, rid);
-    const targets = dto.memberIds?.length
+    const targets = named
       ? roster.filter((m: any) => dto.memberIds!.includes(m.id))
       : roster.filter((m: any) => m.status === "active" && m.accountLinked);
+    const audience: "everyone" | "selected" = named ? "selected" : "everyone";
 
-    // Always land in the in-app inbox.
-    await this.notifications.persistForRestaurant(rid, {
-      type: "system",
-      title: dto.title ?? "📣 Team broadcast",
-      message: dto.message,
-      priority: "high",
-      actionUrl: "/team",
-      actionLabel: "Open Team",
-    });
+    // Always land in the in-app inbox — but ONLY the addressed members' inboxes
+    // when the caller named targets. A renewal request addressed to one person
+    // must never read as a restaurant-wide announcement (team-audit.md).
+    await this.notifications.persistForRestaurant(
+      rid,
+      {
+        type: "system",
+        title: dto.title ?? "📣 Team broadcast",
+        message: dto.message,
+        priority: "high",
+        actionUrl: "/team",
+        actionLabel: "Open Team",
+      },
+      named
+        ? { onlyUserIds: targets.map((m: any) => m.user_id).filter(Boolean) }
+        : {},
+    );
 
     const userIds = targets.map((m: any) => m.user_id).filter(Boolean);
     if (userIds.length) {
@@ -366,13 +425,37 @@ export class TeamController {
       });
     }
 
-    // Communications channels (email + SMS) — best-effort, never fail the request.
-    const emails = targets
-      .map((m: any) => m.email || m.linkedUser?.email)
-      .filter((e: string | null | undefined): e is string => !!e);
-    const phones = targets
-      .map((m: any) => m.phone)
-      .filter((p: string | null | undefined): p is string => !!p);
+    // The same opt-out register the scheduled jobs read. `null` means the read
+    // FAILED, which is not the same as "nobody opted out" — so the email and
+    // SMS legs are skipped and said out loud rather than sent to people who may
+    // have declined ([[absence-reported-as-health]]).
+    const optOuts = await this.team.channelOptOuts(userIds);
+    const preferencesUnavailable = optOuts === null;
+
+    const wants = (m: any, channel: "email" | "sms"): boolean => {
+      if (!optOuts) return false;
+      // An account-less roster entry has no user id and therefore no
+      // preferences row it could ever have written. It has not opted out.
+      if (!m.user_id) return true;
+      return !optOuts.optedOut[channel].has(m.user_id);
+    };
+
+    const allEmails = targets
+      .map((m: any) => [m, m.email || m.linkedUser?.email] as const)
+      .filter((pair): pair is readonly [any, string] => !!pair[1]);
+    const allPhones = targets
+      .map((m: any) => [m, m.phone] as const)
+      .filter((pair): pair is readonly [any, string] => !!pair[1]);
+
+    const emails = allEmails
+      .filter(([m]) => wants(m, "email"))
+      .map(([, e]) => e);
+    const phones = allPhones.filter(([m]) => wants(m, "sms")).map(([, p]) => p);
+    const suppressed = {
+      email: allEmails.length - emails.length,
+      sms: allPhones.length - phones.length,
+    };
+
     let emailed = 0;
     let texted = 0;
     if (emails.length) {
@@ -402,7 +485,16 @@ export class TeamController {
       }
     }
 
-    return { notified: userIds.length, emailed, texted, inbox: true };
+    return {
+      audience,
+      recipients: { targeted: targets.length, notified: userIds.length },
+      suppressed,
+      preferencesUnavailable,
+      notified: userIds.length,
+      emailed,
+      texted,
+      inbox: true,
+    };
   }
 
   // ── Settings (labor toggle) ──────────────────────────────────────────────

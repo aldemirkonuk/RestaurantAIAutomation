@@ -2,18 +2,22 @@
 type: page
 route: /orders
 slug: orders
+softwares: [orders, recurring-orders]
 component: apps/web/src/pages/Orders.tsx
 audience: owner
 tier: core
+archetype: command # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 4
 maturity: partial
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[providers]]"]
 ---
 
 # /orders — Orders
+
+> **Part of** [[08-softwares/orders|Orders]] · [[08-softwares/recurring-orders|Recurring Orders]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
@@ -32,6 +36,36 @@ delivery, plus the AI vendor-email layer — one-tap approval of AI-drafted repl
 active conversation threads, deal proposals, and delivered-order booking into
 inventory. Sidebar tooltip: "Draft, approve, and track purchase orders through
 delivery" (`apps/web/src/components/layout/Sidebar.tsx:75`).
+
+## 1a. Features
+- See the purchase-order list with filters and per-order status through delivery (draft → approved → delivered)
+- Create an order: pick a vendor, build the item list, submit — then approve, edit, or cancel it
+- Book a delivered order into inventory in one step
+- AI vendor-email layer: one-tap approve an AI-drafted reply, write a manual reply, pause the AI, cancel a scheduled send
+- See active vendor conversation threads and open the chat/message thread drawer per conversation
+- Deal proposals extracted from vendor mail: confirm or dismiss
+- View conversation attachments (invoices, price lists)
+- Contextual insights rail; table export; pending-order count badge in the sidebar
+- Live updates while the page is open (realtime order events)
+
+## 1b. Motions used — Mudavym redesign (flag `mudavym_design_orders`)
+
+Canonical source with curves: `apps/web/src/pages/orders/next/MOTIONS.md` —
+this list is the note-side index (ADR 0044 §2).
+
+| id | name | fires |
+|---|---|---|
+| `orders.spine.tally` | Station counts arrive | a stage count / month figure changes while open — never first paint, never from an em dash |
+| `orders.spine.select` | Station select | stage press: background, count colour, 2px underline |
+| `orders.row.settle` | Row expand | 0fr→1fr with the chevron on the same token; body carries "the working" |
+| `orders.approve.pour` / `.tuck` / `.stamp` | Hold-to-approve → seal | pending rows, drafts, and the bulk bar's hold — real mutations; early release states what did not happen; the stamp is the only overshoot in the system |
+| `orders.bulk.emboss` | The dry emboss | after a bulk run: ONE ink impression, no wax — fourteen approvals, one impression |
+| `orders.draft.turn` | The draft turns in | drafted letter + thread reveal, slower than settle on purpose |
+| `orders.draft.drain` | Auto-send countdown | scheduled sends drain linear over the exact remaining ms, cancel live |
+| `orders.micro.ink` | Micro-states | hovers, chips, deliver button; ≤2px travel |
+
+Not used, on purpose: no shake, no bouncing checkmarks, no skeleton shimmer for
+unknowns.
 
 ## 2. Entry
 

@@ -60,7 +60,7 @@ Owns outright:
 | Whether a doc is findable once placed | [[graph-retrieval-charter]] | We decide the path; they decide the graph |
 | Whether a doc is still true | [[standards-verification-charter]] | A perfectly-placed lie is not our defect |
 | Filename **uniqueness** as a link constraint | [[graph-retrieval-charter]] | We name for humans browsing a tree; they own `[[link]]` ambiguity. The 45 `README.md` case is theirs, though we surfaced it |
-| Deciding OD-01's target shape | The founder | We execute the restructure; we do not pick it (`OPEN-DECISIONS.md:13`) |
+| Deciding OD-01's target shape | The founder | We execute the restructure; we do not pick it (`OPEN-DECISIONS.md:81`) |
 | Code repositories, datasets, migrations | [[engineering-charter]] *(Platform)* | Documents only |
 
 ## Metrics it moves
@@ -122,7 +122,7 @@ in the taxonomy itself. The index is not merely out of date; the scheme it index
 [`CLAUDE.md`](../../../../../CLAUDE.md) §2: `claude_full_architectural.md` (~186 KB),
 `UX_PATHS_CATALOG.md` (~158 KB), `INVOICE_DOC_UX_RESEARCH.md` (~83 KB).
 
-**Open fork:** OD-01 (`OPEN-DECISIONS.md:13`). Founder picks the target shape;
+**Open fork:** OD-01 (`OPEN-DECISIONS.md:81`). Founder picks the target shape;
 [[OBSIDIAN_VAULT]] §5 F2 has already fixed the direction — *corpus stays in place now,
 clean slate is the end goal.* This team executes that, and the phrase "for now" is the part
 worth holding: a decision to defer that never gets a date becomes a decision to never act.

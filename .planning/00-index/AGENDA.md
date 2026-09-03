@@ -2,8 +2,8 @@
 type: agenda
 title: Agenda
 status: live
-updated: 2026-08-25
-links: ["[[PLAN]]", "[[HOME]]", "[[OPEN-DECISIONS]]"]
+updated: 2026-08-27
+links: ["[[PLAN]]", "[[HOME]]", "[[OPEN-DECISIONS]]", "[[0029-p3-plan-of-record]]"]
 ---
 
 # Agenda — what is happening now
@@ -17,8 +17,14 @@ links: ["[[PLAN]]", "[[HOME]]", "[[OPEN-DECISIONS]]"]
 > still open) — prose that duplicates [[OPEN-DECISIONS]] rots against it, so now
 > it points instead.
 
-**Current milestone: P2 — Web complete + deploy** ([ADR 0018](../decisions/0018-p2-plan-of-record.md)).
-Stage table: [STATE.md](../STATE.md).
+**Current milestone: P3 — Grade, then scale** ([ADR 0029](../decisions/0029-p3-plan-of-record.md)).
+Stage table: [STATE.md](../STATE.md). **P2 closed 2026-08-26** — five stages deployed
+and verified, both held items resolved.
+
+**The shape, in one line:** one gate (P3.0 doneability coverage), two lanes that run
+alongside it because they depend on nothing it produces (P3.A mobile, P3.B kitchen
+expansion), two stages behind it (P3.C Ask AI, P3.D model registry), and one candidate
+**held** rather than queued (NF-B guests — blocked on OD-05/OD-07, a decision, not work).
 
 ## 🔴 Waiting on the founder
 
@@ -26,26 +32,42 @@ Canonical list: the 🔴 rows of [[OPEN-DECISIONS]]. Headlines only:
 
 | Item | One line |
 |---|---|
-| **Page retirements** | [ADR 0019](../decisions/0019-p2-build-scope.md) §B: retire `/calendar-classic`, `/inventory-legacy`, `/wine-agent`, `/wineagent-alias`? ✅ **Answered and closed** — all four are retired (2026-08-26). `/inventory-legacy`'s two parity blockers were ported onto `/inventory` first, and `/calendar-classic`'s one blocker — the only event reminders in the product that actually fire — was ported onto `/calendar` first. The 44.1e modal claim was stale: that component was already deleted in `e5402d67`. |
-| **Gmail push enforcement** | Verification is built but staged OPEN so the deploy could not kill live inbound email. Set `GMAIL_PUBSUB_AUDIENCE` + `GMAIL_PUBSUB_SERVICE_ACCOUNT` on Railway (values come from the Pub/Sub subscription), then `GMAIL_PUBSUB_REQUIRE_AUTH=true` |
-| **OD-73** | 12 tables with RLS **off** and full `anon` DML — including the procurement invoice store and `user_oauth_accounts`; filed 2026-08-25 at your instruction, awaiting the call |
+| ~~**Page retirements**~~ | ✅ **Closed 2026-08-26** — all four retired, each after a parity port ([ADR 0019](../decisions/0019-p2-build-scope.md) §B, [[RETIRED]]) |
+| ~~**Gmail push enforcement**~~ | ✅ **Closed 2026-08-26** — enforcement is ON in production; OD-78's premise was wrong (the entry, not the config) |
+| **OD-05 / OD-07** | Voice-agent audience · Beli build-vs-partner. **These two now block a built asset:** the 564-line guest slice has zero callers because they are unanswered ([ADR 0029](../decisions/0029-p3-plan-of-record.md) §3) |
+| OD-73 | 12 tables with RLS off and full `anon` DML — **being worked by another session** (PR #119) |
 | OD-72 | The other 142 RLS-on-zero-policy tables — policies, gateway, or RLS off |
-| OD-64/66/67 | Toast-side defect cluster (mirrored voids, second depletion path) |
-| OD-23 / OD-05 / OD-07 / OD-01 | Pricing · voice-agent audience · Beli · `.planning` restructure — unchanged |
+| OD-64/66/67 · OD-68 | Toast-side defect cluster · `provider_important_dates` absent from production. Carried alongside P3, not behind it |
+| OD-23 / OD-01 / OD-106 | Pricing · `.planning` restructure · design foundation (deferred by you 2026-08-26; P4 candidate) |
 
 ## 🟡 In flight
 
 | Item | State |
 |---|---|
-| Nothing | P2 closed through deploy 2026-08-25 |
-| Main | PRs #52–#67 merged 2026-08-25. Production verified after each: guarded routes 401, `nf_verdict` live with RLS, Toast reads closed, nine public test routes closed, web bundle free of dead-route literals |
+| **P3.0** | ✅ **Shipped 2026-08-27.** 7/7 gateway task types graded; 26 of 38 across both runtimes carry a real basis, 12 knowingly exempt with reasons; `check_task_types_are_graded.py` blocks a regression. **One migration awaits production** — `20260827100000_photo_count_suggestions.sql`; schema-parity is red until applied |
+| **P3.C · P3.D** | Unblocked — the gate they sat behind is closed |
+| **P3.A · P3.B** | Open and startable; never gated |
+| Main | PRs #68–#118 merged 2026-08-26. Latest: #118 rescued the §1a Features layer (47/47 page notes) and re-scoped ADR-0018's Surface claim, which had been selecting page notes by filename |
+| Other sessions | #119 OD-73 RLS relock · #113 prose corrections · #86 studio.md self-contradiction (**stale** — needs a rebase past #118) |
 
 ## 🟢 Next actions (no approval needed)
 
-1. **OD-75** — move ~10 Python `outcome="success"` emits below the `json.loads` that can fail; stamp `parse_v1`. Bug fix and doneability-basis upgrade in one.
-2. **`DocumentsPage` `?doc=` deep link** — the copy-link button builds a param the page never reads, so a shared link silently loses its target.
-3. **Per-item inventory ledger view** — `inventory-ledger.controller.ts:210` serves the data and nothing renders it; this is why "View ledger" had to drop its param.
-3. Mechanical register items (OD-30/32/33 cluster) — **verify each against the register before starting**; the 08-25 audit found half-closed entries are the norm, not the exception.
+1. **Apply `20260827100000_photo_count_suggestions.sql` to production.** Until
+   then the code writes to a table production does not have — the exact phantom
+   class ADR 0028 exists for — and schema-parity stays red.
+2. **P3.A / P3.B / P3.C / P3.D** — all four are now startable; the P3.0 gate is
+   closed.
+3. **`DocumentsPage` `?doc=` deep link** — the copy-link button builds a param the
+   page never reads, so a shared link silently loses its target.
+4. **Per-item inventory ledger view** — `inventory-ledger.controller.ts:210` serves
+   the data and nothing renders it; this is why "View ledger" had to drop its param.
+5. Mechanical register items (OD-30/32/33 cluster) — **verify each against the
+   register before starting**; half-closed entries are the norm, not the exception.
+
+**The gate is closed, so §6.1 is the live risk now**, not §6.3: P3.0 must not be
+called done on the cheap census rows alone. It is not — but the deferred
+`ontology_v1` join (census §4 row 12, four task types) is real work still
+outstanding, and it is named in the exemption list rather than quietly counted.
 
 ## 📌 Standing watch
 

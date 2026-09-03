@@ -2,9 +2,11 @@
 type: page
 route: /verify-email
 slug: verify-email
+softwares: [auth-onboarding]
 component: apps/web/src/pages/VerifyEmail.tsx
 audience: public
 tier: public
+archetype: focused # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 3
 maturity: partial
@@ -15,6 +17,8 @@ links: ["[[PAGE-CONTRACT]]", "[[register]]", "[[get-started]]", "[[login]]", "[[
 
 # /verify-email
 
+> **Part of** [[08-softwares/auth-onboarding|Auth & Onboarding]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
+
 ## Surface — buttons → where they go
 
 - **Verify My Email** → API `POST /api/v1/auth/verify-email`, then auto-redirect → [[get-started]] `/get-started` (or [[dashboard]] `/` when a menu is already uploaded)
@@ -23,6 +27,11 @@ links: ["[[PAGE-CONTRACT]]", "[[register]]", "[[get-started]]", "[[login]]", "[[
 
 ## 1. Purpose
 Post-registration email-verification gate for Path B (restaurant-creating) users. Two modes: **without `?token`** — "Check Your Email" instructions plus a resend button (client-side rate-limited 1/min, T-26-05-03, `VerifyEmail.tsx:66-70`); **with `?token`** — a "Verify My Email" button that redeems the token, stores fresh JWTs carrying `emailVerified: true` (`VerifyEmail.tsx:44-45`), then routes to `/get-started` — or straight to `/` when a menu is already uploaded (re-verification flows, `VerifyEmail.tsx:48-53`).
+
+## 1a. Features
+- "Check Your Email" instructions with a resend button (rate-limited to 1/min)
+- With an emailed `?token`: a "Verify My Email" button that redeems it and signs you in verified
+- Routes onward smartly: to Get Started, or straight to the dashboard when a menu already exists
 
 ## 2. Entry
 - Redirect target: `Register.tsx:932` after Path B submit, and `ProtectedRoute.tsx:41-44` bounces any authenticated-but-unverified user here (D-05, T-26-05-02) — so it guards the whole dashboard.

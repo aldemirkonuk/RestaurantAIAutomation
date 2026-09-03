@@ -30,6 +30,8 @@ import { ThemedSelect } from '../../../components/ui/ThemedSelect'
 import { ExportMenu } from '../../../components/ui/ExportMenu'
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport'
 import { classifyStock } from '../../../lib/inventoryStatus'
+import { formatVolume } from '../../../utils/volumeUtils'
+import { useRestaurantSettingsStore } from '../../../stores/restaurantSettingsStore'
 import { cn } from '../../../lib/utils'
 import { RestaurantBranchSwitcher } from '../../../components/layout/RestaurantBranchSwitcher'
 import { useAuth } from '../../../contexts/AuthContext'
@@ -87,7 +89,18 @@ export function InventoryCommandPage() {
     inventory, filteredInventory, stats, refetchInventory, updateInventoryItem,
   } = page
 
-  const { locations, setLocations, mappings, assignWineToLocation } = useStorageLocations()
+  // See RowExpansion: the retired `/inventory-legacy` honoured the Settings
+  // measurement unit and this page did not (ADR 0019 §B).
+  const measurementUnit = useRestaurantSettingsStore((s) => s.measurementUnit)
+  const {
+    locations,
+    setLocations,
+    mappings,
+    assignWineToLocation,
+    locationsLoading,
+    locationsUnavailable,
+    mappingsUnavailable,
+  } = useStorageLocations()
   const { availableRestaurants, refreshBranches } = useAuth()
   const multiLocation = availableRestaurants.length > 1
   const createInventoryItem = useCreateInventoryItem()
@@ -331,7 +344,10 @@ export function InventoryCommandPage() {
       { header: 'Producer', value: (i) => i.producer ?? '' },
       { header: 'Vintage', value: (i) => i.vintage ?? '' },
       { header: 'Type', value: (i) => i.type ?? '' },
-      { header: 'Bottle size', value: (i) => (i.bottleSizeMl ? `${i.bottleSizeMl}ml` : '') },
+      {
+        header: 'Bottle size',
+        value: (i) => (i.bottleSizeMl ? formatVolume(i.bottleSizeMl, measurementUnit) : ''),
+      },
       { header: 'System qty (live)', value: (i) => i.liveStock ?? 0 },
       { header: 'System qty (shadow)', value: (i) => i.shadowStock ?? 0 },
       { header: 'Par', value: (i) => i.threshold },
@@ -361,7 +377,7 @@ export function InventoryCommandPage() {
       { header: 'Observation', value: (i) => countObservation(i) },
     ],
     // countObservation closes over helpers; recreate when inventory shape changes
-    [locations],
+    [locations, measurementUnit],
   )
 
   const runInventoryExport = useCallback(
@@ -664,6 +680,30 @@ export function InventoryCommandPage() {
         >
           All locations
         </button>
+        {/* ADR 0051: an absent chip row must not read as "this tenant has no
+            zones" when the truth is "we could not ask" or "we have not asked
+            yet". The chips are a filter over measured zones only. */}
+        {locationsUnavailable && (
+          <span
+            className="inline-flex items-center h-9 px-3 rounded-lg text-xs font-semibold border border-amber-200 bg-amber-50 text-amber-700"
+            title="The /storage-locations request failed. This is not a claim that you have no zones."
+          >
+            Zones could not be loaded
+          </span>
+        )}
+        {!locationsUnavailable && locationsLoading && (
+          <span className="inline-flex items-center h-9 px-3 rounded-lg text-xs font-semibold border border-gray-200 bg-white text-gray-400">
+            Loading zones…
+          </span>
+        )}
+        {mappingsUnavailable && (
+          <span
+            className="inline-flex items-center h-9 px-3 rounded-lg text-xs font-semibold border border-amber-200 bg-amber-50 text-amber-700"
+            title="The wine-to-zone mappings request failed, so any zone shown as empty is unverified."
+          >
+            Zone contents could not be loaded
+          </span>
+        )}
         {(showAllLocations ? locations : locations.slice(0, 5)).map((l) => (
           <button
             key={l.id}
@@ -862,6 +902,8 @@ export function InventoryCommandPage() {
         <CellarMapView
           items={filteredInventory}
           locations={locations}
+          locationsLoading={locationsLoading}
+          locationsUnavailable={locationsUnavailable}
           onOpenInTable={(locationId) => { setSelectedLocationFilter(locationId); setView('table') }}
           onManageLocations={() => setShowStorageManager(true)}
         />

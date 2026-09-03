@@ -16,7 +16,7 @@ test.describe('Navigation Guards', () => {
   test('public routes accessible without auth', async ({ page }) => {
     // /login — should render without redirect
     await page.goto('/login')
-    await expect(page.getByRole('heading', { name: 'WineOps AI' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Mudavym' })).toBeVisible()
     expect(page.url()).toContain('/login')
 
     // /register — should render without redirect
@@ -37,7 +37,7 @@ test.describe('Navigation Guards', () => {
     await page.goto('/studio')
 
     // StudioLayout renders a header with nav links for developer role
-    await expect(page.getByText('WineOps Studio')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('Mudavym Studio')).toBeVisible({ timeout: 10000 })
 
     // Developer role gets Queue and Certify nav links in StudioLayout
     await expect(page.getByRole('link', { name: 'Queue' })).toBeVisible()
@@ -54,11 +54,12 @@ test.describe('Navigation Guards', () => {
       timeout: 10000,
     })
     await page.getByText('Open a Restaurant').first().click()
-    // Create flow step 1 ("Your Account") exposes email + password inputs
-    // (type-based; the inputs carry no ids or associated labels).
-    await expect(page.locator('input[type="email"]').first()).toBeVisible({
-      timeout: 10000,
-    })
-    await expect(page.locator('input[type="password"]').first()).toBeVisible()
+    // Create flow step 1 ("Your Account") inputs are reachable through their
+    // associated labels (htmlFor/id) — this test guards that association.
+    await expect(page.getByLabel('Full Name')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByLabel('Email')).toBeVisible()
+    // Anchored regex: a bare 'Password' substring would also match "Confirm Password *"
+    await expect(page.getByLabel(/^Password \*$/)).toBeVisible()
+    await expect(page.getByLabel('Confirm Password')).toBeVisible()
   })
 })

@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical answer to “how tested is X?” — every surface maps to exactly one of 11 functionality groups.  
 **Requirements:** TFND-01 (this file) · TFND-02 ([RUBRIC.md](./RUBRIC.md)) · TFND-03/04 (future [EXISTING-TEST-INVENTORY.md](./EXISTING-TEST-INVENTORY.md), [TESTING-SCORECARD.md](./TESTING-SCORECARD.md))  
-**Operator catalog:** [.planning/UX_PATHS_CATALOG.md](../UX_PATHS_CATALOG.md) — status tags for manual pathway watchlist (Phase 43 fodder)  
+**Operator catalog:** [.planning/07-reference/UX_PATHS_CATALOG.md](../07-reference/UX_PATHS_CATALOG.md) — status tags for manual pathway watchlist (Phase 43 fodder)  
 **Locked groups:** CONTEXT D-09 / ROADMAP Testing Campaign seed — do not rename
 
 How tested is X? → find the surface in Tables A–D → read its **Primary group** → open [RUBRIC.md](./RUBRIC.md) for T0–T4 maturity · scorecard for current score.
@@ -244,7 +244,7 @@ Suite ownership for Phases 39/40 = **registry primary group**. Do not dual-own o
 
 ## Manual pathway watchlist
 
-Flag for Gaps / Phase 43 checklists — **not** product fixes. Cite [.planning/UX_PATHS_CATALOG.md](../UX_PATHS_CATALOG.md):
+Flag for Gaps / Phase 43 checklists — **not** product fixes. Cite [.planning/07-reference/UX_PATHS_CATALOG.md](../07-reference/UX_PATHS_CATALOG.md):
 
 - **Auth:** Forgot password → non-existent route; Remember me unbound (`Login.tsx` / catalog §20)
 - **Scanner:** GetStarted scan/CSV/manual live; Wine Library menu-scanner persistence still mocked (catalog §E)

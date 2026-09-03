@@ -129,6 +129,71 @@ export function resolveSaleVolume(
 }
 
 /**
+ * Which rung of the secret chain authenticated a webhook. Ordered most
+ * specific first; `legacy_global` is the pre-existing process-wide key and is
+ * the only rung that is NOT bound to a provider or a tenant.
+ */
+export type WebhookSecretSource =
+  | "per_connection"
+  | "per_provider"
+  | "legacy_global";
+
+export interface ResolvedWebhookSecret {
+  secret: string;
+  source: WebhookSecretSource;
+  envVar: string;
+}
+
+/** Env-var-safe token: `generic_webhook` -> `GENERIC_WEBHOOK`. */
+function envToken(raw: string): string {
+  return raw
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "_");
+}
+
+/**
+ * The two scoped env vars a (provider, restaurant) pair may be keyed by.
+ * Exported so operators and tests name them from one place rather than
+ * re-deriving the string. `__` separates the two tokens because provider keys
+ * themselves contain `_` (`ncr_aloha`), and a single separator would make
+ * `POS_WEBHOOK_SECRET_NCR_ALOHA` ambiguous.
+ */
+export function webhookSecretEnvVars(
+  providerKey: string,
+  restaurantId: string,
+): { perConnection: string; perProvider: string } {
+  const provider = envToken(providerKey);
+  return {
+    perConnection: `POS_WEBHOOK_SECRET_${provider}__${envToken(restaurantId)}`,
+    perProvider: `POS_WEBHOOK_SECRET_${provider}`,
+  };
+}
+
+/**
+ * The message a scoped signature covers.
+ *
+ * The provider and the restaurant are inside the signed bytes, not merely
+ * beside them, so one provider-wide secret still cannot mint a signature that
+ * authenticates a different tenant's payload — the same reason Toast signs
+ * `timestamp.body` rather than `body` (toast.service.ts:152).
+ */
+function scopedSignedPayload(
+  providerKey: string,
+  restaurantId: string,
+  rawBody: Buffer | string,
+): string {
+  const body = Buffer.isBuffer(rawBody) ? rawBody.toString("utf8") : rawBody;
+  return `${providerKey}:${restaurantId}.${body}`;
+}
+
+/** Identity the webhook route claims, and which this must bind the key to. */
+export interface WebhookContext {
+  provider: string;
+  restaurantId: string;
+}
+
+/**
  * PosHubService — the unified ingestion pipeline and the single POS door for
  * stock writes (SimPOS testbed plan, decision B13).
  *
@@ -143,8 +208,16 @@ export function resolveSaleVolume(
 @Injectable()
 export class PosHubService {
   private readonly logger = new Logger(PosHubService.name);
-  private readonly webhookSecret: string | null =
-    process.env.POS_HUB_WEBHOOK_SECRET || null;
+
+  /**
+   * Which (source, provider, restaurant) triples have already been logged, so
+   * a route that takes production webhook volume states its key resolution
+   * once rather than on every request. Bounded: `restaurantId` comes off an
+   * unauthenticated path, so an attacker could otherwise grow this set without
+   * limit by varying it.
+   */
+  private readonly loggedSecretResolutions = new Set<string>();
+  private static readonly MAX_LOGGED_RESOLUTIONS = 500;
 
   // Multilingual wine keywords (incl. Turkish şarap) for the fallback
   // heuristic when no pos_item_mappings row exists yet.
@@ -199,27 +272,152 @@ export class PosHubService {
   // B28: SimPOS signs with a real HMAC secret so this path stays exercised)
   // =========================================================================
 
+  /** Log a key-resolution outcome once per (source, provider, restaurant). */
+  private logSecretResolutionOnce(key: string, emit: () => void): void {
+    if (this.loggedSecretResolutions.has(key)) return;
+    // Overflow clears rather than stops deduping: memory stays bounded and the
+    // route keeps reporting, at the cost of repeating a line after 500 pairs.
+    if (
+      this.loggedSecretResolutions.size >= PosHubService.MAX_LOGGED_RESOLUTIONS
+    ) {
+      this.loggedSecretResolutions.clear();
+    }
+    this.loggedSecretResolutions.add(key);
+    emit();
+  }
+
   /**
-   * Verify an inbound webhook's HMAC-SHA256 signature against the raw request
-   * body. Fails closed: no configured secret means every signed request is
-   * rejected, matching decision B16's fail-closed posture elsewhere in the
-   * ingress path. `POS_HUB_WEBHOOK_SECRET` is unset -> reject.
+   * Resolve the HMAC key for one (provider, restaurant), most specific first:
+   *
+   *   1. `POS_WEBHOOK_SECRET_<PROVIDER>__<RESTAURANT_ID>` — per connection.
+   *   2. `POS_WEBHOOK_SECRET_<PROVIDER>`                  — per provider.
+   *   3. `POS_HUB_WEBHOOK_SECRET`                         — legacy, global.
+   *
+   * The first rung that is SET wins; a rung being set is therefore the cutover
+   * switch for everything below it. Configuring (1) or (2) for a provider
+   * stops the legacy global key from authenticating that provider at all —
+   * deliberate, because a fallback that runs after a scoped signature fails is
+   * not a fallback, it is the hole still being open.
+   *
+   * Returns null when nothing is configured. Callers must reject on null.
+   */
+  private resolveWebhookSecret(
+    providerKey: string,
+    restaurantId: string,
+  ): ResolvedWebhookSecret | null {
+    const { perConnection, perProvider } = webhookSecretEnvVars(
+      providerKey,
+      restaurantId,
+    );
+
+    const rungs: Array<{ source: WebhookSecretSource; envVar: string }> = [
+      { source: "per_connection", envVar: perConnection },
+      { source: "per_provider", envVar: perProvider },
+      { source: "legacy_global", envVar: "POS_HUB_WEBHOOK_SECRET" },
+    ];
+
+    for (const rung of rungs) {
+      const secret = process.env[rung.envVar];
+      if (!secret) continue;
+      const logKey = `${rung.source}:${providerKey}:${restaurantId}`;
+      this.logSecretResolutionOnce(logKey, () => {
+        if (rung.source === "legacy_global") {
+          this.logger.warn(
+            `POS webhook [${providerKey}] r=${restaurantId} is authenticating with the ` +
+              `legacy process-wide POS_HUB_WEBHOOK_SECRET, which is shared by every ` +
+              `provider and every tenant. Set ${perProvider} (or ${perConnection}) to ` +
+              `bind this door to one provider and one restaurant.`,
+          );
+        } else {
+          this.logger.log(
+            `POS webhook [${providerKey}] r=${restaurantId} keyed by ${rung.envVar} (${rung.source})`,
+          );
+        }
+      });
+      return { secret, source: rung.source, envVar: rung.envVar };
+    }
+
+    return null;
+  }
+
+  /**
+   * Verify an inbound webhook's HMAC-SHA256 signature.
+   *
+   * Fails closed on every path: an unknown provider, a blank context, a
+   * missing signature or body, and — decision B16's posture — no configured
+   * secret all reject. There is no arm that returns true without a key.
+   *
+   * The signature is bound to the identity the URL claims. A scoped key signs
+   * `"<provider>:<restaurantId>." + rawBody`, so a signature minted for one
+   * tenant does not authenticate another's payload even when both sit behind
+   * the same provider-wide secret. Before this, one process-wide key covered
+   * all 27 providers and every restaurant while the route read `restaurantId`
+   * straight out of the path and never bound it to anything — so a signature
+   * valid for restaurant A was valid for restaurant B's URL, and holding the
+   * secret meant stock writes for any tenant (POS-BRIDGE-AUDIT.md §2.4, OD-B).
+   *
+   * The legacy global key keeps its original unscoped scheme (HMAC over the
+   * raw body alone) so today's signers — SimPOS `sendSignedWebhook`
+   * (simpos.service.ts:490) and `scripts/simulate/bridge.py` — keep working
+   * until a scoped secret is configured. Every acceptance on that rung is
+   * logged as the open door it is.
    */
   verifyWebhookSignature(
     rawBody: Buffer | string | undefined,
     signature: string | null | undefined,
+    context: WebhookContext,
   ): boolean {
-    if (!this.webhookSecret) {
+    const providerKey = context?.provider?.trim();
+    const restaurantId = context?.restaurantId?.trim();
+    if (!providerKey || !restaurantId) {
       this.logger.error(
-        "POS_HUB_WEBHOOK_SECRET not configured — rejecting webhook (fail closed)",
+        "POS webhook rejected: signature verification requires a provider and a restaurant to key on",
       );
       return false;
     }
+
+    // An unrecognized provider is rejected here rather than deeper in
+    // `ingest`, so an unauthenticated caller cannot probe the registry and no
+    // secret is ever matched against a provider we do not serve.
+    const provider = PROVIDER_BY_KEY[providerKey];
+    if (!provider) {
+      this.logSecretResolutionOnce(`unknown:${providerKey}`, () =>
+        this.logger.error(
+          `POS webhook rejected: unknown provider '${providerKey}'`,
+        ),
+      );
+      return false;
+    }
+
+    const resolved = this.resolveWebhookSecret(providerKey, restaurantId);
+    if (!resolved) {
+      const { perConnection, perProvider } = webhookSecretEnvVars(
+        providerKey,
+        restaurantId,
+      );
+      this.logSecretResolutionOnce(
+        `missing:${providerKey}:${restaurantId}`,
+        () =>
+          this.logger.error(
+            `POS webhook rejected (fail closed): no secret configured for provider ` +
+              `'${providerKey}'${provider.status === "available" ? " — which the registry marks AVAILABLE, so this door is advertised and shut" : ""}. ` +
+              `Set ${perProvider}, ${perConnection}, or the legacy POS_HUB_WEBHOOK_SECRET.`,
+          ),
+      );
+      return false;
+    }
+
     if (!signature || !rawBody) return false;
+
     try {
+      const signedPayload =
+        resolved.source === "legacy_global"
+          ? rawBody
+          : scopedSignedPayload(providerKey, restaurantId, rawBody);
+
       const expected = crypto
-        .createHmac("sha256", this.webhookSecret)
-        .update(rawBody)
+        .createHmac("sha256", resolved.secret)
+        .update(signedPayload)
         .digest("hex");
       const a = Buffer.from(expected, "hex");
       const b = Buffer.from(signature.toLowerCase(), "hex");
@@ -266,10 +464,18 @@ export class PosHubService {
         errors: ["No recognizable checks in payload"],
       };
 
-    const [mappings, tables] = await Promise.all([
+    const [mappingLookup, tableLookup] = await Promise.all([
       this.loadItemMappings(restaurantId, providerKey),
       this.loadTables(restaurantId),
     ]);
+    const mappings = mappingLookup.rows;
+    if (mappingLookup.error) errors.push(mappingLookup.error);
+    const tables = tableLookup.tables;
+    // Degrade, do not reject: table resolution is an enrichment, so a failed
+    // lookup must not turn into a 500 the POS retries forever. But it is SAID,
+    // through the same `errors` channel a failed check upsert uses, so the
+    // ingest can no longer report a clean success over a lookup that failed.
+    if (tableLookup.error) errors.push(tableLookup.error);
 
     let upserted = 0;
     let wineItems = 0;
@@ -358,8 +564,24 @@ export class PosHubService {
   // Item mappings (pos_item_mappings) + wine heuristic
   // =========================================================================
 
-  private async loadItemMappings(restaurantId: string, source: string) {
-    const { data } = await this.dbService
+  /**
+   * Same shape as `loadTables` below, for the same reason.
+   *
+   * A failed read here returned `[]`, and `resolveWine` finds nothing in an
+   * empty array — so every line on every check ingested with
+   * `inventory_id: null`, `is_wine` from the name heuristic only, and no
+   * depletion. The ingest then reported `errors: []`. That is the mechanism
+   * that manufactures "the POS bridge stopped mapping" as a silent condition.
+   *
+   * An empty mapping table is NOT an error (a restaurant that has mapped
+   * nothing yet is normal) and is never reported as one; only a real failure
+   * is, through the same `errors` channel a failed check upsert uses.
+   */
+  private async loadItemMappings(
+    restaurantId: string,
+    source: string,
+  ): Promise<{ rows: any[]; error: string | null }> {
+    const { data, error } = await this.dbService
       .getClient()
       .from("pos_item_mappings")
       .select(
@@ -367,7 +589,14 @@ export class PosHubService {
       )
       .eq("restaurant_id", restaurantId)
       .in("source", [source, "*"]);
-    return data || [];
+    if (error) {
+      this.logger.error(
+        `pos_item_mappings lookup failed for r=${restaurantId} src=${source} — ` +
+          `every line will ingest unmapped rather than wrongly mapped: ${error.message}`,
+      );
+      return { rows: [], error: `pos_item_mappings: ${error.message}` };
+    }
+    return { rows: data || [], error: null };
   }
 
   /**
@@ -383,11 +612,21 @@ export class PosHubService {
   ): Promise<Map<string, InventoryVolumes>> {
     const out = new Map<string, InventoryVolumes>();
     if (!inventoryIds.length) return out;
-    const { data } = await this.dbService
+    const { data, error } = await this.dbService
       .getClient()
       .from("restaurant_inventory")
       .select("id, bottle_size_ml, pour_size_ml, menu_price_current")
       .in("id", inventoryIds);
+    // An empty map is the safe degrade — resolveSaleVolume queues the line
+    // rather than guessing a volume (ADR 0011) — but it must not be silent:
+    // a failed read here queues an ENTIRE service as unresolved and looks
+    // exactly like a restaurant whose inventory rows all vanished.
+    if (error)
+      this.logger.error(
+        `restaurant_inventory volume lookup failed for ${inventoryIds.length} ` +
+          `id(s) — every wine line on this check will queue as unresolved ` +
+          `rather than deplete by a guessed volume: ${error.message}`,
+      );
     for (const row of data || []) {
       const positive = (v: unknown) => {
         const n = Number(v);
@@ -575,6 +814,24 @@ export class PosHubService {
           // has no reversal mode. Voiding 5 glasses returns 5 bottles. Left as
           // it is because B19 is a recorded decision; superseding it is the
           // founder's call, not this change's.
+          //
+          // ADR 0093 D5 — THE VOID'S KEY IS NOT THE SALE'S KEY.
+          //
+          // `apply_stock_movement` (production definition, read 2026-09-02)
+          // opens with `SELECT id ... WHERE idempotency_key = p_idempotency_key
+          // ... IF FOUND RETURN`. Passing `idem` here — the key the SALE
+          // already wrote — therefore returned the sale's transaction id and
+          // MOVED NOTHING: a voided check stayed depleted forever, and the
+          // caller could not tell, because an idempotent hit and a real
+          // movement are the same `{ error: null }`.
+          //
+          // `${idem}:void` is derived from the sale's key rather than random,
+          // so a REPLAYED void is still idempotent — the property the sale
+          // already had, extended to the reversal.
+          //
+          // pos-hub.void-idempotency.spec.ts pins this against a mock that
+          // actually implements the early return; the older B19 tests could
+          // not see it because their mock ignores the key.
           ({ error: rpcError } = await db.rpc("apply_stock_movement", {
             p_inventory_id: it.inventory_id,
             p_stock_state: "live",
@@ -582,7 +839,7 @@ export class PosHubService {
             p_transaction_type: isVoid ? "return" : "sale",
             p_source: "pos",
             p_reason: `POS ${isVoid ? "void" : "sale"} (${label}): ${it.name}`,
-            p_idempotency_key: idem,
+            p_idempotency_key: isVoid ? `${idem}:void` : idem,
           }));
         }
 
@@ -749,21 +1006,54 @@ export class PosHubService {
       //
       // `notes` is the idempotency key verbatim. It used to be `pos:${key}`
       // while the key already began with "pos:", rendering "pos:pos:…".
-      await db.from("wine_consumption_log").upsert(
-        {
-          restaurant_id: restaurantId,
-          inventory_id: item.inventory_id,
-          wine_name: item.name,
-          consumption_type: unit,
-          quantity: qty,
-          volume_ml: volumeMl,
-          unit_price: unitPrice,
-          total_revenue: unitPrice != null ? unitPrice * qty : null,
-          source: "pos",
-          notes: idempotencyKey,
-        },
-        { onConflict: "restaurant_id,notes", ignoreDuplicates: true },
-      );
+      //
+      // Measured on the first ADR 0093 live day (2026-09-03): this was an
+      // `upsert(..., { onConflict: "restaurant_id,notes" })`, and EVERY call
+      // failed with 42P10 "there is no unique or exclusion constraint matching
+      // the ON CONFLICT specification" — the index above is PARTIAL
+      // (`where notes is not null and source = 'pos'`), and Postgres only
+      // matches a partial index to a conflict target that repeats its
+      // predicate, which PostgREST cannot express. So the mirror had written
+      // zero rows for every POS sale since 2026-08-24 while the error was
+      // logged and nothing else noticed. The honest shape is a plain INSERT
+      // with the partial unique index as the backstop: a replay raises 23505,
+      // which is the idempotent no-op the upsert was meant to be.
+      const { error } = await db.from("wine_consumption_log").insert({
+        restaurant_id: restaurantId,
+        inventory_id: item.inventory_id,
+        wine_name: item.name,
+        consumption_type: unit,
+        quantity: qty,
+        volume_ml: volumeMl,
+        unit_price: unitPrice,
+        total_revenue: unitPrice != null ? unitPrice * qty : null,
+        source: "pos",
+        notes: idempotencyKey,
+      });
+      if (error?.code === "23505") {
+        // Already mirrored under this key — a webhook replay. Nothing to add.
+        return;
+      }
+
+      // This result used to be discarded, which made the comment above a claim
+      // the code did not honour. supabase-js RESOLVES with `{ data, error }` on
+      // a database error rather than throwing, so the `catch` below only ever
+      // caught client/network faults — a rejected upsert vanished in silence.
+      //
+      // That is a SILENT OMISSION, not a corruption, and it is the harder of the
+      // two to live with: a wrong row can be found and repaired by querying for
+      // it, whereas a missing row leaves no trace at all. Nothing records that
+      // the event failed to land, so the damage cannot be enumerated, bounded or
+      // repaired — while velocity, XYZ, reorder points, Holt-Winters and goal
+      // progress all quietly under-count over a ledger that looks complete.
+      if (error) {
+        this.logger.error(
+          `wine_consumption_log insert FAILED for ${item.name} ` +
+            `(r=${restaurantId}, key=${idempotencyKey}): ${error.message} ` +
+            `[${error.code ?? "no-code"}] — the demand series is now short one ` +
+            `event and nothing else records that.`,
+        );
+      }
     } catch (err: any) {
       this.logger.warn(
         `Consumption log write failed for ${item.name}: ${err?.message}`,
@@ -868,14 +1158,39 @@ export class PosHubService {
   // Table resolution + status
   // =========================================================================
 
-  private async loadTables(restaurantId: string) {
-    const { data } = await this.dbService
+  /**
+   * Returns the tables AND whether the lookup failed, because those are
+   * different facts and the caller writes a row either way.
+   *
+   * supabase-js RESOLVES with `{ data, error }` on a database error rather than
+   * throwing, so the previous `const { data } = await …; return data || []`
+   * turned a failed query into an empty table list. Every check then resolved
+   * `table_id: null` (`resolveTable` finds nothing in an empty array) while the
+   * ingest reported success with zero errors — indistinguishable from a
+   * restaurant that genuinely has no tables, and the mechanism that manufactures
+   * the "table_id is null on every row" symptom the POS bridge was diagnosed on.
+   *
+   * An empty result is NOT an error and must not be reported as one; only a real
+   * failure is. Conflating them would trade a silent failure for a false alarm.
+   */
+  private async loadTables(
+    restaurantId: string,
+  ): Promise<{ tables: any[]; error: string | null }> {
+    const { data, error } = await this.dbService
       .getClient()
       .from("restaurant_tables")
       .select("id, label, pos_refs")
       .eq("restaurant_id", restaurantId)
       .eq("is_active", true);
-    return data || [];
+
+    if (error) {
+      this.logger.error(
+        `restaurant_tables lookup failed for r=${restaurantId} — checks will be ` +
+          `written without a table_id rather than with a wrong one: ${error.message}`,
+      );
+      return { tables: [], error: `restaurant_tables: ${error.message}` };
+    }
+    return { tables: data || [], error: null };
   }
 
   private resolveTable(
@@ -897,14 +1212,42 @@ export class PosHubService {
     return byLabel?.id ?? null;
   }
 
+  /**
+   * "Is my POS connection live?" — the one screen an operator opens to answer
+   * exactly that.
+   *
+   * The `error` used to be discarded, so a failed `pos_checks` read returned
+   * `totalChecks: 0, sources: []` and Settings → POS rendered
+   * "Ingestion (30d): 0 checks from this source" — the same sentence a
+   * genuinely idle integration produces. A status endpoint that cannot tell
+   * "dead" from "quiet" is answering the wrong question, and it answers it in
+   * the reassuring direction.
+   *
+   * Now it returns `unavailable: true` with `totalChecks: null`, which the
+   * client renders as an em dash (ADR 0051). A real measured zero still
+   * renders `0`.
+   */
   async getStatus(restaurantId: string) {
     const client = this.dbService.getClient();
     const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
-    const { data } = await client
+    const { data, error } = await client
       .from("pos_checks")
       .select("source, opened_at, closed_at")
       .eq("restaurant_id", restaurantId)
       .gte("opened_at", since30);
+    if (error) {
+      this.logger.error(
+        `pos_checks status read failed for r=${restaurantId} — reporting ` +
+          `UNAVAILABLE rather than "0 checks": ${error.code ?? "?"} ${error.message}`,
+      );
+      return {
+        windowDays: 30,
+        unavailable: true as const,
+        totalChecks: null,
+        sources: null,
+        generatedAt: new Date().toISOString(),
+      };
+    }
     const rows = data || [];
     const bySource = new Map<
       string,
@@ -919,6 +1262,7 @@ export class PosHubService {
     }
     return {
       windowDays: 30,
+      unavailable: false as const,
       totalChecks: rows.length,
       sources: Array.from(bySource.entries()).map(([source, s]) => ({
         source,

@@ -14,12 +14,42 @@ export type RecipientRole =
   | "provider"
   | "sommelier"
   | "customer";
-export type NotificationChannel = "email" | "sms" | "push";
+/**
+ * The channels this resolver can answer for.
+ *
+ * **`"push"` is deliberately absent, and asking for it is a compile error
+ * rather than an empty array** (ADR 0027 / OD-95). This resolver never
+ * resolved a single push recipient, and the shape it offered could not have
+ * been used if it had:
+ *
+ * - It read `push_subscriptions`, which does not exist in production
+ *   (`to_regclass` → NULL, 2026-08-26) and is declared only by an archived
+ *   migration. It must NOT be created: it is an abandoned storage model.
+ * - The store that replaced it, `notification_preferences.push_subscription`,
+ *   has no working writer. `NotificationsService.registerPushSubscription`
+ *   upserts `onConflict: "user_id"`, but the table's only unique index is on
+ *   `(restaurant_id, user_id)`, so Postgres answers `42P10` and the statement
+ *   cannot even be planned (verified against production, 2026-08-26; the fork
+ *   is held open by `supabase/migrations/20260813090000_fix_remaining_upsert_targets.sql` §3).
+ *   Repointing here would have swapped a loud 404 for a permanently empty
+ *   read that looks successful — the exact failure ADR 0020 forbids.
+ * - **Both push senders address recipients by USER ID and enumerate devices
+ *   themselves**: `NotificationsService.sendWebPush(userId, …)` reads
+ *   `notification_preferences.push_subscription`, and
+ *   `ExpoPushService.sendToUsers(userIds, …)` reads
+ *   `mobile_devices.expo_push_token`. Neither accepts a subscription id, an
+ *   endpoint, or a token from outside. There is therefore no push-recipient
+ *   shape this resolver could return that both senders would take.
+ *
+ * If push recipients are ever meant to flow through here, the correct output
+ * is user ids — which `getUserIdsForRoles` already computes — not devices.
+ * That is a design addition, not a restoration of what was deleted.
+ */
+export type NotificationChannel = "email" | "sms";
 
 export interface ResolvedRecipients {
   emails: string[];
   phones: string[];
-  pushSubscriptionIds: string[];
 }
 
 export interface RecipientQuery {
@@ -67,10 +97,9 @@ export class RecipientResolverService {
     const result: ResolvedRecipients = {
       emails: [],
       phones: [],
-      pushSubscriptionIds: [],
     };
 
-    const channels = query.channels || ["email", "sms", "push"];
+    const channels = query.channels || ["email", "sms"];
     const allowDefaultFallback = query.allowDefaultFallback !== false;
 
     /**
@@ -86,7 +115,7 @@ export class RecipientResolverService {
           `${why}. The global MANAGER_EMAIL/MANAGER_PHONE fallback is disabled for this ` +
           "restaurant because it belongs to another tenant; sending nothing.",
       );
-      return { emails: [], phones: [], pushSubscriptionIds: [] };
+      return { emails: [], phones: [] };
     };
 
     try {
@@ -131,16 +160,6 @@ export class RecipientResolverService {
             result.phones.push(user.phone);
           }
         }
-
-        // Check push subscriptions
-        if (channels.includes("push")) {
-          const wantsPush =
-            !prefs || this.checkChannelPreference(prefs, "push");
-          if (wantsPush) {
-            const subs = await this.getPushSubscriptions(client, user.user_id);
-            result.pushSubscriptionIds.push(...subs);
-          }
-        }
       }
 
       // 4. If provider-specific, also resolve provider contacts from contacts table
@@ -160,7 +179,6 @@ export class RecipientResolverService {
       // Deduplicate
       result.emails = [...new Set(result.emails)];
       result.phones = [...new Set(result.phones)];
-      result.pushSubscriptionIds = [...new Set(result.pushSubscriptionIds)];
 
       // Fallback: if no emails found, use defaults
       if (result.emails.length === 0 && channels.includes("email")) {
@@ -175,7 +193,7 @@ export class RecipientResolverService {
 
     this.logger.debug(
       `Resolved recipients for restaurant ${query.restaurantId}: ` +
-        `${result.emails.length} emails, ${result.phones.length} phones, ${result.pushSubscriptionIds.length} push`,
+        `${result.emails.length} emails, ${result.phones.length} phones`,
     );
 
     return result;
@@ -264,25 +282,6 @@ export class RecipientResolverService {
   }
 
   /**
-   * Get push subscription IDs for a user.
-   */
-  private async getPushSubscriptions(
-    client: any,
-    userId: string,
-  ): Promise<string[]> {
-    try {
-      const { data, error } = await client
-        .from("push_subscriptions")
-        .select("id")
-        .eq("user_id", userId);
-
-      return (data || []).map((s: any) => s.id);
-    } catch {
-      return [];
-    }
-  }
-
-  /**
    * Get provider contacts from the contacts + contact_addresses tables.
    */
   private async getProviderContacts(
@@ -340,32 +339,73 @@ export class RecipientResolverService {
 
   /**
    * Check if a user's notification preferences allow a specific channel.
+   *
+   * Two gates, applied in order.
+   *
+   * **Gate 1 — the global per-channel switch.** `email_enabled`,
+   * `push_enabled` and `sms_enabled` are what a user actually toggles in
+   * Settings, and their defaults are deliberately asymmetric: email and push
+   * are opt-OUT (default true), SMS is opt-IN (default false). Those exact
+   * defaults are already read in
+   * `notifications.service.ts:1051-1053`; this method is the second reader
+   * and has to agree with the first, or the same row means two things
+   * depending on which code path looks at it.
+   *
+   * **Gate 2 — the per-category channel arrays.** The real column names come
+   * from `supabase/migrations/20260805000000_baseline_from_production.sql:3899-3939`:
+   * `low_stock_channels`, `order_approval_channels`,
+   * `financial_reports_channels`.
+   *
+   * Until 2026-09-02 gate 1 did not exist and gate 2 read `order_channels`
+   * and `report_channels`, **which no migration has ever declared**. Both
+   * reads were therefore permanently `undefined`, which had two consequences
+   * that compounded:
+   *
+   *   - the "no explicit preferences set" escape hatch could never fire once
+   *     `low_stock_channels` held its default, because that one column was
+   *     truthy while the other two were undefined; and
+   *   - the only array that could match was `low_stock_channels`, whose
+   *     default is `['sms','push']`.
+   *
+   * So with stock production rows the check ran backwards on both axes at
+   * once: **email was refused to every user who had it enabled** (not in
+   * `low_stock_channels`, and the escape hatch was blocked) while **SMS was
+   * permitted to every user who had it disabled** (in `low_stock_channels`,
+   * and `sms_enabled` was never consulted). Fixing only the column names
+   * fixes the first half and leaves the second, which is why gate 1 is here.
+   *
+   * This method is not told which notification CATEGORY it is resolving for,
+   * so gate 2 is a union across the three arrays. That is deliberately
+   * permissive rather than wrong: making it category-aware means threading a
+   * category through all seven call sites and deciding which category each
+   * belongs to, which is a product decision. Recorded as the open half of
+   * ADR 0093.
    */
   private checkChannelPreference(prefs: any, channel: string): boolean {
-    // Check various preference fields
-    const channelArrays = [
-      prefs.low_stock_channels,
-      prefs.order_channels,
-      prefs.report_channels,
-    ];
-
-    // If any preference array includes this channel, allow it
-    for (const arr of channelArrays) {
-      if (Array.isArray(arr) && arr.includes(channel)) {
-        return true;
-      }
+    // Gate 1: the global per-channel switch. Defaults must stay identical to
+    // notifications.service.ts:1051-1053.
+    const globallyEnabled: Record<string, boolean> = {
+      email: prefs.email_enabled ?? true,
+      push: prefs.push_enabled ?? true,
+      sms: prefs.sms_enabled ?? false,
+    };
+    if (globallyEnabled[channel] === false) {
+      return false;
     }
 
-    // Default: allow if no explicit preferences set
-    if (
-      !prefs.low_stock_channels &&
-      !prefs.order_channels &&
-      !prefs.report_channels
-    ) {
+    // Gate 2: the per-category channel arrays, by their real column names.
+    const expressed = [
+      prefs.low_stock_channels,
+      prefs.order_approval_channels,
+      prefs.financial_reports_channels,
+    ].filter((arr) => Array.isArray(arr));
+
+    // No category preference expressed at all — gate 1 has already decided.
+    if (expressed.length === 0) {
       return true;
     }
 
-    return false;
+    return expressed.some((arr) => arr.includes(channel));
   }
 
   /**
@@ -384,7 +424,6 @@ export class RecipientResolverService {
     return {
       emails: channels.includes("email") ? defaults : [],
       phones: channels.includes("sms") && managerPhone ? [managerPhone] : [],
-      pushSubscriptionIds: [],
     };
   }
 

@@ -8,9 +8,14 @@ import {
   IsUUID,
   IsDateString,
   IsObject,
+  IsArray,
+  ArrayMaxSize,
+  ArrayMinSize,
+  ValidateNested,
   Min,
   Max,
 } from "class-validator";
+import { Type } from "class-transformer";
 
 // ============================================================================
 // ENUMS
@@ -343,8 +348,31 @@ export class TransactionSummaryResponseDto {
 // BULK OPERATIONS
 // ============================================================================
 
+/**
+ * Upper bound on one bulk call. The handler loops
+ * `for (i = 0; i < dto.transactions.length; i++)` and awaits a database write
+ * per element, so without a cap the array length is a caller-chosen amount of
+ * server work — one request can hold a worker for as long as it likes.
+ *
+ * 500 is comfortably above a real physical count (the largest cellar counts in
+ * the corpus are low hundreds of lines) and far below a useful denial of
+ * service.
+ */
+export const BULK_TRANSACTION_MAX = 500;
+
 export class BulkTransactionDto {
-  @ApiProperty({ type: [CreateInventoryTransactionDto] })
+  @ApiProperty({
+    type: [CreateInventoryTransactionDto],
+    maxItems: BULK_TRANSACTION_MAX,
+  })
+  // These four decorators were absent entirely: the nested transaction objects
+  // were never validated (ValidationPipe cannot see into an array without
+  // @ValidateNested + @Type) and the array was unbounded.
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(BULK_TRANSACTION_MAX)
+  @ValidateNested({ each: true })
+  @Type(() => CreateInventoryTransactionDto)
   transactions: CreateInventoryTransactionDto[];
 
   @ApiPropertyOptional({ description: "Correlation ID for all transactions" })
@@ -365,4 +393,61 @@ export class BulkTransactionResponseDto {
 
   @ApiProperty({ type: [Object] })
   errors: { index: number; error: string }[];
+}
+
+// ============================================================================
+// RECONCILIATION (ADR 0078 — a count is a record)
+// ============================================================================
+
+export class StockCountRecordDto {
+  @ApiProperty({ nullable: true })
+  countId: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      "What the lots said at the instant of the count, read under the same lock the applied delta was computed from — not the restaurant_inventory.stock_live projection.",
+  })
+  expectedQty: number | null;
+
+  @ApiProperty({ nullable: true })
+  countedQty: number | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      "counted - expected. 0 means the books were right, which is a recorded outcome and was previously unrepresentable.",
+  })
+  varianceQty: number | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      "The movement this count caused, or null when nothing had to move.",
+  })
+  transactionId: string | null;
+
+  @ApiProperty({ nullable: true })
+  countedAt: string | null;
+
+  @ApiProperty({
+    description: "True when this request replayed an already-recorded count.",
+  })
+  replayed: boolean;
+}
+
+export class ReconcileResultDto {
+  @ApiProperty({
+    type: StockCountRecordDto,
+    description: "Always present — the count is recorded whether or not it changed anything.",
+  })
+  count: StockCountRecordDto;
+
+  @ApiProperty({
+    type: InventoryTransactionResponseDto,
+    nullable: true,
+    description:
+      "The ledger movement, or null when the count agreed. Null is a result, not an error: this endpoint used to answer a correct count with a 400.",
+  })
+  transaction: InventoryTransactionResponseDto | null;
 }

@@ -33,6 +33,7 @@ import asyncio
 import json
 import re
 import time
+import uuid
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
@@ -2142,20 +2143,75 @@ class ProviderConversationAgent(BaseAgent):
 
             preference = response.content[0].text.strip() if response.content else ""
             if preference:
-                # Append to conversation_context.manager_instructions[] on active session
-                self.database.supabase.rpc(
-                    "jsonb_array_append",
-                    {
-                        "table_name": "provider_conversation_sessions",
-                        "column_name": "conversation_context",
-                        "key": "manager_instructions",
-                        "value": preference,
-                        "restaurant_id": restaurant_id,
-                        "provider_id": provider_id,
-                    },
-                ).execute()
+                self._append_manager_instruction(restaurant_id, provider_id, preference)
         except Exception as e:
             self.logger.warning(f"Learning loop preference extraction failed: {e}")
+
+    def _append_manager_instruction(
+        self, restaurant_id: str, provider_id: str, preference: str
+    ) -> bool:
+        """
+        Append one learned preference to the active session's
+        `conversation_context.manager_instructions[]`.
+
+        OD-99: this used to be a single RPC call to a function named
+        `jsonb_array_append`. No CREATE FUNCTION for it exists in this repo and
+        production does not have it (PGRST202, verified 2026-08-26). Unlike
+        the other four phantom RPCs, this one is a WRITE with no fallback
+        behind it, so the failure was not a degraded read -- it was data loss.
+        Every preference the learning loop has ever extracted (each one paid
+        for with an LLM call, logged as spend on the line above) was thrown
+        away by the `except` that logged "Learning loop preference extraction
+        failed" and moved on.
+
+        A generic append-into-any-table-and-column function was never a good
+        shape anyway -- a SQL function taking a table name as a string is an
+        injection surface and cannot be typed. The append is done here instead
+        as an explicit read-modify-write against the one row it was always
+        aimed at.
+
+        Not atomic: two concurrent appends to the same session can lose one.
+        That is a real limitation and it is stated rather than papered over --
+        but it is strictly better than the previous behaviour, which lost
+        100% of them. Returns True when a row was updated.
+        """
+        try:
+            sessions = (
+                self.database.supabase.table("provider_conversation_sessions")
+                .select("id, conversation_context")
+                .eq("restaurant_id", restaurant_id)
+                .eq("provider_id", provider_id)
+                .eq("status", "active")
+                .order("last_message_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if not sessions.data:
+                self.logger.warning(
+                    "No active session for provider %s; manager instruction "
+                    "not stored: %r",
+                    provider_id,
+                    preference,
+                )
+                return False
+
+            session = sessions.data[0]
+            context = session.get("conversation_context") or {}
+            if not isinstance(context, dict):
+                context = {}
+            instructions = context.get("manager_instructions")
+            if not isinstance(instructions, list):
+                instructions = []
+            instructions.append(preference)
+            context["manager_instructions"] = instructions
+
+            self.database.supabase.table("provider_conversation_sessions").update(
+                {"conversation_context": context}
+            ).eq("id", session["id"]).execute()
+            return True
+        except Exception as e:
+            self.logger.warning(f"Failed to store manager instruction: {e}")
+            return False
 
     # =========================================================================
     # 8. THREAD SUMMARIZER
@@ -2540,12 +2596,206 @@ class ProviderConversationAgent(BaseAgent):
             self.logger.error(f"Error creating approval request: {e}")
             return None
 
+    # Statuses that mean "a send for this conversation is already in flight or
+    # already happened". A claim must never be granted over one of these.
+    _SEND_TERMINAL_STATUSES = ("SENDING", "SENT", "AUTO_SENT", "SEND_UNCONFIRMED")
+
+    def _mint_rfc822_message_id(self) -> str:
+        """Mint an RFC822 Message-ID BEFORE the send.
+
+        Stored on the row as part of the claim, so a send that crashes before
+        recording its outcome still leaves an identifier: one stored id later
+        found on the vendor thread proves the message left, and two stored ids
+        for one conversation would prove a duplicate.
+        """
+        return f"<mudavym-{uuid.uuid4()}@wineops.ai>"
+
+    @staticmethod
+    def _is_definite_send_refusal(error: Any) -> bool:
+        """Did this failure PROVE the vendor did not get the message?
+
+        Only an explicit refusal proves it. A timeout, a connection reset, or a
+        hang-up can all occur after the remote server accepted the message, and
+        an SMTP 4xx is a transient "try later" that may still have been relayed.
+        This is therefore a deliberate ALLOW-LIST of positively-identified
+        refusals — anything unrecognised is ambiguous, because guessing wrong in
+        that direction sends a real vendor a second purchase order.
+
+        Ported deliberately from `ProcurementService.isDefiniteSendRefusal`
+        (apps/api-gateway/src/procurement/procurement.service.ts:2191) so the two
+        runtimes classify the same failure the same way.
+        """
+        text = str(error or "").strip()
+        if not text:
+            # `str(asyncio.TimeoutError())` is the empty string. An unnameable
+            # failure is the most ambiguous kind there is, not the safest.
+            return False
+
+        # No transport was ever attempted.
+        if re.search(
+            r"no email delivery method available|no recipients|no_email", text, re.I
+        ):
+            return True
+
+        # Credentials refused: the request never became a message.
+        if re.search(
+            r"invalid_grant|invalid_client|unauthorized_client|authentication failed"
+            r"|invalid credentials|Username and Password not accepted",
+            text,
+            re.I,
+        ):
+            return True
+
+        # SMTP permanent failures (5xx) and the recipient rejections they carry.
+        # Explicitly NOT 4xx — those are transient and may still have been queued.
+        if (
+            re.search(r"\b5\d{2}[ -]", text)
+            or re.search(r"\b5\.\d\.\d\b", text)
+            or re.search(
+                r"user unknown|no such user|recipient address rejected"
+                r"|mailbox unavailable|address rejected|does not exist",
+                text,
+                re.I,
+            )
+        ):
+            return True
+
+        # A malformed request we built — nothing deliverable left the process.
+        if re.search(
+            r"invalid recipient|no recipients defined|invalid to header", text, re.I
+        ):
+            return True
+
+        return False
+
+    def _claim_conversation_for_send(
+        self, conversation_id: str, outbound_message_id: str
+    ) -> bool:
+        """Atomically take ownership of this conversation's send. Returns success.
+
+        A conditional UPDATE is the whole guard: exactly one caller can move the
+        row into SENDING, and only that caller sends. The filter is a NOT-IN
+        rather than an equality on one expected prior status because this path
+        is reached from several entry points that leave `status` at DRAFT,
+        PENDING_APPROVAL or NULL, and gating on a single value would refuse
+        legitimate sends. The database-side backstop for the same invariant is
+        the partial unique index `uniq_proc_conv_inflight_send` on (order_id)
+        WHERE status = 'SENDING'
+        (supabase/migrations/20260901120000_approve_draft_duplicate_send_guard.sql).
+
+        The `status.is.null` arm matters: SQL `NOT IN` over a NULL yields
+        unknown, so a legacy row with no status would silently fail every claim
+        and its send would be refused forever. That direction is fail-safe but
+        it is still wrong, so NULL is matched explicitly.
+        """
+        blocked = ",".join(self._SEND_TERMINAL_STATUSES)
+        try:
+            claimed = (
+                self.database.supabase.table("procurement_conversations")
+                .update({"status": "SENDING", "message_id": outbound_message_id})
+                .eq("id", conversation_id)
+                .or_(f"status.is.null,status.not.in.({blocked})")
+                .execute()
+            )
+            return bool(getattr(claimed, "data", None))
+        except Exception as e:
+            # A unique violation here is the index refusing a second in-flight
+            # send for this order — that is the guard working, not a bug.
+            self.logger.error(
+                f"Could not claim conversation {conversation_id} for send: {e}. "
+                "Refusing to send rather than risk a duplicate."
+            )
+            return False
+
+    def _park_send_unconfirmed(self, conversation_id: str, attempted_at: str) -> None:
+        """Park a claimed conversation as sent-but-unconfirmed.
+
+        The vendor may hold this message, so the row must never become
+        re-sendable, and a human has to reconcile it against the vendor thread.
+        Best-effort: if this write fails the row stays SENDING, which is also
+        not re-claimable.
+        """
+        try:
+            self.database.supabase.table("procurement_conversations").update(
+                {"status": "SEND_UNCONFIRMED", "sent_at": attempted_at}
+            ).eq("id", conversation_id).eq("status", "SENDING").execute()
+        except Exception as e:
+            self.logger.error(
+                f"Could not park {conversation_id} as SEND_UNCONFIRMED: {e}. "
+                "Row remains SENDING (still not re-claimable)."
+            )
+
+    def _release_send_claim(
+        self, conversation_id: str, prior_status: Optional[str], reason: str
+    ) -> None:
+        """Hand a claimed conversation back so it can be retried.
+
+        ONLY safe when the send provably did not happen. Once a message is at
+        the vendor, releasing the claim is exactly what invites the duplicate.
+        Gated by `_is_definite_send_refusal`; never call it on an ambiguous
+        failure.
+        """
+        try:
+            self.database.supabase.table("procurement_conversations").update(
+                {"status": prior_status or "DRAFT"}
+            ).eq("id", conversation_id).eq("status", "SENDING").execute()
+            self.logger.warning(
+                f"Send for {conversation_id} definitively refused ({reason}) — "
+                "claim released for retry."
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Could not release send claim for {conversation_id}: {e}"
+            )
+
     async def _handle_conversation_approved(self, payload: Dict[str, Any]) -> None:
-        """Handle manager approval of a generated message."""
+        """Handle manager approval of a generated message.
+
+        WHY THE BROAD `except` AROUND THE SEND IS LOAD-BEARING, AND WHY DELETING
+        IT WOULD HAVE MADE THIS WORSE
+
+        This handler sends a message to a REAL vendor. It is invoked from
+        `process_message`, which re-raises on any exception
+        (provider_conversation_agent.py:420-423); `BaseAgent._process_with_retry`
+        then retries the same message up to `max_retries` (3, base_agent.py:223),
+        and `MessageBus.consume` re-publishes it with an incremented
+        `x-retry-count` on top of that. The Level 4 idempotency guard that would
+        have absorbed a replay is OFF by default
+        (`PROV_AGENT_LEVEL4_ENABLED=false`, config/settings.py:195-197).
+
+        So "just let the exception propagate" does not surface the error — it
+        re-runs the send. The old bare `except` was converting a silent loss
+        into nothing worse only because it swallowed; removing it converts the
+        silent loss into a DUPLICATE VENDOR EMAIL, which costs money and a
+        relationship rather than a phone call.
+
+        The fix is therefore not "stop swallowing" but "record before you
+        swallow", in the shape already shipped for this exact problem in
+        `ProcurementService.approveDraft`
+        (apps/api-gateway/src/procurement/procurement.service.ts:1944, PR #195):
+
+          1. Claim the conversation atomically BEFORE the send, so a replay,
+             a concurrent approval, or a bus redelivery cannot reach the send at
+             all. There was no guard of any kind here before — every redelivery
+             sent again.
+          2. Classify a failure as a DEFINITE refusal (an allow-list of proofs
+             that nothing left the process) versus an AMBIGUOUS one (timeout,
+             reset, hang-up — anything where the client cannot know).
+          3. Release the claim ONLY on a definite refusal, and re-raise so the
+             bus retries a send that provably did not happen.
+          4. Park an ambiguous failure as SEND_UNCONFIRMED — visible to a human,
+             and NOT re-claimable — then return without raising, so no retry can
+             produce a second message.
+
+        Defaulting to the ambiguous branch is deliberate: a stuck message a
+        human must look at costs a phone call; a duplicate vendor message costs
+        money.
+        """
         conversation_id = payload.get("conversation_id")
         if not conversation_id:
             return
 
+        # --- Read the draft (a failure here is safe: nothing has been sent) ---
         try:
             convo = (
                 self.database.supabase.table("procurement_conversations")
@@ -2563,8 +2813,8 @@ class ProviderConversationAgent(BaseAgent):
                 convo_data.get("manager_approved_message") or convo_data["message_text"]
             )
             provider_id = convo_data["provider_id"]
+            prior_status = convo_data.get("status")
 
-            # Send the message
             provider = (
                 self.database.supabase.table("providers")
                 .select("name, primary_contact")
@@ -2588,26 +2838,102 @@ class ProviderConversationAgent(BaseAgent):
                     order_data = order_result.data or {}
                 except Exception:
                     pass
-
-            await self._send_message(
-                provider_id=provider_id,
-                message=final_message,
-                channel=channel,
-                provider_data=provider.data if provider.data else {},
-                conversation_id=conversation_id,
-                order_data=order_data,
+        except Exception as e:
+            # Nothing was sent, so re-raising is safe and a retry is correct.
+            self.logger.error(
+                f"Could not load approved conversation {conversation_id}: {e}"
             )
+            raise
 
-            # Update conversation record
+        # --- Atomic claim, BEFORE the send ----------------------------------
+        # On a RETRY the stored Message-ID is reused rather than re-minted, so
+        # the identifier for this outbound message is stable across attempts.
+        outbound_message_id = (
+            convo_data.get("message_id") or self._mint_rfc822_message_id()
+        )
+        if not self._claim_conversation_for_send(conversation_id, outbound_message_id):
+            self.logger.warning(
+                f"Conversation {conversation_id} is already claimed or already sent — "
+                "refusing to send a second copy to provider "
+                f"{provider_id}."
+            )
+            return
+
+        # --- Send -----------------------------------------------------------
+        attempted_at = datetime.utcnow().isoformat()
+        send_result: Dict[str, Any] = {}
+        send_error: Any = None
+        try:
+            send_result = (
+                await self._send_message(
+                    provider_id=provider_id,
+                    message=final_message,
+                    channel=channel,
+                    provider_data=provider.data if provider.data else {},
+                    conversation_id=conversation_id,
+                    order_data=order_data,
+                )
+                or {}
+            )
+            if not send_result.get("success", True):
+                # `EmailComposerService.send_via_gateway` never raises: it
+                # catches everything and reports the failure in its return value
+                # (services/email_composer_service.py:378-380). A returned
+                # failure therefore has to be classified exactly like a thrown
+                # one, or every ambiguous timeout would sail past as a success.
+                send_error = send_result.get("error") or "unknown send failure"
+        except Exception as e:  # noqa: BLE001 — see the docstring; this is load-bearing
+            send_error = e
+
+        if send_error is not None:
+            if self._is_definite_send_refusal(send_error):
+                # Proven not delivered: safe to hand back and safe to retry.
+                self._release_send_claim(conversation_id, prior_status, str(send_error))
+                raise RuntimeError(
+                    f"Send to provider {provider_id} was refused "
+                    f"({send_error}); conversation {conversation_id} released for retry."
+                )
+
+            # Ambiguous. The vendor may hold this message. Park it where a human
+            # can see it, and DO NOT raise — raising is what produces the
+            # duplicate, because the bus would retry the send.
+            self._park_send_unconfirmed(conversation_id, attempted_at)
+            self.logger.error(
+                f"AMBIGUOUS send failure for conversation {conversation_id} "
+                f"(provider {provider_id}): {send_error!r}. "
+                f"Parked as SEND_UNCONFIRMED (Message-ID {outbound_message_id}). "
+                "The vendor may or may not have received this message — do NOT "
+                "re-approve it; check the vendor thread first."
+            )
+            return
+
+        # --- Record the outcome ---------------------------------------------
+        try:
             self.database.supabase.table("procurement_conversations").update(
                 {
+                    "status": "SENT",
                     "manager_approval_status": "approved",
                     "resumed_at": datetime.utcnow().isoformat(),
                 }
-            ).eq("id", conversation_id).execute()
+            ).eq("id", conversation_id).eq("status", "SENDING").execute()
+        except Exception as e:
+            # The message IS at the vendor. Returning the row to a re-sendable
+            # state here is precisely what invites the duplicate, so park it
+            # instead: sent, outcome unrecorded, visible, not re-claimable.
+            self._park_send_unconfirmed(conversation_id, attempted_at)
+            self.logger.error(
+                f"Message for conversation {conversation_id} WAS sent to provider "
+                f"{provider_id} (Message-ID {outbound_message_id}) but its status "
+                f"could not be recorded: {e}. Parked as SEND_UNCONFIRMED — do NOT "
+                "re-approve; reconcile against the vendor thread."
+            )
+            return
 
-            # Update session status
-            session_id = convo_data.get("conversation_context", {}).get("session_id")
+        # --- Session bookkeeping (post-send; must never re-raise) ------------
+        try:
+            session_id = (convo_data.get("conversation_context") or {}).get(
+                "session_id"
+            )
             if session_id:
                 self.database.supabase.table("provider_conversation_sessions").update(
                     {"status": "waiting_response"}
@@ -2616,11 +2942,14 @@ class ProviderConversationAgent(BaseAgent):
                 cache_key = f"session:{provider_id}"
                 if cache_key in self._active_sessions:
                     self._active_sessions[cache_key].status = "waiting_response"
-
-            self.logger.info(f"Message sent to provider {provider_id} via {channel}")
-
         except Exception as e:
-            self.logger.error(f"Error handling approved conversation: {e}")
+            # Cosmetic relative to a delivered message. Raising here would retry
+            # the send for a bookkeeping miss.
+            self.logger.error(
+                f"Message sent for {conversation_id} but session bookkeeping failed: {e}"
+            )
+
+        self.logger.info(f"Message sent to provider {provider_id} via {channel}")
 
     async def _handle_conversation_rejected(self, payload: Dict[str, Any]) -> None:
         """Handle manager rejection of a generated message."""
@@ -2971,52 +3300,64 @@ class ProviderConversationAgent(BaseAgent):
                 continue
 
     async def _check_relationship_health(self) -> None:
-        """Alert when providers haven't been contacted recently."""
+        """
+        Alert when providers haven't been contacted recently.
+
+        OD-99: this called an RPC named `get_inactive_providers` first. No
+        CREATE FUNCTION for it exists anywhere in this repository and
+        production does not have it (PGRST202, verified 2026-08-26), so the
+        call raised -- and the block commented "Fallback if RPC doesn't exist"
+        sat inside the same `try`, so the exception jumped over it to the
+        `except` at the bottom, which logs and returns. The fallback was
+        unreachable, and this check has never emitted a single alert.
+
+        The RPC call is gone and the direct query is now the body, so the
+        alerts it was written to send will start being sent. That is a real
+        behaviour change on a path that has been dormant since it was
+        written -- flagged for the founder as OD-103 rather than shipped
+        quietly, because "an alert nobody has ever received starts arriving"
+        deserves to be a decision. It remains bounded exactly as written: at
+        most 20 providers per pass, only `is_active` ones, only those with no
+        session since the cutoff.
+        """
         try:
             cutoff = (
                 datetime.utcnow() - timedelta(days=self.relationship_alert_days)
             ).isoformat()
 
-            # Find providers with no recent sessions
-            result = self.database.supabase.rpc(
-                "get_inactive_providers",
-                {"cutoff_date": cutoff},
-            ).execute()
+            # Providers with no session since the cutoff.
+            result = (
+                self.database.supabase.table("providers")
+                .select("id, name, restaurant_id")
+                .eq("is_active", True)
+                .execute()
+            )
 
-            # Fallback if RPC doesn't exist: query directly
-            if not result.data:
-                result = (
-                    self.database.supabase.table("providers")
-                    .select("id, name, restaurant_id")
-                    .eq("is_active", True)
+            for provider in (result.data or [])[:20]:
+                sessions = (
+                    self.database.supabase.table("provider_conversation_sessions")
+                    .select("id")
+                    .eq("provider_id", provider["id"])
+                    .gte("created_at", cutoff)
+                    .limit(1)
                     .execute()
                 )
 
-                for provider in (result.data or [])[:20]:
-                    sessions = (
-                        self.database.supabase.table("provider_conversation_sessions")
-                        .select("id")
-                        .eq("provider_id", provider["id"])
-                        .gte("created_at", cutoff)
-                        .limit(1)
-                        .execute()
-                    )
-
-                    if not sessions.data:
-                        await self.publish(
-                            exchange_name="notification.events",
-                            routing_key="notification.relationship_health_alert",
-                            message_body={
-                                "event_type": "RelationshipHealthAlert",
-                                "payload": {
-                                    "restaurant_id": provider.get("restaurant_id"),
-                                    "title": f"No recent contact: {provider.get('name', 'Provider')}",
-                                    "message": f"No conversations in {self.relationship_alert_days} days. Consider reaching out.",
-                                    "urgency": "low",
-                                    "provider_id": provider["id"],
-                                },
+                if not sessions.data:
+                    await self.publish(
+                        exchange_name="notification.events",
+                        routing_key="notification.relationship_health_alert",
+                        message_body={
+                            "event_type": "RelationshipHealthAlert",
+                            "payload": {
+                                "restaurant_id": provider.get("restaurant_id"),
+                                "title": f"No recent contact: {provider.get('name', 'Provider')}",
+                                "message": f"No conversations in {self.relationship_alert_days} days. Consider reaching out.",
+                                "urgency": "low",
+                                "provider_id": provider["id"],
                             },
-                        )
+                        },
+                    )
 
         except Exception as e:
             self.logger.error(f"Error checking relationship health: {e}")

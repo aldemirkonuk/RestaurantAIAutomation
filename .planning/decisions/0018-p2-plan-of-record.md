@@ -14,7 +14,7 @@ comes next did not: `PROJECT.md` named **v2.0 Backend Kitchen** as current
 **Phase 38 SimPOS** in another (2026-07-28), and `ROADMAP.md` matched neither —
 none mentioned the neural footprint, the org restructure, or the decision
 register, which is what the last two days actually were. Same rot pattern the
-register audit found ([[decision-register-rots]] in memory): prose nobody
+register audit found (the `decision-register-rots` memory): prose nobody
 re-reads drifts until it misleads.
 
 The founder's direction (2026-08-25, verbatim intent): recreate the spine

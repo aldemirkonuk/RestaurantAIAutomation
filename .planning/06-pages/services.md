@@ -2,18 +2,22 @@
 type: page
 route: /services
 slug: services
+softwares: [settings-integrations]
 component: none (inline <Navigate> redirect)
 audience: owner
 tier: core
+archetype: redirect # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
 maturity: complete
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[help]]", "[[settings]]"]
 ---
 
 # /services — redirect → /settings?tab=services
+
+> **Part of** [[08-softwares/settings-integrations|Settings & Integrations]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
@@ -22,6 +26,9 @@ links: ["[[PAGE-CONTRACT]]", "[[help]]", "[[settings]]"]
 ## 1. Purpose
 Compatibility route. "Services & permissions" (email, web, and privacy access grants)
 lives as a Settings tab; this path exists so the old standalone URL keeps working.
+
+## 1a. Features
+none — redirect. Services & permissions live on [[settings]] §1a (services tab).
 
 ## 2. Entry
 No inbound in-app link (`PAGE_MAP.md` entry-point list) — the surfaces that send users

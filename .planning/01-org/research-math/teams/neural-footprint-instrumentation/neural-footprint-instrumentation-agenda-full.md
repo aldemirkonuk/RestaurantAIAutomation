@@ -81,8 +81,8 @@ what [[0006-neural-footprint-architecture]] §4.3 argued for.
   (`nf_a.unauthenticated_inference_spend`) is a **hard dependency, not a nice-to-have**
   (`intelligence.md:488`), and AB-2's operator signal has no home until INTEL-F3 is answered.
   Our slippage is someone else's blindness.
-- **There is live unauthorized spend and nobody can size it.** OD-20
-  (`OPEN-DECISIONS.md:24`) is open and urgent; the exposed callsite emits nothing.
+- **There is live unauthorized spend and nobody can size it.**
+  OD-20 (`OPEN-DECISIONS.md:119`) is open and urgent; the exposed callsite emits nothing.
   *Corrected 2026-08-25: both halves are closed. OD-20 is RESOLVED —
   `analytics.controller.ts:51` now carries a class-level `@UseGuards(JwtAuthGuard)` —
   and the callsite emits since P1.*

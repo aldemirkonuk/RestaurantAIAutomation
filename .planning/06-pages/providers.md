@@ -2,18 +2,22 @@
 type: page
 route: /providers
 slug: providers
+softwares: [vendor-directory, global-vendor-search]
 component: apps/web/src/pages/Providers.tsx
 audience: owner
 tier: core
+archetype: list+detail # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-08-25
+updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[distributors]]", "[[promotions]]", "[[vendor-prices]]", "[[orders]]"]
 ---
 
 # /providers — vendor roster + distributor discovery
+
+> **Part of** [[08-softwares/vendor-directory|Vendor Directory & Intel]] · [[08-softwares/global-vendor-search|Global Vendor Search]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
 
@@ -29,6 +33,51 @@ links: ["[[PAGE-CONTRACT]]", "[[distributors]]", "[[promotions]]", "[[vendor-pri
 Owner/manager vendor hub with two tabs (`Providers.tsx:146`): **mine** — the
 restaurant's vendor roster with contacts, locations, orders, intelligence panels and
 export; **discover** — the U.S. distributor catalogue on a map, one-tap add (S13).
+
+## 1a. Features
+- **Mine** tab: your vendor roster — add, edit, delete vendors; manage each vendor's contacts and locations
+- Vendor intelligence panels: knowledge, promotions, conversation memory, sentiment
+- Email a vendor from the page (Quick Gmail modal)
+- See each vendor's orders
+- Search the vendor catalogue and add a vendor with one tap (duplicates detected)
+- **Discover** tab: the U.S. distributor catalogue on a map with facet filters and one-tap add
+- Export; contextual insights rail
+- 🚧 No link to `/vendor-prices` price comparison — that page is unreachable from here (§9)
+- **Mudavym redesign behind `mudavym_design_providers` (OFF)**: a quiet grid of small, closed vendor buckets (≤3 real facts each: open orders · lead time · last contact) with the digital twin held back in a right-hand TwinSheet, fetched on open
+
+## 1b. Motions used — Mudavym redesign (flag `mudavym_design_providers`)
+
+Canonical source with curves: `apps/web/src/pages/providers/next/MOTIONS.md` —
+this list is the note-side index (ADR 0044 §2).
+
+| id | name | fires |
+|---|---|---|
+| `pv-sheet-settle` | The sheet settles in | TwinSheet opening from a bucket card — `settle`, 320ms house curve, 24px travel |
+| `pv-card-ink` | Ink micro-state | bucket-card hover/focus — border to seal ring, one paper step; nothing moves |
+
+Deliberate non-motions: no card stagger (a roster is a reference, not an
+arrival), no count tallies, instant sheet close.
+
+### Design used, and why (ADR 0045 §5 wave · MAKEOVER-VERDICTS: MERGE)
+
+The founder liked **today's page** for its small-buckets calm ("less crowded")
+and the **redesign** for its digital twin — and flagged the crowding as the
+failure mode. The build enforces the reconciliation structurally: the card
+*promises less* (name, type, three facts all real — open orders counted from
+the orders book, `leadTimeDays`, `lastContactDate`), and everything learned
+lives in the sheet via `ProviderIntelligencePanel`, lazy-fetched on open so
+the grid never pays for the twin. Honesty rules carried from OrdersNext: an
+unreachable orders book renders open-order counts as em dashes with a line
+saying so — never zeros; a never-contacted vendor says "never contacted".
+Legacy page untouched; flag defaults OFF; per-browser override
+`mudavym.design.providers`. One ask deliberately substituted, disclosed: the
+verdict's example behavioural fact ("confirms in 6 hours", "ships Tuesdays")
+has no backing field on `interface Provider`, so the card carries
+`lastContactDate` instead — a real fact, not an invented behaviour; the
+learned behaviours stay in the sheet's intelligence panel. A second known
+coherence gap: that panel renders in the legacy grey/blue skin inside the
+İznik sheet — filed in §9 and v3.0-TECH-DEBT rather than hacked over with
+CSS overrides.
 
 ## 2. Entry
 Sidebar item (`components/layout/Sidebar.tsx:87`). `/distributors` redirects here with
@@ -76,6 +125,10 @@ none — no user-visible `WineOps` strings (grep of `Providers.tsx`: zero hits).
 - No feature flags
 
 ## 9. Gaps
+- TwinSheet's intelligence panel renders in the legacy grey/blue skin inside
+  the İznik sheet (`ProviderIntelligencePanel` is a shared legacy component) —
+  the founder's "set does not cohere" complaint, reproduced in miniature;
+  re-skin filed in v3.0-TECH-DEBT rather than patched with CSS overrides.
 - TIER-MAP S13 Pro: "discovery is catalogue-first, **comparison routes unreachable**" —
   this page never links to `/vendor-prices` (see [[vendor-prices]] §2).
 - `v3.0-TECH-DEBT.md:391-393` (44.15) claims no bulk select / column sorting on

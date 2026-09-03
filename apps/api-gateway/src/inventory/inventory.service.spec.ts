@@ -209,26 +209,113 @@ describe("InventoryService", () => {
       expect(mockRpc).not.toHaveBeenCalled();
     });
 
-    it("writes through set_stock_absolute with reconciliation/mobile_count and a count:{inventoryId}:{clientCountId} idempotency key", async () => {
+    // ADR 0078 — a count is a record. This block used to assert the call went to
+    // `set_stock_absolute`, which returns NULL on a zero delta and therefore
+    // wrote NOTHING when the count agreed.
+    it("commits through record_stock_count with a count:{inventoryId}:{clientCountId} idempotency key", async () => {
       await service.recordSpotCount("rest-1", "inv-1", {
         countedQty: 8,
         clientCountId: "client-count-42",
       });
 
       expect(mockRpc).toHaveBeenCalledWith(
-        "set_stock_absolute",
+        "record_stock_count",
         expect.objectContaining({
           p_inventory_id: "inv-1",
           p_stock_state: "live",
-          p_target_qty: 8,
+          p_counted_qty: 8,
           p_transaction_type: "reconciliation",
           p_source: "mobile_count",
           p_idempotency_key: "count:inv-1:client-count-42",
         }),
       );
+      // The primitive that could not record agreement is no longer on this path.
+      const usedRpcs = mockRpc.mock.calls.map((c) => c[0]);
+      expect(usedRpcs).not.toContain("set_stock_absolute");
     });
 
-    it("stamps last_counted_at even when the count implies no stock change", async () => {
+    // The core claim. A count that AGREES produces a record.
+    it("returns the recorded count when the count agrees — variance 0, no movement", async () => {
+      mockRpc.mockResolvedValueOnce({
+        data: {
+          count_id: "count-9",
+          expected_qty: 8,
+          counted_qty: 8,
+          variance_qty: 0,
+          transaction_id: null,
+          counted_at: "2026-09-02T11:00:00.000Z",
+          replayed: false,
+        },
+        error: null,
+      });
+
+      const result = await service.recordSpotCount("rest-1", "inv-1", {
+        countedQty: 8,
+        clientCountId: "client-count-agree",
+      });
+
+      expect(result.count).toEqual({
+        countId: "count-9",
+        expectedQty: 8,
+        countedQty: 8,
+        varianceQty: 0,
+        // Null because nothing had to move. Before this ADR there was no way to
+        // say that at all: set_stock_absolute returned NULL and
+        // inventory_transactions CHECKs quantity_change <> 0, so the only counts
+        // the system could hold were the ones that disagreed.
+        transactionId: null,
+        countedAt: "2026-09-02T11:00:00.000Z",
+        replayed: false,
+      });
+    });
+
+    it("surfaces both the count and the movement when the count disagrees", async () => {
+      mockRpc.mockResolvedValueOnce({
+        data: {
+          count_id: "count-10",
+          expected_qty: 8,
+          counted_qty: 5,
+          variance_qty: -3,
+          transaction_id: "txn-55",
+          counted_at: "2026-09-02T11:05:00.000Z",
+          replayed: false,
+        },
+        error: null,
+      });
+
+      const result = await service.recordSpotCount("rest-1", "inv-1", {
+        countedQty: 5,
+        clientCountId: "client-count-disagree",
+      });
+
+      expect(result.count?.varianceQty).toBe(-3);
+      expect(result.count?.transactionId).toBe("txn-55");
+    });
+
+    // A retry sends the SAME clientCountId, so it must produce the SAME
+    // idempotency key — which is the count row's unique index, and therefore the
+    // single gate that keeps one count from becoming two. The de-duplication
+    // itself happens in Postgres (see stock-count-is-a-record.spec.ts for the
+    // structural assertions on the constraint and the replay gate); what this
+    // test proves is that the gateway hands the retry a key the gate can match.
+    it("hands a retried count the identical key, so the retry is de-duplicable", async () => {
+      const dto = { countedQty: 8, clientCountId: "client-count-retry" };
+      await service.recordSpotCount("rest-1", "inv-1", { ...dto });
+      await service.recordSpotCount("rest-1", "inv-1", { ...dto });
+
+      const keys = mockRpc.mock.calls
+        .filter((c) => c[0] === "record_stock_count")
+        .map((c) => c[1].p_idempotency_key);
+      expect(keys).toHaveLength(2);
+      expect(keys[0]).toBe("count:inv-1:client-count-retry");
+      expect(keys[1]).toBe(keys[0]);
+    });
+
+    // last_counted_at survives ADR 0078 as a denormalised MAX(counted_at) cache,
+    // but it is no longer stamped from here: it was a SECOND round trip whose
+    // failure only warned, so a count could leave no trace at all and still
+    // report success. It is now written inside record_stock_count's transaction.
+    it("does not stamp last_counted_at in a separate write that could fail alone", async () => {
       await service.recordSpotCount("rest-1", "inv-1", {
         countedQty: 8,
         clientCountId: "client-count-43",
@@ -237,7 +324,7 @@ describe("InventoryService", () => {
       const updateCall = mockSupabaseChain.update.mock.calls.find(
         (args) => "last_counted_at" in (args[0] || {}),
       );
-      expect(updateCall).toBeDefined();
+      expect(updateCall).toBeUndefined();
     });
 
     it("surfaces an RPC error as an HttpException instead of silently succeeding", async () => {
@@ -252,6 +339,69 @@ describe("InventoryService", () => {
           clientCountId: "client-count-44",
         }),
       ).rejects.toThrow(HttpException);
+    });
+  });
+
+  // ADR 0078 (attribution). `transfer_stock` and `record_glass_pour` have always
+  // accepted p_performed_by (baseline:1838, :1132) and these call sites never
+  // passed it, so `performed_by_type` resolved to 'system' on every manual move —
+  // a ledger built to answer "who moved this" answering "the system".
+  describe("attribution comes from the caller, not from nowhere", () => {
+    it("passes performedBy to transfer_stock", async () => {
+      await service.transferStock(
+        "rest-1",
+        "inv-1",
+        { fromLocationId: null, toLocationId: "loc-2", qty: 2 },
+        "user-77",
+      );
+
+      expect(mockRpc).toHaveBeenCalledWith(
+        "transfer_stock",
+        expect.objectContaining({ p_performed_by: "user-77" }),
+      );
+    });
+
+    it("passes performedBy to record_glass_pour", async () => {
+      await service.recordPour(
+        "rest-1",
+        "inv-1",
+        { pours: 2, source: "manual" },
+        "user-77",
+      );
+
+      expect(mockRpc).toHaveBeenCalledWith(
+        "record_glass_pour",
+        expect.objectContaining({ p_performed_by: "user-77" }),
+      );
+    });
+
+    it("passes performedBy to the manual-override set_stock_absolute", async () => {
+      // 1: the informational old-values read. 2: the post-write re-fetch, which
+      // mapInventoryItem dereferences.
+      mockSingle
+        .mockResolvedValueOnce({ data: { stock_live: 10 }, error: null })
+        .mockResolvedValueOnce({
+          data: {
+            id: "inv-1",
+            restaurant_id: "rest-1",
+            stock_live: 12,
+            master_wine_library: { name: "X", bottle_size_ml: 750 },
+            restaurants: { default_pour_ml: 150, measurement_unit: "oz" },
+          },
+          error: null,
+        });
+
+      await service.updateInventoryItem(
+        "rest-1",
+        "inv-1",
+        { stockLive: 12 } as any,
+        "user-77",
+      );
+
+      expect(mockRpc).toHaveBeenCalledWith(
+        "set_stock_absolute",
+        expect.objectContaining({ p_performed_by: "user-77" }),
+      );
     });
   });
 
@@ -286,6 +436,9 @@ describe("InventoryService", () => {
         // P1 NF-A: restaurantId now rides along so the emitted footprint row
         // is tenant-attributed.
         "rest-1",
+        // OD-59 / P3.0: a handle on that footprint row, so the suggestion can
+        // be graded against the count a human commits later.
+        expect.anything(),
       );
       expect(result).toEqual({
         suggestedQty: 7,
@@ -296,7 +449,13 @@ describe("InventoryService", () => {
       expect(mockRpc).not.toHaveBeenCalled();
     });
 
-    it("never writes to the database — it is a read-only vision call", async () => {
+    it("never writes STOCK — the E46 posture is unchanged by the OD-59 grading", async () => {
+      // This assertion used to read "never writes to the database". That is no
+      // longer true and, more importantly, it would now pass VACUOUSLY: the
+      // suggestion insert waits on the NF row id, which never settles in a unit
+      // test with no model client, so the write simply never runs and the old
+      // assertion would keep going green while the code wrote. The claim worth
+      // protecting was always the narrower one — no stock moves.
       mockEstimate.mockResolvedValueOnce({
         suggestedQty: null,
         confidence: "low",
@@ -305,8 +464,43 @@ describe("InventoryService", () => {
 
       await service.estimateCountFromPhoto("rest-1", "inv-1", "abc123");
 
-      expect(mockSupabaseChain.insert).not.toHaveBeenCalled();
+      expect(mockRpc).not.toHaveBeenCalled();
       expect(mockSupabaseChain.update).not.toHaveBeenCalled();
+    });
+
+    it("records the suggestion once the footprint row id arrives", async () => {
+      // Settle the ref the way ModelClientService would, so the deferred insert
+      // actually runs instead of hanging on an unsettled promise.
+      mockMaybeSingle.mockResolvedValueOnce({
+        data: { wine_name: "Château Pétrus", master_wine_library: null },
+        error: null,
+      });
+      mockEstimate.mockImplementationOnce(
+        async (
+          _img: string,
+          _name: string,
+          _rid: string,
+          ref: { settle: (id: string | null) => void },
+        ) => {
+          ref.settle("event-1");
+          return { suggestedQty: 7, confidence: "medium", note: "7 bottles." };
+        },
+      );
+
+      await service.estimateCountFromPhoto("rest-1", "inv-1", "abc123");
+      // The insert is fire-and-forget behind an awaited promise; let it land.
+      await new Promise((r) => setImmediate(r));
+
+      expect(mockSupabaseChain.insert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event_id: "event-1",
+          restaurant_id: "rest-1",
+          inventory_id: "inv-1",
+          suggested_qty: 7,
+          confidence: "medium",
+        }),
+      );
+      // Still no stock movement — the whole point of E46.
       expect(mockRpc).not.toHaveBeenCalled();
     });
   });

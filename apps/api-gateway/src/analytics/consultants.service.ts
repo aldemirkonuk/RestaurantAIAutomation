@@ -4,7 +4,14 @@ import { DatabaseService } from "../database/database.service";
 import {
   ModelClientError,
   ModelClientService,
+  NfEventRef,
 } from "../common/model-client/model-client.service";
+import { NfVerdictService } from "../common/model-client/nf-verdict.service";
+import {
+  GROUNDING_BASIS,
+  checkGrounding,
+  consultantVerdict,
+} from "./consultant-grounding";
 import { AnalyticsService } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 
@@ -48,6 +55,7 @@ export class ConsultantsService {
     private readonly modelClient: ModelClientService,
     private readonly analyticsService: AnalyticsService,
     private readonly insightGenerator: InsightGeneratorService,
+    private readonly nfVerdicts: NfVerdictService,
   ) {}
 
   // ==========================================================================
@@ -159,6 +167,9 @@ Each claim ≤ 2 sentences. each why_it_matters ≤ 2 sentences. each suggested_
       this.configService.get<string>("ANALYTICS_CONSULTANT_MODEL") ||
       "claude-opus-4-8";
 
+    // OD-59 / P3.0: this call grades itself on GROUNDING — did the model cite
+    // evidence it was actually given — not on whether HTTP returned 200.
+    const eventRef = new NfEventRef();
     try {
       // P1 NF-A: routed through the model client. This fetch previously had
       // NO timeout on an Opus call with adaptive thinking — the slowest call
@@ -185,29 +196,60 @@ Each claim ≤ 2 sentences. each why_it_matters ≤ 2 sentences. each suggested_
           choice: "weighted_claims",
           restaurantId,
           context: { persona: personaKey },
+          eventRef,
         },
       });
       if (payload.stop_reason === "refusal") {
+        this.nfVerdicts.record(
+          eventRef,
+          GROUNDING_BASIS,
+          consultantVerdict({ refused: true, parsed: false, grounding: null }),
+        );
         return { enabled: true, error: "Model declined the request" };
       }
       const textBlock = (payload.content || []).find(
         (b: any) => b.type === "text",
       );
       let claims: any[] = [];
+      let parsedOk = false;
       try {
         const parsed = JSON.parse(
           (textBlock?.text || "{}").replace(/^```json\s*|\s*```$/g, ""),
         );
         claims = Array.isArray(parsed.claims) ? parsed.claims : [];
+        parsedOk = true;
       } catch {
         this.logger.warn("Consultant returned non-JSON output");
       }
+
+      // HARD RULE 2 of the system prompt requires every claim to cite evidence
+      // paths, and until now nothing checked them: a claim citing
+      // `pos.tables.turnover` on a restaurant with no POS data reached the
+      // owner looking exactly as authoritative as a grounded one. Ungrounded
+      // claims are dropped, and the drop is recorded rather than silent.
+      const evidenceCategories = Object.keys(evidence);
+      const grounding = checkGrounding(claims, evidenceCategories);
+      if (grounding.dropped.length > 0) {
+        this.logger.warn(
+          `Consultant (${personaKey}) cited ${grounding.unknownRoots.length} ` +
+            `evidence categor(ies) that were never supplied ` +
+            `[${grounding.unknownRoots.join(", ")}] — dropped ` +
+            `${grounding.dropped.length} of ${claims.length} claim(s)`,
+        );
+      }
+      this.nfVerdicts.record(
+        eventRef,
+        GROUNDING_BASIS,
+        consultantVerdict({ refused: false, parsed: parsedOk, grounding }),
+      );
+
       return {
         enabled: true,
         persona: personaKey,
         model,
-        claims,
-        evidenceCategories: Object.keys(evidence),
+        claims: grounding.claims,
+        claimsDropped: grounding.dropped.length,
+        evidenceCategories,
         disclaimer:
           "Consultant claims are LLM interpretations of deterministic analytics — verify against the cited evidence before acting.",
         generatedAt: new Date().toISOString(),
