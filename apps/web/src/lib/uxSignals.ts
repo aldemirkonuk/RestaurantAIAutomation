@@ -16,6 +16,13 @@ const ENABLED = import.meta.env.VITE_UX_OPTIMIZER === "true";
 
 const SESSION_KEY = "wineops.ux.session";
 
+/** CSPRNG session id for browsers without crypto.randomUUID. */
+function randomIdFallback(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 /**
  * Groups the signals of one browsing session together. NOT used for rollout
  * bucketing — the server buckets on the authenticated user id, so the same
@@ -25,9 +32,11 @@ export function uxSessionId(): string {
   try {
     let id = sessionStorage.getItem(SESSION_KEY);
     if (!id) {
-      id =
-        (crypto?.randomUUID?.() ??
-          Math.random().toString(36).slice(2)) as string;
+      // Fallback is getRandomValues, not Math.random. randomUUID needs a
+      // secure context; getRandomValues is far more widely available and is a
+      // real CSPRNG, so the degraded path stays unpredictable instead of
+      // silently becoming a seeded PRNG.
+      id = (crypto?.randomUUID?.() ?? randomIdFallback()) as string;
       sessionStorage.setItem(SESSION_KEY, id);
     }
     return id;

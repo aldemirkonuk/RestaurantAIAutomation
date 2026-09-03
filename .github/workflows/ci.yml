@@ -550,7 +550,7 @@ jobs:
           echo "::notice::If the fork was MERGED into another, the fix belongs in the register, never in the citing document: write '**Absorbs OD-43 (merged 2026-08-27)**' in the absorbing row. Dated audits are snapshots — do not edit them to make a guard pass, and do not exempt them."
           echo "::notice::RESOLVES TWO WAYS means an id both owns a row and is declared absorbed into another. Delete whichever half is stale; a reference to it currently resolves two ways."
           echo "::notice::UNGRADED means a task type records only call_level_v0 — 'the HTTP request returned 200'. Grade it, or add it to EXEMPT with the reason. On 2026-08-27 six of the gateway's seven task types were in that state."
-          echo "::notice::UNANCHORED means a bare OPEN-DECISIONS.md:N with no id beside it. ADR 0025 §6 requires both: write OD-88 (OPEN-DECISIONS.md:54)."
+          echo "::notice::UNANCHORED means a bare OPEN-DECISIONS.md:N with no id beside it. ADR 0025 §6 requires both: write OD-88 (OPEN-DECISIONS.md:55)."
           echo "::notice::Do NOT add a citation to PAIRING_DEBT. That list is a two-PR handoff for six page dossiers owned by a concurrent branch, and it only ever shrinks."
           echo "::notice::Exit 2 means the guard could not check what it claims to. That is a failure, not a skip."
 
@@ -910,6 +910,31 @@ jobs:
           echo "::notice::CANNOT CHECK (exit 2) means the corpus was empty or zero record_stock_count call sites were found. That is a move, a rename, or a broken scan — never a pass. A guard with nothing to look at gives the same answer as one that looked and found health."
           echo "::notice::A PASS here is STATIC ONLY. It proves the shipped code has the shape ADR 0078 claims; it cannot prove a row reached Postgres. Runtime coverage is apps/api-gateway/src/inventory/stock-count-is-a-record.spec.ts and the two service specs, and those are mocked."
 
+  scripts-tests:
+    name: Repo scripts are tested
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install test dependencies
+        run: pip install "pytest==7.4.4" "httpx==0.28.1"
+
+      # Until 2026-09-02 no workflow ran anything under scripts/ — `Test Python`
+      # runs services/agent-orchestrator/tests only — so the simulator's 36 tests,
+      # the scenario engine's 72 and the operating-hours fixture guarded nothing. pytest exits 5 when it
+      # collects zero tests, so an empty run cannot pass (ADR 0093).
+      # scripts/test_docgen.py is NOT here: measured in a clean venv it errors at
+      # collection (it imports cv2/PIL/jinja2 through scripts/docgen). It stays
+      # unguarded and is named here so that is a known gap, not a forgotten one.
+      - name: scripts/ unit tests (simulator, operating hours)
+        run: python3 -m pytest scripts/test_simulate.py scripts/test_simulate_hours.py scripts/test_simulate_scenarios.py scripts/test_synth_identity.py -q -p no:cacheprovider
+
   # Lint Python code
   lint-python:
     name: Lint Python
@@ -1240,6 +1265,9 @@ jobs:
         # Added 2026-09-02 with the job itself (ADR 0078), per the rule this
         # list exists to enforce.
         a-count-is-recorded,
+        # Added 2026-09-02 with the job itself (ADR 0093), per the rule this
+        # list exists to enforce.
+        scripts-tests,
       ]
     steps:
       - name: Checkout code

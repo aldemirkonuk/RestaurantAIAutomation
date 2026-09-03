@@ -122,7 +122,20 @@ migration is the phantom-table class this repo found five times in one day.
 **P3.D (model registry)** are unblocked — the gate they sat behind is closed.
 P3.A (mobile) and P3.B (beverages) were never gated and remain startable.
 
-**Page layer:** 47 route notes in `06-pages/`, each carrying Surface + §1a
+**Ecosystem scenario harness (ADR 0093, 2026-09-02, branch `feat/ecosystem-scenario-sim`):**
+the product learns its operating hours (`restaurants.operating_hours` + Settings editor),
+`scripts/simulate scenario` replays a random restaurant day inside them, and
+`/simpos/:id/scenarios` verifies the run against its own expectation across twenty checks
+(pass / fail / unverifiable). Found by reading before any run: sim tenants were phantom
+stock (seed wrote `stock_live`, no lots), a POS void reused the sale's idempotency key and
+never returned stock, and the low-stock email outcome was unrecorded — all three fixed with
+pre-fix failure proofs. **PR #280 merged 2026-09-03; the live day ran three times the same night** and the
+clean run (`937a23f0`) verifies **17 pass · 0 fail · 3 unverifiable** — after fixing six
+more defects the harness surfaced (the POS consumption mirror had written zero rows since
+2026-08-24; the sim seed could not insert its wines; personas could not sign in or reach
+their tenant; two harness faults). Details in ADR 0093, "The live day, on the record".
+
+**Page layer:** 48 route notes in `06-pages/`, each carrying Surface + §1a
 Features + the §10–13 dossier + `archetype:` — both the graph and the
 founder-readable layer are CI-claimed (ADR-0018 claims in `CLAIMS.jsonl`).
 

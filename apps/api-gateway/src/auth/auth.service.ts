@@ -937,10 +937,20 @@ export class AuthService {
     let code: string;
     let attempts = 0;
     do {
-      const bytes = crypto.randomBytes(8);
-      code = Array.from(bytes)
-        .map((b) => CHARSET[(b as number) % CHARSET.length])
-        .join("");
+      // crypto.randomInt, not randomBytes(...) % CHARSET.length.
+      //
+      // The modulo version is unbiased *only* because CHARSET happens to be
+      // 32 characters and 256 divides evenly by 32. That is a property of the
+      // string literal above, not of the code: drop one ambiguous character
+      // from CHARSET — exactly the edit this "no confusable letters" alphabet
+      // invites — and the first 256 % len values become more likely than the
+      // rest, making organisation invite codes measurably easier to guess.
+      // randomInt does rejection sampling internally, so uniformity no longer
+      // depends on the alphabet length.
+      code = Array.from(
+        { length: 8 },
+        () => CHARSET[crypto.randomInt(CHARSET.length)],
+      ).join("");
       const { data: existing } = await this.databaseService.supabase
         .from("organization_invites")
         .select("id")

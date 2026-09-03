@@ -413,11 +413,13 @@ class VisualVerificationAgent(BaseAgent):
         try:
             # Load image
             if image_source.startswith("http"):
-                import httpx
+                # Same SSRF guard as MenuAnalyzerAgent: this branch decides on
+                # the *value*, so any caller who can set an "image" field can
+                # aim this GET at an internal address unless it is validated.
+                from utils.safe_fetch import fetch_image_bytes
 
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(image_source)
-                    image = Image.open(io.BytesIO(response.content))
+                image_data = await fetch_image_bytes(image_source)
+                image = Image.open(io.BytesIO(image_data))
             else:
                 # Base64 encoded
                 image_data = base64.b64decode(image_source)
@@ -484,11 +486,9 @@ class VisualVerificationAgent(BaseAgent):
         try:
             # Load image
             if image_source.startswith("http"):
-                import httpx
+                from utils.safe_fetch import fetch_image_bytes
 
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(image_source)
-                    image_bytes = response.content
+                image_bytes = await fetch_image_bytes(image_source)
             else:
                 image_bytes = base64.b64decode(image_source)
 

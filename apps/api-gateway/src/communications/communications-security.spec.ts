@@ -107,20 +107,30 @@ describe("CommunicationsController test routes (ADR 0019 D2)", () => {
     expect(isPublic(name as any)).toBeUndefined();
   });
 
-  it.each(TEST_ROUTE_HANDLERS)(
-    "%s is gated by NonProductionGuard",
-    (name) => {
-      expect(routeGuards(name as any)).toContain(NonProductionGuard);
-    },
-  );
+  it.each(TEST_ROUTE_HANDLERS)("%s is gated by NonProductionGuard", (name) => {
+    expect(routeGuards(name as any)).toContain(NonProductionGuard);
+  });
 
   it("leaves no @Public() test route on the controller at all", () => {
     const stillPublic = Object.getOwnPropertyNames(
       CommunicationsController.prototype,
     ).filter((n) => n !== "constructor" && isPublic(n as any) === true);
-    // The Gmail push webhook is the only intentional exception: it is
-    // authenticated by a Google-signed OIDC token instead of a JWT (D3).
-    expect(stillPublic).toEqual(["handleGmailWebhook"]);
+    // Both exceptions are authenticated — just not by a user JWT:
+    //   handleGmailWebhook  Google-signed Pub/Sub OIDC token (D3)
+    //   sendEmail           X-Admin-Key service key (ADR 0099) — its caller is
+    //                       the Python orchestrator, which has no session
+    expect(stillPublic.sort()).toEqual(["handleGmailWebhook", "sendEmail"]);
+  });
+
+  it("every @Public() route names the thing that authenticates it instead", () => {
+    // ADR 0099. The list above is an allow-list, and an allow-list that only
+    // counts entries can be widened by adding a name. What must hold is the
+    // property: @Public() may mean "not a JWT", never "not authenticated".
+    // handleGmailWebhook verifies its OIDC token inside the handler (D3), so
+    // it is asserted by the D3 block below rather than by a guard here.
+    expect(routeGuards("sendEmail" as any).map((g: any) => g?.name)).toContain(
+      "ServiceKeyGuard",
+    );
   });
 });
 
@@ -256,9 +266,7 @@ describe("GmailPushAuthService (ADR 0019 D3)", () => {
   it("passes the configured audience to verifyIdToken", async () => {
     const verifyIdToken = jest
       .fn()
-      .mockResolvedValue(
-        ticketWith({ email: SA, email_verified: true }),
-      );
+      .mockResolvedValue(ticketWith({ email: SA, email_verified: true }));
     const service = makeService(validConfig, verifyIdToken);
     await service.verifyPushRequest("Bearer good-token");
     expect(verifyIdToken).toHaveBeenCalledWith({
