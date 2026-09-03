@@ -219,11 +219,17 @@ export function PaymentRegister({ data }: { data: ProfileNextData }) {
           <ConnectionRow
             title="No payment method on file"
             subtitle="Nothing can be charged to this restaurant."
-            state={providerConnected ? 'available' : 'unbuilt'}
+            // NOT `unbuilt`. That chip reads "Not built" and belongs to the
+            // four Security rows, which have no code behind them at all. This
+            // register has a table, a module and three working routes; what is
+            // missing is one credential. `unprovisioned` says so on the chip,
+            // so a reader who skims and never opens the row is told the same
+            // thing the reason below tells a reader who does.
+            state={providerConnected ? 'available' : 'unprovisioned'}
             reason={
               providerConnected
                 ? 'A provider is connected, so one can be added.'
-                : 'This register is not empty because nobody has added a card. It is empty because no payment provider is connected to this deployment, so no instrument could exist to list.'
+                : 'This register is not empty because nobody has added a card, and it is not unbuilt — the table, the module and the routes all exist and answer. It is empty because no payment provider is connected to this deployment, so no instrument could exist to list.'
             }
           />
         )}

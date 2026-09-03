@@ -46,11 +46,15 @@ behind it exists:
 
 - **A ledger in seven numbered registers** — *Who you are* · *What protects this
   account* · *What is connected to you* · *Model context* · *How the house pays* ·
-  *The house* · *Ruled off*. **One row shape draws every row in all seven**
-  (`ConnectionRow`, `pf-ui.tsx`), so a row's state chip
-  (`Connected` / `Not connected` / `Unavailable` / `Not built` / `—`) plus whether its
-  control is live or `disabled`-with-a-reason is the whole difference between a working
-  connection and one with no backend — never the amount of design spent on it
+  *The house* · *Ruled off*. **One row shape draws every ATTACHMENT**
+  (`ConnectionRow`, `pf-ui.tsx`; fifteen call sites across Registers II-VI, 5 · 4 · 1 ·
+  4 · 1, with no second row component on the page), so a row's state chip
+  (`Connected` / `Not connected` / `Unavailable` / `Provider not connected` /
+  `Not built` / `—`) plus whether its control is live or `disabled`-with-a-reason is the
+  whole difference between a working connection and one with no backend — never the
+  amount of design spent on it. Registers I and VII are deliberately **not** row-shaped:
+  they are forms (`Card`), because a field you edit about yourself is a different kind of
+  object from a thing that acts on your behalf
 - Sign-in rail: password / Google / Microsoft as three peer methods, with the server's
   last-credential rule (`auth.service.ts:2043-2058`) **stated before the click** — Unlink
   is disabled, with the reason, when it would remove the only credential
@@ -91,7 +95,10 @@ behind it exists:
   `POST /payment-methods` returns 503 with the same reason while no credential is
   configured. The empty register says WHICH kind of empty it is, from the server's own
   `provider.connected` field: not "you have not added a card" but "no provider is
-  connected, so no card can exist"
+  connected, so no card can exist". Its chip is **`Provider not connected`**, a state of
+  its own — reusing `Not built` there would have said the same word about a register with
+  a table, a module and three working routes as about a feature with zero code behind it,
+  and the two have completely different fixes (an env var versus a build)
 - **Plan is a figure, not a dash (was `—`).** `GET /organizations/locations/:id` now
   selects and returns `subscription_tier`. The shipping page prints `Plan: Free` from a
   hardcoded `useState('Free')` (`Profile.tsx:90`, rendered `:723`); this page prints what
@@ -345,8 +352,8 @@ same page. What separates them is the state chip and whether the control is live
   here is a finding aid down a long ledger, not a status, and a coloured one would compete
   with the state chips for meaning. `grep -nP "[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}]" -r`
   over the directory, the two new gateway modules and the two migrations: **empty**.
-- **Size, disclosed rather than hidden**: 3,211 non-blank lines across 11 source files (539
-  of them comment lines), against the p4 brief's ~900 guidance. Pass one was 2,115 across
+- **Size, disclosed rather than hidden**: 3,258 non-blank lines across 11 source files
+  (~550 of them comment lines), against the p4 brief's ~900 guidance. Pass one was 2,115 across
   8. Seven registers, nineteen rows, eight forms and twelve write paths, each with four
   read states. It is split into components; the further pass that would actually shrink it
   is moving the repeated inline text styles into a page stylesheet the way
@@ -354,16 +361,39 @@ same page. What separates them is the state chip and whether the control is live
 
 **What could not be verified, stated plainly (§0.5).**
 
-- **No curl against the live gateway.** The p4b brief asks for it; `:4000` was not
-  listening by the time the gateway changes were written (`curl` → connection refused), and
-  the brief forbids starting servers. `scripts/check_gateway_boots.sh` also fails on this
-  worktree for an unrelated in-flight change — `AnalyticsModule` cannot resolve
+- **Curled against the live gateway on `:4000` — measured, not predicted.** An earlier
+  draft of this section claimed the curl "could not run" because `:4000` was refusing
+  connections while the gateway changes were being written. It is listening
+  (`GET /api/v1/health/live` → 200), so that claim is **struck** and replaced with the
+  measurements. Session minted with `POST /auth/dev-bypass-login` + `X-Dev-Bypass`; the
+  database has not taken the two new migrations, which is what makes the first four
+  interesting:
+
+  | Request | Status | Body |
+  |---|---|---|
+  | `GET /mcp-connections` | **500** | `The model-context register could not be read: Could not find the table 'public.user_mcp_connections' in the schema cache` |
+  | `POST /mcp-connections` (valid) | **500** | `The model-context server was not added: Could not find the table …` |
+  | `GET /payment-methods` | **500** | `The payment register could not be read: Could not find the table 'public.payment_methods' …` |
+  | `POST /payment-methods` (valid body) | **503** | `Stripe is not connected — no provider credential is configured …` |
+  | `POST /payment-methods` with `pan` + `cvc` | **400** | `["property pan should not exist","property cvc should not exist"]` |
+  | `POST /mcp-connections`, `url: ftp://…` | **400** | `["url must be a URL address"]` |
+  | `GET /mcp-connections`, no bearer | **401** | `Unauthorized` |
+
+  Four things are proven there rather than asserted. The reads **name the failure** instead
+  of returning `[]` — the whole point of not repeating `integrations-oauth.service.ts:485-488`.
+  The payment `POST` returns **503 before it touches the database at all**, which is why it
+  is the one route unaffected by the missing table: it refuses before it reads or writes.
+  The `whitelist: true` pipe means a PAN or CVC cannot even reach the service. And the guard
+  is on: no bearer, no register.
+- **The Nest boot guard could not be run whole.** `scripts/check_gateway_boots.sh` fails on
+  this worktree for an unrelated in-flight change — `AnalyticsModule` cannot resolve
   `DayExclusionsService`. **Substituted, not skipped:**
   `mcp-connections.controller.spec.ts` compiles both new module graphs on their own
   (`Test.createTestingModule({ imports: [ModelClientModule, <module>] })`), which is exactly
   the class of defect the boot guard exists to catch — a controller with
   `@UseGuards(JwtAuthGuard)` whose module forgot `AuthModule` — scoped to the code this
-  pass added. Both resolve.
+  pass added. Both resolve, and the live curls above are the end-to-end confirmation the
+  guard would have given.
 - **No screenshot.** No dev server was running and the brief forbids starting one. Both
   grounds are argued from the tokens rather than seen: `grep -rnE "#[0-9A-Fa-f]{6}"` over
   the directory is **empty**, so every ground, ink and seal is a variable that the
@@ -372,15 +402,22 @@ same page. What separates them is the state chip and whether the control is live
   `supabase/migrations/`; they apply on merge. So the two new registers will render their
   honest error state ("the register could not be read") against a database that has not
   taken them yet — which is the correct behaviour, and is what the error branches are for.
-- **A migration version collision was found in this worktree and half-resolved.** Three
-  sessions on `feat/mudavym-design-p4` each picked `20260903090000`. `supabase_migrations.
-  schema_migrations` keys on that prefix, so two files sharing it make the second INSERT
-  violate the primary key and `supabase db reset` dies partway through — the exact failure
-  `scripts/_migration_versions.py` was written for after it happened on 2026-08-25. This
-  page's two moved to `20260903094500` / `20260903094600`; the other two
-  (`..._days_the_engine_must_not_count.sql` and `..._restaurant_cellar_registers.sql`) still
-  share `20260903090000` and belong to other sessions. Reported up rather than renamed here:
-  they are outside this page's paths.
+- ~~**A migration version collision was found in this worktree and half-resolved.**~~
+  **STRUCK 2026-09-03 — the second half of that claim was already false when it was
+  written.** What was true: three sessions on `feat/mudavym-design-p4` each picked
+  `20260903090000`, `supabase_migrations.schema_migrations` keys on that prefix, and two
+  files sharing it make the second INSERT violate the primary key so `supabase db reset`
+  dies partway through — the failure `scripts/_migration_versions.py` was written for after
+  it happened on 2026-08-25. This page's two moved to `20260903094500` / `20260903094600`.
+  What was **not** true: that the other two files still collided. They had already been
+  renamed to `20260903091000_days_the_engine_must_not_count.sql` and
+  `20260903092000_restaurant_cellar_registers.sql` before this note was saved, and the
+  claim was written from a `git status` snapshot rather than re-measured. Re-measured now:
+  `ls supabase/migrations | cut -c1-14 | sort | uniq -d` → **empty**, and
+  `python3 scripts/_migration_versions.py` prints nothing: **zero collisions in the whole
+  directory**. Kept struck rather than deleted, because the lesson is the one this page is
+  about — a claim about state outside your own paths has to be re-measured at the moment
+  you write it down, not carried forward from when you first saw it.
 
 ## 2. Entry
 In-degree 3 per [PAGE_MAP](../foundation/PAGE_MAP.md): header user menu (`Header.tsx:277`), sidebar bottom nav (`Sidebar.tsx:166-170`), plus `/help`, `/privacy`, `/settings` link here. Inside `DashboardLayout` + `ProtectedRoute` (`App.tsx:247-252,286`).
@@ -397,7 +434,7 @@ In-degree 3 per [PAGE_MAP](../foundation/PAGE_MAP.md): header user menu (`Header
   `PaymentRegister.tsx` (V) · `HouseRegister.tsx` (VI) ·
   `GoogleLink.tsx` (the one real token acquisition) ·
   `pf-ui.tsx` (the row shape, chip, rail, card, field, select) · `pf-format.ts` ·
-  `ProfileNext.test.tsx` (27 tests) · `MOTIONS.md`
+  `ProfileNext.test.tsx` (29 tests) · `MOTIONS.md`
 - **Gateway, built for this page (2026-09-03):**
   `apps/api-gateway/src/mcp-connections/` (module, controller, service, dto, 2 spec files)
   · `apps/api-gateway/src/payment-methods/` (module, controller, service, dto, 1 spec file)
@@ -490,7 +527,7 @@ what happened rather than a list of what is left.**
 
 | # | File | What it needs |
 |---|---|---|
-| ~~G1~~ | `scripts/check_no_seeded_defaults.py` (`SCAN_ROOTS`) | **CLOSED.** `Path("apps/web/src/pages/profile/next")` is in `SCAN_ROOTS` with the rest of the p4 wave, so the guard reads this surface as shipped rather than on a patched copy. Re-measured 2026-09-03 after the second pass: **PASS**, 125 web files / 1,402,280 chars across 19 roots |
+| ~~G1~~ | `scripts/check_no_seeded_defaults.py` (`SCAN_ROOTS`) | **CLOSED.** `Path("apps/web/src/pages/profile/next")` is in `SCAN_ROOTS` with the rest of the p4 wave, so the guard reads this surface as shipped rather than on a patched copy — that is the durable claim, and it is checkable by reading `SCAN_ROOTS`. **PASS** on every run of the second pass. The file and character totals are deliberately NOT quoted here: nineteen roots are being edited by concurrent sessions on this branch, so any figure written down is stale within minutes (it read 125 / 1,402,280 early in the pass and 129 / 1,432,447 at the end, both PASS). A number that must rot is worse than the invariant it was standing in for |
 | ~~G2~~ | `apps/api-gateway/src/organizations/organizations.service.ts` (`getLocation`) | **CLOSED 2026-09-03.** The select carries `subscription_tier` and the method returns `subscriptionTier` (raw — `?? null`, never defaulted to a friendlier tier). The Payment register names the plan. Pinned by `get-location-is-role-gated.spec.ts` ("returns the plan the browser could not previously read", and "returns the plan as null rather than a default when the column is empty") |
 | G3 | `apps/api-gateway/src/integrations/integrations-oauth.service.ts:485-488` | `listConnections` logs a query error and returns `[]`, so a failed read is indistinguishable from "nothing connected" on the wire. The rebuild infers the failure (catalogue non-empty + connections empty) — a correct inference *today*, and a fragile one. The endpoint should surface the error |
 | ~~G4~~ | `apps/api-gateway/src/mcp-connections/` + `supabase/migrations/20260903094500_user_mcp_connections.sql` | **CLOSED 2026-09-03.** Module, table, migration and three routes built; the page lists, adds and revokes for real. **What remains open is narrower and is now G9**: nothing *calls* a declared server, so `last_used_at` is null on every row — stated on the page in one line rather than left to a quiet column |
@@ -500,6 +537,7 @@ what happened rather than a list of what is left.**
 | G9 | nothing calls a model-context server | **MCP dispatch.** `user_mcp_connections` records declarations; no agent, cron or route in this product calls one, so `last_used_at` is null on every row and stays null. The page says so in one line rather than letting the column read as "idle". Closing it means an MCP client in the gateway (or the orchestrator) that stamps `last_used_at` on each call — and, before that, a decision on the handshake: which transports, whose credential, what happens when a trusted server starts exposing a new tool. The table deliberately has **no token column** until that decision exists |
 | G10 | `apps/api-gateway/src/payment-methods/payment-methods.service.ts` (`assertProviderConnected`) | **No payment provider credential.** Everything except the credential is built. Setting `STRIPE_SECRET_KEY` plus a hosted-checkout callback that posts the provider's `pm_...` reference to `POST /payment-methods` switches the register on; the page's disabled submit then becomes a redirect into the hosted flow. Blocked on OD-23 (pricing), not on code |
 | G11 | `apps/api-gateway/src/auth/**` | **No session register, no second factor, no passkeys, no personal API tokens.** Measured 2026-09-03. The Security register renders four `Not built` rows carrying these measurements. The session one is the cheapest and the most valuable: a `user_sessions` row per issued refresh token (device, address, last-seen, revoked_at) would turn one honest row into the list every account page in the field shows, and would make "sign out everywhere" possible |
+| G12 | `scripts/check_no_seeded_defaults.py` (`SERVER_SCAN_ROOTS`) | **The two new gateway modules are outside the S5 arm.** `SERVER_SCAN_ROOTS` lists only `apps/api-gateway/src/team` and `apps/api-gateway/src/restaurants`, so `mcp-connections/` and `payment-methods/` get no automated check that a row-shaped literal is not asserting a measurement nobody supplied. Reviewed by hand and clean — the only literals in either module are the provider's refusal sentence and the `'stripe'` provider id — but hand-checking is not a ratchet. `scripts/` is outside this page's paths, so this is filed rather than fixed. One line each in `SERVER_SCAN_ROOTS` closes it |
 | G7 | `apps/api-gateway/src/auth/auth.controller.ts:487-491` | there is no **authenticated** way to fetch the identity-provider registry. `POST /auth/sign-in-methods` is `@Public()` and rate-limited by IP (10 / 600s), which a shared restaurant network would exhaust. An authenticated `GET /auth/me/sign-in-methods` returning `declared`/`methods`/`unavailable` would let the Sign-in rail use the server's own labels and reasons instead of page prose |
 
 ## 10. Maturity

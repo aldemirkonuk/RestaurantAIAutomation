@@ -1,13 +1,21 @@
 /**
  * ProfileNext primitives — the page's one row shape, one chip, one field.
  *
- * The structural idea the whole page rests on: **everything attached to this
- * account renders through the same `ConnectionRow`, so a connection that works
- * and one whose backend does not exist differ only in their state chip and in
- * whether the control is live or `disabled` with a stated reason.** A section
- * cannot quietly promote itself by being drawn richer than its evidence, and a
- * control whose backend is missing is a `disabled` element carrying its reason
- * in words — never a Connect button that appears to work.
+ * The structural idea the whole page rests on: **every ROW — every thing
+ * attached to this account — renders through the same `ConnectionRow`, so a
+ * connection that works and one whose backend does not exist differ only in
+ * their state chip and in whether the control is live or `disabled` with a
+ * stated reason.** A section cannot quietly promote itself by being drawn
+ * richer than its evidence, and a control whose backend is missing is a
+ * `disabled` element carrying its reason in words — never a Connect button that
+ * appears to work.
+ *
+ * Being exact about the scope of that claim, because it is easy to overstate:
+ * `ConnectionRow` has fifteen call sites, across Registers II-VI (5 · 4 · 1 ·
+ * 4 · 1), and no second row component exists. It does NOT draw Register I (identity fields) or Register VII (the
+ * exit) — those are forms, and a form is a different kind of object, which is
+ * what `Card` is for. The claim is "one shape for every attachment", not "one
+ * shape for every element on the page".
  */
 
 import { CSSProperties, ReactNode, useId } from 'react';
@@ -263,11 +271,19 @@ const BTN_BASE: CSSProperties = {
 
 /* ── the row and its chip ─────────────────────────────────────────────── */
 
+/**
+ * The chip is the signal a reader skims first, so each state needs its own
+ * word. `unbuilt` and `unprovisioned` share a shape and mean opposite things
+ * about the work: "there is no code behind this" versus "the code is here and
+ * unconfigured". Giving them one label would be the honest-dash-read-as-a-hole
+ * confusion in a single string.
+ */
 const CHIP_LABEL: Record<ConnectionState, string> = {
   connected: 'Connected',
   available: 'Not connected',
   unavailable: 'Unavailable',
   unbuilt: 'Not built',
+  unprovisioned: 'Provider not connected',
   unknown: EM,
 };
 

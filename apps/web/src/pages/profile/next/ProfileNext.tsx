@@ -45,11 +45,21 @@
  * The shipping page is eight boxes down a scroll-spy rail, each a different
  * shape, and the two sections with no backend are drawn exactly like the six
  * with one. This page is a ledger in seven numbered registers, and ONE component
- * draws every row in all of them. What separates a live Google link from a
- * passkey with no backend is its state chip and whether its control is live or
- * `disabled` carrying its reason in words — never the amount of design spent on
- * it. The page therefore cannot flatter an empty section by drawing it richer
- * than its evidence, and there is no control on it that can appear to succeed.
+ * (`ConnectionRow`) draws every ATTACHMENT in it — its fifteen call sites are
+ * spread across Registers II-VI (5 · 4 · 1 · 4 · 1), two of them inside a
+ * `.map()`, and there is no second row component anywhere on the page. What separates a live Google link from a passkey with
+ * no backend is its state chip and whether its control is live or `disabled`
+ * carrying its reason in words — never the amount of design spent on it. The
+ * page therefore cannot flatter an empty section by drawing it richer than its
+ * evidence, and there is no control on it that can appear to succeed.
+ *
+ * The claim is deliberately about attachments, not about every element: Register
+ * I (your name, phone, theme) and Register VII (the exit) are forms, drawn with
+ * `Card`, because a field you edit about yourself is a different kind of object
+ * from a thing that acts on your behalf. Five chips carry that second kind —
+ * `Connected` / `Not connected` / `Unavailable` / `Provider not connected` /
+ * `Not built` / `—` — and the last two are kept apart on purpose: "no code
+ * exists" and "the code exists, unconfigured" have different fixes.
  *
  * Honesty, page-wide (ADR 0020): the two reads the shipping page swallows are
  * first-class states here (see useProfileNextData's header); an unknown is an

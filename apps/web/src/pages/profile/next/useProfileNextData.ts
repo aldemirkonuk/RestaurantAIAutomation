@@ -146,12 +146,27 @@ export interface SessionVM {
   readable: boolean;
 }
 
-/** One row of the Connections register, whatever rail it sits on. */
+/**
+ * One row of the Connections register, whatever rail it sits on.
+ *
+ * `unbuilt` and `unprovisioned` are the pair that matter, and conflating them
+ * was the exact fault this page exists to remove:
+ *
+ *   `unbuilt`        nothing exists. No table, no route, no code. The four
+ *                    Security rows (session list, 2FA, passkeys, API tokens).
+ *   `unprovisioned`  it is BUILT and it is not switched on. The payment
+ *                    register has a table, a module and three working routes;
+ *                    what is missing is one provider credential. Drawing that
+ *                    with the same "Not built" chip as a feature with zero code
+ *                    behind it understates the work and misdescribes the fix —
+ *                    one is a build, the other is a decision and an env var.
+ */
 export type ConnectionState =
   | 'connected'
   | 'available'
   | 'unavailable'
   | 'unbuilt'
+  | 'unprovisioned'
   | 'unknown';
 
 export interface WorkspaceVM {

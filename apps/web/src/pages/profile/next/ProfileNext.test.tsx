@@ -402,6 +402,27 @@ describe('ProfileNext — the payment register (built this pass)', () => {
     ).toBeInTheDocument();
   });
 
+  it('does not wear the "Not built" chip — the register IS built, only the credential is missing', () => {
+    draw();
+    const empty = rowFor('No payment method on file');
+    expect(within(empty).getByText('Provider not connected')).toBeInTheDocument();
+    expect(within(empty).queryByText('Not built')).not.toBeInTheDocument();
+    // and the four rows that genuinely have no code behind them still do, so
+    // the two states stay visually distinguishable on one page
+    expect(within(rowFor('Two-factor authentication')).getByText('Not built')).toBeInTheDocument();
+    expect(within(empty).getByText(/it is not unbuilt/)).toBeInTheDocument();
+  });
+
+  it('offers to add one, without the "Provider not connected" chip, once a provider is connected', () => {
+    mockData.current = base({
+      paymentProvider: { id: 'stripe', connected: true, reason: null },
+    });
+    draw();
+    const empty = rowFor('No payment method on file');
+    expect(within(empty).getByText('Not connected')).toBeInTheDocument();
+    expect(within(empty).queryByText('Provider not connected')).not.toBeInTheDocument();
+  });
+
   it('says the register is UNREAD when the read failed, and claims nothing about it', () => {
     mockData.current = base({
       paymentsState: 'error',

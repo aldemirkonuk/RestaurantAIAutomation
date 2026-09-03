@@ -1,5 +1,5 @@
 /**
- * Register III — the house you belong to.
+ * Register VI — the house you belong to.
  *
  * The one data-loss path on the shipping page lives here. Its restaurant
  * loader falls back to the auth store's cached branch name and city on failure
