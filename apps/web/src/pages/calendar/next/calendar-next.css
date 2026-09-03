@@ -633,3 +633,23 @@
   align-items: flex-end;
   gap: 8px;
 }
+
+/* ── a note line that carries a mark ─────────────────────────────────────────
+   The reminder register's lines each open with a lucide glyph. Left inline, a
+   long sentence wraps and strands the mark on a line of its own (measured in
+   the 2026-09-03 capture); `display:flex` fixes that and breaks worse, because
+   every <strong> and <code> in the sentence becomes its own flex column. A
+   hanging indent does it without touching inline formatting: the mark sits in
+   the negative indent on line one, the prose wraps under it. */
+.cn-noteline {
+  padding-left: 19px;
+  text-indent: -19px;
+}
+.cn-noteline > svg {
+  /* The app's CSS reset makes every svg `display: block` (Tailwind preflight),
+     which is why the mark took a line of its own before this. */
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 4px;
+  color: var(--ink-3);
+}

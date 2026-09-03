@@ -45,6 +45,7 @@ import {
   ensureFraunces,
   parseDayKey,
   periodLabel,
+  sinceOrUntil,
   startOfWeek,
   type CalView,
 } from './cal-format';
@@ -78,6 +79,28 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
   const stageRef = useRef<HTMLDivElement | null>(null);
 
   const data = useCalendarNextData(view, cursor, { q, type: typeFilter });
+
+  /**
+   * What the page is allowed to say about reminders, in one line.
+   *
+   * It used to say "Reminders set here live in this browser only — there is no
+   * server-side reminder job", which was true and is not any more (ADR 0109).
+   * The replacement is not a fixed sentence either: the cron serves only
+   * opted-in tenants and only while the process is alive, so the line is drawn
+   * from `GET /calendar/reminders/status` and says "unknown" when the job
+   * cannot be read rather than asserting that reminders are being sent.
+   */
+  const reminderLine = (() => {
+    const job = data.reminderJob;
+    if (job.isLoading) return `Reading the reminder job${EM}`;
+    if (job.isError || !job.status) return 'The reminder job could not be read.';
+    if (!job.status.armed) return 'The reminder job is built but not switched on.';
+    if (job.status.served === false) return 'No reminders are sent for this restaurant.';
+    if (job.status.served === null) return 'Whether reminders are sent here is unknown.';
+    if (!job.status.ledgerReadable) return 'Reminders are sent by the server; its ledger is unreadable.';
+    if (!job.status.lastRun) return 'Reminders are sent by the server; it has not run here yet.';
+    return `Reminders are sent by the server — last run ${sinceOrUntil(job.status.lastRun.startedAt)}.`;
+  })();
 
   useEffect(() => {
     ensureFraunces();
@@ -395,8 +418,7 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
           <div className="cn-head" style={{ marginBottom: 0 }}>
             <Wordmark size={14} />
             <p className="cn-meta" style={{ margin: 0, textAlign: 'right' }}>
-              A double rule means the account is ruled off. Reminders set here live in this browser
-              only — there is no server-side reminder job.
+              A double rule means the account is ruled off. {reminderLine}
             </p>
           </div>
         </footer>

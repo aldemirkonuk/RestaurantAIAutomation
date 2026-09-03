@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { HttpException, HttpStatus, NotFoundException } from "@nestjs/common";
 import { CalendarController } from "./calendar.controller";
 import { CalendarService } from "./calendar.service";
+import { CalendarRemindersService } from "./calendar-reminders.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import {
   CalendarEventType,
@@ -40,6 +41,13 @@ describe("CalendarController", () => {
         {
           provide: CalendarService,
           useValue: mockCalendarService,
+        },
+        {
+          // The reminder job is a constructor dependency of the controller now
+          // (GET /calendar/reminders/status). Its own behaviour is specified in
+          // calendar-reminders.service.spec.ts; here it only has to resolve.
+          provide: CalendarRemindersService,
+          useValue: { statusFor: jest.fn() },
         },
       ],
     })

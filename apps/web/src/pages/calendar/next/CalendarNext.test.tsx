@@ -46,11 +46,54 @@ function event(over: Partial<CalEvent> & { id: string; title: string; date: stri
     isRecurring: false,
     reminderEnabled: false,
     reminderDaysBefore: null,
+    reminderSent: false,
     ...over,
   };
 }
 
 const mutation = () => ({ mutate: vi.fn(), isPending: false, error: null });
+
+/**
+ * The reminder cron's status, as `GET /calendar/reminders/status` returns it.
+ * Defaults to a served house that ran nine minutes before the fake clock, so a
+ * test that wants "never run" or "not served" has to say so.
+ */
+function reminderStatus(over: Record<string, unknown> = {}) {
+  return {
+    jobName: 'calendar-reminders',
+    cronExpression: '*/15 * * * *',
+    intervalMinutes: 15,
+    lookaheadDays: 60,
+    granularity: 'days' as const,
+    served: true,
+    servedReason: null,
+    armed: true,
+    armedFlag: 'CALENDAR_REMINDERS_ENABLED',
+    timeZone: 'America/Los_Angeles',
+    ledgerReadable: true,
+    lastRun: {
+      startedAt: new Date(2026, 8, 15, 11, 51, 0).toISOString(),
+      finishedAt: new Date(2026, 8, 15, 11, 51, 2).toISOString(),
+      considered: 4,
+      sent: 3,
+      deferredQuietHours: 1,
+      expired: 0,
+      failed: 0,
+      truncated: false,
+      error: null,
+    },
+    nextRunAt: new Date(2026, 8, 15, 12, 15, 0).toISOString(),
+    unconfirmed: 0,
+    pending: 2,
+    deliveredToMe: 7,
+    viewer: {
+      remindersEnabled: true,
+      quietHours: { enabled: false, start: '22:00', end: '08:00' },
+      usingDefaults: false,
+    },
+    ...over,
+  };
+}
 
 function mkData(over: Record<string, unknown> = {}) {
   const events = (over.events as CalEvent[] | undefined) ?? [];
@@ -81,6 +124,13 @@ function mkData(over: Record<string, unknown> = {}) {
     ordersById: new Map(),
     ordersKnown: true,
     isRuledOff: () => false,
+    reminderJob: {
+      status: reminderStatus(),
+      isLoading: false,
+      isError: false,
+      errorMessage: '',
+      refetch: vi.fn(),
+    },
     create: mutation(),
     update: mutation(),
     remove: mutation(),
@@ -272,14 +322,12 @@ describe('CalendarNext — honesty', () => {
     expect(screen.getByText(/vendor — the vendor book has not answered/)).toBeInTheDocument();
   });
 
-  it('offers the email reminder channel disabled, with the reason, and says reminders are per-browser', () => {
+  it('offers the email reminder channel disabled, with the reason', () => {
     draw();
     fireEvent.click(screen.getByRole('button', { name: 'New event' }));
     const sheet = screen.getByRole('dialog');
-    expect(within(sheet).getByText('Reminders — on this browser')).toBeInTheDocument();
-    expect(within(sheet).getByText(/fires only while Mudavym is open on this machine/)).toBeInTheDocument();
     expect(within(sheet).getByRole('button', { name: 'Email' })).toBeDisabled();
-    expect(within(sheet).getByText(/Email is disabled because nothing sends it/)).toBeInTheDocument();
+    expect(within(sheet).getByText(/Email stays\s+disabled because nothing sends it/)).toBeInTheDocument();
   });
 
   it('refuses the vendor link and the repeat rule on edit, in words, instead of dropping them', () => {
@@ -308,5 +356,216 @@ describe('CalendarNext — honesty', () => {
     state.current = mkData({ hiddenByFilter: 3 });
     draw();
     expect(screen.getByText(/3 entries are held back by the filter/)).toBeInTheDocument();
+  });
+});
+
+
+/* ── the reminder job: server-side, and honest about itself (ADR 0109) ─────── */
+
+describe('CalendarNext — reminders are kept by the house, not by this browser', () => {
+  it('no longer claims reminders live in this browser, anywhere on the page', () => {
+    draw();
+    expect(screen.queryByText(/on this browser/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/there is no server-side reminder job/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/Reminders are sent by the server — last run 9 minutes ago\./),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the last run and the next run on the reminder rows', () => {
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'New event' }));
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByText('Reminders — kept by the house')).toBeInTheDocument();
+    expect(within(sheet).getByText(/Last run/)).toBeInTheDocument();
+    expect(within(sheet).getByText(/9 minutes ago/)).toBeInTheDocument();
+    expect(within(sheet).getByText(/4 due, 3 sent, 1 held for quiet hours/)).toBeInTheDocument();
+    expect(within(sheet).getByText(/Next run/)).toBeInTheDocument();
+    expect(within(sheet).getByText(/in 15 minutes/)).toBeInTheDocument();
+    expect(within(sheet).getByText(/every 15 minutes, on the server/)).toBeInTheDocument();
+    expect(within(sheet).getByText(/2 entries are still waiting/)).toBeInTheDocument();
+  });
+
+  it('offers whole-day offsets only, because the column holds days', () => {
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'New event' }));
+    const sheet = screen.getByRole('dialog');
+    for (const label of ['On the day', '1 day before', '2 days before', '1 week before']) {
+      expect(within(sheet).getByRole('button', { name: label })).toBeInTheDocument();
+    }
+    expect(within(sheet).queryByRole('button', { name: '15 min before' })).not.toBeInTheDocument();
+    expect(within(sheet).queryByRole('button', { name: '1 hour before' })).not.toBeInTheDocument();
+    expect(within(sheet).getByText(/Whole days only/)).toBeInTheDocument();
+  });
+
+  it('writes the offset onto the row instead of into localStorage', () => {
+    const update = mutation();
+    state.current = mkData({
+      events: [event({ id: 'e1', title: 'Vega Sicilia crate', date: '2026-09-17' })],
+      update,
+    });
+    draw();
+    fireEvent.click(screen.getByText('Vega Sicilia crate'));
+    const sheet = screen.getByRole('dialog');
+    fireEvent.click(within(sheet).getByRole('button', { name: '2 days before' }));
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save the entry' }));
+    expect(update.mutate).toHaveBeenCalled();
+    const [{ patch }] = update.mutate.mock.calls[0];
+    expect(patch.reminderEnabled).toBe(true);
+    expect(patch.reminderDaysBefore).toBe(2);
+    expect(localStorage.getItem('wineops_scheduled_reminders')).toBeNull();
+  });
+
+  it('says a restaurant the scheduler does not serve gets NO reminder, and promises no next run', () => {
+    state.current = mkData({
+      reminderJob: {
+        status: reminderStatus({
+          served: false,
+          servedReason:
+            "This restaurant is not enumerated by the scheduler, so the reminder job does not run for it. It is opted in with one row in restaurant_feature_flags (flag_name = 'scheduled_communications', enabled = true).",
+          nextRunAt: null,
+          lastRun: null,
+        }),
+        isLoading: false,
+        isError: false,
+        errorMessage: '',
+        refetch: vi.fn(),
+      },
+    });
+    draw();
+    expect(screen.getByText(/No reminders are sent for this restaurant\./)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'New event' }));
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByText(/No reminder will be sent/)).toBeInTheDocument();
+    expect(within(sheet).getByText(/scheduled_communications/)).toBeInTheDocument();
+    expect(within(sheet).queryByText(/Next run in/)).not.toBeInTheDocument();
+  });
+
+  it('separates "never run" from "the ledger could not be read"', () => {
+    state.current = mkData({
+      reminderJob: {
+        status: reminderStatus({ lastRun: null }),
+        isLoading: false,
+        isError: false,
+        errorMessage: '',
+        refetch: vi.fn(),
+      },
+    });
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'New event' }));
+    expect(
+      within(screen.getByRole('dialog')).getByText(/never run for this restaurant/),
+    ).toBeInTheDocument();
+
+    state.current = mkData({
+      reminderJob: {
+        status: reminderStatus({ ledgerReadable: false, lastRun: null }),
+        isLoading: false,
+        isError: false,
+        errorMessage: '',
+        refetch: vi.fn(),
+      },
+    });
+    draw();
+    fireEvent.click(screen.getAllByRole('button', { name: 'New event' })[1]);
+    expect(
+      screen.getByText(/when this job last ran is unknown/),
+    ).toBeInTheDocument();
+  });
+
+  it('says the job could not be read in words, never by implying it is fine', () => {
+    state.current = mkData({
+      reminderJob: {
+        status: null,
+        isLoading: false,
+        isError: true,
+        errorMessage: 'Request failed with status code 500',
+        refetch: vi.fn(),
+      },
+    });
+    draw();
+    expect(screen.getByText(/The reminder job could not be read\./)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'New event' }));
+    expect(
+      within(screen.getByRole('dialog')).getByText(/Whether reminders are being sent for this/),
+    ).toBeInTheDocument();
+  });
+
+  it('names the reader\'s own quiet window, and what it does to a reminder', () => {
+    state.current = mkData({
+      reminderJob: {
+        status: reminderStatus({
+          viewer: {
+            remindersEnabled: true,
+            quietHours: { enabled: true, start: '22:00', end: '08:00' },
+            usingDefaults: false,
+          },
+        }),
+        isLoading: false,
+        isError: false,
+        errorMessage: '',
+        refetch: vi.fn(),
+      },
+    });
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'New event' }));
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByText(/Your quiet hours are 22:00—08:00/)).toBeInTheDocument();
+    expect(within(sheet).getByText(/held for you alone until the window closes/)).toBeInTheDocument();
+  });
+
+  it('says the job is built but not switched on, rather than implying it is sending', () => {
+    state.current = mkData({
+      reminderJob: {
+        status: reminderStatus({ armed: false, nextRunAt: null }),
+        isLoading: false,
+        isError: false,
+        errorMessage: '',
+        refetch: vi.fn(),
+      },
+    });
+    draw();
+    expect(screen.getByText(/The reminder job is built but not switched on\./)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'New event' }));
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByText(/CALENDAR_REMINDERS_ENABLED/)).toBeInTheDocument();
+    expect(within(sheet).queryByText(/Next run/)).not.toBeInTheDocument();
+  });
+
+  it('reports a claim that was never confirmed rather than counting it as sent', () => {
+    state.current = mkData({
+      reminderJob: {
+        status: reminderStatus({ unconfirmed: 2 }),
+        isLoading: false,
+        isError: false,
+        errorMessage: '',
+        refetch: vi.fn(),
+      },
+    });
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'New event' }));
+    expect(
+      within(screen.getByRole('dialog')).getByText(/claimed and never confirmed/),
+    ).toBeInTheDocument();
+  });
+
+  it('says when an entry has already been reminded', () => {
+    state.current = mkData({
+      events: [
+        event({
+          id: 'e1',
+          title: 'Vega Sicilia crate',
+          date: '2026-09-17',
+          reminderEnabled: true,
+          reminderDaysBefore: 1,
+          reminderSent: true,
+        }),
+      ],
+    });
+    draw();
+    fireEvent.click(screen.getByText('Vega Sicilia crate'));
+    expect(
+      within(screen.getByRole('dialog')).getByText(/reminder has already been sent/),
+    ).toBeInTheDocument();
   });
 });

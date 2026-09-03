@@ -8,8 +8,9 @@
  * (calendar.md §10).
  *
  * The three honest refusals, each cited:
- *  - **email reminders** — the scheduler sends in-app + browser only
- *    (lib/reminder-scheduler.ts:176-200); the tick is drawn disabled;
+ *  - **email reminders** — the server job writes the inbox row and pushes to
+ *    phones (calendar-reminders.service.ts `deliver`); mail would need a
+ *    recipient policy of its own, so the tick is drawn disabled;
  *  - **vendor link on edit** — UpdateCalendarEventDto has no `providerId`
  *    (calendar.dto.ts:229-296) and the gateway forbids non-whitelisted keys,
  *    so the field is create-time only;
@@ -17,17 +18,25 @@
  *
  * Deleting is the one irreversible act on this page, so it is the one place
  * that spends the house ceremony: HoldToApprove, completing into the seal.
+ *
+ * REMINDERS MOVED SERVER-SIDE, 2026-09-03. This sheet no longer enqueues into
+ * the browser's localStorage queue; it writes `reminderEnabled` /
+ * `reminderDaysBefore` on the row and a cron sends them
+ * (`apps/api-gateway/src/calendar/calendar-reminders.service.ts`, ADR 0109). It
+ * still CANCELS any browser-queued reminder for an entry it saves, so an entry
+ * created on the legacy page and edited here cannot be reminded twice — the
+ * localStorage scheduler is demoted to draining what the legacy tree queued,
+ * and `ReminderRegister` says so on the row.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { HoldToApprove } from '../../../components/mudavym';
-import {
-  cancelRemindersForEvent,
-  getScheduledReminders,
-  reminderTypeForMinutes,
-  scheduleReminder,
-} from '../../../lib/reminder-scheduler';
-import { EM, clock, longDay, parseDayKey } from './cal-format';
+// The browser scheduler is DEMOTED, not imported wholesale: only the canceller
+// survives here, so saving an entry clears any copy the legacy page queued for
+// it in this browser. Nothing in `pages/calendar/next/**` enqueues any more.
+import { cancelRemindersForEvent } from '../../../lib/reminder-scheduler';
+import { EM, clock, longDay } from './cal-format';
+import ReminderRegister from './ReminderRegister';
 import type { CalEvent, CalendarData, CalendarPayload, EventStatus } from './useCalendarNextData';
 
 /** The gateway's CalendarEventType enum (calendar.dto.ts:44-59). */
@@ -49,12 +58,6 @@ const ENUM_TYPES = new Set([
 ]);
 
 const STATUSES: EventStatus[] = ['pending', 'approved', 'completed', 'cancelled', 'dismissed'];
-const REMINDER_PRESETS: Array<[number, string]> = [
-  [15, '15 min'],
-  [60, '1 hour'],
-  [1440, '1 day'],
-  [10080, '1 week'],
-];
 
 export type SheetTarget =
   | { mode: 'create'; date: string; startTime: string | null }
@@ -109,16 +112,12 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
   const [freq, setFreq] = useState<'none' | 'daily' | 'weekly' | 'monthly'>('none');
   const [every, setEvery] = useState(1);
   const [repeatCount, setRepeatCount] = useState(0);
-  const [offsets, setOffsets] = useState<number[]>(() =>
-    editing
-      ? getScheduledReminders()
-          .filter((r) => r.eventId === editing.seriesId && r.status === 'pending')
-          .map((r) =>
-            r.reminderType === 'custom'
-              ? (r.customMinutes ?? 15)
-              : { '15min': 15, '1hour': 60, '1day': 1440, '1week': 10080 }[r.reminderType],
-          )
-      : [],
+  // The stored row is the source of truth now — not a localStorage queue that
+  // only this browser can see. A new entry defaults to the column's own default
+  // (reminder_enabled true, reminder_days_before 1: calendar.service.ts:124-125).
+  const [remindOn, setRemindOn] = useState<boolean>(editing ? editing.reminderEnabled : true);
+  const [remindDays, setRemindDays] = useState<number>(
+    editing ? (editing.reminderDaysBefore ?? 1) : 1,
   );
   const [newTypeName, setNewTypeName] = useState('');
   const [newTypeColor, setNewTypeColor] = useState('#1A5E6B');
@@ -140,24 +139,13 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
   const failure = data.create.error ?? data.update.error ?? data.remove.error;
 
   /**
-   * Reminders live in this browser's localStorage and nowhere else. The event
-   * row does carry `reminder_enabled` / `reminder_days_before`, so we keep it
-   * truthful, but nothing server-side reads either column — `reminder_sent`
-   * has no writer anywhere in `apps/` or `services/` (calendar.md §10).
+   * The server owns this entry's reminder from here on, so any copy the legacy
+   * page queued for it in THIS browser is dropped. Without this, an entry
+   * created on the shipping page and edited here would be reminded twice — once
+   * by the cron and once by `main.tsx`'s poller.
    */
-  const syncReminders = (eventId: string) => {
+  const clearBrowserQueue = (eventId: string) => {
     cancelRemindersForEvent(eventId);
-    for (const minutes of offsets) {
-      if (!(minutes > 0)) continue;
-      scheduleReminder({
-        eventId,
-        title,
-        eventType: enumTypeFor(typeName),
-        date: parseDayKey(date),
-        startTime: allDay ? undefined : startTime || undefined,
-        ...reminderTypeForMinutes(minutes),
-      });
-    }
   };
 
   const submit = (e: React.FormEvent) => {
@@ -174,8 +162,8 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
       eventTime: allDay || !startTime ? undefined : startTime,
       eventTimeEnd: allDay || !endTime ? undefined : endTime,
       eventDateEnd: allDay || !endDate ? undefined : endDate,
-      reminderEnabled: offsets.length > 0,
-      reminderDaysBefore: offsets.length > 0 ? Math.max(1, Math.ceil(Math.max(...offsets) / 1440)) : 0,
+      reminderEnabled: remindOn,
+      reminderDaysBefore: remindOn ? remindDays : 0,
     };
 
     if (editing) {
@@ -186,7 +174,7 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
         { id: editing.seriesId, patch },
         {
           onSuccess: () => {
-            syncReminders(editing.seriesId);
+            clearBrowserQueue(editing.seriesId);
             onClose();
           },
         },
@@ -210,7 +198,7 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
       },
       {
         onSuccess: (created) => {
-          syncReminders(created.id);
+          clearBrowserQueue(created.id);
           onClose();
         },
       },
@@ -516,43 +504,19 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
           </div>
 
           {/* ── reminders ──────────────────────────────────────────────── */}
-          <div className="cn-field">
-            <span className="cn-label">Reminders — on this browser</span>
-            <div className="cn-chiprow">
-              {REMINDER_PRESETS.map(([mins, label]) => (
-                <button
-                  key={mins}
-                  type="button"
-                  className="cn-chip cn-ink"
-                  aria-pressed={offsets.includes(mins)}
-                  onClick={() =>
-                    setOffsets((prev) =>
-                      prev.includes(mins) ? prev.filter((m) => m !== mins) : [...prev, mins],
-                    )
-                  }
-                >
-                  {label} before
-                </button>
-              ))}
-            </div>
-            <p className="cn-quiet cn-tight">
-              A reminder set here is stored in <em>this browser</em> and fires only while Mudavym is
-              open on this machine. There is no server-side reminder job: the event row keeps a
-              flag, and nothing reads it.
-            </p>
-            <div className="cn-chiprow cn-tight">
-              <button type="button" className="cn-chip" aria-pressed={true} disabled>
-                In app
-              </button>
-              <button type="button" className="cn-chip" disabled>
-                Email
-              </button>
-            </div>
-            <p className="cn-quiet cn-tight">
-              Email is disabled because nothing sends it — the scheduler raises an in-app and a
-              browser notification only.
-            </p>
-          </div>
+          <ReminderRegister
+            status={data.reminderJob.status}
+            isLoading={data.reminderJob.isLoading}
+            isError={data.reminderJob.isError}
+            errorMessage={data.reminderJob.errorMessage}
+            enabled={remindOn}
+            daysBefore={remindDays}
+            alreadySent={editing?.reminderSent === true}
+            onChange={(next) => {
+              setRemindOn(next.enabled);
+              setRemindDays(next.daysBefore);
+            }}
+          />
 
           {failure && (
             <p role="status" className="cn-notice" style={{ marginTop: 10 }}>

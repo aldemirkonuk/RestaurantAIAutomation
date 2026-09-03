@@ -172,3 +172,41 @@ export function countPhrase(n: number, one: string, many: string): string | null
   if (n <= 0) return null;
   return `${n} ${n === 1 ? one : many}`;
 }
+
+/**
+ * "14 minutes ago" / "in 8 minutes" — for a job's last and next run, where the
+ * exact instant matters less than whether it was recent.
+ *
+ * Returns the EM dash for an unreadable or absent instant, never "just now":
+ * a missing timestamp must not read as a fresh one.
+ */
+export function sinceOrUntil(iso: string | null | undefined, now = new Date()): string {
+  if (!iso) return EM;
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return EM;
+  const deltaMs = at.getTime() - now.getTime();
+  const ahead = deltaMs >= 0;
+  const mins = Math.round(Math.abs(deltaMs) / 60000);
+  const body =
+    mins < 1
+      ? 'less than a minute'
+      : mins < 60
+        ? `${mins} minute${mins === 1 ? '' : 's'}`
+        : mins < 60 * 48
+          ? `${Math.round(mins / 60)} hour${Math.round(mins / 60) === 1 ? '' : 's'}`
+          : `${Math.round(mins / 1440)} days`;
+  return ahead ? `in ${body}` : `${body} ago`;
+}
+
+/** A wall-clock instant in the reader's own locale, or the EM dash. */
+export function stamp(iso: string | null | undefined): string {
+  if (!iso) return EM;
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return EM;
+  return at.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}

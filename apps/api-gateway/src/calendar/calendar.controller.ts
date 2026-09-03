@@ -25,6 +25,8 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Public } from "../auth/decorators/public.decorator";
 import { CalendarService } from "./calendar.service";
+import { CalendarRemindersService } from "./calendar-reminders.service";
+import type { ReminderStatus } from "./calendar-reminders.service";
 import {
   CreateCalendarEventDto,
   UpdateCalendarEventDto,
@@ -46,7 +48,10 @@ import {
 export class CalendarController {
   private readonly logger = new Logger(CalendarController.name);
 
-  constructor(private readonly calendarService: CalendarService) {}
+  constructor(
+    private readonly calendarService: CalendarService,
+    private readonly reminders: CalendarRemindersService,
+  ) {}
 
   // ==========================================================================
   // EVENTS CRUD
@@ -577,6 +582,47 @@ export class CalendarController {
       includeRecurring: true,
       limit: 50,
     });
+  }
+
+  // ==========================================================================
+  // SERVER-SIDE REMINDERS — what the job did, and whether it serves this house
+  // ==========================================================================
+
+  /**
+   * The reminder job's own account of itself, for one restaurant and one reader.
+   *
+   * It exists because the page is not allowed to say "reminders are handled".
+   * The cron only serves restaurants the scheduler enumerates (ADR 0022), only
+   * runs while the gateway process is alive, and defers a member who is inside
+   * their quiet window — so the honest sentence needs the last actual run, the
+   * next scheduled tick, whether this house is served at all, and the reader's
+   * own quiet hours. All four come from here; none is computed in the browser.
+   *
+   * Tenant scope is the signed token's `restaurantId`, never a query parameter.
+   */
+  @Get("reminders/status")
+  @ApiOperation({
+    summary:
+      "Server-side calendar reminder job: last run, next scheduled run, and whether this restaurant is served",
+  })
+  @ApiResponse({ status: 200, description: "Reminder job status" })
+  async getReminderStatus(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<ReminderStatus> {
+    try {
+      return await this.reminders.statusFor(user.restaurantId, user.userId);
+    } catch (error) {
+      this.logger.error({
+        message: "Reminder status read failed",
+        userId: user.userId,
+        restaurantId: user.restaurantId,
+        error: error.message,
+      });
+      throw new HttpException(
+        error.message || "Failed to read reminder status",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   // ==========================================================================

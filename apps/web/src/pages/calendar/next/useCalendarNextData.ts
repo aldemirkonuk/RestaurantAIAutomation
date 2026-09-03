@@ -52,6 +52,8 @@ interface ApiEvent {
   status: EventStatus;
   reminderEnabled: boolean;
   reminderDaysBefore: number;
+  /** Written by the reminder cron (ADR 0109); false until it has sent. */
+  reminderSent?: boolean;
   color?: string;
   isRecurring: boolean;
   parentEventId?: string;
@@ -59,6 +61,62 @@ interface ApiEvent {
   recurrenceRule?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * `GET /calendar/reminders/status` — the reminder cron's own account of itself
+ * (apps/api-gateway/src/calendar/calendar.controller.ts, route "reminders/status";
+ * built in calendar-reminders.service.ts `statusFor`).
+ *
+ * Four of these fields exist only so the page cannot lie:
+ *  - `served` — the cron enumerates opted-in tenants (ADR 0022), so for a house
+ *    it does not serve there is no next run to promise. `null` means the opt-in
+ *    register itself could not be read.
+ *  - `ledgerReadable` — false separates "the run ledger was unreachable" from
+ *    "this job has never run", which are the same empty `lastRun` otherwise.
+ *  - `unconfirmed` — rows claimed and never confirmed: a crash between claim and
+ *    send. Never folded into `sent`.
+ *  - `granularity` — the column is INTEGER days, so the sheet must not offer
+ *    minutes.
+ */
+export interface ReminderJobStatus {
+  jobName: string;
+  cronExpression: string;
+  intervalMinutes: number;
+  lookaheadDays: number;
+  granularity: 'days';
+  served: boolean | null;
+  servedReason: string | null;
+  /**
+   * The env switch `CALENDAR_REMINDERS_ENABLED`. OFF by default: the job writes
+   * real inbox rows and phone pushes, so it is not gated on the page's design
+   * flag. `served: true, armed: false` is a real state — this house would be
+   * served and nothing is being sent — and the page must say so.
+   */
+  armed: boolean;
+  armedFlag: string;
+  timeZone: string | null;
+  ledgerReadable: boolean;
+  lastRun: {
+    startedAt: string;
+    finishedAt: string | null;
+    considered: number;
+    sent: number;
+    deferredQuietHours: number;
+    expired: number;
+    failed: number;
+    truncated: boolean;
+    error: string | null;
+  } | null;
+  nextRunAt: string | null;
+  unconfirmed: number | null;
+  pending: number | null;
+  deliveredToMe: number | null;
+  viewer: {
+    remindersEnabled: boolean;
+    quietHours: { enabled: boolean; start: string; end: string };
+    usingDefaults: boolean;
+  };
 }
 
 export type EventStatus = 'pending' | 'approved' | 'dismissed' | 'completed' | 'cancelled';
@@ -98,6 +156,13 @@ export interface CalEvent {
   recurrenceRule?: Record<string, unknown>;
   reminderEnabled: boolean;
   reminderDaysBefore: number | null;
+  /**
+   * True once the server job has sent this entry's reminder. Until 2026-09-03
+   * this column had no writer at all (calendar.service.ts:1118 read it and
+   * nothing wrote it); the sheet now shows it so an operator can tell a
+   * reminder that went out from one still waiting.
+   */
+  reminderSent: boolean;
 }
 
 /** The calendar's spine: the event types that describe goods arriving. */
@@ -141,6 +206,7 @@ function toCalEvent(raw: ApiEvent): CalEvent {
     isRecurring: !!raw.isRecurring,
     recurrenceRule: raw.recurrenceRule,
     reminderEnabled: !!raw.reminderEnabled,
+    reminderSent: raw.reminderSent === true,
     reminderDaysBefore:
       typeof raw.reminderDaysBefore === 'number' && Number.isFinite(raw.reminderDaysBefore)
         ? raw.reminderDaysBefore
@@ -275,6 +341,24 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
     enabled: !!restaurantId,
     staleTime: 5 * 60_000,
     queryFn: () => fetchProviders(restaurantId),
+  });
+
+  /**
+   * The reminder job's status. Its own query rather than a field on the events
+   * read, because it must survive an events failure: a page whose calendar read
+   * 500s still has to be able to say whether reminders are being sent.
+   * `staleTime` is one interval — asking more often than the job runs tells the
+   * reader nothing new.
+   */
+  const reminderQ = useQuery({
+    queryKey: ['mudavym', 'calendar', 'reminder-status', restaurantId],
+    enabled: !!restaurantId,
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+    queryFn: async () => {
+      const res = await apiClient.get<ReminderJobStatus>('/calendar/reminders/status');
+      return res.data;
+    },
   });
 
   const ordersQ = useOrders();
@@ -446,6 +530,22 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
       void eventsQ.refetch();
       void typesQ.refetch();
       void providersQ.refetch();
+      void reminderQ.refetch();
+    },
+
+    /**
+     * The server-side reminder job. `status` is null until the gateway answers;
+     * `isError` is the branch that must render words, because a reminder page
+     * that cannot read the job must not imply the job is fine.
+     */
+    reminderJob: {
+      status: reminderQ.data ?? null,
+      isLoading: reminderQ.isLoading,
+      isError: reminderQ.isError,
+      errorMessage: messageOf(reminderQ.error),
+      refetch: () => {
+        void reminderQ.refetch();
+      },
     },
 
     eventTypes: typesQ.data ?? [],

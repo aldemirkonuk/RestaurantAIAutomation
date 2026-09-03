@@ -63,8 +63,30 @@ unchanged with the flag off):
   month it drew is not the whole month, instead of quietly showing the first 100
 - **Hold-to-delete**: deleting is the one irreversible act on the page, so it is the one
   place that spends the seal ceremony; deleting a repeating entry says it takes the series
-- 🔒 **Reminders are labelled per-browser** and the **email channel is rendered disabled**
-  with the reason — nothing sends it
+- 🔒 **The job is OFF by default and says so.** It sends nothing until
+  `CALENDAR_REMINDERS_ENABLED=true` is set on the gateway, and the page renders "The reminder
+  job is built but not switched on" with the flag name rather than implying it is sending.
+  Not gated on the Mudavym design flag: a design flag decides what a page looks like, not
+  whether a house gets woken up. **Arming it is the founder's call**
+- ✅ **Reminders are sent by the server** (2026-09-03, [ADR 0109](../decisions/0109-a-reminder-is-the-houses-job-not-the-browsers.md)).
+  A 15-minute per-tenant cron reads `reminder_enabled` / `reminder_days_before`, writes through
+  `persistForRestaurant` (inbox row + socket + mobile push) and stamps `reminder_sent` —
+  the column that had no writer anywhere in the repo until this build
+- ✅ **The reminder rows show the job's own account of itself**: last actual run with its
+  counts (`4 due, 3 sent, 1 held for quiet hours`), the next scheduled tick, how many entries
+  are still waiting, and — the load-bearing one — **whether the scheduler serves this
+  restaurant at all** (it enumerates opted-in tenants, ADR 0022), so a house it does not serve
+  is told "No reminder will be sent" instead of being shown a next-run time
+- ✅ **Quiet hours are honoured per person**, on the *restaurant's* clock: a member inside
+  their window is held until it closes, not dropped, and holding one member never delays or
+  duplicates another's — the claim is per (entry, person)
+- 🔒 **Offsets are whole days only** — `reminder_days_before` is an INTEGER of days, so the
+  sheet offers *On the day / 1 day / 2 days / 1 week* and says why, rather than offering
+  minutes and rounding them into a value nobody chose (§13)
+- 🔒 **The email channel is still rendered disabled** with the reason — the job writes the
+  inbox row and the push; mail needs a recipient policy of its own
+- 🔒 **A client-expanded recurring occurrence gets no reminder** — it is not a row, so there
+  is nothing to key a dispatch on; materialised occurrences are reminded normally (§13)
 - 🔒 **Vendor link and repeat rule are create-time only**, each with one line saying why (the
   update DTO carries neither field, §9)
 - 🔒 **A recurring occurrence is not draggable** and its sheet says an edit changes the whole
@@ -159,6 +181,81 @@ input in the header now). Custom event types are created and deleted here but an
 them as `custom` plus the colour — the gateway's `CalendarEventType` enum has no slot for a
 custom name, and the sheet says so rather than inventing one.
 
+### Third pass, 2026-09-03 — the reminder becomes the house's job
+
+**What the founder asked.** "Server-side calendar reminders" as one of the four large builds:
+a cron under the existing per-tenant scheduler that reads `reminder_enabled` /
+`reminder_days_before`, writes through `persistForRestaurant`, stamps `reminder_sent`, honours
+quiet hours and never sends twice; the page's reminder rows to stop saying "on this browser"
+and show last/next run; the localStorage scheduler retired or demoted with a stated fallback.
+
+**What was built.** [ADR 0109](../decisions/0109-a-reminder-is-the-houses-job-not-the-browsers.md).
+
+| Piece | Where |
+|---|---|
+| The cron | `apps/api-gateway/src/calendar/calendar-reminders.service.ts` — `@Cron("*/15 * * * *")` → `ScheduledTenantsService.runPerTenant("calendar-reminders", …)` |
+| The arithmetic | `apps/api-gateway/src/calendar/reminder-window.ts` — due time and quiet hours in the *restaurant's* zone, DST-correct, pure and separately tested |
+| The status read | `GET /calendar/reminders/status` (`calendar.controller.ts`, route `reminders/status`) → `statusFor` |
+| The ledger | `supabase/migrations/20260903101500_calendar_reminders_have_a_ledger.sql` — `calendar_reminder_dispatches` + `calendar_reminder_runs`, RLS on, service-role only, in-file assertions |
+| The register | `apps/web/src/pages/calendar/next/ReminderRegister.tsx`, rendered by `EventSheet.tsx` |
+| The standing line | `CalendarNext.tsx` `reminderLine` — the footer sentence is now drawn from the job's status, not asserted |
+
+**The one structural idea.** *Idempotency is a database index, not a boolean.* Every send is
+preceded by an INSERT into `calendar_reminder_dispatches`, whose UNIQUE `(calendar_event_id,
+user_id)` index is the key. Two gateway instances cannot both win the insert, so they cannot
+both send — and because the claim is per **person**, quiet hours stop being a coordination
+problem: a member inside their window simply is not claimed this tick, and the next sweep after
+the window closes serves exactly them. `reminder_sent` becomes the roll-up it was named for
+(written for the first time in this repo's history) and is never the thing preventing a second
+send. The spec proves this the hard way: it unsets `reminder_sent` and sweeps again, and
+nothing goes out.
+
+**Honesty applied.** Four sentences the page is now able to say, none computed in the browser:
+
+1. *Whether the job serves this house at all.* The cron enumerates opted-in tenants (ADR 0022),
+   so for a restaurant it does not serve there is no next run to promise — `served: false`
+   carries the reason (the one INSERT that opts it in), and the sheet says "No reminder will be
+   sent."
+2. *When it last actually ran*, beside the next scheduled tick. A schedule is not evidence that
+   a process is alive.
+3. *"Never run" is separated from "the ledger could not be read"* (`ledgerReadable`). Both are
+   an empty `lastRun`; only one of them means the job has nothing to report. Measured live: the
+   local gateway points at production, where the two new tables do not exist yet, and the
+   endpoint correctly returned `ledgerReadable: false` rather than "this job has never run".
+4. *A claim that was never confirmed is not a send.* A crash between claim and notification
+   leaves `sent_at` NULL, and the status endpoint reports those rows as exactly that. A funnel
+   that wrote nothing is a failure, and the claim is released so the next sweep retries.
+
+**The fork the founder has to settle: arming it.** The job is written, tested and wired, and
+it is **off**. `CALENDAR_REMINDERS_ENABLED` is an env allow-list (only `true`/`1`), copied from
+`RECURRING_ORDER_REMINDERS_ENABLED` (`communications/recurring-order-reminder.ts:20`) for the
+same reason: a typo should produce silence, not a live sender. It is deliberately NOT the
+Mudavym design flag — turning a page's new look on must not start writing to every member's
+phone. What arming it does, measured: `GET /calendar/reminders/status` against production on
+2026-09-03 returned `served: true, armed: false, pending: 0`, so flipping it today sends
+nothing retroactively and starts sending for entries created from then on.
+
+**The two alternative directions not built** — the founder decides after seeing the page:
+
+- **Sub-day reminders.** The obvious ask is "15 minutes before", and it is not representable:
+  `reminder_days_before` is an INTEGER of days. The alternative was a
+  `reminder_minutes_before` column plus DTO, service, mapper and UI changes, which is a second
+  build. What shipped offers whole days and says why; §13 carries the column.
+- **Email as a real channel.** The job could mail as well as write the inbox row, but "who gets
+  it" is a decision: `RecipientResolverService` still falls back to a global env address for
+  the legacy tenant (`communications/scheduled-tasks.service.ts:120-146`), and mailing the
+  wrong house is the defect ADR 0022 spent its length preventing. The tick stays disabled with
+  that reason.
+
+**Substituted or left out.** The browser scheduler is **demoted, not deleted**: `main.tsx:20`
+still boots it, because `main.tsx` is shared and the shipping page must render byte-for-byte
+with the flag off. Nothing in `pages/calendar/next/**` enqueues into it any more, and the sheet
+cancels an entry's browser-queued copies whenever it saves that entry
+(`EventSheet.tsx` `clearBrowserQueue`), so anything the redesign touches has exactly one
+sender. The residue is named in §9: an entry created on the legacy page and never opened here
+can still fire twice.
+
+
 ## 2. Entry
 
 - Sidebar "Calendar" (`components/layout/Sidebar.tsx:108`).
@@ -185,6 +282,7 @@ via :461.
 | PATCH | `/calendar/events/:id` (+ `/status`, `/recurring`) | `CalendarPage.tsx:115` → `calendar.ts:265,338,381` |
 | DELETE | `/calendar/events/:id` (+ `/recurring?fromDate=`) | `CalendarPage.tsx:116` → `calendar.ts:273,398` |
 | GET/POST/PATCH/DELETE | `/calendar/event-types` | `useEventTypes` (`useCalendarPage.ts:2`) → `calendar.ts:293-328` |
+| GET | `/calendar/reminders/status` | `useCalendarNextData` (`pages/calendar/next/useCalendarNextData.ts` `reminderQ`) → `calendar.controller.ts` route `reminders/status`; built by `calendar-reminders.service.ts` `statusFor` |
 | GET | `/providers` | `useProviders` (`useCalendarPage.ts:2`) → `services/api/providers.ts:201` |
 
 ## 5. Signals
@@ -209,6 +307,14 @@ localStorage key `'wineops-calendar-sidebar'` (`pages/calendar/CalendarPage.tsx:
 - Sidebar collapse persists in localStorage (`CalendarPage.tsx:46`).
 - `?openModal=true` deep link opens the create modal (`commands.ts:93`).
 - Recurrence expanded client-side (`lib/calendar/recurrence.ts`, `useCalendarPage.ts:4`).
+- **Server-side reminders have their own switch, and it is not the design flag.**
+  `CALENDAR_REMINDERS_ENABLED` (env, allow-list: only `true`/`1` arm it) — off by default,
+  so the cron returns before it reads a row. The Mudavym flag gates only the *rendering* of
+  the job's status. Once armed, which restaurants it serves is ADR 0022's question: one row
+  in `restaurant_feature_flags` (`flag_name = 'scheduled_communications'`, `enabled = true`)
+  or being `DEFAULT_RESTAURANT_ID`. **Measured against production on 2026-09-03:**
+  `served: true, armed: false, pending: 0` — Meyhouse would be served, nothing is armed, and
+  no entry currently qualifies, so arming it today sends nothing retroactively.
 - **Mudavym redesign gate:** feature flag `mudavym_design_calendar` (gateway
   `feature-flag-registry.ts`), with the per-browser override
   `localStorage['mudavym.design.calendar']` = `1|true|on` / `0|false|off`
@@ -294,6 +400,53 @@ one-file change nobody on this page's paths may make:
    0051 guard is green over this page without looking at it. Verified passing locally by
    running the guard with that root substituted (0 violations); the line still needs adding.
 
+### Found while building the server-side reminder job, 2026-09-03
+
+1. 🟠 **The legacy browser scheduler is still booted for everyone.**
+   `apps/web/src/main.tsx:20` calls `startReminderScheduler()`
+   unconditionally, so the localStorage poller runs whether or not the Mudavym
+   flag is on. It is demoted rather than removed because `main.tsx` is shared and
+   the shipping page must render byte-for-byte with the flag off (ADR 0109).
+   **The residue:** an entry created on the *legacy* page, never opened in the
+   rebuilt sheet, whose reminder is due, can fire twice — once from that browser
+   and once from the cron. Every path the redesign touches is closed: nothing in
+   `pages/calendar/next/**` enqueues, and `EventSheet.tsx` `clearBrowserQueue`
+   cancels an entry's browser-queued copies on save. **Why not yet:** deleting the
+   boot is one line, but it belongs to whoever retires the legacy calendar — doing
+   it here would change the shipping page's behaviour from inside a flagged build.
+2. 🟠 **Quiet hours mean two different things in the two runtimes.** The
+   orchestrator's `_is_quiet_hours` compares the window against `datetime.now()`
+   — the *process's* local time
+   (`services/agent-orchestrator/agents/notification_agent.py:1487-1512`), so a
+   22:00–08:00 window means 22:00 wherever the container runs. The new gateway
+   job evaluates the same three columns on the *restaurant's* clock
+   (`calendar/reminder-window.ts`). The gateway's reading is the correct one for a
+   house in Istanbul; the two should be reconciled, and the orchestrator is
+   outside this page's paths. **Why not yet:** it is a Python change in a service
+   this build does not own.
+3. 🟡 **`notification_preferences` has no per-user timezone**, so "the reader's
+   quiet hours" are necessarily read on the restaurant's clock, not the reader's.
+   For a single-site house those are the same; for a manager travelling they are
+   not. Stated on the row (the window is shown with the zone beside it) rather
+   than silently assumed.
+4. 🟡 **`generation_horizon_days: 90` is a gateway-written measurement.**
+   `calendar.service.ts:484` writes a literal horizon onto every
+   `calendar_recurrence_rules` row that no caller supplied. Measured by running
+   `scripts/check_no_seeded_defaults.py` with `apps/api-gateway/src/calendar`
+   added to `SERVER_SCAN_ROOTS`: 1 violation, exactly this line. Pre-existing and
+   unrelated to reminders. **Why not yet:** changing it changes how far ahead
+   recurring occurrences are generated, which is a behaviour decision, not a
+   cleanup.
+5. 🟡 **`apps/api-gateway/src/calendar` is not in `SERVER_SCAN_ROOTS`**
+   (`scripts/check_no_seeded_defaults.py:220-223`), so CI's ADR 0051 guard is
+   green over this module without reading it. Verified by hand with the root
+   substituted (finding 4 is what it says); the line still needs adding, and
+   `scripts/` is outside this build's paths.
+6. ✅ **`apps/web/src/pages/calendar/next` IS now in `SCAN_ROOTS`**
+   (`check_no_seeded_defaults.py:202`) — the §9.9 gap filed on 2026-09-02 is
+   closed, and the guard passes over this directory having actually read it.
+
+
 ## 10. Maturity
 
 **partial.**
@@ -308,18 +461,23 @@ recurrence and event types all reach JWT-guarded endpoints
 (`apps/api-gateway/src/calendar/calendar.controller.ts:44-45`, routes :55-539) and
 persist.
 
-**Reminders now fire, but only in one browser.** `syncEventReminders`
-(`apps/web/src/pages/calendar/CalendarPage.tsx:64-84`) pushes each reminder into a
-`localStorage` queue (`lib/reminder-scheduler.ts:9,82`) which a poller booted in
-`main.tsx:20` drains; on fire it raises a browser `Notification` **and** writes a
-durable row via `POST /notifications` (`reminder-scheduler.ts:176-200`). The module's
-own header states the constraint plainly: *"This is the only reminder mechanism that
-fires anything: the calendar API only stores a `reminderEnabled` flag plus
-`reminderDaysBefore`, and nothing server-side reads either column — there is no
-reminder cron and the iCal feed emits no VALARM"* (`CalendarPage.tsx:55-63`).
-Independently confirmed: `reminder_sent` is read at `calendar/calendar.service.ts:1118`
-and has **no writer** anywhere in `apps/` or `services/`. So a reminder set on the
-office laptop does not exist on the phone, and none fires with the app closed.
+**Reminders are sent by the server as of 2026-09-03** ([ADR 0109](../decisions/0109-a-reminder-is-the-houses-job-not-the-browsers.md)).
+`CalendarRemindersService` (`apps/api-gateway/src/calendar/calendar-reminders.service.ts`)
+runs every 15 minutes under `ScheduledTenantsService.runPerTenant`, reads
+`reminder_enabled` / `reminder_days_before`, claims one row per (entry, person) in
+`calendar_reminder_dispatches` — whose UNIQUE `(calendar_event_id, user_id)` index is
+what makes a double send impossible — writes the durable notification through
+`NotificationsService.persistForRestaurant`
+(`apps/api-gateway/src/notifications/notifications.service.ts:608-728`), and then stamps
+`calendar_events.reminder_sent` / `.reminder_sent_at`. **That column had no writer anywhere
+in `apps/` or `services/` until this build**; it was read once, at
+`calendar/calendar.service.ts:1118`, and written nowhere.
+
+What the previous paragraph said is still true of the *legacy* page: `syncEventReminders`
+(`apps/web/src/pages/calendar/CalendarPage.tsx:64-84`) pushes into the `localStorage` queue
+(`lib/reminder-scheduler.ts:9,82`) drained by the poller booted at `main.tsx:20`. That
+scheduler is **demoted, not deleted** — see §9 finding 1 for the exact residue and why the
+boot was left alone.
 
 Still collected and discarded:
 
@@ -353,7 +511,8 @@ production (verified 2026-08-26), so nothing was ever misdelivered.
 | DELETE | `/calendar/events/:id` (+`/recurring?fromDate=`) | JWT | `:189-229`, `:501-537` | 204 |
 | GET/POST/PATCH/DELETE | `/calendar/event-types` | JWT | `:306-416` | Custom types |
 | GET | `/providers` | JWT | `providers` module | Vendor picker |
-| POST | `/notifications` | JWT (class, `notifications.controller.ts:45`) | `:61-82` | Durable row, written by the reminder scheduler on fire (`reminder-scheduler.ts:193`) |
+| POST | `/notifications` | JWT (class, `notifications.controller.ts:45`) | `:61-82` | Durable row — the *legacy* browser scheduler's write path (`reminder-scheduler.ts:193`). The server job does not use it; it writes through `persistForRestaurant` directly |
+| GET | `/calendar/reminders/status` | JWT (class) | `calendar.controller.ts`, route `reminders/status` | The reminder job's last run, next scheduled tick, whether this restaurant is served, and the reader's quiet window |
 | GET | `/calendar/feed/:token.ics` | **`@Public()`** — bearer is the 64-char token in the path (`:586-587`) | `:596-606` | iCal text |
 
 ### Fed by
@@ -362,7 +521,7 @@ production (verified 2026-08-26), so nothing was ever misdelivered.
 |---|---|---|
 | Manually created events | This page and the command palette (`commands.ts:93`) | Yes |
 | Provider/order-linked events | `calendar_agent` (`AgentTier.CORE`, `services/agent-orchestrator/core/agent_registry.py:83-87`); its LLM date extraction was repaired under ADR 0010 / OD-63 | Agent yes — but its output table `provider_important_dates` **does not exist in production** (OD-63 resolution, now **OD-68**), so the extracted dates have nowhere to land |
-| Reminder firing | `lib/reminder-scheduler.ts`, booted `main.tsx:20` | **Browser-local only.** No server producer; `reminder_sent` has no writer |
+| Reminder firing | `calendar/calendar-reminders.service.ts` — `@Cron("*/15 * * * *")` under `runPerTenant` (ADR 0109) | **Yes, server-side.** Writes the inbox row via `persistForRestaurant`, stamps `reminder_sent` / `reminder_sent_at`, logs a `calendar_reminder_runs` row per tenant per sweep. `lib/reminder-scheduler.ts` is demoted to draining what the legacy page queued (§9.1) |
 | Meeting memos | **none** | No |
 | iCal subscribers | External calendar clients | **Never observed to work** (`v3.0-TECH-DEBT.md:243-245`) — see settings.md §10 for the concrete suspect |
 
@@ -371,7 +530,7 @@ production (verified 2026-08-26), so nothing was ever misdelivered.
 | Write | Downstream reaction |
 |---|---|
 | Event create/update/delete | `/team`'s ManagerShiftDesk overlays the same events (`ManagerShiftDesk.tsx:17`); `/documents-reports` subscribes to calendar realtime and toasts (`DocumentsPage.tsx:157-170`) |
-| Reminder fire | Browser notification + a durable row in `/notifications` (`reminder-scheduler.ts:176-200`) |
+| Reminder fire (server) | A durable `notifications` row for every intended member + socket emit + Expo push (`persistForRestaurant`), a `calendar_reminder_dispatches` claim row per (entry, person), and `calendar_events.reminder_sent` / `.reminder_sent_at` stamped |
 | Event delete | Pending reminders for that event are cancelled first (`CalendarPage.tsx:313-315`) — correct, and easy to have missed |
 | Sidebar collapse | `localStorage` `'wineops-calendar-sidebar'` (`CalendarPage.tsx:53`) |
 | Labels / memo / email channel | **none** |
@@ -390,8 +549,10 @@ enough memory attached that the next conversation starts where the last one ende
 
 **Where the UI misleads**
 
-1. Reminders read as a property of the event; they are a property of the browser.
-   Nothing on screen says a reminder set here will not follow the user to their phone.
+1. ~~Reminders read as a property of the event; they are a property of the browser.~~
+   **Fixed 2026-09-03** on the rebuilt page (ADR 0109): a reminder is now a property of the
+   event, sent by a server cron, and the sheet shows the job's last run, next run and whether
+   this restaurant is served. Still true of the legacy page.
 2. The `email` channel toggle has no effect and does not survive a reopen
    (`CalendarPage.tsx:335`).
 3. The meeting-memo prompt asks for notes it discards.
@@ -401,13 +562,14 @@ enough memory attached that the next conversation starts where the last one ende
 
 ## 13. Roadmap
 
-1. **Move reminders server-side.** A cron over `reminder_enabled`/`reminder_days_before`
-   that writes through `persistForRestaurant` and stamps `reminder_sent`
-   (`calendar.service.ts:1118`, currently unwritten). The localStorage scheduler is a
-   good stopgap and should stay until this lands — but a reminder that only exists in
-   one browser is not a product promise you can make.
+1. ~~**Move reminders server-side.**~~ — **done 2026-09-03**
+   ([ADR 0109](../decisions/0109-a-reminder-is-the-houses-job-not-the-browsers.md)); see §1b
+   third pass and §10. What remains of it is items 14-16 below.
 2. **Honour or remove the `email` channel** (`EventModal.tsx:376`, `CalendarPage.tsx:335`).
-   Blocked on (1) for the honour path; removal is available today.
+   Now unblocked on the honour path — the cron exists — but it needs a recipient policy:
+   `RecipientResolverService` still falls back to a global env address for the legacy tenant
+   (`communications/scheduled-tasks.service.ts:120-146`), and mailing the wrong house is what
+   ADR 0022 exists to prevent. The rebuilt sheet renders the tick disabled with that reason.
 3. **Persist meeting memos** to the documents surface the handler names
    (`CalendarPage.tsx:308`). Blocked: `/documents-reports` has no upload path at all
    (documents-reports.md §10). Until then, remove the prompt rather than keep
@@ -430,3 +592,25 @@ enough memory attached that the next conversation starts where the last one ende
     `scripts/check_no_seeded_defaults.py:187` (§9.9).
 13. **Give `getEventTypes` a way to say "unreachable"** rather than returning the built-ins
     over an error (§9.5) — the page already renders the honest branch if the shape appears.
+14. **Add `reminder_minutes_before` to `calendar_events`** so "15 minutes before" is
+    representable. `reminder_days_before` is an INTEGER of days
+    (`20260805000000_baseline_from_production.sql:2358`), so the rebuilt sheet offers whole
+    days only and says why. Needs the column, `Create`/`Update` DTO fields, the mapper, and one
+    branch in `reminder-window.ts` `reminderDueAt`.
+15. **Remind materialised recurring occurrences only, or materialise on write.** A series
+    expanded client-side (`lib/calendar/recurrence.ts`) is one row, so its occurrences carry no
+    id to key a dispatch on and get no reminder. Either generate occurrences server-side at
+    create time, or add an occurrence key to `calendar_reminder_dispatches` — the second is
+    cheaper and the first is more honest.
+16. **Delete `startReminderScheduler()` from `apps/web/src/main.tsx:20`** when the legacy
+    calendar is retired (§9.1). Until then an entry created on the legacy page and never opened
+    in the rebuilt sheet can be reminded twice.
+17. **Add `apps/api-gateway/src/calendar` to `SERVER_SCAN_ROOTS`** in
+    `scripts/check_no_seeded_defaults.py:220` (§9.5), and fix the one thing it finds
+    (`generation_horizon_days: 90`, §9.4).
+18. **Reconcile quiet hours between the two runtimes** (§9.2) — the orchestrator reads them on
+    the process's clock, the gateway on the restaurant's.
+19. **Arm the job.** `CALENDAR_REMINDERS_ENABLED=true` on the gateway. Everything else is
+    built and tested; this is the founder's switch. Before flipping it, check
+    `GET /calendar/reminders/status` on the target deployment: `served` says whether ADR 0022
+    enumerates that restaurant, and `pending` says how many entries would come due.

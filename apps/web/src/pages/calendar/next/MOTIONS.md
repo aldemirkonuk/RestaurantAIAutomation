@@ -43,3 +43,21 @@ nowhere else.
   `calendar-next.css` (`.cn-expand`, `.cn-ink`, `.cn-cell`, `.cn-block`,
   `.cn-sheet`). The changes still happen; they stop travelling. `HoldToApprove`
   additionally swaps its timed hold for a two-step confirm.
+
+## Third pass, 2026-09-03 — the reminder register adds no motion
+
+`ReminderRegister.tsx` (server-side reminders, ADR 0109) introduces **no new
+motion token**. It rides the sheet's existing `cn-sheet-tuck` on arrival, and
+its chips use `cn-ink` for hover/focus like every other chip on the page.
+
+That is deliberate, and it is the same rule the rest of this file follows:
+
+- **A run count does not tally.** "4 due, 3 sent, 1 held for quiet hours" is a
+  count of record read from `calendar_reminder_runs`, not a figure being taken.
+  Animating it would claim the page watched the sweep happen.
+- **"Last run 9 minutes ago" does not tick.** The line is re-read on the query's
+  five-minute interval and re-renders whole. A number counting itself upward
+  implies a live connection to the job, and there is none.
+- **The warning lines do not arrive.** A claimed-but-unconfirmed reminder or a
+  truncated sweep is a fact that was already true when the page loaded; it is
+  drawn, not performed — the same reasoning as "ruling off is drawn".
