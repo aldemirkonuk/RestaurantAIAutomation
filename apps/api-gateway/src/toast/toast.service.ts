@@ -122,6 +122,48 @@ export class ToastService {
     return !this.mockMode || process.env.NODE_ENV === "production";
   }
 
+  /**
+   * Whether FABRICATED Toast data may be served.
+   *
+   * The reasoning above was applied to webhook signatures on 2026-08-25 and
+   * never to the data paths, so five endpoints kept returning invented menus,
+   * orders and sales figures gated on `this.mockMode` alone — and
+   * TOAST_MOCK_MODE is not set in the production Railway environment, so the
+   * TRUE default was live. `POST /toast/orders` was reporting an order placed
+   * at a vendor that was never placed: a false success on an acting path,
+   * which ADR 0020 (no fabricated answers, LOCKED) forbids outright.
+   *
+   * Closed the same way, and deliberately NOT by flipping the default to
+   * false: the default only governs the unset case, whereas someone setting
+   * TOAST_MOCK_MODE=true on the production service to debug would reopen the
+   * exact hole. This close cannot be reopened by a variable at all, and
+   * `apps/api-gateway/Dockerfile:42` bakes ENV NODE_ENV=production into the
+   * deployed image, so it engages regardless of Railway's variable list.
+   *
+   * NODE_ENV is read per call rather than cached at construction, matching
+   * `enforceSignature` above and `communications/guards/non-production.guard.ts:29`.
+   */
+  private mockDataAllowed(): boolean {
+    return this.mockMode && process.env.NODE_ENV !== "production";
+  }
+
+  /**
+   * The refusal served when mock data is suppressed. ADR 0020: a surface with
+   * no data says so, and an error must never render as emptiness — so this is
+   * a spoken 503, never an empty list and never a zero.
+   */
+  private toastNotConnected(detail: string): HttpException {
+    this.logger.error(
+      `Toast data requested in production with TOAST_MOCK_MODE on — refusing to fabricate (${detail})`,
+    );
+    return new HttpException(
+      `Toast is not connected for this restaurant, so ${detail}. ` +
+        `Mudavym does not show simulated POS data in production. ` +
+        `Connect Toast to see real figures.`,
+      HttpStatus.SERVICE_UNAVAILABLE,
+    );
+  }
+
   verifyWebhookSignature(
     payload: string,
     signature: string,
@@ -743,6 +785,9 @@ export class ToastService {
     this.logger.log(`Fetching menus for restaurant: ${restaurantId}`);
 
     if (this.mockMode) {
+      if (!this.mockDataAllowed()) {
+        throw this.toastNotConnected("its menus are unavailable");
+      }
       return this.getMockMenus();
     }
 
@@ -765,8 +810,14 @@ export class ToastService {
       return response.data;
     } catch (error) {
       this.logger.error(`Failed to fetch menus: ${error.message}`);
-      // Fallback to mock data
-      return this.getMockMenus();
+      // ADR 0020: a failed fetch says it failed. This previously fell back to
+      // getMockMenus(), which fabricated menus even when mock mode was
+      // correctly OFF — a real Toast integration plus one network blip served
+      // invented data with no marker. Mirrors getMenu's catch below.
+      throw new HttpException(
+        error.response?.data?.message || "Failed to fetch menus from Toast",
+        error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
@@ -788,6 +839,9 @@ export class ToastService {
     this.logger.log(`Fetching menu: ${menuId}`);
 
     if (this.mockMode) {
+      if (!this.mockDataAllowed()) {
+        throw this.toastNotConnected("this menu is unavailable");
+      }
       const menus = this.getMockMenus();
       const menu = menus.menus.find((m) => m.guid === menuId);
       if (!menu) {
@@ -856,6 +910,21 @@ export class ToastService {
     this.logger.log(`Creating order for restaurant: ${restaurantId}`);
 
     if (this.mockMode) {
+      if (!this.mockDataAllowed()) {
+        // The worst of the five: this returned a fabricated order with a
+        // real-looking guid and an OPEN status, reporting an order placed at a
+        // vendor that was never placed. ADR 0020: an action that cannot
+        // complete refuses out loud. The refusal must say NOTHING WAS PLACED,
+        // because the caller's next question is whether to retry.
+        this.logger.error(
+          "Order creation attempted in production with TOAST_MOCK_MODE on — refusing to fabricate a placed order",
+        );
+        throw new HttpException(
+          "Toast is not connected, so this order was NOT sent and nothing was placed. " +
+            "Connect Toast before ordering through it.",
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      }
       return this.createMockOrder(dto);
     }
 
@@ -888,6 +957,9 @@ export class ToastService {
     this.logger.log(`Fetching order: ${orderId}`);
 
     if (this.mockMode) {
+      if (!this.mockDataAllowed()) {
+        throw this.toastNotConnected("this order cannot be looked up");
+      }
       return this.getMockOrder(orderId);
     }
 
@@ -916,6 +988,9 @@ export class ToastService {
     this.logger.log(`Fetching sales data for restaurant: ${restaurantId}`);
 
     if (this.mockMode) {
+      if (!this.mockDataAllowed()) {
+        throw this.toastNotConnected("sales figures are unavailable");
+      }
       return this.getMockSalesData(startTime, endTime);
     }
 
@@ -930,24 +1005,74 @@ export class ToastService {
       return response.data;
     } catch (error) {
       this.logger.error(`Failed to fetch sales data: ${error.message}`);
-      // Fallback to mock data
-      return this.getMockSalesData(startTime, endTime);
+      // ADR 0020, and the sharpest case of it: analytics consumes sales. This
+      // previously fell back to getMockSalesData() even with mock mode OFF, so
+      // a transient orchestrator failure fed invented revenue into the engine
+      // indistinguishably from real takings.
+      throw new HttpException(
+        error.response?.data?.message ||
+          "Failed to fetch sales data from Toast",
+        error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
   /**
-   * Get Toast API statistics
+   * Get Toast API statistics.
+   *
+   * This calls `GET {AGENT_ORCHESTRATOR_URL}/api/v1/toast/statistics`, and that
+   * route has never existed. The orchestrator registers exactly these prefixes
+   * (`main.py:151-186` plus the `APIRouter(prefix=…)` declarations under
+   * `services/agent-orchestrator/api/`):
+   *   /api/v1/{admin,analytics,collect,onboarding,pos,preview,procurement,
+   *            quality,research,scan,studio}, /api/templates, and the
+   *   unprefixed health/metrics routes.
+   * `git log --all -S"/api/v1/toast"` returns no orchestrator commit at all —
+   * the router was not removed or renamed, it was never written. These calls
+   * arrived in `91b75dd1` (2026-04-13), by which point the orchestrator already
+   * shipped eight route modules, none of them Toast.
+   *
+   * Of the six dead calls this is the sharpest, because it is the only one with
+   * no mock branch: it goes to the orchestrator in EVERY configuration, mock
+   * mode on or off, dev or prod. It has therefore never once succeeded.
+   *
+   * What it used to do was half-right. The catch returned HTTP 200 with
+   * `{mode, status: "unknown", error}` — honest about the VALUE, in that it
+   * refused to invent a statistic, which satisfies the first half of ADR 0020
+   * (no fabricated answers, LOCKED). But it was not honest about the SURFACE.
+   * ADR 0020's other half is that an action which cannot complete refuses out
+   * loud, and a 200 is not a refusal: every health-style caller read this
+   * endpoint as reachable, every time, for as long as it has existed.
+   *
+   * 501, deliberately, and not the 503 used for the other five. "Toast is not
+   * connected" is a condition the owner can change — connect Toast and those
+   * calls work, so 503 and its retry-later meaning are true there. Neither is
+   * true here: connecting Toast would not help, because the missing piece is an
+   * orchestrator router nobody has written. A 503 would promise a future in
+   * which this succeeds — a quieter version of the same fabrication — and would
+   * invite a monitor to retry a route that cannot ever answer.
+   *
+   * Whether this endpoint should exist at all is a live question and NOT
+   * settled here; see the PR that added this comment. Nothing in the product
+   * renders it, but `apps/web/src/services/api/toast.ts:110` exports a client
+   * for it and it is published in the OpenAPI spec, so retiring it is the
+   * founder's call, not this change's.
    */
   async getStatistics(): Promise<any> {
     try {
       const response = await this.httpClient.get("/api/v1/toast/statistics");
       return response.data;
     } catch (error) {
-      return {
-        mode: this.mockMode ? "mock" : "real",
-        status: "unknown",
-        error: error.message,
-      };
+      this.logger.error(
+        `Toast statistics requested, but GET /api/v1/toast/statistics has ` +
+          `never been implemented on the orchestrator (upstream said: ${error.message})`,
+      );
+      throw new HttpException(
+        "Toast API statistics are unavailable: the upstream " +
+          "/api/v1/toast/statistics route has never been implemented, so this " +
+          "endpoint cannot answer and retrying will not help.",
+        HttpStatus.NOT_IMPLEMENTED,
+      );
     }
   }
 
