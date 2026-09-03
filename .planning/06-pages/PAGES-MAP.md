@@ -91,6 +91,7 @@ The founder's tracking mandate lands here: page telemetry rides the NF spine (`s
 | `/settings` | [[settings]] | owner | core | form | none | 8 |
 | `/simpos/:restaurantId` | [[simpos-terminal]] | dev | public | dev | none | 3 |
 | `/simpos/:restaurantId/orders` | [[simpos-order-log]] | dev | public | dev | none | 0 |
+| `/simpos/:restaurantId/scenarios` | [[simpos-scenarios]] | dev | public | dev | none | 0 |
 | `/sommelier` | [[sommelier]] | owner | core | chat | none | 0 |
 | `/studio` | [[studio]] | dev | core | command | none | 1 |
 | `/studio/certify` | [[studio-certify]] | dev | core | list+detail | none | 1 |

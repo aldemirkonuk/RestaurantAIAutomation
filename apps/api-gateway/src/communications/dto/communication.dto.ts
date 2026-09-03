@@ -45,6 +45,39 @@ export class SendEmailDto {
   @IsArray()
   @IsEmail({}, { each: true })
   bcc?: string[];
+
+  // ADR 0099 — the four threading fields.
+  //
+  // These are not new capability. `EmailOptions` (gmail.service.ts:36-48) has
+  // always carried them, `createMimeMessage` has always emitted `Reply-To`,
+  // `In-Reply-To` and `References`, and `users.messages.send` has always taken
+  // `threadId`. Only this DTO was missing them — and with
+  // `forbidNonWhitelisted: true` (main.ts:51-57) an undeclared field is not
+  // ignored, it is a 400. So every THREADED vendor reply from the orchestrator
+  // (`email_composer_service.py:345-352`) was rejected on validation, on top of
+  // being rejected on auth. The caller was not inventing fields.
+
+  @ApiPropertyOptional({ description: "Reply-To header" })
+  @IsOptional()
+  @IsEmail()
+  replyTo?: string;
+
+  @ApiPropertyOptional({
+    description: "Gmail thread id — appends this message to an existing thread",
+  })
+  @IsOptional()
+  @IsString()
+  threadId?: string;
+
+  @ApiPropertyOptional({ description: "RFC 5322 In-Reply-To message id" })
+  @IsOptional()
+  @IsString()
+  inReplyTo?: string;
+
+  @ApiPropertyOptional({ description: "RFC 5322 References chain" })
+  @IsOptional()
+  @IsString()
+  references?: string;
 }
 
 // SendSmsDto was deleted with POST /communications/sms on 2026-09-02
@@ -163,6 +196,14 @@ export class CommunicationResultDto {
 
   @ApiPropertyOptional({ description: "Message ID if available" })
   messageId?: string;
+
+  // ADR 0099 — the caller persists this as `procurement_conversations.
+  // gmail_thread_id` and feeds it back as `threadId` on the next reply
+  // (provider_conversation_agent.py:3090). `EmailResult.threadId` was always
+  // populated; the handler dropped it on the way out, so every reply would have
+  // started a new Gmail thread even once F1 and F2 were fixed.
+  @ApiPropertyOptional({ description: "Gmail thread id of the sent message" })
+  threadId?: string;
 
   @ApiPropertyOptional({ description: "Error message if failed" })
   error?: string;

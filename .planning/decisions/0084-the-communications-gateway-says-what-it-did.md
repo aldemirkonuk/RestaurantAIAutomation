@@ -282,8 +282,48 @@ does not close that hole and does not claim to.
 | Five of this ADR's eight CLAIMS rows discriminate | with `sms.service.ts`, `communication.dto.ts` and `procurement.service.ts` restored from the base in place, `check_decision_claims.sh` reports **REGRESSED (5)**; restored, 130 of 130 hold. The five are comment-blanked greps, because each fix's own comment quotes the string it removed |
 | The ADR number is free | `check_adr_numbers_unique.py` across **501 refs**, run after a first attempt at **0082 collided** with `fix/communications-page` — swept again immediately before the push |
 
+## Correction — 2026-09-02, appended by [[0099-vendor-email-had-no-caller-identity]]
+
+The decision above stands. Its **justification for keeping
+`POST /communications/email` does not**, and the correction is appended rather
+than edited in so the original reasoning stays legible.
+
+This document asserts, in Context and again in the Verification table:
+
+> That is the path every approved vendor email travels.
+> `POST /communications/email` has a live caller | `email_composer_service.py:354`
+> ← `provider_conversation_agent.py:3074`
+
+**Both halves are wrong, and were wrong on the day this was written.**
+
+1. **Not live.** `fdaa7fa0` (2026-08-25) added a class-level
+   `@UseGuards(JwtAuthGuard)` to this controller — a change made by
+   [[0019]]/OD-20, recorded in this same repository. That caller sends no
+   `Authorization` header, so it had been refused with a 401 for **eight days**
+   by 2026-09-02.
+2. **Not the path.** Measured against production `exzueerziesmczwlhomd`
+   2026-09-02: of 17 outbound `procurement_conversations` rows, **zero** carry
+   the row shape this Python path writes on success. All 17 carry the shape
+   written by `procurement.service.ts`, which calls `GmailService` in process
+   and never touches this HTTP route. `agent_activity_logs` is empty. Not one
+   production vendor email has ever travelled this route.
+
+The evidence cited was a **grep**, and a grep proves a call site exists in
+source, never that it works. Presented in a Verification table beside rows
+backed by `select` statements, it read as the same kind of fact. It was not.
+This is `absence-reported-as-health` one level out: the question "has this
+caller ever succeeded?" was answerable by a query nobody ran.
+
+Consequence for the decision itself: keeping the route was still the right call
+— deleting it would have removed the orchestrator's only send path — but it was
+kept for a reason that had not been checked, and the *urgency* was misjudged in
+both directions. The relay was less dangerous than described (no live traffic)
+and more broken than described (nothing could use it at all). The caller
+identity this document filed for the founder is supplied in [[0099]].
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-02 | — | Created |
+| 2026-09-02 | [[0099-vendor-email-had-no-caller-identity]] | Decision upheld; keep-the-route justification corrected (see above) |

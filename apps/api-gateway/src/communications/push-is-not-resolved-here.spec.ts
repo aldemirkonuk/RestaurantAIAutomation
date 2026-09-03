@@ -117,6 +117,22 @@ const POPULATED: Record<string, Row[]> = {
       user_id: USER,
       restaurant_id: RESTAURANT,
       push_subscription: { endpoint: "https://push.example/abc", keys: {} },
+      // The per-channel switches are set explicitly because a real row always
+      // has them — `sms_enabled` is `DEFAULT false` in the baseline migration
+      // (20260805000000_baseline_from_production.sql:3928-3930), so a row that
+      // omits it cannot occur in production.
+      //
+      // This fixture used to omit all three. That made the SMS assertion in
+      // "still resolves the restaurant's own email and phone" depend on
+      // `checkChannelPreference`'s "no preferences set" escape hatch rather
+      // than on any actual preference. ADR 0093 made that method honour the
+      // switches, so the escape hatch is no longer reachable for a row that
+      // exists. `sms_enabled: true` keeps this guard asserting the thing it is
+      // for — that the non-push channels still resolve after the push deletion
+      // — instead of asserting that SMS is delivered to a user who never
+      // opted in.
+      email_enabled: true,
+      sms_enabled: true,
     },
   ],
   push_subscriptions: [

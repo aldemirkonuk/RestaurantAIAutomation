@@ -16,6 +16,7 @@ import {
 } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { SimposService } from "./simpos.service";
+import { ScenarioVerifyService } from "./scenario-verify.service";
 
 /**
  * SimPOS — the fake POS terminal's backend surface (SimPOS testbed plan).
@@ -54,7 +55,10 @@ import { SimposService } from "./simpos.service";
 @UseGuards(JwtAuthGuard)
 @Controller("simpos/:restaurantId")
 export class SimposController {
-  constructor(private readonly simpos: SimposService) {}
+  constructor(
+    private readonly simpos: SimposService,
+    private readonly scenarios: ScenarioVerifyService,
+  ) {}
 
   @Post("catalog/seed")
   @ApiOperation({
@@ -191,5 +195,71 @@ export class SimposController {
     @Param("checkId") checkId: string,
   ) {
     return this.simpos.closeCheck(restaurantId, checkId);
+  }
+
+  // ==========================================================================
+  // Scenario harness (ADR 0093)
+  //
+  // The class guard and `assertSimRestaurant` apply here exactly as they do to
+  // everything else on this controller: the verifier reads Mudavym tables, so
+  // it is bounded to sim tenants for the same reason the terminal is
+  // (OD-35 — dev and production share one Supabase instance).
+  // ==========================================================================
+
+  @Get("scenarios/runs")
+  @ApiOperation({
+    summary: "Scenario runs for this sim restaurant, newest first",
+    description:
+      "Capped at 50. The cap is returned as `cap` and `capped`, and the page renders it as a floor (\u2265), never as a total.",
+  })
+  listScenarioRuns(@Param("restaurantId") restaurantId: string) {
+    return this.scenarios.listRuns(restaurantId);
+  }
+
+  @Get("scenarios/runs/:runId")
+  @ApiOperation({
+    summary: "One scenario run, expectation included",
+  })
+  getScenarioRun(
+    @Param("restaurantId") restaurantId: string,
+    @Param("runId") runId: string,
+  ) {
+    return this.scenarios.getRun(restaurantId, runId);
+  }
+
+  @Get("scenarios/runs/:runId/verify")
+  @ApiOperation({
+    summary: "Compare what the product did against what the scenario expected",
+    description:
+      "One row per named check with pass / fail / unverifiable. A failed read turns every check that depended on it into `unverifiable` and is listed in `reads` (ADR 0067); an empty expectation is never a pass (ADR 0020).",
+  })
+  verifyScenarioRun(
+    @Param("restaurantId") restaurantId: string,
+    @Param("runId") runId: string,
+  ) {
+    return this.scenarios.verify(restaurantId, runId);
+  }
+
+  @Post("scenarios/runs/:runId/sweep")
+  @ApiOperation({
+    summary: "Run the low-stock edge sweep now",
+    description:
+      "The cron runs every 2 minutes; this runs it immediately and returns the low-stock notifications raised since the run was posted, each with its `delivery_status` so 'emailed' is a fact on the row (ADR 0093 D5).",
+  })
+  runScenarioSweep(
+    @Param("restaurantId") restaurantId: string,
+    @Param("runId") runId: string,
+  ) {
+    return this.scenarios.runSweep(restaurantId, runId);
+  }
+
+  @Post("scenarios/runs/:runId/insights")
+  @ApiOperation({
+    summary: "Generate and persist insights now",
+    description:
+      "`candidateTypesAvailable` is an UPPER BOUND on the types with the data to fire, not a count of what this restaurant will receive.",
+  })
+  runScenarioInsights(@Param("restaurantId") restaurantId: string) {
+    return this.scenarios.generateInsights(restaurantId);
   }
 }

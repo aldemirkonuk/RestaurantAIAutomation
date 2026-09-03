@@ -104,7 +104,7 @@ WHERE contains(lower(file.content), "locked $20") OR contains(lower(file.content
 ```
 
 **Every hit is a defect, including in this department's own charter.**
-OD-23 (`OPEN-DECISIONS.md:33`) records that **no ADR sets any price**, so calling $20–50/mo
+OD-23 (`OPEN-DECISIONS.md:34`) records that **no ADR sets any price**, so calling $20–50/mo
 *locked* is a claim about our own company that the register does not support — R1 applied
 inward. Cleared by **STR-9**. This query is the counterpart to the overstatement watch:
 that one catches a verb too strong for its evidence, this one catches a *certainty* too
@@ -118,7 +118,7 @@ FROM "01-org/corporate/strategy-fundraising"
 WHERE contains(file.content, "573 insight") OR contains(file.content, "375 insight")
 ```
 
-**The block lifted on 2026-08-26** — OD-33 (`OPEN-DECISIONS.md:38`) settled the count at
+**The block lifted on 2026-08-26** — OD-33 (`OPEN-DECISIONS.md:39`) settled the count at
 **573** by transpiling `insight-catalog.ts` standalone. Hits are now fine inside a
 discussion and a defect inside a *block* that no longer has grounds (STR-10). The residual
 risk moved: `apps/api-gateway/src/analytics/insights/insight-catalog.spec.ts:10` still
@@ -136,7 +136,7 @@ WHERE contains(file.content, "YC_WEDGE_PLAN.md:404") OR contains(file.content, "
 Three anchors this vault quotes that have all moved: the ux-optimizer bullet is at `:406`
 (not `:404`), the Track A sequence row is at `:340` (not `:339`) **and is not the
 overstatement we said it was** — the unscoped word is the `:188` heading (STR-8) — and
-OD-23 sits at `OPEN-DECISIONS.md:33`, not `:27`. A non-empty result here is the department
+OD-23 sits at `OPEN-DECISIONS.md:34`, not `:27`. A non-empty result here is the department
 failing its own R2 in its own files.
 
 ## Standing counters — hand-entered, no jobs exist
@@ -162,7 +162,7 @@ failing its own R2 in its own files.
 ## OD-23 — reported monthly, by name, including when nothing changed
 
 - [ ] **2026-08-28 — still open. Day 4 of this department's watch, and the entry moved
-      under us.** OD-23 (`OPEN-DECISIONS.md:33`) now records three corrections: no ADR sets
+      under us.** OD-23 (`OPEN-DECISIONS.md:34`) now records three corrections: no ADR sets
       a price (so $20–50/mo is *open*, not locked), the source master plan is not in this
       repo, and `PROJECT.md:73` reads *"No revenue pressure: Build right, not fast."* The
       row also moved from `:27` to `:32`. **Nothing was resolved; the question got
@@ -171,11 +171,11 @@ failing its own R2 in its own files.
 
 ## Open forks
 
-- [ ] **OD-23** — the revenue target, its price, and its source document. **Founder call**, unresolved (`OPEN-DECISIONS.md:33`)
+- [ ] **OD-23** — the revenue target, its price, and its source document. **Founder call**, unresolved (`OPEN-DECISIONS.md:34`)
 - [ ] **CORP-F3** — one team until a term sheet; confirm the trigger or split now (`corporate.md:496`). STR-16 makes both directions readable
 - [ ] **CORP-F1 / OD-17** — artifacts per unit. See the first query: **16 documents, one team**
-- [ ] **OD-19** — the residual unguarded-by-omission routes (`OPEN-DECISIONS.md:32`); it is what claim #9 (*"Security complete"*) must be weakened against
-- [ ] **375 vs 573** — **closed** by OD-33 (`OPEN-DECISIONS.md:38`) on 2026-08-26. Carried here only until STR-10 removes the block from this vault's three remaining mentions
+- [ ] **OD-19** — the residual unguarded-by-omission routes (`OPEN-DECISIONS.md:33`); it is what claim #9 (*"Security complete"*) must be weakened against
+- [ ] **375 vs 573** — **closed** by OD-33 (`OPEN-DECISIONS.md:39`) on 2026-08-26. Carried here only until STR-10 removes the block from this vault's three remaining mentions
 
 ## Known defects in the department's founding artifact — re-measured 2026-08-28
 

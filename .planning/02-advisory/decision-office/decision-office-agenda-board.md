@@ -130,8 +130,8 @@ That card belongs to [[standards-verification-charter]]; the finding is routed, 
 
 ### Register defects open — found 2026-08-28, filed not fixed
 
-- [ ] **One id in two tables.** Open at OD-25 (`OPEN-DECISIONS.md:34`), resolved at
-      OD-25 (`OPEN-DECISIONS.md:34`) — the only such row in the file, and **no guard
+- [ ] **One id in two tables.** Open at OD-25 (`OPEN-DECISIONS.md:35`), resolved at
+      OD-25 (`OPEN-DECISIONS.md:35`) — the only such row in the file, and **no guard
       checks for it.** A real past instance for a `register-table-integrity` candidate
 - [ ] **A row that says Resolved inside the Open table.** OD-29's cell opens
       *"✅ Resolved in two cuts"* (ADR 0035, then ADR 0036) and the row has not moved.
@@ -226,7 +226,7 @@ that re-reads them is DO-9.
       acknowledged at `FORK-REGISTRY.md:125`, **and not one of the six has a row or a
       disposition.** Two have moved underneath the registry:
       [[0037-nfb-erasure-is-crypto-shredding]] largely answers RT-F1 (NF-B stays HELD),
-      and RT-F3 restates OD-26 (`OPEN-DECISIONS.md:35`)
+      and RT-F3 restates OD-26 (`OPEN-DECISIONS.md:36`)
 - [ ] **≥19 staged forks** — `OD-C1…C8`, `CM-F1…F6`, `F-1…F-5` — still unfiled
 - [ ] **`FORK-REGISTRY.md` §5.1's thirteen filing proposals** — written 2026-08-24, none
       filed, none rejected
