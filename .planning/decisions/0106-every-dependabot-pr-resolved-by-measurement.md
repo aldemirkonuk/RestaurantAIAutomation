@@ -19,8 +19,13 @@
 > claims; the worktree sweep is the half that finds the rest. And **being pushed
 > first is not a reason to keep a contested number**: holding 0102 would have
 > forced a collision onto a peer who cannot see this branch's claim until they
-> push, while moving cost one rename and five claim rows. Fifth consecutive ADR
-> to hit this.
+> push, while moving cost one rename and five claim rows.
+>
+> ADR 0100 called itself "the third recorded instance"; this is at least the
+> fourth, and no exact ordinal is asserted here because the intervening ADRs'
+> notes were not all readable from this checkout. What is new is the *shape*:
+> the previous instances were caught before the number was written. This one
+> survived two green guard runs and a push.
 
 ## Context
 
