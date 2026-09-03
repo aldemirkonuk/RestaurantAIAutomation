@@ -59,9 +59,10 @@ export type {
  * Declared as a keyed map, not an array of `{ id, … }` objects, so the shape
  * cannot be read as a table of seeded rows (ADR 0051 / S1). Every path below
  * is a route on `apps/api-gateway/src/analytics/analytics.controller.ts`:
- * insights :289 · pos-revenue :668 · cashflow :641 · seasonality :631 ·
- * forecast :206 · menu-engineering :611 · financial :123 ·
- * table-performance :422 · waiters :440 · inventory-science :153.
+ * insights :292 · pos-revenue :671 · cashflow :644 · seasonality :634 ·
+ * forecast :209 · menu-engineering :614 · financial :126 ·
+ * table-performance :425 · waiters :443 · inventory-science :156. (Every line
+ * re-grepped from the `@Get(...)` decorators on 2026-09-03.)
  */
 export const CATALOGUE: Record<AnalysisId, AnalysisSpec> = {
   reading,

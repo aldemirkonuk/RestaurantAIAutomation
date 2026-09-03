@@ -120,7 +120,7 @@ export function weekLabel(mondayStr: string): string {
  * "Not permitted" and "the register could not be read" are different facts,
  * and a page that renders them identically teaches the reader to distrust
  * both. Every analytics route sits behind a class-level `JwtAuthGuard`
- * (analytics.controller.ts:82), so a 401/403 here is a real answer — retrying
+ * (analytics.controller.ts:84), so a 401/403 here is a real answer — retrying
  * changes nothing and the page must not offer a retry that cannot work.
  */
 export interface Failure {

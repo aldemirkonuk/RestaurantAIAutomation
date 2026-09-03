@@ -145,9 +145,10 @@
   gap: 4px;
 }
 /* A global rule in the app's own stylesheet paints EVERY select
-   `background: white !important; color: #1F2937 !important` (and a charcoal
-   pair under `.dark`), which lands a raw white control on the paper ground and
-   ignores the house tokens entirely. Measured in the browser, 2026-09-03. The
+   `background: white !important; color: #1F2937 !important`
+   (`src/styles/globals.css:433-438`, with a charcoal counterpart at `:464-468`),
+   which lands a raw white control on the paper ground and ignores the house
+   tokens entirely. Measured in the browser, 2026-09-03. The
    two `!important`s below are the local answer — with both declarations
    important, the more specific selector wins — and the global is filed in the
    page note §9 as a foundation smell to fix once, outside this page's paths.

@@ -13,7 +13,7 @@
  * turn off, and it is stated here rather than hidden in the palette.
  *
  * Every catalogue path is behind the class-level `JwtAuthGuard`
- * (`apps/api-gateway/src/analytics/analytics.controller.ts:82`), so they go
+ * (`apps/api-gateway/src/analytics/analytics.controller.ts:84`), so they go
  * through the shared `apiClient` — a raw `fetch` sends no bearer token and
  * 401s into a silently empty panel, which is exactly the failure ADR 0020
  * exists to stop. `src/__tests__/no-raw-gateway-fetch.test.ts` enforces it.

@@ -332,10 +332,17 @@ eleventh analysis the way they could by the eighth component.
    title, a tooltip that names the row and spells the unit out, the server's
    `basis` behind "Show the working", and reference rules **only** where the
    endpoint publishes one.
-4. **Drag and resize survive, and are now tested for it** — `isDraggable` and
-   `isResizable` are one flag, `onDragStop` and `onResizeStop` both write the
-   slot, and the two new selects sit inside `draggableCancel` so choosing from
-   them never starts a drag (`Sheet.tsx`).
+4. **Drag and resize survive** — `isDraggable` and `isResizable` are one flag,
+   `onDragStop` and `onResizeStop` both write the slot, and the two new selects
+   sit inside `draggableCancel` so choosing from them never starts a drag
+   (`Sheet.tsx`). **Tested in `Sheet.test.tsx`** (5 cases), which stands a
+   capture in for the grid, reads the props `Sheet` hands it, and then
+   invokes `onDragStop` / `onResizeStop` with the layout react-grid-layout
+   would have produced. That is a narrower claim than "drag works end to end" —
+   it is "the callbacks are bound, and the layout they receive becomes the slot
+   we save", which is the half that can regress silently. jsdom cannot produce
+   RGL's pointer-delta math, so the other half is exercised by using the page;
+   it was, on the running dev server, on 2026-09-03.
 5. **The fetch follows the DRAFT, not the saved sheet.** Found by driving the
    real page: swapping a cutting showed a skeleton until the sheet was ruled
    off, because the query list still followed the saved arrangement. You cannot
@@ -352,8 +359,9 @@ is blank paper with a hairline**, not the coldest colour. Verified against the
 live gateway: 20 filled cells and 15 blank over the 30-day window.
 
 **What was fixed in the gateway** (module `apps/api-gateway/src/analytics/**`,
-each with a spec in `absent-not-zero.spec.ts`, each verified with curl against
-the local gateway on :4000, restaurant `550e8400-…0000`):
+all three specified in `absent-not-zero.spec.ts` (15 cases; all 15 fail against
+the pre-fix tree), each verified with curl against the local gateway on :4000,
+restaurant `550e8400-…0000`):
 
 | Was | Is | Where |
 |---|---|---|
@@ -417,23 +425,26 @@ In-degree 2 ([PAGE_MAP](../foundation/PAGE_MAP.md):144): from `/` (:64) and
   `useReportsNextData.ts` (`useQueries` over whatever is on the sheet + the v2
   sheet codec), `rp-sheet.ts` (ids, drawings, slots, the house arrangement),
   `rp-format.ts`, `reports-next.css`, `MOTIONS.md`, `ReportsNext.test.tsx`
-  (31 tests). `Cuttings.tsx` was **deleted** in the second pass — its eight
-  bespoke bodies are now `view` builders in the two register files. Route
-  already gated at `App.tsx:306`.
-  **Size, honestly:** 17 files, ~3,600 lines of source excluding the CSS, the
-  tests and `MOTIONS.md`. That is well past the p4 brief's "~900 lines across
-  its files" — pass one already shipped 2,213 and this pass roughly doubled what
-  the page does (eleven analyses against eight cuttings, seven drawings against
-  one apiece). The response was to split rather than to cut: no source file is
-  over 700 lines, and the two largest are declarative register definitions, not
-  logic. Recorded here rather than left for a reader to discover.
+  (31 tests) and `Sheet.test.tsx` (5 — the drag/resize contract).
+  `Cuttings.tsx` was **deleted** in the second pass — its eight bespoke bodies
+  are now `view` builders in the two register files. Route already gated at
+  `App.tsx:306`.
+  **Size, honestly:** 18 files; 14 of them source, totalling 3,608 lines
+  (counted 2026-09-03, excluding the two test files, the CSS and `MOTIONS.md`).
+  That is well past the p4 brief's "~900 lines across its files" — pass one
+  already shipped 2,213, and this pass roughly doubled what the page does
+  (eleven analyses against eight cuttings, seven drawings against one apiece).
+  The response was to split rather than to cut: the largest source
+  file is `rp-registers-house.tsx` at 662 lines, and the two largest are
+  declarative register definitions, not logic. Recorded here rather than left
+  for a reader to discover.
 
 ## 4. Endpoints
 
 The widest analytics consumer among the 17 core-ops pages. Atlas rows:
 [ENDPOINTS](../foundation/ENDPOINTS.md):10 (`analytics`, 39 — atlas's **all-unguarded warning**
 is stale; guarded at class level since 2026-08-24 (#31),
-`apps/api-gateway/src/analytics/analytics.controller.ts:51`),
+`apps/api-gateway/src/analytics/analytics.controller.ts:84`),
 :618 (`user-preferences`), :249 (`inventory`), :389 (`procurement`), :663 (`wines`).
 
 | Method | Path | Call site |
@@ -449,20 +460,20 @@ is stale; guarded at class level since 2026-08-24 (#31),
 
 **Mudavym redesign reads (all via `apiClient`, all tenant-keyed on
 `activeRestaurantId`, all behind the class-level `JwtAuthGuard` at
-`apps/api-gateway/src/analytics/analytics.controller.ts:82`):**
+`apps/api-gateway/src/analytics/analytics.controller.ts:84`):**
 
 | Method | Path | Cutting | Verified at |
 |---|---|---|---|
-| GET | `/analytics/insights/:rid?limit=40` | The reading · Ask the book | `analytics.controller.ts:289` |
-| GET | `/analytics/pos-revenue/:rid?days=` | Through the till | `analytics.controller.ts:668` |
-| GET | `/analytics/cashflow/:rid` | Spend pacing | `analytics.controller.ts:641` |
-| GET | `/analytics/seasonality/:rid` | The week's shape | `analytics.controller.ts:631` |
-| GET | `/analytics/forecast/:rid?horizon=14` | What's coming | `analytics.controller.ts:206` |
-| GET | `/analytics/menu-engineering/:rid` | Margin against movement | `analytics.controller.ts:611` |
-| GET | `/analytics/financial/:rid` | Figures of record | `analytics.controller.ts:123` |
-| GET | `/analytics/table-performance/:rid?sinceDays=90` | The room (added 2026-09-03) | `analytics.controller.ts:422` |
-| GET | `/analytics/waiters/:rid?sinceDays=90` | Who served it (added 2026-09-03) | `analytics.controller.ts:440` |
-| GET | `/analytics/inventory-science/:rid` | What to buy back (added 2026-09-03) | `analytics.controller.ts:153` |
+| GET | `/analytics/insights/:rid?limit=40` | The reading · Ask the book | `analytics.controller.ts:292` |
+| GET | `/analytics/pos-revenue/:rid?days=` | Through the till | `analytics.controller.ts:671` |
+| GET | `/analytics/cashflow/:rid` | Spend pacing | `analytics.controller.ts:644` |
+| GET | `/analytics/seasonality/:rid` | The week's shape | `analytics.controller.ts:634` |
+| GET | `/analytics/forecast/:rid?horizon=14` | What's coming | `analytics.controller.ts:209` |
+| GET | `/analytics/menu-engineering/:rid` | Margin against movement | `analytics.controller.ts:614` |
+| GET | `/analytics/financial/:rid` | Figures of record | `analytics.controller.ts:126` |
+| GET | `/analytics/table-performance/:rid?sinceDays=90` | The room (added 2026-09-03) | `analytics.controller.ts:425` |
+| GET | `/analytics/waiters/:rid?sinceDays=90` | Who served it (added 2026-09-03) | `analytics.controller.ts:443` |
+| GET | `/analytics/inventory-science/:rid` | What to buy back (added 2026-09-03) | `analytics.controller.ts:156` |
 | GET/PATCH | `/users/:userId/preferences` | the sheet: slots, subjects and drawings, key `reportsSheet` | `hooks/useUserPreferences.ts:73,83` |
 
 **Only what is on the sheet is fetched.** `useQueries` builds its query list from
@@ -522,7 +533,7 @@ drift chips, S02/S03 Plus scorecards, S10 Plus days-of-cover. Pro depth (forecas
 
 - The 39 analytics endpoints behind every number on this page are guarded since
   2026-08-24 (#31) — `@UseGuards(JwtAuthGuard)` at class level
-  (`apps/api-gateway/src/analytics/analytics.controller.ts:51`); the atlas row
+  (`apps/api-gateway/src/analytics/analytics.controller.ts:84`); the atlas row
   ([ENDPOINTS](../foundation/ENDPOINTS.md):10 — "classify these") is stale.
 - `Reports.v1.backup.tsx` is registered dead code (`v3.0-TECH-DEBT.md:257`).
 - Analytics truth-suite work is carried-forward unbuilt scope
@@ -530,13 +541,16 @@ drift chips, S02/S03 Plus scorecards, S10 Plus days-of-cover. Pro depth (forecas
 
 **Found by the Mudavym rebuild, 2026-09-02 — status after the second pass:**
 
-1. **`scripts/check_no_seeded_defaults.py` does not scan the rebuilt page.**
-   `SCAN_ROOTS` (:187-198) lists nine rebuilt surfaces and not
-   `apps/web/src/pages/reports/next`. The guard therefore passes without having
-   looked. Rules S1–S3 were run against the directory by hand and it is clean
-   (0 row sets, 0 placeholders, 0 write loops) — but a hand check is not a
-   guard. **Add `Path("apps/web/src/pages/reports/next")` to `SCAN_ROOTS`.**
-   **Still open**: `scripts/` is outside this page's paths.
+1. ~~`scripts/check_no_seeded_defaults.py` does not scan the rebuilt page.~~ —
+   **THIS FINDING WAS ITSELF WRONG, struck 2026-09-03.** `SCAN_ROOTS` already
+   contains `Path("apps/web/src/pages/reports/next")`
+   (`scripts/check_no_seeded_defaults.py:199`), added by the parent session's
+   wave commit `9b6607e2`, which predates this page's own commits — so the
+   finding was authored against a tree that no longer existed and never
+   re-checked. Re-run 2026-09-03: `PASS — 129 web file(s) and 13 gateway
+   file(s) across 19 root(s)`, this directory among them. The lesson is the
+   register's own: a gap recorded once and not re-verified rots into a false
+   claim about health, which is the same fault in the opposite direction.
 2. ~~`financial.cogs` / `financial.revenue` are unconditional sums~~ —
    **FIXED 2026-09-03**, `analytics.service.ts:428-441`. Both return `null` when
    the loader came back empty, with a `basis` naming both possibilities; the
@@ -569,7 +583,9 @@ drift chips, S02/S03 Plus scorecards, S10 Plus days-of-cover. Pro depth (forecas
 6. **A global rule in the app's stylesheet paints every `<select>`
    `background: white !important; color: #1F2937 !important`** (and a charcoal
    pair under `.dark`), overriding the house tokens on any form control on any
-   Mudavym page. Measured in the browser on 2026-09-03. This page beats it
+   Mudavym page: `apps/web/src/styles/globals.css:433-438`, with the `.dark`
+   counterpart at `:464-468`. Measured in the browser on 2026-09-03, then
+   located in source. This page beats it
    locally with a more specific `!important` pair (`reports-next.css`,
    `.rp-page .rp-select`), which is a patch, not a fix — the global belongs in
    the foundation's own audit.
@@ -620,8 +636,9 @@ plus the writing desk that is honest about having none. Seven drawings, offered
 per register only where they are true of its data. Every register renders four
 distinct states, every cutting prints its window and can print the server's own
 `basis` sentence, and both the subject and the drawing of every cutting are the
-reader's choice and persist with the layout. 31 render-contract tests hold the
-honesty rules and the two switches.
+reader's choice and persist with the layout. 36 tests hold the honesty rules,
+the two switches and the drag/resize contract (31 render-contract in
+`ReportsNext.test.tsx`, 5 canvas in `Sheet.test.tsx`).
 
 **And three gateway shapes that were reporting absence as fact** — `financial`
 COGS/revenue, the forecast total, the seasonality tie-break — are fixed at the
@@ -640,7 +657,7 @@ sections, which the redesign deliberately does not carry (§1b).
 
 | Method | Path | Auth | Gateway controller | Returns |
 |---|---|---|---|---|
-| GET | `/analytics/insights/:rid` (+`?refresh=true`) | JWT (class, `analytics/analytics.controller.ts:51`) | same file | Generated insights (347-type generator) |
+| GET | `/analytics/insights/:rid` (+`?refresh=true`) | JWT (class, `analytics/analytics.controller.ts:84`) | same file | Generated insights (347-type generator) |
 | GET/POST | `/analytics/goals/:rid` | JWT | `analytics.controller.ts` | Goals + progress |
 | GET/POST | `/analytics/recommendations/:rid/actions`, `…/action` | JWT | `analytics.controller.ts` | Server-side hide/pin disposition |
 | GET | `/analytics/table-performance/:rid` | JWT | `analytics.controller.ts` | Seating density |
@@ -648,7 +665,7 @@ sections, which the redesign deliberately does not carry (§1b).
 | GET | `/inventory/:rid` family | JWT | `inventory` module | Stock for the inventory blocks |
 | GET | `/procurement/orders` | JWT | `procurement.controller.ts` | Order metrics |
 | GET | `/wines?ids=` | JWT | `wines` module | Names for ids |
-| GET | **AI Command Palette** → `/analytics/insights/:rid` | JWT | `analytics.controller.ts:289` | ~~No request is made~~ — corrected 2026-09-02: it queries the real feed via `useEngineInsights` (`AICommandPalette.tsx:1-27`) |
+| GET | **AI Command Palette** → `/analytics/insights/:rid` | JWT | `analytics.controller.ts:292` | ~~No request is made~~ — corrected 2026-09-02: it queries the real feed via `useEngineInsights` (`AICommandPalette.tsx:1-27`) |
 | — | **Report Generator** | — | **none** | ~~`console.log`~~ — corrected 2026-09-02: no `onGenerate` prop is passed at all (`Reports.tsx:911-917`); the component states generation is unavailable |
 
 All analytics calls are raw `fetch` against `VITE_API_GATEWAY_URL`
@@ -722,8 +739,8 @@ about it, with a visible line back to the data.
    open on the shipping page.
 5. Delete `pages/Reports.v1.backup.tsx` (`v3.0-TECH-DEBT.md:257`).
 6. **Goals still has no cutting** (`GET/POST /analytics/goals/:rid`,
-   `analytics.controller.ts:481,493`). Seating density
-   (`table-performance`, :422) **was built** on 2026-09-03 as "The room", along
+   `analytics.controller.ts:484,496`). Seating density
+   (`table-performance`, :425) **was built** on 2026-09-03 as "The room", along
    with `waiters` and `inventory-science`. Adding goals is now one entry in
    `rp-catalogue.tsx` — a path, a decoder, a view builder and the drawings that
    are true of it — plus its id in `rp-sheet.ts`; the stored sheet is versioned,
@@ -735,14 +752,18 @@ about it, with a visible line back to the data.
 
 ### Outside this page's paths, needed by the rebuild (see §9)
 
-9. **`scripts/check_no_seeded_defaults.py`**: add
-   `Path("apps/web/src/pages/reports/next")` to `SCAN_ROOTS` (:187). The guard
-   currently passes on this page without scanning it. **Still open.**
+9. ~~`scripts/check_no_seeded_defaults.py`: add
+   `Path("apps/web/src/pages/reports/next")` to `SCAN_ROOTS`~~ — **it was
+   already there** (`:199`, added by the wave commit `9b6607e2`). Struck
+   2026-09-03; see §9.1 for why the finding was wrong when it was written.
 10. ~~`analytics.service.ts`: return `null` rather than `0` for
     `financial.cogs` / `financial.revenue` and `forecast.totalForecastDemand`~~
     — **done 2026-09-03** (§9.2-9.3).
 11. ~~`advanced-analytics.service.ts`: return `null` for `seasonality.bestDay` /
     `worstDay` when no weekday is separable~~ — **done 2026-09-03** (§9.4).
+12. **Nav**: none needed — `/reports` is already in the sidebar
+    (`components/layout/Sidebar.tsx:99`) and the route already gated
+    (`App.tsx:306`).
 13. **An hour-grain sales endpoint**, for the weekday × hour heat map the
     founder named first (§9.5). Shape: `GET /analytics/pos-hours/:rid?days=`
     returning non-voided `pos_checks` bucketed by `(weekday, hour)` with a count
@@ -753,11 +774,9 @@ about it, with a visible line back to the data.
     empty one" ("Before service", "Buying week"). Now cheap: a layout is
     `{ id, slot, graph }[]` and the codec is versioned. Held this pass so two
     per-cutting switches could land without a preset menu burying them.
-15. **Catalogue `basket` and `vendor-scorecard`** (`analytics.controller.ts:457`,
-    `:621`) once their payload shapes have been read line by line (§9).
+15. **Catalogue `basket` and `vendor-scorecard`** (`analytics.controller.ts:460`,
+    `:624`) once their payload shapes have been read line by line (§9).
 16. **Foundation**: the global `select { background: white !important }` rule
-    (§9.6) overrides the house tokens on every Mudavym page. This page patches
-    it locally; the rule itself should be scoped or dropped.
-12. **Nav**: none needed — `/reports` is already in the sidebar
-    (`components/layout/Sidebar.tsx:99`) and the route already gated
-    (`App.tsx:306`).
+    (`apps/web/src/styles/globals.css:433-438`, `.dark` at `:464-468`; §9.6)
+    overrides the house tokens on every Mudavym page. This page patches it
+    locally; the rule itself should be scoped or dropped.
