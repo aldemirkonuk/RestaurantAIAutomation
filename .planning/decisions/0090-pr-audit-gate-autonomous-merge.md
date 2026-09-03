@@ -161,6 +161,60 @@ limitation, not a verified guarantee.
   passed this gate (under-blocking) — either is grounds to reopen the "fully
   autonomous" half of this decision specifically, not the whole gate.
 
+## Correction — 2026-09-03, found by the gate's own first real audit
+
+Run 33695630472 (PR #261's own `PR Audit Gate` check, first run with a working
+`ANTHROPIC_API_KEY`) BLOCKed on both correctness and security, having audited
+the PR that introduces this exact ADR and its implementation. Real findings,
+not hypothetical, fixed same day (see the commit that added this section):
+
+1. **Security BLOCK — the gate audited its own, possibly-modified code.** The
+   workflow was `on: pull_request` with default checkout (the PR's own tree)
+   and `contents: write` + the live key in env. A same-repo PR editing
+   `scripts/pr_audit_gate.py` could make the verdict parser always return
+   PASS, self-merge, and exfiltrate the key on the way out — a same-repo
+   mirror of the OAuth self-provisioning hole this ADR already cites, one
+   layer up in CI. Fixed with `pull_request_target` + a checkout pinned to
+   the base commit (the standard GitHub-documented fix for this exact "pwn
+   request" class), plus a belt-and-suspenders check inside the now-trusted
+   script: any diff touching the gate's own files force-BLOCKs with an
+   explicit escalation note regardless of angle verdicts. This ADR's original
+   "no migration, no auth FK, no tenant boundary — nothing to burn" framing
+   for this class of change was wrong; a CI execution surface with write
+   access and a secret is exactly that class of burn, just not a database one.
+2. **Correctness BLOCK, livelock.** The skill instructed committing the
+   report file, on the PR's own branch, immediately before the gated merge
+   call — which changes the head SHA the hook's existence-check is keyed to,
+   so the just-written report can never satisfy a check for the SHA it
+   produces. Fixed by dropping the committed-file requirement: both
+   enforcement paths now post a machine-readable
+   `<!-- pr-audit-gate: pr=<n> sha=<sha> verdict=PASS|BLOCK -->` marker as a
+   PR comment instead, which has no SHA-changing side effect.
+3. **Correctness BLOCK, wrong-PR resolution.** The hook resolved "the PR to
+   check" via the *current checkout's branch*, never the PR number in the
+   command actually being gated — in this repo's ~90-worktree concurrency, a
+   session on branch A could validate branch B's merge against A's own
+   report. Fixed: the hook now parses the PR number out of the gated command.
+4. **Correctness BLOCK, verdict bypass.** `"PASS" in line and "BLOCK" not in
+   line` over the report's first 20 lines is a substring scan a BLOCK
+   report's own prose could satisfy ("Upstream required contexts: all
+   PASS"), green-lighting a merge the audit explicitly rejected — this
+   repo's own `absence-reported-as-health` shape, found inside the guard
+   written to prevent it. Fixed: the marker line from (2) is now the only
+   thing either path is allowed to parse for a verdict.
+
+None of the four are edge cases speculated into existence — all four are
+concrete, traced failure scenarios the audit gave file:line citations for.
+This is stated here rather than only in the fix commit because it changes a
+claim the Decision section above makes: "fully autonomous merge" was shipped
+with a path that could have been silently self-authorized by any same-repo PR
+touching the gate's own files, for however long it took someone to notice.
+It was noticed by the gate itself, on its own first real run, before this ADR
+was locked — which is the argument for keeping the mandatory adversarial-pass
+and multi-angle shape even where it is inconvenient, not evidence the shape
+worked as designed (a BLOCK on the PR that introduces it is not the intended
+happy path).
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -168,3 +222,4 @@ limitation, not a verified guarantee.
 | 2026-09-02 | Aldemir (via `AskUserQuestion`) | Both enforcement layers; fully autonomous merge — answered live, this ADR records it |
 | 2026-09-02 | — | Created; status left `Proposed` pending the founder's explicit lock per this log's own convention |
 | 2026-09-02 | Aldemir (chat) | Asked "sonnet ultrathink or opus high" — corrected model from "Sonnet max" to **Opus / high** per ADR 0050's own override rule, before merge. Files/branding renamed off "sonnet" to match (`pr-merge-{auditor,adversary}.md`, `pr-audit-gate.yml`, `pr_audit_gate.py`, `require_pr_audit.py`) |
+| 2026-09-03 | `PR Audit Gate` (Opus, run 33695630472) | BLOCK — security + correctness, both confirmed real; 4 fixes landed same day, see Correction above |
