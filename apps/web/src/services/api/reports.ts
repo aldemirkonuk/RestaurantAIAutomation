@@ -83,8 +83,20 @@ export interface GeneratedReport {
 
 export interface ReportListResponse {
   reports: GeneratedReport[]
-  total: number
+  /** Null when the gateway could not count. Never the page length — see below. */
+  total: number | null
 }
+
+/**
+ * The server's own page bound (`reports.service.ts:95`, `Math.min(200, … ?? 100)`).
+ *
+ * ADR 0086 capped this read, which until then returned the whole table. A cap
+ * a caller does not know about is a window it will render as a total, so the
+ * number is declared here and sent explicitly rather than inherited from the
+ * server default: a list that comes back at this length is a FLOOR, and the
+ * page that renders it has to say so.
+ */
+export const REPORTS_PAGE_LIMIT = 100
 
 /**
  * GET /reports — replaces a direct `supabase.from('generated_reports')` read.
@@ -94,7 +106,9 @@ export interface ReportListResponse {
  * gateway holds the service-role key and scopes by the restaurant on the JWT.
  */
 export async function listReports(): Promise<GeneratedReport[]> {
-  const { data } = await apiClient.get<ReportListResponse>('/reports')
+  const { data } = await apiClient.get<ReportListResponse>('/reports', {
+    params: { limit: REPORTS_PAGE_LIMIT },
+  })
   return Array.isArray(data?.reports) ? data.reports : []
 }
 
@@ -110,13 +124,16 @@ export async function listReportsWithTotal(
   opts: { limit?: number; offset?: number } = {},
 ): Promise<{
   reports: GeneratedReport[]
-  total: number
+  total: number | null
 }> {
   const { data } = await apiClient.get<ReportListResponse>('/reports', {
     params: { limit: opts.limit, offset: opts.offset },
   })
   const reports = Array.isArray(data?.reports) ? data.reports : []
-  return { reports, total: typeof data?.total === 'number' ? data.total : reports.length }
+  // `reports.length` is NOT a fallback for the total. Since ADR 0086 bounded the
+  // query, using it would report the page size as the count — the window-as-total
+  // fault this function's own docblock exists to prevent. Unknown stays unknown.
+  return { reports, total: typeof data?.total === 'number' ? data.total : null }
 }
 
 export const REPORT_TYPES: readonly ReportType[] = [

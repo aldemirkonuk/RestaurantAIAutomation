@@ -146,6 +146,20 @@ in-scope findings fixed same day:**
   from the only unwindowed query → the gateway's `count: "exact"` total is
   threaded through (`listReportsWithTotal`), the drawer renders it, and a
   "N more filed" line discloses what the 20-row list omits.
+  **Completed 2026-09-02 (merge-check on #262).** Bounding that query in ADR
+  0086 turned two inherited fallbacks into the fault it was closing, on both
+  halves of this route:
+  - `total: count ?? reports.length` (`reports.service.ts:122-131`) was harmless
+    while the read was unbounded — the array *was* the table — and became "the
+    page size is the total" the moment a cap existed. `total` is
+    `number | null` end to end now (DTO, `listReportsWithTotal`, `reportsQ`),
+    and `reportsTotal` already rendered `null` as `—`.
+  - The **legacy** half (`DocumentsPage.tsx`) was not measured in that pass and
+    silently inherited the server's default page, so its archive read as
+    complete. The cap is declared as `REPORTS_PAGE_LIMIT`
+    (`services/api/reports.ts:89-99`), sent explicitly, and a list arriving at
+    it says it is a floor. Held by `services/api/reports.window.test.ts` and one
+    gateway case; 3 + 1 fail against `origin/main`.
 - Correctness defects fixed: sort/display disagreement on date-only values
   (shared `sortKey` = `fmtDate`'s calendar; unparseable dates sort LAST, never
   as oldest debt); the exact-looking waiting count now carries the review
@@ -333,7 +347,7 @@ dashboard.md §7.
   `PageGate` double-`.mudavym` charcoal-nesting latent — filed as one
   cross-page task, not fixed from this branch.
 - ~~**`/logs` reads the same endpoint and has not caught up (ADR 0086).**~~
-  **Closed on this branch.** `LogsTimelinePage.tsx` now reads `failedSources`
+  **Closed on `main`** (PR #262, `4d0f6c50`). `LogsTimelinePage.tsx` now reads `failedSources`
   and `sourcesQueried` and tolerates the nullable `occurredAt`, so both pages
   treat a lost register the same way. Its own remaining gap — a 100-row feed
   with no floor marker, and no `PAGES` entry in `check_windowed_figures.py` —
