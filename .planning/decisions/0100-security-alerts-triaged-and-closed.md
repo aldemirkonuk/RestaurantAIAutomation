@@ -215,6 +215,24 @@ checking the guard between them**; the lesson is to run the claims guard
 
 Alert accounting reconciles exactly: **36 fixed + 16 dismissed + 5 open = 57**.
 
+### Four more dismissals, on alerts this branch's own fixes raised
+
+CodeQL re-scanned the PR and flagged the fixes themselves. Three were fair and
+were fixed in code (see the follow-up commit); four were the guard being
+mistaken for the hole, and are dismissed:
+
+- **`py/full-ssrf` — `safe_fetch.py`.** The sink inside the SSRF guard.
+  `assert_url_is_safe` runs on the line above it and again on every redirect
+  hop; a fetch helper necessarily contains a fetch.
+- **`py/clear-text-logging` ×3 — `seed_database.py`.** After the restructure the
+  only value that can reach `print` is a hardcoded literal already declared in
+  the same file. Measured with `SEED_DEMO_PASSWORD` and `SEED_MANAGER_PASSWORD`
+  set to sentinel values: neither sentinel appears in stdout. Same ground as the
+  `seed_demo_user.py` dismissal above.
+
+Running total on GitHub: **20 alerts dismissed with a written reason**, each one
+individually, none in bulk.
+
 ## Dependabot: 9 criticals, 2 real first-party, 7 transitive
 
 | Package | Scope | Imported here? | Verdict |
