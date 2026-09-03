@@ -158,6 +158,14 @@ jobs:
     if: >-
       github.event_name == 'workflow_run'
       || (github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit')
+    # Exposed so deploy-audit (a separate job) can record what was actually
+    # VERIFIED, not just what was merged — see the audit-summary step below;
+    # a false "provenance_verified: true" against the raw merge sha, on the
+    # exact watch-path-skip case this whole file exists to make green, is
+    # the same absence-reported-as-health shape one layer up (found by PR
+    # #291's own security audit before this ever landed).
+    outputs:
+      gateway_commit: ${{ steps.expect.outputs.expect }}
     steps:
       # Pinned to the audited revision, not to whatever main has become — three
       # or four sessions merge into this repo concurrently, so `main` at audit
@@ -380,19 +388,34 @@ jobs:
     steps:
       # `provenance_verified` is the field that matters. Stage results alone say
       # only that nothing complained; this says the running gateway named the
-      # merged revision as its own build. The record now distinguishes "we
+      # EXPECTED revision as its own build. The record now distinguishes "we
       # checked and it is the right build" from "nothing failed".
+      #
+      # CORRECTED (found live, PR #291's own security audit): "the right
+      # build" is not always `commit` below. Stage 2 compares against
+      # `gateway_commit` (verify-api-gateway's resolved watch-path commit —
+      # see resolve_watched_commit.py), which on the exact watch-path-skip
+      # case this file exists to make green legitimately differs from the
+      # raw merged sha. Recording only `commit` + `provenance_verified: true`
+      # made this artifact assert "the gateway named THIS sha as its own
+      # build" for a sha the gateway never ran — the repo's own
+      # absence-reported-as-health shape, in a 90-day-retained record nothing
+      # else re-derives. `gateway_commit` (empty when Stage 2 didn't run, or
+      # equal to `commit` on an ordinary rebuild) makes that distinction
+      # readable without re-deriving it from the run logs.
       - name: Write audit summary
         run: |
           SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
           GW="${{ needs.verify-api-gateway.result }}"
+          GATEWAY_COMMIT="${{ needs.verify-api-gateway.outputs.gateway_commit }}"
           if [ "$GW" = "success" ]; then PROV=true; else PROV=false; fi
           cat > deploy-audit.json <<EOF
           {
             "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "commit": "${SHA}",
+            "gateway_commit": "${GATEWAY_COMMIT}",
             "provenance_verified": ${PROV},
-            "provenance_means": "the gateway's /api/v1/health/live reported this exact commit as its own build, and /api/v1/health/ready answered 200",
+            "provenance_means": "the gateway's /api/v1/health/live reported gateway_commit (not necessarily the merged commit — see resolve_watched_commit.py for path-scoped services) as its own build, and /api/v1/health/ready answered 200",
             "orchestrator": "${{ needs.verify-orchestrator.result }}",
             "api_gateway": "${GW}",
             "frontend": "${{ needs.verify-frontend.result }}",

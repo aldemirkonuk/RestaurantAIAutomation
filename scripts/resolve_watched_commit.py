@@ -25,10 +25,16 @@ what got reported as absence.
 WHAT THIS DOES
 --------------
 Given the sha that was merged and a service's watch-path patterns, finds the
-most recent commit AT OR BEFORE that sha which touches at least one of those
-patterns -- the commit Railway's own watch-path logic would actually have
-built from. That, not the raw merge sha, is what a deploy-verification check
-should expect a path-scoped service to be running.
+most recent commit AT OR BEFORE that sha, ON THE FIRST-PARENT LINE, which
+touches at least one of those patterns -- the commit Railway's own watch-path
+logic would actually have built from. That, not the raw merge sha, is what a
+deploy-verification check should expect a path-scoped service to be running.
+
+`--first-parent` matters and is not incidental: `git log <sha> -- <paths>`
+without it applies git's default history simplification, which can silently
+skip a real merge commit M and resolve to a side-branch commit that was never
+`main`'s head and that Railway never built from -- see `resolve()`'s own
+docstring for the live case this broke on and how the fix was verified.
 
 KEEPING THIS IN SYNC WITH RAILWAY
 ----------------------------------
@@ -67,6 +73,7 @@ any of --paths, or if git itself cannot answer.
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 
@@ -81,11 +88,30 @@ def resolve(repo_dir: str, sha: str, paths: list[str]) -> str | None:
     misread as one. Returns None, never raises, when git finds nothing --
     "no such commit" is a real, expected answer this function must be able
     to give, not an error condition.
+
+    `--first-parent` is load-bearing, not cosmetic (CORRECTED -- found live,
+    PR #291's own correctness audit, before this file's first merge). Without
+    it, `git log <sha> -- <paths>` applies git's default history
+    simplification: at a merge commit M that is TREESAME to one parent for
+    these specific paths, git silently follows only that parent and never
+    reports M itself. So a caller asking "what should THIS PUSHED HEAD be
+    running" could get back a side-branch commit that was never main's head
+    and that Railway never built from -- confirmed against 4 of this repo's
+    own real merge commits, and reproduced end-to-end: the pre-fix function
+    resolved a non-branch commit S, `check_deployed_sha.py --expect S`
+    reported MISMATCH against a gateway that had correctly rebuilt at the
+    real merge commit M, and the same input with `--first-parent` resolves
+    to M. `--first-parent` makes this function answer the question a
+    post-merge deploy audit actually needs: "the last commit ON THE PUSHED
+    LINE, at or before `sha`, that touched these paths" -- squash merges
+    (this repo's own convention, see rollback-guide) are single-parent and
+    entirely unaffected; only a `git merge` --no-ff-style merge commit
+    changes behavior, and it changes it from wrong to right.
     """
     if not paths:
         raise ValueError("paths must be non-empty — an empty pathspec matches every commit")
     result = subprocess.run(
-        ["git", "-C", repo_dir, "log", "-1", "--format=%H", sha, "--", *paths],
+        ["git", "-C", repo_dir, "log", "-1", "--first-parent", "--format=%H", sha, "--", *paths],
         capture_output=True,
         text=True,
         check=False,
@@ -115,12 +141,33 @@ def main(argv: list[str]) -> int:
     if not args.sha.strip():
         print("FAIL — --sha is empty, so there is nothing to resolve from. (exit 2)")
         return 2
+    # Hardening, not a live exploit (found live, PR #291's own security audit):
+    # `--sha` is placed before `--` in the underlying `git log` call, unlike
+    # `--paths`, so a value shaped like a flag (e.g. `--all`) reaches git as
+    # one. Every real caller passes a GitHub-generated 40-hex sha, and every
+    # constructed alternative degrades fail-closed (a wider git rev-range can
+    # only name a NEWER commit than production runs, never an
+    # attacker-favorable match) -- but "cannot happen given today's callers"
+    # is not the same claim as "cannot happen", so this is enforced rather
+    # than left to that argument. A short abbreviation is accepted (git
+    # itself treats 4+ as potentially ambiguous; MIN_PREFIX mirrors
+    # check_deployed_sha.py's own choice of 7 as "where git stops calling a
+    # prefix ambiguous" for the identically-shaped problem one script over).
+    MIN_SHA_PREFIX = 7
+    sha = args.sha.strip()
+    if not re.fullmatch(r"[0-9a-fA-F]{%d,40}" % MIN_SHA_PREFIX, sha):
+        print(
+            f"FAIL — --sha ({sha!r}) is not a git sha (7-40 hex characters). "
+            "Refusing rather than letting it reach `git log` as a flag or "
+            "revision expression. (exit 2)"
+        )
+        return 2
     if not args.paths:
         print("FAIL — --paths is empty, so every commit would match. (exit 2)")
         return 2
 
     try:
-        found = resolve(args.repo_dir, args.sha.strip(), args.paths)
+        found = resolve(args.repo_dir, sha, args.paths)
     except (ValueError, RuntimeError) as exc:
         print(f"FAIL — could not resolve: {exc} (exit 2)")
         return 2
@@ -217,6 +264,42 @@ def _self_test() -> int:
             gw_sha,
         )
 
+        # THE case this file exists for on the merge-commit side (CORRECTED --
+        # found live, PR #291's own correctness audit): a real `git merge
+        # --no-ff` commit M whose tree, for the watched path, is TREESAME to
+        # its side-branch parent. Without --first-parent, git's default
+        # history simplification skips M entirely and resolves to the
+        # side-branch commit S -- a commit that was never `main`'s pushed
+        # head and that Railway never built from. Reproduced here with a real
+        # merge, not asserted.
+        run(repo, "checkout", "-q", "-b", "feature", also_docs_sha)
+        side_sha = commit(repo, "apps/api-gateway/src/y.ts", "feature-branch gateway change")
+        run(repo, "checkout", "-q", "main")
+        run(
+            repo, "-c", "user.name=t", "-c", "user.email=t@t",
+            "merge", "--no-ff", "-m", "merge feature", "feature",
+        )
+        merge_sha = run(repo, "rev-parse", "HEAD").stdout.strip()
+        case(
+            "a real merge commit resolves to ITSELF, not the side-branch commit "
+            "history simplification would silently substitute",
+            resolve(repo, merge_sha, ["apps/api-gateway"]),
+            merge_sha,
+        )
+        # And the failure this guards against, made concrete: prove side_sha is
+        # what git's DEFAULT (non-first-parent) traversal would have returned,
+        # so the assertion above is known to be testing something real.
+        default_traversal = subprocess.run(
+            ["git", "-C", repo, "log", "-1", "--format=%H", merge_sha, "--", "apps/api-gateway"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        case(
+            "sanity: git's default (non-first-parent) traversal really would "
+            "have returned the side-branch commit, proving the fix is load-bearing",
+            default_traversal,
+            side_sha,
+        )
+
         # The CLI path, not just the pure function -- proves argv wiring and exit
         # codes, the same distinction check_deployed_sha.py's own self-test draws.
         cli_ok = _run_cli(["--sha", also_docs_sha, "--paths", "apps/api-gateway", "--repo-dir", repo])
@@ -227,6 +310,12 @@ def _self_test() -> int:
 
         cli_no_match = _run_cli(["--sha", also_docs_sha, "--paths", "apps/mobile", "--repo-dir", repo])
         case("CLI: no matching commit is CANNOT CHECK, exit 2", cli_no_match.returncode, 2)
+
+        # Hardening case (found live, PR #291's own security audit): --sha is
+        # placed before -- in the underlying git log call, so an unvalidated
+        # flag-shaped value would reach git as one.
+        cli_flag_sha = _run_cli(["--sha", "--all", "--paths", "apps/api-gateway", "--repo-dir", repo])
+        case("CLI: a flag-shaped --sha is refused, not passed through to git", cli_flag_sha.returncode, 2)
 
     if failures:
         print("\nFAIL — self-test found:")
