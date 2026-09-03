@@ -1,0 +1,635 @@
+/* ============================================================
+   CalendarNext page styles. Every class is prefixed `cn-` and used only
+   inside pages/calendar/next/** — nothing here is shared.
+
+   Colour comes exclusively from the `.mudavym` tokens (ADR 0042), so both
+   grounds (warm paper / Warm Charcoal) resolve without a second rule set,
+   and the İznik seal stays the one chromatic colour on the page.
+
+   The house device on this page is the DOUBLE RULE: a delivery that arrived
+   is ruled off, the way a book closes an account. It is drawn with a border
+   plus a box-shadow (never an image), so it inherits the ink token.
+   ============================================================ */
+
+.cn-page {
+  min-height: 100%;
+  background: var(--paper-0);
+  color: var(--ink-1);
+  font-family: 'Plus Jakarta Sans', 'DM Sans', system-ui, sans-serif;
+}
+
+.cn-shell {
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: 24px 16px 48px;
+}
+
+/* ── micro-states: 160ms house curve, nothing travels more than 2px ─────── */
+.cn-ink {
+  transition:
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Focus never lands on the seal fill — a ring on İznik measured 1.00:1.
+   It sits on a paper gap instead (outline + offset). */
+.cn-page :focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── header ─────────────────────────────────────────────────────────────── */
+.cn-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.cn-period {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.1;
+  margin: 4px 0 0;
+}
+.cn-standing {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-size: 15px;
+  color: var(--ink-2);
+  margin: 4px 0 0;
+}
+.cn-eyebrow {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.cn-btn {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--paper-2);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.cn-btn:hover:not(:disabled) {
+  border-color: var(--seal-ring);
+  color: var(--ink-1);
+}
+.cn-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cn-btn[data-primary='true'] {
+  border-color: var(--seal);
+  color: var(--seal-deep);
+  background: var(--seal-tint);
+}
+
+.cn-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  background: var(--paper-1);
+}
+.cn-tab {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.cn-tab[aria-pressed='true'] {
+  background: var(--paper-0);
+  color: var(--ink-1);
+  box-shadow: inset 0 0 0 1px var(--seal-ring);
+}
+
+.cn-input {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--paper-2);
+  background: var(--paper-0);
+  color: var(--ink-1);
+  width: 100%;
+}
+.cn-input::placeholder {
+  color: var(--ink-3);
+}
+
+/* ── the notice band (error / permission / partial-knowledge) ───────────── */
+.cn-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--paper-2);
+  background: var(--paper-1);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.cn-quiet {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin: 0 0 10px;
+}
+
+/* ── the month ledger ───────────────────────────────────────────────────── */
+.cn-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.cn-weekday {
+  padding-bottom: 4px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.cn-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 104px;
+  padding: 5px 6px 6px;
+  text-align: left;
+  border: 1px solid var(--paper-2);
+  border-radius: 6px;
+  background: var(--paper-1);
+  cursor: pointer;
+}
+.cn-cell:hover {
+  border-color: var(--seal-ring);
+}
+.cn-cell[data-outside='true'] {
+  background: transparent;
+}
+.cn-cell[data-outside='true'] .cn-daynum {
+  opacity: 0.5;
+}
+.cn-cell[data-selected='true'] {
+  border-color: var(--seal);
+  box-shadow: inset 0 0 0 1px var(--seal);
+}
+.cn-cell[data-dropzone='true'] {
+  border-color: var(--seal);
+  background: var(--seal-tint);
+}
+.cn-daynum {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.cn-cell[data-today='true'] .cn-daynum {
+  color: var(--seal);
+  font-weight: 700;
+}
+
+/* ── an event ribbon: the ledger line ───────────────────────────────────── */
+.cn-ribbon {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 2px 5px 3px;
+  border: 0;
+  border-left: 2px solid var(--ink-3);
+  border-radius: 0 3px 3px 0;
+  background: var(--paper-2);
+  color: var(--ink-1);
+  font-size: 11px;
+  line-height: 1.25;
+  cursor: grab;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cn-ribbon:hover {
+  background: var(--paper-0);
+}
+.cn-ribbon[data-spine='true'] {
+  border-left-color: var(--seal);
+  background: var(--seal-tint);
+}
+.cn-ribbon[data-dragging='true'] {
+  cursor: grabbing;
+  opacity: 0.55;
+}
+.cn-ribbon[data-ruled='true'] {
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--ink-3);
+  box-shadow: 0 3px 0 -2px var(--ink-3);
+  margin-bottom: 2px;
+}
+.cn-ribbon-time {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 9.5px;
+  color: var(--ink-3);
+  margin-right: 4px;
+}
+
+/* The house double rule, at full width — an account ruled off. */
+.cn-rule2 {
+  border-top: 1px solid var(--ink-3);
+  box-shadow: 0 3px 0 -2px var(--ink-3);
+  margin: 10px 0 8px;
+}
+
+/* ── the settle expansion (0fr → 1fr), the founder's named favourite ────── */
+.cn-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.cn-expand[data-open='true'] {
+  grid-template-rows: 1fr;
+}
+.cn-expand > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── the day ledger ─────────────────────────────────────────────────────── */
+.cn-ledger {
+  margin-top: 12px;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-1);
+}
+.cn-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-left: 2px solid var(--ink-3);
+  border-radius: 0 4px 4px 0;
+  background: transparent;
+  color: var(--ink-1);
+  text-align: left;
+  cursor: pointer;
+}
+.cn-line:hover {
+  background: var(--paper-0);
+}
+.cn-line[data-spine='true'] {
+  border-left-color: var(--seal);
+}
+.cn-line[data-ruled='true'] {
+  color: var(--ink-3);
+}
+.cn-when {
+  /* wide enough for the longest honest string this column carries:
+     "All day · 18:00 recorded" (an all-day row that still has a time). */
+  flex: 0 0 124px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ink-3);
+  padding-top: 1px;
+}
+.cn-meta {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+/* ── the time grid (week / day) ─────────────────────────────────────────── */
+.cn-time {
+  position: relative;
+  display: grid;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-1);
+  overflow: hidden;
+}
+.cn-time-head {
+  display: grid;
+  border-bottom: 1px solid var(--paper-2);
+}
+.cn-time-head > * {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--ink-3);
+  border-left: 1px solid var(--paper-2);
+}
+.cn-time-head > *:first-child {
+  border-left: 0;
+}
+.cn-time-head [data-today='true'] {
+  color: var(--seal);
+  font-weight: 700;
+}
+.cn-time-body {
+  position: relative;
+  display: grid;
+  max-height: 560px;
+  overflow-y: auto;
+}
+.cn-hours {
+  border-right: 1px solid var(--paper-2);
+}
+.cn-hour {
+  height: 44px;
+  padding-right: 6px;
+  text-align: right;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--ink-3);
+  border-top: 1px solid var(--paper-2);
+}
+.cn-col {
+  position: relative;
+  border-left: 1px solid var(--paper-2);
+}
+.cn-slot {
+  height: 44px;
+  border-top: 1px solid var(--paper-2);
+  cursor: cell;
+}
+.cn-slot:hover {
+  background: var(--paper-0);
+}
+.cn-block {
+  position: absolute;
+  left: 2px;
+  right: 4px;
+  padding: 3px 6px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--paper-2);
+  border-left: 2px solid var(--ink-3);
+  background: var(--paper-0);
+  color: var(--ink-1);
+  font-size: 11px;
+  text-align: left;
+  cursor: grab;
+  overflow: hidden;
+  touch-action: none;
+}
+.cn-block[data-spine='true'] {
+  border-left-color: var(--seal);
+  background: var(--seal-tint);
+}
+.cn-block[data-ruled='true'] {
+  color: var(--ink-3);
+}
+.cn-block[data-dragging='true'] {
+  cursor: grabbing;
+  z-index: 3;
+  box-shadow: 0 8px 22px rgba(23, 19, 15, 0.16);
+}
+.cn-block-open {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cn-handle {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 8px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: ns-resize;
+}
+.cn-handle::after {
+  content: '';
+  display: block;
+  width: 22px;
+  height: 2px;
+  margin: 3px auto 0;
+  border-radius: 1px;
+  background: var(--ink-3);
+  opacity: 0.45;
+}
+.cn-allday {
+  display: grid;
+  border-bottom: 1px solid var(--paper-2);
+  background: var(--paper-0);
+}
+.cn-allday > * {
+  min-height: 26px;
+  padding: 3px;
+  border-left: 1px solid var(--paper-2);
+}
+.cn-allday > *:first-child {
+  border-left: 0;
+}
+
+/* ── agenda roll ────────────────────────────────────────────────────────── */
+.cn-agenda-day {
+  display: grid;
+  grid-template-columns: 156px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--paper-2);
+}
+.cn-agenda-key {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding-top: 8px;
+}
+.cn-agenda-key small {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 0.75;
+}
+
+/* ── the event sheet ────────────────────────────────────────────────────── */
+.cn-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(23, 19, 15, 0.28);
+  border: 0;
+  cursor: default;
+}
+.cn-sheet {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 41;
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background: var(--paper-0);
+  border-left: 1px solid var(--paper-2);
+  box-shadow: -18px 0 48px rgba(23, 19, 15, 0.14);
+  /* tuck — an object that moved under a finger (spring 380/32) */
+  animation: cn-sheet-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes cn-sheet-in {
+  from {
+    transform: translateX(28px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.cn-field {
+  display: block;
+  margin-bottom: 10px;
+}
+.cn-label {
+  display: block;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 3px;
+}
+.cn-chiprow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.cn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--paper-2);
+  background: var(--paper-1);
+  /* chip labels are ink, never the semantic colour (contrast measured) */
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.cn-chip[aria-pressed='true'] {
+  border-color: var(--seal);
+  background: var(--seal-tint);
+  color: var(--ink-1);
+}
+.cn-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cn-swatch {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex: none;
+}
+
+/* ── reduced motion: the change still happens, it just does not travel ──── */
+@media (prefers-reduced-motion: reduce) {
+  .cn-expand,
+  .cn-ink,
+  .cn-cell,
+  .cn-block {
+    transition: none !important;
+  }
+  .cn-sheet {
+    animation: none !important;
+  }
+}
+
+/* ── small layout primitives, so the TSX carries structure not styling ───── */
+.cn-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.cn-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.cn-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.cn-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.cn-form {
+  padding: 18px 20px 28px;
+}
+.cn-h2 {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 22px;
+  font-weight: 600;
+  margin: 2px 0 0;
+}
+.cn-h3 {
+  font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-size: 20px;
+  font-weight: 600;
+  margin: 2px 0 0;
+}
+.cn-entry {
+  min-width: 0;
+}
+.cn-entry b {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+.cn-tight {
+  margin-top: 4px;
+}
+.cn-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
