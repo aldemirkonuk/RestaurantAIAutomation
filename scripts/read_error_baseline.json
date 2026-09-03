@@ -130,7 +130,6 @@
     "apps/api-gateway/src/restaurants/members.service.ts::user_restaurant_access::targetAccess": 1,
     "apps/api-gateway/src/restaurants/members.service.ts::users::targetUser": 1,
     "apps/api-gateway/src/restaurants/members.service.ts::users::user": 1,
-    "apps/api-gateway/src/restaurants/members.service.ts::users::users": 1,
     "apps/api-gateway/src/simpos/simpos.service.ts::simpos_catalog::catalogRows": 1,
     "apps/api-gateway/src/simpos/simpos.service.ts::simpos_check_lines::allLines": 1,
     "apps/api-gateway/src/simpos/simpos.service.ts::simpos_check_lines::lines": 2,

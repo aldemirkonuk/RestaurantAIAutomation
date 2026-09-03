@@ -153,6 +153,28 @@ describe("ReportsService — generated_reports (OD-45)", () => {
       expect(total).toBe(4_000);
     });
 
+    it("says it could not count rather than reporting the page length", async () => {
+      // supabase-js types `count` as `number | null`, and a null arrives when the
+      // Content-Range header is missing (a proxy stripping it, a PostgREST that
+      // did not emit it). The old `count ?? reports.length` was harmless while
+      // the read was UNBOUNDED — the array was the table. Now that the query is
+      // capped, that fallback would hand back the page size as the total: a
+      // restaurant with thousands of reports told it has one hundred, with
+      // nothing anywhere saying the number is a window. Unknown stays unknown.
+      const { databaseService } = makeSupabaseStub({
+        data: Array.from({ length: 100 }, () => ROW),
+        error: null,
+        count: null,
+      } as never);
+      const service = new ReportsService(databaseService);
+
+      const { reports, total } = await service.listReports("restaurant-1");
+
+      expect(reports).toHaveLength(100);
+      expect(total).toBeNull();
+      expect(total).not.toBe(100);
+    });
+
     it("clamps a caller-supplied limit instead of trusting it", async () => {
       const { calls, databaseService } = makeSupabaseStub({
         data: [],
