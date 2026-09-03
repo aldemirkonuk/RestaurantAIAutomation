@@ -243,20 +243,34 @@ export function ManagerShiftDesk() {
   // ── Mutations ──────────────────────────────────────────────────────────
   const invalidateWeek = () => qc.invalidateQueries({ queryKey: ['team', 'week'] })
 
+  /**
+   * `resetReceipts` is carried by the mutation variable, not baked into the
+   * call, because the two entry points are different acts: a first publish
+   * destroys nothing and must NOT claim the flag, while a re-publish has just
+   * been confirmed against a sheet naming the receipts it clears. The gateway
+   * 409s a re-publish that omits it (`schedule.service.ts:352-362`), so the
+   * unconfirmed path stays guarded server-side.
+   */
   const doPublish = useMutation({
-    mutationFn: async () => {
+    mutationFn: async ({ resetReceipts }: { resetReceipts?: boolean } = {}) => {
       let scheduleId = week?.schedule?.id
       if (!scheduleId) {
         const created = await createSchedule(weekStart)
         scheduleId = created.id
       }
-      return publishSchedule(scheduleId)
+      return publishSchedule(scheduleId, { resetReceipts })
     },
     onSuccess: () => { toast.success('Schedule published & team notified'); invalidateWeek() },
     onError: (e: any) => toast.error(serverMessage(e) ?? 'Could not publish schedule'),
   })
+  /**
+   * Copy always runs behind the ConfirmSheet, whose label is "Replace the
+   * week", so `replaceTarget` is unconditional here — the consent it stands
+   * for has already been given. An empty target week ignores it (nothing is
+   * destroyed); a full one would 409 without it (`schedule.service.ts:260-265`).
+   */
   const doCopy = useMutation({
-    mutationFn: () => copyWeek(addDays(weekStart, -7), weekStart),
+    mutationFn: () => copyWeek(addDays(weekStart, -7), weekStart, { replaceTarget: true }),
     onSuccess: (r: any) => { toast.success(`Copied ${r?.copied ?? 0} shifts from last week`); invalidateWeek() },
     onError: (e: any) => toast.error(serverMessage(e) ?? 'Could not copy last week'),
   })
@@ -384,16 +398,21 @@ export function ManagerShiftDesk() {
   /**
    * P2: a message addressed to one person reaches one person.
    *
-   * `broadcast` without `memberIds` is a RESTAURANT-WIDE send: the gateway
-   * falls back to every active linked member across inbox, push, email and SMS
-   * (team.controller.ts:345-347). The right-click "Message {firstName}" item
-   * sent exactly that — no targeting, no recipient list, no confirmation, from
-   * a `prompt()`. The targeting already existed and the redesigned half used it
-   * correctly; this caller simply never passed it.
+   * `broadcast` without `memberIds` USED TO BE a silent restaurant-wide send —
+   * the gateway fell back to every active linked member across inbox, push,
+   * email and SMS, and the right-click "Message {firstName}" item sent exactly
+   * that from a `prompt()`. Since ADR 0088 the fan-out has to be asked for by
+   * name: the gateway 400s a body carrying neither `memberIds` nor
+   * `audience: "everyone"` (`team.controller.ts:381-392`), so a caller that
+   * forgets to target now fails loudly instead of messaging the whole crew.
    */
   const doBroadcast = useMutation({
     mutationFn: ({ message, memberIds }: { message: string; memberIds?: string[] }) =>
-      broadcast({ message, title: '📣 Message from your manager', memberIds }),
+      broadcast(
+        memberIds
+          ? { message, title: '📣 Message from your manager', memberIds }
+          : { message, title: '📣 Message from your manager', audience: 'everyone' },
+      ),
     onSuccess: (r: any) => {
       const parts = [`inbox`]
       if (r?.notified) parts.push(`${r.notified} push`)
@@ -566,7 +585,7 @@ export function ManagerShiftDesk() {
           title="Export this week's schedule"
         />
         <ActionBtn onClick={printWeek}><Printer className="w-3.5 h-3.5" /> Print sheet</ActionBtn>
-        <ActionBtn onClick={() => (published ? setPendingConfirm('republish') : doPublish.mutate())} primary><Send className="w-3.5 h-3.5" /> {published ? 'Re-publish' : 'Publish week'}</ActionBtn>
+        <ActionBtn onClick={() => (published ? setPendingConfirm('republish') : doPublish.mutate({}))} primary><Send className="w-3.5 h-3.5" /> {published ? 'Re-publish' : 'Publish week'}</ActionBtn>
       </div>
 
       <ShiftImportModal
@@ -881,9 +900,10 @@ export function ManagerShiftDesk() {
           onSend={(message) =>
             doBroadcast.mutate({
               message,
-              // A crew broadcast deliberately sends NO memberIds so the gateway
-              // uses its own live roster; a one-person message always names its
-              // recipient, which is the whole bug this replaces.
+              // A crew broadcast sends no memberIds so the gateway uses its own
+              // live roster — it says so as `audience: "everyone"` one layer
+              // down. A one-person message always names its recipient, which is
+              // the whole bug this replaces.
               memberIds: composer.scope === 'one' ? [composer.memberId] : undefined,
             })
           }
@@ -908,7 +928,7 @@ export function ManagerShiftDesk() {
           confirmLabel="Re-publish and clear receipts"
           pending={doPublish.isPending}
           onCancel={() => setPendingConfirm(null)}
-          onConfirm={() => { setPendingConfirm(null); doPublish.mutate() }}
+          onConfirm={() => { setPendingConfirm(null); doPublish.mutate({ resetReceipts: true }) }}
         />
       )}
 
