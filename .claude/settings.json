@@ -9,7 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/hooks/require_pr_audit.py"
+            "command": "python3 $CLAUDE_PROJECT_DIR/scripts/hooks/require_pr_audit.py"
           }
         ]
       }

@@ -3,8 +3,10 @@
 
 Two modes, run as separate workflow steps (.github/workflows/pr-audit-gate.yml):
 
-    --wait-upstream   poll main's 5 pre-existing required contexts until they
-                       reach a terminal state (bounded wait); writes
+    --wait-upstream   poll main's required contexts (read fresh from branch
+                       protection, or every reported check if that read is
+                       denied — see _required_contexts()) until they reach a
+                       terminal state (bounded wait); writes
                        `status=upstream_green|upstream_red` to $GITHUB_OUTPUT.
                        This audit is a semantic layer ON TOP of green CI, never
                        a replacement for it — it does not run at all if upstream
@@ -279,6 +281,31 @@ def _run_audit_inner(pr_number: str) -> int:
     if not diff.strip():
         return _fail_closed(pr_number, sha7, "gh pr diff returned nothing to review.")
 
+    # SECURITY (confirmed live, run 33695630472, security angle BLOCK on this
+    # very PR): this workflow now runs from a checkout PINNED to the base ref
+    # (pull_request_target + explicit ref:, see pr-audit-gate.yml) specifically
+    # so a PR cannot rewrite the code auditing it. That neutralizes "the PR
+    # ships a version of this script that always returns PASS". It does NOT
+    # neutralize "a PR that changes what FUTURE audits will do" needing a
+    # second, human, pass — so any diff touching the gate's own files is
+    # force-BLOCKed below regardless of what the angles/adversary say, however
+    # convincing. This check only means anything because it runs from a
+    # checkout the diff under review cannot alter.
+    _GATE_OWNED_PATHS = (
+        "scripts/pr_audit_gate.py",
+        "scripts/hooks/require_pr_audit.py",
+        ".github/workflows/pr-audit-gate.yml",
+        ".claude/agents/pr-merge-auditor.md",
+        ".claude/agents/pr-merge-adversary.md",
+        ".claude/skills/pr-audit-gate/",
+        ".claude/settings.json",
+    )
+    changed_files_raw = _run(["gh", "pr", "diff", pr_number, "--name-only"], timeout=30).stdout
+    changed_files = [f for f in changed_files_raw.splitlines() if f.strip()]
+    touches_own_gate = any(
+        f == owned or f.startswith(owned) for f in changed_files for owned in _GATE_OWNED_PATHS
+    )
+
     checks = _gh_json(["gh", "pr", "checks", pr_number, "--json", "name,state,link"])
     claude_md = (ROOT / "CLAUDE.md").read_text(errors="replace")
 
@@ -326,6 +353,27 @@ def _run_audit_inner(pr_number: str) -> int:
         adv_verdict = _verdict_of(adversary_report)
         overall = "BLOCK" if adv_verdict in ("OVERTURNED", "UNPARSEABLE") else "PASS"
 
+    escalation_note = ""
+    if touches_own_gate and overall == "PASS":
+        overall = "BLOCK"
+        escalation_note = (
+            "\n\n**⚠️ ESCALATED, not a normal BLOCK:** this diff touches the "
+            "audit gate's own files (" + ", ".join(sorted({
+                f for f in changed_files
+                for owned in _GATE_OWNED_PATHS if f == owned or f.startswith(owned)
+            })) + "). All three angles and the adversarial pass leaned APPROVE, "
+            "but a PR that changes what future audits do needs a human, not a "
+            "self-consistent verdict from the current rules — [[merge-races-need-sequencing]]'s "
+            "escalate-never-force precedent, applied here. Founder review required "
+            "regardless of the angle verdicts above."
+        )
+    elif touches_own_gate:
+        escalation_note = (
+            "\n\n**Note:** this diff also touches the audit gate's own files — "
+            "already BLOCK on the angles above, escalation is moot but stated "
+            "for the record."
+        )
+
     lines = [
         f"# PR #{pr_number} audit — {sha7}",
         "",
@@ -347,10 +395,18 @@ def _run_audit_inner(pr_number: str) -> int:
     # path pointer to a file nobody can ever fetch again. The Claude-Code-side
     # skill is the one path that can commit REPORT_DIR for real, since a
     # session's own worktree survives past the tool call that wrote it.
+    # Machine-readable marker required by scripts/hooks/require_pr_audit.py's
+    # v2 verdict check (bug 3, run 33695630472): a bare substring scan over
+    # prose let a BLOCK report's own words ("...all PASS") satisfy "PASS" in
+    # line. This is the ONLY thing either enforcement path is allowed to
+    # parse for a verdict — never re-grep the prose below it.
+    marker = f"<!-- pr-audit-gate: pr={pr_number} sha={sha7} verdict={overall} -->"
     comment_body = (
+        f"{marker}\n"
         f"## PR Audit Gate — {overall}\n\n"
         + "\n".join(f"- **{a}**: {v}" for a, v in angle_verdicts.items())
         + (f"\n- **adversarial pass**: {_verdict_of(adversary_report)}" if adversary_report else "")
+        + escalation_note
         + "\n\n<details><summary>Full report</summary>\n\n"
         + full_report[:60000]
         + ("\n\n[truncated at 60000 chars]" if len(full_report) > 60000 else "")

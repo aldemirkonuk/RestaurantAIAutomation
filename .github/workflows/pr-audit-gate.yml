@@ -7,20 +7,55 @@ name: PR Audit Gate
 # (that PATCH needs the founder's explicit go, see ADR 0090 "What this does NOT
 # yet do"), so nothing here stops a merge that bypasses this workflow entirely.
 #
-# Needs the ANTHROPIC_API_KEY secret, which does not exist in this repo yet —
-# add it with `gh secret set ANTHROPIC_API_KEY` or via the GitHub UI before this
-# workflow can do anything other than fail closed at the "Call the audit" step.
+# SECURITY (rewritten 2026-09-03 after this gate's own first real audit, PR
+# #261 run 33695630472, security angle BLOCK): this was `on: pull_request`
+# with `actions/checkout` defaulting to the PR's own merge ref and
+# `contents: write` + the live ANTHROPIC_API_KEY in env. For a same-repo
+# branch (not a fork — forks are already denied secrets on `pull_request`,
+# which is the case the old header comment reasoned about), that meant the
+# script auditing a PR was THE PR'S OWN, POSSIBLY MODIFIED, COPY of
+# scripts/pr_audit_gate.py, running with write access and the key. A PR
+# editing that script could make the verdict parser always return PASS,
+# self-merge, and exfiltrate the key on the way — a same-repo mirror of the
+# OAuth self-provisioning hole this ADR cites, one layer up in CI. Fixed with
+# the standard GitHub-documented pattern for exactly this ("pwn request"):
 #
-# Fork PRs cannot see this secret (see docs/fork-prs-cannot-satisfy-required-checks,
-# merged as the precedent for the schema-parity checks) — not an issue while this
-# repo has no forks; would need the same treatment those checks got if that changes.
+#   - `pull_request_target` instead of `pull_request` — the workflow
+#     DEFINITION that runs is always the one committed on the BASE branch
+#     (main), never the PR's copy. A PR editing this very file has zero
+#     effect on how its own run behaves.
+#   - `actions/checkout` pinned explicitly to the base commit (never the PR's
+#     tree) — so scripts/pr_audit_gate.py, the agent definitions, and
+#     CLAUDE.md that the audit actually reads and executes are always main's
+#     trusted versions too. The PR's content is read ONLY as inert diff text
+#     via `gh pr diff`, never checked out, never executed.
+#   - Belt and suspenders inside the (now-trusted) script itself: any diff
+#     touching the gate's own files force-BLOCKs with an explicit escalation
+#     note, regardless of what the angles/adversary conclude — a PR that
+#     changes what FUTURE audits do still needs a human, even once the
+#     "audit itself" attack is closed.
+#
+# One consequence, stated rather than hidden: the very first PR to ADD this
+# workflow (this one) cannot see it run under pull_request_target, because
+# GitHub loads that trigger's workflow definition from the base branch, and
+# main does not have this file yet. It starts actually auditing PRs once this
+# merges — the correct trade for a same-repo pwn-request fix, not a bug.
+#
+# Needs the ANTHROPIC_API_KEY secret — add it with `gh secret set
+# ANTHROPIC_API_KEY` or via the GitHub UI before this workflow can do
+# anything other than fail closed at the "Run the PR audit gate" step.
+#
+# Fork PRs cannot see this secret regardless (see
+# docs/fork-prs-cannot-satisfy-required-checks, the schema-parity precedent)
+# — not an issue while this repo has no forks.
 
 on:
-  pull_request:
+  pull_request_target:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
 
-# One run per PR head SHA — a new push supersedes an in-flight audit of the old one.
+# One run per PR NUMBER (not per head SHA, despite how that reads) — a new
+# push supersedes an in-flight audit of the old commit on the same PR.
 concurrency:
   group: pr-audit-gate-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -35,9 +70,10 @@ jobs:
     name: PR Audit Gate
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout the TRUSTED base commit (never the PR's own tree)
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
 
       - name: Setup Python
