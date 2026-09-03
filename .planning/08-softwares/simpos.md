@@ -180,6 +180,8 @@ Seams:
    future caller reaching the private method directly inherits no protection
    (`simpos.service.ts:506-511`).
 
+> **Lens run 2026-09-03 (`v3.0-TECH-DEBT.md`, POS lens):** as a stand-in for a real POS, SimPOS under-reports on three axes measured against 44 closed checks — every seeded button is a hard-coded $45 (`simpos.service.ts:91-96`), the webhook carries no money, table, server or covers (`:401-415`; NULL on 44 of 44 `pos_checks`), and it never reads the venue's operating hours (`restaurants.operating_hours`, ADR 0093) — all 44 checks rang after the published close without a warning.
+
 ## §8 Where it's going
 
 - ADR 0049 §3a places it in the **POS** division alongside [[pos-bridge]]

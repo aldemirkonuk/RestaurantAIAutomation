@@ -115,6 +115,47 @@ without a real POS. **Gate (simulation before live, locked 2026-08-24):** pos-br
 ingestion or stock-effect changes ship only when a SimPOS close produces the correct ledger
 delta **and** a replay of the same `external_check_id` is a no-op (idempotency proven).
 
+### 9.1 Lens run, 2026-09-03 — the real Meyhouse Palo Alto menu through the product's doors
+
+Tenant `Sim Meyhouse` (`a229f22b-…`, America/Los_Angeles, hours set from the venue). No seed:
+53 inventory items were loaded through the Add-Wine modal (2), `POST :rid/items/bulk` (50) and a
+count (1); 135 SimPOS buttons were typed at printed-menu prices (5 oz = 148 ml, 8 oz = 237 ml,
+bottle, rakı single/double); 107 POS mappings were approved through the API because no screen
+exists for them; then **44 checks** were closed — 9 on the terminal UI, 35 through the SimPOS API,
+99 lines, 1 void, one check closed twice (refused, `403`, no duplicate ledger row).
+
+| | Database after the service |
+|---|---|
+| `pos_checks` | 44 — `total/subtotal/tip/covers/table_id/server_name` NULL on 44 of 44 |
+| `pos_unresolved_lines` | 39 — `unmapped` 38 (mezes and coffee, declared wine), `no_sale_volume` 1 |
+| `wine_consumption_log` | 55 — 40 glass, 15 bottle |
+| `inventory_transactions` | 89 — `initial/manual` 52, `sale/pos` 34, `reconciliation/mobile_count` 3 |
+| bottles depleted by POS | 34; `open_bottle_ml` 8 017 across open bottles |
+
+**The onboarding answer, measured:** a count on a zero-stock item creates a lot
+(`record_stock_count` → `apply_stock_movement` on the non-zero delta, `inventory.service.ts:363,405`,
+`20260902190000_a_count_is_a_record.sql:275-303`, `20260902150000_lot_cost_truth.sql:163-166`) at
+`unit_cost NULL / 'estimated'` — so an opening count is a legitimate door for a cellar that was
+never bought through the product, valued at nothing until a receipt revalues it.
+
+| Surface | Rendered | Database | Verdict |
+|---|---|---|---|
+| `/inventory` settled | 53 wines · 274 bottles | 53 · SUM(lots.qty) 274 | match |
+| `/inventory` value | "$0 cost basis", every row $0 | 52 of 54 lots `unit_cost NULL` | absence as $0 |
+| `/inventory` below par | chip 9 (2 critical) | `/low-stock`, `/summary` 7, critical 0 | two definitions |
+| `/inventory` first 2.5 s | "0 wines, 0 bottles" | 53 / 274 | loading = empty |
+| `/simpos/:id/orders` | 45 checks, lines, prices | 45 · 99 lines | match; no totals; viewer's TZ |
+| `/notifications` | "7 Wines Need Restocking"; 1 in the stream | 2 rows · 3 wines · 7 below par | stream missed 4 |
+| `/dashboard` | 53 · 274 · 205.5 L; Low Stock 7 | matches | match |
+| `/reports` | "needs a connected POS" | 44 checks · 34 depleted · 55 rows | wrong cause |
+| `/recommendations` | 12 rules · 1 active (Muhammara + Köpoğlu 2.2×) | true of tonight | correct |
+
+The §9 gates as they stand after this run: **correct ledger delta** — holds for mapped lines
+(34 depletions, 5 oz/8 oz volumes as set per button); **replay is a no-op** — holds at the terminal
+(double close refused) and was not re-tested at the webhook. Twelve defects and nine
+absence-as-health instances are filed in `v3.0-TECH-DEBT.md` (2026-09-03, POS lens); the blocking
+one is that no screen connects POS buttons to stock.
+
 ## 10. Tier cut (OD-48 locked — Core/Plus/Pro; prices open, OD-23)
 
 **Premise:** this scenario *is* the POS feed — it only exists once S14 connects one. The marks
