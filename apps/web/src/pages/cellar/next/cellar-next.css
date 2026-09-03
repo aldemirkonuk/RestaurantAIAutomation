@@ -1,0 +1,330 @@
+/* ============================================================
+   CellarNext page styles. Every class is prefixed `cl-` and used
+   only inside pages/cellar/next/**. Colours come exclusively from
+   the .mudavym tokens (ADR 0042), so paper and Warm Charcoal both
+   resolve without a second rule.
+   ============================================================ */
+
+/* ── the double rule: the account is ruled off (057, kept) ─────────────── */
+.cl-rule {
+  border: 0;
+  border-top: 1px solid var(--ink-1);
+  border-bottom: 1px solid var(--ink-1);
+  height: 3px;
+  opacity: 0.5;
+  margin: 0;
+}
+.cl-rule-thin {
+  border: 0;
+  border-top: 1px solid var(--paper-2);
+  margin: 0;
+}
+
+/* ── the reading stand: row-expand settle, the founder's named favourite ── */
+.cl-stand {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.cl-stand[data-open='true'] {
+  grid-template-rows: 1fr;
+}
+.cl-stand > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── micro-states: nothing moves more than 2px, 160ms house curve ──────── */
+.cl-ink {
+  transition:
+    border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── focus: always on a paper gap, never on the seal fill (1.00:1) ─────── */
+.cl-focus:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── register cards (the front matter of the book) ─────────────────────── */
+.cl-register {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  background: var(--paper-1);
+  color: inherit;
+  text-decoration: none;
+}
+.cl-register:hover {
+  border-color: var(--seal-ring);
+  background: var(--paper-0);
+}
+.cl-register[data-wired='false'] {
+  background: transparent;
+  border-style: dashed;
+}
+
+/* ── the register table: the breadth the founder liked ─────────────────── */
+.cl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.cl-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  padding: 8px 10px;
+  background: var(--paper-1);
+  border-bottom: 1px solid var(--paper-2);
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.cl-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--paper-2);
+  vertical-align: middle;
+}
+.cl-table tbody tr {
+  cursor: pointer;
+}
+.cl-table tbody tr:hover td {
+  background: var(--paper-1);
+}
+.cl-table tbody tr[data-selected='true'] td {
+  background: var(--seal-tint);
+}
+.cl-num {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums lining-nums;
+  white-space: nowrap;
+}
+.cl-dim {
+  color: var(--ink-3);
+}
+
+/* ── shelf (grid) view ─────────────────────────────────────────────────── */
+.cl-shelf {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  gap: 10px;
+}
+.cl-bottle {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 13px;
+  text-align: left;
+  border: 1px solid var(--paper-2);
+  border-radius: 9px;
+  background: var(--paper-1);
+  cursor: pointer;
+  color: inherit;
+}
+.cl-bottle:hover {
+  border-color: var(--seal-ring);
+  background: var(--paper-0);
+}
+.cl-bottle[data-selected='true'] {
+  border-color: var(--seal);
+}
+
+/* ── chips: label ink, never the semantic colour ───────────────────────── */
+.cl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--paper-2);
+  background: var(--paper-0);
+  color: var(--ink-2);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+.cl-chip[data-seal='true'] {
+  border-color: var(--seal-ring);
+  background: var(--seal-tint);
+}
+
+/* ── controls ──────────────────────────────────────────────────────────── */
+.cl-field {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--paper-2);
+  border-radius: 7px;
+  background: var(--paper-1);
+  color: var(--ink-1);
+  font-size: 12px;
+  font-family: inherit;
+}
+.cl-field:hover {
+  border-color: var(--seal-ring);
+}
+.cl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--paper-2);
+  border-radius: 7px;
+  background: var(--paper-1);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+.cl-btn:hover:not(:disabled) {
+  border-color: var(--seal-ring);
+  color: var(--seal-deep);
+}
+.cl-btn[data-on='true'] {
+  border-color: var(--seal-ring);
+  background: var(--seal-tint);
+  color: var(--seal-deep);
+}
+.cl-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* ── reduced motion: the change still happens, it just doesn't travel ──── */
+@media (prefers-reduced-motion: reduce) {
+  .cl-stand,
+  .cl-ink,
+  .cl-register,
+  .cl-bottle {
+    transition: none;
+  }
+}
+
+/* ── the book's typography, as classes ─────────────────────────────────────
+   Every rule below replaced a repeated inline style object. The page names
+   its voices once: Fraunces speaks (titles, the standing line, the notes),
+   the sans labels, the mono carries figures of record.                     */
+.cl-serif { font-family: 'Fraunces', Georgia, 'Times New Roman', serif; }
+
+.cl-crumb {
+  margin: 0 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.cl-crumb a { color: inherit; }
+
+.cl-h1 {
+  margin: 0;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.08;
+  color: var(--ink-1);
+}
+.cl-h1[data-size='parent'] {
+  margin: 4px 0 0;
+  font-size: 40px;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+}
+.cl-h2 {
+  margin: 0;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+  color: var(--ink-1);
+}
+
+/* the standing line — the house speaking, never a figure */
+.cl-standing {
+  margin: 6px 0 0;
+  font-family: 'Fraunces', Georgia, serif;
+  font-style: italic;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+/* a section rule-off label */
+.cl-sec {
+  margin: 0 0 10px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.cl-note { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-3); }
+.cl-said { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
+
+/* facts of record: a label above the figure, never a label beside it */
+.cl-facts {
+  margin: 0;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+.cl-facts dt {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.cl-facts dd { margin: 2px 0 0; font-size: 13px; color: var(--ink-1); }
+
+.cl-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.cl-tile {
+  border: 1px solid var(--paper-2);
+  border-radius: 9px;
+  background: var(--paper-1);
+  padding: 12px 14px;
+}
+.cl-tile-label {
+  margin: 0;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.cl-tile-fig { margin: 4px 0 0; font-size: 25px; line-height: 1.05; color: var(--ink-1); }
+
+.cl-panel {
+  border: 1px solid var(--paper-2);
+  border-radius: 12px;
+  background: var(--paper-1);
+  padding: 16px 18px 18px;
+}
+.cl-panel[data-unwired='true'] {
+  border-style: dashed;
+  background: transparent;
+  padding: 16px 18px;
+}
+.cl-row-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.cl-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
