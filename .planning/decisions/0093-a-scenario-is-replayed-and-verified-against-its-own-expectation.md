@@ -139,8 +139,42 @@ Concretely, what ships under this ADR:
   hop-4 bridge starts proposing from these crossings and needs the run's expectation as its
   shadow-data baseline.
 
+## Corrections made while building (2026-09-02) — kept, because a decision that cannot be contradicted is not a decision
+
+- **The fixture's stated DST recipe was wrong east of Greenwich.** The first draft told
+  the TypeScript mirror to anchor on the offset of the wall time read as UTC. Builder A
+  implemented that recipe and swept it at ten-minute resolution over all of 2026 against
+  Python's `zoneinfo`: **0 disagreements** in every western or DST-free zone,
+  **12 each** in Europe/Berlin, Europe/London, Australia/Sydney, Pacific/Auckland — it
+  picks the *second* occurrence of an ambiguous wall time and the *post*-transition offset
+  in a gap, both inverted. The shipped TypeScript brackets the day either side
+  (630,720 wall times in 12 zones, zero mismatches); the fixture's prose now states the
+  real rule and carries Berlin/Sydney cases generated from `zoneinfo`, so both suites pin
+  it. Latent, not live: every timezone in production today is west of Greenwich or
+  DST-free.
+- **`sim_scenario_runs` is RLS-on with no policy plus a client revoke**, mirroring
+  `sim_ground_truth_runs`, whereas the newer house rule in
+  `20260902190000_a_count_is_a_record.sql` argues for RLS-with-a-service-role-policy. The
+  revoke is the belt OD-72 added so a future permissive policy cannot open the table by
+  itself; the divergence is a choice on the record, not an oversight.
+- **The "glass-void branch" named in D5 does not exist**: every void falls to the single
+  `apply_stock_movement` branch, so one key change covers all voids. OD-67 (a voided glass
+  returns a whole bottle) is untouched.
+- **Two hub defects the engine found before any run:** `bridge.seed_mappings` sent no
+  `inventory_id`, so a live run would have queued every wine line as `unmapped` and
+  depleted nothing — a broken pipeline and an unmapped tenant would have been
+  indistinguishable; and `--apply` constructed the transport *after* logging in, so a
+  mistyped `--analytics-base` would have posted the sim owner's password to that host
+  before the loopback guard refused. Both fixed.
+- **Sim tenants really were phantom stock**: builder A proved the seed change against the
+  pre-change `seed.py` — 10 of 15 new tests fail before, 15 pass after.
+- **The verifier learned the difference between never-set and unparseable hours** when
+  the real helper replaced the stub it was built against: `hours_unknown` and
+  `hours_invalid` are two distinct `unverifiable`s, never a "within hours".
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-02 | — | Created; number allocated by `scripts/check_adr_numbers_unique.py` across 580 refs and a `git worktree list` sweep |
+| 2026-09-02 | — | Built by three parallel Opus builders + integration; corrections above recorded; live day pending the migrations reaching production on merge |
