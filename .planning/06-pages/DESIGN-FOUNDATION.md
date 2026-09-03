@@ -1,8 +1,8 @@
 ---
 type: plan
 title: Design Foundation
-status: active — workstream REOPENED by founder 2026-08-27; sketches + brand exploration underway, production builds still gated on a direction pick
-updated: 2026-08-27
+status: active — implementation underway since ADR 0044 (2026-08-30); mark decided (ADR 0047, OD-111 resolved); 10 of 47 pages built and flagged, in a page-by-page review-and-fix pass — see §0b
+updated: 2026-09-02
 links: ["[[PAGE-CONTRACT]]", "[[PAGES-MAP]]", "[[OPEN-DECISIONS]]"]
 ---
 
@@ -22,7 +22,7 @@ links: ["[[PAGE-CONTRACT]]", "[[PAGES-MAP]]", "[[OPEN-DECISIONS]]"]
 
 | Fork | State |
 |---|---|
-| Workstream | **REOPENED 2026-08-27** — "time has come … let's start for Mudavym." Sketches and brand exploration are go; production builds stay gated on the founder picking a direction. |
+| Workstream | **REOPENED 2026-08-27, gate lifted 2026-08-30** — "time has come … let's start for Mudavym." Sketches and brand exploration ran through wave 2; ADR 0044 then moved the workstream from documentation into implementation. See §0b for where it actually stands. |
 | Brand name on the product | **Decided: Mudavym everywhere** — customer-facing product brand, replaces WineOps in all sketches; the "müdavim = the restaurant's regular" story is the brand hook. Logo, slogan, voice all designed under this name. |
 | Direction A/B/C (§4) · burgundy #9E4249 vs #CD2D5B | **Superseded** — founder ordered a from-scratch exploration (anything visual may change, even text size; only the monorepo architecture is untouchable). Replaced by the 5-direction bake-off below. |
 | Brand directions | **Decided: 5 full directions** (voice + logo concepts + slogan candidates + palette + type + motion personality, each applied to the same sample screens); founder may extend to 10 after seeing them. |
@@ -113,6 +113,40 @@ marks, and a **triage** list of the kept elements with love/keep/cut that persis
 2. **Three further directions**, founder-chosen territories: **060 Anatolian** (the name's own homeland — İznik geometry as structure, not ornament), **061 The Guest Book** (recognition and memory as the product), **062 Warm Machine** (mechanism on show — the most technical direction proving it can also be the warmest).
 3. **058 re-rendered with real effort** — "these are super simple put more effort": subsurface wax, brushed metal, paper fibre, depth of field, six marks instead of three.
 4. **All motion in one display** — every named token from every direction, side by side and replayable, plus a keep/kill surface so elimination can run across sessions instead of in one go.
+
+## 0b. Where this actually stands now (2026-09-02)
+
+Everything above §1 is the pre-implementation record — real history, kept as
+written. It is not the current state. What changed:
+
+- **§4's A/B/C fork never got a single winner.** The founder picked per page
+  and mixed directions on one screen, so OD-106 resolved in practice as
+  **per-archetype composition**, not one direction — [[MAKEOVER-VERDICTS]]
+  carries the page-by-page calls. §4/§5 below describe a decision process
+  that already ran its course this way, not a still-open fork.
+- **The mark is decided.** [ADR 0047](../decisions/0047-am-interlock-supersedes-rivet-m.md)
+  — the trued A+M interlock, after the Rivet M ([ADR 0045](../decisions/0045-rivet-m-and-full-go.md))
+  was chosen and withdrawn the same day. Live in production. OD-111 moved to
+  Resolved.
+- **Implementation is running, not gated.** [[0044-mudavym-implementation-kickoff]]
+  opened the build 2026-08-30. Shared foundation: `apps/web/src/styles/mudavym.css`
+  (ADR 0042 tokens), `apps/web/src/lib/mudavym/motion.ts` (CSS+WAAPI springs,
+  no new dependency), `apps/web/src/components/mudavym/*` and
+  `apps/web/src/components/brand/BrandMark.tsx`. Each page ships behind its
+  own `mudavym_design_<page>` flag, DB-backed per restaurant
+  (`restaurant_feature_flags`), default OFF.
+- **Ten pages are built and flagged**: dashboard, orders, receiving,
+  receiving-door, providers, communications, team, inventory, receipts,
+  documents-reports. That is the *building* done, not the workstream done —
+  a page-by-page review-and-fix pass is running in the founder's stated
+  order (dashboard → orders → receiving → receiving-door → receipts →
+  inventory → providers → communications → documents-reports → team) and
+  has found substantive defects under several already-built pages (invented
+  data rows, columns nothing writes, conversations the UI cannot render).
+  Founder elimination/sign-off across pages is deliberately held until that
+  pass clears, not run against flagged pages with known holes underneath.
+- **Wine-agent is the one page from the original claim list still
+  unstarted.**
 
 ## 1. What exists today (evidence, not judgment)
 

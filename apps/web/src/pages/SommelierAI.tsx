@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { renderAssistantMarkdown } from '../lib/assistantMarkdown'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Send,
@@ -616,13 +617,7 @@ If you need immediate assistance, you can:
                           <div 
                             className="text-gray-200 whitespace-pre-wrap"
                             dangerouslySetInnerHTML={{ 
-                              __html: message.content
-                                .replace(/^### (.+)$/gm, '<h3 class="text-lg font-semibold text-white mt-4 mb-2">$1</h3>')
-                                .replace(/^## (.+)$/gm, '<h2 class="text-xl font-bold text-white mt-4 mb-3">$1</h2>')
-                                .replace(/\*\*(.+?)\*\*/g, '<strong class="text-white">$1</strong>')
-                                .replace(/\*(.+?)\*/g, '<em class="text-gray-400">$1</em>')
-                                .replace(/^- (.+)$/gm, '<li class="ml-4">$1</li>')
-                                .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 list-decimal">$1</li>')
+                              __html: renderAssistantMarkdown(message.content)
                             }}
                           />
                         </div>

@@ -185,6 +185,14 @@ from api.synth_routes import router as synth_router  # noqa: E402
 
 app.include_router(synth_router)
 
+# Toast integration routes — the six /api/v1/toast/* endpoints the NestJS
+# gateway has called since 2026-04-13 against a router that was never built.
+# Grouped with the bottom block for consistency with its neighbours; it has no
+# circular-import constraint of its own.
+from api.toast_routes import router as toast_router  # noqa: E402
+
+app.include_router(toast_router)
+
 # ── Admin-gated docs in production ────────────────────────────────────────────
 # Registered here, after health_routes has been imported, so the one canonical
 # X-Admin-Key dependency is reused rather than duplicated.

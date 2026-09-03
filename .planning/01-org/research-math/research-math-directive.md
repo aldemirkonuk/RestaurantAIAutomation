@@ -17,7 +17,7 @@ preference, seniority, or reputation. Three rules do all the work.
 
 1. **No pick from repute.** Any choice between candidates — harness, model, framework,
    policy — is decided by a measurement taken on *this repo's own workloads*. Already
-   written into `OPEN-DECISIONS.md:27` for OD-03; generalized here to everything this
+   written into `OPEN-DECISIONS.md:28` for OD-03; generalized here to everything this
    department decides.
 2. **The instrument precedes the decision.** If the number that should decide a question
    has never been read, the department builds the instrument and does **not** hold the
