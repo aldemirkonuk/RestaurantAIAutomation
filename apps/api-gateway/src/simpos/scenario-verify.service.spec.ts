@@ -57,6 +57,24 @@ const TODAY = new Date().toISOString().slice(0, 10);
 const OPENED = `${TODAY}T18:00:00.000Z`;
 const CLOSED = `${TODAY}T19:00:00.000Z`;
 const POSTED = `${TODAY}T19:05:00.000Z`;
+
+// Real hours for the happy path: every day 00:00–23:59 in the venue's zone, so a
+// check at any time is "within hours" and `hours.outside` can actually pass.
+const WEEK = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+const ALL_DAY_HOURS = Object.fromEntries(
+  WEEK.map((d) => [d, [{ open: "00:00", close: "23:59" }]]),
+) as Record<(typeof WEEK)[number], Array<{ open: string; close: string }>>;
+// Hours under which TODAY (in America/Chicago) is a closed day.
+const TODAY_CHICAGO_WEEKDAY = (() => {
+  const wd = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", weekday: "short" })
+    .format(new Date(`${TODAY}T12:00:00Z`))
+    .toLowerCase()
+    .slice(0, 3);
+  return wd as (typeof WEEK)[number];
+})();
+const CLOSED_TODAY_HOURS = Object.fromEntries(
+  WEEK.map((d) => [d, d === TODAY_CHICAGO_WEEKDAY ? [] : [{ open: "12:00", close: "23:00" }]]),
+) as Record<(typeof WEEK)[number], Array<{ open: string; close: string }>>;
 const BOTTLE_KEY = "pos:generic_webhook:chk-1:item-1:1";
 
 function baseExpectation(over: Partial<ScenarioExpectation> = {}) {
@@ -154,7 +172,7 @@ function happyResults(over: Record<string, any> = {}) {
         seed: 7,
         service_date: TODAY,
         timezone: "America/Chicago",
-        operating_hours: { mon: [["17:00", "23:30"]] },
+        operating_hours: ALL_DAY_HOURS,
         params: {},
         expected: baseExpectation(),
         posted_at: POSTED,
@@ -478,7 +496,7 @@ describe("ScenarioVerifyService.verify — an empty expectation is not a pass", 
             seed: 3,
             service_date: TODAY,
             timezone: "America/Chicago",
-            operating_hours: { mon: [] },
+            operating_hours: CLOSED_TODAY_HOURS,
             params: {},
             expected: baseExpectation({
               checks: [],
@@ -697,15 +715,69 @@ describe("ScenarioVerifyService.verify — the things that must never pass", () 
     expect(JSON.stringify(row.samples)).toContain("ADR 0093 D5");
   });
 
-  it("hours it cannot decide are unverifiable, never 'within hours'", async () => {
-    // The operating-hours helper answers `{open: null, reason: 'hours_unknown'}`
-    // until the real one lands; an unknown must not count as "inside hours".
-    const { service } = build(happyResults());
+  it("hours it cannot parse are unverifiable, never 'within hours'", async () => {
+    // A shape the product's own parser rejects (ranges as tuples). An unknown
+    // must not count as "inside hours".
+    const { service } = build(
+      happyResults({
+        sim_scenario_runs: {
+          data: {
+            id: "run-1",
+            restaurant_id: "r-sim",
+            scenario: "random",
+            seed: 7,
+            service_date: TODAY,
+            timezone: "America/Chicago",
+            operating_hours: { mon: [["17:00", "23:30"]] },
+            params: {},
+            expected: baseExpectation(),
+            posted_at: POSTED,
+            created_at: POSTED,
+          },
+          error: null,
+        },
+      }),
+    );
     const r = await service.verify("r-sim", "run-1");
     const row = byId(r, "hours.outside");
     expect(row.status).toBe("unverifiable");
     expect(row.actual).toBeNull();
+    expect(row.detail).toContain("hours_invalid");
+  });
+
+  it("hours the venue never set are unverifiable, never 'within hours'", async () => {
+    const { service } = build(
+      happyResults({
+        sim_scenario_runs: {
+          data: {
+            id: "run-1",
+            restaurant_id: "r-sim",
+            scenario: "random",
+            seed: 7,
+            service_date: TODAY,
+            timezone: "America/Chicago",
+            operating_hours: null,
+            params: {},
+            expected: baseExpectation(),
+            posted_at: POSTED,
+            created_at: POSTED,
+          },
+          error: null,
+        },
+      }),
+    );
+    const r = await service.verify("r-sim", "run-1");
+    const row = byId(r, "hours.outside");
+    expect(row.status).toBe("unverifiable");
     expect(row.detail).toContain("hours_unknown");
+  });
+
+  it("with real hours every check is placed, and the count is a pass", async () => {
+    const { service } = build(happyResults());
+    const r = await service.verify("r-sim", "run-1");
+    const row = byId(r, "hours.outside");
+    expect(row.status).toBe("pass");
+    expect(row.actual).toBe(0);
   });
 });
 

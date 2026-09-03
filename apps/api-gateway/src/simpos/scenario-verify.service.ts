@@ -1770,13 +1770,20 @@ export class ScenarioVerifyService {
       );
       return;
     }
-    if (parseOperatingHours(run.operating_hours) == null) {
+    // The real parser throws on an invalid shape and on null (ADR 0093 D1:
+    // unknown is never coerced to closed). Either way 'closed day' would be an
+    // assumption, so it is unverifiable with the parser's own words.
+    try {
+      if (run.operating_hours == null) throw new Error("hours_unknown");
+      parseOperatingHours(run.operating_hours);
+    } catch (e: any) {
+      const why = Array.isArray(e?.errors) ? e.errors.join("; ") : (e?.message ?? String(e));
       push(
         "hours.closed_day",
         "unverifiable",
         0,
         null,
-        "the venue's operating hours could not be parsed, so 'closed day' is an assumption rather than a fact",
+        `the venue's operating hours could not be parsed (${why}), so 'closed day' is an assumption rather than a fact`,
       );
       return;
     }

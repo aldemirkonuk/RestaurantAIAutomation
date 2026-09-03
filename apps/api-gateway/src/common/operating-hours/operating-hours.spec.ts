@@ -309,7 +309,7 @@ describe("operating-hours (shared fixture)", () => {
       expect(wallToInstant(zone, y, mo, d, h, mi).toISOString()).toBe(expected);
     });
 
-    it("the fixture's shorter recipe agrees on every fixture case", () => {
+    it("the fixture discriminates the shorter recipe: it agrees west of Greenwich and fails east of it", () => {
       // Guards the claim above from the other side: wherever the fixture DOES
       // define the answer, the two rules must not part company, or this file
       // would be quietly asserting something the Python suite denies.
@@ -374,6 +374,7 @@ describe("operating-hours (shared fixture)", () => {
       };
 
       let compared = 0;
+      const disagreeZones = new Set<string>();
       for (const c of fixture.window_cases) {
         const hours = hoursOf(c.hours) as Record<
           string,
@@ -384,15 +385,20 @@ describe("operating-hours (shared fixture)", () => {
           for (const r of ranges) {
             for (const hhmm of [r.open, r.close]) {
               const [h, mi] = hhmm.split(":").map(Number);
-              expect(recipe(c.timezone, y, mo, d, h, mi)).toBe(
-                wallToInstant(c.timezone, y, mo, d, h, mi).getTime(),
-              );
-              compared += 1;
+              const agree =
+                recipe(c.timezone, y, mo, d, h, mi) ===
+                wallToInstant(c.timezone, y, mo, d, h, mi).getTime();
+              if (!agree) disagreeZones.add(c.timezone);
+              else compared += 1;
             }
           }
         }
       }
       expect(compared).toBeGreaterThan(20);
+      // The Berlin/Sydney cases were added to the fixture on 2026-09-02 precisely
+      // because the naive recipe inverts both DST rules east of Greenwich. If this
+      // set is ever empty again, the fixture has lost its discriminating cases.
+      expect([...disagreeZones].sort()).toEqual(["Australia/Sydney", "Europe/Berlin"]);
     });
   });
 });
