@@ -1,5 +1,6 @@
 import { Controller, Get } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
+import { Public } from "../auth/decorators/public.decorator";
 import { COMMIT_SHA, BOOTED_AT } from "./build-provenance";
 
 /**
@@ -83,6 +84,11 @@ import { COMMIT_SHA, BOOTED_AT } from "./build-provenance";
 @ApiTags("health")
 @Controller("health")
 export class LivenessController {
+  // Public by DECISION, not by omission (ADR 0096): the deploy audit polls
+  // this unauthenticated (`deploy.yml:171` — `${API_GATEWAY_URL}/api/v1/health/live`),
+  // and a liveness probe that needs a token cannot answer "did the process
+  // come up?" when the thing that failed to come up is auth.
+  @Public()
   @Get("live")
   @ApiOperation({
     summary:
