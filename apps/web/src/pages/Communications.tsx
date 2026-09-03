@@ -69,7 +69,7 @@ interface ProcurementSendHistoryProps {
   onWineFilterChange: (v: string) => void
 }
 
-function ProcurementSendHistory({
+export function ProcurementSendHistory({
   items, isLoading, expandedRowId, onExpandRow,
   dateFrom, onDateFromChange, providerFilter, onProviderFilterChange,
   typeFilter, onTypeFilterChange,
@@ -166,7 +166,11 @@ function ProcurementSendHistory({
                     </p>
                   </div>
                   <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full flex-shrink-0">
-                    {item.emailType ? (EMAIL_TYPE_LABELS[item.emailType] ?? item.emailType) : 'Vendor reply'}
+                    {item.direction === 'INBOUND'
+                      ? 'Vendor reply'
+                      : item.emailType
+                        ? (EMAIL_TYPE_LABELS[item.emailType] ?? item.emailType)
+                        : '—'}
                   </span>
                 </div>
                 <div className="flex items-center gap-4 flex-shrink-0 ml-4">
@@ -174,13 +178,19 @@ function ProcurementSendHistory({
                     {new Date(item.sentAt).toLocaleDateString()}
                   </span>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                    item.status === 'SEND_UNCONFIRMED'
-                      ? 'bg-red-100 text-red-700'
-                      : item.status === 'APPROVED' || item.status === 'AUTO_SENT'
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : 'bg-gray-100 text-gray-600'
+                    item.direction === 'INBOUND'
+                      ? 'bg-blue-100 text-blue-700'
+                      : item.status === 'SEND_UNCONFIRMED'
+                        ? 'bg-red-100 text-red-700'
+                        : item.status === 'APPROVED' || item.status === 'AUTO_SENT'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-gray-100 text-gray-600'
                   }`}>
-                    {item.status ? (OUTCOME_LABELS[item.status] ?? item.status) : 'No status recorded'}
+                    {item.direction === 'INBOUND'
+                      ? 'Received'
+                      : item.status
+                        ? (OUTCOME_LABELS[item.status] ?? item.status)
+                        : 'No status recorded'}
                   </span>
                   <span className="text-gray-400 text-xs">{isExpanded ? '▲' : '▼'}</span>
                 </div>
