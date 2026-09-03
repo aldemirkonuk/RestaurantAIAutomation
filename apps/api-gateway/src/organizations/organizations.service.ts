@@ -494,6 +494,43 @@ export class OrganizationsService {
 
     if (error || !restaurant)
       throw new InternalServerErrorException("Failed to create location");
+
+    // The creator must be able to USE the location they just created.
+    // `MembersService.assertMembership` (restaurants/members.service.ts:25)
+    // authorises on a `user_restaurant_access` row, falling back only to
+    // `users.restaurant_id` — which still points at the creator's original
+    // restaurant. Without this insert the very next call on the new location
+    // (e.g. GET /restaurants/:id/operating-hours) answers 403. Same columns
+    // `registerRestaurant` writes for the founding owner (auth.service.ts:759).
+    const { error: accessError } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .insert({
+        user_id: userId,
+        restaurant_id: restaurant.id,
+        role: "owner",
+        invited_via: null,
+        is_active: true,
+      });
+
+    if (accessError) {
+      // A restaurant nobody can reach is worse than no restaurant: it is an
+      // orphan row that still occupies its slug and shows up in org listings.
+      // Roll it back, same discipline as `registerRestaurant`'s catch block.
+      const { error: rollbackError } = await this.databaseService.supabase
+        .from("restaurants")
+        .delete()
+        .eq("id", restaurant.id);
+      this.logger.error(
+        `createLocation rollback: access grant failed for user ${userId} on ` +
+          `restaurant ${restaurant.id}: ${accessError.message}` +
+          (rollbackError
+            ? ` — ROLLBACK ALSO FAILED (${rollbackError.message}); ` +
+              `restaurant ${restaurant.id} is orphaned`
+            : ""),
+      );
+      throw new InternalServerErrorException("Failed to create location");
+    }
+
     return { id: restaurant.id, name: restaurant.name };
   }
 }
