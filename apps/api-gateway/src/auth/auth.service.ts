@@ -73,6 +73,15 @@ export interface JwtPayload {
    * column; this is a snapshot from issue time.
    */
   emailVerified?: boolean;
+  /**
+   * Present ONLY on a token minted by `devBypassLogin`, and never signed as
+   * `false` — a normal session omits the key entirely, so "absent" and "not a
+   * dev session" are the same fact rather than two states a reader could
+   * confuse. It is a marker, not a permission: every reader re-checks
+   * `devBypassEnvEnabled()` at read time, so the claim does nothing on a
+   * production server even though the signature is valid there.
+   */
+  devBypass?: boolean;
   iat?: number;
   exp?: number;
 }
@@ -274,7 +283,13 @@ export class AuthService {
     this.logger.warn(
       `DEV_AUTH_BYPASS active — issuing a real session for ${email} (localhost only).`,
     );
-    return this.generateTokens(user);
+    // `true` here signs `emailVerified: true` and a `devBypass: true` marker.
+    // Without it the session is unusable for its one purpose: the bypass
+    // account's `users.email_verified` is false, and ProtectedRoute
+    // (apps/web/src/components/ProtectedRoute.tsx:42) sends every route to
+    // /verify-email on that. Changing the row instead would edit real data to
+    // work around a dev tool, and would follow the account into production.
+    return this.generateTokens(user, true);
   }
 
   /**
@@ -487,7 +502,10 @@ export class AuthService {
    * Studio roles are fetched from user_roles table and embedded in app_metadata.roles
    * so FastAPI require_studio_role() can authorize studio API calls without a DB round-trip.
    */
-  private async generateTokens(user: any): Promise<TokenPair> {
+  private async generateTokens(
+    user: any,
+    devBypass = false,
+  ): Promise<TokenPair> {
     // Fetch active studio roles for this user
     let studioRoles: string[] = [];
     try {
@@ -522,7 +540,14 @@ export class AuthService {
       email: user.email,
       role: restaurantRole,
       restaurantId: user.restaurant_id,
-      emailVerified: user.email_verified ?? false,
+      // `devBypass` is only ever true on the one call from `devBypassLogin`,
+      // which has already re-checked the env gate itself. The database row is
+      // untouched; this is a claim about the SESSION, not about the account.
+      emailVerified: devBypass ? true : (user.email_verified ?? false),
+      // Spread, not `devBypass: devBypass` — a normal token must not carry the
+      // key at all. A signed `false` would be a second way to say "not a dev
+      // session", and readers would have to handle both.
+      ...(devBypass ? { devBypass: true } : {}),
       app_metadata: { roles: studioRoles },
     };
 

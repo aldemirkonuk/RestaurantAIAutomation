@@ -41,6 +41,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       role: user.role ?? payload.role,
       restaurantId,
       emailVerified: user.email_verified ?? false,
+      // Carried through so `GET /auth/me` can tell a dev-bypass session from a
+      // real one. Deliberately NOT folded into `emailVerified` above: that
+      // field is what `assertEmailVerified` reads on every guarded route, and
+      // widening it here would turn a display fix into a server-side
+      // authorisation change. The database row stays the answer everywhere
+      // except the one read that has to report it.
+      devBypass: payload.devBypass === true,
     };
   }
 }
