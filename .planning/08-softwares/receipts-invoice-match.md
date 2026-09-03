@@ -180,6 +180,8 @@ Seams:
 
 ## §8 Where it's going
 
+> **Decided 2026-09-03:** every incoming document renders as one canonical Mudavym document — one schema (EXTRACTED / RESOLVED / ADJUDICATED, per-field provenance with `as_printed`), one template with conditional sections, the original content-addressed and fetched on demand, verdict first, confidence never a number, intake gate for blank/duplicate/bundled uploads — [ADR 0104](../decisions/0104-every-incoming-document-renders-as-one-canonical-mudavym-document.md); the flow it records is [ADR 0103](../decisions/0103-a-delivery-is-agreed-before-it-is-verified.md). Sketches: `sketches/089-agreed-invoice-directions`.
+
 - [ADR 0049](../decisions/0049-ecosystem-division-layer.md) §3a: **Restaurant** division,
   phases **E1** and **E4**. [[ECOSYSTEM-PLAN]] §2 records this end as already SOTA —
   *"receiving→four-way-match→credit→landed-cost"* — with the failure being that the middle

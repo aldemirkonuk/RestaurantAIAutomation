@@ -231,6 +231,8 @@ Seams:
 
 ## §8 Where it's going
 
+> **Decided 2026-09-03:** a POS connection is a row in `pos_connections (restaurant_id, provider_key)` — secret, `signature_scheme`, `notification_url`, OAuth tokens, cursor, status — after the measured Square day (genuine signature 401 × 243; our header 201 × 243 with zero rows and zero log lines; the same day 42/42 through the canonical envelope): [ADR 0105](../decisions/0105-a-pos-connection-is-a-row-not-an-env-var.md). Build gated; four defects it found are in `v3.0-TECH-DEBT.md` (2026-09-03).
+
 - ADR 0049 §3a puts this in the **POS** division at spine hop 1, phases **E0** (webhook
   secrets), **E1** (pipeline unification), **E4** (real-venue onboarding)
   (`.planning/04-specs/ECOSYSTEM-PLAN.md:57`).
