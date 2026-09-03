@@ -877,8 +877,13 @@ def test_factory_defers_to_toast_mock_mode_when_it_is_defined():
     assert create_toast_client_from_settings(WithFlag()).mock_mode is True
 
 
-def test_strict_callers_are_forced_out_of_mock_mode():
-    """strict + mock is a contradiction that could only ever produce a 503."""
+def test_strict_does_not_override_the_mock_switch():
+    """The line this replaces was `if strict: mock_mode = False`.
+
+    `get_toast_client()` always passes strict=True, so that line meant
+    TOAST_MOCK_MODE could not gate the router at all. Strict is a promise never
+    to fabricate; it is not a licence to connect.
+    """
     from services.toast_api_client import create_toast_client_from_settings
 
     class WithFlag(_FakeSettings):
@@ -886,5 +891,157 @@ def test_strict_callers_are_forced_out_of_mock_mode():
 
     client = create_toast_client_from_settings(WithFlag(), strict=True)
 
-    assert client.mock_mode is False
+    assert client.mock_mode is True
     assert client.strict is True
+
+
+def test_factory_falls_back_to_mock_when_settings_has_no_opinion():
+    """The fallback used to be `not (client_id and client_secret)`.
+
+    Deleting the strict override alone did NOT fix the switch: with credentials
+    present that expression is False, so the router still went live. Presence of
+    credentials is not consent to use them.
+    """
+    from services.toast_api_client import create_toast_client_from_settings
+
+    client = create_toast_client_from_settings(_FakeSettings(), strict=True)
+
+    assert client.mock_mode is True
+
+
+# ── 8. TOAST_MOCK_MODE gates the router — measured as packets, not flags ─────
+#
+# Everything below asserts the OBSERVABLE thing: whether any outbound network
+# egress is ATTEMPTED. Egress is recorded at the socket layer — below httpx,
+# httpcore and anyio — so no library-level stub can make a live path look
+# refused. A test that checked `client.mock_mode is True` would have passed on
+# the pre-fix tree for the unset case while the process resolved
+# ws-api.toasttab.com; that is the fault class this repo is named after.
+
+
+@pytest.fixture
+def egress(monkeypatch):
+    """Record and block every outbound DNS lookup and TCP connect.
+
+    The recorder raises, so nothing ever reaches the network: the syscall is
+    never made. Returns the list of attempts, as lowercase host strings.
+    """
+    import socket
+
+    attempts: list = []
+
+    def _getaddrinfo(host, port, *a, **kw):
+        name = host.decode() if isinstance(host, bytes) else str(host)
+        attempts.append(name.lower())
+        raise AssertionError(f"egress attempted: DNS {name}:{port}")
+
+    def _connect(self, address):
+        attempts.append(str(address).lower())
+        raise AssertionError(f"egress attempted: connect {address}")
+
+    monkeypatch.setattr(socket, "getaddrinfo", _getaddrinfo)
+    monkeypatch.setattr(socket.socket, "connect", _connect)
+    return attempts
+
+
+@pytest.fixture
+def toast_env(monkeypatch):
+    """Real settings + real dependency, with credentials present.
+
+    Credentials are set deliberately: an unconfigured deploy refuses for a
+    reason that has nothing to do with the switch, which would make every
+    assertion below vacuous.
+    """
+    import api.toast_routes as toast_routes
+
+    monkeypatch.setenv("ADMIN_API_KEY", ADMIN_KEY)
+    monkeypatch.setenv("TOAST_CLIENT_ID", "test-client-id")
+    monkeypatch.setenv("TOAST_CLIENT_SECRET", "test-client-secret")
+    monkeypatch.setenv("TOAST_RESTAURANT_GUID", "test-guid")
+    monkeypatch.setenv("TOAST_API_URL", "https://ws-api.toasttab.com")
+
+    def _reset():
+        # Clear the cache on the binding the ROUTE holds, not the one this test
+        # module would import. They are not always the same object:
+        # tests/test_spend_logger.py:542 calls importlib.reload(config.settings),
+        # which rebinds get_settings in that module while api.toast_routes keeps
+        # the pre-reload function — and its own separate lru_cache. Clearing
+        # `from config.settings import get_settings` here left the router
+        # answering from a Settings built before any of this fixture's env vars
+        # existed, which silently turned the =false direction into a refusal.
+        # Reaching through the route's own module is what makes this test
+        # order-independent.
+        toast_routes.get_settings.cache_clear()
+        toast_routes._reset_client_for_tests()
+
+    def _apply(mock_mode_value):
+        if mock_mode_value is None:
+            monkeypatch.delenv("TOAST_MOCK_MODE", raising=False)
+        else:
+            monkeypatch.setenv("TOAST_MOCK_MODE", mock_mode_value)
+        _reset()
+
+    yield _apply
+
+    _reset()
+
+
+async def _call_menus(app_headers=AUTH):
+    """Drive GET /menus through the REAL get_toast_client dependency."""
+    app = FastAPI()
+    app.include_router(router)  # no dependency_overrides — that is the point
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as c:
+        return await c.get("/api/v1/toast/menus", headers=app_headers)
+
+
+# The values an operator can plausibly produce. Every one of them must mock:
+# "true" is the documented safe value, and the rest are unset or malformed.
+# Measured on the pre-fix tree 2026-09-03: all five attempted DNS for
+# ws-api.toasttab.com.
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param("true", id="documented-safe-value"),
+        pytest.param(None, id="unset"),
+        pytest.param("", id="empty"),
+        pytest.param("yes", id="malformed-yes"),
+        pytest.param("1", id="malformed-1"),
+        pytest.param("TRUE", id="uppercase"),
+    ],
+)
+async def test_mock_mode_attempts_no_outbound_request(toast_env, egress, value):
+    toast_env(value)
+
+    response = await _call_menus()
+
+    assert egress == [], f"TOAST_MOCK_MODE={value!r} let a packet out: {egress}"
+    assert response.status_code == 503
+
+
+async def test_mock_mode_false_reaches_the_real_toast_host(toast_env, egress):
+    """The other direction: a switch that only ever refuses is not a switch.
+
+    Without this, a router broken in some unrelated way would pass every test
+    above while being permanently dead.
+    """
+    toast_env("false")
+
+    response = await _call_menus()
+    assert any(
+        "toasttab.com" in a for a in egress
+    ), f"TOAST_MOCK_MODE=false did not reach the real host; egress={egress}"
+    # The recorder refuses the connection, so the client reports Toast
+    # unreachable — which is what proves the live path, not the mock path, ran.
+    assert response.status_code == 503
+
+
+async def test_only_the_literal_false_disarms_the_switch(toast_env, egress):
+    """Whitespace and case are tolerated; anything else is not `false`."""
+    toast_env("  FaLsE  ")
+
+    await _call_menus()
+
+    assert any("toasttab.com" in a for a in egress)

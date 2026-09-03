@@ -721,31 +721,50 @@ def create_toast_client_from_settings(settings, strict: bool = False) -> ToastAP
     could have a first caller:
 
     1. It read `settings.toast_mock_mode` directly. `Settings` is a plain class
-       (config/settings.py:13-16) that never defined that attribute, so the read
-       raised AttributeError on every call. There were zero callers, which is
-       why nobody hit it. The read is now via `getattr` with a
-       credentials-derived default: when `toast_mock_mode` is defined the
-       setting wins, and when it is not this factory still works instead of
-       500ing. That deference is deliberate — it must not depend on a
-       particular settings revision to avoid crashing.
+       (config/settings.py:13-16) that did not define that attribute at the
+       time, so the read raised AttributeError on every call. There were zero
+       callers, which is why nobody hit it. The read is now via `getattr` so
+       this factory does not depend on a particular settings revision — but the
+       fallback is `True`, not a credentials-derived guess. A settings object
+       that has no opinion about mocking must not thereby authorise live calls.
 
     2. It never passed `base_url`, so `settings.toast_api_url` was dead config
        and every call went to the client's hardcoded constant regardless of what
        the operator had set. The setting is now wired through, which is what
        makes the host operator-controlled rather than baked in.
 
-    `strict` callers are forced out of mock mode. Strict means "never serve
-    invented data", so strict-plus-mock is a contradiction that could only ever
-    produce a 503 — an operator with valid credentials would otherwise find the
-    integration dead because an unrelated mock flag defaulted on.
+    `TOAST_MOCK_MODE` is the ONLY thing that decides. It used to not be:
+
+        if strict:
+            mock_mode = False
+
+    stood here, and `get_toast_client()` (api/toast_routes.py) — the router's
+    sole production caller — always passes `strict=True`. So the switch could
+    not gate the router at all. Measured on the pre-fix tree, 2026-09-03, with
+    the switch at its documented safe value and egress recorded at the socket
+    layer:
+
+        settings.toast_mock_mode       = True
+        client.mock_mode after factory = False
+        EGRESS ATTEMPTED: DNS for ws-api.toasttab.com:443
+
+    The reasoning behind that line was that strict-plus-mock is a contradiction
+    which can only produce a 503. It is a contradiction, and a 503 is the
+    correct resolution of it: an operator who asked for mock and gets a refusal
+    has been told the truth, whereas one who asked for mock and got a live,
+    billable third-party call has been overruled by code they cannot see.
+    Strict is a promise never to *fabricate*; it was never a licence to
+    *connect*. `connect()` raises ToastNotConfigured in that state and
+    `_raise_http_for` maps it to 503 — which is the whole switch, working.
+
+    Deleting the line is necessary but was NOT sufficient, and that is worth
+    recording: with the line gone but the fallback still credentials-derived,
+    the pre-fix tree still attempted DNS for ws-api.toasttab.com whenever
+    TOAST_CLIENT_ID and TOAST_CLIENT_SECRET were both set, because `not (id and
+    secret)` is False. Credentials being *present* is not consent to *use*
+    them. Hence the `True` fallback above.
     """
-    mock_mode = getattr(
-        settings,
-        "toast_mock_mode",
-        not (settings.toast_client_id and settings.toast_client_secret),
-    )
-    if strict:
-        mock_mode = False
+    mock_mode = getattr(settings, "toast_mock_mode", True)
 
     return ToastAPIClient(
         toast_client_id=settings.toast_client_id,
