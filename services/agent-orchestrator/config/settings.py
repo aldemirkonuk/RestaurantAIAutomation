@@ -172,8 +172,20 @@ class Settings:
         # the gateway uses (TOAST_MOCK_MODE, default true —
         # apps/api-gateway/src/toast/toast.service.ts:72), so one key now
         # governs Toast mocking on both services.
+        #
+        # The polarity of the parse is the point. Written as `== "true"` this
+        # was fail-OPEN for everything that is not the literal word: measured
+        # 2026-09-03, `TOAST_MOCK_MODE=yes`, `=1` and `=""` all produced
+        # mock_mode False, i.e. LIVE, billable calls to a third-party API from
+        # a typo. A mock switch is a safety switch, so only an explicit,
+        # unambiguous opt-out may disarm it: anything that is not exactly
+        # "false" (case-insensitive, trimmed) means mock. Unset means mock.
+        # Malformed means mock. That is fail-closed, and it is why this is not
+        # written the same way as `self.debug` above — `debug` fails closed on
+        # `== "true"` because its safe value is False, and Toast's safe value
+        # is True.
         self.toast_mock_mode: bool = (
-            os.getenv("TOAST_MOCK_MODE", "true").lower() == "true"
+            os.getenv("TOAST_MOCK_MODE", "true").strip().lower() != "false"
         )
 
         # Phase 21: Inventory and buffer configuration (E2E-v2-02, E2E-v2-03)

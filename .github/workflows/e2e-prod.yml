@@ -5,7 +5,18 @@
 #
 # TFND-05: Nightly cloud E2E skeleton — do not invent a second prod E2E paradigm (D-24).
 # Phase 42 will add a separate weekly AI eval workflow — do not implement here (D-25).
-# STATUS: schedule-present / capability-unverified until one wave XML lands — do not equate cron with healthy nightly.
+# STATUS (measured 2026-09-02): NO WAVE HAS EVER RUN WITH CREDENTIALS.
+# `gh run list --workflow=e2e-prod.yml` returns 120 runs (2026-05-06 .. 2026-09-02),
+# 118 `failure` and 2 `success`, every one of them a `schedule` event — the deploy
+# dispatch in deploy.yml has never produced a run here either. The cause is not a
+# broken production: the secrets this job maps below were never set on the repository
+# (`gh secret list` holds only ADMIN_API_KEY, ANTHROPIC_API_KEY, API_GATEWAY_URL,
+# RAILWAY_ORCHESTRATOR_URL, SUPABASE_DB_URL, SUPABASE_DIRECT_CONNECTION_STRING,
+# SUPABASE_POOLER_URL). So a red here has always meant "not configured", which is
+# indistinguishable from "production is broken" — see .planning/v3.0-TECH-DEBT.md
+# "CI — the nightly production E2E has reported `failure` for `not configured`".
+# Do not equate cron with a healthy nightly, and do not read this red as a production
+# signal until the secrets-precondition step below passes.
 #
 # D-12: Nightly 02:00 UTC — observability only
 # D-13: workflow_dispatch from Vercel deploy hook — blocking gate
@@ -69,6 +80,75 @@ jobs:
 
     steps:
       # -----------------------------------------------------------------------
+      # SECRETS PRECONDITION — deliberately the FIRST step, before any install.
+      #
+      # Why: 118 of this workflow's 120 runs reported `failure` while none of the
+      # secrets below were set, so the red carried no reason and read as a
+      # production signal. Same shape as OD-120 in
+      # .planning/decisions/OPEN-DECISIONS.md — a check that did not happen must
+      # never render as a neutral or a substantive result. This step puts the
+      # reason in the step name and in the first line of the log.
+      #
+      # REQUIRED — without any one of these the run asserts NOTHING about
+      # production, so its absence must fail, not skip:
+      #   RAILWAY_ORCHESTRATOR_URL   tests/e2e/conftest_prod.py:104 (prod_base_url)      -> Waves A,B,C,D
+      #   ADMIN_API_KEY              tests/e2e/conftest_prod.py:179 (prod_admin_headers) -> Wave B entirely
+      #   SUPABASE_URL               tests/e2e/conftest_prod.py:132 and :197             -> prod_jwt + prod_supabase
+      #   SUPABASE_ANON_KEY          tests/e2e/conftest_prod.py:133 (prod_jwt)
+      #   SUPABASE_SERVICE_ROLE_KEY  tests/e2e/conftest_prod.py:198 (prod_supabase)      -> Waves D,E,G
+      #   E2E_TEST_EMAIL             tests/e2e/conftest_prod.py:134, apps/web/e2e/prod-smoke.spec.ts:33
+      #   E2E_TEST_PASSWORD          tests/e2e/conftest_prod.py:135, apps/web/e2e/prod-smoke.spec.ts:34
+      #   E2E_BASE_URL               apps/web/playwright.prod.config.ts:21-26 — the config
+      #                              THROWS without it, so Wave F cannot start at all
+      #
+      # OPTIONAL — each gates exactly one wave, and a partial run is a legitimate
+      # result, so these warn and never fail:
+      #   RABBITMQ_URL          tests/e2e/wave_c_agent_triggers.py:100  -> skips Wave C
+      #   TOAST_WEBHOOK_SECRET  tests/e2e/wave_d_toast_pipeline.py:68   -> skips Wave D
+      #   GMAIL_USER            tests/e2e/wave_e_gmail_pipeline.py:40   -> skips Wave E
+      #   SENTRY_DSN            tests/e2e/conftest_prod.py:36           -> failure alerting only
+      #
+      # Two mapping defects this comment records but this change does not fix:
+      #   * Wave G's gate reads GOOGLE_CALENDAR_CREDENTIALS / GOOGLE_CLIENT_ID /
+      #     CALENDAR_REFRESH_TOKEN (tests/e2e/wave_g_calendar.py:52-54) and NONE of
+      #     the three is mapped into this job's env — Wave G can never run as written.
+      #   * GMAIL_PASSWORD is mapped in the env block above but read by no wave
+      #     (only services/agent-orchestrator/config/settings.py:48, the runtime).
+      #
+      # Secret VALUES are never printed — only presence.
+      - name: Required secrets are present
+        run: |
+          REQUIRED="RAILWAY_ORCHESTRATOR_URL ADMIN_API_KEY SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY E2E_TEST_EMAIL E2E_TEST_PASSWORD E2E_BASE_URL"
+          OPTIONAL="RABBITMQ_URL TOAST_WEBHOOK_SECRET GMAIL_USER SENTRY_DSN"
+
+          MISSING=""
+          for name in $REQUIRED; do
+            if [ -z "${!name:-}" ]; then MISSING="$MISSING $name"; fi
+          done
+
+          if [ -n "$MISSING" ]; then
+            echo "CANNOT CHECK -- missing secrets:$MISSING"
+            echo "::error title=Production E2E cannot check::CANNOT CHECK -- missing secrets:$MISSING"
+            echo ""
+            echo "This run proves NOTHING about production. It is red because the"
+            echo "workflow is not configured, not because production is broken."
+            echo "Set the names listed above as repository secrets"
+            echo "(Settings > Secrets and variables > Actions), then re-run."
+            echo "E2E_BASE_URL is mapped from the secret VERCEL_PRODUCTION_URL."
+            # exit 2 = "the check itself could not run", the repo-wide guard convention
+            # (scripts/check_*.py); exit 1 is reserved for "the check ran and failed".
+            exit 2
+          fi
+
+          echo "All 8 required secrets present -- this run's result is a real production signal."
+
+          for name in $OPTIONAL; do
+            if [ -z "${!name:-}" ]; then
+              echo "::warning title=Wave will skip::$name is unset -- the wave it gates will skip, not fail."
+            fi
+          done
+
+      # -----------------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v7
 
@@ -90,10 +170,14 @@ jobs:
           pip install -r requirements.test.txt
 
       # -----------------------------------------------------------------------
+      # pnpm 8 was pinned here while package.json declares
+      # `packageManager: pnpm@9.15.9` and `engines.pnpm >= 9.0.0`, so this step's
+      # `pnpm install` died with ERR_PNPM_UNSUPPORTED_ENGINE on every run —
+      # a second red that also had nothing to do with production. Aligned with
+      # ci.yml:770 and deploy.yml:217, which use @v4 with no pin and read the
+      # version from package.json.
       - name: Set up pnpm + Node.js (Wave F — Playwright)
-        uses: pnpm/action-setup@v2
-        with:
-          version: '8'
+        uses: pnpm/action-setup@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v7

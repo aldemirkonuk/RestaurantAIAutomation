@@ -41,9 +41,13 @@ import {
 
 /**
  * Frozen as of 2026-09-01. This list is a ratchet: removing an entry (because
- * the surface was retired) is fine, adding one is not. A seventh call to a
- * router that does not exist should not be able to land quietly the way the
- * first six did.
+ * the surface was retired) is fine, adding one is not. A seventh call should
+ * not be able to land quietly the way the first six did.
+ *
+ * These six stopped being DEAD on 2026-09-03 when PR #236 built the router they
+ * address. The ratchet is kept anyway, and the name with it: what it constrains
+ * is the SURFACE the gateway asserts against the orchestrator, and that needs a
+ * deliberate edit whether the far end answers or not.
  */
 const KNOWN_DEAD_TOAST_CALLS = [
   "/api/v1/toast/menus",
@@ -55,10 +59,16 @@ const KNOWN_DEAD_TOAST_CALLS = [
 ].sort();
 
 describe("Toast → orchestrator surface (ratchet)", () => {
-  it("the orchestrator still registers no /api/v1/toast router", () => {
+  // FLIPPED 2026-09-03 by PR #236, which built the router. This assertion used
+  // to read `not.toContain` and it fired the moment the router landed — which
+  // is the ratchet doing precisely the job its header describes ("if the
+  // orchestrator ever gains a real /api/v1/toast router the ratchet says so").
+  // It is inverted rather than deleted so the surface stays pinned in the other
+  // direction: the router existing is now the invariant, and losing it again
+  // would be a regression nobody would otherwise notice.
+  it("the orchestrator registers the /api/v1/toast router", () => {
     const prefixes = registeredOrchestratorPrefixes();
-    expect(prefixes).not.toContain("/api/v1/toast");
-    expect(prefixes.filter((p) => p.startsWith("/api/v1/toast"))).toEqual([]);
+    expect(prefixes).toContain("/api/v1/toast");
   });
 
   it("the gateway's dead Toast calls have not grown", () => {
@@ -68,14 +78,21 @@ describe("Toast → orchestrator surface (ratchet)", () => {
     expect(toastServiceOrchestratorCalls()).toEqual(KNOWN_DEAD_TOAST_CALLS);
   });
 
-  it("every dead call targets the unregistered prefix, and none targets a live one", () => {
-    // Guards against the opposite error: someone "fixing" this by repointing a
-    // call at a live-but-wrong router (the mistake explicitly rejected when the
-    // dead webhook forward was deleted — see toast.service.ts, REMOVED 2026-09-01).
+  it("every call targets the Toast router, and none has been repointed elsewhere", () => {
+    // The second half of this used to assert `false` — that no call reached a
+    // live prefix — because none of them did. #236 made the prefix live, so it
+    // now asserts `true`.
+    //
+    // The FIRST half is the part that must not be relaxed, and it is unchanged.
+    // It guards the opposite error: someone "fixing" a Toast call by repointing
+    // it at a live-but-wrong router, the mistake explicitly rejected when the
+    // dead webhook forward was deleted (see toast.service.ts, REMOVED
+    // 2026-09-01). A call must still be served by /api/v1/toast specifically,
+    // not merely by something that answers.
     const live = registeredOrchestratorPrefixes();
     for (const call of toastServiceOrchestratorCalls()) {
       expect(call.startsWith("/api/v1/toast/")).toBe(true);
-      expect(live.some((p) => call.startsWith(p + "/"))).toBe(false);
+      expect(live.some((p) => call.startsWith(p + "/"))).toBe(true);
     }
   });
 });

@@ -72,6 +72,9 @@ function seed(): StubDb {
     team_members: [
       {
         id: "m-moe",
+        // `team_members.created_at` is NOT NULL DEFAULT now(); the roster read
+        // sorts by it, so a seed without it is not a row this table can hold.
+        created_at: "2026-01-01T00:00:00Z",
         restaurant_id: RID,
         user_id: MANAGER,
         display_name: "Moe",
@@ -81,6 +84,9 @@ function seed(): StubDb {
       },
       {
         id: "m-sam",
+        // `team_members.created_at` is NOT NULL DEFAULT now(); the roster read
+        // sorts by it, so a seed without it is not a row this table can hold.
+        created_at: "2026-01-02T00:00:00Z",
         restaurant_id: RID,
         user_id: SAM,
         display_name: "Sam",
@@ -90,6 +96,9 @@ function seed(): StubDb {
       },
       {
         id: "m-ray",
+        // `team_members.created_at` is NOT NULL DEFAULT now(); the roster read
+        // sorts by it, so a seed without it is not a row this table can hold.
+        created_at: "2026-01-03T00:00:00Z",
         restaurant_id: RID,
         user_id: RAY,
         display_name: "Ray",
