@@ -393,7 +393,10 @@ export function ManagerShiftDesk() {
    */
   const doBroadcast = useMutation({
     mutationFn: ({ message, memberIds }: { message: string; memberIds?: string[] }) =>
-      broadcast({ message, title: '📣 Message from your manager', memberIds }),
+      // The title is persisted by the gateway and rendered by whichever
+      // surface shows the notification, so it carries no emoji — the
+      // receiving surface draws its own icon.
+      broadcast({ message, title: 'Message from your manager', memberIds }),
     onSuccess: (r: any) => {
       const parts = [`inbox`]
       if (r?.notified) parts.push(`${r.notified} push`)
