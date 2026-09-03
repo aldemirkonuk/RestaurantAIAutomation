@@ -214,3 +214,47 @@ every page after the pass and every finding was closed or filed. The branch
 took main by merge (`e4c753f8`) rather than rebase, because six builders were
 editing the worktree. Sketches 089–092 registered by the parent in MANIFEST at
 PR time. The four large builds run as their own ADRs (0102 onward).
+
+### Wave 4, third pass — 2026-09-03, the four large builds
+
+The founder's gap-depth call was "small fixes first, then everything left
+including the four large builds — make them elegant and pretty." All four are
+on the branch, each with its own decision record and a Sonnet audit whose
+findings were closed before the wave was called done:
+
+- **ADR 0107 — the MCP runtime.** A connection row became a reading: a probe
+  performs the real handshake (initialize → initialized → tools/list over
+  Streamable HTTP/SSE, with timeout and caps), stores status and the server's
+  own words, moves `last_used_at` only when the server answered; secrets are
+  encrypted at rest and never returned; tool invocation is deliberately
+  absent until the commitment guardrail is extended to it. The audit found
+  the endpoint guard bypassable through IPv4-mapped IPv6 literals; the guard
+  is now a byte-level parser that resolves names before the call and pins the
+  vetted address into the socket (33 guard tests, 7 red on the old check).
+- **ADR 0108 — the beverages catalogue.** A register is the house's own books
+  first: the non-wine registers were thin because `beverages` has no
+  restaurant column, so the spine was inverted onto the five tenant tables
+  that carry both a restaurant and a product name — and `pos_unresolved_lines`
+  turned out to be the de-facto sales ledger for everything that is not wine.
+  Six real registers, cocktails CRUD, the three routeless registers routed.
+- **ADR 0109 — server-side reminders.** Idempotency is a database index, not a
+  boolean: a claim per entry and person before any send; quiet hours a
+  per-person deferral; `reminder_sent` finally written. Ships OFF behind an
+  environment allow-list, deliberately not the design flag, because it writes
+  to every member's inbox and phone; the audit proved the claim-before-send
+  by racing a reverted copy.
+- **ADR 0110 — Stripe as the live provider.** Nothing had ever spoken to
+  Stripe, so the earlier "everything except the credential" was false and is
+  corrected in the record; SetupIntents, a customer per restaurant, a mirror of
+  the provider's instruments, a signed webhook, and a client that throws before
+  any charge because pricing is still OD-23. The Elements mount is unverified
+  without a test key; the page says which secret unlocks it.
+
+Also in this pass: the team roster had been empty for every tenant in
+production (PR #287, an ordering column the table never had, listed in the
+guard's own known-bad list); the Mudavym MCP *server* is documented, not
+built (`08-softwares/mudavym-mcp.md`, 42 tools); ADR numbers were allocated by
+sweeping every worktree because `next_free()` reads refs only. What the founder
+decides next: the four flags and the two environment switches
+(`CALENDAR_REMINDERS_ENABLED`, the Stripe trio) stay OFF until his call on the
+gallery; the branch merges to main only on his word.
