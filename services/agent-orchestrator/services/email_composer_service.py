@@ -12,6 +12,7 @@ Responsibilities:
 from __future__ import annotations
 
 import json
+import os
 import re
 import statistics
 import time
@@ -178,6 +179,11 @@ class EmailComposerService:
     ):
         self.database = database
         self.api_gateway_url = config.get("api_gateway_url", "http://localhost:3001")
+        # ADR 0099. Service credential for POST /communications/email. Read from
+        # config if the caller passes one, else from the environment at send
+        # time — Railway can change it under a long-lived process, and there is
+        # no default: an absent key must stop the send, never allow it.
+        self.admin_api_key = config.get("admin_api_key") or ""
         self.google_api_key = config.get("google_api_key")
         # gemini-2.0-flash was shut down 2026-06-01 (OD-57).
         self.llm_model_name = config.get("llm_model", get_settings().gemini_model)
@@ -330,10 +336,47 @@ class EmailComposerService:
         )
 
     async def send_via_gateway(self, payload: EmailPayload) -> Dict[str, Any]:
-        """Send email through NestJS API Gateway for Gmail API threading."""
+        """Send email through NestJS API Gateway for Gmail API threading.
+
+        ADR 0099. This call carried NO credential at all until 2026-09-02, and
+        the gateway's `POST /communications/email` has been behind a class-level
+        `@UseGuards(JwtAuthGuard)` since `fdaa7fa0` (2026-08-25). Every send from
+        here was therefore refused with a 401 before the handler ran, and the
+        401's body has no `error` key, so this method reported it as the string
+        "Unknown error" — the least diagnostic form the failure could take.
+
+        `ADMIN_API_KEY` / `X-Admin-Key` is not a new scheme: it is the existing
+        gateway↔orchestrator service credential (`api/health_routes.py:230`
+        verifies it inbound; `orchestrator.service.ts:72` sends it outbound),
+        pointed the other way.
+
+        FAILS CLOSED. With no key configured this sends nothing. It does not fall
+        back to an unauthenticated attempt, because a real 401 and a
+        misconfiguration would then be indistinguishable in the logs — which is
+        precisely how this went unnoticed for a week.
+        """
         if not payload.to:
             logger.warning("No recipients — skipping send")
             return {"success": False, "error": "No recipients"}
+
+        admin_key = (self.admin_api_key or os.getenv("ADMIN_API_KEY", "") or "").strip()
+        if not admin_key:
+            # Worded to land in `ProviderConversationAgent._is_definite_send_refusal`
+            # (provider_conversation_agent.py:2635) on purpose: no transport was
+            # attempted, so this PROVES non-delivery and the conversation is safe
+            # to release for retry. Classifying it ambiguous would park a message
+            # that was never sent.
+            logger.error(
+                "ADMIN_API_KEY is not set — no email delivery method available; "
+                "refusing to send vendor mail unauthenticated."
+            )
+            return {
+                "success": False,
+                "error": (
+                    "no email delivery method available: ADMIN_API_KEY is not "
+                    "configured for the orchestrator"
+                ),
+            }
 
         request_body = {
             "to": payload.to,
@@ -357,7 +400,10 @@ class EmailComposerService:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    url, json=request_body, timeout=aiohttp.ClientTimeout(total=30)
+                    url,
+                    json=request_body,
+                    headers={"X-Admin-Key": admin_key},
+                    timeout=aiohttp.ClientTimeout(total=30),
                 ) as resp:
                     result = await resp.json()
                     if resp.status == 200 and result.get("success"):
@@ -371,9 +417,18 @@ class EmailComposerService:
                         }
                     else:
                         logger.error(f"Gateway send failed: {result}")
+                        # ADR 0099: a Nest error body carries `statusCode` and
+                        # `message`, never `error`, so the old
+                        # `result.get("error", "Unknown error")` erased the
+                        # status on every refusal. Name it.
+                        detail = (
+                            result.get("error")
+                            or result.get("message")
+                            or "no detail returned"
+                        )
                         return {
                             "success": False,
-                            "error": result.get("error", "Unknown error"),
+                            "error": f"gateway refused the send: HTTP {resp.status} — {detail}",
                         }
         except Exception as e:
             logger.error(f"Failed to send via gateway: {e}")
