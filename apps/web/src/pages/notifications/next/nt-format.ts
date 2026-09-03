@@ -171,8 +171,11 @@ export function iconForType(type: string | null | undefined): LucideIcon {
  * would silently delete the ™ out of a wine name, which is a house that edits
  * its own records. The guard's range is the contract; this is that range.
  */
+// The three sequence carriers (VS16, ZWJ, keycap) are alternated, not put in the
+// character class: eslint's no-misleading-character-class reads a combining mark
+// inside [...] as an accident. Each branch still matches one code point.
 const EMOJI_RE =
-  /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}\u{20E3}]/gu;
+  /(?:[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]|\u{FE0F}|\u{200D}|\u{20E3})/gu;
 
 /**
  * A stored title or message with the producer's emoji taken out, so a row
