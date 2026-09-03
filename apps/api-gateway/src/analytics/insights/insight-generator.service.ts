@@ -59,6 +59,38 @@ export const MAX_PERIOD_OBSERVED_GAP = 1;
 export const MIN_TREND_OBSERVED = 14;
 
 /**
+ * The version of the arithmetic behind a stored sentence.
+ *
+ * `analytics_insights` is a write-through cache, and `getStored()` is preferred
+ * over a fresh compute by `GET /analytics/insights/:id`, by
+ * `AdvancedAnalyticsService.getOverview` and by `GoalsService`'s suggestions.
+ * That made every cached row a claim about the world made by a version of this
+ * file that may no longer exist — and on 2026-09-03, a day after the
+ * observed-day fix landed, it was still answering
+ *
+ *     "Tuesday sales came in 100% lower than your average Tuesday ($0 vs $72)."
+ *
+ * from a row computed the previous morning. Age cannot decide that: an hour-old
+ * row can be right and a minute-old one wrong. Only provenance can. So every
+ * persisted row carries the version that produced it, and every reader refuses
+ * anything below its own.
+ *
+ * BUMP THIS whenever a change alters what a sentence CLAIMS — new withholding
+ * rules, a changed baseline, a reworded template that changes the meaning.
+ * A refactor that cannot change a single sentence does not need a bump.
+ *
+ *   0 — rows written before the column existed (the migration's default), i.e.
+ *       before 2026-09-03. Zero-filled absent days; the 100% sentences.
+ *   1 — reserved for that arithmetic, so "unversioned" and "version 1" are not
+ *       the same statement.
+ *   2 — 2026-09-03: a day with no records is unobserved, not zero
+ *       (`toDaily`/`timeSeriesInsights`); manager day-exclusions are honoured;
+ *       dismissals are honoured; the baseline sentence carries its support
+ *       count and dates itself when it skipped back.
+ */
+export const INSIGHT_GENERATOR_VERSION = 2;
+
+/**
  * InsightGeneratorService — executes the insight candidate space.
  *
  * Pipeline (the SOTA "auto-insights" loop):
@@ -227,7 +259,28 @@ export class InsightGeneratorService {
     };
   }
 
-  /** Read stored insights (instant mobile path). */
+  /**
+   * Read stored insights (instant mobile path).
+   *
+   * **Rows below `INSIGHT_GENERATOR_VERSION` are treated as ABSENT, not as
+   * data.** They were computed by arithmetic this build has superseded, which
+   * makes them retracted claims rather than merely old ones — and every caller
+   * of this method (`GET /analytics/insights/:id`, `getOverview`, the goal
+   * suggestions) prefers whatever it returns over a fresh compute, so a stale
+   * row here is served to a person. Withholding them makes the caller fall
+   * through to `generate({persist:true})`, which recomputes and replaces them:
+   * the cache corrects itself on first read, with no backfill and no deploy
+   * hook, and serves nothing wrong in the meantime.
+   *
+   * `gte`, not `eq`: during a rolling deploy a newer pod's rows are better
+   * arithmetic, not worse, and an older pod that refused them would recompute
+   * and overwrite on every read.
+   *
+   * A failed read returns `[]` for the same reason it always did — one dead
+   * cache must not take the endpoint down — but it is logged as a failure, and
+   * the caller's fallback is a fresh compute, so nothing is reported as empty
+   * that was merely unreadable.
+   */
   async getStored(
     restaurantId: string,
     opts: { categories?: string[]; limit?: number } = {},
@@ -237,15 +290,58 @@ export class InsightGeneratorService {
       .from("analytics_insights")
       .select("*")
       .eq("restaurant_id", restaurantId)
+      .gte("generator_version", INSIGHT_GENERATOR_VERSION)
       .order("score", { ascending: false })
       .limit(opts.limit ?? 30);
     if (opts.categories?.length) q = q.in("category", opts.categories);
     const { data, error } = await q;
     if (error) {
-      this.logger.warn(`getStored failed: ${error.message}`);
+      // Includes the window between this code deploying and migration
+      // `20260903130000` applying, when the column does not exist yet and
+      // PostgREST answers 42703. Returning nothing is the SAFE failure here:
+      // the caller recomputes rather than serving a row whose provenance
+      // cannot be established.
+      this.logger.warn(
+        `getStored failed — serving nothing rather than rows of unknown ` +
+          `provenance, the caller will recompute: ${error.message}`,
+      );
       return [];
     }
     return data || [];
+  }
+
+  /**
+   * Restaurants still holding insight rows from superseded arithmetic.
+   *
+   * The hourly sweep is cadence-gated — a `daily @ 06:00` category refreshes
+   * once a day and not before — so after a generator change a tenant can carry
+   * retracted sentences for up to 24 hours. `getStored()` stops SERVING them
+   * immediately; this is what gets them REPLACED. One read for every tenant.
+   *
+   * A failed read returns null, which the sweep reports rather than treating as
+   * "nothing is stale".
+   */
+  async staleVersionCategories(): Promise<Map<string, Set<string>> | null> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("analytics_insights")
+      .select("restaurant_id, category")
+      .lt("generator_version", INSIGHT_GENERATOR_VERSION)
+      .limit(5000);
+    if (error) {
+      this.logger.warn(`stale-version scan failed: ${error.message}`);
+      return null;
+    }
+    const byRestaurant = new Map<string, Set<string>>();
+    for (const row of data || []) {
+      const rid = String((row as any).restaurant_id ?? "");
+      const category = String((row as any).category ?? "");
+      if (!rid || !category) continue;
+      const set = byRestaurant.get(rid);
+      if (set) set.add(category);
+      else byRestaurant.set(rid, new Set([category]));
+    }
+    return byRestaurant;
   }
 
   private async persist(
@@ -277,6 +373,7 @@ export class InsightGeneratorService {
             evidence: i.evidence,
             period_start: i.periodStart ?? null,
             period_end: i.periodEnd ?? null,
+            generator_version: INSIGHT_GENERATOR_VERSION,
           })),
         );
       }

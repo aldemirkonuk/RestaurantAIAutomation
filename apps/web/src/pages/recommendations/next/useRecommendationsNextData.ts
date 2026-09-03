@@ -222,12 +222,15 @@ export interface RecommendationsData {
   undo: { ruleKey: string; label: string } | null;
   clearUndo: () => void;
   refetch: () => void;
+  /** Resolves TRUE only when the server stored it. Callers that navigate away
+   *  must wait for this — a rollback message on an unmounted page is not a
+   *  message. */
   setDisposition: (
     entry: EntryVM,
     patch: Record<string, unknown>,
     said: string,
     removeFromLeaf: boolean,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   dismiss: (entry: EntryVM, choice: DismissChoice) => Promise<void>;
   restore: (ruleKey: string) => Promise<void>;
   bulk: (entries: EntryVM[], patch: Record<string, unknown>, said: string) => Promise<void>;
@@ -445,8 +448,13 @@ export function useRecommendationsNextData(): RecommendationsData {
   });
 
   const setDisposition = useCallback(
-    async (entry: EntryVM, patch: Record<string, unknown>, said: string, removeFromLeaf: boolean) => {
-      if (!rid) return;
+    async (
+      entry: EntryVM,
+      patch: Record<string, unknown>,
+      said: string,
+      removeFromLeaf: boolean,
+    ): Promise<boolean> => {
+      if (!rid) return false;
       const before = entry;
       if (removeFromLeaf) setEntries((prev) => prev.filter((e) => e.ruleKey !== entry.ruleKey));
       else
@@ -461,6 +469,7 @@ export function useRecommendationsNextData(): RecommendationsData {
         });
         say(said);
         if (removeFromLeaf) offerUndo(entry.ruleKey, said);
+        return true;
       } catch (err) {
         const f = failureOf(err);
         // The write did not land — put the entry back rather than let the
@@ -475,6 +484,7 @@ export function useRecommendationsNextData(): RecommendationsData {
             ? 'Your session has expired — that was not saved. Sign in again.'
             : `Not saved (${f.message}) — the entry is back where it was.`,
         );
+        return false;
       }
     },
     [rid, say, offerUndo],

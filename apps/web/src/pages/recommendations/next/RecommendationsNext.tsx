@@ -169,10 +169,28 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
 
   /* ── the writes ──────────────────────────────────────────────────────── */
 
+  /**
+   * Act = record that this entry was followed, THEN go do the work.
+   *
+   * The write is awaited rather than fired and forgotten. `navigate()` unmounts
+   * this page synchronously, so the earlier fire-and-forget version raced: a
+   * failed POST rolled the entry back and said so on a component that no longer
+   * existed, and nobody ever saw it — while §1b of the page note claimed, with
+   * no carve-out, that "a write that did not land puts the entry back and says
+   * so". Now a write that does not land keeps you here, with the sentence and
+   * the control still on screen; `acted_at` is the audit trail of "I followed
+   * this", and leaving with it silently unrecorded is the failure this page
+   * exists to refuse.
+   */
   const act = useCallback(
-    (e: EntryVM) => {
-      void data.setDisposition(e, { acted: true }, `Followed “${e.hand.label}” to ${e.hand.where}.`, false);
-      navigate(e.hand.href);
+    async (e: EntryVM) => {
+      const landed = await data.setDisposition(
+        e,
+        { acted: true },
+        `Followed “${e.hand.label}” to ${e.hand.where}.`,
+        false,
+      );
+      if (landed) navigate(e.hand.href);
     },
     [data, navigate],
   );
@@ -252,7 +270,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
           if (e && leaf === 'standing') setSelected((prev) => toggle(prev, e.ruleKey));
           break;
         case 'a':
-          if (e && leaf === 'standing') act(e);
+          if (e && leaf === 'standing') void act(e);
           break;
         case 'd':
           // The key opens the sheet rather than dismissing: a dismissal now
@@ -512,7 +530,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                         exclusions={data.exclusions}
                         openDismiss={sheetFor === e.ruleKey}
                         onDismissOpened={() => setSheetFor(null)}
-                        onAct={() => act(e)}
+                        onAct={() => void act(e)}
                         onDismiss={(choice) => dismiss(e, choice)}
                         onSnooze={(days, label) => snooze(e, days, label)}
                         onPin={() => pin(e)}

@@ -26,7 +26,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
@@ -103,7 +103,7 @@ function weekdayEntry(over: Record<string, unknown> = {}) {
   });
 }
 
-const setDisposition = vi.fn(async () => {});
+const setDisposition = vi.fn(async () => true);
 const dismissFn = vi.fn(async () => {});
 const includeDay = vi.fn(async () => {});
 const excludeDay = vi.fn(async () => true);
@@ -264,7 +264,7 @@ describe('RecommendationsNext — the standing book', () => {
     expect(refetch).toHaveBeenCalled();
   });
 
-  it('keeps act, dismiss, snooze, pin — and seals only the ruling-off', () => {
+  it('keeps act, dismiss, snooze, pin — and seals only the ruling-off', async () => {
     mockData.current = { ...base, entries: [entry()] };
     draw();
     const row = screen.getByTestId('rc-entry');
@@ -276,7 +276,11 @@ describe('RecommendationsNext — the standing book', () => {
       expect.any(String),
       false,
     );
-    expect(navigate).toHaveBeenCalledWith(expect.stringContaining('/orders?rec=stockout_imminent'));
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith(
+        expect.stringContaining('/orders?rec=stockout_imminent'),
+      ),
+    );
 
     fireEvent.click(within(row).getByText('Snooze'));
     fireEvent.click(within(row).getByText('Until next week'));
@@ -301,6 +305,21 @@ describe('RecommendationsNext — the standing book', () => {
     fireEvent.click(within(row).getByText('The working'));
     expect(within(row).getByRole('button', { name: 'Hold to rule off' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Hold to dismiss/ })).not.toBeInTheDocument();
+  });
+
+  it('does not leave the page when the "acted" write did not land', async () => {
+    // `navigate()` unmounts this page synchronously, so a fire-and-forget write
+    // rolled back and apologised on a component nobody was looking at. The
+    // audit trail of "I followed this" is the whole point of the write, and
+    // leaving with it silently unrecorded is the failure the page refuses.
+    setDisposition.mockResolvedValueOnce(false);
+    mockData.current = { ...base, entries: [entry()] };
+    draw();
+    fireEvent.click(within(screen.getByTestId('rc-entry')).getByText('Draft the PO →'));
+    await waitFor(() => expect(setDisposition).toHaveBeenCalled());
+    expect(navigate).not.toHaveBeenCalled();
+    // …and the control is still there to try again.
+    expect(within(screen.getByTestId('rc-entry')).getByText('Draft the PO →')).toBeInTheDocument();
   });
 
   it('renders the two controls with no backend disabled, each with its reason', () => {

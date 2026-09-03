@@ -207,7 +207,10 @@ measurement, which is the same fault as absence reported as health, told with a 
 | `firstSeenAt` per rule from `recommendation_impressions` | `recommendations.service.ts` `attachFirstSeen` |
 | `readDispositions()` / `listSuppressions()` carry a `readable` flag — an unreadable actions table is no longer an empty one | `analytics/recommendation-actions.service.ts` |
 | **The exclusion store** and its three routes (`GET/POST/DELETE /analytics/exclusions/:rid`) | **new** `analytics/insights/day-exclusions.service.ts`, `analytics.controller.ts` |
-| Migration | **new** `supabase/migrations/20260903091000_days_the_engine_must_not_count.sql` |
+| **The insight cache carries its arithmetic** — `INSIGHT_GENERATOR_VERSION`, `persist()` stamps it, `getStored()` treats anything below as absent, `staleVersionCategories()` finds tenants still holding superseded rows | `insight-generator.service.ts` (the version constant + `getStored` + `staleVersionCategories`) |
+| The hourly sweep replaces superseded rows regardless of the configured cadence | `insights/insight-scheduler.service.ts` `runSweep` |
+| `act` awaits the write and stays put when it did not land — `navigate()` unmounted the page before a rollback could be seen | `RecommendationsNext.tsx` `act`; `setDisposition` now returns whether it landed |
+| Migrations | **new** `supabase/migrations/20260903091000_days_the_engine_must_not_count.sql` and `20260903130000_insight_rows_carry_their_arithmetic.sql` |
 
 **The key, written down.** A suppression key is `<ruleId>#<subject>#<grain>`:
 `ruleId` is the rule as the engine emits it (`sales_below_weekday_baseline`, or
@@ -237,16 +240,62 @@ rather than dismissing — a keystroke cannot choose a scope on the manager's be
 dismiss cannot ask per entry, so it takes the widest scope and says so on the control itself:
 **"Dismiss them — whole rules"**.
 
-**Verified, not asserted.** Against the running local gateway on :4000: both 100% sentences
-are gone from the live feed (they were there an hour earlier, quoted above); `firstSeenAt`
-comes back as a real timestamp; a dismiss → re-read → restore round trip moved the feed from
-3 entries to 2 and back, with `suppressed: 1` reported in between; `GET /analytics/exclusions/:rid`
-returns `readable:false` with *"Could not find the table 'public.analytics_day_exclusions'"*
-until the migration applies, and the page renders exactly that sentence rather than an empty
-list. The withholding tests were also run against a pre-fix control (the observed-day
-distinction removed) and **6 of them fail** on it.
+**Verified, not asserted — and which endpoints.** Against the running local gateway on :4000,
+for `550e8400-…`, **both** readers of this generator were checked, because the first attempt at
+this paragraph checked only one and was wrong (see "The cache was still serving it" below):
 
-**What is still open.** The scoped suppression path is proven by 67 gateway tests but only
+| Checked | Result |
+|---|---|
+| `GET /analytics/recommendations/:rid` (fresh compute every request) | 0 sentences claiming 100%; `firstSeenAt` real ISO timestamps; `suppressed`/`suppressionsReadable` present |
+| `GET /analytics/insights/:rid` (prefers the `analytics_insights` cache) | 0 sentences claiming 100%; answers with a **fresh compute**, not `"source":"stored"` — the version gate is refusing rows whose provenance cannot be established |
+| `GET /analytics/exclusions/:rid` | `readable:false`, *"Could not find the table 'public.analytics_day_exclusions'"* — the page renders exactly that sentence rather than an empty list |
+| `POST …/action` dismiss → re-read → restore | feed 3 → 2 (`suppressed:1`, counts agree) → 3; tenant left as found |
+| `analytics_insights`, read directly with the service key, **all tenants** | 0 rows whose stored sentence still claims 100% |
+
+The withholding tests were run against a pre-fix control (the observed-day distinction removed):
+**6 of 18 fail** on it. The cache-version tests were run against their own pre-fix control (the
+version filter and the sweep's stale check removed): **4 of 9 fail**. The `act` test was run
+against the fire-and-forget original: it fails.
+
+**The cache was still serving it.** The first pass of this section claimed "both 100% sentences
+are gone from the live feed" on the strength of one endpoint. The audit checked the sibling and
+found the founder's exact sentence still live:
+
+```
+GET /api/v1/analytics/insights/550e8400-…   → "source": "stored"
+"Tuesday sales came in 100% lower than your average Tuesday ($0 vs $72)."
+computed_at 2026-09-02T06:00 — the hourly sweep, with the old arithmetic
+```
+
+`analytics_insights` is a write-through cache that `getStored()` read with **no freshness and no
+version check**, and three readers prefer it over a fresh compute
+(`analytics.controller.ts:318`, `advanced-analytics.service.ts:613`, `goals.service.ts:217`).
+Fixing the arithmetic fixed every fresh compute and nothing else. Age could not have decided it
+either — an hour-old row can be right and a minute-old one wrong. Only provenance can:
+
+- `INSIGHT_GENERATOR_VERSION = 2` (`insight-generator.service.ts`), bumped whenever a change
+  alters what a sentence *claims*, with the version history written next to it.
+- Migration `20260903130000_insight_rows_carry_their_arithmetic.sql` adds
+  `analytics_insights.generator_version integer not null default 0` — the default is the point:
+  every row already in the table predates the fix, so all of them are stale from the moment the
+  migration applies, with no backfill, no purge and no deploy hook.
+- `persist()` stamps the version; `getStored()` filters `gte(generator_version, CURRENT)` and
+  treats anything below as **absent**, so the caller falls through to a fresh
+  `generate({persist:true})` and the cache corrects itself on first read. `gte` not `eq`, so a
+  rolling deploy's newer rows are served rather than thrashed over.
+- The hourly sweep is cadence-gated (a `daily @ 06:00` category refreshes once a day), which
+  would have left superseded rows in the table for up to 24 hours — measured, that is exactly
+  what happened. `staleVersionCategories()` scans every tenant in one read and makes such a
+  category due **now, even if the operator set it to `manual` or disabled it**: those
+  preferences govern how often we look for new findings, not whether the product may keep
+  serving a sentence it has retracted.
+- A failed version read serves nothing rather than rows of unknown provenance, and a failed
+  stale scan is logged as "this sweep refreshes on cadence only", never absorbed.
+
+Nine tests pin it (`insights/insight-cache-version.spec.ts`), including the load-bearing
+negative: a row from superseded arithmetic is never returned.
+
+**What is still open.** The scoped suppression path is proven by 76 gateway tests but only
 the *rule* scope could be exercised end-to-end on the local tenant, because the only entries
 that fire there name no subject — the subject/period scopes are unit-proven, not
 curl-proven. And `analytics_day_exclusions` does not exist in the database until this
@@ -274,7 +323,7 @@ rendered as the reason, not hidden.
   (every read/write through `apiClient`), `rec-format.ts` (the three axes + the
   failure shape), `rec-next.css` (all styling — Mudavym tokens only, with the
   motion tokens written out at the bottom), `MOTIONS.md`, and two test files
-  (**37 tests** after the second pass). 2,446 lines of source + 834 of tests — well past
+  (**38 tests** after the second pass). 2,474 lines of source + 853 of tests — well past
   the brief's ~900-line guideline, and disclosed rather than hidden: roughly a third of the
   source is the honesty prose (four real states per read, three failure sentences, the
   disclosure lines on every disabled control and every scope choice), and it is the part of
@@ -284,10 +333,11 @@ rendered as the reason, not hidden.
   exclusion hook), plus edits to `insights/insight-generator.service.ts`,
   `insights/insight-verbalizer.ts`, `recommendations.service.ts`,
   `recommendation-actions.service.ts`, `analytics.controller.ts`, `analytics.module.ts`.
-  Four gateway specs, **67 tests**: `insights/suppression.spec.ts` (23),
+  Five gateway specs, **76 tests**: `insights/suppression.spec.ts` (23),
   `insights/baseline-honesty.spec.ts` (18), `insights/day-exclusions.service.spec.ts` (11),
-  `recommendation-suppression.spec.ts` (15). Migration
-  `supabase/migrations/20260903091000_days_the_engine_must_not_count.sql`.
+  `recommendation-suppression.spec.ts` (15), `insights/insight-cache-version.spec.ts` (9).
+  Migrations `supabase/migrations/20260903091000_days_the_engine_must_not_count.sql` and
+  `20260903130000_insight_rows_carry_their_arithmetic.sql`.
 
 ## 4. Endpoints
 
@@ -305,6 +355,7 @@ Raw `fetch` against `${VITE_API_GATEWAY_URL}/api/v1/analytics/recommendations`
 | POST | `…/:rid/action` | `Recommendations.tsx:263` |
 | POST | `…/:rid/bulk-action` | `Recommendations.tsx:404` |
 | GET | `/restaurants/:rid/team/members` | assignment picker, `Recommendations.tsx:346` → `services/api/team.ts:124` |
+| GET | `/analytics/insights/:rid` | **not called by this page** — listed because it reads the same generator through the `analytics_insights` cache, and served the retracted sentence until `20260903130000`; `analytics.controller.ts:318` |
 | GET | `/analytics/exclusions/:rid` | **new 2026-09-03** — the days ruled out of every baseline, with a `readable` flag; `useRecommendationsNextData.ts` tenant effect |
 | POST | `/analytics/exclusions/:rid` | **new** — `{businessDate, reason}`; `excludeDay()` |
 | DELETE | `/analytics/exclusions/:rid/:businessDate` | **new** — `includeDay()`, "Count it again" |
@@ -391,6 +442,17 @@ Outside the page's own paths, and therefore filed rather than built (2026-09-02)
   the product's only autonomy switch, `enable_ai_autonomous_send`, belongs to vendor
   email (`feature-flag-registry.ts:64`). The redesign says so on every entry rather
   than implying a capability. §13.8.
+- ~~**A retracted sentence could still be served from the insight cache.**~~ **Closed
+  2026-09-03** by `INSIGHT_GENERATOR_VERSION` + migration `20260903130000` (§1b "The cache was
+  still serving it"). What remains as a standing obligation, not a defect: **the constant has to
+  be bumped by hand** whenever the arithmetic changes what a sentence claims. Nothing enforces
+  that — a future generator change that forgets the bump reintroduces exactly this bug, silently.
+  The guard that would close it (a test that fails when `insight-verbalizer.ts` or
+  `timeSeriesInsights` changes without a version bump) is not built. §13.17.
+- **The exclusion store and the version column are both absent from the database until this
+  branch merges**, so today the exclusion checkbox renders disabled with its reason, and every
+  insight read recomputes instead of using the cache (`getStored()` refuses rows it cannot
+  version). Both are the conservative failure and both are said out loud; neither is silent.
 - **The rule-wide silences are not visible in Settings.** The founder asked for them to
   appear there "if a settings hook is trivial, else file it" — it is not trivial from this
   page's paths (`apps/web/src/pages/settings/next/` belongs to another builder this wave and
@@ -568,7 +630,13 @@ execution, no first-fired timestamp — in the same way.
 15. **Apply the observed-day distinction to the per-wine demand series** (§9), so a closure
     stops counting as zero demand for a stockout probability the way it used to count as
     zero revenue for a baseline.
-16. **Two directions drawn out for the founder's choice** —
+16. **Make the generator version un-forgettable.** `INSIGHT_GENERATOR_VERSION`
+    (`insight-generator.service.ts`) is bumped by hand; a change to the arithmetic that forgets
+    it reintroduces the retracted-sentence bug with no symptom. The shape that would close it is
+    a checksum test over the files that decide what a sentence claims
+    (`insight-verbalizer.ts`, `timeSeriesInsights`, `engine/comparisons.ts`) that fails until the
+    constant moves. §9.
+17. **Two directions drawn out for the founder's choice** —
     `.planning/sketches/090-recommendations-directions/`: `run-sheet.html` (banded
     Tonight / This week / This month, register demoted to a filter strip) and
     `two-pane-docket.html` (register · list · the working pinned open). Both carry the new
