@@ -1,6 +1,6 @@
 # 0104 — Every incoming document renders as one canonical Mudavym document
 
-- **Status:** Locked on the forks the founder answered in session on 2026-09-03 (one canonical schema and template; delivery entity in slice 1; confidence never a number; paper stays light in dark mode; hybrid PDF/A-3 as the export target — _"the most SOTA way, quality first"_); D8 (retention, churn and bring-your-own-storage) and D14 (signed XML as the primary Turkish source) locked on the founder's answers later the same day; **Proposed** on D13 — the direction recommendation below is recorded for the founder to lock. Design only — nothing here is built.
+- **Status:** Locked on the forks the founder answered in session on 2026-09-03 (one canonical schema and template; delivery entity in slice 1; confidence never a number; paper stays light in dark mode; hybrid PDF/A-3 as the export target — _"the most SOTA way, quality first"_); D8 (retention, churn and bring-your-own-storage) and D14 (signed XML as the primary Turkish source) locked on the founder's answers later the same day; D13 **locked by the founder on 2026-09-03: the C-led synthesis leads** (C's delivery spine, collapsed when a delivery has two or fewer documents; A's typeset sheet as the selected frame; B's verdict block on top). Slice 1 build authorised the same day. Design only — nothing here is built.
 - **Date:** 2026-09-03
 - **Keywords:** invoice, template, canonical document, EN 16931, Peppol, provenance, as_printed, confidence, extraction, OCR, original, signed URL, content addressing, retention, tiering, PDF/A-3, Factur-X, print, dark mode, credit memo, delivery note, irsaliye, receiving advice, duplicate detection, commercial event, sketches
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
@@ -158,7 +158,7 @@ human_corrected, computed}`. `as_printed` keeps the literal glyphs so the screen
   same documents; (5) `credit_memo` and `delivery_note` sections and the door view — the
   same component, no forked branch. Print CSS rides with (2); the hybrid PDF with (2)'s
   server renderer.
-- **D13 — Direction (Proposed): C leads, with A's sheet as the selected frame and B's
+- **D13 — Direction (Locked 2026-09-03): C leads, with A's sheet as the selected frame and B's
   verdict block on top of it.** Three sketches were built and reviewed at 1440×900
   (`sketches/089-agreed-invoice-directions`, screenshots in the PR): **A "The Ledger
   Sheet"** (paper-first — a typeset EN 16931 sheet, verdict as a stamp, provenance as
@@ -263,9 +263,10 @@ founder-locked answer; each names what it changes.
 
 ## Review trail
 
-| Date       | Reviewer                                                                                                                                            | Outcome                                                                                                          |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| 2026-09-03 | Fable (lens session), from the founder's in-session answers and the template research                                                               | Created; D1–D7, D9–D12 locked by the founder's answers; D8 and D13 proposed                                      |
-| 2026-09-03 | Fable, from the retention research and the founder's answers (churn = export then hold to the floor, plus a tenant-side mirror; signed XML primary) | D8 and D14 locked; D13 still proposed pending the sketch review; GT 509 primary source still to be read          |
-| 2026-09-03 | Fable, after reviewing the three rendered directions                                                                                                | D13 recommendation recorded: C-led synthesis (C spine, A sheet, B verdict block); the founder locks or redirects |
-| 2026-09-03 | Fable, from three Sonnet passes (premortem, scale, adversary; annexed)                                                                              | S1–S10 recorded; D12 slice order changed (door view to slice 2); storage shape of D1 changed, semantics kept     |
+| Date       | Reviewer                                                                                                                                            | Outcome                                                                                                                               |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-03 | Fable (lens session), from the founder's in-session answers and the template research                                                               | Created; D1–D7, D9–D12 locked by the founder's answers; D8 and D13 proposed                                                           |
+| 2026-09-03 | Fable, from the retention research and the founder's answers (churn = export then hold to the floor, plus a tenant-side mirror; signed XML primary) | D8 and D14 locked; D13 still proposed pending the sketch review; GT 509 primary source still to be read                               |
+| 2026-09-03 | Fable, after reviewing the three rendered directions                                                                                                | D13 recommendation recorded: C-led synthesis (C spine, A sheet, B verdict block); the founder locks or redirects                      |
+| 2026-09-03 | Fable, from three Sonnet passes (premortem, scale, adversary; annexed)                                                                              | S1–S10 recorded; D12 slice order changed (door view to slice 2); storage shape of D1 changed, semantics kept                          |
+| 2026-09-03 | Founder (in session)                                                                                                                                | D13 locked: C-led synthesis; slice 1 (canonical object, invariants over the real corpus, delivery entity — no UI) authorised to start |

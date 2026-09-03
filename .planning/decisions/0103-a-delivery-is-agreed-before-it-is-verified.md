@@ -1,6 +1,6 @@
 # 0103 — A delivery is agreed before it is verified
 
-- **Status:** Locked on the forks the founder answered in session (2026-09-02/03: door documents, the meaning of _agreed_, the payment clocks, the no-order path, the human gate); **Proposed** on D9 (the never-looked-at case), which the founder asked to be decided and explained; **one clock basis is OPEN** (A8 below: whether a delivery at the restaurant's premises has a 7-day e-İrsaliye window at all is a question for a Turkish YMM, not for this research). Design only — nothing here is built.
+- **Status:** Locked on the forks the founder answered in session (2026-09-02/03: door documents, the meaning of _agreed_, the payment clocks, the no-order path, the human gate); D9 (the never-looked-at case) **locked 2026-09-03** — the founder asked for "the SOTA and the most safe, robust, scalable" answer and delegated the choice; the choice and its reasons are in D9; **one clock basis is OPEN** (A8 below: whether a delivery at the restaurant's premises has a 7-day e-İrsaliye window at all is a question for a Turkish YMM, not for this research). Design only — nothing here is built.
 - **Date:** 2026-09-03
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** invoice, delivery, irsaliye, e-İrsaliye, irsaliyeli fatura, e-Fatura, receiving, reconciliation, agreed invoice, three-way match, credit memo, short ship, substitution, vintage, unordered, no-PO, AB 2991, BPC 25509, VUK 231, TTK 21, human gate, notifications, vendor terms
@@ -247,6 +247,24 @@ what it changes; none reopens a founder-locked answer.
 - **A9 — Vintage is structured (D6 needs a machine signal).** Vintage, and lot/batch where
   applicable, are RESOLVED-layer fields (ADR 0104 D1); a vintage-only difference raises
   `SUBSTITUTION`, never a silent match — a test, not a hope.
+- **D9 as locked (2026-09-03).** The founder delegated D9 with one instruction — the safest,
+  most robust, most scalable answer — and this is it, with the reasons: (1) **the ladder is
+  proportional with a floor** — re-notify the owner at 50 % of the shortest clock and escalate
+  at 80 %, but never later than **48 hours before expiry** (for the Turkish 7-day response
+  that is day 3½ and day 5, floor day 5; for an 8-day objection, day 4 and day 6); a short
+  clock must not compress the human's reaction time to hours. (2) **Every delivery has an
+  owner and a deputy** — escalation goes to the deputy when the owner has not acted by the
+  80 % mark and to the venue owner at the floor, so a closed venue (the August case in the
+  premortem) does not lapse silently. (3) **Timers are durable rows** (`due_at`, idempotent
+  poller, catch-up after a missed tick — A10), never in-process. (4) **`LAPSED` records the
+  legal deeming and nothing else**; inventory never moves on a lapse; a late vendor document
+  moves the delivery to `LAPSED_AMENDED` with the amendment audited (A4). (5) **The one-tap
+  draft** for the Turkish response is prepared at the 80 % mark with the door evidence
+  attached, so acting takes one decision, not a form. (6) **Lapses are a first-class count**
+  on the owner's surfaces — a lapse is a measurable failure of the venue's process, and the
+  product must say so rather than absorb it. Rejected: auto-posting at expiry (the founder's
+  "never"), and a flat calendar reminder with no owner (the unowned backlog every AP survey
+  names as the failure mode).
 - **A10 — The escalation ladder is durable.** D9's timers are `due_at` rows worked by an
   idempotent poller that catches up after a missed tick (a deploy, a crash); never
   in-process timers — the scale pass named this as the place the absence-as-health fault
@@ -254,7 +272,8 @@ what it changes; none reopens a founder-locked answer.
 
 ## Review trail
 
-| Date       | Reviewer                                                                             | Outcome                                                                     |
-| ---------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| 2026-09-03 | Fable (lens session), from the founder's in-session answers and two research reports | Created; D1–D8 locked by the founder's answers, D9 proposed for the founder |
-| 2026-09-03 | Fable, from three Sonnet passes (premortem, scale, adversary; annexed)               | A1–A10 recorded; A8 leaves one Turkish clock basis open for a YMM           |
+| Date       | Reviewer                                                                                           | Outcome                                                                                                                    |
+| ---------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-03 | Fable (lens session), from the founder's in-session answers and two research reports               | Created; D1–D8 locked by the founder's answers, D9 proposed for the founder                                                |
+| 2026-09-03 | Fable, from three Sonnet passes (premortem, scale, adversary; annexed)                             | A1–A10 recorded; A8 leaves one Turkish clock basis open for a YMM                                                          |
+| 2026-09-03 | Founder (in session) delegating D9 to "the SOTA, safest, most robust, most scalable" answer; Fable | D9 locked with the ladder-with-floor, owner + deputy, durable timers, LAPSED/LAPSED_AMENDED, one-tap draft, lapses counted |
