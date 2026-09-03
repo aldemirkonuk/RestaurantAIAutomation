@@ -3,32 +3,39 @@
  *
  * The redesign's substance here is a distinction the legacy section does not
  * draw: some of these preferences are read by a sender and some are only
- * stored. Re-grepped 2026-09-02 across ALL FOUR runtimes —
+ * stored. Re-grepped 2026-09-03 across ALL FOUR runtimes —
  * `apps/api-gateway/src`, `apps/web/src`, `apps/mobile/src` AND
- * `services/agent-orchestrator` (the first pass omitted the orchestrator, and
- * that omission produced a false "nothing reads this" on quiet hours; audit
- * BLOCKER 1):
+ * `services/agent-orchestrator`. The first pass grepped three and lost a
+ * working control on the strength of it (audit BLOCKER 1):
  *
  *   email       → apps/api-gateway/src/team/broadcast-preferences.ts:69,104     READ
  *   sms         → apps/api-gateway/src/team/broadcast-preferences.ts:70,104     READ
- *   low stock   → apps/api-gateway/src/notifications/low-stock-alerts.service.ts:485-520
+ *   low stock   → apps/api-gateway/src/notifications/low-stock-alerts.service.ts:505,515
  *                                                                              READ
  *   orders /
- *   reports     → apps/api-gateway/src/communications/scheduled-tasks.service.ts:1523-1552
+ *   reports     → apps/api-gateway/src/communications/scheduled-tasks.service.ts:1528
  *                                                                              READ
- *   quiet hours → services/agent-orchestrator/agents/notification_agent.py:1448,1487-1494
- *                 (loaded by `_get_notification_preferences`, :1580-1591, which
- *                 does `select("*")` on the SAME `notification_preferences` row
- *                 this page writes) and core/database.py:1410-1423             READ
- *   push        → `push_enabled` is read by nothing in any of the four trees.
+ *   quiet hours → services/agent-orchestrator/agents/notification_agent.py:1487-1494,
+ *                 called from `_select_channels` at :1448, on the row loaded by
+ *                 `_get_notification_preferences` (:1580-1591) with `select("*")`
+ *                 on the SAME `notification_preferences` row this page writes.
+ *                 Reached from four handlers (:541, :637, :726, :787).       READ
+ *   push        → `push_enabled` is written three times and read never.
  *                 Push DELIVERY code does exist in the orchestrator
- *                 (`push_service.send_push_notification`), but this preference
- *                 does not gate it, its device table `push_subscriptions` is
- *                 absent from production (notification_agent.py:31-37) and the
- *                 gateway has no push path at all
+ *                 (`push_service.send_push_notification`), but the channel
+ *                 chooser picks by urgency and `<type>_channels`, its device
+ *                 table `push_subscriptions` is absent from production
+ *                 (notification_agent.py:31-37) and the gateway has no push
+ *                 path at all
  *                 (communications/push-is-not-resolved-here.spec.ts)   PREF DEAD
- *   categories  → written at notifications.service.ts:1144; no reader in any of
- *                 the four trees                                              DEAD
+ *   categories  → written at notifications.service.ts:1144-1145; no reader in
+ *                 any of the four trees                                       DEAD
+ *
+ * A SECOND QUIET-HOURS STORE EXISTS, and this page does not write it:
+ * `manager_preferences.quiet_hours_start/end` (baseline_from_production.sql:3696-3697),
+ * read by `core/database.py:1410-1428` — which has no callers. Two stores for
+ * one idea, one of them live and one of them dead, is worth knowing before
+ * anyone "fixes" quiet hours by wiring the wrong one (page note §13.17).
  *
  * The DEAD ones render WITHOUT controls, showing the value that is stored and
  * the file that was checked. A switch whose only effect is to record itself is
@@ -43,8 +50,8 @@
  * Turning yours off does not silence the restaurant, and the page says so.
  */
 
-import { Dead, Micro, Note, Register, Row, Toggle, Choice } from './SectionKit';
-import { SANS, fmtWhen } from './st-format';
+import { Choice, Dead, Micro, Note, Register, Row, SaveFailure, Toggle, fieldStyle } from './SectionKit';
+import { PROVENANCE_UNKNOWN, SANS, fmtWhen } from './st-format';
 import type { SettingsNextData } from './useSettingsNextData';
 
 const MODE_OPTIONS = [
@@ -59,7 +66,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
   return (
     <Register remote={notif} name="your notification preferences">
       {(p) => {
-        const kept = { kept: 'account' as const, when: p.updatedAt ?? null, whenUnknown: 'this record has never been written' };
+        const kept = { kept: 'account' as const, when: p.updatedAt ?? null, whenUnknown: PROVENANCE_UNKNOWN.neverWritten };
         const low = p.lowStock ?? {
           enabled: true, instantFirstAlert: true, criticalImmediate: true, digestFrequency: 'daily' as const, digestTime: '12:00',
         };
@@ -77,11 +84,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
               {p.updatedAt && <> Last written {fmtWhen(p.updatedAt)}.</>}
             </Note>
 
-            {writer.failed && (
-              <p role="alert" style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-1)', background: 'var(--paper-2)', borderRadius: 8, padding: '8px 11px', margin: '0 0 10px' }}>
-                That preference was not saved — {writer.failed.message}. The values below are still the server’s.
-              </p>
-            )}
+            <SaveFailure failed={writer.failed} what="The values below are still the server’s." />
 
             <div style={{ margin: '14px 0 0' }}><Micro tone="seal">Doors</Micro></div>
 
@@ -106,8 +109,8 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
             <Dead
               label="Push"
               stored={p.push ? 'stored: on' : 'stored: off'}
-              consequence="This preference gates nothing. Push-sending code does exist — in the agent orchestrator — but it does not consult this switch, its device register is absent from production, and the gateway has no push path at all. So no phone is receiving anything today, and turning this off would not be what stopped it."
-              evidence="No reader for `push_enabled` in apps/api-gateway/src, apps/web/src, apps/mobile/src or services/agent-orchestrator; device table missing per services/agent-orchestrator/agents/notification_agent.py:31-37; gateway path per apps/api-gateway/src/communications/push-is-not-resolved-here.spec.ts."
+              consequence="Nothing in the product sends a push notification to your phone, and this preference would not be what decided it if something did. Push-sending code exists in the alerting agent, but it chooses its channels by urgency and never consults this switch; the device register it would send to is absent from production; and the gateway has no push path at all."
+              evidence="`push_enabled` has three writers and no reader: notifications.service.ts:189,1142,1193 write it; the channel chooser reads urgency and `<type>_channels` instead (notification_agent.py:1435-1470). The one other hit, core/database.py:1967, copies a `restaurants.push_enabled` onto a manager object nothing then reads. Device table missing per notification_agent.py:31-37; gateway path per apps/api-gateway/src/communications/push-is-not-resolved-here.spec.ts. Grepped 2026-09-03 across all four runtimes."
             />
 
             <div style={{ margin: '20px 0 0' }}><Micro tone="seal">Low stock</Micro></div>
@@ -157,8 +160,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
                     disabled={low.digestFrequency !== 'daily'}
                     onChange={(e) => void saveNotif('low.time', { lowStock: { ...low, digestTime: e.target.value } })}
                     className="st-focus"
-                    style={{ fontFamily: SANS, fontSize: 12, padding: '5px 8px', borderRadius: 8,
-                      border: '1px solid var(--paper-2)', background: 'var(--paper-0)', color: 'var(--ink-1)' }}
+                    style={fieldStyle}
                   />
                 </span>
               }
@@ -219,8 +221,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
                       value={quiet.startTime}
                       onChange={(e) => void saveNotif('quiet.start', { quietHours: { ...quiet, startTime: e.target.value } })}
                       className="st-focus"
-                      style={{ fontFamily: SANS, fontSize: 12, padding: '5px 8px', borderRadius: 8,
-                        border: '1px solid var(--paper-2)', background: 'var(--paper-0)', color: 'var(--ink-1)' }}
+                      style={fieldStyle}
                     />
                     <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3)' }}>to</span>
                     <input
@@ -229,8 +230,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
                       value={quiet.endTime}
                       onChange={(e) => void saveNotif('quiet.end', { quietHours: { ...quiet, endTime: e.target.value } })}
                       className="st-focus"
-                      style={{ fontFamily: SANS, fontSize: 12, padding: '5px 8px', borderRadius: 8,
-                        border: '1px solid var(--paper-2)', background: 'var(--paper-0)', color: 'var(--ink-1)' }}
+                      style={fieldStyle}
                     />
                   </span>
                 }
@@ -249,7 +249,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
                 label={`${c.charAt(0).toUpperCase()}${c.slice(1)} category`}
                 stored={cats[c] ? 'stored: on' : 'stored: off'}
                 consequence="Category filtering is written to your preferences, but no sender branches on it — every category still reaches you exactly as the doors above decide."
-                evidence="Written at apps/api-gateway/src/notifications/notifications.service.ts:1144; no reader in apps/api-gateway/src, apps/web/src, apps/mobile/src or services/agent-orchestrator."
+                evidence="Written at apps/api-gateway/src/notifications/notifications.service.ts:1144-1145 and read back only to render this row. No sender in any of the four runtimes branches on it: the scheduled mail reads orders_mode / reports_mode (scheduled-tasks.service.ts:1528), the low-stock engine reads its own five columns (low-stock-alerts.service.ts:505), and the alerting agent reads urgency and quiet hours. Grepped 2026-09-03."
               />
             ))}
 

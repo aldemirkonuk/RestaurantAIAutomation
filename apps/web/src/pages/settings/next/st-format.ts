@@ -3,9 +3,19 @@
  *
  * The vocabulary is the page's one structural idea: every setting on /settings
  * is a RECORD, and a record has a place it is kept and a date it was last
- * written. `Kept` names the place; `fmtWhen` names the date, or says an em dash
- * when the gateway keeps no date (ADR 0020 — an unknown is never a zero and
- * never a confident "just now").
+ * written. `Kept` names the place; `fmtWhen` names the date, or an em dash when
+ * no date exists (ADR 0020 — an unknown is never a zero and never a confident
+ * "just now").
+ *
+ * WHAT THE SECOND PASS CHANGED HERE (2026-09-03)
+ * ---------------------------------------------
+ * The first pass wrote four em dashes whose stated reason was false: the date
+ * existed and was being dropped between the database and this page. An em dash
+ * is only honest when the absence is real, so the reason attached to one is now
+ * treated as a claim that has to survive being checked — three of the four were
+ * repaired at the source (gateway + hook), and the fourth was re-worded to name
+ * the layer that actually drops it. `PROVENANCE_UNKNOWN` below is the register
+ * of the ones that remain, each with the file that proves it.
  */
 
 import { getErrorMessage } from '@/services/api/client';
@@ -33,11 +43,44 @@ export const KEPT_NOTE: Record<Kept, string> = {
     'Kept in this browser only. Nobody else sees it, it does not reach the phone, and clearing site data forgets it.',
 };
 
-/* ── The ten registers, in the order the page reads them ─────────────────── */
+/**
+ * Every reason this page is allowed to print beside an em dash, in one place.
+ *
+ * Each one names a file that was read, so the claim is checkable rather than
+ * atmospheric — and keeping them together is what stops a fifth one being
+ * invented in passing, which is how the first pass produced four false ones.
+ */
+export const PROVENANCE_UNKNOWN = {
+  /** `restaurant_feature_flags` has `created_at` and no update column. */
+  featureFlags: 'the settings row has no changed-at column',
+  /** `user_restaurant_access` has created_at / valid_from and no update column. */
+  memberChange: 'no column records a later change to this access',
+  /** localStorage keeps a value, never a history. */
+  browser: 'this browser keeps the value, not a history of it',
+  /** The token is a column on the restaurant row; that row's date is not its own. */
+  icalToken:
+    'the token has no date of its own — it is a column on the restaurant row, whose date moves for any change to the branch',
+  /** A regeneration is not recorded anywhere. */
+  icalRegen: 'no table records a regeneration',
+  /** A test send writes no row. */
+  testSend: 'a test send is not recorded',
+  /** The preference row has never been written for this account. */
+  neverWritten: 'this record has never been written',
+  /** An integration that is simply not connected. */
+  notConnected: 'not connected',
+} as const;
 
+/* ── The registers, in the order the page reads them ─────────────────────── */
+
+/**
+ * The first ten are the legacy `?tab=` set, in the legacy order, so every
+ * bookmark and every link in the product still lands where it did
+ * (`pages/Settings.tsx:66`). `cellar` is added at the end rather than inserted,
+ * for the same reason.
+ */
 export const SECTION_IDS = [
   'team', 'services', 'email', 'notifications', 'locations',
-  'measurement', 'map', 'features', 'pos', 'calendar',
+  'measurement', 'map', 'features', 'pos', 'calendar', 'cellar',
 ] as const;
 
 export type SectionId = (typeof SECTION_IDS)[number];
@@ -75,6 +118,8 @@ export const SECTIONS: SectionSpec[] = [
     description: 'The till connection and what it has actually sent.' },
   { id: 'calendar', label: 'Calendar', title: 'Calendar subscription', kind: 'restaurant',
     description: 'The feed another calendar can read.' },
+  { id: 'cellar', label: 'Cellar', title: 'Cellar registers', kind: 'restaurant',
+    description: 'Which drinks registers this house actually carries.' },
 ];
 
 export function isSectionId(v: string | null): v is SectionId {
@@ -86,11 +131,11 @@ export function sectionSpec(id: SectionId): SectionSpec {
   return SECTIONS.find((s) => s.id === id) as SectionSpec;
 }
 
-/** "Six kept for this restaurant, three on your account, one in this browser." */
+/** "Seven kept for this restaurant, three on your account, one in this browser." */
 export function keptTally(): string {
   const n = (k: Kept) => SECTIONS.filter((s) => s.kind === k).length;
   const word = (v: number) =>
-    ['none', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'][v] ?? String(v);
+    ['none', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven'][v] ?? String(v);
   return `${word(n('restaurant'))} kept for this restaurant, ${word(n('account'))} on your account, ${word(n('browser'))} in this browser only`;
 }
 

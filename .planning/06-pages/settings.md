@@ -41,7 +41,8 @@ chains, units, storage map, per-restaurant feature flags, POS connection, and th
 iCal subscribe URL.
 
 ## 1a. Features
-Ten sections, each deep-linkable via `?tab=`:
+Ten sections on the legacy page, each deep-linkable via `?tab=`; the rebuilt page
+keeps all ten under their legacy names and order and appends an eleventh:
 - **Team**: members and invites — change roles, remove members, revoke invites, invite dialog; labor & goals settings
 - **Services**: service permissions / access grants (email, web, privacy)
 - **Email**: sender identity settings
@@ -52,25 +53,42 @@ Ten sections, each deep-linkable via `?tab=`:
 - **Features**: per-restaurant feature flags
 - **POS**: connect a POS provider, see connection status
 - **Calendar**: iCal subscribe URL + regenerate token
+- **Cellar** *(rebuilt page only, `?tab=cellar`, added 2026-09-03)*: which of the
+  seven drinks registers this house carries — wines, beer, whiskey, cocktails,
+  spirits, non-alcoholic, soft drinks — with on/off, the inference's evidence
+  beside each, and an ask when a register is switched on with nothing behind it.
+  **Live**, through the cellar rebuild's own `CellarRegistersControl`
+  (`pages/cellar/next/`) over `GET/PUT /cellar/:restaurantId/registers`
+  (`apps/api-gateway/src/cellar/`). Mounted, not re-implemented — a second copy
+  in this directory would give the product two answers to one question, and this
+  page cannot read the books the inference reads
 
 **Mudavym redesign — what the rebuilt page adds** (flag `mudavym_design_settings`,
 OFF by default; with it off `Settings.tsx` renders byte-for-byte):
 
 - **A provenance line under every setting** — where the value is kept (*this
-  restaurant* · *your account* · *this browser*) and when it was last written, or
-  an em dash naming why no date exists. This is the "there should be more" the
-  founder asked for: substance per setting, not more switches.
-- **Ten registers, one open at a time**, all ten still deep-linked by `?tab=`;
-  the URL is now written on selection and never on scroll.
+  restaurant* · *your account* · *this browser*), **what the date is a date of**
+  (changed · granted · issued · connected · last check), and when; or an em dash
+  naming why no date exists — the recurring reasons enumerated once in
+  `PROVENANCE_UNKNOWN` (`st-format.ts`) rather than retyped, the row-specific
+  ones local and each naming the layer it blames. This is the "there should be
+  more" the founder asked for: substance per setting, not more switches.
+- **Eleven registers, one open at a time** — the legacy ten under their legacy
+  names in their legacy order, so no bookmark moves, plus `cellar`. All still
+  deep-linked by `?tab=`; the URL is now written on selection and never on
+  scroll.
 - **Features**: only registry-ACTIVE flags get controls, with the 17
   `mudavym_design_*` keys rendered as their own labelled *Mudavym redesign*
   group (opt-in per restaurant, off by default). `enable_ai_autonomous_send` is
   granted by hold-to-approve completing into the seal, and revoked by one plain
   button — never a toggle.
 - **Settings the product stores but never reads render WITHOUT controls**,
-  showing the stored value and the file that was grepped: push, the five
-  notification categories, quiet hours, and the four service-permission consents
-  (all newly measured — §9, §10).
+  showing the stored value and the files that were grepped across **all four**
+  runtimes: push, the five notification categories, and the four
+  service-permission consents (§9, §10). **Quiet hours is NOT one of them** — the
+  first pass filed it here on a three-runtime grep and was wrong; it is read by
+  `services/agent-orchestrator/agents/notification_agent.py:1487-1494` and keeps
+  a real switch (§9.2, §1b second pass).
 - **Measurement & recipes is labelled *this browser*** — it is
   localStorage, not a restaurant setting (`stores/restaurantSettingsStore.ts`).
 - **Notifications states the OR semantics**: your preference is taken across
@@ -124,8 +142,9 @@ cannot be used without a provenance line, so the substance is enforced by the
 component, not by discipline. That single requirement is also what produced the
 new findings: forcing each setting to say where it is kept is how measurement
 turned out to be localStorage, and forcing it to say what changes is how push,
-the notification categories, quiet hours and the four consents turned out to be
-read by nothing (§9).
+the notification categories and the four consents turned out to be read by
+nothing (§9). It also produced the pass's five errors, all of them claims of
+absence that had not been checked — see *Second pass* below.
 
 **The honesty rules applied.** A setting the product stores and never reads is
 rendered *without* a control, showing its stored value and the file that was
@@ -141,10 +160,11 @@ tell anyone: no table behind it records **who** changed a setting.
 1. **Keep the legacy single-page scroll with the sticky tab bar** (all ten
    sections stacked, scrollspy highlighting). Not built: the scrollspy rewrites
    `?tab=` as the reader scrolls, so the deep link they just followed is
-   destroyed within a second — and ten registers carrying the new provenance
+   destroyed within a second — and eleven registers carrying the new provenance
    line run to roughly four screens of dense text. *If the founder wants
    everything visible at once for scanning*, this comes back and `?tab=` becomes
-   entry-only (read on arrival, never rewritten).
+   entry-only (read on arrival, never rewritten). **Now drawn**, at the founder's
+   request, as `.planning/sketches/091-settings-directions/single-page-scroll.html`.
 2. **Leave the dead consents and category switches settable** — they do persist
    — under a "recorded, not enforced" label beneath a working control. Not
    built: a switch whose only effect is to record itself is the fake toggle the
@@ -161,10 +181,144 @@ browser pane renders out-of-project files as non-screenshottable static
 snapshots, and the shared dev server and checkout are not this agent's to drive —
 so both grounds are argued from token-only colour usage (grep: zero raw hex for
 any ground, ink or seal) plus a test asserting the root carries `.mudavym` and
-`data-ground="charcoal"`, not from eye. The page runs **2,360 lines across nine
-files** excluding its test, about 2.6× the ~900-line guidance in the build brief;
-ten registers each carrying real substance is the reason, and the shared `Row` /
-`Register` primitives are what keep it from being far worse.
+`data-ground="charcoal"`, not from eye. **Size, stated plainly:** the page runs
+**2,869 lines across sixteen files** excluding its test — 2,121 of code and 536
+of comment — against the ~900-line guidance in the build brief. The second pass
+did the split the audit asked for (the 532-line `OtherSections.tsx` bundling six
+unrelated registers is gone; every register is now its own file, the largest
+being the data hook at 466 lines and `SectionKit.tsx` at 356) and shared the
+repeated field styles and the save-failure paragraph, but it did **not** get the
+total down: eleven registers each carrying a consequence, a provenance line and
+a cited grep is what the founder's "there should be more" asked for, and the
+evidence comments are load-bearing — they are what the audit checks the page
+against.
+
+### Second pass, 2026-09-03
+
+**What the founder asked for.** No emojis anywhere; "bulletproof, profound
+solutions" instead of an honest em dash wherever the gap can actually be closed;
+the competitor lens (DESIGN-FOUNDATION §6) built for the "need it: now" rows; two
+sketches; and — during the pass — an eleventh register for the cellar's
+per-house drinks registers.
+
+**What the audit found, and what it was really about.** Five blockers, all one
+species: *the page asserting an absence it had not checked.* Four were dates the
+database was holding and the wire was dropping; one removed a working control.
+The em dash is the house idiom for an unknown, and this pass is the discovery
+that **a claim of absence is a claim** — it carries exactly the burden of proof a
+number does, and a wrong one is more expensive, because a fabricated figure looks
+suspicious and a fabricated absence looks like integrity.
+
+| # | The false claim | What is true | Where it is fixed |
+|---|---|---|---|
+| 1 | "No sender consults quiet hours" — control removed | `_is_quiet_hours` (`services/agent-orchestrator/agents/notification_agent.py:1487-1494`) is called by `_select_channels` (`:1448`) from four handlers (`:541`, `:637`, `:726`, `:787`) on the very `notification_preferences` row this page writes. Inside the window, anything below `critical` gets **no channel at all** — suppressed, not delayed | Live `Toggle` + window restored, `NotifySection.tsx`; consequence copy says which half honours it and which does not |
+| 2 | "the chains table records no last-changed date" | `restaurant_chains.updated_at` is `NOT NULL DEFAULT now()` (`baseline:5053-5060`). The endpoint selected `id, name, cuisine_type` | **Gateway**: `getChainsForUser` selects and returns it; `renameChain` **stamps** it, because that table has no `BEFORE UPDATE` trigger and returning it unstamped would have printed a creation date under the word "changed" |
+| 3 | "the branch record carries no last-changed date" | `restaurants.updated_at` exists *and* is maintained by `update_restaurants_updated_at BEFORE UPDATE` (`baseline:12300`) | **Gateway**: `getBranchesForUser` selects it on all three paths and maps it; the page reads it off the session's branch objects, which are passed through unmapped |
+| 4 | "an invite records its expiry, not when it was issued" | `members.service.ts:101-107` has always returned `created_at` | `PendingInviteRow` carries it; rendered as **issued · …** |
+| 5 | Sign-off "template row returns no changed-at date" | The gateway returns `updatedAt` (camelCase, `restaurant-templates.service.ts:110-121`) and there is no case-converting interceptor | `senderUpdatedAt()` reads both spellings, camelCase first |
+
+**Gateway changes, with file:line.** All in `apps/api-gateway/src/organizations/organizations.service.ts`
+(the only gateway module this page was cleared to edit besides `settings/`):
+`RestaurantBranch.updated_at` and `RestaurantChain.updated_at` added to the two
+interfaces; `getChainsForUser` select widened and mapped; `createChain` select
+widened and mapped; `renameChain` patch gains `updated_at: new Date().toISOString()`;
+`getBranchesForUser` — `mapRow` plus all three selects (organisation, legacy
+`user_restaurant_access`, single-restaurant fallback). Spec:
+`apps/api-gateway/src/organizations/last-changed-dates-reach-the-client.spec.ts`
+— 5 tests, including one that asserts the rename stamp, because *returning the
+column without stamping it* is the failure mode that looks like a fix.
+
+**What else the pass changed.** Every "no switch" claim re-grepped across all four
+runtimes with the citing file printed beside it (§9.10). `OtherSections.tsx`
+(532 lines, six registers) split one file per register — the audit's DEFECT.
+The POS connector no longer stamps a browser-made date into the stored blob and
+reads it back as provenance (audit NIT 8): a date from the client's own clock
+read back as a record is the page quoting itself. `Provenance` gained a `verb`,
+so a granted date and an issued date stop being printed as "changed". Citation
+`settings.controller.ts:31-32` corrected to `:33` (NIT 7).
+
+**What stays open, and why.**
+- **The Features register's em dash stays.** `restaurant_feature_flags` really has
+  `created_at` and no update column (`baseline:5097-5105`, unchanged by the three
+  later ALTERs). Closing it needs a migration, which this pass was not cleared to
+  write (§13.9).
+- ~~**The Cellar register has no switch.**~~ **Closed during this pass** — the
+  cellar builder exported `CellarRegistersControl` while this one was running,
+  and it is now mounted at `?tab=cellar`. Until it landed the register rendered
+  with no control and a line saying why; a switch before the control existed
+  would have been the exact fake toggle this page removed everywhere else.
+- **Nothing records WHO changed a setting.** That is a schema gap, not a copy
+  gap — see the section below for what closing it would take.
+- **No live screenshot.** The local gateway on :4010 answers, but its
+  dev-bypass session is `emailVerified: false` and every tenant read behind
+  `EmailVerifiedGuard` returns `EMAIL_NOT_VERIFIED`; there is no local Postgres
+  and no Docker on this machine. So the SQL claims here are read off the
+  baseline migration and the code, not measured against a running database, and
+  §9.9 is filed as a **suspected** defect for exactly that reason.
+
+### What this page can do now, and what "more" means here
+
+Written for the founder's *"tell me more, let me know"*. Every register, what it
+changes, where the value is kept, and who may change it.
+
+| # | Register | What changing it actually does | Where the value is kept | Who may change it | Dated? |
+|---|---|---|---|---|---|
+| 01 | Team | Grants or withdraws a person's access to this branch, immediately, and what they may do with it | `user_restaurant_access` (role, `is_active`) + `organization_invites` for the invite book | Owner changes roles and removes anyone; a manager may invite; staff cannot open the page | **granted** (access row's `created_at`) · **issued** (invite's `created_at`) |
+| 02 | Services | Nothing, for the four consents — they persist and no code branches on them. The connected apps beside them are real OAuth links and Disconnect really disconnects | Consents: `user_preferences.preferences.servicePermissions`. Apps: the integrations store | Anyone signed in — these are yours, not the restaurant's | **connected** (per app) · consents share the preference record's date |
+| 03 | Email | Replaces the name at the bottom of every outbound vendor email, substituted by the gateway at send time | `communication_templates` row of type `sender_identity` | Owner or manager | **changed** — real, kept by a database trigger |
+| 04 | Notifications | Opens or closes the doors an alert may leave by, sets the low-stock digest, and holds non-critical alerts inside the quiet window | `notification_preferences`, one row per user | Anyone signed in — yours. But the senders read **every** member's together: an alert goes out if anyone wants it | **changed** — real |
+| 05 | Locations | Adds a branch, renames a chain, moves a branch between chains — changes what the header switches between | `restaurants` and `restaurant_chains` | Owner creates and renames chains; manager or owner edits a branch | **changed** — real, both, as of this pass |
+| 06 | Measurement | Changes how volumes are written **for you on this machine only**. Nothing about what is stored changes | `localStorage["restaurant-settings-storage"]` | Whoever is at this browser. Not shared, not synced to the phone | never — a browser keeps a value, not a history |
+| 07 | Map | The frame Find distributors opens at | `user_preferences.preferences.mapDefaultScope` | Anyone signed in — yours | **changed** — the whole record's date, shared |
+| 08 | Features | Turns capabilities on for **everyone at this restaurant** — including autonomous AI sending, and including this redesign | `restaurant_feature_flags`, one row per restaurant, one column per flag | Owner or manager (JWT + TenantGuard, `settings.controller.ts:33`) | never — no update column exists |
+| 09 | POS | Nothing to the till. It bookmarks whose connector documentation you are reading | `user_preferences.preferences.posConfig` | Anyone signed in | the preference record's date, shared |
+| 10 | Calendar | Regenerating **silently breaks every existing subscription**, with no undo | `restaurants.calendar_ical_token` | Owner or manager | never — the token has no date of its own |
+| 11 | Cellar | Declares which of the seven drinks registers the house carries, which decides which registers `/cellar` draws at all. Switching one on with nothing in the books behind it is allowed and asks you to confirm | `restaurant_cellar_registers`, one row per (restaurant, register) — and **only** where a person said something; an inference is computed at read time and never stored | Owner or manager (JWT on `/cellar`) | **changed** · — the readout carries no date per answer (§13.19) |
+
+**What "more" turned out to mean, twice.** First pass: *more substance per
+setting*, not more switches — the third line under every row. Second pass: *the
+third line has to be true*, which meant fixing the gateway rather than writing a
+better sentence. Both are the same idea — a settings page earns trust by being
+checkable — and the second is the expensive half.
+
+**What a settings audit trail would take.** Nothing on this page records **who**
+changed a setting. It is not a small gap: the Features register alone can grant an
+AI the right to email a vendor with nobody reading it, and today that grant is
+anonymous. What exists and what does not:
+
+- **The table already exists and is already used.** `system_audit_log`
+  (`baseline:5553-5568`) carries `actor_type`, `actor_id`, `action`,
+  `entity_type`, `entity_id`, `changes jsonb`, `restaurant_id`, `reason`,
+  `created_at`. Two access changes already file into it through one shared
+  function — `recordAccessChange` (`apps/api-gateway/src/team/access-audit.ts:73`),
+  called by `MembersService.updateMemberRole` (`restaurants/members.service.ts:196`,
+  action `member_role_changed`, `changes: {role: {from, to}}`) and by
+  `TeamService.deleteMember` (`team/team.service.ts:456`). So the shape is
+  settled, tested and in production — **settings simply never call it.**
+- **What to add, exactly.** `SettingsService.updateFeatureFlags`
+  (`settings/settings.service.ts:67-106`) already reads nothing before it upserts;
+  it would need a `select(ACTIVE_COLUMNS)` first to capture the before-state, then
+  one `recordAccessChange`-shaped call per changed key with
+  `action: "feature_flag_changed"`, `entity_type: "restaurant_feature_flag"`,
+  `entity_id` the restaurant, `changes: {<key>: {from, to}}`. The same for
+  `UserPreferencesService.updatePreferences` and
+  `NotificationsService.updatePreferences`, which both already fetch the existing
+  row and throw the before-state away.
+- **`actor_id` must be `public.users.user_id`, never `auth.users`.** The two
+  tables are disjoint in this database — zero shared ids — so an id taken from
+  the wrong one dangles, and **CI cannot catch it**: a fresh test database has no
+  rows to violate. `system_audit_log.actor_id` carries no FK at all
+  (`baseline:13618` declares only `restaurant_id`), so a wrong id would simply
+  never resolve and the log would look full while answering nothing.
+- **Reading it back** needs one endpoint —
+  `GET /settings/audit?restaurantId=&limit=` filtered to the settings actions —
+  and then the row's provenance line becomes "changed · 3 days ago · by Deniz",
+  which is the whole point. A per-register `?tab=…&history=1` disclosure is the
+  cheapest UI: the ledger already renders that way elsewhere.
+- **What it does NOT need:** a new table, a migration, or an `updated_at` column
+  on `restaurant_feature_flags`. The audit row's own `created_at` is a better
+  answer than a column, because it records every change rather than only the last
+  one. The `updated_at` migration in §13.9 becomes optional once the log is wired.
 
 ## 2. Entry
 
@@ -180,14 +334,26 @@ links are honored (`Settings.tsx:709,721`).
   dossier previously said 1,575).
 - Section components: `components/settings/{EmailSenderSettings, NotificationsSection, IntegrationsAuth, PosSettingsSection, ServicesPermissions}.tsx`, `components/team/{InviteTeamDialog, TeamLaborSettings, TeamGoalsSettings}.tsx`, `components/locations/{AddLocationDialog, EditLocationChainDialog, CreateChainDialog, AssignToChainDialog}.tsx` (Settings.tsx:44-63).
 - **Mudavym redesign** (flag `mudavym_design_settings`):
-  `apps/web/src/pages/settings/next/` — `SettingsNext.tsx` (shell, contents,
-  `?tab=` routing), `useSettingsNextData.ts` (every register, `apiClient` only,
-  tenant-keyed, lazy per register), `SectionKit.tsx` (`Row` with its provenance
-  line, `Dead`, `Register`'s four states, `ConfirmAction`), `FeaturesSection.tsx`,
-  `NotifySection.tsx`, `TeamSection.tsx` (team + locations), `OtherSections.tsx`
-  (services · email · measurement · map · POS · calendar), `st-format.ts`
-  (the ten-register vocabulary + formatting), `fonts.ts`, `MOTIONS.md`,
-  `SettingsNext.test.tsx` (15 tests).
+  `apps/web/src/pages/settings/next/` — sixteen files, one register per file
+  after the 2026-09-03 split (`OtherSections.tsx`, which bundled six of them,
+  is gone).
+  - Shell and shared parts: `SettingsNext.tsx` (contents, `?tab=` routing),
+    `useSettingsNextData.ts` (every register, `apiClient` only, tenant-keyed,
+    lazy per register), `SectionKit.tsx` (`Row` with its provenance line and its
+    `verb`, `Dead`, `Register`'s four states, `ConfirmAction`, `SaveFailure`,
+    `fieldStyle`), `st-format.ts` (the register vocabulary, the enumerated
+    `PROVENANCE_UNKNOWN` reasons, formatting), `fonts.ts`, `MOTIONS.md`.
+  - One per register: `TeamSection.tsx`, `ServicesSection.tsx`,
+    `EmailSection.tsx`, `NotifySection.tsx`, `LocationsSection.tsx`,
+    `MeasurementSection.tsx`, `MapSection.tsx`, `FeaturesSection.tsx`,
+    `PosSection.tsx`, `CalendarSection.tsx`, `CellarSection.tsx`.
+  - `SettingsNext.test.tsx` (22 tests).
+  - Mounted from elsewhere, not re-implemented: the seven legacy dialogs above,
+    and `pages/cellar/next/CellarRegistersControl` for `?tab=cellar`.
+- **Gateway, changed by this page's second pass**:
+  `apps/api-gateway/src/organizations/organizations.service.ts` (chain and branch
+  `updated_at` on the wire; `renameChain` stamps it) with
+  `organizations/last-changed-dates-reach-the-client.spec.ts` (5 tests).
 
 ## 4. Endpoints
 
@@ -250,6 +416,9 @@ Layout chrome per dashboard.md §7.
 - Note the recursion: this page is where all 17 `mudavym_design_*` flags are
   flipped, **including its own** — turning `mudavym_design_settings` off from the
   rebuilt Features register returns you to the legacy page.
+- `?tab=cellar` exists **only** on the rebuilt page. On the legacy page an
+  unrecognised `?tab=` falls back to `team`, so the link degrades rather than
+  breaking, and nothing outside this page links to it yet.
 
 ## 9. Gaps
 
@@ -261,8 +430,12 @@ Layout chrome per dashboard.md §7.
 - ServicesPermissions describes telemetry ("find the screens that slow people
   down") that does not run (§5) — consent UI ahead of the capability.
 
-**Measured 2026-09-02 during the Mudavym rebuild** (all grepped across
-`apps/api-gateway/src`, `apps/web/src`, `apps/mobile/src`):
+**Measured 2026-09-02 during the Mudavym rebuild, corrected 2026-09-03.** The
+2026-09-02 pass grepped three runtimes — `apps/api-gateway/src`, `apps/web/src`,
+`apps/mobile/src` — and omitted `services/agent-orchestrator`, which is where the
+alerting agent lives. That omission produced one false "nothing reads this"
+(item 2 below, now struck). **Everything here has been re-grepped across all four
+runtimes on 2026-09-03**, and the per-key result is §9.10.
 
 1. **Push is not delivered at all.** `push_enabled` persists
    (`notifications.service.ts:1142`) and nothing anywhere sends a push: the
@@ -271,13 +444,21 @@ Layout chrome per dashboard.md §7.
    target has a writer that cannot be planned (42P10). Evidence, in one place:
    `apps/api-gateway/src/communications/push-is-not-resolved-here.spec.ts`.
    The rebuilt page renders Push **without a control**.
-2. **Notification categories and quiet hours are written and never read.**
-   Written at `notifications.service.ts:1144` and `:1146-1151`; no sender
-   branches on either — `getEffectiveCategoryMode` reads `orders_mode` /
-   `reports_mode` only (`scheduled-tasks.service.ts:1523-1552`), and
-   `getEffectiveLowStockPrefs` reads the five low-stock columns
-   (`low-stock-alerts.service.ts:485-520`). Six more controls that changed
-   nothing; rendered without controls now.
+2. ~~**Notification categories and quiet hours are written and never read.**~~
+   **Half wrong, corrected 2026-09-03.** The five **categories** are write-only:
+   written at `notifications.service.ts:1144-1145`, and nothing in any of the
+   four runtimes branches on them (`getEffectiveCategoryMode` reads
+   `orders_mode` / `reports_mode` only, `scheduled-tasks.service.ts:1528`;
+   `getEffectiveLowStockPrefs` reads the five low-stock columns,
+   `low-stock-alerts.service.ts:505,515`). **Quiet hours is live**:
+   `services/agent-orchestrator/agents/notification_agent.py:1487-1494`
+   (`_is_quiet_hours`) is called by `_select_channels` (`:1448`) on the row this
+   page writes, loaded by `_get_notification_preferences` (`:1580-1591`,
+   `select("*")` on `notification_preferences`), reached from four handlers
+   (`:541`, `:637`, `:726`, `:787`). Inside the window and below `critical`,
+   `_select_channels` returns `[]` — the alert is **suppressed**, not delayed.
+   The control was restored on 2026-09-03; it was removed for one day on a
+   three-runtime grep.
 3. **No setting on this page records WHO changed it.**
    `restaurant_feature_flags` carries `created_at` and no `updated_at` or
    `updated_by` (`supabase/migrations/20260805000000_baseline_from_production.sql:5097-5105`),
@@ -295,12 +476,60 @@ Layout chrome per dashboard.md §7.
    is zustand `persist` under `restaurant-settings-storage` — localStorage, not
    the restaurant and not the account. The legacy page presents the four
    controls beside restaurant settings with nothing saying so.
-7. **The seeded-defaults guard does not scan the rebuilt directory.**
-   `scripts/check_no_seeded_defaults.py` `SCAN_ROOTS` has no entry for
-   `apps/web/src/pages/settings/next`, so a clean run says nothing about it. The
-   build was verified against a root-pinned copy of the guard with that entry
-   added (PASS, 68 web files vs 59) — the real entry is §13.8, and it is outside
-   the page agent's paths.
+7. ~~**The seeded-defaults guard does not scan the rebuilt directory.**~~
+   **Closed 2026-09-03** — `scripts/check_no_seeded_defaults.py:203` now carries
+   `Path("apps/web/src/pages/settings/next")`, added by the parent session. The
+   real guard run covers this directory: `PASS — 124 web file(s) and 13 gateway
+   file(s) across 19 root(s)`.
+
+**Added 2026-09-03 by the second pass:**
+
+8. **Four "no last-changed date" lines were false, and three were gateway
+   defects.** Chains, branches, the invite issue date and the email sign-off all
+   had dates the page was not being handed, or was reading under the wrong
+   spelling. Fixed at source; the table in §1b *Second pass* is the full account.
+   The load-bearing lesson is filed there too: a claim of ABSENCE carries the same
+   burden of proof as a number.
+9. **SUSPECTED DEFECT — the team roster may be empty for everyone, and the page cannot
+   tell.** `MembersService.getMembers` orders by `granted_at`
+   (`apps/api-gateway/src/restaurants/members.service.ts:73`) on
+   `user_restaurant_access`, and that table has no such column — the baseline
+   declares `id, user_id, restaurant_id, role, created_at, is_active, valid_from,
+   valid_until, invited_via, deactivated_at, deactivated_by`
+   (`baseline_from_production.sql:5810-5822`), and no later migration adds one;
+   the single `granted_at` in the whole baseline is `user_roles.granted_at`
+   (`:5834`). PostgREST answers an unknown `order=` column with a 42703 error,
+   and `getMembers` logs it and **returns `[]`** (`:75-80`) — so a failed read and
+   an empty branch arrive at the client identically. **NOT MEASURED**: the local
+   gateway's dev-bypass session is `emailVerified: false` and every tenant read is
+   behind `EmailVerifiedGuard`, and there is no local Postgres on this machine, so
+   this is read off the schema and the code and not off a running database. The
+   rebuilt page does not paper over it — an empty roster now says both
+   possibilities out loud. Fix in §13.18; it is outside this page's paths.
+10. **The per-key grep, 2026-09-03, across all four runtimes.** Every key this
+    page renders without a control, with the file that proves it:
+
+    | Key | Reader found? | Citing file |
+    |---|---|---|
+    | `quiet_hours_enabled` / `_start` / `_end` | **YES — control restored** | `services/agent-orchestrator/agents/notification_agent.py:1487-1494`, via `_select_channels:1448` |
+    | `push_enabled` | no — 3 writers, 0 readers | writers `notifications.service.ts:189,1142,1193`; the channel chooser reads urgency + `<type>_channels` (`notification_agent.py:1435-1470`); the one other hit `core/database.py:1967` copies a `restaurants.push_enabled` onto an object nothing reads |
+    | `categories.inventory` | no | written `notifications.service.ts:1144-1145`; no branch anywhere |
+    | `categories.orders` | no | as above (`orders_mode` is a different column and IS read) |
+    | `categories.calendar` | no | as above |
+    | `categories.system` | no | as above |
+    | `categories.ai` | no | as above |
+    | `servicePermissions.email` | no | writers only: `components/settings/ServicesPermissions.tsx:148`, `apps/mobile/src/guidance/GuidanceProvider.tsx:314`; re-exposed at `:334`, consumed by nobody |
+    | `servicePermissions.web` | no | as above |
+    | `servicePermissions.privacy_analytics` | no | as above, plus `lib/uxSignals.ts:15,64,87,125` is env-gated and its only importer `hooks/useUxOverrides.ts:19` has zero call sites |
+    | `servicePermissions.privacy_sharing` | no | as above |
+
+    Zero hits for any of these in `apps/api-gateway/src` beyond the write paths
+    named, and zero in `services/agent-orchestrator` except the quiet-hours row.
+11. **There are TWO quiet-hours stores, and this page writes the live one.**
+    `manager_preferences.quiet_hours_start/end` (`baseline:3696-3697`) is a second
+    store, read by `ManagerPreferencesRepository.is_quiet_hours`
+    (`core/database.py:1410-1428`) — which has **no callers**. Worth knowing before
+    anyone "fixes" quiet hours by wiring the dead one (§13.17).
 
 ## 10. Maturity
 
@@ -310,25 +539,33 @@ Layout chrome per dashboard.md §7.
 **What moved it, and to what.** "Hollow" was earned by the 22-switch era, and it
 was still the right word while the page's honest content lived only in this
 dossier — three corrections nobody standing on `/settings` could see. It is no
-longer right: seven of the ten registers are live end to end, and the three that
-are not now say so **on the page**, each naming the file that was grepped. It is
-`partial` and not `complete` because four surfaces are still consent ahead of
-capability (push, notification categories, quiet hours, the four service
-permissions), the iCal feed is still unproven against any client, and no setting
-on the page records an author.
+longer right: **seven of the eleven registers are live end to end** (team, email,
+locations, measurement, map, features, cellar) and the four that are split
+(services, notifications, POS, calendar) now say **on the page** exactly which
+half is not, each naming the file that was grepped. It is `partial` and not
+`complete` because three surfaces are still consent ahead of capability (push,
+the five notification categories, the four service permissions), the iCal feed
+is still unproven against any client, and no setting on the page records an
+author.
+
+**Corrected 2026-09-03**: the 2026-09-02 version of this paragraph counted quiet
+hours among the dead surfaces. It is live (§9.2). It also said "seven of ten"
+before the eleventh register existed — the count is coincidentally the same and
+the denominator is not.
 
 | Register | Live? | Evidence |
 |---|---|---|
 | Team | **yes** | members/invites/roles/removal, all through `apiClient`; a 403 on the invite book is rendered as a refusal |
 | Services | **split** — connected apps yes, consents no | `integrations/oauth/*` carries real `connectedAt`; the four consents are read by nothing (§9.5) |
 | Email | **yes** | sign-off substituted at send time; the test send goes to the gateway's configured manager recipients, and the page says so |
-| Notifications | **split** | email · SMS (`team/broadcast-preferences.ts:69-70,104`), low stock (`low-stock-alerts.service.ts:485-520`), orders/reports (`scheduled-tasks.service.ts:1523-1552`) are read. Push, the five categories and quiet hours are not (§9.1-2) |
-| Locations | **yes** | chains and branches; `assertManagerOrOwner` enforced server-side |
+| Notifications | **split** | email · SMS (`team/broadcast-preferences.ts:69-70,104`), low stock (`low-stock-alerts.service.ts:505,515`), orders/reports (`scheduled-tasks.service.ts:1528`) **and quiet hours** (`notification_agent.py:1487-1494`) are read. Push and the five categories are not (§9.1-2, §9.10) |
+| Locations | **yes** | chains and branches; `assertManagerOrOwner` enforced server-side; both now carry a real last-changed date (§1b second pass) |
 | Measurement | **yes, but per-browser** | `stores/restaurantSettingsStore.ts` localStorage (§9.6) |
 | Map | **yes** | `pages/distributors/command/DistributorMapPage.tsx:36` |
 | Features | **yes** | 19 registry-ACTIVE flags, 2 AI + 17 redesign; `feature-flag-registry.ts` is the single source |
 | POS | **split** | `/pos-hub/status/:rid` is real and its failure is rendered as failure; the connector picker reads back only to itself (§9.4) |
 | Calendar | **token yes, subscription unproven** | `v3.0-TECH-DEBT.md:346-348`; the page now labels the client steps *Untested* |
+| Cellar | **yes** | `pages/cellar/next/CellarRegistersControl` mounted over `GET/PUT /cellar/:restaurantId/registers` (`apps/api-gateway/src/cellar/`); a failed readout renders as words, not as seven registers switched off |
 
 ### The 2026-08-26 record, kept
 
@@ -373,12 +610,12 @@ notification preferences (honoured by the senders via `getEffectiveCategoryMode`
 
 | Method | Path | Auth | Gateway controller | Returns |
 |---|---|---|---|---|
-| GET/PUT | `/settings/feature-flags` | JWT + **TenantGuard** (`settings/settings.controller.ts:31-32`) | `settings.service.ts:17-105` | 22+ booleans; defaults all-true when no row (`:25-27`) |
+| GET/PUT | `/settings/feature-flags` | JWT + **TenantGuard** (`settings/settings.controller.ts:33`) | `settings.service.ts:38-106` | Exactly the registry-ACTIVE keys — 19 today, 2 AI + 17 `mudavym_design_*` (`feature-flag-registry.ts`); a missing row answers with the registry's own defaults (`defaultActiveFlags()`, `:136-144`), all of the redesign flags `false` |
 | GET/POST | `/calendar/ical-token`, `…/regenerate` | JWT | `calendar.controller.ts:609-637` | 64-char token + feed path |
 | GET | `/restaurants/:rid/members`, `…/invites` | JWT | `restaurants` module | Roster, pending invites |
 | PATCH/DELETE | `/restaurants/:rid/members/:userId` | JWT | `restaurants` module | Role change / removal |
 | DELETE | `/restaurants/:rid/invites/:code` | JWT | `restaurants` module | Revoked invite |
-| GET/PATCH/DELETE | `/organizations/chains`, `…/chains/:id` | JWT (class, `organizations.controller.ts:33`) | `organizations.service.ts` | Chains; `assertManagerOrOwner` on the write paths (`:94-118,184`) |
+| GET/PATCH/DELETE | `/organizations/chains`, `…/chains/:id` | JWT (class, `organizations.controller.ts:33`) | `organizations.service.ts` | Chains; `assertManagerOrOwner` on the write paths. Returns `updated_at` as of 2026-09-03, and `renameChain` stamps it (§1b second pass) |
 | GET | `/pos-hub/providers`, `/pos-hub/status/:rid` | JWT | `pos-hub` module | Connector list + connection state |
 | GET/PATCH | `/notifications/preferences` | JWT (class, `notifications.controller.ts:45`) | `:144-176` | Per-category channel prefs |
 | PATCH | `/users/:userId/preferences` | JWT | `user-preferences` module | Consent object nothing reads (§10) |
@@ -442,11 +679,15 @@ that flipping something changed something.
    work. **Fixed on the rebuilt page** — the steps are filed under *Untested*
    with the `Content-Disposition: attachment` suspect named; the legacy page
    still promises them.
-6. **New (2026-09-02):** six notification controls and four consent controls
-   persist and change nothing anywhere (§9.1-2, §9.5); nothing records who
-   changed any setting (§9.3); the measurement controls look like restaurant
-   settings and are per-browser (§9.6). All five are stated on the rebuilt page
-   and none is stated on the legacy one.
+6. **New (2026-09-02, corrected 2026-09-03):** six notification controls and four
+   consent controls persist and change nothing anywhere — **five, not six**: the
+   sixth was quiet hours, which is read (§9.2, §9.10). Nothing records who changed
+   any setting (§9.3); the measurement controls look like restaurant settings and
+   are per-browser (§9.6). All are stated on the rebuilt page and none is stated
+   on the legacy one.
+7. **New (2026-09-03):** an empty team roster and a failed roster read are
+   indistinguishable at the client (§9.9). The legacy page renders both as an
+   empty list with no comment; the rebuilt page says both possibilities.
 
 ## 13. Roadmap
 
@@ -473,9 +714,8 @@ that flipping something changed something.
 **Added 2026-09-02 by the Mudavym rebuild** (each is outside the page agent's
 paths, so each is filed rather than built):
 
-8. **Add `apps/web/src/pages/settings/next` to `SCAN_ROOTS`** in
-   `scripts/check_no_seeded_defaults.py:187-197`. Until then a green guard run
-   says nothing about this directory (§9.7).
+8. ~~**Add `apps/web/src/pages/settings/next` to `SCAN_ROOTS`.**~~ **Done
+   2026-09-03** — `scripts/check_no_seeded_defaults.py:203`.
 9. **Give the settings row a provenance.** `restaurant_feature_flags` needs
    `updated_at` and `updated_by`, and `settings.service.ts` needs to select
    them, before the page's "changed · —" line can ever say anything else. The
@@ -488,9 +728,9 @@ paths, so each is filed rather than built):
 11. **Push: build it or delete it.** `push_enabled` is a preference for a
     channel that does not exist (§9.1). Deleting the column is the cheap,
     honest half.
-12. **Notification categories and quiet hours: wire or delete** (§9.2). Quiet
-    hours in particular is the kind of promise a person plans their evening
-    around.
+12. **Notification categories: wire or delete** (§9.2, §9.10). Five switches that
+    record themselves. *Quiet hours has been removed from this item — it is read
+    and it works.*
 13. **Rebuild the seven borrowed components in the Mudavym hand** —
     `InviteTeamDialog`, `AddLocationDialog`, `CreateChainDialog`,
     `AssignToChainDialog`, `EditLocationChainDialog`, `TeamLaborSettings`,
@@ -499,3 +739,53 @@ paths, so each is filed rather than built):
 14. **Prove the iCal feed against one real client** (existing item 3) — the
     rebuilt page now says it is unproven, which makes the gap visible but does
     not close it.
+
+**Added 2026-09-03 by the second pass** (each is outside the paths this pass was
+cleared to edit, so each is filed rather than built):
+
+15. ~~**Return `updated_at` from `/organizations/chains` and the branch list.**~~
+    **Done 2026-09-03** — `organizations.service.ts` (`getChainsForUser`,
+    `createChain`, `getBranchesForUser` on all three paths), with `renameChain`
+    stamping the column because `restaurant_chains` has no `BEFORE UPDATE`
+    trigger. Spec: `organizations/last-changed-dates-reach-the-client.spec.ts`.
+16. **Wire the settings audit trail.** `system_audit_log` and the
+    `recordAccessChange` shape already exist and are already used by two access
+    changes; `SettingsService.updateFeatureFlags`,
+    `UserPreferencesService.updatePreferences` and
+    `NotificationsService.updatePreferences` never call them. The full recipe —
+    which endpoint, which before-state to capture, and why `actor_id` must be
+    `public.users.user_id` — is in §1b, *What this page can do now*. This is the
+    single highest-value item on this list: today the grant of autonomous AI
+    sending is anonymous.
+17. **Decide which quiet-hours store is canonical.** There are two:
+    `notification_preferences` (this page writes it; the alerting agent reads it)
+    and `manager_preferences.quiet_hours_start/end` (`baseline:3696-3697`, read
+    only by a method with no callers). Delete the dead one or the next person
+    fixes the wrong one (§9.11).
+18. **SUSPECTED, and worth an hour: `MembersService.getMembers` orders by a
+    column that does not exist** (`restaurants/members.service.ts:73`,
+    `granted_at` on `user_restaurant_access`). If PostgREST rejects it, the Team
+    register is empty for every tenant and has been logging it quietly. Change the
+    order to `created_at` and check the log. Not measured here — no local database
+    and the dev-bypass session cannot pass `EmailVerifiedGuard` (§9.9).
+19. ~~**Mount the cellar registers control.**~~ **Done 2026-09-03** —
+    `CellarSection.tsx` mounts `pages/cellar/next/CellarRegistersControl` and
+    calls the cellar's own `useCellarRegisters`, so the fetch happens only when
+    `?tab=cellar` is open. **Open beneath it:** the readout carries no date per
+    answer (`RegisterReadoutVM` has `decidedBy`/`confidence`/`basis` and no
+    `confirmed_at`), so this register's provenance line is an em dash naming
+    that. One field on the gateway's readout closes it.
+20. **Blast radius on the Features register** (DESIGN-FOUNDATION §6, "need it:
+    now"): each flag should say what it changes *in numbers* — "3 rules fire on
+    this", "42 items use this unit". The page says the consequence in prose today
+    because no endpoint counts the dependents; that count is the work.
+21. **A Vendor-terms register** (DESIGN-FOUNDATION §6, "need it: now" — vendor
+    terms "have no home at all"): order cutoffs, delivery days, minimums and pack
+    sizes, each field carrying *stated · inferred from N orders · em dash*. Drawn
+    as `.planning/sketches/091-settings-directions/vendor-terms.html`. It unblocks
+    the calendar idea (cutoffs as closing times) and the notification idea. Needs
+    a table and an endpoint; nothing of it exists today.
+22. **Approval thresholds** (DESIGN-FOUNDATION §6, *later*): who may seal what,
+    above what amount, for which vendor. Blocked on tenancy — production has one
+    real tenant and no `staff` role — and recorded as blocked rather than
+    attempted. Sketched alongside the vendor terms so the shape is on paper.

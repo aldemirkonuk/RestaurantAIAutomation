@@ -3,12 +3,13 @@
  *
  * The verdict this page answers is KEEP (Editorial) + "there should be more",
  * and "more" was defined as substance per setting rather than more switches.
- * These tests hold the four things that would make that claim false if they
+ * These tests hold the things that would make that claim false if they
  * regressed:
  *
- *  1. the ten `?tab=` registers stay deep-linkable in both directions;
- *  2. every setting carries its provenance line — where it is kept, and when it
- *     was last written or an em dash saying why there is no date;
+ *  1. the legacy ten `?tab=` registers stay deep-linkable in both directions,
+ *     under their legacy names, with `cellar` appended;
+ *  2. every setting carries its provenance line — where it is kept, WHAT the
+ *     date is a date of, and when, or an em dash saying why there is none;
  *  3. the Features register renders ONE control per registry-ACTIVE flag the
  *     GATEWAY returned (including the Mudavym redesign group) and lists the
  *     switch-less capabilities without controls;
@@ -18,6 +19,14 @@
  *  plus the honesty states: a failed read says which register failed, a 403
  *  says it was refused, and a setting nothing reads shows its stored value
  *  with no control.
+ *
+ * THE SECOND-PASS ADDITIONS
+ * -------------------------
+ * The audit found five false claims of ABSENCE, so five tests now pin the
+ * opposite of each: quiet hours keeps a real switch (it is read by the alerting
+ * agent), a member shows a GRANTED date, an invite shows an ISSUED date, a chain
+ * and a branch each show their own last-changed date. A test that only checked
+ * "an em dash appears" would have passed against every one of those bugs.
  *
  * The data hook is mocked, so nothing here touches the network. None of these
  * assertions would pass against the scaffold this file replaced.
@@ -29,9 +38,10 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 
 const mock = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 
-vi.mock('./useSettingsNextData', () => ({
-  useSettingsNextData: () => mock.current,
-}));
+vi.mock('./useSettingsNextData', async () => {
+  const actual = await vi.importActual<typeof import('./useSettingsNextData')>('./useSettingsNextData');
+  return { ...actual, useSettingsNextData: () => mock.current };
+});
 
 // Transient legacy modals — mounted by the team/locations registers, and not
 // under test here.
@@ -43,6 +53,23 @@ vi.mock('@/components/locations/CreateChainDialog', () => ({ CreateChainDialog: 
 vi.mock('@/components/locations/AssignToChainDialog', () => ({ AssignToChainDialog: () => null }));
 vi.mock('@/components/locations/EditLocationChainDialog', () => ({ EditLocationChainDialog: () => null }));
 
+// The Cellar register mounts the cellar rebuild's own control and its own
+// react-query hook. Both are tested where they live
+// (`pages/cellar/next/CellarRegisters.test.tsx`); what this file owns is that
+// Settings mounts them rather than growing a second implementation, and that a
+// failed readout still reaches the reader as words.
+const cellar = vi.hoisted(() => ({
+  current: {
+    data: null as unknown,
+    loading: false,
+    error: null as string | null,
+    save: { mutateAsync: vi.fn(), isPending: false, error: null },
+    refetch: vi.fn(),
+  },
+}));
+vi.mock('@/pages/cellar/next/useCellarNextData', () => ({ useCellarRegisters: () => cellar.current }));
+vi.mock('@/pages/cellar/next/cellar-next.css', () => ({}));
+
 import SettingsNext from './SettingsNext';
 
 function remote(data: unknown, status = 'ok') {
@@ -52,6 +79,20 @@ function remote(data: unknown, status = 'ok') {
 const saveFlag = vi.fn();
 const savePrefs = vi.fn();
 const saveNotif = vi.fn();
+
+/** Three days back — renders as "3 days ago" through `fmtWhen`. */
+const THREE_DAYS_AGO = new Date(Date.now() - 3 * 86_400_000).toISOString();
+
+function notifPrefs(over: Record<string, unknown> = {}) {
+  return {
+    userId: 'u1', email: true, push: true, sms: false,
+    categories: { inventory: true, orders: true, calendar: true, system: true, ai: true },
+    lowStock: { enabled: true, instantFirstAlert: true, criticalImmediate: true, digestFrequency: 'daily', digestTime: '12:00' },
+    quietHours: { enabled: false, startTime: '22:00', endTime: '08:00' },
+    ordersMode: 'both', reportsMode: 'both', updatedAt: null,
+    ...over,
+  };
+}
 
 function base(over: Record<string, unknown> = {}) {
   return {
@@ -97,17 +138,25 @@ function mount(url = '/settings') {
 beforeEach(() => {
   vi.clearAllMocks();
   mock.current = base();
+  cellar.current = {
+    data: null,
+    loading: false,
+    error: null,
+    save: { mutateAsync: vi.fn(), isPending: false, error: null },
+    refetch: vi.fn(),
+  };
 });
 
 describe('SettingsNext — the editorial spine', () => {
-  it('opens on a contents page naming all ten registers and where each is kept', () => {
+  it('opens on a contents page naming every register and where each is kept', () => {
     mount();
     const nav = screen.getByRole('navigation', { name: /settings registers/i });
-    expect(within(nav).getAllByRole('button')).toHaveLength(10);
-    for (const label of ['Team', 'Services', 'Email', 'Notifications', 'Locations', 'Measurement', 'Map', 'Features', 'POS', 'Calendar']) {
+    expect(within(nav).getAllByRole('button')).toHaveLength(11);
+    // The legacy ten, under their legacy names, plus the eleventh.
+    for (const label of ['Team', 'Services', 'Email', 'Notifications', 'Locations', 'Measurement', 'Map', 'Features', 'POS', 'Calendar', 'Cellar']) {
       expect(within(nav).getByText(label)).toBeInTheDocument();
     }
-    expect(screen.getByText(/six kept for this restaurant, three on your account, one in this browser only/i)).toBeInTheDocument();
+    expect(screen.getByText(/seven kept for this restaurant, three on your account, one in this browser only/i)).toBeInTheDocument();
     // The standing honesty statement: nothing on this page records an author.
     expect(screen.getByText(/no table on this page carries an author column/i)).toBeInTheDocument();
   });
@@ -204,15 +253,7 @@ describe('SettingsNext — features', () => {
 
 describe('SettingsNext — provenance and unknowns', () => {
   it('dates a setting the gateway dates, and em-dashes one it does not', () => {
-    const when = new Date(Date.now() - 3 * 86_400_000).toISOString();
-    mock.current = base({
-      notif: remote({
-        userId: 'u1', email: true, push: true, sms: false,
-        categories: { inventory: true, orders: true, calendar: true, system: true, ai: true },
-        lowStock: { enabled: true, instantFirstAlert: true, criticalImmediate: true, digestFrequency: 'daily', digestTime: '12:00' },
-        ordersMode: 'both', reportsMode: 'both', updatedAt: when,
-      }),
-    });
+    mock.current = base({ notif: remote(notifPrefs({ updatedAt: THREE_DAYS_AGO })) });
     mount('/settings?tab=notifications');
     expect(screen.getAllByText(/kept · your account/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/3 days ago/).length).toBeGreaterThan(0);
@@ -228,12 +269,9 @@ describe('SettingsNext — provenance and unknowns', () => {
 
   it('shows a preference nothing reads as a record, with no switch', () => {
     mock.current = base({
-      notif: remote({
-        userId: 'u1', email: true, push: true, sms: false,
+      notif: remote(notifPrefs({
         categories: { inventory: true, orders: false, calendar: true, system: true, ai: true },
-        lowStock: { enabled: true, instantFirstAlert: true, criticalImmediate: true, digestFrequency: 'daily', digestTime: '12:00' },
-        ordersMode: 'both', reportsMode: 'both', updatedAt: null,
-      }),
+      })),
     });
     mount('/settings?tab=notifications');
     // Push: stored, but nothing sends it — no control anywhere for it.
@@ -243,9 +281,67 @@ describe('SettingsNext — provenance and unknowns', () => {
     // Email and SMS are real, so they keep their switches.
     expect(screen.getByRole('switch', { name: /Email notifications/i })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: /SMS notifications/i })).toBeInTheDocument();
-    // The category that is off is shown as a stored value, not as a switch —
-    // as is the quiet-hours record beside it.
-    expect(screen.getAllByText('stored: off').length).toBeGreaterThanOrEqual(2);
+    // The category that is off is shown as a stored value, not as a switch.
+    expect(screen.getAllByText('stored: off').length).toBe(1);
+    expect(screen.getAllByText('stored: on').length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('keeps a real switch on quiet hours, because the alerting agent reads it', () => {
+    // The audit's BLOCKER 1: the first pass rendered this as a dead record on a
+    // three-runtime grep. `notification_agent._is_quiet_hours` reads the very
+    // row this page writes, so removing the control was a capability loss
+    // justified by an unchecked claim.
+    mock.current = base({
+      notif: remote(notifPrefs({ quietHours: { enabled: true, startTime: '23:00', endTime: '07:00' } })),
+    });
+    mount('/settings?tab=notifications');
+    const toggle = screen.getByRole('switch', { name: /^Quiet hours$/i });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    // The window itself is editable only while the switch is on.
+    expect(screen.getByLabelText(/Quiet hours start/i)).toHaveValue('23:00');
+    fireEvent.click(toggle);
+    expect(saveNotif).toHaveBeenCalledWith('quiet.enabled', {
+      quietHours: { enabled: false, startTime: '23:00', endTime: '07:00' },
+    });
+    // And it is honest about the half that does NOT honour it.
+    expect(screen.getByText(/consult this window and sends on its own clock/i)).toBeInTheDocument();
+  });
+
+  it('says what each date is a date OF — granted for access, issued for an invite', () => {
+    mock.current = base({
+      team: remote({
+        members: [{ user_id: 'u1', role: 'owner', users: { name: 'Deniz', email: 'd@x.com' }, created_at: THREE_DAYS_AGO }],
+        invites: [{ id: 'i1', code: 'ABC123', role: 'manager', expires_at: new Date(Date.now() + 5 * 86_400_000).toISOString(), created_at: THREE_DAYS_AGO }],
+        invitesDenied: false,
+      }),
+    });
+    mount('/settings?tab=team');
+    expect(screen.getByText(/granted · 3 days ago/i)).toBeInTheDocument();
+    expect(screen.getByText(/issued · 3 days ago/i)).toBeInTheDocument();
+    // "granted" is not "changed", and the row says where a change WOULD be filed.
+    expect(screen.getByText(/no column records a later change to this access/i)).toBeInTheDocument();
+    expect(screen.getByText(/member_role_changed/)).toBeInTheDocument();
+  });
+
+  it('shows the chain and branch dates the gateway now returns', () => {
+    mock.current = base({
+      chains: remote([{ id: 'c1', name: 'Harbour Group', updated_at: THREE_DAYS_AGO }]),
+      locations: [
+        { id: 'r1', name: 'Kadikoy', city: 'Istanbul', chain_id: 'c1', chain_name: 'Harbour Group', updated_at: THREE_DAYS_AGO },
+        { id: 'r2', name: 'Besiktas', city: null, chain_id: null, chain_name: null },
+      ],
+    });
+    mount('/settings?tab=locations');
+    // One for the chain, one for the branch that carries a date.
+    expect(screen.getAllByText(/changed · 3 days ago/i).length).toBe(2);
+    // The branch with no date on it gets an em dash naming why — never a
+    // substituted date, and never the other branch's.
+    expect(screen.getByText(/reached your session without one/i)).toBeInTheDocument();
+  });
+
+  it('does not fabricate an empty roster out of a failed read', () => {
+    mount('/settings?tab=team');
+    expect(screen.getByText(/either a branch with nobody on it/i)).toBeInTheDocument();
   });
 
   it('says out loud that the measurement register never leaves this browser', () => {
@@ -269,5 +365,64 @@ describe('SettingsNext — provenance and unknowns', () => {
     expect(regenerateIcal).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /Yes, break the old address/i }));
     expect(regenerateIcal).toHaveBeenCalled();
+  });
+
+  it('mounts the cellar rebuild’s own register control rather than a second copy', () => {
+    cellar.current = {
+      ...cellar.current,
+      data: {
+        restaurantId: 'r1',
+        registers: [
+          { id: 'wines', carried: true, decidedBy: 'confirmed', confidence: 'high', basis: '1,284 bottles in the books.', evidence: { inventoryRows: 1284, menuRows: 96, catalogueRows: 0, nameOnly: false }, needsEvidence: false },
+          { id: 'whiskey', carried: false, decidedBy: 'inferred', confidence: 'low', basis: 'The books suggest this.', evidence: { inventoryRows: 0, menuRows: 38, catalogueRows: 0, nameOnly: true }, needsEvidence: false },
+        ],
+        carried: ['wines'],
+        decidedBy: 'mixed',
+        awaitingConfirmation: false,
+        needsEvidence: [],
+        sources: {
+          answers: { readable: true, reason: null, rows: 2 },
+          inventory: { readable: true, reason: null, rows: 1284 },
+          menu: { readable: true, reason: null, rows: 96 },
+          cocktails: { readable: true, reason: null, rows: 0 },
+          catalogue: { readable: true, reason: null, rows: 0 },
+        },
+        unmappedKinds: {},
+        unmappedCatalogueTypes: {},
+      },
+    };
+    mount('/settings?tab=cellar');
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Cellar registers');
+    expect(screen.getByTestId('registers-control')).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: /Wines register/i })).toHaveAttribute('aria-checked', 'true');
+    // Settings supplies the settings-shaped facts around it, and does not
+    // invent a date the readout does not carry.
+    expect(screen.getByText(/the readout carries no date for each answer/i)).toBeInTheDocument();
+  });
+
+  it('says a failed cellar readout in words, never as seven registers switched off', () => {
+    cellar.current = { ...cellar.current, data: null, error: 'HTTP 500' };
+    mount('/settings?tab=cellar');
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(/could not be read/i);
+    expect(alert).toHaveTextContent(/it is\s*unread/i);
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+  });
+
+  it('stamps no client-side date on the POS connector', () => {
+    // Audit NIT 8: the first pass wrote `new Date()` into the stored blob and
+    // read it back as provenance. The row now carries the record's own date.
+    mock.current = base({
+      prefs: remote({ preferences: { posConfig: { activeProvider: 'toast' } }, updatedAt: THREE_DAYS_AGO }),
+      pos: remote({
+        providers: { summary: { total: 1, byTier: {}, byStatus: {} }, providers: [{ key: 'toast', name: 'Toast', status: 'live', authModel: 'oauth_2', docsUrl: null }] },
+        status: null,
+        statusError: null,
+      }),
+    });
+    mount('/settings?tab=pos');
+    expect(screen.getByText(/shared with every other setting kept on your account/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/POS connector/i), { target: { value: 'toast' } });
+    expect(savePrefs).toHaveBeenCalledWith('pos', { posConfig: { activeProvider: 'toast' } });
   });
 });

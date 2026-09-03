@@ -40,6 +40,40 @@ export function Note({ children, role }: { children: ReactNode; role?: 'status' 
   );
 }
 
+/** The one style every text input, time input and select on the page uses. */
+export const fieldStyle: CSSProperties = {
+  fontFamily: SANS,
+  fontSize: 12,
+  padding: '5px 8px',
+  borderRadius: 8,
+  border: '1px solid var(--paper-2)',
+  background: 'var(--paper-0)',
+  color: 'var(--ink-1)',
+};
+
+/**
+ * A write that did not go through, said where the reader is looking.
+ *
+ * Every register needs this and each one used to hand-roll the same paragraph;
+ * more importantly, a failed write must never be swallowed into a toast that
+ * scrolls away, and a shared component is what stops one register quietly
+ * forgetting to render `writer.failed`.
+ */
+export function SaveFailure({ failed, what }: { failed: { message: string } | null; what: string }) {
+  if (!failed) return null;
+  return (
+    <p
+      role="alert"
+      style={{
+        fontFamily: SANS, fontSize: 12, lineHeight: 1.5, color: 'var(--ink-1)',
+        background: 'var(--paper-2)', borderRadius: 8, padding: '8px 11px', margin: '10px 0 0',
+      }}
+    >
+      That did not go through — {failed.message}. {what}
+    </p>
+  );
+}
+
 export function Rule({ double }: { double?: boolean }) {
   return double ? (
     <div aria-hidden style={{ borderTop: '1px solid var(--ink-1)', borderBottom: '1px solid var(--ink-1)', height: 3, opacity: 0.55, margin: '14px 0' }} />
@@ -140,15 +174,25 @@ export interface Provenance {
   when?: string | null;
   /** Why there is no date. Required when `when` is null — never left blank. */
   whenUnknown?: string;
+  /**
+   * What the date is a date OF. Defaults to "changed".
+   *
+   * It exists because two registers hold a date that is real but is not a
+   * last-changed date: an invite records when it was *issued* and a member's
+   * access row records when it was *granted*. Printing either under the word
+   * "changed" would be a small, confident lie about a true number — the
+   * shape [[absence-reported-as-health]] warns about, wearing its opposite face.
+   */
+  verb?: string;
 }
 
-function ProvenanceLine({ kept, when, whenUnknown }: Provenance) {
+function ProvenanceLine({ kept, when, whenUnknown, verb = 'changed' }: Provenance) {
   const known = Boolean(when);
   return (
     <p style={{ ...microStyle, margin: '5px 0 0', letterSpacing: '0.1em', fontWeight: 500 }} title={fmtExact(when)}>
       kept · {KEPT_LABEL[kept]}
       <span aria-hidden style={{ opacity: 0.45 }}> — </span>
-      changed · {known ? fmtWhen(when) : <span title={whenUnknown}>{EM} {whenUnknown ?? 'no date is recorded'}</span>}
+      {verb} · {known ? fmtWhen(when) : <span title={whenUnknown}>{EM} {whenUnknown ?? 'no date is recorded'}</span>}
     </p>
   );
 }

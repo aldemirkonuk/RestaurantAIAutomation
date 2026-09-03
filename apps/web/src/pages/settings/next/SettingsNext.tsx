@@ -9,8 +9,9 @@
  * EDITORIAL, kept: a contents page and a register. Fraunces speaks the opening
  * and each register's name; the index on the left is a book's table of
  * contents, numbered, with the storage each register uses stated beside it; the
- * double rule under the heading is the account ruled off. Ten registers, one
- * open at a time, each deep-linked by `?tab=` exactly as before.
+ * double rule under the heading is the account ruled off. One register open at
+ * a time, each deep-linked by `?tab=`: the legacy ten under their legacy names
+ * in their legacy order, so no bookmark moves, plus `cellar` appended.
  *
  * "MORE", and what it is NOT: not more toggles. Every setting is rendered as a
  * RECORD — what it changes said as a consequence rather than a feature name,
@@ -26,6 +27,25 @@
  * A read that fails says which register could not be read; a 403 says it was
  * refused. Neither ever renders as an empty list.
  *
+ * SECOND PASS, 2026-09-03 — WHAT AN EM DASH COSTS WHEN IT IS WRONG
+ * ----------------------------------------------------------------
+ * The audit of the first pass found five false claims, all of one species: the
+ * page asserting an absence it had not checked. One removed a working control
+ * (quiet hours IS read, by `services/agent-orchestrator/agents/notification_agent.py:1487-1494`
+ * — the first pass grepped three runtimes and there are four). Four printed "no
+ * date exists" over dates the database was holding and the wire was dropping.
+ *
+ * The lesson is symmetric and is now built into the page: a claim of absence is
+ * a claim, and it carries the same burden of proof as a number. Every "no
+ * switch" line names the files grepped across ALL FOUR runtimes; the recurring
+ * em-dash reasons — the ones several registers share — are enumerated in
+ * `PROVENANCE_UNKNOWN` (`st-format.ts`) rather than retyped, and the ones that
+ * are local to a single row stay local because each names the specific layer it
+ * blames. Three of the four false dates were repaired at their source —
+ * `organizations.service.ts` now returns `updated_at` for chains and branches,
+ * and stamps it on a chain rename because that table has no trigger — and the
+ * fourth was a camelCase field the page was reading in snake_case.
+ *
  * Motions: `MOTIONS.md` in this directory, mirrored in 06-pages/settings.md §1b.
  */
 
@@ -39,12 +59,17 @@ import {
   isSectionId, keptTally, sectionSpec, type SectionId,
 } from './st-format';
 import { useSettingsNextData } from './useSettingsNextData';
-import FeaturesSection from './FeaturesSection';
+import { TeamSection } from './TeamSection';
+import { ServicesSection } from './ServicesSection';
+import { EmailSection } from './EmailSection';
 import NotifySection from './NotifySection';
-import { LocationsSection, TeamSection } from './TeamSection';
-import {
-  CalendarSection, EmailSection, MapSection, MeasurementSection, PosSection, ServicesSection,
-} from './OtherSections';
+import { LocationsSection } from './LocationsSection';
+import { MeasurementSection } from './MeasurementSection';
+import { MapSection } from './MapSection';
+import FeaturesSection from './FeaturesSection';
+import { PosSection } from './PosSection';
+import { CalendarSection } from './CalendarSection';
+import { CellarSection } from './CellarSection';
 
 const CSS = `
 .st-ink, .st-ink * { transition: border-color ${ink.ms}ms ${ink.easing}, background-color ${ink.ms}ms ${ink.easing}, color ${ink.ms}ms ${ink.easing}, transform ${ink.ms}ms ${ink.easing} }
@@ -141,11 +166,12 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
             Settings<span style={{ color: 'var(--seal)' }}>.</span>
           </h1>
           <p style={{ fontFamily: SERIF, fontStyle: 'italic', fontSize: 15, color: 'var(--ink-2)', margin: '6px 0 0' }}>
-            Ten registers — {keptTally()}.
+            {SECTIONS.length === 11 ? 'Eleven' : SECTIONS.length} registers — {keptTally()}.
           </p>
           <p style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.6, color: 'var(--ink-3)', margin: '8px 0 0', maxWidth: 640 }}>
             Nothing here records <em>who</em> changed a setting — no table on this page carries an author column. Where
-            the gateway dates a change the date is shown; where it does not, the line is an em dash that says so.
+            a change is dated the date is shown, with the word for what it is a date of; where nothing dates it, the
+            line is an em dash that names the file it was checked against.
           </p>
         </header>
 
@@ -192,7 +218,7 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
           {/* ── The open register ────────────────────────────────────── */}
           <main ref={panelRef} key={active} aria-labelledby="st-heading" style={{ minWidth: 0 }}>
             <p style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--seal-deep)', margin: 0 }}>
-              Register {String(index).padStart(2, '0')} of 10
+              Register {String(index).padStart(2, '0')} of {SECTIONS.length}
             </p>
             <h2 id="st-heading" style={{ fontFamily: SERIF, fontSize: 24, fontWeight: 600, letterSpacing: '-0.01em', margin: '2px 0 0' }}>
               {spec.title}
@@ -214,6 +240,7 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
             {active === 'features' && <FeaturesSection data={data} />}
             {active === 'pos' && <PosSection data={data} />}
             {active === 'calendar' && <CalendarSection data={data} />}
+            {active === 'cellar' && <CellarSection />}
           </main>
         </div>
 

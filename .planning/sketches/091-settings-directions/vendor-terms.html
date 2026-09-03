@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>091 · Settings — the three registers that do not exist yet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* Mudavym tokens — ADR 0042, copied inline from apps/web/src/styles/mudavym.css */
+.mudavym{
+  --seal:#1A5E6B; --seal-deep:#14515C; --seal-tint:rgba(26,94,107,.10); --seal-ring:rgba(26,94,107,.32);
+  --paper-0:#FAF7F1; --paper-1:#F3EFE6; --paper-2:#EAE4D8;
+  --ink-1:#211C16; --ink-2:#4F473C; --ink-3:#7C7365; --ink-4:#665D50;
+  color-scheme:light;
+}
+:root{--serif:"Fraunces",Georgia,"Times New Roman",serif;--sans:"DM Sans","Plus Jakarta Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper-0);color:var(--ink-1);font-family:var(--sans);font-size:13px}
+.banner{background:var(--ink-1);color:var(--paper-0);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:7px 20px}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 20px 80px}
+.wordmark{font-family:var(--serif);font-weight:600;font-size:13px;letter-spacing:.04em}
+h1{font-family:var(--serif);font-size:34px;font-weight:600;letter-spacing:-.015em;line-height:1.1;margin:4px 0 0}
+h1 .dot{color:var(--seal)}
+.lede{font-family:var(--serif);font-style:italic;font-size:15px;color:var(--ink-2);margin:6px 0 0}
+.standing{font-size:12px;line-height:1.6;color:var(--ink-3);margin:8px 0 0;max-width:700px}
+.dbl{border-top:1px solid var(--ink-1);border-bottom:1px solid var(--ink-1);height:3px;opacity:.5;margin:16px 0 22px}
+.sec-h{display:flex;align-items:baseline;gap:12px;margin:34px 0 0}
+.sec-n{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--seal-deep)}
+h2{font-family:var(--serif);font-size:24px;font-weight:600;letter-spacing:-.01em;margin:0}
+.sec-d{font-size:12.5px;line-height:1.6;color:var(--ink-2);margin:5px 0 0;max-width:760px}
+.sec-k{font-size:11.5px;line-height:1.55;color:var(--ink-3);margin:4px 0 14px}
+.micro{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);display:block;margin:20px 0 6px}
+.micro.seal{color:var(--seal-deep)}
+
+/* ── the vendor terms table — a field per column, provenance per cell ── */
+table{border-collapse:collapse;width:100%;font-size:12px}
+thead th{text-align:left;font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);padding:0 10px 8px 0;border-bottom:1px solid var(--ink-1);vertical-align:bottom}
+tbody td{padding:11px 10px 11px 0;border-bottom:1px solid var(--paper-2);vertical-align:top}
+tbody tr:hover{background:var(--paper-1)}
+.vend{font-weight:600;font-size:13px}
+.vsub{font-size:11px;color:var(--ink-3);margin-top:2px}
+.val{font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:12.5px;color:var(--ink-1)}
+.val.em{font-family:var(--sans);color:var(--ink-3)}
+.src{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;margin-top:3px}
+.src.stated{color:var(--seal-deep)}
+.src.inferred{color:var(--ink-3)}
+.src.none{color:var(--ink-3)}
+.days{display:flex;gap:2px}
+.d{font-family:var(--mono);font-size:9.5px;width:19px;height:19px;line-height:19px;text-align:center;border-radius:5px;background:var(--paper-2);color:var(--ink-3)}
+.d.on{background:var(--seal-tint);color:var(--seal-deep);font-weight:600;box-shadow:inset 0 0 0 1px var(--seal-ring)}
+.cut{font-family:var(--mono);font-size:12.5px}
+.cut b{font-weight:600}
+.soon{color:var(--seal-deep);font-weight:600}
+.legend{display:flex;gap:22px;flex-wrap:wrap;margin:12px 0 0;font-size:11.5px;color:var(--ink-3)}
+.legend span b{color:var(--ink-2)}
+
+.callout{border-left:2px solid var(--seal);padding:10px 0 10px 14px;margin:16px 0 0;font-size:12px;line-height:1.6;color:var(--ink-2);background:linear-gradient(90deg,var(--seal-tint),transparent 62%);max-width:840px}
+.row{display:flex;align-items:flex-start;gap:16px;padding:12px 0;border-top:1px solid var(--paper-2)}
+.row .body{flex:1;min-width:0}
+.lab{font-size:13.5px;font-weight:600;margin:0}
+.con{font-size:12px;line-height:1.55;color:var(--ink-2);margin:3px 0 0}
+.prov{font-family:var(--mono);font-size:9.5px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:5px 0 0}
+.why{font-size:11.5px;line-height:1.5;color:var(--ink-3);margin:5px 0 0}
+.ctl{flex-shrink:0;padding-top:2px}
+.chip{font-size:12px;font-weight:500;padding:5px 12px;border-radius:8px;border:1px solid var(--paper-2);color:var(--ink-2);display:inline-block}
+.chip.on{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep);font-weight:600}
+.dead{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);border:1px dashed var(--paper-2);border-radius:999px;padding:3px 9px;white-space:nowrap}
+.btn{font-size:12px;font-weight:600;padding:6px 13px;border-radius:8px;border:1px solid var(--seal-ring);background:transparent;color:var(--seal-deep);display:inline-block}
+.money{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.seal-die{width:26px;height:26px;border-radius:999px;background:var(--seal);display:inline-block;vertical-align:-7px;position:relative}
+.seal-die::after{content:"";position:absolute;inset:6px;border-radius:999px;border:1.5px solid var(--paper-0);opacity:.75}
+.dry{background:transparent;box-shadow:inset 0 0 0 1.5px var(--ink-3)}
+.dry::after{border-color:var(--ink-3);opacity:.55}
+
+/* ── the audit trail — one ruled line per change ── */
+.ledger{border-top:1px solid var(--ink-1)}
+.entry{display:grid;grid-template-columns:118px 150px minmax(0,1fr) 210px;gap:14px;padding:11px 0;border-bottom:1px solid var(--paper-2);align-items:baseline}
+.entry:hover{background:var(--paper-1)}
+.when{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.who{font-size:12.5px;font-weight:600}
+.who small{display:block;font-weight:400;font-size:10.5px;color:var(--ink-3)}
+.what{font-size:12.5px;line-height:1.5;color:var(--ink-2)}
+.what code{font-family:var(--mono);font-size:11px;color:var(--ink-1)}
+.delta{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);text-align:right}
+.delta .from{color:var(--ink-3);text-decoration:line-through}
+.delta .to{color:var(--seal-deep);font-weight:600}
+.entry.grave{background:var(--seal-tint)}
+@media (max-width:1000px){.entry{grid-template-columns:1fr}.delta{text-align:left}}
+</style>
+</head>
+<body class="mudavym">
+<div class="banner">Sketch 091 · vendor terms · approval thresholds · the settings ledger — example data, not a tenant</div>
+<div class="wrap">
+
+<div class="wordmark">Mudavym</div>
+<h1>There should be more<span class="dot">.</span></h1>
+<p class="lede">Three registers the page does not have, drawn from DESIGN-FOUNDATION §6.</p>
+<p class="standing">The competitive read says vendor terms “have no home at all”, that approval policy is configuration everywhere else, and that a settings page without a ledger cannot answer the one question a manager asks after something goes wrong. All three run on data Mudavym already holds — the order history, the receipts, the conversations — which is why they are ours to draw and not anyone else's.</p>
+<div class="dbl"></div>
+
+<!-- ─────────────────────────── VENDOR TERMS ─────────────────────────── -->
+<div class="sec-h"><span class="sec-n">Register 12 · proposed</span><h2>Vendor terms</h2></div>
+<p class="sec-d">When each vendor closes for the day, which days they deliver, and what they will not go below. Every field says whether the house <em>stated</em> it, whether the ledger <em>inferred</em> it from real orders, or whether nobody knows — an em dash is a legitimate answer and never a zero.</p>
+<p class="sec-k">Kept on the restaurant. Everyone who works here gets the same answer.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:200px">Vendor</th>
+      <th style="width:150px">Order cutoff</th>
+      <th style="width:170px">Delivery days</th>
+      <th style="width:130px">Minimum order</th>
+      <th style="width:120px">Pack size</th>
+      <th>Lead time</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><div class="vend">Anadolu Şarapçılık</div><div class="vsub">wine · 214 orders · last 3 days ago</div></td>
+      <td><span class="cut"><b>14:00</b></span><span class="src stated">stated by Selin · 12 Aug</span></td>
+      <td><div class="days"><span class="d on">M</span><span class="d">T</span><span class="d on">W</span><span class="d">T</span><span class="d on">F</span><span class="d">S</span><span class="d">S</span></div><span class="src inferred">inferred from 214 orders</span></td>
+      <td><span class="val money">₺8,000</span><span class="src stated">stated by Deniz · 4 Mar</span></td>
+      <td><span class="val">6 btl</span><span class="src inferred">inferred from 198 lines</span></td>
+      <td><span class="val">2 days</span><span class="src inferred">median of 214 receipts</span></td>
+    </tr>
+    <tr>
+      <td><div class="vend">Efes Dağıtım</div><div class="vsub">beer · 96 orders · last yesterday</div></td>
+      <td><span class="cut"><b>11:30</b></span><span class="src inferred">inferred from 96 orders</span></td>
+      <td><div class="days"><span class="d on">M</span><span class="d on">T</span><span class="d on">W</span><span class="d on">T</span><span class="d on">F</span><span class="d">S</span><span class="d">S</span></div><span class="src inferred">inferred from 96 orders</span></td>
+      <td><span class="val money">₺2,500</span><span class="src inferred">lowest accepted, 96 orders</span></td>
+      <td><span class="val">24 btl</span><span class="src stated">stated by Berk · 19 Aug</span></td>
+      <td><span class="val">next day</span><span class="src inferred">median of 96 receipts</span></td>
+    </tr>
+    <tr>
+      <td><div class="vend">Kavaklıdere Selection</div><div class="vsub">wine · 41 orders · last 18 days ago</div></td>
+      <td><span class="cut"><b>16:00</b></span><span class="src stated">stated by Deniz · 27 Jul</span></td>
+      <td><div class="days"><span class="d">M</span><span class="d on">T</span><span class="d">W</span><span class="d">T</span><span class="d on">F</span><span class="d">S</span><span class="d">S</span></div><span class="src stated">stated by Deniz · 27 Jul</span></td>
+      <td><span class="val em">— nobody has said</span><span class="src none">41 orders, none refused for size</span></td>
+      <td><span class="val">6 btl</span><span class="src inferred">inferred from 38 lines</span></td>
+      <td><span class="val">3 days</span><span class="src inferred">median of 41 receipts</span></td>
+    </tr>
+    <tr>
+      <td><div class="vend">Marmara Meyve &amp; Sebze</div><div class="vsub">produce · 388 orders · last today</div></td>
+      <td><span class="cut"><b>05:30</b></span><span class="src stated">stated by Berk · 2 Sep</span></td>
+      <td><div class="days"><span class="d on">M</span><span class="d on">T</span><span class="d on">W</span><span class="d on">T</span><span class="d on">F</span><span class="d on">S</span><span class="d">S</span></div><span class="src inferred">inferred from 388 orders</span></td>
+      <td><span class="val money">₺1,200</span><span class="src stated">stated by Berk · 2 Sep</span></td>
+      <td><span class="val em">— varies by line</span><span class="src none">no consistent pack across 388</span></td>
+      <td><span class="val">same day</span><span class="src inferred">median of 388 receipts</span></td>
+    </tr>
+    <tr>
+      <td><div class="vend">Bosphorus Spirits Co.</div><div class="vsub">spirits · 7 orders · last 61 days ago</div></td>
+      <td><span class="val em">— not enough orders to tell</span><span class="src none">7 orders; 12 needed to infer</span></td>
+      <td><div class="days"><span class="d">M</span><span class="d">T</span><span class="d">W</span><span class="d">T</span><span class="d">F</span><span class="d">S</span><span class="d">S</span></div><span class="src none">— nobody has said</span></td>
+      <td><span class="val em">—</span><span class="src none">— nobody has said</span></td>
+      <td><span class="val em">—</span><span class="src none">— nobody has said</span></td>
+      <td><span class="val">9 days</span><span class="src inferred">median of 7 receipts · low confidence</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="legend">
+  <span><b class="src stated" style="display:inline">STATED</b> — a person typed it, and their name and the date are kept.</span>
+  <span><b class="src inferred" style="display:inline">INFERRED</b> — computed from the ledger at read time. Never written down as a fact.</span>
+  <span><b class="src none" style="display:inline">EM DASH</b> — nobody has said and the ledger cannot tell. This is an answer, not a blank.</span>
+</div>
+
+<div class="callout"><strong>Why this belongs in settings and not in a vendor page.</strong> A cutoff is a rule the whole house obeys, like a unit or a sign-off — and once it is a setting, three other surfaces can read it. The calendar can draw <em>“Anadolu closes in 3h 10m for Wednesday”</em> as a real object on the day; the low-stock alert can say <em>“order by 14:00 or it is Friday”</em>; the order draft can refuse to promise Tuesday delivery from a vendor who does not deliver Tuesdays. The whole field stores cutoffs as inert settings text. Nobody draws them as time.</div>
+
+<!-- ────────────────────── APPROVAL THRESHOLDS ────────────────────── -->
+<div class="sec-h"><span class="sec-n">Register 13 · proposed · blocked</span><h2>Approval thresholds</h2></div>
+<p class="sec-d">Who may seal what, above what amount, for which vendor. The hold-to-approve ceremony exists and has no policy behind it — this is the policy.</p>
+<p class="sec-k">Kept on the restaurant. Everyone who works here gets the same answer.</p>
+
+<div class="row"><div class="body">
+  <p class="lab">A manager may seal an order up to</p>
+  <p class="con">Above this, the order waits for an owner. The manager still writes it, still sees the price, and is told who it is waiting on — a threshold that hides the number would just teach people to split orders in two.</p>
+  <p class="prov">kept · this restaurant — changed · 6 days ago · by Deniz Aksoy</p>
+</div><div class="ctl"><span class="chip on money">₺15,000</span></div></div>
+
+<div class="row"><div class="body">
+  <p class="lab">A first order to a new vendor</p>
+  <p class="con">Always an owner, at any amount. The house has no price history to judge it against, which is the same reason the AI holds a reply for an unverified sender.</p>
+  <p class="prov">kept · this restaurant — changed · 6 days ago · by Deniz Aksoy</p>
+</div><div class="ctl"><span class="chip on">Owner only</span></div></div>
+
+<div class="row"><div class="body">
+  <p class="lab">A price more than 12% above the last one paid</p>
+  <p class="con">Sealed by an owner, and the seal is pressed in wax rather than dry — the ceremony is rationed to the moment a house commits money against its own record.</p>
+  <p class="prov">kept · this restaurant — changed · 6 days ago · by Deniz Aksoy</p>
+</div><div class="ctl"><span class="seal-die"></span></div></div>
+
+<div class="row"><div class="body">
+  <p class="lab">Everything else</p>
+  <p class="con">The die pressed dry: a two-click armed confirm, no wax. Routine commitment should be cheap; only the exceptional should feel expensive.</p>
+  <p class="prov">kept · this restaurant — changed · 6 days ago · by Deniz Aksoy</p>
+</div><div class="ctl"><span class="seal-die dry"></span></div></div>
+
+<div class="row"><div class="body">
+  <p class="lab">A per-vendor override</p>
+  <p class="con">Would let one trusted vendor sit above the house threshold, or one troublesome vendor below it.</p>
+  <p class="why">No switch: production has one real tenant and no <code>staff</code> role, so a policy written here today could not be exercised or tested by anyone. Recorded as blocked by tenancy, not by design.</p>
+</div><div class="ctl"><span class="dead">no switch</span></div></div>
+
+<div class="callout"><strong>Read this register beside the Features one.</strong> Features already carries the switch that lets an AI email a vendor without a human. A threshold register is the same decision with a number attached — and the reason both need the ledger below: a policy nobody can audit is a policy nobody will trust enough to raise.</div>
+
+<!-- ──────────────────────── THE SETTINGS LEDGER ──────────────────────── -->
+<div class="sec-h"><span class="sec-n">Across every register · proposed</span><h2>What changed here</h2></div>
+<p class="sec-d">Every provenance line on this page today ends at a date. This is the line that ends at a person. It is not a new table: <code>system_audit_log</code> already exists and two access changes already file into it through one shared function — settings simply never call it.</p>
+<p class="sec-k">Kept on the restaurant. Everyone who works here can read it; nobody can edit it.</p>
+
+<span class="micro seal">Last 30 days · 9 changes</span>
+<div class="ledger">
+  <div class="entry grave">
+    <div class="when">2 Sep · 18:42</div>
+    <div class="who">Deniz Aksoy <small>owner · sealed</small></div>
+    <div class="what">Granted <code>enable_ai_autonomous_send</code> — an AI-written reply may now leave for a vendor with nobody having read it.</div>
+    <div class="delta"><span class="from">off</span> → <span class="to">on</span></div>
+  </div>
+  <div class="entry">
+    <div class="when">2 Sep · 09:15</div>
+    <div class="who">Berk Yılmaz <small>manager</small></div>
+    <div class="what">Marmara Meyve &amp; Sebze order cutoff</div>
+    <div class="delta"><span class="from">06:00</span> → <span class="to">05:30</span></div>
+  </div>
+  <div class="entry">
+    <div class="when">1 Sep · 22:07</div>
+    <div class="who">Selin Kara <small>manager</small></div>
+    <div class="what">Quiet hours window</div>
+    <div class="delta"><span class="from">22:00–08:00</span> → <span class="to">23:00–07:00</span></div>
+  </div>
+  <div class="entry">
+    <div class="when">28 Aug · 11:31</div>
+    <div class="who">Deniz Aksoy <small>owner</small></div>
+    <div class="what">Mert Özkan’s role</div>
+    <div class="delta"><span class="from">manager</span> → <span class="to">staff</span></div>
+  </div>
+  <div class="entry">
+    <div class="when">27 Aug · 16:58</div>
+    <div class="who">Deniz Aksoy <small>owner</small></div>
+    <div class="what">Manager seal ceiling</div>
+    <div class="delta"><span class="from">₺10,000</span> → <span class="to">₺15,000</span></div>
+  </div>
+  <div class="entry">
+    <div class="when">22 Aug · 08:02</div>
+    <div class="who">Berk Yılmaz <small>manager</small></div>
+    <div class="what">Email sign-off name</div>
+    <div class="delta"><span class="from">Meyhouse</span> → <span class="to">Deniz Aksoy, Meyhouse Kadıköy</span></div>
+  </div>
+  <div class="entry">
+    <div class="when">19 Aug · 14:20</div>
+    <div class="who">Selin Kara <small>manager</small></div>
+    <div class="what">Efes Dağıtım pack size</div>
+    <div class="delta"><span class="from">— none</span> → <span class="to">24 btl</span></div>
+  </div>
+  <div class="entry">
+    <div class="when">14 Aug · 10:44</div>
+    <div class="who">Deniz Aksoy <small>owner</small></div>
+    <div class="what">Regenerated the calendar feed token — every existing subscription stopped.</div>
+    <div class="delta"><span class="to">new token</span></div>
+  </div>
+  <div class="entry">
+    <div class="when">12 Aug · 15:09</div>
+    <div class="who">Selin Kara <small>manager</small></div>
+    <div class="what">Anadolu Şarapçılık order cutoff</div>
+    <div class="delta"><span class="from">— inferred 13:40</span> → <span class="to">stated 14:00</span></div>
+  </div>
+</div>
+
+<div class="callout"><strong>What this costs to build, precisely.</strong> No new table and no migration. <code>system_audit_log</code> carries <code>actor_type · actor_id · action · entity_type · entity_id · changes jsonb · restaurant_id · created_at</code>, and <code>recordAccessChange</code> is the shape two access changes already use. Three services need to capture a before-state they currently fetch and discard — feature flags, user preferences, notification preferences — and call it. One read endpoint renders this. The one trap: <code>actor_id</code> must be <code>public.users.user_id</code>, never an <code>auth.users</code> id; the two tables are disjoint in this database and a fresh CI database has no rows to catch the mistake. The last line of the row above then reads <em>“changed · 3 days ago · by Selin Kara”</em>, which is the whole point of the register.</div>
+
+</div>
+</body>
+</html>

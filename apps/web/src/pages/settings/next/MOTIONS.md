@@ -27,7 +27,11 @@ Nothing on this page moves that is not in this table.
 - **No tally.** There is one figure of record here (checks received) and it
   arrives once. A counter rolling up would imply a live feed that does not exist.
 - **No stagger in the contents list.** A table of contents is a reference, not
-  an arrival.
+  an arrival. The eleventh entry (Cellar, added 2026-09-03) arrives with the
+  other ten and is not introduced.
+- **Nothing marks a restored control.** Quiet hours came back on 2026-09-03 after
+  a day rendered as a dead record. A flourish on it would be the page
+  congratulating itself for a correction the reader never saw.
 - **No scroll motion at all.** The legacy page scroll-spies between ten anchored
   sections; this one opens one register at a time, so there is nothing to chase.
 - **Reduced motion**: `animate()` collapses the turn and the hold to their end

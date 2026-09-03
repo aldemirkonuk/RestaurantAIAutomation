@@ -102,6 +102,19 @@ export interface TeamMemberRow {
   user_id: string;
   role: string;
   users: { name?: string; email?: string } | null;
+  /**
+   * When this person's access row was written — i.e. when they were let in.
+   *
+   * `members.service.ts:68-70` has always selected it; this type stopped at
+   * `role` and dropped it, so the roster printed an em dash over a date it had
+   * been handed. It is a GRANTED date, not a changed date: `user_restaurant_access`
+   * (baseline_from_production.sql:5810-5822) has `created_at` and `valid_from`
+   * and no update column, so a later role change moves nothing here. The row
+   * says "granted", never "changed" — see `Provenance.verb`.
+   */
+  created_at?: string | null;
+  /** Whether the access is still live. The endpoint filters to `true`. */
+  is_active?: boolean;
 }
 
 export interface PendingInviteRow {
@@ -129,14 +142,37 @@ export interface ChainRow {
   id: string;
   name: string;
   /**
-   * Present only if the endpoint ever returns it. `restaurant_chains` HAS an
-   * `updated_at` column (baseline_from_production.sql:5053-5060); it is
-   * `getChainsForUser` (organizations.service.ts:345-350) that selects only
-   * `id, name, cuisine_type`. The page therefore blames the endpoint, not the
-   * table (audit BLOCKER 2), and reads the field opportunistically so it starts
-   * working the moment the select is widened — see page note §13.15.
+   * The chain's own last-changed date, now genuinely on the wire.
+   *
+   * `restaurant_chains.updated_at` has always existed
+   * (baseline_from_production.sql:5053-5060); `getChainsForUser` selected only
+   * `id, name, cuisine_type`, so the page printed "the chains table records no
+   * last-changed date" — a true absence blamed on the wrong layer (audit
+   * BLOCKER 2). The gateway now selects and returns it, and `renameChain`
+   * stamps it, because that table has no `BEFORE UPDATE` trigger and the column
+   * would otherwise have held the creation time for ever
+   * (`organizations.service.ts` — `RestaurantChain.updated_at`, `renameChain`).
+   * Optional here only so a stale gateway degrades to the em dash rather than
+   * to a wrong date.
    */
   updated_at?: string | null;
+}
+
+/**
+ * A branch as the session holds it, plus the date the gateway now returns.
+ *
+ * `AuthContext`'s `RestaurantBranch` is the session's own type and is not this
+ * page's to widen; the branch objects themselves are passed through from the
+ * response verbatim (`contexts/AuthContext.tsx:321-326` assigns `response.data`
+ * with no field mapping), so `updated_at` arrives on the object even though the
+ * declared type has no name for it. `restaurants.updated_at` is maintained by
+ * `update_restaurants_updated_at BEFORE UPDATE`
+ * (baseline_from_production.sql:12300), so it is a real last-changed date.
+ */
+export type BranchWithDate = RestaurantBranch & { updated_at?: string | null };
+
+export function branchUpdatedAt(b: RestaurantBranch): string | null {
+  return (b as BranchWithDate).updated_at ?? null;
 }
 
 export interface SenderIdentityRow {
