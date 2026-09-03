@@ -214,25 +214,38 @@ back (base type only, no typmod / nullability / default; function keyed on
   'pull_request' || github.event.pull_request.head.repo.full_name ==
   github.repository`, so on a PR opened from a fork the condition is false and the
   job never runs — and a required context that never reports blocks the PR
-  permanently rather than skipping. **Which of them are required has changed
-  twice in one day, so read the live list rather than this sentence** (`gh api
-  repos/aldemirkonuk/RestaurantAIAutomation/branches/main/protection --jq
-  '.required_status_checks.contexts'`):
+  permanently rather than skipping.
 
-  | when | required contexts from this file |
+  **Which of them are required is not in this repository.** It is a dashboard
+  setting on GitHub, changeable by one person in one click, with no commit, no
+  review and no diff — so no sentence in any file here can be more than a dated
+  observation of it. It changed **three times in under nine hours**. Every row
+  below is a reading, not a state; take the newest as the last time somebody
+  looked, never as what is true while you are reading this:
+
+  ```
+  gh api repos/aldemirkonuk/RestaurantAIAutomation/branches/main/protection \
+    --jq '.required_status_checks.contexts'
+  ```
+
+  | read at | required contexts from this file |
   |---|---|
-  | when this bullet was written (#259, 2026-09-02 19:41Z) | all four — `Fresh database equals remote`, `Code queries only relations production has`, `Beverage identity key — SQL matches Python`, `Guest merge policy — zero false merges` |
-  | now (read 2026-09-02, after #264) | **two** — only `Beverage identity key — SQL matches Python` and `Guest merge policy — zero false merges` |
+  | 2026-09-02 19:41Z (#259 merged, and it said so) | all four |
+  | 2026-09-02 ~22:40Z (after #264) | **two** — `Beverage identity key — SQL matches Python`, `Guest merge policy — zero false merges` |
+  | **2026-09-03 04:40Z** (latest reading; `strict: true`, `enforce_admins: false`) | **all four again** — the full list is `["CI Complete", "Beverage identity key — SQL matches Python", "Guest merge policy — zero false merges", "Fresh database equals remote", "Code queries only relations production has"]` |
 
-  The two migration-sensitive contexts were **removed from the required list** to
-  unblock three PRs that a merge-base-blind comparison had made unmergeable; that
-  is the "unblock now, fix properly next" the founder chose, and the "properly"
-  is [ADR 0092](0092-parity-compares-against-what-was-merged.md), which is now
-  merged. **Restoring them is a branch-protection change and therefore the
-  founder's, not a session's** — ADR 0092's "Restoring the required list" names
-  the snapshot to restore from. Until then `Fresh database equals remote` and
-  `Code queries only relations production has` run and can go red without
-  blocking anything, which is the state the Open question below describes.
+  The middle row is the one worth understanding, because it is the only one that
+  was ever deliberate about *removal*: the two migration-sensitive contexts were
+  taken off the list to unblock three PRs that a merge-base-blind comparison had
+  made unmergeable — the "unblock now, fix properly next" the founder chose. The
+  "properly" is [ADR 0092](0092-parity-compares-against-what-was-merged.md), and
+  with that merged the founder restored both. So as of the last reading all four
+  jobs in this file block a merge again, and a red `parity` run stops the queue.
+
+  **This is a setting, not code — it can be true at the top of your session and
+  false at the bottom.** Run the command. Do not cite this table, and do not
+  update it in passing: a fourth undated row helps nobody. If you need the fact,
+  measure it and say when.
 
   The fork guard itself stays exactly as-is. This is
   intentional, not an oversight: these jobs read `SUPABASE_POOLER_URL` /
@@ -260,25 +273,38 @@ back (base type only, no typmod / nullability / default; function keyed on
   commit that merged it. The structural point survives; the anchors did not.)
 - `ci-complete`'s own coverage step (`ci.yml:1224`, `wf = yaml.safe_load(open(".github/workflows/ci.yml"))` at `:1229`) loads **`ci.yml` only**, so it
   proves nothing about the four jobs in `schema-parity.yml`.
-- Branch protection on `main`, re-read 2026-09-02 after #264:
+- Branch protection on `main` — **latest reading 2026-09-03 04:40Z**, with the
+  command in the Consequences bullet above:
   `required_status_checks.contexts = ["CI Complete", "Beverage identity key —
-  SQL matches Python", "Guest merge policy — zero false merges"]`,
-  `strict: true`, `enforce_admins: false`. **"Fresh database equals remote" is
-  still not a required check** — it was added to the list and then removed again
-  the same day (see the Consequences bullet above).
+  SQL matches Python", "Guest merge policy — zero false merges", "Fresh database
+  equals remote", "Code queries only relations production has"]`,
+  `strict: true`, `enforce_admins: false`. **"Fresh database equals remote" IS a
+  required check as of that reading** — the sentence this bullet shipped with
+  ("not a required check", read 2026-09-02) has been overtaken twice. Re-measure
+  before relying on it; it is a dashboard setting, not code.
 
-So the guard being fixed here has been *both blind and non-blocking*. Blindness is
-what this ADR closes. Non-blocking is still true of `parity` and
-`queried-tables-exist-in-production`; `beverage-identity-parity` and
-`guest-merge-gate` **are** required contexts today.
+So the guard being fixed here **was** both blind and non-blocking. Blindness is
+what this ADR closes; non-blocking was closed separately, by the founder, once
+[ADR 0092](0092-parity-compares-against-what-was-merged.md) made the comparison
+merge-base-aware — which is what this section was asking for. At the 2026-09-03
+04:40Z reading all four of this file's jobs are required contexts, so this Open
+question is **answered in practice**: a red `parity` now blocks a merge. It is
+kept rather than deleted because nothing in the repository enforces that, and one
+click reverses it.
 
 Making it blocking is a real trade, not an oversight to correct silently: the job
 needs a remote secret, so it cannot run on fork PRs (it carries an `if:` guard for
 exactly that), and a required check that is skipped on forks blocks fork
-contributions. The options are (a) add the context to branch protection, (b) move
+contributions. The options were (a) add the context to branch protection, (b) move
 the job into `ci.yml` and into `ci-complete.needs`, (c) keep it advisory and rely
 on the daily cron. **`ci.yml` was deliberately not touched in this operation** —
 other sessions hold open PRs against it.
+
+**(a) is what happened**, at the 2026-09-03 04:40Z reading — and the fork trade
+came with it, unchanged and still latent (zero fork PRs ever). Recorded here
+because the choice was made on the dashboard, where it leaves no trace: nothing
+in this repository records who set it, when, or that (b) and (c) were passed
+over. That is the whole reason this section keeps its readings dated.
 
 **This fork is not yet filed in `OPEN-DECISIONS.md`.** Inserting a row there
 shifts line anchors for citations that `check_citation_pairing.py` blocks CI on —
@@ -467,10 +493,12 @@ INSERT, and `supabase db reset` dies in a way that surfaces as *"Fresh database
 equals remote"* — drift's message for a collision's cause.
 
 Adding it to the parity script would make it strictly worse: parity needs docker
-and a remote secret, so it is skipped on fork pull requests, and it is not a
-required check (see the open question above). A hermetic filesystem check placed
-behind a non-gating, secret-dependent job is the blind-and-non-blocking shape
-this whole ADR is about.
+and a remote secret, so it is skipped on fork pull requests. (It also was not a
+required check when this was written; at the 2026-09-03 04:40Z reading it is —
+see the open question above. That closes the *non-blocking* half and not the
+fork-skip half, so the conclusion here is unchanged.) A hermetic filesystem check
+placed behind a secret-dependent job that cannot run on forks is the
+blind-and-non-blocking shape this whole ADR is about.
 
 Verified 2026-09-02: `20260901120000` **is** duplicated in the wild —
 `approve_draft_duplicate_send_guard.sql` and `purchase_reasons.sql` on different
