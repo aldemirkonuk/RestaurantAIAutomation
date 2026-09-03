@@ -24,8 +24,46 @@ import { OAuth2Client } from "google-auth-library";
  *     `email_verified` is true. Step 3 alone only proves *some* Google-issued
  *     token for this audience; step 4 pins it to our push subscription.
  *
- * Operational consequence of failing closed: with the two env vars unset the
- * inbound-email path stops. They must be set wherever the Gmail watch runs.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ADR 0094 — 2026-09-02. STEP 1 ABOVE DID NOT DO WHAT IT SAID.
+ *
+ * From the day it was written until this commit, the unset-config branch
+ * incremented a counter, logged an error, and `return true` — it ACCEPTED the
+ * push. Refusal required a *second* env var, `GMAIL_PUBSUB_REQUIRE_AUTH=true`,
+ * to also be remembered. So the sentence "If either is missing we REJECT —
+ * fail closed" described an intention while the code twenty lines below it did
+ * the reverse, and three other places in the repo repeated the false claim,
+ * including the Swagger description shipped to API consumers
+ * (`communications.controller.ts`).
+ *
+ * That is this repo's `absence-reported-as-health` fault in its purest form: a
+ * verifier that cannot verify reported itself as a verifier.
+ *
+ * The staged-rollout argument for accepting was that production might be
+ * running a live Gmail watch on unset config, so refusing would close a door
+ * that is open and carrying traffic. That argument is now retired, because the
+ * repo cannot agree on whether the vars are set:
+ * `.planning/04-specs/REGISTER-AUDIT-2026-08-26.md:106-107` says production
+ * `.env` carries all three; `.planning/STATE.md` says they still need setting.
+ * Nobody can read Railway's env from here to settle it.
+ *
+ * **That ambiguity is the argument FOR failing closed, not against it.** Once
+ * missing config refuses, which document is right stops being a security
+ * question and becomes a functional one: it decides whether inbound email is
+ * flowing, not whether an unauthenticated caller can drive the inbox.
+ *
+ * `GMAIL_PUBSUB_REQUIRE_AUTH` is DELETED rather than kept. With missing config
+ * refusing on its own, the flag's only remaining power would have been to
+ * *weaken* the guard, and a fail-closed posture that depends on a second flag
+ * being remembered is not fail-closed.
+ *
+ * OPERATIONAL CONSEQUENCE, STATED PLAINLY: with `GMAIL_PUBSUB_AUDIENCE` and
+ * `GMAIL_PUBSUB_SERVICE_ACCOUNT` unset, every Gmail push is now refused and
+ * inbound vendor email stops arriving until both are set. Both values come from
+ * the Pub/Sub push subscription (its OIDC audience, and its push service
+ * account email); they cannot be invented here, and a wrong guess fails exactly
+ * as badly as no guess. A paused inbox is the correct trade against a webhook
+ * that ingests mail for anyone who posts to it.
  */
 @Injectable()
 export class GmailPushAuthService {
@@ -33,12 +71,19 @@ export class GmailPushAuthService {
   /** Overridden in tests. No client id/secret needed — verification only. */
   private readonly oauthClient = new OAuth2Client();
 
-  /** Pushes accepted while unconfigured. A silent gap must be countable. */
-  private unverifiedPushCount = 0;
+  /**
+   * Pushes REFUSED because the service is not configured to verify anything.
+   *
+   * Before ADR 0094 this counted pushes *accepted* while unconfigured — the
+   * size of an open hole. It now counts the operational cost of the closed
+   * one: a non-zero value means real inbound mail is being turned away and the
+   * two env vars still need setting.
+   */
+  private unconfiguredRefusalCount = 0;
 
-  /** Exposed for health/debug surfaces — non-zero means the gap is still open. */
-  get unverifiedPushes(): number {
-    return this.unverifiedPushCount;
+  /** Exposed for health/debug surfaces — non-zero means inbound email is paused. */
+  get refusedWhileUnconfigured(): number {
+    return this.unconfiguredRefusalCount;
   }
 
   constructor(private readonly configService: ConfigService) {}
@@ -56,39 +101,20 @@ export class GmailPushAuthService {
     const audience = this.readConfig("GMAIL_PUBSUB_AUDIENCE");
     const serviceAccount = this.readConfig("GMAIL_PUBSUB_SERVICE_ACCOUNT");
 
+    // Half-configured is unconfigured. An audience alone proves nothing about
+    // WHO sent the token, and a service account alone proves nothing about who
+    // it was issued FOR.
     if (!audience || !serviceAccount) {
-      // STAGED ROLLOUT, and this is a deliberate exception to the fail-closed
-      // rule this repo otherwise applies (pos-hub, Toast).
-      //
-      // Production already runs a live Gmail watch (GMAIL_PUBSUB_TOPIC is set)
-      // while these two values are NOT set, because they did not exist until
-      // this verification was written. Rejecting on an unset config would
-      // therefore not "keep the door shut" — it would CLOSE A DOOR THAT IS
-      // CURRENTLY OPEN AND CARRYING TRAFFIC, silently stopping inbound email on
-      // the next deploy. The values must come from the Pub/Sub subscription
-      // (its OIDC audience and push service-account email); nobody can invent
-      // them correctly from here, and a wrong guess fails exactly as badly.
-      //
-      // So: set both vars and verification turns on by itself. Set
-      // GMAIL_PUBSUB_REQUIRE_AUTH=true to fail closed regardless — do that once
-      // the other two are confirmed working, and this branch is dead.
-      const required =
-        this.readConfig("GMAIL_PUBSUB_REQUIRE_AUTH")?.toLowerCase() === "true";
-
-      if (required) {
-        this.logger.error(
-          "GMAIL_PUBSUB_AUDIENCE / GMAIL_PUBSUB_SERVICE_ACCOUNT not configured and GMAIL_PUBSUB_REQUIRE_AUTH=true — rejecting Gmail push (fail closed)",
-        );
-        return false;
-      }
-
-      this.unverifiedPushCount++;
+      this.unconfiguredRefusalCount++;
       this.logger.error(
-        `Gmail push accepted WITHOUT verification (${this.unverifiedPushCount} since boot) — ` +
-          "set GMAIL_PUBSUB_AUDIENCE and GMAIL_PUBSUB_SERVICE_ACCOUNT to close this. " +
-          "Until then this endpoint is triggerable by anyone.",
+        `Gmail push REFUSED — not configured to verify it ` +
+          `(${this.unconfiguredRefusalCount} refused since boot). ` +
+          "Set GMAIL_PUBSUB_AUDIENCE and GMAIL_PUBSUB_SERVICE_ACCOUNT from the " +
+          "Pub/Sub push subscription to resume inbound email. Until then this " +
+          "endpoint admits nobody, which is deliberate: a verifier that cannot " +
+          "verify must not admit.",
       );
-      return true;
+      return false;
     }
 
     const token = authorizationHeader?.startsWith("Bearer ")
