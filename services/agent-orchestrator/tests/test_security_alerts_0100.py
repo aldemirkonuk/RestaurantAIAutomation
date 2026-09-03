@@ -74,9 +74,10 @@ def test_jinja_environment_is_sandboxed():
         engine.render(payload, {}, use_jinja=True, strict=True)
 
     # SecurityError is what the sandbox raises for a blocked attribute walk.
-    assert "SecurityError" in type(excinfo.value).__name__ or "unsafe" in str(
-        excinfo.value
-    ).lower()
+    assert (
+        "SecurityError" in type(excinfo.value).__name__
+        or "unsafe" in str(excinfo.value).lower()
+    )
 
 
 def test_sandbox_still_renders_ordinary_templates():

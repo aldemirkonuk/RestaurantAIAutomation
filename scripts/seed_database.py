@@ -27,7 +27,9 @@ load_dotenv(project_root / ".env")
 # Supabase connection
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-DEFAULT_RESTAURANT_ID = os.getenv("SEED_RESTAURANT_ID", "550e8400-e29b-41d4-a716-446655440000")
+DEFAULT_RESTAURANT_ID = os.getenv(
+    "SEED_RESTAURANT_ID", "550e8400-e29b-41d4-a716-446655440000"
+)
 DEFAULT_MANAGER_PASSWORD = os.getenv("SEED_MANAGER_PASSWORD", "ChangeMe123!")
 # Easy demo account for quick sign-in
 DEMO_EMAIL = os.getenv("SEED_DEMO_EMAIL", "demo@gmail.com")
@@ -67,12 +69,18 @@ def load_wine_dataset():
     """Load 200 wines from robust dataset"""
     wine_dataset_path = project_root / "library" / "wineops_basic_v1.jsonl"
     if not wine_dataset_path.exists():
-        wine_dataset_path = project_root.parent / "Wine Agent (WinerAge)" / "database" / "library" / "restaurant_wine_dataset.jsonl"
+        wine_dataset_path = (
+            project_root.parent
+            / "Wine Agent (WinerAge)"
+            / "database"
+            / "library"
+            / "restaurant_wine_dataset.jsonl"
+        )
     if not wine_dataset_path.exists():
         print(f"  Wine dataset not found at: {wine_dataset_path}")
         return []
     wines = []
-    with open(wine_dataset_path, 'r', encoding='utf-8') as f:
+    with open(wine_dataset_path, "r", encoding="utf-8") as f:
         for line in f:
             if line.strip():
                 wines.append(json.loads(line))
@@ -109,15 +117,25 @@ def seed_master_wine_library(wines):
         master_wine = {
             "wine_id": wine_id,
             "sequential_id": idx,
-            "name": _trunc(wine.get("name") or wine.get("wine_name", f"Wine {idx}"), 140),
+            "name": _trunc(
+                wine.get("name") or wine.get("wine_name", f"Wine {idx}"), 140
+            ),
             "producer": _trunc(wine.get("producer", "Unknown Producer"), 140),
             "vintage": wine.get("vintage"),
             "price_reference": wine.get("price") or wine.get("price_reference"),
-            "primary_type": _trunc(classification.get("primary_type") or wine.get("wine_type") or "red", 50),
-            "grape_variety": _trunc(classification.get("grape_variety") or wine.get("varietal"), 140),
-            "country": _trunc(classification.get("country") or wine.get("country", "USA"), 100),
+            "primary_type": _trunc(
+                classification.get("primary_type") or wine.get("wine_type") or "red", 50
+            ),
+            "grape_variety": _trunc(
+                classification.get("grape_variety") or wine.get("varietal"), 140
+            ),
+            "country": _trunc(
+                classification.get("country") or wine.get("country", "USA"), 100
+            ),
             "region": _trunc(classification.get("region") or wine.get("region"), 140),
-            "appellation": _trunc(classification.get("appellation") or wine.get("appellation"), 140),
+            "appellation": _trunc(
+                classification.get("appellation") or wine.get("appellation"), 140
+            ),
             "wine_structure": wine_structure or None,
             "sensory_profile": sensory or None,
             "quality_classification": quality or None,
@@ -135,8 +153,10 @@ def seed_master_wine_library(wines):
     try:
         batch_size = 50
         for i in range(0, len(master_wines), batch_size):
-            batch = master_wines[i:i + batch_size]
-            supabase.table("master_wine_library").upsert(batch, on_conflict="wine_id").execute()
+            batch = master_wines[i : i + batch_size]
+            supabase.table("master_wine_library").upsert(
+                batch, on_conflict="wine_id"
+            ).execute()
             print(f"    Inserted wines {i+1} to {min(i+batch_size, len(master_wines))}")
         print(f"  OK Seeded {len(master_wines)} wines")
         return True
@@ -172,9 +192,15 @@ def seed_demo_restaurant():
         "subscription_tier": "pilot",
     }
     try:
-        response = supabase.table("restaurants").upsert(restaurant_data, on_conflict="id").execute()
+        response = (
+            supabase.table("restaurants")
+            .upsert(restaurant_data, on_conflict="id")
+            .execute()
+        )
         restaurant_id = response.data[0]["id"]
-        print(f"  OK Created restaurant: {restaurant_data['name']} (ID: {restaurant_id})")
+        print(
+            f"  OK Created restaurant: {restaurant_data['name']} (ID: {restaurant_id})"
+        )
         return restaurant_id
     except Exception as e:
         print(f"  FAIL Error creating restaurant: {e}")
@@ -184,8 +210,12 @@ def seed_demo_restaurant():
 def seed_managers(restaurant_id):
     """Create demo managers"""
     print("\n[3/15] Creating Demo Managers...")
-    password_hash = bcrypt.hashpw(DEFAULT_MANAGER_PASSWORD.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-    demo_password_hash = bcrypt.hashpw(DEMO_PASSWORD.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    password_hash = bcrypt.hashpw(
+        DEFAULT_MANAGER_PASSWORD.encode("utf-8"), bcrypt.gensalt()
+    ).decode("utf-8")
+    demo_password_hash = bcrypt.hashpw(
+        DEMO_PASSWORD.encode("utf-8"), bcrypt.gensalt()
+    ).decode("utf-8")
     managers = [
         {
             "user_id": str(uuid.uuid4()),
@@ -225,7 +255,9 @@ def seed_managers(restaurant_id):
         },
     ]
     try:
-        response = supabase.table("users").upsert(managers, on_conflict="email").execute()
+        response = (
+            supabase.table("users").upsert(managers, on_conflict="email").execute()
+        )
         print(f"  OK Created {len(managers)} managers")
         return [m.get("user_id") or m.get("id") for m in response.data]
     except Exception as e:
@@ -243,7 +275,9 @@ def seed_providers(wines):
         if primary and primary.get("name"):
             provider_name = primary.get("name")
             if provider_name not in providers_dict:
-                contact_email = primary.get("contact", f"info@{provider_name.lower().replace(' ', '')}.com")
+                contact_email = primary.get(
+                    "contact", f"info@{provider_name.lower().replace(' ', '')}.com"
+                )
                 contact_name = contact_email.split("@")[0].title()
                 providers_dict[provider_name] = {
                     "id": str(uuid.uuid5(uuid.NAMESPACE_DNS, provider_name)),
@@ -277,7 +311,13 @@ def seed_providers(wines):
                 "preferred_method": "email",
             },
             "alternative_contacts": [],
-            "address": {"street": "456 Vineyard Road", "city": "Napa", "state": "CA", "zip": "94558", "country": "USA"},
+            "address": {
+                "street": "456 Vineyard Road",
+                "city": "Napa",
+                "state": "CA",
+                "zip": "94558",
+                "country": "USA",
+            },
             "specialties": ["California Wines", "Premium Selection"],
             "regions_covered": ["California"],
             "minimum_order": 12,
@@ -296,7 +336,13 @@ def seed_providers(wines):
                 "preferred_method": "email",
             },
             "alternative_contacts": [],
-            "address": {"street": "321 Industrial Blvd", "city": "San Jose", "state": "CA", "zip": "95131", "country": "USA"},
+            "address": {
+                "street": "321 Industrial Blvd",
+                "city": "San Jose",
+                "state": "CA",
+                "zip": "95131",
+                "country": "USA",
+            },
             "specialties": ["Domestic Wines", "Budget-Friendly Options"],
             "regions_covered": ["California"],
             "minimum_order": 12,
@@ -310,7 +356,11 @@ def seed_providers(wines):
         if not any(p["name"] == default["name"] for p in providers):
             providers.append(default)
     try:
-        response = supabase.table("providers").upsert(providers[:10], on_conflict="id").execute()
+        response = (
+            supabase.table("providers")
+            .upsert(providers[:10], on_conflict="id")
+            .execute()
+        )
         print(f"  OK Created {len(response.data)} wine providers")
         return [p["id"] for p in response.data]
     except Exception as e:
@@ -325,15 +375,19 @@ def seed_restaurant_providers(restaurant_id, provider_ids):
     print("\n    Linking Providers to Restaurant...")
     links = []
     for idx, provider_id in enumerate(provider_ids):
-        links.append({
-            "restaurant_id": restaurant_id,
-            "provider_id": provider_id,
-            "tier": "primary" if idx < 3 else "alternative",
-            "wine_categories": [],
-            "is_active": True,
-        })
+        links.append(
+            {
+                "restaurant_id": restaurant_id,
+                "provider_id": provider_id,
+                "tier": "primary" if idx < 3 else "alternative",
+                "wine_categories": [],
+                "is_active": True,
+            }
+        )
     try:
-        supabase.table("restaurant_providers").upsert(links, on_conflict="restaurant_id,provider_id").execute()
+        supabase.table("restaurant_providers").upsert(
+            links, on_conflict="restaurant_id,provider_id"
+        ).execute()
         print(f"  OK Linked {len(links)} providers to restaurant")
         return True
     except Exception as e:
@@ -408,7 +462,9 @@ def seed_storage_locations(restaurant_id):
         },
     ]
     try:
-        supabase.table("storage_locations").upsert(locations, on_conflict="id").execute()
+        supabase.table("storage_locations").upsert(
+            locations, on_conflict="id"
+        ).execute()
         print(f"  OK Created {len(locations)} storage locations")
         return True
     except Exception as e:
@@ -428,7 +484,9 @@ def seed_restaurant_inventory(restaurant_id, provider_ids):
     storage_locations = [LOC_MAIN_CELLAR, LOC_BAR_FRIDGE, LOC_RESERVE_ROOM]
     inventory_items = []
     for idx, wine in enumerate(master_wines):
-        provider_id = provider_ids[hash(wine["id"]) % len(provider_ids)] if provider_ids else None
+        provider_id = (
+            provider_ids[hash(wine["id"]) % len(provider_ids)] if provider_ids else None
+        )
         initial_stock = (hash(wine["id"]) % 21) + 5
         # Make 3 items have low stock for alert scenario
         if idx < 3:
@@ -450,12 +508,20 @@ def seed_restaurant_inventory(restaurant_id, provider_ids):
     try:
         batch_size = 25
         for i in range(0, len(inventory_items), batch_size):
-            batch = inventory_items[i:i + batch_size]
+            batch = inventory_items[i : i + batch_size]
             supabase.table("restaurant_inventory").insert(batch).execute()
-            print(f"    Inserted inventory items {i+1} to {min(i+batch_size, len(inventory_items))}")
+            print(
+                f"    Inserted inventory items {i+1} to {min(i+batch_size, len(inventory_items))}"
+            )
         print(f"  OK Created {len(inventory_items)} inventory items")
         # Fetch inserted IDs
-        inv_resp = supabase.table("restaurant_inventory").select("id, master_wine_id").eq("restaurant_id", restaurant_id).limit(50).execute()
+        inv_resp = (
+            supabase.table("restaurant_inventory")
+            .select("id, master_wine_id")
+            .eq("restaurant_id", restaurant_id)
+            .limit(50)
+            .execute()
+        )
         return True, inv_resp.data
     except Exception as e:
         print(f"  FAIL Error creating inventory: {e}")
@@ -476,7 +542,11 @@ def seed_procurement_orders(restaurant_id, provider_ids, inventory_items):
             "order_number": "ORD-2026-0001",
             "restaurant_id": restaurant_id,
             "inventory_id": inventory_items[0]["id"],
-            "provider_id": PROVIDER_NAPA_ID if PROVIDER_NAPA_ID in provider_ids else provider_ids[0],
+            "provider_id": (
+                PROVIDER_NAPA_ID
+                if PROVIDER_NAPA_ID in provider_ids
+                else provider_ids[0]
+            ),
             "quantity": 24,
             "bottles_total": 24,
             "unit_type": "bottles",
@@ -497,7 +567,11 @@ def seed_procurement_orders(restaurant_id, provider_ids, inventory_items):
             "order_number": "ORD-2026-0002",
             "restaurant_id": restaurant_id,
             "inventory_id": inventory_items[1]["id"],
-            "provider_id": PROVIDER_NAPA_ID if PROVIDER_NAPA_ID in provider_ids else provider_ids[0],
+            "provider_id": (
+                PROVIDER_NAPA_ID
+                if PROVIDER_NAPA_ID in provider_ids
+                else provider_ids[0]
+            ),
             "quantity": 12,
             "bottles_total": 12,
             "unit_type": "bottles",
@@ -521,7 +595,11 @@ def seed_procurement_orders(restaurant_id, provider_ids, inventory_items):
             "order_number": "ORD-2026-0003",
             "restaurant_id": restaurant_id,
             "inventory_id": inventory_items[2]["id"],
-            "provider_id": PROVIDER_PACIFIC_ID if PROVIDER_PACIFIC_ID in provider_ids else (provider_ids[1] if len(provider_ids) > 1 else provider_ids[0]),
+            "provider_id": (
+                PROVIDER_PACIFIC_ID
+                if PROVIDER_PACIFIC_ID in provider_ids
+                else (provider_ids[1] if len(provider_ids) > 1 else provider_ids[0])
+            ),
             "quantity": 6,
             "bottles_total": 6,
             "unit_type": "bottles",
@@ -546,7 +624,11 @@ def seed_procurement_orders(restaurant_id, provider_ids, inventory_items):
             "order_number": "ORD-2026-0004",
             "restaurant_id": restaurant_id,
             "inventory_id": inventory_items[3]["id"],
-            "provider_id": PROVIDER_NAPA_ID if PROVIDER_NAPA_ID in provider_ids else provider_ids[0],
+            "provider_id": (
+                PROVIDER_NAPA_ID
+                if PROVIDER_NAPA_ID in provider_ids
+                else provider_ids[0]
+            ),
             "quantity": 18,
             "bottles_total": 18,
             "unit_type": "bottles",
@@ -660,7 +742,11 @@ def seed_calendar_events(restaurant_id, provider_ids):
     print("\n[9/15] Creating Calendar Events...")
     now = datetime.utcnow()
     napa_id = PROVIDER_NAPA_ID if PROVIDER_NAPA_ID in provider_ids else provider_ids[0]
-    pacific_id = PROVIDER_PACIFIC_ID if PROVIDER_PACIFIC_ID in provider_ids else (provider_ids[1] if len(provider_ids) > 1 else provider_ids[0])
+    pacific_id = (
+        PROVIDER_PACIFIC_ID
+        if PROVIDER_PACIFIC_ID in provider_ids
+        else (provider_ids[1] if len(provider_ids) > 1 else provider_ids[0])
+    )
 
     events = [
         {
@@ -739,7 +825,12 @@ def seed_bottle_specifications():
         print("  SKIP Table 'bottle_specifications' does not exist yet")
         return False
 
-    response = supabase.table("master_wine_library").select("id, name, primary_type").limit(10).execute()
+    response = (
+        supabase.table("master_wine_library")
+        .select("id, name, primary_type")
+        .limit(10)
+        .execute()
+    )
     master_wines = response.data
     if not master_wines:
         print("  SKIP No wines found")
@@ -748,18 +839,26 @@ def seed_bottle_specifications():
     specs = []
     for wine in master_wines:
         wtype = wine.get("primary_type", "red")
-        pour_ml = 150.0 if wtype in ("red", "white") else 120.0 if wtype == "sparkling" else 90.0
-        specs.append({
-            "master_wine_id": wine["id"],
-            "bottle_size_ml": 750,
-            "pour_size_ml": pour_ml,
-            "glass_size_ml": pour_ml,
-            "cost_per_bottle": round(25 + hash(wine["id"]) % 200, 2),
-            "weight_grams": 1200 if wtype == "red" else 1050,
-            "closure_type": "cork" if wtype in ("red", "white") else "wire_cage",
-        })
+        pour_ml = (
+            150.0
+            if wtype in ("red", "white")
+            else 120.0 if wtype == "sparkling" else 90.0
+        )
+        specs.append(
+            {
+                "master_wine_id": wine["id"],
+                "bottle_size_ml": 750,
+                "pour_size_ml": pour_ml,
+                "glass_size_ml": pour_ml,
+                "cost_per_bottle": round(25 + hash(wine["id"]) % 200, 2),
+                "weight_grams": 1200 if wtype == "red" else 1050,
+                "closure_type": "cork" if wtype in ("red", "white") else "wire_cage",
+            }
+        )
     try:
-        supabase.table("bottle_specifications").upsert(specs, on_conflict="master_wine_id").execute()
+        supabase.table("bottle_specifications").upsert(
+            specs, on_conflict="master_wine_id"
+        ).execute()
         print(f"  OK Created {len(specs)} bottle specifications")
         return True
     except Exception as e:
@@ -831,17 +930,21 @@ def seed_price_history(restaurant_id, provider_ids):
         base_price = 40 + i * 15
         for months_ago in range(6, 0, -1):
             variation = (months_ago % 3) * 2
-            history.append({
-                "restaurant_id": restaurant_id,
-                "master_wine_id": wine["id"],
-                "provider_id": napa_id,
-                "price": round(base_price + variation, 2),
-                "quantity": 12,
-                "unit": "bottle",
-                "effective_date": (now - timedelta(days=months_ago * 30)).strftime("%Y-%m-%d"),
-                "source": "negotiation",
-                "notes": f"Q{((12 - months_ago) // 3) + 1} pricing",
-            })
+            history.append(
+                {
+                    "restaurant_id": restaurant_id,
+                    "master_wine_id": wine["id"],
+                    "provider_id": napa_id,
+                    "price": round(base_price + variation, 2),
+                    "quantity": 12,
+                    "unit": "bottle",
+                    "effective_date": (now - timedelta(days=months_ago * 30)).strftime(
+                        "%Y-%m-%d"
+                    ),
+                    "source": "negotiation",
+                    "notes": f"Q{((12 - months_ago) // 3) + 1} pricing",
+                }
+            )
     try:
         supabase.table("price_history").insert(history).execute()
         print(f"  OK Created {len(history)} price history entries")
@@ -858,18 +961,39 @@ def seed_supplier_catalogs(provider_ids):
         print("  SKIP Table 'supplier_catalogs' does not exist yet")
         return False
     napa_id = PROVIDER_NAPA_ID if PROVIDER_NAPA_ID in provider_ids else provider_ids[0]
-    pacific_id = PROVIDER_PACIFIC_ID if PROVIDER_PACIFIC_ID in provider_ids else (provider_ids[1] if len(provider_ids) > 1 else provider_ids[0])
+    pacific_id = (
+        PROVIDER_PACIFIC_ID
+        if PROVIDER_PACIFIC_ID in provider_ids
+        else (provider_ids[1] if len(provider_ids) > 1 else provider_ids[0])
+    )
     now = datetime.utcnow()
 
     catalogs = [
         {
             "provider_id": napa_id,
             "catalog_name": "Spring 2026 Premium Collection",
-            "items": json.dumps([
-                {"name": "Opus One 2019", "sku": "OPO-2019", "price": 340.00, "min_qty": 6},
-                {"name": "Caymus Special Selection 2018", "sku": "CAY-SS-2018", "price": 88.00, "min_qty": 12},
-                {"name": "Silver Oak Alexander Valley 2017", "sku": "SO-AV-2017", "price": 72.00, "min_qty": 6},
-            ]),
+            "items": json.dumps(
+                [
+                    {
+                        "name": "Opus One 2019",
+                        "sku": "OPO-2019",
+                        "price": 340.00,
+                        "min_qty": 6,
+                    },
+                    {
+                        "name": "Caymus Special Selection 2018",
+                        "sku": "CAY-SS-2018",
+                        "price": 88.00,
+                        "min_qty": 12,
+                    },
+                    {
+                        "name": "Silver Oak Alexander Valley 2017",
+                        "sku": "SO-AV-2017",
+                        "price": 72.00,
+                        "min_qty": 6,
+                    },
+                ]
+            ),
             "pricing_tier": "premium",
             "valid_from": now.strftime("%Y-%m-%d"),
             "valid_until": (now + timedelta(days=90)).strftime("%Y-%m-%d"),
@@ -878,10 +1002,22 @@ def seed_supplier_catalogs(provider_ids):
         {
             "provider_id": pacific_id,
             "catalog_name": "Q1 2026 Value Selection",
-            "items": json.dumps([
-                {"name": "Jordan Cabernet Sauvignon 2018", "sku": "JOR-CS-2018", "price": 55.00, "min_qty": 12},
-                {"name": "Meiomi Pinot Noir 2020", "sku": "MEI-PN-2020", "price": 18.00, "min_qty": 24},
-            ]),
+            "items": json.dumps(
+                [
+                    {
+                        "name": "Jordan Cabernet Sauvignon 2018",
+                        "sku": "JOR-CS-2018",
+                        "price": 55.00,
+                        "min_qty": 12,
+                    },
+                    {
+                        "name": "Meiomi Pinot Noir 2020",
+                        "sku": "MEI-PN-2020",
+                        "price": 18.00,
+                        "min_qty": 24,
+                    },
+                ]
+            ),
             "pricing_tier": "standard",
             "valid_from": now.strftime("%Y-%m-%d"),
             "valid_until": (now + timedelta(days=90)).strftime("%Y-%m-%d"),
@@ -904,13 +1040,48 @@ def seed_feature_flags(restaurant_id):
         print("  SKIP Table 'restaurant_feature_flags' does not exist yet")
         return False
     flags = [
-        {"restaurant_id": restaurant_id, "flag_name": "ai_negotiation", "enabled": True, "metadata": {"version": "v2"}},
-        {"restaurant_id": restaurant_id, "flag_name": "voice_ordering", "enabled": False, "metadata": {"reason": "beta"}},
-        {"restaurant_id": restaurant_id, "flag_name": "auto_reorder", "enabled": True, "metadata": {}},
-        {"restaurant_id": restaurant_id, "flag_name": "glass_pour_tracking", "enabled": True, "metadata": {}},
-        {"restaurant_id": restaurant_id, "flag_name": "self_evolution", "enabled": False, "metadata": {"reason": "disabled_by_default"}},
-        {"restaurant_id": restaurant_id, "flag_name": "email_inbound_processing", "enabled": True, "metadata": {}},
-        {"restaurant_id": restaurant_id, "flag_name": "invoice_scanning", "enabled": True, "metadata": {}},
+        {
+            "restaurant_id": restaurant_id,
+            "flag_name": "ai_negotiation",
+            "enabled": True,
+            "metadata": {"version": "v2"},
+        },
+        {
+            "restaurant_id": restaurant_id,
+            "flag_name": "voice_ordering",
+            "enabled": False,
+            "metadata": {"reason": "beta"},
+        },
+        {
+            "restaurant_id": restaurant_id,
+            "flag_name": "auto_reorder",
+            "enabled": True,
+            "metadata": {},
+        },
+        {
+            "restaurant_id": restaurant_id,
+            "flag_name": "glass_pour_tracking",
+            "enabled": True,
+            "metadata": {},
+        },
+        {
+            "restaurant_id": restaurant_id,
+            "flag_name": "self_evolution",
+            "enabled": False,
+            "metadata": {"reason": "disabled_by_default"},
+        },
+        {
+            "restaurant_id": restaurant_id,
+            "flag_name": "email_inbound_processing",
+            "enabled": True,
+            "metadata": {},
+        },
+        {
+            "restaurant_id": restaurant_id,
+            "flag_name": "invoice_scanning",
+            "enabled": True,
+            "metadata": {},
+        },
     ]
     try:
         for flag in flags:
@@ -1074,7 +1245,9 @@ def main():
     print(f"  Providers: {len(provider_ids)}")
     print(f"  Storage Locations: 3")
     print(f"  Inventory Items: {len(inventory_items)} (3 low-stock for alerts)")
-    print(f"  Procurement Orders: {len(order_ids)} (pending/approved/ordered/delivered)")
+    print(
+        f"  Procurement Orders: {len(order_ids)} (pending/approved/ordered/delivered)"
+    )
     print(f"  Conversations: 4 messages (threaded negotiation)")
     print(f"  Calendar Events: 4")
     print(f"  Bottle Specs: 10")
@@ -1084,6 +1257,7 @@ def main():
     print(f"  Feature Flags: 7")
     print(f"  Provider Dates: 2")
     print()
+
     # Print the *source* of each password, never the value. These three read
     # from SEED_DEMO_PASSWORD / SEED_MANAGER_PASSWORD, so when this script runs
     # anywhere those are set to something real — CI, a shared staging box — the
@@ -1127,5 +1301,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n\nUnexpected error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

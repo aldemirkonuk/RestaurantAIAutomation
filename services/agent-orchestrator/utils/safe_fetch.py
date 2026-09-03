@@ -42,9 +42,19 @@ import socket
 from typing import Iterable
 from urllib.parse import urlparse
 
-import httpx
+# httpx is imported inside fetch_image_bytes, not here, so that the validation
+# layer (assert_url_is_safe / _is_public) imports with the standard library
+# alone. That keeps the guard testable in any environment -- including the
+# bare-checkout CI job that re-verifies decision claims -- rather than only
+# where the service's full dependency set is installed. A guard you can only
+# run where everything is installed is a guard that stops being run.
 
-__all__ = ["SsrfBlocked", "assert_url_is_safe", "fetch_image_bytes"]
+__all__ = [
+    "SsrfBlocked",
+    "assert_url_is_safe",
+    "is_url_safe",
+    "fetch_image_bytes",
+]
 
 # 10 MiB. Menu photographs from phone cameras land well under this; anything
 # larger is either a mistake or an attempt to exhaust the worker's memory.
@@ -115,6 +125,19 @@ def assert_url_is_safe(url: str) -> None:
             )
 
 
+def is_url_safe(url: str) -> bool:
+    """
+    Boolean form of `assert_url_is_safe`, for callers that want to branch
+    rather than handle an exception (and for the decision-claim check, which
+    must express the whole guard as one expression).
+    """
+    try:
+        assert_url_is_safe(url)
+        return True
+    except SsrfBlocked:
+        return False
+
+
 async def fetch_image_bytes(
     url: str,
     *,
@@ -126,10 +149,10 @@ async def fetch_image_bytes(
 
     Redirects are resolved here (not by httpx) so each hop is validated.
     """
+    import httpx
+
     current = url
-    async with httpx.AsyncClient(
-        timeout=timeout, follow_redirects=False
-    ) as client:
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
         for _ in range(MAX_REDIRECTS + 1):
             assert_url_is_safe(current)
             response = await client.get(current)

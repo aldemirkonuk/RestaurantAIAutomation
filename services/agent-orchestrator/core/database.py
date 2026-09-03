@@ -36,6 +36,7 @@ def _is_upstash_host(url: str) -> bool:
         return False
     return host == "upstash.io" or host.endswith(".upstash.io")
 
+
 logger = setup_logger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
@@ -1686,7 +1687,11 @@ class DatabaseClient:
         # redis_url`: the substring also matches hosts like
         # `upstash.io.example.com`, which are not Upstash. Mirrors
         # isUpstashHost() in apps/api-gateway/src/common/cache/cache.service.ts.
-        if redis_url and redis_url.startswith("redis://") and _is_upstash_host(redis_url):
+        if (
+            redis_url
+            and redis_url.startswith("redis://")
+            and _is_upstash_host(redis_url)
+        ):
             redis_url = "rediss://" + redis_url[len("redis://") :]
         self.redis_url = redis_url
 

@@ -23,9 +23,12 @@ import traceback
 from typing import Dict, Any, Optional, List
 
 # ── Add orchestrator to path ───────────────────────────────────────────────
-ORCH_DIR = os.path.join(os.path.dirname(__file__),
-                        "mnt/Restaurant AI Automation/services/agent-orchestrator")
+ORCH_DIR = os.path.join(
+    os.path.dirname(__file__),
+    "mnt/Restaurant AI Automation/services/agent-orchestrator",
+)
 sys.path.insert(0, ORCH_DIR)
+
 
 # Load .env manually so we get real API key
 def load_env(path: str):
@@ -38,6 +41,7 @@ def load_env(path: str):
                     os.environ.setdefault(key.strip(), val.strip())
     except FileNotFoundError:
         pass
+
 
 ENV_PATH = os.path.join(ORCH_DIR, ".env")
 load_env(ENV_PATH)
@@ -53,21 +57,23 @@ print(f"  MOCK_LLM      : {MOCK_LLM}")
 print()
 
 # ── Colour helpers ─────────────────────────────────────────────────────────
-GREEN  = "\033[92m"
-RED    = "\033[91m"
+GREEN = "\033[92m"
+RED = "\033[91m"
 YELLOW = "\033[93m"
-CYAN   = "\033[96m"
-RESET  = "\033[0m"
-BOLD   = "\033[1m"
+CYAN = "\033[96m"
+RESET = "\033[0m"
+BOLD = "\033[1m"
 
 passed = 0
 failed = 0
 errors = []
 
+
 def ok(msg: str):
     global passed
     passed += 1
     print(f"  {GREEN}✓{RESET} {msg}")
+
 
 def fail(msg: str, detail: str = ""):
     global failed
@@ -78,19 +84,23 @@ def fail(msg: str, detail: str = ""):
     print(label)
     errors.append(msg + (f": {detail}" if detail else ""))
 
+
 def info(msg: str):
     print(f"  {CYAN}ℹ{RESET} {msg}")
+
 
 def section(title: str):
     print(f"\n{BOLD}{YELLOW}{'─'*60}{RESET}")
     print(f"{BOLD}{YELLOW}  {title}{RESET}")
     print(f"{BOLD}{YELLOW}{'─'*60}{RESET}")
 
+
 # ── Import wine_field_parser ───────────────────────────────────────────────
 section("Bootstrap — importing field parser")
 try:
     from services.wine_field_parser import WineFieldParser, WineParsedFields
     from services.governance import GovernanceTier
+
     ok("wine_field_parser imported")
 except Exception as e:
     fail("Import failed", str(e))
@@ -102,7 +112,9 @@ parser = WineFieldParser(google_api_key=GOOGLE_API_KEY, mock_mode=False)
 info(f"Parser mode: {'MOCK' if parser.mock_mode else 'REAL GEMINI'}")
 
 if parser.mock_mode or not GOOGLE_API_KEY:
-    print(f"\n{RED}ERROR: GOOGLE_API_KEY not set or mock_mode is True — cannot run Phase 4 real tests{RESET}")
+    print(
+        f"\n{RED}ERROR: GOOGLE_API_KEY not set or mock_mode is True — cannot run Phase 4 real tests{RESET}"
+    )
     sys.exit(1)
 
 
@@ -110,7 +122,10 @@ if parser.mock_mode or not GOOGLE_API_KEY:
 # HELPERS
 # =============================================================================
 
-def check_field(result: WineParsedFields, field: str, expected, label: str, exact: bool = False):
+
+def check_field(
+    result: WineParsedFields, field: str, expected, label: str, exact: bool = False
+):
     """Assert a field on the parsed result."""
     actual = getattr(result, field, None)
     if isinstance(actual, str):
@@ -131,7 +146,10 @@ def check_field(result: WineParsedFields, field: str, expected, label: str, exac
     if ok_flag:
         ok(f"{label}: {field}={repr(getattr(result, field, None))}")
     else:
-        fail(f"{label}: {field}", f"expected={repr(expected)}, got={repr(getattr(result, field, None))}")
+        fail(
+            f"{label}: {field}",
+            f"expected={repr(expected)}, got={repr(getattr(result, field, None))}",
+        )
 
 
 def check_tier(result: WineParsedFields, min_tier: int, max_tier: int, label: str):
@@ -141,15 +159,22 @@ def check_tier(result: WineParsedFields, min_tier: int, max_tier: int, label: st
     elif min_tier <= tier <= max_tier:
         ok(f"{label}: library_tier={tier} (expected {min_tier}–{max_tier})")
     else:
-        fail(f"{label}: library_tier={tier}", f"expected between {min_tier} and {max_tier}")
+        fail(
+            f"{label}: library_tier={tier}",
+            f"expected between {min_tier} and {max_tier}",
+        )
 
 
-def check_confidence(result: WineParsedFields, min_conf: float, max_conf: float, label: str):
+def check_confidence(
+    result: WineParsedFields, min_conf: float, max_conf: float, label: str
+):
     conf = result.confidence
     if min_conf <= conf <= max_conf:
         ok(f"{label}: confidence={conf:.2f} (expected {min_conf:.2f}–{max_conf:.2f})")
     else:
-        fail(f"{label}: confidence={conf:.2f}", f"expected {min_conf:.2f}–{max_conf:.2f}")
+        fail(
+            f"{label}: confidence={conf:.2f}", f"expected {min_conf:.2f}–{max_conf:.2f}"
+        )
 
 
 # =============================================================================
@@ -158,6 +183,7 @@ def check_confidence(result: WineParsedFields, min_conf: float, max_conf: float,
 section("Phase 4A — Sassicaia 2018 (Tier 1 target)")
 
 SASSICAIA_TEXT = "Sassicaia 2018  Tenuta San Guido  Bolgheri  Tuscany  Italy  Cabernet Sauvignon/Franc  $220"
+
 
 async def test_4a():
     t0 = time.time()
@@ -168,14 +194,20 @@ async def test_4a():
     )
     elapsed = time.time() - t0
     info(f"Parsed in {elapsed:.1f}s")
-    info(f"wine_name={result.wine_name}, producer={result.producer}, vintage={result.vintage}")
-    info(f"country={result.country}, region={result.region}, grape_variety={result.grape_variety}")
+    info(
+        f"wine_name={result.wine_name}, producer={result.producer}, vintage={result.vintage}"
+    )
+    info(
+        f"country={result.country}, region={result.region}, grape_variety={result.grape_variety}"
+    )
     info(f"confidence={result.confidence:.2f}, library_tier={result.library_tier}")
     if result.warnings:
         info(f"warnings={result.warnings}")
 
     # Tier: Sassicaia should be Tier 1 (all L1 fields identifiable)
-    check_tier(result, 1, 2, "4A Sassicaia")  # allow Tier 2 if confidence just below 0.95
+    check_tier(
+        result, 1, 2, "4A Sassicaia"
+    )  # allow Tier 2 if confidence just below 0.95
     check_confidence(result, 0.65, 1.0, "4A Sassicaia")
 
     # Core identity
@@ -197,6 +229,7 @@ async def test_4a():
     else:
         fail("4A: country", f"expected Italy, got {result.country}")
 
+
 asyncio.run(test_4a())
 
 
@@ -207,6 +240,7 @@ section("Phase 4B — Opus One 2019 (Tier 1 target)")
 
 OPUS_ONE_TEXT = "Opus One 2019  Robert Mondavi & Rothschild  Napa Valley  California  USA  $350 per bottle"
 
+
 async def test_4b():
     t0 = time.time()
     result = await parser.parse(
@@ -216,7 +250,9 @@ async def test_4b():
     )
     elapsed = time.time() - t0
     info(f"Parsed in {elapsed:.1f}s")
-    info(f"wine_name={result.wine_name}, producer={result.producer}, vintage={result.vintage}")
+    info(
+        f"wine_name={result.wine_name}, producer={result.producer}, vintage={result.vintage}"
+    )
     info(f"country={result.country}, region={result.region}")
     info(f"confidence={result.confidence:.2f}, library_tier={result.library_tier}")
 
@@ -235,11 +271,16 @@ async def test_4b():
     else:
         fail("4B: vintage", f"expected 2019, got {result.vintage}")
 
-    country_ok = "usa" in (result.country or "").lower() or "united states" in (result.country or "").lower() or "america" in (result.country or "").lower()
+    country_ok = (
+        "usa" in (result.country or "").lower()
+        or "united states" in (result.country or "").lower()
+        or "america" in (result.country or "").lower()
+    )
     if country_ok:
         ok("4B: country=USA")
     else:
         fail("4B: country", f"expected USA, got {result.country}")
+
 
 asyncio.run(test_4b())
 
@@ -251,6 +292,7 @@ section("Phase 4C — Partial entry (Layer 1 cap fires → Tier 3/4)")
 
 PARTIAL_TEXT = "Château Something 2020  $85"  # minimal info — should trigger cap
 
+
 async def test_4c():
     t0 = time.time()
     result = await parser.parse(
@@ -260,8 +302,12 @@ async def test_4c():
     )
     elapsed = time.time() - t0
     info(f"Parsed in {elapsed:.1f}s")
-    info(f"wine_name={result.wine_name}, producer={result.producer}, vintage={result.vintage}")
-    info(f"country={result.country}, region={result.region}, grape_variety={result.grape_variety}")
+    info(
+        f"wine_name={result.wine_name}, producer={result.producer}, vintage={result.vintage}"
+    )
+    info(
+        f"country={result.country}, region={result.region}, grape_variety={result.grape_variety}"
+    )
     info(f"confidence={result.confidence:.2f}, library_tier={result.library_tier}")
     if result.warnings:
         info(f"warnings={result.warnings[:2]}")
@@ -276,6 +322,7 @@ async def test_4c():
     else:
         info(f"4C: vintage={result.vintage} (Gemini may have extracted or left null)")
 
+
 asyncio.run(test_4c())
 
 
@@ -285,6 +332,7 @@ asyncio.run(test_4c())
 section("Phase 4D — House wine (vague → Tier 3/4)")
 
 HOUSE_WINE_TEXT = "House red wine  glass $9  bottle $35"
+
 
 async def test_4d():
     t0 = time.time()
@@ -316,6 +364,7 @@ async def test_4d():
     else:
         info("4D: price not extracted (ambiguous glass vs bottle — ok)")
 
+
 asyncio.run(test_4d())
 
 
@@ -326,6 +375,7 @@ section("Phase 4E — Turkish wine Öküzgözü (Tier 2/3)")
 
 TURKISH_TEXT = "2021 Okuzgozu Kavaklidere  Ankara  Türkiye  ₺320"
 
+
 async def test_4e():
     t0 = time.time()
     result = await parser.parse(
@@ -335,14 +385,18 @@ async def test_4e():
     )
     elapsed = time.time() - t0
     info(f"Parsed in {elapsed:.1f}s")
-    info(f"wine_name={result.wine_name}, producer={result.producer}, vintage={result.vintage}")
+    info(
+        f"wine_name={result.wine_name}, producer={result.producer}, vintage={result.vintage}"
+    )
     info(f"country={result.country}, grape_variety={result.grape_variety}")
     info(f"confidence={result.confidence:.2f}, library_tier={result.library_tier}")
     if result.warnings:
         info(f"warnings={result.warnings[:2]}")
 
     # Should identify Turkey, Kavaklidere, 2021
-    country_ok = any(x in (result.country or "").lower() for x in ["turkey", "türkiye", "turkiye"])
+    country_ok = any(
+        x in (result.country or "").lower() for x in ["turkey", "türkiye", "turkiye"]
+    )
     if country_ok:
         ok("4E: country=Turkey identified")
     else:
@@ -355,13 +409,34 @@ async def test_4e():
 
     # Normalize: Kavaklıdere (Turkish ı) == Kavaklidere (ASCII i) — both are correct
     import unicodedata
+
     def ascii_lower(s):
-        return ''.join(c for c in unicodedata.normalize('NFKD', s) if not unicodedata.combining(c)).lower().replace('ı', 'i').replace('ğ', 'g').replace('ş', 's').replace('ö', 'o').replace('ü', 'u').replace('ç', 'c')
+        return (
+            "".join(
+                c
+                for c in unicodedata.normalize("NFKD", s)
+                if not unicodedata.combining(c)
+            )
+            .lower()
+            .replace("ı", "i")
+            .replace("ğ", "g")
+            .replace("ş", "s")
+            .replace("ö", "o")
+            .replace("ü", "u")
+            .replace("ç", "c")
+        )
+
     producer_ok = "kavaklidere" in ascii_lower(result.producer or "")
     if producer_ok:
-        ok(f"4E: producer=Kavaklidere (got {result.producer!r}, Turkish chars normalized ✓)")
+        ok(
+            f"4E: producer=Kavaklidere (got {result.producer!r}, Turkish chars normalized ✓)"
+        )
     else:
-        fail("4E: producer", f"expected Kavaklidere (any form), got {repr(result.producer)}")
+        fail(
+            "4E: producer",
+            f"expected Kavaklidere (any form), got {repr(result.producer)}",
+        )
+
 
 asyncio.run(test_4e())
 
@@ -399,11 +474,14 @@ MENU_ENTRIES = [
     },
 ]
 
+
 async def test_menu_scan():
     t0 = time.time()
     results = await parser.parse_batch(MENU_ENTRIES)
     elapsed = time.time() - t0
-    info(f"Batch of {len(MENU_ENTRIES)} wines parsed in {elapsed:.1f}s ({elapsed/len(MENU_ENTRIES):.1f}s avg)")
+    info(
+        f"Batch of {len(MENU_ENTRIES)} wines parsed in {elapsed:.1f}s ({elapsed/len(MENU_ENTRIES):.1f}s avg)"
+    )
 
     # Must return exactly 5 results
     if len(results) == 5:
@@ -436,16 +514,24 @@ async def test_menu_scan():
     # Sassicaia → Tier 1, 2, or 3 (LLM confidence varies across runs; Tier 4 = bug)
     sass = results[0]
     if sass.library_tier is not None and sass.library_tier <= 3:
-        ok(f"Menu[0] Sassicaia: tier={sass.library_tier} (identifiable wine ✓, Tier 4 would be failure)")
+        ok(
+            f"Menu[0] Sassicaia: tier={sass.library_tier} (identifiable wine ✓, Tier 4 would be failure)"
+        )
     else:
-        fail(f"Menu[0] Sassicaia: tier", f"expected ≤3 (iconic wine should not be Tier 4), got {sass.library_tier}")
+        fail(
+            f"Menu[0] Sassicaia: tier",
+            f"expected ≤3 (iconic wine should not be Tier 4), got {sass.library_tier}",
+        )
 
     # Veuve Clicquot NV → Tier 1 or 2 (NV exception must fire)
     vc = results[1]
     if vc.library_tier is not None and vc.library_tier <= 2:
         ok(f"Menu[1] Veuve Clicquot NV: tier={vc.library_tier} (NV exception ✓)")
     else:
-        fail(f"Menu[1] Veuve Clicquot NV: tier", f"expected ≤2 (NV exception), got {vc.library_tier}")
+        fail(
+            f"Menu[1] Veuve Clicquot NV: tier",
+            f"expected ≤2 (NV exception), got {vc.library_tier}",
+        )
 
     # House Rosé → Tier 3 or 4
     house = results[3]
@@ -456,6 +542,7 @@ async def test_menu_scan():
 
     info(f"Tier distribution: {dict(sorted(tier_counts.items()))}")
     info(f"Cost estimate: ~${len(MENU_ENTRIES) * 0.00005:.5f} (@ $0.00005/wine)")
+
 
 asyncio.run(test_menu_scan())
 
