@@ -101,25 +101,25 @@ Core observability over S04 (POS → inventory depletion) and S09 (webhook drops
   signature**; the floor-marker half below has neither, and is deliberately left
   as prose.
 
-**Closed on `fix/sorting-office-seams`** (ADR 0086,
-`LogsTimelinePage.test.tsx`): a whole-request failure no longer renders as "No
-events", an undated row renders `—` instead of "Invalid Date", and a failed
-source is named rather than counted as zero. All three land with PR #253,
-alongside the gateway change that makes the third reportable — see the note at
-the head of §10.
+**Closed on `main`** (ADR 0086, `LogsTimelinePage.test.tsx`): a whole-request
+failure no longer renders as "No events", an undated row renders `—` instead of
+"Invalid Date", and a failed source is named rather than counted as zero. All
+three merged in **PR #262** (`4d0f6c50`, 2026-09-02) alongside the gateway
+change that makes the third reportable. PR #253 carried this work first and was
+**closed unmerged**; #262 rebased and carried it, so a reference to #253
+anywhere is a reference to a branch that will never land.
 
 ## 10. Maturity
 
-> ⚠️ **Nothing in this section is on `main` yet.** Both halves — ADR 0086's
-> `sourcesQueried` / `failedSources` on the endpoint, and this page reading them
-> — ship together in `fix/sorting-office-seams` (PR #253), open on 2026-09-02.
-> Against `main` at `e09b640c` the gateway still catches every source to `[]` in
-> silence and the page still renders "Invalid Date" for an undated row. Read
-> this as the state of the branch, not of production, and check
-> `apps/api-gateway/src/logs/logs-timeline.service.ts` on `main` before quoting
-> it. The page is nonetheless written to survive meeting an **old** gateway —
-> see the closing note of this section, which is a deploy-skew property, not a
-> merge-order one.
+> **On `main` since `4d0f6c50` (PR #262, 2026-09-02).** Both halves — ADR 0086's
+> `sourcesQueried` / `failedSources` on the endpoint
+> (`logs-timeline.service.ts:66-69,123-128`) and this page reading them
+> (`LogsTimelinePage.tsx:172-201`) — merged together. This section was written on
+> the branch and said "nothing here is on `main` yet"; it was left saying so
+> through the merge, which is the DOC-STALE shape §9's executable claim exists to
+> avoid. The page is still written to survive meeting an **old** gateway — see
+> the closing note of this section. That is a deploy-skew property, not a
+> merge-order one, and it outlives the merge.
 
 **partial.** Everything it renders is real, and as of 2026-09-02 the failure
 modes are said in words rather than rendered as a smaller number. What remains
@@ -140,8 +140,8 @@ message. Two are now said out loud; the third is not:
 
 | Gap | State | Evidence |
 |---|---|---|
-| A per-source failure is invisible | **Fixed** (PR #253) | Every fetch now goes through one `guard()` that names the failure instead of swallowing it (`logs-timeline.service.ts:131-145`), and the response carries `sourcesQueried` / `failedSources` (`:123-128`). The page names the failed registers in a banner, renders their chips as `—` rather than a fabricated `0`, and states how many were read at all (`LogsTimelinePage.tsx:172-201,267-326`) |
-| A whole-request failure is invisible | **Fixed** (PR #253) | `query.isError` is branched: a red banner says the timeline could not be read, and the feed reads "The timeline is unavailable" rather than "No events" (`LogsTimelinePage.tsx:200,253-265,334-337`). Page-side only — it needs no gateway change |
+| A per-source failure is invisible | **Fixed** (PR #262) | Every fetch now goes through one `guard()` that names the failure instead of swallowing it (`logs-timeline.service.ts:131-145`), and the response carries `sourcesQueried` / `failedSources` (`:123-128`). The page names the failed registers in a banner, renders their chips as `—` rather than a fabricated `0`, and states how many were read at all (`LogsTimelinePage.tsx:172-201,267-326`) |
+| A whole-request failure is invisible | **Fixed** (PR #262) | `query.isError` is branched: a red banner says the timeline could not be read, and the feed reads "The timeline is unavailable" rather than "No events" (`LogsTimelinePage.tsx:200,253-265,334-337`). Page-side only — it needs no gateway change |
 | The 101st event does not exist | **Open** | `limit: 100` hard-coded (`:145`), server caps at 200 (`logs-timeline.service.ts:99`), and the merge slices *after* concatenating every source it read (`:118-121`) — so a busy source can crowd the others out of the window entirely. Nothing on the page marks the feed as a window |
 
 **What the fix does not do, stated plainly:** `failedSources` and
@@ -168,7 +168,7 @@ The dead-end observation in §9 is confirmed: the file contains no `Link`, no
 |---|---|---|---|---|
 | GET | `/logs/timeline/:restaurantId?correlationId=&limit=100` | JWT (class, `logs.controller.ts:21`) | `:26` → `logs-timeline.service.ts:95-129` | `{events[], correlationId, sourcesQueried[], failedSources[]}` — merged, source-tagged, newest first with undated rows last, by the `newestFirst` comparator at `:82-87` (ADR 0086) |
 
-(That four-field response is PR #253's; see the note at the head of §10.)
+(That four-field response landed with PR #262; see the note at the head of §10.)
 
 `occurredAt` is `string | null` on both sides: `procurement_documents.created_at`
 and `system_audit_log.created_at` are nullable in the baseline, so an undated
@@ -210,7 +210,7 @@ the agent do that*, reachable in one click from the thing that surprised you.
 | Loading | Yes | `:330-333` |
 | Empty | Yes, and no longer overloaded | `:338-343` — and it says "No events from the registers that could be read" when some register failed |
 | Error (whole request) | Yes | `:253-265` banner + `:334-337` feed body |
-| Error (one source) | Yes (PR #253, both halves) | `:267-284` banner naming the sources, `:286-316` chips as `—`, `:318-326` the register tally |
+| Error (one source) | Yes (PR #262, both halves) | `:267-284` banner naming the sources, `:286-316` chips as `—`, `:318-326` the register tally |
 | Permission-denied | **Partially** | A 401/403 now reaches the whole-request banner rather than "No events", but the banner says the timeline could not be read — it does not say *why*, so a permissions problem still reads as an outage |
 
 **Where the UI misleads**
@@ -230,10 +230,11 @@ the agent do that*, reachable in one click from the thing that surprised you.
 ## 13. Roadmap
 
 1. ~~**Distinguish failure from silence**~~ — **done 2026-09-02** (ADR 0086),
-   both halves, on `fix/sorting-office-seams`: the service returns
+   both halves: the service returns
    `sourcesQueried` / `failedSources` instead of catching to `[]` in silence, and
    the page branches `query.isError`, names the failed registers, and renders an
-   undated row as `—`. Not on `main` until PR #253 merges.
+   undated row as `—`. **Merged to `main` in PR #262** (`4d0f6c50`); PR #253,
+   which carried it first, was closed unmerged.
 2. **Mark the window.** `limit: 100` with no `≥` anywhere is now the page's last
    unlabelled number, and the one gap in §9 that a guard could hold: add `/logs`
    as a `PAGES` entry in `scripts/check_windowed_figures.py` at the same time,
