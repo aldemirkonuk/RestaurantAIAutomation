@@ -775,20 +775,58 @@ export class LowStockAlertsService {
     return map;
   }
 
-  /** Resolve low-stock email recipients (honours low_stock_channels), env fallback. */
+  /**
+   * Resolve low-stock email recipients for ONE restaurant.
+   *
+   * `MANAGER_EMAIL` names a single restaurant's manager, so it is only a legal
+   * answer for the legacy default tenant (`DEFAULT_RESTAURANT_ID`). This method
+   * is called from `emailDigest(restaurantId, …)`, once per restaurant, so
+   * reaching for that env var unconditionally sent restaurant B's stock levels
+   * to restaurant A's inbox — the same cross-tenant leak OD-87 / ADR 0022 closed
+   * inside the resolver, reproduced one layer up in this caller.
+   *
+   * It leaked twice over, because both layers fell back:
+   *   1. `resolveRecipients` was called without `allowDefaultFallback`, which
+   *      defaults to `true`, so the resolver substituted the global address; and
+   *   2. if that still produced nothing, the `MANAGER_EMAIL` read below
+   *      substituted it again.
+   *
+   * Both are now gated on the restaurant actually being the legacy default.
+   * For every other tenant an unresolvable recipient list is an empty list and
+   * a WARN — never another tenant's address. The caller already treats empty as
+   * "inbox only" and logs it, so nothing is silently dropped.
+   */
   private async resolveEmails(restaurantId: string): Promise<string[]> {
+    const defaultRestaurantId =
+      this.config.get<string>("DEFAULT_RESTAURANT_ID") || null;
+    const isLegacyDefault =
+      defaultRestaurantId !== null && restaurantId === defaultRestaurantId;
+
     if (this.recipientResolver) {
       try {
         const res = await this.recipientResolver.resolveRecipients({
           restaurantId,
           roles: ["manager"],
           channels: ["email"],
+          allowDefaultFallback: isLegacyDefault,
         });
         if (res.emails?.length) return res.emails;
-      } catch {
-        /* fall through to env */
+      } catch (error) {
+        this.logger.warn(
+          `Low-stock recipient resolution failed for ${restaurantId}: ${error}`,
+        );
       }
     }
+
+    if (!isLegacyDefault) {
+      this.logger.warn(
+        `RECIPIENTS_NONE restaurant=${restaurantId} roles=manager — low-stock email ` +
+          "resolved to nobody. The global MANAGER_EMAIL fallback belongs to " +
+          "another tenant and is not used here; sending nothing.",
+      );
+      return [];
+    }
+
     const env = this.config.get<string>("MANAGER_EMAIL") || "";
     return env
       .split(",")
