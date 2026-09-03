@@ -108,9 +108,9 @@ attempt count is unreadable, which is why PI-14 refuses to publish one alone.
 - [ ] **PROD-F2** — Vendor Finder boundary vs [[supply-discovery-charter]]. → PI-12 (clock)
 - [ ] **CM-F3** — distributor connectivity: Sales or here? Seam proposed, not claimed. → PI-12
 - [ ] **OD-A** ⚠ *drafted, never registered* — POS connection model. Blocks every pull provider,
-      token refresh, and per-connection secrets. → PI-23
+      token refresh, and per-connection secrets. → PI-23 · **decided 2026-09-03: [ADR 0105](../../../decisions/0105-a-pos-connection-is-a-row-not-an-env-var.md)**
 - [ ] **OD-B** ⚠ *drafted, never registered* — webhook secret scope. **The actual blocker on a
-      second live provider**: one secret covers 27 providers and every restaurant. → PI-23
+      second live provider**: one secret covers 27 providers and every restaurant. → PI-23 · **decided 2026-09-03: [ADR 0105](../../../decisions/0105-a-pos-connection-is-a-row-not-an-env-var.md) (scheme half); secret-scope half was already code-complete**
 - [ ] **OD-C** ⚠ *drafted, never registered* — is `capabilities` behavioural or documentation? → PI-23
 - [ ] **OD-D** ⚠ *drafted, never registered* — should imported history touch stock? → PI-23
 

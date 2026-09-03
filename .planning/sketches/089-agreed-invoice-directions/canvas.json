@@ -1,0 +1,44 @@
+{
+  "artboards": [
+    {
+      "file": "DirectionA.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Direction A — The Ledger Sheet (paper-first)"
+    },
+    {
+      "file": "DirectionB.dc.html",
+      "x": 1540,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Direction B — The Verdict Desk (discrepancy-first)"
+    },
+    {
+      "file": "DirectionC.dc.html",
+      "x": 3080,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Direction C — Door to Desk (delivery-event-first)"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "x": 0,
+      "y": -190,
+      "w": 700,
+      "text": "ADR 0104 D13 — three directions for the canonical Mudavym document. Founder, 2026-09-02: \"I wanna see the invoice in our formatted template version… the original fetched from the disc on demand… a huge thing to monetize and automate… two or three directions… tell me which is best: scalability, flexibility, robustness.\" Decided and held constant across all three: one schema in three layers, per-field provenance with as_printed, verdict first, words and numbers never colour alone, confidence never a number, corrections append-only, the delivery as the unit of record, paper stays light in dark mode, hybrid PDF/A-3 export."
+    },
+    {
+      "id": "criteria",
+      "x": 760,
+      "y": -190,
+      "w": 620,
+      "text": "How to read them: A tests whether a paper metaphor can carry claims, proposals and provenance without becoming a dashboard. B tests whether making the claim primary loses the accountant. C tests whether the delivery-as-spine makes the agreed invoice obvious or adds chrome a manager approving a bill does not want. Recommendation recorded in ADR 0104's review trail."
+    }
+  ]
+}
