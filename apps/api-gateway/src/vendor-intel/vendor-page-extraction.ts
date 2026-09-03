@@ -26,6 +26,8 @@
  */
 
 /** One row as the model reports it, before any of our validation. */
+import { htmlToText as sharedHtmlToText } from "../common/html/html-to-text";
+
 export interface RawExtractedItem {
   name?: unknown;
   producer?: unknown;
@@ -359,24 +361,18 @@ export function normalizeExtraction(
  * tracking value.
  */
 export function htmlToText(html: string, maxChars = 60_000): string {
-  const text = html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-
-  return text.length > maxChars ? text.slice(0, maxChars) : text;
+  // Delegated to the shared single-pass scanner (src/common/html). The regex
+  // chain that used to live here could not remove `</script >` (valid HTML,
+  // and the js/bad-tag-filter finding), decoded `&amp;` before `&lt;` so
+  // `&amp;lt;` became `<`, and rescanned the document from every `<script`
+  // prefix. That last one matters most here: this function's input is a page
+  // fetched from a third-party vendor site, so its runtime is chosen by
+  // whoever controls that page.
+  //
+  // Script/style content is still dropped rather than flattened, for the
+  // reason in the doc comment above: inline JSON-LD and analytics payloads
+  // are full of numbers that read like prices.
+  return sharedHtmlToText(html, maxChars);
 }
 
 /**

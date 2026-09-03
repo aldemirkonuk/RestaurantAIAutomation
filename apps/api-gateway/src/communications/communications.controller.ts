@@ -35,6 +35,7 @@ import {
 import { Public } from "../auth/decorators/public.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { ServiceKeyGuard } from "../auth/guards/service-key.guard";
 import { NonProductionGuard } from "./guards/non-production.guard";
 
 @ApiTags("Communications")
@@ -58,7 +59,12 @@ import { NonProductionGuard } from "./guards/non-production.guard";
  *    scaffolding that writes real rows, approves real orders and sends real
  *    vendor email; in production they 404. See non-production.guard.ts.
  *  - D3: POST /webhooks/gmail stays @Public() but is now authenticated by a
- *    Google-signed Pub/Sub OIDC token (GmailPushAuthService, fail-closed).
+ *    Google-signed Pub/Sub OIDC token (GmailPushAuthService). It is genuinely
+ *    fail-closed only as of ADR 0094 (2026-09-02): until then this line, the
+ *    service's own docstring and the Swagger description below all said
+ *    "fail-closed" while the unset-config branch returned true and admitted
+ *    the push. Missing config now refuses, and GMAIL_PUBSUB_REQUIRE_AUTH is
+ *    deleted.
  *    /webhooks/gmail/force-fetch is an operator action, not a push, so it lost
  *    @Public() and falls under the class-level JwtAuthGuard.
  */
@@ -102,33 +108,62 @@ export class CommunicationsController {
   /**
    * Send a raw email.
    *
-   * ⚠️ KEPT DELIBERATELY, AND IT IS NOT SAFE. 2026-09-02, ADR 0084.
+   * ⚠️ KEPT DELIBERATELY. 2026-09-02, ADR 0084 — narrowed to a service caller
+   * 2026-09-02 by ADR 0099.
    *
-   * This route has the same shape as the raw-SMS route deleted below — body
+   * This route had the same shape as the raw-SMS route deleted below — body
    * only, no `@CurrentUser()`, no tenant, no ownership check on the
    * destination address, and no record written — so any authenticated user of
-   * any tenant can send arbitrary HTML to any address on the internet from the
-   * OAuth-verified sender domain, leaving no trace. It was scheduled for
+   * any tenant could send arbitrary HTML to any address on the internet from
+   * the OAuth-verified sender domain, leaving no trace. It was scheduled for
    * deletion for exactly that reason.
    *
-   * It was not deleted because it has a LIVE CALLER, found by grep before the
-   * deletion rather than after:
+   * It was not deleted because it has a caller:
    *
    *   services/agent-orchestrator/services/email_composer_service.py:354
    *     `send_via_gateway()` POSTs `{api_gateway_url}/communications/email`
    *   ← agents/provider_conversation_agent.py:3074 (`_send_message`)
    *
-   * That is the path every approved vendor email travels. Deleting the route
-   * would silently stop vendor mail, which is a worse outcome than the hole it
-   * closes. Fixing it properly means giving the orchestrator a caller identity
-   * (it sends no `Authorization` header today) and writing a
-   * `procurement_conversations` row for each send — a service-to-service auth
-   * decision, not a repair. Filed for the founder; do not delete this route
-   * until that caller has somewhere else to go.
+   * ADR 0099 CORRECTION. 0084 called it a LIVE caller and said "that is the
+   * path every approved vendor email travels". Measured against production
+   * 2026-09-02, it is neither. That caller had been refused since `fdaa7fa0`
+   * (2026-08-25) added the class-level JwtAuthGuard above, and it sends no
+   * `Authorization` header. And before that: of 17 outbound
+   * `procurement_conversations` rows, **zero** carry the row shape this Python
+   * path writes on success (`message_id` like `<wineops-…@wineops.ai>`,
+   * `email_headers.gmail_message_id`, `delivery_status='sent'`). All 17 carry
+   * the gateway-native shape written by `procurement.service.ts`, which calls
+   * `GmailService` in process and never touches this route. Real vendor mail
+   * travels THAT path. `agent_activity_logs` is empty. Deleting this route
+   * would have stopped nothing — but keeping it needed a reason better than a
+   * caller that was already 401ing.
+   *
+   * The caller identity 0084 asked for is now the `X-Admin-Key` service key
+   * (see ServiceKeyGuard below). Still NOT fixed: this route writes no
+   * `procurement_conversations` row of its own — the caller does that — and
+   * it still carries no tenant.
    */
   @Post("email")
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Send an email via Gmail API" })
+  // ADR 0099 — the caller identity this route was waiting for.
+  //
+  // The note above ends "do not delete this route until that caller has
+  // somewhere else to go". It now does: `X-Admin-Key`, the ADMIN_API_KEY the
+  // gateway and the orchestrator already share in the other direction.
+  //
+  // @Public() does NOT mean unauthenticated here. Nest runs class guards before
+  // method guards and requires all of them to pass, so a method-level guard can
+  // only ADD to the class-level JwtAuthGuard, never stand in for it. @Public()
+  // short-circuits the JWT check so ServiceKeyGuard — which fails closed on an
+  // unset key — is what actually decides. Same shape as POST /webhooks/gmail
+  // below (ADR 0019 D3), which is @Public() and authenticated by a Google OIDC
+  // token.
+  @Public()
+  @UseGuards(ServiceKeyGuard)
+  @ApiOperation({
+    summary: "Send an email via Gmail API (service callers only)",
+  })
+  @ApiHeader({ name: "X-Admin-Key", required: true })
   @ApiResponse({ status: 200, type: CommunicationResultDto })
   async sendEmail(@Body() dto: SendEmailDto): Promise<CommunicationResultDto> {
     this.logger.log(`Sending email to: ${dto.to.join(", ")}`);
@@ -140,11 +175,16 @@ export class CommunicationsController {
       text: dto.bodyText,
       cc: dto.cc,
       bcc: dto.bcc,
+      replyTo: dto.replyTo,
+      threadId: dto.threadId,
+      inReplyTo: dto.inReplyTo,
+      references: dto.references,
     });
 
     return {
       success: result.success,
       messageId: result.messageId,
+      threadId: result.threadId,
       error: result.error,
       channel: "email",
     };
@@ -1110,7 +1150,7 @@ export class CommunicationsController {
   @ApiOperation({
     summary: "Gmail Pub/Sub push notification webhook",
     description:
-      "Receives push notifications from Google Pub/Sub when new emails arrive. Fetches new messages and routes them to the email parsing agent. Requires the Pub/Sub push subscription's Google-signed OIDC token in Authorization; the token's aud must match GMAIL_PUBSUB_AUDIENCE and its email claim must match GMAIL_PUBSUB_SERVICE_ACCOUNT. Fails closed when those are unset.",
+      "Receives push notifications from Google Pub/Sub when new emails arrive. Fetches new messages and routes them to the email parsing agent. Requires the Pub/Sub push subscription's Google-signed OIDC token in Authorization; the token's aud must match GMAIL_PUBSUB_AUDIENCE and its email claim must match GMAIL_PUBSUB_SERVICE_ACCOUNT. Fails closed when either is unset: every push is refused with 401 and inbound email stops until both are set.",
   })
   @ApiHeader({
     name: "Authorization",

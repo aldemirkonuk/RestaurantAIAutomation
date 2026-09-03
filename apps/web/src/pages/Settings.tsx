@@ -31,6 +31,7 @@ import { TeamLaborSettings } from '../components/team/TeamLaborSettings';
 import { TeamGoalsSettings } from '../components/team/TeamGoalsSettings';
 import { EmailSenderSettings } from '../components/settings/EmailSenderSettings';
 import { NotificationsSection } from '../components/settings/NotificationsSection';
+import { OperatingHoursSection } from '../components/settings/OperatingHoursSection';
 import { IntegrationsAuth } from '../components/settings/IntegrationsAuth';
 import { PosSettingsSection } from '../components/settings/PosSettingsSection';
 import { AddLocationDialog } from '../components/locations/AddLocationDialog';
@@ -1234,6 +1235,17 @@ export default function Settings() {
             </div>
           </div>
         )}
+
+        {/* ── Operating hours — ADR 0093 D1 ──
+            Not owner-gated like Locations: a manager may set them, and anyone
+            on the team may read them. The gateway is the actual gate; `canEdit`
+            only decides whether the controls are rendered. */}
+        <div id="operating-hours" className="scroll-mt-32">
+          <OperatingHoursSection
+            restaurantId={activeRestaurantId ?? undefined}
+            canEdit={activeRole === 'owner' || activeRole === 'manager'}
+          />
+        </div>
 
         {/* Dialogs */}
         <AddLocationDialog

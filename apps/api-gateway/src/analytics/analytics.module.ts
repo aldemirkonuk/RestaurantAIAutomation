@@ -48,6 +48,15 @@ import { AuthModule } from "../auth/auth.module";
     // outages the manager has ruled out of every baseline.
     DayExclusionsService,
   ],
-  exports: [AnalyticsService, InsightGeneratorService, GoalsService],
+  // TableAnalyticsService joined the exports for ADR 0093: the scenario
+  // verifier asks table performance whether it can see the day's tables, and
+  // an unexported provider would have forced a second, drifting copy of that
+  // aggregation inside SimposModule.
+  exports: [
+    AnalyticsService,
+    InsightGeneratorService,
+    GoalsService,
+    TableAnalyticsService,
+  ],
 })
 export class AnalyticsModule {}
