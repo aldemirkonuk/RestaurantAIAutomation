@@ -23,7 +23,7 @@ email-validator==2.1.0
 # =============================================================================
 supabase>=2.10.0  # Will manage postgrest-py dependency automatically
 psycopg2-binary==2.9.9
-sqlalchemy==2.0.25
+sqlalchemy==2.0.49
 asyncpg==0.29.0  # Async PostgreSQL driver
 
 # =============================================================================
@@ -49,7 +49,7 @@ tiktoken==0.5.2  # Token counting
 # =============================================================================
 # EMBEDDINGS (Local - Sentence Transformers)
 # =============================================================================
-sentence-transformers==2.3.1
+sentence-transformers==5.5.0
 torch>=2.4.1
 numpy==1.26.3
 scipy==1.12.0
@@ -66,6 +66,17 @@ opencv-python==4.9.0.80  # Image processing
 # torch 2.13 and broke label detection with nothing but a warning in the log.
 ultralytics==8.3.253
 pillow==10.2.0  # Image manipulation
+# ^ pillow stays on 10.2.0 HERE ONLY, and the line above is kept byte-identical
+# on purpose. Dependabot #89 asked for 12.3.0 in both requirements files;
+# measured, this file cannot take it — surya-ocr declares
+# pillow>=10.2.0,<11.0.0 at EVERY published version, so pip backtracks to
+# surya-ocr 0.6.0 and then reports ResolutionImpossible, and CI installs this
+# file. requirements.prod.txt — the one the Dockerfile installs — carries
+# 12.3.0 and has no surya-ocr, so the container that ships is patched.
+# The comment sits BELOW the pin because Trivy fingerprints an alert by the
+# line's text: editing that line re-reported every pre-existing pillow advisory
+# attached to it as "new alerts introduced by this pull request" and failed the
+# PR Audit Gate. They are pre-existing either way. See ADR 0106.
 pytesseract==0.3.10  # Alternative OCR backend
 pytz==2024.1  # Timezone support for manager preferences
 
@@ -116,7 +127,7 @@ backoff==2.2.1   # Exponential backoff
 sentry-sdk[fastapi]>=2.0.0
 python-json-logger==2.0.7
 structlog==24.1.0  # Structured logging
-prometheus-client==0.19.0  # Metrics export
+prometheus-client==0.25.0  # Metrics export
 
 # =============================================================================
 # SECURITY
@@ -158,8 +169,8 @@ apscheduler==3.10.4
 # =============================================================================
 pytest==7.4.4
 pytest-asyncio==0.23.3
-pytest-cov==4.1.0
-pytest-mock==3.12.0
+pytest-cov==7.1.0
+pytest-mock==3.15.1
 respx==0.20.2  # HTTP mocking
 faker==22.4.0  # Test data generation
 

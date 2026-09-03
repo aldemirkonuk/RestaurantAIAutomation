@@ -12,6 +12,7 @@ import {
 } from "./inventory-cost";
 import {
   ORDER_ARRIVED_STATUSES,
+  ORDER_OUTSTANDING_STATUSES,
   ORDER_SPEND_STATUSES,
   hasStatus,
 } from "../procurement/order-status";
@@ -63,7 +64,7 @@ export class AdvancedAnalyticsService {
       client
         .from("inventory_lot_rollup")
         .select(
-          // wac_qty / live_qty added 2026-09-02 (ADR 0078) so resolveUnitCost
+          // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
           // can tell a WAC that covers every on-hand bottle from one that
           // covers a single invoiced bottle in twenty-one.
           "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
@@ -470,10 +471,20 @@ export class AdvancedAnalyticsService {
     const holt = weekly.length >= 4 ? E.holtLinear(weekly, 0.4, 0.2, 4) : null;
 
     // Committed outflow: orders placed but not delivered.
+    //
+    // This was `["pending", "awaiting_approval", "ordered", "in_transit"]`.
+    // `procurement_orders.status` is written from `ProcurementOrderStatus`,
+    // which is UPPERCASE and has never had a member called `awaiting_approval`
+    // or `ordered` in any casing — so `committedOpenOrders` and
+    // `openOrderCount` were a STRUCTURAL ZERO, a number that could not have
+    // been anything else, rendered on the cashflow panel as though it had been
+    // measured. ADR 0058 fixed the nine `=== "delivered"` sites and the four on
+    // `dashboard.service.ts` that carried these exact four literals; this one
+    // survived because it is an array `.includes()` rather than a comparison,
+    // and `check_order_status_literals.py` only read comparisons. The guard
+    // reads this form now too.
     const open = orders.filter((o: any) =>
-      ["pending", "awaiting_approval", "ordered", "in_transit"].includes(
-        o.status,
-      ),
+      hasStatus(o.status, ORDER_OUTSTANDING_STATUSES),
     );
     const committed = open.reduce(
       (s: number, o: any) => s + (o.total_cost || o.final_price || 0),

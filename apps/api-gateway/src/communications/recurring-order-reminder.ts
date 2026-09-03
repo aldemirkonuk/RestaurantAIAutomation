@@ -40,12 +40,26 @@ export function recurringRemindersEnabled(raw?: string | null): boolean {
 /**
  * The subset of a `recurring_orders` row this reminder reads.
  *
- * Every field is optional because the table's shape is mid-migration: the
- * columns that carry a wine's name, its provider and its price arrive with
- * `20260901180000_recurring_orders_shape.sql` (PR #220), which is not merged.
- * Against `main`'s schema `target_price`, `provider_name` and `wine_name` are
- * all absent, so `describeRecurringOrder` refuses every row — which is the
- * intended state, not a bug. See ADR 0061.
+ * Every field is optional because the table's shape is mid-migration, and the
+ * reminder still refuses every row — but NOT for the reason this comment
+ * originally gave, so the reason is restated rather than left to rot.
+ *
+ * As written, this said `20260901180000_recurring_orders_shape.sql` (PR #220)
+ * "is not merged" and that `target_price` was therefore absent. #220 merged at
+ * 23:24 on 2026-09-01, roughly twelve hours BEFORE this file did (`e50d912c`
+ * is an ancestor of `e3acc79a`), so the claim was already false when it landed.
+ * `target_price` exists.
+ *
+ * What still holds is ADR 0061's precondition **2**, not its precondition 1:
+ * #220 deliberately adds no `wine_name` column (it embeds through
+ * `inventory_id`) and no `provider_name` (it stores `provider_id`), while this
+ * job reads the table flat with `select("*")` and no embed. The current writer
+ * — `RecurringOrdersService.createRecurringOrder` — populates `inventory_id`
+ * and `provider_id` and never writes the older `wine_id` or
+ * `preferred_providers` this function falls back to. So every row it can
+ * produce is refused for want of a name and a provider, and zero emails go out
+ * even with the flag armed. Fail-closed as designed; the ledger of WHY is what
+ * had drifted. See ADR 0061.
  */
 export interface RecurringOrderRowLike {
   id?: string | null;

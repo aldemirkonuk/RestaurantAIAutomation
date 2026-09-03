@@ -1,8 +1,8 @@
 # Ledger → food: migration options for OD-113
 
 > **Status: evidence for a founder call. Nothing here is decided.**
-> OD-113 is marked a founder call in
-> [`OPEN-DECISIONS.md`](../decisions/OPEN-DECISIONS.md):67. This document exists to
+> It is marked a founder call in
+> OD-113 ([`OPEN-DECISIONS.md`](../decisions/OPEN-DECISIONS.md):68). This document exists to
 > make that call *ready*, not to make it. No option below is recommended as settled;
 > §9 states the one question that remains.
 >
@@ -43,10 +43,19 @@ written to fix a stale denominator.
 
 All three are created in the baseline and **have never been altered since**. A
 case-insensitive sweep for `ALTER TABLE … inventory_lots|restaurant_inventory|inventory_transactions`
-across all 87 migrations returns only three `ENABLE ROW LEVEL SECURITY` statements and
+across all **86** migrations at the commit named in the header returns only three
+`ENABLE ROW LEVEL SECURITY` statements and
 one unrelated `ADD COLUMN` batch
 (`20260805132000_counting_catalog_and_correlation_columns.sql:8`). The baseline shape
 is the live shape, and `information_schema` on production agrees column-for-column.
+
+> **Denominator, dated.** This paragraph shipped saying *87* while the header of the
+> same document said *86* — the fifth count in the sequence the register row was
+> written to end. Both are snapshots: migrations are append-only, and `ls
+> supabase/migrations/*.sql` returns **94** on `origin/main` as of 2026-09-02 22:44Z.
+> The sweep's *result* is unaffected — it is a claim about which statements exist, not
+> about how many files were searched — but a denominator with no date is a claim that
+> starts rotting the moment it is written.
 
 | Column | Type | Null | Cite (`supabase/migrations/20260805000000_baseline_from_production.sql`) |
 |---|---|---|---|
@@ -190,14 +199,31 @@ migration between #65 and #87 touched these columns.
 
 **2.3 "Intake is fine" is true at the database and false at the API.**
 `procurement_document_lines.qty` is `numeric(12,3)` (:4386) with a 7-value `uom` CHECK
-(:4401) — both confirmed. But the DTOs that write that table enforce **`@IsInt()` on 14
-quantity fields across 5 files**, ten of them in `procurement.dto.ts` alone
-(`:46, :173, :243, :258, :267, :282, :290, :351, :367, :375`), plus
-`recurring-order.dto.ts:60, :149`, `retroactive-order.dto.ts:52`, and
-`inventory-ledger.dto.ts:73`. `procurement.dto.ts:240–243` rejects an `invoiceQuantity`
-of `4.5` with a 400 before it ever reaches the `numeric(12,3)` column that would have
-stored it perfectly. **Intake cannot accept 4.5 kg of flour today either.** The break is
-at the ledger *and* at the API boundary; only the intake *column* is ready.
+(:4401) — both confirmed. But the DTOs that write that table enforce **`@IsInt()` on 15
+live quantity fields across 5 files**, ten of them in `procurement.dto.ts` alone —
+`quantity` (:46), `quantityReceivedInOrderUom` (:179), `invoiceQuantityInInvoiceUom`
+(:350), `shippedQuantityInShippedUom` (:369), `freeGoodsQuantityInCountedUom` (:378),
+`acceptedQuantityInCountedUom` (:395), `rejectedQuantityInCountedUom` (:405) and the
+three `prefilled*` twins (:467, :485, :494) — plus `recurring-order.dto.ts:60, :149`,
+`retroactive-order.dto.ts:52`, `inventory-ledger.dto.ts:73` and
+`storage-locations.dto.ts:154`. Nine further `@IsInt()` quantity fields in
+`procurement.dto.ts` sit in the `@deprecated` unitless block (:196, :529, :540, :551,
+:562, :573, :584, :595, :606) and are excluded — 24 in total if they are counted.
+`procurement.dto.ts:347–350` rejects an `invoiceQuantityInInvoiceUom` of `4.5` with a
+400 before it ever reaches the `numeric(12,3)` column that would have stored it
+perfectly. **Intake cannot accept 4.5 kg of flour today either.** The break is at the
+ledger *and* at the API boundary; only the intake *column* is ready.
+
+> **Re-anchored 2026-09-02** (merge-check on #248). The ten `procurement.dto.ts`
+> anchors this paragraph shipped with — `:46, :173, :243, :258, :267, :282, :290,
+> :351, :367, :375` — resolved on the very commit that merged them to a string
+> fragment, three comment lines, a `})`, a `@Min(0)` and two blank lines; only `:46`
+> named a quantity field. The *count* was right and the finding is real; the locators
+> were measured against a pre-rebase tree and never re-read. The fifth file the
+> sentence promised was also missing from the list — `storage-locations.dto.ts`,
+> which OD-113's register row names — so "14 across 5 files" was 14 across 4. Every
+> anchor above is the FIELD line, matching the convention the other four files use,
+> and was re-measured on `origin/main` @ `77eb7888`.
 
 ---
 
@@ -313,12 +339,20 @@ The blast radius, measured, with denominators.
 
 **The 10 rounding sites** — each turns 4.5 into 5 (JS `Math.round` is half-up), silently:
 
-`inventory.service.ts:373` and `:409` (`Math.round(Number(dto.countedQty))` — a spot
-count, rounded before the RPC) · `toast.service.ts:464` · `pos-hub.service.ts:711` ·
+`inventory.service.ts:408` and `:435` (`Math.round(Number(dto.countedQty))` — a spot
+count, rounded before the RPC) · `toast.service.ts:464` · `pos-hub.service.ts:746` ·
 `pos-mapping-review.service.ts:380` · `simpos.service.ts:318` ·
 `photo-count.service.ts:163` · `photo-count-verdict.ts:79` ·
-`receiving.service.ts:449` · `inventory.service.ts:75` (`Math.floor` for glasses per
+`receiving.service.ts:575` (`Math.round(totals.receivedBottles / packSize)` — bottles
+converted to whole cases) · `inventory.service.ts:76` (`Math.floor` for glasses per
 bottle — legitimately integer; listed for completeness, not for change).
+
+> **Re-anchored 2026-09-02** (merge-check on #248). Four of the ten moved: three by
+> ordinary drift after this document merged (`inventory.service.ts:373→408`,
+> `:409→435`, `:75→76`, `pos-hub.service.ts:711→746`), and one — `receiving.service.ts`
+> — was wrong when written: `:449` was a closing brace on the merging commit, and the
+> rounding site it describes is `:575`. The count of ten and the claim each makes are
+> unchanged; only the locators are.
 
 The API boundary is **already inconsistent**: the same logical field `stockLive` is
 `@IsNumber()` at `inventory.dto.ts:43–45` and `@IsInt()` at `:279–282`.

@@ -201,12 +201,8 @@ KNOWN_BAD_READ_COLUMNS: dict[str, str] = {
         "No such column. Same select as savings_realized."
     ),
     "users.avatar_url": (
-        "No such column. Read by members.service.ts:85, team.service.ts:136 and "
-        ":182 -- three sites, so every team/member listing 42703s."
-    ),
-    "users.auth_provider": (
-        "The column is `oauth_provider`. members.service.ts:85, same select as "
-        "avatar_url."
+        "No such column. team.service.ts:136 and :182 -- both team listings "
+        "42703. (members.service.ts stopped reading it; that read is fixed.)"
     ),
     "master_wine_library.wine_name": (
         "The table has `name`, `display_name`, `normalized_name`. "
@@ -214,9 +210,6 @@ KNOWN_BAD_READ_COLUMNS: dict[str, str] = {
     ),
     "notifications.manager_id": (
         "The table has `recipient_id` and `user_id`. database.service.ts:113."
-    ),
-    "user_restaurant_access.granted_at": (
-        "No such column. members.service.ts:71 orders by it."
     ),
     "restaurants.toast_restaurant_guid": (
         "No such column on `restaurants`; the POS linkage lives in the toast "
