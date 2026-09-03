@@ -137,7 +137,7 @@ export function AddToInventoryFromLibraryModal({
   const { dispatchInventoryUpdate } = useRealtimeDispatch()
   
   // Get storage locations for cross-page persistence
-  const { locations, locationsLoading, assignWineToLocation, getWineLocation } = useStorageLocations()
+  const { locations, locationsLoading, locationsUnavailable, assignWineToLocation, getWineLocation } = useStorageLocations()
 
   const availableProviders = useMemo(() => {
     if (localProviders.length === 0) {
@@ -777,6 +777,13 @@ export function AddToInventoryFromLibraryModal({
                 <div className="flex items-center justify-center h-14 text-gray-400">
                   <Loader2 className="w-5 h-5 animate-spin" />
                 </div>
+              ) : locationsUnavailable ? (
+                // ADR 0080: a failed fetch is not "you have no zones". The
+                // picker says which of the two it is, because the difference
+                // decides whether the user should go and create one.
+                <p className="text-sm text-amber-700 text-center py-3">
+                  Zones could not be loaded — this is not a claim that you have none.
+                </p>
               ) : locations.length === 0 ? (
                 <p className="text-sm text-gray-500 text-center py-3">
                   No storage locations configured
