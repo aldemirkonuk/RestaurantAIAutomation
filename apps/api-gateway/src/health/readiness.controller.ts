@@ -1,6 +1,7 @@
 import { Controller, Get, Injectable, Res } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Response } from "express";
+import { Public } from "../auth/decorators/public.decorator";
 import { DatabaseService } from "../database/database.service";
 import { COMMIT_SHA, BOOTED_AT } from "./build-provenance";
 
@@ -120,6 +121,11 @@ export class ReadinessController {
 
   constructor(private readonly databaseService: DatabaseService) {}
 
+  // Declared public, not merely left undecorated: the ADR 0096 ratchet exists
+  // precisely because those two are runtime-identical, and this route WANTS to
+  // be reachable without a token so a deploy audit can call it. Saying so is
+  // the whole point.
+  @Public()
   @Get("ready")
   @ApiOperation({
     summary: "Readiness probe — the process can actually serve requests",
