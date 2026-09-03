@@ -11,6 +11,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from scripts.simulate.hours import OperatingHoursError, parse_operating_hours
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ARCHETYPES_DIR = REPO_ROOT / "datasets" / "sim" / "archetypes"
 
@@ -106,9 +108,25 @@ def _validate_recipe(data: dict[str, Any], archetype_id: str) -> None:
         if key not in opening:
             raise ValueError(f"{archetype_id}: opening_stock missing {key}")
     restaurant = data.get("restaurant") or {}
-    for key in ("name", "timezone", "city", "country"):
+    # `operating_hours` is REQUIRED, not optional (ADR 0093 D1). An archetype
+    # that lost its hours would seed a tenant with a null column, and every
+    # scenario placed against that tenant would silently fall back to whatever
+    # the caller guessed — which is the hard-coded UTC dinner curve this ADR
+    # exists to remove. A missing key must fail loudly at load, not quietly at
+    # seed time.
+    for key in ("name", "timezone", "city", "country", "operating_hours"):
         if key not in restaurant:
             raise ValueError(f"{archetype_id}: restaurant missing {key}")
+    # And it must be hours the PRODUCT would accept: the same parser the API's
+    # PUT and the TypeScript mirror use, so a typo in a dataset file is caught
+    # here rather than discovered as a scenario that never opens.
+    try:
+        parse_operating_hours(restaurant["operating_hours"])
+    except OperatingHoursError as exc:
+        raise ValueError(
+            f"{archetype_id}: restaurant.operating_hours invalid: "
+            f"{'; '.join(exc.errors)}"
+        ) from exc
     if not data.get("snapshot"):
         raise ValueError(f"{archetype_id}: snapshot path required")
     if not data.get("display_name"):
