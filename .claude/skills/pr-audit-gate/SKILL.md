@@ -123,6 +123,15 @@ individually while what they don't cover reaches production — this gate exists
       just audited). Never `--admin` — if the merge doesn't go through
       because a required check isn't actually green, that is GitHub
       correctly refusing, not something to force past.
+
+      **This path does NOT need the CI-side workflow-dispatch fix below.**
+      GitHub only suppresses new workflow runs for a push made with the
+      built-in Actions `GITHUB_TOKEN` — a merge you run here goes out under
+      *your own* `gh auth` identity, so `main`'s normal `on: push` CI run
+      (and the `workflow_run`-triggered deploy audit behind it) fires
+      exactly as it would for any other push. Confirmed live (fourth audit,
+      security angle): this repo's entire merge history to date is
+      founder-identity (`web-flow`), which is this exact path.
     - **BLOCK:** do not merge. Tell the founder directly in chat what blocked it and
       point at the PR comment — do not just let this scroll past as "done."
 

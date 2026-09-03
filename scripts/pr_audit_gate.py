@@ -233,9 +233,22 @@ def wait_upstream(pr_number: str) -> int:
             prev_total = len(checks)
 
         if time.monotonic() > deadline:
-            print(f"Timed out after {MAX_WAIT_SECONDS}s waiting on: {missing + pending}")
+            # Exit 1, not 0. CONFIRMED live (gate's own fourth audit,
+            # correctness angle, harness-executed): returning 0 here made
+            # THIS STEP succeed, downstream steps correctly skip the audit
+            # (status=upstream_red), and the JOB shows green having audited
+            # nothing and confirmed nothing -- absence reported as health,
+            # inside the guard whose whole job is catching that shape. A
+            # confirmed-red required check (the `failed` branch above) is a
+            # legitimate, known-good "nothing to say" case and stays exit 0;
+            # a timeout means we never found out, which is different and
+            # must show as a failure. GITHUB_OUTPUT is still written first,
+            # so steps.upstream.outputs.status stays available to whatever
+            # reads it.
+            print(f"Timed out after {MAX_WAIT_SECONDS}s waiting on: {missing + pending} "
+                  "-- never confirmed either way, not the same as a confirmed failure.")
             _write_github_output("status", "upstream_red")
-            return 0
+            return 1
 
         time.sleep(POLL_INTERVAL_SECONDS)
 
@@ -387,15 +400,33 @@ def _run_audit_inner(pr_number: str) -> int:
     checks = _gh_json(["gh", "pr", "checks", pr_number, "--json", "name,state,link"])
     claude_md = (ROOT / "CLAUDE.md").read_text(errors="replace")
 
+    # DIFF_BUDGET raised 60,000 -> 300,000 (~5x): CONFIRMED live (gate's own
+    # fourth audit, correctness angle, harness-executed) that 60,000 chars
+    # cut into the MEDIAN merged PR in this repo -- 10 of the last 20, and
+    # this PR's own two gate scripts sat past the cut. The old truncation
+    # note was a sentence appended to the model's prompt, not anything the
+    # code enforced -- `overall` never consulted whether truncation
+    # happened, so a model that dutifully mentioned the gap and approved
+    # what it could see still produced a merge. Raising the budget shrinks
+    # how often this fires (300k chars is still well inside an Opus
+    # context window alongside CLAUDE.md, check states and the model's own
+    # output); truncation_occurred below closes it for whenever it still
+    # does, deterministically, the same shape as touches_own_gate.
+    DIFF_BUDGET = 300_000
+    truncation_occurred = len(diff) > DIFF_BUDGET
     bundle = (
         f"PR #{pr['number']} — {pr['title']} ({pr['url']})\n"
         f"Head SHA: {pr['headRefOid']}\n\n"
         f"CI check states:\n{json.dumps(checks, indent=2)}\n\n"
         f"CLAUDE.md (for the compliance angle):\n{claude_md}\n\n"
-        f"Diff:\n{diff[:60000]}"  # bounded — an oversized diff is itself a finding, not something to truncate silently past
+        f"Diff:\n{diff[:DIFF_BUDGET]}"
     )
-    if len(diff) > 60000:
-        bundle += "\n\n[diff truncated at 60000 chars — note this in your report as a limitation, do not silently review a partial diff as if it were complete]"
+    if truncation_occurred:
+        bundle += (
+            f"\n\n[diff truncated at {DIFF_BUDGET} chars — note this in your "
+            "report as a limitation, do not silently review a partial diff "
+            "as if it were complete]"
+        )
 
     angle_reports: dict[str, str] = {}
     angle_verdicts: dict[str, str] = {}
@@ -463,24 +494,45 @@ def _run_audit_inner(pr_number: str) -> int:
         # overall="PASS". Only HOLDS merges; everything else blocks.
         overall = "PASS" if adv_verdict == "HOLDS" else "BLOCK"
 
-    escalation_note = ""
-    if touches_own_gate and overall == "PASS":
-        overall = "BLOCK"
-        escalation_note = (
-            "\n\n**⚠️ ESCALATED, not a normal BLOCK:** this diff touches the "
-            "audit gate's own files (" + ", ".join(sorted({
+    # Deterministic escalation triggers -- things that must force a
+    # non-merge regardless of what the angles/adversary concluded, because
+    # they mean the angles/adversary didn't see (or can't be trusted on)
+    # the whole picture. touches_own_gate: a self-modifying PR. NEW,
+    # confirmed live (gate's own fourth audit, correctness angle, harness-
+    # executed): a still-truncated diff -- the old version only asked the
+    # model to MENTION this in prose, never enforced it, so a model that
+    # dutifully noted the gap and approved what it saw still merged. Same
+    # shape as every prior deny-list bug: a decision left to something
+    # looser than the code should allow.
+    escalation_reasons = []
+    if touches_own_gate:
+        escalation_reasons.append(
+            "this diff touches the audit gate's own files (" + ", ".join(sorted({
                 f for f in changed_files
                 for owned in _GATE_OWNED_PATHS if f == owned or f.startswith(owned)
-            })) + "). All three angles and the adversarial pass leaned APPROVE, "
-            "but a PR that changes what future audits do needs a human, not a "
-            "self-consistent verdict from the current rules — [[merge-races-need-sequencing]]'s "
-            "escalate-never-force precedent, applied here. Founder review required "
-            "regardless of the angle verdicts above."
+            })) + ") — a PR that changes what future audits do needs a human, not "
+            "a self-consistent verdict from the current rules"
         )
-    elif touches_own_gate:
+    if truncation_occurred:
+        escalation_reasons.append(
+            f"the diff exceeds the {DIFF_BUDGET}-char review budget and was "
+            "truncated — the angles/adversary reviewed a PARTIAL diff, and "
+            "their approval (if any) is not evidence about the part they "
+            "never saw"
+        )
+
+    escalation_note = ""
+    if escalation_reasons and overall == "PASS":
+        overall = "BLOCK"
         escalation_note = (
-            "\n\n**Note:** this diff also touches the audit gate's own files — "
-            "already BLOCK on the angles above, escalation is moot but stated "
+            "\n\n**⚠️ ESCALATED, not a normal BLOCK:** " + "; and ".join(escalation_reasons) +
+            ". [[merge-races-need-sequencing]]'s escalate-never-force precedent, applied "
+            "here. Founder review required regardless of the angle verdicts above."
+        )
+    elif escalation_reasons:
+        escalation_note = (
+            "\n\n**Note:** " + "; and ".join(escalation_reasons) +
+            " — already BLOCK on the angles above, escalation is moot but stated "
             "for the record."
         )
 
@@ -488,9 +540,10 @@ def _run_audit_inner(pr_number: str) -> int:
         f"# PR #{pr_number} audit — {sha7}",
         "",
         f"**VERDICT: {overall}**",
-        "",
-        "## Angles",
     ]
+    if escalation_note:  # was comment-only before; the archived report silently omitted WHY it escalated
+        lines.append(escalation_note.strip())
+    lines += ["", "## Angles"]
     for angle, text in angle_reports.items():
         lines += [f"### {angle} — {angle_verdicts[angle]}", "", text, ""]
     if adversary_report is not None:
@@ -522,7 +575,17 @@ def _run_audit_inner(pr_number: str) -> int:
         + ("\n\n[truncated at 60000 chars]" if len(full_report) > 60000 else "")
         + "\n\n</details>\n"
     )
-    _run(["gh", "pr", "comment", pr_number, "--body", comment_body])
+    comment_result = _run(["gh", "pr", "comment", pr_number, "--body", comment_body])
+    if comment_result.returncode != 0:
+        # CONFIRMED live (gate's own fourth audit, correctness angle,
+        # harness-executed): this returncode used to go unchecked and the
+        # merge proceeded anyway. The comment is the durable audit record
+        # (see the note above) -- merging without it landing means a PASS
+        # ships with no trace of why, which is the thing this whole script
+        # exists to prevent. Refuse the merge if the record didn't post.
+        print(f"Posting the audit comment failed, not merging even though "
+              f"verdict was {overall}:\n{comment_result.stderr}", file=sys.stderr)
+        return 1
 
     if overall != "PASS":
         print(f"Verdict: {overall} — not merging.")
@@ -556,6 +619,32 @@ def _run_audit_inner(pr_number: str) -> int:
               f"Not retried automatically. Detail: {merge.stderr[:500]}"])
         return 1
     print(f"PASS — merged {sha7} directly (sha-pinned, not queued).")
+
+    # CONFIRMED live (gate's own fourth audit, security angle, verified
+    # against GitHub's own documented behavior + this repo's actual merge
+    # history): a push made with the built-in GITHUB_TOKEN does not trigger
+    # a new workflow run. Without this call, ci.yml's `on: push` for THIS
+    # merge would never fire, and deploy.yml's `workflow_run:
+    # workflows: ["CI"]` trigger -- the post-merge deploy/health audit ADR
+    # 0085 exists because of -- would not just be skipped, it would not run
+    # at all for this merge. workflow_dispatch is one of the two documented
+    # exceptions to the suppression rule, so this explicitly re-enters the
+    # chain. Best-effort: a failure here is loud (stderr + PR comment) but
+    # does not un-merge or block on the merge already having happened --
+    # there is no clean rollback for "the merge succeeded but we couldn't
+    # confirm CI will re-run," so this fails LOUD, not closed.
+    dispatch = _run(["gh", "workflow", "run", "ci.yml", "--ref", "main"], timeout=20)
+    if dispatch.returncode != 0:
+        print(f"WARNING: merged {sha7}, but could not dispatch ci.yml to "
+              f"re-enter the CI->deploy chain (GITHUB_TOKEN pushes don't "
+              f"trigger it automatically). Check manually.\n{dispatch.stderr}",
+              file=sys.stderr)
+        _run(["gh", "pr", "comment", pr_number, "--body",
+              f"Merged {sha7}, but could not dispatch ci.yml afterward "
+              f"(needed because GITHUB_TOKEN merges don't trigger workflow "
+              f"runs on their own — see ADR 0090's fourth Correction). "
+              f"main's CI/deploy-audit chain may not have run for this "
+              f"merge; check manually. Detail: {dispatch.stderr[:500]}"])
     return 0
 
 
@@ -569,7 +658,12 @@ def _redact(text: str) -> str:
     that echoes a request header is exactly the kind of thing "should
     never happen" undersells. Bounded length too -- an arbitrary exception
     __str__ has no size contract."""
+    # Anthropic key + GitHub's own token prefixes (ghp_/gho_/ghu_/ghs_/ghr_ --
+    # personal/OAuth/user-to-server/server-to-server/refresh tokens; a
+    # gap the gate's own fourth audit, security angle, named explicitly:
+    # only the Anthropic prefix was covered).
     text = re.sub(r"sk-ant-[A-Za-z0-9_-]{10,}", "[REDACTED]", text)
+    text = re.sub(r"gh[oprsu]_[A-Za-z0-9]{20,}", "[REDACTED]", text)
     return text[:2000] + ("... [truncated]" if len(text) > 2000 else "")
 
 
@@ -645,6 +739,14 @@ def run_self_test() -> int:
           bool(DIRECT_PUSH_PATTERN_FOR_TEST.search("git push origin fix/main-nav-crash")), False)
     check("branch 'maintenance' is NOT caught",
           bool(DIRECT_PUSH_PATTERN_FOR_TEST.search("git push origin feat/maintenance-x")), False)
+    check("git -C <dir> push origin main IS caught (round 4 exploit -- was NOT caught before)",
+          bool(DIRECT_PUSH_PATTERN_FOR_TEST.search("git -C /Users/x/wt push origin main")), True)
+    check("a multi-line command does NOT let a later line's 'main' block an earlier push (round 4 exploit)",
+          bool(DIRECT_PUSH_PATTERN_FOR_TEST.search(
+              "git push -u origin feat/my-branch\ngh pr create --base main --fill")), False)
+    check("push origin main still caught inside a multi-line command",
+          bool(DIRECT_PUSH_PATTERN_FOR_TEST.search(
+              "echo about to push\ngit push origin main")), True)
 
     # wait_upstream's state classifier, exercised directly (see wait_upstream body)
     def classify(names, by_name):
@@ -662,11 +764,29 @@ def run_self_test() -> int:
     m, p, f = classify(names, {"A": "SUCCESS", "B": "SUCCESS", "C": "SUCCESS"})
     check("all SUCCESS -> nothing missing or failed", (m, f), ([], []))
 
+    # Escalation logic (round 4): touches_own_gate and a still-truncated diff
+    # must both force BLOCK even when every angle/adversary leaned PASS --
+    # exercised as the same pure decision the real code makes, not a mock of
+    # the whole audit flow.
+    def escalate(overall, reasons):
+        if reasons and overall == "PASS":
+            return "BLOCK"
+        return overall
+
+    check("touches_own_gate forces BLOCK even on a clean PASS",
+          escalate("PASS", ["touches gate files"]), "BLOCK")
+    check("truncated diff forces BLOCK even on a clean PASS (round 4 exploit -- was NOT enforced before)",
+          escalate("PASS", ["diff truncated"]), "BLOCK")
+    check("no escalation reasons -> PASS stays PASS",
+          escalate("PASS", []), "PASS")
+    check("already-BLOCK stays BLOCK regardless of escalation reasons",
+          escalate("BLOCK", ["touches gate files"]), "BLOCK")
+
     if failures:
         for line in failures:
             print(f"SELF-TEST FAILED: {line}")
         return 1
-    print(f"SELF-TEST OK — {10 + 4 + 3} invariants held.")
+    print("SELF-TEST OK — 24 invariants held.")
     return 0
 
 
@@ -675,7 +795,7 @@ def run_self_test() -> int:
 # pin it without importing across the scripts/hooks/ boundary. If you change
 # one, change both; this constant existing at all is the reminder.
 DIRECT_PUSH_PATTERN_FOR_TEST = re.compile(
-    r"\bgit\s+push\b[^|;&]*\b(?:origin\s+)?(?:HEAD:)?(?:refs/heads/)?main\b(?:\s|$)"
+    r"\bgit\s+(?:-C\s+\S+\s+)?push\b[^|;&\n]*\b(?:origin\s+)?(?:HEAD:)?(?:refs/heads/)?main\b(?:\s|$)"
 )
 
 

@@ -331,7 +331,83 @@ rounds: *"zero tests and zero guard for the single function that has now
 decided a merge wrongly twice."* It had decided a merge wrongly a third
 time by the point this was written.
 
-## Review trail
+## Correction — 2026-09-03, found by the gate's own FOURTH real audit
+
+Correctness and security run fresh a fourth time (compliance skipped this
+round — its findings are documentation-severity and the third round's were
+already fully addressed). Both returned BLOCK, on two findings neither
+prior round reached — one of them the most consequential in this ADR.
+
+1. **The CI-side merge silently removes the post-merge deploy audit.**
+   Confirmed against GitHub's own documented behavior, not reasoned about:
+   a push made with the built-in Actions `GITHUB_TOKEN` does not trigger a
+   *new* workflow run (recursion suppression; the two documented exceptions
+   are `workflow_dispatch`/`repository_dispatch`). The CI-side merge step
+   uses exactly that token. So `ci.yml`'s `on: push` for a gate-driven merge
+   never fires, and `deploy.yml`'s `workflow_run: workflows: ["CI"]`
+   trigger — the post-merge health/deploy audit [[production-deploy-verification]]
+   and ADR 0085 exist because CI alone can't see a DI failure — never fires
+   either. Not skipped, not red: **no run at all**, for a merge this repo
+   already built a whole finding ([[absence-reported-as-health]]) around not
+   letting happen quietly. Confirmed against this repo's actual history:
+   every merge to `main` to date is founder-identity (`web-flow`), so this
+   path had never once been exercised before this ADR's own gate. Fixed by
+   adding a `workflow_dispatch:` trigger to `ci.yml` (purely additive — does
+   not change push/pull_request behavior) and having the CI-side merge step
+   explicitly `gh workflow run ci.yml --ref main` right after a successful
+   merge, re-entering the chain through the one path GITHUB_TOKEN doesn't
+   suppress. Fails LOUD on failure (stderr + PR comment), not closed — there
+   is no clean rollback for "the merge already happened but we couldn't
+   confirm CI re-ran." **The Claude-Code-side merge path was never affected**
+   — it pushes under the session's own `gh auth` identity, not GITHUB_TOKEN,
+   which is exactly why the repo's whole merge history to date looks the way
+   it does; noted explicitly in SKILL.md so this isn't fixed twice.
+2. **The repo-wide hook both over-blocked and under-blocked, confirmed by
+   execution.** `DIRECT_PUSH_PATTERN`'s exclusion set didn't exclude
+   newlines, so it spanned across separate statements in a multi-line
+   command — `git push origin feat/x` followed on a new line by
+   `gh pr create --base main --fill` was wrongly BLOCKED because "main"
+   appeared on the *second* line. The mirror gap: `\bgit\s+push\b` requires
+   "push" immediately after "git", so `git -C <worktree> push origin main`
+   — the natural form in this repo's own stated ~90-worktree concurrency —
+   was **not** matched at all, letting a real direct push to `main` through
+   undetected. Both fixed (newline excluded from the scan; an optional
+   `-C <path>` allowed between "git" and "push"). Separately: the CI bot's
+   trusted-author entry (round 3) held the REST API spelling
+   ("github-actions[bot]"), but this hook calls `gh pr view --json comments`
+   (GraphQL-backed), which returns the login *without* the suffix —
+   confirmed by execution, the hook trusted **no** comment the CI bot ever
+   posted. Fail-closed (safe), but broke the CI half of the gate outright.
+   Both spellings now trusted, with the mismatch's own risk named rather
+   than assumed permanent.
+3. **The diff-truncation gap the third round's correctness angle didn't
+   reach.** `bundle` capped the diff at 60,000 chars and asked the model, in
+   prose, to note the limitation — `overall` never consulted whether
+   truncation happened. Confirmed by harness-executing the real
+   `_run_audit_inner` with a synthetic 68,770-char diff carrying a planted
+   regression past the cut: the auditor never saw it, dutifully noted the
+   truncation, approved what it could see, and the function issued a real
+   `gh api .../merge` call. Measured against this repo's actual PRs: 10 of
+   the last 20 merged exceed 60,000 chars, including this PR's own two gate
+   scripts sitting past the old cut. Fixed two ways: the budget raised to
+   300,000 chars (shrinks how often this fires at all), and — for whenever
+   it still does — `truncation_occurred` now force-BLOCKs exactly like
+   `touches_own_gate`, deterministically, never left as a sentence in a
+   prompt. `escalation_note` (round 3's own omission, also closed this
+   round) is now written into the archived report as well as the comment,
+   so a BLOCK's *reason* survives if the comment thread is ever pruned.
+4. **Two smaller closes, same round:** `gh pr comment`'s returncode was
+   unchecked before merging — a failed post meant a PASS could ship with no
+   durable record at all; now refuses to merge if the comment didn't land.
+   `wait_upstream`'s timeout path returned exit 0, so a run that gave up
+   waiting (never confirmed upstream either way) looked identical to a run
+   that legitimately had nothing to say — now exits 1, distinct from the
+   "a required check is genuinely, confirmedly red" case, which correctly
+   stays a benign 0.
+
+Every BLOCK above was reproduced against the real functions before being
+accepted, not taken from the subagents' prose. `--self-test` grew from 17 to
+24 invariants covering all of it.
 
 | Date | Reviewer | Outcome |
 |---|---|---|
@@ -341,3 +417,4 @@ time by the point this was written.
 | 2026-09-03 | `PR Audit Gate` (Opus, run 33695630472) | BLOCK — security + correctness, both confirmed real; 4 fixes landed same day, see Correction above |
 | 2026-09-03 | pr-audit-gate skill, security angle (Opus subagent) | BLOCK — the verdict-parser fix from the first correction was incomplete (wrong function) and the fork-secret claim was wrong for the new trigger; both confirmed independently and fixed, see second Correction above |
 | 2026-09-03 | pr-audit-gate skill, all 3 angles (fresh Opus subagents) | BLOCK, BLOCK, BLOCK — a deny-list verdict decision in two places (one confirmed by execution to invert a literal adversary "VERDICT: BLOCK" into a merge), an unauthenticated marker check (confirmed by execution against a shimmed outsider comment), an `--auto` merge race, and a deny-list state classifier; 6 fixes landed same day plus a `--self-test`, see third Correction above |
+| 2026-09-03 | pr-audit-gate skill, correctness + security (fresh Opus subagents) | BLOCK, BLOCK — a GITHUB_TOKEN merge silently removes the post-merge deploy audit (confirmed against GitHub's documented behavior + this repo's own merge history); a repo-wide hook that both over- and under-blocked real git commands (confirmed by execution); a diff-truncation gap the third round's correctness angle didn't reach (confirmed by harness-executing a planted regression past the old cut); 6 fixes landed same day, `--self-test` grown 17 → 24, see fourth Correction above |

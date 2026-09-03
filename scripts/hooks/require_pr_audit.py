@@ -79,8 +79,20 @@ MERGE_PATTERN = re.compile(r"\bgh\s+pr\s+merge\b(?P<tail>[^|;&\n]*)")
 # the single most consequential form — evaded it entirely; confirmed live,
 # correctness angle, third audit). `(?:\s|$)` requires a real word boundary
 # after "main" without requiring nothing else follows.
+# v3 -> v4, two more real bugs, both CONFIRMED BY EXECUTION (fourth audit,
+# security angle): (a) `[^|;&]*` does not exclude newlines, so it spanned
+# across separate statements in a multi-line command -- `git push origin
+# feat/x\ngh pr create --base main --fill` (a normal branch push followed
+# by opening the PR) matched and was wrongly BLOCKED, because "main" showed
+# up on the SECOND line. Added `\n` to the exclusion set. (b) `\bgit\s+push\b`
+# requires "push" immediately after "git", so `git -C <dir> push origin
+# main` -- the natural form in a multi-worktree repo -- was NOT matched at
+# all: a real push straight to main slipped through. Added an optional
+# `-C <path>` between "git" and "push"; other global git flags before a
+# subcommand are a known residual gap (documented, not silently assumed
+# complete, per the note above).
 DIRECT_PUSH_PATTERN = re.compile(
-    r"\bgit\s+push\b[^|;&]*\b(?:origin\s+)?(?:HEAD:)?(?:refs/heads/)?main\b(?:\s|$)"
+    r"\bgit\s+(?:-C\s+\S+\s+)?push\b[^|;&\n]*\b(?:origin\s+)?(?:HEAD:)?(?:refs/heads/)?main\b(?:\s|$)"
 )
 
 # Both this hook and scripts/pr_audit_gate.py (CI) must emit exactly this shape
@@ -98,7 +110,19 @@ MARKER_RE = re.compile(
 # `gh` right now (fetched lazily, once) is trusted too, since if THIS
 # session posted the marker, it's legitimately theirs regardless of who else
 # has access. Nobody else's comment body is ever inspected for a marker.
-_TRUSTED_MARKER_AUTHORS = {"github-actions[bot]"}
+#
+# Both spellings, CONFIRMED BY EXECUTION (fourth audit, security angle) to
+# matter: `gh pr view --json comments` (GraphQL-backed, what this hook
+# calls) returns the bot's login as "github-actions" -- no "[bot]" suffix --
+# while the REST API returns "github-actions[bot]". This hook only had the
+# REST spelling, so it silently trusted NO comment the CI bot ever posted;
+# fail-closed (safe), but functionally broke the CI half of the whole gate.
+# The bare name isn't registered as a real account today (`gh api
+# users/github-actions` -> 404) but that isn't a permanent guarantee from
+# GitHub, so this is stated as a residual, not treated as closed -- position
+# anchoring (marker must be the comment's own first thing) and the PR+SHA
+# match both still apply on top of this, which is the actual containment.
+_TRUSTED_MARKER_AUTHORS = {"github-actions[bot]", "github-actions"}
 
 
 def _allow(note: str = "") -> None:
