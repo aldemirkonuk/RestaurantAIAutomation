@@ -6,7 +6,6 @@ the pre-fix tree: a guard that passes whether or not the fix is present proves
 nothing about the fix.
 """
 
-import re
 import time
 
 import pytest

@@ -1089,18 +1089,27 @@ def main():
     # anywhere those are set to something real — CI, a shared staging box — the
     # old version wrote live credentials into the job log, where they persist
     # long after the seed does (CodeQL py/clear-text-logging-sensitive-data).
-    def _password_hint(env_var: str, value: str, default: str) -> str:
-        if value == default:
+    # The secret never enters the formatting helper. Compare here, pass only a
+    # boolean, and let the helper choose between two literals it already holds.
+    # (An earlier version passed the password in and returned the default when
+    # they matched — safe in fact, but it still routed the live value through
+    # the printer, and neither a reader nor a taint analysis should have to
+    # follow a branch to be sure a credential is not printed.)
+    def _password_hint(env_var: str, default: str, is_default: bool) -> str:
+        if is_default:
             return f"{default}  (built-in default; override with {env_var})"
         return f"<value of ${env_var}>"
+
+    demo_is_default = DEMO_PASSWORD == "demo123"
+    manager_is_default = DEFAULT_MANAGER_PASSWORD == "ChangeMe123!"
 
     print(f"Demo / Test Login:")
     print(
         f"  Easy demo: {DEMO_EMAIL} / "
-        f"{_password_hint('SEED_DEMO_PASSWORD', DEMO_PASSWORD, 'demo123')}"
+        f"{_password_hint('SEED_DEMO_PASSWORD', 'demo123', demo_is_default)}"
     )
     manager_hint = _password_hint(
-        "SEED_MANAGER_PASSWORD", DEFAULT_MANAGER_PASSWORD, "ChangeMe123!"
+        "SEED_MANAGER_PASSWORD", "ChangeMe123!", manager_is_default
     )
     print(f"  Manager: manager@meyhouse-pa.com / {manager_hint}")
     print(f"  Owner: owner@meyhouse-pa.com / {manager_hint}")

@@ -149,7 +149,11 @@ const server = http.createServer(async (req, res) => {
     // stripping control characters keeps it from forging terminal lines
     // (js/log-injection).
     const safeHtml = escapeHtml(String(errParam));
-    const safeLog = String(errParam).replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 200);
+    // JSON.stringify rather than a control-character strip: it escapes CR/LF
+    // into \r\n literals, quotes the result so the boundary of the untrusted
+    // value is visible in the terminal, and is a form both a reader and a
+    // static analyser recognise as encoded.
+    const safeLog = JSON.stringify(String(errParam).slice(0, 200));
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(`<h2>❌ Authorization denied: ${safeHtml}</h2><p>Close this tab and check the terminal.</p>`);
     console.error(`\n❌  Authorization denied: ${safeLog}`);
