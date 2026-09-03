@@ -232,15 +232,28 @@ Measured against the local gateway running on this branch, pointed at the produc
 Supabase project (dev-bypass session, `demo@gmail.com`, Meyhouse Palo Alto). Each one is a
 one-file change nobody on this page's paths may make:
 
-1. 🔴 **Any `?limit=` on `GET /calendar/events` returns 400.**
-   `GetCalendarEventsQueryDto.page`/`.limit` are `@IsInt()` with **no**
-   `@Type(() => Number)` (`apps/api-gateway/src/calendar/dto/calendar.dto.ts:333-345`), and
-   the global `ValidationPipe` runs `transform: true` **without**
-   `enableImplicitConversion` (`apps/api-gateway/src/main.ts:52-56`) — so a query string
-   stays a string and fails the check. **Consequence:** every caller is stuck on the
-   server's 100-row default (`calendar.service.ts:277`); a month with more than 100 entries
-   silently truncates for the legacy page, which never reads `hasMore`. Fix: add
-   `@Type(() => Number)` to both fields.
+1. ✅ **CLOSED 2026-09-03 — `?limit=` on `GET /calendar/events` no longer 400s.**
+   Was: `GetCalendarEventsQueryDto.page`/`.limit` were `@IsInt()` with **no**
+   `@Type(() => Number)`, and the global `ValidationPipe` runs `transform: true`
+   **without** `enableImplicitConversion` (`apps/api-gateway/src/main.ts:51-57`), so a
+   query string stayed a string and failed the check — every caller was stuck on the
+   server's 100-row default (`calendar.service.ts:277`), and the legacy page, which never
+   reads `hasMore`, truncated a busy month in silence.
+   Fixed at `apps/api-gateway/src/calendar/dto/calendar.dto.ts:328-359`: `@Type(() =>
+   Number)` on `page` and `limit`, plus an explicit `@Transform` on the sibling
+   `includeRecurring` (`@Type(() => Boolean)` would be wrong — `Boolean("false")` is
+   `true`; the transform maps only the two boolean literals and leaves anything else for
+   `@IsBoolean()` to reject). Guarded by
+   `apps/api-gateway/src/calendar/dto/calendar-query.dto.spec.ts` (10 cases, driving a
+   `ValidationPipe` configured exactly as the global one).
+   Verified live against the local gateway on :4000, 2026-09-03:
+   `?limit=50` → 200 `"limit":50`, `?limit=500` → 200 `"limit":500`, `?limit=abc` → 400
+   (`limit must be an integer number`), `?limit=501` → 400 (`must not be greater than
+   500`).
+   The rebuilt page now requests the page maximum —
+   `apps/web/src/pages/calendar/next/useCalendarNextData.ts:108` (`EVENT_WINDOW_LIMIT =
+   500`) and `:253` (the query string). Still honest above 500: `@Max(500)` caps the page,
+   so the page keeps rendering the server's `hasMore` rather than silently paginating.
 2. 🔴 **Production rows carry values the gateway's own enums do not contain** —
    `event_type: 'audit'` and `status: 'active'` were measured on live `calendar_events`
    rows, neither of which is in `CalendarEventType` / `CalendarEventStatus`
@@ -406,8 +419,9 @@ enough memory attached that the next conversation starts where the last one ende
 7. Diagnose the iCal feed against a real client — settings.md §13 item 3 names the
    first thing to try. Blocked on `v3.0-TECH-DEBT.md:243-245`.
 8. `provider_important_dates` missing in production — **OD-68**.
-9. **Fix the `limit` 400** (§9.1) — one decorator, and it unblocks reading a month with more
-   than 100 entries.
+9. ~~**Fix the `limit` 400** (§9.1)~~ — **done 2026-09-03**; see §9.1 for the fix, the spec
+   and the live verification. What remains is only the >500-event month, which `@Max(500)`
+   caps: it would need real pagination, and the page reports `hasMore` instead.
 10. **Reconcile the event-type / status enums with the rows that exist** (§9.2). Until then
     no client can safely round-trip an `audit` or `active` row.
 11. **Add `providerId` / `orderId` / `recurrence` to `UpdateCalendarEventDto`** (§9.3) so the

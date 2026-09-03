@@ -101,6 +101,12 @@ export interface CalEvent {
 }
 
 /** The calendar's spine: the event types that describe goods arriving. */
+/**
+ * The largest page the gateway will serve: `GetCalendarEventsQueryDto.limit`
+ * carries `@Max(500)` (apps/api-gateway/src/calendar/dto/calendar.dto.ts:356).
+ */
+const EVENT_WINDOW_LIMIT = 500;
+
 const DELIVERY_TYPES = new Set(['delivery', 'delivery_eta', 'order']);
 
 /** An order the orders book says has landed. `partially_received` has not. */
@@ -224,13 +230,19 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
   const { start, end } = useMemo(() => rangeFor(view, cursor), [view, cursor]);
 
   /**
-   * No `limit` is sent on purpose. `GetCalendarEventsQueryDto.limit` is
-   * `@IsInt()` with no `@Type(() => Number)`, and the global ValidationPipe
-   * runs `transform: true` WITHOUT `enableImplicitConversion` (main.ts:52-56) —
-   * so a query string `limit=500` stays a string, fails `@IsInt`, and the whole
-   * read 400s. Measured against the local gateway, 2026-09-02. The server's own
-   * default (100 per page, calendar.service.ts:277) therefore applies, and the
-   * page reports its `hasMore` rather than quietly drawing a truncated month.
+   * The window asks for the page maximum, 500. This used to be impossible:
+   * `GetCalendarEventsQueryDto.limit` was `@IsInt()` with no
+   * `@Type(() => Number)`, and the global ValidationPipe runs `transform: true`
+   * WITHOUT `enableImplicitConversion` (main.ts:51-57), so any `?limit=` stayed
+   * a string, failed `@IsInt` and 400d the whole read. Fixed 2026-09-03 in
+   * `apps/api-gateway/src/calendar/dto/calendar.dto.ts:328-359`; verified live
+   * against the local gateway (`?limit=50` and `?limit=500` → 200, `?limit=abc`
+   * and `?limit=501` → 400).
+   *
+   * 500 is `@Max(500)` — the server will not serve a larger page — so a month
+   * denser than 500 events is still possible in principle. The page keeps
+   * reporting the server's `hasMore` rather than quietly drawing a truncated
+   * month; it does not silently paginate.
    */
   const eventsQ = useQuery({
     queryKey: ['mudavym', 'calendar', 'events', restaurantId, start, end],
@@ -238,7 +250,7 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
     staleTime: 60_000,
     queryFn: async () => {
       const res = await apiClient.get<{ events: ApiEvent[]; total?: number; hasMore?: boolean }>(
-        `/calendar/events?startDate=${start}&endDate=${end}`,
+        `/calendar/events?startDate=${start}&endDate=${end}&limit=${EVENT_WINDOW_LIMIT}`,
       );
       return {
         rows: (res.data?.events ?? []).map(toCalEvent),

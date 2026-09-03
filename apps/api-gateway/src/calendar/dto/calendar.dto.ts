@@ -13,7 +13,7 @@ import {
   ValidateNested,
   IsObject,
 } from "class-validator";
-import { Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 
 // ============================================================================
 // ENUMS
@@ -325,18 +325,32 @@ export class GetCalendarEventsQueryDto {
   @IsOptional()
   providerId?: string;
 
+  // Query strings arrive as strings. The global ValidationPipe runs with
+  // `transform: true` but WITHOUT `enableImplicitConversion` (main.ts:51-57),
+  // so without these explicit converters `?limit=50` stays the string "50",
+  // fails `@IsInt()` and 400s the whole read. `@Type(() => Boolean)` would be
+  // wrong here — `Boolean("false")` is `true` — hence the explicit
+  // `@Transform`, which leaves anything that is not a recognised boolean
+  // literal untouched so `@IsBoolean()` still rejects it.
   @ApiPropertyOptional({ default: false })
+  @Transform(({ value }) => {
+    if (value === "true" || value === true) return true;
+    if (value === "false" || value === false) return false;
+    return value;
+  })
   @IsBoolean()
   @IsOptional()
   includeRecurring?: boolean;
 
   @ApiPropertyOptional({ default: 1 })
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   @IsOptional()
   page?: number;
 
   @ApiPropertyOptional({ default: 100 })
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(500)
